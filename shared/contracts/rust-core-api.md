@@ -153,7 +153,15 @@ string `value`; the host uses ACP `session/set_config_option`. Its acknowledged
 full option list arrives as `sessionConfigured`. Consumers also accept ACP
 `config_option_update` notifications. Agent-provided IDs, choices and current
 values remain authoritative; unsupported controls are not synthesized.
-Configuration failure echoes the token and does not finish a prompt.
+Configuration failure echoes the token and does not finish a prompt. Native clients may stage next-turn choices while a
+prompt is active, without sending configuration commands or replacing the
+Agent-confirmed values. The macOS conversation model keeps that intent per
+session and submits it only after a terminal turn event, model first and then
+one acknowledged choice at a time against the latest option list. Rejection,
+unconfirmed values, or removed choices clear the remaining intent and surface a
+configuration error; disconnect clears it as well. The next prompt remains
+blocked until configuration requests finish. This does not change the Host's
+busy-session rejection or the command/event shape.
 
 For a new session, the host also preserves the adapter's optional legacy model
 catalog while decoding the ACP response and negotiates only the versioned
