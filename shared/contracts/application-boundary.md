@@ -20,12 +20,36 @@ verification scripts are the executable source of boundary checks.
 
 ## Feature Contracts
 
+Shared Monaco highlighting is owned by the current view/model pair. A queued
+callback for a closed or replaced model must finish without running against the
+new model or locking surviving documents. Primary, split and diff views share
+this lifecycle protection; actual symbol computation remains upstream-owned.
+
 Agent prompt completion may include Agent-reported token counters; their accounting
 scope belongs to the provider and is separate from context occupancy and subscription
 quota. Platforms may measure locally observed turns with a monotonic clock, including
 tools and permission waits, and freeze elapsed time at completion, failure or disconnect.
 Missing usage and unmeasured replayed history remain unknown. See the
 [Agent host contract](rust-core-api.md) and `fixtures/agent/acp-events-v1.json`.
+
+Agent activity presentation uses the selected session's reported plan, pending
+tools and file diffs. Review acknowledgements are local to the exact reported
+version; later edits remain reviewable and start after the acknowledged prefix.
+The same open session retains its acknowledgements through disconnects and history
+reloads; closing its tab releases them. Replay must still match the exact version
+or prefix, so changed upstream evidence is never hidden by a stale acknowledgement.
+Reported excerpts and missing original content are not full-file snapshots.
+Native rollback is an explicit user action: preserve dirty editor buffers,
+reject paths outside the workspace and ambiguous or incomplete evidence, retain
+unrelated text, and use guarded native writes preserving encoding. Creation
+requires explicit evidence before recoverable removal. Reject replacement terminal
+symlinks instead of following them. Guard removal with the expected byte identity
+and the native save lock; verify the actual moved object, restore it on conflict
+without overwriting a recreated path, and report any manual recovery location.
+Unsupported adapters must reject removal rather than use unchecked Trash.
+Restoring a deletion
+requires the path to remain absent. Batch failures retain unprocessed changes.
+These presentation actions do not add Agent Host commands or persist chat history.
 
 | Feature | Shared input/output | Platform-owned implementation |
 | --- | --- | --- |
@@ -555,3 +579,10 @@ file. Debug uses HotSwap with DevTools automatic restart disabled at JVM launch.
 Remote attach and non-JDT launches have no update action in this first version.
 No installed resources or new runtime caches are written: output remains in
 JDT-owned workspace build paths and the existing platform-owned JDT state.
+
+### Agent 响应状态展示
+
+- 状态与已观察到的 ACP 进度一致：准备会话、等待响应、收到推理、收到回复、本轮工具执行、等待授权、明确重试和正在停止。静默时长不能证明正在推理或重试，已回放的历史工具不属于当前轮次。
+- 固定 codex-acp 的 `session_info_update._meta.codex.error.willRetry == true` 和非空 `turnId` 是 macOS 重试显示的证据；该通知可能没有 `title`。共享样例 `codexRetry` 由官方 ACP SDK 往返验证，Host 继续透传元数据，不新增请求/事件种类或网络重试策略。
+- 状态隔离到会话，新进度清除重试显示，完成/失败/断连清理本轮状态，正在停止时不因迟到进度回退；不得显示未经脱敏的原始错误或从文本猜测重试次数。请求仍等待上游完成/取消确认，既有十分钟 prompt 上限和十秒取消上限不变。
+- 这次交付 macOS 展示；Windows 对话 UI 的消费与真实验收仍待完成。展示状态只在内存中，不写入 bundle、安装目录或上游历史。
