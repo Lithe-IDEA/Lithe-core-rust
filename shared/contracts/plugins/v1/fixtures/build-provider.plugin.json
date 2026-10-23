@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "id": "dev.lithe.fixture.gradle-provider",
-  "displayName": "Gradle Provider Fixture",
+  "id": "dev.lithe.fixture.build-provider",
+  "displayName": "Build Provider Fixture",
   "version": "0.1.0",
   "pluginAPIVersion": 3,
   "requires": { "buildProviders": 1, "buildSystems": 1, "serverProcess": 1, "settings": 1 },

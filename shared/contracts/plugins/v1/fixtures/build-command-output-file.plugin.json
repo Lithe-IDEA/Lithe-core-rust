@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "id": "dev.lithe.fixture.gradle-build",
-  "displayName": "Gradle Build Fixture",
+  "id": "dev.lithe.fixture.build-command-output-file",
+  "displayName": "Command Output File Build Fixture",
   "version": "0.1.0",
   "pluginAPIVersion": 3,
   "requires": { "buildSystems": 1 },

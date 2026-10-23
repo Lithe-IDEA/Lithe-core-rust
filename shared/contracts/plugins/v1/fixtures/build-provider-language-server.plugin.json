@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "id": "dev.lithe.fixture.mix-provider",
-  "displayName": "Mix Provider Fixture",
+  "id": "dev.lithe.fixture.build-provider-language-server",
+  "displayName": "Build Provider With Language Server Fixture",
   "version": "0.1.0",
   "pluginAPIVersion": 3,
   "requires": { "buildProviders": 1, "buildSystems": 1, "languageServers": 1, "languages": 1, "serverProcess": 1 },

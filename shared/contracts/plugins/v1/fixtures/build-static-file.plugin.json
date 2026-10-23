@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "id": "dev.lithe.fixture.cargo-build",
-  "displayName": "Cargo Build Fixture",
+  "id": "dev.lithe.fixture.build-static-file",
+  "displayName": "Static File Build Fixture",
   "version": "0.1.0",
   "pluginAPIVersion": 3,
   "requires": { "buildSystems": 1 },
