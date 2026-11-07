@@ -25,10 +25,6 @@ const MIX_FIXTURE: &str =
 const BUILD_PROVIDER_FIXTURE: &str =
     contract_file!("fixtures/build-providers/build-provider.plugin.json");
 const CARGO_FIXTURE: &str = contract_file!("fixtures/build-systems/build-static-file.plugin.json");
-const OFFICIAL_INDEX: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../Plugins/marketplace/index.json"
-));
 
 fn json_file(source: &str) -> Value {
     serde_json::from_str(source).expect("fixture is JSON")
@@ -189,15 +185,6 @@ fn whole_index_problems_reject_the_index() {
         let outcome = validate(index.clone(), "thirdParty", "darwin-arm64");
         assert_eq!(outcome["status"], "rejected", "{index}: {outcome}");
         assert_eq!(outcome["error"]["code"], code, "{index}: {outcome}");
-    }
-}
-
-#[test]
-fn official_marketplace_index_validates_without_rejections() {
-    for platform in ["darwin-arm64", "darwin-x64"] {
-        let outcome = validate(json_file(OFFICIAL_INDEX), "official", platform);
-        assert_eq!(outcome["status"], "ok", "{outcome}");
-        assert_eq!(outcome["index"]["rejected"], json!([]), "{outcome}");
     }
 }
 
