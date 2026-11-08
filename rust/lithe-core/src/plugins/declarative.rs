@@ -460,11 +460,11 @@ struct LanguageDeclaration {
     project_file_names: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     dependencies: Option<DependencyDeclaration>,
-    /// Syntax highlighting from a package file. `languages` 2; see
+    /// Syntax highlighting from a package file. `languages` 3; see
     /// `super::grammar`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     grammar: Option<super::grammar::GrammarDeclaration>,
-    /// Comment and bracket behavior of the editor. `languages` 2.
+    /// Comment and bracket behavior of the editor. `languages` 3.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     configuration: Option<super::grammar::LanguageConfiguration>,
 }
@@ -1020,11 +1020,11 @@ impl DeclarativePluginManifest {
             && !self
                 .languages
                 .iter()
-                .any(LanguageDeclaration::uses_version_2)
+                .any(LanguageDeclaration::uses_grammar_fields)
         {
             return Err(invalid(
                 "requires.languages",
-                "The declared languages version must be used: languages 2 adds grammar and configuration.",
+                "The declared languages version must be used: languages 3 adds grammar and configuration.",
             ));
         }
 
@@ -1159,7 +1159,7 @@ impl DeclarativePluginManifest {
             && self.output_link_matchers.is_empty()
             && self.backend.is_none()
             // A grammar alone is a complete highlighting plugin.
-            && !self.languages.iter().any(LanguageDeclaration::uses_version_2)
+            && !self.languages.iter().any(LanguageDeclaration::uses_grammar_fields)
         {
             return Err(invalid(
                 "languages",
@@ -2324,21 +2324,23 @@ impl DeclarativePluginManifest {
 }
 
 impl LanguageDeclaration {
-    /// Whether the language uses a field `languages` 2 adds.
-    fn uses_version_2(&self) -> bool {
+    /// Whether the language uses a field `languages` 3 adds.
+    fn uses_grammar_fields(&self) -> bool {
         self.grammar.is_some() || self.configuration.is_some()
     }
 
     fn normalize(&mut self, index: usize, capability_version: u32) -> Validation<()> {
         let field = format!("languages[{index}]");
-        if self.uses_version_2() && capability_version < super::grammar::GRAMMAR_LANGUAGES_VERSION {
+        if self.uses_grammar_fields()
+            && capability_version < super::grammar::GRAMMAR_LANGUAGES_VERSION
+        {
             return Err(invalid(
                 if self.grammar.is_some() {
                     format!("{field}.grammar")
                 } else {
                     format!("{field}.configuration")
                 },
-                "grammar and configuration require version 2 of the languages capability.",
+                "grammar and configuration require version 3 of the languages capability.",
             ));
         }
         if let Some(grammar) = &self.grammar {
@@ -5093,11 +5095,16 @@ pub fn decode_grammar_command(payload: Value) -> Result<Value, CoreError> {
                 .grammar
                 .as_ref()
                 .map(|grammar| match grammar.kind {
-                    super::grammar::GrammarKind::Monarch => {
-                        // Monarch cases are ordered. Keep the validated source
-                        // opaque across JSON maps and platform dictionaries.
-                        super::grammar::decode_monarch(&payload.grammar)
-                            .map(|_| json!({"kind": grammar.kind, "source": payload.grammar}))
+                    // The editor's engine parses the original text; Core only
+                    // proves that it can and names the scope it registers.
+                    super::grammar::GrammarKind::Textmate => {
+                        super::grammar::decode_textmate(&payload.grammar).map(|scope_name| {
+                            json!({
+                                "kind": grammar.kind,
+                                "scopeName": scope_name,
+                                "source": payload.grammar,
+                            })
+                        })
                     }
                 })
                 .transpose()?;
