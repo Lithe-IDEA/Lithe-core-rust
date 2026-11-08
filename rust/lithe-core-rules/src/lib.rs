@@ -20,6 +20,7 @@ pub mod keymap;
 pub mod visibility;
 #[cfg(target_arch = "wasm32")]
 mod wasm;
+pub mod workbench;
 
 pub use dispatch::{execute, execute_json, is_rule_command, COMMANDS};
 pub use error::{RuleError, RuleErrorCode};

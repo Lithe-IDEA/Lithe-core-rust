@@ -406,6 +406,9 @@ pub enum CoreCommand {
     WorkspaceClassifyVisibility,
     /// Returns the built-in hidden-path lists (`workspace.visibilityDefaults`), also from `lithe-core-rules`.
     WorkspaceVisibilityDefaults,
+    /// Applies one transition to the rearrangeable workbench chrome: stripe, title bar and status bar
+    /// button placement and open tool panels (`workbench.chromeLayout.reduce`), from `lithe-core-rules`.
+    WorkbenchChromeLayoutReduce,
     /// Resolves terminal link candidates into file or external targets (`terminal.parseLinkTarget`).
     TerminalParseLinkTarget,
     /// Creates one transport-neutral Debug Adapter Protocol session (`debug.createSession`).
@@ -989,6 +992,7 @@ impl CoreCommand {
             "editor.workbenchState.reduce" => Some(Self::EditorWorkbenchStateReduce),
             "workspace.classifyVisibility" => Some(Self::WorkspaceClassifyVisibility),
             "workspace.visibilityDefaults" => Some(Self::WorkspaceVisibilityDefaults),
+            "workbench.chromeLayout.reduce" => Some(Self::WorkbenchChromeLayoutReduce),
             "terminal.parseLinkTarget" => Some(Self::TerminalParseLinkTarget),
             "debug.createSession" => Some(Self::DebugCreateSession),
             "debug.launch" => Some(Self::DebugLaunch),
