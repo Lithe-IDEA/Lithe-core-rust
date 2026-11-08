@@ -22,8 +22,10 @@ use std::collections::{BTreeMap, BTreeSet};
 /// First plugin API level whose manifests declare capability versions.
 pub(crate) const CAPABILITIES_API_VERSION: u32 = 3;
 
-/// `languages[]`: file types and project markers. Version 2 adds a
-/// declarative `grammar` and an editing `configuration`; see `super::grammar`.
+/// `languages[]`: file types and project markers. Version 3 adds a TextMate
+/// `grammar` and an editing `configuration`; see `super::grammar`. Version 2
+/// added a Monaco Monarch grammar and is withdrawn: the desktop editor runs
+/// TextMate grammars only, so no host implements it.
 pub(crate) const LANGUAGES: &str = "languages";
 /// `languageServers[]` apart from their launch fields. Version 2 adds
 /// `workspaceConfiguration`. Version 3 adds the session fields a plugin
@@ -104,7 +106,7 @@ pub const SUPPORTED_CAPABILITIES: &[(&str, &[u32])] = &[
     (EXECUTABLE_RESOLUTION, &[1, 2]),
     (KEYMAP_IMPORT_PROVIDERS, &[1]),
     (LANGUAGE_SERVERS, &[1, 2, 3]),
-    (LANGUAGES, &[1, 2]),
+    (LANGUAGES, &[1, 3]),
     (OUTPUT_LINK_MATCHERS, &[1]),
     (PACKAGE_TRUST, &[1]),
     (PLUGIN_FUNCTIONS, &[1]),
