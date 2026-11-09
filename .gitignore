@@ -1,0 +1,3 @@
+/.artifacts/
+/rust/target/
+/scripts/rust-core/comment-lexer/target/

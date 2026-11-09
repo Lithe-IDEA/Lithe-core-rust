@@ -119,7 +119,7 @@ const HOST_CAPABILITY_TESTING: &str = "testing";
 /// CPU architectures a host may report for `${arch}`.
 const KNOWN_ARCHITECTURES: &[&str] = &["arm64", "x86_64"];
 /// Most settings one plugin may declare, so its pages stay pages.
-const MAX_SETTINGS: usize = 32;
+pub(crate) const MAX_SETTINGS: usize = 32;
 /// Prefix of a launch template variable that names a plugin setting.
 const SETTING_VARIABLE_PREFIX: &str = "setting:";
 
@@ -5021,6 +5021,63 @@ pub fn resolve_settings_command(payload: Value) -> Result<Value, CoreError> {
                 .map_err(|error| PluginRejection::new("plugin.manifest.invalid", error.to_string()))
         }),
     ))
+}
+
+/// Complete stored setting documents, captured by the native storage adapter.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SettingsStatePayload {
+    manifest: Value,
+    /// Missing files are null; an existing empty or malformed file is an error.
+    global_document: Option<String>,
+    project_document: Option<String>,
+}
+
+/// `plugins.declarative.settingsState`: checked UI rows and raw declared launch
+/// layers. Reading a state neither edits storage nor admits plugin capabilities.
+pub fn settings_state_command(payload: Value) -> Result<Value, CoreError> {
+    let payload: SettingsStatePayload =
+        decode_payload(payload, "plugins.declarative.settingsState")?;
+    Ok(outcome(validate_manifest_value(payload.manifest).and_then(
+        |manifest| {
+            super::settings::document_state(
+                &manifest.id,
+                &manifest.settings,
+                &manifest.setting_actions,
+                payload.global_document.as_deref(),
+                payload.project_document.as_deref(),
+            )
+            .map(|state| ("state", state))
+        },
+    )))
+}
+
+/// One layer and one atomic edit batch; the host owns its captured byte baseline.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SettingsEditPayload {
+    manifest: Value,
+    scope: super::settings::SettingScope,
+    document: Option<String>,
+    edits: Vec<super::settings::SettingsEdit>,
+}
+
+/// `plugins.declarative.editSettings`: validates all edits and returns complete
+/// text, deletion eligibility and required effects, without performing any I/O.
+pub fn edit_settings_command(payload: Value) -> Result<Value, CoreError> {
+    let payload: SettingsEditPayload = decode_payload(payload, "plugins.declarative.editSettings")?;
+    Ok(outcome(validate_manifest_value(payload.manifest).and_then(
+        |manifest| {
+            super::settings::edit_document(
+                &manifest.id,
+                &manifest.settings,
+                payload.scope,
+                payload.document.as_deref(),
+                payload.edits,
+            )
+            .map(|edit| ("edit", edit))
+        },
+    )))
 }
 
 /// `plugins.declarative.workspaceConfiguration`: a language server's

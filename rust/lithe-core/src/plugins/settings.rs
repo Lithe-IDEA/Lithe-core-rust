@@ -15,6 +15,10 @@
 //!
 //! Note: the decision is recorded in .agents/notes/implemented/architecture/2026-10-21-plugin-settings-surfaces.md
 
+#[path = "settings_documents.rs"]
+mod documents;
+pub(crate) use documents::{document_state, edit_document, SettingsEdit};
+
 use super::declarative::{invalid, PluginRejection, Validation};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -934,3 +938,7 @@ mod tests {
         assert!(wrong.validate("settings[0]", 2).is_err());
     }
 }
+
+#[cfg(test)]
+#[path = "settings_document_tests.rs"]
+mod document_tests;

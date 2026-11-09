@@ -368,6 +368,16 @@ fn execute_parsed(mut parsed: CoreRequest) -> CoreResponse {
             parsed.payload,
             crate::plugins::declarative::resolve_settings_command,
         ),
+        CoreCommand::PluginsDeclarativeSettingsState => plugin_response(
+            id,
+            parsed.payload,
+            crate::plugins::declarative::settings_state_command,
+        ),
+        CoreCommand::PluginsDeclarativeEditSettings => plugin_response(
+            id,
+            parsed.payload,
+            crate::plugins::declarative::edit_settings_command,
+        ),
         CoreCommand::PluginsDeclarativeWorkspaceConfiguration => plugin_response(
             id,
             parsed.payload,

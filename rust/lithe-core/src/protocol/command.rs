@@ -158,6 +158,10 @@ pub enum CoreCommand {
     PluginsDeclarativeCheckRuntimeVersion,
     /// Merges a plugin's stored setting layers into effective values (`plugins.declarative.resolveSettings`).
     PluginsDeclarativeResolveSettings,
+    /// Projects stored documents into plugin setting rows and launch layers.
+    PluginsDeclarativeSettingsState,
+    /// Validates an atomic plugin settings edit and preserves unrelated values.
+    PluginsDeclarativeEditSettings,
     /// Expands a language server's `workspaceConfiguration` (`plugins.declarative.workspaceConfiguration`).
     PluginsDeclarativeWorkspaceConfiguration,
     /// Validates a language's grammar file (`plugins.declarative.decodeGrammar`).
@@ -865,6 +869,8 @@ impl CoreCommand {
                 Some(Self::PluginsDeclarativeCheckRuntimeVersion)
             }
             "plugins.declarative.resolveSettings" => Some(Self::PluginsDeclarativeResolveSettings),
+            "plugins.declarative.settingsState" => Some(Self::PluginsDeclarativeSettingsState),
+            "plugins.declarative.editSettings" => Some(Self::PluginsDeclarativeEditSettings),
             "plugins.declarative.workspaceConfiguration" => {
                 Some(Self::PluginsDeclarativeWorkspaceConfiguration)
             }
