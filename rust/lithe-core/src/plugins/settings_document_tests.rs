@@ -217,3 +217,55 @@ fn plugins_without_setting_declarations_do_not_request_native_document_reads() {
     assert_eq!(result["data"]["state"]["storage"]["readRequired"], false);
     assert_eq!(result["data"]["state"]["rows"], json!([]));
 }
+
+#[test]
+fn editor_projection_owns_scope_reset_values_and_section_grouping() {
+    let fixture: Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../shared/fixtures/plugins/settings-documents.json"
+    )))
+    .unwrap();
+    let mut manifest = fixture["manifest"].clone();
+    manifest["settings"][0]["section"] = json!("Server");
+    manifest["settings"][1]["section"] = json!("General");
+    let result = execute(
+        "plugins.declarative.settingsState",
+        json!({"manifest": manifest,
+        "globalDocument":"{\"dev.example.settings\":{\"flag\":false,\"count\":\"invalid\"}}",
+        "projectDocument":"{\"dev.example.settings\":{\"flag\":true}}"}),
+    );
+    assert_eq!(result["data"]["status"], "ok", "{result}");
+    let state = &result["data"]["state"];
+    assert_eq!(state["metadata"]["displayName"], "Settings Fixture");
+    assert_eq!(state["metadata"]["version"], "1.0.0");
+    assert_eq!(state["sections"][0]["title"], "");
+    assert_eq!(state["sections"][1]["title"], "General");
+    assert_eq!(state["sections"][2]["title"], "Server");
+    let rows = state["rows"].as_array().unwrap();
+    let flag = rows
+        .iter()
+        .position(|row| row["declaration"]["id"] == "flag")
+        .unwrap();
+    let count = rows
+        .iter()
+        .position(|row| row["declaration"]["id"] == "count")
+        .unwrap();
+    assert_eq!(state["sections"][1]["rows"], json!([count]));
+    assert_eq!(state["sections"][2]["rows"], json!([flag]));
+    let project = &state["editors"]["project"];
+    assert_eq!(project[flag]["value"], true);
+    assert_eq!(project[flag]["input"]["on"], true);
+    assert_eq!(project[flag]["resetInput"]["on"], false);
+    assert_eq!(project[flag]["resetValue"], false);
+    assert_eq!(project[flag]["editable"], true);
+    assert_eq!(project[flag]["overridden"], true);
+    assert_eq!(project[count]["editable"], false);
+    assert_eq!(project[count]["value"], 3);
+    assert_eq!(project[count]["input"]["text"], "3");
+    assert_eq!(project[count]["invalidStored"], true);
+    let global = &state["editors"]["global"];
+    assert_eq!(global[flag]["value"], false);
+    assert_eq!(global[flag]["resetValue"], true);
+    assert_eq!(global[flag]["source"], "global");
+    assert_eq!(global[count]["invalidStored"], true);
+}

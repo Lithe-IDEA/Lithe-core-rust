@@ -1740,21 +1740,20 @@ fn parse_lsp_position_value(value: &Value) -> Option<Value> {
     }))
 }
 
+/// Decodes a file URI using native drive/UNC syntax; opaque inputs retain
+/// their percent-decoded spelling for existing non-file consumers.
 pub(crate) fn file_path_from_uri(uri: &str) -> String {
     file_path_for_uri(uri).unwrap_or_else(|| percent_decode(uri))
 }
 
 fn file_path_for_uri(uri: &str) -> Option<String> {
-    let (scheme, remainder) = uri.split_once(':')?;
+    let (scheme, _) = uri.split_once(':')?;
     if !scheme.eq_ignore_ascii_case("file") {
         return None;
     }
-    let path = if remainder.starts_with("///") {
-        &remainder[2..]
-    } else {
-        remainder
-    };
-    Some(percent_decode(path))
+    // Workspace edits already decode percent escapes, UNC authorities and the
+    // leading slash of file:///C:/... without depending on the build host OS.
+    crate::lsp::workspace_edit_plan::native_path(uri)
 }
 
 /// Decodes `%XX` escapes in a URI component, keeping the input when the

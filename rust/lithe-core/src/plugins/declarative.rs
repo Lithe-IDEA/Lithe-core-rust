@@ -5023,11 +5023,22 @@ pub fn resolve_settings_command(payload: Value) -> Result<Value, CoreError> {
     ))
 }
 
+/// Installed package identity captured by the native registration adapter.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SettingsOwner {
+    #[serde(rename = "pluginID")]
+    plugin_id: String,
+    version: String,
+}
+
 /// Complete stored setting documents, captured by the native storage adapter.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct SettingsStatePayload {
     manifest: Value,
+    /// Optional native registration facts; this is identity binding, not admission.
+    owner: Option<SettingsOwner>,
     /// Missing files are null; an existing empty or malformed file is an error.
     global_document: Option<String>,
     project_document: Option<String>,
@@ -5040,6 +5051,15 @@ pub fn settings_state_command(payload: Value) -> Result<Value, CoreError> {
         decode_payload(payload, "plugins.declarative.settingsState")?;
     Ok(outcome(validate_manifest_value(payload.manifest).and_then(
         |manifest| {
+            if payload.owner.as_ref().is_some_and(|owner| {
+                owner.plugin_id != manifest.id || owner.version != manifest.version
+            }) {
+                return Err(PluginRejection::at(
+                    "plugin.settings.ownerChanged",
+                    "The manifest does not match the captured installed package identity.",
+                    "owner",
+                ));
+            }
             super::settings::document_state(
                 &manifest.id,
                 &manifest.settings,
@@ -5047,7 +5067,10 @@ pub fn settings_state_command(payload: Value) -> Result<Value, CoreError> {
                 payload.global_document.as_deref(),
                 payload.project_document.as_deref(),
             )
-            .map(|state| ("state", state))
+            .map(|mut state| {
+                state["metadata"] = json!({"displayName": manifest.display_name, "version":manifest.version, "vendor":manifest.vendor.display_name});
+                ("state", state)
+            })
         },
     )))
 }

@@ -5,9 +5,9 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use url::Url;
 
-// A Windows extended-length path can contain 32,767 UTF-16 units; its UTF-8
-// representation may use more bytes, so do not reject valid non-ASCII paths.
-const MAX_PATH_BYTES: usize = 4 * 32_767;
+/// Largest UTF-8 spelling of a Windows extended-length path (32,767 UTF-16
+/// units); shared by native path and server document identity validation.
+pub(crate) const MAX_PATH_BYTES: usize = 4 * 32_767;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

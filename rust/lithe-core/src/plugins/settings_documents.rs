@@ -21,7 +21,8 @@ use std::{
 /// Most UTF-8 bytes one stored layer or edited document may contain.
 const MAX_DOCUMENT_BYTES: usize = 1024 * 1024;
 
-/// One explicit value change. Null removes the override, exposing inheritance.
+/// One value change or unparsed editor input. Without text, null removes the
+/// override and exposes inheritance.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct SettingsEdit {
@@ -29,6 +30,10 @@ pub(crate) struct SettingsEdit {
     pub(crate) id: String,
     /// A declaration-validated value, or null to remove only this layer.
     pub(crate) value: Value,
+    /// Unparsed editor text. When present, value must be null; Core converts
+    /// integer text before applying the declaration's ordinary validation.
+    #[serde(default)]
+    pub(crate) text: Option<String>,
 }
 
 /// Reject duplicate group and setting keys rather than silently dropping one.
@@ -184,7 +189,7 @@ pub(crate) fn document_state(
         },
     );
     let effective = resolve(declarations, SettingLayers { global, project });
-    let rows: Vec<_> = declarations.iter().zip(global_resolved).zip(effective).map(|((declaration, global_value), effective)| json!({
+    let rows: Vec<_> = declarations.iter().zip(global_resolved.iter()).zip(effective.iter()).map(|((declaration, global_value), effective)| json!({
         "declaration": declaration, "scope": declaration.scope(), "effect": declaration.effect(),
         "global": global_value, "effective": effective,
         "globalStored": global.contains_key(&declaration.id),
@@ -200,9 +205,72 @@ pub(crate) fn document_state(
             })
             .collect()
     };
-    Ok(json!({"pluginID":plugin, "rows":rows, "actions":actions,
+    let mut sections: BTreeMap<String, (Vec<usize>, Vec<usize>)> = BTreeMap::new();
+    let mut global_editor = Vec::with_capacity(declarations.len());
+    let mut project_editor = Vec::with_capacity(declarations.len());
+    for (index, ((declaration, global_value), effective_value)) in declarations
+        .iter()
+        .zip(global_resolved.iter())
+        .zip(effective.iter())
+        .enumerate()
+    {
+        sections
+            .entry(declaration.section.clone().unwrap_or_default())
+            .or_default()
+            .0
+            .push(index);
+        let invalid_global = global
+            .get(&declaration.id)
+            .is_some_and(|value| !declaration.accepts(value));
+        let project_editable = declaration.scope() == SettingScope::Project;
+        let invalid_project = if project_editable {
+            project
+                .get(&declaration.id)
+                .is_some_and(|value| !declaration.accepts(value))
+        } else {
+            invalid_global
+        };
+        global_editor.push(json!({"value":global_value.value, "resetValue":declaration.default,
+            "input":editor_input(declaration,&global_value.value), "resetInput":editor_input(declaration,&declaration.default),
+            "source":global_value.source, "editable":true, "overridden":global.contains_key(&declaration.id), "invalidStored":invalid_global}));
+        project_editor.push(json!({"value":effective_value.value, "resetValue":global_value.value,
+            "input":editor_input(declaration,&effective_value.value), "resetInput":editor_input(declaration,&global_value.value),
+            "source":effective_value.source, "editable":project_editable,
+            "overridden":project_editable && project.contains_key(&declaration.id), "invalidStored":invalid_project}));
+    }
+    for (index, action) in actions.iter().enumerate() {
+        sections
+            .entry(action.section.clone().unwrap_or_default())
+            .or_default()
+            .1
+            .push(index);
+    }
+    let sections: Vec<_> = sections
+        .into_iter()
+        .map(|(title, (rows, actions))| json!({"title":title, "rows":rows, "actions":actions}))
+        .collect();
+    Ok(
+        json!({"pluginID":plugin, "rows":rows, "actions":actions, "sections":sections,
+        "editors":{"global":global_editor,"project":project_editor},
         "settings":declared_values(global), "projectSettings":declared_values(project),
-        "storage":{"globalRelativePath":"plugin-settings.json", "projectRelativePath":".lithe/plugin-settings.json", "maximumBytes":MAX_DOCUMENT_BYTES, "readRequired":!declarations.is_empty()}}))
+        "storage":{"globalRelativePath":"plugin-settings.json", "projectRelativePath":".lithe/plugin-settings.json", "maximumBytes":MAX_DOCUMENT_BYTES, "readRequired":!declarations.is_empty()}}),
+    )
+}
+
+/// Widget input for an already validated resolved value or reset value.
+/// Numeric text and option positions are presentation data, not host rules.
+fn editor_input(declaration: &SettingDeclaration, value: &Value) -> Value {
+    match declaration.kind.as_str() {
+        super::SETTING_INTEGER => json!({"text":value.to_string()}),
+        super::SETTING_BOOLEAN => json!({"on":value == &Value::Bool(true)}),
+        super::SETTING_ENUM => {
+            json!({"selected":declaration.options.iter().position(|option| value.as_str() == Some(option.value.as_str())).unwrap_or_default()})
+        }
+        super::SETTING_MULTI_SELECT => {
+            json!({"checks":declaration.options.iter().map(|option| value.as_array().is_some_and(|values| values.iter().any(|value| value.as_str() == Some(option.value.as_str())))).collect::<Vec<_>>()})
+        }
+        _ => json!({"text":value.as_str().unwrap_or_default()}),
+    }
 }
 
 /// Validates the entire batch before editing one layer. Siblings and dormant
@@ -224,7 +292,7 @@ pub(crate) fn edit_document(
     }
     let mut seen = BTreeSet::new();
     let mut prepared = Vec::with_capacity(edits.len());
-    for (index, edit) in edits.into_iter().enumerate() {
+    for (index, mut edit) in edits.into_iter().enumerate() {
         let field = format!("edits[{index}]");
         let declaration = declarations.iter().find(|setting| setting.id == edit.id);
         let Some(declaration) = declaration else {
@@ -242,6 +310,26 @@ pub(crate) fn edit_document(
                 format!("{field}.id"),
                 "The edit is repeated or has no project layer.",
             ));
+        }
+        if let Some(text) = edit.text.take() {
+            if !edit.value.is_null() || text.len() > MAX_DOCUMENT_BYTES {
+                return Err(PluginRejection::at(
+                    "plugin.settings.invalidEdit",
+                    format!("{field}.text"),
+                    "Supply bounded editor text without a separate value.",
+                ));
+            }
+            edit.value = if declaration.kind == super::SETTING_INTEGER {
+                Value::from(text.trim().parse::<i64>().map_err(|_| {
+                    PluginRejection::at(
+                        "plugin.settings.invalidEdit",
+                        format!("{field}.text"),
+                        "Enter a whole number for this setting.",
+                    )
+                })?)
+            } else {
+                Value::String(text)
+            };
         }
         if !edit.value.is_null() && !declaration.accepts(&edit.value) {
             return Err(PluginRejection::at(

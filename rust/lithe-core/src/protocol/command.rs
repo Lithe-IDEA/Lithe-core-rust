@@ -160,6 +160,8 @@ pub enum CoreCommand {
     PluginsDeclarativeResolveSettings,
     /// Projects stored documents into plugin setting rows and launch layers.
     PluginsDeclarativeSettingsState,
+    /// Selects numeric installed versions and reports malformed native facts.
+    PluginsInstalledSelect,
     /// Validates an atomic plugin settings edit and preserves unrelated values.
     PluginsDeclarativeEditSettings,
     /// Expands a language server's `workspaceConfiguration` (`plugins.declarative.workspaceConfiguration`).
@@ -468,6 +470,8 @@ pub enum CoreCommand {
     /// Validates workspace-edit targets and orders their commit
     /// (`lsp.planWorkspaceEdit`).
     LspPlanWorkspaceEdit,
+    /// Resolves a diagnostic identity inside its workspace (`lsp.documentIdentity`).
+    LspDocumentIdentity,
     /// Decides whether a language-server jump target opens, opens read-only
     /// or is refused (`lsp.classifyNavigationTarget`).
     LspClassifyNavigationTarget,
@@ -870,6 +874,7 @@ impl CoreCommand {
             }
             "plugins.declarative.resolveSettings" => Some(Self::PluginsDeclarativeResolveSettings),
             "plugins.declarative.settingsState" => Some(Self::PluginsDeclarativeSettingsState),
+            "plugins.installed.select" => Some(Self::PluginsInstalledSelect),
             "plugins.declarative.editSettings" => Some(Self::PluginsDeclarativeEditSettings),
             "plugins.declarative.workspaceConfiguration" => {
                 Some(Self::PluginsDeclarativeWorkspaceConfiguration)
@@ -1028,6 +1033,7 @@ impl CoreCommand {
             "debug.destroySession" => Some(Self::DebugDestroySession),
             "lsp.applyTextEdits" => Some(Self::LspApplyTextEdits),
             "lsp.planWorkspaceEdit" => Some(Self::LspPlanWorkspaceEdit),
+            "lsp.documentIdentity" => Some(Self::LspDocumentIdentity),
             "lsp.classifyNavigationTarget" => Some(Self::LspClassifyNavigationTarget),
             "editor.lineEdit" => Some(Self::EditorLineEdit),
             "editor.planTextEdits" => Some(Self::EditorPlanTextEdits),

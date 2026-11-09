@@ -368,6 +368,11 @@ fn execute_parsed(mut parsed: CoreRequest) -> CoreResponse {
             parsed.payload,
             crate::plugins::declarative::resolve_settings_command,
         ),
+        CoreCommand::PluginsInstalledSelect => plugin_response(
+            id,
+            parsed.payload,
+            crate::plugins::installed::select_command,
+        ),
         CoreCommand::PluginsDeclarativeSettingsState => plugin_response(
             id,
             parsed.payload,
@@ -1870,6 +1875,11 @@ fn execute_parsed(mut parsed: CoreRequest) -> CoreResponse {
                 Err(error) => CoreResponse::failure(id, error),
             }
         }
+        CoreCommand::LspDocumentIdentity => plugin_response(
+            id,
+            parsed.payload,
+            crate::lsp::document_identity::resolve_command,
+        ),
         CoreCommand::LspPlanWorkspaceEdit => plugin_response(
             id,
             parsed.payload,

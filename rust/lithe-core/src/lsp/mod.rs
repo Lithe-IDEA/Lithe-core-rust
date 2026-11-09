@@ -1,5 +1,6 @@
 //! Language tooling is split by responsibility while this facade keeps the Core command API stable.
 
+pub(crate) mod document_identity;
 pub(crate) mod host_policy;
 pub(crate) mod interface;
 mod languages;

@@ -47,10 +47,11 @@ struct Target {
     edits: Vec<Value>,
 }
 
-/// Native path named by a workspace-edit key, or `None` for a non-file URI.
+/// Native path named by an LSP document or workspace-edit key; `None` for a
+/// non-file URI. Shared with navigation results and diagnostic placement.
 /// Core's URI projection keeps the leading slash of `file:///C:/...`; strip it
 /// so drive paths parse as Windows paths.
-fn native_path(key: &str) -> Option<String> {
+pub(super) fn native_path(key: &str) -> Option<String> {
     let path = match key.split_once(':') {
         // A one-letter "scheme" is a drive letter, not a URI scheme.
         Some((scheme, rest))
