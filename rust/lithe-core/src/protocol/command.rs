@@ -190,6 +190,12 @@ pub enum CoreCommand {
     ToolchainsResolvePins,
     /// Edits a bounded batch of machine-local directory pins without native writes.
     ToolchainsEditPins,
+    /// Plans native workspace pin source paths and byte budgets.
+    ToolchainsPinStoragePlan,
+    /// Parses a complete native pin document or its absent-source default.
+    ToolchainsDecodePinDocument,
+    /// Plans complete pin and ignore source edits without native writes.
+    ToolchainsEditPinSources,
     /// Resolves consumer defaults while keeping workspace inheritance symbolic.
     ToolchainsResolveConsumerPreferences,
     /// Edits one machine-local consumer preference and returns its effective input.
@@ -893,6 +899,9 @@ impl CoreCommand {
             "toolchains.failureReply" => Some(Self::ToolchainsFailureReply),
             "toolchains.resolvePins" => Some(Self::ToolchainsResolvePins),
             "toolchains.editPins" => Some(Self::ToolchainsEditPins),
+            "toolchains.pinStoragePlan" => Some(Self::ToolchainsPinStoragePlan),
+            "toolchains.decodePinDocument" => Some(Self::ToolchainsDecodePinDocument),
+            "toolchains.editPinSources" => Some(Self::ToolchainsEditPinSources),
             "toolchains.resolveConsumerPreferences" => {
                 Some(Self::ToolchainsResolveConsumerPreferences)
             }
