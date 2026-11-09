@@ -45,6 +45,85 @@ pub(crate) fn resolve(input: &Value) -> Validation<Value> {
     }
 }
 
+/// Edits a bounded batch against one captured document without performing I/O.
+/// A null pin removes only that override; invalid batches return no document.
+pub(crate) fn edit(input: &Value) -> Validation<Value> {
+    let request = object(input, "input", &["document", "directory", "edits"])?;
+    let document = required(request, "document", "input")?;
+    validate(document)?;
+    let directory = text(
+        required(request, "directory", "input")?,
+        "directory",
+        MAX_DIRECTORY_BYTES,
+    )?;
+    if !valid_directory(directory) {
+        return Err(invalid(
+            "directory",
+            "Expected a normalized workspace-relative directory.",
+        ));
+    }
+    let edits = required(request, "edits", "input")?
+        .as_array()
+        .ok_or_else(|| invalid("edits", "Expected an array."))?;
+    count(edits.len(), MAX_TOOLS_PER_DIRECTORY, "edits")?;
+    if edits.is_empty() {
+        return Err(invalid("edits", "Expected at least one edit."));
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    let mut updated = document.clone();
+    for (index, edit) in edits.iter().enumerate() {
+        let field = format!("edits.{index}");
+        let edit = object(edit, &field, &["tool", "pin"])?;
+        let tool = text(
+            required(edit, "tool", &field)?,
+            &format!("{field}.tool"),
+            192,
+        )?;
+        if !valid_tool_id(tool) || !seen.insert(tool) {
+            return Err(invalid(
+                format!("{field}.tool"),
+                "Expected a unique valid tool identifier.",
+            ));
+        }
+        let pin = required(edit, "pin", &field)?;
+        if pin.is_null() {
+            if let Some(pins) = updated.get_mut("pins").and_then(Value::as_object_mut) {
+                if let Some(tools) = pins.get_mut(directory).and_then(Value::as_object_mut) {
+                    tools.remove(tool);
+                    if tools.is_empty() {
+                        pins.remove(directory);
+                    }
+                }
+                if pins.is_empty() {
+                    updated
+                        .as_object_mut()
+                        .expect("validated document")
+                        .remove("pins");
+                }
+            }
+        } else {
+            validate_pin(pin, &format!("{field}.pin"))?;
+            let pins = updated
+                .as_object_mut()
+                .expect("validated document")
+                .entry("pins")
+                .or_insert_with(|| json!({}));
+            let tools = pins
+                .as_object_mut()
+                .expect("validated pins")
+                .entry(directory.to_string())
+                .or_insert_with(|| json!({}));
+            tools
+                .as_object_mut()
+                .expect("validated tools")
+                .insert(tool.to_string(), pin.clone());
+        }
+    }
+    // Enforce document budgets after the entire batch, allowing replacement at capacity.
+    validate(&updated)?;
+    Ok(json!({"document":updated}))
+}
+
 /// Checks the complete local document, retaining legacy entries and dormant tool IDs.
 /// This validation is lexical only; paths are never probed, canonicalized, or launched.
 pub(crate) fn validate(document: &Value) -> Validation<()> {

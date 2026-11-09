@@ -182,6 +182,8 @@ pub enum CoreCommand {
     ToolchainsFailureReply,
     /// Resolves the nearest machine-local directory pin.
     ToolchainsResolvePins,
+    /// Edits a bounded batch of machine-local directory pins without native writes.
+    ToolchainsEditPins,
     /// Resolves consumer defaults while keeping workspace inheritance symbolic.
     ToolchainsResolveConsumerPreferences,
     /// Edits one machine-local consumer preference and returns its effective input.
@@ -879,6 +881,7 @@ impl CoreCommand {
             "toolchains.decodeReply" => Some(Self::ToolchainsDecodeReply),
             "toolchains.failureReply" => Some(Self::ToolchainsFailureReply),
             "toolchains.resolvePins" => Some(Self::ToolchainsResolvePins),
+            "toolchains.editPins" => Some(Self::ToolchainsEditPins),
             "toolchains.resolveConsumerPreferences" => {
                 Some(Self::ToolchainsResolveConsumerPreferences)
             }

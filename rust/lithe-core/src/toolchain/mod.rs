@@ -54,6 +54,11 @@ pub fn resolve_pins_command(input: Value) -> Result<Value, CoreError> {
     command(input, pins::resolve, "resolution")
 }
 
+/// Applies one atomic batch of inert directory-pin edits without native writes.
+pub fn edit_pins_command(input: Value) -> Result<Value, CoreError> {
+    command(input, pins::edit, "edit")
+}
+
 /// Resolves inert consumer choices without materializing symbolic inheritance.
 pub fn resolve_consumer_preferences_command(input: Value) -> Result<Value, CoreError> {
     command(input, preferences::resolve, "preferences")

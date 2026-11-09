@@ -431,6 +431,9 @@ fn execute_parsed(mut parsed: CoreRequest) -> CoreResponse {
         CoreCommand::ToolchainsResolvePins => {
             plugin_response(id, parsed.payload, crate::toolchain::resolve_pins_command)
         }
+        CoreCommand::ToolchainsEditPins => {
+            plugin_response(id, parsed.payload, crate::toolchain::edit_pins_command)
+        }
         CoreCommand::ToolchainsResolveConsumerPreferences => plugin_response(
             id,
             parsed.payload,
