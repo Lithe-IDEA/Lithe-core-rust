@@ -1374,7 +1374,11 @@ impl DebugSession {
                 }
             }
             PendingRequest::Launch { operation_id } => {
-                self.transition(DebugSessionState::Running);
+                // Adapters may emit stopped or terminated before this acknowledgement.
+                // A late response completes the operation, but cannot resume or resurrect it.
+                if self.state == DebugSessionState::Launching {
+                    self.transition(DebugSessionState::Running);
+                }
                 self.emit(DebugEventBody::OperationCompleted {
                     operation_id,
                     result: DebugOperationResult::Acknowledged {
@@ -3159,6 +3163,62 @@ mod tests {
             .unwrap()
             + 4;
         serde_json::from_slice(&bytes[body_start..]).unwrap()
+    }
+
+    #[test]
+    fn delayed_launch_response_preserves_a_newer_stopped_or_terminal_event() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../../../shared/fixtures/debug/launch-event-order.json"
+        ))
+        .unwrap();
+        for case in fixture["cases"].as_array().unwrap() {
+            let session_id = case["id"].as_str().unwrap();
+            let event = case["event"].clone();
+            let expected = case["state"].clone();
+            create_session(child_request(session_id, None)).unwrap();
+            struct Cleanup<'a>(&'a str);
+            impl Drop for Cleanup<'_> {
+                fn drop(&mut self) {
+                    // log-exempt: Expected absence if the test already disposed this process-free session.
+                    let _ = destroy_session(SessionRequest {
+                        session_id: self.0.into(),
+                    });
+                }
+            }
+            let _cleanup = Cleanup(session_id);
+            receive_messages(
+                session_id,
+                vec![response_message(1, "initialize", json!({}))],
+            );
+            let launching = launch(LaunchRequest {
+                session_id: session_id.into(),
+                operation_id: "launch".into(),
+                configuration: DebugLaunchConfiguration {
+                    name: "native target".into(),
+                    request: DebugRequestKind::Launch,
+                    arguments: Map::new(),
+                    stepping_filters: None,
+                },
+            })
+            .unwrap();
+            let frame = decode_frame(&launching.outbound_frames[0]);
+            let stopped = receive_messages(session_id, vec![event]);
+            assert_eq!(serde_json::to_value(stopped.state).unwrap(), expected);
+            // LLDB can report the first stop before acknowledging the launch request.
+            let acknowledged = receive_messages(
+                session_id,
+                vec![response_message(
+                    frame["seq"].as_i64().unwrap(),
+                    "launch",
+                    json!({}),
+                )],
+            );
+            assert_eq!(
+                serde_json::to_value(acknowledged.state).unwrap(),
+                expected,
+                "a response must not resume or resurrect the target"
+            );
+        }
     }
 
     #[test]
