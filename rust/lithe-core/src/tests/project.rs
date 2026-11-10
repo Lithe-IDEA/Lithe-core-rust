@@ -1980,3 +1980,140 @@ fn recent_projects_default_capacity_keeps_the_newest_unpinned_projects() {
     assert_eq!(kept[0]["path"], format!("/p{capacity}"));
     assert_eq!(response["data"]["removed"], serde_json::json!(["/p0"]));
 }
+
+fn hex_bytes(hex: &str) -> Vec<u8> {
+    (0..hex.len())
+        .step_by(2)
+        .map(|index| u8::from_str_radix(&hex[index..index + 2], 16).expect("fixture hex"))
+        .collect()
+}
+
+fn call(command: &str, payload: Value) -> Value {
+    serde_json::from_str(&execute_json(
+        &serde_json::json!({"id": "t", "command": command, "payload": payload}).to_string(),
+    ))
+    .expect("response should be JSON")
+}
+
+#[test]
+fn file_encoding_matches_the_golden_fixture() {
+    let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../shared/fixtures/editor/file-encoding-v1.json");
+    let fixture: Value = serde_json::from_str(&fs::read_to_string(fixture_path).unwrap()).unwrap();
+    let root = temporary_root("file-encoding");
+    fs::create_dir_all(&root).unwrap();
+    for case in fixture["cases"].as_array().unwrap() {
+        let name = case["name"].as_str().unwrap();
+        let encoding = case["encoding"].as_str().unwrap();
+        let text = case["text"].as_str().unwrap();
+        let bytes = hex_bytes(case["bytesHex"].as_str().unwrap());
+
+        let written = call(
+            "file.write",
+            serde_json::json!({"root": root, "path": "w.txt", "text": text, "encoding": encoding}),
+        );
+        assert_eq!(written["ok"], true, "{name}: {written}");
+        assert_eq!(fs::read(root.join("w.txt")).unwrap(), bytes, "{name}");
+        assert_eq!(written["data"]["bytesWritten"], bytes.len(), "{name}");
+        assert_eq!(written["data"]["hasBom"], case["hasBom"], "{name}");
+
+        fs::write(root.join("r.txt"), &bytes).unwrap();
+        let explicit = call(
+            "file.read",
+            serde_json::json!({"root": root, "path": "r.txt", "encoding": encoding}),
+        );
+        assert_eq!(explicit["data"]["text"], text, "{name}");
+        assert_eq!(explicit["data"]["encoding"], encoding, "{name}");
+        assert_eq!(explicit["data"]["hasBom"], case["hasBom"], "{name}");
+        assert_eq!(explicit["data"]["lossy"], false, "{name}");
+        assert_eq!(
+            explicit["data"]["identity"], written["data"]["identity"],
+            "{name}"
+        );
+
+        let auto = call(
+            "file.read",
+            serde_json::json!({"root": root, "path": "r.txt"}),
+        );
+        match case["autoDetectedEncoding"].as_str() {
+            Some(detected) => {
+                assert_eq!(auto["data"]["encoding"], detected, "{name}");
+                assert_eq!(auto["data"]["text"], text, "{name}");
+            }
+            None => assert!(
+                auto["ok"] == false
+                    || auto["data"]["text"] != text
+                    || auto["data"]["encoding"] != encoding,
+                "{name}: encodings without a BOM are not guessed as themselves"
+            ),
+        }
+    }
+    for case in fixture["unmappable"].as_array().unwrap() {
+        fs::write(root.join("keep.txt"), "keep").unwrap();
+        let response = call(
+            "file.write",
+            serde_json::json!({"root": root, "path": "keep.txt", "text": case["text"],
+                "encoding": case["encoding"]}),
+        );
+        assert_eq!(response["ok"], false);
+        assert_eq!(response["error"]["code"], "encoding_unmappable");
+        let details = response["error"]["details"].as_str().unwrap();
+        assert!(details.contains(&format!("scalarOffset={}", case["scalarOffset"])));
+        assert!(details.contains(case["codePoint"].as_str().unwrap()));
+        assert_eq!(fs::read_to_string(root.join("keep.txt")).unwrap(), "keep");
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn file_encoding_options_are_optional_and_validated() {
+    let root = temporary_root("file-encoding-compat");
+    fs::create_dir_all(&root).unwrap();
+    // Old payloads keep writing plain UTF-8 and reading it back.
+    let written = call(
+        "file.write",
+        serde_json::json!({"root": root, "path": "a.txt", "text": "héllo"}),
+    );
+    assert_eq!(fs::read(root.join("a.txt")).unwrap(), "héllo".as_bytes());
+    assert_eq!(written["data"]["bytesWritten"], "héllo".len());
+    assert_eq!(written["data"]["encoding"], "utf-8");
+    assert_eq!(written["data"]["hasBom"], false);
+    let read = call(
+        "file.read",
+        serde_json::json!({"root": root, "path": "a.txt"}),
+    );
+    assert_eq!(read["data"]["text"], "héllo");
+    assert_eq!(read["data"]["encoding"], "utf-8");
+    // bom alone adds a UTF-8 BOM; a BOM on a legacy encoding is rejected.
+    call(
+        "file.write",
+        serde_json::json!({"root": root, "path": "b.txt", "text": "x", "bom": true}),
+    );
+    assert_eq!(
+        fs::read(root.join("b.txt")).unwrap(),
+        [0xEF, 0xBB, 0xBF, b'x']
+    );
+    let bad_bom = call(
+        "file.write",
+        serde_json::json!({"root": root, "path": "c.txt", "text": "x", "encoding": "gbk", "bom": true}),
+    );
+    assert_eq!(bad_bom["error"]["code"], "invalid_request");
+    let unknown = call(
+        "file.read",
+        serde_json::json!({"root": root, "path": "a.txt", "encoding": "ebcdic"}),
+    );
+    assert_eq!(unknown["error"]["code"], "invalid_request");
+    // Invalid bytes fail automatic detection but are repaired on an explicit reopen.
+    fs::write(root.join("bad.txt"), [0x41, 0xFF, 0xFE, 0x42, 0x81]).unwrap();
+    let auto = call(
+        "file.read",
+        serde_json::json!({"root": root, "path": "bad.txt"}),
+    );
+    assert_eq!(auto["error"]["code"], "parse_failed");
+    let lossy = call(
+        "file.read",
+        serde_json::json!({"root": root, "path": "bad.txt", "encoding": "utf-8"}),
+    );
+    assert_eq!(lossy["data"]["lossy"], true);
+    fs::remove_dir_all(root).unwrap();
+}

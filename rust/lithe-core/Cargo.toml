@@ -17,6 +17,7 @@ lithe-remote = { path = "../lithe-remote", default-features = false, features = 
 ammonia = "4.1.4"
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
+encoding_rs = "0.8"
 comrak = { version = "0.54.0", default-features = false, features = ["shortcodes"] }
 rand = "0.8"
 regex = "1.11"

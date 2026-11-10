@@ -32,6 +32,9 @@ pub enum ErrorCode {
     GitAuthenticationFailed,
     /// Input or tool output could not be decoded into the stable contract.
     ParseFailed,
+    /// `file.write` text contains characters the requested encoding cannot
+    /// represent; nothing is written and no character is substituted.
+    EncodingUnmappable,
     /// The caller cooperatively cancelled the operation.
     Cancelled,
     /// The operation exceeded its declared deadline.

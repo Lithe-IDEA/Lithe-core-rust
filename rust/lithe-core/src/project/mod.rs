@@ -3,6 +3,7 @@
 pub(crate) mod directory_actions;
 mod document_lifecycle;
 pub(crate) mod document_save_batch;
+mod encoding;
 pub(crate) mod file_name_order;
 pub(crate) mod file_operations;
 pub(crate) mod files;

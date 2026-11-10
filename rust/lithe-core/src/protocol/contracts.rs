@@ -191,10 +191,18 @@ pub struct ReplacementPreviewResponse {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-/// UTF-8 contents read from one workspace-relative path.
+/// Decoded contents read from one workspace-relative path.
 pub struct FileReadResponse {
     pub path: String,
     pub text: String,
+    /// Stable id of the encoding used to decode `text`.
+    pub encoding: String,
+    /// A leading byte order mark was present and is not part of `text`.
+    pub has_bom: bool,
+    /// Invalid bytes were replaced with U+FFFD (explicit `encoding` only).
+    pub lossy: bool,
+    /// SHA-256 (lowercase hex) of the exact bytes read.
+    pub identity: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -202,7 +210,14 @@ pub struct FileReadResponse {
 /// Path and byte count produced by a successful file write.
 pub struct FileWriteResponse {
     pub path: String,
+    /// Encoded length including any byte order mark.
     pub bytes_written: usize,
+    /// Stable id of the encoding the text was written with.
+    pub encoding: String,
+    /// A byte order mark was written.
+    pub has_bom: bool,
+    /// SHA-256 (lowercase hex) of the exact bytes written.
+    pub identity: String,
 }
 
 #[derive(Debug, Clone, Serialize)]

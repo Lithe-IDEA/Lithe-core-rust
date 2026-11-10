@@ -1,5 +1,6 @@
 //! Workspace traversal, file operations, search, and replacement previews.
 
+use super::encoding::{self, DocumentEncoding};
 use super::file_name_order::FileNameKey;
 use super::search_index::{self, UpdateOutcome, WorkspaceSearchIndex};
 use super::search_paging::SearchPage;
@@ -398,19 +399,28 @@ pub fn search_text_batch(request: SearchTextBatchRequest) -> Result<serde_json::
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-/// Request to read one validated workspace-relative UTF-8 file.
+/// Request to read one validated workspace-relative text file.
 pub struct FileReadRequest {
     pub root: String,
     pub path: String,
+    /// Stable encoding id or alias to decode with; absent means detect.
+    #[serde(default)]
+    pub encoding: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-/// Request to replace one validated workspace-relative UTF-8 file.
+/// Request to replace one validated workspace-relative text file.
 pub struct FileWriteRequest {
     pub root: String,
     pub path: String,
     pub text: String,
+    /// Stable encoding id or alias to encode with; absent means UTF-8.
+    #[serde(default)]
+    pub encoding: Option<String>,
+    /// Overrides the encoding's own byte-order-mark choice (Unicode encodings only).
+    #[serde(default)]
+    pub bom: Option<bool>,
 }
 
 fn default_max_results() -> usize {
@@ -1150,10 +1160,18 @@ pub fn invalidate_search_index(request: SearchIndexRequest) -> Result<(), CoreEr
     Ok(())
 }
 
-/// Reads one bounded, workspace-contained file as UTF-8 text.
+/// Reads one bounded, workspace-contained text file.
+///
+/// Without `encoding` the codec is detected from the BOM and bytes (see
+/// [`super::encoding`]); with one, the bytes are decoded leniently through it.
 pub fn read_file(request: FileReadRequest) -> Result<FileReadResponse, CoreError> {
     let root = existing_root(&request.root)?;
     let path = safe_relative_path(&root, &request.path)?;
+    let requested = request
+        .encoding
+        .as_deref()
+        .map(DocumentEncoding::parse)
+        .transpose()?;
     let metadata = fs::metadata(&path)?;
     if metadata.len() > MAX_OPEN_FILE_SIZE {
         return Err(
@@ -1161,11 +1179,9 @@ pub fn read_file(request: FileReadRequest) -> Result<FileReadResponse, CoreError
                 .with_details("The maximum supported file size is 32 MB"),
         );
     }
-    let text = fs::read_to_string(&path).map_err(|error| {
-        CoreError::new(ErrorCode::ParseFailed, "File is not valid UTF-8")
-            .with_details(error.to_string())
-    })?;
-    if !is_plain_text(&text) {
+    let bytes = fs::read(&path)?;
+    let decoded = encoding::decode(&bytes, requested)?;
+    if !is_plain_text(&decoded.text) {
         return Err(CoreError::new(
             ErrorCode::ParseFailed,
             "File is not plain text",
@@ -1173,25 +1189,47 @@ pub fn read_file(request: FileReadRequest) -> Result<FileReadResponse, CoreError
     }
     Ok(FileReadResponse {
         path: relative_path(&path, &root),
-        text,
+        text: decoded.text,
+        encoding: decoded.encoding.id().to_string(),
+        has_bom: decoded.had_bom,
+        lossy: decoded.lossy,
+        identity: encoding::bytes_identity(&bytes),
     })
 }
 
 /// Replaces one workspace-contained file and refreshes its cached search entry.
+///
+/// Without `encoding`/`bom` the text is written as plain UTF-8, as before.
 pub fn write_file(request: FileWriteRequest) -> Result<FileWriteResponse, CoreError> {
     let root = existing_root(&request.root)?;
     let path = writable_relative_path(&root, &request.path)?;
+    let selected = request
+        .encoding
+        .as_deref()
+        .map(DocumentEncoding::parse)
+        .transpose()?
+        .unwrap_or(DocumentEncoding::Utf8);
+    // Encode before touching the file system so an unmappable character leaves
+    // the existing file and directory tree untouched.
+    let bytes = encoding::encode(&request.text, selected, request.bom)?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(&path, request.text.as_bytes()).map_err(|error| {
+    fs::write(&path, &bytes).map_err(|error| {
         CoreError::new(ErrorCode::PermissionDenied, "Could not write file")
             .with_details(error.to_string())
     })?;
     search_index::update_cached_file(&root, &path);
+    let has_bom = request.bom.unwrap_or(matches!(
+        selected,
+        DocumentEncoding::Utf8Bom | DocumentEncoding::Utf16LeBom | DocumentEncoding::Utf16BeBom
+    ));
     Ok(FileWriteResponse {
         path: relative_path(&path, &root),
-        bytes_written: request.text.len(),
+        bytes_written: bytes.len(),
+        encoding: selected.id().to_string(),
+        has_bom,
+        identity: encoding::bytes_identity(&bytes),
     })
 }
 
