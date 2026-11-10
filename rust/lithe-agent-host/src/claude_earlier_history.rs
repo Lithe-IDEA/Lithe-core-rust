@@ -334,9 +334,13 @@ fn title(name: &str, input: &Value) -> String {
 fn bounded(value: &Value, limit: usize) -> Value {
     match value {
         Value::String(text) => Value::String(truncate_to(text, limit)),
-        Value::Array(items) => Value::Array(items.iter().map(|item| bounded(item, limit)).collect()),
+        Value::Array(items) => {
+            Value::Array(items.iter().map(|item| bounded(item, limit)).collect())
+        }
         Value::Object(map) => Value::Object(
-            map.iter().map(|(k, v)| (k.clone(), bounded(v, limit))).collect(),
+            map.iter()
+                .map(|(k, v)| (k.clone(), bounded(v, limit)))
+                .collect(),
         ),
         other => other.clone(),
     }
@@ -477,9 +481,16 @@ mod tests {
         let updates = earlier_updates(dir.path(), &cwd, "abc-1");
         let mut presenter = claude_desktop::Presenter::default();
         let shown = presenter.present("s", updates[0].clone());
-        assert_eq!(shown[0]["_meta"]["lithe"]["claudeDesktop"]["code"], widget.as_str());
+        assert_eq!(
+            shown[0]["_meta"]["lithe"]["claudeDesktop"]["code"],
+            widget.as_str()
+        );
         let write = updates[1]["rawInput"]["content"].as_str().unwrap();
-        assert_eq!(write.chars().count(), TEXT_LIMIT + 1, "Ordinary inputs stay previews");
+        assert_eq!(
+            write.chars().count(),
+            TEXT_LIMIT + 1,
+            "Ordinary inputs stay previews"
+        );
     }
 
     #[test]
@@ -495,7 +506,11 @@ mod tests {
             boundary(),
         ]);
         let updates = earlier_updates(dir.path(), &cwd, "abc-1");
-        assert_eq!(updates.len(), 2, "only the inline base64 image within the limit is replayed");
+        assert_eq!(
+            updates.len(),
+            2,
+            "only the inline base64 image within the limit is replayed"
+        );
         assert_eq!(updates[1]["sessionUpdate"], "user_message_chunk");
         assert_eq!(updates[1]["content"]["type"], "image");
         assert_eq!(updates[1]["content"]["data"], "/9j/4A==");

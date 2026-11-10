@@ -27,6 +27,9 @@ pub enum ErrorCode {
     GitBranchExists,
     /// The reviewed checkout or its GitHub origin no longer matches the current repository.
     GitCheckoutChanged,
+    /// The Git remote refused the credentials, or none were available. Only
+    /// `git.write` reports it, as `operationError.code` of a failed response.
+    GitAuthenticationFailed,
     /// Input or tool output could not be decoded into the stable contract.
     ParseFailed,
     /// The caller cooperatively cancelled the operation.

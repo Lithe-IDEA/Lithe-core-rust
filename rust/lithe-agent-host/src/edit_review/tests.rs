@@ -51,10 +51,12 @@ fn shared_evidence_fixture_matches_host_annotation() {
 #[test]
 fn shared_reverse_plan_fixture_matches_planner() {
     let fixture = fixture();
-    for case in fixture["reversePlan"].as_array().expect("reverse plan cases") {
+    for case in fixture["reversePlan"]
+        .as_array()
+        .expect("reverse plan cases")
+    {
         let name = case["name"].as_str().unwrap_or_default();
-        let request: ReverseRequest =
-            serde_json::from_value(expand(&case["request"])).expect(name);
+        let request: ReverseRequest = serde_json::from_value(expand(&case["request"])).expect(name);
         let plan = serde_json::to_value(reverse_plan(&request)).expect(name);
         assert_eq!(plan, expand(&case["expected"]), "{name}");
     }
@@ -62,9 +64,14 @@ fn shared_reverse_plan_fixture_matches_planner() {
 
 #[test]
 fn content_beyond_the_entry_limit_marks_every_diff_incomplete() {
-    let mut content = vec![json!({"type": "diff", "path": "a.txt", "oldText": "a", "newText": "b"})];
-    content.extend((0..CONTENT_LIMIT).map(|_| json!({"type": "content", "content": {"type": "text", "text": "x"}})));
-    let diffs = evidence(&json!({"sessionUpdate": "tool_call", "content": content})).expect("diffs");
+    let mut content =
+        vec![json!({"type": "diff", "path": "a.txt", "oldText": "a", "newText": "b"})];
+    content.extend(
+        (0..CONTENT_LIMIT)
+            .map(|_| json!({"type": "content", "content": {"type": "text", "text": "x"}})),
+    );
+    let diffs =
+        evidence(&json!({"sessionUpdate": "tool_call", "content": content})).expect("diffs");
     assert_eq!(diffs.len(), 1);
     assert!(diffs[0].truncated && !diffs[0].revertible);
 }
@@ -99,7 +106,9 @@ fn canonical_match_maps_multibyte_offsets_back_to_the_original() {
     };
     assert_eq!(
         reverse_plan(&request),
-        ReversePlan::Write { text: "😀\r前\r\n旧\r\n后".into() }
+        ReversePlan::Write {
+            text: "😀\r前\r\n旧\r\n后".into()
+        }
     );
 }
 

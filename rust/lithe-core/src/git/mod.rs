@@ -2,6 +2,7 @@
 
 // The initial projection/routing IR is deliberately not command- or host-facing
 // until both native products can consume the same versioned contract.
+mod authentication_failure;
 mod branch_names;
 pub(crate) mod catalog;
 mod change_targets;
@@ -1136,7 +1137,9 @@ fn unstage_paths(root: &str, paths: &[String]) -> Result<GitCommandResponse, Cor
 
 /// Executes one supported repository mutation without invoking a shell.
 pub fn write(request: GitWriteRequest) -> Result<GitCommandResponse, CoreError> {
-    with_git_invocation_trace(|| write_with_trace(request))
+    let mut response = with_git_invocation_trace(|| write_with_trace(request))?;
+    authentication_failure::classify(&mut response);
+    Ok(response)
 }
 
 fn write_with_trace(request: GitWriteRequest) -> Result<GitCommandResponse, CoreError> {

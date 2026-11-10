@@ -487,12 +487,20 @@ async fn native_discovery_uses_the_selected_account_directory() {
     fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
     tokio::time::timeout(
         Duration::from_secs(5),
-        CodexHistory::skills(executable, fixture.0.join("project"), Some(home.clone()), &|| false),
+        CodexHistory::skills(
+            executable,
+            fixture.0.join("project"),
+            Some(home.clone()),
+            &|| false,
+        ),
     )
     .await
     .unwrap()
     .unwrap();
-    assert_eq!(fs::read_to_string(fixture.0.join("home.log")).unwrap(), home.to_str().unwrap());
+    assert_eq!(
+        fs::read_to_string(fixture.0.join("home.log")).unwrap(),
+        home.to_str().unwrap()
+    );
 }
 
 #[cfg(unix)]
