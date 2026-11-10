@@ -257,6 +257,8 @@ pub enum LspSemanticOperation {
     Rename,
     /// `textDocument/formatting`.
     Formatting,
+    /// `textDocument/rangeFormatting` over the request's `range`.
+    RangeFormatting,
     /// `textDocument/codeAction`.
     CodeActions,
     /// `completionItem/resolve` for a previously returned completion item.
@@ -302,6 +304,10 @@ pub struct SemanticRequest {
     pub code_action: Option<Value>,
     #[serde(default)]
     pub command: Option<Value>,
+    /// Optional LSP `FormattingOptions` (`tabSize`, `insertSpaces`, ...) for
+    /// `formatting` and `rangeFormatting`; unset fields keep Core defaults.
+    #[serde(default)]
+    pub formatting_options: Option<Value>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -607,6 +613,10 @@ pub struct LspRuntimeEvent {
     pub error: Option<LspRuntimeError>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub capabilities: Option<Vec<String>>,
+    /// On `featuresChanged` while `completion` is offered: the session's
+    /// `{ triggerCharacters, allCommitCharacters }`, from `completionProvider`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completion_options: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub server_info: Option<LspServerInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2729,6 +2739,7 @@ impl RuntimeSession {
                         completion_item: request.completion_item,
                         code_action: request.code_action,
                         command: request.command,
+                        formatting_options: request.formatting_options,
                     };
                     client_feature_request_canonical(feature_request)?
                 }
@@ -3123,7 +3134,7 @@ impl RuntimeSession {
         } else {
             None
         };
-        let (known_pending, pending_before, old_capabilities) = {
+        let (known_pending, pending_before, old_capabilities, old_completion) = {
             let state = self.lock_state()?;
             let pending = response_id
                 .as_ref()
@@ -3134,6 +3145,7 @@ impl RuntimeSession {
                     .is_none_or(|id| state.client.pending_requests.contains_key(id)),
                 pending,
                 state.client.server_capabilities.clone(),
+                super::client::completion_options(&state.client),
             )
         };
         // A response whose request has timed out, been cancelled, or belongs
@@ -3563,7 +3575,8 @@ impl RuntimeSession {
                     }
                 }
             }
-            if state.client.server_capabilities != old_capabilities
+            if (state.client.server_capabilities != old_capabilities
+                || super::client::completion_options(&state.client) != old_completion)
                 && state.lifecycle == LspLifecycleState::Ready
             {
                 let capabilities = state.client.server_capabilities.clone();
@@ -4375,6 +4388,7 @@ fn semantic_method(operation: LspSemanticOperation) -> &'static str {
         LspSemanticOperation::Implementation => "textDocument/implementation",
         LspSemanticOperation::Rename => "textDocument/rename",
         LspSemanticOperation::Formatting => "textDocument/formatting",
+        LspSemanticOperation::RangeFormatting => "textDocument/rangeFormatting",
         LspSemanticOperation::CodeActions => "textDocument/codeAction",
         LspSemanticOperation::ResolveCompletion => "completionItem/resolve",
         LspSemanticOperation::ResolveCodeAction => "codeAction/resolve",
@@ -4397,6 +4411,7 @@ fn semantic_capability(operation: LspSemanticOperation) -> Option<&'static str> 
         LspSemanticOperation::Implementation => Some("implementation"),
         LspSemanticOperation::Rename => Some("rename"),
         LspSemanticOperation::Formatting => Some("formatting"),
+        LspSemanticOperation::RangeFormatting => Some("rangeFormatting"),
         LspSemanticOperation::CodeActions => Some("codeActions"),
         LspSemanticOperation::ResolveCompletion => Some("completionResolve"),
         LspSemanticOperation::ResolveCodeAction => Some("codeActionResolve"),
@@ -4536,6 +4551,7 @@ fn push_cleanup_fact(
             result: None,
             error: Some(error),
             capabilities: None,
+            completion_options: None,
             server_info: None,
             level: Some("warning".to_string()),
             message: Some("Engine process cleanup failed".to_string()),
@@ -4601,6 +4617,7 @@ fn transition_locked(
             result: None,
             error,
             capabilities: None,
+            completion_options: None,
             server_info: None,
             level: None,
             message: None,
@@ -4704,6 +4721,7 @@ fn enqueue_request_completed(
             result,
             error,
             capabilities: None,
+            completion_options: None,
             server_info: None,
             level: None,
             message: None,
@@ -4835,6 +4853,7 @@ fn push_build_progress_locked(
             result: Some(progress),
             error: None,
             capabilities: None,
+            completion_options: None,
             server_info: None,
             level: None,
             message: None,
@@ -4893,6 +4912,7 @@ fn push_function_progress_locked(
             result: Some(progress),
             error: None,
             capabilities: None,
+            completion_options: None,
             server_info: None,
             level: None,
             message: None,
@@ -4928,6 +4948,7 @@ fn push_vcs_provider_event(session: &RuntimeSession, state: &mut SessionState, r
             result: Some(result),
             error: None,
             capabilities: None,
+            completion_options: None,
             server_info: None,
             level: None,
             message: None,
@@ -4967,6 +4988,7 @@ fn push_negotiated_provider_event(
             result: Some(result),
             error: None,
             capabilities: None,
+            completion_options: None,
             server_info: None,
             level: None,
             message: None,
@@ -5038,6 +5060,7 @@ fn cancel_host_request_locked(
             result: Some(json!({ "hostRequestID": host_request_id })),
             error: None,
             capabilities: None,
+            completion_options: None,
             server_info: None,
             level: None,
             message: None,
@@ -5105,6 +5128,7 @@ fn forward_host_request_locked(
             })),
             error: None,
             capabilities: None,
+            completion_options: None,
             server_info: None,
             level: None,
             message: None,
@@ -5139,6 +5163,7 @@ fn push_functions_event(session: &RuntimeSession, state: &mut SessionState, resu
             result: Some(result),
             error: None,
             capabilities: None,
+            completion_options: None,
             server_info: None,
             level: None,
             message: None,
@@ -5462,6 +5487,7 @@ fn push_diagnostics_event(
             result: None,
             error: None,
             capabilities: None,
+            completion_options: None,
             server_info: None,
             level: None,
             message: None,
@@ -5495,6 +5521,7 @@ fn push_semantic_tokens_refresh_event(session: &RuntimeSession, state: &mut Sess
             result: None,
             error: None,
             capabilities: None,
+            completion_options: None,
             server_info: None,
             level: None,
             message: None,
@@ -5508,6 +5535,7 @@ fn push_features_event(
     state: &mut SessionState,
     capabilities: Vec<String>,
 ) {
+    let completion_options = super::client::completion_options(&state.client);
     let sequence = take_sequence(state);
     enqueue_runtime_event(
         session,
@@ -5532,6 +5560,7 @@ fn push_features_event(
             result: None,
             error: None,
             capabilities: Some(capabilities),
+            completion_options,
             server_info: None,
             level: None,
             message: None,
@@ -5565,6 +5594,7 @@ fn push_server_info_event(session: &RuntimeSession, state: &mut SessionState, in
             result: None,
             error: None,
             capabilities: None,
+            completion_options: None,
             server_info: Some(info),
             level: None,
             message: None,
@@ -5714,6 +5744,7 @@ fn push_classified_log_event(
             result: None,
             error,
             capabilities: None,
+            completion_options: None,
             server_info: None,
             level: Some(level.to_string()),
             message: Some(message.to_string()),
@@ -5856,6 +5887,7 @@ fn clear_runtime_state(session: &RuntimeSession, state: &mut SessionState) {
     state.client.text_document_save_include_text = None;
     state.client.shutdown_requested = false;
     state.client.server_capabilities.clear();
+    state.client.completion_providers.clear();
     state.client.open_documents.clear();
     state.client.pending_requests.clear();
     state.pending.clear();
@@ -6300,6 +6332,7 @@ mod tests {
                         completion_item: None,
                         code_action: None,
                         command: None,
+                        formatting_options: None,
                     },
                     operation_id.clone(),
                 )
@@ -8052,6 +8085,27 @@ mod tests {
 
     /// Criterion 14: dynamic registration and unregistration change availability.
     #[test]
+    fn features_event_reports_completion_trigger_characters() {
+        let mut harness = Harness::start(|_| {});
+        harness.server.complete_initialize(json!({
+            "completionProvider": {
+                "triggerCharacters": [".", ":", ">"],
+                "allCommitCharacters": [";"]
+            }
+        }));
+        let event = harness
+            .await_event(|event| {
+                event.kind == "featuresChanged" && event.completion_options.is_some()
+            })
+            .clone();
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(
+            json["completionOptions"],
+            json!({"triggerCharacters": [".", ":", ">"], "allCommitCharacters": [";"]})
+        );
+    }
+
+    #[test]
     fn dynamic_capability_registration_and_unregistration_change_availability() {
         let mut harness = Harness::start(|_| {});
         // Formatting is absent from the static capabilities, so it can only
@@ -8078,6 +8132,7 @@ mod tests {
                     completion_item: None,
                     code_action: None,
                     command: None,
+                    formatting_options: None,
                 },
                 "op-formatting".to_string(),
             )
@@ -8144,6 +8199,7 @@ mod tests {
                         completion_item: None,
                         code_action: None,
                         command: None,
+                        formatting_options: None,
                     },
                     "op-formatting-2".to_string(),
                 )
@@ -8277,6 +8333,7 @@ mod tests {
                         "command": "source.fix",
                         "arguments": []
                     })),
+                    formatting_options: None,
                 },
                 operation_id,
             )

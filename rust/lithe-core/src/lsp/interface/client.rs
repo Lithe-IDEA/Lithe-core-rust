@@ -69,6 +69,7 @@ pub(super) fn client_initialize_for_plugin(
                     "references": { "dynamicRegistration": true },
                     "rename": { "dynamicRegistration": true },
                     "formatting": { "dynamicRegistration": true },
+                    "rangeFormatting": { "dynamicRegistration": true },
                     "inlayHint": { "dynamicRegistration": true },
                     "semanticTokens": {
                         "dynamicRegistration": true,
@@ -750,6 +751,15 @@ pub(super) fn client_apply_server_message_for_plugin(
                 };
                 if let Some(options) = result
                     .get("capabilities")
+                    .and_then(|c| c.get("completionProvider"))
+                    .filter(|options| options.is_object())
+                {
+                    state
+                        .completion_providers
+                        .insert(String::new(), options.clone());
+                }
+                if let Some(options) = result
+                    .get("capabilities")
                     .and_then(|c| c.get("semanticTokensProvider"))
                 {
                     if semantic_token_legend(options).is_some() {
@@ -767,6 +777,7 @@ pub(super) fn client_apply_server_message_for_plugin(
             state.shutdown_requested = false;
             state.server_capabilities.clear();
             state.semantic_token_providers.clear();
+            state.completion_providers.clear();
             state.text_document_sync = LspTextDocumentSyncKind::Full;
             state.open_documents.clear();
             state.diagnostics.clear();
@@ -1045,6 +1056,7 @@ fn validate_lsp_method(method: &str) -> Result<(), CoreError> {
         | "textDocument/references"
         | "textDocument/rename"
         | "textDocument/formatting"
+        | "textDocument/rangeFormatting"
         | "textDocument/inlayHint"
         | "textDocument/semanticTokens/full"
         | "textDocument/foldingRange"
@@ -1117,13 +1129,12 @@ fn feature_request_params(request: &ClientFeatureRequest) -> Result<Value, CoreE
         })),
         "textDocument/formatting" => Ok(json!({
             "textDocument": text_document,
-            "options": {
-                "tabSize": 4,
-                "insertSpaces": true,
-                "trimTrailingWhitespace": true,
-                "insertFinalNewline": true,
-                "trimFinalNewlines": true
-            }
+            "options": formatting_options_json(request.formatting_options.as_ref())?
+        })),
+        "textDocument/rangeFormatting" => Ok(json!({
+            "textDocument": text_document,
+            "range": lsp_range_json(required_range(request)?),
+            "options": formatting_options_json(request.formatting_options.as_ref())?
         })),
         "textDocument/inlayHint" => Ok(json!({
             "textDocument": text_document,
@@ -1174,6 +1185,44 @@ fn required_position(request: &ClientFeatureRequest) -> Result<LspPosition, Core
             "This LSP request requires a text document position.",
         )
     })
+}
+
+/// Builds the LSP `FormattingOptions` for a formatting request.
+///
+/// Without caller options the historical defaults apply. Caller options are
+/// merged over them, so a host passing only `tabSize` keeps the other
+/// defaults. Values must be booleans, integers or strings as LSP requires,
+/// and `tabSize` must be a positive integer.
+fn formatting_options_json(supplied: Option<&Value>) -> Result<Value, CoreError> {
+    let mut options = json!({
+        "tabSize": 4,
+        "insertSpaces": true,
+        "trimTrailingWhitespace": true,
+        "insertFinalNewline": true,
+        "trimFinalNewlines": true
+    });
+    let Some(supplied) = supplied.filter(|value| !value.is_null()) else {
+        return Ok(options);
+    };
+    let invalid = || CoreError::new(ErrorCode::InvalidRequest, "Invalid formatting options");
+    let supplied = supplied.as_object().ok_or_else(invalid)?;
+    for (key, value) in supplied {
+        let valid = match key.as_str() {
+            "tabSize" => value
+                .as_u64()
+                .is_some_and(|size| (1..=1024).contains(&size)),
+            "insertSpaces"
+            | "trimTrailingWhitespace"
+            | "insertFinalNewline"
+            | "trimFinalNewlines" => value.is_boolean(),
+            _ => value.is_boolean() || value.is_string() || value.is_i64() || value.is_u64(),
+        };
+        if !valid {
+            return Err(invalid().with_details(key.clone()));
+        }
+        options[key] = value.clone();
+    }
+    Ok(options)
 }
 
 fn required_range(request: &ClientFeatureRequest) -> Result<LspRange, CoreError> {
@@ -1334,7 +1383,7 @@ fn lsp_feature_result_for_method(method: Option<&str>, result: Option<&Value>) -
         Some("textDocument/rename") => Some(json!({
             "changes": parse_workspace_edit(result)
         })),
-        Some("textDocument/formatting") => Some(json!({
+        Some("textDocument/formatting" | "textDocument/rangeFormatting") => Some(json!({
             "edits": result
                 .as_array()
                 .map(|edits| edits.iter().filter_map(parse_lsp_text_edit_value).collect::<Vec<_>>())
@@ -1847,6 +1896,12 @@ fn feature_names_from_capabilities(capabilities: &Value) -> Vec<String> {
         "documentFormattingProvider",
         "formatting",
     );
+    add_capability(
+        &mut values,
+        capabilities,
+        "documentRangeFormattingProvider",
+        "rangeFormatting",
+    );
     add_capability(&mut values, capabilities, "inlayHintProvider", "inlayHints");
     add_capability(
         &mut values,
@@ -1973,6 +2028,18 @@ fn apply_dynamic_registration(state: &mut LspClientState, message: &Value) {
             }
             continue;
         }
+        if registration.get("method").and_then(Value::as_str) == Some("textDocument/completion") {
+            if let (Some(id), Some(options)) = (
+                registration.get("id").and_then(Value::as_str),
+                registration
+                    .get("registerOptions")
+                    .filter(|options| options.is_object()),
+            ) {
+                state
+                    .completion_providers
+                    .insert(id.to_string(), options.clone());
+            }
+        }
         if let Some(feature) = registration
             .get("method")
             .and_then(Value::as_str)
@@ -2024,6 +2091,11 @@ fn apply_dynamic_unregistration(state: &mut LspClientState, message: &Value) {
             }
             continue;
         }
+        if unregistration.get("method").and_then(Value::as_str) == Some("textDocument/completion") {
+            if let Some(id) = unregistration.get("id").and_then(Value::as_str) {
+                state.completion_providers.remove(id);
+            }
+        }
         if let Some(feature) = unregistration
             .get("method")
             .and_then(Value::as_str)
@@ -2034,6 +2106,42 @@ fn apply_dynamic_unregistration(state: &mut LspClientState, message: &Value) {
                 .retain(|existing| existing != feature);
         }
     }
+}
+
+/// Completion trigger and all-commit characters the session's providers declared.
+///
+/// Returns `{ "triggerCharacters": [...], "allCommitCharacters": [...] }`, each
+/// list the de-duplicated union over the static capability and dynamic
+/// registrations in registration order, or `None` while the session offers no
+/// completion. Entries that are not non-empty strings are dropped.
+pub(super) fn completion_options(state: &LspClientState) -> Option<Value> {
+    if !state
+        .server_capabilities
+        .iter()
+        .any(|feature| feature == "completion")
+    {
+        return None;
+    }
+    let collect = |key: &str| {
+        let mut values: Vec<String> = Vec::new();
+        for options in state.completion_providers.values() {
+            for value in options
+                .get(key)
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .filter(|value| !value.is_empty())
+            {
+                insert_unique(&mut values, value);
+            }
+        }
+        values
+    };
+    Some(json!({
+        "triggerCharacters": collect("triggerCharacters"),
+        "allCommitCharacters": collect("allCommitCharacters"),
+    }))
 }
 
 fn feature_name_for_method(method: &str) -> Option<&'static str> {
@@ -2047,6 +2155,7 @@ fn feature_name_for_method(method: &str) -> Option<&'static str> {
         "textDocument/completion" => Some("completion"),
         "textDocument/rename" => Some("rename"),
         "textDocument/formatting" => Some("formatting"),
+        "textDocument/rangeFormatting" => Some("rangeFormatting"),
         "textDocument/inlayHint" => Some("inlayHints"),
         "textDocument/foldingRange" => Some("foldingRanges"),
         "textDocument/codeLens" => Some("codeLens"),
@@ -2203,5 +2312,148 @@ mod semantic_tests {
         assert_eq!(refresh.events[0].kind, "semanticTokensRefresh");
         assert_eq!(refresh.messages.len(), 1);
         assert!(refresh.messages[0].contains("result"));
+    }
+}
+
+#[cfg(test)]
+mod formatting_and_completion_tests {
+    use super::*;
+
+    fn request(method: &str, options: Option<Value>, with_range: bool) -> ClientFeatureRequest {
+        ClientFeatureRequest {
+            state: LspClientState::default(),
+            uri: "file:///w/a.c".to_string(),
+            method: method.to_string(),
+            position: None,
+            new_name: None,
+            range: with_range.then(|| LspRange {
+                start: LspPosition {
+                    line: 1,
+                    utf16_column: 2,
+                },
+                end: LspPosition {
+                    line: 3,
+                    utf16_column: 0,
+                },
+            }),
+            diagnostics: Vec::new(),
+            completion_context: None,
+            completion_item: None,
+            code_action: None,
+            command: None,
+            formatting_options: options,
+        }
+    }
+
+    #[test]
+    fn formatting_keeps_defaults_without_caller_options() {
+        let params =
+            feature_request_params(&request("textDocument/formatting", None, false)).unwrap();
+        assert_eq!(
+            params["options"],
+            json!({"tabSize": 4, "insertSpaces": true, "trimTrailingWhitespace": true,
+                   "insertFinalNewline": true, "trimFinalNewlines": true})
+        );
+    }
+
+    #[test]
+    fn formatting_and_range_formatting_merge_caller_options() {
+        let options =
+            json!({"tabSize": 2, "insertSpaces": false, "trimFinalNewlines": false, "custom": "x"});
+        let full = feature_request_params(&request(
+            "textDocument/formatting",
+            Some(options.clone()),
+            false,
+        ))
+        .unwrap();
+        assert_eq!(full["options"]["tabSize"], 2);
+        assert_eq!(full["options"]["insertSpaces"], false);
+        assert_eq!(full["options"]["trimFinalNewlines"], false);
+        assert_eq!(full["options"]["custom"], "x");
+        assert_eq!(full["options"]["insertFinalNewline"], true);
+        let range = feature_request_params(&request(
+            "textDocument/rangeFormatting",
+            Some(options),
+            true,
+        ))
+        .unwrap();
+        assert_eq!(range["range"]["start"], json!({"line": 1, "character": 2}));
+        assert_eq!(range["range"]["end"], json!({"line": 3, "character": 0}));
+        assert_eq!(range["options"]["tabSize"], 2);
+        assert!(
+            feature_request_params(&request("textDocument/rangeFormatting", None, false)).is_err()
+        );
+    }
+
+    #[test]
+    fn invalid_formatting_options_are_rejected() {
+        for options in [
+            json!({"tabSize": 0}),
+            json!({"tabSize": "4"}),
+            json!({"insertSpaces": 1}),
+            json!({"nested": {}}),
+            json!([1]),
+        ] {
+            assert!(feature_request_params(&request(
+                "textDocument/formatting",
+                Some(options),
+                false
+            ))
+            .is_err());
+        }
+    }
+
+    #[test]
+    fn range_formatting_capability_and_result_are_normalized() {
+        let features =
+            feature_names_from_capabilities(&json!({"documentRangeFormattingProvider": true}));
+        assert!(features.contains(&"rangeFormatting".to_string()));
+        let result = lsp_feature_result_for_method(
+            Some("textDocument/rangeFormatting"),
+            Some(&json!([{
+                "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+                "newText": "x"
+            }])),
+        )
+        .unwrap();
+        assert_eq!(result["edits"][0]["newText"], "x");
+    }
+
+    #[test]
+    fn completion_options_union_static_and_dynamic_providers() {
+        let mut state = LspClientState::default();
+        assert!(completion_options(&state).is_none());
+        state.server_capabilities.push("completion".into());
+        state.completion_providers.insert(
+            String::new(),
+            json!({"triggerCharacters": [".", ":", ""], "allCommitCharacters": [";"]}),
+        );
+        apply_dynamic_registration(
+            &mut state,
+            &json!({"params": {"registrations": [{"id": "c1", "method": "textDocument/completion",
+                "registerOptions": {"triggerCharacters": [":", ">"]}}]}}),
+        );
+        assert_eq!(
+            completion_options(&state).unwrap(),
+            json!({"triggerCharacters": [".", ":", ">"], "allCommitCharacters": [";"]})
+        );
+        apply_dynamic_unregistration(
+            &mut state,
+            &json!({"params": {"unregisterations": [{"id": "c1", "method": "textDocument/completion"}]}}),
+        );
+        // Withdrawing the completion registration also withdraws the feature.
+        assert!(completion_options(&state).is_none());
+        assert!(!state.completion_providers.contains_key("c1"));
+    }
+
+    #[test]
+    fn completion_result_preserves_is_incomplete() {
+        let result = lsp_feature_result_for_method(
+            Some("textDocument/completion"),
+            Some(&json!({"isIncomplete": true, "items": [{"label": "a"}]})),
+        )
+        .unwrap();
+        assert_eq!(result["isIncomplete"], true);
+        assert_eq!(result["items"][0]["label"], "a");
     }
 }

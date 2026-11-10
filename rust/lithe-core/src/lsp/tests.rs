@@ -773,6 +773,7 @@ fn client_core_tracks_documents_and_feature_requests() {
         completion_item: None,
         code_action: None,
         command: None,
+        formatting_options: None,
     })
     .unwrap();
     assert_eq!(
@@ -1194,6 +1195,7 @@ fn client_core_preserves_class_completion_namespace_and_import_edits() {
         completion_item: None,
         code_action: None,
         command: None,
+        formatting_options: None,
     })
     .unwrap();
     let completed = client_apply_server_message(ClientApplyServerMessageRequest {
@@ -1241,6 +1243,7 @@ fn client_core_preserves_class_completion_namespace_and_import_edits() {
         })),
         code_action: None,
         command: None,
+        formatting_options: None,
     })
     .unwrap();
     let resolved = client_apply_server_message(ClientApplyServerMessageRequest {
@@ -1618,6 +1621,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
         completion_item: None,
         code_action: None,
         command: None,
+        formatting_options: None,
     })
     .unwrap();
     let completed = client_apply_server_message(ClientApplyServerMessageRequest {
@@ -1669,6 +1673,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
         completion_item: None,
         code_action: None,
         command: None,
+        formatting_options: None,
     })
     .unwrap();
     let renamed = client_apply_server_message(ClientApplyServerMessageRequest {
@@ -1709,6 +1714,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
         completion_item: None,
         code_action: None,
         command: None,
+        formatting_options: None,
     })
     .unwrap();
     let formatted = client_apply_server_message(ClientApplyServerMessageRequest {
@@ -1786,6 +1792,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
         completion_item: None,
         code_action: None,
         command: None,
+        formatting_options: None,
     })
     .unwrap();
     let code_action_request: Value = serde_json::from_str(&code_actions.messages[0]).unwrap();
@@ -1867,6 +1874,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
             "data": { "id": "action-1" }
         })),
         command: None,
+        formatting_options: None,
     })
     .unwrap();
     let code_action_resolve_request: Value =
@@ -1932,6 +1940,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
         })),
         code_action: None,
         command: None,
+        formatting_options: None,
     })
     .unwrap();
     let completion_resolve_request: Value =
@@ -1983,6 +1992,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
             "command": "rust-analyzer.applySourceChange",
             "arguments": [{ "label": "rename" }]
         })),
+        formatting_options: None,
     })
     .unwrap();
     let execute_request: Value = serde_json::from_str(&execute_command.messages[0]).unwrap();
@@ -2036,6 +2046,7 @@ fn client_core_requests_and_shapes_inlay_hints_folding_ranges_and_code_lenses() 
         completion_item: None,
         code_action: None,
         command: None,
+        formatting_options: None,
     })
     .unwrap();
     let request_json: Value = serde_json::from_str(&inlay_request.messages[0]).unwrap();
@@ -2088,6 +2099,7 @@ fn client_core_requests_and_shapes_inlay_hints_folding_ranges_and_code_lenses() 
         completion_item: None,
         code_action: None,
         command: None,
+        formatting_options: None,
     })
     .unwrap();
     let request_json: Value = serde_json::from_str(&folding_request.messages[0]).unwrap();
@@ -2130,6 +2142,7 @@ fn client_core_requests_and_shapes_inlay_hints_folding_ranges_and_code_lenses() 
         completion_item: None,
         code_action: None,
         command: None,
+        formatting_options: None,
     })
     .unwrap();
     let code_lens_response = client_apply_server_message(ClientApplyServerMessageRequest {
@@ -2185,6 +2198,7 @@ fn navigation_locations_preserve_uris_without_fabricating_virtual_file_paths() {
         completion_item: None,
         code_action: None,
         command: None,
+        formatting_options: None,
     })
     .unwrap();
     let response = client_apply_server_message(ClientApplyServerMessageRequest {

@@ -136,6 +136,11 @@ pub struct LspClientState {
     pub shutdown_requested: bool,
     #[serde(default)]
     pub server_capabilities: Vec<String>,
+    /// `completionProvider` options by registration id: the static capability
+    /// under the empty id, dynamic registrations under their own ids. Only the
+    /// trigger and commit characters are read from them.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub completion_providers: BTreeMap<String, Value>,
     /// Full semantic-token registrations, including the server-owned legends.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub semantic_token_providers: BTreeMap<String, Value>,
@@ -199,6 +204,7 @@ impl Default for LspClientState {
             initialized: false,
             shutdown_requested: false,
             server_capabilities: Vec::new(),
+            completion_providers: BTreeMap::new(),
             semantic_token_providers: BTreeMap::new(),
             text_document_sync: LspTextDocumentSyncKind::Full,
             text_document_save_include_text: None,
@@ -349,6 +355,9 @@ pub struct ClientFeatureRequest {
     pub code_action: Option<Value>,
     #[serde(default)]
     pub command: Option<Value>,
+    /// Caller `FormattingOptions` for `formatting` and `rangeFormatting`.
+    #[serde(default)]
+    pub formatting_options: Option<Value>,
 }
 
 #[cfg(test)]

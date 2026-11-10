@@ -4049,7 +4049,7 @@ explicit `plugin.function.*` error.
 the operation-specific URI, position, range, diagnostics, item, action, or
 command fields, and returns `{ operationId }`. Supported operations include
 completion and resolve, hover, definition/declaration/type-definition, references,
-implementation, rename, formatting, code actions and resolve, execute command,
+implementation, rename, formatting, range formatting, code actions and resolve, execute command,
 inlay hints, full-document semantic tokens, folding ranges, code lens, provider
 virtual documents, `javaEntrypoints`, `javaTestItems`, and `javaMainMethods`.
 For code actions, `diagnostics` contains the original `LspClientDiagnostic`
@@ -5973,6 +5973,26 @@ index remains unchanged. The default false retains tracked-only unstaged export;
 Missing or stale HEAD rejects the amendment before writing; plain Continue,
 Skip and Abort do not require this field. Both products must send the HEAD
 reviewed by the amendment editor. See [Rebase sessions](git-rebase-session.md).
+
+Operation `rangeFormatting` (`textDocument/rangeFormatting`) formats the
+required `range` and is offered when the server declares
+`documentRangeFormattingProvider`, as the `rangeFormatting` feature. Its result,
+like `formatting`, is `{ edits }`. Both formatting operations accept optional
+`formattingOptions`, an object of LSP `FormattingOptions`: `tabSize` (integer
+1-1024), `insertSpaces`, `trimTrailingWhitespace`, `insertFinalNewline`,
+`trimFinalNewlines` (booleans), and other keys whose values are boolean,
+integer or string. Supplied values are merged over the defaults `tabSize: 4`,
+`insertSpaces: true`, `trimTrailingWhitespace: true`, `insertFinalNewline: true`,
+`trimFinalNewlines: true`, so omitting the field keeps the previous behaviour.
+Invalid values fail with `invalid_request`.
+
+The `featuresChanged` event carries `completionOptions:
+{ triggerCharacters: string[], allCommitCharacters: string[] }` whenever the
+`completion` feature is offered: the de-duplicated union of the server's
+`completionProvider` and its dynamic `textDocument/completion` registrations
+(empty arrays when none are declared). The event is re-sent when registrations
+change them. Hosts use it, not a hard-coded list, to send
+`completionContext.triggerKind = 2`.
 
 Completion requests accept optional `completionContext` with LSP `triggerKind`
 (`1` invoked, `2` trigger character, `3` incomplete-list refresh) and
