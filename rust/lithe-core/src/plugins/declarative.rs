@@ -5025,6 +5025,12 @@ pub fn resolve_settings_command(payload: Value) -> Result<Value, CoreError> {
     ))
 }
 
+#[path = "settings_surfaces.rs"]
+mod settings_surfaces;
+pub use settings_surfaces::{
+    settings_catalog_command, settings_delivery_command, settings_navigation_command,
+};
+
 /// Installed package identity captured by the native registration adapter.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

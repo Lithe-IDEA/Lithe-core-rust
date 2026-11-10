@@ -373,6 +373,21 @@ fn execute_parsed(mut parsed: CoreRequest) -> CoreResponse {
             parsed.payload,
             crate::plugins::installed::select_command,
         ),
+        CoreCommand::PluginsSettingsCatalog => plugin_response(
+            id,
+            parsed.payload,
+            crate::plugins::declarative::settings_catalog_command,
+        ),
+        CoreCommand::PluginsSettingsNavigation => plugin_response(
+            id,
+            parsed.payload,
+            crate::plugins::declarative::settings_navigation_command,
+        ),
+        CoreCommand::PluginsSettingsDelivery => plugin_response(
+            id,
+            parsed.payload,
+            crate::plugins::declarative::settings_delivery_command,
+        ),
         CoreCommand::PluginsDeclarativeSettingsState => plugin_response(
             id,
             parsed.payload,

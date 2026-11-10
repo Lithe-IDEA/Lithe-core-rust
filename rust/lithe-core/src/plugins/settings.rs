@@ -18,6 +18,9 @@
 #[path = "settings_documents.rs"]
 mod documents;
 pub(crate) use documents::{document_state, edit_document, SettingsEdit};
+#[path = "settings_pages.rs"]
+mod pages;
+pub(crate) use pages::page_sections;
 
 use super::declarative::{invalid, PluginRejection, Validation};
 use regex::Regex;
@@ -81,7 +84,7 @@ pub(crate) enum SettingEffect {
 /// The settings page that shows a setting besides the plugin's own page.
 /// A plugin may add a setting to a language or build system another plugin
 /// declares; the host shows the page while any plugin contributes to it.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) enum SettingPage {
     /// Languages & Frameworks › <language>.

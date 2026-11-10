@@ -160,6 +160,12 @@ pub enum CoreCommand {
     PluginsDeclarativeResolveSettings,
     /// Projects stored documents into plugin setting rows and launch layers.
     PluginsDeclarativeSettingsState,
+    /// Projects enabled plugin settings pages from installed manifests.
+    PluginsSettingsCatalog,
+    /// Projects searched settings navigation without platform policy.
+    PluginsSettingsNavigation,
+    /// Routes committed preference effects using native ownership facts.
+    PluginsSettingsDelivery,
     /// Resolves an installed settings action and its native confirmation requirement.
     PluginsDeclarativeSettingsActionPlan,
     /// Selects numeric installed versions and reports malformed native facts.
@@ -883,6 +889,9 @@ impl CoreCommand {
                 Some(Self::PluginsDeclarativeCheckRuntimeVersion)
             }
             "plugins.declarative.resolveSettings" => Some(Self::PluginsDeclarativeResolveSettings),
+            "plugins.settings.catalog" => Some(Self::PluginsSettingsCatalog),
+            "plugins.settings.navigation" => Some(Self::PluginsSettingsNavigation),
+            "plugins.settings.delivery" => Some(Self::PluginsSettingsDelivery),
             "plugins.declarative.settingsState" => Some(Self::PluginsDeclarativeSettingsState),
             "plugins.declarative.settingsActionPlan" => {
                 Some(Self::PluginsDeclarativeSettingsActionPlan)

@@ -295,3 +295,60 @@ fn setting_action_plans_match_shared_fixture_without_starting_a_process() {
         }
     }
 }
+
+#[test]
+fn settings_surfaces_shared_vectors() {
+    let fixture: Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../shared/fixtures/plugins/settings-surfaces.json"
+    )))
+    .unwrap();
+    for case in fixture["cases"].as_array().unwrap() {
+        let response = execute(case["command"].as_str().unwrap(), case["input"].clone());
+        assert_eq!(response["ok"], true, "{}: {response}", case["name"]);
+        let data = &response["data"];
+        assert_eq!(
+            data["status"], case["status"],
+            "{}: {response}",
+            case["name"]
+        );
+        if let Some(count) = case["pages"].as_u64() {
+            assert_eq!(
+                data["pages"].as_array().unwrap().len() as u64,
+                count,
+                "{response}"
+            );
+        }
+        if !case["delivery"].is_null() {
+            assert_eq!(data["delivery"], case["delivery"], "{response}");
+        }
+        if !case["rowIDs"].is_null() {
+            assert_eq!(
+                json!(data["rows"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|row| row["id"].clone())
+                    .collect::<Vec<_>>()),
+                case["rowIDs"],
+                "{response}"
+            );
+        }
+    }
+}
+
+#[test]
+fn settings_navigation_reserves_capacity_for_host_rows() {
+    let mut items = vec![
+        json!({"id":"languages","title":"Languages","parent":null,"group":false,"expanded":false}),
+    ];
+    for index in 0..512 {
+        items.push(json!({"id":format!("language:{index}"),"title":format!("Language {index}"),"parent":"languages","group":false,"expanded":false}));
+    }
+    let response = execute(
+        "plugins.settings.navigation",
+        json!({"items":items,"query":""}),
+    );
+    assert_eq!(response["data"]["status"], "ok", "{response}");
+    assert_eq!(response["data"]["rows"].as_array().unwrap().len(), 513);
+}

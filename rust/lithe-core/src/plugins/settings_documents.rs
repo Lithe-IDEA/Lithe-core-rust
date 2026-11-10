@@ -151,6 +151,7 @@ pub(crate) fn document_state(
         .collect();
     Ok(
         json!({"pluginID":plugin, "rows":rows, "actions":actions, "sections":sections,
+        "pages":super::page_sections(declarations, actions),
         "editors":{"global":global_editor,"project":project_editor},
         "settings":declared_values(global), "projectSettings":declared_values(project),
         "storage":{"globalRelativePath":"plugin-settings.json", "projectRelativePath":".lithe/plugin-settings.json", "maximumBytes":MAX_DOCUMENT_BYTES, "readRequired":!declarations.is_empty()}}),
