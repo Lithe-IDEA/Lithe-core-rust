@@ -577,6 +577,13 @@ pub struct GitWriteRequest {
     pub no_checkout: bool,
     #[serde(default)]
     pub amend: bool,
+    /// `commit`: the author as `Name <email>`, in place of the configured identity.
+    /// The committer stays the configured identity.
+    #[serde(default)]
+    pub author: Option<String>,
+    /// `commit`: append a `Signed-off-by` trailer for the committer.
+    #[serde(default)]
+    pub sign_off: bool,
     /// Reviewed HEAD/index required by a planned workspace commit.
     #[serde(default)]
     pub expected_commit_state: Option<GitCommitState>,
@@ -1245,14 +1252,16 @@ fn write_with_trace(request: GitWriteRequest) -> Result<GitCommandResponse, Core
                     "Submodule updates require a reviewed commit state",
                 ));
             }
+            let identity = commit_identity(request.author.as_deref(), request.sign_off)?;
             if !request.paths.is_empty() {
                 let paths = validate_paths(&request.paths)?;
-                return commit_selected_paths(&root, paths, message, request.amend);
+                return commit_selected_paths(&root, paths, message, request.amend, identity);
             }
             arguments = vec!["commit".into()];
             if request.amend {
                 arguments.push("--amend".into());
             }
+            arguments.extend(identity);
             arguments.extend(["-m".into(), message]);
         }
         "ignore" => {
@@ -3200,6 +3209,7 @@ fn commit_selected_paths(
     paths: Vec<String>,
     message: String,
     amend: bool,
+    identity: Vec<String>,
 ) -> Result<GitCommandResponse, CoreError> {
     let operation = operation_state(GitOperationStateRequest {
         root: root.to_string(),
@@ -3298,6 +3308,7 @@ fn commit_selected_paths(
     if amend {
         arguments.push("--amend".into());
     }
+    arguments.extend(identity);
     arguments.extend(["-m".into(), message]);
     let committed = execute_git_with_environment(root, &arguments, None, false, &environment)?;
     if committed.exit_code != 0 {
@@ -4910,6 +4921,48 @@ fn sort_workspace_repository_paths(paths: &mut [PathBuf], workspace_root: &Path)
 
 fn path_sort_key(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/").to_lowercase()
+}
+
+/// The `git commit` options for a chosen author and a sign-off.
+pub(crate) fn commit_identity(
+    author: Option<&str>,
+    sign_off: bool,
+) -> Result<Vec<String>, CoreError> {
+    let mut arguments = Vec::new();
+    if let Some(author) = author {
+        arguments.push(format!("--author={}", validated_author(author)?));
+    }
+    if sign_off {
+        arguments.push("--signoff".into());
+    }
+    Ok(arguments)
+}
+
+/// An exact `Name <email>` identity. Git reads any other `--author` value as a pattern
+/// that picks a matching earlier author, which is never what a typed author means.
+fn validated_author(author: &str) -> Result<&str, CoreError> {
+    let invalid = || {
+        CoreError::new(
+            ErrorCode::GitCommitAuthorInvalid,
+            "The author must be a name followed by an email address in angle brackets",
+        )
+    };
+    let (name, email) = author
+        .strip_suffix('>')
+        .and_then(|rest| rest.rsplit_once(" <"))
+        .ok_or_else(invalid)?;
+    let name_valid = !name.trim().is_empty()
+        && name.trim() == name
+        && !name.contains(['<', '>'])
+        && !name.chars().any(char::is_control);
+    let email_valid = !email.is_empty()
+        && !email.contains(['<', '>'])
+        && !email.chars().any(|c| c.is_whitespace() || c.is_control());
+    if name_valid && email_valid {
+        Ok(author)
+    } else {
+        Err(invalid())
+    }
 }
 
 fn required_text(value: Option<&str>, label: &str) -> Result<String, CoreError> {
@@ -8837,6 +8890,23 @@ mod tests {
     };
     use serde_json::Value;
     use std::path::PathBuf;
+
+    /// Only an exact `Name <email>` names an author; the options keep Git's order.
+    #[test]
+    fn commit_identity_requires_an_exact_author() {
+        assert_eq!(
+            super::commit_identity(Some("张三 <zhang@example.invalid>"), true).unwrap(),
+            ["--author=张三 <zhang@example.invalid>", "--signoff"]
+        );
+        assert!(super::commit_identity(None, false).unwrap().is_empty());
+        for author in ["", " A <a@x>", "A  <a b@x>", "A <a@x> ", "A <>", "A\t<a@x>"] {
+            let error = super::commit_identity(Some(author), false).unwrap_err();
+            assert!(
+                matches!(error.code, ErrorCode::GitCommitAuthorInvalid),
+                "{author:?}"
+            );
+        }
+    }
 
     #[test]
     fn unforced_removal_refused_for_local_changes_gains_its_own_code() {

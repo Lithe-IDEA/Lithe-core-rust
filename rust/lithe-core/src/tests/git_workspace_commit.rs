@@ -50,7 +50,6 @@ fn state(root: &Path) -> Value {
     result["data"].clone()
 }
 
-/// Runs a read-only query with an event receiver and returns the Git arguments it reported.
 /// The execution events one request emits, except its own request boundaries.
 fn reported_queries(root: &Path, command: &str, git_execution: Value) -> Vec<Value> {
     let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -136,6 +135,89 @@ fn git_reported_status_shows_each_record_on_its_own_line() {
     assert!(lines.iter().any(|line| line == "? first.txt"), "{lines:?}");
     assert!(lines.iter().any(|line| line == "? second.txt"), "{lines:?}");
     assert!(lines.iter().all(|line| !line.contains('\0')), "{lines:?}");
+}
+
+/// A commit can name its author and add a sign-off, both directly and through a
+/// workspace plan; an author Git would read as a search pattern is refused before
+/// anything is written.
+#[test]
+fn git_commits_take_an_author_and_a_sign_off() {
+    let repo = repository("workspace-commit-identity");
+    let last = |root: &Path| git(root, &["log", "-1", "--format=%an <%ae>|%cn|%B"]);
+
+    staged_file(&repo.0, "first.txt", "first");
+    let direct = request(
+        &repo.0,
+        "git.write",
+        json!({"operation":"commit","message":"direct","author":"Pair Author <pair@example.invalid>","signOff":true}),
+    );
+    assert_eq!(direct["ok"], true, "{direct}");
+    let commit = last(&repo.0);
+    assert!(
+        commit.starts_with("Pair Author <pair@example.invalid>|Workspace Test|direct"),
+        "{commit}"
+    );
+    assert!(
+        commit.contains("Signed-off-by: Workspace Test <workspace@example.invalid>"),
+        "{commit}"
+    );
+
+    staged_file(&repo.0, "second.txt", "second");
+    let repositories = json!([{"id":".","root":repo.0}]);
+    let prepared = request(
+        &repo.0,
+        "git.workspaceCommitPrepare",
+        json!({"repositories":repositories,"message":"planned","includeParentReferences":true,
+            "author":"Plan Author <plan@example.invalid>","signOff":true}),
+    );
+    assert_eq!(prepared["ok"], true, "{prepared}");
+    assert_eq!(
+        prepared["data"]["session"]["plan"]["author"],
+        "Plan Author <plan@example.invalid>"
+    );
+    let mut session = prepared["data"]["session"].clone();
+    while session["finished"] != true {
+        session = next_workspace(&repo.0, session);
+    }
+    let commit = last(&repo.0);
+    assert!(
+        commit.starts_with("Plan Author <plan@example.invalid>|Workspace Test|planned"),
+        "{commit}"
+    );
+    assert!(commit.contains("Signed-off-by: Workspace Test"), "{commit}");
+
+    staged_file(&repo.0, "third.txt", "third");
+    let head = git(&repo.0, &["rev-parse", "HEAD"]);
+    for author in [
+        "Pair Author",
+        "pair@example.invalid",
+        "<pair@example.invalid>",
+        "A <b> <c>",
+        "A\n <b>",
+    ] {
+        let direct = request(
+            &repo.0,
+            "git.write",
+            json!({"operation":"commit","message":"pattern","author":author}),
+        );
+        let code = &direct["data"]["operationError"]["code"];
+        let code = if code.is_null() {
+            &direct["error"]["code"]
+        } else {
+            code
+        };
+        assert_eq!(code, "git_commit_author_invalid", "{author:?}: {direct}");
+        let planned = request(
+            &repo.0,
+            "git.workspaceCommitPrepare",
+            json!({"repositories":repositories,"message":"pattern","includeParentReferences":true,"author":author}),
+        );
+        assert_eq!(
+            planned["error"]["code"], "git_commit_author_invalid",
+            "{author:?}: {planned}"
+        );
+    }
+    assert_eq!(git(&repo.0, &["rev-parse", "HEAD"]), head);
 }
 
 #[test]

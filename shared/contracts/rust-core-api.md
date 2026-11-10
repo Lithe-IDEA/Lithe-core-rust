@@ -2172,7 +2172,7 @@ same status and races after the last check are not an atomic snapshot guarantee.
 `stashApply`, `stashPop`, `stashDrop`, `deleteRemoteBranch`, `operationContinue`,
 `operationAbort`, `operationSkip`, `createTag`, and `deleteTag`. Optional fields are `paths`, `reference`, `referenceKind`,
 `gitReference`, `revision`, `revisions`, `name`, `message`, `lightweight`, `signed`, `remote`, `destination`, `mode`,
-`includeUntracked`, `checkout`, `amend`, `force`, `pushTags`, `expectedPush`, `autoStash`,
+`includeUntracked`, `checkout`, `amend`, `author`, `signOff`, `force`, `pushTags`, `expectedPush`, `autoStash`,
 `worktreeMode`, `noCheckout`, `expectedBranch`, and `expectedState`. The four history actions require the reviewed `expectedState`
 described below; earlier unreviewed history-write callers must migrate.
 
@@ -2363,7 +2363,16 @@ mode includes staged, unstaged, untracked, deleted, and same-path recreated
 files without reading or mutating the real index and cannot be combined with
 other diff reference modes.
 A `commit` request without `paths` retains
-the legacy behavior of committing the existing index. `ignore` appends root-anchored patterns to the
+the legacy behavior of committing the existing index. `commit` also accepts
+`author`, the commit's author as an exact `Name <email>` (a name without
+surrounding spaces, one space and a nonempty email between angle brackets, with
+no whitespace in the email and no line breaks), passed as `--author`; the
+committer stays the configured identity. Any other value fails with
+`git_commit_author_invalid` before Git runs, because Git would read it as a
+pattern selecting an earlier author. `signOff: true` adds `--signoff`, a
+`Signed-off-by` trailer for the committer. Both apply with or without `paths`
+and with `amend`. Logs show the author as `--author=<author>`; the execution
+events keep the actual argument. `ignore` appends root-anchored patterns to the
 repository's top-level `.gitignore`; `exclude` appends the same patterns to the
 worktree-aware Git metadata path for `info/exclude`. Both ignore operations
 preserve existing content, escape Git pattern characters, de-duplicate rules,
@@ -6152,9 +6161,12 @@ subdirectory as a summary, using the same change shape and nested-root
 exclusion as `git.status`.
 
 `git.workspaceCommitPrepare` owns the complete multi-repository policy. It accepts
-`repositories: [{ id, root }]`, `message`, `amend`, `push`,
-`includeParentReferences`, optional `previous` session for retry, and optional
-`reviewed` plan for confirmation. `id` is a workspace-relative path with `/`
+`repositories: [{ id, root }]`, `message`, `amend`, optional `author` and
+`signOff`, `push`, `includeParentReferences`, optional `previous` session for
+retry, and optional `reviewed` plan for confirmation. `author` and `signOff`
+have the `git.write` `commit` meaning, apply to every commit of the plan, and are
+kept in `plan` (omitted when unset), so changing them changes the reviewed plan;
+an invalid `author` fails the preparation with `git_commit_author_invalid`. `id` is a workspace-relative path with `/`
 separators (`..` is allowed for enclosing repositories). Windows manually selected
 roots on another volume use a stable `external/<encoded-volume>/<path>` virtual
 workspace ID. `root` is the native
