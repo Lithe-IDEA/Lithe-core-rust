@@ -61,10 +61,7 @@ impl Trace {
     /// Captures provenance on the request thread, before any reader thread exists.
     pub(super) fn begin(repository: &str, arguments: &[String], visible: bool) -> Self {
         let context = request_trace::current();
-        let source = match execution_policy::current().source {
-            Source::Unknown => context.source,
-            source => source,
-        };
+        let source = execution_policy::source();
         Self {
             arguments: arguments.to_vec(),
             repository: repository.to_owned(),

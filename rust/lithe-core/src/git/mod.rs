@@ -1925,11 +1925,7 @@ fn capture_local_git_process(
             .with_details(error.to_string())
         })?;
     }
-    let invocation = RefCell::new(
-        visible
-            .then(execution_events::Invocation::current)
-            .flatten(),
-    );
+    let invocation = RefCell::new(execution_events::Invocation::reported(visible));
     let mut authentication = if visible && execution_policy::current().interactive {
         let session = lithe_git_host::authentication::Session::new().map_err(|error| {
             CoreError::new(
@@ -2018,17 +2014,10 @@ fn capture_local_git_process(
         .and_then(std::process::ExitStatus::code);
     trace.observe(exit_code, &output.stderr);
     if let Some(invocation) = invocation.into_inner() {
-        // Optional internal config reads use exit 1 for a missing key. Preserve
-        // that actual code without presenting a normal preflight result as failure.
-        let expected_exit = !visible
-            && exit_code == Some(1)
-            && error.is_none()
-            && execution_policy::command_index(arguments).is_some_and(|index| {
-                arguments[index] == "config"
-                    && arguments[index + 1..]
-                        .iter()
-                        .any(|arg| matches!(arg.as_str(), "--get" | "--get-all" | "--get-regexp"))
-            });
+        // A query that answers with a nonzero exit, such as a missing config key, keeps
+        // its actual code without presenting a normal result as failure.
+        let expected_exit = error.is_none()
+            && execution_events::Invocation::answered(visible, arguments, exit_code);
         invocation.finished_with_expected_exit(exit_code, error.as_ref(), expected_exit);
     }
     if let Some(error) = error {
@@ -8715,7 +8704,12 @@ fn run_git(directory: &Path, arguments: &[&str]) -> Result<std::process::Output,
     // may otherwise refresh its optional index data while answering a query,
     // which emits `.git/index` events into the native watcher and can trigger
     // another status refresh.
-    let mut trace = command_trace::Trace::begin(&directory.to_string_lossy(), &arguments, false);
+    let root = directory.to_string_lossy();
+    let mut trace = command_trace::Trace::begin(&root, &arguments, false);
+    let mut invocation = execution_events::Invocation::reported(false);
+    if let Some(invocation) = &invocation {
+        invocation.started(&root, &arguments);
+    }
     let result = git_process()
         .env("GIT_OPTIONAL_LOCKS", "0")
         .args(&arguments)
@@ -8725,8 +8719,18 @@ fn run_git(directory: &Path, arguments: &[&str]) -> Result<std::process::Output,
             CoreError::new(ErrorCode::ProcessStartFailed, "Could not start Git")
                 .with_details(error.to_string())
         });
+    let exit_code = result.as_ref().ok().and_then(|output| output.status.code());
     if let Ok(output) = &result {
-        trace.observe(output.status.code(), &output.stderr);
+        trace.observe(exit_code, &output.stderr);
+        if let Some(invocation) = &mut invocation {
+            invocation.output(lithe_git_host::Stream::Stdout, &output.stdout);
+            invocation.output(lithe_git_host::Stream::Stderr, &output.stderr);
+        }
+    }
+    if let Some(invocation) = invocation {
+        let expected_exit =
+            result.is_ok() && execution_events::Invocation::answered(false, &arguments, exit_code);
+        invocation.finished_with_expected_exit(exit_code, result.as_ref().err(), expected_exit);
     }
     trace.finish(result.as_ref().err());
     result
