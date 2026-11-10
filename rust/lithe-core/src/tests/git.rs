@@ -1909,7 +1909,7 @@ fn git_write_manages_only_registered_non_primary_worktrees() {
         "{rejected_locked_remove:?}"
     );
     assert_eq!(
-        rejected_locked_remove["data"]["operationError"]["code"], "invalid_request",
+        rejected_locked_remove["data"]["operationError"]["code"], "git_worktree_locked",
         "{rejected_locked_remove:?}"
     );
     let unlocked = git_write_request(
@@ -1918,6 +1918,18 @@ fn git_write_manages_only_registered_non_primary_worktrees() {
         serde_json::json!({ "destination": registered_destination }),
     );
     assert_eq!(unlocked["data"]["exitCode"], 0, "{unlocked:?}");
+    // Requested from the linked worktree itself, the removal is refused as the
+    // current worktree before Git runs, whatever the checkout contains.
+    let current_remove = git_write_request(
+        &destination,
+        "removeWorktree",
+        serde_json::json!({ "destination": registered_destination }),
+    );
+    assert_eq!(
+        current_remove["data"]["operationError"]["code"], "git_worktree_current",
+        "{current_remove:?}"
+    );
+    assert!(destination.exists());
 
     fs::write(destination.join("dirty.txt"), "dirty\n").expect("worktree should be writable");
     let dirty_remove = git_write_request(
@@ -1927,6 +1939,11 @@ fn git_write_manages_only_registered_non_primary_worktrees() {
     );
     assert_eq!(dirty_remove["ok"], true, "{dirty_remove:?}");
     assert_ne!(dirty_remove["data"]["exitCode"], 0, "{dirty_remove:?}");
+    assert_eq!(
+        dirty_remove["data"]["operationError"]["code"], "git_worktree_has_changes",
+        "{dirty_remove:?}"
+    );
+    assert!(destination.join("dirty.txt").exists());
     let forced_remove = git_write_request(
         &root,
         "removeWorktree",
@@ -1941,8 +1958,17 @@ fn git_write_manages_only_registered_non_primary_worktrees() {
         serde_json::json!({ "destination": registered_root }),
     );
     assert_eq!(
-        primary_remove["data"]["operationError"]["code"], "invalid_request",
+        primary_remove["data"]["operationError"]["code"], "git_worktree_primary",
         "{primary_remove:?}"
+    );
+    let primary_lock = git_write_request(
+        &root,
+        "lockWorktree",
+        serde_json::json!({ "destination": registered_root }),
+    );
+    assert_eq!(
+        primary_lock["data"]["operationError"]["code"], "git_worktree_primary",
+        "{primary_lock:?}"
     );
     let unrelated_remove = git_write_request(
         &root,
@@ -1950,7 +1976,7 @@ fn git_write_manages_only_registered_non_primary_worktrees() {
         serde_json::json!({ "destination": root.with_extension("unregistered") }),
     );
     assert_eq!(
-        unrelated_remove["data"]["operationError"]["code"], "invalid_request",
+        unrelated_remove["data"]["operationError"]["code"], "git_worktree_not_registered",
         "{unrelated_remove:?}"
     );
 
@@ -1966,7 +1992,7 @@ fn git_write_manages_only_registered_non_primary_worktrees() {
         }),
     );
     assert_eq!(
-        unrelated_missing_remove["data"]["operationError"]["code"], "invalid_request",
+        unrelated_missing_remove["data"]["operationError"]["code"], "git_worktree_not_registered",
         "{unrelated_missing_remove:?}"
     );
     let prune = git_write_request(&root, "pruneWorktrees", serde_json::json!({}));
