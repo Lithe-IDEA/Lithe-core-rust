@@ -50,6 +50,176 @@ fn state(root: &Path) -> Value {
     result["data"].clone()
 }
 
+/// The execution events one request emits, except its own request boundaries.
+fn reported_queries(root: &Path, command: &str, git_execution: Value) -> Vec<Value> {
+    let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let captured = events.clone();
+    let response = crate::execute_json_with_events(
+        &json!({"id":"report-queries", "command":command, "payload":{"root":root},
+            "gitExecution":git_execution})
+        .to_string(),
+        std::sync::Arc::new(move |event| {
+            let event: Value = serde_json::from_str(event).unwrap();
+            if !matches!(
+                event["type"].as_str(),
+                Some("requestStarted" | "requestFinished")
+            ) {
+                captured.lock().unwrap().push(event);
+            }
+        }),
+    );
+    let response: Value = serde_json::from_str(&response).unwrap();
+    assert_eq!(response["ok"], true, "{response}");
+    let events = events.lock().unwrap().clone();
+    events
+}
+
+/// A console that records what the workbench reads asks for it per request; without it,
+/// and for an automatic refresh, the same query stays silent, and a reported query still
+/// finishes every record it starts.
+#[test]
+fn git_internal_queries_report_events_only_when_the_request_asks() {
+    let repo = repository("workspace-report-queries");
+    fs::write(repo.0.join("tracked.txt"), "one").unwrap();
+    git(&repo.0, &["add", "tracked.txt"]);
+    git(&repo.0, &["commit", "-qm", "initial"]);
+
+    for command in ["git.commitState", "git.status"] {
+        assert_eq!(
+            reported_queries(&repo.0, command, json!({})),
+            Vec::<Value>::new()
+        );
+        let refresh = json!({"reportQueries": true, "source": "background"});
+        assert_eq!(
+            reported_queries(&repo.0, command, refresh),
+            Vec::<Value>::new()
+        );
+        let user = json!({"reportQueries": true, "source": "user"});
+        let events = reported_queries(&repo.0, command, user);
+        let started: Vec<_> = events.iter().filter(|e| e["type"] == "started").collect();
+        let finished: Vec<_> = events.iter().filter(|e| e["type"] == "finished").collect();
+        assert!(!started.is_empty(), "{command} {events:?}");
+        assert_eq!(started.len(), finished.len(), "{command} {events:?}");
+        assert!(started.iter().all(|e| e["source"] == "user"), "{events:?}");
+        assert!(finished.iter().all(|e| e["error"].is_null()), "{events:?}");
+    }
+}
+
+/// A reported status shows each NUL-separated record on its own line.
+#[test]
+fn git_reported_status_shows_each_record_on_its_own_line() {
+    let repo = repository("workspace-report-status");
+    fs::write(repo.0.join("tracked.txt"), "one").unwrap();
+    git(&repo.0, &["add", "tracked.txt"]);
+    git(&repo.0, &["commit", "-qm", "initial"]);
+    fs::write(repo.0.join("first.txt"), "first").unwrap();
+    fs::write(repo.0.join("second.txt"), "second").unwrap();
+
+    let events = reported_queries(&repo.0, "git.status", json!({"reportQueries": true}));
+    let status = events
+        .iter()
+        .find(|e| {
+            e["type"] == "started"
+                && e["arguments"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|a| a == "status")
+        })
+        .unwrap_or_else(|| panic!("{events:?}"));
+    let lines: Vec<_> = events
+        .iter()
+        .filter(|e| e["type"] == "output" && e["invocationId"] == status["invocationId"])
+        .map(|e| e["text"].as_str().unwrap().to_string())
+        .collect();
+    assert!(lines.iter().any(|line| line == "? first.txt"), "{lines:?}");
+    assert!(lines.iter().any(|line| line == "? second.txt"), "{lines:?}");
+    assert!(lines.iter().all(|line| !line.contains('\0')), "{lines:?}");
+}
+
+/// A commit can name its author and add a sign-off, both directly and through a
+/// workspace plan; an author Git would read as a search pattern is refused before
+/// anything is written.
+#[test]
+fn git_commits_take_an_author_and_a_sign_off() {
+    let repo = repository("workspace-commit-identity");
+    let last = |root: &Path| git(root, &["log", "-1", "--format=%an <%ae>|%cn|%B"]);
+
+    staged_file(&repo.0, "first.txt", "first");
+    let direct = request(
+        &repo.0,
+        "git.write",
+        json!({"operation":"commit","message":"direct","author":"Pair Author <pair@example.invalid>","signOff":true}),
+    );
+    assert_eq!(direct["ok"], true, "{direct}");
+    let commit = last(&repo.0);
+    assert!(
+        commit.starts_with("Pair Author <pair@example.invalid>|Workspace Test|direct"),
+        "{commit}"
+    );
+    assert!(
+        commit.contains("Signed-off-by: Workspace Test <workspace@example.invalid>"),
+        "{commit}"
+    );
+
+    staged_file(&repo.0, "second.txt", "second");
+    let repositories = json!([{"id":".","root":repo.0}]);
+    let prepared = request(
+        &repo.0,
+        "git.workspaceCommitPrepare",
+        json!({"repositories":repositories,"message":"planned","includeParentReferences":true,
+            "author":"Plan Author <plan@example.invalid>","signOff":true}),
+    );
+    assert_eq!(prepared["ok"], true, "{prepared}");
+    assert_eq!(
+        prepared["data"]["session"]["plan"]["author"],
+        "Plan Author <plan@example.invalid>"
+    );
+    let mut session = prepared["data"]["session"].clone();
+    while session["finished"] != true {
+        session = next_workspace(&repo.0, session);
+    }
+    let commit = last(&repo.0);
+    assert!(
+        commit.starts_with("Plan Author <plan@example.invalid>|Workspace Test|planned"),
+        "{commit}"
+    );
+    assert!(commit.contains("Signed-off-by: Workspace Test"), "{commit}");
+
+    staged_file(&repo.0, "third.txt", "third");
+    let head = git(&repo.0, &["rev-parse", "HEAD"]);
+    for author in [
+        "Pair Author",
+        "pair@example.invalid",
+        "<pair@example.invalid>",
+        "A <b> <c>",
+        "A\n <b>",
+    ] {
+        let direct = request(
+            &repo.0,
+            "git.write",
+            json!({"operation":"commit","message":"pattern","author":author}),
+        );
+        let code = &direct["data"]["operationError"]["code"];
+        let code = if code.is_null() {
+            &direct["error"]["code"]
+        } else {
+            code
+        };
+        assert_eq!(code, "git_commit_author_invalid", "{author:?}: {direct}");
+        let planned = request(
+            &repo.0,
+            "git.workspaceCommitPrepare",
+            json!({"repositories":repositories,"message":"pattern","includeParentReferences":true,"author":author}),
+        );
+        assert_eq!(
+            planned["error"]["code"], "git_commit_author_invalid",
+            "{author:?}: {planned}"
+        );
+    }
+    assert_eq!(git(&repo.0, &["rev-parse", "HEAD"]), head);
+}
+
 #[test]
 fn git_workspace_commit_rejects_a_changed_index_before_writing() {
     let repo = repository("workspace-commit-stale");

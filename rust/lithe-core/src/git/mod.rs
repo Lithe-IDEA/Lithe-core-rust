@@ -577,6 +577,13 @@ pub struct GitWriteRequest {
     pub no_checkout: bool,
     #[serde(default)]
     pub amend: bool,
+    /// `commit`: the author as `Name <email>`, in place of the configured identity.
+    /// The committer stays the configured identity.
+    #[serde(default)]
+    pub author: Option<String>,
+    /// `commit`: append a `Signed-off-by` trailer for the committer.
+    #[serde(default)]
+    pub sign_off: bool,
     /// Reviewed HEAD/index required by a planned workspace commit.
     #[serde(default)]
     pub expected_commit_state: Option<GitCommitState>,
@@ -1245,14 +1252,16 @@ fn write_with_trace(request: GitWriteRequest) -> Result<GitCommandResponse, Core
                     "Submodule updates require a reviewed commit state",
                 ));
             }
+            let identity = commit_identity(request.author.as_deref(), request.sign_off)?;
             if !request.paths.is_empty() {
                 let paths = validate_paths(&request.paths)?;
-                return commit_selected_paths(&root, paths, message, request.amend);
+                return commit_selected_paths(&root, paths, message, request.amend, identity);
             }
             arguments = vec!["commit".into()];
             if request.amend {
                 arguments.push("--amend".into());
             }
+            arguments.extend(identity);
             arguments.extend(["-m".into(), message]);
         }
         "ignore" => {
@@ -1925,11 +1934,7 @@ fn capture_local_git_process(
             .with_details(error.to_string())
         })?;
     }
-    let invocation = RefCell::new(
-        visible
-            .then(execution_events::Invocation::current)
-            .flatten(),
-    );
+    let invocation = RefCell::new(execution_events::Invocation::reported(visible));
     let mut authentication = if visible && execution_policy::current().interactive {
         let session = lithe_git_host::authentication::Session::new().map_err(|error| {
             CoreError::new(
@@ -2018,17 +2023,10 @@ fn capture_local_git_process(
         .and_then(std::process::ExitStatus::code);
     trace.observe(exit_code, &output.stderr);
     if let Some(invocation) = invocation.into_inner() {
-        // Optional internal config reads use exit 1 for a missing key. Preserve
-        // that actual code without presenting a normal preflight result as failure.
-        let expected_exit = !visible
-            && exit_code == Some(1)
-            && error.is_none()
-            && execution_policy::command_index(arguments).is_some_and(|index| {
-                arguments[index] == "config"
-                    && arguments[index + 1..]
-                        .iter()
-                        .any(|arg| matches!(arg.as_str(), "--get" | "--get-all" | "--get-regexp"))
-            });
+        // A query that answers with a nonzero exit, such as a missing config key, keeps
+        // its actual code without presenting a normal result as failure.
+        let expected_exit = error.is_none()
+            && execution_events::Invocation::answered(visible, arguments, exit_code);
         invocation.finished_with_expected_exit(exit_code, error.as_ref(), expected_exit);
     }
     if let Some(error) = error {
@@ -3211,6 +3209,7 @@ fn commit_selected_paths(
     paths: Vec<String>,
     message: String,
     amend: bool,
+    identity: Vec<String>,
 ) -> Result<GitCommandResponse, CoreError> {
     let operation = operation_state(GitOperationStateRequest {
         root: root.to_string(),
@@ -3309,6 +3308,7 @@ fn commit_selected_paths(
     if amend {
         arguments.push("--amend".into());
     }
+    arguments.extend(identity);
     arguments.extend(["-m".into(), message]);
     let committed = execute_git_with_environment(root, &arguments, None, false, &environment)?;
     if committed.exit_code != 0 {
@@ -4921,6 +4921,48 @@ fn sort_workspace_repository_paths(paths: &mut [PathBuf], workspace_root: &Path)
 
 fn path_sort_key(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/").to_lowercase()
+}
+
+/// The `git commit` options for a chosen author and a sign-off.
+pub(crate) fn commit_identity(
+    author: Option<&str>,
+    sign_off: bool,
+) -> Result<Vec<String>, CoreError> {
+    let mut arguments = Vec::new();
+    if let Some(author) = author {
+        arguments.push(format!("--author={}", validated_author(author)?));
+    }
+    if sign_off {
+        arguments.push("--signoff".into());
+    }
+    Ok(arguments)
+}
+
+/// An exact `Name <email>` identity. Git reads any other `--author` value as a pattern
+/// that picks a matching earlier author, which is never what a typed author means.
+fn validated_author(author: &str) -> Result<&str, CoreError> {
+    let invalid = || {
+        CoreError::new(
+            ErrorCode::GitCommitAuthorInvalid,
+            "The author must be a name followed by an email address in angle brackets",
+        )
+    };
+    let (name, email) = author
+        .strip_suffix('>')
+        .and_then(|rest| rest.rsplit_once(" <"))
+        .ok_or_else(invalid)?;
+    let name_valid = !name.trim().is_empty()
+        && name.trim() == name
+        && !name.contains(['<', '>'])
+        && !name.chars().any(char::is_control);
+    let email_valid = !email.is_empty()
+        && !email.contains(['<', '>'])
+        && !email.chars().any(|c| c.is_whitespace() || c.is_control());
+    if name_valid && email_valid {
+        Ok(author)
+    } else {
+        Err(invalid())
+    }
 }
 
 fn required_text(value: Option<&str>, label: &str) -> Result<String, CoreError> {
@@ -8715,7 +8757,12 @@ fn run_git(directory: &Path, arguments: &[&str]) -> Result<std::process::Output,
     // may otherwise refresh its optional index data while answering a query,
     // which emits `.git/index` events into the native watcher and can trigger
     // another status refresh.
-    let mut trace = command_trace::Trace::begin(&directory.to_string_lossy(), &arguments, false);
+    let root = directory.to_string_lossy();
+    let mut trace = command_trace::Trace::begin(&root, &arguments, false);
+    let mut invocation = execution_events::Invocation::reported(false);
+    if let Some(invocation) = &invocation {
+        invocation.started(&root, &arguments);
+    }
     let result = git_process()
         .env("GIT_OPTIONAL_LOCKS", "0")
         .args(&arguments)
@@ -8725,8 +8772,18 @@ fn run_git(directory: &Path, arguments: &[&str]) -> Result<std::process::Output,
             CoreError::new(ErrorCode::ProcessStartFailed, "Could not start Git")
                 .with_details(error.to_string())
         });
+    let exit_code = result.as_ref().ok().and_then(|output| output.status.code());
     if let Ok(output) = &result {
-        trace.observe(output.status.code(), &output.stderr);
+        trace.observe(exit_code, &output.stderr);
+        if let Some(invocation) = &mut invocation {
+            invocation.output(lithe_git_host::Stream::Stdout, &output.stdout);
+            invocation.output(lithe_git_host::Stream::Stderr, &output.stderr);
+        }
+    }
+    if let Some(invocation) = invocation {
+        let expected_exit =
+            result.is_ok() && execution_events::Invocation::answered(false, &arguments, exit_code);
+        invocation.finished_with_expected_exit(exit_code, result.as_ref().err(), expected_exit);
     }
     trace.finish(result.as_ref().err());
     result
@@ -8833,6 +8890,23 @@ mod tests {
     };
     use serde_json::Value;
     use std::path::PathBuf;
+
+    /// Only an exact `Name <email>` names an author; the options keep Git's order.
+    #[test]
+    fn commit_identity_requires_an_exact_author() {
+        assert_eq!(
+            super::commit_identity(Some("张三 <zhang@example.invalid>"), true).unwrap(),
+            ["--author=张三 <zhang@example.invalid>", "--signoff"]
+        );
+        assert!(super::commit_identity(None, false).unwrap().is_empty());
+        for author in ["", " A <a@x>", "A  <a b@x>", "A <a@x> ", "A <>", "A\t<a@x>"] {
+            let error = super::commit_identity(Some(author), false).unwrap_err();
+            assert!(
+                matches!(error.code, ErrorCode::GitCommitAuthorInvalid),
+                "{author:?}"
+            );
+        }
+    }
 
     #[test]
     fn unforced_removal_refused_for_local_changes_gains_its_own_code() {

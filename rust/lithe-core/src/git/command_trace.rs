@@ -22,6 +22,8 @@ const STDERR_LINES: usize = 8;
 /// Git prints its reason last; older stderr is irrelevant once the tail is known.
 const STDERR_TAIL_BYTES: usize = 16 * 1024;
 const MESSAGE: &str = "<message>";
+/// A chosen commit author is personal identity, like the `user.*` config values.
+const AUTHOR: &str = "<author>";
 
 /// Config keys whose values carry credentials or personal identity.
 const SENSITIVE_CONFIG: [&str; 10] = [
@@ -61,10 +63,7 @@ impl Trace {
     /// Captures provenance on the request thread, before any reader thread exists.
     pub(super) fn begin(repository: &str, arguments: &[String], visible: bool) -> Self {
         let context = request_trace::current();
-        let source = match execution_policy::current().source {
-            Source::Unknown => context.source,
-            source => source,
-        };
+        let source = execution_policy::source();
         Self {
             arguments: arguments.to_vec(),
             repository: repository.to_owned(),
@@ -215,7 +214,7 @@ pub(super) fn exit_is_answer(arguments: &[String], code: i32) -> bool {
 }
 
 /// The only formatter allowed to put Git argv into a log record.
-/// Message values become `<message>`, sensitive `-c` values are removed, URL
+/// Message values become `<message>`, authors `<author>`, sensitive `-c` values are removed, URL
 /// userinfo and private paths are redacted, and the result is capped at 1 KiB.
 pub(crate) fn format_arguments(arguments: &[String]) -> String {
     let mut parts = Vec::with_capacity(arguments.len());
@@ -237,6 +236,7 @@ pub(crate) fn format_arguments(arguments: &[String]) -> String {
                     argument.clone()
                 }
                 value if value.starts_with("--message=") => format!("--message={MESSAGE}"),
+                value if value.starts_with("--author=") => format!("--author={AUTHOR}"),
                 value if value.len() > 2 && value.starts_with("-m") => format!("-m{MESSAGE}"),
                 value => value.to_owned(),
             }
@@ -338,6 +338,14 @@ mod tests {
         assert_eq!(
             format_arguments(&args(&["merge", "--message", "Merge it", "topic"])),
             "merge --message <message> topic"
+        );
+        assert_eq!(
+            format_arguments(&args(&[
+                "commit",
+                "--author=A <a@example.invalid>",
+                "--signoff"
+            ])),
+            "commit --author=<author> --signoff"
         );
         assert_eq!(
             format_arguments(&args(&[

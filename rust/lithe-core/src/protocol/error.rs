@@ -47,6 +47,10 @@ pub enum ErrorCode {
     /// checkout has modified or untracked files, which a forced removal
     /// deletes. Reported as `operationError.code` of the failed response.
     GitWorktreeHasChanges,
+    /// A commit's `author` is not `Name <email>`: a name, a space and an email address
+    /// between angle brackets, without line breaks. Git would otherwise treat the value
+    /// as a pattern that picks an earlier author.
+    GitCommitAuthorInvalid,
     /// Input or tool output could not be decoded into the stable contract.
     ParseFailed,
     /// `file.write` text contains characters the requested encoding cannot

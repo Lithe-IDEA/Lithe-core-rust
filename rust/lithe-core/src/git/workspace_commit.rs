@@ -76,6 +76,12 @@ pub struct Plan {
     pub repositories: Vec<RepositoryBinding>,
     pub message: String,
     pub amend: bool,
+    /// The author of every commit as `Name <email>`; omitted for the configured identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    /// Whether every commit gets a `Signed-off-by` trailer for the committer.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub sign_off: bool,
     pub push: bool,
     /// Confirmed destinations by repository ID, only for branches whose upstream has
     /// a different name. Each repository is guarded separately because two
@@ -133,6 +139,12 @@ pub struct PrepareRequest {
     pub message: String,
     #[serde(default)]
     pub amend: bool,
+    /// The author of every commit as `Name <email>`; omitted for the configured identity.
+    #[serde(default)]
+    pub author: Option<String>,
+    /// Whether every commit gets a `Signed-off-by` trailer for the committer.
+    #[serde(default)]
+    pub sign_off: bool,
     #[serde(default)]
     pub push: bool,
     /// Destinations the user confirmed by repository ID, answering earlier
@@ -226,6 +238,8 @@ fn build_plan_with(
     if message.is_empty() {
         return Err(invalid("Enter a commit message"));
     }
+    // Rejected before review, so no repository's commit is the first to fail on it.
+    super::commit_identity(request.author.as_deref(), request.sign_off)?;
     let previous = request.previous.as_ref();
     let path_scope = request
         .path_scope
@@ -389,6 +403,8 @@ fn build_plan_with(
         repositories: request.repositories,
         message,
         amend: request.amend,
+        author: request.author,
+        sign_off: request.sign_off,
         push: request.push,
         push_targets,
         include_parent_references: request.include_parent_references,
@@ -776,6 +792,8 @@ fn prepare_step(
         request.operation = "commit".into();
         request.message = Some(session.plan.message.clone());
         request.amend = session.plan.amend && !expected.staged_paths.is_empty();
+        request.author = session.plan.author.clone();
+        request.sign_off = session.plan.sign_off;
     } else if session.plan.push && !session.results[id].pushed {
         request.operation = "push".into();
         request.reference = Some(expected.branch.clone().ok_or_else(|| {

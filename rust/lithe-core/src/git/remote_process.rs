@@ -31,9 +31,7 @@ pub(super) fn capture(
             environment,
         )?;
         let executable = params.argv.first().cloned();
-        let mut invocation = visible
-            .then(execution_events::Invocation::current)
-            .flatten();
+        let mut invocation = execution_events::Invocation::reported(visible);
         let mut stdout = Vec::new();
         let mut stderr = Vec::new();
         let result = workspace_host::process_observing(
@@ -95,11 +93,8 @@ pub(super) fn capture(
             .and_then(|code| i32::try_from(code).ok());
         trace.observe(exit, &stderr);
         if let Some(invocation) = invocation {
-            let expected = !visible
-                && exit == Some(1)
-                && result.is_ok()
-                && execution_policy::command_index(arguments)
-                    .is_some_and(|index| arguments[index] == "config");
+            let expected =
+                result.is_ok() && execution_events::Invocation::answered(visible, arguments, exit);
             invocation.finished_with_expected_exit(exit, result.as_ref().err(), expected);
         }
         result?;

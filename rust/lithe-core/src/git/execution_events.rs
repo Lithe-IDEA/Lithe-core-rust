@@ -68,8 +68,9 @@ enum Kind<'a> {
         error: Option<serde_json::Value>,
         /// Records of this request still running; hosts mark them `unconfirmed`.
         unconfirmed_invocations: Vec<u64>,
-        /// The failure happened before any Git process of this request started,
-        /// so it is shown as its own record instead of on an executed command.
+        /// No Git process of this request failed or is still running: none started, or
+        /// each one succeeded, such as the queries before a refusal. The failure is shown
+        /// as its own record instead of on an executed command.
         failure_record: bool,
     },
     Started {
@@ -109,8 +110,8 @@ struct Context {
     next_invocation: u64,
     /// Transfer summaries remain attached to the transfer despite subsequent inspection queries.
     last_transfer: Option<u64>,
-    /// Processes started by the current request.
-    request_invocations: usize,
+    /// Processes of the current request that finished without succeeding.
+    failed_invocations: usize,
     /// Started processes of the current request without a `finished` event.
     open_invocations: std::collections::BTreeSet<u64>,
 }
@@ -141,7 +142,7 @@ pub(crate) fn with_sink<T>(sink: EventSink, operation: impl FnOnce() -> T) -> T 
         operation_id: String::new(),
         next_invocation: 0,
         last_transfer: None,
-        request_invocations: 0,
+        failed_invocations: 0,
         open_invocations: Default::default(),
     }));
     operation()
@@ -160,7 +161,7 @@ pub(crate) fn request_started(operation_id: Option<&str>) {
         let mut current = current.borrow_mut();
         let context = current.as_mut()?;
         context.operation_id = operation_id.unwrap_or_default().to_string();
-        context.request_invocations = 0;
+        context.failed_invocations = 0;
         context.open_invocations.clear();
         Some((context.sink.clone(), context.operation_id.clone()))
     });
@@ -182,12 +183,12 @@ pub(crate) fn request_finished(response: &str) {
             (
                 context.sink.clone(),
                 context.operation_id.clone(),
-                context.request_invocations,
+                context.failed_invocations,
                 std::mem::take(&mut context.open_invocations),
             )
         })
     });
-    let Some((sink, operation_id, started, open)) = context else {
+    let Some((sink, operation_id, failed, open)) = context else {
         return;
     };
     let value: serde_json::Value = serde_json::from_str(response).unwrap_or_default();
@@ -205,9 +206,10 @@ pub(crate) fn request_finished(response: &str) {
         "details": error.get("details").and_then(|value| value.as_str()).map(redact),
     }));
     let error = error.or_else(|| value.pointer("/data/exitCode").and_then(|value| value.as_i64()).filter(|code| *code != 0).map(|code| serde_json::json!({ "code": "process_failed", "message": format!("Git exited with code {code}") })));
-    // A request cancelled before any command ran was superseded; it has
-    // nothing to report. Any other early failure needs its own record.
-    let failure_record = started == 0
+    // A request cancelled without a failed command was superseded; it has nothing
+    // to report. Any other failure that no command reported needs its own record.
+    let failure_record = failed == 0
+        && open.is_empty()
         && error
             .as_ref()
             .is_some_and(|error| error["code"] != "cancelled");
@@ -240,6 +242,24 @@ pub(super) struct Invocation {
     configuration_marker_sent: bool,
 }
 impl Invocation {
+    /// The invocation that reports a child: visible commands always report, and internal
+    /// queries only when the request set `reportQueries` and is not a background refresh.
+    pub(super) fn reported(visible: bool) -> Option<Self> {
+        use super::{console::Source, execution_policy};
+        let query = || {
+            execution_policy::current().report_queries
+                && execution_policy::source() != Source::Background
+        };
+        (visible || query()).then(Self::current).flatten()
+    }
+    /// Whether an internal query's nonzero exit answered its question, such as a missing
+    /// config key or an absent ref. A visible command's nonzero exit is always Git's failure.
+    pub(super) fn answered(visible: bool, arguments: &[String], exit_code: Option<i32>) -> bool {
+        !visible
+            && exit_code.is_some_and(|code| {
+                code != 0 && super::command_trace::exit_is_answer(arguments, code)
+            })
+    }
     pub(super) fn current() -> Option<Self> {
         CURRENT.with(|current| {
             let mut current = current.borrow_mut();
@@ -313,7 +333,6 @@ impl Invocation {
         }
         CURRENT.with(|current| {
             if let Some(context) = current.borrow_mut().as_mut() {
-                context.request_invocations += 1;
                 context.open_invocations.insert(self.id);
             }
         });
@@ -462,9 +481,11 @@ impl Invocation {
             message: redact(&error.message),
             details: error.details.as_ref().map(|value| redact(value)),
         });
+        let failed = error.is_some() || !(exit_code == Some(0) || expected_exit);
         CURRENT.with(|current| {
             if let Some(context) = current.borrow_mut().as_mut() {
                 context.open_invocations.remove(&self.id);
+                context.failed_invocations += usize::from(failed);
             }
         });
         send(
@@ -601,6 +622,7 @@ pub(crate) fn redact(text: &str) -> String {
 #[derive(Default)]
 /// Complete-line decoding avoids exposing a secret before its delimiter arrives.
 /// Overlong lines are discarded in full rather than publishing a secret prefix.
+/// NUL ends a line like LF: `-z` output separates its records with NUL.
 struct LineDecoder {
     bytes: Vec<u8>,
     cr: bool,
@@ -618,7 +640,7 @@ impl LineDecoder {
             }
             match byte {
                 b'\r' => self.cr = true,
-                b'\n' => self.emit(false, emit),
+                b'\n' | 0 => self.emit(false, emit),
                 _ if self.bytes.len() < MAX_LINE_BYTES && !self.overflow => self.bytes.push(byte),
                 _ => {
                     self.bytes.clear();
@@ -648,6 +670,34 @@ impl LineDecoder {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A query's nonzero exit that answers it is expected; the same exit of a visible
+    /// command, or an exit Git means as failure, is not.
+    #[test]
+    fn only_answering_query_exits_are_expected() {
+        let answered = |visible, arguments: &[&str], code| {
+            let arguments: Vec<String> = arguments.iter().map(|a| a.to_string()).collect();
+            Invocation::answered(visible, &arguments, Some(code))
+        };
+        assert!(answered(false, &["config", "--get", "user.signingkey"], 1));
+        assert!(answered(
+            false,
+            &["rev-parse", "--verify", "--quiet", "refs/stash"],
+            1
+        ));
+        assert!(!answered(false, &["status", "--porcelain=v2"], 128));
+        assert!(!answered(false, &["config", "--get", "user.name"], 0));
+        assert!(!answered(true, &["config", "--get", "user.name"], 1));
+    }
+
+    #[test]
+    fn nul_separates_lines() {
+        let mut decoder = LineDecoder::default();
+        let mut lines = Vec::new();
+        decoder.push(b"? first.txt\0? second", &mut |text, _, _| lines.push(text));
+        decoder.flush(&mut |text, _, _| lines.push(text));
+        assert_eq!(lines, ["? first.txt", "? second"]);
+    }
 
     #[test]
     fn callback_auth_reply_preserves_outer_events_and_cancellation() {
@@ -785,6 +835,31 @@ mod tests {
 
     /// Hosts no longer infer record states; a process whose exit was never
     /// observed must be named by Core or it would stay "running" forever.
+    /// A refusal after queries that all succeeded is its own record; a failure after a
+    /// failed command belongs to that command.
+    #[test]
+    fn request_failure_after_successful_queries_is_its_own_record() {
+        let error = r#"{"ok":false,"error":{"code":"invalid_request","message":"locked"}}"#;
+        let events = capture_request(|| {
+            request_started(Some("refused"));
+            let query = Invocation::current().unwrap();
+            query.started("/workspace", &["worktree".into(), "list".into()]);
+            query.finished(Some(0), None);
+            request_finished(error);
+            request_started(Some("failed"));
+            let command = Invocation::current().unwrap();
+            command.started("/workspace", &["worktree".into(), "remove".into()]);
+            command.finished(Some(128), None);
+            request_finished(error);
+        });
+        let records: Vec<_> = events
+            .iter()
+            .filter(|event| event["type"] == "requestFinished")
+            .map(|event| event["failureRecord"].clone())
+            .collect();
+        assert_eq!(records, [true, false]);
+    }
+
     #[test]
     fn request_finished_names_unconfirmed_records_and_early_failures() {
         let events = capture_request(|| {

@@ -21,6 +21,11 @@ pub struct GitExecutionOptions {
     pub detailed_fetch: bool,
     /// Explicit operation provenance; unknown requests must never be deduplicated.
     pub source: super::console::Source,
+    /// Internal read-only queries emit execution events like visible commands, so a console
+    /// records what the workbench read, except under `background` provenance: automatic
+    /// refreshes and watchers run too often to record. Authentication and interactivity stay
+    /// with visible commands; a query never prompts.
+    pub report_queries: bool,
 }
 impl Default for GitExecutionOptions {
     fn default() -> Self {
@@ -31,6 +36,7 @@ impl Default for GitExecutionOptions {
             fetch_defaults: GitFetchOptions::default(),
             detailed_fetch: false,
             source: super::console::Source::Unknown,
+            report_queries: false,
         }
     }
 }
@@ -64,6 +70,15 @@ impl Drop for Scope {
 
 pub(super) fn current() -> GitExecutionOptions {
     OPTIONS.with(|current| current.borrow().clone())
+}
+
+/// The provenance of the running request's Git processes: the Git policy's, or the request
+/// envelope's when the policy names none.
+pub(super) fn source() -> super::console::Source {
+    match current().source {
+        super::console::Source::Unknown => crate::diagnostics::request_trace::current().source,
+        source => source,
+    }
 }
 
 /// Environment configuration and scope provenance require Git 2.31 or newer.
