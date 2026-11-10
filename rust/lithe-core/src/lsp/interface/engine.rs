@@ -60,6 +60,9 @@ static ENGINE: OnceLock<LspEngine> = OnceLock::new();
 #[path = "engine_function_relay.rs"]
 mod relay_hub;
 use relay_hub::RelayHub;
+#[path = "engine_function_provider.rs"]
+mod function_provider;
+pub use function_provider::function_provider_command;
 
 #[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]

@@ -1422,6 +1422,7 @@ package manager owns the download and Lithe does not infer bytes from logs.
 | `lsp.activationPolicy` | Decide whether a language server may start automatically after failures, using a platform monotonic clock |
 | `lsp.problems.query` | Filter, order, and group Problems tool-window diagnostics and count them by severity |
 | `lsp.documentUri` | Convert a native absolute path into a canonical file URI |
+| `lsp.documentIdentity` | Resolve a diagnostic URI or path strictly inside its workspace |
 | `lsp.startServer` | Start one Rust-owned process/session and begin initialization |
 | `lsp.jdtWorkspaceKey` | Derive the deterministic JDT LS workspace-state directory key |
 | `java.workspacePolicy` | Decide Java workspace activation and classify changed paths |
@@ -1579,12 +1580,19 @@ package manager owns the download and Lithe does not infer bytes from logs.
 | `debug.adapters.startArguments` | Check one debug start against a plugin's `debugAdapters[]` entry and return its DAP launch arguments |
 | `debug.adapters.executablePlan` | Say where to look for the program a launch debugs: the user's setting and the adapter's candidate paths |
 | `plugins.declarative.resolveSettings` | Merge a plugin's stored global and project setting layers into effective values with their source |
+| `plugins.installed.select` | Select numeric installed versions from native facts without reading paths |
+| `plugins.declarative.settingsState` | Read complete plugin preference documents into Core-normalized rows, sources, and bounded native read plans |
+| `plugins.declarative.editSettings` | Validate one atomic setting edit batch and return replacement text while preserving unrelated plugins and dormant values |
 | `plugins.declarative.workspaceConfiguration` | Expand a language server's `workspaceConfiguration` with the merged setting values |
 | `plugins.declarative.checkRuntimeVersion` | Decide whether a launch runtime's version output meets the declared minimum version |
 | `toolchains.registry` | Revalidate complete enabled plugin manifests, `{plugins:[{manifest}]}`, into a deterministic tool-definition/provider registry; the host supplies no origin evidence. A short tool ID defined by several enabled plugins belongs to none of them: none of those definitions is registered, the rest register as usual, and `conflicts: [{tool, pluginIDs}]` (sorted by tool, `pluginIDs` sorted) reports each contested tool. A repeated plugin ID rejects the batch. No native host capability claim |
 | `toolchains.decodeReply` | Validate an inert toolchain query/reply pair against bound provider identity, generation, declared tools and host-native filesystem evidence; no transport or native I/O |
 | `toolchains.failureReply` | Build the JSON-RPC error reply for a query that missed its deadline or found no backend, so the host passes it to `toolchains.decodeReply` like a provider's own error; cancellation has none |
 | `toolchains.resolvePins` | Validate a captured local document and find the nearest ancestor directory pin, retaining dormant and legacy entries without probing or writing |
+| `toolchains.editPins` | Apply one bounded batch of directory pin edits to a captured local document without writing native files |
+| `toolchains.pinStoragePlan` | Declare bounded workspace-native pin and ignore sources |
+| `toolchains.decodePinDocument` | Validate a complete native source or supply the absent-source default |
+| `toolchains.editPinSources` | Plan deterministic pin and Git ignore source edits without native I/O |
 | `toolchains.resolveConsumerPreferences` | Validate an inert consumer preference document and resolve one tool's explicit Run, consumer, directory or workspace choice while keeping workspace/consumer inheritance symbolic; no native files or launch authority |
 | `toolchains.editConsumerPreferences` | Edit or reset one exact consumer/directory tool preference; return the document and effective input without native writes |
 | `toolchains.resolve` | Resolve the fixed/project/global/automatic layers from one generation-bound snapshot, retaining unmet requirements, unavailable providers with their cause, conflicts and terminal fixed-value failures |
@@ -3726,6 +3734,18 @@ returns deterministically sorted `expiredWorkspaceKeys` older than the fixed
 enumeration, revalidation, deletion, and error logging; Core performs no cache
 filesystem I/O. See `shared/fixtures/lsp/jdt-cache-retention-v1.json`.
 
+`lsp.documentIdentity` accepts `{ workspaceRoot, input, platform }` with the same
+`posix | windows | auto` path syntax. It returns `{ document: { path, relativePath } | null }`.
+`input` may be a file URI, native absolute path, or workspace-relative path.
+Core reuses URI normalization and workspace containment; `path` uses the native
+separator and `relativePath` uses `/`. File URIs decode percent escapes and
+`localhost`; Windows drive/UNC aliases use existing case rules. Empty identities,
+non-file URIs, URI queries/fragments, drive-relative/rooted-without-drive Windows
+paths, the workspace root itself and outside targets return null. Native roots
+must be absolute; invalid requests return `invalid_request`. This is lexical
+placement only: it performs no I/O and grants no symlink or file access permission.
+See `shared/fixtures/lsp/document-identity-v1.json`.
+
 `lsp.documentUri` accepts `{ path, platform }` and returns `{ uri }`. `platform`
 is `posix`, `windows`, or `auto`; `auto` recognizes drive and UNC paths and
 otherwise treats an absolute path as POSIX. Paths must be absolute, contain no
@@ -5302,10 +5322,12 @@ Success returns `plan` (`executable`, `arguments`, `workingDirectory`, plus
 
 `plugins.declarative.languageServerLaunchPlan` accepts
 `{ "manifest": object, "languageID"?: string, "buildSystemID"?: string,
-"request": object }` with exactly one of `languageID` (a language server) and
-`buildSystemID` (a build provider); naming neither or both is an
-`invalid_request` failure. The request is `{ pluginDirectory, stateDirectory,
-workspaceStateDirectory, architecture, settings?, projectSettings? }`. The directories are absolute host paths used only
+"vcsProviderID"?: string, "backend"?: boolean, "debugAdapterID"?: string,
+"request": object }` with exactly one selector: `languageID` (a language server),
+`buildSystemID` (a build provider), `vcsProviderID` (a VCS provider),
+`backend: true` (the plugin backend), or `debugAdapterID` (a debug adapter).
+Naming none or more than one is an `invalid_request` failure. The request is `{ pluginDirectory, stateDirectory,
+workspaceStateDirectory?, logDirectory?, temporaryDirectory?, architecture, settings?, projectSettings? }`. The directories are absolute host paths used only
 as substitution text; the command does not read or create them. `settings` maps
 setting IDs to the values the user stored for every project, and
 `projectSettings` to the open project's overrides; a project value counts only
@@ -5323,6 +5345,12 @@ architecture or an empty directory is refused with
 `plugin.launch.invalidRequest`; a language without a server, an undeclared
 build system, and a build system without a provider with
 `plugin.launch.unavailable`.
+
+A backend plan additionally returns `backend.hostServices` (and `version`
+for backend capability version 2 and later). These are the declared grants;
+the host must provide only services it actually implements and must verify the
+package and approved programs before starting the plan. A VCS or debug-adapter
+plan likewise includes its corresponding typed descriptor.
 
 A language server declared with `launch.kind: "backend"` (`serverProcess` 3) has
 no command line in its manifest; the plugin's backend chooses it. The plan this
@@ -5444,6 +5472,106 @@ the same payload plus a required `languageID` and returns `configuration`,
 the expanded object, or `null` when that server declares none; a language
 without a server of the plugin is refused with `plugin.launch.unavailable`.
 Hosts never merge layers themselves.
+
+`plugins.declarative.settingsState` accepts
+`{ manifest, globalDocument?: string|null, projectDocument?: string|null,
+  owner?: { pluginID, version } }`.
+Send each complete captured UTF-8 document; null or omission means a missing
+file. An existing empty, malformed, oversized, or duplicate-key document is an
+error, not an empty layer. Native adapters must reject undecodable bytes rather
+than replacing them before JSON transport. Storage remains
+`{ pluginID: { settingID: value } }`, including dormant values.
+
+For an installed package, pass its captured registration as `owner`. Core
+rejects a mismatched manifest ID or version with `plugin.settings.ownerChanged`
+before returning editable sources or catalog metadata. This binds native package
+identity; it neither enables capabilities nor grants process execution.
+
+Success returns `{ status: "ok", state }`. The state contains:
+
+- `pluginID`, `actions`, and `rows` in validated declaration order. Each row has
+  `declaration`, normalized `scope` and `effect`, `global` and `effective`
+  `{ id, value, source }`, and `globalStored`/`projectStored` flags. `global` is
+  the value without project overrides; `effective` uses the existing resolver.
+- `metadata`: `{ displayName, version, vendor }` from the validated manifest,
+  for installed-plugin presentation without reinterpreting the manifest in a host.
+- `sections`: `{ title, rows: number[], actions: number[] }[]`, ordered by
+  section title (the empty heading first). References are zero-based indices
+  into `rows` and `actions`; declaration order is retained within each section.
+- `editors`: `{ global, project }`, each an array in exactly `rows` order.
+  Every entry contains `value`, `resetValue`, `source`, `editable`, `overridden`
+  and `invalidStored`, plus `input`/`resetInput` native-control projections.
+  These use `text` for integer/string/path fields, `on` for booleans, `selected`
+  for enum option index, or `checks` in multi-select option order. Core supplies the scope-specific value, inheritance after
+  reset, edit permission and invalid stored-value indication. Global-only rows
+  remain visible but read-only in the project projection. Hosts select a scope
+  and render this projection; they do not recompute grouping or inheritance.
+- `settings` and `projectSettings`: raw stored values for declared IDs only.
+  Pass these to launch planners. Do not replace them with effective values:
+  executable planning must still reject an explicitly invalid stored path.
+- `storage`: `{ globalRelativePath: "plugin-settings.json",
+  projectRelativePath: ".lithe/plugin-settings.json", maximumBytes: 1048576,
+  readRequired: bool }`. `readRequired` is false when the plugin has no setting
+  declarations; no preference document is then needed for that plugin.
+  Resolve these under the native application-preference and workspace roots.
+  A first call with missing documents provides this bounded read plan; publish
+  UI state only after the actual reads and the second checked projection.
+
+`plugins.declarative.editSettings` accepts
+`{ manifest, scope: "global"|"project", document?: string|null,
+  edits: [{ id, value, text?: string|null }] }`. The batch has 1–32 unique declared IDs.
+Null removes only that layer's override. Other values must satisfy the current
+setting declaration; a global-only setting cannot be edited in project scope.
+All edits are validated before any replacement is returned.
+
+Native text fields may supply `text` with `value: null`. Core parses trimmed
+signed decimal integer text for an integer declaration; other kinds receive a
+string and still pass the ordinary declaration validator. A non-null `value`
+and `text` cannot be combined. In this mode null is a transport placeholder,
+not a reset; without `text`, `value: null` keeps its existing reset meaning.
+Malformed integer text, overflow, range violations and unsupported shapes reject
+all edits. Editor text is bounded by the document byte limit. Hosts must not
+validate or clamp declaration limits in a second implementation.
+
+Success returns `{ status: "ok", edit: { document: string, delete: bool,
+changed: bool, effects: string[] } }`. `document` is complete UTF-8 JSON text.
+Unrelated plugin groups and dormant settings survive; an emptied edited group
+is removed. `delete` says the owned document is empty. `changed` compares stored
+values; a semantic no-op returns the captured text unchanged. `effects` lists
+only actually changed settings' declared effects, unique and alphabetically
+ordered. The source and result must each fit the storage byte limit.
+
+The native owner still confirms the scope, checks captured bytes and
+cancellation, preserves native permissions, publishes or deletes the owned
+file, and rereads that same source. A project switch cannot retarget a save.
+Only after publication may the host apply the declared effects. Core performs
+no file I/O, starts no process, and grants no plugin capability through these
+commands. They do not alter the plugin/SDK protocol or justify advertising
+`settings: 2` before its complete UI and effects are implemented.
+
+Invalid documents use `plugin.settings.invalidDocument`; invalid batches,
+values, or edit scopes use `plugin.settings.invalidEdit`, with a safe `field`.
+Malformed envelopes use `invalid_request`; manifest failures retain existing
+rejection codes. Rejection never includes partial replacement text. Rust and
+desktop consumers share `shared/fixtures/plugins/settings-documents.json`.
+
+`plugins.installed.select` accepts `{ entries: [{ pluginID, version, enabled }],
+includeDisabled?: bool }`, with at most 4096 native records. It returns
+`{ selected: number[], rejected: [{ index, code }], maximumEntries: 4096 }`.
+Indices refer to the supplied native array; paths stay in the host. Core reuses
+its existing three-component `PluginVersion` comparator (numeric u32 components)
+and returns one newest valid version per opaque native identity, ordered by ID.
+Equal numeric versions retain the first input record; an exact duplicate version
+is rejected rather than replacing that record. Enablement filters only after the
+newest version is chosen, so a disabled newer version cannot revive an older one.
+`includeDisabled: true` is for settings/inventory, not permission to execute.
+Invalid identity/version records and later exact duplicates use
+`plugin.installed.invalidIdentity`, `plugin.installed.invalidVersion`, and
+`plugin.installed.duplicateVersion` indexed diagnostics. Healthy selections remain
+available; the native owner must report diagnostics and must not abandon a
+successfully started session merely because other plugins failed discovery.
+This is metadata selection, not manifest validation, approval or admission.
+Shared cases are in `shared/fixtures/plugins/installed-versions.json`.
 
 `plugins.declarative.checkRuntimeVersion` accepts
 `{ tool, minimumVersion, output }`, where `output` is what the runtime printed
@@ -7015,3 +7143,143 @@ rename) before deleting anything. The result is `{delete, keep, seed}`, the firs
 seven days old or of unknown age), `abandoned` and `expired` (deleted). The cache and the
 ledger live in the platform cache directory, never in the app bundle or install directory.
 The fixture is `shared/fixtures/agent/attachment-retention-v1.json`.
+
+### Atomic local toolchain pin editing
+
+`toolchains.editPins` accepts `{document,directory,edits:[{tool,pin}]}` and returns
+`{status:"ok",edit:{document}}`. It uses the v1 local toolchain document and the
+same normalized directory, tool ID, pin and size limits as `resolvePins`.
+A batch contains 1–64 unique tool IDs. `pin:null` removes that directory's explicit
+override (ancestor inheritance remains effective); a pin object replaces it.
+Only emptied containers on the edited path are pruned. Legacy `toolchains`,
+dormant pins and unrelated directories remain intact. Unknown fields, duplicate
+IDs, malformed pins and over-budget documents reject the whole batch with no
+partial document. Rejections use the existing `plugin.toolchain.invalidParams`
+and `plugin.toolchain.limitExceeded` structured error envelope.
+
+The command performs no I/O and grants no execution authority. The host owns
+explicit Save confirmation, byte-baseline conflict detection, cancellation,
+ignore-file preparation, atomic native replacement, and re-reading the source.
+See `shared/fixtures/toolchain-pin-edit.json` for the cross-client vector.
+
+### Native toolchain pin sources
+
+`toolchains.pinStoragePlan` accepts `{}` and returns
+`{status:"ok",storage:{documentRelativePath,ignoreRelativePath,maximumDocumentBytes,maximumIgnoreBytes}}`.
+Paths are workspace-relative: `.lithe/toolchains/local.json` (1 MiB) and
+`.lithe/.gitignore` (64 KiB). Hosts read bounded UTF-8 sources through their
+native storage adapter, without creating directories during reads.
+
+`toolchains.decodePinDocument` accepts `{document:string|null}` and returns
+`{status:"ok",document:<validated v1 document>}`. Null means absent and supplies
+the empty default. Existing empty, malformed, duplicate-key or invalid dormant
+entries reject with `plugin.toolchain.invalidDocument`.
+
+`toolchains.editPinSources` accepts
+`{document:string|null,ignoreDocument:string|null,directory,edits:[{tool,pin}]}`
+and returns `{status:"ok",edit:{document,documentChanged,ignoreDocument,ignoreChanged}}`.
+A semantic no-op preserves both exact sources, including absence. A changed
+pin document is serialized deterministically; the ignore matcher preserves
+an already effective ignore rule or appends `/toolchains/local.json` after any
+negation, preserving existing text and newline convention. Ignore parsing is
+bounded to 4096 lines when preparing a changed pin document; NUL and invalid patterns reject with
+`plugin.toolchain.invalidIgnore`. Input and output budgets reject with
+`plugin.toolchain.limitExceeded`; invalid request shapes use
+`plugin.toolchain.invalidParams`. The matcher never reads files or global rules.
+
+These commands perform no native I/O. Hosts bind captured bytes and native root
+identity, recheck both even for no-op saves, preserve metadata, and publish the
+ignore prerequisite before the pin document. A document already committed
+followed by cleanup/readback failure must invalidate the old draft baseline:
+reload before retrying. User-selected workspace storage never changes an
+installed app or plugin bundle. See `shared/fixtures/toolchain-pin-storage.json`.
+
+### Debug launch response ordering
+
+A debug adapter may emit `stopped` or `terminated` before replying to `launch`
+or `attach`. The acknowledgement completes that operation; it changes state to
+`running` only if the session is still `launching`. It never resumes a paused
+target or resurrects a terminated one. See
+`shared/fixtures/debug/launch-event-order.json`. Hosts serialize each Core update,
+its outbound frames and its UI publication in the order returned by the engine.
+
+### Settings action planning
+
+`plugins.declarative.settingsActionPlan` accepts
+`{manifest,owner:{pluginID,version},actionID,confirmed,workspaceAvailable,enabled}`.
+All fields are required and unknown fields reject. It validates the complete
+manifest and its captured installed identity, then resolves the declared action
+without starting a process or reading preferences. Unknown actions reject with
+`plugin.settings.actionUnavailable`; registration mismatch uses
+`plugin.settings.ownerChanged`, in the ordinary declarative rejection envelope.
+
+The success envelope is `{status:"ok",plan:{kind,pluginID,version,actionID,title,...}}`.
+A disabled plugin returns `kind:"unavailable",reason:"pluginDisabled"`.
+Without an open project, `kind:"unavailable",reason:"projectRequired"` contains
+no function invocation. Otherwise an unconfirmed action whose declaration has
+`confirm:true` returns `kind:"confirmationRequired"`, also without a function.
+Once confirmed (or when the declaration needs no confirmation), `kind:"invoke"`
+adds `function` and `params:{}`. Labels and function identity always come from
+the validated manifest; callers cannot supply a different target or arguments.
+See `shared/fixtures/plugins/settings-actions.json`.
+
+`confirmed` and `workspaceAvailable` are facts from the native owner, not a
+capability grant. The host must capture user confirmation, check the installed
+package and project identity again before invocation, and use that plugin's
+provider session for the open project. Core's existing `lsp.functionRequest`
+continues to enforce runtime function registration, owner and permissions.
+This internal desktop C ABI command does not add a plugin host method or change
+the published plugin function protocol. Progress, cancellation and completion
+use the existing session event stream; settings drafts are not saved implicitly.
+
+### Workspace-bound function provider discovery
+
+Direct and backend-resolved plugin process plans include
+`owner:{pluginID,version}` from the validated manifest. Native session handles
+retain that version without inferring it from a path or mutable settings draft.
+
+`lsp.functionProvider` accepts `{pluginID,version,function,rootUri,candidates}`.
+`rootUri` is the canonical file URI produced by `lsp.documentUri` for the
+requesting workspace. Each native-owned candidate is `{sessionID,version}`;
+at most 64 unique IDs may be supplied. Strings and the root URI are bounded.
+Malformed or duplicate facts reject with `InvalidRequest`.
+
+The result is `{sessionID:string|null}`. Core requires the expected native
+version, the actual runtime plugin owner, the same file workspace URI and a
+ready session with the function currently registered. Candidate order does not
+affect selection: the first matching session ID in lexical order wins. This
+query performs no I/O, starts nothing and does not consume runtime events.
+There is no cross-workspace fallback. An absent match is explicit null; normal
+startup/admission and later function invocation checks remain required.
+The pure selection vector is `shared/fixtures/plugins/settings-function-provider.json`.
+This is an internal desktop command, not a new public plugin host method.
+
+### Dynamic plugin settings surfaces
+
+Internal desktop commands reuse the validated settings v2 manifest. They do not
+add plugin RPCs or admit capabilities. `plugins.settings.catalog` accepts up to
+64 `{manifest, owner: {pluginID, version}, enabled}` records. It validates all
+identities, rejects duplicates and returns deterministic `pages` (up to 512),
+with stable `key`, `kind` (`language` or `buildSystem`), opaque `id`, display
+`title`, and plugin-ID ordered `contributors` (`pluginID`, `version`, `title`,
+`sections`). Sections reference indices in the complete settingsState rows and
+actions. Only enabled contributors create pages; action-only pages are valid.
+Names come from enabled language/build declarations, with opaque ID fallback.
+`settingsState.pages` supplies the same per-plugin placement projections.
+
+`plugins.settings.navigation` accepts at most 576 two-level `items` (512 contributed pages plus 64 host entries) with stable
+`id`, `title`, nullable `parent`, `group`, `expanded`, optional `keywords`, plus
+`query` (at most 1024 bytes). It returns `rows` containing id/title/group/expanded/level.
+Search retains ancestors and expands matching groups; ordering follows input.
+Duplicate IDs, invalid parents and excessive input are rejected.
+
+`plugins.settings.delivery` accepts `scope` (global/project), native equality
+facts `samePreferences`, `sameWorkspace`, `sameVersion`, current `enabled`, and
+at most four declared `effects`. It returns `delivery: {refresh, effects}`.
+Global changes reach matching preference stores and versions; project changes
+additionally require native workspace identity equality. Disabled plugins may
+refresh displayed sources but receive no runtime effects. Effects are sorted
+and deduplicated. No setting values cross windows: receivers read their own
+project layers. Native owners must recheck window/project lifetime on delivery.
+Invalid surface input returns `plugin.settings.invalidSurface`; owner mismatch
+returns `plugin.settings.ownerChanged`. Shared vectors: `shared/fixtures/plugins/settings-surfaces.json`.

@@ -368,6 +368,41 @@ fn execute_parsed(mut parsed: CoreRequest) -> CoreResponse {
             parsed.payload,
             crate::plugins::declarative::resolve_settings_command,
         ),
+        CoreCommand::PluginsInstalledSelect => plugin_response(
+            id,
+            parsed.payload,
+            crate::plugins::installed::select_command,
+        ),
+        CoreCommand::PluginsSettingsCatalog => plugin_response(
+            id,
+            parsed.payload,
+            crate::plugins::declarative::settings_catalog_command,
+        ),
+        CoreCommand::PluginsSettingsNavigation => plugin_response(
+            id,
+            parsed.payload,
+            crate::plugins::declarative::settings_navigation_command,
+        ),
+        CoreCommand::PluginsSettingsDelivery => plugin_response(
+            id,
+            parsed.payload,
+            crate::plugins::declarative::settings_delivery_command,
+        ),
+        CoreCommand::PluginsDeclarativeSettingsState => plugin_response(
+            id,
+            parsed.payload,
+            crate::plugins::declarative::settings_state_command,
+        ),
+        CoreCommand::PluginsDeclarativeSettingsActionPlan => plugin_response(
+            id,
+            parsed.payload,
+            crate::plugins::declarative::settings_action_plan_command,
+        ),
+        CoreCommand::PluginsDeclarativeEditSettings => plugin_response(
+            id,
+            parsed.payload,
+            crate::plugins::declarative::edit_settings_command,
+        ),
         CoreCommand::PluginsDeclarativeWorkspaceConfiguration => plugin_response(
             id,
             parsed.payload,
@@ -431,6 +466,24 @@ fn execute_parsed(mut parsed: CoreRequest) -> CoreResponse {
         CoreCommand::ToolchainsResolvePins => {
             plugin_response(id, parsed.payload, crate::toolchain::resolve_pins_command)
         }
+        CoreCommand::ToolchainsEditPins => {
+            plugin_response(id, parsed.payload, crate::toolchain::edit_pins_command)
+        }
+        CoreCommand::ToolchainsPinStoragePlan => plugin_response(
+            id,
+            parsed.payload,
+            crate::toolchain::pin_storage_plan_command,
+        ),
+        CoreCommand::ToolchainsDecodePinDocument => plugin_response(
+            id,
+            parsed.payload,
+            crate::toolchain::decode_pin_document_command,
+        ),
+        CoreCommand::ToolchainsEditPinSources => plugin_response(
+            id,
+            parsed.payload,
+            crate::toolchain::edit_pin_sources_command,
+        ),
         CoreCommand::ToolchainsResolveConsumerPreferences => plugin_response(
             id,
             parsed.payload,
@@ -1857,6 +1910,11 @@ fn execute_parsed(mut parsed: CoreRequest) -> CoreResponse {
                 Err(error) => CoreResponse::failure(id, error),
             }
         }
+        CoreCommand::LspDocumentIdentity => plugin_response(
+            id,
+            parsed.payload,
+            crate::lsp::document_identity::resolve_command,
+        ),
         CoreCommand::LspPlanWorkspaceEdit => plugin_response(
             id,
             parsed.payload,
@@ -2224,6 +2282,9 @@ fn execute_parsed(mut parsed: CoreRequest) -> CoreResponse {
                 ),
                 Err(error) => CoreResponse::failure(id, error),
             }
+        }
+        CoreCommand::LspFunctionProvider => {
+            plugin_response(id, parsed.payload, crate::lsp::function_provider_command)
         }
         CoreCommand::LspFunctionRequest => {
             match serde_json::from_value::<crate::lsp::PluginFunctionRequest>(parsed.payload)

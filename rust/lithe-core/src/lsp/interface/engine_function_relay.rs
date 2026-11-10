@@ -638,7 +638,7 @@ pub(super) fn observe_functions_changed(session: &RuntimeSession) {
 
 impl RuntimeSession {
     /// Whether a call to `function_id` can be written to this session now.
-    fn serves_function(&self, function_id: &str) -> bool {
+    pub(super) fn serves_function(&self, function_id: &str) -> bool {
         let Ok(state) = self.lock_state() else {
             return false;
         };

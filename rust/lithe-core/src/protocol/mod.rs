@@ -5,6 +5,7 @@ mod command;
 mod contracts;
 mod error;
 mod event;
+pub(crate) mod json_document;
 
 pub use command::*;
 pub use contracts::*;

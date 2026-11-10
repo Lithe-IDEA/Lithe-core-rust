@@ -259,3 +259,111 @@ fn toolchain_pins_enforce_collection_and_text_limits_before_resolution() {
         "plugin.toolchain.limitExceeded"
     );
 }
+
+/// Calls the public JSON boundary so an unregistered command cannot pass.
+fn edit(payload: Value) -> Value {
+    serde_json::from_str(&crate::execute_json(
+        &json!({"id":"pin-edit","command":"toolchains.editPins","payload":payload}).to_string(),
+    ))
+    .unwrap()
+}
+
+#[test]
+fn toolchain_pin_edits_preserve_siblings_and_remove_only_the_selected_override() {
+    let document = local_pins();
+    let changed = edit(json!({"document":document,"directory":"apps/web","edits":[
+        {"tool":"java","pin":null},
+        {"tool":"node","pin":pin("/opt/lithe-fixtures/node")}
+    ]}));
+    assert_eq!(changed["ok"], true, "{changed}");
+    assert_eq!(changed["data"]["status"], "ok", "{changed}");
+    let result = &changed["data"]["edit"]["document"];
+    assert_eq!(result["toolchains"], document["toolchains"]);
+    assert_eq!(result["pins"]["."], document["pins"]["."]);
+    assert_eq!(
+        result["pins"][".config/tools"],
+        document["pins"][".config/tools"]
+    );
+    assert!(result["pins"]["apps/web"].get("java").is_none());
+    assert_eq!(
+        result["pins"]["apps/web"]["node"],
+        pin("/opt/lithe-fixtures/node")
+    );
+    assert_eq!(
+        resolve(result, "apps/web/src", "java")["sourceDirectory"],
+        "."
+    );
+}
+
+#[test]
+fn toolchain_pin_edits_reject_invalid_batches_without_a_partial_document() {
+    for edits in [
+        json!([]),
+        json!([{"tool":"java","pin":pin("relative")}]),
+        json!([{"tool":"java","pin":null},{"tool":"java","pin":null}]),
+        json!([{"tool":"java"}]),
+        json!([{"tool":"java","pin":null,"extra":true}]),
+    ] {
+        let response = edit(json!({"document":local_pins(),"directory":".","edits":edits}));
+        assert_eq!(response["data"]["status"], "rejected", "{response}");
+        assert!(response["data"].get("edit").is_none(), "{response}");
+    }
+    let response = edit(
+        json!({"document":local_pins(),"directory":"../outside","edits":[{"tool":"java","pin":null}]}),
+    );
+    assert_eq!(response["data"]["status"], "rejected", "{response}");
+}
+
+#[test]
+fn toolchain_pin_edits_prune_empty_containers_and_leave_absent_removals_inert() {
+    let document =
+        json!({"version":1,"toolchains":{},"pins":{".":{"java":pin("/opt/lithe-fixtures/java")}}});
+    let response =
+        edit(json!({"document":document,"directory":".","edits":[{"tool":"java","pin":null}]}));
+    assert_eq!(
+        response["data"]["edit"]["document"],
+        json!({"version":1,"toolchains":{}})
+    );
+    let document = json!({"version":1,"toolchains":{}});
+    let response =
+        edit(json!({"document":document,"directory":"src","edits":[{"tool":"node","pin":null}]}));
+    assert_eq!(response["data"]["edit"]["document"], document);
+}
+
+#[test]
+fn toolchain_pin_edits_match_the_shared_boundary_fixture() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../shared/fixtures/toolchain-pin-edit.json"
+    ))
+    .unwrap();
+    let response = edit(fixture["request"].clone());
+    assert_eq!(response["data"]["edit"]["document"], fixture["document"]);
+}
+
+#[test]
+fn toolchain_pin_edits_enforce_final_collection_limits_and_validate_the_source() {
+    let mut request =
+        json!({"document":local_pins(),"directory":".","edits":[{"tool":"java","pin":null}]});
+    request["document"]["unknown"] = json!(true);
+    assert_eq!(edit(request)["data"]["status"], "rejected");
+    let edits: Vec<_> = (0..65)
+        .map(|index| json!({"tool":format!("tool-{index}"),"pin":null}))
+        .collect();
+    let response = edit(json!({"document":local_pins(),"directory":".","edits":edits}));
+    assert_eq!(
+        response["data"]["error"]["code"],
+        "plugin.toolchain.limitExceeded"
+    );
+    let tools: serde_json::Map<String, Value> = (0..64)
+        .map(|index| (format!("tool-{index}"), pin("/fixture/tool")))
+        .collect();
+    let document = json!({"version":1,"toolchains":{},"pins":{".":tools}});
+    let response = edit(
+        json!({"document":document,"directory":".","edits":[{"tool":"extra","pin":pin("/fixture/extra")}]}),
+    );
+    assert_eq!(
+        response["data"]["error"]["code"],
+        "plugin.toolchain.limitExceeded"
+    );
+    assert!(response["data"].get("edit").is_none());
+}

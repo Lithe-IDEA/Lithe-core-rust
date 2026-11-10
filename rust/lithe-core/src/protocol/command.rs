@@ -158,6 +158,20 @@ pub enum CoreCommand {
     PluginsDeclarativeCheckRuntimeVersion,
     /// Merges a plugin's stored setting layers into effective values (`plugins.declarative.resolveSettings`).
     PluginsDeclarativeResolveSettings,
+    /// Projects stored documents into plugin setting rows and launch layers.
+    PluginsDeclarativeSettingsState,
+    /// Projects enabled plugin settings pages from installed manifests.
+    PluginsSettingsCatalog,
+    /// Projects searched settings navigation without platform policy.
+    PluginsSettingsNavigation,
+    /// Routes committed preference effects using native ownership facts.
+    PluginsSettingsDelivery,
+    /// Resolves an installed settings action and its native confirmation requirement.
+    PluginsDeclarativeSettingsActionPlan,
+    /// Selects numeric installed versions and reports malformed native facts.
+    PluginsInstalledSelect,
+    /// Validates an atomic plugin settings edit and preserves unrelated values.
+    PluginsDeclarativeEditSettings,
     /// Expands a language server's `workspaceConfiguration` (`plugins.declarative.workspaceConfiguration`).
     PluginsDeclarativeWorkspaceConfiguration,
     /// Validates a language's grammar file (`plugins.declarative.decodeGrammar`).
@@ -182,6 +196,14 @@ pub enum CoreCommand {
     ToolchainsFailureReply,
     /// Resolves the nearest machine-local directory pin.
     ToolchainsResolvePins,
+    /// Edits a bounded batch of machine-local directory pins without native writes.
+    ToolchainsEditPins,
+    /// Plans native workspace pin source paths and byte budgets.
+    ToolchainsPinStoragePlan,
+    /// Parses a complete native pin document or its absent-source default.
+    ToolchainsDecodePinDocument,
+    /// Plans complete pin and ignore source edits without native writes.
+    ToolchainsEditPinSources,
     /// Resolves consumer defaults while keeping workspace inheritance symbolic.
     ToolchainsResolveConsumerPreferences,
     /// Edits one machine-local consumer preference and returns its effective input.
@@ -462,6 +484,8 @@ pub enum CoreCommand {
     /// Validates workspace-edit targets and orders their commit
     /// (`lsp.planWorkspaceEdit`).
     LspPlanWorkspaceEdit,
+    /// Resolves a diagnostic identity inside its workspace (`lsp.documentIdentity`).
+    LspDocumentIdentity,
     /// Decides whether a language-server jump target opens, opens read-only
     /// or is refused (`lsp.classifyNavigationTarget`).
     LspClassifyNavigationTarget,
@@ -525,6 +549,8 @@ pub enum CoreCommand {
     LspKeymapImportRequest,
     /// Invokes one plugin function (`lsp.functionRequest`).
     LspFunctionRequest,
+    /// Selects a registered function provider strictly inside one workspace.
+    LspFunctionProvider,
     /// Replaces the plugins and workspace contexts the cross-plugin function
     /// relay checks calls against (`lsp.configureFunctionRelay`).
     LspConfigureFunctionRelay,
@@ -863,6 +889,15 @@ impl CoreCommand {
                 Some(Self::PluginsDeclarativeCheckRuntimeVersion)
             }
             "plugins.declarative.resolveSettings" => Some(Self::PluginsDeclarativeResolveSettings),
+            "plugins.settings.catalog" => Some(Self::PluginsSettingsCatalog),
+            "plugins.settings.navigation" => Some(Self::PluginsSettingsNavigation),
+            "plugins.settings.delivery" => Some(Self::PluginsSettingsDelivery),
+            "plugins.declarative.settingsState" => Some(Self::PluginsDeclarativeSettingsState),
+            "plugins.declarative.settingsActionPlan" => {
+                Some(Self::PluginsDeclarativeSettingsActionPlan)
+            }
+            "plugins.installed.select" => Some(Self::PluginsInstalledSelect),
+            "plugins.declarative.editSettings" => Some(Self::PluginsDeclarativeEditSettings),
             "plugins.declarative.workspaceConfiguration" => {
                 Some(Self::PluginsDeclarativeWorkspaceConfiguration)
             }
@@ -879,6 +914,10 @@ impl CoreCommand {
             "toolchains.decodeReply" => Some(Self::ToolchainsDecodeReply),
             "toolchains.failureReply" => Some(Self::ToolchainsFailureReply),
             "toolchains.resolvePins" => Some(Self::ToolchainsResolvePins),
+            "toolchains.editPins" => Some(Self::ToolchainsEditPins),
+            "toolchains.pinStoragePlan" => Some(Self::ToolchainsPinStoragePlan),
+            "toolchains.decodePinDocument" => Some(Self::ToolchainsDecodePinDocument),
+            "toolchains.editPinSources" => Some(Self::ToolchainsEditPinSources),
             "toolchains.resolveConsumerPreferences" => {
                 Some(Self::ToolchainsResolveConsumerPreferences)
             }
@@ -1019,6 +1058,7 @@ impl CoreCommand {
             "debug.destroySession" => Some(Self::DebugDestroySession),
             "lsp.applyTextEdits" => Some(Self::LspApplyTextEdits),
             "lsp.planWorkspaceEdit" => Some(Self::LspPlanWorkspaceEdit),
+            "lsp.documentIdentity" => Some(Self::LspDocumentIdentity),
             "lsp.classifyNavigationTarget" => Some(Self::LspClassifyNavigationTarget),
             "editor.lineEdit" => Some(Self::EditorLineEdit),
             "editor.planTextEdits" => Some(Self::EditorPlanTextEdits),
@@ -1047,6 +1087,7 @@ impl CoreCommand {
             "lsp.toolchainRequest" => Some(Self::LspToolchainRequest),
             "lsp.keymapImportRequest" => Some(Self::LspKeymapImportRequest),
             "lsp.functionRequest" => Some(Self::LspFunctionRequest),
+            "lsp.functionProvider" => Some(Self::LspFunctionProvider),
             "lsp.configureFunctionRelay" => Some(Self::LspConfigureFunctionRelay),
             "lsp.hostResponse" => Some(Self::LspHostResponse),
             "lsp.hostNotify" => Some(Self::LspHostNotify),

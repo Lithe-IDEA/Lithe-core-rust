@@ -12,6 +12,8 @@ pub(crate) mod executables;
 pub(crate) mod grammar;
 /// Public host-method catalog and authorization for platform dispatchers.
 pub(crate) mod host_api;
+/// Numeric version selection over bounded native installation facts.
+pub mod installed;
 pub(crate) mod keymap_import;
 /// Session fields of plugin-owned language servers and the launch their
 /// backend resolves.

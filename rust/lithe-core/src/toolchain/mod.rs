@@ -5,6 +5,7 @@
 pub(crate) mod definitions;
 pub(crate) mod fixed;
 pub(crate) mod paths;
+mod pin_sources;
 pub(crate) mod pins;
 pub(crate) mod preferences;
 pub(crate) mod query;
@@ -52,6 +53,26 @@ pub fn failure_reply_command(input: Value) -> Result<Value, CoreError> {
 /// Reads the nearest directory pin without opening or writing native files.
 pub fn resolve_pins_command(input: Value) -> Result<Value, CoreError> {
     command(input, pins::resolve, "resolution")
+}
+
+/// Applies one atomic batch of inert directory-pin edits without native writes.
+pub fn edit_pins_command(input: Value) -> Result<Value, CoreError> {
+    command(input, pins::edit, "edit")
+}
+
+/// Plans bounded reads of native workspace pin sources without opening them.
+pub fn pin_storage_plan_command(input: Value) -> Result<Value, CoreError> {
+    command(input, pin_sources::storage_plan, "storage")
+}
+
+/// Decodes a complete pin source without host-side schema parsing.
+pub fn decode_pin_document_command(input: Value) -> Result<Value, CoreError> {
+    command(input, pin_sources::decode, "document")
+}
+
+/// Plans conditional publication of the pin document and its ignore prerequisite.
+pub fn edit_pin_sources_command(input: Value) -> Result<Value, CoreError> {
+    command(input, pin_sources::edit, "edit")
 }
 
 /// Resolves inert consumer choices without materializing symbolic inheritance.
