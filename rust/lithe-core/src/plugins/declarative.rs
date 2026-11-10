@@ -5064,8 +5064,8 @@ pub fn settings_state_command(payload: Value) -> Result<Value, CoreError> {
             }) {
                 return Err(PluginRejection::at(
                     "plugin.settings.ownerChanged",
-                    "The manifest does not match the captured installed package identity.",
                     "owner",
+                    "The manifest does not match the captured installed package identity.",
                 ));
             }
             super::settings::document_state(

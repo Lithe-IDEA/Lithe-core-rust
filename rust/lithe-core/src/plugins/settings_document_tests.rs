@@ -21,6 +21,29 @@ fn execute(command: &str, payload: Value) -> Value {
 }
 
 #[test]
+fn settings_owner_mismatch_reports_the_owner_field_without_exposing_state() {
+    let declared = manifest();
+    for owner in [
+        json!({"pluginID":"dev.example.other", "version":declared["version"]}),
+        json!({"pluginID":declared["id"], "version":"999.0.0"}),
+    ] {
+        let response = execute(
+            "plugins.declarative.settingsState",
+            json!({"manifest":declared, "owner":owner}),
+        );
+        let data = &response["data"];
+        assert_eq!(data["status"], "rejected", "{response}");
+        assert_eq!(data["error"]["code"], "plugin.settings.ownerChanged");
+        assert_eq!(data["error"]["field"], "owner");
+        assert_eq!(
+            data["error"]["message"],
+            "The manifest does not match the captured installed package identity."
+        );
+        assert!(data.get("state").is_none());
+    }
+}
+
+#[test]
 fn settings_state_dispatches_with_core_owned_sources_and_normalized_scope() {
     let result = execute(
         "plugins.declarative.settingsState",
