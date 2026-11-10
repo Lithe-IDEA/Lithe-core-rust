@@ -148,9 +148,10 @@ pub fn catalog(options: &[SessionConfigOption]) -> Vec<CatalogOption> {
                 return None;
             };
             let choices = match &select.options {
-                SessionConfigSelectOptions::Ungrouped(values) => {
-                    values.iter().map(|value| value.value.0.to_string()).collect()
-                }
+                SessionConfigSelectOptions::Ungrouped(values) => values
+                    .iter()
+                    .map(|value| value.value.0.to_string())
+                    .collect(),
                 SessionConfigSelectOptions::Grouped(groups) => groups
                     .iter()
                     .flat_map(|group| group.options.iter())
@@ -215,7 +216,11 @@ mod tests {
                     }
                 }
             };
-            assert_eq!(Value::Array(sent), case["expected"]["requests"], "{name} requests");
+            assert_eq!(
+                Value::Array(sent),
+                case["expected"]["requests"],
+                "{name} requests"
+            );
             assert_eq!(
                 failure.map(|failure| serde_json::to_value(failure).unwrap()),
                 case["expected"]["failure"].as_str().map(Value::from),

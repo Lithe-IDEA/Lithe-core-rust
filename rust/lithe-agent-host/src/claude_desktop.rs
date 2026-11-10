@@ -111,7 +111,10 @@ impl Presenter {
                         "kind": "other",
                         "status": "completed",
                     });
-                    set_card(&mut replies, json!({"card": "nextStep", "actions": actions}));
+                    set_card(
+                        &mut replies,
+                        json!({"card": "nextStep", "actions": actions}),
+                    );
                     shown.push(replies);
                 }
                 shown
@@ -128,16 +131,32 @@ impl Presenter {
                 // Shown as the state of the card it withdraws, once the result confirms it.
                 if let Some(task) = str_field(&input, "task_id") {
                     let call = readable_call(update, "Withdrew a suggested task");
-                    self.task_changes.insert(id.clone(), TaskChange { task: task.to_owned(), state: "withdrawn", call });
+                    self.task_changes.insert(
+                        id.clone(),
+                        TaskChange {
+                            task: task.to_owned(),
+                            state: "withdrawn",
+                            call,
+                        },
+                    );
                 }
                 self.absorbed.insert(id);
                 Vec::new()
             }
             "mcp__ccd_session__start_session" if str_field(&input, "proposal_id").is_some() => {
                 // Starting a proposed card: the card itself changes state.
-                let task = str_field(&input, "proposal_id").unwrap_or_default().to_owned();
+                let task = str_field(&input, "proposal_id")
+                    .unwrap_or_default()
+                    .to_owned();
                 let call = readable_call(update, "Started a suggested task");
-                self.task_changes.insert(id.clone(), TaskChange { task, state: "started", call });
+                self.task_changes.insert(
+                    id.clone(),
+                    TaskChange {
+                        task,
+                        state: "started",
+                        call,
+                    },
+                );
                 self.absorbed.insert(id);
                 Vec::new()
             }
@@ -205,7 +224,13 @@ impl Presenter {
         self.change_task(&change.task, state)
     }
 
-    fn retitle(&mut self, id: String, mut update: Value, title: &str, kind: &'static str) -> Vec<Value> {
+    fn retitle(
+        &mut self,
+        id: String,
+        mut update: Value,
+        title: &str,
+        kind: &'static str,
+    ) -> Vec<Value> {
         update["title"] = json!(title);
         update["kind"] = json!(kind);
         self.titles.insert(id, (title.to_owned(), kind));
@@ -242,7 +267,13 @@ pub(crate) fn carries_card_input(name: &str) -> bool {
         .is_some_and(|(server, _)| {
             matches!(
                 server,
-                "ccd_turn" | "ccd_session" | "ccd_pr" | "ccd_directory" | "ccd_view" | "ccd_host" | "visualize"
+                "ccd_turn"
+                    | "ccd_session"
+                    | "ccd_pr"
+                    | "ccd_directory"
+                    | "ccd_view"
+                    | "ccd_host"
+                    | "visualize"
             )
         })
 }
@@ -261,11 +292,19 @@ struct Described {
 
 impl Described {
     fn row(title: impl Into<String>, kind: &'static str) -> Self {
-        Self { title: title.into(), kind, locations: Vec::new(), card: None }
+        Self {
+            title: title.into(),
+            kind,
+            locations: Vec::new(),
+            card: None,
+        }
     }
 
     fn card(title: impl Into<String>, card: Value) -> Self {
-        Self { card: Some(card), ..Self::row(title, "other") }
+        Self {
+            card: Some(card),
+            ..Self::row(title, "other")
+        }
     }
 }
 
@@ -289,14 +328,21 @@ fn describe(name: &str, input: &Value) -> Option<Described> {
             None,
             field("prompt"),
             // The model may only propose; a start the user asked for runs at once.
-            if field("initiation") == Some("own_initiative") { "proposed" } else { "started" },
+            if field("initiation") == Some("own_initiative") {
+                "proposed"
+            } else {
+                "started"
+            },
         ),
         ("ccd_session", "hand_off_to_session") => {
             let plan = field("remaining_plan");
-            let summary = plan.and_then(|plan| plan.lines().map(str::trim).find(|line| !line.is_empty()));
+            let summary =
+                plan.and_then(|plan| plan.lines().map(str::trim).find(|line| !line.is_empty()));
             task_card(field("title")?, summary, plan, "handedOff")
         }
-        ("ccd_session", "read_widget_context") => Described::row("Read the widget's context", "read"),
+        ("ccd_session", "read_widget_context") => {
+            Described::row("Read the widget's context", "read")
+        }
         ("ccd_pr", "get_status") => Described::row("Checked the pull request status", "read"),
         ("ccd_pr", action @ ("bind_pr" | "unbind_pr" | "set_monitor" | "set_auto_merge")) => {
             let url = field("url");
@@ -315,12 +361,18 @@ fn describe(name: &str, input: &Value) -> Option<Described> {
                 "autoMerge" => card["enabled"] = json!(input["enabled"] != false),
                 _ => {}
             }
-            let title = url.map_or("Pull request".to_owned(), |url| format!("Pull request {url}"));
+            let title = url.map_or("Pull request".to_owned(), |url| {
+                format!("Pull request {url}")
+            });
             Described::card(title, card)
         }
         ("ccd_directory", action @ ("change_directory" | "request_directory")) => {
             let path = field("path")?;
-            let action = if action == "change_directory" { "changed" } else { "requested" };
+            let action = if action == "change_directory" {
+                "changed"
+            } else {
+                "requested"
+            };
             Described::card(
                 format!("Working folder {path}"),
                 json!({"card": "directory", "action": action, "path": path}),
@@ -331,20 +383,31 @@ fn describe(name: &str, input: &Value) -> Option<Described> {
                 locations: vec![json!({"path": path})],
                 ..Described::row(format!("Showed {path}"), "read")
             },
-            None => Described::row(format!("Showed the {} pane", field("pane").unwrap_or("side")), "other"),
+            None => Described::row(
+                format!("Showed the {} pane", field("pane").unwrap_or("side")),
+                "other",
+            ),
         },
         ("ccd_host", tool @ ("open_in_editor" | "reveal_path")) => {
             let path = field("path")?;
-            let verb = if tool == "open_in_editor" { "Opened" } else { "Revealed" };
+            let verb = if tool == "open_in_editor" {
+                "Opened"
+            } else {
+                "Revealed"
+            };
             let mut location = json!({"path": path});
             if let Some(line) = input["line"].as_u64().filter(|line| *line > 0) {
                 location["line"] = json!(line);
             }
-            Described { locations: vec![location], ..Described::row(format!("{verb} {path}"), "read") }
+            Described {
+                locations: vec![location],
+                ..Described::row(format!("{verb} {path}"), "read")
+            }
         }
         ("visualize", "show_widget") => {
             let title = humanize(field("title").unwrap_or("visualization"));
-            let code = field("widget_code").filter(|code| code.chars().count() <= WIDGET_CODE_LIMIT);
+            let code =
+                field("widget_code").filter(|code| code.chars().count() <= WIDGET_CODE_LIMIT);
             Described::card(
                 format!("Visualization: {title}"),
                 json!({"card": "widget", "title": title, "code": code}),
@@ -388,9 +451,10 @@ fn describe(name: &str, input: &Value) -> Option<Described> {
 fn is_connector_id(server: &str) -> bool {
     let groups: Vec<_> = server.split('-').collect();
     groups.len() == 5
-        && groups.iter().zip([8, 4, 4, 4, 12]).all(|(group, len)| {
-            group.len() == len && group.chars().all(|c| c.is_ascii_hexdigit())
-        })
+        && groups
+            .iter()
+            .zip([8, 4, 4, 4, 12])
+            .all(|(group, len)| group.len() == len && group.chars().all(|c| c.is_ascii_hexdigit()))
 }
 
 fn task_card(title: &str, summary: Option<&str>, prompt: Option<&str>, state: &str) -> Described {
@@ -417,7 +481,10 @@ fn set_card(update: &mut Value, card: Value) {
 }
 
 fn str_field<'a>(input: &'a Value, key: &str) -> Option<&'a str> {
-    input[key].as_str().map(str::trim).filter(|value| !value.is_empty())
+    input[key]
+        .as_str()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
 }
 
 /// The recap followed by the question, as separate paragraphs.
@@ -451,7 +518,10 @@ fn next_step_actions(input: &Value) -> Option<Vec<Value>> {
 fn present_pr_created(mut update: Value) -> Value {
     const OPEN: &str = "<pr-created>";
     const CLOSE: &str = "</pr-created>";
-    let Some(text) = update["content"]["text"].as_str().filter(|text| text.contains(OPEN)) else {
+    let Some(text) = update["content"]["text"]
+        .as_str()
+        .filter(|text| text.contains(OPEN))
+    else {
         return update;
     };
     let mut out = String::with_capacity(text.len());
@@ -631,7 +701,10 @@ mod tests {
         assert_eq!(shown[0]["content"]["text"], "PR opened.\n\nMark it ready?");
         assert_eq!(shown[1]["toolCallId"], "w#next");
         assert_eq!(card(&shown[1])["card"], "nextStep");
-        assert_eq!(card(&shown[1])["actions"], json!([{"label": "Yes", "message": "yes"}]));
+        assert_eq!(
+            card(&shown[1])["actions"],
+            json!([{"label": "Yes", "message": "yes"}])
+        );
         assert!(presenter.present("s", done("w")).is_empty());
 
         let recap_only = presenter.present("s", call(WRAP_UP_TOOL, "v", json!({"recap": "Done."})));
@@ -651,7 +724,8 @@ mod tests {
         assert_eq!(statuses(&set), ["in_progress", "pending", "pending"]);
         assert!(presenter.present("s", done("p1")).is_empty());
 
-        let advanced = one(presenter.present("s", call(UPDATE_PLAN_TOOL, "p2", json!({"advance": true}))));
+        let advanced =
+            one(presenter.present("s", call(UPDATE_PLAN_TOOL, "p2", json!({"advance": true}))));
         assert_eq!(statuses(&advanced), ["completed", "in_progress", "pending"]);
 
         let ticked = call(UPDATE_PLAN_TOOL, "p3", json!({"done": [2], "start": 3}));
@@ -667,15 +741,28 @@ mod tests {
         assert_eq!(presenter.present("s", done("w")), vec![done("w")]);
         // An increment without a list to apply it to stays a tool call, now titled.
         let orphan = call(UPDATE_PLAN_TOOL, "p", json!({"advance": true}));
-        assert_eq!(one(presenter.present("t", orphan))["title"], "Updated the task list");
+        assert_eq!(
+            one(presenter.present("t", orphan))["title"],
+            "Updated the task list"
+        );
         let bash = call("Bash", "b", json!({"command": "ls"}));
         assert_eq!(presenter.present("s", bash.clone()), vec![bash]);
         let other_server = call("mcp__dbx__dbx_list_connections", "d", json!({}));
-        assert_eq!(presenter.present("s", other_server.clone()), vec![other_server]);
+        assert_eq!(
+            presenter.present("s", other_server.clone()),
+            vec![other_server]
+        );
         // A claude.ai connector is named by its id; a server merely resembling one is not.
-        let connector = call("mcp__1a59c906-04da-521d-bda7-7f71b9f9e01c__read", "k", json!({}));
+        let connector = call(
+            "mcp__1a59c906-04da-521d-bda7-7f71b9f9e01c__read",
+            "k",
+            json!({}),
+        );
         let connector = one(presenter.present("s", connector));
-        assert_eq!((connector["title"].as_str(), connector["kind"].as_str()), (Some("Connector: read"), Some("read")));
+        assert_eq!(
+            (connector["title"].as_str(), connector["kind"].as_str()),
+            (Some("Connector: read"), Some("read"))
+        );
         let lookalike = call("mcp__1a59c906-04da-521d-bda7__read", "l", json!({}));
         assert_eq!(presenter.present("s", lookalike.clone()), vec![lookalike]);
         let text = json!({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "hi"}});
@@ -686,15 +773,22 @@ mod tests {
     fn chapters_pull_requests_folders_and_widgets_become_cards_with_readable_titles() {
         let mut presenter = Presenter::default();
         let input = json!({"title": "Core", "summary": "Rust first"});
-        let chapter = one(presenter.present("s", call("mcp__ccd_session__mark_chapter", "c", input)));
+        let chapter =
+            one(presenter.present("s", call("mcp__ccd_session__mark_chapter", "c", input)));
         assert_eq!(chapter["title"], "Chapter: Core");
-        assert_eq!(card(&chapter), &json!({"card": "chapter", "title": "Core", "summary": "Rust first"}));
+        assert_eq!(
+            card(&chapter),
+            &json!({"card": "chapter", "title": "Core", "summary": "Rust first"})
+        );
         // Card calls keep their own results, so a failed call stays visible as one.
         assert_eq!(presenter.present("s", done("c")), vec![done("c")]);
         // A later update restating the adapter's title keeps the readable one.
         let restated = json!({"sessionUpdate": "tool_call_update", "toolCallId": "c",
                               "title": "mcp__ccd_session__mark_chapter", "kind": "other"});
-        assert_eq!(one(presenter.present("s", restated))["title"], "Chapter: Core");
+        assert_eq!(
+            one(presenter.present("s", restated))["title"],
+            "Chapter: Core"
+        );
 
         let input = json!({"url": "https://github.com/o/r/pull/31", "auto_fix": true});
         let pr = one(presenter.present("s", call("mcp__ccd_pr__set_monitor", "p", input)));
@@ -704,8 +798,14 @@ mod tests {
         assert_eq!(card(&pr)["autoFix"], true);
 
         let input = json!({"path": "/w/other"});
-        let folder = one(presenter.present("s", call("mcp__ccd_directory__change_directory", "d", input)));
-        assert_eq!(card(&folder), &json!({"card": "directory", "action": "changed", "path": "/w/other"}));
+        let folder = one(presenter.present(
+            "s",
+            call("mcp__ccd_directory__change_directory", "d", input),
+        ));
+        assert_eq!(
+            card(&folder),
+            &json!({"card": "directory", "action": "changed", "path": "/w/other"})
+        );
 
         let input = json!({"title": "vcs_layers", "widget_code": "<svg/>"});
         let widget = one(presenter.present("s", call("mcp__visualize__show_widget", "v", input)));
@@ -722,11 +822,20 @@ mod tests {
         assert_eq!(pane["locations"], json!([{"path": "notes/a.md"}]));
         let input = json!({"path": "/w/a.rs", "line": 12});
         let editor = one(presenter.present("s", call("mcp__ccd_host__open_in_editor", "e", input)));
-        assert_eq!(editor["locations"], json!([{"path": "/w/a.rs", "line": 12}]));
-        let layout = one(presenter.present("s", call("mcp__ccd_window__get_window_layout", "l", json!({}))));
+        assert_eq!(
+            editor["locations"],
+            json!([{"path": "/w/a.rs", "line": 12}])
+        );
+        let layout = one(presenter.present(
+            "s",
+            call("mcp__ccd_window__get_window_layout", "l", json!({})),
+        ));
         assert_eq!(layout["title"], "Claude Desktop: get window layout");
         assert_eq!(layout["kind"], "read");
-        let shot = one(presenter.present("s", call("mcp__computer-use__app_screenshot", "x", json!({}))));
+        let shot = one(presenter.present(
+            "s",
+            call("mcp__computer-use__app_screenshot", "x", json!({})),
+        ));
         assert_eq!(shot["title"], "Computer use: app screenshot");
     }
 
@@ -734,13 +843,24 @@ mod tests {
     fn task_cards_follow_their_proposal_withdrawal_and_start() {
         let mut presenter = Presenter::default();
         let input = json!({"title": "Fix", "tldr": "Why", "prompt": "Do it"});
-        let proposed = one(presenter.present("s", call("mcp__ccd_session__spawn_task", "t1", input)));
+        let proposed =
+            one(presenter.present("s", call("mcp__ccd_session__spawn_task", "t1", input)));
         assert_eq!(card(&proposed)["state"], "proposed");
         assert_eq!(card(&proposed)["prompt"], "Do it");
-        presenter.present("s", result("t1", "Noted (position 1, task_id: task_9edecafe). A chip is showing"));
+        presenter.present(
+            "s",
+            result(
+                "t1",
+                "Noted (position 1, task_id: task_9edecafe). A chip is showing",
+            ),
+        );
 
         // The withdrawal call itself is absorbed; its result restates the card.
-        let dismiss = call("mcp__ccd_session__dismiss_task", "x", json!({"task_id": "task_9edecafe"}));
+        let dismiss = call(
+            "mcp__ccd_session__dismiss_task",
+            "x",
+            json!({"task_id": "task_9edecafe"}),
+        );
         assert!(presenter.present("s", dismiss).is_empty());
         let withdrawn = one(presenter.present("s", result("x", "Task task_9edecafe withdrawn")));
         assert_eq!(withdrawn["toolCallId"], "t1");
@@ -748,18 +868,39 @@ mod tests {
 
         let input = json!({"initiation": "own_initiative", "title": "Move", "prompt": "Go"});
         presenter.present("s", call("mcp__ccd_session__start_session", "t2", input));
-        presenter.present("s", result("t2", "Proposed \"Move\" (task_id: task_0f1ad1a7). The user sees a card"));
-        let start = call("mcp__ccd_session__start_session", "y", json!({"proposal_id": "task_0f1ad1a7"}));
+        presenter.present(
+            "s",
+            result(
+                "t2",
+                "Proposed \"Move\" (task_id: task_0f1ad1a7). The user sees a card",
+            ),
+        );
+        let start = call(
+            "mcp__ccd_session__start_session",
+            "y",
+            json!({"proposal_id": "task_0f1ad1a7"}),
+        );
         assert!(presenter.present("s", start).is_empty());
-        assert_eq!(card(&one(presenter.present("s", done("y"))))["state"], "started");
+        assert_eq!(
+            card(&one(presenter.present("s", done("y"))))["state"],
+            "started"
+        );
 
-        let dismiss = call("mcp__ccd_session__dismiss_task", "z", json!({"task_id": "task_0f1ad1a7"}));
+        let dismiss = call(
+            "mcp__ccd_session__dismiss_task",
+            "z",
+            json!({"task_id": "task_0f1ad1a7"}),
+        );
         presenter.present("s", dismiss);
-        let late = one(presenter.present("s", result("z", "Task task_0f1ad1a7 was already started")));
+        let late =
+            one(presenter.present("s", result("z", "Task task_0f1ad1a7 was already started")));
         assert_eq!(card(&late)["state"], "started");
 
         let input = json!({"title": "Stats", "remaining_plan": "\nDone: x\nNext: y"});
-        let handoff = one(presenter.present("s", call("mcp__ccd_session__hand_off_to_session", "h", input)));
+        let handoff = one(presenter.present(
+            "s",
+            call("mcp__ccd_session__hand_off_to_session", "h", input),
+        ));
         assert_eq!(card(&handoff)["state"], "handedOff");
         assert_eq!(card(&handoff)["summary"], "Done: x");
     }
@@ -767,13 +908,27 @@ mod tests {
     #[test]
     fn failed_task_actions_stay_visible_and_progress_does_not_change_the_card() {
         let mut presenter = Presenter::default();
-        presenter.present("s", call("mcp__ccd_session__spawn_task", "t1", json!({"title": "Fix", "prompt": "Do it"})));
+        presenter.present(
+            "s",
+            call(
+                "mcp__ccd_session__spawn_task",
+                "t1",
+                json!({"title": "Fix", "prompt": "Do it"}),
+            ),
+        );
         presenter.present("s", result("t1", "Noted (task_id: task_9edecafe)."));
 
-        let dismiss = call("mcp__ccd_session__dismiss_task", "x", json!({"task_id": "task_9edecafe"}));
+        let dismiss = call(
+            "mcp__ccd_session__dismiss_task",
+            "x",
+            json!({"task_id": "task_9edecafe"}),
+        );
         assert!(presenter.present("s", dismiss).is_empty());
         let progress = json!({"sessionUpdate": "tool_call_update", "toolCallId": "x", "status": "in_progress"});
-        assert!(presenter.present("s", progress).is_empty(), "Progress must not withdraw the card");
+        assert!(
+            presenter.present("s", progress).is_empty(),
+            "Progress must not withdraw the card"
+        );
         let failed = json!({"sessionUpdate": "tool_call_update", "toolCallId": "x", "status": "failed",
                             "content": [{"type": "content", "content": {"type": "text", "text": "Denied"}}]});
         let shown = presenter.present("s", failed);
@@ -783,21 +938,30 @@ mod tests {
         assert_eq!(shown[0]["title"], "Withdrew a suggested task");
         assert_eq!(shown[1]["status"], "failed");
 
-        let start = call("mcp__ccd_session__start_session", "y", json!({"proposal_id": "task_9edecafe"}));
+        let start = call(
+            "mcp__ccd_session__start_session",
+            "y",
+            json!({"proposal_id": "task_9edecafe"}),
+        );
         assert!(presenter.present("s", start).is_empty());
-        let failed = json!({"sessionUpdate": "tool_call_update", "toolCallId": "y", "status": "failed"});
-        assert_eq!(presenter.present("s", failed)[0]["title"], "Started a suggested task");
+        let failed =
+            json!({"sessionUpdate": "tool_call_update", "toolCallId": "y", "status": "failed"});
+        assert_eq!(
+            presenter.present("s", failed)[0]["title"],
+            "Started a suggested task"
+        );
     }
 
     #[test]
     fn created_pull_request_tags_become_links() {
         let mut presenter = Presenter::default();
-        let chunk = |text: &str| {
-            json!({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": text}})
-        };
+        let chunk = |text: &str| json!({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": text}});
         let tagged = chunk("Opened.\n<pr-created>https://github.com/o/r/pull/7</pr-created>\n");
         let shown = one(presenter.present("s", tagged));
-        assert_eq!(shown["content"]["text"], "Opened.\n[Pull request #7](https://github.com/o/r/pull/7)\n");
+        assert_eq!(
+            shown["content"]["text"],
+            "Opened.\n[Pull request #7](https://github.com/o/r/pull/7)\n"
+        );
         // Anything but a URL is left as the model wrote it.
         let odd = chunk("<pr-created>not a url</pr-created>");
         assert_eq!(one(presenter.present("s", odd.clone())), odd);

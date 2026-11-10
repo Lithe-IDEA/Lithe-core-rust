@@ -2466,9 +2466,15 @@ async fn next_turn_configuration_applies_choices_and_reports_one_result() {
     assert_eq!(request["params"]["value"], "model-b");
     harness
         .agent
-        .reply(&request, json!({ "configOptions": configured["configOptions"] }))
+        .reply(
+            &request,
+            json!({ "configOptions": configured["configOptions"] }),
+        )
         .await;
-    assert_eq!(serde_json::to_value(harness.event().await).unwrap(), configured);
+    assert_eq!(
+        serde_json::to_value(harness.event().await).unwrap(),
+        configured
+    );
 
     harness.send(next["command"].clone());
     let request = harness.agent.expect("session/set_config_option").await;
@@ -2479,7 +2485,10 @@ async fn next_turn_configuration_applies_choices_and_reports_one_result() {
     let failed = serde_json::to_value(harness.event().await).unwrap();
     assert_eq!(failed["kind"], "nextTurnConfigured");
     assert_eq!(failed["failure"], "requestFailed");
-    assert!(failed.get("configOptions").is_none(), "no request succeeded");
+    assert!(
+        failed.get("configOptions").is_none(),
+        "no request succeeded"
+    );
     assert!(failed["message"].as_str().unwrap().contains("Rejected"));
     assert_eq!(harness.stop().await, Ok(()));
 }

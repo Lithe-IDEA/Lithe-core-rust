@@ -140,7 +140,11 @@ pub(crate) struct StatisticsTracker {
 impl StatisticsTracker {
     /// Contribution of a call attributed to `session_id`. Unattributed calls
     /// are dropped by both products, so they keep no per-session memory.
-    pub(crate) fn contribution(&self, session_id: Option<&str>, call: &ModelCall) -> ModelCallStatistics {
+    pub(crate) fn contribution(
+        &self,
+        session_id: Option<&str>,
+        call: &ModelCall,
+    ) -> ModelCallStatistics {
         let Some(session_id) = session_id else {
             return ModelCallStatistics::of_call(call, &mut false);
         };
@@ -180,7 +184,9 @@ mod tests {
             scaled_to_usage: context["scaledToUsage"].as_bool().unwrap(),
         });
         ModelCall {
-            api: serde_json::from_value::<ModelApiName>(value["api"].clone()).unwrap().0,
+            api: serde_json::from_value::<ModelApiName>(value["api"].clone())
+                .unwrap()
+                .0,
             model: None,
             status: value["status"].as_u64().unwrap() as u16,
             streaming: value["streaming"].as_bool().unwrap_or(false),
@@ -241,10 +247,14 @@ mod tests {
     #[test]
     fn tool_memory_is_per_session() {
         let tracker = StatisticsTracker::default();
-        let tools = call(&serde_json::json!({"api":"responses","status":200,"durationMs":1,
-            "context":{"systemPromptTokens":1,"toolTokens":1,"mcpToolTokens":0,"messageTokens":1,"toolCount":1,"mcpToolCount":0,"scaledToUsage":false}}));
-        let toolless = call(&serde_json::json!({"api":"responses","status":200,"durationMs":1,
-            "context":{"systemPromptTokens":1,"toolTokens":0,"mcpToolTokens":0,"messageTokens":9,"toolCount":0,"mcpToolCount":0,"scaledToUsage":false}}));
+        let tools = call(
+            &serde_json::json!({"api":"responses","status":200,"durationMs":1,
+            "context":{"systemPromptTokens":1,"toolTokens":1,"mcpToolTokens":0,"messageTokens":1,"toolCount":1,"mcpToolCount":0,"scaledToUsage":false}}),
+        );
+        let toolless = call(
+            &serde_json::json!({"api":"responses","status":200,"durationMs":1,
+            "context":{"systemPromptTokens":1,"toolTokens":0,"mcpToolTokens":0,"messageTokens":9,"toolCount":0,"mcpToolCount":0,"scaledToUsage":false}}),
+        );
         assert!(tracker.contribution(Some("a"), &tools).context.is_some());
         assert!(tracker.contribution(Some("a"), &toolless).context.is_none());
         assert!(tracker.contribution(Some("b"), &toolless).context.is_some());

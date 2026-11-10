@@ -115,7 +115,9 @@ fn claude_write(update: &Value, reported: Option<&[DiffEvidence]>) -> Option<Dif
         return None;
     }
     let response = &claude["toolResponse"];
-    let path = response["filePath"].as_str().filter(|path| !path.is_empty())?;
+    let path = response["filePath"]
+        .as_str()
+        .filter(|path| !path.is_empty())?;
     let new = response["content"].as_str()?;
     let old = response["originalFile"].as_str();
     let operation = match response["type"].as_str()? {
@@ -286,7 +288,9 @@ pub fn reverse_plan(request: &ReverseRequest) -> ReversePlan {
             (true, Some(old), None) => Some(old.to_owned()),
             (true, _, _) => return conflict(ConflictReason::Changed),
             // Creation: remove only the exact created content.
-            (false, None, Some(current)) if canonical(&current).0 == canonical(&diff.new_text).0 => {
+            (false, None, Some(current))
+                if canonical(&current).0 == canonical(&diff.new_text).0 =>
+            {
                 None
             }
             (false, None, _) => return conflict(ConflictReason::Changed),

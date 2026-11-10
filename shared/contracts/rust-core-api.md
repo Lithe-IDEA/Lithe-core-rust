@@ -1971,6 +1971,18 @@ Fetch's existing explicit flags remain in the argument vector for compatibility.
 `LC_ALL=C`, pager suppression and no terminal prompting are child-local policy.
 Transfer progress is requested explicitly. No config file is implicitly modified.
 
+Because every Git child runs with `LC_ALL=C` and no terminal prompting, its
+authentication diagnostics are fixed English text whatever the system language.
+A failed `git.write` response (non-zero `exitCode`, or an `operationError` with
+code `process_failed`) whose Git stderr shows the remote refused or lacked
+credentials (`Authentication failed`, `could not read Username/Password`,
+`Permission denied (publickey…)`, HTTP 401/403, GitHub `Permission to … denied
+to …`) reports `operationError.code = "git_authentication_failed"`. When Core
+adds that error to a response that had none, `message` is the first stderr line
+and `details` the combined output; an existing message and details are kept.
+Other failures keep their codes, so hosts must not match stderr themselves.
+Samples: `shared/fixtures/git/authentication-failure-v1.json`.
+
 `git.remoteUrl` accepts `{ root, remote }` and returns `{ url: string | null }`.
 It uses the internal configuration-read path: a missing key is successful and
 produces no command row. Invalid requests and real access/executable failures
