@@ -3737,6 +3737,10 @@ fn git_history_returns_references_and_commit_graph_fields() {
     .expect("stashes response should be JSON");
     assert_eq!(stashes_response["ok"], true);
     assert_eq!(stashes_response["data"]["stashes"][0]["message"], "saved");
+    assert_eq!(
+        stashes_response["data"]["stashes"][0]["reference"],
+        "stash@{0}"
+    );
 
     let request = serde_json::json!({
         "id": "history",

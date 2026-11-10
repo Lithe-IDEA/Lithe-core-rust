@@ -3956,8 +3956,9 @@ pub fn stashes(request: GitStashesRequest) -> Result<GitStashesResponse, CoreErr
         arguments: vec![
             "stash".to_string(),
             "list".to_string(),
-            "--date=iso".to_string(),
-            "--pretty=format:%gd%x1f%gs%x1f%ad%x1f%H".to_string(),
+            // `--date` would also turn `%gd` into `stash@{<date>}`, so the date is asked for in
+            // its own ISO form and the reference stays the positional `stash@{N}`.
+            "--pretty=format:%gd%x1f%gs%x1f%ai%x1f%H".to_string(),
         ],
         input: None,
     })?;
