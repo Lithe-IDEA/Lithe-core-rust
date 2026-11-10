@@ -259,6 +259,8 @@ pub enum LspSemanticOperation {
     Formatting,
     /// `textDocument/rangeFormatting` over the request's `range`.
     RangeFormatting,
+    /// `textDocument/documentSymbol`: the document outline.
+    DocumentSymbols,
     /// `textDocument/codeAction`.
     CodeActions,
     /// `completionItem/resolve` for a previously returned completion item.
@@ -4389,6 +4391,7 @@ fn semantic_method(operation: LspSemanticOperation) -> &'static str {
         LspSemanticOperation::Rename => "textDocument/rename",
         LspSemanticOperation::Formatting => "textDocument/formatting",
         LspSemanticOperation::RangeFormatting => "textDocument/rangeFormatting",
+        LspSemanticOperation::DocumentSymbols => "textDocument/documentSymbol",
         LspSemanticOperation::CodeActions => "textDocument/codeAction",
         LspSemanticOperation::ResolveCompletion => "completionItem/resolve",
         LspSemanticOperation::ResolveCodeAction => "codeAction/resolve",
@@ -4412,6 +4415,7 @@ fn semantic_capability(operation: LspSemanticOperation) -> Option<&'static str> 
         LspSemanticOperation::Rename => Some("rename"),
         LspSemanticOperation::Formatting => Some("formatting"),
         LspSemanticOperation::RangeFormatting => Some("rangeFormatting"),
+        LspSemanticOperation::DocumentSymbols => Some("documentSymbols"),
         LspSemanticOperation::CodeActions => Some("codeActions"),
         LspSemanticOperation::ResolveCompletion => Some("completionResolve"),
         LspSemanticOperation::ResolveCodeAction => Some("codeActionResolve"),

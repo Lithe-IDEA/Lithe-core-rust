@@ -70,6 +70,10 @@ pub(super) fn client_initialize_for_plugin(
                     "rename": { "dynamicRegistration": true },
                     "formatting": { "dynamicRegistration": true },
                     "rangeFormatting": { "dynamicRegistration": true },
+                    "documentSymbol": {
+                        "dynamicRegistration": true,
+                        "hierarchicalDocumentSymbolSupport": true
+                    },
                     "inlayHint": { "dynamicRegistration": true },
                     "semanticTokens": {
                         "dynamicRegistration": true,
@@ -1057,6 +1061,7 @@ fn validate_lsp_method(method: &str) -> Result<(), CoreError> {
         | "textDocument/rename"
         | "textDocument/formatting"
         | "textDocument/rangeFormatting"
+        | "textDocument/documentSymbol"
         | "textDocument/inlayHint"
         | "textDocument/semanticTokens/full"
         | "textDocument/foldingRange"
@@ -1141,6 +1146,7 @@ fn feature_request_params(request: &ClientFeatureRequest) -> Result<Value, CoreE
             "range": lsp_range_json(required_range(request)?)
         })),
         "textDocument/semanticTokens/full"
+        | "textDocument/documentSymbol"
         | "textDocument/foldingRange"
         | "textDocument/codeLens" => Ok(json!({
             "textDocument": text_document
@@ -1389,6 +1395,9 @@ fn lsp_feature_result_for_method(method: Option<&str>, result: Option<&Value>) -
                 .map(|edits| edits.iter().filter_map(parse_lsp_text_edit_value).collect::<Vec<_>>())
                 .unwrap_or_default()
         })),
+        Some("textDocument/documentSymbol") => Some(json!({
+            "symbols": parse_document_symbols(result)
+        })),
         Some("textDocument/inlayHint") => Some(json!({
             "hints": parse_inlay_hints(result)
         })),
@@ -1602,6 +1611,69 @@ fn parse_inlay_hint_label(value: &Value) -> Option<String> {
         }
         _ => None,
     }
+}
+
+/// Normalizes a `textDocument/documentSymbol` result into a unified tree.
+///
+/// Servers answer with either `DocumentSymbol[]` (hierarchical) or
+/// `SymbolInformation[]` (flat); the two are told apart per item by the
+/// presence of `location`. Conversion rules:
+/// - `DocumentSymbol` keeps `name`, `detail`, `kind`, `range`,
+///   `selectionRange` and recursively normalized `children`.
+/// - `SymbolInformation` becomes a childless symbol whose `range` and
+///   `selectionRange` are both `location.range`, with `containerName` kept as
+///   a hint; Core does not guess a hierarchy from container names.
+/// - `deprecated` is true for the legacy `deprecated` flag or tag `1`.
+/// - Positions use `{ line, utf16Column }`. Items with a missing name, kind or
+///   range are dropped; `null` or a non-array result yields an empty list.
+fn parse_document_symbols(result: &Value) -> Vec<Value> {
+    result
+        .as_array()
+        .map(|items| items.iter().filter_map(parse_document_symbol).collect())
+        .unwrap_or_default()
+}
+
+fn parse_document_symbol(item: &Value) -> Option<Value> {
+    let name = item.get("name").and_then(Value::as_str)?;
+    let kind = item.get("kind").and_then(Value::as_i64)?;
+    let tags: Vec<i64> = item
+        .get("tags")
+        .and_then(Value::as_array)
+        .map(|tags| tags.iter().filter_map(Value::as_i64).collect())
+        .unwrap_or_default();
+    let deprecated = item
+        .get("deprecated")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+        || tags.contains(&1);
+    let (range, selection_range, children, container) = if let Some(location) = item.get("location")
+    {
+        let range = parse_lsp_range_value(location.get("range")?)?;
+        (range.clone(), range, Vec::new(), item.get("containerName"))
+    } else {
+        let range = parse_lsp_range_value(item.get("range")?)?;
+        let selection = item
+            .get("selectionRange")
+            .and_then(parse_lsp_range_value)
+            .unwrap_or_else(|| range.clone());
+        let children = item
+            .get("children")
+            .and_then(Value::as_array)
+            .map(|children| children.iter().filter_map(parse_document_symbol).collect())
+            .unwrap_or_default();
+        (range, selection, children, None)
+    };
+    Some(json!({
+        "name": name,
+        "detail": item.get("detail").and_then(Value::as_str),
+        "kind": kind,
+        "tags": tags,
+        "deprecated": deprecated,
+        "range": range,
+        "selectionRange": selection_range,
+        "containerName": container.and_then(Value::as_str),
+        "children": children
+    }))
 }
 
 fn parse_folding_ranges(result: &Value) -> Vec<LspFoldingRangeResponse> {
@@ -1902,6 +1974,12 @@ fn feature_names_from_capabilities(capabilities: &Value) -> Vec<String> {
         "documentRangeFormattingProvider",
         "rangeFormatting",
     );
+    add_capability(
+        &mut values,
+        capabilities,
+        "documentSymbolProvider",
+        "documentSymbols",
+    );
     add_capability(&mut values, capabilities, "inlayHintProvider", "inlayHints");
     add_capability(
         &mut values,
@@ -2156,6 +2234,7 @@ fn feature_name_for_method(method: &str) -> Option<&'static str> {
         "textDocument/rename" => Some("rename"),
         "textDocument/formatting" => Some("formatting"),
         "textDocument/rangeFormatting" => Some("rangeFormatting"),
+        "textDocument/documentSymbol" => Some("documentSymbols"),
         "textDocument/inlayHint" => Some("inlayHints"),
         "textDocument/foldingRange" => Some("foldingRanges"),
         "textDocument/codeLens" => Some("codeLens"),
@@ -2417,6 +2496,39 @@ mod formatting_and_completion_tests {
         )
         .unwrap();
         assert_eq!(result["edits"][0]["newText"], "x");
+    }
+
+    #[test]
+    fn document_symbol_golden_fixture_matches_normalization() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../../../../shared/fixtures/lsp/document-symbols-v1.json"
+        ))
+        .unwrap();
+        for case in fixture["cases"].as_array().unwrap() {
+            let result = lsp_feature_result_for_method(
+                Some("textDocument/documentSymbol"),
+                Some(&case["serverResult"]),
+            )
+            .unwrap();
+            assert_eq!(result, case["expected"], "case {}", case["name"]);
+        }
+    }
+
+    #[test]
+    fn document_symbol_capability_request_and_dynamic_name() {
+        let features = feature_names_from_capabilities(&json!({"documentSymbolProvider": true}));
+        assert!(features.contains(&"documentSymbols".to_string()));
+        assert_eq!(
+            feature_name_for_method("textDocument/documentSymbol"),
+            Some("documentSymbols")
+        );
+        let mut request = request("textDocument/documentSymbol", None, false);
+        request.uri = "file:///a.rs".to_string();
+        assert_eq!(
+            feature_request_params(&request).unwrap(),
+            json!({"textDocument": {"uri": "file:///a.rs"}})
+        );
+        assert!(validate_lsp_method("textDocument/documentSymbol").is_ok());
     }
 
     #[test]
