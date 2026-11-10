@@ -22,7 +22,7 @@ pub(crate) use documents::{document_state, edit_document, SettingsEdit};
 use super::declarative::{invalid, PluginRejection, Validation};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// A whole number within a declared range.
@@ -119,6 +119,43 @@ pub(crate) struct SettingAction {
     /// Ask before invoking, for actions that discard state.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     confirm: bool,
+}
+
+/// Resolves one declared action without native I/O or runtime admission. Only
+/// an explicit native confirmation allows a confirmation-required invocation.
+pub(crate) fn plan_action(
+    plugin_id: &str,
+    actions: &[SettingAction],
+    action_id: &str,
+    confirmed: bool,
+    workspace_available: bool,
+    enabled: bool,
+) -> Validation<Value> {
+    let action = actions
+        .iter()
+        .find(|action| action.id == action_id)
+        .ok_or_else(|| {
+            PluginRejection::at(
+                "plugin.settings.actionUnavailable",
+                "actionID",
+                "The installed plugin does not declare this setting action.",
+            )
+        })?;
+    let mut plan = json!({"pluginID":plugin_id,"actionID":action.id,"title":action.title});
+    if !enabled {
+        plan["kind"] = json!("unavailable");
+        plan["reason"] = json!("pluginDisabled");
+    } else if !workspace_available {
+        plan["kind"] = json!("unavailable");
+        plan["reason"] = json!("projectRequired");
+    } else if action.confirm && !confirmed {
+        plan["kind"] = json!("confirmationRequired");
+    } else {
+        plan["kind"] = json!("invoke");
+        plan["function"] = json!(action.function);
+        plan["params"] = json!({});
+    }
+    Ok(plan)
 }
 
 /// Most actions one plugin may declare.

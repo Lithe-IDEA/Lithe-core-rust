@@ -3790,6 +3790,7 @@ fn backend_resolved_launch_plan(
     }
     let settings = manifest.effective_settings(request.layers());
     let mut plan = json!({
+        "owner": {"pluginID":manifest.id,"version":manifest.version},
         "launch": {
             "kind": "backend",
             "function": function,
@@ -4374,6 +4375,7 @@ fn server_launch_plan(
     let validation_arguments = expand_all(&process.validation_arguments, &mut requirements);
 
     let mut plan = json!({
+        "owner": {"pluginID":manifest.id,"version":manifest.version},
         "launch": launch,
         "arguments": arguments,
         "validationArguments": validation_arguments,
@@ -5070,6 +5072,52 @@ pub fn settings_state_command(payload: Value) -> Result<Value, CoreError> {
             .map(|mut state| {
                 state["metadata"] = json!({"displayName": manifest.display_name, "version":manifest.version, "vendor":manifest.vendor.display_name});
                 ("state", state)
+            })
+        },
+    )))
+}
+
+/// Native facts for one explicitly selected installed setting action.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SettingsActionPayload {
+    manifest: Value,
+    owner: SettingsOwner,
+    #[serde(rename = "actionID")]
+    action_id: String,
+    /// Captured by the native confirmation UI, not inferred from saved preferences.
+    confirmed: bool,
+    /// Current native enablement choice; a stored draft cannot activate a plugin.
+    enabled: bool,
+    /// Describes the requesting window; runtime ownership is checked on invocation.
+    workspace_available: bool,
+}
+
+/// Plans a declared settings action without starting or admitting its provider.
+/// Native callers retain package/project ownership and confirmation checks.
+pub fn settings_action_plan_command(payload: Value) -> Result<Value, CoreError> {
+    let payload: SettingsActionPayload =
+        decode_payload(payload, "plugins.declarative.settingsActionPlan")?;
+    Ok(outcome(validate_manifest_value(payload.manifest).and_then(
+        |manifest| {
+            if payload.owner.plugin_id != manifest.id || payload.owner.version != manifest.version {
+                return Err(PluginRejection::at(
+                    "plugin.settings.ownerChanged",
+                    "owner",
+                    "The installed package identity changed before the action was planned.",
+                ));
+            }
+            super::settings::plan_action(
+                &manifest.id,
+                &manifest.setting_actions,
+                &payload.action_id,
+                payload.confirmed,
+                payload.workspace_available,
+                payload.enabled,
+            )
+            .map(|mut plan| {
+                plan["version"] = json!(manifest.version);
+                ("plan", plan)
             })
         },
     )))

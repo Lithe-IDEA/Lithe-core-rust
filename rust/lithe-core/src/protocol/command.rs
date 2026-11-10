@@ -160,6 +160,8 @@ pub enum CoreCommand {
     PluginsDeclarativeResolveSettings,
     /// Projects stored documents into plugin setting rows and launch layers.
     PluginsDeclarativeSettingsState,
+    /// Resolves an installed settings action and its native confirmation requirement.
+    PluginsDeclarativeSettingsActionPlan,
     /// Selects numeric installed versions and reports malformed native facts.
     PluginsInstalledSelect,
     /// Validates an atomic plugin settings edit and preserves unrelated values.
@@ -541,6 +543,8 @@ pub enum CoreCommand {
     LspKeymapImportRequest,
     /// Invokes one plugin function (`lsp.functionRequest`).
     LspFunctionRequest,
+    /// Selects a registered function provider strictly inside one workspace.
+    LspFunctionProvider,
     /// Replaces the plugins and workspace contexts the cross-plugin function
     /// relay checks calls against (`lsp.configureFunctionRelay`).
     LspConfigureFunctionRelay,
@@ -880,6 +884,9 @@ impl CoreCommand {
             }
             "plugins.declarative.resolveSettings" => Some(Self::PluginsDeclarativeResolveSettings),
             "plugins.declarative.settingsState" => Some(Self::PluginsDeclarativeSettingsState),
+            "plugins.declarative.settingsActionPlan" => {
+                Some(Self::PluginsDeclarativeSettingsActionPlan)
+            }
             "plugins.installed.select" => Some(Self::PluginsInstalledSelect),
             "plugins.declarative.editSettings" => Some(Self::PluginsDeclarativeEditSettings),
             "plugins.declarative.workspaceConfiguration" => {
@@ -1071,6 +1078,7 @@ impl CoreCommand {
             "lsp.toolchainRequest" => Some(Self::LspToolchainRequest),
             "lsp.keymapImportRequest" => Some(Self::LspKeymapImportRequest),
             "lsp.functionRequest" => Some(Self::LspFunctionRequest),
+            "lsp.functionProvider" => Some(Self::LspFunctionProvider),
             "lsp.configureFunctionRelay" => Some(Self::LspConfigureFunctionRelay),
             "lsp.hostResponse" => Some(Self::LspHostResponse),
             "lsp.hostNotify" => Some(Self::LspHostNotify),

@@ -269,3 +269,29 @@ fn editor_projection_owns_scope_reset_values_and_section_grouping() {
     assert_eq!(global[flag]["source"], "global");
     assert_eq!(global[count]["invalidStored"], true);
 }
+
+#[test]
+fn setting_action_plans_match_shared_fixture_without_starting_a_process() {
+    let fixture: Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../shared/fixtures/plugins/settings-actions.json"
+    )))
+    .unwrap();
+    for case in fixture["cases"].as_array().unwrap() {
+        let mut declared = manifest();
+        if let Some(confirmation) = case.get("confirmation") {
+            declared["settingActions"][0]["confirm"] = confirmation.clone();
+        }
+        let mut input = case["input"].clone();
+        input["manifest"] = declared;
+        let response = execute("plugins.declarative.settingsActionPlan", input);
+        if let Some(code) = case.get("error") {
+            assert_eq!(
+                &response["data"]["error"]["code"], code,
+                "{case}: {response}"
+            );
+        } else {
+            assert_eq!(response["data"]["plan"], case["plan"], "{case}: {response}");
+        }
+    }
+}

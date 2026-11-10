@@ -378,6 +378,11 @@ fn execute_parsed(mut parsed: CoreRequest) -> CoreResponse {
             parsed.payload,
             crate::plugins::declarative::settings_state_command,
         ),
+        CoreCommand::PluginsDeclarativeSettingsActionPlan => plugin_response(
+            id,
+            parsed.payload,
+            crate::plugins::declarative::settings_action_plan_command,
+        ),
         CoreCommand::PluginsDeclarativeEditSettings => plugin_response(
             id,
             parsed.payload,
@@ -2262,6 +2267,9 @@ fn execute_parsed(mut parsed: CoreRequest) -> CoreResponse {
                 ),
                 Err(error) => CoreResponse::failure(id, error),
             }
+        }
+        CoreCommand::LspFunctionProvider => {
+            plugin_response(id, parsed.payload, crate::lsp::function_provider_command)
         }
         CoreCommand::LspFunctionRequest => {
             match serde_json::from_value::<crate::lsp::PluginFunctionRequest>(parsed.payload)
