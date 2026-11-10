@@ -7032,19 +7032,29 @@ fn mutate_worktree(root: &str, request: &GitWriteRequest) -> Result<GitCommandRe
         .find(|entry| worktree_paths_match(&entry.path, &destination))
         .ok_or_else(|| {
             CoreError::new(
-                ErrorCode::InvalidRequest,
+                ErrorCode::GitWorktreeNotRegistered,
                 "The selected path is not a registered Git worktree",
             )
         })?;
-    if request.operation == "removeWorktree" && (target.is_current || target.is_primary) {
+    let removing = request.operation == "removeWorktree";
+    // Each refusal has its own code so hosts can explain it without parsing
+    // messages. The primary worktree is checked first: it can never be removed,
+    // locked or unlocked, whichever worktree the request was made from.
+    if target.is_primary {
         return Err(CoreError::new(
-            ErrorCode::InvalidRequest,
-            "The current or primary Git worktree cannot be removed",
+            ErrorCode::GitWorktreePrimary,
+            "The primary Git worktree cannot be removed, locked or unlocked",
         ));
     }
-    if request.operation == "removeWorktree" && target.is_locked {
+    if removing && target.is_current {
         return Err(CoreError::new(
-            ErrorCode::InvalidRequest,
+            ErrorCode::GitWorktreeCurrent,
+            "The current Git worktree cannot be removed",
+        ));
+    }
+    if removing && target.is_locked {
+        return Err(CoreError::new(
+            ErrorCode::GitWorktreeLocked,
             "Unlock the Git worktree before removing it",
         ));
     }
@@ -7065,7 +7075,41 @@ fn mutate_worktree(root: &str, request: &GitWriteRequest) -> Result<GitCommandRe
         .to_string_lossy()
         .into_owned();
     arguments.extend(["--".into(), destination]);
-    execute_git(root, &arguments, None)
+    let mut response = execute_git(root, &arguments, None)?;
+    if removing && !request.force {
+        classify_unclean_worktree_removal(&mut response);
+    }
+    Ok(response)
+}
+
+/// Git's C-locale refusal of `git worktree remove` without `--force` for a
+/// checkout with modified or untracked files (`check_clean_worktree` in Git's
+/// `builtin/worktree.c`). Every Git child runs with `LC_ALL=C`, so the text is
+/// fixed whatever the user's system language is.
+const UNCLEAN_WORKTREE_REMOVAL_MARKER: &str = "contains modified or untracked files";
+
+/// Gives a failed, unforced worktree removal that Git refused for local
+/// changes the `git_worktree_has_changes` code, so hosts can offer a forced
+/// removal without matching stderr. The message is the first stderr line and
+/// the details the combined output. Any other failure is left as it is.
+fn classify_unclean_worktree_removal(response: &mut GitCommandResponse) {
+    if response.exit_code == 0
+        || response.operation_error.is_some()
+        || !response.stderr.contains(UNCLEAN_WORKTREE_REMOVAL_MARKER)
+    {
+        return;
+    }
+    let message = response
+        .stderr
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("The Git worktree has modified or untracked files")
+        .to_string();
+    response.operation_error = Some(
+        CoreError::new(ErrorCode::GitWorktreeHasChanges, message)
+            .with_details(response.output.clone()),
+    );
 }
 
 fn update_local_branch(
@@ -8788,6 +8832,54 @@ mod tests {
     };
     use serde_json::Value;
     use std::path::PathBuf;
+
+    #[test]
+    fn unforced_removal_refused_for_local_changes_gains_its_own_code() {
+        let failed = |stderr: &str| {
+            GitProcessOutput {
+                stdout: Vec::new(),
+                stderr: stderr.as_bytes().to_vec(),
+                exit_code: 128,
+            }
+            .into_command_response(&["worktree".to_string(), "remove".to_string()])
+        };
+        let mut dirty = failed(
+            "fatal: '/tmp/feature' contains modified or untracked files, use --force to delete it\n",
+        );
+        super::classify_unclean_worktree_removal(&mut dirty);
+        let error = dirty.operation_error.expect("operation error");
+        assert!(matches!(error.code, ErrorCode::GitWorktreeHasChanges));
+        assert_eq!(
+            error.message,
+            "fatal: '/tmp/feature' contains modified or untracked files, use --force to delete it"
+        );
+        assert_eq!(
+            serde_json::to_value(CoreError::new(ErrorCode::GitWorktreeHasChanges, "x")).unwrap()
+                ["code"],
+            "git_worktree_has_changes"
+        );
+
+        // Submodules also need --force, but for a different reason; that refusal
+        // keeps Git's plain failure rather than claiming local changes.
+        let mut submodules =
+            failed("fatal: working trees containing submodules cannot be moved or removed\n");
+        super::classify_unclean_worktree_removal(&mut submodules);
+        assert!(submodules.operation_error.is_none());
+
+        // A more specific error that is already present is kept.
+        let mut specific = failed("fatal: '/tmp/feature' contains modified or untracked files\n");
+        specific.operation_error = Some(CoreError::new(ErrorCode::Cancelled, "cancelled"));
+        super::classify_unclean_worktree_removal(&mut specific);
+        assert!(matches!(
+            specific.operation_error.unwrap().code,
+            ErrorCode::Cancelled
+        ));
+
+        let mut removed = failed("");
+        removed.exit_code = 0;
+        super::classify_unclean_worktree_removal(&mut removed);
+        assert!(removed.operation_error.is_none());
+    }
 
     #[test]
     fn saved_stash_sections_reject_lossy_or_oversized_patch_before_git() {

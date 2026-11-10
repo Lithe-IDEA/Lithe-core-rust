@@ -30,6 +30,23 @@ pub enum ErrorCode {
     /// The Git remote refused the credentials, or none were available. Only
     /// `git.write` reports it, as `operationError.code` of a failed response.
     GitAuthenticationFailed,
+    /// A `git.write` worktree mutation (`removeWorktree`, `lockWorktree`,
+    /// `unlockWorktree`) names a path that is not a registered worktree of the
+    /// repository, so the caller's worktree list is out of date.
+    GitWorktreeNotRegistered,
+    /// A `git.write` worktree mutation names the repository's primary
+    /// worktree, which Git can neither remove, lock nor unlock.
+    GitWorktreePrimary,
+    /// `git.write` `removeWorktree` names the worktree the request was made
+    /// from; another worktree of the repository can remove it.
+    GitWorktreeCurrent,
+    /// `git.write` `removeWorktree` names a locked worktree; unlocking it
+    /// first allows the removal.
+    GitWorktreeLocked,
+    /// Git refused `git.write` `removeWorktree` without `force` because the
+    /// checkout has modified or untracked files, which a forced removal
+    /// deletes. Reported as `operationError.code` of the failed response.
+    GitWorktreeHasChanges,
     /// Input or tool output could not be decoded into the stable contract.
     ParseFailed,
     /// `file.write` text contains characters the requested encoding cannot
