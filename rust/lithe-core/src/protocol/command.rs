@@ -123,6 +123,20 @@ pub enum CoreCommand {
     PluginsDeclarativeValidate,
     /// Validates native plugin UI data with declaration identity and node budgets.
     PluginsNativeUIValidateData,
+    /// Registers a plugin page for a web tool window (`plugins.web.open`).
+    PluginsWebOpen,
+    /// Forgets a plugin page and lists its calls to cancel (`plugins.web.close`).
+    PluginsWebClose,
+    /// Decides how a plugin page request is served (`plugins.web.resource`).
+    PluginsWebResource,
+    /// Prepends the policy and bridge to a page document (`plugins.web.document`).
+    PluginsWebDocument,
+    /// Checks one bridge message of a plugin page (`plugins.web.request`).
+    PluginsWebRequest,
+    /// Frames the host's answer to a bridge action (`plugins.web.reply`).
+    PluginsWebReply,
+    /// Frames an event for a plugin page (`plugins.web.event`).
+    PluginsWebEvent,
     /// Describes the Core-owned backend host-method catalog.
     PluginsHostApiDescribe,
     /// Rechecks a backend host request against Core's grant rules.
@@ -866,6 +880,13 @@ impl CoreCommand {
             "mcp.batchPlan" => Some(Self::McpBatchPlan),
             "plugins.declarative.validate" => Some(Self::PluginsDeclarativeValidate),
             "plugins.nativeUI.validateData" => Some(Self::PluginsNativeUIValidateData),
+            "plugins.web.open" => Some(Self::PluginsWebOpen),
+            "plugins.web.close" => Some(Self::PluginsWebClose),
+            "plugins.web.resource" => Some(Self::PluginsWebResource),
+            "plugins.web.document" => Some(Self::PluginsWebDocument),
+            "plugins.web.request" => Some(Self::PluginsWebRequest),
+            "plugins.web.reply" => Some(Self::PluginsWebReply),
+            "plugins.web.event" => Some(Self::PluginsWebEvent),
             "plugins.declarative.runPlan" => Some(Self::PluginsDeclarativeRunPlan),
             "plugins.declarative.discoverTests" => Some(Self::PluginsDeclarativeDiscoverTests),
             "plugins.declarative.testPlan" => Some(Self::PluginsDeclarativeTestPlan),
