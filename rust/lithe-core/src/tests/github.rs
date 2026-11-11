@@ -116,7 +116,7 @@ fn normalizes_pull_requests_with_deterministic_labels_and_assignees() {
         "draft": false,
         "html_url": "https://github.com/openai/codex/pull/7",
         "user": {"login": "octocat", "html_url": "https://github.com/octocat", "avatar_url": "https://avatars.example/octocat"},
-        "head": {"ref": "feature", "repo": {"full_name": "octocat/codex"}},
+        "head": {"ref": "feature", "sha": "0123abcd", "repo": {"full_name": "octocat/codex"}},
         "base": {"ref": "main", "repo": {"full_name": "openai/codex"}},
         "created_at": "2026-01-01T00:00:00Z",
         "updated_at": "2026-01-02T00:00:00Z",
@@ -135,6 +135,7 @@ fn normalizes_pull_requests_with_deterministic_labels_and_assignees() {
     assert_eq!(response["data"][0]["body"], "");
     assert_eq!(response["data"][0]["labels"][0]["name"], "alpha");
     assert_eq!(response["data"][0]["assignees"][0]["login"], "amy");
+    assert_eq!(response["data"][0]["headSha"], "0123abcd");
 }
 
 #[test]

@@ -100,7 +100,9 @@ the host from `inReplyTo`.
 
 `listCheckRuns` (`GET .../commits/{sha}/check-runs`) and `getCombinedStatus`
 (`GET .../commits/{sha}/status`) need `commit`, a hexadecimal SHA of at least four
-characters. Both return a flat array of `{ name, status, conclusion, detailsUrl }`
+characters: the pull request's head commit, which normalized pull requests carry as
+optional `headSha` (GitHub's `head.sha`, omitted when GitHub does not report it). Both
+return a flat array of `{ name, status, conclusion, detailsUrl }`
 sorted by `name`, so one list can show check runs and legacy statuses together.
 A pending legacy status becomes `status: "in_progress"` with `conclusion: null`;
 any other legacy state becomes `status: "completed"` with that state as
