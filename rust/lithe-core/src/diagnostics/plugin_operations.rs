@@ -527,7 +527,7 @@ mod tests {
     #[test]
     fn diagnostics_host_plugin_operations_match_shared_fixture() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/diagnostics/engine-logging-v2.json"
+            "../../../fixtures/diagnostics/engine-logging-v2.json"
         ))
         .unwrap();
         for case in fixture["hostOperations"].as_array().unwrap() {

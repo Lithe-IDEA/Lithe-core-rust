@@ -3,7 +3,7 @@
 use lithe_core_rules::{execute_json, is_rule_command};
 use serde_json::{json, Value};
 
-const FIXTURE: &str = include_str!("../../../shared/fixtures/editor/workbench-state-v1.json");
+const FIXTURE: &str = include_str!("../../fixtures/editor/workbench-state-v1.json");
 const COMMAND: &str = "editor.workbenchState.reduce";
 
 fn call(payload: Value) -> Value {

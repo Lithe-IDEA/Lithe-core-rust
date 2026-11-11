@@ -10,7 +10,7 @@
 //! d8c6714c7a3c110c56994d6b0f10814f902100e7 (Apache-2.0, Copyright JetBrains s.r.o.
 //! and contributors). The macOS Swift port (`NaturalNameOrder`) and the Windows
 //! TypeScript port follow the same source and share
-//! `shared/fixtures/workspace/file-name-order-v1.json`.
+//! `rust/fixtures/workspace/file-name-order-v1.json`.
 //!
 //! Hosts that enumerate a directory natively (Windows local, SSH and WSL trees, and
 //! macOS plugin listings) do not compare names themselves; they send the siblings to

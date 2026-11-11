@@ -255,7 +255,7 @@ pub unsafe extern "C" fn lithe_agent_open_json(
 
 /// Queues one UTF-8 JSON command on an ACP connection; returns 1 when accepted.
 ///
-/// Commands follow `shared/fixtures/agent/acp-events-v1.json`. Results arrive
+/// Commands follow `rust/fixtures/agent/acp-events-v1.json`. Results arrive
 /// asynchronously as events; 0 means the JSON was invalid, the permission
 /// request is gone, or the connection has stopped.
 ///
@@ -303,7 +303,7 @@ mod text_content_tests {
     #[test]
     fn decoded_text_contract_matches_c_abi_and_json() {
         let fixture: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/editor/text-content-v1.json"
+            "../../../fixtures/editor/text-content-v1.json"
         ))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {

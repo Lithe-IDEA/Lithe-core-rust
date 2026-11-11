@@ -68,7 +68,7 @@ fn canonical(root: &Path) -> String {
 
 fn fixture() -> Value {
     serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/workspace/repository-visibility-v1.json"
+        "../../../fixtures/workspace/repository-visibility-v1.json"
     ))
     .unwrap()
 }

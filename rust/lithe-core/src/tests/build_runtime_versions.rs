@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 fn manifest() -> Value {
     serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../shared/contracts/plugins/v1/fixtures/build-systems/build-toolchains.plugin.json"
+        "/../../shared/plugins/contract/v1/fixtures/build-systems/build-toolchains.plugin.json"
     )))
     .expect("Cargo fixture is valid JSON")
 }

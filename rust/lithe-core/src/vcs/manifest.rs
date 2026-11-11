@@ -1,5 +1,5 @@
-//! `vcsProviders[]` of an API level 3 plugin manifest: what a host must know
-//! about a VCS before starting any process for it.
+//! `vcsProviders[]` of a plugin manifest: what a host must know about a VCS
+//! before starting any process for it.
 //!
 //! A declaration names the VCS, the static markers that identify its roots,
 //! the metadata the host watches to refresh status, the client tool the
@@ -117,7 +117,6 @@ fn is_marker_name(value: &str) -> bool {
 
 /// What the declaration context needs from the manifest.
 pub(crate) struct DeclarationContext<'a> {
-    pub(crate) plugin_api_version: u32,
     pub(crate) declared_settings: &'a DeclaredSettings,
     /// Whether tool names are host runtimes or tool-definition IDs.
     pub(crate) runtime_tools: crate::plugins::declarative::RuntimeTools<'a>,
@@ -130,12 +129,6 @@ pub(crate) fn validate_declarations(
 ) -> Validation<()> {
     if providers.is_empty() {
         return Ok(());
-    }
-    if context.plugin_api_version < 3 {
-        return Err(invalid(
-            "vcsProviders",
-            "VCS providers require plugin API level 3.",
-        ));
     }
     if providers.len() > MAX_PROVIDERS {
         return Err(invalid(
@@ -246,7 +239,6 @@ impl VcsProviderDeclaration {
 
         self.process.validate(
             field,
-            context.plugin_api_version,
             context.declared_settings,
             ServerRole::VcsProvider,
             context.runtime_tools,

@@ -261,7 +261,7 @@ mod tests {
     #[test]
     fn shared_collection_fixture_keeps_active_channels_and_category_compatibility() {
         let fixture: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/diagnostics/logging-v2.json"
+            "../../../fixtures/diagnostics/logging-v2.json"
         ))
         .unwrap();
         for case in fixture["collection"].as_array().unwrap() {

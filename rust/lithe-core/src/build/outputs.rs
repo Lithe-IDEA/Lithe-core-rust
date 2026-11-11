@@ -36,7 +36,7 @@ const MAX_MESSAGE: usize = 2_000;
 const MAX_SYNC_FILES: usize = 10_000;
 /// Version of the canonical `litheTestResults` and `litheDependencies`
 /// documents.
-const CANONICAL_VERSION: u32 = 1;
+const CANONICAL_VERSION: u32 = 0;
 
 impl From<DocumentDecoder> for Format {
     fn from(decoder: DocumentDecoder) -> Self {

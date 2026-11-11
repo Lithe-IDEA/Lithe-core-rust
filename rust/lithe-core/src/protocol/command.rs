@@ -168,8 +168,6 @@ pub enum CoreCommand {
     DebugTransportHandle,
     /// Forgets the lifecycle of a stopped byte stream (`debug.transport.release`).
     DebugTransportRelease,
-    /// Compares a launch runtime's version output with its requirement (`plugins.declarative.checkRuntimeVersion`).
-    PluginsDeclarativeCheckRuntimeVersion,
     /// Merges a plugin's stored setting layers into effective values (`plugins.declarative.resolveSettings`).
     PluginsDeclarativeResolveSettings,
     /// Projects stored documents into plugin setting rows and launch layers.
@@ -912,9 +910,6 @@ impl CoreCommand {
             "debug.transport.policy" => Some(Self::DebugTransportPolicy),
             "debug.transport.handle" => Some(Self::DebugTransportHandle),
             "debug.transport.release" => Some(Self::DebugTransportRelease),
-            "plugins.declarative.checkRuntimeVersion" => {
-                Some(Self::PluginsDeclarativeCheckRuntimeVersion)
-            }
             "plugins.declarative.resolveSettings" => Some(Self::PluginsDeclarativeResolveSettings),
             "plugins.settings.catalog" => Some(Self::PluginsSettingsCatalog),
             "plugins.settings.navigation" => Some(Self::PluginsSettingsNavigation),

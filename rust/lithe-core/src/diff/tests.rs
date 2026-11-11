@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 fn fixture() -> Value {
     serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../shared/fixtures/diff/compare-texts-v1.json"
+        "/../fixtures/diff/compare-texts-v1.json"
     )))
     .expect("compare-texts fixture should parse")
 }

@@ -174,7 +174,7 @@ mod tests {
     #[test]
     fn console_projection_preserves_raw_arguments_and_folds_only_global_options() {
         let fixture: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/git/console-command-v1.json"
+            "../../../fixtures/git/console-command-v1.json"
         ))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {
@@ -216,7 +216,7 @@ mod tests {
     fn named_defaults_are_scoped_and_do_not_duplicate_transfer_progress() {
         let before = current();
         let fixture: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/git/execution-policy-v1.json"
+            "../../../fixtures/git/execution-policy-v1.json"
         ))
         .unwrap();
         assert_eq!(

@@ -1,5 +1,9 @@
 //! Validates plugin diagnostic facts before handing them to the host's single writer.
+//!
+//! The protocol version is the plugin API version (the base contract),
+//! negotiated in `initialize` under `capabilities.experimental.litheLogging`.
 
+use crate::plugins::declarative::SUPPORTED_PLUGIN_API_VERSIONS;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -30,8 +34,24 @@ struct Input {
     operation_id: Option<String>,
 }
 
+/// Plugin-logging protocol versions this client speaks: the plugin API
+/// versions, since the protocol belongs to the base contract. It carries
+/// closed diagnostic facts sent as `lithe/log` notifications.
+fn supported_versions() -> Vec<u64> {
+    super::offered_versions(SUPPORTED_PLUGIN_API_VERSIONS)
+}
+
+/// The client half of the negotiation, placed under `capabilities.experimental`.
+pub(super) fn client_experimental_capabilities() -> (&'static str, Value) {
+    (FEATURE, json!({ "versions": supported_versions() }))
+}
+
+/// Whether the server's `initialize` capabilities chose a version this client offered.
 pub(super) fn negotiated(capabilities: &Value) -> bool {
-    capabilities.pointer("/experimental/litheLogging/version") == Some(&json!(1))
+    capabilities
+        .pointer("/experimental/litheLogging/version")
+        .and_then(Value::as_u64)
+        .is_some_and(|version| supported_versions().contains(&version))
 }
 
 fn token(value: &str, limit: usize) -> bool {
@@ -114,7 +134,7 @@ mod tests {
     #[test]
     fn shared_plugin_logging_fixture_matches_ingress_and_catalog() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../../shared/contracts/plugins/v1/fixtures/backend/plugin-logging.json"
+            "../../../../../shared/plugins/contract/v1/fixtures/backend/plugin-logging.json"
         ))
         .unwrap();
         let functions = fixture["registeredFunctions"]
@@ -206,11 +226,16 @@ mod tests {
             let fact = decode("io.example.database", &BTreeSet::new(), &input).unwrap();
             assert_eq!(fact.fields["operation"], operation);
         }
+        assert_eq!(
+            client_experimental_capabilities(),
+            ("litheLogging", json!({"versions":[0]}))
+        );
         assert!(negotiated(
-            &json!({"experimental":{"litheLogging":{"version":1}}})
+            &json!({"experimental":{"litheLogging":{"version":0}}})
         ));
         assert!(!negotiated(
-            &json!({"experimental":{"litheLogging":{"version":2}}})
+            &json!({"experimental":{"litheLogging":{"version":1}}})
         ));
+        assert!(!negotiated(&json!({"experimental":{"litheLogging":{}}})));
     }
 }

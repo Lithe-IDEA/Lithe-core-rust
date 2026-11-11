@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 /// Tool-definition fixture whose single tool every vector queries and pins.
 const TOOL_DEFINITION: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../shared/contracts/plugins/v1/fixtures/toolchains/tool-definition.plugin.json"
+    "/../../shared/plugins/contract/v1/fixtures/toolchains/tool-definition.plugin.json"
 ));
 
 /// Home of the tool that the query reply reports and the root pin selects.

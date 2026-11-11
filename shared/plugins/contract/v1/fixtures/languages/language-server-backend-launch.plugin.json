@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 0,
+  "id": "dev.lithe.fixture.language-server-backend-launch",
+  "displayName": "Backend Launched Language Server Fixture",
+  "version": "0.1.0",
+  "pluginAPIVersion": 0,
+  "requires": {
+    "backend": 0,
+    "languageServers": 0,
+    "languages": 0,
+    "toolDefinitions": 0
+  },
+  "vendor": {
+    "id": "org.example",
+    "displayName": "Example",
+    "signatureRequirement": "publisherPackage"
+  },
+  "permissions": [
+    "backend.launch",
+    "languageServer.launch",
+    "languageServer.request"
+  ],
+  "activationEvents": [
+    "onLanguage:scala"
+  ],
+  "languages": [
+    {
+      "id": "scala",
+      "displayName": "Scala",
+      "fileExtensions": [
+        "scala",
+        "sc"
+      ],
+      "projectFileNames": [
+        "build.sbt"
+      ]
+    }
+  ],
+  "toolDefinitions": [
+    {
+      "id": "coursier",
+      "displayName": "Coursier",
+      "executableLayouts": [
+        {
+          "path": "bin/cs"
+        }
+      ],
+      "executables": [
+        {
+          "id": "shell",
+          "kind": "command",
+          "command": "cs"
+        }
+      ],
+      "version": {
+        "arguments": [
+          "--version"
+        ],
+        "pattern": "(\\d+(?:\\.\\d+)*)"
+      },
+      "commands": [
+        "cs"
+      ],
+      "launch": [
+        "${executable}",
+        "${arguments}"
+      ]
+    }
+  ],
+  "languageServers": [
+    {
+      "languageID": "scala",
+      "launch": {
+        "kind": "backend",
+        "function": "metals.resolveLaunch",
+        "timeoutMilliseconds": 30000
+      },
+      "requestMethods": [
+        "textDocument/definition",
+        "workspace/executeCommand"
+      ],
+      "commands": [
+        "build-connect",
+        "build-import",
+        "doctor-run"
+      ],
+      "serializedCommands": [
+        "build-import"
+      ],
+      "forwardNotifications": [
+        "metals/executeClientCommand",
+        "metals/status"
+      ],
+      "state": {
+        "scope": "workspace",
+        "retention": {
+          "maxEntries": 8,
+          "maxAgeDays": 30
+        }
+      },
+      "remote": "unsupported"
+    }
+  ],
+  "backend": {
+    "launch": {
+      "kind": "packaged",
+      "path": "bin/backend"
+    },
+    "arguments": [
+      "--state",
+      "${stateDir}"
+    ]
+  }
+}

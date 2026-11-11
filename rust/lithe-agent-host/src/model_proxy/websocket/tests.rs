@@ -84,7 +84,7 @@ fn feed(observation: &mut Observation, from_client: bool, message: Value, now: I
 fn full_request() -> Value {
     let fixture: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../shared/fixtures/agent/acp-events-v1.json"
+        "/../fixtures/agent/acp-events-v1.json"
     )))
     .unwrap();
     fixture["upstream"]["codexSubscriptionObservation"]["request"].clone()

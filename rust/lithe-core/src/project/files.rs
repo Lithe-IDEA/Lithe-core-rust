@@ -2280,7 +2280,7 @@ mod event_filter_tests {
     #[test]
     fn shared_text_snapshot_contract_fixture() {
         let fixture: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/search/text-snapshot-v1.json"
+            "../../../fixtures/search/text-snapshot-v1.json"
         ))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {
@@ -2376,7 +2376,7 @@ mod event_filter_tests {
     #[test]
     fn shared_workspace_change_fixture() {
         let fixture: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/workspace/change-filter-v1.json"
+            "../../../fixtures/workspace/change-filter-v1.json"
         ))
         .unwrap();
         let paths: Vec<String> = serde_json::from_value(fixture["paths"].clone()).unwrap();

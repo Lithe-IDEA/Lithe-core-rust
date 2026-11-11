@@ -172,7 +172,6 @@ pub(crate) struct PrepareRunRequest {
 pub(crate) fn plan(
     build_system: &BuildSystemDeclaration,
     request: &PrepareRunRequest,
-    protocol_version: u32,
 ) -> Validation<Value> {
     let declaration = build_system
         .run
@@ -182,14 +181,9 @@ pub(crate) fn plan(
     let execution = declaration.execution.unwrap_or(BuildExecution::Application);
     match &request.launch_options {
         Some(options) => {
-            if options.debug.is_some() && protocol_version < 11 {
+            if options.execution != execution {
                 return Err(plans::invalid_selection(
-                    "Runtime debug options require buildProviders 11.",
-                ));
-            }
-            if protocol_version < 10 || options.execution != execution {
-                return Err(plans::invalid_selection(
-                    "Launch options require buildProviders 10 and the declared execution kind.",
+                    "Launch options must match the declared execution kind.",
                 ));
             }
             options.validate(request.workspace_root.as_deref())?;
@@ -281,7 +275,6 @@ pub(crate) struct DecodeRunPreparationRequest {
 pub(crate) fn decode(
     build_system: &BuildSystemDeclaration,
     request: &DecodeRunPreparationRequest,
-    protocol_version: u32,
 ) -> Validation<Value> {
     if !build_system
         .run
@@ -291,17 +284,6 @@ pub(crate) fn decode(
         return Err(plans::unavailable(build_system, "run preparation"));
     }
     let invalid = || decode::invalid_output("Invalid provider run preparation result.");
-    if request.launch_options.is_some() && protocol_version < 10 {
-        return Err(invalid());
-    }
-    if request
-        .launch_options
-        .as_ref()
-        .is_some_and(|options| options.debug.is_some())
-        && protocol_version < 11
-    {
-        return Err(invalid());
-    }
     let value = &request.result;
     if serde_json::to_vec(value).map_or(usize::MAX, |bytes| bytes.len()) > decode::MAX_OUTPUT_BYTES
     {

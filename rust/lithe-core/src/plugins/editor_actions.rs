@@ -2,10 +2,11 @@
 //!
 //! Core validates presentation and opaque function bindings. Plugin parsers own
 //! their business facts; hosts own document versions, session leases, icon
-//! resources and clicks. Version 1 keeps the original two icons and 128 KiB
-//! source bound; version 2 takes the icons and bound the host declared in
-//! [`EditorHostOptions`](crate::plugins::editor_actions::EditorHostOptions) and adds
-//! alternatives and reveal results.
+//! resources and clicks. Collected actions are checked against the icons and
+//! source bound the host declared in
+//! [`EditorHostOptions`](crate::plugins::editor_actions::EditorHostOptions); an
+//! action may carry alternatives, and a clicked action may return a reveal
+//! result.
 
 use crate::lsp::interface::plugin_function::is_function_id;
 use crate::protocol::{CoreError, ErrorCode};
@@ -17,8 +18,6 @@ const MAX_ACTIONS: usize = 1000;
 const MAX_BYTES: usize = 1024 * 1024;
 /// Largest document a host may collect actions for, in UTF-8 bytes.
 pub const MAX_SOURCE_BYTES: usize = 1024 * 1024;
-const LEGACY_SOURCE_BYTES: usize = 128 * 1024;
-const LEGACY_ICONS: [&str; 2] = ["run", "run-all"];
 const MAX_ICONS: usize = 32;
 const MAX_ALTERNATIVES: usize = 4;
 const MAX_REVEAL_LOCATIONS: usize = 100;
@@ -219,58 +218,47 @@ struct Reveal {
     locations: Vec<Location>,
 }
 
+/// Request versions of `plugins.editorActions.decode` this Core accepts. A
+/// later version is appended.
+const DECODE_VERSIONS: &[u64] = &[0];
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Payload {
     kind: String,
+    /// The decode version the host validates under; one of
+    /// [`DECODE_VERSIONS`].
+    version: u64,
     value: Value,
     #[serde(default)]
     text: String,
-    /// 1 when absent: the original icons and source bound.
-    #[serde(default = "legacy_version")]
-    version: u64,
-    /// Version 2: the icons of the host's [`EditorHostOptions`].
+    /// The icons of the host's [`EditorHostOptions`]; required by
+    /// `kind: actions`.
     #[serde(default)]
     icons: Vec<String>,
-    /// Version 2: the host's `actionSourceBytes`.
+    /// The host's `actionSourceBytes`; required by `kind: actions`.
     #[serde(default)]
     source_bytes: Option<usize>,
 }
 
-fn legacy_version() -> u64 {
-    1
-}
-
-/// What one decode version admits.
+/// What the host admits in a collected action list.
 struct Rules {
     icons: Vec<String>,
     source_bytes: usize,
-    alternatives: bool,
 }
 
 impl Rules {
     fn of(payload: &Payload) -> Result<Self, CoreError> {
-        match payload.version {
-            1 if payload.icons.is_empty() && payload.source_bytes.is_none() => Ok(Self {
-                icons: LEGACY_ICONS.iter().map(ToString::to_string).collect(),
-                source_bytes: LEGACY_SOURCE_BYTES,
-                alternatives: false,
-            }),
-            2 => {
-                let options = EditorHostOptions {
-                    action_icons: payload.icons.clone(),
-                    action_source_bytes: payload.source_bytes.unwrap_or(0),
-                    provider_types: Vec::new(),
-                };
-                options.validate()?;
-                Ok(Self {
-                    icons: options.action_icons,
-                    source_bytes: options.action_source_bytes,
-                    alternatives: true,
-                })
-            }
-            _ => Err(invalid("Unsupported editor action validation version.")),
-        }
+        let options = EditorHostOptions {
+            action_icons: payload.icons.clone(),
+            action_source_bytes: payload.source_bytes.unwrap_or(0),
+            provider_types: Vec::new(),
+        };
+        options.validate()?;
+        Ok(Self {
+            icons: options.action_icons,
+            source_bytes: options.action_source_bytes,
+        })
     }
 
     fn icon(&self, icon: &str) -> bool {
@@ -404,7 +392,6 @@ fn actions(value: Value, text: &str, rules: &Rules) -> Result<Value, CoreError> 
             || item.range.start > item.range.end
             || !valid_position(&item.range.start)
             || !valid_position(&item.range.end)
-            || (!rules.alternatives && !item.alternatives.is_empty())
             || item.alternatives.len() > MAX_ALTERNATIVES
             || !item.alternatives.iter().all(|alternative| {
                 identifier(&alternative.id)
@@ -426,7 +413,7 @@ fn actions(value: Value, text: &str, rules: &Rules) -> Result<Value, CoreError> 
 }
 
 /// Reads the `reveal` member of an action's function result. Other members
-/// stay the plugin's own: a version 1 result had no meaning to the host.
+/// stay the plugin's own and have no meaning to the host.
 fn invoke_result(value: Value) -> Result<Value, CoreError> {
     let Some(reveal) = value.get("reveal").cloned() else {
         return Ok(json!({}));
@@ -445,20 +432,25 @@ fn invoke_result(value: Value) -> Result<Value, CoreError> {
 }
 
 /// Validates an independent registration (`kind: registration`), a parser
-/// result (`kind: actions`, with its exact text) or, from version 2, the
-/// result of a clicked action (`kind: invokeResult`). No I/O or tool parsing
-/// occurs.
+/// result (`kind: actions`, with its exact text and the host's icons and
+/// source bound) or the result of a clicked action (`kind: invokeResult`). No
+/// I/O or tool parsing occurs.
 pub fn decode_command(payload: Value) -> Result<Value, CoreError> {
     let payload: Payload = serde_json::from_value(payload)
         .map_err(|_| invalid("Invalid editor action validation payload."))?;
+    if !DECODE_VERSIONS.contains(&payload.version) {
+        return Err(invalid("Unsupported editor action validation version."));
+    }
     if payload.value.to_string().len() > MAX_BYTES {
         return Err(invalid("Editor action data exceeds 1 MiB."));
     }
-    let rules = Rules::of(&payload)?;
     match payload.kind.as_str() {
         "registration" => Ok(json!({"registration": registration(payload.value)?})),
-        "actions" => Ok(json!({"actions": actions(payload.value, &payload.text, &rules)?})),
-        "invokeResult" if rules.alternatives => invoke_result(payload.value),
+        "actions" => {
+            let rules = Rules::of(&payload)?;
+            Ok(json!({"actions": actions(payload.value, &payload.text, &rules)?}))
+        }
+        "invokeResult" => invoke_result(payload.value),
         _ => Err(invalid("Unknown editor action validation kind.")),
     }
 }
@@ -469,25 +461,26 @@ mod tests {
 
     const HOST_ICONS: [&str; 4] = ["run", "debug", "test", "navigate-super"];
 
-    fn v2(kind: &str, text: &str, value: Value) -> Result<Value, CoreError> {
-        decode_command(json!({"kind": kind, "version": 2, "icons": HOST_ICONS,
+    /// Decodes with the icons and source bound of the test host.
+    fn decode(kind: &str, text: &str, value: Value) -> Result<Value, CoreError> {
+        decode_command(json!({"version": 0, "kind": kind, "icons": HOST_ICONS,
             "sourceBytes": MAX_SOURCE_BYTES, "text": text, "value": value}))
     }
 
     #[test]
     fn different_tools_share_registration_and_opaque_invocations() {
         for (extension, function) in [("http", "requests.send"), ("sql", "queries.execute")] {
-            let registration = decode_command(json!({"kind":"registration", "value":{
+            let registration = decode_command(json!({"version": 0, "kind":"registration", "value":{
                 "id":"actions", "function":"actions.collect", "selector":{"fileExtensions":[extension]}
             }})).unwrap();
             assert_eq!(
                 registration["registration"]["selector"]["fileExtensions"][0],
                 extension
             );
-            let result = decode_command(json!({"kind":"actions", "text":"hello\nworld", "value":{"actions":[{
+            let result = decode("actions", "hello\nworld", json!({"actions":[{
                 "id":"a", "range":{"start":{"line":1,"column":1},"end":{"line":2,"column":6}},
                 "title":"Execute", "icon":"run", "invoke":{"functionID":function,"params":{"opaque":[1,2]}}
-            }]}})).unwrap();
+            }]})).unwrap();
             assert_eq!(
                 result["actions"][0]["invoke"]["params"]["opaque"],
                 json!([1, 2])
@@ -503,41 +496,49 @@ mod tests {
             ("x", json!([item.clone()])),
             ("abc", json!([item.clone(), item])),
         ] {
-            assert!(decode_command(
-                json!({"kind":"actions","text":text,"value":{"actions":items}})
-            )
-            .is_err());
+            assert!(decode("actions", text, json!({"actions":items})).is_err());
         }
         // Column 2 splits an astral character's UTF-16 surrogate pair.
-        assert!(
-            decode_command(json!({"kind":"actions","text":"😀","value":{"actions":[{
+        assert!(decode(
+            "actions",
+            "😀",
+            json!({"actions":[{
                 "id":"a","range":{"start":{"line":1,"column":2},"end":{"line":1,"column":3}},
                 "title":"Execute","icon":"run","invoke":{"functionID":"action.execute"}
-            }]}}))
-            .is_err()
-        );
+            }]})
+        )
+        .is_err());
     }
 
     #[test]
-    fn version_one_keeps_the_original_icons_and_bound() {
+    fn actions_are_bounded_by_the_icons_and_source_size_the_host_declared() {
         let item = |icon: &str| {
             json!({"actions":[{"id":"a","range":{"start":{"line":1,"column":1},"end":{"line":1,"column":1}},
                 "title":"Run","icon":icon,"invoke":{"functionID":"markers.run"}}]})
         };
-        assert!(
-            decode_command(json!({"kind":"actions","text":"x","value":item("debug")})).is_err()
-        );
-        let large = "x".repeat(LEGACY_SOURCE_BYTES + 1);
-        assert!(
-            decode_command(json!({"kind":"actions","text":large,"value":item("run")})).is_err()
-        );
-        assert!(v2("actions", &large, item("debug")).is_ok());
-        assert!(decode_command(json!({"kind":"invokeResult","value":{}})).is_err());
-        // A version 1 payload cannot smuggle host icons.
+        let declared = |icons: Value, source_bytes: usize, text: &str, icon: &str| {
+            decode_command(
+                json!({"version":0,"kind":"actions","icons":icons,"sourceBytes":source_bytes,
+                "text":text,"value":item(icon)}),
+            )
+        };
+        // Without the host's icons and bound there is nothing to check against.
         assert!(decode_command(
-            json!({"kind":"actions","icons":["debug"],"text":"x","value":item("debug")})
+            json!({"version": 0, "kind":"actions","text":"x","value":item("run")})
         )
         .is_err());
+        assert!(declared(json!(["run", "debug"]), 4, "xxxx", "debug").is_ok());
+        assert!(declared(json!(["run"]), 4, "xxxx", "debug").is_err());
+        assert!(declared(json!(["run"]), 4, "xxxxx", "run").is_err());
+        // The request names a decode version this Core accepts.
+        for version in [json!(1), Value::Null] {
+            let mut request = json!({"kind":"invokeResult","value":{}});
+            if !version.is_null() {
+                request["version"] = version;
+            }
+            assert!(decode_command(request).is_err());
+        }
+        assert!(decode_command(json!({"version":0,"kind":"invokeResult","value":{}})).is_ok());
     }
 
     #[test]
@@ -550,7 +551,7 @@ mod tests {
                 "title":"Run main","icon":"run","invoke":{"functionID":"go.markers.invoke","params":{"entry":"main"}},
                 "alternatives":alternatives}]})
         };
-        let accepted = v2("actions", text, marker(json!([
+        let accepted = decode("actions", text, marker(json!([
             {"id":"debug","title":"Debug main","icon":"debug","invoke":{"functionID":"go.markers.invoke","params":{"debug":true}}},
             {"id":"test","title":"Test package","icon":"test","invoke":{"functionID":"go.markers.invoke"}}
         ]))).unwrap();
@@ -566,20 +567,16 @@ mod tests {
                 .map(|n| alternative(&n.to_string(), "test"))
                 .collect::<Vec<_>>()),
         ] {
-            assert!(v2("actions", text, marker(alternatives)).is_err());
+            assert!(decode("actions", text, marker(alternatives)).is_err());
         }
-        assert!(decode_command(
-            json!({"kind":"actions","text":text,"value":marker(json!([alternative("a","run")]))})
-        )
-        .is_err());
         // Icon names are lowercase tokens the host declared.
         assert!(decode_command(
-            json!({"kind":"actions","version":2,"icons":["Run"],"sourceBytes":10,"text":"x",
+            json!({"version":0,"kind":"actions","icons":["Run"],"sourceBytes":10,"text":"x",
             "value":{"actions":[]}})
         )
         .is_err());
         assert!(decode_command(
-            json!({"kind":"actions","version":2,"icons":["run"],"sourceBytes":MAX_SOURCE_BYTES + 1,
+            json!({"version":0,"kind":"actions","icons":["run"],"sourceBytes":MAX_SOURCE_BYTES + 1,
             "text":"x","value":{"actions":[]}})
         )
         .is_err());
@@ -589,7 +586,7 @@ mod tests {
     fn invoke_results_reveal_bounded_locations_and_keep_other_members_private() {
         let location = json!({"uri":"file:///work/messages.properties",
             "range":{"start":{"line":4,"character":0},"end":{"line":4,"character":12}}});
-        let result = v2(
+        let result = decode(
             "invokeResult",
             "",
             json!({"reveal":{"locations":[location.clone()]},"private":1}),
@@ -597,17 +594,17 @@ mod tests {
         .unwrap();
         assert_eq!(result, json!({"reveal":{"locations":[location.clone()]}}));
         assert_eq!(
-            v2("invokeResult", "", json!({"started":true})).unwrap(),
+            decode("invokeResult", "", json!({"started":true})).unwrap(),
             json!({})
         );
-        assert_eq!(v2("invokeResult", "", Value::Null).unwrap(), json!({}));
+        assert_eq!(decode("invokeResult", "", Value::Null).unwrap(), json!({}));
         for reveal in [
             json!({"locations":[]}),
             json!({"locations":vec![location; 101]}),
             json!({"locations":[{"uri":"relative/path","range":{"start":{"line":0,"character":0},"end":{"line":0,"character":0}}}]}),
             json!({"locations":[{"uri":"file:///a","range":{"start":{"line":2,"character":0},"end":{"line":1,"character":0}}}]}),
         ] {
-            assert!(v2("invokeResult", "", json!({"reveal":reveal})).is_err());
+            assert!(decode("invokeResult", "", json!({"reveal":reveal})).is_err());
         }
     }
 
@@ -653,7 +650,7 @@ mod tests {
     fn contract_fixture_cases() {
         let fixture: Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/contracts/plugins/v1/fixtures/editor/editor-actions-v2.json"
+            "/../../shared/plugins/contract/v1/fixtures/editor/editor-actions.json"
         )))
         .unwrap();
         let host: EditorHostOptions = serde_json::from_value(fixture["host"].clone()).unwrap();
@@ -661,7 +658,7 @@ mod tests {
         for case in fixture["cases"].as_array().unwrap() {
             let name = case["name"].as_str().unwrap();
             let kind = case["kind"].as_str().unwrap();
-            let decoded = decode_command(json!({"kind": kind, "version": 2,
+            let decoded = decode_command(json!({"version": 0, "kind": kind,
                 "icons": host.action_icons, "sourceBytes": host.action_source_bytes,
                 "text": case.get("text").cloned().unwrap_or(json!("")), "value": case["value"]}));
             match case["expected"]["status"].as_str().unwrap() {

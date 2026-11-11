@@ -7,7 +7,7 @@ macro_rules! contract_file {
     ($path:literal) => {
         include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/contracts/plugins/v1/",
+            "/../../shared/plugins/contract/v1/",
             $path
         ))
     };
@@ -280,21 +280,12 @@ fn a_grammar_only_plugin_validates_without_a_language_server() {
     assert_eq!(language["grammar"]["path"], "grammars/http.tmLanguage.json");
 }
 
-/// `languages` 2 named Monaco's Monarch tokenizer, which no editor runs any
-/// more; a manifest written against it is unsupported rather than misread.
+/// TextMate is the only grammar engine the editor runs; a grammar of any
+/// other kind is an invalid manifest.
 #[test]
-fn the_withdrawn_monarch_version_is_unsupported() {
+fn a_grammar_kind_other_than_textmate_is_invalid() {
     let mut plugin = manifest(GRAMMAR_PLUGIN);
-    plugin["requires"]["languages"] = json!(2);
-    plugin["languages"][0]["grammar"]["kind"] = json!("monarch");
-    let outcome = validate_command(json!({ "manifest": plugin })).unwrap();
-    assert_eq!(
-        outcome["error"]["code"], "plugin.api.unsupported",
-        "{outcome}"
-    );
-
-    let mut plugin = manifest(GRAMMAR_PLUGIN);
-    plugin["languages"][0]["grammar"]["kind"] = json!("monarch");
+    plugin["languages"][0]["grammar"]["kind"] = json!("tokenizer");
     let outcome = validate_command(json!({ "manifest": plugin })).unwrap();
     assert_eq!(
         outcome["error"]["code"], "plugin.manifest.invalid",
@@ -314,8 +305,7 @@ fn configuration_only_contribution_decodes_without_grammar() {
         "fixtures/backend/backend-workspace.plugin.json"
     ));
     plugin["backend"] = tool["backend"].clone();
-    plugin["requires"]["backend"] = json!(2);
-    plugin["requires"]["serverProcess"] = json!(1);
+    plugin["requires"]["backend"] = json!(0);
     plugin["permissions"] = json!(["backend.launch"]);
     plugin["activationEvents"] = json!(["onWorkspaceOpen"]);
     let result =

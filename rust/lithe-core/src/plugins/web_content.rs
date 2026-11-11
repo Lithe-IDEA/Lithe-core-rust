@@ -1,4 +1,4 @@
-//! Plugin web content (`ui` 2): the rules a host applies around a plugin page.
+//! Plugin web content (`ui`): the rules a host applies around a plugin page.
 //!
 //! The native host owns the web view, file reads, storage, dialogs and the
 //! calls a page makes; this module decides what a page is served, which bridge
@@ -22,8 +22,8 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 
 /// URL scheme of plugin pages; the host is the plugin ID, one origin per plugin.
 const SCHEME: &str = "lithe-plugin";
-/// Bridge version; 2 adds the file dialogs to version 1.
-const BRIDGE_VERSION: u32 = 2;
+/// Version of the page bridge, the `ui` capability's web content version.
+const BRIDGE_VERSION: u32 = 0;
 /// Package path of the host's bridge script. No package file under its
 /// directory is served: the host answers this path with the bootstrap script.
 const BOOTSTRAP_PATH: &str = ".lithe-host/bridge.js";
@@ -51,23 +51,23 @@ const PATH_LIMIT: usize = 4096;
 const EXTENSION_COUNT: usize = 16;
 const EXTENSION_LIMIT: usize = 16;
 
-/// Bridge methods and the bridge version that introduced them.
-const METHODS: &[(&str, u32)] = &[
-    ("build.instances", 1),
-    ("build.refresh", 1),
-    ("build.runTask", 1),
-    ("build.runTests", 1),
-    ("build.cancel", 1),
-    ("build.dependencies", 1),
-    ("build.setOptions", 1),
-    ("workspace.openFile", 1),
-    ("ui.getState", 1),
-    ("ui.setState", 1),
-    ("functions.list", 1),
-    ("functions.invoke", 1),
-    ("functions.cancel", 1),
-    ("dialog.openFile", 2),
-    ("dialog.saveFile", 2),
+/// Methods a page may request through the bridge.
+const METHODS: &[&str] = &[
+    "build.instances",
+    "build.refresh",
+    "build.runTask",
+    "build.runTests",
+    "build.cancel",
+    "build.dependencies",
+    "build.setOptions",
+    "workspace.openFile",
+    "ui.getState",
+    "ui.setState",
+    "functions.list",
+    "functions.invoke",
+    "functions.cancel",
+    "dialog.openFile",
+    "dialog.saveFile",
 ];
 
 /// Events a host may deliver to a page.
@@ -624,10 +624,7 @@ fn check(
     method: &str,
     params: Map<String, Value>,
 ) -> Result<Map<String, Value>, Refusal> {
-    let known = METHODS
-        .iter()
-        .any(|(name, version)| *name == method && *version <= BRIDGE_VERSION);
-    if !known || (method.starts_with("build.") && !page.build_systems) {
+    if !METHODS.contains(&method) || (method.starts_with("build.") && !page.build_systems) {
         return Err(refuse(
             "plugin.web.unknownMethod",
             format!("This host does not answer {method}."),

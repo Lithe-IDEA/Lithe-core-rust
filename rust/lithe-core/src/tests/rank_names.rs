@@ -17,10 +17,9 @@ fn execute(payload: Value) -> Value {
 
 #[test]
 fn rank_names_matches_the_shared_fixture() {
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/search/rank-names-v1.json"
-    ))
-    .expect("rank-names fixture should be JSON");
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../../fixtures/search/rank-names-v1.json"))
+            .expect("rank-names fixture should be JSON");
     for case in fixture["cases"].as_array().unwrap() {
         let response = execute(case["request"].clone());
         assert_eq!(response["ok"], true, "{}: {response}", case["id"]);
@@ -55,7 +54,7 @@ fn rank_names_rejects_oversized_input_instead_of_truncating() {
 #[test]
 fn search_everywhere_context_matches_the_shared_fixture() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/search/search-everywhere-context-v1.json"
+        "../../../fixtures/search/search-everywhere-context-v1.json"
     ))
     .expect("search context fixture should be JSON");
     for case in fixture["cases"].as_array().unwrap() {

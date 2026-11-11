@@ -6,7 +6,7 @@
 //! non-streaming, which timings describe generation speed, and which request
 //! describes the current context. Platforms only add contributions with
 //! [`ModelCallStatistics::merge`]; they never reinterpret a raw call.
-//! Contract: `shared/fixtures/agent/model-call-statistics-v1.json`.
+//! Contract: `rust/fixtures/agent/model-call-statistics-v1.json`.
 
 use std::collections::HashSet;
 use std::sync::Mutex;
@@ -215,7 +215,7 @@ mod tests {
     #[test]
     fn fixture_contributions_and_totals_match() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../shared/fixtures/agent/model-call-statistics-v1.json"
+            "../../fixtures/agent/model-call-statistics-v1.json"
         ))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {

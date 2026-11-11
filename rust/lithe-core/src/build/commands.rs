@@ -213,16 +213,8 @@ pub(crate) fn build_prepare_run_plan_command(payload: Value) -> Result<Value, Co
         payload,
         "build.prepareRunPlan",
         "plan",
-        |build_system, request: &super::run_preparation::PrepareRunRequest, manifest| {
-            super::run_preparation::plan(
-                build_system,
-                request,
-                manifest
-                    .requires()
-                    .get("buildProviders")
-                    .copied()
-                    .unwrap_or(1),
-            )
+        |build_system, request: &super::run_preparation::PrepareRunRequest, _manifest| {
+            super::run_preparation::plan(build_system, request)
         },
     )
 }
@@ -233,16 +225,8 @@ pub(crate) fn build_decode_run_preparation_command(payload: Value) -> Result<Val
         payload,
         "build.decodeRunPreparation",
         "launch",
-        |build_system, request: &super::run_preparation::DecodeRunPreparationRequest, manifest| {
-            super::run_preparation::decode(
-                build_system,
-                request,
-                manifest
-                    .requires()
-                    .get("buildProviders")
-                    .copied()
-                    .unwrap_or(1),
-            )
+        |build_system, request: &super::run_preparation::DecodeRunPreparationRequest, _manifest| {
+            super::run_preparation::decode(build_system, request)
         },
     )
 }

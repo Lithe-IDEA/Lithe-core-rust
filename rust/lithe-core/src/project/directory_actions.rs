@@ -14,7 +14,7 @@
 //!
 //! Directory keys are compared as paths: with `caseInsensitive` set, keys that differ only
 //! by case name the same directory. Stored keys keep the spelling they were written with.
-//! The sequence contract is `shared/fixtures/workspace/directory-actions-v1.json`; the
+//! The sequence contract is `rust/fixtures/workspace/directory-actions-v1.json`; the
 //! request and response shapes are pinned by `directory-rules-v1.json`.
 
 use crate::protocol::{CoreError, ErrorCode};

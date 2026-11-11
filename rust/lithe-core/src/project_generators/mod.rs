@@ -1,5 +1,6 @@
-//! Project generators declared by API level 3 plugins: the entries of the
-//! New Project window and the deterministic half of creating a project.
+//! Project generators declared by plugins that list `projectGenerators` in
+//! `requires`: the entries of the New Project window and the deterministic
+//! half of creating a project.
 //!
 //! A plugin describes a way to start a project as data (`projectGenerators`
 //! in `plugin.json`): where it is listed, which fields the user fills in,
@@ -12,7 +13,7 @@
 //! processes in a staging directory, and move the finished project into
 //! place.
 //!
-//! A version 2 generator picks tool installations with `tool` fields. The
+//! A generator picks tool installations with `tool` fields. The
 //! host lists the installations of the tool a field names (through the same
 //! tool definitions and discovery the settings use); Core chooses among them
 //! (the newest that meets `minimumVersion`), reports the choice in the form,

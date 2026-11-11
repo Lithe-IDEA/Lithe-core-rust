@@ -149,7 +149,7 @@ fn search_everywhere_uses_git_ignore_rules_for_filename_foreground() {
 #[test]
 fn search_everywhere_preserves_unicode_contiguous_filename_matches() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/search/unicode-contiguous.json"
+        "../../../fixtures/search/unicode-contiguous.json"
     ))
     .unwrap();
     let root = temporary_root("unicode-contiguous-names");
@@ -189,10 +189,8 @@ fn search_everywhere_preserves_unicode_contiguous_filename_matches() {
 
 #[test]
 fn search_everywhere_preserves_directory_fallback_below_basename_matches() {
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/search/path-fallback.json"
-    ))
-    .unwrap();
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../../fixtures/search/path-fallback.json")).unwrap();
     let root = temporary_root("search-path-fallback");
     struct Cleanup(std::path::PathBuf);
     impl Drop for Cleanup {
@@ -252,10 +250,8 @@ fn search_everywhere_matches_names_before_limits_and_shares_utf16_fragments() {
         }
     }
     let _cleanup = Cleanup(root.clone());
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/search/name-matching.json"
-    ))
-    .unwrap();
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../../fixtures/search/name-matching.json")).unwrap();
     for case in fixture["cases"].as_array().unwrap() {
         let path = root.join(case["path"].as_str().unwrap());
         fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -1112,7 +1108,7 @@ fn search_pages_apply_path_filters_before_the_page_limit() {
         fs::write(root.join(file), "  😀needle\n").unwrap();
     }
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/search/text-snapshot-v1.json"
+        "../../../fixtures/search/text-snapshot-v1.json"
     ))
     .unwrap();
     let case = &fixture["filteredPage"];
@@ -1236,10 +1232,8 @@ fn preserve_case_matches_original_occurrence_shape() {
 
 #[test]
 fn local_history_relocates_excluded_files_and_subtrees_from_retained_metadata() {
-    let cases: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/history/relocation-v1.json"
-    ))
-    .unwrap();
+    let cases: Value =
+        serde_json::from_str(include_str!("../../../fixtures/history/relocation-v1.json")).unwrap();
     for case in cases["cases"].as_array().unwrap() {
         let root = temporary_root("excluded-history-relocation");
         struct Cleanup(std::path::PathBuf, Option<u64>);
@@ -1639,7 +1633,7 @@ fn file_commands_round_trip_and_reject_traversal() {
 #[test]
 fn document_lifecycle_matches_the_cross_platform_fixture() {
     let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../shared/fixtures/documents/lifecycle-v1.json");
+        .join("../fixtures/documents/lifecycle-v1.json");
     let fixture: Value = serde_json::from_str(
         &fs::read_to_string(fixture_path).expect("document lifecycle fixture should be readable"),
     )
@@ -1672,7 +1666,7 @@ fn document_lifecycle_matches_the_cross_platform_fixture() {
 #[test]
 fn document_save_batch_matches_the_cross_platform_fixture() {
     let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../shared/fixtures/documents/save-batch-v1.json");
+        .join("../fixtures/documents/save-batch-v1.json");
     let fixture: Value = serde_json::from_str(
         &fs::read_to_string(fixture_path).expect("save batch fixture should be readable"),
     )
@@ -1927,7 +1921,7 @@ fn search_everywhere_pages_all_sources_past_200_without_duplicates_or_missing_ma
 #[test]
 fn recent_project_reductions_match_shared_fixture() {
     let fixture: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/workspace/recent-projects-v1.json"
+        "../../../fixtures/workspace/recent-projects-v1.json"
     ))
     .unwrap();
     for case in fixture["cases"].as_array().unwrap() {
@@ -1959,7 +1953,7 @@ fn recent_projects_default_capacity_keeps_the_newest_unpinned_projects() {
     // The fixture documents the default; this guards the shared constant
     // without a 21-entry JSON case.
     let fixture: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/workspace/recent-projects-v1.json"
+        "../../../fixtures/workspace/recent-projects-v1.json"
     ))
     .unwrap();
     let capacity = crate::project::recent_projects::DEFAULT_RECENT_PROJECT_CAPACITY;
@@ -1998,7 +1992,7 @@ fn call(command: &str, payload: Value) -> Value {
 #[test]
 fn file_encoding_matches_the_golden_fixture() {
     let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../shared/fixtures/editor/file-encoding-v1.json");
+        .join("../fixtures/editor/file-encoding-v1.json");
     let fixture: Value = serde_json::from_str(&fs::read_to_string(fixture_path).unwrap()).unwrap();
     let root = temporary_root("file-encoding");
     fs::create_dir_all(&root).unwrap();
@@ -2073,7 +2067,7 @@ fn text_commands_match_the_golden_fixture_without_files() {
     use base64::Engine as _;
     let base64 = base64::engine::general_purpose::STANDARD;
     let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../shared/fixtures/editor/file-encoding-v1.json");
+        .join("../fixtures/editor/file-encoding-v1.json");
     let fixture: Value = serde_json::from_str(&fs::read_to_string(fixture_path).unwrap()).unwrap();
     for case in fixture["cases"].as_array().unwrap() {
         let name = case["name"].as_str().unwrap();

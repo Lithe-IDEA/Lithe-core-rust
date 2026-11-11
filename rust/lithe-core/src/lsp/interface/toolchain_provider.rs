@@ -2,19 +2,23 @@
 //!
 //! The manifest lists the providers; `initialize` offers them under
 //! `capabilities.experimental.litheToolchains`, and the backend selects a version
-//! and a subset of the offer. `toolchains/query` is written only to a session whose
+//! (the `toolchainProviders` capability version) and a subset of the offer. `toolchains/query` is written only to a session whose
 //! answer passed [`negotiate`]. Replies stay untrusted here: Core transports them
 //! unchanged, and `toolchains.decodeReply` validates them against native facts.
-//! The rules live in `shared/contracts/plugins/v1/toolchains/README.md`.
+//! The rules live in `shared/plugins/contract/v1/toolchains/README.md`.
 
+use crate::plugins::capabilities::{versions as capability_versions, TOOLCHAIN_PROVIDERS};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
 /// Key under `capabilities.experimental` on both sides of the exchange.
 const EXPERIMENTAL_KEY: &str = "litheToolchains";
 
-/// Toolchain-provider protocol versions this client speaks.
-const SUPPORTED_VERSIONS: [u64; 1] = [1];
+/// Toolchain-provider protocol versions this client speaks: the versions of the
+/// `toolchainProviders` capability.
+fn supported_versions() -> Vec<u64> {
+    super::offered_versions(capability_versions(TOOLCHAIN_PROVIDERS))
+}
 
 /// The only method this protocol writes.
 pub(crate) const QUERY_METHOD: &str = "toolchains/query";
@@ -29,7 +33,7 @@ pub(crate) fn client_experimental_capabilities(
     (!providers.is_empty()).then(|| {
         (
             EXPERIMENTAL_KEY,
-            json!({ "versions": SUPPORTED_VERSIONS, "providers": providers }),
+            json!({ "versions": supported_versions(), "providers": providers }),
         )
     })
 }
@@ -40,7 +44,7 @@ pub(crate) fn client_experimental_capabilities(
 pub(crate) fn negotiate(capabilities: &Value, offered: &BTreeSet<String>) -> Option<Vec<String>> {
     let answer = capabilities.pointer(&format!("/experimental/{EXPERIMENTAL_KEY}"))?;
     let version = answer.get("version").and_then(Value::as_u64)?;
-    if !SUPPORTED_VERSIONS.contains(&version) {
+    if !supported_versions().contains(&version) {
         return None;
     }
     let mut selected = BTreeSet::new();
@@ -78,7 +82,7 @@ mod tests {
         assert_eq!(key, "litheToolchains");
         assert_eq!(
             offer,
-            json!({ "versions": [1], "providers": ["asdf", "mise"] })
+            json!({ "versions": [0], "providers": ["asdf", "mise"] })
         );
     }
 
@@ -86,19 +90,19 @@ mod tests {
     fn negotiation_accepts_only_a_complete_subset_of_the_offer() {
         assert_eq!(
             negotiate(
-                &answer(json!({ "version": 1, "providers": ["mise"], "future": true })),
+                &answer(json!({ "version": 0, "providers": ["mise"], "future": true })),
                 &offered()
             ),
             Some(vec!["mise".to_string()])
         );
         for rejected in [
-            json!({ "version": 2, "providers": ["mise"] }),
-            json!({ "version": 1 }),
-            json!({ "version": 1, "providers": [] }),
-            json!({ "version": 1, "providers": "mise" }),
-            json!({ "version": 1, "providers": ["mise", "mise"] }),
-            json!({ "version": 1, "providers": ["mise", "undeclared"] }),
-            json!({ "version": 1, "providers": ["mise", 7] }),
+            json!({ "version": 1, "providers": ["mise"] }),
+            json!({ "version": 0 }),
+            json!({ "version": 0, "providers": [] }),
+            json!({ "version": 0, "providers": "mise" }),
+            json!({ "version": 0, "providers": ["mise", "mise"] }),
+            json!({ "version": 0, "providers": ["mise", "undeclared"] }),
+            json!({ "version": 0, "providers": ["mise", 7] }),
         ] {
             assert_eq!(
                 negotiate(&answer(rejected.clone()), &offered()),

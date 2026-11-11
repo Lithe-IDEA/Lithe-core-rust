@@ -131,7 +131,7 @@ fn project_tool_preferences_preserve_symbolic_choices_across_legacy_editor_saves
     }
     let _cleanup = Cleanup(root.clone());
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/toolchains/consumer-preferences.json"
+        "../../../fixtures/toolchains/consumer-preferences.json"
     ))
     .unwrap();
     let call = |command: &str, payload: Value| -> Value {
@@ -209,7 +209,7 @@ fn project_tool_preferences_reject_invalid_references_in_reads_and_edits_without
 #[test]
 fn argument_editor_text_roundtrips_the_shared_argv_fixture() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/run-configuration/argument-text.json"
+        "../../../fixtures/run-configuration/argument-text.json"
     ))
     .unwrap();
     let root = temporary_root("run-argument-text");
@@ -634,8 +634,7 @@ fn legacy_v2_runtime_requirements_are_reconciled_without_regeneration() {
 
 #[test]
 fn shared_run_configuration_fixtures_have_the_versioned_contract_shape() {
-    let directory =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../shared/fixtures/run-configuration");
+    let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../fixtures/run-configuration");
     let mut fixture_count = 0;
     for entry in fs::read_dir(directory).unwrap() {
         let path = entry.unwrap().path();
@@ -657,7 +656,7 @@ fn shared_run_configuration_fixtures_have_the_versioned_contract_shape() {
 #[test]
 fn shared_hybrid_fixture_executes_scoped_toolchain_expectations() {
     let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../shared/fixtures/run-configuration/hybrid-spring-vue.json");
+        .join("../fixtures/run-configuration/hybrid-spring-vue.json");
     let fixture: Value = serde_json::from_str(&fs::read_to_string(fixture_path).unwrap()).unwrap();
     let root = temporary_root("run-config-hybrid-fixture");
     fs::create_dir_all(root.join(".lithe/run")).unwrap();
@@ -719,7 +718,7 @@ fn shared_hybrid_fixture_executes_scoped_toolchain_expectations() {
 #[test]
 fn shared_editor_save_fixture_executes_the_document_contract() {
     let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../shared/fixtures/run-configuration/editor-save.json");
+        .join("../fixtures/run-configuration/editor-save.json");
     let fixture: Value = serde_json::from_str(&fs::read_to_string(fixture_path).unwrap()).unwrap();
     let root = temporary_root("run-config-editor-fixture");
     fs::create_dir_all(root.join(".lithe/run")).unwrap();
@@ -1291,7 +1290,7 @@ fn shared_run_scan_excludes_caches_and_keeps_hidden_sources() {
 #[test]
 fn build_provider_configurations_persist_before_generation_and_reuse_identity() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/run-configuration/build-provider.json"
+        "../../../fixtures/run-configuration/build-provider.json"
     ))
     .unwrap();
     let root = temporary_root("saved-build-provider");
@@ -1433,7 +1432,7 @@ fn build_provider_configurations_persist_before_generation_and_reuse_identity() 
 #[test]
 fn explicit_provider_references_keep_arbitrary_ids_and_shadow_only_current_selector() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/run-configuration/build-provider-stable-identities.json"
+        "../../../fixtures/run-configuration/build-provider-stable-identities.json"
     ))
     .unwrap();
     let root = temporary_root("provider-stable-identity");
@@ -1560,7 +1559,7 @@ fn explicit_provider_references_keep_arbitrary_ids_and_shadow_only_current_selec
 #[test]
 fn provider_run_options_preserve_exact_arguments_and_layered_build_choices() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/run-configuration/build-provider-options.json"
+        "../../../fixtures/run-configuration/build-provider-options.json"
     ))
     .unwrap();
     let root = temporary_root("provider-run-options");

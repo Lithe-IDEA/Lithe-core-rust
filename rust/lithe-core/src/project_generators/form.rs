@@ -7,7 +7,7 @@
 
 use super::manifest::{
     Conditions, GeneratorField, ProjectGeneratorDeclaration, FIELD_BOOLEAN, FIELD_ENUM,
-    FIELD_MULTI_SELECT, FIELD_RUNTIME, FIELD_TEXT, FIELD_TOOL,
+    FIELD_MULTI_SELECT, FIELD_TEXT, FIELD_TOOL,
 };
 use super::template::{FieldValue, Values};
 use crate::plugins::declarative::version_components;
@@ -17,14 +17,6 @@ use std::collections::{BTreeMap, BTreeSet};
 
 /// Longest project name, in characters.
 const MAX_PROJECT_NAME: usize = 128;
-
-/// A runtime installation the host discovered and the user selected.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct RuntimeSelection {
-    pub(crate) home: String,
-    pub(crate) version: String,
-}
 
 /// An installation of a tool that the host found through the tool
 /// definition's discovery, so the host has already checked that it is real.
@@ -48,9 +40,6 @@ pub(crate) struct FormInput {
     pub(crate) values: BTreeMap<String, Value>,
     #[serde(default)]
     pub(crate) edited: BTreeSet<String>,
-    /// Selected installations of runtime fields.
-    #[serde(default)]
-    pub(crate) runtimes: BTreeMap<String, RuntimeSelection>,
     /// Installations the host found for each tool field, by field ID.
     #[serde(default)]
     pub(crate) tools: BTreeMap<String, Vec<ToolInstallation>>,
@@ -64,7 +53,6 @@ pub(crate) enum FieldProblem {
     TooLong,
     InvalidFormat,
     UnsupportedValue,
-    RuntimeTooOld,
     /// The selected tool installation is older than the field's `minimumVersion`.
     ToolTooOld,
     /// The value names a newer version than `maximumVersion` allows.
@@ -78,7 +66,6 @@ impl FieldProblem {
             Self::TooLong => "tooLong",
             Self::InvalidFormat => "invalidFormat",
             Self::UnsupportedValue => "unsupportedValue",
-            Self::RuntimeTooOld => "runtimeTooOld",
             Self::ToolTooOld => "toolTooOld",
             Self::VersionTooHigh => "versionTooHigh",
         }
@@ -285,30 +272,6 @@ fn resolve(
             };
             (json!(items), FieldValue::List(items), problem)
         }
-        FIELD_RUNTIME => match input.runtimes.get(&field.id) {
-            Some(selection) if !selection.home.trim().is_empty() => {
-                let too_old = field
-                    .minimum_version
-                    .as_deref()
-                    .is_some_and(|minimum| release(&selection.version) < release(minimum));
-                (
-                    json!(selection.home),
-                    FieldValue::Runtime {
-                        home: selection.home.clone(),
-                        version: selection.version.clone(),
-                    },
-                    too_old.then_some(FieldProblem::RuntimeTooOld),
-                )
-            }
-            _ => (
-                json!(""),
-                FieldValue::Runtime {
-                    home: String::new(),
-                    version: String::new(),
-                },
-                (!field.optional).then_some(FieldProblem::Required),
-            ),
-        },
         FIELD_TOOL => resolve_tool(field, input),
         _ => (Value::Null, FieldValue::Text(String::new()), None),
     }
@@ -340,6 +303,7 @@ fn resolve_tool(
             FieldValue::Tool {
                 home: installation.home.clone(),
                 executable: installation.executable.clone(),
+                version: installation.version.clone(),
             },
             (!meets_minimum(field, installation)).then_some(FieldProblem::ToolTooOld),
         ),
@@ -348,6 +312,7 @@ fn resolve_tool(
             FieldValue::Tool {
                 home: String::new(),
                 executable: String::new(),
+                version: String::new(),
             },
             (!field.optional).then_some(FieldProblem::Required),
         ),
@@ -481,7 +446,6 @@ mod tests {
             project_name: project_name.into(),
             values: serde_json::from_value(values).unwrap(),
             edited: edited.iter().map(|id| id.to_string()).collect(),
-            runtimes: BTreeMap::new(),
             tools: BTreeMap::new(),
         }
     }
@@ -549,36 +513,28 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unsafe_text_and_old_runtimes() {
+    fn rejects_unsafe_text_and_old_tools() {
         let generator = generator(json!([
             {"id": "groupId", "type": "text", "title": "Group", "pattern": "[a-z.]+"},
-            {"id": "jdk", "type": "runtime", "title": "JDK", "runtime": "java", "minimumVersion": "17"}
+            {"id": "jdk", "type": "tool", "title": "JDK", "tool": "java", "minimumVersion": "17"}
         ]));
         let mut form = input("demo", json!({"groupId": "-Dx=y"}), &["groupId"]);
-        form.runtimes.insert(
-            "jdk".into(),
-            RuntimeSelection {
-                home: "/jdk".into(),
-                version: "11.0.2".into(),
-            },
-        );
+        form.tools
+            .insert("jdk".into(), vec![installation("/jdk", "11.0.2")]);
         let state = evaluate(&generator, &form);
         assert_eq!(
             field(&state, "groupId").problem,
             Some(FieldProblem::InvalidFormat)
         );
-        assert_eq!(
-            field(&state, "jdk").problem,
-            Some(FieldProblem::RuntimeTooOld)
-        );
+        assert_eq!(field(&state, "jdk").problem, Some(FieldProblem::ToolTooOld));
     }
 
     /// A target release newer than the selected JDK cannot compile, so the
     /// bound follows the JDK; before a JDK is chosen nothing is compared.
     #[test]
-    fn maximum_version_follows_an_earlier_runtime() {
+    fn maximum_version_follows_an_earlier_tool() {
         let generator = generator(json!([
-            {"id": "jdk", "type": "runtime", "title": "JDK", "runtime": "java", "minimumVersion": "17"},
+            {"id": "jdk", "type": "tool", "title": "JDK", "tool": "java", "minimumVersion": "17"},
             {"id": "javaVersion", "type": "enum", "title": "Java", "maximumVersion": "${field.jdk.major}",
              "options": [{"value": "17", "title": "17"}, {"value": "21", "title": "21"}]}
         ]));
@@ -592,13 +548,8 @@ mod tests {
             ("21.0.4", None),
             ("25", None),
         ] {
-            form.runtimes.insert(
-                "jdk".into(),
-                RuntimeSelection {
-                    home: "/jdk".into(),
-                    version: version.into(),
-                },
-            );
+            form.tools
+                .insert("jdk".into(), vec![installation("/jdk", version)]);
             assert_eq!(
                 field(&evaluate(&generator, &form), "javaVersion").problem,
                 problem,
@@ -643,6 +594,7 @@ mod tests {
             FieldValue::Tool {
                 home: "/py/3.13".into(),
                 executable: "/py/3.13/bin/tool".into(),
+                version: "3.13.1".into(),
             }
         );
 
@@ -727,19 +679,13 @@ mod tests {
         let state = evaluate(&tool_generator(false), &form);
         assert_eq!(field(&state, "sdk").value, json!("/first"));
 
-        // Runtime fields compare the same way; any tool-definition ID names one.
-        let runtime = generator(json!([
-            {"id": "sdk", "type": "runtime", "title": "SDK", "runtime": "fixture-sdk", "minimumVersion": "17.0"}
-        ]));
-        let mut form = input("demo", json!({}), &[]);
-        form.runtimes.insert(
-            "sdk".into(),
-            RuntimeSelection {
-                home: "/sdk".into(),
-                version: "17".into(),
-            },
-        );
-        assert_eq!(field(&evaluate(&runtime, &form), "sdk").problem, None);
+        // A minimum with a trailing zero accepts the shorter spelling too.
+        let short = generator(json!([{
+            "id": "sdk", "type": "tool", "title": "SDK", "tool": "fixture-sdk",
+            "minimumVersion": "17.0"
+        }]));
+        let form = with_tools(input("demo", json!({}), &[]), &[("/sdk", "17")]);
+        assert_eq!(field(&evaluate(&short, &form), "sdk").problem, None);
     }
 
     /// An old copy of an optional tool must not block a project that could be
@@ -757,6 +703,7 @@ mod tests {
             FieldValue::Tool {
                 home: String::new(),
                 executable: String::new(),
+                version: String::new(),
             }
         );
         assert!(!field(&state, "sdk").installations[0].meets_minimum);
@@ -789,6 +736,7 @@ mod tests {
             FieldValue::Tool {
                 home: String::new(),
                 executable: String::new(),
+                version: String::new(),
             }
         );
     }

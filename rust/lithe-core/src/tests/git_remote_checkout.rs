@@ -133,7 +133,7 @@ fn assert_success(response: &Value) {
 
 fn contract() -> Value {
     serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/git/remote-checkout-v1.json"
+        "../../../fixtures/git/remote-checkout-v1.json"
     ))
     .unwrap()
 }

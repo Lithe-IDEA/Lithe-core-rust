@@ -393,11 +393,6 @@ fn execute_parsed(mut parsed: CoreRequest) -> CoreResponse {
             parsed.payload,
             crate::plugins::declarative::debug_executable_plan_command,
         ),
-        CoreCommand::PluginsDeclarativeCheckRuntimeVersion => plugin_response(
-            id,
-            parsed.payload,
-            crate::plugins::declarative::check_runtime_version_command,
-        ),
         CoreCommand::PluginsDeclarativeResolveSettings => plugin_response(
             id,
             parsed.payload,

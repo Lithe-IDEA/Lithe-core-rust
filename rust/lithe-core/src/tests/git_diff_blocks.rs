@@ -9,10 +9,8 @@ use std::path::PathBuf;
 use std::process::Command;
 
 fn fixture() -> Value {
-    serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/git/diff-blocks-v1.json"
-    ))
-    .expect("diff block fixture should be JSON")
+    serde_json::from_str(include_str!("../../../fixtures/git/diff-blocks-v1.json"))
+        .expect("diff block fixture should be JSON")
 }
 
 fn side(value: &Value) -> (&str, &str) {

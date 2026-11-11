@@ -3,7 +3,7 @@
 use lithe_core_rules::execute_json;
 use serde_json::{json, Value};
 
-const FIXTURE: &str = include_str!("../../../shared/fixtures/workspace/visibility-v1.json");
+const FIXTURE: &str = include_str!("../../fixtures/workspace/visibility-v1.json");
 
 fn call(command: &str, payload: Value) -> Value {
     let request = json!({"id": "fixture", "command": command, "payload": payload});

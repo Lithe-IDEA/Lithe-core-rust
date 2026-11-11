@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 fn configuration_fixture() -> Value {
     serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/ai/cli-configuration-v1.json"
+        "../../../fixtures/ai/cli-configuration-v1.json"
     ))
     .unwrap()
 }
@@ -196,7 +196,7 @@ fn configuration_parse_errors_are_stable_codes_without_input() {
 
 fn fixture() -> (Provider, CommitOptions, Vec<CommitFile>, Value) {
     let value: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/ai/commit-generation-v1.json"
+        "../../../fixtures/ai/commit-generation-v1.json"
     ))
     .unwrap();
     (

@@ -1,14 +1,11 @@
-//! Declarative syntax highlighting of plugin languages, `languages` 3.
+//! Declarative syntax highlighting of plugin languages (`languages`).
 //!
 //! A language may name a grammar file in its package and a small editing
 //! configuration (comments and brackets). `kind` names the engine that runs
 //! the grammar, so a later version can add another engine without changing
-//! what an existing grammar means. Version 3 accepts only `textmate`: a
+//! what an existing grammar means. Today the only engine is `textmate`: a
 //! TextMate grammar in the JSON form VS Code reads (`.tmLanguage.json`), so a
 //! plugin can ship the grammar a VS Code extension already maintains.
-//! Version 2 named Monaco's Monarch tokenizer; the desktop editor no longer
-//! embeds Monaco, so that version is withdrawn and a manifest requiring it is
-//! refused as unsupported.
 //!
 //! The host reads the file from the read-only package and passes its text to
 //! `plugins.declarative.decodeGrammar`; Core never opens package files. Core
@@ -26,9 +23,6 @@
 use super::declarative::{invalid, is_safe_relative_path, PluginRejection, Validation};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-
-/// First `languages` version with `grammar` and `configuration`.
-pub(crate) const GRAMMAR_LANGUAGES_VERSION: u32 = 3;
 
 /// Largest grammar file, in UTF-8 bytes. VS Code's C++ grammar is 662 KiB.
 pub(crate) const MAX_GRAMMAR_BYTES: usize = 2 * 1024 * 1024;

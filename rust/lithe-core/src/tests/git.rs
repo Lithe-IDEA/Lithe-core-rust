@@ -9,7 +9,7 @@ use std::time::{Duration, UNIX_EPOCH};
 #[test]
 fn repository_color_assignments_match_shared_pages() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/git/repository-colors-v1.json"
+        "../../../fixtures/git/repository-colors-v1.json"
     ))
     .unwrap();
     for case in fixture["cases"].as_array().unwrap() {
@@ -45,7 +45,7 @@ fn repository_color_assignments_reject_invalid_pages() {
 #[test]
 fn git_checkout_metadata_and_gitdir_pointer_match_shared_fixture() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/git/checkout-metadata-v1.json"
+        "../../../fixtures/git/checkout-metadata-v1.json"
     ))
     .unwrap();
     for case in fixture["cases"].as_array().unwrap() {
@@ -127,7 +127,7 @@ fn git_remote_and_tag_catalog_returns_unambiguous_typed_data() {
     ]);
     let commit = run(&["rev-parse", "HEAD"]);
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/git/remote-tag-catalog-v1.json"
+        "../../../fixtures/git/remote-tag-catalog-v1.json"
     ))
     .unwrap();
     let call = |command: &str| -> Value {
@@ -193,7 +193,7 @@ fn git_comparison_can_include_untracked_worktree_files() {
     fs::write(root.join("tracked.txt"), "after\n").unwrap();
     fs::write(root.join("a-untracked.txt"), "new\n").unwrap();
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/git/comparison-untracked-v1.json"
+        "../../../fixtures/git/comparison-untracked-v1.json"
     ))
     .unwrap();
     let mut payload = fixture["request"].clone();
@@ -2354,7 +2354,7 @@ fn git_write_creates_deletes_and_records_tags() {
     // plain invalid_request envelope.
     let tag_names: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../shared/fixtures/git/tag-names.json"
+        "/../fixtures/git/tag-names.json"
     )))
     .expect("tag name fixture should be valid JSON");
     let empty = request(
@@ -6319,10 +6319,8 @@ fn git_line_history_merge_rename_edit_keeps_previous_path_and_ranges() {
 
 #[test]
 fn rollback_plan_matches_shared_fixture_and_rejects_unsafe_paths() {
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/git/rollback-plan-v1.json"
-    ))
-    .unwrap();
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../../fixtures/git/rollback-plan-v1.json")).unwrap();
     for case in fixture["cases"].as_array().unwrap() {
         let response: Value = serde_json::from_str(&execute_json(
             &serde_json::json!({
@@ -6814,7 +6812,7 @@ fn prepare_commit_selection_allows_a_tracked_submodule_reference() {
 #[test]
 fn git_history_query_compares_absolute_instants_with_half_open_bounds() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/git/history-date-query-v1.json"
+        "../../../fixtures/git/history-date-query-v1.json"
     ))
     .unwrap();
     let result: Value = serde_json::from_str(&execute_json(
@@ -6984,7 +6982,7 @@ fn reconcile_deleted_selection_works_before_the_first_commit() {
 fn git_branch_name_preview_matches_the_shared_fixture() {
     let fixture: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../shared/fixtures/git/branch-name-preview-v1.json"
+        "/../fixtures/git/branch-name-preview-v1.json"
     )))
     .expect("branch name preview fixture should be valid JSON");
     for case in fixture["cases"].as_array().expect("fixture cases") {
@@ -7355,7 +7353,7 @@ fn git_create_tag_applies_the_explicit_lightweight_form() {
 #[test]
 fn git_metadata_classification_matches_shared_fixture() {
     let fixture: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/git/metadata-classification-v1.json"
+        "../../../fixtures/git/metadata-classification-v1.json"
     ))
     .unwrap();
     for case in fixture["cases"].as_array().unwrap() {
@@ -7384,7 +7382,7 @@ fn git_metadata_classification_matches_shared_fixture() {
 #[test]
 fn git_metadata_classification_rejects_invalid_or_unbounded_pages() {
     let fixture: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/git/metadata-classification-v1.json"
+        "../../../fixtures/git/metadata-classification-v1.json"
     ))
     .unwrap();
     let context = &fixture["contexts"]["main"];

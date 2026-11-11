@@ -7,7 +7,7 @@
 //! `.agents/notes/proposed/architecture/2026-10-16-unified-child-process-lifecycle.md`
 //! is decided once. `settle` turns the user's answers into what is ended and
 //! kept, so the remembered-choice rules are not repeated by the hosts either.
-//! Fixtures live in `shared/fixtures/process-lifecycle/`.
+//! Fixtures live in `rust/fixtures/process-lifecycle/`.
 
 use std::collections::BTreeMap;
 
@@ -636,7 +636,7 @@ mod tests {
     #[test]
     fn shared_fixture_decisions_match() {
         let fixture: Fixture = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/process-lifecycle/exit-plan-v1.json"
+            "../../../fixtures/process-lifecycle/exit-plan-v1.json"
         ))
         .expect("fixture should parse");
         assert_eq!(fixture.schema_version, 1);
@@ -651,7 +651,7 @@ mod tests {
     #[test]
     fn shared_fixture_settlements_match() {
         let fixture: Fixture = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/process-lifecycle/settle-v1.json"
+            "../../../fixtures/process-lifecycle/settle-v1.json"
         ))
         .expect("fixture should parse");
         assert_eq!(fixture.schema_version, 1);

@@ -7,7 +7,7 @@ use std::fs;
 
 fn fixture() -> Value {
     serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/workspace/file-name-order-v1.json"
+        "../../../fixtures/workspace/file-name-order-v1.json"
     ))
     .expect("file-name order fixture should be JSON")
 }
@@ -209,7 +209,7 @@ fn execute(command: &str, payload: Value) -> Value {
 #[test]
 fn order_entries_matches_the_shared_fixture() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/workspace/entry-order-v1.json"
+        "../../../fixtures/workspace/entry-order-v1.json"
     ))
     .expect("entry-order fixture should be JSON");
     for case in fixture["cases"].as_array().unwrap() {

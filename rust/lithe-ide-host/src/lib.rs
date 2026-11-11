@@ -688,7 +688,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn an_authenticated_client_cannot_dispatch_unadvertised_native_workflows_or_fields() {
         let exposure: Value = serde_json::from_str(include_str!(
-            "../../../shared/fixtures/ide-api/host-tool-exposure.json"
+            "../../fixtures/ide-api/host-tool-exposure.json"
         ))
         .unwrap();
         let (_fixture, broker, headers) = push_fixture_exposed(exposure["macos"].clone());

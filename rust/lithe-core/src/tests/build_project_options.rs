@@ -6,11 +6,11 @@ use serde_json::{json, Value};
 #[test]
 fn local_option_edits_check_declarations_preserve_siblings_and_reset_to_team_values() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/build-project-options/local-edits.json"
+        "../../../fixtures/build-project-options/local-edits.json"
     ))
     .unwrap();
     let mut manifest: Value = serde_json::from_str(include_str!(
-        "../../../../shared/contracts/plugins/v1/fixtures/build-systems/build-instance-options.plugin.json"
+        "../../../../shared/plugins/contract/v1/fixtures/build-systems/build-instance-options.plugin.json"
     ))
     .unwrap();
     // Exercise a workspace option with model-owned choices as well as the
@@ -129,7 +129,7 @@ fn local_option_edits_check_declarations_preserve_siblings_and_reset_to_team_val
 #[test]
 fn native_build_options_validate_the_shared_cases_without_dropping_custom_values() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/build-project-options/validation.json"
+        "../../../fixtures/build-project-options/validation.json"
     ))
     .unwrap();
     for case in fixture["cases"].as_array().unwrap() {
@@ -151,7 +151,7 @@ fn native_build_options_validate_the_shared_cases_without_dropping_custom_values
         assert_eq!(case["document"], original);
     }
     let defaults: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/build-project-options/shared-defaults.json"
+        "../../../fixtures/build-project-options/shared-defaults.json"
     ))
     .unwrap();
     let result = project_options_command(json!({"document":defaults})).unwrap();

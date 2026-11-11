@@ -1,17 +1,17 @@
-//! Declarative plugin contract v1: manifest validation and deterministic
+//! Declarative plugin contract: manifest validation and deterministic
 //! expansion of run/test command templates and language-server launch plans.
 //!
 //! A declarative plugin carries no host-loaded code. The host reads its
 //! `plugin.json`, asks this module to validate and normalize it, and launches
 //! the declared external processes itself. Both products must produce the
-//! same outcome for the fixtures in `shared/contracts/plugins/v1/`.
+//! same outcome for the fixtures in `shared/plugins/contract/v1/`.
 //!
 //! Content problems in a manifest or request are reported as `rejected`
 //! outcomes with a stable `plugin.*` code instead of Core failures, so hosts
 //! can show them next to the affected plugin. Only a malformed command
 //! payload is a Core `invalid_request` failure.
 
-use super::capabilities::{self, HostCapabilities, Requires, CAPABILITIES_API_VERSION};
+use super::capabilities::{self, HostCapabilities, Requires};
 use super::language_server_sessions;
 pub(crate) use super::settings::is_setting_identifier;
 use super::settings::{
@@ -24,14 +24,11 @@ use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// `plugin.json` schema version that identifies a declarative manifest.
-/// Version 1 was the retired macOS native-bundle manifest.
-pub const DECLARATIVE_MANIFEST_SCHEMA_VERSION: u32 = 2;
-/// Declarative plugin API levels this Core build can host. The level is
-/// independent of the Lithe application version.
-pub const SUPPORTED_PLUGIN_API_VERSIONS: &[u32] = &[1, 2, 3, 4];
-/// First API level with runtime launches, launch template variables,
-/// `initializationOptions`, and runtime version requirements.
-const LAUNCH_TEMPLATES_API_VERSION: u32 = 2;
+pub const DECLARATIVE_MANIFEST_SCHEMA_VERSION: u32 = 0;
+/// Base-contract versions (`pluginAPIVersion`) this Core build can host. The
+/// version is independent of the Lithe application version, and a later one
+/// is appended to this list.
+pub const SUPPORTED_PLUGIN_API_VERSIONS: &[u32] = &[0];
 
 /// ID prefix reserved to plugins published and signed by Lithe.
 pub const OFFICIAL_PLUGIN_NAMESPACE: &str = "dev.lithe";
@@ -40,18 +37,17 @@ const PERMISSION_LANGUAGE_SERVER: &str = "languageServer.launch";
 const PERMISSION_RUN: &str = "process.run";
 const PERMISSION_TEST: &str = "process.test";
 const PERMISSION_UI: &str = "ui.contribute";
-/// Running the plugin's own scripts in a host-managed web view. `ui` 2.
+/// Running the plugin's own scripts in a host-managed web view.
 const PERMISSION_UI_WEB: &str = "ui.web";
 /// Running a declared build system's executable: model, task, test, and
-/// dependency commands. API level 3.
+/// dependency commands.
 const PERMISSION_BUILD: &str = "process.build";
 /// Letting a VCS provider change the working copy and contact its server.
-/// API level 3.
 const PERMISSION_VCS: &str = "process.vcs";
 /// Creating projects: writing template files, running scaffolding tools,
-/// and downloading project archives. API level 3.
+/// and downloading project archives.
 const PERMISSION_PROJECT_GENERATE: &str = "project.generate";
-/// Starting the plugin's own backend process. `backend` 1.
+/// Starting the plugin's own backend process.
 const PERMISSION_BACKEND: &str = "backend.launch";
 /// Supplying facts that can change the executable selected for a defined tool.
 const PERMISSION_TOOLCHAINS: &str = "toolchains.provide";
@@ -60,17 +56,17 @@ const PERMISSION_KEYMAPS: &str = "keymaps.provide";
 /// Reading declared files from the explicitly selected import source.
 const PERMISSION_KEYMAP_SOURCES: &str = "keymaps.readSelectedSources";
 /// Letting the backend keep secrets in the host's credential store, private
-/// to the plugin. `backend` 1.
+/// to the plugin.
 const PERMISSION_CREDENTIALS: &str = "credentials.store";
 /// Letting the backend list the open workspaces and read their folders and
-/// its per-workspace state directory. `backend` 2.
+/// its per-workspace state directory.
 const PERMISSION_WORKSPACE_METADATA: &str = "workspace.metadata";
-/// Starting a debug session the plugin's adapter serves. `debugAdapters` 1.
+/// Starting a debug session the plugin's adapter serves.
 const PERMISSION_DEBUG_LAUNCH: &str = "debug.launch";
-/// Attaching the plugin's adapter to a running process. `debugAdapters` 1.
+/// Attaching the plugin's adapter to a running process.
 const PERMISSION_DEBUG_ATTACH: &str = "debug.attach";
 /// Letting the backend start a debug session on one of its own adapters
-/// (`lithe/host/debug/start`). A host-method permission of `backend` 2.
+/// (`lithe/host/debug/start`), a host-method permission of the backend.
 const PERMISSION_DEBUG_START: &str = "debug.start";
 const KNOWN_PERMISSIONS: &[&str] = &[
     PERMISSION_BACKEND,
@@ -90,20 +86,11 @@ const KNOWN_PERMISSIONS: &[&str] = &[
     PERMISSION_VCS,
     PERMISSION_WORKSPACE_METADATA,
 ];
-/// Runtime tools the host knows how to discover and pass to a language
-/// server. The host exports each as `LITHE_<TOOL>_PATH` and puts its
-/// directory on the server's `PATH`; gopls, for example, runs `go` itself.
-/// Build-system runtime dependencies with these IDs are host-managed too.
+/// Runtime tools the host discovers and manages itself for build-system
+/// runtime dependencies: it exports each as `LITHE_<TOOL>_PATH` and puts its
+/// directory on the process's `PATH`. Server processes never use this list;
+/// they name tool definitions from `requiresTools`.
 pub(crate) const KNOWN_RUNTIME_TOOLS: &[&str] = &["go", "node"];
-/// Runtimes the host can start a packaged entry file with itself, as
-/// `<runtime> <runtimeArguments> <entry> <arguments>`. `go` is only ever a
-/// dependency of a server.
-const LAUNCH_RUNTIME_TOOLS: &[&str] = &["node"];
-/// `serverProcess` version from which runtime tools are tool-definition IDs
-/// listed in `requiresTools`, and the closed lists above no longer apply.
-/// Below it, a valid short tool-definition ID outside the closed lists names
-/// the tool definition with that ID; see `implicit_tool_reference`.
-const TOOL_REFERENCES_SERVER_PROCESS: u32 = 4;
 /// Most tool definitions one plugin may require.
 const MAX_REQUIRED_TOOLS: usize = 32;
 /// Native host integrations a language server may ask for. The Core
@@ -180,9 +167,8 @@ pub struct DeclarativePluginManifest {
     version: String,
     #[serde(rename = "pluginAPIVersion")]
     plugin_api_version: u32,
-    /// Capability versions the manifest was written against. API level 3;
-    /// see `super::capabilities`.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    /// Capability versions the manifest was written against; see
+    /// `super::capabilities`.
     requires: Requires,
     vendor: PluginVendor,
     #[serde(default)]
@@ -197,32 +183,29 @@ pub struct DeclarativePluginManifest {
     language_servers: Vec<LanguageServerDeclaration>,
     #[serde(default)]
     execution_providers: Vec<ExecutionProviderDeclaration>,
-    /// User-adjustable options of the plugin. API level 2; see
-    /// `super::settings` for version 2 of the capability.
+    /// User-adjustable options of the plugin; see `super::settings`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     settings: Vec<SettingDeclaration>,
     /// Buttons on settings pages that invoke the plugin's functions.
-    /// `settings` 2.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     setting_actions: Vec<SettingAction>,
-    /// Project-level build tools the plugin describes. API level 3; the
-    /// shape and its validation live in `crate::build`.
+    /// Project-level build tools the plugin describes. The shape and its
+    /// validation live in `crate::build`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     build_systems: Vec<crate::build::BuildSystemDeclaration>,
-    /// Version control systems the plugin implements. API level 3; the
-    /// shape and its validation live in `crate::vcs`.
+    /// Version control systems the plugin implements. The shape and its
+    /// validation live in `crate::vcs`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     vcs_providers: Vec<crate::vcs::VcsProviderDeclaration>,
-    /// Debug adapters the plugin implements. API level 4; the shape and its
-    /// validation live in `crate::debug::adapters`.
+    /// Debug adapters the plugin implements. The shape and its validation
+    /// live in `crate::debug::adapters`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     debug_adapters: Vec<crate::debug::adapters::DebugAdapterDeclaration>,
-    /// Entries of the New Project window. API level 3; the shape and its
-    /// validation live in `crate::project_generators`.
+    /// Entries of the New Project window. The shape and its validation live
+    /// in `crate::project_generators`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     project_generators: Vec<crate::project_generators::ProjectGeneratorDeclaration>,
-    /// The plugin's own process serving its pages. `backend` 1; see
-    /// `super::backend`.
+    /// The plugin's own process serving its pages; see `super::backend`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     backend: Option<super::backend::BackendDeclaration>,
     /// Tool policies owned by plugins, never a host-maintained definition table.
@@ -234,24 +217,24 @@ pub struct DeclarativePluginManifest {
     /// Independent shortcut importers implemented by this plugin's backend.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     keymap_import_providers: Vec<super::keymap_import::ProviderDeclaration>,
-    /// Tool-definition IDs the plugin's processes and Run requests name.
-    /// `serverProcess` 4; hosts resolve them through plugin-owned toolchains.
+    /// Tool-definition IDs the plugin's processes and Run requests name;
+    /// hosts resolve them through plugin-owned toolchains.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     requires_tools: Vec<String>,
-    /// Patterns that turn console output into links. `outputLinkMatchers`
-    /// 1; see `super::output_links`.
+    /// Patterns that turn console output into links; see
+    /// `super::output_links`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     output_link_matchers: Vec<super::output_links::OutputLinkMatcher>,
     /// Functions this plugin exports to other plugins and the exported
-    /// functions it calls. `pluginFunctions` 1; see `super::plugin_functions`.
+    /// functions it calls; see `super::plugin_functions`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     plugin_functions: Option<super::plugin_functions::PluginFunctionsDeclaration>,
 }
 
 /// UI supplied by plugins. The host owns every window shell: docking, title,
-/// activity bar, order, visibility, layout and lifecycle. Version 1 of the
-/// `ui` capability is data only; version 2 adds web content that the host
-/// loads from the package into a sandboxed web view inside that shell.
+/// activity bar, order, visibility, layout and lifecycle. A window body is
+/// text, web content that the host loads from the package into a sandboxed
+/// web view inside that shell, or host-rendered native content.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct UIContributions {
@@ -276,10 +259,10 @@ struct UIToolWindow {
     /// Exactly one of `text` and `web`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     text: Option<String>,
-    /// The plugin's own page shown in the window body. `ui` 2.
+    /// The plugin's own page shown in the window body.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     web: Option<UIWebContent>,
-    /// Versioned host-rendered tree/list content. `ui` 3.
+    /// Host-rendered tree/list content.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     native: Option<super::native_ui::NativeUI>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -314,7 +297,7 @@ enum UIDock {
 struct UICommand {
     id: String,
     title: String,
-    /// Absent for a backend command from `ui` 4 on.
+    /// Absent for a command the plugin backend handles.
     #[serde(
         default,
         rename = "toolWindowID",
@@ -460,11 +443,10 @@ struct LanguageDeclaration {
     project_file_names: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     dependencies: Option<DependencyDeclaration>,
-    /// Syntax highlighting from a package file. `languages` 3; see
-    /// `super::grammar`.
+    /// Syntax highlighting from a package file; see `super::grammar`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     grammar: Option<super::grammar::GrammarDeclaration>,
-    /// Comment and bracket behavior of the editor. `languages` 3.
+    /// Comment and bracket behavior of the editor.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     configuration: Option<super::grammar::LanguageConfiguration>,
 }
@@ -491,18 +473,18 @@ struct LanguageServerDeclaration {
     #[serde(flatten)]
     process: ServerProcess,
     /// Native host integration this server needs, with the package files it
-    /// consumes. API level 2.
+    /// consumes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     host_integration: Option<HostIntegrationDeclaration>,
     /// Settings the server reads through `workspace/configuration` and
     /// receives again in `workspace/didChangeConfiguration` whenever one of
     /// the settings it names changes. String values are templates like
     /// `initializationOptions`, and may also name settings whose `effect`
-    /// is `immediate`. `languageServers` 2.
+    /// is `immediate`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     workspace_configuration: Option<Value>,
-    /// Fields of `languageServers` 3 that govern what the plugin backend may
-    /// send to its own server and how the host keeps the server's state.
+    /// Fields that govern what the plugin backend may send to its own server
+    /// and how the host keeps the server's state.
     #[serde(flatten)]
     session: language_server_sessions::SessionDeclaration,
 }
@@ -525,7 +507,7 @@ pub(crate) struct ServerProcess {
     #[serde(default)]
     runtime_dependencies: Vec<RuntimeDependency>,
     /// LSP `initializationOptions` sent verbatim after template expansion of
-    /// its string values. API level 2.
+    /// its string values.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     initialization_options: Option<Value>,
 }
@@ -540,57 +522,29 @@ pub(crate) enum ServerRole {
     DebugAdapter,
 }
 
-/// Runtime tools a server process may name for its launch and dependencies.
+/// Tools a server process may name for its launch and dependencies: the
+/// tool-definition IDs the manifest lists in `requiresTools`.
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum RuntimeTools<'a> {
-    /// The host's closed lists, below `serverProcess` 4, plus implicit
-    /// references to tool definitions by short ID.
-    Host,
-    /// Tool-definition IDs the manifest lists in `requiresTools`.
-    Declared(&'a BTreeSet<String>),
-}
+pub(crate) struct RuntimeTools<'a>(&'a BTreeSet<String>);
 
-impl RuntimeTools<'_> {
-    /// Checks one tool a process names. `host` is the closed list that
-    /// applies below `serverProcess` 4; there `unsupported` explains a name
-    /// that is neither in it nor a valid short tool-definition ID.
-    pub(crate) fn check(
-        self,
-        tool: &str,
-        host: &[&str],
-        field: String,
-        unsupported: String,
-    ) -> Validation<()> {
-        match self {
-            Self::Host if host.contains(&tool) || implicit_tool_reference(tool, host) => Ok(()),
-            Self::Host => Err(PluginRejection::at(
-                "plugin.runtime.unsupported",
-                field,
-                unsupported,
-            )),
-            Self::Declared(tools) if tools.contains(tool) => Ok(()),
-            Self::Declared(_) => Err(PluginRejection::at(
+impl<'a> RuntimeTools<'a> {
+    /// The tools a manifest lists in `requiresTools`.
+    pub(crate) fn new(tools: &'a BTreeSet<String>) -> Self {
+        Self(tools)
+    }
+
+    /// Checks that one tool a process names is listed in `requiresTools`.
+    pub(crate) fn check(self, tool: &str, field: String) -> Validation<()> {
+        if self.0.contains(tool) {
+            Ok(())
+        } else {
+            Err(PluginRejection::at(
                 "plugin.runtime.undeclared",
                 field,
                 format!("The tool {tool} is not listed in requiresTools."),
-            )),
+            ))
         }
     }
-}
-
-/// Whether a tool named below `serverProcess` 4 refers to the tool
-/// definition with the same ID instead of a runtime from the closed list
-/// `host`. The reference resolves like one listed in `requiresTools`, so a
-/// manifest published before tool definitions keeps working once a plugin
-/// provides that definition. Only short IDs qualify: a plugin-qualified ID
-/// already needs `serverProcess` 4. Names the host reserves for its own
-/// runtimes (`KNOWN_RUNTIME_TOOLS`) never become references, so a runtime
-/// the host knows but cannot use in this role stays rejected.
-pub(crate) fn implicit_tool_reference(tool: &str, host: &[&str]) -> bool {
-    !host.contains(&tool)
-        && !KNOWN_RUNTIME_TOOLS.contains(&tool)
-        && !tool.contains(':')
-        && crate::toolchain::definitions::tool_id(tool)
 }
 
 impl ServerRole {
@@ -648,10 +602,10 @@ enum LanguageServerLaunch {
     /// Bare command names the host resolves through its tool discovery.
     SystemCommand { commands: Vec<String> },
     /// A packaged entry file started by a host-discovered runtime, so the
-    /// package needs no launcher script. API level 2.
+    /// package needs no launcher script.
     Runtime {
-        /// Runtime that executes `entry`: one of `LAUNCH_RUNTIME_TOOLS`, or a
-        /// tool-definition ID whose launch template starts the entry.
+        /// Tool-definition ID, listed in `requiresTools`, whose launch
+        /// template starts the entry.
         tool: String,
         /// Lowest acceptable runtime version, for example `21` or `18.17`.
         #[serde(
@@ -677,8 +631,7 @@ enum LanguageServerLaunch {
     },
     /// The plugin backend resolves the command line each time the server
     /// starts: the host calls `function` and passes its answer to
-    /// `plugins.languageServers.decodeLaunch`. Language servers only,
-    /// `serverProcess` 3.
+    /// `plugins.languageServers.decodeLaunch`. Language servers only.
     Backend {
         /// ID of a function the plugin backend registers.
         function: String,
@@ -797,8 +750,8 @@ pub(crate) enum TemplatePart<Variable = TemplateVariable> {
     Variable(Variable),
 }
 
-/// Variables of language-server launch templates (API level 2). They name
-/// host-owned locations, so a package never embeds a machine path.
+/// Variables of language-server launch templates. They name host-owned
+/// locations, so a package never embeds a machine path.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum LaunchVariable {
     /// Root of the installed, read-only plugin package.
@@ -914,7 +867,7 @@ pub fn validate_manifest_value(value: Value) -> Validation<DeclarativePluginMani
                 format!("Plugin API {version} is not supported by this version of Lithe."),
             ));
         }
-        capabilities::check_manifest_requires(&value, version)?;
+        capabilities::check_manifest_requires(&value)?;
     }
     for (field, limit) in [
         ("toolDefinitions", 32),
@@ -970,20 +923,17 @@ impl DeclarativePluginManifest {
             ));
         }
         if let Some(bundled) = self.vendor.bundled_signature_requirement {
-            if self.plugin_api_version < CAPABILITIES_API_VERSION
-                || self.vendor.signature_requirement != SignatureRequirement::PublisherPackage
+            if self.vendor.signature_requirement != SignatureRequirement::PublisherPackage
                 || bundled != SignatureRequirement::SameTeamAsHost
                 || !is_official_namespace(&self.id)
             {
                 return Err(invalid(
                     "vendor.bundledSignatureRequirement",
-                    "Bundled host-seal trust requires API 3, an official plugin ID, and publisherPackage for installed copies.",
+                    "Bundled host-seal trust requires an official plugin ID and publisherPackage for installed copies.",
                 ));
             }
         }
-        if self.plugin_api_version >= CAPABILITIES_API_VERSION {
-            capabilities::check_used(&self.requires, &self.used_capabilities())?;
-        }
+        capabilities::check_used(&self.requires, &self.used_capabilities())?;
         if self.languages.is_empty()
             && self.ui.is_none()
             && self.build_systems.is_empty()
@@ -994,20 +944,15 @@ impl DeclarativePluginManifest {
             && self.toolchain_providers.is_empty()
             && self.keymap_import_providers.is_empty()
             && self.output_link_matchers.is_empty()
-            // A backend 2 may be the whole plugin: it starts on a workspace.
+            // A backend may be the whole plugin: it starts on a workspace.
             && self.backend.is_none()
         {
             return Err(invalid("languages", "The plugin declares no languages."));
         }
 
-        let languages_version = self
-            .requires
-            .get(capabilities::LANGUAGES)
-            .copied()
-            .unwrap_or(1);
         let mut language_ids = BTreeSet::new();
         for (index, language) in self.languages.iter_mut().enumerate() {
-            language.normalize(index, languages_version)?;
+            language.normalize(index)?;
             if !language_ids.insert(language.id.clone()) {
                 return Err(invalid(
                     format!("languages[{index}].id"),
@@ -1016,36 +961,15 @@ impl DeclarativePluginManifest {
             }
         }
         self.languages.sort_by(|left, right| left.id.cmp(&right.id));
-        if languages_version >= super::grammar::GRAMMAR_LANGUAGES_VERSION
-            && !self
-                .languages
-                .iter()
-                .any(LanguageDeclaration::uses_grammar_fields)
-        {
-            return Err(invalid(
-                "requires.languages",
-                "The declared languages version must be used: languages 3 adds grammar and configuration.",
-            ));
-        }
 
         let declared_settings = self.validate_settings()?;
         let required_tools = self.validate_required_tools()?;
-        let runtime_tools = if self.names_tools_by_definition() {
-            RuntimeTools::Declared(&required_tools)
-        } else {
-            RuntimeTools::Host
-        };
-        let has_backend_functions = self.backend.is_some() && self.backend_version() >= 2;
+        let runtime_tools = RuntimeTools::new(&required_tools);
         super::output_links::validate_declarations(
             &mut self.output_link_matchers,
-            has_backend_functions,
+            self.backend.is_some(),
         )?;
 
-        let server_version = self
-            .requires
-            .get(capabilities::LANGUAGE_SERVERS)
-            .copied()
-            .unwrap_or(1);
         let mut server_languages = BTreeSet::new();
         let mut referenced_immediate_settings = BTreeSet::new();
         for (index, server) in self.language_servers.iter_mut().enumerate() {
@@ -1069,13 +993,7 @@ impl DeclarativePluginManifest {
             if let Some(configuration) = &server.workspace_configuration {
                 collect_setting_references(configuration, &mut referenced_immediate_settings);
             }
-            server.validate(
-                &field,
-                self.plugin_api_version,
-                server_version,
-                &declared_settings,
-                runtime_tools,
-            )?;
+            server.validate(&field, &declared_settings, runtime_tools)?;
         }
         if let Some(id) =
             declared_settings.first_unreferenced_immediate(&referenced_immediate_settings)
@@ -1159,7 +1077,10 @@ impl DeclarativePluginManifest {
             && self.output_link_matchers.is_empty()
             && self.backend.is_none()
             // A grammar alone is a complete highlighting plugin.
-            && !self.languages.iter().any(LanguageDeclaration::uses_grammar_fields)
+            && !self
+                .languages
+                .iter()
+                .any(|language| language.grammar.is_some() || language.configuration.is_some())
         {
             return Err(invalid(
                 "languages",
@@ -1167,33 +1088,11 @@ impl DeclarativePluginManifest {
             ));
         }
         self.validate_ui()?;
-        if !self.project_generators.is_empty() && self.plugin_api_version < CAPABILITIES_API_VERSION
-        {
-            return Err(invalid(
-                "projectGenerators",
-                "Project generators require plugin API level 3.",
-            ));
-        }
-        crate::project_generators::validate_declarations(
-            &self.project_generators,
-            self.requires
-                .get(capabilities::PROJECT_GENERATORS)
-                .copied()
-                .unwrap_or(1),
-        )?;
+        crate::project_generators::validate_declarations(&self.project_generators)?;
         crate::build::validate_declarations(
             &mut self.build_systems,
             &crate::build::DeclarationContext {
                 debug_adapters: &self.debug_adapters,
-                plugin_api_version: self.plugin_api_version,
-                build_systems_version: self.requires.get("buildSystems").copied().unwrap_or(1),
-                executable_resolution_version: self
-                    .requires
-                    .get("executableResolution")
-                    .copied()
-                    .unwrap_or(0),
-                build_providers_version: self.requires.get("buildProviders").copied().unwrap_or(1),
-                model_inputs_version: self.requires.get("buildModelInputs").copied().unwrap_or(0),
                 official: is_official_namespace(&self.id),
                 declared_settings: &declared_settings,
                 language_servers: &server_languages,
@@ -1203,12 +1102,12 @@ impl DeclarativePluginManifest {
         crate::vcs::validate_declarations(
             &mut self.vcs_providers,
             &crate::vcs::DeclarationContext {
-                plugin_api_version: self.plugin_api_version,
                 declared_settings: &declared_settings,
                 runtime_tools,
             },
         )?;
         self.validate_debug_adapters(&declared_settings, runtime_tools)?;
+        self.validate_backend_launches()?;
         self.validate_toolchains()?;
         if !self.keymap_import_providers.is_empty() {
             super::keymap_import::validate_declarations(&mut self.keymap_import_providers)?;
@@ -1217,8 +1116,6 @@ impl DeclarativePluginManifest {
         self.validate_plugin_functions()?;
         if let Some(backend) = &self.backend {
             backend.validate(&super::backend::DeclarationContext {
-                plugin_api_version: self.plugin_api_version,
-                version: self.backend_version(),
                 declared_settings: &declared_settings,
                 has_web_window: self
                     .ui
@@ -1250,48 +1147,19 @@ impl DeclarativePluginManifest {
         Ok(self)
     }
 
-    /// Capabilities whose sections the manifest declares. Every language
-    /// server, own build provider, and VCS provider is a `serverProcess`.
+    /// Capabilities whose sections the manifest declares. Launches, tool
+    /// references, and executable candidates belong to the base contract and
+    /// are never listed.
     fn used_capabilities(&self) -> BTreeSet<&'static str> {
         let sections = [
             (
                 capabilities::PACKAGE_TRUST,
                 self.vendor.bundled_signature_requirement.is_some(),
             ),
-            (
-                capabilities::EXECUTABLE_RESOLUTION,
-                !self.tool_definitions.is_empty()
-                    || self.build_systems.iter().any(|system| {
-                        system
-                            .invocation
-                            .executables
-                            .iter()
-                            .chain(
-                                system
-                                    .invocation
-                                    .runtime_dependencies
-                                    .iter()
-                                    .flat_map(|runtime| &runtime.executables),
-                            )
-                            .any(|candidate| candidate.uses_resolution())
-                    }),
-            ),
             (capabilities::LANGUAGES, !self.languages.is_empty()),
             (
                 capabilities::LANGUAGE_SERVERS,
                 !self.language_servers.is_empty(),
-            ),
-            (
-                capabilities::SERVER_PROCESS,
-                !self.language_servers.is_empty()
-                    || !self.requires_tools.is_empty()
-                    || !self.vcs_providers.is_empty()
-                    || !self.debug_adapters.is_empty()
-                    || self.backend.is_some()
-                    || self
-                        .build_systems
-                        .iter()
-                        .any(crate::build::BuildSystemDeclaration::starts_own_provider),
             ),
             (
                 capabilities::EXECUTION_PROVIDERS,
@@ -1352,24 +1220,13 @@ impl DeclarativePluginManifest {
             .collect()
     }
 
-    /// Checks the adapters, the `debugAdapters` version their declarations
-    /// need, and that `serverProcess` 2 is required exactly when one starts
-    /// on the selected runtime.
+    /// Checks the debug adapters against the plugin's settings, language
+    /// servers, and `requiresTools`.
     fn validate_debug_adapters(
         &mut self,
         declared_settings: &DeclaredSettings,
         runtime_tools: RuntimeTools<'_>,
     ) -> Validation<()> {
-        // Levels 1 and 2 carry no `requires`, so the capability gate never
-        // sees an adapter declared there.
-        if !self.debug_adapters.is_empty()
-            && self.plugin_api_version < capabilities::DEBUG_ADAPTERS_API_VERSION
-        {
-            return Err(invalid(
-                "debugAdapters",
-                "Debug adapters require plugin API level 4.",
-            ));
-        }
         let language_servers: BTreeSet<String> = self
             .language_servers
             .iter()
@@ -1378,147 +1235,33 @@ impl DeclarativePluginManifest {
         crate::debug::adapters::validate_declarations(
             &mut self.debug_adapters,
             &crate::debug::adapters::DeclarationContext {
-                plugin_api_version: self.plugin_api_version,
                 declared_settings,
                 language_servers: &language_servers,
                 runtime_tools,
             },
-        )?;
-        if crate::debug::adapters::uses_declared_features(&self.debug_adapters)
-            && self
-                .requires
-                .get(capabilities::DEBUG_ADAPTERS)
-                .copied()
-                .unwrap_or(1)
-                < 3
-        {
-            return Err(invalid(
-                "requires.debugAdapters",
-                "Adapter features and defaults require debugAdapters 3.",
-            ));
-        }
-        if crate::debug::adapters::uses_target_arguments(&self.debug_adapters)
-            && self
-                .requires
-                .get(capabilities::DEBUG_ADAPTERS)
-                .copied()
-                .unwrap_or(1)
-                < 2
-        {
-            return Err(invalid(
-                "requires.debugAdapters",
-                "Argument and environment bindings require debugAdapters 2.",
-            ));
-        }
-        if self.plugin_api_version >= CAPABILITIES_API_VERSION {
-            self.validate_server_process_version()?;
-        }
-        Ok(())
+        )
     }
 
-    /// Checks that `requires.serverProcess` is the lowest version covering
-    /// the launches the manifest uses. Versions are cumulative: 2 adds the
-    /// selected-runtime launch of an adapter, 3 the launch a plugin backend
-    /// resolves, and 4 runtimes named by tool-definition ID, so a host
-    /// without a version never accepts a process it cannot start.
-    /// `validate_required_tools` pairs version 4 with `requiresTools`, so 4
-    /// is accepted here for every launch below it.
-    fn validate_server_process_version(&self) -> Validation<()> {
-        let backend_launch = self
-            .language_servers
-            .iter()
-            .any(|server| server.process.is_backend_launch());
-        let selected = crate::debug::adapters::uses_selected_runtime(&self.debug_adapters);
-        let declared = self
-            .requires
-            .get(capabilities::SERVER_PROCESS)
-            .copied()
-            .unwrap_or(1);
-        let tool_references = declared >= TOOL_REFERENCES_SERVER_PROCESS;
-        if backend_launch {
-            if declared != 3 && !tool_references {
-                return Err(PluginRejection::at(
-                    "plugin.manifest.invalid",
-                    "requires.serverProcess",
-                    "serverProcess 3 is required exactly when a language server is launched by the plugin backend.",
-                ));
-            }
-            // Only a backend 2 process receives the workspace context the
-            // launch function needs.
-            if self.backend.is_none() || self.backend_version() < 2 {
-                return Err(invalid(
-                    "backend",
-                    "A language server launched by the plugin backend requires backend 2.",
-                ));
-            }
-            return Ok(());
-        }
-        if tool_references {
-            return Ok(());
-        }
-        if declared == 3 {
-            return Err(PluginRejection::at(
-                "plugin.manifest.invalid",
-                "requires.serverProcess",
-                "serverProcess 3 is required exactly when a language server is launched by the plugin backend.",
-            ));
-        }
-        if selected != (declared == 2) {
-            return Err(PluginRejection::at(
-                "plugin.manifest.invalid",
-                "requires.serverProcess",
-                "serverProcess 2 is required exactly when an adapter runs on the selected runtime.",
+    /// A language server the plugin backend launches asks the backend for its
+    /// command line, so the manifest must declare that backend.
+    fn validate_backend_launches(&self) -> Validation<()> {
+        if self.backend.is_none()
+            && self
+                .language_servers
+                .iter()
+                .any(|server| server.process.is_backend_launch())
+        {
+            return Err(invalid(
+                "backend",
+                "A language server launched by the plugin backend requires the backend section.",
             ));
         }
         Ok(())
     }
 
     fn validate_toolchains(&self) -> Validation<()> {
-        let build_toolchains = self.build_systems.iter().any(|system| {
-            system
-                .invocation
-                .executables
-                .iter()
-                .chain(
-                    system
-                        .invocation
-                        .runtime_dependencies
-                        .iter()
-                        .flat_map(|runtime| &runtime.executables),
-                )
-                .any(|candidate| {
-                    matches!(
-                        candidate.source,
-                        super::executables::ExecutableSource::Toolchain { .. }
-                    )
-                })
-                || system.names_tool_definitions()
-        });
-        if self.tool_definitions.is_empty()
-            && !build_toolchains
-            && self.requires.get(capabilities::EXECUTABLE_RESOLUTION) == Some(&2)
-        {
-            return Err(invalid(
-                "requires.executableResolution",
-                "Executable resolution 2 requires tool definitions or build toolchain candidates.",
-            ));
-        }
         if self.tool_definitions.is_empty() && self.toolchain_providers.is_empty() {
             return Ok(());
-        }
-        if self.plugin_api_version < CAPABILITIES_API_VERSION {
-            return Err(invalid(
-                "toolDefinitions",
-                "Toolchain declarations require plugin API level 3.",
-            ));
-        }
-        if !self.tool_definitions.is_empty()
-            && self.requires.get(capabilities::EXECUTABLE_RESOLUTION) != Some(&2)
-        {
-            return Err(invalid(
-                "requires.executableResolution",
-                "Tool definitions require executable resolution 2.",
-            ));
         }
         crate::toolchain::definitions::validate_declarations(
             &self.id,
@@ -1531,36 +1274,23 @@ impl DeclarativePluginManifest {
         Ok(())
     }
 
-    /// Checks `pluginFunctions`: only a backend 2 of a level 3 or newer
-    /// manifest registers functions for the protocol that relays calls.
+    /// Checks `pluginFunctions`: only the plugin backend registers functions
+    /// for the protocol that relays calls.
     fn validate_plugin_functions(&mut self) -> Validation<()> {
-        let version = self.backend_version();
         let Some(section) = self.plugin_functions.as_mut() else {
             return Ok(());
         };
-        if self.plugin_api_version < CAPABILITIES_API_VERSION {
-            return Err(invalid(
-                "pluginFunctions",
-                "Plugin functions require plugin API level 3.",
-            ));
-        }
         if self.backend.is_none() {
             return Err(invalid(
                 "pluginFunctions",
                 "Exported and called plugin functions need the plugin backend.",
             ));
         }
-        super::plugin_functions::validate(section, version)
+        super::plugin_functions::validate(section)
     }
 
     /// Host-queried providers must start without relying on the discovery they provide.
     fn validate_packaged_provider_backend(&self) -> Validation<()> {
-        if self.plugin_api_version < CAPABILITIES_API_VERSION || self.backend_version() != 2 {
-            return Err(invalid(
-                "requires.backend",
-                "Providers require plugin API 3 and backend 2.",
-            ));
-        }
         let backend = self
             .backend
             .as_ref()
@@ -1584,23 +1314,15 @@ impl DeclarativePluginManifest {
         let Some(ui) = &mut self.ui else {
             return Ok(());
         };
-        if self.plugin_api_version < 2 {
-            return Err(invalid(
-                "ui",
-                "UI contributions require plugin API level 2.",
-            ));
-        }
-        let version = self.requires.get(capabilities::UI).copied().unwrap_or(1);
-        if (ui.tool_windows.is_empty() && (version < 4 || ui.commands.is_empty()))
+        if (ui.tool_windows.is_empty() && ui.commands.is_empty())
             || ui.tool_windows.len() > 64
             || ui.commands.len() > 128
         {
             return Err(invalid(
                 "ui",
-                "UI requires 1-64 tool windows and at most 128 commands.",
+                "UI declares a tool window or a command, with at most 64 tool windows and 128 commands.",
             ));
         }
-        // Below level 3 there is no `requires`, and the section means `ui` 1.
         let prefix = format!("{}.", self.id);
         let mut ids = BTreeSet::new();
         let mut windows = BTreeSet::new();
@@ -1609,7 +1331,7 @@ impl DeclarativePluginManifest {
             if let Some(icon) = &window.icon {
                 icon.validate()?;
             }
-            validate_window_body(window, index, version)?;
+            validate_window_body(window, index)?;
             if let Some(source) = window
                 .native
                 .as_ref()
@@ -1652,16 +1374,8 @@ impl DeclarativePluginManifest {
                 || !action_ids.insert(command.id.clone())
                 || match &command.tool_window_id {
                     Some(id) => !windows.contains(id),
-                    None => {
-                        version < 4
-                            || self.backend.is_none()
-                            || self
-                                .requires
-                                .get(capabilities::BACKEND)
-                                .copied()
-                                .unwrap_or(1)
-                                < 2
-                    }
+                    // A command without a window runs on the plugin backend.
+                    None => self.backend.is_none(),
                 }
                 || command.placements.is_empty()
             {
@@ -1689,21 +1403,6 @@ impl DeclarativePluginManifest {
                     ));
                 }
             }
-        }
-        // A version only adds; declaring one without using it only hides
-        // the plugin from hosts that could run it.
-        if (version == 2 && ui.tool_windows.iter().all(|window| window.web.is_none()))
-            || (version == 3 && ui.tool_windows.iter().all(|window| window.native.is_none()))
-            || (version == 4
-                && ui
-                    .commands
-                    .iter()
-                    .all(|command| command.tool_window_id.is_some()))
-        {
-            return Err(invalid(
-                "requires.ui",
-                "The declared ui version must be used: ui 2 adds web, ui 3 adds native content.",
-            ));
         }
         ui.tool_windows
             .sort_by(|a, b| (a.order, &a.id).cmp(&(b.order, &b.id)));
@@ -1809,29 +1508,28 @@ impl DeclarativePluginManifest {
                 "credentials.store is used by a plugin backend; declare one or remove the permission.",
             ));
         }
-        // Only a backend 2 process receives workspace contexts; an older
-        // backend could never exercise the grant the user reviewed.
+        // Only the plugin backend receives workspace contexts, so the grant
+        // the user reviewed would otherwise never be exercised.
         if self
             .permissions
             .iter()
             .any(|p| p == PERMISSION_WORKSPACE_METADATA)
-            && (self.backend.is_none()
-                || self.backend_version() < super::backend::WORKSPACE_CONTEXT_VERSION)
+            && self.backend.is_none()
         {
             return Err(invalid(
                 "permissions",
-                "workspace.metadata is used by a plugin backend 2; require backend 2 or remove the permission.",
+                "workspace.metadata is used by the plugin backend; declare one or remove the permission.",
             ));
         }
         if self
             .permissions
             .iter()
             .any(|p| crate::lsp::interface::plugin_function::HOST_PERMISSIONS.contains(&p.as_str()))
-            && (self.backend.is_none() || self.backend_version() < 2)
+            && self.backend.is_none()
         {
             return Err(invalid(
                 "permissions",
-                "Host API permissions require backend 2.",
+                "Host API permissions require the plugin backend.",
             ));
         }
         // Actions and providers both read the live document they annotate.
@@ -1867,11 +1565,10 @@ impl DeclarativePluginManifest {
         // nothing exercises.
         let language_server_request =
             crate::lsp::interface::plugin_function::PERMISSION_LANGUAGE_SERVER_REQUEST;
-        if self.language_server_version() >= 3
-            && self
-                .language_servers
-                .iter()
-                .any(|server| server.session.exposes_server())
+        if self
+            .language_servers
+            .iter()
+            .any(|server| server.session.exposes_server())
         {
             required.insert(language_server_request);
         } else if self
@@ -1881,7 +1578,7 @@ impl DeclarativePluginManifest {
         {
             return Err(invalid(
                 "permissions",
-                "languageServer.request is used by a languageServers 3 server that lists requestMethods or forwardNotifications; declare one or remove the permission.",
+                "languageServer.request is used by a server that lists requestMethods or forwardNotifications; declare one or remove the permission.",
             ));
         }
         for permission in required {
@@ -1932,12 +1629,10 @@ impl DeclarativePluginManifest {
         }
         self.activation_events = sorted_unique(std::mem::take(&mut self.activation_events));
         let mut declared: BTreeSet<String> = self.activation_events.iter().cloned().collect();
-        // A backend 2 may start once a workspace opens. The event is optional
+        // The backend may start once a workspace opens. The event is optional
         // because pages and commands can start it too, so it is checked here
         // and kept out of the exact provider match below.
-        if self.backend.is_some()
-            && self.backend_version() >= super::backend::WORKSPACE_CONTEXT_VERSION
-        {
+        if self.backend.is_some() {
             declared.remove(super::backend::ON_WORKSPACE_OPEN);
         }
         // Every provider needs an event, and every event needs a provider:
@@ -1990,6 +1685,12 @@ impl DeclarativePluginManifest {
         &self.version
     }
 
+    /// The version of `capability` the manifest requires. Validation has
+    /// already checked that every used capability is listed.
+    pub(crate) fn capability_version(&self, capability: &str) -> u32 {
+        self.requires.get(capability).copied().unwrap_or_default()
+    }
+
     /// Name shown to the user.
     pub(crate) fn display_name(&self) -> &str {
         &self.display_name
@@ -2028,7 +1729,7 @@ impl DeclarativePluginManifest {
         &self.permissions
     }
 
-    /// Capability versions of a level 3 manifest; empty below level 3.
+    /// Capability versions the manifest requires.
     pub(crate) fn requires(&self) -> &Requires {
         &self.requires
     }
@@ -2058,11 +1759,10 @@ impl DeclarativePluginManifest {
         if self.permissions.iter().any(|p| p == PERMISSION_CREDENTIALS) {
             services.push(super::backend::HOST_SERVICE_CREDENTIALS);
         }
-        if self.backend_version() >= super::backend::WORKSPACE_CONTEXT_VERSION
-            && self
-                .permissions
-                .iter()
-                .any(|p| p == PERMISSION_WORKSPACE_METADATA)
+        if self
+            .permissions
+            .iter()
+            .any(|p| p == PERMISSION_WORKSPACE_METADATA)
         {
             services.push(super::backend::HOST_SERVICE_WORKSPACE);
         }
@@ -2085,37 +1785,16 @@ impl DeclarativePluginManifest {
         services
     }
 
-    /// Whether runtime tools are tool-definition IDs from `requiresTools`
-    /// rather than the host's closed lists: `serverProcess` 4 and later.
-    pub(crate) fn names_tools_by_definition(&self) -> bool {
-        self.requires
-            .get(capabilities::SERVER_PROCESS)
-            .is_some_and(|version| *version >= TOOL_REFERENCES_SERVER_PROCESS)
-    }
-
     /// Tool-definition IDs the plugin may start processes with, sorted.
     pub(crate) fn required_tools(&self) -> &[String] {
         &self.requires_tools
     }
 
-    /// Checks `requiresTools` and returns its IDs. The list exists only from
-    /// `serverProcess` 4 on, and version 4 exists only for it.
+    /// Checks `requiresTools` and returns its IDs. Every tool a process names
+    /// is one of them.
     fn validate_required_tools(&mut self) -> Validation<BTreeSet<String>> {
-        let by_definition = self.names_tools_by_definition();
         if self.requires_tools.is_empty() {
-            if by_definition {
-                return Err(invalid(
-                    "requires.serverProcess",
-                    "serverProcess 4 names tools by definition ID; list them in requiresTools.",
-                ));
-            }
             return Ok(BTreeSet::new());
-        }
-        if !by_definition {
-            return Err(invalid(
-                "requiresTools",
-                "requiresTools requires serverProcess 4.",
-            ));
         }
         if self.requires_tools.len() > MAX_REQUIRED_TOOLS {
             return Err(invalid(
@@ -2142,22 +1821,6 @@ impl DeclarativePluginManifest {
         Ok(tools)
     }
 
-    /// `requires.backend`, or 1 for a manifest that does not list it.
-    pub(crate) fn backend_version(&self) -> u32 {
-        self.requires
-            .get(capabilities::BACKEND)
-            .copied()
-            .unwrap_or(1)
-    }
-
-    /// `requires.languageServers`, or 1 for a manifest that does not list it.
-    pub(crate) fn language_server_version(&self) -> u32 {
-        self.requires
-            .get(capabilities::LANGUAGE_SERVERS)
-            .copied()
-            .unwrap_or(1)
-    }
-
     /// Checks the declared settings, sorts them by ID, and returns the IDs
     /// launch templates may refer to.
     fn validate_settings(&mut self) -> Validation<DeclaredSettings> {
@@ -2165,25 +1828,16 @@ impl DeclarativePluginManifest {
         if self.settings.is_empty() {
             return Ok(DeclaredSettings::default());
         }
-        if self.plugin_api_version < LAUNCH_TEMPLATES_API_VERSION {
-            return Err(requires_api_2("settings".to_string()));
-        }
         if self.settings.len() > MAX_SETTINGS {
             return Err(invalid(
                 "settings",
                 "The plugin declares too many settings.",
             ));
         }
-        // Below level 3 there is no `requires`, and the section means `settings` 1.
-        let version = self
-            .requires
-            .get(capabilities::SETTINGS)
-            .copied()
-            .unwrap_or(1);
         let mut ids = BTreeSet::new();
         for (index, setting) in self.settings.iter().enumerate() {
             let field = format!("settings[{index}]");
-            setting.validate(&field, version)?;
+            setting.validate(&field)?;
             if !ids.insert(setting.id.clone()) {
                 return Err(invalid(
                     format!("{field}.id"),
@@ -2195,22 +1849,10 @@ impl DeclarativePluginManifest {
         Ok(super::settings::declared(&self.settings))
     }
 
-    /// Settings-page actions need `settings` 2; they are sorted by ID.
+    /// Checks the settings-page actions and sorts them by ID.
     fn validate_setting_actions(&mut self) -> Validation<()> {
         if self.setting_actions.is_empty() {
             return Ok(());
-        }
-        if self
-            .requires
-            .get(capabilities::SETTINGS)
-            .copied()
-            .unwrap_or(1)
-            < 2
-        {
-            return Err(invalid(
-                "settingActions",
-                "Settings actions require version 2 of the settings capability.",
-            ));
         }
         if self.setting_actions.len() > MAX_SETTING_ACTIONS {
             return Err(invalid(
@@ -2337,25 +1979,8 @@ impl DeclarativePluginManifest {
 }
 
 impl LanguageDeclaration {
-    /// Whether the language uses a field `languages` 3 adds.
-    fn uses_grammar_fields(&self) -> bool {
-        self.grammar.is_some() || self.configuration.is_some()
-    }
-
-    fn normalize(&mut self, index: usize, capability_version: u32) -> Validation<()> {
+    fn normalize(&mut self, index: usize) -> Validation<()> {
         let field = format!("languages[{index}]");
-        if self.uses_grammar_fields()
-            && capability_version < super::grammar::GRAMMAR_LANGUAGES_VERSION
-        {
-            return Err(invalid(
-                if self.grammar.is_some() {
-                    format!("{field}.grammar")
-                } else {
-                    format!("{field}.configuration")
-                },
-                "grammar and configuration require version 3 of the languages capability.",
-            ));
-        }
         if let Some(grammar) = &self.grammar {
             grammar.validate(&format!("{field}.grammar"))?;
         }
@@ -2434,19 +2059,16 @@ impl LanguageServerDeclaration {
     fn validate(
         &self,
         field: &str,
-        api_version: u32,
-        capability_version: u32,
         declared_settings: &DeclaredSettings,
         runtime_tools: RuntimeTools<'_>,
     ) -> Validation<()> {
         self.process.validate(
             field,
-            api_version,
             declared_settings,
             ServerRole::LanguageServer,
             runtime_tools,
         )?;
-        self.session.validate(field, capability_version)?;
+        self.session.validate(field)?;
         if self.process.is_backend_launch() && self.host_integration.is_some() {
             return Err(invalid(
                 format!("{field}.hostIntegration"),
@@ -2455,12 +2077,6 @@ impl LanguageServerDeclaration {
         }
         if let Some(configuration) = &self.workspace_configuration {
             let field = format!("{field}.workspaceConfiguration");
-            if capability_version < 2 {
-                return Err(invalid(
-                    field,
-                    "workspaceConfiguration requires version 2 of the languageServers capability.",
-                ));
-            }
             if !configuration.is_object() {
                 return Err(invalid(field, "workspaceConfiguration is a JSON object."));
             }
@@ -2487,8 +2103,7 @@ impl LanguageServerDeclaration {
             }
         }
         if let Some(integration) = &self.host_integration {
-            let templated = api_version >= LAUNCH_TEMPLATES_API_VERSION;
-            self.validate_host_integration(integration, field, templated)?;
+            self.validate_host_integration(integration, field)?;
         }
         Ok(())
     }
@@ -2497,12 +2112,8 @@ impl LanguageServerDeclaration {
         &self,
         integration: &HostIntegrationDeclaration,
         field: &str,
-        templated: bool,
     ) -> Validation<()> {
         let field = format!("{field}.hostIntegration");
-        if !templated {
-            return Err(requires_api_2(field));
-        }
         if !KNOWN_HOST_INTEGRATIONS.contains(&integration.id.as_str()) {
             return Err(PluginRejection::at(
                 "plugin.integration.unsupported",
@@ -2606,17 +2217,15 @@ impl ServerProcess {
     }
 
     /// Checks the launch, its arguments and probe, the initialization
-    /// options, and the runtime dependencies. Level 1 arguments are literal
-    /// text; templates are parsed from level 2 on.
+    /// options, and the runtime dependencies. Arguments and options are
+    /// launch templates.
     pub(crate) fn validate(
         &self,
         field: &str,
-        api_version: u32,
         declared_settings: &DeclaredSettings,
         role: ServerRole,
         runtime_tools: RuntimeTools<'_>,
     ) -> Validation<()> {
-        let templated = api_version >= LAUNCH_TEMPLATES_API_VERSION;
         let noun = role.noun();
         match &self.launch {
             LanguageServerLaunch::Packaged { path } => {
@@ -2642,17 +2251,7 @@ impl ServerProcess {
                 runtime_arguments,
                 entry,
             } => {
-                if !templated {
-                    return Err(requires_api_2(format!("{field}.launch.kind")));
-                }
-                runtime_tools.check(
-                    tool,
-                    LAUNCH_RUNTIME_TOOLS,
-                    format!("{field}.launch.tool"),
-                    format!(
-                        "The host cannot start a {noun} with {tool}: it is neither a host runtime nor a tool-definition ID."
-                    ),
-                )?;
+                runtime_tools.check(tool, format!("{field}.launch.tool"))?;
                 if let Some(version) = minimum_version {
                     validate_minimum_version(version, &format!("{field}.launch.minimumVersion"))?;
                 }
@@ -2698,13 +2297,7 @@ impl ServerProcess {
                 function,
                 timeout_milliseconds,
             } => {
-                return self.validate_backend_launch(
-                    field,
-                    api_version,
-                    function,
-                    *timeout_milliseconds,
-                    role,
-                );
+                return self.validate_backend_launch(field, function, *timeout_milliseconds, role);
             }
         }
         if self
@@ -2718,27 +2311,20 @@ impl ServerProcess {
                 format!("{} arguments must not contain NUL.", capitalized(noun)),
             ));
         }
-        // Level 1 arguments are literal text. Parsing them as templates would
-        // change the command line of packages that already ship.
-        if templated {
-            validate_launch_templates(
-                &self.arguments,
-                LaunchTemplateContext::Start,
-                declared_settings,
-                &format!("{field}.arguments"),
-            )?;
-            validate_launch_templates(
-                &self.validation_arguments,
-                LaunchTemplateContext::ValidationProbe,
-                declared_settings,
-                &format!("{field}.validationArguments"),
-            )?;
-        }
+        validate_launch_templates(
+            &self.arguments,
+            LaunchTemplateContext::Start,
+            declared_settings,
+            &format!("{field}.arguments"),
+        )?;
+        validate_launch_templates(
+            &self.validation_arguments,
+            LaunchTemplateContext::ValidationProbe,
+            declared_settings,
+            &format!("{field}.validationArguments"),
+        )?;
         if let Some(options) = &self.initialization_options {
             let options_field = format!("{field}.initializationOptions");
-            if !templated {
-                return Err(requires_api_2(options_field));
-            }
             if !options.is_object() {
                 return Err(invalid(
                     options_field,
@@ -2749,15 +2335,7 @@ impl ServerProcess {
         }
         for dependency in &self.runtime_dependencies {
             let dependencies_field = format!("{field}.runtimeDependencies");
-            runtime_tools.check(
-                &dependency.tool,
-                KNOWN_RUNTIME_TOOLS,
-                dependencies_field.clone(),
-                format!(
-                    "The host cannot provide the runtime {}: it is neither a host runtime nor a tool-definition ID.",
-                    dependency.tool
-                ),
-            )?;
+            runtime_tools.check(&dependency.tool, dependencies_field.clone())?;
             // The launch runtime is already discovered for the process, and
             // only the launch declaration can state its version requirement.
             if matches!(&self.launch, LanguageServerLaunch::Runtime { tool, .. } if *tool == dependency.tool)
@@ -2771,14 +2349,12 @@ impl ServerProcess {
         Ok(())
     }
 
-    /// Checks a launch the plugin backend resolves (`serverProcess` 3). Only
-    /// a language server may use it, and its command line, probe, options,
-    /// and runtimes all come from the backend's answer, so the manifest
-    /// declares none of them.
+    /// Checks a launch the plugin backend resolves. Only a language server
+    /// may use it, and its command line, probe, options, and runtimes all
+    /// come from the backend's answer, so the manifest declares none of them.
     fn validate_backend_launch(
         &self,
         field: &str,
-        api_version: u32,
         function: &str,
         timeout_milliseconds: Option<u64>,
         role: ServerRole,
@@ -2790,12 +2366,6 @@ impl ServerProcess {
                     "A {} cannot be started through the plugin backend.",
                     role.noun()
                 ),
-            ));
-        }
-        if api_version < capabilities::DEBUG_ADAPTERS_API_VERSION {
-            return Err(invalid(
-                format!("{field}.launch.kind"),
-                "A backend launch requires pluginAPIVersion 4 and serverProcess 3.",
             ));
         }
         if !crate::lsp::interface::plugin_function::is_function_id(function) {
@@ -2926,7 +2496,7 @@ impl ServerProcess {
 
     /// Install-review entries of the runtimes the host discovers for it.
     pub(crate) fn runtime_programs(&self) -> Vec<Value> {
-        self.runtime_requirements(false)
+        self.runtime_requirements()
             .into_iter()
             .map(|mut runtime| {
                 runtime["kind"] = json!("runtime");
@@ -2937,21 +2507,13 @@ impl ServerProcess {
 
     /// Runtimes the host must discover for this process, sorted by tool. The
     /// launch runtime comes first in declaration terms but is merged here so
-    /// hosts resolve every tool the same way.
-    ///
-    /// An entry the host resolves through a tool definition carries
-    /// `kind: "tool"`: every entry when `by_definition` (`serverProcess` 4),
-    /// otherwise only implicit references.
-    fn runtime_requirements(&self, by_definition: bool) -> Vec<Value> {
-        let reference =
-            |tool: &str, host: &[&str]| by_definition || implicit_tool_reference(tool, host);
-        let mut requirements: Vec<(&str, Option<&str>, bool)> = self
+    /// hosts resolve every tool the same way. Every entry names a tool
+    /// definition, so every entry carries `kind: "tool"`.
+    fn runtime_requirements(&self) -> Vec<Value> {
+        let mut requirements: Vec<(&str, Option<&str>)> = self
             .runtime_dependencies
             .iter()
-            .map(|dependency| {
-                let tool = dependency.tool.as_str();
-                (tool, None, reference(tool, KNOWN_RUNTIME_TOOLS))
-            })
+            .map(|dependency| (dependency.tool.as_str(), None))
             .collect();
         // A packaged runtime is part of the plugin, not a host requirement.
         if let LanguageServerLaunch::Runtime {
@@ -2961,23 +2523,16 @@ impl ServerProcess {
             ..
         } = &self.launch
         {
-            requirements.push((
-                tool.as_str(),
-                minimum_version.as_deref(),
-                reference(tool, LAUNCH_RUNTIME_TOOLS),
-            ));
+            requirements.push((tool.as_str(), minimum_version.as_deref()));
         }
         requirements.sort();
         requirements.dedup();
         requirements
             .into_iter()
-            .map(|(tool, minimum_version, tool_definition)| {
-                let mut requirement = json!({ "tool": tool });
+            .map(|(tool, minimum_version)| {
+                let mut requirement = json!({ "tool": tool, "kind": "tool" });
                 if let Some(version) = minimum_version {
                     requirement["minimumVersion"] = json!(version);
-                }
-                if tool_definition {
-                    requirement["kind"] = json!("tool");
                 }
                 requirement
             })
@@ -3007,14 +2562,15 @@ fn is_packaged_runtime_path(value: &str) -> bool {
     }) && is_safe_relative_path(&value.replace("${arch}", "arch"))
 }
 
-/// A window body is literal text or, from `ui` 2 on, one package HTML page.
-fn validate_window_body(window: &UIToolWindow, index: usize, version: u32) -> Validation<()> {
+/// A window body is literal text, one package HTML page, or host-rendered
+/// native content.
+fn validate_window_body(window: &UIToolWindow, index: usize) -> Validation<()> {
     let field = format!("ui.toolWindows[{index}]");
     if let Some(native) = &window.native {
-        if version < 3 || window.text.is_some() || window.web.is_some() {
+        if window.text.is_some() || window.web.is_some() {
             return Err(invalid(
                 &field,
-                "Native content requires ui 3 and cannot coexist with text or web.",
+                "Native content cannot coexist with text or web.",
             ));
         }
         return native
@@ -3026,10 +2582,6 @@ fn validate_window_body(window: &UIToolWindow, index: usize, version: u32) -> Va
         (Some(_), None) => Err(invalid(
             format!("{field}.text"),
             "The window text is too long.",
-        )),
-        (None, Some(_)) if version < 2 => Err(invalid(
-            format!("{field}.web"),
-            "Web content requires pluginAPIVersion 3 and the ui capability version 2.",
         )),
         (None, Some(web)) => {
             let entry = &web.entry;
@@ -3053,10 +2605,6 @@ fn validate_window_body(window: &UIToolWindow, index: usize, version: u32) -> Va
             "A tool window shows exactly one of text and web content.",
         )),
     }
-}
-
-fn requires_api_2(field: String) -> PluginRejection {
-    invalid(field, "This declaration requires pluginAPIVersion 2.")
 }
 
 /// A minimum version is one to three dot-separated numbers; hosts compare it
@@ -3663,7 +3211,7 @@ pub struct LanguageServerLaunchPlanRequest {
     #[serde(default)]
     log_directory: Option<String>,
     /// Absolute writable scratch directory for one start of the server. Only
-    /// a launch the backend resolves (`serverProcess` 3) needs it.
+    /// a launch the backend resolves needs it.
     #[serde(default)]
     temporary_directory: Option<String>,
     /// Host CPU architecture, one of `KNOWN_ARCHITECTURES`.
@@ -3673,7 +3221,6 @@ pub struct LanguageServerLaunchPlanRequest {
     #[serde(default)]
     settings: BTreeMap<String, Value>,
     /// The current workspace's overrides of project-scoped settings.
-    /// `settings` 2.
     #[serde(default)]
     project_settings: BTreeMap<String, Value>,
 }
@@ -3772,16 +3319,13 @@ fn language_server_launch_plan(
             &manifest.effective_settings(request.layers()),
         );
     }
-    // The engine enforces the session fields; a server below version 3
-    // has none, so its plan stays as it was.
-    if manifest.language_server_version() >= 3 {
-        plan["sessionPolicy"] = server.session.policy(&server.language_id);
-    }
+    // The engine enforces the session fields.
+    plan["sessionPolicy"] = server.session.policy(&server.language_id);
     Ok(plan)
 }
 
-/// The first step of a language server whose backend resolves its launch
-/// (`serverProcess` 3): the function to call and its params. The host calls
+/// The first step of a language server whose backend resolves its launch:
+/// the function to call and its params. The host calls
 /// the function and passes the answer to `plugins.languageServers.decodeLaunch`,
 /// whose plan it then starts like any other.
 fn backend_resolved_launch_plan(
@@ -4027,7 +3571,7 @@ fn backend_launch_plan(
     })?;
     let mut plan = server_launch_plan(manifest, &backend.process, None, request)?;
     plan["backend"] = super::backend::plan_descriptor(
-        manifest.backend_version(),
+        manifest.capability_version(capabilities::BACKEND),
         &manifest.backend_host_services(),
     );
     Ok(plan)
@@ -4080,7 +3624,7 @@ fn debug_adapter_launch_plan(
 
 /// The plan of the language server a `tcpLanguageServer` adapter runs in.
 /// The server's own session starts it; this plan only names the server the
-/// adapter belongs to. A server the backend launches (`serverProcess` 3) is
+/// adapter belongs to. A server the backend launches is
 /// asked by that session with the scratch directories of its own start, so
 /// here its plan names the function and demands no directory.
 fn hosting_language_server_plan(
@@ -4297,35 +3841,24 @@ fn server_launch_plan(
         ));
     }
 
-    // Level 1 arguments are literal, so only level 2 values are expanded.
-    let templated = manifest.plugin_api_version >= LAUNCH_TEMPLATES_API_VERSION;
     let mut requirements = LaunchRequirements::default();
     let expand_all = |templates: &[String], requirements: &mut LaunchRequirements| {
         templates
             .iter()
-            .map(|value| {
-                if templated {
-                    expand_launch_template(value, &values, requirements)
-                } else {
-                    value.clone()
-                }
-            })
+            .map(|value| expand_launch_template(value, &values, requirements))
             .collect::<Vec<String>>()
     };
 
-    let by_definition = manifest.names_tools_by_definition();
-    let mut arguments = Vec::new();
     let launch = match &process.launch {
         // A tool definition owns how its executable starts an entry, so the
         // plan hands the host the parts for `toolchains.instantiateLaunch`.
-        // Below `serverProcess` 4 the same holds for an implicit reference.
         LanguageServerLaunch::Runtime {
             tool,
             minimum_version,
             packaged_runtime,
             runtime_arguments,
             entry,
-        } if by_definition || implicit_tool_reference(tool, LAUNCH_RUNTIME_TOOLS) => {
+        } => {
             requirements.package_paths.insert(entry.clone());
             let mut launch = json!({
                 "kind": "tool",
@@ -4350,31 +3883,6 @@ fn server_launch_plan(
         LanguageServerLaunch::SystemCommand { commands } => {
             json!({ "kind": "systemCommand", "commands": commands })
         }
-        LanguageServerLaunch::Runtime {
-            tool,
-            minimum_version,
-            packaged_runtime,
-            runtime_arguments,
-            entry,
-        } => {
-            // A host runtime takes the entry as its first positional argument.
-            arguments.extend(expand_all(runtime_arguments, &mut requirements));
-            arguments.push(format!("{}/{entry}", values.plugin_directory));
-            requirements.package_paths.insert(entry.clone());
-            let mut launch = json!({ "kind": "runtime", "tool": tool, "entry": entry });
-            if let Some(version) = minimum_version {
-                launch["minimumVersion"] = json!(version);
-                // The same probe as a host-managed build runtime.
-                launch["versionArguments"] =
-                    json!(crate::build::host_runtime_version_arguments(tool));
-            }
-            if let Some(path) = packaged_runtime {
-                let path = path.replace("${arch}", values.architecture);
-                requirements.package_paths.insert(path.clone());
-                launch["packagedRuntime"] = json!(path);
-            }
-            launch
-        }
         // Validation admits a backend launch only for a language server,
         // whose plan `backend_resolved_launch_plan` builds instead.
         LanguageServerLaunch::Backend { .. } => {
@@ -4384,7 +3892,7 @@ fn server_launch_plan(
             ));
         }
     };
-    arguments.extend(expand_all(&process.arguments, &mut requirements));
+    let arguments = expand_all(&process.arguments, &mut requirements);
     let validation_arguments = expand_all(&process.validation_arguments, &mut requirements);
 
     let mut plan = json!({
@@ -4392,7 +3900,7 @@ fn server_launch_plan(
         "launch": launch,
         "arguments": arguments,
         "validationArguments": validation_arguments,
-        "runtimeRequirements": process.runtime_requirements(by_definition),
+        "runtimeRequirements": process.runtime_requirements(),
     });
     if let Some(options) = &process.initialization_options {
         plan["initializationOptions"] = expand_launch_value(options, &values, &mut requirements);
@@ -4529,46 +4037,6 @@ fn expand_launch_template(
             .insert(expanded[start..].trim_end_matches('/').to_string());
     }
     expanded
-}
-
-/// Output of a runtime's version probe and the requirement it must meet.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RuntimeVersionCheckRequest {
-    /// Launch runtime that printed `output`.
-    tool: String,
-    /// Requirement from the launch plan, one to three dot-separated numbers.
-    minimum_version: String,
-    /// Text the runtime printed for the plan's `versionArguments`.
-    output: String,
-}
-
-/// Checks a host runtime's probe output. A tool definition checks the
-/// version of the executable it resolves, so only `LAUNCH_RUNTIME_TOOLS`
-/// are probed here.
-fn check_runtime_version(request: &RuntimeVersionCheckRequest) -> Validation<Value> {
-    if !LAUNCH_RUNTIME_TOOLS.contains(&request.tool.as_str()) {
-        return Err(PluginRejection::new(
-            "plugin.runtime.unsupported",
-            format!(
-                "The host does not probe {}; its tool definition checks the version.",
-                request.tool
-            ),
-        ));
-    }
-    validate_minimum_version(&request.minimum_version, "minimumVersion")?;
-    let minimum = version_components(&request.minimum_version);
-    let Some(found) = reported_version(&request.output) else {
-        return Ok(json!({ "satisfied": false }));
-    };
-    // Only the components the requirement names are compared, so `21`
-    // accepts every 21.x and `18.17` rejects 18.16.
-    let mut padded = found.clone();
-    padded.resize(minimum.len().max(found.len()), 0);
-    Ok(json!({
-        "satisfied": padded[..minimum.len()] >= minimum[..],
-        "version": found.iter().map(u64::to_string).collect::<Vec<_>>().join("."),
-    }))
 }
 
 pub(crate) fn version_components(value: &str) -> Vec<u64> {
@@ -4832,8 +4300,8 @@ pub(crate) fn sorted_unique(values: Vec<String>) -> Vec<String> {
 #[serde(rename_all = "camelCase")]
 struct ValidatePayload {
     manifest: Value,
-    /// Capability versions the host runs. When sent, a level 3 manifest
-    /// that requires anything else is refused.
+    /// Capability versions the host runs. When sent, a manifest that
+    /// requires anything else is refused.
     #[serde(default)]
     host_capabilities: Option<HostCapabilities>,
 }
@@ -4859,7 +4327,7 @@ struct LaunchPlanPayload {
     build_system_id: Option<String>,
     #[serde(default, rename = "vcsProviderID")]
     vcs_provider_id: Option<String>,
-    /// Selects the plugin's backend; `backend` 1.
+    /// Selects the plugin's backend.
     #[serde(default)]
     backend: bool,
     #[serde(default, rename = "debugAdapterID")]
@@ -5267,14 +4735,4 @@ pub fn decode_grammar_command(payload: Value) -> Result<Value, CoreError> {
             ))
         },
     )))
-}
-
-/// `plugins.declarative.checkRuntimeVersion`: decides whether a launch
-/// runtime's version output meets the plan's `minimumVersion`.
-pub fn check_runtime_version_command(payload: Value) -> Result<Value, CoreError> {
-    let request: RuntimeVersionCheckRequest =
-        decode_payload(payload, "plugins.declarative.checkRuntimeVersion")?;
-    Ok(outcome(
-        check_runtime_version(&request).map(|check| ("check", check)),
-    ))
 }

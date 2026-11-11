@@ -1,23 +1,21 @@
-//! `backend` of an API level 3 plugin manifest: one long-lived process a
-//! plugin starts for itself, independent of any build system, language, or
-//! workspace.
+//! `backend` of a plugin manifest: one long-lived process a plugin starts for
+//! itself, independent of any build system, language, or workspace.
 //!
 //! A build provider or VCS provider exists for one domain contract and one
 //! workspace. A backend serves only the plugin itself: its web pages call the
 //! backend's [plugin functions](crate::lsp::interface::plugin_function), and
 //! the backend may ask the host for the primitive services its permissions
-//! grant, such as private credential storage. The host keeps one process per
-//! plugin on the machine that runs Lithe, and ends it when the plugin is
-//! disabled, updated, or uninstalled.
+//! grant, such as private credential storage or workspace contexts. The host
+//! keeps one process per plugin on the machine that runs Lithe, and ends it
+//! when the plugin is disabled, updated, or uninstalled.
 //!
-//! `backend` 1 starts on the first call from one of the plugin's pages, so
-//! it needs a web tool window. `backend` 2 may also start when a workspace
-//! opens (`onWorkspaceOpen`) or when one of the plugin's commands runs, so it
-//! needs only some way to start. Version 2 is also the only one that can be
-//! granted the `workspace` host service. Every workspace reaches the one
-//! process as an explicit context in each call, never as process state, so
-//! `${workspaceStateDir}` stays refused in both versions; the per-workspace
-//! state directory travels in the context instead.
+//! The process starts on the first call from one of the plugin's pages, when
+//! a workspace opens (`onWorkspaceOpen`), when one of the plugin's commands
+//! runs, or when a provider query or exported function needs it, so the
+//! manifest declares at least one of those triggers. Every workspace reaches
+//! the one process as an explicit context in each call, never as process
+//! state, so `${workspaceStateDir}` is refused; the per-workspace state
+//! directory travels in the context instead.
 //!
 //! The process shares the launch fields, templates, and install review of
 //! every plugin server process.
@@ -41,56 +39,35 @@ pub(crate) struct BackendDeclaration {
 /// Primitive host services a backend may request, each granted by one
 /// manifest permission.
 pub(crate) const HOST_SERVICE_CREDENTIALS: &str = "credentials";
-/// Workspace contexts and their folders (`workspace.metadata`, `backend` 2).
+/// Workspace contexts and their folders (`workspace.metadata`).
 pub(crate) const HOST_SERVICE_WORKSPACE: &str = "workspace";
 
-/// First `backend` version that may start without a page and may use
-/// workspace contexts.
-pub(crate) const WORKSPACE_CONTEXT_VERSION: u32 = 2;
-
-/// Activation event of a `backend` 2 process that starts once a workspace
-/// is open. It names no ID: the backend is one process for every workspace.
+/// Activation event of a backend that starts once a workspace is open. It
+/// names no ID: the backend is one process for every workspace.
 pub(crate) const ON_WORKSPACE_OPEN: &str = "onWorkspaceOpen";
 
 /// What backend validation needs from the rest of the manifest.
 pub(crate) struct DeclarationContext<'a> {
-    pub(crate) plugin_api_version: u32,
-    /// `requires.backend`; 1 when absent, which only happens below level 3.
-    pub(crate) version: u32,
     pub(crate) declared_settings: &'a DeclaredSettings,
-    /// Whether a tool window of the plugin shows web content, the only
-    /// caller of a backend in `backend` 1.
+    /// Whether a tool window of the plugin shows web content, whose pages
+    /// call the backend.
     pub(crate) has_web_window: bool,
     /// Whether the plugin declares a UI command, whose `onCommand` event
-    /// starts a `backend` 2 process.
+    /// starts the backend.
     pub(crate) has_command: bool,
     /// Whether the manifest lists `onWorkspaceOpen`.
     pub(crate) activates_on_workspace_open: bool,
     /// A provider capability may start this backend for a host-owned query.
     pub(crate) provider_query_trigger: bool,
-    /// Whether tool names are host runtimes or tool-definition IDs.
+    /// The tool-definition IDs from `requiresTools`.
     pub(crate) runtime_tools: crate::plugins::declarative::RuntimeTools<'a>,
 }
 
 impl BackendDeclaration {
     pub(crate) fn validate(&self, context: &DeclarationContext<'_>) -> Validation<()> {
-        if context.plugin_api_version < 3 {
-            return Err(invalid(
-                "backend",
-                "A plugin backend requires plugin API level 3.",
-            ));
-        }
-        // Only the plugin's own pages call a backend in version 1, so one
-        // without a web window could never start. Version 2 may also start
-        // with a workspace, a command or an admitted provider query trigger.
-        if context.version < WORKSPACE_CONTEXT_VERSION {
-            if !context.has_web_window {
-                return Err(invalid(
-                    "backend",
-                    "A plugin backend serves the plugin's own web pages; declare a web tool window.",
-                ));
-            }
-        } else if !context.has_web_window
+        // A backend nothing can start would never run: it needs a page, a
+        // command, a workspace event, or a provider query trigger.
+        if !context.has_web_window
             && !context.has_command
             && !context.activates_on_workspace_open
             && !context.provider_query_trigger
@@ -102,13 +79,12 @@ impl BackendDeclaration {
         }
         self.process.validate(
             "backend",
-            context.plugin_api_version,
             context.declared_settings,
             ServerRole::Backend,
             context.runtime_tools,
         )?;
         // One process serves every workspace, so a launch argument cannot
-        // name one of them; version 2 receives the directory per context.
+        // name one of them; the directory arrives with each context.
         if self.process.uses_workspace_state_directory() {
             return Err(invalid(
                 "backend",
@@ -126,14 +102,9 @@ pub(crate) fn programs(backend: &BackendDeclaration) -> Vec<Value> {
     programs
 }
 
-/// The `backend` member of a launch plan: the host services the session may
-/// request, which the host passes to `lsp.startServer` unchanged. Version 2
-/// also names its version, so the host knows it may start the process
-/// without a page; a version 1 plan keeps its original shape.
+/// The `backend` member of a launch plan: the `backend` capability version
+/// the manifest requires and the host services the session may request,
+/// which the host passes to `lsp.startServer` unchanged.
 pub(crate) fn plan_descriptor(version: u32, host_services: &[&str]) -> Value {
-    if version >= WORKSPACE_CONTEXT_VERSION {
-        json!({ "hostServices": host_services, "version": version })
-    } else {
-        json!({ "hostServices": host_services })
-    }
+    json!({ "hostServices": host_services, "version": version })
 }

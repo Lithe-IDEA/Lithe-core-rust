@@ -820,7 +820,7 @@ mod tests {
             }
         }
         let fixture: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/git/execution-events-v1.json"
+            "../../../fixtures/git/execution-events-v1.json"
         ))
         .unwrap();
         assert_eq!(serde_json::json!(events), fixture["events"]);

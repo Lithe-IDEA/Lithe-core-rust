@@ -440,7 +440,7 @@ mod tests {
     #[test]
     fn time_filters_and_ordering_compare_instants_from_the_shared_fixture() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/diagnostics/logging-v1.json"
+            "../../../fixtures/diagnostics/logging-v1.json"
         ))
         .unwrap();
         for case in fixture["timeQueries"].as_array().unwrap() {
@@ -457,7 +457,7 @@ mod tests {
     #[test]
     fn shared_fixture_pins_domains_and_budgets() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/diagnostics/logging-v1.json"
+            "../../../fixtures/diagnostics/logging-v1.json"
         ))
         .unwrap();
         assert_eq!(fixture["categories"], serde_json::json!(LOG_CATEGORIES));

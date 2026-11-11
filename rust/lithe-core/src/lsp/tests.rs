@@ -446,10 +446,8 @@ fn file_uri_paths_decode_spaces_and_utf8_characters() {
 
 #[test]
 fn document_uri_matches_shared_fixture() {
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/lsp/document-uri-v1.json"
-    ))
-    .unwrap();
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../../fixtures/lsp/document-uri-v1.json")).unwrap();
     for case in fixture["cases"].as_array().unwrap() {
         let response: Value = serde_json::from_str(&crate::execute_json(
             &json!({"command":"lsp.documentUri", "payload":{
@@ -514,10 +512,8 @@ fn document_uri_accepts_non_ascii_windows_extended_length_paths() {
 
 #[test]
 fn document_uri_identity_keeps_reserved_characters_distinct() {
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/lsp/document-uri-v1.json"
-    ))
-    .unwrap();
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../../fixtures/lsp/document-uri-v1.json")).unwrap();
     for case in fixture["identityCases"].as_array().unwrap() {
         let opened_uri = case["opened"].as_str().unwrap();
         let published_uri = case["published"].as_str().unwrap();
@@ -2677,7 +2673,7 @@ fn client_core_rejects_unknown_server_requests_with_method_not_found() {
 #[test]
 fn client_diagnostic_code_action_fixture_preserves_core_fields() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/lsp/diagnostic-code-actions-v1.json"
+        "../../../fixtures/lsp/diagnostic-code-actions-v1.json"
     ))
     .unwrap();
     for case in fixture["severityCases"].as_array().unwrap() {
@@ -2734,7 +2730,7 @@ fn client_diagnostic_code_action_fixture_preserves_core_fields() {
 #[test]
 fn client_completion_preserves_refresh_context_and_incomplete_lists() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/lsp/completion-refresh-v1.json"
+        "../../../fixtures/lsp/completion-refresh-v1.json"
     ))
     .unwrap();
     for case in fixture["cases"].as_array().unwrap() {
@@ -2799,10 +2795,8 @@ fn client_completion_rejects_invalid_trigger_context() {
 
 #[test]
 fn text_edits_follow_shared_windows_fixture() {
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/lsp/text-edits-v1.json"
-    ))
-    .unwrap();
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../../fixtures/lsp/text-edits-v1.json")).unwrap();
     for case in fixture["cases"].as_array().unwrap() {
         let edits: Vec<Value> = case["edits"].as_array().unwrap().iter().map(|edit| serde_json::json!({
             "range": { "start": { "line": edit["range"]["start"]["line"], "utf16Column": edit["range"]["start"]["character"] },

@@ -11,6 +11,10 @@
 //!   581b84b, documents captured at d669dad with Gradle 9.6.1 on
 //!   `test/fixtures/multi`.
 //!
+//! Both `plugin.json` files declare `pluginAPIVersion` 0 with
+//! `requires: {"buildSystems": 0}`, and the captured documents carry
+//! `version` 0.
+//!
 //! The captured documents write the scratch workspace as `${workspace}`. To
 //! refresh them, run `node scripts/package.mjs` and then
 //! `LITHE_CAPTURE_DIR=<dir> node scripts/test.mjs` in the plugin repository,

@@ -1,0 +1,79 @@
+# Releases the official Java plugin SDK (`shared/plugins/sdk/java`) through its own tag series
+# (`sdk-java-v<version>`). The release holds `lithe-plugin-sdk-java-<version>.jar`
+# and its `.sha256`; plugin repositories pin both and shade the JAR into their
+# backend at build time.
+name: Release Java Plugin SDK
+
+on:
+  push:
+    tags:
+      - "sdk-java-v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-java-plugin-sdk-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release ${{ github.ref_name }}
+    if: github.repository == 'Lithe-IDEA/Lithe-core-rust'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      # The SDK supports Java 8: the tests run on a Java 8 runtime, while
+      # Maven builds with the newer JDK set up last.
+      - name: Set up Java 8 runtime
+        id: java8
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '8'
+
+      - name: Set up Java 21 for Maven
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Require the tag to match the SDK version
+        id: version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=$(mvn -B -ntp -q -f shared/plugins/sdk/java/plugin-sdk/pom.xml help:evaluate -Dexpression=project.version -DforceStdout)
+          test "$TAG" = "sdk-java-v$version" || { echo "Tag $TAG does not match shared/plugins/sdk/java version $version"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build and test on Java 8
+        env:
+          JAVA8: ${{ steps.java8.outputs.path }}/bin/java
+        run: mvn -B -ntp -f shared/plugins/sdk/java/pom.xml verify -Djvm="$JAVA8"
+
+      - name: Collect the release assets
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p dist
+          asset="lithe-plugin-sdk-java-$VERSION.jar"
+          cp "shared/plugins/sdk/java/plugin-sdk/target/$asset" "dist/$asset"
+          (cd dist && sha256sum "$asset" | cut -d' ' -f1 > "$asset.sha256")
+
+      - name: Publish the SDK release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          asset="lithe-plugin-sdk-java-$VERSION.jar"
+          gh release create "$TAG" "dist/$asset" "dist/$asset.sha256" \
+            --title "Java plugin SDK $VERSION" \
+            --notes "Official Java plugin SDK $VERSION for Lithe plugin backends. Requires Java 8 or newer and has no runtime dependencies. Pin the JAR by its SHA-256 (\`$asset.sha256\`) and shade it into the backend JAR; see shared/plugins/sdk/java/README.md."

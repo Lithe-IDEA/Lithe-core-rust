@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 0,
+  "id": "dev.lithe.fixture.publisher-bundled",
+  "displayName": "Publisher and bundled trust fixture",
+  "version": "1.0.0",
+  "pluginAPIVersion": 0,
+  "requires": {"languages": 0, "languageServers": 0, "packageTrust": 0},
+  "requiresTools": ["java"],
+  "vendor": {
+    "id": "dev.lithe",
+    "displayName": "Lithe",
+    "signatureRequirement": "publisherPackage",
+    "bundledSignatureRequirement": "sameTeamAsHost"
+  },
+  "permissions": ["languageServer.launch"],
+  "activationEvents": ["onLanguage:fixture"],
+  "languages": [{"id": "fixture", "displayName": "Fixture", "fileExtensions": ["fixture"]}],
+  "languageServers": [{
+    "languageID": "fixture",
+    "launch": {"kind": "runtime", "tool": "java", "packagedRuntime": "runtime/${arch}/bin/java", "entry": "server.jar"},
+    "arguments": []
+  }]
+}

@@ -187,7 +187,7 @@ impl GitHubRepository {
 #[serde(rename_all = "camelCase")]
 /// Shared input for one GitHub request-plan operation.
 pub struct RequestPlanRequest {
-    /// Stable operation name documented in `shared/contracts/github.md`.
+    /// Stable operation name documented in `rust/contracts/github.md`.
     pub operation: String,
     /// Repository required by repository-scoped operations.
     #[serde(default)]

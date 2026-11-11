@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 0,
+  "id": "org.example.sample-runtimes",
+  "displayName": "Sample runtimes",
+  "version": "0.1.0",
+  "pluginAPIVersion": 0,
+  "requires": { "toolDefinitions": 0 },
+  "vendor": {
+    "id": "org.example",
+    "displayName": "Example",
+    "signatureRequirement": "publisherPackage"
+  },
+  "permissions": [],
+  "toolDefinitions": [
+    {
+      "id": "node",
+      "displayName": "Node.js",
+      "executableLayouts": [
+        { "path": "bin/node", "platforms": ["macos", "linux"] },
+        { "path": "node.exe", "platforms": ["windows"] }
+      ],
+      "executables": [{ "id": "shell", "kind": "command", "command": "node" }],
+      "version": { "arguments": ["--version"], "pattern": "v(\\d+(?:\\.\\d+)*)" },
+      "homeLayouts": [{ "match": "*", "home": "." }],
+      "commands": ["node"],
+      "launch": ["${executable}", "${runtimeArguments}", "${entry}", "${arguments}"]
+    },
+    {
+      "id": "java",
+      "displayName": "JDK",
+      "executableLayouts": [
+        { "path": "bin/java", "platforms": ["macos", "linux"] },
+        { "path": "bin/java.exe", "platforms": ["windows"] }
+      ],
+      "executables": [{ "id": "shell", "kind": "command", "command": "java" }],
+      "version": { "arguments": ["-version"], "pattern": "version \"(?:1\\.)?(\\d+(?:\\.\\d+)*)" },
+      "homeLayouts": [{ "match": "*", "home": "." }],
+      "commands": ["java"],
+      "launch": ["${executable}", "${runtimeArguments}", "-jar", "${entry}", "${arguments}"]
+    }
+  ]
+}

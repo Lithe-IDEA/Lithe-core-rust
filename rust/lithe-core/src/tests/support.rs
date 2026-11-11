@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(super) fn fixture() -> Value {
     let fixture_path =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../shared/fixtures/search/basic.json");
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../fixtures/search/basic.json");
     serde_json::from_str(&fs::read_to_string(fixture_path).expect("fixture should be readable"))
         .expect("fixture should be valid JSON")
 }

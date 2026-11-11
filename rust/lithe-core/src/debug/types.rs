@@ -43,7 +43,7 @@ pub struct CreateSessionRequest {
     pub declared: DeclaredAdapterBehavior,
 }
 
-/// The `features` and `defaults` of a `debugAdapters` 3 declaration. The
+/// The `features` and `defaults` of a `debugAdapters` declaration. The
 /// engine follows them instead of recognizing an adapter by its ID.
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]

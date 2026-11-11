@@ -16,7 +16,7 @@ fn policy_for(request: Value) -> Value {
 fn fixture_cases_match_the_shared_contract() {
     let fixture: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../shared/fixtures/network/proxy-policy-v1.json"
+        "/../fixtures/network/proxy-policy-v1.json"
     )))
     .expect("proxy policy fixture is JSON");
     for case in fixture["cases"].as_array().expect("fixture cases") {

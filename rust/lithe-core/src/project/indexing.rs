@@ -868,7 +868,7 @@ mod tests {
     #[test]
     fn directory_action_fixture_preserves_real_git_search_eligibility() {
         let fixture: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/workspace/directory-actions-v1.json"
+            "../../../fixtures/workspace/directory-actions-v1.json"
         ))
         .unwrap();
         let workspace = Workspace::new();
@@ -1155,7 +1155,7 @@ mod tests {
         parent.configure(&[], &[], false);
         nested.configure(&["deep"], &[], false);
         let fixture: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/workspace/indexing-policy-v1.json"
+            "../../../fixtures/workspace/indexing-policy-v1.json"
         ))
         .unwrap();
         for case in fixture["ownershipCases"].as_array().unwrap() {

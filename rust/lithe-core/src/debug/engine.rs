@@ -3172,7 +3172,7 @@ mod tests {
     #[test]
     fn delayed_launch_response_preserves_a_newer_stopped_or_terminal_event() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/debug/launch-event-order.json"
+            "../../../fixtures/debug/launch-event-order.json"
         ))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {
@@ -3305,7 +3305,7 @@ mod tests {
     fn hot_replace_normalizes_success_empty_and_error_bodies() {
         let fixture: Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/fixtures/debug/hot-code-replace-v1.json"
+            "/../fixtures/debug/hot-code-replace-v1.json"
         )))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {
@@ -3498,7 +3498,7 @@ mod tests {
     fn disconnect_policy_matches_shared_fixture() {
         let fixture: Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/fixtures/debug/disconnect-policy-v1.json"
+            "/../fixtures/debug/disconnect-policy-v1.json"
         )))
         .unwrap();
 
@@ -4128,7 +4128,7 @@ mod tests {
     fn source_breakpoint_binding_preserves_requested_identity_and_rejects_stale_replies() {
         let fixture: Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/fixtures/debug/breakpoint-binding-v1.json"
+            "/../fixtures/debug/breakpoint-binding-v1.json"
         )))
         .unwrap();
         let session_id = "source-breakpoint-binding";
@@ -4223,7 +4223,7 @@ mod tests {
     fn start_debugging_request_is_normalized_completed_and_stale_safe() {
         let fixture: Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/fixtures/debug/start-debugging-v1.json"
+            "/../fixtures/debug/start-debugging-v1.json"
         )))
         .unwrap();
         let session_id = "debug-start-debugging";
@@ -4291,7 +4291,7 @@ mod tests {
     fn start_debugging_failure_and_unsupported_hosts_answer_the_adapter() {
         let fixture: Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/fixtures/debug/start-debugging-v1.json"
+            "/../fixtures/debug/start-debugging-v1.json"
         )))
         .unwrap();
         for (session_id, supported) in [
@@ -4347,7 +4347,7 @@ mod tests {
     fn disconnect_fails_a_pending_start_debugging_request() {
         let fixture: Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/fixtures/debug/start-debugging-v1.json"
+            "/../fixtures/debug/start-debugging-v1.json"
         )))
         .unwrap();
         let session_id = "debug-start-debugging-disconnect";
@@ -4381,7 +4381,7 @@ mod tests {
     fn node_source_mapped_locations_pass_through_unchanged() {
         let fixture: Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/fixtures/debug/node-source-map-v1.json"
+            "/../fixtures/debug/node-source-map-v1.json"
         )))
         .unwrap();
         let session_id = "debug-node-source-map";
@@ -5330,7 +5330,7 @@ mod tests {
     fn exception_information_is_capability_gated_and_normalized() {
         let fixture: Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/fixtures/debug/exception-info-v1.json"
+            "/../fixtures/debug/exception-info-v1.json"
         )))
         .unwrap();
         let session_id = "debug-exception-info";
@@ -5443,7 +5443,7 @@ mod tests {
     fn variable_paging_is_forwarded_and_normalized_from_shared_fixture() {
         let fixture: Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/fixtures/debug/variable-paging-v1.json"
+            "/../fixtures/debug/variable-paging-v1.json"
         )))
         .unwrap();
         let session_id = "debug-variable-paging";
@@ -5617,7 +5617,7 @@ mod tests {
     fn run_in_terminal_request_is_normalized_completed_and_stale_safe() {
         let fixture: Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/fixtures/debug/run-in-terminal-v1.json"
+            "/../fixtures/debug/run-in-terminal-v1.json"
         )))
         .unwrap();
         let session_id = "debug-run-in-terminal";
@@ -6142,7 +6142,7 @@ mod tests {
     fn stale_reference_fixture_matches_core_behavior() {
         let fixture: Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/fixtures/debug/stale-reference-v1.json"
+            "/../fixtures/debug/stale-reference-v1.json"
         )))
         .unwrap();
         let session_id = "debug-stale-fixture";

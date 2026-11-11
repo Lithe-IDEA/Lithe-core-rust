@@ -164,10 +164,9 @@ mod tests {
 
     #[test]
     fn shared_fixture_trees_have_one_grouping_and_order() {
-        let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/git/reference-tree-v1.json"
-        ))
-        .unwrap();
+        let fixture: Value =
+            serde_json::from_str(include_str!("../../../fixtures/git/reference-tree-v1.json"))
+                .unwrap();
         for case in fixture["cases"].as_array().unwrap() {
             let response = call(case["request"].clone());
             assert_eq!(response["ok"], true, "{}: {response}", case["name"]);

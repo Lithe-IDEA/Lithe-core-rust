@@ -64,12 +64,12 @@ pub(crate) enum OutputScope {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct OutputLinkResolve {
-    /// A function of the plugin's `backend` 2 process.
+    /// A function of the plugin's `backend` process.
     pub(crate) function: String,
 }
 
 /// Checks every declaration and sorts them by ID. `has_backend_functions`
-/// says whether the plugin has a `backend` 2 process to call `resolve` on.
+/// says whether the plugin has a `backend` process to call `resolve` on.
 pub(crate) fn validate_declarations(
     matchers: &mut [OutputLinkMatcher],
     has_backend_functions: bool,
@@ -99,7 +99,7 @@ pub(crate) fn validate_declarations(
             if !has_backend_functions {
                 return Err(invalid(
                     format!("{field}.resolve"),
-                    "A resolve function needs a backend 2 process.",
+                    "A resolve function needs a backend process.",
                 ));
             }
             if !crate::lsp::interface::plugin_function::is_function_id(&resolve.function) {

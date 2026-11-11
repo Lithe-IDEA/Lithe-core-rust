@@ -11,6 +11,9 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
+/// Version of the `litheTestDiscovery` document a provider returns.
+const DISCOVERY_VERSION: u64 = 0;
+
 const MAX_TESTS: usize = 10_000;
 
 /// The plan's configuration and a provider's canonical discovery result.
@@ -49,7 +52,7 @@ pub(crate) fn decode(
     let result = &request.result;
     if serde_json::to_vec(result).map_or(usize::MAX, |bytes| bytes.len()) > MAX_OUTPUT_BYTES
         || result["format"] != "litheTestDiscovery"
-        || result["version"] != 1
+        || result["version"] != DISCOVERY_VERSION
     {
         return Err(invalid_output("Invalid test discovery document."));
     }

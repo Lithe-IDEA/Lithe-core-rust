@@ -172,7 +172,7 @@ fn missing_unfinished_roots_and_cycles_fail_closed() {
 #[test]
 fn shared_workflow_fixture_is_the_complete_portable_contract() {
     let fixture: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../../shared/fixtures/git/workspace-commit-workflow-v1.json"
+        "../../../../fixtures/git/workspace-commit-workflow-v1.json"
     ))
     .unwrap();
     let request = serde_json::from_value(fixture["request"].clone()).unwrap();
@@ -275,7 +275,7 @@ fn changelist_scope_is_checked_on_continuations_and_compared_during_review() {
 #[test]
 fn local_changelist_scope_fixture_defines_default_and_custom_membership() {
     let fixture: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../../shared/fixtures/git/local-changelist-scope-v1.json"
+        "../../../../fixtures/git/local-changelist-scope-v1.json"
     ))
     .unwrap();
     for case in fixture["cases"].as_array().unwrap() {

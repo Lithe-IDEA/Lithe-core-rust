@@ -1,10 +1,8 @@
 use super::*;
 
 fn fixture() -> Value {
-    serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/agent/edit-review-v1.json"
-    ))
-    .expect("edit review fixture is JSON")
+    serde_json::from_str(include_str!("../../../fixtures/agent/edit-review-v1.json"))
+        .expect("edit review fixture is JSON")
 }
 
 /// Expands `{repeat, count, suffix?}` text generators used by the shared fixture.
@@ -116,10 +114,9 @@ fn canonical_match_maps_multibyte_offsets_back_to_the_original() {
 fn presented_acp_fixture_edits_carry_host_evidence() {
     // The platform event fixture shows presented updates; removing the Host
     // annotation and presenting again must reproduce them exactly.
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/agent/acp-events-v1.json"
-    ))
-    .expect("ACP event fixture is JSON");
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../../fixtures/agent/acp-events-v1.json"))
+            .expect("ACP event fixture is JSON");
     for name in ["fileEdit", "claudeFileCreated", "claudeFileWriteUpdated"] {
         let presented = &fixture["events"][name]["update"];
         let mut raw = presented.clone();

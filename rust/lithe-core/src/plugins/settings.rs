@@ -2,12 +2,11 @@
 //! values a host may store for them, and how stored layers become the value
 //! a launch uses.
 //!
-//! Version 1 of the `settings` capability is the API level 2 section:
-//! integer, enum, and boolean options stored once per plugin. Version 2 adds
-//! the fields hosts need to place and apply a setting without plugin-specific
-//! code: which settings page shows it (`page`, `section`), whether a project
-//! may override it (`scope`), when a change takes effect (`effect`), and the
-//! `multiSelect`, `text`, `file`, and `directory` types.
+//! The `settings` capability declares integer, enum, boolean, `multiSelect`,
+//! `text`, `file`, and `directory` options. Its fields give hosts what they
+//! need to place and apply a setting without plugin-specific code: which
+//! settings page shows it (`page`, `section`), whether a project may override
+//! it (`scope`), and when a change takes effect (`effect`).
 //!
 //! Hosts never merge values themselves. They send the stored layers and Core
 //! answers with the effective value of every setting and the layer it came
@@ -34,13 +33,13 @@ const SETTING_INTEGER: &str = "integer";
 const SETTING_ENUM: &str = "enum";
 /// On or off.
 const SETTING_BOOLEAN: &str = "boolean";
-/// Any subset of a declared list of values. `settings` 2.
+/// Any subset of a declared list of values.
 const SETTING_MULTI_SELECT: &str = "multiSelect";
-/// Free text that matches a declared pattern. `settings` 2.
+/// Free text that matches a declared pattern.
 const SETTING_TEXT: &str = "text";
-/// An absolute path to a file, or empty. `settings` 2.
+/// An absolute path to a file, or empty.
 const SETTING_FILE: &str = "file";
-/// An absolute path to a directory, or empty. `settings` 2.
+/// An absolute path to a directory, or empty.
 const SETTING_DIRECTORY: &str = "directory";
 /// Most choices one enum setting may offer.
 const MAX_ENUM_OPTIONS: usize = 16;
@@ -98,7 +97,7 @@ pub(crate) enum SettingPage {
 /// A button the host draws on a settings page that invokes one of the same
 /// plugin's [plugin functions](crate::lsp::interface::plugin_function). The
 /// host owns the button; the plugin owns what the function does, so a
-/// "Reindex" or "Download sources" action needs no host code. `settings` 2.
+/// "Reindex" or "Download sources" action needs no host code.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct SettingAction {
@@ -252,27 +251,26 @@ pub(crate) struct SettingDeclaration {
     /// Choices of an enum or multiSelect setting, in display order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     options: Vec<SettingOption>,
-    /// Whether a project may override the value. `settings` 2; `global`
-    /// when absent.
+    /// Whether a project may override the value; `global` when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     scope: Option<SettingScope>,
-    /// When a change takes effect. `settings` 2; `restart` when absent.
+    /// When a change takes effect; `restart` when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     effect: Option<SettingEffect>,
-    /// Page that shows the setting besides the plugin's own. `settings` 2.
+    /// Page that shows the setting besides the plugin's own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     page: Option<SettingPage>,
-    /// Heading the setting is grouped under on its page. `settings` 2.
+    /// Heading the setting is grouped under on its page.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     section: Option<String>,
     /// Regular expression a text value must match as a whole. Required for
-    /// text settings. `settings` 2.
+    /// text settings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pattern: Option<String>,
-    /// Longest text value, in characters. `settings` 2.
+    /// Longest text value, in characters.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     max_length: Option<u32>,
-    /// Hint shown in an empty text, file, or directory field. `settings` 2.
+    /// Hint shown in an empty text, file, or directory field.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     placeholder: Option<String>,
 }
@@ -401,23 +399,6 @@ impl SettingDeclaration {
             .map(str::to_owned))
     }
 
-    fn is_version_2_kind(&self) -> bool {
-        matches!(
-            self.kind.as_str(),
-            SETTING_MULTI_SELECT | SETTING_TEXT | SETTING_FILE | SETTING_DIRECTORY
-        )
-    }
-
-    fn uses_version_2_fields(&self) -> bool {
-        self.scope.is_some()
-            || self.effect.is_some()
-            || self.page.is_some()
-            || self.section.is_some()
-            || self.pattern.is_some()
-            || self.max_length.is_some()
-            || self.placeholder.is_some()
-    }
-
     fn effect(&self) -> SettingEffect {
         self.effect.unwrap_or(SettingEffect::Restart)
     }
@@ -477,15 +458,8 @@ impl SettingDeclaration {
         self.options.iter().any(|option| option.value == value)
     }
 
-    /// Checks the declaration against the `settings` capability version the
-    /// manifest was written for.
-    pub(crate) fn validate(&self, field: &str, version: u32) -> Validation<()> {
-        if version < 2 && (self.is_version_2_kind() || self.uses_version_2_fields()) {
-            return Err(invalid(
-                field.to_string(),
-                "This setting requires version 2 of the settings capability.",
-            ));
-        }
+    /// Checks the declaration against the `settings` capability contract.
+    pub(crate) fn validate(&self, field: &str) -> Validation<()> {
         if !is_setting_identifier(&self.id) {
             return Err(invalid(
                 format!("{field}.id"),
@@ -824,18 +798,16 @@ mod tests {
     }
 
     #[test]
-    fn version_1_refuses_version_2_fields_and_types() {
+    fn scoped_and_text_settings_are_valid_declarations() {
         let scoped = setting(json!({
             "id": "heap", "type": "integer", "title": "Heap", "default": 1,
             "minimum": 1, "maximum": 2, "scope": "project"
         }));
-        assert!(scoped.validate("settings[0]", 1).is_err());
-        assert!(scoped.validate("settings[0]", 2).is_ok());
+        assert!(scoped.validate("settings[0]").is_ok());
         let text = setting(json!({
             "id": "name", "type": "text", "title": "Name", "default": "a", "pattern": "[a-z]+"
         }));
-        assert!(text.validate("settings[0]", 1).is_err());
-        assert!(text.validate("settings[0]", 2).is_ok());
+        assert!(text.validate("settings[0]").is_ok());
     }
 
     #[test]
@@ -863,7 +835,7 @@ mod tests {
         let missing_pattern = setting(json!({
             "id": "profile", "type": "text", "title": "Profile", "default": "dev"
         }));
-        assert!(missing_pattern.validate("settings[0]", 2).is_err());
+        assert!(missing_pattern.validate("settings[0]").is_err());
     }
 
     #[test]
@@ -871,7 +843,7 @@ mod tests {
         let file = setting(json!({
             "id": "settingsFile", "type": "file", "title": "Settings", "default": ""
         }));
-        assert!(file.validate("settings[0]", 2).is_ok());
+        assert!(file.validate("settings[0]").is_ok());
         assert!(file.accepts(&json!("")));
         assert!(file.accepts(&json!("/Users/me/settings.xml")));
         assert!(file.accepts(&json!("C:\\Users\\me\\settings.xml")));
@@ -885,7 +857,7 @@ mod tests {
             "id": "features", "type": "multiSelect", "title": "Features", "default": ["a"],
             "options": [{"value": "a", "title": "A"}, {"value": "b", "title": "B"}]
         }));
-        assert!(profiles.validate("settings[0]", 2).is_ok());
+        assert!(profiles.validate("settings[0]").is_ok());
         assert!(profiles.accepts(&json!(["b", "a"])));
         assert!(profiles.accepts(&json!([])));
         assert!(!profiles.accepts(&json!(["a", "a"])));
@@ -970,12 +942,12 @@ mod tests {
             "id": "trace", "type": "boolean", "title": "Trace", "default": true,
             "page": {"languageID": "toml"}, "section": "Language server"
         }));
-        assert!(paged.validate("settings[0]", 2).is_ok());
+        assert!(paged.validate("settings[0]").is_ok());
         let wrong = setting(json!({
             "id": "trace", "type": "boolean", "title": "Trace", "default": true,
             "page": {"languageID": "has space"}
         }));
-        assert!(wrong.validate("settings[0]", 2).is_err());
+        assert!(wrong.validate("settings[0]").is_err());
     }
 }
 

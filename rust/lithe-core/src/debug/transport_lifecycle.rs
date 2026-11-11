@@ -784,7 +784,7 @@ mod tests {
     fn lifecycle_fixture_scenarios_match_expected_steps() {
         let fixture: Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/fixtures/debug/transport-lifecycle-v1.json"
+            "/../fixtures/debug/transport-lifecycle-v1.json"
         )))
         .expect("transport lifecycle fixture is JSON");
         for scenario in fixture["scenarios"].as_array().expect("scenarios") {

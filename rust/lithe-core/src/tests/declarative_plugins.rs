@@ -1,7 +1,6 @@
 use crate::plugins::declarative::{
-    check_runtime_version_command, discover_tests_command, language_server_launch_plan_command,
-    resolve_settings_command, run_plan_command, test_plan_command, validate_command,
-    workspace_configuration_command,
+    discover_tests_command, language_server_launch_plan_command, resolve_settings_command,
+    run_plan_command, test_plan_command, validate_command, workspace_configuration_command,
 };
 use serde_json::{json, Value};
 
@@ -9,7 +8,7 @@ macro_rules! contract_file {
     ($path:literal) => {
         include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/contracts/plugins/v1/",
+            "/../../shared/plugins/contract/v1/",
             $path
         ))
     };
@@ -34,7 +33,7 @@ const GRADLE_PROVIDER_FIXTURE: &str =
     contract_file!("fixtures/build-providers/build-provider.plugin.json");
 const MIX_PROVIDER_FIXTURE: &str =
     contract_file!("fixtures/build-providers/build-provider-language-server.plugin.json");
-const SETTINGS_V2_FIXTURE: &str = contract_file!("fixtures/settings/settings-v2.plugin.json");
+const SETTINGS_FIXTURE: &str = contract_file!("fixtures/settings/settings.plugin.json");
 const BACKEND_FIXTURE: &str = contract_file!("fixtures/backend/backend.plugin.json");
 const WORKSPACE_BACKEND_FIXTURE: &str =
     contract_file!("fixtures/backend/backend-workspace.plugin.json");
@@ -66,7 +65,6 @@ const PROJECT_GENERATOR_TOOL_FIXTURE: &str =
     contract_file!("fixtures/project-generators/project-generator-tool-field.plugin.json");
 const INVALID_MANIFESTS: &str = contract_file!("fixtures/manifest/invalid-manifests.json");
 const COMMAND_PLANS: &str = contract_file!("fixtures/languages/command-plans.json");
-const RUNTIME_VERSIONS: &str = contract_file!("fixtures/languages/runtime-versions.json");
 
 fn fixture(name: &str) -> Value {
     let source = match name {
@@ -82,7 +80,7 @@ fn fixture(name: &str) -> Value {
         "build-command-output-file.plugin.json" => GRADLE_BUILD_FIXTURE,
         "build-provider.plugin.json" => GRADLE_PROVIDER_FIXTURE,
         "build-provider-language-server.plugin.json" => MIX_PROVIDER_FIXTURE,
-        "settings-v2.plugin.json" => SETTINGS_V2_FIXTURE,
+        "settings.plugin.json" => SETTINGS_FIXTURE,
         "backend.plugin.json" => BACKEND_FIXTURE,
         "backend-workspace.plugin.json" => WORKSPACE_BACKEND_FIXTURE,
         "plugin-functions-exporter.plugin.json" => FUNCTION_EXPORTER_FIXTURE,
@@ -134,17 +132,18 @@ fn contract_fixtures_and_official_plugins_validate() {
     }
 }
 
-/// The package cannot grant itself host-seal trust on an older host or
-/// downgrade independently installed copies to unsigned/local-only trust.
+/// The package cannot grant itself host-seal trust on a host that does not
+/// offer `packageTrust`, or downgrade independently installed copies to
+/// unsigned/local-only trust.
 #[test]
 fn bundled_publisher_trust_requires_an_explicit_host_capability() {
     let manifest: Value = serde_json::from_str(PUBLISHER_BUNDLED_FIXTURE).unwrap();
-    let mut host = json!({"languages":[1], "languageServers":[1], "serverProcess":[1]});
+    let mut host = json!({"languages":[0], "languageServers":[0]});
     let refused =
         validate_command(json!({"manifest": manifest, "hostCapabilities": host})).unwrap();
     assert_eq!(refused["error"]["code"], "plugin.api.unsupported");
     assert_eq!(refused["error"]["field"], "requires.packageTrust");
-    host["packageTrust"] = json!([1]);
+    host["packageTrust"] = json!([0]);
     let accepted =
         validate_command(json!({"manifest": manifest, "hostCapabilities": host})).unwrap();
     assert_eq!(accepted["status"], "ok", "{accepted}");
@@ -172,13 +171,6 @@ fn bundled_publisher_trust_requires_an_explicit_host_capability() {
         .unwrap()
         .remove("packageTrust");
     assert_eq!(validate(missing)["error"]["field"], "requires");
-    let mut legacy = manifest.clone();
-    legacy["pluginAPIVersion"] = json!(2);
-    legacy.as_object_mut().unwrap().remove("requires");
-    assert_eq!(
-        validate(legacy)["error"]["field"],
-        "vendor.bundledSignatureRequirement"
-    );
     let mut unused = manifest;
     unused["vendor"]
         .as_object_mut()
@@ -251,6 +243,13 @@ fn invalid_manifest_fixtures_report_their_stable_codes() {
             "{}: {outcome}",
             case["name"]
         );
+        if let Some(field) = case.get("expectedField") {
+            assert_eq!(
+                &outcome["error"]["field"], field,
+                "{}: {outcome}",
+                case["name"]
+            );
+        }
     }
 }
 
@@ -293,13 +292,14 @@ fn command_plan_fixtures_match_golden_expansions() {
     }
 }
 
-/// Packages that already ship declare API level 1, where `${...}` in a
-/// language-server argument is literal text. Expanding or rejecting it there
-/// would change the command line of an installed plugin.
+/// `${...}` in a language-server argument is a launch variable: the plan
+/// expands it, and `${pluginDir}` must be followed by a path inside the
+/// package.
 #[test]
-fn api_level_1_language_server_arguments_stay_literal() {
+fn language_server_arguments_expand_launch_variables() {
     let mut manifest = fixture("language-packaged-server.plugin.json");
-    manifest["languageServers"][0]["arguments"] = json!(["--stdio", "--log=${pluginDir}"]);
+    manifest["languageServers"][0]["arguments"] =
+        json!(["--stdio", "--config=${pluginDir}/config/server.json"]);
     assert_eq!(validate(manifest.clone())["status"], "ok");
     let outcome = language_server_launch_plan_command(json!({
         "manifest": manifest,
@@ -314,8 +314,169 @@ fn api_level_1_language_server_arguments_stay_literal() {
     .expect("payload is well formed");
     assert_eq!(
         outcome["plan"]["arguments"],
-        json!(["--stdio", "--log=${pluginDir}"])
+        json!(["--stdio", "--config=/plugins/php/config/server.json"])
     );
+    assert!(
+        outcome["plan"]["requiredPackagePaths"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("config/server.json")),
+        "{outcome}"
+    );
+
+    let mut bare = fixture("language-packaged-server.plugin.json");
+    bare["languageServers"][0]["arguments"] = json!(["--stdio", "--log=${pluginDir}"]);
+    assert_eq!(validate(bare)["error"]["code"], "plugin.template.invalid");
+}
+
+/// The validation probe runs before the host has read the plugin's settings,
+/// so it cannot depend on one.
+#[test]
+fn validation_probe_cannot_use_settings() {
+    let mut manifest = fixture("language-system-command.plugin.json");
+    manifest["requires"]["settings"] = json!(0);
+    manifest["settings"] = json!([
+        { "id": "verbose", "type": "boolean", "title": "Verbose", "default": false }
+    ]);
+    manifest["languageServers"][0]["validationArguments"] =
+        json!(["version", "${setting:verbose}"]);
+    let outcome = validate(manifest.clone());
+    assert_eq!(outcome["status"], "rejected", "{outcome}");
+    assert_eq!(outcome["error"]["code"], "plugin.template.invalid");
+
+    // The same setting is fine where the server starts.
+    manifest["languageServers"][0]["validationArguments"] = json!(["version"]);
+    manifest["languageServers"][0]["arguments"] = json!(["-verbose=${setting:verbose}"]);
+    assert_eq!(validate(manifest)["status"], "ok");
+}
+
+/// A setting declaration is part of the normalized manifest, ordered by ID so
+/// two hosts show and store the same list.
+#[test]
+fn settings_are_normalized_in_identifier_order() {
+    let outcome = validate(fixture("node-runtime.plugin.json"));
+    let ids: Vec<&str> = outcome["plugin"]["settings"]
+        .as_array()
+        .expect("normalized manifest lists the settings")
+        .iter()
+        .map(|setting| setting["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["heapMB", "logLevel", "telemetry"]);
+}
+
+/// A runtime launch names a tool definition the manifest lists in
+/// `requiresTools`; the host adds no runtime of its own.
+#[test]
+fn runtime_launch_names_a_listed_tool() {
+    let mut manifest = fixture("node-runtime.plugin.json");
+    manifest["languageServers"][0]["launch"]["tool"] = json!("java");
+    let unlisted = validate(manifest.clone());
+    assert_eq!(unlisted["status"], "rejected", "{unlisted}");
+    assert_eq!(unlisted["error"]["code"], "plugin.runtime.undeclared");
+    assert!(
+        unlisted["error"]["field"]
+            .as_str()
+            .unwrap()
+            .ends_with("launch.tool"),
+        "{unlisted}"
+    );
+
+    manifest["requiresTools"] = json!(["java"]);
+    assert_eq!(validate(manifest)["status"], "ok");
+}
+
+/// A host that sends its capabilities refuses only the plugins that need a
+/// capability it does not offer; a plugin without build systems never depends
+/// on them.
+#[test]
+fn a_host_refuses_only_plugins_that_need_a_capability_it_does_not_offer() {
+    let mix = fixture("build-provider-language-server.plugin.json");
+    let outcome = validate(mix.clone());
+    assert_eq!(outcome["status"], "ok", "{outcome}");
+    assert_eq!(
+        outcome["plugin"]["requires"],
+        json!({ "buildProviders": 0, "buildSystems": 0, "languageServers": 0, "languages": 0 })
+    );
+
+    let validate_on = |manifest: &Value, host: &Value| {
+        validate_command(json!({ "manifest": manifest, "hostCapabilities": host }))
+            .expect("payload is well formed")
+    };
+    let language_only = fixture("language-packaged-server.plugin.json");
+    let host_without_builds = json!({
+        "executionProviders": [0], "languageServers": [0], "languages": [0]
+    });
+    assert_eq!(
+        validate_on(&language_only, &host_without_builds)["status"],
+        "ok"
+    );
+
+    let refused = validate_on(&mix, &host_without_builds);
+    assert_eq!(refused["status"], "rejected", "{refused}");
+    assert_eq!(refused["error"]["code"], "plugin.api.unsupported");
+    assert_eq!(refused["error"]["field"], "requires.buildProviders");
+
+    let mut host_with_builds = host_without_builds.clone();
+    host_with_builds["buildSystems"] = json!([0]);
+    host_with_builds["buildProviders"] = json!([0]);
+    assert_eq!(validate_on(&mix, &host_with_builds)["status"], "ok");
+}
+
+/// Provider orchestration is independent of declarative build commands and
+/// process launching, including when the provider shares a language server.
+#[test]
+fn build_providers_require_their_own_host_capability() {
+    let mut host = json!({
+        "buildSystems": [0], "languageServers": [0], "languages": [0], "settings": [0]
+    });
+    let template = validate_command(json!({
+        "manifest": fixture("build-static-file.plugin.json"), "hostCapabilities": host
+    }))
+    .unwrap();
+    assert_eq!(template["status"], "ok", "{template}");
+
+    for (name, build_system_id) in [
+        ("build-provider.plugin.json", "gradle"),
+        ("build-provider-language-server.plugin.json", "mix"),
+    ] {
+        let manifest = fixture(name);
+        for versions in [None, Some(json!([1])), Some(json!([0]))] {
+            host.as_object_mut().unwrap().remove("buildProviders");
+            if let Some(versions) = versions {
+                host["buildProviders"] = versions;
+            }
+            let outcome = validate_command(json!({
+                "manifest": manifest, "hostCapabilities": host
+            }))
+            .unwrap();
+            if host["buildProviders"] == json!([0]) {
+                assert_eq!(outcome["status"], "ok", "{name}: {outcome}");
+            } else {
+                assert_eq!(outcome["status"], "rejected", "{name}: {outcome}");
+                assert_eq!(outcome["error"]["code"], "plugin.api.unsupported");
+                assert_eq!(outcome["error"]["field"], "requires.buildProviders");
+            }
+        }
+        // Tooling without a host table may validate and plan what Core supports.
+        let outcome = validate(manifest.clone());
+        assert_eq!(outcome["status"], "ok", "{name}: {outcome}");
+        let launch = language_server_launch_plan_command(json!({
+            "manifest": manifest,
+            "buildSystemID": build_system_id,
+            "request": {
+                "pluginDirectory": "/plugins/provider",
+                "stateDirectory": "/state/provider",
+                "workspaceStateDirectory": "/state/provider/workspace",
+                "architecture": "arm64"
+            }
+        }))
+        .unwrap();
+        assert_eq!(launch["status"], "ok", "{name}: {launch}");
+        assert_eq!(
+            launch["plan"]["buildProvider"]["buildSystemID"],
+            build_system_id
+        );
+    }
 }
 
 /// The install review must show a change to anything that decides what a
@@ -350,299 +511,11 @@ fn runtime_launch_and_initialization_options_are_reviewed_programs() {
         })));
 }
 
-/// Hosts filter runtime candidates with this outcome, so both products must
-/// read the same version from the same probe output.
-#[test]
-fn runtime_version_fixtures_match_golden_outcomes() {
-    let fixtures: Value = serde_json::from_str(RUNTIME_VERSIONS).unwrap();
-    for case in fixtures["cases"].as_array().unwrap() {
-        let outcome =
-            check_runtime_version_command(case["request"].clone()).expect("payload is well formed");
-        if let Some(code) = case.get("expectedCode") {
-            assert_eq!(outcome["status"], "rejected", "{}: {outcome}", case["name"]);
-            assert_eq!(&outcome["error"]["code"], code, "{}", case["name"]);
-        } else {
-            assert_eq!(outcome["status"], "ok", "{}: {outcome}", case["name"]);
-            assert_eq!(outcome["check"], case["expected"], "{}", case["name"]);
-        }
-    }
-}
-
-fn fixture_runtime_launch_plan(manifest: Value) -> Value {
-    language_server_launch_plan_command(json!({
-        "manifest": manifest,
-        "languageID": "fixture",
-        "request": {
-            "pluginDirectory": "/plugins/fixture",
-            "stateDirectory": "/state/fixture",
-            "workspaceStateDirectory": "/state/fixture/workspace",
-            "architecture": "arm64"
-        }
-    }))
-    .expect("payload is well formed")
-}
-
-/// Below `serverProcess` 4 a runtime launch whose tool is not a host runtime
-/// names the tool definition with the same ID. Its plan has the shape of an
-/// explicit tool reference, and the host adds no arguments of its own.
-#[test]
-fn runtime_launch_of_a_tool_definition_id_is_a_tool_plan() {
-    let mut manifest = fixture("node-runtime.plugin.json");
-    manifest["languageServers"][0]["launch"]["tool"] = json!("java");
-    assert_eq!(validate(manifest.clone())["status"], "ok");
-    let outcome = fixture_runtime_launch_plan(manifest);
-    assert_eq!(outcome["status"], "ok", "{outcome}");
-    assert_eq!(
-        outcome["plan"]["launch"],
-        json!({
-            "kind": "tool",
-            "tool": "java",
-            "entry": "/plugins/fixture/language-server/lib/server.js",
-            "runtimeArguments": [
-                "--max-old-space-size=2048",
-                "--require=/plugins/fixture/language-server/lib/preload.js"
-            ],
-            "minimumVersion": "18.17"
-        })
-    );
-    assert_eq!(
-        outcome["plan"]["arguments"],
-        json!([
-            "--stdio",
-            "--log-level=info",
-            "--storage",
-            "/state/fixture/storage",
-            "--workspace-cache",
-            "/state/fixture/workspace"
-        ])
-    );
-    assert_eq!(
-        outcome["plan"]["runtimeRequirements"],
-        json!([{ "tool": "java", "minimumVersion": "18.17", "kind": "tool" }])
-    );
-}
-
-/// `node` stays a host runtime: Core probes its version and passes the entry
-/// as the first positional argument.
-#[test]
-fn node_runtime_launch_keeps_the_host_runtime_plan() {
-    let outcome = fixture_runtime_launch_plan(fixture("node-runtime.plugin.json"));
-    assert_eq!(outcome["status"], "ok", "{outcome}");
-    assert_eq!(
-        outcome["plan"]["launch"],
-        json!({
-            "kind": "runtime",
-            "tool": "node",
-            "entry": "language-server/lib/server.js",
-            "minimumVersion": "18.17",
-            "versionArguments": ["--version"]
-        })
-    );
-    assert_eq!(
-        outcome["plan"]["arguments"][2],
-        "/plugins/fixture/language-server/lib/server.js"
-    );
-    assert_eq!(
-        outcome["plan"]["runtimeRequirements"],
-        json!([{ "tool": "node", "minimumVersion": "18.17" }])
-    );
-}
-
-/// Only an ID that cannot name a tool definition is unsupported; a
-/// plugin-qualified ID needs `serverProcess` 4 and `requiresTools`.
-#[test]
-fn runtime_launch_rejects_an_invalid_tool_definition_id() {
-    for tool in ["Java", "java 17", "org.example.tools:java"] {
-        let mut manifest = fixture("node-runtime.plugin.json");
-        manifest["languageServers"][0]["launch"]["tool"] = json!(tool);
-        let outcome = validate(manifest);
-        assert_eq!(outcome["status"], "rejected", "{tool}: {outcome}");
-        assert_eq!(
-            outcome["error"]["code"], "plugin.runtime.unsupported",
-            "{tool}"
-        );
-    }
-}
-
-/// The validation probe runs before the host has read the plugin's settings,
-/// so it cannot depend on one.
-#[test]
-fn validation_probe_cannot_use_settings() {
-    let mut manifest = fixture("language-system-command.plugin.json");
-    manifest["pluginAPIVersion"] = json!(2);
-    manifest["settings"] = json!([
-        { "id": "verbose", "type": "boolean", "title": "Verbose", "default": false }
-    ]);
-    manifest["languageServers"][0]["validationArguments"] =
-        json!(["version", "${setting:verbose}"]);
-    let outcome = validate(manifest.clone());
-    assert_eq!(outcome["status"], "rejected", "{outcome}");
-    assert_eq!(outcome["error"]["code"], "plugin.template.invalid");
-
-    // The same setting is fine where the server starts.
-    manifest["languageServers"][0]["validationArguments"] = json!(["version"]);
-    manifest["languageServers"][0]["arguments"] = json!(["-verbose=${setting:verbose}"]);
-    assert_eq!(validate(manifest)["status"], "ok");
-}
-
-/// A setting declaration is part of the normalized manifest, ordered by ID so
-/// two hosts show and store the same list.
-#[test]
-fn settings_are_normalized_in_identifier_order() {
-    let outcome = validate(fixture("node-runtime.plugin.json"));
-    let ids: Vec<&str> = outcome["plugin"]["settings"]
-        .as_array()
-        .expect("normalized manifest lists the settings")
-        .iter()
-        .map(|setting| setting["id"].as_str().unwrap())
-        .collect();
-    assert_eq!(ids, ["heapMB", "logLevel", "telemetry"]);
-}
-
-/// API level 3 versions each section on its own: a manifest lists exactly
-/// the capabilities it uses, a missing one is named precisely, and a host
-/// that sends its capabilities refuses only plugins that need one it lacks.
-#[test]
-fn level_3_manifests_list_exactly_the_capabilities_they_use() {
-    let rejected = |outcome: Value| {
-        assert_eq!(outcome["status"], "rejected", "{outcome}");
-        (
-            outcome["error"]["code"].as_str().unwrap().to_string(),
-            outcome["error"]["field"].as_str().unwrap().to_string(),
-        )
-    };
-    let mix = fixture("build-provider-language-server.plugin.json");
-    let outcome = validate(mix.clone());
-    assert_eq!(outcome["status"], "ok", "{outcome}");
-    assert_eq!(
-        outcome["plugin"]["requires"],
-        json!({ "buildProviders": 1, "buildSystems": 1, "languageServers": 1, "languages": 1, "serverProcess": 1 })
-    );
-    let legacy = validate(fixture("language-packaged-server.plugin.json"));
-    assert!(legacy["plugin"].get("requires").is_none(), "{legacy}");
-
-    let mut future = mix.clone();
-    future["requires"]["debuggers"] = json!(1);
-    future["debuggers"] = json!([{ "id": "lldb" }]);
-    assert_eq!(
-        rejected(validate(future)),
-        ("plugin.api.unsupported".into(), "requires.debuggers".into())
-    );
-    let mut missing = mix.clone();
-    missing["requires"]
-        .as_object_mut()
-        .unwrap()
-        .remove("serverProcess");
-    assert_eq!(
-        rejected(validate(missing)),
-        ("plugin.manifest.invalid".into(), "requires".into())
-    );
-    let mut unused = mix.clone();
-    unused["requires"]["settings"] = json!(1);
-    assert_eq!(
-        rejected(validate(unused)),
-        ("plugin.manifest.invalid".into(), "requires.settings".into())
-    );
-
-    // A level 3 plugin without build systems never depends on them.
-    let mut language_only = fixture("language-packaged-server.plugin.json");
-    language_only["pluginAPIVersion"] = json!(3);
-    language_only["requires"] = json!({
-        "executionProviders": 1, "languageServers": 1, "languages": 1, "serverProcess": 1
-    });
-    let host_without_builds = json!({
-        "executionProviders": [1], "languageServers": [1], "languages": [1], "serverProcess": [1]
-    });
-    let validate_on = |manifest: &Value, host: &Value| {
-        validate_command(json!({ "manifest": manifest, "hostCapabilities": host }))
-            .expect("payload is well formed")
-    };
-    assert_eq!(
-        validate_on(&language_only, &host_without_builds)["status"],
-        "ok"
-    );
-    assert_eq!(
-        rejected(validate_on(&mix, &host_without_builds)),
-        (
-            "plugin.api.unsupported".into(),
-            "requires.buildProviders".into()
-        )
-    );
-    let mut host_with_builds = host_without_builds.clone();
-    host_with_builds["buildSystems"] = json!([1]);
-    host_with_builds["buildProviders"] = json!([1]);
-    assert_eq!(validate_on(&mix, &host_with_builds)["status"], "ok");
-    // Capability versions do not apply below level 3.
-    assert_eq!(
-        validate_on(&fixture("language-packaged-server.plugin.json"), &json!({}))["status"],
-        "ok"
-    );
-}
-
-/// Provider orchestration is independent of declarative build commands and
-/// process launching, including when the provider shares a language server.
-#[test]
-fn build_providers_require_their_own_host_capability() {
-    let mut host = json!({
-        "buildSystems": [1], "languageServers": [1], "languages": [1],
-        "serverProcess": [1], "settings": [1]
-    });
-    let template = validate_command(json!({
-        "manifest": fixture("build-static-file.plugin.json"), "hostCapabilities": host
-    }))
-    .unwrap();
-    assert_eq!(template["status"], "ok", "{template}");
-
-    for (name, build_system_id) in [
-        ("build-provider.plugin.json", "gradle"),
-        ("build-provider-language-server.plugin.json", "mix"),
-    ] {
-        let manifest = fixture(name);
-        for versions in [None, Some(json!([2])), Some(json!([1]))] {
-            host.as_object_mut().unwrap().remove("buildProviders");
-            if let Some(versions) = versions {
-                host["buildProviders"] = versions;
-            }
-            let outcome = validate_command(json!({
-                "manifest": manifest, "hostCapabilities": host
-            }))
-            .unwrap();
-            if host["buildProviders"] == json!([1]) {
-                assert_eq!(outcome["status"], "ok", "{name}: {outcome}");
-            } else {
-                assert_eq!(outcome["status"], "rejected", "{name}: {outcome}");
-                assert_eq!(outcome["error"]["code"], "plugin.api.unsupported");
-                assert_eq!(outcome["error"]["field"], "requires.buildProviders");
-            }
-        }
-        // Tooling without a host table may validate and plan what Core supports.
-        let outcome = validate(manifest.clone());
-        assert_eq!(outcome["status"], "ok", "{name}: {outcome}");
-        let launch = language_server_launch_plan_command(json!({
-            "manifest": manifest,
-            "buildSystemID": build_system_id,
-            "request": {
-                "pluginDirectory": "/plugins/provider",
-                "stateDirectory": "/state/provider",
-                "workspaceStateDirectory": "/state/provider/workspace",
-                "architecture": "arm64"
-            }
-        }))
-        .unwrap();
-        assert_eq!(launch["status"], "ok", "{name}: {launch}");
-        assert_eq!(
-            launch["plan"]["buildProvider"]["buildSystemID"],
-            build_system_id
-        );
-    }
-}
-
 #[test]
 fn malformed_payload_is_a_core_failure_not_a_rejection() {
     assert!(run_plan_command(json!({ "manifest": {} })).is_err());
     assert!(validate_command(json!("plugin.json")).is_err());
     assert!(language_server_launch_plan_command(json!({ "manifest": {} })).is_err());
-    assert!(check_runtime_version_command(json!({ "tool": "java" })).is_err());
 }
 
 fn apply_edit(manifest: &mut Value, edit: &Value) {
@@ -697,10 +570,10 @@ fn ui_contributions_are_normalized_without_interpreting_text() {
 }
 
 /// A plugin may bring its own page instead of literal text. The page is a
-/// package file behind its own consent, and a host that runs only `ui` 1
+/// package file behind its own consent, and a host that does not offer `ui`
 /// never receives it, so it cannot fall back to showing the page as text.
 #[test]
-fn web_tool_windows_need_ui_2_their_permission_and_a_package_page() {
+fn web_tool_windows_need_a_host_that_offers_ui_and_a_package_page() {
     let outcome = validate(fixture("web-panel.plugin.json"));
     assert_eq!(outcome["status"], "ok", "{outcome}");
     let windows = &outcome["plugin"]["ui"]["toolWindows"];
@@ -720,11 +593,11 @@ fn web_tool_windows_need_ui_2_their_permission_and_a_package_page() {
         }))
         .expect("payload is well formed")
     };
-    let text_only = validate_on(json!({ "ui": [1] }));
-    assert_eq!(text_only["status"], "rejected", "{text_only}");
-    assert_eq!(text_only["error"]["code"], "plugin.api.unsupported");
-    assert_eq!(text_only["error"]["field"], "requires.ui");
-    assert_eq!(validate_on(json!({ "ui": [1, 2] }))["status"], "ok");
+    let without_ui = validate_on(json!({ "languages": [0] }));
+    assert_eq!(without_ui["status"], "rejected", "{without_ui}");
+    assert_eq!(without_ui["error"]["code"], "plugin.api.unsupported");
+    assert_eq!(without_ui["error"]["field"], "requires.ui");
+    assert_eq!(validate_on(json!({ "ui": [0] }))["status"], "ok");
 
     for entry in [
         "index.html",
@@ -783,14 +656,17 @@ fn plugin_backend_is_planned_without_a_workspace_and_names_its_host_services() {
     assert_eq!(launch["plan"]["requiredDirectories"], json!(["state"]));
     assert_eq!(
         launch["plan"]["backend"],
-        json!({ "hostServices": ["credentials"] })
+        json!({ "hostServices": ["credentials"], "version": 0 })
     );
 
     // Without credentials.store the session may request no host service.
     let mut manifest = fixture("backend.plugin.json");
     manifest["permissions"] = json!(["backend.launch", "ui.contribute", "ui.web"]);
     let launch = plan_for(manifest, request.clone());
-    assert_eq!(launch["plan"]["backend"], json!({ "hostServices": [] }));
+    assert_eq!(
+        launch["plan"]["backend"],
+        json!({ "hostServices": [], "version": 0 })
+    );
 
     // A plugin without a backend has nothing to start.
     let launch = plan_for(fixture("web-panel.plugin.json"), request.clone());
@@ -826,19 +702,17 @@ fn plugin_backend_is_planned_without_a_workspace_and_names_its_host_services() {
         }))
         .expect("payload is well formed")
     };
-    let without_backend = hosted(json!({ "ui": [1, 2], "serverProcess": [1] }));
+    let without_backend = hosted(json!({ "ui": [0] }));
     assert_eq!(without_backend["error"]["code"], "plugin.api.unsupported");
     assert_eq!(without_backend["error"]["field"], "requires.backend");
-    assert_eq!(
-        hosted(json!({ "backend": [1], "ui": [1, 2], "serverProcess": [1] }))["status"],
-        "ok"
-    );
+    assert_eq!(hosted(json!({ "backend": [0], "ui": [0] }))["status"], "ok");
 }
 
-/// A `backend` 2 process starts without a page, its plan names its version
-/// so the host may start it on `onWorkspaceOpen`, and `workspace.metadata`
-/// grants the `workspace` host service. A host that only runs `backend` 1
-/// refuses the manifest instead of starting a process it would misuse.
+/// A `backend` process starts without a page, its plan names the `backend`
+/// version so the host may start it on `onWorkspaceOpen`, and
+/// `workspace.metadata` grants the `workspace` host service. A host that does
+/// not offer `backend` refuses the manifest instead of starting a process it
+/// would misuse.
 #[test]
 fn workspace_backend_is_planned_with_its_version_and_workspace_service() {
     let outcome = validate(fixture("backend-workspace.plugin.json"));
@@ -856,7 +730,7 @@ fn workspace_backend_is_planned_with_its_version_and_workspace_service() {
     assert_eq!(launch["status"], "ok", "{launch}");
     assert_eq!(
         launch["plan"]["backend"],
-        json!({ "hostServices": ["workspace"], "version": 2 })
+        json!({ "hostServices": ["workspace"], "version": 0 })
     );
 
     let hosted = |host: Value| {
@@ -866,18 +740,10 @@ fn workspace_backend_is_planned_with_its_version_and_workspace_service() {
         }))
         .expect("payload is well formed")
     };
-    let old_host = hosted(json!({ "backend": [1], "serverProcess": [1] }));
-    assert_eq!(old_host["error"]["code"], "plugin.api.unsupported");
-    assert_eq!(old_host["error"]["field"], "requires.backend");
-    assert_eq!(
-        hosted(json!({ "backend": [1, 2], "serverProcess": [1] }))["status"],
-        "ok"
-    );
-
-    // A page-only backend 1 manifest stays valid as backend 2.
-    let mut manifest = fixture("backend.plugin.json");
-    manifest["requires"]["backend"] = json!(2);
-    assert_eq!(validate(manifest)["status"], "ok");
+    let without_backend = hosted(json!({ "languages": [0] }));
+    assert_eq!(without_backend["error"]["code"], "plugin.api.unsupported");
+    assert_eq!(without_backend["error"]["field"], "requires.backend");
+    assert_eq!(hosted(json!({ "backend": [0] }))["status"], "ok");
 }
 
 /// An exporting plugin is sorted by function ID and starts for a call without
@@ -917,13 +783,13 @@ fn plugin_functions_are_normalized_and_granted_only_to_callers() {
     assert_eq!(exporter_plan["status"], "ok", "{exporter_plan}");
     assert_eq!(
         exporter_plan["plan"]["backend"],
-        json!({ "hostServices": [], "version": 2 })
+        json!({ "hostServices": [], "version": 0 })
     );
     let caller_plan = backend_plan("plugin-functions-caller.plugin.json");
     assert_eq!(caller_plan["status"], "ok", "{caller_plan}");
     assert_eq!(
         caller_plan["plan"]["backend"],
-        json!({ "hostServices": ["functions"], "version": 2 })
+        json!({ "hostServices": ["functions"], "version": 0 })
     );
 }
 
@@ -938,12 +804,13 @@ fn plugin_functions_need_a_host_that_hosts_them() {
         }))
         .expect("payload is well formed")
     };
-    let old_host = hosted(json!({ "backend": [1, 2], "serverProcess": [1] }));
-    assert_eq!(old_host["error"]["code"], "plugin.api.unsupported");
-    assert_eq!(old_host["error"]["field"], "requires.pluginFunctions");
-    let host = hosted(json!({
-        "backend": [1, 2], "serverProcess": [1], "pluginFunctions": [1]
-    }));
+    let without_functions = hosted(json!({ "backend": [0] }));
+    assert_eq!(without_functions["error"]["code"], "plugin.api.unsupported");
+    assert_eq!(
+        without_functions["error"]["field"],
+        "requires.pluginFunctions"
+    );
+    let host = hosted(json!({ "backend": [0], "pluginFunctions": [0] }));
     assert_eq!(host["status"], "ok", "{host}");
 }
 
@@ -991,7 +858,8 @@ fn ui_icon_declarations_validate_and_preserve_theme_resources() {
     }
 }
 
-/// Native controls are opt-in; legacy hosts reject them before presentation.
+/// Native controls are opt-in; a host that does not offer `ui` rejects them
+/// before presentation.
 #[test]
 fn native_ui_validates_version_ownership_actions_and_budgets() {
     let manifest: Value =
@@ -1012,10 +880,13 @@ fn native_ui_validates_version_ownership_actions_and_budgets() {
         invalid["ui"]["toolWindows"][0]["native"]["actions"][1]["icon"] = icon;
         assert_eq!(validate(invalid)["status"], "rejected");
     }
-    let old_host = validate_command(json!({"manifest": manifest, "hostCapabilities": {"ui":[1,2], "buildSystems":[1], "buildProviders":[1], "serverProcess":[1]}})).unwrap();
-    assert_eq!(old_host["error"]["code"], "plugin.api.unsupported");
+    let without_ui = validate_command(json!({"manifest": manifest, "hostCapabilities": {"buildSystems":[0], "buildProviders":[0]}})).unwrap();
+    assert_eq!(without_ui["error"]["code"], "plugin.api.unsupported");
+    assert_eq!(without_ui["error"]["field"], "requires.ui");
+    let hosted = validate_command(json!({"manifest": manifest, "hostCapabilities": {"ui":[0], "buildSystems":[0], "buildProviders":[0]}})).unwrap();
+    assert_eq!(hosted["status"], "ok", "{hosted}");
     for (pointer, value) in [
-        ("/ui/toolWindows/0/native/schemaVersion", json!(2)),
+        ("/ui/toolWindows/0/native/schemaVersion", json!(1)),
         (
             "/ui/toolWindows/0/native/source/buildSystemID",
             json!("foreign"),
@@ -1033,7 +904,7 @@ fn native_ui_validates_version_ownership_actions_and_budgets() {
             "/ui/toolWindows/0/native/nodes",
             json!(vec![json!({"id":"row","label":"x"}); 2001]),
         ),
-        ("/requires/ui", json!(2)),
+        ("/requires/ui", json!(1)),
     ] {
         let mut invalid = manifest.clone();
         *invalid.pointer_mut(pointer).unwrap() = value;
@@ -1219,12 +1090,12 @@ fn native_public_controls_validate_types_ranges_info_and_buttons() {
     assert_eq!(validate(button_only)["status"], "ok");
 }
 
-/// A level 3 manifest using settings v2: scoped, page-placed settings with an
-/// `immediate` one that only the server's `workspaceConfiguration` may read.
-/// The shared settings v2 fixture: project and immediate settings on a
-/// language page, a multi-select on a build-system page, and a page button.
+/// The shared settings fixture: scoped, page-placed settings with an
+/// `immediate` one that only the server's `workspaceConfiguration` may read,
+/// project and immediate settings on a language page, a multi-select on a
+/// build-system page, and a page button.
 fn settings_v2_manifest() -> Value {
-    fixture("settings-v2.plugin.json")
+    fixture("settings.plugin.json")
 }
 
 #[test]
@@ -1310,10 +1181,13 @@ fn settings_v2_rejects_unsafe_setting_use() {
     let mut bad_action = settings_v2_manifest();
     bad_action["settingActions"][0]["function"] = json!("Not A Function");
     rejected(bad_action);
-    // v2 fields need v2.
-    let mut v1 = settings_v2_manifest();
-    v1["requires"]["settings"] = json!(1);
-    rejected(v1);
+    // Settings are a capability the manifest has to list.
+    let mut unlisted = settings_v2_manifest();
+    unlisted["requires"]
+        .as_object_mut()
+        .unwrap()
+        .remove("settings");
+    rejected(unlisted);
 }
 
 /// Runs one case of the shared debug adapter rejection fixture through the
@@ -1342,6 +1216,11 @@ fn debug_rejection(baseline: &Value, case: &Value) -> (String, String) {
         None => {
             manifest.as_object_mut().unwrap().remove("requires");
         }
+    }
+    // A case lists the tools its processes may name; without the member, no
+    // tool is listed.
+    if let Some(tools) = metadata.get("requiresTools") {
+        manifest["requiresTools"] = tools.clone();
     }
     manifest["permissions"] = metadata["permissions"].clone();
     manifest["activationEvents"] = json!(events);
@@ -1583,7 +1462,7 @@ fn debug_adapter_inside_a_backend_launched_language_server_plans_without_scratch
     // The server's session asks the backend with the directories of its own
     // start; resolving the adapter must not demand them.
     let mut manifest = fixture("language-server-backend-launch.plugin.json");
-    manifest["requires"]["debugAdapters"] = json!(1);
+    manifest["requires"]["debugAdapters"] = json!(0);
     manifest["permissions"]
         .as_array_mut()
         .unwrap()
@@ -2041,7 +1920,7 @@ fn debug_start_arguments_refuse_path_mappings_the_adapter_cannot_use() {
 
 #[test]
 fn debug_start_arguments_keep_a_remote_target_to_adapters_that_attach_to_one() {
-    // The fixture's adapters attach only, so a launch is refused as before.
+    // The fixture's adapters attach only, so a launch is refused.
     let launch = remote_start_with(
         fixture("debug-adapter-remote-attach.plugin.json"),
         "flat",
@@ -2288,20 +2167,29 @@ fn debug_start_arguments_refuse_stale_registrations_and_missing_target_facts() {
     assert_eq!(stale["error"]["code"], "debug.provider.stale");
 }
 
-/// Backend commands are install-time gated by ui 4, and read permissions grant
-/// only their own methods rather than an entire growing service namespace.
+/// Backend commands are install-time gated by the `ui` capability, and read
+/// permissions grant only their own methods rather than an entire growing
+/// service namespace.
 #[test]
-fn pure_backend_commands_require_ui_4_and_grant_methods_individually() {
+fn pure_backend_commands_need_ui_and_grant_methods_individually() {
     let manifest: Value = serde_json::from_str(contract_file!(
         "fixtures/backend/command-backend.plugin.json"
     ))
     .unwrap();
     assert_eq!(validate(manifest.clone())["status"], "ok");
-    let mut old = manifest.clone();
-    old["requires"]["ui"] = json!(3);
-    assert_ne!(validate(old)["status"], "ok");
-    let hosted = validate_command(json!({"manifest": manifest, "hostCapabilities": {"backend":[2],"serverProcess":[1],"ui":[1,2,3]}})).unwrap();
-    assert_eq!(hosted["error"]["code"], "plugin.api.unsupported");
+    let mut unlisted = manifest.clone();
+    unlisted["requires"].as_object_mut().unwrap().remove("ui");
+    assert_ne!(validate(unlisted)["status"], "ok");
+    let without_ui =
+        validate_command(json!({"manifest": manifest, "hostCapabilities": {"backend":[0]}}))
+            .unwrap();
+    assert_eq!(without_ui["error"]["code"], "plugin.api.unsupported");
+    assert_eq!(without_ui["error"]["field"], "requires.ui");
+    let hosted = validate_command(
+        json!({"manifest": manifest, "hostCapabilities": {"backend":[0],"ui":[0]}}),
+    )
+    .unwrap();
+    assert_eq!(hosted["status"], "ok", "{hosted}");
     let plan = language_server_launch_plan_command(json!({
         "manifest": manifest, "backend": true,
         "request": {"pluginDirectory":"/plugins/example","stateDirectory":"/state/example","architecture":"arm64"}
@@ -2314,7 +2202,7 @@ fn pure_backend_commands_require_ui_4_and_grant_methods_individually() {
 }
 
 #[test]
-fn terminal_permission_grants_only_owned_terminal_methods_and_requires_backend_two() {
+fn terminal_permission_grants_only_owned_terminal_methods() {
     let manifest: Value = serde_json::from_str(contract_file!(
         "fixtures/backend/terminal-backend.plugin.json"
     ))
@@ -2330,9 +2218,13 @@ fn terminal_permission_grants_only_owned_terminal_methods_and_requires_backend_t
     }
     assert!(!grants.contains(&json!("terminal")));
     assert!(!grants.contains(&json!("lithe/host/terminal/sendText")));
-    let mut old = manifest;
-    old["requires"]["backend"] = json!(1);
-    assert_ne!(validate(old)["status"], "ok");
+    // A manifest with a backend lists the `backend` capability.
+    let mut unlisted = manifest;
+    unlisted["requires"]
+        .as_object_mut()
+        .unwrap()
+        .remove("backend");
+    assert_ne!(validate(unlisted)["status"], "ok");
 }
 
 #[test]

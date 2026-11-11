@@ -13,7 +13,7 @@
 //!   message, `update_plan` a `plan` update, files a pane showed become tool
 //!   locations.
 //! - A card for mechanisms ACP has no shape for, as `_meta.lithe.claudeDesktop`
-//!   on the tool call (see `shared/contracts/application-boundary.md`). Every
+//!   on the tool call (see `rust/contracts/application-boundary.md`). Every
 //!   such call keeps a readable English title and kind, so a client that does
 //!   not draw the card still shows a sensible tool row.
 //!
@@ -695,7 +695,7 @@ mod tests {
     #[test]
     fn presented_updates_match_the_shared_card_fixture() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../shared/fixtures/agent/claude-desktop-cards-v1.json"
+            "../../fixtures/agent/claude-desktop-cards-v1.json"
         ))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {

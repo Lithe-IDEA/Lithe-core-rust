@@ -5,10 +5,8 @@ use serde_json::Value;
 
 #[test]
 fn keymap_context_fixtures_cross_the_json_boundary() {
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/keymap/context-v1.json"
-    ))
-    .unwrap();
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../../fixtures/keymap/context-v1.json")).unwrap();
     let call = |command: &str, payload: Value| -> Value {
         serde_json::from_str(&execute_json(
             &serde_json::json!({
@@ -79,7 +77,7 @@ fn action_search_crosses_the_json_boundary() {
 fn debug_adapter_endpoint_validation_crosses_the_json_boundary() {
     let fixture: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../shared/fixtures/debug/adapter-endpoints-v1.json"
+        "/../fixtures/debug/adapter-endpoints-v1.json"
     )))
     .expect("endpoint fixture is JSON");
     for case in fixture["cases"].as_array().expect("endpoint cases") {
@@ -149,7 +147,7 @@ fn ping_exposes_protocol_version() {
 fn debug_create_and_destroy_commands_cross_the_json_boundary() {
     let fixture: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../shared/fixtures/debug/dap-session-v1.json"
+        "/../fixtures/debug/dap-session-v1.json"
     )))
     .expect("debug fixture should be valid JSON");
     let session = &fixture["session"];
@@ -194,7 +192,7 @@ fn debug_create_and_destroy_commands_cross_the_json_boundary() {
 fn debug_run_in_terminal_response_crosses_the_json_boundary() {
     let fixture: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../shared/fixtures/debug/run-in-terminal-v1.json"
+        "/../fixtures/debug/run-in-terminal-v1.json"
     )))
     .expect("debug run-in-terminal fixture should be valid JSON");
     let session_id = "debug-terminal-protocol-boundary";
@@ -286,7 +284,7 @@ fn debug_run_in_terminal_response_crosses_the_json_boundary() {
 fn debug_stepping_filters_match_the_shared_contract_fixture() {
     let fixture: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../shared/fixtures/debug/stepping-filters-v1.json"
+        "/../fixtures/debug/stepping-filters-v1.json"
     )))
     .expect("debug stepping-filter fixture should be valid JSON");
 
@@ -315,7 +313,7 @@ fn debug_stepping_filters_match_the_shared_contract_fixture() {
 fn debug_breakpoint_relocation_matches_the_shared_contract_fixture() {
     let fixture: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../shared/fixtures/debug/breakpoint-relocation-v1.json"
+        "/../fixtures/debug/breakpoint-relocation-v1.json"
     )))
     .expect("debug breakpoint-relocation fixture should be valid JSON");
 
@@ -350,7 +348,7 @@ fn call_fixture_command(command: &str, payload: Value) -> Value {
 #[test]
 fn keymap_conflict_fixtures_cross_the_json_boundary() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/keymap/binding-conflicts-v1.json"
+        "../../../fixtures/keymap/binding-conflicts-v1.json"
     ))
     .unwrap();
     for case in fixture["cases"].as_array().unwrap() {
@@ -374,7 +372,7 @@ fn keymap_conflict_fixtures_cross_the_json_boundary() {
 #[test]
 fn modifier_gesture_fixture_runs_through_core_dispatch() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/keymap/modifier-gesture-v1.json"
+        "../../../fixtures/keymap/modifier-gesture-v1.json"
     ))
     .unwrap();
     for sequence in fixture["sequences"].as_array().unwrap() {
@@ -415,7 +413,7 @@ fn modifier_gesture_fixture_runs_through_core_dispatch() {
 #[test]
 fn workbench_state_fixture_runs_through_core_dispatch() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/editor/workbench-state-v1.json"
+        "../../../fixtures/editor/workbench-state-v1.json"
     ))
     .unwrap();
     for case in fixture["cases"].as_array().unwrap() {
@@ -446,7 +444,7 @@ fn workbench_state_fixture_runs_through_core_dispatch() {
 #[test]
 fn visibility_fixture_crosses_the_core_json_boundary() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/workspace/visibility-v1.json"
+        "../../../fixtures/workspace/visibility-v1.json"
     ))
     .unwrap();
     let defaults = call_fixture_command("workspace.visibilityDefaults", serde_json::json!({}));
@@ -490,7 +488,7 @@ fn every_rules_crate_command_is_routed_by_core() {
 #[test]
 fn terminal_link_fixtures_cross_the_json_boundary() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/terminal/link-target-v1.json"
+        "../../../fixtures/terminal/link-target-v1.json"
     ))
     .unwrap();
     for case in fixture["cases"].as_array().unwrap() {

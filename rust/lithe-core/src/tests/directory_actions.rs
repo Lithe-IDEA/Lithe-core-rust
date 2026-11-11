@@ -10,7 +10,7 @@ fn execute(command: &str, payload: Value) -> Value {
 
 fn fixture() -> Value {
     serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/workspace/directory-rules-v1.json"
+        "../../../fixtures/workspace/directory-rules-v1.json"
     ))
     .expect("directory rules fixture should be JSON")
 }
@@ -75,7 +75,7 @@ fn invalid_requests_are_rejected() {
 #[test]
 fn action_sequences_reach_the_documented_role_and_inclusion() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/workspace/directory-actions-v1.json"
+        "../../../fixtures/workspace/directory-actions-v1.json"
     ))
     .unwrap();
     for case in fixture["cases"].as_array().unwrap() {

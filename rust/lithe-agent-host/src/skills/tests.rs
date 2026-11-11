@@ -605,7 +605,7 @@ async fn native_toggle_validates_path_writes_native_config_and_reads_back() {
 #[test]
 fn shared_skill_fixture_preserves_native_scopes_plugins_and_disabled_state() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/agent/skills-management-v1.json"
+        "../../../fixtures/agent/skills-management-v1.json"
     ))
     .unwrap();
     let listing = parse_codex(&fixture["nativeCodex"], Path::new("/fixture/workspace")).unwrap();

@@ -12,7 +12,7 @@
 //!
 //! Trust never follows the call. The receiving function runs with the
 //! receiving plugin's own permissions and the caller gains none of them.
-//! `context` is a closed set; version 1 of the capability has one value,
+//! `context` is a closed set with one value today,
 //! `workspace`: a local trusted workspace scheduled by the host. An export
 //! without a context the host knows is rejected, so a function that nobody
 //! described the acceptable context of is never callable across plugins.
@@ -87,23 +87,14 @@ impl PluginFunctionsDeclaration {
 }
 
 /// Checks a section and sorts both lists by function ID, so the same
-/// declaration always plans the same way. `backend_version` is the plugin's
-/// `requires.backend`, 0 without a backend: only a backend 2 process can
-/// register functions for the protocol that carries relayed calls.
-pub(crate) fn validate(
-    section: &mut PluginFunctionsDeclaration,
-    backend_version: u32,
-) -> Validation<()> {
+/// declaration always plans the same way. The caller has already checked that
+/// the plugin declares a backend, the only process that registers functions
+/// for the protocol that carries relayed calls.
+pub(crate) fn validate(section: &mut PluginFunctionsDeclaration) -> Validation<()> {
     if section.exports.is_empty() && section.calls.is_empty() {
         return Err(invalid(
             "pluginFunctions",
             "pluginFunctions declares no exports and no calls.",
-        ));
-    }
-    if backend_version < super::backend::WORKSPACE_CONTEXT_VERSION {
-        return Err(invalid(
-            "requires.backend",
-            "Exported and called plugin functions require backend 2.",
         ));
     }
     if section.exports.len() > MAX_ENTRIES {
@@ -212,7 +203,7 @@ mod tests {
         section
             .exports
             .insert(0, export("zeta.run", 1, Some("workspace")));
-        validate(&mut section, 2).expect("section is valid");
+        validate(&mut section).expect("section is valid");
         assert_eq!(section.exports[0].id, "project.describe");
         assert_eq!(section.exports[1].id, "zeta.run");
     }
@@ -222,7 +213,7 @@ mod tests {
         for context in [None, Some("remote"), Some(""), Some("Workspace")] {
             let mut section = section();
             section.exports[0].context = context.map(str::to_string);
-            let rejection = validate(&mut section, 2).expect_err("context is rejected");
+            let rejection = validate(&mut section).expect_err("context is rejected");
             assert_eq!(rejection.code, "plugin.manifest.invalid");
             assert_eq!(
                 rejection.field.as_deref(),
@@ -235,21 +226,21 @@ mod tests {
     fn ids_versions_and_counts_are_bounded() {
         let mut bad_id = section();
         bad_id.exports[0].id = "Project.Describe".to_string();
-        assert!(validate(&mut bad_id, 2).is_err());
+        assert!(validate(&mut bad_id).is_err());
 
         let mut zero = section();
         zero.calls[0].version = 0;
-        assert!(validate(&mut zero, 2).is_err());
+        assert!(validate(&mut zero).is_err());
 
         let mut huge = section();
         huge.exports[0].version = MAX_CONTRACT_VERSION + 1;
-        assert!(validate(&mut huge, 2).is_err());
+        assert!(validate(&mut huge).is_err());
 
         let mut duplicate = section();
         duplicate
             .exports
             .push(export("project.describe", 2, Some("workspace")));
-        assert!(validate(&mut duplicate, 2).is_err());
+        assert!(validate(&mut duplicate).is_err());
 
         let mut many = section();
         many.calls = (0..=MAX_ENTRIES)
@@ -258,13 +249,11 @@ mod tests {
                 version: 1,
             })
             .collect();
-        assert!(validate(&mut many, 2).is_err());
+        assert!(validate(&mut many).is_err());
     }
 
     #[test]
-    fn the_section_needs_backend_two_and_some_entry() {
-        assert!(validate(&mut section(), 1).is_err());
-        assert!(validate(&mut section(), 0).is_err());
-        assert!(validate(&mut PluginFunctionsDeclaration::default(), 2).is_err());
+    fn the_section_needs_some_entry() {
+        assert!(validate(&mut PluginFunctionsDeclaration::default()).is_err());
     }
 }

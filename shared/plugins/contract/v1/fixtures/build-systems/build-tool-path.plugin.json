@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 0,
+  "id": "dev.lithe.fixture.build-tool-path",
+  "displayName": "Build path fixture",
+  "version": "0.1.0",
+  "pluginAPIVersion": 0,
+  "requires": {
+    "buildSystems": 0,
+    "settings": 0
+  },
+  "vendor": {
+    "id": "org.example",
+    "displayName": "Example",
+    "signatureRequirement": "publisherPackage"
+  },
+  "permissions": [
+    "process.build"
+  ],
+  "activationEvents": [
+    "onBuildSystem:fixture"
+  ],
+  "languages": [],
+  "settings": [
+    {
+      "id": "toolPath",
+      "type": "file",
+      "title": "Build tool",
+      "default": "",
+      "scope": "global",
+      "effect": "reload",
+      "page": {
+        "buildSystemID": "fixture"
+      }
+    }
+  ],
+  "buildSystems": [
+    {
+      "id": "fixture",
+      "displayName": "Fixture",
+      "detection": {
+        "markers": [
+          "build.fixture"
+        ]
+      },
+      "invocation": {
+        "executables": [
+          {
+            "id": "selected",
+            "kind": "setting",
+            "settingID": "toolPath"
+          },
+          {
+            "kind": "command",
+            "command": "fixture-build"
+          }
+        ]
+      },
+      "tasks": [
+        {
+          "id": "build",
+          "displayName": "Build",
+          "group": "build",
+          "scopes": [
+            "workspace"
+          ],
+          "arguments": [
+            "build"
+          ]
+        }
+      ]
+    }
+  ]
+}

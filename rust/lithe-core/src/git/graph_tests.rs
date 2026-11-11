@@ -66,7 +66,7 @@ fn read_fixture(relative: &str) -> String {
 
 fn shared_fixture() -> Value {
     serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/git/graph-projection-v1.json"
+        "../../../fixtures/git/graph-projection-v1.json"
     ))
     .unwrap()
 }
@@ -197,7 +197,7 @@ fn permanent_layout_matches_pinned_intellij_indices() {
     ] {
         let read = |suffix: &str| {
             read_fixture(&format!(
-                "shared/fixtures/git/graph-idea/layoutBuilder/{name}_{suffix}.txt"
+                "rust/fixtures/git/graph-idea/layoutBuilder/{name}_{suffix}.txt"
             ))
         };
         let commits = read("in")
@@ -237,7 +237,7 @@ fn compact_positions_and_half_edges_match_pinned_intellij_printing() {
     ] {
         let read = |suffix: &str| {
             read_fixture(&format!(
-                "shared/fixtures/git/graph-idea/elementGenerator/{name}_{suffix}.txt"
+                "rust/fixtures/git/graph-idea/elementGenerator/{name}_{suffix}.txt"
             ))
         };
         let mut commits = Vec::new();
@@ -318,23 +318,21 @@ fn compact_positions_and_half_edges_match_pinned_intellij_printing() {
 }
 
 fn read_tsv(name: &str) -> Vec<CommitInput> {
-    read_fixture(&format!(
-        "macos/Tests/LitheTests/Fixtures/GitGraph/{name}.tsv"
-    ))
-    .lines()
-    .filter(|line| !line.is_empty())
-    .map(|line| {
-        let columns = line.split('\t').collect::<Vec<_>>();
-        assert_eq!(columns.len(), 4, "{line}");
-        CommitInput {
-            hash: columns[0].to_string(),
-            parent_hashes: columns[1].split_whitespace().map(str::to_string).collect(),
-            decorations: columns[2]
-                .trim_matches(|c| c == ' ' || c == '(' || c == ')')
-                .to_string(),
-        }
-    })
-    .collect()
+    read_fixture(&format!("rust/fixtures/git/graph-issue410/{name}.tsv"))
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            let columns = line.split('\t').collect::<Vec<_>>();
+            assert_eq!(columns.len(), 4, "{line}");
+            CommitInput {
+                hash: columns[0].to_string(),
+                parent_hashes: columns[1].split_whitespace().map(str::to_string).collect(),
+                decorations: columns[2]
+                    .trim_matches(|c| c == ' ' || c == '(' || c == ')')
+                    .to_string(),
+            }
+        })
+        .collect()
 }
 
 #[test]
@@ -380,13 +378,11 @@ fn real_history_matches_intellij_for_page_context_and_date_order() {
                 ));
             }
         }
-        let mut expected = read_fixture(&format!(
-            "macos/Tests/LitheTests/Fixtures/GitGraph/{oracle}.txt"
-        ))
-        .lines()
-        .filter(|line| !line.is_empty())
-        .map(str::to_string)
-        .collect::<Vec<_>>();
+        let mut expected = read_fixture(&format!("rust/fixtures/git/graph-issue410/{oracle}.txt"))
+            .lines()
+            .filter(|line| !line.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
         actual.sort();
         expected.sort();
         let missing = expected

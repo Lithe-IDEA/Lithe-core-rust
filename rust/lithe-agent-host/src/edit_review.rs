@@ -6,7 +6,7 @@
 //! Swift `unicodeScalars` and JavaScript code points agree on them, unlike
 //! grapheme clusters or UTF-16 code units. Rollback planning is pure text work;
 //! path containment, encoding, guarded writes and Trash stay with the platform.
-//! Contract: `shared/contracts/agent-edit-review.md`.
+//! Contract: `rust/contracts/agent-edit-review.md`.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};

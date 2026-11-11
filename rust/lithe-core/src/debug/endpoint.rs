@@ -42,7 +42,7 @@ mod tests {
     fn dap_endpoint_contract_fixtures_match_validation_and_consent_classification() {
         let fixture: Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/fixtures/debug/adapter-endpoints-v1.json"
+            "/../fixtures/debug/adapter-endpoints-v1.json"
         )))
         .expect("endpoint fixture is JSON");
         for case in fixture["cases"].as_array().expect("fixture cases") {

@@ -192,10 +192,9 @@ mod tests {
 
     #[test]
     fn source_edits_match_shared_fixture() {
-        let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/toolchain-pin-storage.json"
-        ))
-        .unwrap();
+        let fixture: Value =
+            serde_json::from_str(include_str!("../../../fixtures/toolchain-pin-storage.json"))
+                .unwrap();
         for case in fixture["cases"].as_array().unwrap() {
             let response: Value = serde_json::from_str(&crate::execute_json(
                 &json!({"command": case["command"], "payload": case["input"]}).to_string(),

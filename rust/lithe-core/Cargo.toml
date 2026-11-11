@@ -8,6 +8,11 @@ description = "Cross-platform application core for Lithe"
 [lib]
 crate-type = ["rlib", "staticlib", "cdylib"]
 
+[features]
+# Builds the plugin SDK end-to-end tests in shared/plugins/sdk/e2e; run them
+# with `node shared/plugins/scripts/sdk-e2e.mjs`, which builds the samples.
+plugin-sdk-e2e = []
+
 [dependencies]
 lithe-core-rules = { path = "../lithe-core-rules" }
 lithe-git-host = { path = "../lithe-git-host" }
@@ -42,3 +47,23 @@ ignore = "=0.4.33"
 
 [target.'cfg(unix)'.dev-dependencies]
 lithe-remote = { path = "../lithe-remote", default-features = false, features = ["server"] }
+
+[[test]]
+name = "plugin_sdk_node"
+path = "../../shared/plugins/sdk/e2e/plugin_sdk_node.rs"
+required-features = ["plugin-sdk-e2e"]
+
+[[test]]
+name = "plugin_sdk_java"
+path = "../../shared/plugins/sdk/e2e/plugin_sdk_java.rs"
+required-features = ["plugin-sdk-e2e"]
+
+[[test]]
+name = "plugin_sdk_rust"
+path = "../../shared/plugins/sdk/e2e/plugin_sdk_rust.rs"
+required-features = ["plugin-sdk-e2e"]
+
+[[test]]
+name = "plugin_sdk_build"
+path = "../../shared/plugins/sdk/e2e/plugin_sdk_build.rs"
+required-features = ["plugin-sdk-e2e"]

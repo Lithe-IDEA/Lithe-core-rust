@@ -34,7 +34,7 @@ pub(crate) const CAPABILITIES: &[(&str, bool)] = &[
 ];
 
 /// Version of each capability this Core build understands.
-const CAPABILITY_VERSION: u64 = 1;
+const CAPABILITY_VERSION: u64 = 0;
 
 /// A snapshot keeps at most this many changes and is then marked truncated.
 pub(crate) const MAX_CHANGES: usize = 100_000;
@@ -543,8 +543,8 @@ mod tests {
     #[test]
     fn negotiation_keeps_known_version_one_capabilities_and_requires_the_core_set() {
         let negotiated = negotiated_capabilities(&json!({
-            "status": 1, "baseContent": 1, "checkin": 1, "rollback": 1,
-            "annotate": 2, "futureThing": 1, "update": 1
+            "status": 0, "baseContent": 0, "checkin": 0, "rollback": 0,
+            "annotate": 1, "futureThing": 0, "update": 0
         }))
         .expect("required set present");
         assert_eq!(
@@ -553,7 +553,7 @@ mod tests {
         );
         // A provider without rollback cannot back the generic commit UI.
         assert!(
-            negotiated_capabilities(&json!({ "status": 1, "baseContent": 1, "checkin": 1 }))
+            negotiated_capabilities(&json!({ "status": 0, "baseContent": 0, "checkin": 0 }))
                 .is_none()
         );
         assert!(negotiated_capabilities(&json!(["status"])).is_none());

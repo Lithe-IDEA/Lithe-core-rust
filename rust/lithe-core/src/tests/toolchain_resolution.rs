@@ -16,11 +16,11 @@ fn contract(name: &str) -> Value {
     let source = match name {
         "java" => include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/contracts/plugins/v1/fixtures/toolchains/tool-definition.plugin.json"
+            "/../../shared/plugins/contract/v1/fixtures/toolchains/tool-definition.plugin.json"
         )),
         "mise" => include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/contracts/plugins/v1/fixtures/toolchains/toolchain-provider.plugin.json"
+            "/../../shared/plugins/contract/v1/fixtures/toolchains/toolchain-provider.plugin.json"
         )),
         _ => panic!("unknown fixture"),
     };
@@ -691,8 +691,7 @@ fn self_provided(input: &mut Value) {
         .as_object_mut()
         .unwrap()
         .remove("discovery");
-    manifest["requires"] = json!({"toolDefinitions":1,"executableResolution":2,
-        "toolchainProviders":1,"backend":2,"serverProcess":1});
+    manifest["requires"] = json!({"toolDefinitions":0,"toolchainProviders":0,"backend":0});
     manifest["permissions"] = json!(["backend.launch", "toolchains.provide"]);
     manifest["toolchainProviders"] =
         json!([{"id":"installs","displayName":"Installed releases","tools":["java"]}]);

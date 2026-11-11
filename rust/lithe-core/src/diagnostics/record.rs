@@ -791,7 +791,7 @@ mod tests {
 
     fn fixture() -> Value {
         serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/diagnostics/logging-v2.json"
+            "../../../fixtures/diagnostics/logging-v2.json"
         ))
         .unwrap()
     }

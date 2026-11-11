@@ -1,4 +1,4 @@
-//! `buildSystems` declarations of API level 3 plugins and their validation.
+//! `buildSystems` declarations and their validation.
 //!
 //! A declaration is data only. Everything a community plugin needs is
 //! expressible here: any command or packaged script as the executable, any
@@ -23,8 +23,6 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
-/// First plugin API level with `buildSystems`.
-pub(crate) const BUILD_SYSTEMS_API_VERSION: u32 = 3;
 /// Host integrations a build system may name. The Core implements none:
 /// every build tool is described by its plugin's data and backend, so any
 /// name is refused with `plugin.integration.unsupported`.
@@ -200,10 +198,6 @@ pub(crate) enum Nesting {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct Invocation {
-    /// Compatibility adapter for published buildSystems 2 previews. New
-    /// plugins declare a setting candidate in executables instead.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) executable_setting: Option<String>,
     /// Candidates in preference order; the host takes the first that exists.
     pub(crate) executables: Vec<ExecutableCandidate>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -979,13 +973,6 @@ fn check_target_tags(tags: &mut Vec<String>, scopes: &[Scope], field: &str) -> V
 /// against.
 pub(crate) struct DeclarationContext<'a> {
     pub(crate) debug_adapters: &'a [crate::debug::adapters::DebugAdapterDeclaration],
-    pub(crate) plugin_api_version: u32,
-    pub(crate) build_systems_version: u32,
-    /// Version 2 binds candidates to the host's canonical project toolchains.
-    pub(crate) executable_resolution_version: u32,
-    /// Admission version for provider execution; independent of wire negotiation.
-    pub(crate) build_providers_version: u32,
-    pub(crate) model_inputs_version: u32,
     pub(crate) official: bool,
     /// Setting IDs a provider's launch templates may name.
     pub(crate) declared_settings: &'a crate::plugins::settings::DeclaredSettings,
@@ -1001,12 +988,6 @@ pub(crate) fn validate_declarations(
 ) -> Validation<()> {
     if build_systems.is_empty() {
         return Ok(());
-    }
-    if context.plugin_api_version < BUILD_SYSTEMS_API_VERSION {
-        return Err(invalid(
-            "buildSystems",
-            "Build systems require pluginAPIVersion 3.",
-        ));
     }
     if build_systems.len() > MAX_BUILD_SYSTEMS {
         return Err(invalid(
@@ -1264,15 +1245,6 @@ impl BuildSystemDeclaration {
         matches!(self.provider, Some(ProviderDeclaration::Process(_)))
     }
 
-    /// Whether a runtime dependency names a tool definition by its ID, which
-    /// plans turn into a toolchain candidate.
-    pub(crate) fn names_tool_definitions(&self) -> bool {
-        self.invocation
-            .runtime_dependencies
-            .iter()
-            .any(RuntimeDependency::names_tool_definition)
-    }
-
     fn validate(&mut self, field: &str, context: &DeclarationContext<'_>) -> Validation<()> {
         if !is_entry_identifier(&self.id) {
             return Err(invalid(
@@ -1291,15 +1263,10 @@ impl BuildSystemDeclaration {
         self.validate_integration(field, context.official)?;
         self.validate_provider(field, context)?;
         self.validate_detection(field)?;
-        let option_ids = self.validate_options(field, context.build_systems_version)?;
-        super::model_inputs::validate_declaration(
-            self,
-            context.model_inputs_version,
-            context.build_providers_version,
-        )?;
+        let option_ids = self.validate_options(field)?;
+        super::model_inputs::validate_declaration(self)?;
         self.validate_invocation(field, &option_ids, context)?;
-        let model_templates =
-            self.validate_tasks(field, &option_ids, context.build_systems_version)?;
+        let model_templates = self.validate_tasks(field, &option_ids)?;
         self.validate_model(field, &option_ids)?;
         self.validate_run(field, &option_ids, &model_templates)?;
         self.validate_test(field, &option_ids)?;
@@ -1379,13 +1346,10 @@ impl BuildSystemDeclaration {
             }
             return Ok(());
         };
-        if self.configuration.is_some()
-            && (context.build_providers_version < 7
-                || !matches!(provider, ProviderDeclaration::Process(_)))
-        {
+        if self.configuration.is_some() && !matches!(provider, ProviderDeclaration::Process(_)) {
             return Err(invalid(
                 &field,
-                "Native configuration requires buildProviders 7 and an owned provider process.",
+                "Native configuration requires an owned provider process.",
             ));
         }
         if !uses {
@@ -1397,59 +1361,16 @@ impl BuildSystemDeclaration {
         for run in &self.run {
             if let Some(debug) = &run.debug {
                 match (&debug.adapter, &debug.configuration_type) {
-                    (Some(_), None) if context.build_providers_version >= 5 => {
+                    (Some(_), None) => {
                         super::debug_preparation::adapter(run, context.debug_adapters)?;
                     }
-                    (None, Some(kind)) if context.build_providers_version >= 11
-                        && super::run_preparation::valid_configuration_type(kind)
-                        && run.execution == Some(BuildExecution::Service) => {}
+                    (None, Some(kind))
+                        if super::run_preparation::valid_configuration_type(kind)
+                            && run.execution == Some(BuildExecution::Service) => {}
                     _ => return Err(invalid(&field,
-                        "Debug requires a same-package native adapter (buildProviders 5), or one registry configurationType for a service (buildProviders 11).")),
+                        "Debug requires a same-package native adapter, or one registry configurationType for a service.")),
                 }
             }
-        }
-        if matches!(
-            self.test.as_ref().and_then(|test| test.results.as_ref()),
-            Some(TestResultsSource::Provider)
-        ) && context.build_providers_version < 8
-        {
-            return Err(invalid(
-                &field,
-                "Provider-owned test reports require buildProviders 8.",
-            ));
-        }
-        if self
-            .test
-            .as_ref()
-            .is_some_and(|test| !test.selector_kinds.is_empty())
-            && context.build_providers_version < 9
-        {
-            return Err(invalid(
-                &field,
-                "Opaque test selectors require buildProviders 9.",
-            ));
-        }
-        if provider_tests && context.build_providers_version < 3 {
-            return Err(invalid(&field, "Provider tests require buildProviders 3."));
-        }
-        if context.build_providers_version < 10
-            && self.run.iter().any(|run| {
-                run.source == TaskSource::Provider
-                    && run
-                        .execution
-                        .is_some_and(|execution| execution != BuildExecution::Application)
-            })
-        {
-            return Err(invalid(
-                &field,
-                "Provider service/task preparation requires buildProviders 10.",
-            ));
-        }
-        if provider_runs && context.build_providers_version < 4 {
-            return Err(invalid(
-                &field,
-                "Provider run preparation requires buildProviders 4.",
-            ));
         }
         if provider_runs
             || provider_tests
@@ -1458,9 +1379,6 @@ impl BuildSystemDeclaration {
                 .iter()
                 .any(|task| task.source == TaskSource::Provider)
         {
-            if context.build_providers_version < 2 {
-                return Err(invalid(&field, "Provider tasks require buildProviders 2."));
-            }
             if !matches!(provider, ProviderDeclaration::Process(_)) {
                 return Err(invalid(
                     &field,
@@ -1480,7 +1398,6 @@ impl BuildSystemDeclaration {
             }
             ProviderDeclaration::Process(own) => own.process.validate(
                 &field,
-                context.plugin_api_version,
                 context.declared_settings,
                 ServerRole::BuildProvider,
                 context.runtime_tools,
@@ -1514,7 +1431,7 @@ impl BuildSystemDeclaration {
         Ok(())
     }
 
-    fn validate_options(&mut self, field: &str, version: u32) -> Validation<BTreeSet<String>> {
+    fn validate_options(&mut self, field: &str) -> Validation<BTreeSet<String>> {
         if self.options.len() > MAX_LIST {
             return Err(invalid(format!("{field}.options"), "Too many options."));
         }
@@ -1522,12 +1439,6 @@ impl BuildSystemDeclaration {
         for (index, option) in self.options.iter_mut().enumerate() {
             let field = format!("{field}.options[{index}]");
             option.validate(&field)?;
-            if option.scope == OptionScope::Instance && version < 3 {
-                return Err(invalid(
-                    format!("{field}.scope"),
-                    "Instance options require buildSystems 3.",
-                ));
-            }
             if !ids.insert(option.id.clone()) {
                 return Err(invalid(
                     format!("{field}.id"),
@@ -1546,21 +1457,6 @@ impl BuildSystemDeclaration {
     ) -> Validation<()> {
         let invocation = &mut self.invocation;
         let field = format!("{field}.invocation");
-        if let Some(id) = &invocation.executable_setting {
-            if invocation
-                .executables
-                .iter()
-                .any(ExecutableCandidate::uses_resolution)
-            {
-                return Err(invalid(&field, "Do not combine the legacy executableSetting adapter with new candidate metadata or setting sources."));
-            }
-            if context.build_systems_version < 2 || !context.declared_settings.is_executable(id) {
-                return Err(invalid(
-                    format!("{field}.executableSetting"),
-                    "An executable setting requires buildSystems 2 and a global file setting with effect reload or nextRun.",
-                ));
-            }
-        }
         if invocation.environment_inputs.len() > MAX_LIST {
             return Err(invalid(
                 format!("{field}.environmentInputs"),
@@ -1609,8 +1505,7 @@ impl BuildSystemDeclaration {
                     && matches!(
                         runtime.executables[0].source,
                         ExecutableSource::Toolchain { .. }
-                    )
-                    && context.executable_resolution_version >= 2;
+                    );
                 if (!runtime.executables.is_empty() && !toolchain) || runtime.version.is_some() {
                     return Err(invalid(
                         field,
@@ -1705,14 +1600,6 @@ impl BuildSystemDeclaration {
         {
             crate::plugins::executables::ordered_indices(list, &location)?;
             for candidate in list {
-                if matches!(candidate.source, ExecutableSource::Toolchain { .. })
-                    && context.executable_resolution_version < 2
-                {
-                    return Err(invalid(
-                        &location,
-                        "Toolchain candidates require executableResolution 2.",
-                    ));
-                }
                 if let ExecutableSource::Setting { setting_id } = &candidate.source {
                     if !context.declared_settings.is_executable(setting_id) {
                         return Err(invalid(&location, "A setting candidate needs a global file setting with effect reload or nextRun."));
@@ -1752,7 +1639,6 @@ impl BuildSystemDeclaration {
         &mut self,
         field: &str,
         options: &BTreeSet<String>,
-        capability_version: u32,
     ) -> Validation<BTreeSet<String>> {
         if self.tasks.len() > MAX_TASKS {
             return Err(invalid(format!("{field}.tasks"), "Too many tasks."));
@@ -1763,8 +1649,7 @@ impl BuildSystemDeclaration {
         for (index, task) in self.tasks.iter_mut().enumerate() {
             let field = format!("{field}.tasks[{index}]");
             if let Some(preparation) = &mut task.preparation {
-                if capability_version < 4
-                    || !is_entry_identifier(&preparation.purpose)
+                if !is_entry_identifier(&preparation.purpose)
                     || preparation.source_roles.is_empty()
                     || preparation.source_roles.len() > 6
                     || task.from_model
@@ -1784,7 +1669,7 @@ impl BuildSystemDeclaration {
                     })
                 {
                     return Err(invalid(format!("{field}.preparation"),
-                        "Preparation requires buildSystems 4, a project task without prompts, and unique purpose/source-role bindings."));
+                        "Preparation requires a project task without prompts and unique purpose/source-role bindings."));
                 }
                 preparation.source_roles.sort();
             }

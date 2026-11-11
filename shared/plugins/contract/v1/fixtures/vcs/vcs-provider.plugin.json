@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 0,
+  "id": "dev.lithe.fixture.vcs-provider",
+  "displayName": "VCS Provider Fixture",
+  "version": "0.1.0",
+  "pluginAPIVersion": 0,
+  "requires": { "vcsProviders": 0 },
+  "requiresTools": ["node"],
+  "vendor": {
+    "id": "org.example",
+    "displayName": "Example",
+    "signatureRequirement": "publisherPackage"
+  },
+  "permissions": [
+    "languageServer.launch",
+    "process.vcs"
+  ],
+  "activationEvents": [
+    "onVcsRoot:svn"
+  ],
+  "languages": [],
+  "vcsProviders": [
+    {
+      "id": "svn",
+      "displayName": "Subversion",
+      "detection": {
+        "markers": [{ "name": ".svn", "type": "directory" }]
+      },
+      "metadataPaths": [".svn/wc.db"],
+      "tool": {
+        "commands": ["svn"],
+        "validationArguments": ["--version", "--quiet"]
+      },
+      "launch": {
+        "kind": "runtime",
+        "tool": "node",
+        "minimumVersion": "20.3",
+        "entry": "provider/main.mjs"
+      },
+      "arguments": ["--stdio"],
+      "mayUseNetwork": true
+    }
+  ]
+}

@@ -7,7 +7,7 @@ macro_rules! contract_file {
     ($path:literal) => {
         include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/contracts/plugins/v1/",
+            "/../../shared/plugins/contract/v1/",
             $path
         ))
     };
@@ -151,7 +151,7 @@ fn invalid_index_entries_report_their_stable_codes() {
             apply_edit(&mut entry, edit);
         }
         let outcome = validate(
-            json!({ "schemaVersion": 1, "plugins": [entry] }),
+            json!({ "schemaVersion": 0, "plugins": [entry] }),
             "thirdParty",
             "darwin-arm64",
         );
@@ -171,13 +171,13 @@ fn invalid_index_entries_report_their_stable_codes() {
 fn whole_index_problems_reject_the_index() {
     for (index, code) in [
         (
-            json!({ "schemaVersion": 2, "plugins": [] }),
+            json!({ "schemaVersion": 1, "plugins": [] }),
             "plugin.index.schemaUnsupported",
         ),
         (json!({ "plugins": [] }), "plugin.index.invalid"),
-        (json!({ "schemaVersion": 1 }), "plugin.index.invalid"),
+        (json!({ "schemaVersion": 0 }), "plugin.index.invalid"),
         (
-            json!({ "schemaVersion": 1, "plugins": [], "mirror": "x" }),
+            json!({ "schemaVersion": 0, "plugins": [], "mirror": "x" }),
             "plugin.index.invalid",
         ),
         (json!([]), "plugin.index.invalid"),
@@ -255,38 +255,10 @@ fn install_review_fixtures_match_golden_outcomes() {
     }
 }
 
-/// Shared validation is not evidence of a Windows UI adapter. API level 2
-/// entries must remain unavailable there while macOS can install them.
+/// A version carries its `requires` to the host, unknown capability IDs
+/// included, so a host can say what an unavailable version needs.
 #[test]
-fn ui_api_availability_requires_an_implemented_platform_host() {
-    let mut index = json_file(INDEX);
-    let entry = index["plugins"]
-        .as_array_mut()
-        .unwrap()
-        .iter_mut()
-        .find(|entry| entry["id"] == "io.example.future-tools")
-        .unwrap();
-    entry["versions"][0]["pluginAPIVersion"] = json!(2);
-    entry["versions"][0]["downloads"][0]["platforms"] = json!(["darwin-arm64", "windows-x64"]);
-    for (platform, expected) in [
-        ("darwin-arm64", "available"),
-        ("windows-x64", "unsupported"),
-    ] {
-        let result = validate(index.clone(), "thirdParty", platform);
-        let plugin = result["index"]["plugins"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|entry| entry["id"] == "io.example.future-tools")
-            .unwrap();
-        assert_eq!(plugin["availability"]["status"], expected, "{result}");
-    }
-}
-
-/// A level 3 version carries its `requires` to the host, unknown capability
-/// IDs included, so a host can say what an unavailable version needs.
-#[test]
-fn level_3_versions_list_their_capabilities() {
+fn versions_list_their_capabilities() {
     let outcome = validate(json_file(INDEX), "thirdParty", "darwin-arm64");
     let elixir = outcome["index"]["plugins"]
         .as_array()
@@ -296,15 +268,15 @@ fn level_3_versions_list_their_capabilities() {
         .unwrap();
     assert_eq!(
         elixir["versions"][0]["requires"],
-        json!({ "debuggers": 1, "languages": 1 })
+        json!({ "debuggers": 0, "languages": 0 })
     );
     assert_eq!(
         elixir["versions"][2]["requires"],
-        json!({ "languageServers": 1, "languages": 1, "serverProcess": 1 })
+        json!({ "languageServers": 0, "languages": 0 })
     );
     assert_eq!(
         elixir["versions"][1]["requires"],
-        json!({ "buildProviders": 1, "buildSystems": 1, "languageServers": 1, "languages": 1, "serverProcess": 1 })
+        json!({ "buildProviders": 0, "buildSystems": 0, "languageServers": 0, "languages": 0 })
     );
     let zig = outcome["index"]["plugins"]
         .as_array()
@@ -312,11 +284,14 @@ fn level_3_versions_list_their_capabilities() {
         .iter()
         .find(|entry| entry["id"] == "io.example.zig-support")
         .unwrap();
-    assert!(zig["versions"][0].get("requires").is_none(), "{zig}");
+    assert_eq!(
+        zig["versions"][0]["requires"],
+        json!({ "languageServers": 0, "languages": 0 })
+    );
 }
 
 /// Market filtering uses the same requirements for own and shared providers;
-/// hosts with only declarative builds keep the older language-only version.
+/// hosts without build providers keep the language-only version.
 #[test]
 fn build_provider_versions_require_host_support_before_download() {
     for manifest in [json_file(BUILD_PROVIDER_FIXTURE), json_file(MIX_FIXTURE)] {
@@ -329,13 +304,14 @@ fn build_provider_versions_require_host_support_before_download() {
             .unwrap();
         entry["versions"][1]["requires"] = manifest["requires"].clone();
         let mut host = json!({
-            "buildSystems": [1], "languages": [1], "languageServers": [1],
-            "serverProcess": [1], "settings": [1]
+            "buildSystems": [0], "languages": [0], "languageServers": [0], "settings": [0]
         });
         for (versions, expected_version) in [
+            // The host offers no buildProviders.
             (None, "1.0.0"),
-            (Some(json!([2])), "1.0.0"),
-            (Some(json!([1])), "2.0.0"),
+            // The host offers only a contract version Core does not speak.
+            (Some(json!([1])), "1.0.0"),
+            (Some(json!([0])), "2.0.0"),
         ] {
             host.as_object_mut().unwrap().remove("buildProviders");
             if let Some(versions) = versions {
@@ -357,36 +333,7 @@ fn build_provider_versions_require_host_support_before_download() {
     }
 }
 
-/// Capability versions are a level 3 rule: a host that sends them still
-/// sees level 2 entries only where the level 2 UI host exists.
-#[test]
-fn host_capabilities_do_not_change_legacy_levels() {
-    let mut index = json_file(INDEX);
-    let entry = index["plugins"]
-        .as_array_mut()
-        .unwrap()
-        .iter_mut()
-        .find(|entry| entry["id"] == "io.example.future-tools")
-        .unwrap();
-    entry["versions"][0]["pluginAPIVersion"] = json!(2);
-    entry["versions"][0]["downloads"][0]["platforms"] = json!(["darwin-arm64", "windows-x64"]);
-    let host = json!({ "languages": [1], "ui": [1] });
-    for (platform, expected) in [
-        ("darwin-arm64", "available"),
-        ("windows-x64", "unsupported"),
-    ] {
-        let result = validate_for_host(index.clone(), "thirdParty", platform, Some(&host));
-        let plugin = result["index"]["plugins"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|entry| entry["id"] == "io.example.future-tools")
-            .unwrap();
-        assert_eq!(plugin["availability"]["status"], expected, "{result}");
-    }
-}
-
-/// Download availability must reject the new trust semantics before any
+/// Download availability rejects publisher-bundled trust semantics before any
 /// archive is transferred, even when the host meets every other requirement.
 #[test]
 fn publisher_bundled_versions_require_host_trust_support_before_download() {
@@ -398,8 +345,8 @@ fn publisher_bundled_versions_require_host_trust_support_before_download() {
         .find(|entry| entry["id"] == "io.example.elixir-tools")
         .unwrap();
     entry["versions"] = json!([{
-        "version":"3.0.0", "pluginAPIVersion":3, "releaseDate":"2026-10-25",
-        "requires":{"languages":1,"packageTrust":1},
+        "version":"3.0.0", "pluginAPIVersion":0, "releaseDate":"2026-10-25",
+        "requires":{"languages":0,"packageTrust":0},
         "downloads":[{"platforms":["darwin-arm64"],
             "downloadURL":"https://github.com/example/elixir-tools/releases/download/v3.0.0/elixir.zip",
             "sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]
@@ -409,8 +356,8 @@ fn publisher_bundled_versions_require_host_trust_support_before_download() {
     entry["versions"][0]["downloads"][0]["downloadURL"] =
         json!(format!("{repository}/releases/download/v3.0.0/elixir.zip"));
     for (capabilities, expected) in [
-        (json!({"languages":[1]}), "unsupported"),
-        (json!({"languages":[1],"packageTrust":[1]}), "available"),
+        (json!({"languages":[0]}), "unsupported"),
+        (json!({"languages":[0],"packageTrust":[0]}), "available"),
     ] {
         let outcome = validate_for_host(
             index.clone(),

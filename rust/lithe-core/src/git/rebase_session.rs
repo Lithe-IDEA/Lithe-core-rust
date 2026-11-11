@@ -1239,7 +1239,7 @@ mod plan_preview_tests {
     #[test]
     fn shared_fixture_drafts_match_start_semantics() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/git/rebase-plan-preview-v1.json"
+            "../../../fixtures/git/rebase-plan-preview-v1.json"
         ))
         .unwrap();
         let commits = &fixture["commits"];
@@ -1257,7 +1257,7 @@ mod plan_preview_tests {
     #[test]
     fn issue_free_preview_is_accepted_by_the_start_planner() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/git/rebase-plan-preview-v1.json"
+            "../../../fixtures/git/rebase-plan-preview-v1.json"
         ))
         .unwrap();
         let commits = fixture["commits"]

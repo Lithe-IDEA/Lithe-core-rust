@@ -15,12 +15,12 @@ pub(crate) enum Source {
     /// The project name the user typed.
     ProjectName,
     /// A field's value: text, the chosen option, `true`/`false`, a
-    /// comma-separated list, or the home directory of a runtime or tool.
+    /// comma-separated list, or the home directory of a tool.
     Field(String),
-    /// The full version of a runtime field's selection.
-    RuntimeVersion(String),
-    /// The major version of a runtime field's selection, such as `21`.
-    RuntimeMajor(String),
+    /// The full version of a tool field's selection.
+    ToolVersion(String),
+    /// The major version of a tool field's selection, such as `21`.
+    ToolMajor(String),
     /// The executable of a tool field's selection, the file the tool
     /// definition resolved inside the home.
     ToolExecutable(String),
@@ -55,8 +55,8 @@ impl Variable {
             let rest = name.strip_prefix("field.")?;
             match rest.split_once('.') {
                 None => Source::Field(rest.to_string()),
-                Some((id, "version")) => Source::RuntimeVersion(id.to_string()),
-                Some((id, "major")) => Source::RuntimeMajor(id.to_string()),
+                Some((id, "version")) => Source::ToolVersion(id.to_string()),
+                Some((id, "major")) => Source::ToolMajor(id.to_string()),
                 Some((id, "executable")) => Source::ToolExecutable(id.to_string()),
                 Some(_) => return None,
             }
@@ -78,8 +78,8 @@ impl Variable {
         match &self.source {
             Source::ProjectName => None,
             Source::Field(id)
-            | Source::RuntimeVersion(id)
-            | Source::RuntimeMajor(id)
+            | Source::ToolVersion(id)
+            | Source::ToolMajor(id)
             | Source::ToolExecutable(id) => Some(id),
         }
     }
@@ -96,14 +96,11 @@ pub(crate) enum FieldValue {
     Text(String),
     Flag(bool),
     List(Vec<String>),
-    Runtime {
-        home: String,
-        version: String,
-    },
     /// The installation a tool field selected.
     Tool {
         home: String,
         executable: String,
+        version: String,
     },
 }
 
@@ -113,7 +110,7 @@ impl FieldValue {
             Self::Text(text) => text.clone(),
             Self::Flag(flag) => flag.to_string(),
             Self::List(items) => items.join(","),
-            Self::Runtime { home, .. } | Self::Tool { home, .. } => home.clone(),
+            Self::Tool { home, .. } => home.clone(),
         }
     }
 }
@@ -133,12 +130,12 @@ impl Values<'_> {
                 .get(id)
                 .map(FieldValue::text)
                 .unwrap_or_default(),
-            Source::RuntimeVersion(id) => match self.fields.get(id) {
-                Some(FieldValue::Runtime { version, .. }) => version.clone(),
+            Source::ToolVersion(id) => match self.fields.get(id) {
+                Some(FieldValue::Tool { version, .. }) => version.clone(),
                 _ => String::new(),
             },
-            Source::RuntimeMajor(id) => match self.fields.get(id) {
-                Some(FieldValue::Runtime { version, .. }) => major_version(version),
+            Source::ToolMajor(id) => match self.fields.get(id) {
+                Some(FieldValue::Tool { version, .. }) => major_version(version),
                 _ => String::new(),
             },
             Source::ToolExecutable(id) => match self.fields.get(id) {
@@ -263,7 +260,11 @@ mod tests {
         );
         assert_eq!(
             Variable::parse("field.jdk.major").map(|variable| variable.source),
-            Some(Source::RuntimeMajor("jdk".into()))
+            Some(Source::ToolMajor("jdk".into()))
+        );
+        assert_eq!(
+            Variable::parse("field.jdk.version").map(|variable| variable.source),
+            Some(Source::ToolVersion("jdk".into()))
         );
         assert_eq!(
             Variable::parse("field.python.executable").map(|variable| variable.source),
@@ -275,12 +276,13 @@ mod tests {
     }
 
     #[test]
-    fn tool_fields_read_as_home_and_executable() {
+    fn tool_fields_read_as_home_executable_and_version() {
         let fields = values(&[(
             "python",
             FieldValue::Tool {
                 home: "/opt/python".into(),
                 executable: "/opt/python/bin/python3".into(),
+                version: "3.12.4".into(),
             },
         )]);
         let values = Values {
@@ -293,8 +295,12 @@ mod tests {
             expand("${field.python.executable} -m venv ."),
             "/opt/python/bin/python3 -m venv ."
         );
+        assert_eq!(expand("${field.python.version}"), "3.12.4");
+        assert_eq!(expand("${field.python.major}"), "3");
         // A field that holds no tool reads as empty, never as another value.
         assert_eq!(expand("${field.missing.executable}"), "");
+        assert_eq!(expand("${field.missing.version}"), "");
+        assert_eq!(expand("${field.missing.major}"), "");
     }
 
     #[test]

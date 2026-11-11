@@ -4,7 +4,7 @@
 //! outlive the paste for as long as any conversation still refers to it. Platforms
 //! list their pasted-image cache and keep a ledger of the references a conversation
 //! accepted; this module decides which files may be deleted. Deleting stays with
-//! the platform. Contract: `shared/fixtures/agent/attachment-retention-v1.json`.
+//! the platform. Contract: `rust/fixtures/agent/attachment-retention-v1.json`.
 
 use std::collections::HashSet;
 

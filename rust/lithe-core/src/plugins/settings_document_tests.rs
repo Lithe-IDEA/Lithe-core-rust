@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 fn manifest() -> Value {
     serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../shared/contracts/plugins/v1/fixtures/settings/settings-v2.plugin.json"
+        "/../../shared/plugins/contract/v1/fixtures/settings/settings.plugin.json"
     )))
     .unwrap()
 }
@@ -49,14 +49,14 @@ fn settings_state_dispatches_with_core_owned_sources_and_normalized_scope() {
         "plugins.declarative.settingsState",
         json!({
             "manifest": manifest(),
-            "globalDocument": "{\"dev.lithe.fixture.settings-v2\":{\"dialyzer\":false}}",
-            "projectDocument": "{\"dev.lithe.fixture.settings-v2\":{\"mixEnv\":\"test\"}}"
+            "globalDocument": "{\"dev.lithe.fixture.settings\":{\"dialyzer\":false}}",
+            "projectDocument": "{\"dev.lithe.fixture.settings\":{\"mixEnv\":\"test\"}}"
         }),
     );
     assert_eq!(result["ok"], true, "{result}");
     assert_eq!(result["data"]["status"], "ok", "{result}");
     let state = &result["data"]["state"];
-    assert_eq!(state["pluginID"], "dev.lithe.fixture.settings-v2");
+    assert_eq!(state["pluginID"], "dev.lithe.fixture.settings");
     let rows = state["rows"].as_array().unwrap();
     let dialyzer = rows
         .iter()
@@ -83,7 +83,7 @@ fn settings_state_dispatches_with_core_owned_sources_and_normalized_scope() {
 fn complete_edit_fixture_preserves_types_siblings_and_atomic_rejection() {
     let fixture: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../shared/fixtures/plugins/settings-documents.json"
+        "/../fixtures/plugins/settings-documents.json"
     )))
     .unwrap();
     for case in fixture["editCases"].as_array().unwrap() {
@@ -141,7 +141,7 @@ fn complete_edit_fixture_preserves_types_siblings_and_atomic_rejection() {
 fn missing_files_are_empty_but_empty_existing_documents_are_rejected() {
     let fixture: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../shared/fixtures/plugins/settings-documents.json"
+        "/../fixtures/plugins/settings-documents.json"
     )))
     .unwrap();
     let valid = execute(
@@ -163,7 +163,7 @@ fn missing_files_are_empty_but_empty_existing_documents_are_rejected() {
 fn invalid_stored_values_fall_back_without_hiding_raw_executable_overrides() {
     let fixture: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../shared/fixtures/plugins/settings-documents.json"
+        "/../fixtures/plugins/settings-documents.json"
     )))
     .unwrap();
     let result = execute(
@@ -193,7 +193,7 @@ fn invalid_stored_values_fall_back_without_hiding_raw_executable_overrides() {
 fn document_size_and_batch_limits_reject_before_returning_replacement_text() {
     let fixture: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../shared/fixtures/plugins/settings-documents.json"
+        "/../fixtures/plugins/settings-documents.json"
     )))
     .unwrap();
     let oversized = execute(
@@ -223,7 +223,7 @@ fn document_size_and_batch_limits_reject_before_returning_replacement_text() {
 fn plugins_without_setting_declarations_do_not_request_native_document_reads() {
     let fixture: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../shared/fixtures/plugins/settings-documents.json"
+        "/../fixtures/plugins/settings-documents.json"
     )))
     .unwrap();
     let mut manifest = fixture["manifest"].clone();
@@ -245,7 +245,7 @@ fn plugins_without_setting_declarations_do_not_request_native_document_reads() {
 fn editor_projection_owns_scope_reset_values_and_section_grouping() {
     let fixture: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../shared/fixtures/plugins/settings-documents.json"
+        "/../fixtures/plugins/settings-documents.json"
     )))
     .unwrap();
     let mut manifest = fixture["manifest"].clone();
@@ -297,7 +297,7 @@ fn editor_projection_owns_scope_reset_values_and_section_grouping() {
 fn setting_action_plans_match_shared_fixture_without_starting_a_process() {
     let fixture: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../shared/fixtures/plugins/settings-actions.json"
+        "/../fixtures/plugins/settings-actions.json"
     )))
     .unwrap();
     for case in fixture["cases"].as_array().unwrap() {
@@ -323,7 +323,7 @@ fn setting_action_plans_match_shared_fixture_without_starting_a_process() {
 fn settings_surfaces_shared_vectors() {
     let fixture: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../shared/fixtures/plugins/settings-surfaces.json"
+        "/../fixtures/plugins/settings-surfaces.json"
     )))
     .unwrap();
     for case in fixture["cases"].as_array().unwrap() {

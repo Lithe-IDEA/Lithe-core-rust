@@ -174,7 +174,7 @@ mod tests {
     #[test]
     fn preserves_rich_content_for_offline_preview() {
         let fixture: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/editor/markdown-rich-content-v1.json"
+            "../../../fixtures/editor/markdown-rich-content-v1.json"
         ))
         .expect("rich Markdown fixture should decode");
         let output = html(fixture["source"].as_str().expect("fixture source"));
@@ -194,7 +194,7 @@ mod tests {
     #[test]
     fn preserves_html_alignment_and_inline_badges_without_allowing_styles() {
         let fixture: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/editor/markdown-html-v1.json"
+            "../../../fixtures/editor/markdown-html-v1.json"
         ))
         .expect("Markdown HTML fixture should decode");
         let output = html(fixture["source"].as_str().expect("fixture source"));

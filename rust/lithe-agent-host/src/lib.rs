@@ -584,7 +584,7 @@ pub struct AgentSessionSummary {
 
 /// Events emitted from the connection worker thread.
 ///
-/// Field names are fixed by `shared/fixtures/agent/acp-events-v1.json`.
+/// Field names are fixed by `rust/fixtures/agent/acp-events-v1.json`.
 #[derive(Debug, Serialize)]
 #[serde(
     tag = "kind",

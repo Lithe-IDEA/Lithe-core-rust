@@ -18,7 +18,7 @@ macro_rules! contract_file {
     ($path:literal) => {
         include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/contracts/plugins/v1/",
+            "/../../shared/plugins/contract/v1/",
             $path
         ))
     };
@@ -361,8 +361,8 @@ fn output_link_fixture_cases_match_the_same_in_every_host() {
 #[test]
 fn output_link_matchers_alone_are_a_complete_plugin() {
     let manifest = json!({
-        "schemaVersion": 2, "id": "dev.example.links", "displayName": "Script Links",
-        "version": "1.0.0", "pluginAPIVersion": 4, "requires": {"outputLinkMatchers": 1},
+        "schemaVersion": 0, "id": "dev.example.links", "displayName": "Script Links",
+        "version": "1.0.0", "pluginAPIVersion": 0, "requires": {"outputLinkMatchers": 0},
         "vendor": {"id": "org.example", "displayName": "Example", "signatureRequirement": "publisherPackage"},
         "permissions": [], "activationEvents": [], "languages": [],
         "outputLinkMatchers": [

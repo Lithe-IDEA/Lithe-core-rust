@@ -228,7 +228,7 @@ fn github_http_failures_use_stable_error_categories_without_response_bodies_in_d
 #[test]
 fn device_authorization_transition_shared_fixture() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/github/device-authorization-transition-v1.json"
+        "../../../fixtures/github/device-authorization-transition-v1.json"
     ))
     .expect("device authorization fixture must be valid JSON");
     for case in fixture["cases"].as_array().expect("fixture cases") {
@@ -244,7 +244,7 @@ fn device_authorization_transition_shared_fixture() {
 #[test]
 fn pull_request_checkout_plan_shared_fixture() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/github/pr-checkout-plan-v1.json"
+        "../../../fixtures/github/pr-checkout-plan-v1.json"
     ))
     .expect("checkout fixture must be valid JSON");
     for case in fixture["cases"].as_array().expect("fixture cases") {

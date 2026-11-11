@@ -1,7 +1,7 @@
 //! Contract tests for plugin-owned language server sessions (API-25).
 //!
 //! The manifest fixture and the launch-resolution golden live in
-//! `shared/contracts/plugins/v1/fixtures/` so the plugin documentation
+//! `shared/plugins/contract/v1/fixtures/` so the plugin documentation
 //! repository and other hosts run the same cases.
 
 use crate::plugins::declarative::{
@@ -14,7 +14,7 @@ macro_rules! contract_file {
     ($path:literal) => {
         include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/contracts/plugins/v1/",
+            "/../../shared/plugins/contract/v1/",
             $path
         ))
     };
@@ -31,16 +31,17 @@ fn parse(source: &str) -> Value {
     serde_json::from_str(source).expect("fixture is valid JSON")
 }
 
-/// Capability versions of a host that runs the backend-launch fixture.
+/// The capabilities the backend-launch fixture requires.
+const FIXTURE_CAPABILITIES: [&str; 4] =
+    ["backend", "languageServers", "languages", "toolDefinitions"];
+
+/// Capability offer of a host that runs the backend-launch fixture.
 fn full_host() -> Value {
-    json!({
-        "backend": [1, 2],
-        "executableResolution": [1, 2],
-        "languageServers": [1, 2, 3],
-        "languages": [1],
-        "serverProcess": [1, 3],
-        "toolDefinitions": [1],
-    })
+    let mut host = serde_json::Map::new();
+    for capability in FIXTURE_CAPABILITIES {
+        host.insert(capability.to_string(), json!([0]));
+    }
+    Value::Object(host)
 }
 
 #[test]
@@ -65,18 +66,24 @@ fn backend_launch_fixture_keeps_its_session_declaration() {
 }
 
 #[test]
-fn backend_launch_needs_a_host_that_runs_server_process_3() {
+fn backend_launch_needs_a_host_that_offers_every_required_capability() {
     let manifest = parse(BACKEND_LAUNCH_FIXTURE);
 
-    let mut old_host = full_host();
-    old_host["serverProcess"] = json!([1, 2]);
-    let refused =
-        validate_command(json!({ "manifest": manifest, "hostCapabilities": old_host })).unwrap();
-    assert_eq!(
-        refused["error"]["code"], "plugin.api.unsupported",
-        "{refused}"
-    );
-    assert_eq!(refused["error"]["field"], "requires.serverProcess");
+    for capability in FIXTURE_CAPABILITIES {
+        let mut host = full_host();
+        host.as_object_mut().unwrap().remove(capability);
+        let refused =
+            validate_command(json!({ "manifest": manifest, "hostCapabilities": host })).unwrap();
+        assert_eq!(
+            refused["error"]["code"], "plugin.api.unsupported",
+            "{capability}: {refused}"
+        );
+        assert_eq!(
+            refused["error"]["field"],
+            json!(format!("requires.{capability}")),
+            "{capability}: {refused}"
+        );
+    }
 
     let accepted =
         validate_command(json!({ "manifest": manifest, "hostCapabilities": full_host() })).unwrap();

@@ -174,10 +174,7 @@ mod tests {
     use serde_json::{json, Value};
 
     fn fixture() -> Value {
-        serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/git/fetch-plan-v1.json"
-        ))
-        .unwrap()
+        serde_json::from_str(include_str!("../../../fixtures/git/fetch-plan-v1.json")).unwrap()
     }
 
     fn request(payload: Value) -> Value {

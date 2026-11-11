@@ -8,11 +8,11 @@ fn contract(name: &str) -> Value {
     let source = match name {
         "java" => include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/contracts/plugins/v1/fixtures/toolchains/tool-definition.plugin.json"
+            "/../../shared/plugins/contract/v1/fixtures/toolchains/tool-definition.plugin.json"
         )),
         "mise" => include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/contracts/plugins/v1/fixtures/toolchains/toolchain-provider.plugin.json"
+            "/../../shared/plugins/contract/v1/fixtures/toolchains/toolchain-provider.plugin.json"
         )),
         _ => panic!("unknown contract fixture"),
     };
@@ -53,7 +53,7 @@ fn toolchain_queries_decode_installed_contract_reply_without_native_io() {
 #[test]
 fn toolchain_queries_preserve_bounded_string_and_numeric_wire_identities() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/toolchains/rpc-id-cases.json"
+        "../../../fixtures/toolchains/rpc-id-cases.json"
     ))
     .unwrap();
     for case in fixture["cases"].as_array().unwrap() {

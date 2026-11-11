@@ -18,7 +18,7 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Version of the canonical `litheBuildModel` format.
-pub(crate) const CANONICAL_MODEL_VERSION: u32 = 1;
+pub(crate) const CANONICAL_MODEL_VERSION: u32 = 0;
 pub(crate) const MAX_PROJECTS: usize = 2_000;
 const MAX_ITEMS: usize = 10_000;
 const MAX_NAME: usize = 256;

@@ -83,7 +83,7 @@ mod tests {
     fn fixture_matches_localized_and_original_text_without_reordering() {
         let fixture: serde_json::Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/fixtures/search/actions-v1.json"
+            "/../fixtures/search/actions-v1.json"
         )))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {

@@ -512,7 +512,7 @@ mod tests {
 
     fn examples() -> Value {
         serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/debug/projection-v2-examples.json"
+            "../../../fixtures/debug/projection-v2-examples.json"
         ))
         .unwrap()
     }
