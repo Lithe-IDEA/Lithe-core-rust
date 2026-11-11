@@ -271,8 +271,8 @@ launch already succeeds there.
 Strings returned by the core are UTF-8 JSON allocated by Rust. The caller must
 release response strings with `lithe_core_free_string`.
 
-Rust native adapters may call `execution::java_version_from_release` to read the
-full JDK version from bounded host-read `release` metadata, then reuse Core's
+Rust native adapters may call `execution::java_feature_version_from_release` to read the
+JDK feature version from bounded host-read `release` metadata, then reuse Core's
 runtime candidate ordering. Passive Build discovery never falls back to running
 Java when that metadata is missing or invalid; explicit tool execution owns probes.
 ### Localized action search
@@ -2381,6 +2381,19 @@ repository's top-level `.gitignore`; `exclude` appends the same patterns to the
 worktree-aware Git metadata path for `info/exclude`. Both ignore operations
 preserve existing content, escape Git pattern characters, de-duplicate rules,
 and interpret a trailing `/` as a directory rule.
+
+`cherryPick`, `revert`, and `reset` each require `revision`: a non-empty commit-ish
+that does not begin with `-` and contains no NUL character, or the request fails
+with `invalid_request` before Git runs. `cherryPick` runs `git cherry-pick <revision>`
+and `revert` runs `git revert --no-edit <revision>`; both commit on the current
+branch. `reset` moves the current branch to `revision` with `mode` `--soft`,
+`--mixed`, or `--hard`; an absent `mode` means `--mixed`, and any other value fails
+with `invalid_request`. All three return the normal Git process result. A
+cherry-pick or revert that stops on conflicts leaves the operation active: the
+result has a nonzero `exitCode`, `git.operationState` reports `cherryPick` or
+`revert` with the conflicted paths, and the caller finishes it with
+`operationContinue` or `operationAbort`. Hosts check `git.integrationPreflight`
+before either operation to name the local changes it would overwrite.
 
 `editCommitMessage` rebuilds the selected commit and its later first-parent
 descendants with the new `message`. `squashCommits` requires at least two

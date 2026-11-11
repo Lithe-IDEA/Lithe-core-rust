@@ -2163,6 +2163,100 @@ fn git_write_executes_checkout_preflight_clone_and_validation() {
 }
 
 #[test]
+fn git_write_cherry_picks_reverts_and_resets_a_revision() {
+    let root = git_write_repository("git-write-pick-revert-reset");
+    let run = |arguments: &[&str]| history_git(&root, arguments);
+    let request = |operation: &str, payload: Value| git_write_request(&root, operation, payload);
+    let state = || -> Value {
+        serde_json::from_str(&execute_json(
+            &serde_json::to_string(&serde_json::json!({
+                "id": "operation-state",
+                "command": "git.operationState",
+                "payload": {"root": root}
+            }))
+            .expect("request should encode"),
+        ))
+        .expect("operation state response should be JSON")
+    };
+    commit_history_file(&root, "base.txt", "base\n", "initial");
+    let main = git_text(&root, &["branch", "--show-current"]);
+    assert!(run(&["switch", "-qc", "feature"]).status.success());
+    commit_history_file(&root, "picked.txt", "picked\n", "picked work");
+    let picked = git_text(&root, &["rev-parse", "HEAD"]);
+    commit_history_file(&root, "base.txt", "feature\n", "feature base");
+    let conflicting = git_text(&root, &["rev-parse", "HEAD"]);
+    assert!(run(&["switch", "-q", &main]).status.success());
+
+    // Each operation validates its revision before Git runs.
+    for operation in ["cherryPick", "revert", "reset"] {
+        for revision in [Value::Null, Value::from(" "), Value::from("--hard")] {
+            let rejected = request(operation, serde_json::json!({"revision": revision}));
+            assert_eq!(rejected["ok"], false, "{operation} {revision}: {rejected}");
+            assert_eq!(rejected["error"]["code"], "invalid_request");
+        }
+    }
+
+    // A cherry-pick commits the picked change on the current branch.
+    let pick = request("cherryPick", serde_json::json!({"revision": picked}));
+    assert_eq!(pick["ok"], true, "{pick}");
+    assert_eq!(pick["data"]["exitCode"], 0, "{pick}");
+    assert_eq!(
+        git_text(&root, &["log", "-1", "--format=%s"]),
+        "picked work"
+    );
+    assert_eq!(
+        fs::read_to_string(root.join("picked.txt")).unwrap(),
+        "picked\n"
+    );
+    let after_pick = git_text(&root, &["rev-parse", "HEAD"]);
+
+    // A revert commits the inverse without opening an editor.
+    let revert = request("revert", serde_json::json!({"revision": "HEAD"}));
+    assert_eq!(revert["ok"], true, "{revert}");
+    assert_eq!(revert["data"]["exitCode"], 0, "{revert}");
+    assert!(!root.join("picked.txt").exists());
+    assert_eq!(
+        git_text(&root, &["log", "-1", "--format=%s"]),
+        "Revert \"picked work\""
+    );
+
+    // A reset without a mode is mixed: the branch moves, the work tree stays.
+    let mixed = request("reset", serde_json::json!({"revision": after_pick}));
+    assert_eq!(mixed["ok"], true, "{mixed}");
+    assert_eq!(git_text(&root, &["rev-parse", "HEAD"]), after_pick);
+    assert!(!root.join("picked.txt").exists());
+    assert!(run(&["diff", "--cached", "--quiet"]).status.success());
+    assert_eq!(git_text(&root, &["diff", "--name-only"]), "picked.txt");
+    let hard = request(
+        "reset",
+        serde_json::json!({"revision": after_pick, "mode": "--hard"}),
+    );
+    assert_eq!(hard["ok"], true, "{hard}");
+    assert_eq!(git_text(&root, &["status", "--porcelain"]), "");
+    assert!(root.join("picked.txt").exists());
+
+    // A cherry-pick that meets a different edit of the same line stops on the conflict and
+    // stays active until the caller aborts it.
+    commit_history_file(&root, "base.txt", "main\n", "main base");
+    let before_conflict = git_text(&root, &["rev-parse", "HEAD"]);
+    let stopped = request("cherryPick", serde_json::json!({"revision": conflicting}));
+    assert_eq!(stopped["ok"], true, "{stopped}");
+    assert_ne!(stopped["data"]["exitCode"], 0, "{stopped}");
+    let active = state();
+    assert_eq!(active["data"]["kind"], "cherryPick", "{active}");
+    assert_eq!(
+        active["data"]["conflictedPaths"],
+        serde_json::json!(["base.txt"])
+    );
+    let abort = request("operationAbort", serde_json::json!({}));
+    assert_eq!(abort["ok"], true, "{abort}");
+    assert_eq!(state()["data"]["kind"], "");
+    assert_eq!(git_text(&root, &["rev-parse", "HEAD"]), before_conflict);
+
+    fs::remove_dir_all(root).expect("temporary repository should be removable");
+}
+
+#[test]
 fn git_write_creates_deletes_and_records_tags() {
     let root = temporary_root("git-tags");
     fs::create_dir_all(&root).expect("temporary repository should be creatable");
