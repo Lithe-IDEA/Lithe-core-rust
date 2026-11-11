@@ -252,3 +252,144 @@ fn pull_request_checkout_plan_shared_fixture() {
         assert_eq!(response["data"], case["expected"], "{}", case["name"]);
     }
 }
+
+#[test]
+fn request_plan_lists_check_runs_and_combined_status_for_a_commit() {
+    let sha = "0123456789abcdef0123456789abcdef01234567";
+    for (operation, path, query) in [
+        (
+            "listCheckRuns",
+            format!("/repos/openai/codex/commits/{sha}/check-runs"),
+            true,
+        ),
+        (
+            "getCombinedStatus",
+            format!("/repos/openai/codex/commits/{sha}/status"),
+            false,
+        ),
+    ] {
+        let response = execute(
+            "github.requestPlan",
+            json!({
+                "operation": operation,
+                "repository": {"owner": "openai", "name": "codex"},
+                "commit": sha
+            }),
+        );
+        assert_eq!(response["ok"], true, "{response:?}");
+        assert_eq!(response["data"]["method"], "GET");
+        assert_eq!(response["data"]["path"], path);
+        assert_eq!(
+            response["data"]["query"]["per_page"],
+            if query { json!("100") } else { Value::Null }
+        );
+        assert_eq!(response["data"]["requiresAuthentication"], true);
+    }
+
+    let response = execute(
+        "github.requestPlan",
+        json!({
+            "operation": "listCheckRuns",
+            "repository": {"owner": "openai", "name": "codex"},
+            "commit": "main/../../x"
+        }),
+    );
+    assert_eq!(response["ok"], false, "{response:?}");
+    assert_eq!(response["error"]["code"], "invalid_request");
+}
+
+#[test]
+fn normalizes_check_runs_and_legacy_statuses_into_one_check_shape() {
+    let runs = execute(
+        "github.normalizeResponse",
+        json!({
+            "operation": "listCheckRuns",
+            "status": 200,
+            "body": json!({
+                "total_count": 2,
+                "check_runs": [
+                    {"name": "test", "status": "in_progress", "conclusion": null,
+                     "details_url": "https://ci.example/run/2"},
+                    {"name": "build", "status": "completed", "conclusion": "success",
+                     "details_url": "https://ci.example/run/1"}
+                ]
+            }).to_string()
+        }),
+    );
+    assert_eq!(runs["ok"], true, "{runs:?}");
+    assert_eq!(runs["data"][0]["name"], "build");
+    assert_eq!(runs["data"][0]["conclusion"], "success");
+    assert_eq!(runs["data"][0]["detailsUrl"], "https://ci.example/run/1");
+    assert_eq!(runs["data"][1]["status"], "in_progress");
+    assert!(runs["data"][1]["conclusion"].is_null());
+
+    let statuses = execute(
+        "github.normalizeResponse",
+        json!({
+            "operation": "getCombinedStatus",
+            "status": 200,
+            "body": json!({
+                "state": "failure",
+                "statuses": [
+                    {"context": "legacy/lint", "state": "failure", "target_url": "https://lint.example/1"},
+                    {"context": "legacy/deploy", "state": "pending", "target_url": null}
+                ]
+            }).to_string()
+        }),
+    );
+    assert_eq!(statuses["ok"], true, "{statuses:?}");
+    assert_eq!(statuses["data"][0]["name"], "legacy/deploy");
+    assert_eq!(statuses["data"][0]["status"], "in_progress");
+    assert!(statuses["data"][0]["conclusion"].is_null());
+    assert_eq!(statuses["data"][1]["status"], "completed");
+    assert_eq!(statuses["data"][1]["conclusion"], "failure");
+    assert_eq!(statuses["data"][1]["detailsUrl"], "https://lint.example/1");
+}
+
+#[test]
+fn request_plan_and_normalize_review_comment_threads() {
+    let plan = execute(
+        "github.requestPlan",
+        json!({
+            "operation": "listReviewComments",
+            "repository": {"owner": "openai", "name": "codex"},
+            "pullNumber": 7
+        }),
+    );
+    assert_eq!(plan["ok"], true, "{plan:?}");
+    assert_eq!(plan["data"]["path"], "/repos/openai/codex/pulls/7/comments");
+    assert_eq!(plan["data"]["query"]["per_page"], "100");
+
+    let response = execute(
+        "github.normalizeResponse",
+        json!({
+            "operation": "listReviewComments",
+            "status": 200,
+            "body": json!([
+                {
+                    "id": 12, "path": "src/lib.rs", "line": 9, "side": "RIGHT",
+                    "body": "Consider a guard", "in_reply_to_id": null,
+                    "created_at": "2026-11-01T00:00:00Z",
+                    "html_url": "https://github.com/openai/codex/pull/7#discussion_r12",
+                    "user": {"login": "reviewer", "html_url": "https://github.com/reviewer", "avatar_url": null}
+                },
+                {
+                    "id": 13, "path": "src/lib.rs", "line": null, "side": "RIGHT",
+                    "body": "Done", "in_reply_to_id": 12,
+                    "created_at": "2026-11-01T00:05:00Z",
+                    "html_url": "https://github.com/openai/codex/pull/7#discussion_r13",
+                    "user": {"login": "author", "html_url": "https://github.com/author", "avatar_url": null}
+                }
+            ]).to_string()
+        }),
+    );
+    assert_eq!(response["ok"], true, "{response:?}");
+    assert_eq!(response["data"][0]["path"], "src/lib.rs");
+    assert_eq!(response["data"][0]["line"], 9);
+    assert_eq!(response["data"][0]["side"], "RIGHT");
+    assert_eq!(response["data"][0]["author"]["login"], "reviewer");
+    assert!(response["data"][0]["inReplyTo"].is_null());
+    assert_eq!(response["data"][1]["inReplyTo"], 12);
+    assert!(response["data"][1]["line"].is_null());
+    assert_eq!(response["data"][1]["createdAt"], "2026-11-01T00:05:00Z");
+}
