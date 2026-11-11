@@ -1,6 +1,6 @@
 # AI commit generation contract
 
-Version: 1. Behavioral fixture: `shared/fixtures/ai/commit-generation-v1.json`.
+Version: 1. Behavioral fixture: `rust/fixtures/ai/commit-generation-v1.json`.
 
 Windows consumes the typed Rust API in `lithe_core::ai`; macOS uses the same planner
 and decoder through the Core JSON commands `ai.planCommit` and
@@ -80,7 +80,7 @@ without echoing diffs, responses or credentials. Credentials are never command i
 macOS resolves its selected provider and credentials in the host, attaches HTTP
 headers locally and preserves its existing staged-diff scope and cancellation.
 The host rejects responses over 2 MiB before Core JSON decoding. Shared fixture
-`shared/fixtures/ai/commit-generation-v1.json` exercises the three protocols on
+`rust/fixtures/ai/commit-generation-v1.json` exercises the three protocols on
 both Core and the macOS bridge.
 
 ## Windows adapter surface

@@ -176,7 +176,7 @@ the session's request timeout applies. Completion carries `result.value: {id,
 response}`: the wire ID and the complete, unvalidated response, error replies
 included. The host passes it with the same `params` to `decodeReply`.
 Cancellation and late results follow
-[`lsp.toolchainRequest`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/shared/contracts/rust-core-api.md).
+[`lsp.toolchainRequest`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/contracts/rust-core-api.md).
 
 ## Provider reply validation
 

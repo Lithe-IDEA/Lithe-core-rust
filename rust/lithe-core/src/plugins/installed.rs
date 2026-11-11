@@ -90,7 +90,7 @@ mod tests {
     fn shared_installed_version_fixture_uses_the_existing_numeric_comparator() {
         let fixture: Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/fixtures/plugins/installed-versions.json"
+            "/../fixtures/plugins/installed-versions.json"
         )))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {

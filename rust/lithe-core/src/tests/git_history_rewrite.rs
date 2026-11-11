@@ -112,7 +112,7 @@ fn history_action_capabilities_use_real_head_and_complete_first_parent_chain() {
     let side = repo.commit("side.txt", "side\n", "side");
     repo.git(&["checkout", "-q", "main"]);
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/git/history-action-capabilities-v1.json"
+        "../../../fixtures/git/history-action-capabilities-v1.json"
     ))
     .unwrap();
     let capabilities = |revisions: Vec<&str>| {
@@ -988,7 +988,7 @@ fn native_rebase_large_escaped_manifest_remains_readable_through_abort() {
 #[test]
 fn github_pr_checkout_rejects_conflicts_and_stale_review_before_creating_branch() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/github/pr-checkout-plan-v1.json"
+        "../../../fixtures/github/pr-checkout-plan-v1.json"
     ))
     .unwrap();
     let codes = &fixture["errorCodes"];

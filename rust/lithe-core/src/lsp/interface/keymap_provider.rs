@@ -67,7 +67,7 @@ mod tests {
     #[test]
     fn shortcut_providers_negotiate_only_an_offered_subset() {
         let fixtures: Value = serde_json::from_str(include_str!(
-            "../../../../../shared/fixtures/keymap/provider-negotiation-v1.json"
+            "../../../../fixtures/keymap/provider-negotiation-v1.json"
         ))
         .unwrap();
         for case in fixtures["cases"].as_array().unwrap() {

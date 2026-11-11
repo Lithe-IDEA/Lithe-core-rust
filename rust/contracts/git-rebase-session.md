@@ -3,7 +3,7 @@
 Rust Core owns range validation, the reviewed snapshot, safe todo/message
 preparation, recovery references, and Git sequencer execution. Native products
 own plan editing, progress, conflict presentation, and explicit user controls.
-The shared example is `shared/fixtures/git/rebase-session-v1.json`.
+The shared example is `rust/fixtures/git/rebase-session-v1.json`.
 
 ## Preview and plan
 

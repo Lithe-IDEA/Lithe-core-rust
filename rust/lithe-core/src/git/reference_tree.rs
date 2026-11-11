@@ -165,7 +165,7 @@ mod tests {
     #[test]
     fn shared_fixture_trees_have_one_grouping_and_order() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/git/reference-tree-v1.json"
+            "../../../fixtures/git/reference-tree-v1.json"
         ))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {

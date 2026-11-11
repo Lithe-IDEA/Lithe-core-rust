@@ -489,7 +489,7 @@ mod tests {
     #[test]
     fn shared_fixture_plans_without_overwriting_selected_index_content() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/git/commit-selection-plan-v1.json"
+            "../../../fixtures/git/commit-selection-plan-v1.json"
         ))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {

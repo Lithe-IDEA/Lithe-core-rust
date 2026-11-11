@@ -1,7 +1,7 @@
 # AI pull request descriptions and inline edits
 
-Version: 1. Behavioral fixtures: `shared/fixtures/ai/pull-request-description-v1.json`
-and `shared/fixtures/ai/inline-edit-v1.json`.
+Version: 1. Behavioral fixtures: `rust/fixtures/ai/pull-request-description-v1.json`
+and `rust/fixtures/ai/inline-edit-v1.json`.
 
 Both features reuse the credential-free provider request model of
 [AI commit generation](ai-commit.md): Core validates the endpoint, appends the

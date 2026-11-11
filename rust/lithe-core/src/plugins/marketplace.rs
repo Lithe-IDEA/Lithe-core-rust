@@ -6,7 +6,7 @@
 //! this module only decides, deterministically, which entries are valid,
 //! which version a platform can install, and which programs a package will
 //! start, so macOS and Windows present the same catalog and the same trust
-//! prompts. The contract lives in `shared/contracts/plugins/v1/`.
+//! prompts. The contract lives in `shared/plugins/contract/v1/`.
 
 use super::capabilities::{self, HostCapabilities, Requires};
 use super::declarative::{

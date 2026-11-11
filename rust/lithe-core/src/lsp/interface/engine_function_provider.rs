@@ -151,7 +151,7 @@ mod tests {
     fn function_provider_selection_matches_shared_workspace_fixture() {
         let fixture: Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/fixtures/plugins/settings-function-provider.json"
+            "/../fixtures/plugins/settings-function-provider.json"
         )))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {

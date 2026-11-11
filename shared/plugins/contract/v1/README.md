@@ -39,7 +39,7 @@ This directory is the cross-platform source of truth:
 Validation and template expansion are implemented once in Rust Core
 (`rust/lithe-core/src/plugins/`, with build systems in
 `rust/lithe-core/src/build/`) and exposed through the
-`plugins.declarative.*` commands in [`shared/contracts/rust-core-api.md`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/shared/contracts/rust-core-api.md). Hosts must not
+`plugins.declarative.*` commands in [`rust/contracts/rust-core-api.md`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/contracts/rust-core-api.md). Hosts must not
 reimplement them.
 
 Plugin authors do not need this repository. The public
@@ -125,7 +125,7 @@ the provider never interprets it as a path. Core bounds the operation and
 validates normalized results against the host's action catalog. Providers own
 source formats and must not silently promote conditional or multi-stroke rules
 to global shortcuts. The exact Core commands, limits and fixtures are in the
-[Rust Core API](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/shared/contracts/rust-core-api.md#normalized-shortcut-import-validation).
+[Rust Core API](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/contracts/rust-core-api.md#normalized-shortcut-import-validation).
 
 When granted individually, methods `lithe/host/keymapImport/listInputs`
 and `lithe/host/keymapImport/readChunk` take `snapshotID` and `providerID`.
@@ -529,7 +529,7 @@ carries one `code`:
 User cancellation and superseded attempts record nothing. Plugin output, paths,
 and error text never appear in these facts. The executing owner and the
 host-facing command are specified as `diagnostics.recordPluginOperation` in
-[`rust-core-api.md`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/shared/contracts/rust-core-api.md).
+[`rust-core-api.md`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/contracts/rust-core-api.md).
 
 Severity follows the actual result. An operation that failed for the user is
 ERROR, a recovery or fallback is WARN, and a useful successful user operation
@@ -935,7 +935,7 @@ process does not use `${workspaceStateDir}`; otherwise the request is
 | `environment`, `writablePaths` | Present only in the plan `decodeLaunch` returns: the variables of the process, and the paths it writes. |
 | `sessionPolicy` | Present for a language server that declares session fields: the [session policy](#plugin-owned-sessions) the host passes to `lsp.startServer` unchanged. |
 | `buildProvider` | Present only for a `buildSystemID` selection: `{buildSystemID, executesProjectCode, mayUseNetwork, languageServer?}`. `languageServer` names the language whose server is the provider; the rest of the plan is then that server's plan, and the host reuses its running session instead of starting a second process. |
-| `vcsProvider` | Present only for a `vcsProviderID` selection: the [provider descriptor](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/shared/contracts/vcs-provider-v1.md#provider-descriptor) the host keeps for the session. |
+| `vcsProvider` | Present only for a `vcsProviderID` selection: the [provider descriptor](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/contracts/vcs-provider-v1.md#provider-descriptor) the host keeps for the session. |
 | `backend` | Present only for a `backend` selection: `{hostServices, version}`, the sorted [host services](#host-services) the plugin's permissions grant, plus `version`, the manifest's `requires.backend` (`0`). The host passes `hostServices` to `lsp.startServer.hostServices` unchanged. |
 
 A language without a server, an undeclared build system, a build system
@@ -2190,7 +2190,7 @@ contract or a canonical format instead.
 
 ### Commands
 
-The `build.*` Core commands (see `shared/contracts/rust-core-api.md`) take the
+The `build.*` Core commands (see `rust/contracts/rust-core-api.md`) take the
 manifest, the build-system ID, and a request, and revalidate the manifest
 every time. `build.detect` walks the workspace once for all enabled plugins
 and returns instances, with the model of `static` and `hostIntegration`
@@ -2223,7 +2223,7 @@ found. The install review lists the provider as a `…VcsProvider` program with
 its VCS client (`vcsTool`) and `mayUseNetwork`. Requests go through
 `lsp.vcsRequest` by operation name and replies are normalized by
 `vcs.decodeReply`. The fields, operations, reply shapes, and error codes are
-defined in [the VCS provider contract](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/shared/contracts/vcs-provider-v1.md).
+defined in [the VCS provider contract](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/contracts/vcs-provider-v1.md).
 
 ## Debug adapters
 
@@ -3933,7 +3933,7 @@ Disabling, enabling, replacing and uninstalling a plugin take effect for the
 relay at once and need no restart of Lithe or of any other plugin.
 The host sends the plugin and workspace-context snapshot with the Core
 command `lsp.configureFunctionRelay`
-([Rust Core API](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/shared/contracts/rust-core-api.md)),
+([Rust Core API](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/contracts/rust-core-api.md)),
 and calls the new snapshot no longer allows end at once with the errors above.
 
 Installing or updating a plugin that has a backend is different on a host that
@@ -4045,7 +4045,7 @@ command payload is a Core `invalid_request` failure instead.
 | `plugin.grammar.invalid` | Core | A language's grammar file is not a TextMate grammar Core accepts; `field` names the failing part |
 | `plugin.grammar.unavailable` | Core | The plugin declares no grammar for the language |
 | `plugin.vcs.reserved` | Core | A VCS provider claims the ID of the built-in Git support |
-| `plugin.vcs.invalidOutput` | Core | A VCS provider's reply does not fit the [VCS provider contract](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/shared/contracts/vcs-provider-v1.md) |
+| `plugin.vcs.invalidOutput` | Core | A VCS provider's reply does not fit the [VCS provider contract](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/contracts/vcs-provider-v1.md) |
 | `plugin.index.invalid` | Core | Malformed index root or entry, or an invalid URL, checksum, platform, version, or date |
 | `plugin.index.schemaUnsupported` | Core | The index `schemaVersion` is not `0` |
 | `plugin.index.officialNamespace` | Core | A third-party source lists a `dev.lithe` ID |
@@ -4413,7 +4413,7 @@ per-window, per-workspace state store; removed fields, invalid types and removed
 options are discarded when restoring. Provider replies never overwrite local
 fields. Form declarations and choices are static.
 See [native-form.plugin.json](fixtures/ui/native-form.plugin.json) and
-[host UI acceptance fixture](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/macos/Tests/Fixtures/native-ui-lab/README.md) for acceptance.
+[host UI acceptance fixture](https://github.com/1lck/Lithe-IDEA/blob/preview/macos/Tests/Fixtures/native-ui-lab/README.md) for acceptance.
 
 An optional `source` names this plugin's `buildSystemID` and a function returning
 `{ nodes: [...] }`. The source uses the existing provider transport; it adds no

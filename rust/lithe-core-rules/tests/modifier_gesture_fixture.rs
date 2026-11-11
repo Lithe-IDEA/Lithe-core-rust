@@ -3,7 +3,7 @@
 use lithe_core_rules::{execute_json, keymap::THRESHOLD_SECONDS};
 use serde_json::{json, Value};
 
-const FIXTURE: &str = include_str!("../../../shared/fixtures/keymap/modifier-gesture-v1.json");
+const FIXTURE: &str = include_str!("../../fixtures/keymap/modifier-gesture-v1.json");
 
 fn step(state: &Value, event: Value, timestamp: f64) -> Value {
     let request = json!({

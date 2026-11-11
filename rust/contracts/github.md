@@ -58,7 +58,7 @@ GitHub sign-in unavailable rather than asking the user for a personal token.
   `interval`, `elapsedMilliseconds`, and optional `suggestedInterval`. It
   returns `action`, `intervalSeconds`, and `waitMilliseconds`; it accepts no
   device code, access token, or other credential. Events and responses are
-  specified by `shared/fixtures/github/device-authorization-transition-v1.json`.
+  specified by `rust/fixtures/github/device-authorization-transition-v1.json`.
   Expiration is bounded to one day and intervals are bounded to that maximum
   lifetime. The maximum cannot cause early polling: by the time it elapses,
   the authorization has expired. This preserves the mandatory cumulative
@@ -67,7 +67,7 @@ GitHub sign-in unavailable rather than asking the user for a personal token.
   and [GitHub's device-flow documentation](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow).
 - `github.pullRequestCheckoutPlan` accepts a pull-request `number`, `headRef`,
   and a `branchExists` fact. It returns the proposed branch, an explicit
-  conflict, and ordered actions; see `shared/fixtures/github/pr-checkout-plan-v1.json`.
+  conflict, and ordered actions; see `rust/fixtures/github/pr-checkout-plan-v1.json`.
 - `git.pullRequestCheckoutPreview` inspects the repository and returns that
   plan with its current HEAD, symbolic branch, and a process-salted fingerprint
   of the effective origin URL; the URL and its possible credentials are not
@@ -110,7 +110,7 @@ any other legacy state becomes `status: "completed"` with that state as
 
 PR lists are sorted by descending number. Labels, assignees, comments, and
 files are deterministically ordered as demonstrated by
-`shared/fixtures/github/pull-request-v1.json`.
+`rust/fixtures/github/pull-request-v1.json`.
 Branch lists are sorted by branch name and duplicate names are removed before
 they cross the Rust boundary. The first page is capped at 100 branches, which
 matches the current creation workflow's bounded picker.

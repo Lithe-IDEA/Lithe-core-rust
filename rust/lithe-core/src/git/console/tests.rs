@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 #[test]
 fn presentation_matches_shared_console_cases_without_rewriting_retained_output() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../../shared/fixtures/git/console-presentation-v1.json"
+        "../../../../fixtures/git/console-presentation-v1.json"
     ))
     .unwrap();
     for case in fixture["cases"].as_array().unwrap() {

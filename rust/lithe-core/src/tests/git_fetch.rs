@@ -62,7 +62,7 @@ impl Drop for Repository {
 
 fn fixture() -> Value {
     serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/git/fetch-skip-boolean-v1.json"
+        "../../../fixtures/git/fetch-skip-boolean-v1.json"
     ))
     .unwrap()
 }

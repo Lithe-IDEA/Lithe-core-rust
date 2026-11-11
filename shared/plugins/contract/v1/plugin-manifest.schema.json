@@ -43,7 +43,7 @@
         "keymapImportProviders": { "enum": [0] },
         "pluginFunctions": { "description": "Required exactly when pluginFunctions is present: functions this plugin's backend exports to other plugins, and exported functions it calls. Needs backend.", "enum": [0] },
         "ui": { "description": "Required exactly when ui is present. Covers tool windows with text, web content, and native controls, and backend-only commands.", "enum": [0] },
-        "vcsProviders": { "description": "Required exactly when vcsProviders is non-empty. The provider protocol itself is negotiated in initialize (https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/shared/contracts/vcs-provider-v1.md).", "enum": [0] }
+        "vcsProviders": { "description": "Required exactly when vcsProviders is non-empty. The provider protocol itself is negotiated in initialize (https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/contracts/vcs-provider-v1.md).", "enum": [0] }
       }
     },
     "vendor": {
@@ -1588,7 +1588,7 @@
       "unevaluatedProperties": false
     },
     "vcsProvider": {
-      "description": "A VCS provider process (https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/shared/contracts/vcs-provider-v1.md). Detection uses the markers only and never starts the process; capabilities are negotiated, not declared.",
+      "description": "A VCS provider process (https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/contracts/vcs-provider-v1.md). Detection uses the markers only and never starts the process; capabilities are negotiated, not declared.",
       "type": "object",
       "$ref": "#/$defs/processLaunch",
       "unevaluatedProperties": false,

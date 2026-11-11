@@ -333,7 +333,7 @@ fn toolchain_pin_edits_prune_empty_containers_and_leave_absent_removals_inert() 
 #[test]
 fn toolchain_pin_edits_match_the_shared_boundary_fixture() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/toolchain-pin-edit.json"
+        "../../../fixtures/toolchain-pin-edit.json"
     ))
     .unwrap();
     let response = edit(fixture["request"].clone());

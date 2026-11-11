@@ -168,7 +168,7 @@ mod tests {
     #[test]
     fn matches_shared_fixture() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/lsp/workspace-edit-plan-v1.json"
+            "../../../fixtures/lsp/workspace-edit-plan-v1.json"
         ))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {

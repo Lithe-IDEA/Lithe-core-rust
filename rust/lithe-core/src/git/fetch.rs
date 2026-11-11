@@ -175,7 +175,7 @@ mod tests {
 
     fn fixture() -> Value {
         serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/git/fetch-plan-v1.json"
+            "../../../fixtures/git/fetch-plan-v1.json"
         ))
         .unwrap()
     }

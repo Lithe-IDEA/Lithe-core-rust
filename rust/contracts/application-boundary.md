@@ -3,7 +3,7 @@
 The application boundary describes product behavior that a SwiftUI/AppKit or
 React/Tauri Windows UI can consume. It does not describe widgets, threads, processes,
 or operating-system APIs. It defines the cross-platform contract; current
-product scope and setup are documented in [`README.md`](../../README.md); the
+product scope and setup are documented in [`README.md`](https://github.com/1lck/Lithe-IDEA/blob/preview/README.md); the
 verification scripts are the executable source of boundary checks.
 
 ## Data Rules
@@ -20,7 +20,7 @@ verification scripts are the executable source of boundary checks.
 
 ## Shared built-in translations
 
-[Shared i18n](../i18n/README.md) owns migrated semantic keys, typed named parameters,
+[Shared i18n](https://github.com/1lck/Lithe-IDEA/blob/preview/shared/i18n/README.md) owns migrated semantic keys, typed named parameters,
 locale registration, platform scopes and documented platform wording overrides.
 Build-time generation supplies native macOS string tables and the Windows catalog;
 no runtime JSON loading, package download or write to installed resources occurs.
@@ -306,7 +306,7 @@ and launch belong to platform adapters, and launch failures are shown to the use
 ## Module Lifecycle Contract
 
 The macOS reference product implements the built-in manifest in
-`shared/fixtures/modules/built-in-v1.json`. Module IDs and manifest fields are
+`rust/fixtures/modules/built-in-v1.json`. Module IDs and manifest fields are
 platform-neutral compatibility surfaces. A future Windows implementation may
 adopt the contract independently without sharing Swift implementation code or
 being coupled to the macOS migration schedule. An implementation of this
@@ -493,7 +493,7 @@ server advertises them during initialize or dynamic registration. The shared
 core owns JSON-RPC state, stdio, process lifecycle, and normalized results;
 platform adapters own executable and provider-resource discovery. Detailed
 invariants are documented in
-[`.agents/notes/implemented/architecture/2026-09-13-language-tooling-and-lsp-runtime-ownership.md`](../../.agents/notes/implemented/architecture/2026-09-13-language-tooling-and-lsp-runtime-ownership.md).
+[`.agents/notes/implemented/architecture/2026-09-13-language-tooling-and-lsp-runtime-ownership.md`](https://github.com/1lck/Lithe-IDEA/blob/preview/.agents/notes/implemented/architecture/2026-09-13-language-tooling-and-lsp-runtime-ownership.md).
 
 Session lifecycle is a single discriminated state, never a set of booleans.
 Capability negotiation is separately `unknown` or `known`; a known capability
@@ -624,7 +624,7 @@ image bytes. Native file access authorization and local-image metadata are
 platform-private, so a preference can be understood on another platform
 without leaking an unusable absolute path or macOS security-scoped bookmark.
 
-Search and Git examples are kept in `shared/fixtures/`. New behavior should
+Search and Git examples are kept in `rust/fixtures/`. New behavior should
 add a fixture before adding a second platform implementation.
 
 Git history clients load reference metadata independently from bounded commit
@@ -844,7 +844,7 @@ Both Monaco hosts use the bundled INI tokenizer for `.properties`. Tokenization
 is presentation only: no grammar or language server is required to open plain
 text. Register bundled contributions in `frontend/editor`, not in a separate
 platform-specific tokenizer. Text fixtures are shared under
-`shared/fixtures/editor/text-content-v1.json`.
+`rust/fixtures/editor/text-content-v1.json`.
 
 ### Updating a running Java service
 
@@ -876,7 +876,7 @@ JDT-owned workspace build paths and the existing platform-owned JDT state.
 - 有交互含义的调用在 `tool_call` / `tool_call_update` 的 `_meta.lithe.claudeDesktop` 附加卡片，字段 `card` 决定类型：`chapter {title, summary?}`、`nextStep {actions: [{label, message}] ≤4}`、`task {title, summary?, prompt?, state: proposed|withdrawn|started|handedOff}`、`pullRequest {action: bound|unbound|monitored|autoMerge, url, number?, autoFix?, enabled?}`、`directory {action: changed|requested, path}`、`widget {title, code ≤256 KiB 字符}`。文本字段截断到 16 KiB 字符；超限的 `widget.code` 置空。
 - `nextStep` 是 Host 另发的已完成调用，id 为原 `wrap_up` 调用 id 加 `#next`；任务撤回或启动的结果到达后，Host 以原卡片调用 id 补发整张卡片。后到的卡片整体替换先前的卡片；不带卡片的更新不清除卡片。
 - 客户端只在调用状态为 `completed` 时显示卡片；未知 `card` 类型、缺字段或非 http(s) 的 PR 链接退回普通工具行。卡片动作只填写输入框，不代替用户发送。可视化内容必须在禁止网络加载、非持久存储、禁止导航的隔离网页中渲染。
-- 共享样例 `shared/fixtures/agent/claude-desktop-cards-v1.json` 按调用顺序记录 Host 收到的更新（`updates`）和呈现给客户端的结果（`presented`），覆盖六种卡片、只换标题的行和原样透传；Host 测试逐例重放它，客户端按它解码卡片。
+- 共享样例 `rust/fixtures/agent/claude-desktop-cards-v1.json` 按调用顺序记录 Host 收到的更新（`updates`）和呈现给客户端的结果（`presented`），覆盖六种卡片、只换标题的行和原样透传；Host 测试逐例重放它，客户端按它解码卡片。
 
 
 Agent skill management groups files by Global/Project and retains their Agent

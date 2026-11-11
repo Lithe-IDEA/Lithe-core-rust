@@ -19,7 +19,7 @@
 //! the callee receives, never as the callee session's identity.
 //!
 //! The rules live in the plugin contract
-//! (`shared/contracts/plugins/v1/README.md`, "Plugin functions").
+//! (`shared/plugins/contract/v1/README.md`, "Plugin functions").
 
 use super::plugin_function::{codes, is_function_id, is_plugin_id};
 use crate::plugins::plugin_functions::KNOWN_CONTEXTS;

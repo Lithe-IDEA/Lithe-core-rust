@@ -9064,7 +9064,7 @@ mod tests {
     #[test]
     fn windows_git_paths_follow_shared_identity_policy() {
         let cases: Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/git/windows-paths.json"
+            "../../../fixtures/git/windows-paths.json"
         ))
         .unwrap();
         for case in cases["accepted"].as_array().unwrap() {
@@ -9289,7 +9289,7 @@ mod tests {
         // including the combinations that must fail before any subprocess.
         let fixture: TagWriteFixture = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/fixtures/git/tag-write-v1.json"
+            "/../fixtures/git/tag-write-v1.json"
         )))
         .expect("tag write fixture should be valid JSON");
         for case in &fixture.cases {
@@ -9464,7 +9464,7 @@ mod tests {
     fn command_response_matches_shared_fixture() {
         let fixture: Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/fixtures/git/command-response-v1.json"
+            "/../fixtures/git/command-response-v1.json"
         )))
         .expect("Git command response fixture should be valid JSON");
         let response = GitCommandResponse {
@@ -9547,7 +9547,7 @@ mod tests {
     fn history_response_matches_shared_fixture() {
         let fixture: Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/fixtures/git/history-response-v1.json"
+            "/../fixtures/git/history-response-v1.json"
         )))
         .expect("Git history response fixture should be valid JSON");
         let feature = GitReferenceResponse {
@@ -9600,7 +9600,7 @@ mod tests {
     fn references_response_matches_shared_fixture() {
         let fixture: Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/fixtures/git/references-response-v1.json"
+            "/../fixtures/git/references-response-v1.json"
         )))
         .expect("Git references response fixture should be valid JSON");
         let feature = GitReferenceResponse {
@@ -9640,7 +9640,7 @@ mod tests {
     fn history_page_response_matches_shared_fixture() {
         let fixture: Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/fixtures/git/history-page-response-v1.json"
+            "/../fixtures/git/history-page-response-v1.json"
         )))
         .expect("Git history page response fixture should be valid JSON");
         let response = GitHistoryPageResponse {
@@ -9671,7 +9671,7 @@ mod tests {
     fn commit_lookup_response_matches_shared_fixture() {
         let fixture: Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/fixtures/git/commit-lookup-response-v1.json"
+            "/../fixtures/git/commit-lookup-response-v1.json"
         )))
         .expect("Git commit lookup response fixture should be valid JSON");
         let response = GitCommitLookupResponse {
@@ -9720,7 +9720,7 @@ mod tests {
     fn push_preview_response_matches_shared_fixture() {
         let fixture: Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/fixtures/git/push-preview-v1.json"
+            "/../fixtures/git/push-preview-v1.json"
         )))
         .expect("Git push preview fixture should be valid JSON");
         let response = GitPushPreviewResponse {
@@ -9761,7 +9761,7 @@ mod tests {
     fn command_error_response_matches_shared_fixture() {
         let fixture: Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/fixtures/git/command-error-response-v1.json"
+            "/../fixtures/git/command-error-response-v1.json"
         )))
         .expect("Git command error response fixture should be valid JSON");
         let response = GitCommandResponse {
@@ -9810,7 +9810,7 @@ mod tests {
     fn structured_diff_matches_shared_fixture() {
         let fixture: Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/fixtures/git/diff.json"
+            "/../fixtures/git/diff.json"
         )))
         .expect("diff fixture should be valid JSON");
         let patch = fixture["patch"]

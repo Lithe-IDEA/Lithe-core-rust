@@ -4,7 +4,7 @@ use super::*;
 
 fn manifest() -> Value {
     serde_json::from_str(include_str!(
-        "../../../../shared/contracts/plugins/v1/fixtures/ui/web-panel.plugin.json"
+        "../../../../shared/plugins/contract/v1/fixtures/ui/web-panel.plugin.json"
     ))
     .expect("fixture")
 }

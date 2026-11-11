@@ -1,12 +1,12 @@
 //! Shared-fixture regressions for MCP library merging, draft validation and
-//! multi-file batch planning (`shared/fixtures/mcp/library-v1.json`).
+//! multi-file batch planning (`rust/fixtures/mcp/library-v1.json`).
 
 use super::{batch_plan, library_snapshot, parse_configuration, validate_draft};
 use serde_json::{json, Value};
 
 fn fixture() -> Value {
     serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/mcp/library-v1.json"
+        "../../../fixtures/mcp/library-v1.json"
     ))
     .expect("library fixture is JSON")
 }

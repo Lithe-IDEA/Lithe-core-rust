@@ -263,7 +263,7 @@ fn path_glob_matches(pattern: &str, value: &str) -> bool {
 /// Such an entry names a folder from the project root (or at any depth when it
 /// starts with `**/`), so the folder and everything below it is hidden instead
 /// of leaving an empty folder behind. Other entries keep their file-only
-/// meaning, as pinned by `shared/fixtures/search/exclusions.json`.
+/// meaning, as pinned by `rust/fixtures/search/exclusions.json`.
 fn folder_glob(pattern: &str) -> Option<&str> {
     let glob = pattern
         .strip_suffix("/**")

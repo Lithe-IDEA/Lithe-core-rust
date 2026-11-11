@@ -9,23 +9,23 @@ use std::path::PathBuf;
 
 const FIXTURE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../shared/contracts/plugins/v1/fixtures/project-generators/project-generator.plugin.json"
+    "/../../shared/plugins/contract/v1/fixtures/project-generators/project-generator.plugin.json"
 ));
 const PLANS: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../shared/contracts/plugins/v1/fixtures/project-generators/project-plans.json"
+    "/../../shared/plugins/contract/v1/fixtures/project-generators/project-plans.json"
 ));
 const TOOL_FIELD_FIXTURE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../shared/contracts/plugins/v1/fixtures/project-generators/project-generator-tool-field.plugin.json"
+    "/../../shared/plugins/contract/v1/fixtures/project-generators/project-generator-tool-field.plugin.json"
 ));
 const TOOL_DEFINITION_FIXTURE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../shared/contracts/plugins/v1/fixtures/toolchains/tool-definition.plugin.json"
+    "/../../shared/plugins/contract/v1/fixtures/toolchains/tool-definition.plugin.json"
 ));
 const BUILD_FIXTURE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../shared/contracts/plugins/v1/fixtures/build-systems/build-static-file.plugin.json"
+    "/../../shared/plugins/contract/v1/fixtures/build-systems/build-static-file.plugin.json"
 ));
 
 fn json(source: &str) -> Value {
@@ -39,7 +39,7 @@ fn repository_path(relative: &str) -> PathBuf {
 }
 
 fn fixtures_path() -> PathBuf {
-    repository_path("shared/contracts/plugins/v1/fixtures/project-generators")
+    repository_path("shared/plugins/contract/v1/fixtures/project-generators")
 }
 
 /// A plugin that only contributes the `java` language, so a generator's

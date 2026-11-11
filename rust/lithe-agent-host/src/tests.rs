@@ -8,7 +8,7 @@ const WAIT: Duration = Duration::from_secs(5);
 
 fn fixture() -> Value {
     serde_json::from_str(include_str!(
-        "../../../shared/fixtures/agent/acp-events-v1.json"
+        "../../fixtures/agent/acp-events-v1.json"
     ))
     .expect("ACP event fixture")
 }
@@ -967,7 +967,7 @@ fn serialized_events_match_the_shared_fixture() {
 #[test]
 fn management_status_matches_the_shared_fixture() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../shared/fixtures/agent/agent-management-v1.json"
+        "../../fixtures/agent/agent-management-v1.json"
     ))
     .expect("agent management fixture");
     let data = std::env::temp_dir().join(format!("lithe-status-{}", std::process::id()));
@@ -2454,7 +2454,7 @@ async fn session_configuration_round_trips_upstream_options() {
 #[tokio::test(flavor = "current_thread")]
 async fn next_turn_configuration_applies_choices_and_reports_one_result() {
     let next: Value = serde_json::from_str(include_str!(
-        "../../../shared/fixtures/agent/next-turn-configuration-v1.json"
+        "../../fixtures/agent/next-turn-configuration-v1.json"
     ))
     .unwrap();
     let mut harness = Harness::ready().await;

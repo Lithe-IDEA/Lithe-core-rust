@@ -23,14 +23,14 @@ fn run_fixture(command: &str, fixture: &str) {
 fn problems_query_matches_shared_fixture() {
     run_fixture(
         "lsp.problems.query",
-        include_str!("../../../../../shared/fixtures/lsp/problems-query-v1.json"),
+        include_str!("../../../../fixtures/lsp/problems-query-v1.json"),
     );
 }
 
 #[test]
 fn activation_policy_matches_shared_fixture() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../../shared/fixtures/lsp/activation-policy-v1.json"
+        "../../../../fixtures/lsp/activation-policy-v1.json"
     ))
     .unwrap();
     // The fixture documents the budget; keep it pinned to the constants.
@@ -44,7 +44,7 @@ fn activation_policy_matches_shared_fixture() {
     );
     run_fixture(
         "lsp.activationPolicy",
-        include_str!("../../../../../shared/fixtures/lsp/activation-policy-v1.json"),
+        include_str!("../../../../fixtures/lsp/activation-policy-v1.json"),
     );
 }
 
@@ -52,7 +52,7 @@ fn activation_policy_matches_shared_fixture() {
 fn completion_merge_matches_shared_fixture() {
     run_fixture(
         "lsp.mergeCompletions",
-        include_str!("../../../../../shared/fixtures/lsp/completion-merge-v1.json"),
+        include_str!("../../../../fixtures/lsp/completion-merge-v1.json"),
     );
 }
 

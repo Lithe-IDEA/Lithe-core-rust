@@ -304,7 +304,7 @@ mod tests {
 
     #[test]
     fn registry_page_keeps_versions_cursor_and_only_complete_drafts() {
-        let content = include_str!("../../../../shared/contracts/mcp-registry-page.json");
+        let content = include_str!("../../../contracts/mcp-registry-page.json");
         let page = parse_registry(json!({"content": content})).unwrap();
         assert_eq!(page["entries"].as_array().unwrap().len(), 3);
         assert_eq!(page["nextCursor"], "opaque/+ cursor?");

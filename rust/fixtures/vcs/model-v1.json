@@ -1,7 +1,7 @@
 {
   "version": 1,
   "status": "draft",
-  "contract": "shared/contracts/vcs-provider-v1.md",
+  "contract": "rust/contracts/vcs-provider-v1.md",
   "providers": [
     {
       "vcs": "git",

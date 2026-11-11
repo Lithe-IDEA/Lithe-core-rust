@@ -45,7 +45,7 @@ mod tests {
     #[test]
     fn argument_text_command_formats_a_batch_from_the_shared_fixture() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/run-configuration/argument-text.json"
+            "../../../fixtures/run-configuration/argument-text.json"
         ))
         .unwrap();
         let cases = fixture["cases"].as_array().unwrap();
@@ -64,7 +64,7 @@ mod tests {
     #[test]
     fn argument_text_matches_the_shared_roundtrip_examples() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/run-configuration/argument-text.json"
+            "../../../fixtures/run-configuration/argument-text.json"
         ))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {

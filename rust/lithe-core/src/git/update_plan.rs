@@ -324,7 +324,7 @@ mod tests {
     #[test]
     fn shared_fixture_steps_are_the_only_update_rules() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/git/update-plan-v1.json"
+            "../../../fixtures/git/update-plan-v1.json"
         ))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {

@@ -1,6 +1,6 @@
 //! VCS providers declared by plugins: manifest validation,
 //! install review, launch plans, root detection over real directories, and
-//! reply decoding, checked against `shared/fixtures/vcs/model-v1.json` and
+//! reply decoding, checked against `rust/fixtures/vcs/model-v1.json` and
 //! the Subversion provider manifest fixture.
 
 use super::support::temporary_root;
@@ -17,11 +17,11 @@ use std::path::{Path, PathBuf};
 
 const MODEL: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../shared/fixtures/vcs/model-v1.json"
+    "/../fixtures/vcs/model-v1.json"
 ));
 const SVN_PROVIDER: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../shared/contracts/plugins/v1/fixtures/vcs/vcs-provider.plugin.json"
+    "/../../shared/plugins/contract/v1/fixtures/vcs/vcs-provider.plugin.json"
 ));
 
 fn model() -> Value {

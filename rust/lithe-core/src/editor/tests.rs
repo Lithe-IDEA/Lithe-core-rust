@@ -9,7 +9,7 @@ use super::line_edit::{line_comment_token, line_edit, LineCommentTokenRequest, L
 #[test]
 fn navigation_input_matches_shared_fixture() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/editor/navigation-input-v1.json"
+        "../../../fixtures/editor/navigation-input-v1.json"
     ))
     .unwrap();
     for case in fixture["cases"].as_array().unwrap() {
@@ -32,7 +32,7 @@ fn navigation_input_matches_shared_fixture() {
 #[test]
 fn text_edit_plan_matches_shared_fixture() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/editor/text-edit-plan-v1.json"
+        "../../../fixtures/editor/text-edit-plan-v1.json"
     ))
     .unwrap();
     for case in fixture["cases"].as_array().unwrap() {
@@ -90,7 +90,7 @@ fn navigation_history(payload: Value) -> Value {
 #[test]
 fn navigation_history_matches_shared_fixture() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/editor/navigation-history-v1.json"
+        "../../../fixtures/editor/navigation-history-v1.json"
     ))
     .unwrap();
     assert_eq!(
@@ -782,7 +782,7 @@ fn every_operation_maps_selections_inside_the_edited_document() {
 fn shared_fixture_cases_match_core_outcomes() {
     let fixture: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../shared/fixtures/editor/line-edit-v1.json"
+        "/../fixtures/editor/line-edit-v1.json"
     )))
     .expect("line edit fixture should be valid JSON");
     for case_value in fixture["cases"].as_array().expect("cases") {

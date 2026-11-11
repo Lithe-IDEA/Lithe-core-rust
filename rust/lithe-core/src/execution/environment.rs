@@ -105,7 +105,7 @@ mod tests {
     #[test]
     fn search_path_command_follows_the_shared_order_and_identity_fixture() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/execution/search-path-v1.json"
+            "../../../fixtures/execution/search-path-v1.json"
         ))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {
@@ -120,7 +120,7 @@ mod tests {
     #[test]
     fn environment_command_follows_the_shared_precedence_fixture() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/execution/launch-environment-v1.json"
+            "../../../fixtures/execution/launch-environment-v1.json"
         ))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {

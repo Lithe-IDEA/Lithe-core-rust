@@ -117,7 +117,7 @@ mod tests {
     #[test]
     fn shared_fixture_samples_classify_as_documented() {
         let fixture: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/git/authentication-failure-v1.json"
+            "../../../fixtures/git/authentication-failure-v1.json"
         ))
         .unwrap();
         for (key, expected) in [("failures", true), ("unrelated", false)] {

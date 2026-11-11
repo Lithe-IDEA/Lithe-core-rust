@@ -5,15 +5,15 @@
 > `vcsProviders` 0 and starts providers for the roots it detects. Windows does
 > not advertise the capability.
 > The decision record is
-> [Unified VCS model and providers](../../.agents/notes/proposed/architecture/2026-10-22-unified-vcs-provider-model.md);
-> example data is in [`shared/fixtures/vcs/model-v1.json`](../fixtures/vcs/model-v1.json)
-> and [`plugins/v1/fixtures/vcs/vcs-provider.plugin.json`](plugins/v1/fixtures/vcs/vcs-provider.plugin.json).
+> [Unified VCS model and providers](https://github.com/1lck/Lithe-IDEA/blob/preview/.agents/notes/proposed/architecture/2026-10-22-unified-vcs-provider-model.md);
+> example data is in [`rust/fixtures/vcs/model-v1.json`](../fixtures/vcs/model-v1.json)
+> and [`plugins/v1/fixtures/vcs/vcs-provider.plugin.json`](../../shared/plugins/contract/v1/fixtures/vcs/vcs-provider.plugin.json).
 
 This contract defines one VCS-neutral model for the features every version
 control system has: roots, file status, base content, history, annotation,
 check-in, rollback, and update. A **provider** implements it for one VCS as a
 plugin process speaking the LSP base protocol, the same process kind as
-[build providers](plugins/v1/README.md#build-providers). Subversion is the
+[build providers](../../shared/plugins/contract/v1/README.md#build-providers). Subversion is the
 first provider.
 
 Git is not part of this layer yet. Core recognizes `.git` markers so a nested

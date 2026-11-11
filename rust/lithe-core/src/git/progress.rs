@@ -49,7 +49,7 @@ mod tests {
     #[test]
     fn progress_matches_shared_phases_without_treating_errors_as_percentages() {
         let fixture: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/git/execution-policy-v1.json"
+            "../../../fixtures/git/execution-policy-v1.json"
         ))
         .unwrap();
         for case in fixture["progress"].as_array().unwrap() {

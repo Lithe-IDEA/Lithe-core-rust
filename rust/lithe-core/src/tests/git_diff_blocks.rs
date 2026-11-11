@@ -10,7 +10,7 @@ use std::process::Command;
 
 fn fixture() -> Value {
     serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/git/diff-blocks-v1.json"
+        "../../../fixtures/git/diff-blocks-v1.json"
     ))
     .expect("diff block fixture should be JSON")
 }

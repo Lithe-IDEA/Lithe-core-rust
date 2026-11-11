@@ -115,7 +115,7 @@ mod tests {
     #[test]
     fn shared_fixture_cases_keep_only_operation_targets() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/git/change-targets-v1.json"
+            "../../../fixtures/git/change-targets-v1.json"
         ))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {

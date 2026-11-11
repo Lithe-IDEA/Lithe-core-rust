@@ -8,14 +8,14 @@ use serde_json::{json, Value};
 
 fn pull_request_fixture() -> Value {
     serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/ai/pull-request-description-v1.json"
+        "../../../fixtures/ai/pull-request-description-v1.json"
     ))
     .unwrap()
 }
 
 fn inline_edit_fixture() -> Value {
     serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/ai/inline-edit-v1.json"
+        "../../../fixtures/ai/inline-edit-v1.json"
     ))
     .unwrap()
 }

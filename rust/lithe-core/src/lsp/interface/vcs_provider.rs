@@ -7,7 +7,7 @@
 //! Only plugin-owned sessions are offered the protocol, and requests are
 //! written only to a session whose answer named a version this client
 //! offered, a valid VCS ID, and every required capability. The rules live in
-//! `shared/contracts/vcs-provider-v1.md`.
+//! `rust/contracts/vcs-provider-v1.md`.
 
 use crate::plugins::capabilities::{versions as capability_versions, VCS_PROVIDERS};
 use crate::vcs::{negotiated_capabilities, Capabilities};

@@ -2367,7 +2367,7 @@ mod semantic_tests {
     #[test]
     fn semantic_tokens_decode_relative_utf16_positions_and_reject_malformed_data() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../../shared/fixtures/lsp/semantic-tokens-v1.json"
+            "../../../../fixtures/lsp/semantic-tokens-v1.json"
         ))
         .unwrap();
         let options = fixture["serverOptions"].clone();
@@ -2545,7 +2545,7 @@ mod formatting_and_completion_tests {
     #[test]
     fn document_symbol_golden_fixture_matches_normalization() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../../shared/fixtures/lsp/document-symbols-v1.json"
+            "../../../../fixtures/lsp/document-symbols-v1.json"
         ))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {

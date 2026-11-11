@@ -288,7 +288,7 @@ mod tests {
 
     fn fixture() -> Value {
         serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/debug/variable-page-plan-v1.json"
+            "../../../fixtures/debug/variable-page-plan-v1.json"
         ))
         .unwrap()
     }

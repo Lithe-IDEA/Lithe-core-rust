@@ -11,7 +11,7 @@ fn execute(payload: Value) -> Value {
 
 fn fixture() -> Value {
     serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/history/event-plan-v1.json"
+        "../../../fixtures/history/event-plan-v1.json"
     ))
     .expect("history event fixture should be JSON")
 }

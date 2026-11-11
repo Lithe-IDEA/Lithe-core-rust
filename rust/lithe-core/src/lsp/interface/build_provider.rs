@@ -12,7 +12,7 @@
 //! selectors and inline test reports, run and debug preparation, typed run
 //! options and runtime debug connections, host-resolved model inputs, and
 //! source-backed native configuration. The rules live in the plugin contract
-//! (`shared/contracts/plugins/v1/README.md`, "Build providers").
+//! (`shared/plugins/contract/v1/README.md`, "Build providers").
 
 use crate::plugins::capabilities::{versions as capability_versions, BUILD_PROVIDERS};
 use serde_json::{json, Value};
@@ -221,7 +221,7 @@ mod tests {
     #[test]
     fn execution_replies_and_progress_match_the_shared_contract() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../../shared/contracts/plugins/v1/fixtures/build-providers/build-execution-protocol.json"
+            "../../../../../shared/plugins/contract/v1/fixtures/build-providers/build-execution-protocol.json"
         ))
         .unwrap();
         assert_eq!(

@@ -1432,7 +1432,7 @@ mod tests {
                 .collect()
         };
         let request: Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/git/history-page-date-request-v1.json"
+            "../../../fixtures/git/history-page-date-request-v1.json"
         ))
         .expect("portable date-order request");
         let first = page(request.clone());
@@ -1478,7 +1478,7 @@ mod tests {
         use std::collections::BTreeSet;
 
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/git/history-locate-v1.json"
+            "../../../fixtures/git/history-locate-v1.json"
         ))
         .expect("history locate fixture should be valid JSON");
 

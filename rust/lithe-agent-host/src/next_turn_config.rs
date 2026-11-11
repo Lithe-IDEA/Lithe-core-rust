@@ -8,7 +8,7 @@
 //! revalidated against the latest catalog the Agent returned, and each request
 //! must be confirmed by the Agent's reported value. The first problem stops the
 //! sequence with one stable failure code.
-//! Contract: `shared/fixtures/agent/next-turn-configuration-v1.json`.
+//! Contract: `rust/fixtures/agent/next-turn-configuration-v1.json`.
 
 use agent_client_protocol::schema::v1::{
     SessionConfigKind, SessionConfigOption, SessionConfigOptionCategory, SessionConfigSelectOptions,
@@ -186,7 +186,7 @@ mod tests {
     #[test]
     fn fixture_cases_apply_in_the_shared_order() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../shared/fixtures/agent/next-turn-configuration-v1.json"
+            "../../fixtures/agent/next-turn-configuration-v1.json"
         ))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {

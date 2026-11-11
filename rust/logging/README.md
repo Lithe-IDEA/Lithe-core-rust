@@ -1,6 +1,6 @@
 # 结构化日志 v2 事件目录
 
-`shared/logging/events/<root>.json` 是事件声明的唯一来源。macOS 使用生成的类型化事件，经 `MacLogStore` 写入 v2 会话文件；Windows 仍使用 v1。日志消息是供诊断使用的英文事实，**不走 i18n**；界面上的错误、提示和操作名称仍然走共享 i18n。
+`rust/logging/events/<root>.json` 是事件声明的唯一来源。macOS 使用生成的类型化事件，经 `MacLogStore` 写入 v2 会话文件；Windows 仍使用 v1。日志消息是供诊断使用的英文事实，**不走 i18n**；界面上的错误、提示和操作名称仍然走共享 i18n。
 
 本文规定声明语法、通道、字段编码与隐私边界、级别与 span、执行轨迹事件、Core 事件队列、引擎宿主接入、辅助 crate、生成器和用法门禁。什么必须记录、怎样设计一条日志和审查清单见 `.agents/skills/develop-lithe/references/logging.md`；决策原因见 `.agents/notes/implemented/architecture/2026-11-03-structured-logging-channels.md`。
 
@@ -9,7 +9,7 @@
 - 固定根为 `app`、`editor`、`perf`、`lsp`、`vcs`、`run`、`debug`、`terminal`、`remote`、`agent`、`update`、`plugins`。每个根恰有一个 JSON 文件，形状为 `{ version, root, events }`；没有实际调用的根保持空 `events`，不预造事件。
 - 事件 ID 是小写点分的稳定标识，如 `editor.document.save_failed`，结果词用过去时。`owner` 标明拥有这次操作结果的模块；由 Core 记录的事件 owner 必须是 `lithe-core`。
 - `message` 是英文单行模板，只能引用本事件声明的必填字段，例如 `Git {command} failed`；可选字段不参与模板。
-- 生成器拒绝未知属性、跨文件重名、生成类型名冲突、保留键和编码后的字段名冲突。`shared/logging/event-catalog.schema.json` 描述静态形状；生成器另外执行通道、引用、span 和磁盘键展开等跨字段语义校验。
+- 生成器拒绝未知属性、跨文件重名、生成类型名冲突、保留键和编码后的字段名冲突。`rust/logging/event-catalog.schema.json` 描述静态形状；生成器另外执行通道、引用、span 和磁盘键展开等跨字段语义校验。
 
 ## 二、通道
 
@@ -88,7 +88,7 @@ Swift 的事件值是**未经脱敏的内存输入**，不能自行序列化落�
 - 启动者显式声明 role、真实 `pluginId` 和 VCS `logSubject`；宿主不解析 providerID。
 - stderr 读取器限制每行 4 KiB、每秒 200 行，之后再走 `text` 的 1 KiB 脱敏规范化。与 v1 相比唯一的兼容变化是从任意 trim 的读取块改为逐行文本：保留行内空格，移除 LF 和末尾 CR，并应用已声明的长度上限和限流。
 - 上游明确给出的严重度通过独立的目录事件保留：`window/logMessage` 和 `window/showMessage` 的 type 1/2/3/4 分别为 ERROR/WARN/INFO/DEBUG，未知类型为 DEBUG。未分类的 stderr 是 DEBUG 排障证据，流名称不表示警告；实际的进程或协议失败由 `*.session.failed` 记录 ERROR，正常关闭仍是生命周期状态。
-- 插件自身使用独立协商的 `litheLogging` 0 和 `lithe/log`，由 Core 把四种受控事实映射到插件目录事件，不能再用 stderr 或任意自由消息代替。协议字段、op、限额和 fixture 以 [插件契约](../contracts/plugins/v1/README.md#structured-plugin-diagnostics) 为准。
+- 插件自身使用独立协商的 `litheLogging` 0 和 `lithe/log`，由 Core 把四种受控事实映射到插件目录事件，不能再用 stderr 或任意自由消息代替。协议字段、op、限额和 fixture 以 [插件契约](../../shared/plugins/contract/v1/README.md#structured-plugin-diagnostics) 为准。
 - 声明式贡献没有插件进程，不能发 `lithe/log`。实际执行它的一方通过 `diagnostics.recordPluginOperation` 代记每次尝试的一条终态，事件和通道与 SDK 插件相同：`plugins.operation.finished` 或 `plugins.operation.failed`，写入 `plugins/{plugin}/host`。平台层只上报观察到的阶段和耗时，级别和 `host.*` 失败类别只由 Core 按阶段决定；取消、停止和过期结果不记录。宿主当前代记下表四种贡献，唯一来源是 `rust/lithe-core/src/diagnostics/plugin_operations.rs` 的 `CONTRIBUTIONS`；输入、阶段到类别的对应和 -32064 见 [Rust Core API](../contracts/rust-core-api.md#engine-logging-v2-handoff-pr3)。
 
   | operation | 声明来源 | 记录方 | 可能的失败阶段 |

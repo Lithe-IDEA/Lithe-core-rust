@@ -1,7 +1,7 @@
 //! Contract tests for plugin-owned language server sessions (API-25).
 //!
 //! The manifest fixture and the launch-resolution golden live in
-//! `shared/contracts/plugins/v1/fixtures/` so the plugin documentation
+//! `shared/plugins/contract/v1/fixtures/` so the plugin documentation
 //! repository and other hosts run the same cases.
 
 use crate::plugins::declarative::{
@@ -14,7 +14,7 @@ macro_rules! contract_file {
     ($path:literal) => {
         include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/contracts/plugins/v1/",
+            "/../../shared/plugins/contract/v1/",
             $path
         ))
     };

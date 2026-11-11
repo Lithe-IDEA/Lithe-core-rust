@@ -6508,7 +6508,7 @@ mod tests {
     #[test]
     fn engine_logging_wire_fixture_preserves_defaults_and_routes_new_commands() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../../shared/fixtures/diagnostics/engine-logging-v2.json"
+            "../../../../fixtures/diagnostics/engine-logging-v2.json"
         ))
         .unwrap();
         let request: StartServerRequest = serde_json::from_value(fixture["start"].clone()).unwrap();
@@ -8223,7 +8223,7 @@ mod tests {
     fn document_saves_honor_server_options_and_never_replace_newer_editor_text() {
         let fixture: Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/fixtures/lsp/document-save-v1.json"
+            "/../fixtures/lsp/document-save-v1.json"
         )))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {
@@ -8572,7 +8572,7 @@ mod tests {
     #[test]
     fn provider_run_options_reach_the_wire_for_run_preparation_only() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../../shared/contracts/plugins/v1/fixtures/build-providers/build-run-options.json"
+            "../../../../../shared/plugins/contract/v1/fixtures/build-providers/build-run-options.json"
         ))
         .unwrap();
         let params = json!({"launchOptions":fixture["launchOptions"]});
@@ -8605,7 +8605,7 @@ mod tests {
     #[test]
     fn provider_connection_debug_options_reach_the_wire() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../../shared/contracts/plugins/v1/fixtures/build-providers/build-connection-debug-options.json"
+            "../../../../../shared/plugins/contract/v1/fixtures/build-providers/build-connection-debug-options.json"
         ))
         .unwrap();
         let params = json!({"launchOptions":fixture["launchOptions"]});
@@ -8634,7 +8634,7 @@ mod tests {
             .await_request("lithe/build/prepareRun")
             .unwrap();
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../../shared/contracts/plugins/v1/fixtures/build-providers/build-run-preparation.json"
+            "../../../../../shared/plugins/contract/v1/fixtures/build-providers/build-run-preparation.json"
         ))
         .unwrap();
         harness

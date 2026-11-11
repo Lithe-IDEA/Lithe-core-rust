@@ -285,7 +285,7 @@ mod tests {
     #[test]
     fn native_inventory_can_only_narrow_known_tools_and_their_argument_fields() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../shared/fixtures/ide-api/host-tool-exposure.json"
+            "../../fixtures/ide-api/host-tool-exposure.json"
         ))
         .unwrap();
         let permissions = Permissions {
@@ -375,7 +375,7 @@ mod tests {
     #[test]
     fn shared_fixture_protects_the_plugin_and_mcp_contract() {
         let fixture: Value =
-            serde_json::from_str(include_str!("../../../shared/fixtures/ide-api/calls.json"))
+            serde_json::from_str(include_str!("../../fixtures/ide-api/calls.json"))
                 .unwrap();
         let permissions = Permissions {
             configure: true,

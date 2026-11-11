@@ -59,7 +59,7 @@ impl PatchRepository {
 
     fn export_shelf_working_layer(&self) -> Value {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/git/patch-exchange-v1.json"
+            "../../../fixtures/git/patch-exchange-v1.json"
         ))
         .unwrap();
         self.data(
@@ -102,7 +102,7 @@ fn patch_exchange_reverse_roundtrip_preserves_both_versions_and_untracked_bytes(
         .to_string();
     let mut checked_direction = false;
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/git/patch-exchange-v1.json"
+        "../../../fixtures/git/patch-exchange-v1.json"
     ))
     .unwrap();
     let mut apply = |patch: &str, target: &str, reverse: bool| {
@@ -278,7 +278,7 @@ fn saved_stash_diff_returns_file_sections_and_core_documents() {
     repository.write("text.txt", b"newer stash\n");
     repository.git(&["stash", "push", "-m", "newer"]);
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/git/saved-stash-v1.json"
+        "../../../fixtures/git/saved-stash-v1.json"
     ))
     .unwrap();
     let mut request = fixture["sectionRequest"].clone();
@@ -355,7 +355,7 @@ fn structured_patch_and_git_diff_preserve_file_identity_and_writable_hunks() {
         .unwrap()
         .to_owned();
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/git/parsed-diff-v1.json"
+        "../../../fixtures/git/parsed-diff-v1.json"
     ))
     .unwrap();
     let mut request = fixture["parseRequest"].clone();
@@ -964,7 +964,7 @@ fn shelf_clean_and_retry_restore_preserve_staged_working_and_untracked() {
         "capture must not refresh the real index"
     );
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/git/shelf-v1.json"
+        "../../../fixtures/git/shelf-v1.json"
     ))
     .unwrap();
     assert_eq!(
@@ -1094,7 +1094,7 @@ fn commit_message_context_rejects_new_index_content_at_the_same_path() {
     let selection =
         json!([{ "root": repository.0, "files": [{"path":"text.txt", "changeKind":"modified"}] }]);
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/git/commit-message-context-v1.json"
+        "../../../fixtures/git/commit-message-context-v1.json"
     ))
     .unwrap();
     let mut request = fixture["captureRequest"].clone();

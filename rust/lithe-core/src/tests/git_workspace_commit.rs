@@ -330,7 +330,7 @@ fn git_workspace_commit_unstage_preserves_edits_after_initial_staging() {
 #[test]
 fn git_workspace_commit_state_matches_the_shared_fixture() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/git/workspace-commit-v1.json"
+        "../../../fixtures/git/workspace-commit-v1.json"
     ))
     .unwrap();
     let state: crate::git::GitCommitState =

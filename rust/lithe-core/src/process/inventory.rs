@@ -12,7 +12,7 @@
 //!
 //! The rules are described in
 //! `.agents/notes/proposed/architecture/2026-10-16-unified-child-process-lifecycle.md`;
-//! fixtures live in `shared/fixtures/process-lifecycle/`.
+//! fixtures live in `rust/fixtures/process-lifecycle/`.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -582,7 +582,7 @@ mod tests {
     #[test]
     fn shared_fixture_inventories_match() {
         let fixture: Fixture = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/process-lifecycle/inventory-v1.json"
+            "../../../fixtures/process-lifecycle/inventory-v1.json"
         ))
         .expect("fixture should parse");
         assert_eq!(fixture.schema_version, 1);

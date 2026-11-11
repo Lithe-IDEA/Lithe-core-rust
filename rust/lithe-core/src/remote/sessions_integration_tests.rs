@@ -104,7 +104,7 @@ fn remote_build_detects_host_models_normalizes_diagnostics_and_invalidates_sync(
     .unwrap();
     let manifest: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../shared/contracts/plugins/v1/fixtures/build-systems/build-static-file.plugin.json"
+        "/../../shared/plugins/contract/v1/fixtures/build-systems/build-static-file.plugin.json"
     )))
     .unwrap();
     let detection = host.request(
@@ -179,7 +179,7 @@ fn remote_build_detects_a_root_opened_through_a_host_symbolic_link() {
     std::os::unix::fs::symlink(&root, &link).unwrap();
     let manifest: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../shared/contracts/plugins/v1/fixtures/build-systems/build-static-file.plugin.json"
+        "/../../shared/plugins/contract/v1/fixtures/build-systems/build-static-file.plugin.json"
     )))
     .unwrap();
     let detection = host.request_at(

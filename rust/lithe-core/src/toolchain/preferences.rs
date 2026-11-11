@@ -346,7 +346,7 @@ mod tests {
     #[test]
     fn shared_preferences_fixture_resolves_without_native_or_domain_facts() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/toolchains/consumer-preferences.json"
+            "../../../fixtures/toolchains/consumer-preferences.json"
         ))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {

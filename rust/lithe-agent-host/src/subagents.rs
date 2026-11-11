@@ -28,7 +28,7 @@ mod tests {
     #[test]
     fn native_and_standard_notifications_round_trip_the_shared_fixture() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../shared/fixtures/agent/acp-events-v1.json"
+            "../../fixtures/agent/acp-events-v1.json"
         ))
         .unwrap();
         for name in [

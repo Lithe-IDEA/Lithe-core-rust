@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 #[test]
 fn global_instruction_contract_dispatches_and_rejects_unknown_agents_without_file_access() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/agent/agent-instructions-v1.json"
+        "../../../fixtures/agent/agent-instructions-v1.json"
     ))
     .unwrap();
     for key in ["readRequest", "saveRequest"] {
@@ -52,7 +52,7 @@ fn run(command: &str, payload: Value) -> Value {
 #[test]
 fn hook_contract_dispatch_is_strict_before_accessing_native_files() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/agent/hooks-management-v1.json"
+        "../../../fixtures/agent/hooks-management-v1.json"
     ))
     .unwrap();
     assert!(crate::protocol::CoreCommand::parse(fixture["command"].as_str().unwrap()).is_some());
@@ -70,7 +70,7 @@ fn hook_contract_dispatch_is_strict_before_accessing_native_files() {
 
 fn fixture() -> Value {
     serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/agent/agent-management-v1.json"
+        "../../../fixtures/agent/agent-management-v1.json"
     ))
     .expect("agent management fixture")
 }
@@ -232,7 +232,7 @@ fn cli_update_outcome_fixture_preserves_verified_version_and_warning() {
 #[test]
 fn edit_reverse_plan_dispatches_shared_fixture_and_rejects_malformed_payloads() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/agent/edit-review-v1.json"
+        "../../../fixtures/agent/edit-review-v1.json"
     ))
     .unwrap();
     assert!(crate::protocol::CoreCommand::parse("agent.edits.reversePlan").is_some());
@@ -258,7 +258,7 @@ fn edit_reverse_plan_dispatches_shared_fixture_and_rejects_malformed_payloads() 
 #[test]
 fn hook_draft_validation_dispatch_returns_the_shared_field_codes() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/agent/hook-draft-validation-v1.json"
+        "../../../fixtures/agent/hook-draft-validation-v1.json"
     ))
     .unwrap();
     let command = fixture["command"].as_str().unwrap();
@@ -274,7 +274,7 @@ fn hook_draft_validation_dispatch_returns_the_shared_field_codes() {
 #[test]
 fn attachment_retention_dispatch_follows_the_shared_fixture() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/agent/attachment-retention-v1.json"
+        "../../../fixtures/agent/attachment-retention-v1.json"
     ))
     .unwrap();
     let command = fixture["command"].as_str().unwrap();

@@ -5,7 +5,7 @@
 //! (the `toolchainProviders` capability version) and a subset of the offer. `toolchains/query` is written only to a session whose
 //! answer passed [`negotiate`]. Replies stay untrusted here: Core transports them
 //! unchanged, and `toolchains.decodeReply` validates them against native facts.
-//! The rules live in `shared/contracts/plugins/v1/toolchains/README.md`.
+//! The rules live in `shared/plugins/contract/v1/toolchains/README.md`.
 
 use crate::plugins::capabilities::{versions as capability_versions, TOOLCHAIN_PROVIDERS};
 use serde_json::{json, Value};

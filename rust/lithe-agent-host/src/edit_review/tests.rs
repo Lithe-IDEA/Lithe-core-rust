@@ -2,7 +2,7 @@ use super::*;
 
 fn fixture() -> Value {
     serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/agent/edit-review-v1.json"
+        "../../../fixtures/agent/edit-review-v1.json"
     ))
     .expect("edit review fixture is JSON")
 }
@@ -117,7 +117,7 @@ fn presented_acp_fixture_edits_carry_host_evidence() {
     // The platform event fixture shows presented updates; removing the Host
     // annotation and presenting again must reproduce them exactly.
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/agent/acp-events-v1.json"
+        "../../../fixtures/agent/acp-events-v1.json"
     ))
     .expect("ACP event fixture is JSON");
     for name in ["fileEdit", "claudeFileCreated", "claudeFileWriteUpdated"] {

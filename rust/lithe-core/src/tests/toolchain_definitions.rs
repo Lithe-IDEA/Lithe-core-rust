@@ -277,7 +277,7 @@ fn a_definition_plugin_may_provide_installations_of_its_own_tool() {
 fn build_toolchain_consumers_reference_definitions_without_owning_them() {
     let mut plugin: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../shared/contracts/plugins/v1/fixtures/build-systems/build-toolchains.plugin.json"
+        "/../../shared/plugins/contract/v1/fixtures/build-systems/build-toolchains.plugin.json"
     )))
     .unwrap();
     assert!(validate_manifest_value(plugin.clone()).is_ok());
@@ -293,7 +293,7 @@ fn build_toolchain_consumers_reference_definitions_without_owning_them() {
 fn tool_definitions_do_not_enable_toolchain_layers_in_build_executable_sets() {
     let mut plugin: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../shared/contracts/plugins/v1/fixtures/build-systems/build-tool-path.plugin.json"
+        "/../../shared/plugins/contract/v1/fixtures/build-systems/build-tool-path.plugin.json"
     )))
     .unwrap();
     plugin["requires"]["toolDefinitions"] = json!(0);
@@ -309,14 +309,14 @@ fn production_toolchain_fixtures_require_explicit_host_capabilities() {
         (
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../../shared/contracts/plugins/v1/fixtures/toolchains/tool-definition.plugin.json"
+                "/../../shared/plugins/contract/v1/fixtures/toolchains/tool-definition.plugin.json"
             )),
             "requires.toolDefinitions",
         ),
         (
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../../shared/contracts/plugins/v1/fixtures/toolchains/toolchain-provider.plugin.json"
+                "/../../shared/plugins/contract/v1/fixtures/toolchains/toolchain-provider.plugin.json"
             )),
             "requires.toolchainProviders",
         ),

@@ -16,7 +16,7 @@
 //! planning, outcome and progress normalization, and the refusal of requests a
 //! backend may not make); the session engine applies them to live traffic.
 //! The rules live in the plugin contract
-//! (`shared/contracts/plugins/v1/README.md`, "Plugin functions").
+//! (`shared/plugins/contract/v1/README.md`, "Plugin functions").
 
 use crate::plugins::capabilities::{versions as capability_versions, BACKEND};
 use crate::plugins::language_server_sessions::{self, is_protocol_name};
@@ -1886,7 +1886,7 @@ fn refusal(category: ErrorCode, message: &str, code: &str) -> CoreError {
 
 #[cfg(test)]
 mod tests {
-    //! Golden cases from `shared/contracts/plugins/v1/fixtures/backend/function-protocol.json`.
+    //! Golden cases from `shared/plugins/contract/v1/fixtures/backend/function-protocol.json`.
     //! Timing behavior (cancellation, deadlines, late replies, revocation of a
     //! running call) is covered against a scripted backend in the engine tests.
 
@@ -1894,7 +1894,7 @@ mod tests {
 
     const FIXTURE: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../shared/contracts/plugins/v1/fixtures/backend/function-protocol.json"
+        "/../../shared/plugins/contract/v1/fixtures/backend/function-protocol.json"
     ));
 
     fn fixture() -> Value {

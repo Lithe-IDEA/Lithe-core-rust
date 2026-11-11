@@ -826,7 +826,7 @@ mod tests {
             fs::write(file, "Name before").unwrap();
         }
         let fixture: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/search/exclusions.json"
+            "../../../fixtures/search/exclusions.json"
         ))
         .unwrap();
         // The patterns come from the shared fixture, so Rust and Swift always

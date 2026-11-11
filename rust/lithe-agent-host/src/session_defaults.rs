@@ -156,7 +156,7 @@ mod tests {
     #[test]
     fn repair_uses_recommendation_or_a_selectable_catalog_model() {
         let fixture: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../shared/fixtures/agent/acp-events-v1.json"
+            "../../fixtures/agent/acp-events-v1.json"
         ))
         .unwrap();
         let initial = fixture["upstream"]["staleModelSession"].clone();

@@ -104,7 +104,7 @@ fn updated_at_seconds_become_utc_timestamps() {
 #[test]
 fn viewing_history_preserves_activity_but_a_new_turn_advances_it() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/agent/history-activity-v1.json"
+        "../../../fixtures/agent/history-activity-v1.json"
     ))
     .unwrap();
     for stage in ["initial", "afterViewing", "afterMessage"] {

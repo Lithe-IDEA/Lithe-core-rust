@@ -353,7 +353,7 @@ mod tests {
     #[test]
     fn shared_fixture_matches_the_reducer() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/git/changelists-reducer-v1.json"
+            "../../../fixtures/git/changelists-reducer-v1.json"
         ))
         .unwrap();
         assert_eq!(

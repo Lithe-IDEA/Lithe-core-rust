@@ -4,7 +4,7 @@
 //! A declarative plugin carries no host-loaded code. The host reads its
 //! `plugin.json`, asks this module to validate and normalize it, and launches
 //! the declared external processes itself. Both products must produce the
-//! same outcome for the fixtures in `shared/contracts/plugins/v1/`.
+//! same outcome for the fixtures in `shared/plugins/contract/v1/`.
 //!
 //! Content problems in a manifest or request are reported as `rejected`
 //! outcomes with a stable `plugin.*` code instead of Core failures, so hosts

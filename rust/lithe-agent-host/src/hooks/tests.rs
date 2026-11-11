@@ -471,7 +471,7 @@ fn draft(hook: &Hook) -> Draft {
 #[test]
 fn draft_validation_matches_the_shared_fixture_and_the_save_rules() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/agent/hook-draft-validation-v1.json"
+        "../../../fixtures/agent/hook-draft-validation-v1.json"
     ))
     .unwrap();
     for case in fixture["cases"].as_array().unwrap() {

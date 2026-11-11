@@ -51,7 +51,7 @@ manifest; an unknown provider or invalid manifest returns `invalid_request`.
 The payload is bounded to 1 MiB. It performs no filesystem I/O and does not
 establish package trust: callers must supply the enabled, previously accepted
 plugin manifest. Selectors and native read limits are defined by the
-[plugin contract](plugins/v1/README.md#shortcut-import-providers-core-foundation).
+[plugin contract](../../shared/plugins/contract/v1/README.md#shortcut-import-providers-core-foundation).
 The returned limits bound selectors, recognition probes, files, bytes per file and per snapshot,
 bytes per chunk, directory entries scanned and matching entries per directory;
 native adapters apply these values to their I/O.
@@ -128,7 +128,7 @@ Compilation is refreshed on binding/preset changes, and the keyboard owner
 releases preparations on teardown. Expression caching is limited to 256 entries
 and native compilation to 16 outstanding requests. Cache limits, teardown and
 stale-store guards belong to the window adapter. macOS has no free-form
-`when` parser and is unchanged. See `shared/fixtures/keymap/context-v1.json`.
+`when` parser and is unchanged. See `rust/fixtures/keymap/context-v1.json`.
 
 ## Shortcut binding conflicts
 
@@ -147,7 +147,7 @@ is the double-tap Shift gesture. Parse failures are listed in `invalid` with `em
 `multiple_keys`, `too_long` or `too_many_steps` and never take part in conflicts; more than
 20000 entries is `invalid_request`. Hosts reject saving a binding when a conflict contains the edited
 command. Native key-event conversion and the synchronous matching path stay in the host.
-See `shared/fixtures/keymap/binding-conflicts-v1.json`.
+See `rust/fixtures/keymap/binding-conflicts-v1.json`.
 
 `keymap.modifierGestureStep` accepts `{state?, event, timestamp}` and returns `{state, triggered}`. It is the
 double-Shift gesture as a pure transition: `event` is `{kind: "keyDown"}`, `{kind: "reset"}` or
@@ -157,7 +157,7 @@ pure crate `rust/lithe-core-rules` (no I/O, no clock) so it can run on a synchro
 through the C ABI, and the Windows frontend runs the same source compiled to wasm (`lithe_rules_alloc`,
 `lithe_rules_dealloc`, `lithe_rules_execute` over JSON envelopes), loaded asynchronously at startup. A malformed
 payload is `invalid_request`. Hosts only convert native events to this input and act on `triggered`; both are
-tested step by step against `shared/fixtures/keymap/modifier-gesture-v1.json`.
+tested step by step against `rust/fixtures/keymap/modifier-gesture-v1.json`.
 
 `editor.workbenchState.reduce` accepts `{state?, action}` and returns `{state, removedGroupIds}`. `state` is
 `{groups, focusedGroup?}`; a group is `{id, members, selected?, mru?, pinned?, preview?}` (ordered members, the shown
@@ -180,7 +180,7 @@ group or an unknown move destination change nothing. `removedGroupIds` lists rem
 hosts prune their own layout tree; split directions, ratios, pixels and dragging never reach Core. A malformed payload is
 `invalid_request`. It lives in `rust/lithe-core-rules` and is called synchronously: macOS through the C ABI, Windows
 through the wasm build inside zustand `set()`, one call per user action. Both hosts run every case of
-`shared/fixtures/editor/workbench-state-v1.json` through it.
+`rust/fixtures/editor/workbench-state-v1.json` through it.
 
 `workspace.classifyVisibility` accepts `{hiddenDirectoryNames?, hiddenFilePatterns?, entries: [{path, isDirectory?}]}`
 and returns `{hidden: boolean[], watchedDespiteHiding: boolean[]}` with one answer per entry, in request order. `path`
@@ -193,7 +193,7 @@ events must still be delivered, except the built-in noise below it such as `.lit
 of a directory in one call. `workspace.visibilityDefaults` takes `{}` and returns the built-in lists
 (`hiddenDirectoryNames`, `hiddenFilePatterns`, `builtInPatterns`, `configurationDirectory`, `configurationPattern`) so hosts
 display them without keeping a copy. Both live in `rust/lithe-core-rules` like `keymap.modifierGestureStep`, run in wasm on
-Windows, and are tested against `shared/fixtures/workspace/visibility-v1.json`.
+Windows, and are tested against `rust/fixtures/workspace/visibility-v1.json`.
 
 ## Terminal link targets
 
@@ -208,7 +208,7 @@ providers (for example `remote`, `wsl`): such URIs are returned unchanged, and u
 `mailto:` are `external`; a bare `name:12` is a file, not a scheme. `explicit` is true when the text
 itself says it is a path (separator, `~`, `file://`, provider URI or line suffix). Core never inspects
 file extensions or touches the file system: the host checks existence, owns hit regions, and opens the
-target. At most 256 texts of 4096 bytes. See `shared/fixtures/terminal/link-target-v1.json`.
+target. At most 256 texts of 4096 bytes. See `rust/fixtures/terminal/link-target-v1.json`.
 
 The Rust core is the shared application runtime for macOS SwiftUI and Windows
 React/Tauri. macOS calls the stable C ABI while the Tauri host links the Rust
@@ -397,7 +397,7 @@ process tree stops. Its script comes from embedded first-party source and holds
 no credential. Preparation/spawn failure, cancellation and completion remove
 the directory. The host does not write installed packages, bundles, CLI settings
 or user configuration; this runtime helper is excluded from worktree reuse.
-The route fixture is `shared/fixtures/agent/acp-events-v1.json`'s
+The route fixture is `rust/fixtures/agent/acp-events-v1.json`'s
 `upstream.claudeSessionRouting`. The
 user's own CLI is passed as `CODEX_PATH` or `CLAUDE_CODE_EXECUTABLE`, and a
 non-empty Codex `model` as `CODEX_CONFIG`; Claude uses the per-new-session option above. Without `agentId`, `command` runs
@@ -457,7 +457,7 @@ or `refreshQuota`. Results arrive as events:
 `sessionConfigured`, `nextTurnConfigured`, `modelCall`, `steeringResult`, `turnRetrying`, `turnActivity`, `turnCancelling`, `turnFinished`, `requestFailed`, `stopped`,
 `authenticationRequired`, `authenticating`, `account`, `quota`, and `quotaFailed`. Commands and events, including
 their camel-case field names, are fixed by
-`shared/fixtures/agent/acp-events-v1.json`; `token` values are echoed so a caller
+`rust/fixtures/agent/acp-events-v1.json`; `token` values are echoed so a caller
 can correlate concurrent requests. `stopReason` uses ACP wire names such as
 `end_turn` and `cancelled`.
 
@@ -474,7 +474,7 @@ and time-sorted history rows place unknown activity after known timestamps,
 breaking ties by session ID. The switcher's existing current-session pin is unchanged.
 Listing failure retains consumers' existing rows through `requestFailed`; it
 does not fabricate a local timestamp. Other Agents retain standard ACP listing.
-`shared/fixtures/agent/history-activity-v1.json` covers initial state, metadata-only
+`rust/fixtures/agent/history-activity-v1.json` covers initial state, metadata-only
 viewing, and a new conversation turn. The history UI geometry is unchanged.
 
 History summaries may additionally include `modelProvider`, the opaque provider
@@ -590,7 +590,7 @@ instead of sending it; disconnect clears the intent as well. A deferred
 supplement after a failed turn is failed with that turn's error, never replayed.
 The next prompt remains blocked until the command finishes. The Host still
 rejects the command while the session's prompt is running. Shape and cases:
-`shared/fixtures/agent/next-turn-configuration-v1.json`.
+`rust/fixtures/agent/next-turn-configuration-v1.json`.
 
 For a new session, the host also preserves the adapter's optional legacy model
 catalog while decoding the ACP response and negotiates only the versioned
@@ -778,7 +778,7 @@ session's main requests carry tools, tool-less ones no longer do). Products
 merge contributions in event order (counters add, `reasoningTokens` adds over
 calls that report it, a present `context` replaces the previous one) and never
 reinterpret `call` for accounting. Cases:
-`shared/fixtures/agent/model-call-statistics-v1.json`. The launch accepts `contextLimits` (`windowTokens`, `autoCompactTokens`, both optional;
+`rust/fixtures/agent/model-call-statistics-v1.json`. The launch accepts `contextLimits` (`windowTokens`, `autoCompactTokens`, both optional;
 zero means unset). Codex receives them as `model_context_window` and
 `model_auto_compact_token_limit` in its session configuration. Claude Code has a single
 switch, so the threshold (else the context length) is exported as
@@ -957,7 +957,7 @@ or `{action:"parse",line}` to return `{command,args}`. POSIX shell-style quoting
 is only a lossless text projection: hosts pass argv directly, never evaluate a
 shell, substitutions, pipes or redirects. Blank and embedded-newline arguments
 are preserved; malformed quoting is rejected. These operations and probe
-results use `shared/fixtures/mcp/tools-v1.json` as a synthetic contract fixture.
+results use `rust/fixtures/mcp/tools-v1.json` as a synthetic contract fixture.
 
 `mcp.parseRegistry` accepts `{ content: string }` (at most 1 MiB UTF-8) and
 normalizes an official MCP Registry v0.1 response into `{ entries, nextCursor }`.
@@ -973,7 +973,7 @@ mutable tags and major/minor ranges remain documentation-only. Other
 records remain documentation-only. This operation never fetches, installs or
 executes anything. Hosts own cancellable directory requests and require the
 user to review and save a draft before modifying Agent configurations.
-`shared/contracts/mcp-registry-page.json` is a portable synthetic response.
+`rust/contracts/mcp-registry-page.json` is a portable synthetic response.
 
 `mcp.featuredRegistry` accepts `{}` and returns the same page shape with
 `source: "featured"` from the Git-owned, compile-time catalog at
@@ -989,7 +989,7 @@ template, requiring an Authorization bearer value or at least one absolute
 directory argument after the fixed Filesystem package argument. Hosts must
 collect and validate these inputs before saving and must not select Agents by
 default. Public Registry parsing never copies `setup`, even when input uses a
-featured-looking ID. `shared/fixtures/mcp/featured-setup-v1.json` illustrates the
+featured-looking ID. `rust/fixtures/mcp/featured-setup-v1.json` illustrates the
 optional field; ordinary entries omit it. Brand marks are platform-owned,
 read-only bundled assets, selected only for known featured IDs; public entries
 keep the transport fallback. No response can select arbitrary resources or
@@ -1116,7 +1116,7 @@ changes: [{ file, changed, content?, owned, renames: [{ from, to }] }] }` in
 host file order. `content` is present only when changed; `owned` is the file's
 next ledger (unchanged files return their input ledger). Hosts write every
 changed file as one rollback batch and publish ledgers and renames only after
-the whole batch succeeds. `shared/fixtures/mcp/library-v1.json` holds the shared
+the whole batch succeeds. `rust/fixtures/mcp/library-v1.json` holds the shared
 cases; its `{{sourceHash:<file>:<name>}}` placeholders are resolved from the
 parsed fixture files.
 
@@ -1138,14 +1138,14 @@ resolves natively against the same text or environment. Malformed input returns
 `AI_CONFIGURATION_TOO_LARGE`) and never echoes input. `allowIncomplete: true` is
 for editor drafts: it ignores the environment, accepts blank or partial text and
 keeps missing endpoint/model fields empty. The shared cases are in
-`shared/fixtures/ai/cli-configuration-v1.json`. It replaces the former
+`rust/fixtures/ai/cli-configuration-v1.json`. It replaces the former
 `agent.parseProviderConfiguration`.
 
 `agent.edits.reversePlan` takes `{diffs, disk}` (normalized edit evidence plus the
 current file text, or `null` when the file is missing) and returns the rollback
 plan or a conflict; it never touches the file system. Path containment, encoding,
 guarded writes and Trash stay with the platform. Cases are in
-`shared/fixtures/agent/edit-review-v1.json`.
+`rust/fixtures/agent/edit-review-v1.json`.
 
 `agent.instructions.read` takes `{agentId}` (`codex-acp` or `claude-acp`) and
 returns `{agentId, path, content, exists, revision}`. It does not create files.
@@ -1163,7 +1163,7 @@ share it, so revision checks are optimistic rather than an OS-wide transaction.
 Errors use the existing envelope codes with stable `details` reasons including
 `unsupported_agent`, `file_access`, `unsafe_file`, `file_changed`, `file_too_large`,
 `invalid_utf8`, `profile_missing`, `profile_relative`, and `busy`.
-The fixture is `shared/fixtures/agent/agent-instructions-v1.json`.
+The fixture is `rust/fixtures/agent/agent-instructions-v1.json`.
 
 `agent.instructions.shared` takes a platform-selected absolute `dataDirectory`
 from the writable application-support adapter plus one tagged action:
@@ -1228,7 +1228,7 @@ trust. A matching user-owned entry is never claimed or duplicated. Codex still
 requires native Hook enablement and approval in `/hooks`; `configuredAgents`
 does not claim execution. Source, ownership journal, lock and temporary siblings
 are user state outside installed resources and cannot be reused across worktrees.
-The shared fixture is `shared/fixtures/agent/hooks-management-v1.json`.
+The shared fixture is `rust/fixtures/agent/hooks-management-v1.json`.
 
 `agent.hooks.validateDraft` validates an unsaved editor draft without reading or
 writing files, using the same rules `save` enforces in Agent Host. The payload is
@@ -1244,7 +1244,7 @@ saving (null when empty or rejected). Fields and codes: `id` `invalid`; `name`
 `timeout` `not_integer`, `out_of_range`; `agents` `required`, `unsupported`,
 `duplicate`. Platforms localize `agent.hooks.draft.<field>.<code>` and enable saving
 only when `valid`. A malformed payload fails with `invalid_request`. The fixture is
-`shared/fixtures/agent/hook-draft-validation-v1.json`.
+`rust/fixtures/agent/hook-draft-validation-v1.json`.
 
 `agent.status`, `agent.install`, `agent.uninstall`, and `agent.installCli` manage ACP adapters in
 `<dataDirectory>/agents/<agentId>`, using the Node.js and npm the user installed.
@@ -1272,7 +1272,7 @@ and replaces the previous install only after the adapter executable exists; it
 honors `operationId` cancellation and `timeoutMilliseconds`. Failures use
 `runtime_missing` (Node.js or npm unusable), `process_failed` (npm failed, with
 its output tail), `invalid_request`, `cancelled`, or `timed_out`. Payloads and
-results are fixed by `shared/fixtures/agent/agent-management-v1.json`.
+results are fixed by `rust/fixtures/agent/agent-management-v1.json`.
 
 `agent.installCli` resolves the current PATH executable and its installation
 owner again on each explicit action. A missing CLI uses npm; an existing npm CLI
@@ -1343,7 +1343,7 @@ package manager owns the download and Lithe does not infer bytes from logs.
 | `editor.lineCommentToken` | Resolve the line comment token for a file extension or language id |
 | `workspace.releaseIndexing` | Retire a policy and clear index/cache data at project close; accepts `root`, optional `ownerId`, and that owner's last observed `revision`, returns `released`; an old close must not retire a new generation |
 | `workspace.refreshIndexing` | Refresh external Git decisions for a live `root`, `ownerId`, `revision` lease without changing preferences or release tokens; returns lazy `IndexingStatus` |
-| `workspace.configureIndexing` | Install a process-local, canonical-root indexing policy before workspace consumers run; returns a monotonic revision, effective directory reasons and Git failure state; see `shared/fixtures/workspace/indexing-policy-v1.json` |
+| `workspace.configureIndexing` | Install a process-local, canonical-root indexing policy before workspace consumers run; returns a monotonic revision, effective directory reasons and Git failure state; see `rust/fixtures/workspace/indexing-policy-v1.json` |
 | `network.proxyPolicy` | Normalize the stored proxy settings into the policy a network stack must apply (mode, server, credentials, exclusions) |
 | `workspace.snapshot` | Enumerate visible workspace nodes and relative file paths; `nestedWorktrees` lists linked worktrees checked out inside their own repository, which are left out of the tree, files, and search index; the built-in hidden names are skipped without being read, and include `node_modules`, Python virtual environments (`.venv`, `venv`), `__pycache__` and `*.pyc` files; `includeTree: false` returns only `files` and a childless `root`; `files` (and the tree, when included) keep the lowercase traversal order that bounded consumers such as Windows Quick Open rely on, not the natural display order of `workspace.listDirectories` |
 | `workspace.filterChanges` | Filter an array of workspace-relative paths, or `{ paths, hiddenFilePatterns }` whose `!` entries turn default exclusions off, against Core's default build/cache exclusions; preserve order, spelling, and the empty root path. Native event loss bypasses filtering. Hosts relativize to the most specific explicit watch root and retain explicitly watched files. |
@@ -1351,12 +1351,12 @@ package manager owns the download and Lithe does not infer bytes from logs.
 | `workspace.planPaste` | Name pasted project items in one destination directory: a free name is kept, a taken one gets the copy suffix, and earlier items of the same paste count as taken |
 | `workspace.reduceDirectoryAction` | Apply "set role", "exclude" or "cancel exclusion" to a root's persisted directory rules and return the complete state to persist |
 | `workspace.relocateDirectoryRules` | Move (or drop, after a delete) the directory rule keys of a renamed, moved or deleted subtree, optionally into another workspace root's rules |
-| `workspace.listDirectories` | Return one visible level of children for each requested workspace-relative directory (`""` is the root); missing, hidden, symlinked, or nested-worktree paths are omitted, and each listing reports the nested worktrees it left out. Child directories have `children: []` only when a shallow probe proves them visibly empty; otherwise children remain omitted (unloaded), with no recursive tree allocation. Children list directories first, then names in IDEA's natural file-name order (digit runs compare by value, case-insensitive, `-` next to `_`; fixture `shared/fixtures/workspace/file-name-order-v1.json`) |
+| `workspace.listDirectories` | Return one visible level of children for each requested workspace-relative directory (`""` is the root); missing, hidden, symlinked, or nested-worktree paths are omitted, and each listing reports the nested worktrees it left out. Child directories have `children: []` only when a shallow probe proves them visibly empty; otherwise children remain omitted (unloaded), with no recursive tree allocation. Children list directories first, then names in IDEA's natural file-name order (digit runs compare by value, case-insensitive, `-` next to `_`; fixture `rust/fixtures/workspace/file-name-order-v1.json`) |
 | `workspace.repositories` | Discover deterministic Git repository roots for an opened workspace |
 | `workspace.recentProjects.reduce` | Apply one record, remove, pin, import, or normalize action to the recent project list and return the retained order |
 | `workspace.search` | Search visible file names and UTF-8 text files |
 | `workspace.searchEverywhere` | Search visible file names, Java types/methods, and UTF-8 text files |
-| `workspace.rankNames` | Pure ranking of candidate names that the platform enumerates itself (`{ query, candidates: [{ name, path? }], context: { openPaths, recentPaths }, limitPerTier? }`). Use it only for lists Core cannot index: Windows remote/WSL roots, symbol lists, navigator lists. Roots Core indexes go through `workspace.searchEverywhere`, so an inventory is never sent back to Core. Returns `matches: [{ index, degree, tier, nameMatchRanges }]` ordered by degree, open/recent tier, recency, then file-name order (fixture `shared/fixtures/search/rank-names-v1.json`) |
+| `workspace.rankNames` | Pure ranking of candidate names that the platform enumerates itself (`{ query, candidates: [{ name, path? }], context: { openPaths, recentPaths }, limitPerTier? }`). Use it only for lists Core cannot index: Windows remote/WSL roots, symbol lists, navigator lists. Roots Core indexes go through `workspace.searchEverywhere`, so an inventory is never sent back to Core. Returns `matches: [{ index, degree, tier, nameMatchRanges }]` ordered by degree, open/recent tier, recency, then file-name order (fixture `rust/fixtures/search/rank-names-v1.json`) |
 | `workspace.replacePreview` | Return deterministic replacement lines and complete replacement text |
 | `workspace.replaceText` | Plan replacement against a host-captured text snapshot without writing |
 | `workspace.searchTextBatch` | Search provider-captured text snapshots using workspace matching rules |
@@ -1748,7 +1748,7 @@ so hosts attach or discard their own metadata (names, icons, branches). Empty,
 NUL-containing or over-4,096-byte paths, negative times and out-of-range
 capacities return `invalid_request`. Hosts own persistence and which roots are
 worth recording; menus may show fewer rows than are retained. See
-`shared/fixtures/workspace/recent-projects-v1.json`.
+`rust/fixtures/workspace/recent-projects-v1.json`.
 
 `workspace.repositories.repositories` is ordered with the containing workspace
 repository first when present, then repositories under the opened workspace by
@@ -1770,7 +1770,7 @@ identifiers retain their protocol and POSIX name semantics. Chinese names,
 embedded spaces and long paths are not rejected by length; native Git/filesystem
 errors remain visible. In particular, Windows may reject an over-MAX_PATH Git
 working directory at process creation even when filesystem lookup succeeds;
-this is reported as `process_start_failed`, not a missing repository. Shared examples live in `shared/fixtures/git/windows-paths.json`.
+this is reported as `process_start_failed`, not a missing repository. Shared examples live in `rust/fixtures/git/windows-paths.json`.
 Core treats both
 `.git` directories and `.git` files as repository markers, but a marker only
 becomes a listed repository when Git can open it: a `.git` directory needs
@@ -1788,7 +1788,7 @@ are never excluded by their names. These are automatic discovery rules, not Git
 tracking rules: `.gitignore` and file-tree visibility overrides do not configure
 repository ownership. The rules apply before repository status/reference
 aggregation on both hosts. Examples live in
-`shared/fixtures/workspace/repository-visibility-v1.json`.
+`rust/fixtures/workspace/repository-visibility-v1.json`.
 Git metadata itself is not traversed.
 Symbolic directory links are not followed, preventing cycles and traversal
 outside the workspace. Callers may explicitly supply `maxDirectories` and
@@ -1816,7 +1816,7 @@ detached or deleted references, and fills missing entries deterministically.
 The remote HEAD target is preferred as the default branch, followed by `main`,
 `master`, and the remaining local references in refname order.
 
-The protocol version is currently `1`. Add a fixture under `shared/fixtures/`
+The protocol version is currently `1`. Add a fixture under `rust/fixtures/`
 before changing a response shape or search rule.
 
 `document.lifecycle` accepts a discriminated `state` (`clean`, `dirty`,
@@ -1834,7 +1834,7 @@ UTF-8 with BOM, UTF-16 LE/BE (with or without BOM), GBK, GB18030, Big5, Shift JI
 lifecycle remains encoding-agnostic. Watchers are refresh hints, not write
 authorization. Conflict resolution acknowledges only the disk snapshot
 observed by the user, and subsequent saves must validate that snapshot again. The
-portable examples are in `shared/fixtures/documents/lifecycle-v1.json`.
+portable examples are in `rust/fixtures/documents/lifecycle-v1.json`.
 
 `document.planSaveBatch` accepts `{ documents }`, where each open document is
 `{ id, dirty, readOnly, contentSynchronized }`, and returns `{ members }` in
@@ -1850,7 +1850,7 @@ while the batch ran, keeps the batch `incomplete`. Platforms attempt every
 member (sequentially or concurrently) instead of stopping at the first failure,
 and own dialogs and failure notifications. Duplicate or empty identities,
 missing or extra results, and more than 10,000 documents are `invalid_request`.
-See `shared/fixtures/documents/save-batch-v1.json`.
+See `rust/fixtures/documents/save-batch-v1.json`.
 
 GitHub command shapes, authorization behavior, and supported pull-request
 operations are documented in [`github.md`](github.md). Rust Core performs no
@@ -1985,13 +1985,13 @@ to …`) reports `operationError.code = "git_authentication_failed"`. When Core
 adds that error to a response that had none, `message` is the first stderr line
 and `details` the combined output; an existing message and details are kept.
 Other failures keep their codes, so hosts must not match stderr themselves.
-Samples: `shared/fixtures/git/authentication-failure-v1.json`.
+Samples: `rust/fixtures/git/authentication-failure-v1.json`.
 
 `git.remoteUrl` accepts `{ root, remote }` and returns `{ url: string | null }`.
 It uses the internal configuration-read path: a missing key is successful and
 produces no command row. Invalid requests and real access/executable failures
 remain structured errors. The configured value is used for repository discovery;
-it is not console output. See `shared/fixtures/git/remote-url-v1.json`.
+it is not console output. See `rust/fixtures/git/remote-url-v1.json`.
 
 `git.executionInspect` takes `{ root, scope?: "local" | "global" }`, default local.
 It returns `{ executable, version, scope, entries, fields, temporaryConfig,
@@ -2016,7 +2016,7 @@ Git's explicit tag refspec and `pruneTags` may fetch tags even with `--no-tags`;
 partial or negative tag refspecs are reported as `custom` rather than guessed.
 All occurrences of relevant boolean settings are checked with Git's parser so
 an invalid shadowed value is not silently interpreted as valid. Inputs and
-outputs are illustrated by `shared/fixtures/git/fetch-behavior-v1.json`.
+outputs are illustrated by `rust/fixtures/git/fetch-behavior-v1.json`.
 
 `git.executionConfigure` adds `{ key, value: string | null, expectedValues:
 string[] }` to the same request. It permits `fetch.prune`, `fetch.prunetags`,
@@ -2038,8 +2038,8 @@ answer `"retry"` to repeat the failed transfer with helper bypass, at most three
 total attempts. The AskPass C ABI is called only in the child app's early helper
 mode. Credential answers are never copied into events or settings.
 
-See `shared/fixtures/git/{fetch-plan,execution-events,execution-policy}-v1.json`
-and [Git execution and project console](../../.agents/notes/implemented/architecture/2026-09-12-git-execution-and-project-console.md).
+See `rust/fixtures/git/{fetch-plan,execution-events,execution-policy}-v1.json`
+and [Git execution and project console](https://github.com/1lck/Lithe-IDEA/blob/preview/.agents/notes/implemented/architecture/2026-09-12-git-execution-and-project-console.md).
 
 The additive `lithe_core_execute_json_with_events(request, callback, context)`
 C ABI and Rust `execute_json_with_events` API deliver sanitized Git diagnostics
@@ -2081,7 +2081,7 @@ had started a command keeps that command with the cancellation as its reason.
 A request-start event must not allocate a placeholder or consume command-history capacity. Clearing
 history suppresses late invocations from requests already in preflight, while
 started operations remain cancellable until `requestFinished`, even after their
-text is cleared. See `shared/fixtures/git/console-lifecycle-v1.json`.
+text is cleared. See `rust/fixtures/git/console-lifecycle-v1.json`.
 Console presentation entries include an optional `notice`: `waitingForOutput`,
 `completedWithoutOutput`, or `fetchUnchanged`. Native hosts localize this as a
 status line, separate from retained Git stdout/stderr and copied command output.
@@ -2118,7 +2118,7 @@ A complete line is redacted before publication. Native diagnostic limits are
 16 KiB per line, 512 KiB raw diagnostic input and 4,096 output events per
 invocation. Limits produce an omission record without suppressing completion.
 Raw parser capture has an independent 32 MiB per-stream bound and fails on
-overflow. See `shared/fixtures/git/execution-events-v1.json`.
+overflow. See `rust/fixtures/git/execution-events-v1.json`.
 
 `git.rollbackPlan` accepts `changes` (up to 10,000 entries, each containing a
 repository-relative `path`, optional `originalPath`, and the two-character Git
@@ -2211,7 +2211,7 @@ occupied branch. `detached` rejects `name` and requires a typed reference or
 and uses `--detach`. Independent `noCheckout: true` adds `--no-checkout` in
 every mode; its default is false, and legacy `checkout` does not control
 worktree file population. Examples are in
-`shared/fixtures/git/worktree-creation-v1.json`. Worktree mutations re-read Git's
+`rust/fixtures/git/worktree-creation-v1.json`. Worktree mutations re-read Git's
 registered list before invoking Git, and each refusal has its own
 `operationError.code`, so hosts explain it without matching messages:
 
@@ -2258,8 +2258,8 @@ trace. A stash restore conflict is a logical operation failure represented by
 `stashRestore`, even when a later diagnostic invocation exits successfully.
 Consumers must therefore consider `operationError` and `stashRestore` in
 addition to the compatibility `exitCode`. The shared compatibility fixtures are
-`shared/fixtures/git/command-response-v1.json` and
-`shared/fixtures/git/command-error-response-v1.json`. Invalid arguments found
+`rust/fixtures/git/command-response-v1.json` and
+`rust/fixtures/git/command-error-response-v1.json`. Invalid arguments found
 before any Git subprocess use the standard `invalid_request` error envelope.
 `checkout` uses `referenceKind` values
 `local`, `remote`, or `tag`. A remote checkout creates its tracking local branch
@@ -2273,7 +2273,7 @@ The selected remote commit is pinned and branch identity is rechecked before
 integration. A composite checkout may switch successfully before a later integration
 or stash restore fails, so consumers refresh repository state after either outcome.
 Local checkout and `checkoutAndRebase` retain their existing policies. Scenarios are
-in `shared/fixtures/git/remote-checkout-v1.json`.
+in `rust/fixtures/git/remote-checkout-v1.json`.
 `clone` uses `remote` as its source and
 `destination` as its target path. `publishBranch` validates `name`, creates
 and checks out that branch at a detached HEAD when needed, then pushes it with
@@ -2285,7 +2285,7 @@ legacy `reference`, an optional bounded `limit`, `pushTags`, and an optional
 `pushTarget`. It returns `localBranch`,
 `localHead`, `remote`, `remoteBranch`, `targetKind`, `createsRemoteBranch`,
 nullable `remoteTrackingOid`, nullable `upstream`, exact reviewed `tags`,
-`commits`, and `hasMore` using `shared/fixtures/git/push-preview-v1.json`.
+`commits`, and `hasMore` using `rust/fixtures/git/push-preview-v1.json`.
 `targetKind` describes how `remoteBranch` relates to the local branch:
 `tracking` when both names match, `publish` when the branch has no upstream on the
 selected remote and will be published under its own name, and `divergent` when the
@@ -2431,7 +2431,7 @@ not permission to mutate: `git.historyRewritePreview` still checks worktree,
 operation state, unsupported commits, published history, and the reviewed
 snapshot. Clients cancel and discard stale results when the menu closes,
 selection or repository changes, or the history is refreshed. See
-`shared/fixtures/git/history-action-capabilities-v1.json`.
+`rust/fixtures/git/history-action-capabilities-v1.json`.
 
 `git.historyRewritePreview` accepts `{ "root": string, "operation": string,
 "revisions": string[] }` for those four operations. It returns `operation`,
@@ -2485,7 +2485,7 @@ while preserving `mutationApplied: true` and the recovery point. For these
 structured responses, compatibility process fields describe the authoritative
 mutation result instead of a later recovery-cleanup subprocess; diagnostics
 remain available in `invocations`, `operationError`, and `warnings`.
-The compatibility fixture is `shared/fixtures/git/history-rewrite-v1.json`.
+The compatibility fixture is `rust/fixtures/git/history-rewrite-v1.json`.
 
 `createTag` uses `name` for the new tag, `revision` as its target commit or
 revision, and an optional `message`: when the field is present (including an
@@ -2501,9 +2501,9 @@ annotated tag. Two optional typed fields refine that legacy choice:
 subprocess; `signed: true` adds `-s`, which creates a signed annotated tag
 when a message is present. Omitting both fields preserves the existing
 behavior, so callers that predate the fields are unaffected. The argument
-matrix is pinned by `shared/fixtures/git/tag-write-v1.json`.
+matrix is pinned by `rust/fixtures/git/tag-write-v1.json`.
 Tag names must satisfy the `git check-ref-format` refname rules and must not
-begin with a dash; `shared/fixtures/git/tag-names.json` pins the boundary cases
+begin with a dash; `rust/fixtures/git/tag-names.json` pins the boundary cases
 for Core and host-side validation. Before invoking Git, `createTag` probes the
 repository so a duplicate tag (`A tag named '<name>' already exists`) and an unresolvable
 non-commit target (`Could not resolve tag target '<rev>'`) fail with stable
@@ -2563,7 +2563,7 @@ The strategy is the user's choice, else the preflight's `configuredStrategy`,
 else `ffOnly`; a diverged history that would need `ffOnly` asks when
 `interactive` and is refused otherwise. `{ "stage": "defaultStrategy",
 "preflight", "fastForwardPossible" }` returns the strategy a Pull dialog
-preselects. `shared/fixtures/git/update-plan-v1.json` defines the rules.
+preselects. `rust/fixtures/git/update-plan-v1.json` defines the rules.
 
 `git.historyWindow` is a pure planner over commit identities in display order.
 `refreshPlan` returns the first-page `limit`: with `preserveLoaded` it is at
@@ -2573,7 +2573,7 @@ commits appeared at the head. `mergePage` returns the `append` positions of a
 page that are not yet in the window and whether `hasMore`, bounded to 5000
 commits. `reconcileSelection` returns the retained `selected` identities in
 window order plus `focused` and `anchor`, falling back to the first loaded
-commit. `shared/fixtures/git/history-window-v1.json` defines the rules.
+commit. `rust/fixtures/git/history-window-v1.json` defines the rules.
 
 `git.graphProjection` is a pure projection of one loaded history window; it never
 starts Git. The request is `{ "commits": [{ "hash", "parentHashes", "decorations" }],
@@ -2596,8 +2596,8 @@ Each visible row carries `commitHash`, integer `lane` and `laneCount`, a signed
 `colorId`, `isDotted`, `isMissing`, `hasArrow`, `isTerminal`, `targetHash`). Hosts own
 pixels, curves, and the mapping from a color ID to a theme color; `colorId` `0` means
 an unreferenced fragment. Requests over 20,000 commits fail with `invalid_request`.
-`shared/fixtures/git/graph-projection-v1.json` defines the rules and
-`shared/fixtures/git/graph-idea/` holds the pinned IntelliJ oracles.
+`rust/fixtures/git/graph-projection-v1.json` defines the rules and
+`rust/fixtures/git/graph-idea/` holds the pinned IntelliJ oracles.
 
 `git.integrationPreflight` accepts either `reference` or `gitReference` with
 `root` and `operation`, where `operation` is `merge`, `rebase`, `cherryPick`,
@@ -2652,7 +2652,7 @@ files. `includeUntracked: true` adds untracked worktree files with status `A`
 and `isUntracked: true`, deduplicated by path; omitted or false keeps the
 previous response. The flag is invalid for a two-reference range. If status
 cannot be read, the request fails rather than returning an incomplete result.
-See `shared/fixtures/git/comparison-untracked-v1.json`. Platforms must not
+See `rust/fixtures/git/comparison-untracked-v1.json`. Platforms must not
 construct a two-ref range themselves.
 `git.apply` accepts `root`, `patch`, and `mode`; supported modes are `stage`,
 `unstage`, `discard`, `restoreIndex`, `worktree`, `restoreIndexCheck`, and
@@ -2687,7 +2687,7 @@ refuses with `GIT_DIFF_BLOCK_STALE` when the token no longer matches,
 modifiedStart, modifiedEnd, originalLines, modifiedLines}` (one-based,
 end-exclusive) and stages exactly that change from the original bytes, or fails
 with `GIT_GUTTER_CHANGE_STALE` when the index or saved file no longer shows the
-compared lines. See `shared/fixtures/git/diff-blocks-v1.json`.
+compared lines. See `rust/fixtures/git/diff-blocks-v1.json`.
 
 `git.remotes` returns `{remotes: [{name, url}]}` for fetch entries. `git.tags`
 returns `{tags: [{name, objectId, targetId, message, date, isAnnotated}]}`;
@@ -2704,12 +2704,12 @@ Core performs no IO. The ordered `events` array returns `kind` (`context`,
 ownership of native loss flags, watch lifetimes, and workspace visibility; on
 classification failure they must conservatively rescan. Native Rust callers can
 use the same typed classifier without JSON. The shared fixture is
-`shared/fixtures/git/metadata-classification-v1.json`.
+`rust/fixtures/git/metadata-classification-v1.json`.
 
 `git.parseCheckoutMetadata` and `git.parseGitdirPointer` each accept `{text}`
 of at most 4096 UTF-8 bytes and return `{branch}` or `{path}`, respectively;
 the host reads files and resolves relative paths. Examples live in
-`shared/fixtures/git/remote-tag-catalog-v1.json` and `checkout-metadata-v1.json`.
+`rust/fixtures/git/remote-tag-catalog-v1.json` and `checkout-metadata-v1.json`.
 
 `git.history` accepts `root`, an optional full `reference`, and `limit` (the
 core clamps it to `1...5000`). It remains the compatibility command that
@@ -2724,7 +2724,7 @@ and Windows Git Log request date order for their pages and repository graph;
 other clients that omit the field retain topology order. A cursor is bound to its root, reference, and order;
 continuations must repeat the same order. A mismatched order returns
 `invalid_request` without consuming the cursor. The portable request example is
-`shared/fixtures/git/history-page-date-request-v1.json`.
+`rust/fixtures/git/history-page-date-request-v1.json`.
 The first request omits `cursor`; each later request
 returns the prior page's `nextCursor`. Core keeps one bounded, backpressured
 `git log` stream behind that cursor and clamps the stream to the first 5,000
@@ -2748,8 +2748,8 @@ missing metadata using invocation-only Git configuration; it does not change
 repository fetch settings, guess tracking from matching names, or fetch remotely.
 References without an upstream,
 remote references, and tags return zero for both fields. Portable examples are
-`shared/fixtures/git/references-response-v1.json` and
-`shared/fixtures/git/history-page-response-v1.json`.
+`rust/fixtures/git/references-response-v1.json` and
+`rust/fixtures/git/history-page-response-v1.json`.
 
 For compatibility, a request that explicitly contains the deprecated numeric
 `offset` field still uses the bounded offset implementation and returns
@@ -2776,7 +2776,7 @@ instead of becoming "not found". Core owns the intermediate stream and only
 returns a cursor the host can continue; a failed read releases it. Requests
 without a cursor start at the first page and continuations must repeat the same
 `root`, `reference`, and `order`. Portable request and response examples are in
-`shared/fixtures/git/history-locate-v1.json`.
+`rust/fixtures/git/history-locate-v1.json`.
 
 `git.repositoryColorAssignments` accepts `{ offset, totalCount, repositoryIds }`.
 IDs are the host's already normalized, unique repository identities in the full
@@ -2787,7 +2787,7 @@ Core rejects duplicates within a page and out-of-range offsets with
 `fallbackSlot` for unknown IDs, and `showColors` for multi-repository views.
 Callers must keep pages from the same list generation together, cancel or discard
 stale results, and never recompute the slots per row. Color palettes remain native
-presentation. See `shared/fixtures/git/repository-colors-v1.json`.
+presentation. See `rust/fixtures/git/repository-colors-v1.json`.
 
 `git.branchNamePreview` is pure: it never starts Git and only reads the
 reference facts the host already loaded. It accepts `rawName` (at most 1,024
@@ -2812,7 +2812,7 @@ without a reference. `error.code` is one of `empty`, `head`,
 `clashesWithBranchPrefix` also carries the existing local `branch` that occupies
 one of the candidate's slash prefixes. Refname validity itself stays with
 `git check-ref-format` when the branch is created. Portable examples are in
-`shared/fixtures/git/branch-name-preview-v1.json`.
+`rust/fixtures/git/branch-name-preview-v1.json`.
 
 `git.commit` accepts `root` and a revision, returning one `commit` object with
 the same fields as a history page entry and a `body` string. `body` is the
@@ -2820,7 +2820,7 @@ message after the subject paragraph (Git `%b`), keeps internal line breaks and
 indentation, has trailing whitespace removed, and is empty for a subject-only
 message. History pages carry only `subject`; a commit detail view reads the
 body on demand with `git.commit`. See
-`shared/fixtures/git/commit-lookup-response-v1.json`.
+`rust/fixtures/git/commit-lookup-response-v1.json`.
 `git.blame` accepts `root` and a workspace-relative `path`; its line numbers
 are one-based and author timestamps are Unix seconds.
 
@@ -2878,9 +2878,9 @@ names-only rule variant; superseded allocations are released when active
 requests finish. Watcher updates refresh the retained variants.
 Agent file completion uses project visibility and leaves generated names disabled;
 only the Search Everywhere UI explicitly enables them. Directory-versus-file
-matching examples are shared in `shared/fixtures/search/exclusions.json`.
+matching examples are shared in `rust/fixtures/search/exclusions.json`.
 
-`workspace.searchEverywhere` takes an optional `context: { openPaths, recentPaths }` (paths relative to `root`, `/` separators, recent first). It only breaks ties between equal file-name matches (open first, then recent by recency) and scales the returned `matchingDegree` by 1024 plus the tie-break, using the same code as `workspace.rankNames`; omit it and results are unchanged (fixture `shared/fixtures/search/search-everywhere-context-v1.json`).
+`workspace.searchEverywhere` takes an optional `context: { openPaths, recentPaths }` (paths relative to `root`, `/` separators, recent first). It only breaks ties between equal file-name matches (open first, then recent by recency) and scales the returned `matchingDegree` by 1024 plus the tie-break, using the same code as `workspace.rankNames`; omit it and results are unchanged (fixture `rust/fixtures/search/search-everywhere-context-v1.json`).
 
 `workspace.searchEverywhere` uses the same query options and visibility fields,
 and additionally accepts `maxSymbolResults` and optional
@@ -2947,7 +2947,7 @@ incremental or automatically paged Windows presentation.
 Basename matches rank above relative-path fallback matches, even when the query
 contains no slash (for example `src` matches `src/Foo.swift`). Path-only matches
 have `matchingDegree: -1` and no basename ranges; literal basename hits use degree
-zero when there is no fuzzy degree. See `shared/fixtures/search/path-fallback.json`.
+zero when there is no fuzzy degree. See `rust/fixtures/search/path-fallback.json`.
 
 Name matches include optional `matchingDegree` and `nameMatchRanges` entries
 `{ start, length }`, measured in UTF-16 units in the displayed basename or
@@ -2957,7 +2957,7 @@ content matches keep their literal search semantics.
 Case-insensitive contiguous fallback preserves whole-string Unicode lowercase
 matching, including expansions such as `İ` to `i` plus a combining dot. A partial
 match inside an expansion highlights the complete original character, not folded
-offsets. See `shared/fixtures/search/unicode-contiguous.json` (also used by Agent
+offsets. See `rust/fixtures/search/unicode-contiguous.json` (also used by Agent
 completion regressions).
 
 Returned Everywhere matches additionally expose optional `isIgnored`, resolved
@@ -2984,7 +2984,7 @@ files or resources are written to disk. macOS Search Everywhere requests pages o
 Java type and method results still use the existing syntax index and include a
 one-based line, `symbolName`, and source line in `preview`; language-provider
 workspace-symbol integration and external-library search are not implied.
-The shared name/range examples are in `shared/fixtures/search/name-matching.json`.
+The shared name/range examples are in `rust/fixtures/search/name-matching.json`.
 
 `workspace.replacePreview` accepts `root`, `query`, `replacement`, the same
 query options, optional workspace-relative `paths`, optional `textOverrides`
@@ -3004,7 +3004,7 @@ per file and 16 MiB in total) and returns
 unmodified paths, matching lines, UTF-16 ranges and requested surrounding lines.
 The host owns provider I/O and controls continuation between batches.
 Examples for these commands and filtered content pages live in
-`shared/fixtures/search/text-snapshot-v1.json`.
+`rust/fixtures/search/text-snapshot-v1.json`.
 
 `lsp.applyTextEdits` accepts `{ "text": string, "edits": [] }`, where each edit
 has an LSP range with zero-based `line` and UTF-16 `utf16Column` fields plus
@@ -3014,7 +3014,7 @@ details `invalidRange`. Successful responses return `{ "text": string }`.
 
 Windows workspace edits and formatting use this command instead of calculating
 text offsets locally. The cross-platform cases in
-`shared/fixtures/lsp/text-edits-v1.json` use LSP wire `character` fields; the
+`rust/fixtures/lsp/text-edits-v1.json` use LSP wire `character` fields; the
 Windows adapter maps those fields to Core `utf16Column` without changing their
 zero-based values. Core retains its existing normalization: columns beyond a
 line clamp before its line ending, and positions inside a UTF-16 surrogate pair
@@ -3050,7 +3050,7 @@ editIndex, otherEditIndex }` with `reason` `rangeOutOfBounds`, `reversed`,
 for a failed extra position. An empty batch still reports the line ending.
 Malformed payloads return `invalid_request`. The host keeps document versions,
 undo grouping and the editor surface. See
-`shared/fixtures/editor/text-edit-plan-v1.json`.
+`rust/fixtures/editor/text-edit-plan-v1.json`.
 
 `lsp.planWorkspaceEdit` accepts `{ platform, workspaceRoot, changes,
 openDocuments? }`, where `changes` maps a file URI or absolute native path to
@@ -3063,7 +3063,7 @@ null and each target is `{ path, relativePath, effect, edits }` with `effect`
 group ordered by `relativePath`; keys naming one file merge. The host reads and
 writes files, owns buffers, stale-input checks and rollback, and applies each
 target's edits with `lsp.applyTextEdits`. See
-`shared/fixtures/lsp/workspace-edit-plan-v1.json`.
+`rust/fixtures/lsp/workspace-edit-plan-v1.json`.
 
 `lsp.classifyNavigationTarget` accepts `{ platform, workspaceRoot?,
 resolvedWorkspaceRoot?, path, resolvedPath?, sourceLanguageID?, languageID?,
@@ -3071,7 +3071,7 @@ resolvedLanguageID?, isReadOnly? }`; the host supplies symlink resolution and
 the path-to-language lookup as facts. It returns `{ classification,
 isReadOnly }` where `classification` is `workspace`, `externalReadOnly` (a
 source file of the language that produced the jump, opened read-only) or
-`rejected`. See `shared/fixtures/lsp/navigation-target-v1.json`.
+`rejected`. See `rust/fixtures/lsp/navigation-target-v1.json`.
 
 `editor.parseNavigationInput` accepts `{ text }` and returns `{ target }`.
 `target` is null for invalid input, otherwise `{ line, column, selectsWholeLine }`
@@ -3081,7 +3081,7 @@ extra characters, zero, negatives and values above JavaScript's maximum safe
 integer are invalid. Text over 128 UTF-8 bytes is invalid. A line-only input
 selects its content without the terminator; an explicit column places the caret.
 Hosts clamp against the current document, not an old snapshot. See
-`shared/fixtures/editor/navigation-input-v1.json`.
+`rust/fixtures/editor/navigation-input-v1.json`.
 
 `editor.navigationHistory.reduce` accepts `{ state, event }` and returns
 `{ state, destination }`. `state` is `{ back, forward }`, each ordered oldest
@@ -3097,7 +3097,7 @@ push `current` onto the opposite stack so caret movement since the last jump
 survives a return trip. Each stack keeps the newest 100 entries. Platforms
 decide which gestures record history and restore their previous state when the
 destination cannot be opened. See
-`shared/fixtures/editor/navigation-history-v1.json`.
+`rust/fixtures/editor/navigation-history-v1.json`.
 
 `editor.lineEdit` applies one deterministic line-level transform. All offsets
 are UTF-16 code units so both hosts can feed the result straight into their
@@ -3124,7 +3124,7 @@ macOS consumes both commands today. Windows still uses its local TypeScript
 implementations (`comment-toggle.ts`, `line-operations.ts`) and is expected
 to adopt the same contract in a follow-up change; the fixture pins the
 canonical behavior for that migration. Deterministic cases are pinned by
-`shared/fixtures/editor/line-edit-v1.json`.
+`rust/fixtures/editor/line-edit-v1.json`.
 
 `network.proxyPolicy` normalizes the stored proxy settings into the policy a
 network stack must apply. It accepts `{ "mode": "system" | "direct" |
@@ -3150,7 +3150,7 @@ dropped, and passwords keep every character. A custom server without a host
 or port normalizes to `policy: "system"` with `configured: false`; system and
 direct never carry credentials, so hosts can forward the plan to their network
 stack without a second credential-scoping decision. Deterministic cases are
-pinned by `shared/fixtures/network/proxy-policy-v1.json`.
+pinned by `rust/fixtures/network/proxy-policy-v1.json`.
 
 The `debug.*` commands are the shared Debug Adapter Protocol boundary. Rust
 owns DAP framing, request sequences, response correlation, initialization and
@@ -3165,7 +3165,7 @@ path, or scoped address; `port` is an integer from 1 through 65535. It returns
 `{ host, port, remote }`, preserving the input. `localhost` (case insensitive),
 127.0.0.0/8 and `::1` are loopback; every other spelling requires remote
 consent, without resolving DNS. Invalid inputs return `invalid_request`.
-Compatibility cases live in `shared/fixtures/debug/adapter-endpoints-v1.json`.
+Compatibility cases live in `rust/fixtures/debug/adapter-endpoints-v1.json`.
 The platform obtains approval before connecting a non-loopback endpoint, once
 per connection with no remembered approval, and warns that plain TCP provides
 neither authentication nor encryption. This endpoint is the **IDE-to-adapter**
@@ -3271,7 +3271,7 @@ before dispatching them or touching native timer handles. Host-side Core call
 failures must tear down native resources for `send` as well as callback events;
 an error observer restarting the stream invalidates the old termination too.
 Scripted scenarios, with the exact steps expected,
-live in `shared/fixtures/debug/transport-lifecycle-v1.json`; platform adapter
+live in `rust/fixtures/debug/transport-lifecycle-v1.json`; platform adapter
 tests can replay them.
 
 `debug.createSession` accepts `{ sessionId, adapterId, rootPath,
@@ -3297,7 +3297,7 @@ The platform launches the process through its PTY/ConPTY adapter and calls
 shellProcessId?, message? }`. Core validates process identifiers, emits the DAP
 response, ignores duplicate or expired completions, and fails pending terminal
 requests when the session disconnects. The shared compatibility cases are in
-`shared/fixtures/debug/run-in-terminal-v1.json`.
+`rust/fixtures/debug/run-in-terminal-v1.json`.
 
 `debug.launch` accepts an `operationId` and a language-neutral configuration
 containing `name`, request kind (`launch` or `attach`), provider arguments, and
@@ -3318,7 +3318,7 @@ another adapter's policy. Adapter defaults come from the plugin's declared
 debug-adapter defaults, and class patterns are passed through to the adapter
 unchanged, so an adapter may use its own placeholder and wildcard syntax.
 The portable cases are in
-`shared/fixtures/debug/stepping-filters-v1.json`.
+`rust/fixtures/debug/stepping-filters-v1.json`.
 
 Normalized stack frames include `isFiltered`. Core derives it from the active
 class filters using the DAP frame name, source path, presentation hint, and
@@ -3396,7 +3396,7 @@ instead of showing a made-up file or line 1. A scope whose DAP
 `presentationHint` is `registers` is passed through with that hint; the host has
 no register table of its own, so register names, groups, and values are the
 adapter's. The compatibility cases are in
-`shared/fixtures/debug/projection-v2-examples.json`.
+`rust/fixtures/debug/projection-v2-examples.json`.
 
 `debug.setVariable` accepts the selected variable's parent `variablesReference`,
 name, and replacement text. Core permits mutation only while paused and after
@@ -3445,7 +3445,7 @@ fields for every other inspection kind. Normalized scopes, variables,
 evaluations, and variable-mutation results include non-negative
 `namedVariables` and `indexedVariables` counts, using zero when the adapter
 omits or reports an invalid negative value. The compatibility cases are in
-`shared/fixtures/debug/variable-paging-v1.json`.
+`rust/fixtures/debug/variable-paging-v1.json`.
 
 An `evaluate` inspection may carry `context` (`watch`, `hover`, `repl`,
 `clipboard`, or `variables`) and defaults to `watch`. Native consoles send
@@ -3484,10 +3484,10 @@ so later location-free `breakpoint` events preserve both the requested anchor an
 resolved location. Responses to superseded per-file sets are discarded. Platforms
 persist the requested anchor and may display the resolved line; placement alone
 does not imply that bytecode was bound or that execution will suspend there.
-The correlation fixture is `shared/fixtures/debug/breakpoint-binding-v1.json`.
+The correlation fixture is `rust/fixtures/debug/breakpoint-binding-v1.json`.
 The compatibility flow is captured in
-`shared/fixtures/debug/dap-session-v1.json`; exception normalization cases are
-captured in `shared/fixtures/debug/exception-info-v1.json`.
+`rust/fixtures/debug/dap-session-v1.json`; exception normalization cases are
+captured in `rust/fixtures/debug/exception-info-v1.json`.
 
 `debug.disconnect` emits the protocol handshake and enters `terminating`.
 `debug.disconnect` accepts an optional `terminateDebuggee: boolean`. When it is
@@ -3498,7 +3498,7 @@ keep a local debuggee running. An `attach` session never terminates the external
 process, even when `terminateDebuggee: true` is sent. This prevents a remote
 detach from killing a JVM the IDE does not own.
 The compatibility cases are in
-`shared/fixtures/debug/disconnect-policy-v1.json`. The platform keeps the
+`rust/fixtures/debug/disconnect-policy-v1.json`. The platform keeps the
 socket or process alive long enough to flush the frame, then closes it and
 calls `debug.destroySession`. A session allocates no process, socket, timer, or
 background task, and no session exists until Debug is used.
@@ -3526,7 +3526,7 @@ candidate is dropped when a higher-priority provider already offered the same
 label. Only labels cross the boundary and the platform applies the indices to
 its full items. A host with a single completion provider (Windows today) keeps
 that provider's list unchanged and does not call the command. Cases:
-`shared/fixtures/lsp/completion-merge-v1.json`.
+`rust/fixtures/lsp/completion-merge-v1.json`.
 
 `lsp.activationPolicy` accepts `{ state, event, nowMs }` and returns
 `{ state, decision, retryAfterMs }`. `event` is `automaticStart`,
@@ -3538,7 +3538,7 @@ wait 5000 ms, and after 3 consecutive failures only an explicit start (restart,
 retry, or repair) may run. A ready session or an explicit start clears the
 history. `nowMs` must come from a monotonic clock; a reading earlier than the
 stored failure restarts the cooldown. Cases:
-`shared/fixtures/lsp/activation-policy-v1.json`.
+`rust/fixtures/lsp/activation-policy-v1.json`.
 
 `lsp.problems.query` accepts the displayed diagnostics as
 `{ fileKey, displayPath, line, column, severity, message, source, code }`
@@ -3551,7 +3551,7 @@ stable `key`, `indices` into the submitted list, and per-severity `counts`),
 identity; `displayPath` is the workspace-relative path and orders files with
 the Project view's natural file-name order. Severity is the LSP number;
 missing or out-of-range values are unknown (`0`) and rank last. Cases:
-`shared/fixtures/lsp/problems-query-v1.json`.
+`rust/fixtures/lsp/problems-query-v1.json`.
 
 The LSP provider catalog is returned by `lithe_core_lsp_provider_catalog_json`.
 Each provider descriptor may include `languageServerLaunch` with ordered
@@ -3559,7 +3559,7 @@ Each provider descriptor may include `languageServerLaunch` with ordered
 need to discover a real language-server executable; the selected launch plan is
 then submitted to the Rust-owned runtime. Built-in descriptors are merged by provider ID with the optional
 `.lithe/lsp/language-providers.json` workspace document. See
-[`.agents/notes/implemented/architecture/2026-09-13-language-tooling-and-lsp-runtime-ownership.md`](../../.agents/notes/implemented/architecture/2026-09-13-language-tooling-and-lsp-runtime-ownership.md)
+[`.agents/notes/implemented/architecture/2026-09-13-language-tooling-and-lsp-runtime-ownership.md`](https://github.com/1lck/Lithe-IDEA/blob/preview/.agents/notes/implemented/architecture/2026-09-13-language-tooling-and-lsp-runtime-ownership.md)
 for routing, discovery, lifecycle, and compatibility rules.
 
 The `lsp.*Server`, `lsp.*Document`, `lsp.request`, `lsp.pollEvents`, and
@@ -3710,7 +3710,7 @@ and retain the final diagnostic snapshot in `underlyingMessage` with
 transfer activity; it does not prove a JVM deadlock. Quiet warnings preserve the
 initializing/preparation state. Explicit server errors and exits still fail
 immediately. Shared timing examples live in
-`shared/fixtures/lsp/jdt-readiness-v1.json`.
+`rust/fixtures/lsp/jdt-readiness-v1.json`.
 
 Platform adapters own filesystem discovery and validate that packaged JDT LS
 contains the Equinox launcher, platform configuration directory, Lombok agent,
@@ -3758,7 +3758,7 @@ session's `info` log event.
 Each build-file observation contains only a workspace-relative `path`;
 `gradleWrapperDistribution`, when sent, must not be blank. It returns `{ workspaceFingerprint }`; platforms must not recreate
 or parse this opaque string. Compatibility cases are in
-`shared/fixtures/lsp/jdt-workspace-fingerprint-v1.json`.
+`rust/fixtures/lsp/jdt-workspace-fingerprint-v1.json`.
 
 `lsp.jdtWorkspaceKey` accepts `{ workspaceRoot, workspaceFingerprint? }` and
 returns `{ workspaceKey }` through the same normalization and SHA-256 algorithm
@@ -3783,7 +3783,7 @@ nested-class `$` and `.` treated alike. A class is `failed` when any recorded
 method under it (including nested classes) failed and `passed` when at least
 one passed and none failed. Items without a source range, such as inherited
 test methods, get no marker. The command is pure and never reads the file
-system. `shared/fixtures/java/run-markers-v1.json` is the compatibility fixture.
+system. `rust/fixtures/java/run-markers-v1.json` is the compatibility fixture.
 
 `java.workspacePolicy` accepts `workspacePaths` and `changedPaths` as
 workspace-relative paths. It starts Java tooling when a non-ignored `.java`
@@ -3796,7 +3796,7 @@ therefore does not activate Java tooling; hosts still start a language server on
 demand when the user opens a `.java` file. The command chooses one deterministic
 representative source and classifies changes as `ignored`, `source`,
 `buildConfiguration`, or `other`. The compatibility examples are in
-`shared/fixtures/lsp/java-workspace-policy-v1.json`.
+`rust/fixtures/lsp/java-workspace-policy-v1.json`.
 
 `java.jdtCacheRetention` accepts platform-observed cache directory metadata as
 `{ nowUnixSeconds, activeWorkspaceKey?, entries }`. Each entry contains a
@@ -3806,7 +3806,7 @@ observations using the newest timestamp, never selects the active key, and
 returns deterministically sorted `expiredWorkspaceKeys` older than the fixed
 30-day retention period. Platform adapters own the last-used marker, directory
 enumeration, revalidation, deletion, and error logging; Core performs no cache
-filesystem I/O. See `shared/fixtures/lsp/jdt-cache-retention-v1.json`.
+filesystem I/O. See `rust/fixtures/lsp/jdt-cache-retention-v1.json`.
 
 `lsp.documentIdentity` accepts `{ workspaceRoot, input, platform }` with the same
 `posix | windows | auto` path syntax. It returns `{ document: { path, relativePath } | null }`.
@@ -3818,7 +3818,7 @@ non-file URIs, URI queries/fragments, drive-relative/rooted-without-drive Window
 paths, the workspace root itself and outside targets return null. Native roots
 must be absolute; invalid requests return `invalid_request`. This is lexical
 placement only: it performs no I/O and grants no symlink or file access permission.
-See `shared/fixtures/lsp/document-identity-v1.json`.
+See `rust/fixtures/lsp/document-identity-v1.json`.
 
 `lsp.documentUri` accepts `{ path, platform }` and returns `{ uri }`. `platform`
 is `posix`, `windows`, or `auto`; `auto` recognizes drive and UNC paths and
@@ -3826,7 +3826,7 @@ otherwise treats an absolute path as POSIX. Paths must be absolute, contain no
 NUL and fit within 131,068 UTF-8 bytes. Windows extended drive and UNC prefixes
 are accepted. Core resolves lexical dot segments, preserves a trailing directory
 separator, and percent-encodes reserved characters and UTF-8. Invalid paths
-return `invalid_request`. See `shared/fixtures/lsp/document-uri-v1.json`.
+return `invalid_request`. See `rust/fixtures/lsp/document-uri-v1.json`.
 
 The `rootUri` of `lsp.startServer` and the `uri` fields of `lsp.syncDocument`,
 `lsp.saveDocument`, `lsp.closeDocument`, `lsp.request`, `java.navigationMarkers`,
@@ -3870,7 +3870,7 @@ save notifications for clean open buffers and propagate transport failures
 instead of treating disk persistence alone as launch readiness.
 This is distinct from `didChange`: JDT reloads its on-disk working copy on save,
 which makes a subsequent Java launch build observe saved dependency edits.
-Shared cases: `shared/fixtures/lsp/document-save-v1.json`.
+Shared cases: `rust/fixtures/lsp/document-save-v1.json`.
 
 `lsp.workspaceFilesChanged` accepts a session ID and ordered file URI changes
 whose `kind` is `created`, `changed`, or `deleted`. It emits one
@@ -3888,7 +3888,7 @@ the batch, and the latest completed version is cached per URI. Markers are
 sorted by line, UTF-16 column, and relation. A marker contains `direction`
 (`up` or `down`) and `relation` (`interface` or `inheritance`); zero-target
 declarations are omitted. The cross-platform examples are in
-`shared/fixtures/lsp/java-navigation-v1.json`.
+`rust/fixtures/lsp/java-navigation-v1.json`.
 
 `java.resolveNavigation` accepts the marker position, direction, relation, and
 document version. Downward markers use `textDocument/implementation`; upward
@@ -3927,7 +3927,7 @@ passes to `build.decodeModel` or `build.decodeDependencies` as `result`;
 cancellation and late results follow `lsp.cancelOperation`. Execution replies
 are validated as `{exitCode: Int32, output: string}` and progress is mapped
 from a Core-owned wire request ID to `requestProgress` for the still-pending
-operation. See the [provider execution contract](plugins/v1/README.md#provider-task-execution).
+operation. See the [provider execution contract](../../shared/plugins/contract/v1/README.md#provider-task-execution).
 
 `lsp.toolchainRequest` accepts `{ sessionId, operationId?, params,
 timeoutMilliseconds? }` and returns `{ operationId }`. `lsp.startServer` takes
@@ -3978,7 +3978,7 @@ It sends `lithe/function/invoke` to a session started with
 `params` must be a JSON object and defaults to `{}`. Refusals are
 `invalid_request`, `not_supported`, or `permission_denied` with a
 `plugin.function.*` code in `details`, in the order the
-[plugin contract](plugins/v1/README.md#plugin-functions) defines. The
+[plugin contract](../../shared/plugins/contract/v1/README.md#plugin-functions) defines. The
 `requestCompleted` event carries the backend result as `result.value`; a
 failed call carries `error.code` `plugin.function.failed`, `invalidResult`, or
 `revoked` and, when the backend supplied one, `error.pluginErrorCode`.
@@ -4006,7 +4006,7 @@ the protocol only when it names a version the host offered. Sessions without
 registry, and publish no function-discovery events.
 
 A session that negotiated `litheFunctions` may send the
-[host-service requests](plugins/v1/README.md#host-services)
+[host-service requests](../../shared/plugins/contract/v1/README.md#host-services)
 its `hostServices` grant. A session that did not negotiate it gets no host
 services: its requests are answered `plugin.host.unavailable` (-32601) and its
 notifications are dropped. Core checks method, grant, and params, then
@@ -4021,7 +4021,7 @@ are refused with `plugin.host.failed`. The error may also be
 `{ message, code?, details? }`: a host code reaches the backend with its own
 JSON-RPC number, and `details`, an object of at most 4 KiB, as
 `error.data.details`
-([failure codes](plugins/v1/README.md#workspace-contexts-and-capability-discovery)).
+([failure codes](../../shared/plugins/contract/v1/README.md#workspace-contexts-and-capability-discovery)).
 
 The macOS public document/file/window adapters use method-level grants. Core
 intersects grants with its method table for capability discovery; macOS first
@@ -4033,7 +4033,7 @@ semantics.
 
 `lsp.hostNotify` accepts `{ sessionId, method, params }` for a ready
 plugin-owned session and returns `{ delivered }`. Core sends the
-[host notification](plugins/v1/README.md#host-notifications)
+[host notification](../../shared/plugins/contract/v1/README.md#host-notifications)
 when the session negotiated `litheFunctions` and is granted its service, and
 returns `delivered: false` without sending when it did not. Another method, an
 ungranted service, malformed or oversized params, a session that is not
@@ -4060,7 +4060,7 @@ with an error, in `details.code` and `details.message`),
 `plugin.host.methodNotDeclared` (-32024), `plugin.host.foreignContribution`
 (-32026), `plugin.host.timeout`, `plugin.host.cancelled`, `plugin.host.busy`,
 and `plugin.host.limitExceeded`. The
-[plugin contract](plugins/v1/README.md#language-server-host-methods) owns their
+[plugin contract](../../shared/plugins/contract/v1/README.md#language-server-host-methods) owns their
 meaning.
 
 `lsp.pluginServerNotify` accepts `{ sessionId, pluginId, serverID, method,
@@ -4079,7 +4079,7 @@ remote, before any process is started.
 
 A session that negotiated `litheFunctions` and holds the `functions`
 grant may call another plugin's exported function through the
-[plugin-to-plugin relay](plugins/v1/README.md#cross-plugin-calls).
+[plugin-to-plugin relay](../../shared/plugins/contract/v1/README.md#cross-plugin-calls).
 Core runs the whole relay: it checks the declarations, keeps the call chain,
 writes the forwarded request with the `caller` the callee receives, and answers
 the caller. `lsp.configureFunctionRelay`
@@ -4129,7 +4129,7 @@ objects returned by Core: nullable integer `severity`, `tags`, and
 `utf16Column` positions. A platform's display severity or marker projection is
 not a diagnostic request model. Non-LSP markers may request actions with a range
 and an empty diagnostic context. The round-trip fixture is
-`shared/fixtures/lsp/diagnostic-code-actions-v1.json`.
+`rust/fixtures/lsp/diagnostic-code-actions-v1.json`.
 `javaEntrypoints` invokes Java Debug Server's
 `vscode.java.resolveMainClass` for the session workspace and returns schema
 version 1 with deterministic workspace-relative `{ sourcePath, mainClass,
@@ -4190,7 +4190,7 @@ scope is inferred from the dispatched command: `launchTarget` means the request
 named a project, not that Core observed Java Debug Server's final project
 selection. Elapsed time is evidence only and must not become a heuristic gate.
 The versioned examples are in
-`shared/fixtures/lsp/java-build-report-v1.json`.
+`rust/fixtures/lsp/java-build-report-v1.json`.
 
 Hosts treat these two terminal build outcomes as evidence rather than an
 irrevocable launch veto. After resolving the usable runtime paths, they may let
@@ -4225,7 +4225,7 @@ retains the existing coordinator semantics and never starts classpath resolution
 Runtime path groups must contain nonblank strings, with at least one path overall.
 Hosts save documents before submitting and own the final launch decision, JDK
 discovery and native process. Run plan/toolchain selection remain in existing Core
-operations. See `shared/fixtures/lsp/java-launch-preparation-v1.json`.
+operations. See `rust/fixtures/lsp/java-launch-preparation-v1.json`.
 
 The `semanticTokens` operation uses the open document URI and normal version,
 timeout, and cancellation rules. Its result is
@@ -4234,7 +4234,7 @@ Token positions use zero-based LSP lines and UTF-16 columns; `tokenType` indexes
 the returned legend and `tokenModifiers` is a UInt32 bitset. Core decodes the
 server's relative positions with the legend captured when the request was sent.
 Range-only providers are not advertised as supporting this operation. No delta
-result ID crosses the boundary. See `shared/fixtures/lsp/semantic-tokens-v1.json`.
+result ID crosses the boundary. See `rust/fixtures/lsp/semantic-tokens-v1.json`.
 The `semanticTokensRefresh` event invalidates the host's semantic color cache
 when the server requests `workspace/semanticTokens/refresh`; the request receives
 a JSON-RPC null acknowledgment. Windows maps `lsp_get_semantic_tokens` to this
@@ -4284,7 +4284,7 @@ current visibility rules; similarly prefixed siblings are unchanged. Equal paths
 are a no-op; overlapping ancestor/descendant paths are rejected. `history.rename` and
 `history.delete` validate both the relative file path and entry ID before
 changing stored metadata.
-File and subtree relocation cases are defined in `shared/fixtures/history/relocation-v1.json`.
+File and subtree relocation cases are defined in `rust/fixtures/history/relocation-v1.json`.
 
 A `hiddenFilePatterns` entry starting with `!` turns a rule off instead of
 adding one: `!**/name/` or `!name` removes that hidden folder (built-in or not),
@@ -4328,7 +4328,7 @@ newLineCount, additions, deletions }`. `rows` are side-by-side
 `rightChanges` under the same rules as `git.diff`. `lines` are unified
 `{ kind, content, oldLine, newLine }` with `kind` of `context`, `removed`, or
 `added`, each changed block listing its removals before its additions. See
-`shared/fixtures/diff/compare-texts-v1.json`.
+`rust/fixtures/diff/compare-texts-v1.json`.
 
 `maven.scan` accepts `{ "root": string, "paths"?: string[] }` and returns
 `null` when neither the root nor the supplied visible workspace-relative paths
@@ -4353,7 +4353,7 @@ module cannot claim another module's source root. Entries are de-duplicated and
 ordered by the documented kind order, then path. Aggregator-only `pom` modules
 have no default roots. Module paths are relative to the selected Maven root and
 use `/` separators. Malformed XML returns `parse_failed`. Source-root examples
-are in `shared/fixtures/maven/source-roots-v1.json`.
+are in `rust/fixtures/maven/source-roots-v1.json`.
 
 `maven.launchPlan` accepts a workspace `root`, a versioned `context`, an
 optional reactor-relative `module`, and an ordered `goals` array whose first
@@ -4374,7 +4374,7 @@ values override the project context, including `skipTests: false`. The core
 never reads `settings.xml` and never copies its path into a portable project
 document. Maven itself continues to read `.mvn/maven.config`; the plan does not
 expand or duplicate that file's arguments. Fixtures are in
-`shared/fixtures/maven/launch-plan-v1.json`.
+`rust/fixtures/maven/launch-plan-v1.json`.
 
 `maven.dependencyPlan` accepts the same workspace `root`, versioned `context`,
 optional reactor-relative `module`, and a required absolute `outputFile`. It
@@ -4407,7 +4407,7 @@ node with only the annotations the pinned plugin writes; any other content,
 invalid UTF-8, a line over 4 KiB, more than 10,000 nodes, 64 levels, or a file
 over the byte limit derived from those bounds returns `parse_failed` instead of
 a partial tree. A missing file returns `process_failed`. The compatibility
-fixture is `shared/fixtures/maven/dependency-tree-v2.json`.
+fixture is `rust/fixtures/maven/dependency-tree-v2.json`.
 
 `maven.diagnostics` accepts `{ "root": string, "output": string }` and returns
 `{ "issues": [] }`. Diagnostic paths may be absolute or workspace-relative;
@@ -4436,7 +4436,7 @@ platform's unconstrained choice; a malformed or unsupported `requirements`
 snapshot returns the parse/version error. Explicit configured paths bypass automatic
 selection. The operation never generates requirements or probes executables.
 The cross-platform examples are in
-`shared/fixtures/run-configuration/automatic-java-selection.json`.
+`rust/fixtures/run-configuration/automatic-java-selection.json`.
 
 Windows `run_resolve_toolchains` includes an optional `warning` on resolved
 JDKs, including inherited Maven JDKs. This warning remains visible even when no
@@ -4453,7 +4453,7 @@ without changing source bytes. The command does not discover, probe or run any
 tool, inspect project descriptors, or write files. `runtimeExecutablePaths`
 comes from the existing `.lithe/toolchains/local.json`; platforms resolve the selected
 paths through their existing toolchain adapters. Shared examples are in
-`shared/fixtures/run-configuration/project-toolchain-selection.json`.
+`rust/fixtures/run-configuration/project-toolchain-selection.json`.
 When `configurationId` is supplied, explicit Java/Maven paths from that current
 Run configuration override the canonical project/reactor selection. Core reuses
 the existing team/local configuration merge without projecting global defaults
@@ -4461,7 +4461,7 @@ as explicit configuration choices. Empty configuration fields inherit the
 canonical selection; missing, disabled, mismatched-root or malformed choices fail
 instead of falling back. No generated layer is required for an explicitly saved
 Provider reference. Shared cases are in
-`shared/fixtures/run-configuration/configuration-toolchain-selection.json`.
+`rust/fixtures/run-configuration/configuration-toolchain-selection.json`.
 
 `runConfig.inspect` also returns the local document-level `toolchain`, including
 when no generated configuration exists (`status: "missing"`). Settings,
@@ -4656,7 +4656,7 @@ text, so a `static void main` or `@SpringBootApplication` inside a string
 literal or comment — common in test fixtures and documentation samples — does
 not become a run configuration. A declared `main` under `src/test` remains a
 valid entry and keeps the test classpath; see
-`shared/fixtures/execution/maven-java-main-source-sets-v1.json`.
+`rust/fixtures/execution/maven-java-main-source-sets-v1.json`.
 
 A process detector declares a runtime binding only when that command genuinely
 consumes the runtime. npm, pnpm, and Yarn scripts consume `project-node`; Bun
@@ -4703,7 +4703,7 @@ fingerprints and the detected document remain unchanged by user-layer resolution
 See `fixtures/run-configuration/build-provider-stable-identities.json`.
 
 The platform guards the source snapshot, atomically writes only the local layer,
-then re-reads the result. `shared/fixtures/run-configuration/build-provider.json`
+then re-reads the result. `rust/fixtures/run-configuration/build-provider.json`
 is the canonical persistence example.
 
 `extensions.build-run` stores portable user choices separately from the selector:
@@ -4779,7 +4779,7 @@ and is returned by inspection/resolution; hosts preserve it when saving a run
 configuration or project defaults. An absent map identifies a document predating
 subproject migration; a saved empty map is an explicit choice. Old platform
 preferences are copied and read back before cleanup, with already saved choices
-remaining authoritative. See `shared/fixtures/run-configuration/subproject-toolchains.json`.
+remaining authoritative. See `rust/fixtures/run-configuration/subproject-toolchains.json`.
 
 
 `execution.resolveSearchPath` accepts already-split `existing` directories and
@@ -4787,13 +4787,13 @@ remaining authoritative. See `shared/fixtures/run-configuration/subproject-toolc
 first, then ID and path. The result appends candidates after existing directories,
 omits empty entries, and deduplicates exactly or with ASCII case folding when
 `caseInsensitive` is true. The host owns path splitting, joining, discovery, and
-filesystem trust. See `shared/fixtures/execution/search-path-v1.json`.
+filesystem trust. See `rust/fixtures/execution/search-path-v1.json`.
 
 `runConfig.argumentText` accepts `{ "argumentLists": [["--name", "Alice Smith"], []] }`
 and returns one editor string per input vector in the same order. Quoting and escaping
 are reversible by the existing run-configuration option parser; there is no shell
 expansion or execution. Empty arguments remain explicit. The shared cases are in
-`shared/fixtures/run-configuration/argument-text.json`.
+`rust/fixtures/run-configuration/argument-text.json`.
 
 `runConfig.saveEditorChanges` accepts the normal option-edit payload plus the
 required `toolchain` object. In addition to Java and Maven paths, that object
@@ -5378,7 +5378,7 @@ Windows consumes the original fields and may ignore this marker.
 ### Declarative plugins
 
 The `plugins.declarative.*` commands implement
-[`plugins/v1`](plugins/v1/README.md). They are pure: they never read the
+[`plugins/v1`](../../shared/plugins/contract/v1/README.md). They are pure: they never read the
 package or the workspace, so hosts pass the parsed `plugin.json` and the
 relevant facts with every call.
 
@@ -5393,7 +5393,7 @@ entry the Core build does not know, or whose version it does not support, is
 a manifest that requires one the host lacks is `plugin.api.unsupported` too.
 Launches and executable resolution belong to the base contract, not to a
 capability, and are never listed in `requires`. See Capability versions in
-[`plugins/v1`](plugins/v1/README.md).
+[`plugins/v1`](../../shared/plugins/contract/v1/README.md).
 
 `plugins.declarative.runPlan`, `plugins.declarative.discoverTests`, and
 `plugins.declarative.testPlan` accept
@@ -5405,7 +5405,7 @@ revalidate the manifest first. Their requests are respectively
 Success returns `plan` (`executable`, `arguments`, `workingDirectory`, plus
 `label` and `frameworkID` for tests) or `items`; refusals use the same
 `rejected` shape. Only a malformed payload is an `invalid_request` failure.
-`shared/contracts/plugins/v1/fixtures/` holds the golden cases.
+`shared/plugins/contract/v1/fixtures/` holds the golden cases.
 
 `plugins.declarative.languageServerLaunchPlan` accepts
 `{ "manifest": object, "languageID"?: string, "buildSystemID"?: string,
@@ -5464,7 +5464,7 @@ Refusals are `plugin.launch.unavailable` (no such server),
 `plugin.launch.invalidResult`, `plugin.launch.outsidePackage`,
 `plugin.launch.undeclaredTool`, and `plugin.launch.unwritablePath` for the
 answer. The golden cases are
-`shared/contracts/plugins/v1/fixtures/languages/language-server-launch-resolution.json`.
+`shared/plugins/contract/v1/fixtures/languages/language-server-launch-resolution.json`.
 
 `plugins.languageServers.stateRetention` accepts `{ retention: { maxEntries,
 maxAgeDays }, nowUnixSeconds, entries: [{ name, lastModifiedUnixSeconds }],
@@ -5642,7 +5642,7 @@ Invalid documents use `plugin.settings.invalidDocument`; invalid batches,
 values, or edit scopes use `plugin.settings.invalidEdit`, with a safe `field`.
 Malformed envelopes use `invalid_request`; manifest failures retain existing
 rejection codes. Rejection never includes partial replacement text. Rust and
-desktop consumers share `shared/fixtures/plugins/settings-documents.json`.
+desktop consumers share `rust/fixtures/plugins/settings-documents.json`.
 
 `plugins.installed.select` accepts `{ entries: [{ pluginID, version, enabled }],
 includeDisabled?: bool }`, with at most 4096 native records. It returns
@@ -5660,7 +5660,7 @@ Invalid identity/version records and later exact duplicates use
 available; the native owner must report diagnostics and must not abandon a
 successfully started session merely because other plugins failed discovery.
 This is metadata selection, not manifest validation, approval or admission.
-Shared cases are in `shared/fixtures/plugins/installed-versions.json`.
+Shared cases are in `rust/fixtures/plugins/installed-versions.json`.
 
 `plugins.declarative.decodeGrammar` accepts `{ manifest, languageID, grammar }`,
 where `grammar` is the text the host read from the language's `grammar.path`
@@ -5686,7 +5686,7 @@ mismatched methods return `plugin.host.unavailable`, and missing grants return
 `plugin.host.permissionDenied`. This decision does not replace negotiated-version,
 parameter, current-session, workspace-context, or resource-ownership checks. Hosts must
 deny access if the Core call fails.
-Shared cases are in `shared/fixtures/plugins/host-api-v1.json`.
+Shared cases are in `rust/fixtures/plugins/host-api-v1.json`.
 
 `plugins.editorActions.decode` accepts `{version,kind:"registration",value}` or
 `{version,kind:"actions",value,text}` and returns `{registration}` or `{actions}`.
@@ -5721,7 +5721,7 @@ the declaration) yields when a plugin answered.
 `toolchains.instantiateLaunch` accepts `{ registry, tool, executable, home?,
 entry?, runtimeArguments, arguments }` and returns `{ status: "ok", launch:
 { executable, arguments, versionArguments } }`. See
-[Launching a tool definition](plugins/v1/toolchains/README.md#launching-a-tool-definition).
+[Launching a tool definition](../../shared/plugins/contract/v1/toolchains/README.md#launching-a-tool-definition).
 
 `run.decodeStart` accepts `{ manifest, workspaceRoot, temporaryDirectory?,
 params }`, where `params` are those of `lithe/host/run/start` as the backend sent
@@ -5736,7 +5736,7 @@ working directory must be a relative path of an existing directory inside
 Core writes nothing, the host writes `temporaryFiles`. A start Core refuses is
 `{ status: "rejected", error }` with `plugin.run.invalidStart` and the failing
 `field`. See the plugin contract's
-[run and debug sessions](plugins/v1/README.md#run-and-debug-sessions).
+[run and debug sessions](../../shared/plugins/contract/v1/README.md#run-and-debug-sessions).
 
 `debug.decodeBackendConfiguration` accepts `{ manifest, params }` with the
 params of `lithe/host/debug/start` and returns `{ status: "ok", start }` with
@@ -5752,7 +5752,7 @@ sources: [{ pluginID, matchers }], lines }` and returns `{ links }`;
 the matchers of each enabled plugin as `plugins.declarative.validate` returned
 them. A request Core cannot accept is `invalid_request`, not a policy outcome.
 See the plugin contract's
-[output link matchers](plugins/v1/README.md#output-link-matchers).
+[output link matchers](../../shared/plugins/contract/v1/README.md#output-link-matchers).
 
 
 The `plugins.marketplace.*` commands are equally pure: hosts fetch indexes and
@@ -5766,12 +5766,12 @@ is one Core supports and every capability it requires is in `hostCapabilities`; 
 approvedPrograms?, hostCapabilities? }` and returns `{ status: "ok", review: { id, version,
 permissions, programs, newPrograms } }`. Content problems use the same
 `rejected` shape; see the Marketplace section of
-[`plugins/v1`](plugins/v1/README.md) and `fixtures/marketplace/`.
+[`plugins/v1`](../../shared/plugins/contract/v1/README.md) and `fixtures/marketplace/`.
 
 ### Build systems
 
 The `build.*` commands implement the `buildSystems` capability of
-[`plugins/v1`](plugins/v1/README.md). Every build tool shares them, so a host
+[`plugins/v1`](../../shared/plugins/contract/v1/README.md). Every build tool shares them, so a host
 has one build workflow and never branches on a build-system ID: Core plans
 each process, the host runs it with the discovered executable, and Core
 decodes what it printed or wrote.
@@ -5821,7 +5821,7 @@ and the directories are absolute host paths used only as substitution text.
 | `build.projectOptions` | `{ document }`, host-read persisted v1 Build options, without a manifest | `document`: validated storage with version 1 and systems; options, instance defaults, root values, explicit empty selections and saved custom choices are retained. Missing system fields normalize to empty maps; malformed, unsupported or oversized documents reject with `plugin.build.invalidOptionsDocument`. This pure operation never reads or writes a file and does not replace declared option resolution. |
 | `build.invocationPlan` | `{ root, platform: "macos" \| "linux" \| "windows" }` | `invocation`: `{ buildSystemID, root, executables, environmentInputs, runtimeDependencies, version, minimumVersion }` with project-file paths joined to `root`; every runtime dependency with a known probe, host-managed ones included, carries `version: { arguments }` |
 | `build.checkToolVersion` | `{ runtime?, output }` | `version`: `{ satisfied, version? }`; `runtime` checks that runtime dependency instead of the tool |
-| `build.resolveModelInputs` | `{revision, sources: [{manifest, instances: [{buildSystemID, root, state, model?, options?}]}]}` from installed enabled current-workspace sources | `modelInputs`: version 1 public snapshot with exact optional producer slots, state, normalized projects/targets/content roots, configuration fingerprint and explicitly shared options; no tasks/run/settings/private functions; see the [plugin contract](https://github.com/1lck/Lithe-IDEA/blob/preview/shared/contracts/plugins/v1/README.md#optional-read-only-model-inputs) |
+| `build.resolveModelInputs` | `{revision, sources: [{manifest, instances: [{buildSystemID, root, state, model?, options?}]}]}` from installed enabled current-workspace sources | `modelInputs`: version 1 public snapshot with exact optional producer slots, state, normalized projects/targets/content roots, configuration fingerprint and explicitly shared options; no tasks/run/settings/private functions; see the [plugin contract](https://github.com/1lck/Lithe-IDEA/blob/preview/shared/plugins/contract/v1/README.md#optional-read-only-model-inputs) |
 | `build.resolveOptions` | `{ options, modelValues? }` | `options`: `{ options: [{ id, displayName, kind, scope?, value, source, choices, allowCustom }], dropped, fingerprint }` |
 | `build.configurationPlan` | plan fields and optional host-selected `tool` | `plan.provider` for `lithe/build/configuration`; no mutation, project or output-file parameters |
 | `build.decodeConfiguration` | `{ result }` | `configuration`: bounded `litheBuildConfiguration` v1 native sources/fields; see the plugin contract |
@@ -5859,13 +5859,13 @@ file refuses a plan without it. Unlike the `plugins.declarative.*` commands,
 `build.detect`, `build.decodeModel`, `build.decodeTestResults`,
 `build.decodeDependencies`, and `build.syncFingerprint` read bounded files
 inside `workspaceRoot` (and the given `outputFile`); none of the commands
-writes anything or starts a process. `shared/contracts/plugins/v1/fixtures/build-systems/build-plans.json`
+writes anything or starts a process. `shared/plugins/contract/v1/fixtures/build-systems/build-plans.json`
 holds the golden plans and decoded outputs.
 
 ### VCS providers
 
 The `vcs.*` commands implement the `vcsProviders` capability of
-[`plugins/v1`](plugins/v1/README.md) and the
+[`plugins/v1`](../../shared/plugins/contract/v1/README.md) and the
 [VCS provider contract](vcs-provider-v1.md). Results use the
 `plugins.declarative.*` envelope; a malformed payload, a relative
 `workspaceRoot`, or an unknown operation is an `invalid_request` failure.
@@ -5879,14 +5879,14 @@ The `vcs.*` commands implement the `vcsProviders` capability of
 `vcs.detectRoots` reads directory entries below `workspaceRoot` (at most eight
 levels and 20,000 directories) and the marker names in its ancestors; it never
 reads file contents, writes anything, or starts a process. The other two
-commands touch no file. `shared/fixtures/vcs/model-v1.json` holds the
+commands touch no file. `rust/fixtures/vcs/model-v1.json` holds the
 detection cases, decoded snapshots, and reply validation cases.
 ### Project generators
 
 The `project.*` commands back the New Project window. Payloads, results, and
 problem codes are specified in the plugin contract's
-[Project generators](plugins/v1/README.md#project-generators) section, and
-`shared/contracts/plugins/v1/fixtures/project-generators/project-plans.json` holds the golden
+[Project generators](../../shared/plugins/contract/v1/README.md#project-generators) section, and
+`shared/plugins/contract/v1/fixtures/project-generators/project-plans.json` holds the golden
 answers. Results use the `plugins.declarative.*` envelope: `catalog`, `form`,
 `plan`, `name`, and `extracted`. Commands that take a manifest revalidate it
 and answer `plugin.project.unavailable` for an undeclared generator.
@@ -6091,7 +6091,7 @@ symbols whose `range` and `selectionRange` are both `location.range` and whose
 `containerName` is kept as a hint, since Core does not infer a hierarchy from
 names. `deprecated` is true for the legacy `deprecated` flag or tag `1`. Items
 lacking `name`, `kind` or a range are dropped; a `null` or non-array result
-returns `symbols: []`. Fixture: `shared/fixtures/lsp/document-symbols-v1.json`.
+returns `symbols: []`. Fixture: `rust/fixtures/lsp/document-symbols-v1.json`.
 
 Operation `workspaceSymbols` (`workspace/symbol`) searches the whole workspace
 and names no document. Its request takes an optional `query` string (absent means
@@ -6116,7 +6116,7 @@ merging. Both Monaco adapters set `CompletionList.incomplete` and forward Monaco
 trigger context, so continued typing can request additional candidates instead of
 filtering a partial cache. Existing document-version, cancellation and attachment
 checks still reject obsolete results. The fixture is
-`shared/fixtures/lsp/completion-refresh-v1.json`.
+`rust/fixtures/lsp/completion-refresh-v1.json`.
 
 Completion items returned by the LSP client and runtime preserve `insertTextFormat`
 (`1` for plain text, `2` for snippets; absent values default to `1`). Hosts retain
@@ -6137,7 +6137,7 @@ settings declared in the provider's initialization options are retained for the
 session in initialize, didChangeConfiguration, and parent/leaf section pulls
 (including favoriteStaticMembers and filteredTypes). This does not disable snippet
 support or strip parameter text from arbitrary completion items; the shared
-configuration fixture is `shared/fixtures/lsp/java-completion-v1.json`.
+configuration fixture is `rust/fixtures/lsp/java-completion-v1.json`.
 
 ### Java preparation snapshot
 
@@ -6153,7 +6153,7 @@ configuration/build coordinator. Generic indexing never blocks Run. Profile
 failure is visible but does not globally block unrelated targets; callers still
 build the selected target before launching. A successful preparation does not
 promise compilation success. Shared examples live in
-`shared/fixtures/lsp/project-preparation-v1.json`.
+`rust/fixtures/lsp/project-preparation-v1.json`.
 
 ### Workspace commit preconditions
 
@@ -6255,7 +6255,7 @@ implicit Default membership; copies never inherit or modify their source.
 Ambiguous overlapping renames with different memberships fail closed. Inputs
 and assignment counts are bounded. Hosts must reject stale asynchronous results
 and protect persistence against concurrent windows. The shared fixture is
-`shared/fixtures/git/changelists-reducer-v1.json`.
+`rust/fixtures/git/changelists-reducer-v1.json`.
 
 An optional `pathScope: { include, paths, membership? }` restricts local
 changelist commits. Legacy scopes use literal `paths` grouped by repository ID:
@@ -6271,7 +6271,7 @@ exact-path behavior. Scope changes invalidate a reviewed plan; retries inherit
 the original scope and may not replace it. Continuations retain the entire
 scope and validate it before writes, alongside exact HEAD/index checks.
 Omitted scopes preserve existing clients' behavior. Legacy examples:
-`shared/fixtures/git/local-changelist-scope-v1.json`.
+`rust/fixtures/git/local-changelist-scope-v1.json`.
 
 `git.workspaceCommitStep` accepts `{ session }` and returns the next session,
 executing at most one commit or push. Session fields are `plan`, last observed
@@ -6300,8 +6300,8 @@ workspace lifetime. Native clients discard old responses after workspace changes
 show confirmation/progress, and drive steps until `finished`. macOS uses this
 shared workflow, as does Windows through its workspace-scoped continuation adapter
 and real staging checkboxes. The native products must not duplicate planning or retry policy.
-See `shared/fixtures/git/workspace-commit-v1.json` for primitive payloads and
-`shared/fixtures/git/workspace-commit-workflow-v1.json` for the complete planning
+See `rust/fixtures/git/workspace-commit-v1.json` for primitive payloads and
+`rust/fixtures/git/workspace-commit-workflow-v1.json` for the complete planning
 and continuation fixture consumed by Rust, Swift, TypeScript and Tauri adapter tests.
 
 ### File encodings
@@ -6344,7 +6344,7 @@ touched. A character the encoding cannot represent fails with error code
 codePoint=U+XXXX` for the first offending scalar; nothing is written and no
 replacement character is substituted. The result is `{ path, bytesWritten,
 encoding, hasBom, identity }`, where `bytesWritten` is the encoded length
-including any BOM. Fixture: `shared/fixtures/editor/file-encoding-v1.json`.
+including any BOM. Fixture: `rust/fixtures/editor/file-encoding-v1.json`.
 
 `text.decode` and `text.encode` are the same rules for a host that reads and
 writes the file itself (for example to guard against a file changing between
@@ -6376,7 +6376,7 @@ for invalid UTF-8 or an invalid pointer/length combination. A zero-length input
 is plain text and may use a null pointer. Nonzero input must point to at least
 `length` readable bytes and `length` must not exceed `isize::MAX`. The Swift
 bridge exposes the same lifetime and result contract. Fixtures live in
-`shared/fixtures/editor/text-content-v1.json` and exercise both entry points.
+`rust/fixtures/editor/text-content-v1.json` and exercise both entry points.
 
 ### Process lifecycle decisions
 
@@ -6427,7 +6427,7 @@ Unproven ownership is always `ignore`; a record the user kept is `retain`.
 Agent tasks are never ended during `crashRecovery` and are always confirmed
 during `startupSweep`, whatever the settings say. Hosts own discovery,
 signalling, and dialogs. Fixtures live in
-`shared/fixtures/process-lifecycle/exit-plan-v1.json`.
+`rust/fixtures/process-lifecycle/exit-plan-v1.json`.
 
 `processLifecycle.inventory` accepts `{ scope, mode, applicationSessionId,
 excludedProcessIds, retained, agentScopes?, approvedTermination, agentConnections,
@@ -6468,7 +6468,7 @@ The representative determines `service:{pid}:{startTime}` (`detached: true`).
 Remaining processes are grouped by session as `terminal:{sessionId}`. With a
 `context`, `plan` is the `processLifecycle.resolve` result for the items, using
 scope-token ownership. Fixtures live in
-`shared/fixtures/process-lifecycle/inventory-v1.json`.
+`rust/fixtures/process-lifecycle/inventory-v1.json`.
 
 `processLifecycle.settle` accepts `{ settings, decisions, answers, remember }`.
 `decisions` repeat each plan decision's `id` and `action`, plus an optional
@@ -6483,7 +6483,7 @@ scope-token ownership. Fixtures live in
 - With `remember`, answers to `ask` records that have a recognizer are written
   to `settings.rememberedChoices`.
 
-Fixtures live in `shared/fixtures/process-lifecycle/settle-v1.json`.
+Fixtures live in `rust/fixtures/process-lifecycle/settle-v1.json`.
 
 ## Local IDE capability broker
 
@@ -6518,7 +6518,7 @@ sorted and deduplicated. Empty means no classes were replaced. Java Debug Server
 `errorMessage` inside a successful DAP response becomes `operationFailed` with
 `adapterRejected`; the debug session remains usable. Malformed replacement
 results also fail only the operation. Replacement does not imply continue.
-The fixture is `shared/fixtures/debug/hot-code-replace-v1.json`.
+The fixture is `rust/fixtures/debug/hot-code-replace-v1.json`.
 
 Java debug launches append `-Dspring.devtools.restart.enabled=false` (also for
 Core-planned direct JDT JDWP launches) so DevTools cannot restart the classloader during
@@ -6542,7 +6542,7 @@ Clients handling larger histories must batch requests and abandon stale results.
 Local calendar boundaries (including daylight-saving transitions) come from the
 host's system calendar, are converted to absolute seconds, and are passed to Core;
 Core does not infer an OS timezone or assume every calendar day is 24 hours. See
-`shared/fixtures/git/history-date-query-v1.json`.
+`rust/fixtures/git/history-date-query-v1.json`.
 
 ### Saved changes: directional patches and immutable stashes
 
@@ -6552,7 +6552,7 @@ changing direction requires a new preview. Preview checks use disposable index c
 and preserve the real index bytes. Applying to `indexAndWorktree` may refresh its
 stat cache after reviewed-state validation. Git remains responsible for applicability;
 there is no partial-reject or automatic whitespace repair mode.
-See `shared/fixtures/git/patch-exchange-v1.json`.
+See `rust/fixtures/git/patch-exchange-v1.json`.
 
 `git.stashes` adds `oid`, the full immutable object identity, alongside the positional
 `reference`. `git.diff` accepts `stashReference` to read a stash including its untracked
@@ -6586,8 +6586,8 @@ return no files; invalid, unsafe or oversized inputs are rejected. Shelf retains
 separate staged and working-tree patches and parses each layer once. Hosts may
 render the unified and split rows, but must use only byte-faithful hunks for
 writes and honor the decoding-loss flag. See
-`shared/fixtures/git/saved-stash-v1.json` and
-`shared/fixtures/git/parsed-diff-v1.json`.
+`rust/fixtures/git/saved-stash-v1.json` and
+`rust/fixtures/git/parsed-diff-v1.json`.
 
 ### Plugin web pages
 
@@ -6654,7 +6654,7 @@ advertise native plugin content.
 `create`, `import`, and `setEnabled`, with `agentId` (`codex-acp` or `claude-acp`) and optional
 absolute `workspace`. These management operations never create an Agent session,
 send a prompt or stop a running conversation. Only an explicit `setEnabled` action changes native visibility settings.
-The shared fixture is `shared/fixtures/agent/skills-management-v1.json`.
+The shared fixture is `rust/fixtures/agent/skills-management-v1.json`.
 
 `list` returns `skills`, `source`, `issues`, and native `directories` (`user`,
 plus `repo` when a workspace is present). Each row has `name`, `description`,
@@ -6700,7 +6700,7 @@ and rejects stale results after project changes. Windows can use the same Core
 operations; the settings UI and Windows runtime validation remain pending.
 
 
-Team Build options use `shared/contracts/build-project-options-v1.schema.json`
+Team Build options use `rust/contracts/build-project-options-v1.schema.json`
 at `.lithe/build/options.json`. `options` holds workspace-scoped values;
 `instanceDefaults` applies to every detected root's instance-scoped options;
 `instances` overrides those defaults by normalized root. Platform-local values
@@ -6732,7 +6732,7 @@ wins its major and alone receives `default: true` in `java.configuration.runtime
 both at initialization and in configuration responses. Empty homes and unparseable versions
 are ignored during projection; platform adapters validate explicit choices before launch.
 Legacy callers that omit `isDefault` retain their previous behavior.
-Fixture: `shared/fixtures/lsp/java-project-runtimes-v1.json`.
+Fixture: `rust/fixtures/lsp/java-project-runtimes-v1.json`.
 
 
 ### Workspace indexing policy
@@ -6783,7 +6783,7 @@ and releases only the last holder; window destruction also revokes late registra
 takes `{ source, destination?, caseInsensitive?, rules, target? }` and returns `{ rules, target }`:
 keys at or below `source` leave `rules`, reappear under `destination` (in `target` for a move across
 workspace roots) and are dropped when there is no destination. Request and response pairs are pinned
-by `shared/fixtures/workspace/directory-rules-v1.json`.
+by `rust/fixtures/workspace/directory-rules-v1.json`.
 
 `workspace.planDuplicate` takes `{ name, isDirectory, existing?, caseInsensitive? }` and returns
 `{ name }`; `workspace.planPaste` takes `{ items: [{ name, isDirectory }], existing?, caseInsensitive? }`
@@ -6792,15 +6792,15 @@ are not. Core never touches the file system: the host passes the names it has se
 copy without replacing anything (`FileManager.copyItem`, which refuses an existing destination, on macOS;
 `create_new` and `MoveFileEx` without replacement on Windows) and, when that fails because the name
 appeared meanwhile, adds the name to `existing` and plans again. After 512 rounds the host reports
-the stable `destination_exists` error. Cases are in `shared/fixtures/workspace/file-copy-names-v1.json`.
+the stable `destination_exists` error. Cases are in `rust/fixtures/workspace/file-copy-names-v1.json`.
 
 `history.planEvent` takes `{ event }` and returns `{ snapshots: [{ source, reason }] }`. `source` says
 whose text the host records: `beforeChange` (the text an event replaces), `afterChange` (the text it
 produced) or `editorBuffer` (unsaved editor text that is discarded). A save or auto-save records
 `beforeChange` and `afterChange`, so a snapshot of the saved state exists immediately.
-Cases are in `shared/fixtures/history/event-plan-v1.json`.
+Cases are in `rust/fixtures/history/event-plan-v1.json`.
 
-The directory-action sequence contract is `shared/fixtures/workspace/directory-actions-v1.json`.
+The directory-action sequence contract is `rust/fixtures/workspace/directory-actions-v1.json`.
 Role changes retain include exceptions, explicit exclusion deletes only its own exception,
 and canceling Git exclusion preserves the current role. Only canceling a manual exclusion
 restores the remembered role. Manual ancestor exclusion cannot be overridden.
@@ -6868,7 +6868,7 @@ The response is `{status: ok, preferences: {fixed, source, inheritance, stored}}
 inert inputs to the existing resolver; this command cannot register a tool, prove package trust,
 resolve a version, write preferences or grant permission to run a program. Native consumers must
 recheck their source bytes and active definitions after discovery. The shared fixture is
-`shared/fixtures/toolchains/consumer-preferences.json`. The machine-local Run document stores it at `toolchain.preferences`. Run editor updates omit to
+`rust/fixtures/toolchains/consumer-preferences.json`. The machine-local Run document stores it at `toolchain.preferences`. Run editor updates omit to
 preserve, or pass an empty v1 document to reset. `runConfig.projectToolchain` returns the inert
 `toolPreferences` alongside existing fields. The native host supplies the current
 installed plugin/build-system contribution identity; both native Build consumers read these preferences
@@ -6904,7 +6904,7 @@ or case ran nothing), `noTestsFound` (a project or workspace scope ran nothing),
 failures outrank the exit code, a non-zero exit outranks an empty result, and a
 zero exit with decoded results but no executed test is not a pass. Counts that
 exceed `total` are `InvalidRequest`. No tool or selector syntax is interpreted.
-Hosts localize the outcome. Cases: `shared/fixtures/build/test-run-outcome-v1.json`.
+Hosts localize the outcome. Cases: `rust/fixtures/build/test-run-outcome-v1.json`.
 
 ### Test history merge
 
@@ -6919,7 +6919,7 @@ others stay in place, then the run's covered results follow. Incoming results
 outside the scope are discarded, and for a repeated id the later entry wins.
 Core compares strings only: hosts keep the result payloads, and the provider
 adapter builds the scope (for example turning Java nested classes `Outer$Inner`
-into the prefix `Outer$`). Cases: `shared/fixtures/build/test-outcome-merge-v1.json`.
+into the prefix `Outer$`). Cases: `rust/fixtures/build/test-outcome-merge-v1.json`.
 
 ### Variable and disassembly paging
 
@@ -6935,7 +6935,7 @@ identities and how many of them the host did not already show, and returns
 older cursor or repeats a page (an adapter that ignores `start`). Paging stops on
 an oversized page, a page of only known children, the reported count, or a short
 page without a count. Hosts keep the page size, expansion and child identity.
-Cases: `shared/fixtures/debug/variable-page-plan-v1.json`.
+Cases: `rust/fixtures/debug/variable-page-plan-v1.json`.
 
 `debug.planDisassemblyWindow { direction, reference, count, instructionsBefore? }`
 returns a fetch whose `request` is the exact DAP `disassemble` arguments;
@@ -6954,7 +6954,7 @@ instruction, then the known edge is probed: only an edge that still
 disassembles ends the direction (`exhausted`), otherwise the refused window's
 message is returned. Transport failures are never treated as a boundary.
 Addresses are never parsed or offset by Core or hosts. Hosts keep the viewport,
-scroll anchor and rendering. Cases: `shared/fixtures/debug/disassembly-paging-v1.json`.
+scroll anchor and rendering. Cases: `rust/fixtures/debug/disassembly-paging-v1.json`.
 
 ### Windows source-breakpoint relocation
 
@@ -6963,7 +6963,7 @@ Windows forwards the editor's exact source-preserving edits to
 one-based lines. The context-expanded patches used to synchronize the editor's
 source mirror must not be used as anchor edits: unchanged neighboring code must
 not be treated as deleted. The existing cases in
-`shared/fixtures/debug/breakpoint-relocation-v1.json` cover both platforms.
+`rust/fixtures/debug/breakpoint-relocation-v1.json` cover both platforms.
 
 Each native multi-cursor event is sent as one batch of original-source edits;
 Core applies the edits before projecting anchors. Rapid events serialize or share
@@ -6989,7 +6989,7 @@ fragment if syntax coloring fails. Render failures are shown as localized text;
 there is no frontend Markdown parser fallback. This does not promise Windows
 math or diagram rendering parity.
 
-Shared examples: `shared/fixtures/editor/markdown-render-v1.json`,
+Shared examples: `rust/fixtures/editor/markdown-render-v1.json`,
 `markdown-html-v1.json` and `markdown-rich-content-v1.json`.
 
 ### Structured logging of recoverable LSP maintenance warnings
@@ -7258,9 +7258,9 @@ Missing, unusable, or relative values fail with `plugin.launch.invalidRequest`
 when needed; `requiredDirectories` adds `log` when used. The host creates the
 provided writable directory before launch, outside all bundles and installation
 resources. Validation probes cannot reference `${logDir}`. See the synchronized
-[plugin contract](plugins/v1/README.md). Literal arguments that do not use
+[plugin contract](../../shared/plugins/contract/v1/README.md). Literal arguments that do not use
 `${logDir}` remain literal. Wire examples are exercised by
-`shared/fixtures/diagnostics/engine-logging-v2.json` and Core tests.
+`rust/fixtures/diagnostics/engine-logging-v2.json` and Core tests.
 
 Plugin-owned sessions offer `litheLogging: { versions: [0] }` independently of
 other protocols; a backend that answers `{ "version": 0 }` negotiates it.
@@ -7270,7 +7270,7 @@ identity selecting `plugins/<id>/host`. It never copies notification JSON into
 legacy runtime detail. The four facts map to catalog INFO/ERROR/WARN/WARN,
 and a live wire request ID resolves to its original host `op`; no user content
 or backend-selected channel/level/message is accepted. See the
-[plugin logging contract](plugins/v1/README.md#structured-plugin-diagnostics)
+[plugin logging contract](../../shared/plugins/contract/v1/README.md#structured-plugin-diagnostics)
 and `plugins/v1/fixtures/backend/plugin-logging.json`. Explicit upstream LSP message
 types retain their severity through separate catalog events; unclassified
 stderr is DEBUG and actual lifecycle failure is ERROR.
@@ -7313,8 +7313,8 @@ transport, spawn, protocol, or remote_<protocol_code>; peer prose is excluded.
 
 Core records one terminal fact for each dispatched request and one for each Git
 process, and hands both to the host through `diagnostics.drainCoreEvents`. Event
-identities and field shapes are declared in `shared/logging/events/app.json` and
-`shared/logging/events/vcs.json`; this section defines when each is emitted.
+identities and field shapes are declared in `rust/logging/events/app.json` and
+`rust/logging/events/vcs.json`; this section defines when each is emitted.
 
 Request traces use channel `app/core`: `app.core.request.finished` (INFO),
 `app.core.request.traced` (DEBUG) and `app.core.request.failed` (WARN). The
@@ -7386,7 +7386,7 @@ rename) before deleting anything. The result is `{delete, keep, seed}`, the firs
 `referenced` (kept, even when flagged abandoned), `recent` (kept, unreferenced and at most
 seven days old or of unknown age), `abandoned` and `expired` (deleted). The cache and the
 ledger live in the platform cache directory, never in the app bundle or install directory.
-The fixture is `shared/fixtures/agent/attachment-retention-v1.json`.
+The fixture is `rust/fixtures/agent/attachment-retention-v1.json`.
 
 ### Atomic local toolchain pin editing
 
@@ -7404,7 +7404,7 @@ and `plugin.toolchain.limitExceeded` structured error envelope.
 The command performs no I/O and grants no execution authority. The host owns
 explicit Save confirmation, byte-baseline conflict detection, cancellation,
 ignore-file preparation, atomic native replacement, and re-reading the source.
-See `shared/fixtures/toolchain-pin-edit.json` for the cross-client vector.
+See `rust/fixtures/toolchain-pin-edit.json` for the cross-client vector.
 
 ### Native toolchain pin sources
 
@@ -7436,7 +7436,7 @@ identity, recheck both even for no-op saves, preserve metadata, and publish the
 ignore prerequisite before the pin document. A document already committed
 followed by cleanup/readback failure must invalidate the old draft baseline:
 reload before retrying. User-selected workspace storage never changes an
-installed app or plugin bundle. See `shared/fixtures/toolchain-pin-storage.json`.
+installed app or plugin bundle. See `rust/fixtures/toolchain-pin-storage.json`.
 
 ### Debug launch response ordering
 
@@ -7444,7 +7444,7 @@ A debug adapter may emit `stopped` or `terminated` before replying to `launch`
 or `attach`. The acknowledgement completes that operation; it changes state to
 `running` only if the session is still `launching`. It never resumes a paused
 target or resurrects a terminated one. See
-`shared/fixtures/debug/launch-event-order.json`. Hosts serialize each Core update,
+`rust/fixtures/debug/launch-event-order.json`. Hosts serialize each Core update,
 its outbound frames and its UI publication in the order returned by the engine.
 
 ### Settings action planning
@@ -7465,7 +7465,7 @@ no function invocation. Otherwise an unconfirmed action whose declaration has
 Once confirmed (or when the declaration needs no confirmation), `kind:"invoke"`
 adds `function` and `params:{}`. Labels and function identity always come from
 the validated manifest; callers cannot supply a different target or arguments.
-See `shared/fixtures/plugins/settings-actions.json`.
+See `rust/fixtures/plugins/settings-actions.json`.
 
 `confirmed` and `workspaceAvailable` are facts from the native owner, not a
 capability grant. The host must capture user confirmation, check the installed
@@ -7495,7 +7495,7 @@ affect selection: the first matching session ID in lexical order wins. This
 query performs no I/O, starts nothing and does not consume runtime events.
 There is no cross-workspace fallback. An absent match is explicit null; normal
 startup/admission and later function invocation checks remain required.
-The pure selection vector is `shared/fixtures/plugins/settings-function-provider.json`.
+The pure selection vector is `rust/fixtures/plugins/settings-function-provider.json`.
 This is an internal desktop command, not a new public plugin host method.
 
 ### Dynamic plugin settings surfaces
@@ -7526,4 +7526,4 @@ refresh displayed sources but receive no runtime effects. Effects are sorted
 and deduplicated. No setting values cross windows: receivers read their own
 project layers. Native owners must recheck window/project lifetime on delivery.
 Invalid surface input returns `plugin.settings.invalidSurface`; owner mismatch
-returns `plugin.settings.ownerChanged`. Shared vectors: `shared/fixtures/plugins/settings-surfaces.json`.
+returns `plugin.settings.ownerChanged`. Shared vectors: `rust/fixtures/plugins/settings-surfaces.json`.

@@ -192,7 +192,7 @@ mod tests {
     #[test]
     fn unicode_contiguous_matches_map_back_to_original_utf16() {
         let fixture: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/search/unicode-contiguous.json"
+            "../../../fixtures/search/unicode-contiguous.json"
         ))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {

@@ -67,7 +67,7 @@ mod tests {
     #[test]
     fn context_selection_command_matches_shared_provider_neutral_cases() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/run-configuration/context-selection.json"
+            "../../../fixtures/run-configuration/context-selection.json"
         ))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {

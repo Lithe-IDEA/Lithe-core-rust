@@ -10,7 +10,7 @@ fn execute(command: &str, payload: Value) -> Value {
 
 fn fixture() -> Value {
     serde_json::from_str(include_str!(
-        "../../../../shared/fixtures/workspace/file-copy-names-v1.json"
+        "../../../fixtures/workspace/file-copy-names-v1.json"
     ))
     .expect("file copy names fixture should be JSON")
 }

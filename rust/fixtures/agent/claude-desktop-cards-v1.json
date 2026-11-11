@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "description": "Claude Desktop tool calls as a host receives them (updates) and as lithe-agent-host presents them to clients (presented), in order. Cards are in _meta.lithe.claudeDesktop; see shared/contracts/application-boundary.md.",
+  "description": "Claude Desktop tool calls as a host receives them (updates) and as lithe-agent-host presents them to clients (presented), in order. Cards are in _meta.lithe.claudeDesktop; see rust/contracts/application-boundary.md.",
   "cases": [
     {
       "name": "chapter",

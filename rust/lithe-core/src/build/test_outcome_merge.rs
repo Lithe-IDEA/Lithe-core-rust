@@ -121,7 +121,7 @@ mod tests {
     #[test]
     fn shared_fixture_cases_merge_to_their_expected_history() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../shared/fixtures/build/test-outcome-merge-v1.json"
+            "../../../fixtures/build/test-outcome-merge-v1.json"
         ))
         .unwrap();
         let cases = fixture["cases"].as_array().unwrap();
