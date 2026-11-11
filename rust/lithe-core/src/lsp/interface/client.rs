@@ -300,13 +300,17 @@ fn client_feature_request_with_document_ownership(
     request: ClientFeatureRequest,
     require_open_document: bool,
 ) -> Result<LspClientResponse, CoreError> {
-    validate_uri(&request.uri)?;
+    // `workspace/symbol` is workspace-wide: it names no document, so an empty URI is accepted.
+    let workspace_wide = request.method == "workspace/symbol";
+    if !workspace_wide {
+        validate_uri(&request.uri)?;
+    }
     validate_lsp_method(&request.method)?;
     let params = feature_request_params(&request)?;
     let uri = request.uri.clone();
     let method = request.method.clone();
     let mut state = request.state;
-    if require_open_document && !state.open_documents.contains_key(&uri) {
+    if !workspace_wide && require_open_document && !state.open_documents.contains_key(&uri) {
         return Err(CoreError::new(
             ErrorCode::InvalidRequest,
             "Cannot request LSP features for a document that is not open.",
@@ -1066,6 +1070,7 @@ fn validate_lsp_method(method: &str) -> Result<(), CoreError> {
         | "textDocument/semanticTokens/full"
         | "textDocument/foldingRange"
         | "textDocument/documentLink"
+        | "workspace/symbol"
         | "textDocument/codeLens"
         | "textDocument/codeAction"
         | "completionItem/resolve"
@@ -1152,6 +1157,9 @@ fn feature_request_params(request: &ClientFeatureRequest) -> Result<Value, CoreE
         | "textDocument/documentLink"
         | "textDocument/codeLens" => Ok(json!({
             "textDocument": text_document
+        })),
+        "workspace/symbol" => Ok(json!({
+            "query": request.query.clone().unwrap_or_default()
         })),
         "textDocument/codeAction" => Ok(json!({
             "textDocument": text_document,
@@ -1408,6 +1416,9 @@ fn lsp_feature_result_for_method(method: Option<&str>, result: Option<&Value>) -
         })),
         Some("textDocument/documentLink") => Some(json!({
             "links": parse_document_links(result)
+        })),
+        Some("workspace/symbol") => Some(json!({
+            "symbols": parse_workspace_symbols(result)
         })),
         Some("textDocument/codeLens") => Some(json!({
             "lenses": parse_code_lenses(result)
@@ -1701,6 +1712,32 @@ fn parse_folding_ranges(result: &Value) -> Vec<LspFoldingRangeResponse> {
                             .get("collapsedText")
                             .and_then(Value::as_str)
                             .map(str::to_string),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Accepts both `SymbolInformation[]` and `WorkspaceSymbol[]`. A location with
+/// only a URI keeps a null range, because the server expects `workspaceSymbol/resolve`.
+fn parse_workspace_symbols(result: &Value) -> Vec<LspWorkspaceSymbolResponse> {
+    result
+        .as_array()
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|symbol| {
+                    let location = symbol.get("location")?;
+                    Some(LspWorkspaceSymbolResponse {
+                        name: symbol.get("name")?.as_str()?.to_string(),
+                        kind: symbol.get("kind").and_then(Value::as_i64),
+                        container_name: symbol
+                            .get("containerName")
+                            .and_then(Value::as_str)
+                            .map(str::to_string),
+                        uri: location.get("uri")?.as_str()?.to_string(),
+                        range: location.get("range").and_then(parse_lsp_range),
                     })
                 })
                 .collect()
@@ -2438,6 +2475,7 @@ mod formatting_and_completion_tests {
 
     fn request(method: &str, options: Option<Value>, with_range: bool) -> ClientFeatureRequest {
         ClientFeatureRequest {
+            query: None,
             state: LspClientState::default(),
             uri: "file:///w/a.c".to_string(),
             method: method.to_string(),

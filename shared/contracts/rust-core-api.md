@@ -4092,8 +4092,10 @@ the operation-specific URI, position, range, diagnostics, item, action, or
 command fields, and returns `{ operationId }`. Supported operations include
 completion and resolve, hover, definition/declaration/type-definition, references,
 implementation, rename, formatting, range formatting, document symbols, code actions and resolve, execute command,
-inlay hints, full-document semantic tokens, folding ranges, code lens, provider
-virtual documents, `javaEntrypoints`, `javaTestItems`, and `javaMainMethods`.
+inlay hints, full-document semantic tokens, folding ranges, document links
+(`documentLinks`, result `{ links: [{ range, target, tooltip }] }`; `target` is null
+until a server supplies it, and entries without a range are dropped), workspace
+symbols (`workspaceSymbols`, see below), code lens, provider virtual documents, `javaEntrypoints`, `javaTestItems`, and `javaMainMethods`.
 For code actions, `diagnostics` contains the original `LspClientDiagnostic`
 objects returned by Core: nullable integer `severity`, `tags`, and
 `relatedInformation` remain intact, and every range uses zero-based `line` /
@@ -6064,6 +6066,19 @@ symbols whose `range` and `selectionRange` are both `location.range` and whose
 names. `deprecated` is true for the legacy `deprecated` flag or tag `1`. Items
 lacking `name`, `kind` or a range are dropped; a `null` or non-array result
 returns `symbols: []`. Fixture: `shared/fixtures/lsp/document-symbols-v1.json`.
+
+Operation `workspaceSymbols` (`workspace/symbol`) searches the whole workspace
+and names no document. Its request takes an optional `query` string (absent means
+`""`) and sends `params: { query }`; `uri` is not required. It is offered, as the
+`workspaceSymbols` feature, when the server declares `workspaceSymbolProvider`.
+The result is `{ symbols: WorkspaceSymbolItem[] }`, where each item is
+`{ name, kind, containerName, uri, range }`. `kind` is the numeric LSP
+`SymbolKind` or null, `containerName` is nullable, and `range` uses the same
+`line` / `utf16Column` shape as other results. Core accepts both a flat
+`SymbolInformation[]` (`location` with a `range`) and `WorkspaceSymbol[]`, where
+`location` may carry only a `uri`; in that case `range` is null until the
+server's `workspaceSymbol/resolve` supplies it, which Core does not call. Items
+without `name` or `location.uri` are dropped.
 
 Completion requests accept optional `completionContext` with LSP `triggerKind`
 (`1` invoked, `2` trigger character, `3` incomplete-list refresh) and

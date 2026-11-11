@@ -764,6 +764,7 @@ fn client_core_tracks_documents_and_feature_requests() {
     assert_eq!(did_change["method"], "textDocument/didChange");
 
     let requested = client_feature_request(ClientFeatureRequest {
+        query: None,
         state: changed.state,
         uri: "file:///tmp/project/main.rs".to_string(),
         method: "textDocument/definition".to_string(),
@@ -1186,6 +1187,7 @@ fn client_core_preserves_class_completion_namespace_and_import_edits() {
     })
     .unwrap();
     let requested = client_feature_request(ClientFeatureRequest {
+        query: None,
         state: opened.state,
         uri: "file:///tmp/project/index.php".to_string(),
         method: "textDocument/completion".to_string(),
@@ -1232,6 +1234,7 @@ fn client_core_preserves_class_completion_namespace_and_import_edits() {
     assert!(completion["items"][0].get("additionalTextEdits").is_none());
 
     let resolve = client_feature_request(ClientFeatureRequest {
+        query: None,
         state: completed.state,
         uri: "file:///tmp/project/index.php".to_string(),
         method: "completionItem/resolve".to_string(),
@@ -1612,6 +1615,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
     })
     .unwrap();
     let requested = client_feature_request(ClientFeatureRequest {
+        query: None,
         state: opened.state,
         uri: "file:///tmp/project/main.rs".to_string(),
         method: "textDocument/completion".to_string(),
@@ -1664,6 +1668,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
     assert_eq!(result["items"][0]["insertTextFormat"], 2);
 
     let rename = client_feature_request(ClientFeatureRequest {
+        query: None,
         state: completed.state,
         uri: "file:///tmp/project/main.rs".to_string(),
         method: "textDocument/rename".to_string(),
@@ -1708,6 +1713,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
     );
 
     let formatting = client_feature_request(ClientFeatureRequest {
+        query: None,
         state: renamed.state,
         uri: "file:///tmp/project/main.rs".to_string(),
         method: "textDocument/formatting".to_string(),
@@ -1745,6 +1751,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
     );
 
     let code_actions = client_feature_request(ClientFeatureRequest {
+        query: None,
         state: formatted.state,
         uri: "file:///tmp/project/main.rs".to_string(),
         method: "textDocument/codeAction".to_string(),
@@ -1863,6 +1870,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
     );
 
     let code_action_resolve = client_feature_request(ClientFeatureRequest {
+        query: None,
         state: code_actioned.state,
         uri: "file:///tmp/project/main.rs".to_string(),
         method: "codeAction/resolve".to_string(),
@@ -1922,6 +1930,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
     );
 
     let completion_resolve = client_feature_request(ClientFeatureRequest {
+        query: None,
         state: code_action_resolved.state,
         uri: "file:///tmp/project/main.rs".to_string(),
         method: "completionItem/resolve".to_string(),
@@ -1982,6 +1991,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
     );
 
     let execute_command = client_feature_request(ClientFeatureRequest {
+        query: None,
         state: completion_resolved.state,
         uri: "file:///tmp/project/main.rs".to_string(),
         method: "workspace/executeCommand".to_string(),
@@ -2031,6 +2041,7 @@ fn client_requests_and_normalizes_document_links() {
     .unwrap();
 
     let request = client_feature_request(ClientFeatureRequest {
+        query: None,
         state: opened.state,
         uri: uri.to_string(),
         method: "textDocument/documentLink".to_string(),
@@ -2090,6 +2101,73 @@ fn client_requests_and_normalizes_document_links() {
 }
 
 #[test]
+fn client_requests_and_normalizes_workspace_symbols_without_a_document() {
+    let request = client_feature_request(ClientFeatureRequest {
+        state: LspClientState::default(),
+        uri: String::new(),
+        method: "workspace/symbol".to_string(),
+        position: None,
+        new_name: None,
+        query: Some("Parser".to_string()),
+        range: None,
+        diagnostics: Vec::new(),
+        completion_context: None,
+        completion_item: None,
+        code_action: None,
+        command: None,
+        formatting_options: None,
+    })
+    .unwrap();
+    let request_json: Value = serde_json::from_str(&request.messages[0]).unwrap();
+    assert_eq!(request_json["method"], "workspace/symbol");
+    assert_eq!(request_json["params"], json!({ "query": "Parser" }));
+
+    // SymbolInformation (with a range) and WorkspaceSymbol (URI only) are both accepted.
+    let response = client_apply_server_message(ClientApplyServerMessageRequest {
+        state: request.state,
+        message: json!({
+            "jsonrpc": "2.0",
+            "id": "1",
+            "result": [
+                {
+                    "name": "Parser",
+                    "kind": 5,
+                    "containerName": "lithe",
+                    "location": {
+                        "uri": "file:///tmp/project/src/parser.rs",
+                        "range": {
+                            "start": { "line": 3, "character": 4 },
+                            "end": { "line": 9, "character": 1 }
+                        }
+                    }
+                },
+                {
+                    "name": "ParserState",
+                    "kind": 23,
+                    "location": { "uri": "file:///tmp/project/src/state.rs" }
+                },
+                { "name": "missing-location", "kind": 12 }
+            ]
+        })
+        .to_string(),
+    })
+    .unwrap();
+    let symbols = response.events[0].result.as_ref().unwrap()["symbols"]
+        .as_array()
+        .unwrap();
+    assert_eq!(symbols.len(), 2);
+    assert_eq!(symbols[0]["name"], "Parser");
+    assert_eq!(symbols[0]["kind"], 5);
+    assert_eq!(symbols[0]["containerName"], "lithe");
+    assert_eq!(symbols[0]["uri"], "file:///tmp/project/src/parser.rs");
+    assert_eq!(symbols[0]["range"]["start"]["line"], 3);
+    assert_eq!(symbols[0]["range"]["start"]["utf16Column"], 4);
+    assert_eq!(symbols[1]["name"], "ParserState");
+    assert!(symbols[1]["range"].is_null());
+    assert!(symbols[1]["containerName"].is_null());
+}
+
+#[test]
 fn client_core_requests_and_shapes_inlay_hints_folding_ranges_and_code_lenses() {
     let uri = "file:///tmp/project/Main.java";
     let opened = client_open_document(ClientOpenDocumentRequest {
@@ -2101,6 +2179,7 @@ fn client_core_requests_and_shapes_inlay_hints_folding_ranges_and_code_lenses() 
     .unwrap();
 
     let inlay_request = client_feature_request(ClientFeatureRequest {
+        query: None,
         state: opened.state,
         uri: uri.to_string(),
         method: "textDocument/inlayHint".to_string(),
@@ -2163,6 +2242,7 @@ fn client_core_requests_and_shapes_inlay_hints_folding_ranges_and_code_lenses() 
     assert_eq!(hint["data"]["id"], "hint-1");
 
     let folding_request = client_feature_request(ClientFeatureRequest {
+        query: None,
         state: inlay_response.state,
         uri: uri.to_string(),
         method: "textDocument/foldingRange".to_string(),
@@ -2206,6 +2286,7 @@ fn client_core_requests_and_shapes_inlay_hints_folding_ranges_and_code_lenses() 
     assert_eq!(range["collapsedText"], "methods");
 
     let code_lens_request = client_feature_request(ClientFeatureRequest {
+        query: None,
         state: folding_response.state,
         uri: uri.to_string(),
         method: "textDocument/codeLens".to_string(),
@@ -2259,6 +2340,7 @@ fn navigation_locations_preserve_uris_without_fabricating_virtual_file_paths() {
     })
     .unwrap();
     let requested = client_feature_request(ClientFeatureRequest {
+        query: None,
         state: opened.state,
         uri: uri.to_string(),
         method: "textDocument/definition".to_string(),
