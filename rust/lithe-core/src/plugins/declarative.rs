@@ -1972,6 +1972,19 @@ impl DeclarativePluginManifest {
         &self.id
     }
 
+    /// Package-relative HTML entry of this plugin's web tool window
+    /// `window_id`, or `None` when the plugin declares no such web window.
+    pub(crate) fn web_window_entry(&self, window_id: &str) -> Option<&str> {
+        self.ui
+            .as_ref()?
+            .tool_windows
+            .iter()
+            .find(|window| window.id == window_id)?
+            .web
+            .as_ref()
+            .map(|web| web.entry.as_str())
+    }
+
     /// Plugin version, `major.minor.patch`.
     pub(crate) fn version(&self) -> &str {
         &self.version

@@ -24,6 +24,8 @@ pub(crate) mod native_ui;
 pub(crate) mod output_links;
 pub(crate) mod plugin_functions;
 pub(crate) mod settings;
+/// Plugin pages in host tool windows: loading rules and the web bridge.
+pub(crate) mod web_content;
 
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};

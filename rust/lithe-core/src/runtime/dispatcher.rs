@@ -286,6 +286,41 @@ fn execute_parsed(mut parsed: CoreRequest) -> CoreResponse {
             parsed.payload,
             crate::plugins::native_ui::validate_data_command,
         ),
+        CoreCommand::PluginsWebOpen => plugin_response(
+            id,
+            parsed.payload,
+            crate::plugins::web_content::open_command,
+        ),
+        CoreCommand::PluginsWebClose => plugin_response(
+            id,
+            parsed.payload,
+            crate::plugins::web_content::close_command,
+        ),
+        CoreCommand::PluginsWebResource => plugin_response(
+            id,
+            parsed.payload,
+            crate::plugins::web_content::resource_command,
+        ),
+        CoreCommand::PluginsWebDocument => plugin_response(
+            id,
+            parsed.payload,
+            crate::plugins::web_content::document_command,
+        ),
+        CoreCommand::PluginsWebRequest => plugin_response(
+            id,
+            parsed.payload,
+            crate::plugins::web_content::request_command,
+        ),
+        CoreCommand::PluginsWebReply => plugin_response(
+            id,
+            parsed.payload,
+            crate::plugins::web_content::reply_command,
+        ),
+        CoreCommand::PluginsWebEvent => plugin_response(
+            id,
+            parsed.payload,
+            crate::plugins::web_content::event_command,
+        ),
         CoreCommand::PluginsDeclarativeValidate => plugin_response(
             id,
             parsed.payload,
