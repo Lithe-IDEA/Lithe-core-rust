@@ -200,3 +200,38 @@ fn expected_nonzero_queries_are_distinct_from_real_failures_and_limits_are_expli
     )
     .is_err());
 }
+
+#[test]
+fn query_output_folds_whole_unless_the_query_failed_or_wrote_one_line() {
+    let make = |count: usize, query: bool, state: &str, exit: Option<i32>| -> Request {
+        serde_json::from_value(json!({"search":"line 7", "records":[{
+            "id":"log", "root":"/repo", "arguments":["log","--max-count=50"], "state":state,
+            "exitCode":exit, "query":query,
+            "lines":(0..count).map(|i| json!({"stream":"stdout","text":format!("line {i}")})).collect::<Vec<_>>()
+        }]})).unwrap()
+    };
+    for state in ["running", "completed"] {
+        let folded = present(make(40, true, state, (state == "completed").then_some(0))).unwrap();
+        let output = &folded.entries[0].output;
+        assert_eq!(output.len(), 1, "{state}");
+        assert_eq!(
+            (
+                output[0].kind.as_str(),
+                output[0].start,
+                output[0].end,
+                output[0].count
+            ),
+            ("query", 0, 40, 40)
+        );
+        // Search still reaches every folded line, so a host can open the fold on a hit.
+        assert_eq!(folded.matches[0].line_index, Some(7));
+        assert_eq!(output[0].matches, 1);
+    }
+    let failed = present(make(40, true, "completed", Some(128))).unwrap();
+    assert!(failed.entries[0].failed);
+    assert!(failed.entries[0].output.iter().all(|f| f.kind == "text"));
+    let single = present(make(1, true, "completed", Some(0))).unwrap();
+    assert_eq!(single.entries[0].output[0].kind, "text");
+    let visible = present(make(40, false, "completed", Some(0))).unwrap();
+    assert!(visible.entries[0].output.iter().all(|f| f.kind == "text"));
+}

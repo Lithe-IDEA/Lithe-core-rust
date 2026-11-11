@@ -47,7 +47,8 @@
         "-c",
         "log.showSignature=false"
       ],
-      "source": "unknown"
+      "source": "unknown",
+      "query": false
     },
     {
       "operationId": "fixture",
