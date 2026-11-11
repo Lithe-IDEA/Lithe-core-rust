@@ -323,10 +323,9 @@ mod tests {
 
     #[test]
     fn shared_fixture_steps_are_the_only_update_rules() {
-        let fixture: Value = serde_json::from_str(include_str!(
-            "../../../fixtures/git/update-plan-v1.json"
-        ))
-        .unwrap();
+        let fixture: Value =
+            serde_json::from_str(include_str!("../../../fixtures/git/update-plan-v1.json"))
+                .unwrap();
         for case in fixture["cases"].as_array().unwrap() {
             let response = call(case["request"].clone());
             assert_eq!(response["ok"], true, "{}: {response}", case["name"]);

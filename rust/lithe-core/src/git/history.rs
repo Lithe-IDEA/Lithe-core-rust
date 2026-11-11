@@ -1477,10 +1477,9 @@ mod tests {
         use serde_json::Value;
         use std::collections::BTreeSet;
 
-        let fixture: Value = serde_json::from_str(include_str!(
-            "../../../fixtures/git/history-locate-v1.json"
-        ))
-        .expect("history locate fixture should be valid JSON");
+        let fixture: Value =
+            serde_json::from_str(include_str!("../../../fixtures/git/history-locate-v1.json"))
+                .expect("history locate fixture should be valid JSON");
 
         let minimal: super::GitHistoryLocateRequest =
             serde_json::from_value(fixture["minimalRequest"].clone())

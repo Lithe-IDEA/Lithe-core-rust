@@ -1,0 +1,73 @@
+# Releases the official Rust plugin SDK (`shared/plugins/sdk/rust/plugin-sdk`) through its
+# own tag series (`sdk-rust-v<version>`). Plugin repositories either depend
+# on the tag through Git, which their Cargo.lock pins to the commit, or pin
+# `lithe-plugin-sdk-rust-<version>.crate` by its `.sha256` and vendor the
+# unpacked crate; the SDK is not published to crates.io.
+name: Release Rust Plugin SDK
+
+on:
+  push:
+    tags:
+      - "sdk-rust-v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-rust-plugin-sdk-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release ${{ github.ref_name }}
+    if: github.repository == 'Lithe-IDEA/Lithe-core-rust'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      # The release is tested on the oldest supported Rust.
+      - uses: dtolnay/rust-toolchain@1.87
+
+      - name: Require the tag to match the SDK version
+        id: version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=$(cargo +1.87 metadata --locked --no-deps --format-version 1 --manifest-path shared/plugins/sdk/rust/Cargo.toml \
+            | jq -r '.packages[] | select(.name == "lithe-plugin-sdk") | .version')
+          test "$TAG" = "sdk-rust-v$version" || { echo "Tag $TAG does not match shared/plugins/sdk/rust version $version"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Test
+        run: cargo +1.87 test --locked --manifest-path shared/plugins/sdk/rust/Cargo.toml
+
+      # `cargo package` only builds the archive; `publish = false` keeps the
+      # SDK off crates.io. The repository LICENSE is copied in so the archive
+      # carries its own license text.
+      - name: Collect the release assets
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cp shared/plugins/LICENSE shared/plugins/sdk/rust/plugin-sdk/LICENSE
+          cargo +1.87 package --locked --allow-dirty --manifest-path shared/plugins/sdk/rust/Cargo.toml -p lithe-plugin-sdk
+          mkdir -p dist
+          asset="lithe-plugin-sdk-rust-$VERSION.crate"
+          cp "shared/plugins/sdk/rust/target/package/lithe-plugin-sdk-$VERSION.crate" "dist/$asset"
+          tar -tzf "dist/$asset" | sort
+          (cd dist && sha256sum "$asset" | cut -d' ' -f1 > "$asset.sha256")
+
+      - name: Publish the SDK release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          asset="lithe-plugin-sdk-rust-$VERSION.crate"
+          gh release create "$TAG" "dist/$asset" "dist/$asset.sha256" \
+            --title "Rust plugin SDK $VERSION" \
+            --notes "Official Rust plugin SDK $VERSION for Lithe plugin backends. Requires Rust 1.87 or newer and depends only on serde_json and base64. Depend on the tag through Git, or pin the archive by its SHA-256 (\`$asset.sha256\`) and vendor the unpacked crate; see shared/plugins/sdk/rust/README.md."

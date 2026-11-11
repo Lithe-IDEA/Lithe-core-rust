@@ -6319,10 +6319,8 @@ fn git_line_history_merge_rename_edit_keeps_previous_path_and_ranges() {
 
 #[test]
 fn rollback_plan_matches_shared_fixture_and_rejects_unsafe_paths() {
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../../fixtures/git/rollback-plan-v1.json"
-    ))
-    .unwrap();
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../../fixtures/git/rollback-plan-v1.json")).unwrap();
     for case in fixture["cases"].as_array().unwrap() {
         let response: Value = serde_json::from_str(&execute_json(
             &serde_json::json!({

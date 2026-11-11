@@ -1,0 +1,76 @@
+# Releases the official Node.js plugin SDK (`shared/plugins/sdk/node`) through its own tag
+# series (`sdk-node-v<version>`). The release holds
+# `lithe-plugin-sdk-node-<version>.tgz` and its `.sha256`; plugin repositories
+# pin both and vendor the unpacked package into their backend at build time,
+# because an installed plugin has no `node_modules` install step.
+name: Release Node Plugin SDK
+
+on:
+  push:
+    tags:
+      - "sdk-node-v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-node-plugin-sdk-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release ${{ github.ref_name }}
+    if: github.repository == 'Lithe-IDEA/Lithe-core-rust'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      # The SDK supports Node.js 20.3 and newer, so the release is tested on
+      # the oldest supported major.
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+
+      - name: Require the tag to match the SDK version
+        id: version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=$(node -p "require('./shared/plugins/sdk/node/package.json').version")
+          test "$TAG" = "sdk-node-v$version" || { echo "Tag $TAG does not match shared/plugins/sdk/node version $version"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Test
+        run: node --test shared/plugins/sdk/node/test/*.test.mjs
+
+      # `npm pack` only builds the archive; `private: true` still keeps the
+      # SDK off the npm registry. The repository LICENSE is copied in so the
+      # archive carries its own license text.
+      - name: Collect the release assets
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p dist
+          cp shared/plugins/LICENSE shared/plugins/sdk/node/LICENSE
+          (cd shared/plugins/sdk/node && npm pack --pack-destination ../../../../dist)
+          asset="lithe-plugin-sdk-node-$VERSION.tgz"
+          mv "dist/lithe-plugin-sdk-$VERSION.tgz" "dist/$asset"
+          tar -tzf "dist/$asset" | sort
+          (cd dist && sha256sum "$asset" | cut -d' ' -f1 > "$asset.sha256")
+
+      - name: Publish the SDK release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          asset="lithe-plugin-sdk-node-$VERSION.tgz"
+          gh release create "$TAG" "dist/$asset" "dist/$asset.sha256" \
+            --title "Node.js plugin SDK $VERSION" \
+            --notes "Official Node.js plugin SDK $VERSION for Lithe plugin backends. Requires Node.js 20.3 or newer and has no dependencies. Pin the archive by its SHA-256 (\`$asset.sha256\`), unpack it, and vendor its \`package/\` directory into the plugin package; see shared/plugins/sdk/node/README.md."

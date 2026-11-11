@@ -375,8 +375,7 @@ mod tests {
     #[test]
     fn shared_fixture_protects_the_plugin_and_mcp_contract() {
         let fixture: Value =
-            serde_json::from_str(include_str!("../../fixtures/ide-api/calls.json"))
-                .unwrap();
+            serde_json::from_str(include_str!("../../fixtures/ide-api/calls.json")).unwrap();
         let permissions = Permissions {
             configure: true,
             execute: true,

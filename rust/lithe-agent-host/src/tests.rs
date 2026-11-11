@@ -7,10 +7,8 @@ use tokio::io::{
 const WAIT: Duration = Duration::from_secs(5);
 
 fn fixture() -> Value {
-    serde_json::from_str(include_str!(
-        "../../fixtures/agent/acp-events-v1.json"
-    ))
-    .expect("ACP event fixture")
+    serde_json::from_str(include_str!("../../fixtures/agent/acp-events-v1.json"))
+        .expect("ACP event fixture")
 }
 
 fn provider() -> ProviderCredentials {

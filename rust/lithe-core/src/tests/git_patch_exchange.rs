@@ -58,10 +58,9 @@ impl PatchRepository {
     }
 
     fn export_shelf_working_layer(&self) -> Value {
-        let fixture: Value = serde_json::from_str(include_str!(
-            "../../../fixtures/git/patch-exchange-v1.json"
-        ))
-        .unwrap();
+        let fixture: Value =
+            serde_json::from_str(include_str!("../../../fixtures/git/patch-exchange-v1.json"))
+                .unwrap();
         self.data(
             "git.patchExport",
             fixture["unstagedWithUntrackedRequest"].clone(),
@@ -101,10 +100,8 @@ fn patch_exchange_reverse_roundtrip_preserves_both_versions_and_untracked_bytes(
         .unwrap()
         .to_string();
     let mut checked_direction = false;
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../../fixtures/git/patch-exchange-v1.json"
-    ))
-    .unwrap();
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../../fixtures/git/patch-exchange-v1.json")).unwrap();
     let mut apply = |patch: &str, target: &str, reverse: bool| {
         let index_before = fs::read(repository.0.join(".git/index")).unwrap();
         let mut payload = fixture[if reverse {
@@ -277,10 +274,8 @@ fn saved_stash_diff_returns_file_sections_and_core_documents() {
     let oid = entries["stashes"][0]["oid"].as_str().unwrap();
     repository.write("text.txt", b"newer stash\n");
     repository.git(&["stash", "push", "-m", "newer"]);
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../../fixtures/git/saved-stash-v1.json"
-    ))
-    .unwrap();
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../../fixtures/git/saved-stash-v1.json")).unwrap();
     let mut request = fixture["sectionRequest"].clone();
     request["stashReference"] = json!(oid);
     let saved = repository.data("git.diff", request);
@@ -354,10 +349,8 @@ fn structured_patch_and_git_diff_preserve_file_identity_and_writable_hunks() {
         .as_str()
         .unwrap()
         .to_owned();
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../../fixtures/git/parsed-diff-v1.json"
-    ))
-    .unwrap();
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../../fixtures/git/parsed-diff-v1.json")).unwrap();
     let mut request = fixture["parseRequest"].clone();
     request["patch"] = json!(patch);
     let parsed = repository.data("git.parsePatch", request);
@@ -963,10 +956,8 @@ fn shelf_clean_and_retry_restore_preserve_staged_working_and_untracked() {
         index_before_capture,
         "capture must not refresh the real index"
     );
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../../fixtures/git/shelf-v1.json"
-    ))
-    .unwrap();
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../../fixtures/git/shelf-v1.json")).unwrap();
     assert_eq!(
         repository.data("git.shelf", json!({"action":"plan", "phase":"clean"})),
         fixture["cleanPlan"]

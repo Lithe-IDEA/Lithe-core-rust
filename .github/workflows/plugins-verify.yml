@@ -1,0 +1,142 @@
+name: Plugin SDKs
+
+# The plugin contract, developer guides and official SDKs live in
+# shared/plugins next to the Rust Core that executes the contract, so every
+# change is tested against Core at the same commit. Only changes that can
+# affect them start this workflow.
+on:
+  pull_request:
+    paths:
+      - 'shared/plugins/**'
+      - 'rust/**'
+      - '.github/workflows/plugins-verify.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'shared/plugins/**'
+      - 'rust/**'
+      - '.github/workflows/plugins-verify.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plugins-verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs:
+    name: Contract and docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Test the tooling
+        run: node --test shared/plugins/scripts/*.test.mjs
+      - name: Check schema IDs and links
+        run: node shared/plugins/scripts/verify-docs.mjs
+
+  sdk-node:
+    name: Node.js SDK
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      # The SDK supports Node.js 20.3 and newer, so it is tested on the oldest
+      # supported major.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+
+      - name: Test
+        run: node --test shared/plugins/sdk/node/test/*.test.mjs
+      - name: Check TypeScript consumers
+        run: |
+          npm ci --prefix shared/plugins/sdk/node --ignore-scripts --no-audit --no-fund
+          npm run --prefix shared/plugins/sdk/node test:types
+
+  sdk-java:
+    name: Java SDK
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      # The SDK supports Java 8: the tests run on a Java 8 runtime, while
+      # Maven builds with the newer JDK set up last.
+      - name: Set up Java 8 runtime
+        id: java8
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '8'
+      - name: Set up Java 21 for Maven
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Build and test on Java 8
+        env:
+          JAVA8: ${{ steps.java8.outputs.path }}/bin/java
+        run: mvn -B -ntp -f shared/plugins/sdk/java/pom.xml verify -Djvm="$JAVA8"
+
+  sdk-rust:
+    name: Rust SDK
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      # The SDK supports Rust 1.87 and newer: the tests run on that release,
+      # and formatting and lints on the current stable toolchain.
+      - uses: dtolnay/rust-toolchain@1.87
+      - name: Test on the oldest supported Rust
+        run: cargo +1.87 test --locked --manifest-path shared/plugins/sdk/rust/Cargo.toml
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Check formatting and lints
+        run: |
+          cargo fmt --manifest-path shared/plugins/sdk/rust/Cargo.toml --all -- --check
+          cargo clippy --locked --manifest-path shared/plugins/sdk/rust/Cargo.toml --all-targets -- -D warnings
+
+  sdk-e2e:
+    name: SDK end-to-end with Rust Core
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+      - name: Set up Java 8 runtime
+        id: java8
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '8'
+      - name: Set up Java 21 for Maven
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+            shared/plugins/sdk/rust/target
+          key: sdk-e2e-${{ runner.os }}-${{ hashFiles('rust/Cargo.lock', 'shared/plugins/sdk/rust/Cargo.lock') }}
+          restore-keys: sdk-e2e-${{ runner.os }}-
+
+      - name: Run the SDK scenarios against this Core
+        env:
+          LITHE_PLUGIN_SDK_JAVA_RUNTIME: ${{ steps.java8.outputs.path }}/bin/java
+        run: node shared/plugins/scripts/sdk-e2e.mjs

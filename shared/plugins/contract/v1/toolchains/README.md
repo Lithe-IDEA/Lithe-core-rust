@@ -421,6 +421,6 @@ Core acceptance vectors are in
 with sibling pins/query/resolution suites. The pin document, query exchange and
 one error reply per stable code that those suites share are inline in
 [toolchain_vectors.rs](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/lithe-core/src/tests/toolchain_vectors.rs).
-Passing them is not native product verification. Contract changes must be mirrored after merge with
-`node scripts/contract.mjs sync --revision <merged-commit>` in
-[lithe-plugin-docs](https://github.com/Lithe-IDEA/lithe-plugin-docs).
+Passing them is not native product verification. Contract changes land in
+the same pull request as the Core code that enforces them; there is no other
+copy to update.

@@ -35,10 +35,9 @@ pub(crate) fn quiet_notice_delay() -> Duration {
     }
     static DELAY: std::sync::OnceLock<Duration> = std::sync::OnceLock::new();
     *DELAY.get_or_init(|| {
-        let policy: Policy = serde_json::from_str(include_str!(
-            "../../contracts/agent-turn-policy.json"
-        ))
-        .expect("valid bundled Agent turn policy");
+        let policy: Policy =
+            serde_json::from_str(include_str!("../../contracts/agent-turn-policy.json"))
+                .expect("valid bundled Agent turn policy");
         Duration::from_millis(policy.quiet_notice_milliseconds)
     })
 }

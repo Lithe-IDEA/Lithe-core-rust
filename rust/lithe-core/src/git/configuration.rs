@@ -598,10 +598,9 @@ mod tests {
     use super::*;
     #[test]
     fn resolved_fetch_behavior_matches_shared_fixture() {
-        let fixture: Value = serde_json::from_str(include_str!(
-            "../../../fixtures/git/fetch-behavior-v1.json"
-        ))
-        .unwrap();
+        let fixture: Value =
+            serde_json::from_str(include_str!("../../../fixtures/git/fetch-behavior-v1.json"))
+                .unwrap();
         for case in fixture["cases"].as_array().unwrap() {
             let entries: Vec<Entry> =
                 serde_json::from_value(case["request"]["entries"].clone()).unwrap();

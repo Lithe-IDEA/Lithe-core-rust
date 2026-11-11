@@ -114,10 +114,9 @@ mod tests {
 
     #[test]
     fn shared_fixture_cases_keep_only_operation_targets() {
-        let fixture: Value = serde_json::from_str(include_str!(
-            "../../../fixtures/git/change-targets-v1.json"
-        ))
-        .unwrap();
+        let fixture: Value =
+            serde_json::from_str(include_str!("../../../fixtures/git/change-targets-v1.json"))
+                .unwrap();
         for case in fixture["cases"].as_array().unwrap() {
             let response = call(case["request"].clone());
             assert_eq!(response["ok"], true, "{}: {response}", case["name"]);

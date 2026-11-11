@@ -1,9 +1,8 @@
 # VCS provider contract
 
-> **Status: Core implemented; macOS hosts providers.** Core accepts the
-> `vcsProviders` manifest capability and the commands below. macOS advertises
-> `vcsProviders` 0 and starts providers for the roots it detects. Windows does
-> not advertise the capability.
+> **Status: Core implemented; hosts that advertise `vcsProviders` run providers.**
+> Core accepts the `vcsProviders` manifest capability and the commands below.
+> A host that advertises `vcsProviders` 0 starts providers for the roots it detects.
 > The decision record is
 > [Unified VCS model and providers](https://github.com/1lck/Lithe-IDEA/blob/preview/.agents/notes/proposed/architecture/2026-10-22-unified-vcs-provider-model.md);
 > example data is in [`rust/fixtures/vcs/model-v1.json`](../fixtures/vcs/model-v1.json)

@@ -15,7 +15,7 @@ This directory is the cross-platform source of truth:
 | `native-ui.schema.json` | JSON shape of native UI documents rendered by the host |
 | `plugin-index.schema.json` | JSON shape of a marketplace source index |
 | `fixtures/` | Valid example manifests and golden cases, one folder per contract area (below). Manifests are named after the capability they exercise rather than a published plugin. Case files name their base manifest by file name, so file names are unique across the folders |
-| `toolchains/README.md` | Implemented Core foundation: plugin definitions/provider declarations, registry (a short tool ID defined by several enabled plugins belongs to none of them), reply validation, directory pins, snapshot resolution, version matching and discovery plans; macOS uses it for its read-only settings pages and for Build and run tools, Windows is not connected |
+| `toolchains/README.md` | Implemented Core foundation: plugin definitions/provider declarations, registry (a short tool ID defined by several enabled plugins belongs to none of them), reply validation, directory pins, snapshot resolution, version matching and discovery plans; hosts that declare `toolDefinitions` use it for read-only settings pages and for Build and run tools |
 
 | Fixture folder | Contents |
 | --- | --- |
@@ -25,14 +25,14 @@ This directory is the cross-platform source of truth:
 | `fixtures/editor/` | Editor actions served by a backend: `editor-actions.plugin.json`, icons, alternatives and click results in `editor-actions.json`; editor providers in `editor-providers.plugin.json` with registration and result cases in `editor-providers.json` |
 | `fixtures/ui/` | Native controls, forms, and panels, and a web panel |
 | `fixtures/settings/` | Plugin settings |
-| `fixtures/build-systems/` | Build systems (`build-*`: static file, command output, host integration, instance options, model producer and consumer, tool path, toolchains); `build-plans.json` holds golden build-system plans and decoded outputs |
+| `fixtures/build-systems/` | Build systems (`build-*`: static file, command output, instance options, model producer and consumer, tool path, toolchains); `build-plans.json` holds golden build-system plans and decoded outputs |
 | `fixtures/build-providers/` | Build providers (`build-provider*`) and the golden cases of their configuration, run options, run and debug preparation, execution, and test protocols |
 | `fixtures/debug-adapters/` | Debug adapters (standalone, served by a language server, remote attach, and `debug-adapter-features` with declared features and defaults), `debug-adapter-rejections.json`, and `debug-start.json`: what `debug.decodeBackendConfiguration` returns for each `debug/start` case |
 | `fixtures/run/` | Run sessions and console links: `tool-reference-launch` names its runtimes by tool-definition ID and declares output link matchers; `run-start.json` holds what `run.decodeStart` returns for each case, including the rejections, and `output-link-matchers.json` the golden matches and resolutions |
 | `fixtures/vcs/` | A version control provider |
 | `fixtures/keymap-import/` | Two independent shortcut import providers sharing one packaged backend |
 | `fixtures/project-generators/` | Project generators: template files (`templates/`), a scaffolding command, and an archive download; `project-generator-tool-field.plugin.json` with `templates/tool-field/` picks tool installations with `tool` fields; `project-plans.json` holds golden `project.*` form evaluations, generation plans, and name checks, and a case's optional `manifest` names the fixture it runs against (`project-generator.plugin.json` by default) |
-| `fixtures/toolchains/` | Production-shape fixtures for tool definitions and a packaged toolchain provider; they require `toolDefinitions` and `toolchainProviders`, which only macOS advertises |
+| `fixtures/toolchains/` | Production-shape fixtures for tool definitions and a packaged toolchain provider; they require `toolDefinitions` and `toolchainProviders`, which a host advertises only when it implements them |
 | `fixtures/package-trust/` | `publisher-bundled.plugin.json` and `signature-vectors.json`: public cross-platform vectors for the package publisher signature: the RFC 8032 test key, a fixed package with non-ASCII file names, its canonical payload, RFC 8032 deterministic signature, and content digest. Both platforms must build the same canonical payload and digest and accept the recorded signature; signers that add randomness, such as CryptoKit, check the signature by verification instead of byte comparison |
 | `fixtures/marketplace/` | Marketplace index, availability, source URL, and install review golden cases |
 
@@ -42,14 +42,16 @@ Validation and template expansion are implemented once in Rust Core
 `plugins.declarative.*` commands in [`rust/contracts/rust-core-api.md`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/contracts/rust-core-api.md). Hosts must not
 reimplement them.
 
-Plugin authors do not need this repository. The public
-[`Lithe-IDEA/lithe-plugin-docs`](https://github.com/Lithe-IDEA/lithe-plugin-docs)
-repository holds the developer guide and a byte-identical copy of this whole
-directory under `contract/v1/`, pinned to a revision of this repository; each
-schema's `$id` is its URL there. Contract changes land here first and must then
-be synced to that repository, so links in this file that leave this directory
-are absolute. `plugin.json` may not carry a `$schema` key, because unknown
-fields are rejected; editors associate the schema by file name instead.
+This directory is the only copy of the contract. It lives in `shared/plugins/`
+of the Rust Core repository together with the
+[developer guide](../../README.md) and the official SDKs, and changes in the
+same pull request as the Core code that enforces it. Plugin authors read it
+here and never need the Lithe application repository. Each schema's `$id` is
+its published URL,
+`https://raw.githubusercontent.com/Lithe-IDEA/Lithe-core-rust/main/shared/plugins/contract/v1/<file>`;
+`node shared/plugins/scripts/verify-docs.mjs` checks the IDs and the relative
+links. `plugin.json` may not carry a `$schema` key, because unknown fields are
+rejected; editors associate the schema by file name instead.
 
 ## Plugin-owned toolchains (Core foundation)
 
@@ -68,12 +70,12 @@ plugin-owned. Any plugin may define a short ID such as `compiler` or a qualified
 by more than one enabled plugin belongs to none of them: the registry omits
 those definitions and reports the contest as a conflict.
 
-macOS advertises these capabilities for its read-only toolchain settings pages.
+A host that advertises these capabilities uses them for its read-only toolchain settings pages.
 The native adapter scans declarations, probes checked executables, queries plugin
 backends and watches their inputs; Core consumes captured facts and owns validation
 and resolution. A separate fresh resolution serves Build tools and run plans
 whose `toolchain` executable names a plugin-defined tool rather than a host
-toolchain; settings detections never grant launch authority. Windows does not advertise the capabilities. Saving pins,
+toolchain; settings detections never grant launch authority. Saving pins,
 `toolchainConsumers`, generic runtime launches and live backend activation remain
 unsupported, and Java and language-server consumers keep their previous adapters. Version-manager
 implementations such as mise belong to their own plugin packages. See
@@ -137,9 +139,8 @@ and provider, revokes them when the import or session ends, and rejects files
 replaced or changed after capture. A new snapshot for that provider revokes the
 previous one. Errors never disclose absolute paths.
 
-macOS advertises `keymapImportProviders` 0 and implements the scoped reader.
-Windows has no import source reader and does not advertise the capability; a
-host advertises it only with the complete import workflow. The official Node,
+A host that advertises `keymapImportProviders` 0 implements the scoped reader.
+A host advertises the capability only with the complete import workflow. The official Node,
 Java and Rust SDKs implement `litheKeymapImport` 0.
 
 ## Package layout
@@ -175,10 +176,10 @@ symbolic links. A host treats an installed package as read-only.
 | `settings` | User-adjustable plugin options. |
 | `ui` | Host-rendered tool windows and commands. |
 | `buildSystems` | Project-level build tools. |
-| `toolDefinitions` | Plugin-owned tool policy ([Core foundation](toolchains/README.md)); requires `toolDefinitions: 0`; macOS hosts read-only discovery and resolves Build and run tools. |
+| `toolDefinitions` | Plugin-owned tool policy ([Core foundation](toolchains/README.md)); requires `toolDefinitions: 0`; a host may offer read-only discovery and resolve Build and run tools. |
 | `toolchainProviders` | Backend fact-provider declarations ([Core foundation](toolchains/README.md)); requires `toolchainProviders: 0`, `backend: 0` and `toolchains.provide`. |
-| `keymapImportProviders` | Independent shortcut import providers; requires `keymapImportProviders: 0`, `backend: 0` and `keymaps.provide`. macOS provides access to explicitly selected sources; Windows does not yet advertise this capability. |
-| `pluginFunctions` | [Functions the plugin exports to, and calls from, other plugins](#cross-plugin-calls); requires `pluginFunctions: 0` and `backend: 0`, and grants no permission. macOS relays the calls; Windows does not advertise this capability. |
+| `keymapImportProviders` | Independent shortcut import providers; requires `keymapImportProviders: 0`, `backend: 0` and `keymaps.provide`. A host provides access to explicitly selected sources. |
+| `pluginFunctions` | [Functions the plugin exports to, and calls from, other plugins](#cross-plugin-calls); requires `pluginFunctions: 0` and `backend: 0`, and grants no permission. A host that advertises this capability relays the calls. |
 
 Unknown fields are refused (`plugin.manifest.invalid`) so a host rejects a
 package instead of ignoring part of it. A new optional field in an existing
@@ -974,7 +975,7 @@ declaring one:
   `resolveParams` and the workspace `context`. A host may also send `tools`,
   `{<toolID>: {executable, home, version}}`, the resolution of each tool the
   manifest lists in `requiresTools` that it could find; Core does not
-  validate it. The macOS host resolves each required tool as an installation
+  validate it. The host resolves each required tool as an installation
   with the user's choice and discovery, and leaves out a tool that is
   missing, unusable, or inside the project; `home` and `version` are present
   when the installation has them. A function must not require `tools` or any
@@ -1021,7 +1022,7 @@ directory, `plugin.launch.unavailable` for a language without a server, and
 `plugin.launch.notBackend`. See `fixtures/languages/language-server-backend-launch.plugin.json`
 and `fixtures/languages/language-server-launch-resolution.json`.
 
-Host limits of the macOS host today: a `{kind: "tool"}` answer is resolved
+Limits the Lithe desktop host applies today: a `{kind: "tool"}` answer is resolved
 with the user's tool choice and discovery, and a program that lies inside the
 project is refused, because opening a project must not run it; a server whose
 launch the backend resolves does not start in a remote workspace; and the
@@ -1103,7 +1104,7 @@ See [`build-tool-path.plugin.json`](fixtures/build-systems/build-tool-path.plugi
 A candidate may use
 `{ "kind": "toolchain", "toolchainID": "org.example.compiler:compiler" }`.
 Core accepts the same short/qualified ID grammar as tool definitions and adds the
-normalized instance `root`. The macOS adapter resolves installed definitions
+normalized instance `root`. The host adapter resolves installed definitions
 against fresh native evidence and directory pins. Unavailable selections are terminal,
 including when a prerequisite runtime fails first; they cannot silently fall
 back to Provider discovery.
@@ -1196,7 +1197,7 @@ declaration gets no bundled exemption. The valid example is
 A host pins the signature requirement of its official plugin IDs so a package
 cannot downgrade itself. Selecting a file from disk never overrides that pin,
 namespace restrictions, publisher-key checks, or the installation seal required
-by `sameTeamAsHost`. On macOS only DEBUG permits an unsigned publisher package
+by `sameTeamAsHost`. A development build may permit an unsigned publisher package
 as `localDevelopment`; release builds refuse that origin. Community `none`
 packages use their own approval path in both build configurations and must not
 be reclassified as development packages.
@@ -1319,8 +1320,8 @@ entries also carry `initializationOptions` when declared. Hosts show all
 `permissions` and the complete `programs`, and persist each approved program
 as canonical JSON without dropping fields. A display may use readable labels
 but must retain all canonical content, including a full JSON fallback for
-program kinds it cannot describe completely. On macOS, recognized kinds keep
-their readable summary and offer a native “Full Program Declaration” disclosure
+program kinds it cannot describe completely. Recognized kinds may keep
+their readable summary and offer a “Full Program Declaration” disclosure
 with the complete canonical JSON; unknown kinds already render that JSON and
 do not need a duplicate disclosure.
 
@@ -1337,10 +1338,10 @@ When several marketplace sources list the same ID, the user chooses the source
 at install time and later updates come only from that source. Local disk
 provenance is never a marketplace source or an automatic update subscription.
 
-### Local disk snapshots and installation provenance (macOS)
+### Local disk snapshots and installation provenance
 
-The macOS disk entry accepts a ZIP or an unpacked package directory. It does
-not run code from the selection. `MacPluginDiskPackageImporter` copies into a
+A host's disk entry accepts a ZIP or an unpacked package directory. It does
+not run code from the selection. The host's importer copies into a
 fresh private directory (mode `0700`) before declaration validation, trust
 checks, review, or installation. It refuses aliases, symbolic links, special
 files, ambiguous manifests, and detected source changes during copying, and
@@ -1349,7 +1350,7 @@ copy depth is limited to 64, and its temporary root must stay outside the
 selected source. Before extraction, ZIP preflight checks central and local
 header paths/types and rejects duplicate or colliding paths.
 
-`MacServiceContainer` injects `fileStorage.temporaryDirectory()`. Within that
+The host injects `fileStorage.temporaryDirectory()`. Within that
 platform-owned writable root the importer creates
 `lithe-plugin-disk-<UUID>/archive.zip` for a ZIP and `package/` for copied or
 extracted files. `archiveSHA256` is computed from the copied ZIP, not by reading
@@ -1396,19 +1397,8 @@ They are excluded as `plugin-disk-install-state`. No runtime write targets the
 signed app bundle or Windows installation resources, so these paths do not
 change code signatures or Sparkle differential-update baselines.
 
-Windows has a narrower disk import. It copies a ZIP or unpacked directory into
-a private snapshot under the application's local data directory
-(`plugin-temp/lithe-plugin-disk-<id>`), reviews it with
-`plugins.marketplace.installReview`, and installs only after the user confirms.
-Confirmation re-runs the review and refuses a snapshot whose `plugin.json`
-changed after review. It does not verify publisher signatures, does not compute
-or recheck a digest of the other package files, and does not record approved
-programs or provenance; its installation record holds only the ID, active
-version and enabled state. It has no marketplace install path. Its existing
-worker-package import is a separate format. The feature matrix
-therefore keeps Windows `partial` and macOS runtime verification `pending`;
-static checks and Node resource tests alone do not verify the UI confirmation,
-complete program rendering, cleanup, or bundle hashes in a real workflow.
+Static checks alone do not verify the UI confirmation, complete program rendering,
+cleanup, or bundle hashes in a real workflow.
 
 ## Build systems
 
@@ -1418,12 +1408,12 @@ commands: Core validates the declaration, detects instances, decodes the
 model, and expands every command line; the host only runs the processes Core
 planned and passes their output back. A community plugin therefore needs no
 host change to add a build tool, and no host code branches on a build-system
-ID. One complete fixture covers each model source: `build-static-file` reads
-a project file, `build-command-stdout` decodes a command's standard output,
-`build-command-output-file` decodes a file the command writes, and
-`build-host-integration` hands the model to a host integration. They use
-Cargo, Go, Gradle, and Maven as realistic inputs; they are not those
-plugins. `build-provider` and `build-provider-language-server` show the two
+ID. One complete fixture covers each plugin-described model source:
+`build-static-file` reads a project file, `build-command-stdout` decodes a
+command's standard output, and `build-command-output-file` decodes a file the
+command writes; the `hostIntegration` source, whose model a host integration
+supplies, has no fixture. They use Cargo, Go, and Gradle as realistic inputs;
+they are not those plugins. `build-provider` and `build-provider-language-server` show the two
 forms of a build provider, and `fixtures/build-systems/build-plans.json` is the golden list
 of plans and decoded outputs every host gets from them.
 
@@ -1459,7 +1449,7 @@ resetting `a` cannot change `b`, even when both accept the same choices. Explici
 matching scope before detection, static run generation, model/dependency/task
 requests, synchronization fingerprints, and language import. Instance data cannot
 override workspace options, and workspace values cannot silently override an
-instance option. When an existing option moves to instance scope, macOS copies its shared value
+instance option. When an existing option moves to instance scope, the host copies its shared value
 to each detected or previously stored root, preserving explicit instance values
 and empty markers. It removes the shared representation only after readback, then
 redetects static models. Failure retains the source and blocks publishing defaults
@@ -1468,7 +1458,7 @@ until retry; scope is not a fallback chain. See `fixtures/build-systems/build-in
 ### Presentation
 
 Each enabled build system gets a tool window of its own, titled with its
-`displayName`; `icon` (a [UI icon](#ui-icons-macos-host)) is its activity-bar
+`displayName`; `icon` (a [UI icon](#ui-icons)) is its activity-bar
 icon. As for every tool window, the host owns the shell: dock, order,
 visibility, layout, and lifecycle. The host draws the window body from the
 model, and three optional fields tell it where an entry goes. None of them
@@ -1489,10 +1479,9 @@ changes a plan.
   than four headings or has an empty heading falls back to the template's, so
   a tool that reports a bad heading still has its task filed.
 
-The macOS host gives each detected build system its own tool window and uses
+A host that draws build-system windows gives each detected build system its own tool window and uses
 these presentation fields. The host-drawn windows share Build Output, docking,
 layout restoration, activation, and lifecycle with other workbench contributions.
-Windows has not integrated build-system windows yet.
 
 ### Templates
 
@@ -2710,11 +2699,11 @@ Functions complement the
 typed domain protocols; they never replace them. The protocol is implemented in
 Rust Core (`rust/lithe-core/src/lsp/interface/plugin_function.rs`,
 `function_relay.rs`).
-macOS starts every build provider process as a session of the plugin that
+A host starts every build provider process as a session of the plugin that
 owns it and invokes its functions from that plugin's web pages (the
 `functions.*` bridge methods below). A provider served by a shared language
 server is started by the host for every plugin of its language, so it serves
-no plugin's functions. Windows has no plugin backend host. The
+no plugin's functions. The
 [official SDKs](#official-backend-sdk) implement the backend side.
 
 ### Capability ownership
@@ -3121,8 +3110,8 @@ unsupported-option cases.
 
 ### Public document, file and window methods
 
-These methods are implemented by the macOS host. Windows does not advertise
-`backend` support. `getCapabilities` lists only the intersection of the plugin's
+A host that advertises `backend` support implements these methods.
+`getCapabilities` lists only the intersection of the plugin's
 permission-derived grants and this host's registered method handlers.
 
 Grants in `lsp.startServer.hostServices` for the methods below use **full
@@ -3206,8 +3195,8 @@ may be retried with bounds; `permissionDenied`/`readOnly` need user intervention
 [`terminal-backend.plugin.json`](fixtures/backend/terminal-backend.plugin.json) is the
 minimal manifest. `terminal.create` grants `lithe/host/terminal/create`, `show`, `close`, `reopen`,
 `dispose`, and `onExit`. It requires `backend`; discover the individual
-methods through `getCapabilities` before using them. macOS implements this
-service. Windows has no handler and does not advertise its methods. The
+methods through `getCapabilities` before using them. A host without this
+handler does not advertise its methods. The
 plugin's web page calls its backend through `functions.invoke`; the backend
 uses these host requests with the invocation's workspace context. There is
 no direct web `terminal.*` bridge.
@@ -3394,8 +3383,8 @@ The `languageServer` host service lets a plugin backend talk to the language
 servers its own plugin declares. It is granted by the `languageServer.request`
 permission, only for a language server that lists `requestMethods`
 or `forwardNotifications`, and each method is granted by its full name.
-`getCapabilities` lists the methods this host implements. Windows does not
-advertise `backend` support.
+`getCapabilities` lists the methods this host implements. A host without
+`backend` support advertises none of them.
 
 Every method takes `context: {contextID, generation}` and `serverID`, the
 `languageID` of one of the calling plugin's servers. A server of another
@@ -3534,12 +3523,12 @@ workspace context:
   with workspace context and `{document:{documentID,version,path},text}`. Version
   is the same public buffer version as `documents/getSnapshot`, not a WebView
   revision. Source is the dirty live buffer, capped at the host's
-  `limits.editorActionSourceBytes` (1 MiB on macOS). Remote workspaces and
+  `limits.editorActionSourceBytes`. Remote workspaces and
   read-only preview surfaces are not served.
 - Collection is read-only by contract: no network request or business execution.
   Edits invalidate the old actions immediately and cancel older collection work;
   the host debounces fresh collection and rejects stale or withdrawn results.
-  macOS bounds the whole collection batch to eight seconds, not eight seconds per
+  The host bounds the whole collection batch to eight seconds, not eight seconds per
   binding. Refresh acknowledges scheduling without waiting for collectors; a slow
   or failed collector must not fail editing or the save synchronization barrier.
 - Return `{actions:[{id,range:{start:{line,column},end:{line,column}},title,icon,
@@ -3553,7 +3542,7 @@ workspace context:
 - An action may carry `alternatives`: at most 4 `{id,title,icon,invoke}` entries
   with the same rules and IDs unique within the action, offered in the action's
   menu after the action itself (for example Debug or Test beside Run).
-- The macOS host draws `run`, `run-all`, `debug`, `test`, `test-passed`,
+- The Lithe desktop host draws `run`, `run-all`, `debug`, `test`, `test-passed`,
   `test-failed`, `test-skipped`, `navigate-super` and `navigate-implementations`.
   An icon names a picture, not an operation: a test icon does not make the
   action a test, and the host never starts anything because of an icon.
@@ -3575,7 +3564,7 @@ workspace context:
   windows. A private process started by the plugin is not a substitute. Click executions are not cancelled by unrelated re-parsing;
   withdrawing the binding, ending its session/context or tearing down the owning
   editor cancels them. The host never retries side effects automatically.
-- Toolbar and menu Run/Debug on macOS reuse these actions for a language the
+- Toolbar and menu Run/Debug in the Lithe desktop reuse these actions for a language the
   package declares in `languages` without an execution or debug module and
   without the matching `hostCapabilities` entry: with a current-file Run
   configuration the host saves the document, collects the document's actions as
@@ -3646,7 +3635,7 @@ per workspace context:
   (optional leading dot) and literal file names, matched case-insensitively.
   A document matches when any entry matches. At most 32 registrations per
   plugin across contexts; duplicate IDs in a context are refused.
-- `providers` maps a provider type to `{function}`. The macOS host routes
+- `providers` maps a provider type to `{function}`. The Lithe desktop host routes
   `definition`, `hover`, `completion`, `codeLens`, `foldingRange`,
   `semanticTokens` and `documentLink`. Completion may add 1 to 16
   single-character `triggerCharacters`; semantic tokens must add their
@@ -3776,7 +3765,7 @@ service.
   `functionID`, sorted by plugin ID, each with its exported `version`.
   Disabling, enabling, replacing and uninstalling a plugin take effect for
   the list at once; a host that registers backend plugins only when it
-  launches (macOS today) lists a newly installed or updated backend plugin
+  launches lists a newly installed or updated backend plugin
   only after a restart of Lithe (see [Hot activation](#hot-activation)). The
   caller must have declared the function, otherwise
   `plugin.function.notDeclared`. A listed provider's backend need not be
@@ -3937,7 +3926,7 @@ command `lsp.configureFunctionRelay`
 and calls the new snapshot no longer allows end at once with the errors above.
 
 Installing or updating a plugin that has a backend is different on a host that
-registers backend plugins only when it launches (macOS today): that host lists
+registers backend plugins only when it launches: that host lists
 a newly installed or updated backend plugin in `providers` only after a
 restart of Lithe.
 
@@ -3963,11 +3952,11 @@ restart of Lithe.
 
 ### Official backend SDK
 
-The official SDKs live in
-[lithe-plugin-docs](https://github.com/Lithe-IDEA/lithe-plugin-docs), which
-also releases them; they implement this contract and never define protocol.
+The official SDKs live next to this contract in
+[`shared/plugins/sdk/`](../../sdk) and are released from this repository;
+they implement this contract and never define protocol.
 
-[`sdk/node`](https://github.com/Lithe-IDEA/lithe-plugin-docs/blob/main/sdk/node/README.md) is the official SDK for backends
+[`sdk/node`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/shared/plugins/sdk/node/README.md) is the official SDK for backends
 started through a `node` runtime launch. It implements this protocol with
 its host services, `litheBuild`, and VCS providers, so a plugin author writes
 only handlers. It is released (`sdk-node-v<version>`) as a `.tgz` with its
@@ -3976,7 +3965,7 @@ carries only protocol frames, `PluginError` is the only way to set a
 `pluginErrorCode`, processes started for a call end with it, and its state
 store refuses the plugin package.
 
-[`sdk/java`](https://github.com/Lithe-IDEA/lithe-plugin-docs/blob/main/sdk/java/README.md) is the Java twin for backends
+[`sdk/java`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/shared/plugins/sdk/java/README.md) is the Java twin for backends
 started through a `java` runtime launch. It implements this protocol with
 its host services and `litheBuild`, but not VCS providers. It needs Java 8 or
 newer, has no runtime dependencies, and is released as a JAR with its SHA-256
@@ -3984,7 +3973,7 @@ for plugins to shade into their backend. It enforces the same rules with the sam
 mapping, with one difference: on Java 8 it stops only a cancelled tool's
 direct child, and the host's process scope ends the rest.
 
-[`sdk/rust`](https://github.com/Lithe-IDEA/lithe-plugin-docs/blob/main/sdk/rust/README.md) is the SDK for
+[`sdk/rust`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/shared/plugins/sdk/rust/README.md) is the SDK for
 [plugin backends](#plugin-backend), which ship as packaged executables. It
 implements this protocol with its host services, but neither build nor VCS
 providers. It needs Rust 1.87 or newer, depends only on `serde_json`, and is
@@ -4101,15 +4090,6 @@ command payload is a Core `invalid_request` failure instead.
 Host-facing plugin states are `notInstalled`, `installed` (enabled or
 disabled), `running`, `restartRequired`, `updateRequired`, and `failed`.
 
-## Windows mapping
-
-The Windows extension manifest (`Plugins/win/Official/*/plugin.json`) predates
-this contract. Its adapter maps `languages[].extensions` to
-`languages[].fileExtensions`, `lsp.server`/`lsp.args` to `languageServers[]`,
-`lsp.requiredExecutables: ["node"]` to `runtimeDependencies`, and
-`runActions.manifestFiles` to `test.projectMarkers`. Composer script discovery
-is Windows-only behavior outside this contract.
-
 ## Host-owned workbench UI
 
 `ui` contributions need `requires.ui: 0` and the `ui.contribute` permission.
@@ -4141,7 +4121,7 @@ and the UI cases in `fixtures/manifest/invalid-manifests.json`.
   Unknown and temporarily absent contributions never execute an action;
   placement/order preferences remain available if the plugin returns.
 
-The macOS host supports mouse docking through the existing shared dock state;
+A host may support mouse docking through the existing shared dock state;
 that presentation behavior does not grant additional plugin execution capabilities.
 
 ### Web content
@@ -4243,21 +4223,6 @@ consent, and closing it cancels them. Reusing a `call` ID is
 consent as the host's provider requests: once given for a plugin and
 workspace, it holds until the project is closed. Calls to the plugin's
 backend ask for none; the install review covered it.
-macOS implements web content with WKWebView, including the native controls
-described below. Windows implements web content with WebView2 under a
-plugin-private `lithe-plugin://` origin; its bridge answers `ui.getState`,
-`ui.setState`, and `workspace.openFile`, and returns `plugin.web.unknownMethod`
-for `build.*` and `functions.*` until the Windows build-system capability
-lands.
-
-### Current Windows availability
-
-Windows renders host tool windows, commands and package web content, but not
-native controls or backend-only commands. Under the
-[declaration rule](#versioning) it therefore does not declare `ui`, and Core
-refuses packages that require it there. Windows installs declarative packages
-from disk only and has no marketplace browser yet.
-
 ### Existing community store
 
 The community index is [Lithe Store](https://github.com/Lithe-IDEA/Lithe-store).
@@ -4278,7 +4243,7 @@ To add a host-rendered view to a community package:
 namespace, not a ready-to-publish community package. Change its ID and all
 references to your own namespace before using it in Lithe Store.
 
-### UI icons (macOS host)
+### UI icons
 
 Tool windows and commands accept an optional `icon`. Prefer a stable
 host icon ID; it resolves through Lithe's existing icon library, not SF Symbols:
@@ -4335,12 +4300,12 @@ using a different image. Assets are read-only and held in process memory; no
 runtime disk cache or app-bundle write is created. Installed icon bytes follow
 the existing package signature/digest, update and rollback lifecycle.
 
-macOS 宿主布局菜单允许把已注册工具窗口移到左侧、右侧或底部，并保存入口
+Lithe 桌面端布局菜单允许把已注册工具窗口移到左侧、右侧或底部，并保存入口
 顺序与显隐；`ui.toolWindows[].placement` 只声明首次使用的 `bottom`/`right`
 位置。项目、提交和搜索采用相同的工具窗口注册路径，
 原生业务内容保持宿主所有；左侧恢复插件窗口仍按 `onView` 激活所属模块。
 
-macOS 动作的可见、可用、勾选和激活中状态由宿主计算，不接受清单中的可执行
+Lithe 桌面端动作的可见、可用、勾选和激活中状态由宿主计算，不接受清单中的可执行
 条件脚本。窗口尚在激活时，其打开命令在工具栏、菜单和命令面板禁用；窗口入口
 仍可取消显示。多个窗口同时请求同一插件模块时只构造一次；禁用或关闭会取消
 并清理在途激活，旧的菜单或命令引用不能重新调用已禁用的贡献。
@@ -4354,7 +4319,7 @@ style, script, HTML or host-action fields. The host renders every control with
 its shared theme.
 
 See [native-panel.plugin.json](fixtures/ui/native-panel.plugin.json) and the runnable
-[Node SDK Sample Explorer](https://github.com/Lithe-IDEA/lithe-plugin-docs/blob/main/sdk/node/examples/sample-build/plugin.json).
+[Node SDK Sample Explorer](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/shared/plugins/sdk/node/examples/sample-build/plugin.json).
 `native.kind` is `tree`, `list` or `form`; `nodes` contains literal `id`, `label` and
 optional `children`. IDs are stable, case-sensitive ASCII letters/digits plus
 `._-` (1–128 bytes). The component, initial nodes and actions have distinct IDs.
@@ -4389,9 +4354,7 @@ provide `span` (1–columns); omitted span fills a row. Controls pack in declara
 order, wrapping before a span would exceed the row. Without layout, the form
 retains its original single-column presentation and must omit span. Layout is
 form-only. Gaps, alignment and breakpoints remain host-owned; plugins cannot
-supply pixels, CSS or gap values. macOS uses a native `Layout`, 12pt gaps,
-top-aligned variable-height rows, and switches to one column below 640pt of
-content width. Reflow preserves the same controls, local values and focus.
+supply pixels, CSS or gap values. Reflow preserves the same controls, local values and focus.
 
 Buttons reference an existing non-selection action through `action`, have stable
 `id`, literal `label`, optional `primary`, `enabled` and `info`.
@@ -4412,8 +4375,7 @@ A pending call disables all fields. Values use the existing 64 KiB per-plugin,
 per-window, per-workspace state store; removed fields, invalid types and removed
 options are discarded when restoring. Provider replies never overwrite local
 fields. Form declarations and choices are static.
-See [native-form.plugin.json](fixtures/ui/native-form.plugin.json) and
-[host UI acceptance fixture](https://github.com/1lck/Lithe-IDEA/blob/preview/macos/Tests/Fixtures/native-ui-lab/README.md) for acceptance.
+See [native-form.plugin.json](fixtures/ui/native-form.plugin.json) for acceptance.
 
 An optional `source` names this plugin's `buildSystemID` and a function returning
 `{ nodes: [...] }`. The source uses the existing provider transport; it adds no

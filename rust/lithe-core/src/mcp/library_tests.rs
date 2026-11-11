@@ -5,10 +5,8 @@ use super::{batch_plan, library_snapshot, parse_configuration, validate_draft};
 use serde_json::{json, Value};
 
 fn fixture() -> Value {
-    serde_json::from_str(include_str!(
-        "../../../fixtures/mcp/library-v1.json"
-    ))
-    .expect("library fixture is JSON")
+    serde_json::from_str(include_str!("../../../fixtures/mcp/library-v1.json"))
+        .expect("library fixture is JSON")
 }
 
 /// Resolves `{{sourceHash:<file>:<name>}}` and `{{definitionHash:...}}`

@@ -9063,10 +9063,8 @@ mod tests {
 
     #[test]
     fn windows_git_paths_follow_shared_identity_policy() {
-        let cases: Value = serde_json::from_str(include_str!(
-            "../../../fixtures/git/windows-paths.json"
-        ))
-        .unwrap();
+        let cases: Value =
+            serde_json::from_str(include_str!("../../../fixtures/git/windows-paths.json")).unwrap();
         for case in cases["accepted"].as_array().unwrap() {
             let path =
                 simplified_canonical_path(PathBuf::from(case["input"].as_str().unwrap())).unwrap();

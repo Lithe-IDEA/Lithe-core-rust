@@ -1,0 +1,12 @@
+[package]
+name = "lithe-plugin-sdk"
+description = "Official SDK for Lithe plugin backends: plugin functions and host services over the LSP base protocol."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+serde_json.workspace = true
+base64 = "0.22"

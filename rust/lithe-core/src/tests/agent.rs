@@ -231,10 +231,8 @@ fn cli_update_outcome_fixture_preserves_verified_version_and_warning() {
 
 #[test]
 fn edit_reverse_plan_dispatches_shared_fixture_and_rejects_malformed_payloads() {
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../../fixtures/agent/edit-review-v1.json"
-    ))
-    .unwrap();
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../../fixtures/agent/edit-review-v1.json")).unwrap();
     assert!(crate::protocol::CoreCommand::parse("agent.edits.reversePlan").is_some());
     for case in fixture["reversePlan"].as_array().unwrap() {
         // Reverse plan cases use literal text only; generators belong to evidence cases.

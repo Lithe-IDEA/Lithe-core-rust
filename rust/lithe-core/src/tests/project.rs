@@ -189,10 +189,8 @@ fn search_everywhere_preserves_unicode_contiguous_filename_matches() {
 
 #[test]
 fn search_everywhere_preserves_directory_fallback_below_basename_matches() {
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../../fixtures/search/path-fallback.json"
-    ))
-    .unwrap();
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../../fixtures/search/path-fallback.json")).unwrap();
     let root = temporary_root("search-path-fallback");
     struct Cleanup(std::path::PathBuf);
     impl Drop for Cleanup {
@@ -252,10 +250,8 @@ fn search_everywhere_matches_names_before_limits_and_shares_utf16_fragments() {
         }
     }
     let _cleanup = Cleanup(root.clone());
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../../fixtures/search/name-matching.json"
-    ))
-    .unwrap();
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../../fixtures/search/name-matching.json")).unwrap();
     for case in fixture["cases"].as_array().unwrap() {
         let path = root.join(case["path"].as_str().unwrap());
         fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -1236,10 +1232,8 @@ fn preserve_case_matches_original_occurrence_shape() {
 
 #[test]
 fn local_history_relocates_excluded_files_and_subtrees_from_retained_metadata() {
-    let cases: Value = serde_json::from_str(include_str!(
-        "../../../fixtures/history/relocation-v1.json"
-    ))
-    .unwrap();
+    let cases: Value =
+        serde_json::from_str(include_str!("../../../fixtures/history/relocation-v1.json")).unwrap();
     for case in cases["cases"].as_array().unwrap() {
         let root = temporary_root("excluded-history-relocation");
         struct Cleanup(std::path::PathBuf, Option<u64>);

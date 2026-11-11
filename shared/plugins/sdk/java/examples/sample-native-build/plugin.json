@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 0,
+  "id": "org.example.sample-native-build",
+  "displayName": "Sample Native Build",
+  "version": "0.1.0",
+  "pluginAPIVersion": 0,
+  "requires": {
+    "buildProviders": 0,
+    "buildSystems": 0,
+    "debugAdapters": 0
+  },
+  "requiresTools": ["java"],
+  "vendor": {
+    "id": "org.example",
+    "displayName": "Example",
+    "signatureRequirement": "publisherPackage"
+  },
+  "permissions": [
+    "languageServer.launch",
+    "process.build",
+    "debug.launch"
+  ],
+  "activationEvents": [
+    "onBuildSystem:sample",
+    "onDebug:native"
+  ],
+  "languages": [],
+  "buildSystems": [
+    {
+      "id": "sample",
+      "displayName": "Sample",
+      "detection": {
+        "markers": [
+          "lithe-sample.json"
+        ],
+        "nesting": "outermost"
+      },
+      "invocation": {
+        "executables": [
+          {
+            "kind": "command",
+            "command": "java"
+          }
+        ]
+      },
+      "provider": {
+        "launch": {
+          "kind": "runtime",
+          "tool": "java",
+          "minimumVersion": "8",
+          "entry": "backend/sample-native-build.jar"
+        },
+        "arguments": [],
+        "executesProjectCode": true,
+        "mayUseNetwork": false
+      },
+      "model": {
+        "source": "provider"
+      },
+      "tasks": [
+        {
+          "id": "build",
+          "displayName": "Build",
+          "group": "build",
+          "scopes": [
+            "workspace",
+            "project"
+          ],
+          "source": "provider",
+          "arguments": []
+        }
+      ],
+      "dependencies": {
+        "source": "provider",
+        "scopes": [
+          "workspace",
+          "project"
+        ]
+      },
+      "sync": {
+        "watch": [
+          "lithe-sample.json"
+        ]
+      },
+      "test": {
+        "source": "provider",
+        "scopes": [
+          "workspace",
+          "project"
+        ],
+        "filters": [
+          "suite",
+          "case"
+        ],
+        "arguments": [],
+        "discovery": true
+      },
+      "run": [
+        {
+          "id": "application",
+          "source": "provider",
+          "name": "Run Application",
+          "fromTargets": {
+            "tags": [
+              "application"
+            ]
+          },
+          "arguments": [],
+          "debug": {
+            "adapter": "native"
+          }
+        }
+      ]
+    }
+  ],
+  "debugAdapters": [
+    {
+      "id": "native",
+      "displayName": "Native DAP",
+      "requests": [
+        "launch"
+      ],
+      "selectors": [
+        {
+          "targetKinds": [
+            "executable"
+          ]
+        }
+      ],
+      "configurationTypes": [
+        "native"
+      ],
+      "configurations": {
+        "launch": {
+          "targetBindings": {
+            "program": "target.path",
+            "cwd": "target.workingDirectory",
+            "args": "target.arguments",
+            "env": "target.environment"
+          }
+        }
+      },
+      "launch": {
+        "process": {
+          "launch": {
+            "kind": "systemCommand",
+            "commands": [
+              "example-dap"
+            ]
+          }
+        },
+        "transport": "stdio"
+      }
+    }
+  ]
+}

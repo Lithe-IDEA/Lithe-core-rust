@@ -155,10 +155,8 @@ mod tests {
 
     #[test]
     fn repair_uses_recommendation_or_a_selectable_catalog_model() {
-        let fixture: serde_json::Value = serde_json::from_str(include_str!(
-            "../../fixtures/agent/acp-events-v1.json"
-        ))
-        .unwrap();
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../fixtures/agent/acp-events-v1.json")).unwrap();
         let initial = fixture["upstream"]["staleModelSession"].clone();
         let parsed = |value| serde_json::from_value::<CatalogSessionResponse>(value).unwrap();
         assert_eq!(

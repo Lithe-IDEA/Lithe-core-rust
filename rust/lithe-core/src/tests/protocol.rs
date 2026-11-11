@@ -5,10 +5,8 @@ use serde_json::Value;
 
 #[test]
 fn keymap_context_fixtures_cross_the_json_boundary() {
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../../fixtures/keymap/context-v1.json"
-    ))
-    .unwrap();
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../../fixtures/keymap/context-v1.json")).unwrap();
     let call = |command: &str, payload: Value| -> Value {
         serde_json::from_str(&execute_json(
             &serde_json::json!({

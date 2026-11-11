@@ -14,10 +14,7 @@ fn pull_request_fixture() -> Value {
 }
 
 fn inline_edit_fixture() -> Value {
-    serde_json::from_str(include_str!(
-        "../../../fixtures/ai/inline-edit-v1.json"
-    ))
-    .unwrap()
+    serde_json::from_str(include_str!("../../../fixtures/ai/inline-edit-v1.json")).unwrap()
 }
 
 fn typed(fixture: &Value) -> (Provider, PullRequestOptions, PullRequestComparison) {

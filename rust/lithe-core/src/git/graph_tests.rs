@@ -318,23 +318,21 @@ fn compact_positions_and_half_edges_match_pinned_intellij_printing() {
 }
 
 fn read_tsv(name: &str) -> Vec<CommitInput> {
-    read_fixture(&format!(
-        "rust/fixtures/git/graph-issue410/{name}.tsv"
-    ))
-    .lines()
-    .filter(|line| !line.is_empty())
-    .map(|line| {
-        let columns = line.split('\t').collect::<Vec<_>>();
-        assert_eq!(columns.len(), 4, "{line}");
-        CommitInput {
-            hash: columns[0].to_string(),
-            parent_hashes: columns[1].split_whitespace().map(str::to_string).collect(),
-            decorations: columns[2]
-                .trim_matches(|c| c == ' ' || c == '(' || c == ')')
-                .to_string(),
-        }
-    })
-    .collect()
+    read_fixture(&format!("rust/fixtures/git/graph-issue410/{name}.tsv"))
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            let columns = line.split('\t').collect::<Vec<_>>();
+            assert_eq!(columns.len(), 4, "{line}");
+            CommitInput {
+                hash: columns[0].to_string(),
+                parent_hashes: columns[1].split_whitespace().map(str::to_string).collect(),
+                decorations: columns[2]
+                    .trim_matches(|c| c == ' ' || c == '(' || c == ')')
+                    .to_string(),
+            }
+        })
+        .collect()
 }
 
 #[test]
@@ -380,13 +378,11 @@ fn real_history_matches_intellij_for_page_context_and_date_order() {
                 ));
             }
         }
-        let mut expected = read_fixture(&format!(
-            "rust/fixtures/git/graph-issue410/{oracle}.txt"
-        ))
-        .lines()
-        .filter(|line| !line.is_empty())
-        .map(str::to_string)
-        .collect::<Vec<_>>();
+        let mut expected = read_fixture(&format!("rust/fixtures/git/graph-issue410/{oracle}.txt"))
+            .lines()
+            .filter(|line| !line.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
         actual.sort();
         expected.sort();
         let missing = expected

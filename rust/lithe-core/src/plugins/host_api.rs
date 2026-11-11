@@ -104,10 +104,9 @@ mod tests {
 
     #[test]
     fn authorization_does_not_widen_metadata_grants_or_accept_spoofed_services() {
-        let fixture: Value = serde_json::from_str(include_str!(
-            "../../../fixtures/plugins/host-api-v1.json"
-        ))
-        .unwrap();
+        let fixture: Value =
+            serde_json::from_str(include_str!("../../../fixtures/plugins/host-api-v1.json"))
+                .unwrap();
         for case in fixture["authorization"].as_array().unwrap() {
             assert_eq!(
                 authorize_command(case["input"].clone()).unwrap(),

@@ -1,3 +1,8 @@
 /.artifacts/
 /rust/target/
 /scripts/rust-core/comment-lexer/target/
+node_modules/
+/shared/plugins/sdk/java/**/target/
+/shared/plugins/sdk/rust/target/
+*.tmp
+.DS_Store

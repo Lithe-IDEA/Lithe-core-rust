@@ -825,10 +825,8 @@ mod tests {
             fs::create_dir_all(file.parent().unwrap()).unwrap();
             fs::write(file, "Name before").unwrap();
         }
-        let fixture: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../fixtures/search/exclusions.json"
-        ))
-        .unwrap();
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../../fixtures/search/exclusions.json")).unwrap();
         // The patterns come from the shared fixture, so Rust and Swift always
         // judge the same list.
         let rules = VisibilityRules {

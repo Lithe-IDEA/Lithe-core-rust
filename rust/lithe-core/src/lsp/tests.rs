@@ -446,10 +446,8 @@ fn file_uri_paths_decode_spaces_and_utf8_characters() {
 
 #[test]
 fn document_uri_matches_shared_fixture() {
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../../fixtures/lsp/document-uri-v1.json"
-    ))
-    .unwrap();
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../../fixtures/lsp/document-uri-v1.json")).unwrap();
     for case in fixture["cases"].as_array().unwrap() {
         let response: Value = serde_json::from_str(&crate::execute_json(
             &json!({"command":"lsp.documentUri", "payload":{
@@ -514,10 +512,8 @@ fn document_uri_accepts_non_ascii_windows_extended_length_paths() {
 
 #[test]
 fn document_uri_identity_keeps_reserved_characters_distinct() {
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../../fixtures/lsp/document-uri-v1.json"
-    ))
-    .unwrap();
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../../fixtures/lsp/document-uri-v1.json")).unwrap();
     for case in fixture["identityCases"].as_array().unwrap() {
         let opened_uri = case["opened"].as_str().unwrap();
         let published_uri = case["published"].as_str().unwrap();
@@ -2799,10 +2795,8 @@ fn client_completion_rejects_invalid_trigger_context() {
 
 #[test]
 fn text_edits_follow_shared_windows_fixture() {
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../../fixtures/lsp/text-edits-v1.json"
-    ))
-    .unwrap();
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../../fixtures/lsp/text-edits-v1.json")).unwrap();
     for case in fixture["cases"].as_array().unwrap() {
         let edits: Vec<Value> = case["edits"].as_array().unwrap().iter().map(|edit| serde_json::json!({
             "range": { "start": { "line": edit["range"]["start"]["line"], "utf16Column": edit["range"]["start"]["character"] },

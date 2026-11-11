@@ -634,8 +634,7 @@ fn legacy_v2_runtime_requirements_are_reconciled_without_regeneration() {
 
 #[test]
 fn shared_run_configuration_fixtures_have_the_versioned_contract_shape() {
-    let directory =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../fixtures/run-configuration");
+    let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../fixtures/run-configuration");
     let mut fixture_count = 0;
     for entry in fs::read_dir(directory).unwrap() {
         let path = entry.unwrap().path();

@@ -458,10 +458,9 @@ mod tests {
 
     #[test]
     fn import_binding_plans_follow_shared_fixtures() {
-        let fixtures: Value = serde_json::from_str(include_str!(
-            "../../../fixtures/keymap/import-plan-v1.json"
-        ))
-        .unwrap();
+        let fixtures: Value =
+            serde_json::from_str(include_str!("../../../fixtures/keymap/import-plan-v1.json"))
+                .unwrap();
         for case in fixtures["cases"].as_array().unwrap() {
             let request = json!({"id": "fixture", "command": "keymap.planImportBindings", "payload": case["request"]});
             let response: Value =

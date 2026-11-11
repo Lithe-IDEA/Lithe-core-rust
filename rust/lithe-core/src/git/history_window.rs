@@ -243,10 +243,9 @@ mod tests {
 
     #[test]
     fn shared_fixture_windows_keep_depth_and_selection() {
-        let fixture: Value = serde_json::from_str(include_str!(
-            "../../../fixtures/git/history-window-v1.json"
-        ))
-        .unwrap();
+        let fixture: Value =
+            serde_json::from_str(include_str!("../../../fixtures/git/history-window-v1.json"))
+                .unwrap();
         for case in fixture["cases"].as_array().unwrap() {
             let response = call(case["request"].clone());
             assert_eq!(response["ok"], true, "{}: {response}", case["name"]);
