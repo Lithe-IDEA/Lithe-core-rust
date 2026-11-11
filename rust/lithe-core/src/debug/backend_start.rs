@@ -97,22 +97,28 @@ fn decode(manifest: &DeclarativePluginManifest, params: Value) -> Validation<Val
             "The configuration is larger than 256 KiB.",
         ));
     }
-    if let Some(key) = params
-        .configuration
-        .keys()
-        .find(|key| key.as_str() == NO_DEBUG_KEY || key.starts_with(HOST_KEY_PREFIX))
-    {
-        return Err(invalid(
-            &format!("configuration.{key}"),
-            "The key belongs to the host and cannot be set by a plugin.",
-        ));
-    }
+    reject_host_keys(&params.configuration)?;
     Ok(json!({
         "adapterID": format!("{}/{}", manifest.id(), adapter.id),
         "request": params.request,
         "label": params.label,
         "configuration": params.configuration,
     }))
+}
+
+/// Refuses a configuration that sets a key the host owns: `noDebug`, which the
+/// session mode decides, or a `__` key, which carries the host's bookkeeping.
+pub(crate) fn reject_host_keys(configuration: &Map<String, Value>) -> Validation<()> {
+    match configuration
+        .keys()
+        .find(|key| key.as_str() == NO_DEBUG_KEY || key.starts_with(HOST_KEY_PREFIX))
+    {
+        Some(key) => Err(invalid(
+            &format!("configuration.{key}"),
+            "The key belongs to the host and cannot be set by a plugin.",
+        )),
+        None => Ok(()),
+    }
 }
 
 /// The plugin-local adapter ID of `adapter`, which is either local or qualified by this plugin.

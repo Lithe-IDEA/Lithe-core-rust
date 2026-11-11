@@ -117,6 +117,21 @@ mod tests {
         }
     }
 
+    #[test]
+    fn environment_command_follows_the_shared_precedence_fixture() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../../../shared/fixtures/execution/launch-environment-v1.json"
+        ))
+        .unwrap();
+        for case in fixture["cases"].as_array().unwrap() {
+            let request = serde_json::json!({"id":"environment", "command":"execution.resolveEnvironment", "payload":case["request"]});
+            let response: Value =
+                serde_json::from_str(&crate::execute_json(&request.to_string())).unwrap();
+            assert_eq!(response["ok"], true, "{}: {response}", case["name"]);
+            assert_eq!(response["data"], case["expected"], "{}", case["name"]);
+        }
+    }
+
     // A structured binding that reaches Core unresolved names no value, so it
     // must be dropped rather than leak an empty or stale variable.
     #[test]

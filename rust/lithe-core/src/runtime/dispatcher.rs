@@ -1182,6 +1182,36 @@ fn execute_parsed(mut parsed: CoreRequest) -> CoreResponse {
             ),
             Err(error) => CoreResponse::failure(id, error),
         },
+        CoreCommand::TextDecode => {
+            match serde_json::from_value::<project::TextDecodeRequest>(parsed.payload)
+                .map_err(|error| {
+                    CoreError::new(ErrorCode::InvalidRequest, "Invalid text decode request")
+                        .with_details(error.to_string())
+                })
+                .and_then(project::decode_text_bytes)
+            {
+                Ok(data) => CoreResponse::success(
+                    id,
+                    serde_json::to_value(data).expect("text response should encode"),
+                ),
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
+        CoreCommand::TextEncode => {
+            match serde_json::from_value::<project::TextEncodeRequest>(parsed.payload)
+                .map_err(|error| {
+                    CoreError::new(ErrorCode::InvalidRequest, "Invalid text encode request")
+                        .with_details(error.to_string())
+                })
+                .and_then(project::encode_text)
+            {
+                Ok(data) => CoreResponse::success(
+                    id,
+                    serde_json::to_value(data).expect("text response should encode"),
+                ),
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
         CoreCommand::DocumentClassifyText => {
             match parsed
                 .payload

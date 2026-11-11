@@ -2238,6 +2238,39 @@ fn debug_executable_plan_is_empty_for_an_adapter_without_a_lookup() {
     assert_eq!(missing["error"]["code"], "plugin.launch.unavailable");
 }
 
+/// A backend's own configuration is the final word on every argument it names,
+/// so the host passes Core's arguments to the adapter without merging again.
+#[test]
+fn debug_start_arguments_put_a_backend_configuration_on_top() {
+    let start = |configuration: Value| {
+        crate::plugins::declarative::debug_start_arguments_command(json!({
+            "manifest": fixture("debug-adapter.plugin.json"),
+            "adapterID": "example",
+            "request": "launch",
+            "facts": {
+                "registration": { "generation": 3, "currentGeneration": 3 },
+                "target": { "kind": "file", "path": "/work/main.ex", "workingDirectory": "/work" },
+            },
+            "configuration": configuration,
+        }))
+        .expect("payload is well formed")
+    };
+    let started = start(json!({ "stopOnEntry": true, "program": "/work/app.ex", "port": 7 }));
+    assert_eq!(started["status"], "ok", "{started}");
+    assert_eq!(
+        started["arguments"],
+        json!({ "stopOnEntry": true, "program": "/work/app.ex", "cwd": "/work", "port": 7 })
+    );
+    for key in ["noDebug", "__session"] {
+        let refused = start(json!({ key: true }));
+        assert_eq!(
+            refused["error"]["code"], "plugin.debug.invalidStart",
+            "{refused}"
+        );
+        assert_eq!(refused["error"]["field"], format!("configuration.{key}"));
+    }
+}
+
 #[test]
 fn debug_start_arguments_refuse_stale_registrations_and_missing_target_facts() {
     let missing = debug_start("launch", json!({ "kind": "file" }));

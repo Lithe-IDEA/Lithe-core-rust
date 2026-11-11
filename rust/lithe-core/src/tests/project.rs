@@ -2065,6 +2065,80 @@ fn file_encoding_matches_the_golden_fixture() {
     fs::remove_dir_all(root).unwrap();
 }
 
+/// `text.decode` and `text.encode` apply the golden encodings to bytes in
+/// memory and agree with `file.read` / `file.write` on every case, so a host
+/// that guards its own file access needs no temporary file.
+#[test]
+fn text_commands_match_the_golden_fixture_without_files() {
+    use base64::Engine as _;
+    let base64 = base64::engine::general_purpose::STANDARD;
+    let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../shared/fixtures/editor/file-encoding-v1.json");
+    let fixture: Value = serde_json::from_str(&fs::read_to_string(fixture_path).unwrap()).unwrap();
+    for case in fixture["cases"].as_array().unwrap() {
+        let name = case["name"].as_str().unwrap();
+        let encoding = case["encoding"].as_str().unwrap();
+        let text = case["text"].as_str().unwrap();
+        let bytes = hex_bytes(case["bytesHex"].as_str().unwrap());
+
+        let encoded = call(
+            "text.encode",
+            serde_json::json!({"text": text, "encoding": encoding}),
+        );
+        assert_eq!(encoded["ok"], true, "{name}: {encoded}");
+        assert_eq!(
+            base64
+                .decode(encoded["data"]["bytes"].as_str().unwrap())
+                .unwrap(),
+            bytes,
+            "{name}"
+        );
+        assert_eq!(encoded["data"]["hasBom"], case["hasBom"], "{name}");
+        assert_eq!(encoded["data"]["encoding"], encoding, "{name}");
+
+        let decoded = call(
+            "text.decode",
+            serde_json::json!({"bytes": base64.encode(&bytes), "encoding": encoding}),
+        );
+        assert_eq!(decoded["data"]["text"], text, "{name}");
+        assert_eq!(decoded["data"]["hasBom"], case["hasBom"], "{name}");
+        assert_eq!(decoded["data"]["lossy"], false, "{name}");
+        assert_eq!(
+            decoded["data"]["identity"], encoded["data"]["identity"],
+            "{name}"
+        );
+        if let Some(detected) = case["autoDetectedEncoding"].as_str() {
+            let auto = call(
+                "text.decode",
+                serde_json::json!({"bytes": base64.encode(&bytes)}),
+            );
+            assert_eq!(auto["data"]["encoding"], detected, "{name}");
+        }
+    }
+    for case in fixture["unmappable"].as_array().unwrap() {
+        let response = call(
+            "text.encode",
+            serde_json::json!({"text": case["text"], "encoding": case["encoding"]}),
+        );
+        assert_eq!(
+            response["error"]["code"], "encoding_unmappable",
+            "{response}"
+        );
+    }
+    let binary = call(
+        "text.decode",
+        serde_json::json!({"bytes": base64.encode([0u8, 1, 2, 0, 0, 0])}),
+    );
+    assert_eq!(binary["error"]["code"], "parse_failed", "{binary}");
+    let malformed = call("text.decode", serde_json::json!({"bytes": "not base64!"}));
+    assert_eq!(malformed["error"]["code"], "invalid_request", "{malformed}");
+    let oversized = call(
+        "text.decode",
+        serde_json::json!({"bytes": "A".repeat(32 * 1024 * 1024 / 3 * 4 + 8)}),
+    );
+    assert_eq!(oversized["error"]["code"], "parse_failed", "{oversized}");
+}
+
 #[test]
 fn file_encoding_options_are_optional_and_validated() {
     let root = temporary_root("file-encoding-compat");
