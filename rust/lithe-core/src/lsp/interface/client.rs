@@ -454,10 +454,9 @@ pub(super) fn client_apply_server_message_for_plugin(
             }
             super::build_provider::PROGRESS_METHOD
                 if !state.shutdown_requested
-                    && state
-                        .server_capabilities
-                        .iter()
-                        .any(|feature| feature == super::build_provider::EXECUTION_FEATURE) =>
+                    && state.server_capabilities.iter().any(|feature| {
+                        feature == super::build_provider::BUILD_PROVIDER_FEATURE
+                    }) =>
             {
                 if let Some(result) = super::build_provider::progress(message.get("params")) {
                     events.push(LspClientEvent {
@@ -540,7 +539,7 @@ pub(super) fn client_apply_server_message_for_plugin(
                 match plugin_function::host_request(
                     method,
                     message.get("params"),
-                    state.plugin_function_version.unwrap_or(0),
+                    state.plugin_function_version,
                     &state.host_services,
                 ) {
                     // The engine answers once the host has; the request
@@ -900,7 +899,9 @@ fn experimental_capabilities(
 ) -> Value {
     let mut experimental = super::build_provider::client_experimental_capabilities();
     if plugin_owned {
-        experimental[super::plugin_logging::FEATURE] = json!({"versions": [1]});
+        let (logging_key, logging_offer) =
+            super::plugin_logging::client_experimental_capabilities();
+        experimental[logging_key] = logging_offer;
         let (functions_key, functions_offer) = plugin_function::client_experimental_capabilities();
         experimental[functions_key] = functions_offer;
         let (vcs_key, vcs_offer) = super::vcs_provider::client_experimental_capabilities();
@@ -2105,39 +2106,6 @@ fn feature_names_from_capabilities(capabilities: &Value) -> Vec<String> {
     }
     if super::build_provider::negotiated(capabilities) {
         insert_unique(&mut values, super::build_provider::BUILD_PROVIDER_FEATURE);
-    }
-    if super::build_provider::execution_negotiated(capabilities) {
-        insert_unique(&mut values, super::build_provider::EXECUTION_FEATURE);
-    }
-    if super::build_provider::tests_negotiated(capabilities) {
-        insert_unique(&mut values, super::build_provider::TEST_EXECUTION_FEATURE);
-    }
-    if super::build_provider::test_selectors_negotiated(capabilities) {
-        insert_unique(&mut values, super::build_provider::TEST_SELECTORS_FEATURE);
-    }
-    if super::build_provider::test_reports_negotiated(capabilities) {
-        insert_unique(&mut values, super::build_provider::TEST_REPORTS_FEATURE);
-    }
-    if super::build_provider::configuration_negotiated(capabilities) {
-        insert_unique(&mut values, super::build_provider::CONFIGURATION_FEATURE);
-    }
-    if super::build_provider::model_inputs_negotiated(capabilities) {
-        insert_unique(&mut values, super::build_provider::MODEL_INPUTS_FEATURE);
-    }
-    if super::build_provider::debug_preparation_negotiated(capabilities) {
-        insert_unique(
-            &mut values,
-            super::build_provider::DEBUG_PREPARATION_FEATURE,
-        );
-    }
-    if super::build_provider::runtime_debug_negotiated(capabilities) {
-        insert_unique(&mut values, super::build_provider::RUNTIME_DEBUG_FEATURE);
-    }
-    if super::build_provider::run_options_negotiated(capabilities) {
-        insert_unique(&mut values, super::build_provider::RUN_OPTIONS_FEATURE);
-    }
-    if super::build_provider::run_preparation_negotiated(capabilities) {
-        insert_unique(&mut values, super::build_provider::RUN_PREPARATION_FEATURE);
     }
     if plugin_function::negotiate(capabilities).is_some() {
         insert_unique(&mut values, plugin_function::FUNCTIONS_FEATURE);

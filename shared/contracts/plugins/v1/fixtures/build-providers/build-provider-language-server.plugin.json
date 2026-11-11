@@ -1,10 +1,10 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 0,
   "id": "dev.lithe.fixture.build-provider-language-server",
   "displayName": "Build Provider With Language Server Fixture",
   "version": "0.1.0",
-  "pluginAPIVersion": 3,
-  "requires": { "buildProviders": 1, "buildSystems": 1, "languageServers": 1, "languages": 1, "serverProcess": 1 },
+  "pluginAPIVersion": 0,
+  "requires": { "buildProviders": 0, "buildSystems": 0, "languageServers": 0, "languages": 0 },
   "vendor": {
     "id": "org.example",
     "displayName": "Example",

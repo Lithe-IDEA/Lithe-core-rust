@@ -274,7 +274,7 @@
       "base": "build-static-file.plugin.json",
       "hostCapabilities": {
         "buildSystems": [
-          1
+          0
         ]
       },
       "expected": {
@@ -286,19 +286,16 @@
       "base": "build-provider.plugin.json",
       "hostCapabilities": {
         "buildSystems": [
-          1
+          0
         ],
         "languages": [
-          1
+          0
         ],
         "languageServers": [
-          1
-        ],
-        "serverProcess": [
-          1
+          0
         ],
         "settings": [
-          1
+          0
         ]
       },
       "expectedCode": "plugin.api.unsupported",
@@ -309,22 +306,19 @@
       "base": "build-provider.plugin.json",
       "hostCapabilities": {
         "buildProviders": [
-          2
+          1
         ],
         "buildSystems": [
-          1
+          0
         ],
         "languages": [
-          1
+          0
         ],
         "languageServers": [
-          1
-        ],
-        "serverProcess": [
-          1
+          0
         ],
         "settings": [
-          1
+          0
         ]
       },
       "expectedCode": "plugin.api.unsupported",
@@ -342,19 +336,16 @@
       "base": "build-provider-language-server.plugin.json",
       "hostCapabilities": {
         "buildSystems": [
-          1
+          0
         ],
         "languages": [
-          1
+          0
         ],
         "languageServers": [
-          1
-        ],
-        "serverProcess": [
-          1
+          0
         ],
         "settings": [
-          1
+          0
         ]
       },
       "expectedCode": "plugin.api.unsupported",
@@ -365,22 +356,19 @@
       "base": "build-provider-language-server.plugin.json",
       "hostCapabilities": {
         "buildProviders": [
-          2
+          1
         ],
         "buildSystems": [
-          1
+          0
         ],
         "languages": [
-          1
+          0
         ],
         "languageServers": [
-          1
-        ],
-        "serverProcess": [
-          1
+          0
         ],
         "settings": [
-          1
+          0
         ]
       },
       "expectedCode": "plugin.api.unsupported",
@@ -398,16 +386,13 @@
       "base": "build-provider.plugin.json",
       "hostCapabilities": {
         "buildProviders": [
-          1
+          0
         ],
         "buildSystems": [
-          1
-        ],
-        "serverProcess": [
-          1
+          0
         ],
         "settings": [
-          1
+          0
         ]
       },
       "expected": {
@@ -417,13 +402,13 @@
     {
       "name": "host without build systems refuses a build plugin",
       "base": "build-provider-language-server.plugin.json",
-      "hostCapabilities": { "languages": [1], "languageServers": [1], "serverProcess": [1] },
+      "hostCapabilities": { "languages": [0], "languageServers": [0] },
       "expectedCode": "plugin.api.unsupported"
     },
     {
       "name": "host with every required capability reviews a build plugin",
       "base": "build-provider-language-server.plugin.json",
-      "hostCapabilities": { "buildProviders": [1], "buildSystems": [1], "languages": [1], "languageServers": [1], "serverProcess": [1] },
+      "hostCapabilities": { "buildProviders": [0], "buildSystems": [0], "languages": [0], "languageServers": [0] },
       "expected": {
         "id": "dev.lithe.fixture.build-provider-language-server",
         "permissions": ["languageServer.launch", "process.build"],

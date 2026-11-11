@@ -194,7 +194,7 @@
       }
     },
     {
-      "name": "node launch discovers the runtime, carries its version probe, and expands host directories",
+      "name": "node launch names the tool, its entry and the expanded runtime arguments",
       "plugin": "node-runtime.plugin.json",
       "languageID": "fixture",
       "operation": "languageServerLaunchPlan",
@@ -209,51 +209,27 @@
         "plan": {
           "owner": { "pluginID": "dev.lithe.fixture.node-runtime", "version": "1.0.0" },
           "launch": {
-            "kind": "runtime",
+            "kind": "tool",
             "tool": "node",
-            "entry": "language-server/lib/server.js",
-            "minimumVersion": "18.17",
-            "versionArguments": [
-              "--version"
-            ]
+            "entry": "/plugins/node/versions/1.0.0/language-server/lib/server.js",
+            "runtimeArguments": ["--max-old-space-size=2048", "--require=/plugins/node/versions/1.0.0/language-server/lib/preload.js"],
+            "minimumVersion": "18.17"
           },
-          "arguments": [
-            "--max-old-space-size=2048",
-            "--require=/plugins/node/versions/1.0.0/language-server/lib/preload.js",
-            "/plugins/node/versions/1.0.0/language-server/lib/server.js",
-            "--stdio",
-            "--log-level=info",
-            "--storage",
-            "/state/node/storage",
-            "--workspace-cache",
-            "/state/node/workspaces/abc"
-          ],
+          "arguments": ["--stdio", "--log-level=info", "--storage", "/state/node/storage", "--workspace-cache", "/state/node/workspaces/abc"],
           "validationArguments": [],
-          "runtimeRequirements": [
-            {
-              "tool": "node",
-              "minimumVersion": "18.17"
-            }
-          ],
-          "initializationOptions": {
-            "stubs": [
-              "/plugins/node/versions/1.0.0/language-server/stubs/x86_64"
-            ],
-            "telemetry": false
-          },
-          "requiredDirectories": [
-            "state",
-            "workspaceState"
-          ],
-          "requiredPackagePaths": [
-            "language-server/lib/preload.js",
-            "language-server/lib/server.js",
-            "language-server/stubs/x86_64"
-          ],
-          "settings": {
-            "heapMB": 2048,
-            "logLevel": "info",
-            "telemetry": false
+          "runtimeRequirements": [{ "kind": "tool", "tool": "node", "minimumVersion": "18.17" }],
+          "initializationOptions": { "stubs": ["/plugins/node/versions/1.0.0/language-server/stubs/x86_64"], "telemetry": false },
+          "requiredDirectories": ["state", "workspaceState"],
+          "requiredPackagePaths": ["language-server/lib/preload.js", "language-server/lib/server.js", "language-server/stubs/x86_64"],
+          "settings": { "heapMB": 2048, "logLevel": "info", "telemetry": false },
+          "sessionPolicy": {
+            "serverID": "fixture",
+            "requestMethods": [],
+            "commands": [],
+            "serializedCommands": [],
+            "forwardNotifications": [],
+            "remote": "supported",
+            "gates": []
           }
         }
       }
@@ -268,62 +244,34 @@
         "stateDirectory": "/state/node",
         "workspaceStateDirectory": "/state/node/workspaces/abc",
         "architecture": "x86_64",
-        "settings": {
-          "heapMB": 4096,
-          "logLevel": "debug",
-          "telemetry": true
-        }
+        "settings": { "heapMB": 4096, "logLevel": "debug", "telemetry": true }
       },
       "expected": {
         "status": "ok",
         "plan": {
           "owner": { "pluginID": "dev.lithe.fixture.node-runtime", "version": "1.0.0" },
           "launch": {
-            "kind": "runtime",
+            "kind": "tool",
             "tool": "node",
-            "entry": "language-server/lib/server.js",
-            "minimumVersion": "18.17",
-            "versionArguments": [
-              "--version"
-            ]
+            "entry": "/plugins/node/versions/1.0.0/language-server/lib/server.js",
+            "runtimeArguments": ["--max-old-space-size=4096", "--require=/plugins/node/versions/1.0.0/language-server/lib/preload.js"],
+            "minimumVersion": "18.17"
           },
-          "arguments": [
-            "--max-old-space-size=4096",
-            "--require=/plugins/node/versions/1.0.0/language-server/lib/preload.js",
-            "/plugins/node/versions/1.0.0/language-server/lib/server.js",
-            "--stdio",
-            "--log-level=debug",
-            "--storage",
-            "/state/node/storage",
-            "--workspace-cache",
-            "/state/node/workspaces/abc"
-          ],
+          "arguments": ["--stdio", "--log-level=debug", "--storage", "/state/node/storage", "--workspace-cache", "/state/node/workspaces/abc"],
           "validationArguments": [],
-          "runtimeRequirements": [
-            {
-              "tool": "node",
-              "minimumVersion": "18.17"
-            }
-          ],
-          "initializationOptions": {
-            "stubs": [
-              "/plugins/node/versions/1.0.0/language-server/stubs/x86_64"
-            ],
-            "telemetry": true
-          },
-          "requiredDirectories": [
-            "state",
-            "workspaceState"
-          ],
-          "requiredPackagePaths": [
-            "language-server/lib/preload.js",
-            "language-server/lib/server.js",
-            "language-server/stubs/x86_64"
-          ],
-          "settings": {
-            "heapMB": 4096,
-            "logLevel": "debug",
-            "telemetry": true
+          "runtimeRequirements": [{ "kind": "tool", "tool": "node", "minimumVersion": "18.17" }],
+          "initializationOptions": { "stubs": ["/plugins/node/versions/1.0.0/language-server/stubs/x86_64"], "telemetry": true },
+          "requiredDirectories": ["state", "workspaceState"],
+          "requiredPackagePaths": ["language-server/lib/preload.js", "language-server/lib/server.js", "language-server/stubs/x86_64"],
+          "settings": { "heapMB": 4096, "logLevel": "debug", "telemetry": true },
+          "sessionPolicy": {
+            "serverID": "fixture",
+            "requestMethods": [],
+            "commands": [],
+            "serializedCommands": [],
+            "forwardNotifications": [],
+            "remote": "supported",
+            "gates": []
           }
         }
       }
@@ -338,63 +286,34 @@
         "stateDirectory": "/state/node",
         "workspaceStateDirectory": "/state/node/workspaces/abc",
         "architecture": "x86_64",
-        "settings": {
-          "heapMB": 99999,
-          "logLevel": "verbose",
-          "telemetry": "yes",
-          "unknown": 1
-        }
+        "settings": { "heapMB": 99999, "logLevel": "verbose", "telemetry": "yes", "unknown": 1 }
       },
       "expected": {
         "status": "ok",
         "plan": {
           "owner": { "pluginID": "dev.lithe.fixture.node-runtime", "version": "1.0.0" },
           "launch": {
-            "kind": "runtime",
+            "kind": "tool",
             "tool": "node",
-            "entry": "language-server/lib/server.js",
-            "minimumVersion": "18.17",
-            "versionArguments": [
-              "--version"
-            ]
+            "entry": "/plugins/node/versions/1.0.0/language-server/lib/server.js",
+            "runtimeArguments": ["--max-old-space-size=2048", "--require=/plugins/node/versions/1.0.0/language-server/lib/preload.js"],
+            "minimumVersion": "18.17"
           },
-          "arguments": [
-            "--max-old-space-size=2048",
-            "--require=/plugins/node/versions/1.0.0/language-server/lib/preload.js",
-            "/plugins/node/versions/1.0.0/language-server/lib/server.js",
-            "--stdio",
-            "--log-level=info",
-            "--storage",
-            "/state/node/storage",
-            "--workspace-cache",
-            "/state/node/workspaces/abc"
-          ],
+          "arguments": ["--stdio", "--log-level=info", "--storage", "/state/node/storage", "--workspace-cache", "/state/node/workspaces/abc"],
           "validationArguments": [],
-          "runtimeRequirements": [
-            {
-              "tool": "node",
-              "minimumVersion": "18.17"
-            }
-          ],
-          "initializationOptions": {
-            "stubs": [
-              "/plugins/node/versions/1.0.0/language-server/stubs/x86_64"
-            ],
-            "telemetry": false
-          },
-          "requiredDirectories": [
-            "state",
-            "workspaceState"
-          ],
-          "requiredPackagePaths": [
-            "language-server/lib/preload.js",
-            "language-server/lib/server.js",
-            "language-server/stubs/x86_64"
-          ],
-          "settings": {
-            "heapMB": 2048,
-            "logLevel": "info",
-            "telemetry": false
+          "runtimeRequirements": [{ "kind": "tool", "tool": "node", "minimumVersion": "18.17" }],
+          "initializationOptions": { "stubs": ["/plugins/node/versions/1.0.0/language-server/stubs/x86_64"], "telemetry": false },
+          "requiredDirectories": ["state", "workspaceState"],
+          "requiredPackagePaths": ["language-server/lib/preload.js", "language-server/lib/server.js", "language-server/stubs/x86_64"],
+          "settings": { "heapMB": 2048, "logLevel": "info", "telemetry": false },
+          "sessionPolicy": {
+            "serverID": "fixture",
+            "requestMethods": [],
+            "commands": [],
+            "serializedCommands": [],
+            "forwardNotifications": [],
+            "remote": "supported",
+            "gates": []
           }
         }
       }
@@ -409,66 +328,40 @@
         "stateDirectory": "/state/node",
         "workspaceStateDirectory": "/state/node/workspaces/abc",
         "architecture": "x86_64",
-        "settings": {
-          "heapMB": 1024
-        }
+        "settings": { "heapMB": 1024 }
       },
       "expected": {
         "status": "ok",
         "plan": {
           "owner": { "pluginID": "dev.lithe.fixture.node-runtime", "version": "1.0.0" },
           "launch": {
-            "kind": "runtime",
+            "kind": "tool",
             "tool": "node",
-            "entry": "language-server/lib/server.js",
-            "minimumVersion": "18.17",
-            "versionArguments": [
-              "--version"
-            ]
+            "entry": "/plugins/node/versions/1.0.0/language-server/lib/server.js",
+            "runtimeArguments": ["--max-old-space-size=1024", "--require=/plugins/node/versions/1.0.0/language-server/lib/preload.js"],
+            "minimumVersion": "18.17"
           },
-          "arguments": [
-            "--max-old-space-size=1024",
-            "--require=/plugins/node/versions/1.0.0/language-server/lib/preload.js",
-            "/plugins/node/versions/1.0.0/language-server/lib/server.js",
-            "--stdio",
-            "--log-level=info",
-            "--storage",
-            "/state/node/storage",
-            "--workspace-cache",
-            "/state/node/workspaces/abc"
-          ],
+          "arguments": ["--stdio", "--log-level=info", "--storage", "/state/node/storage", "--workspace-cache", "/state/node/workspaces/abc"],
           "validationArguments": [],
-          "runtimeRequirements": [
-            {
-              "tool": "node",
-              "minimumVersion": "18.17"
-            }
-          ],
-          "initializationOptions": {
-            "stubs": [
-              "/plugins/node/versions/1.0.0/language-server/stubs/x86_64"
-            ],
-            "telemetry": false
-          },
-          "requiredDirectories": [
-            "state",
-            "workspaceState"
-          ],
-          "requiredPackagePaths": [
-            "language-server/lib/preload.js",
-            "language-server/lib/server.js",
-            "language-server/stubs/x86_64"
-          ],
-          "settings": {
-            "heapMB": 1024,
-            "logLevel": "info",
-            "telemetry": false
+          "runtimeRequirements": [{ "kind": "tool", "tool": "node", "minimumVersion": "18.17" }],
+          "initializationOptions": { "stubs": ["/plugins/node/versions/1.0.0/language-server/stubs/x86_64"], "telemetry": false },
+          "requiredDirectories": ["state", "workspaceState"],
+          "requiredPackagePaths": ["language-server/lib/preload.js", "language-server/lib/server.js", "language-server/stubs/x86_64"],
+          "settings": { "heapMB": 1024, "logLevel": "info", "telemetry": false },
+          "sessionPolicy": {
+            "serverID": "fixture",
+            "requestMethods": [],
+            "commands": [],
+            "serializedCommands": [],
+            "forwardNotifications": [],
+            "remote": "supported",
+            "gates": []
           }
         }
       }
     },
     {
-      "name": "php launch keeps API 1 arguments literal and names the packaged executable",
+      "name": "php launch names the packaged executable",
       "plugin": "language-packaged-server.plugin.json",
       "languageID": "php",
       "operation": "languageServerLaunchPlan",
@@ -482,23 +375,21 @@
         "status": "ok",
         "plan": {
           "owner": { "pluginID": "dev.lithe.fixture.language-packaged-server", "version": "0.1.0" },
-          "launch": {
-            "kind": "packaged",
-            "path": "language-server/bin/intelephense"
-          },
-          "arguments": [
-            "--stdio"
-          ],
+          "launch": { "kind": "packaged", "path": "language-server/bin/intelephense" },
+          "arguments": ["--stdio"],
           "validationArguments": [],
-          "runtimeRequirements": [
-            {
-              "tool": "node"
-            }
-          ],
+          "runtimeRequirements": [{ "kind": "tool", "tool": "node" }],
           "requiredDirectories": [],
-          "requiredPackagePaths": [
-            "language-server/bin/intelephense"
-          ]
+          "requiredPackagePaths": ["language-server/bin/intelephense"],
+          "sessionPolicy": {
+            "serverID": "php",
+            "requestMethods": [],
+            "commands": [],
+            "serializedCommands": [],
+            "forwardNotifications": [],
+            "remote": "supported",
+            "gates": []
+          }
         }
       }
     },
@@ -517,23 +408,21 @@
         "status": "ok",
         "plan": {
           "owner": { "pluginID": "dev.lithe.fixture.language-system-command", "version": "0.1.0" },
-          "launch": {
-            "kind": "systemCommand",
-            "commands": [
-              "gopls"
-            ]
-          },
+          "launch": { "kind": "systemCommand", "commands": ["gopls"] },
           "arguments": [],
-          "validationArguments": [
-            "version"
-          ],
-          "runtimeRequirements": [
-            {
-              "tool": "go"
-            }
-          ],
+          "validationArguments": ["version"],
+          "runtimeRequirements": [{ "kind": "tool", "tool": "go" }],
           "requiredDirectories": [],
-          "requiredPackagePaths": []
+          "requiredPackagePaths": [],
+          "sessionPolicy": {
+            "serverID": "go",
+            "requestMethods": [],
+            "commands": [],
+            "serializedCommands": [],
+            "forwardNotifications": [],
+            "remote": "supported",
+            "gates": []
+          }
         }
       }
     },
@@ -552,24 +441,21 @@
         "status": "ok",
         "plan": {
           "owner": { "pluginID": "dev.lithe.fixture.build-provider-language-server", "version": "0.1.0" },
-          "launch": {
-            "kind": "systemCommand",
-            "commands": [
-              "elixir-ls"
-            ]
-          },
-          "arguments": [
-            "--stdio"
-          ],
+          "launch": { "kind": "systemCommand", "commands": ["elixir-ls"] },
+          "arguments": ["--stdio"],
           "validationArguments": [],
           "runtimeRequirements": [],
           "requiredDirectories": [],
           "requiredPackagePaths": [],
-          "buildProvider": {
-            "buildSystemID": "mix",
-            "executesProjectCode": true,
-            "mayUseNetwork": false,
-            "languageServer": "elixir"
+          "buildProvider": { "buildSystemID": "mix", "executesProjectCode": true, "mayUseNetwork": false, "languageServer": "elixir" },
+          "sessionPolicy": {
+            "serverID": "elixir",
+            "requestMethods": [],
+            "commands": [],
+            "serializedCommands": [],
+            "forwardNotifications": [],
+            "remote": "supported",
+            "gates": []
           }
         }
       }
@@ -589,19 +475,21 @@
         "status": "ok",
         "plan": {
           "owner": { "pluginID": "dev.lithe.fixture.build-provider-language-server", "version": "0.1.0" },
-          "launch": {
-            "kind": "systemCommand",
-            "commands": [
-              "elixir-ls"
-            ]
-          },
-          "arguments": [
-            "--stdio"
-          ],
+          "launch": { "kind": "systemCommand", "commands": ["elixir-ls"] },
+          "arguments": ["--stdio"],
           "validationArguments": [],
           "runtimeRequirements": [],
           "requiredDirectories": [],
-          "requiredPackagePaths": []
+          "requiredPackagePaths": [],
+          "sessionPolicy": {
+            "serverID": "elixir",
+            "requestMethods": [],
+            "commands": [],
+            "serializedCommands": [],
+            "forwardNotifications": [],
+            "remote": "supported",
+            "gates": []
+          }
         }
       }
     },
@@ -657,53 +545,31 @@
         "plan": {
           "owner": { "pluginID": "dev.lithe.fixture.node-runtime", "version": "1.0.0" },
           "launch": {
-            "kind": "runtime",
+            "kind": "tool",
             "tool": "node",
-            "entry": "language-server/lib/server.js",
-            "minimumVersion": "18.17",
-            "versionArguments": [
-              "--version"
-            ]
+            "entry": "/plugins/node/versions/1.0.0/language-server/lib/server.js",
+            "runtimeArguments": ["--max-old-space-size=2048", "--require=/plugins/node/versions/1.0.0/language-server/lib/preload.js"],
+            "minimumVersion": "18.17"
           },
-          "arguments": [
-            "--max-old-space-size=2048",
-            "--require=/plugins/node/versions/1.0.0/language-server/lib/preload.js",
-            "/plugins/node/versions/1.0.0/language-server/lib/server.js",
-            "--stdio",
-            "--log=/logs/sessions/current/plugins/io.example/files/server.log"
-          ],
+          "arguments": ["--stdio", "--log=/logs/sessions/current/plugins/io.example/files/server.log"],
           "validationArguments": [],
-          "runtimeRequirements": [
-            {
-              "tool": "node",
-              "minimumVersion": "18.17"
-            }
-          ],
-          "initializationOptions": {
-            "stubs": [
-              "/plugins/node/versions/1.0.0/language-server/stubs/x86_64"
-            ],
-            "telemetry": false
-          },
-          "requiredDirectories": [
-            "log"
-          ],
-          "requiredPackagePaths": [
-            "language-server/lib/preload.js",
-            "language-server/lib/server.js",
-            "language-server/stubs/x86_64"
-          ],
-          "settings": {
-            "heapMB": 2048,
-            "logLevel": "info",
-            "telemetry": false
+          "runtimeRequirements": [{ "kind": "tool", "tool": "node", "minimumVersion": "18.17" }],
+          "initializationOptions": { "stubs": ["/plugins/node/versions/1.0.0/language-server/stubs/x86_64"], "telemetry": false },
+          "requiredDirectories": ["log"],
+          "requiredPackagePaths": ["language-server/lib/preload.js", "language-server/lib/server.js", "language-server/stubs/x86_64"],
+          "settings": { "heapMB": 2048, "logLevel": "info", "telemetry": false },
+          "sessionPolicy": {
+            "serverID": "fixture",
+            "requestMethods": [],
+            "commands": [],
+            "serializedCommands": [],
+            "forwardNotifications": [],
+            "remote": "supported",
+            "gates": []
           }
         }
       },
-      "manifestArguments": [
-        "--stdio",
-        "--log=${logDir}/server.log"
-      ]
+      "manifestArguments": ["--stdio", "--log=${logDir}/server.log"]
     }
   ]
 }

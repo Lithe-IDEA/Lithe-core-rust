@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 0,
   "plugins": [
     {
       "id": "io.example.zig-support",
@@ -15,7 +15,8 @@
       "versions": [
         {
           "version": "1.9.0",
-          "pluginAPIVersion": 1,
+          "pluginAPIVersion": 0,
+          "requires": { "languageServers": 0, "languages": 0 },
           "releaseDate": "2026-08-01",
           "downloads": [
             {
@@ -27,7 +28,8 @@
         },
         {
           "version": "2.0.0",
-          "pluginAPIVersion": 1,
+          "pluginAPIVersion": 0,
+          "requires": { "languageServers": 0, "languages": 0 },
           "releaseDate": "2026-09-20",
           "downloads": [
             {
@@ -56,6 +58,7 @@
         {
           "version": "1.1.0",
           "pluginAPIVersion": 99,
+          "requires": { "languageServers": 0, "languages": 0 },
           "releaseDate": "2026-10-10",
           "downloads": [
             {
@@ -67,7 +70,8 @@
         },
         {
           "version": "1.0.0",
-          "pluginAPIVersion": 1,
+          "pluginAPIVersion": 0,
+          "requires": { "languageServers": 0, "languages": 0 },
           "releaseDate": "2026-10-01",
           "downloads": [
             {
@@ -90,6 +94,7 @@
         {
           "version": "3.0.0",
           "pluginAPIVersion": 99,
+          "requires": { "languages": 0 },
           "releaseDate": "2026-10-05",
           "downloads": [
             {
@@ -111,8 +116,8 @@
       "versions": [
         {
           "version": "3.0.0",
-          "pluginAPIVersion": 3,
-          "requires": { "debuggers": 1, "languages": 1 },
+          "pluginAPIVersion": 0,
+          "requires": { "debuggers": 0, "languages": 0 },
           "releaseDate": "2026-10-15",
           "downloads": [
             {
@@ -124,8 +129,8 @@
         },
         {
           "version": "2.0.0",
-          "pluginAPIVersion": 3,
-          "requires": { "buildProviders": 1, "buildSystems": 1, "languageServers": 1, "languages": 1, "serverProcess": 1 },
+          "pluginAPIVersion": 0,
+          "requires": { "buildProviders": 0, "buildSystems": 0, "languageServers": 0, "languages": 0 },
           "releaseDate": "2026-10-12",
           "downloads": [
             {
@@ -137,8 +142,8 @@
         },
         {
           "version": "1.0.0",
-          "pluginAPIVersion": 3,
-          "requires": { "languageServers": 1, "languages": 1, "serverProcess": 1 },
+          "pluginAPIVersion": 0,
+          "requires": { "languageServers": 0, "languages": 0 },
           "releaseDate": "2026-10-02",
           "downloads": [
             {
@@ -160,7 +165,8 @@
       "versions": [
         {
           "version": "9.0.0",
-          "pluginAPIVersion": 1,
+          "pluginAPIVersion": 0,
+          "requires": { "languageServers": 0, "languages": 0 },
           "releaseDate": "2026-10-11",
           "downloads": [
             {

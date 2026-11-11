@@ -1,10 +1,10 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 0,
   "id": "dev.lithe.fixture.debug-adapter-language-server",
   "displayName": "Debug Adapter In Language Server Fixture",
   "version": "0.1.0",
-  "pluginAPIVersion": 4,
-  "requires": { "debugAdapters": 1, "languageServers": 1, "languages": 1, "serverProcess": 1 },
+  "pluginAPIVersion": 0,
+  "requires": { "debugAdapters": 0, "languageServers": 0, "languages": 0 },
   "vendor": {
     "id": "org.example",
     "displayName": "Example",

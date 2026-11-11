@@ -63,7 +63,12 @@ pub(crate) fn plan(
     build: &BuildSystemDeclaration,
     request: &PrepareRunRequest,
 ) -> Validation<Value> {
-    let mut value = run_preparation::plan(build, request, 5)?;
+    if request.launch_options.is_some() {
+        return Err(plans::invalid_selection(
+            "Launch options apply only to running a target.",
+        ));
+    }
+    let mut value = run_preparation::plan(build, request)?;
     if !build.run.iter().any(|run| {
         run.id == request.run
             && run

@@ -12,6 +12,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
+/// Version of the `modelInputs` snapshot Core sends to a provider.
+const SNAPSHOT_VERSION: u64 = 0;
+
 const MAX_INPUTS: usize = 8;
 const MAX_INSTANCES: usize = 64;
 const MAX_BYTES: usize = 8 * 1024 * 1024;
@@ -34,26 +37,21 @@ pub(crate) struct ModelInput {
     pub(crate) build_system_id: String,
 }
 
-/// Enforces explicit publication/consumption and independent wire admission.
-pub(crate) fn validate_declaration(
-    build: &mut BuildSystemDeclaration,
-    version: u32,
-    provider_version: u32,
-) -> Validation<()> {
+/// Enforces explicit publication and consumption of shared build models.
+pub(crate) fn validate_declaration(build: &mut BuildSystemDeclaration) -> Validation<()> {
     let invalid = || {
-        plans::invalid_selection("Model sharing requires buildModelInputs 1; consumers need a provider and buildProviders 6, exact unique producers, and declared shared option IDs; producers cannot also consume inputs.")
+        plans::invalid_selection("Model sharing needs a model; consumers need a provider, exact unique producers, and declared shared option IDs; producers cannot also consume inputs.")
     };
     if build.model_sharing.is_none() && build.model_inputs.is_empty() {
         return Ok(());
     }
-    if version != 1
-        || (build.model_sharing.is_some() && !build.model_inputs.is_empty())
+    if (build.model_sharing.is_some() && !build.model_inputs.is_empty())
         || build.model.is_none()
         || build.model_inputs.len() > MAX_INPUTS
     {
         return Err(invalid());
     }
-    if !build.model_inputs.is_empty() && (build.provider.is_none() || provider_version < 6) {
+    if !build.model_inputs.is_empty() && build.provider.is_none() {
         return Err(invalid());
     }
     let mut seen = BTreeSet::new();
@@ -208,7 +206,7 @@ pub(crate) fn resolve(
         }
         inputs.push(value);
     }
-    let value = json!({"version":1,"revision":request.revision,"inputs":inputs});
+    let value = json!({"version":SNAPSHOT_VERSION,"revision":request.revision,"inputs":inputs});
     if serde_json::to_vec(&value).map_or(usize::MAX, |bytes| bytes.len()) > MAX_BYTES {
         return Err(invalid());
     }
@@ -322,7 +320,7 @@ pub(crate) fn check_snapshot(consumer: &BuildSystemDeclaration, value: &Value) -
             .is_some_and(|object| object.keys().all(|key| allowed.contains(&key.as_str())))
     }
     if !keys(value, &["version", "revision", "inputs"])
-        || value["version"] != 1
+        || value["version"] != SNAPSHOT_VERSION
         || value["revision"]
             .as_u64()
             .is_none_or(|revision| revision > 9_007_199_254_740_991)

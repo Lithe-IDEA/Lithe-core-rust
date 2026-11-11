@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 0,
   "request": {
     "method": "lithe/build/execute",
     "params": {

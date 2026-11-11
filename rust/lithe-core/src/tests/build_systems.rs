@@ -1,5 +1,5 @@
-//! Build systems declared by API level 3 plugins: manifest validation, plan
-//! expansion, output decoding, and detection over real workspace files.
+//! Build systems declared by plugins: manifest validation, plan expansion,
+//! output decoding, and detection over real workspace files.
 
 use super::support::temporary_root;
 use crate::build::{
@@ -225,24 +225,24 @@ fn instance_ids(detection: &Value) -> Vec<String> {
 }
 
 #[test]
-fn instance_option_scope_requires_a_capable_host_and_valid_declaration() {
+fn instance_option_scope_requires_a_host_offering_build_systems_and_a_valid_declaration() {
     let mut manifest = fixture("build-instance-options.plugin.json");
-    let rejected = validate_command(
-        json!({"manifest": manifest, "hostCapabilities": {"buildSystems": [1, 2]}}),
-    )
-    .unwrap();
+    let rejected =
+        validate_command(json!({"manifest": manifest, "hostCapabilities": {"settings": [0]}}))
+            .unwrap();
     assert_eq!(rejected["status"], "rejected", "{rejected}");
-    manifest["requires"]["buildSystems"] = json!(2);
-    let rejected = validate_command(json!({"manifest": manifest})).unwrap();
-    assert_eq!(rejected["status"], "rejected", "{rejected}");
-    manifest["requires"]["buildSystems"] = json!(3);
+    assert_eq!(rejected["error"]["field"], "requires.buildSystems");
+    let accepted =
+        validate_command(json!({"manifest": manifest, "hostCapabilities": {"buildSystems": [0]}}))
+            .unwrap();
+    assert_eq!(accepted["status"], "ok", "{accepted}");
     manifest["buildSystems"][0]["options"][0]["scope"] = json!("project");
     let rejected = validate_command(json!({"manifest": manifest})).unwrap();
     assert_eq!(rejected["status"], "rejected", "{rejected}");
 }
 
 #[test]
-fn canonical_toolchain_candidates_keep_instance_identity_and_require_version_two() {
+fn canonical_toolchain_candidates_keep_instance_identity() {
     let mut manifest = fixture("build-toolchains.plugin.json");
     let plan = call(
         "invocationPlan",
@@ -262,10 +262,6 @@ fn canonical_toolchain_candidates_keep_instance_identity_and_require_version_two
         plan["invocation"]["runtimeDependencies"][0]["version"]["arguments"],
         json!(["--version"])
     );
-    manifest["requires"]["executableResolution"] = json!(1);
-    let rejected = validate_command(json!({"manifest":manifest})).unwrap();
-    assert_eq!(rejected["status"], "rejected", "{rejected}");
-    manifest["requires"]["executableResolution"] = json!(2);
     manifest["buildSystems"][0]["invocation"]["runtimeDependencies"][0]["executables"][0]
         ["toolchainID"] = json!("../invalid");
     let rejected = validate_command(json!({"manifest":manifest})).unwrap();
@@ -388,7 +384,7 @@ fn provider_test_reports_are_inline_bounded_and_keep_project_identity() {
     );
     assert_eq!(plan["plan"]["results"], json!({"decoder":"provider"}));
     assert_eq!(plan["plan"]["provider"]["params"]["testResults"], true);
-    let report = json!({"format":"litheTestResults","version":1,"tests":[
+    let report = json!({"format":"litheTestResults","version":0,"tests":[
         {"project":"nested/a","suite":"demo.Same","case":"checks","status":"passed","path":"nested/a/source.java","line":1},
         {"project":"nested/b","suite":"demo.Same","case":"checks","status":"failed","message":"assertion failed"}
     ]});
@@ -405,12 +401,12 @@ fn provider_test_reports_are_inline_bounded_and_keep_project_identity() {
     assert_eq!(decoded["results"]["tests"][1]["project"], "nested/b");
     for invalid in [
         json!(null),
-        json!({"format":"wrong","version":1,"tests":[]}),
-        json!({"format":"litheTestResults","version":1,"tests":[{"suite":"s","case":"c","status":"unknown"}]}),
-        json!({"format":"litheTestResults","version":1,"tests":[{"suite":"s","case":"c","status":"passed","project":"../escape"}]}),
-        json!({"format":"litheTestResults","version":1,"tests":[{"suite":"s","case":"c","status":"passed","path":"outside.java"}]}),
-        json!({"format":"litheTestResults","version":1,"tests":[{"suite":"s","case":"c","status":"passed","line":0}]}),
-        json!({"format":"litheTestResults","version":1,"tests":[{"suite":"s","case":"c","status":"passed","invocations":0}]}),
+        json!({"format":"wrong","version":0,"tests":[]}),
+        json!({"format":"litheTestResults","version":0,"tests":[{"suite":"s","case":"c","status":"unknown"}]}),
+        json!({"format":"litheTestResults","version":0,"tests":[{"suite":"s","case":"c","status":"passed","project":"../escape"}]}),
+        json!({"format":"litheTestResults","version":0,"tests":[{"suite":"s","case":"c","status":"passed","path":"outside.java"}]}),
+        json!({"format":"litheTestResults","version":0,"tests":[{"suite":"s","case":"c","status":"passed","line":0}]}),
+        json!({"format":"litheTestResults","version":0,"tests":[{"suite":"s","case":"c","status":"passed","invocations":0}]}),
     ] {
         let mut input = request.clone();
         input["result"] = invalid;
@@ -425,12 +421,6 @@ fn provider_test_reports_are_inline_bounded_and_keep_project_identity() {
         call("decodeTestResults", manifest.clone(), "gradle", absent)["status"],
         "ok"
     );
-    let mut old = manifest.clone();
-    old["requires"]["buildProviders"] = json!(7);
-    assert_ne!(
-        validate_command(json!({"manifest":old})).unwrap()["status"],
-        "ok"
-    );
     let mut command = manifest;
     command["buildSystems"][0]["test"]["source"] = json!("command");
     assert_ne!(
@@ -440,10 +430,10 @@ fn provider_test_reports_are_inline_bounded_and_keep_project_identity() {
 }
 
 #[test]
-fn provider_test_coverage_is_bounded_canonical_and_does_not_change_legacy_results() {
+fn provider_test_coverage_is_bounded_canonical_and_absent_unless_reported() {
     let workspace = TemporaryWorkspace::new("canonical-coverage");
     let decode = |coverage: Option<Value>| {
-        let mut result = json!({"format":"litheTestResults","version":1,"tests":[]});
+        let mut result = json!({"format":"litheTestResults","version":0,"tests":[]});
         if let Some(coverage) = coverage {
             result["coverage"] = coverage;
         }
@@ -487,7 +477,7 @@ fn canonical_repeated_cases_sum_only_complete_safe_durations() {
         let left = &case["values"][0];
         let right = &case["values"][1];
         let expected = &case["durationMillis"];
-        let result = json!({"format":"litheTestResults","version":1,"tests":[
+        let result = json!({"format":"litheTestResults","version":0,"tests":[
             {"project":".","suite":"Suite","case":"checks","status":"passed","durationMillis":left},
             {"project":".","suite":"Suite","case":"checks","status":"failed","durationMillis":right}
         ]});
@@ -541,14 +531,9 @@ fn opaque_test_selectors_require_a_declared_namespace_and_never_become_host_filt
     let mut missing = request;
     missing.as_object_mut().unwrap().remove("selectorKind");
     assert_ne!(
-        call("testPlan", manifest.clone(), "gradle", missing)["status"],
+        call("testPlan", manifest, "gradle", missing)["status"],
         "ok"
     );
-    for version in 1..9 {
-        let mut old = manifest.clone();
-        old["requires"]["buildProviders"] = json!(version);
-        assert_ne!(validate(old)["status"], "ok");
-    }
 }
 
 #[test]
@@ -807,7 +792,7 @@ fn gradle_canonical_outputs_are_read_from_the_output_file() {
             "state/model.json",
             &json!({
                 "format": "litheBuildModel",
-                "version": 1,
+                "version": 0,
                 "projects": [
                     { "path": format!("{root}"), "name": "shop", "properties": { "taskPrefix": ":" } },
                     { "path": "app", "name": "app", "properties": { "taskPrefix": ":app:" } }
@@ -825,7 +810,7 @@ fn gradle_canonical_outputs_are_read_from_the_output_file() {
             "state/deps.json",
             &json!({
                 "format": "litheDependencies",
-                "version": 1,
+                "version": 0,
                 "dependencies": [{
                     "name": "spring-web",
                     "group": "org.springframework",
@@ -1076,7 +1061,7 @@ fn canonical_model_paths_stay_inside_the_instance_root() {
             })
             .collect();
         let mut document = json!({
-            "format": "litheBuildModel", "version": 1,
+            "format": "litheBuildModel", "version": 0,
             "projects": [{ "path": "app", "name": "app" }],
             "targets": entries, "tasks": entries, "contentRoots": entries
         });
@@ -1228,7 +1213,7 @@ fn canonical_content_roots_are_relative_to_the_instance_root() {
         "state/model.json",
         &json!({
             "format": "litheBuildModel",
-            "version": 1,
+            "version": 0,
             "projects": [
                 { "name": "shop" },
                 { "path": "app", "name": "app" }
@@ -1622,7 +1607,7 @@ fn reported_output_paths_reject_escaping_symlinks() {
     );
     workspace.write(
         "app/build/test-results/test/report.json",
-        r#"{"format": "litheTestResults", "version": 1, "tests": [
+        r#"{"format": "litheTestResults", "version": 0, "tests": [
   {"suite": "Report", "case": "external", "status": "failed", "path": "linked/Secret.java", "line": 1},
   {"suite": "Report", "case": "local", "status": "failed", "path": "alias/Inside.java", "line": 1}
 ]}"#,
@@ -1739,7 +1724,7 @@ fn task_categories_and_option_placements_are_display_only() {
         "state/model.json",
         &json!({
             "format": "litheBuildModel",
-            "version": 1,
+            "version": 0,
             "projects": [{ "name": "root" }],
             "tasks": [
                 { "name": "run", "template": "gradle-task", "category": ["Tasks", "application"], "properties": { "path": ":run" } },
@@ -1859,12 +1844,6 @@ fn explicit_build_tool_path_requires_supported_global_file_setting() {
         invalid["settings"][0][field] = value;
         assert_eq!(validate(invalid)["status"], "rejected", "{field}");
     }
-    let mut old = manifest.clone();
-    old["requires"]
-        .as_object_mut()
-        .unwrap()
-        .remove("executableResolution");
-    assert_eq!(validate(old)["status"], "rejected");
     let mut missing = manifest;
     missing["buildSystems"][0]["invocation"]["executables"][0]["settingID"] = json!("missing");
     assert_eq!(validate(missing)["status"], "rejected");
@@ -1926,35 +1905,18 @@ fn executable_candidates_order_and_constraints_are_shared_and_deterministic() {
 }
 
 #[test]
-fn published_build_v2_paths_adapt_to_candidates_and_preserve_invalid_values() {
-    let mut manifest: Value = serde_json::from_str(contract_file!(
+fn invalid_tool_path_values_reject_plans_while_the_settings_display_stays_tolerant() {
+    let manifest: Value = serde_json::from_str(contract_file!(
         "fixtures/build-systems/build-tool-path.plugin.json"
     ))
     .unwrap();
-    manifest["requires"]
-        .as_object_mut()
-        .unwrap()
-        .remove("executableResolution");
-    manifest["buildSystems"][0]["invocation"]["executables"]
-        .as_array_mut()
-        .unwrap()
-        .remove(0);
-    manifest["requires"]["buildSystems"] = json!(2);
-    manifest["buildSystems"][0]["invocation"]["executableSetting"] = json!("toolPath");
-    let run = |value| {
-        call(
-            "invocationPlan",
-            manifest.clone(),
-            "fixture",
-            json!({"root":".","platform":"macos","settings":{"toolPath":value}}),
-        )
-    };
-    let result = run(json!("/tools/custom build"));
-    assert_eq!(result["status"], "ok", "{result}");
-    assert_eq!(result["invocation"]["executables"][0]["kind"], "setting");
-    assert!(result["invocation"].get("configuredExecutable").is_none());
-    assert_eq!(run(json!(false))["status"], "rejected");
-    // The existing settings UI keeps its tolerant display behavior.
+    let result = call(
+        "invocationPlan",
+        manifest.clone(),
+        "fixture",
+        json!({"root":".","platform":"macos","settings":{"toolPath":false}}),
+    );
+    assert_eq!(result["status"], "rejected", "{result}");
     let displayed = crate::plugins::declarative::resolve_settings_command(
         json!({"manifest":manifest,"settings":{"toolPath":false}}),
     )
@@ -1964,16 +1926,11 @@ fn published_build_v2_paths_adapt_to_candidates_and_preserve_invalid_values() {
 }
 
 #[test]
-fn executable_resolution_is_opt_in_and_custom_runtimes_share_the_same_plan() {
+fn custom_runtimes_share_the_candidate_plan() {
     let mut manifest: Value = serde_json::from_str(contract_file!(
         "fixtures/build-systems/build-tool-path.plugin.json"
     ))
     .unwrap();
-    let old_host = validate_command(
-        json!({"manifest":manifest,"hostCapabilities":{"buildSystems":[1,2],"settings":[1,2]}}),
-    )
-    .unwrap();
-    assert_eq!(old_host["error"]["code"], "plugin.api.unsupported");
     manifest["buildSystems"][0]["invocation"]["runtimeDependencies"] = json!([{
         "id":"custom", "executables":[
             {"id":"selected","kind":"setting","settingID":"toolPath"},
@@ -1999,27 +1956,24 @@ fn executable_resolution_is_opt_in_and_custom_runtimes_share_the_same_plan() {
     assert_eq!(validate(manifest)["status"], "rejected");
 }
 
-/// A provider-only task is admitted only with the host capability and never
-/// becomes argv. Selection boundaries and effectful admission remain shared.
+/// A provider-only task is admitted only by a host that offers the provider
+/// capability and never becomes argv. Selection boundaries and effectful
+/// admission remain shared.
 #[test]
-fn provider_execution_tasks_are_typed_and_version_gated() {
+fn provider_execution_tasks_are_typed_and_need_a_provider_host() {
     let manifest: Value = serde_json::from_str(contract_file!(
         "fixtures/build-providers/build-provider-execution.plugin.json"
     ))
     .unwrap();
     let validated = validate(manifest.clone());
     assert_eq!(validated["status"], "ok", "{validated}");
-    let mut old = manifest.clone();
-    old["requires"]["buildProviders"] = json!(1);
-    assert_eq!(validate(old)["status"], "rejected");
     let mut command = manifest.clone();
     command["buildSystems"][0]["tasks"][0]["arguments"] = json!(["build"]);
     assert_eq!(validate(command)["status"], "rejected");
-    // An older host must refuse admission, not try a command fallback.
+    // A host without the provider capability must refuse admission, not try a
+    // command fallback.
     let refused = validate_command(json!({
-        "manifest": manifest, "hostCapabilities": {
-            "buildProviders":[1], "buildSystems":[1], "serverProcess":[1], "settings":[1]
-        }
+        "manifest": manifest, "hostCapabilities": {"buildSystems":[0], "settings":[0]}
     }))
     .unwrap();
     assert_eq!(refused["status"], "rejected");
@@ -2064,7 +2018,7 @@ fn provider_execution_tasks_are_typed_and_version_gated() {
 }
 
 #[test]
-fn preparation_tasks_are_declared_versioned_and_unambiguous() {
+fn preparation_tasks_are_declared_and_unambiguous() {
     let manifest: Value = serde_json::from_str(contract_file!(
         "fixtures/build-providers/build-provider-preparation.plugin.json"
     ))
@@ -2087,13 +2041,14 @@ fn preparation_tasks_are_declared_versioned_and_unambiguous() {
         1,
         "Automatic invocation bindings are behavioral, not display-only metadata"
     );
-    let mut unversioned = manifest.clone();
-    unversioned["requires"]["buildSystems"] = json!(3);
-    assert_eq!(validate(unversioned)["status"], "rejected");
-    let old_host = validate_command(json!({"manifest":manifest,
-        "hostCapabilities":{"buildSystems":[1,2,3],"buildProviders":[1,2],"serverProcess":[1],"settings":[1]}})).unwrap();
-    assert_eq!(old_host["status"], "rejected");
-    assert_eq!(old_host["error"]["field"], "requires.buildSystems");
+    let provider_only_host = validate_command(json!({"manifest":manifest,
+        "hostCapabilities":{"buildProviders":[0],"settings":[0]}}))
+    .unwrap();
+    assert_eq!(provider_only_host["status"], "rejected");
+    assert_eq!(
+        provider_only_host["error"]["field"],
+        "requires.buildSystems"
+    );
 
     for binding in [
         json!({"purpose":"run","sourceRoles":[]}),
@@ -2190,21 +2145,17 @@ fn provider_tests_preserve_filters_and_report_ownership() {
     );
 }
 
-/// Older hosts/processes must reject provider tests rather than silently run
-/// every test or fall back to host-owned business logic.
+/// Hosts without the provider capability, and manifests without an owned
+/// process, must reject provider tests rather than silently run every test or
+/// fall back to host-owned business logic.
 #[test]
-fn provider_tests_require_version_three_and_an_owned_process() {
+fn provider_tests_require_a_provider_host_and_an_owned_process() {
     let manifest: Value = serde_json::from_str(contract_file!(
         "fixtures/build-providers/build-provider-tests.plugin.json"
     ))
     .unwrap();
-    for version in [1, 2] {
-        let mut old = manifest.clone();
-        old["requires"]["buildProviders"] = json!(version);
-        assert_eq!(validate(old)["status"], "rejected");
-    }
     let refused = validate_command(json!({"manifest":manifest,"hostCapabilities":{
-        "buildProviders":[1,2],"buildSystems":[1],"serverProcess":[1],"settings":[1]}}))
+        "buildSystems":[0],"settings":[0]}}))
     .unwrap();
     assert_eq!(refused["error"]["field"], "requires.buildProviders");
     for (field, value) in [
@@ -2286,11 +2237,11 @@ fn provider_test_discovery_is_bounded_deterministic_and_runnable() {
         assert_eq!(runnable["status"], "ok", "{runnable}");
     }
     for invalid in [
-        json!({"format":"litheTestDiscovery","version":2,"tests":[]}),
-        json!({"format":"litheTestDiscovery","version":1,"tests":vec![json!({});10001]}),
-        json!({"format":"litheTestDiscovery","version":1,"tests":[{"suite":"a"}]}),
-        json!({"format":"litheTestDiscovery","version":1,"tests":[{"suite":"a","case":"b","project":{"name":"escape","path":"../escape"}}]}),
-        json!({"format":"litheTestDiscovery","version":1,"tests":[{"suite":"a","case":"bad\u{0}"}]}),
+        json!({"format":"litheTestDiscovery","version":1,"tests":[]}),
+        json!({"format":"litheTestDiscovery","version":0,"tests":vec![json!({});10001]}),
+        json!({"format":"litheTestDiscovery","version":0,"tests":[{"suite":"a"}]}),
+        json!({"format":"litheTestDiscovery","version":0,"tests":[{"suite":"a","case":"b","project":{"name":"escape","path":"../escape"}}]}),
+        json!({"format":"litheTestDiscovery","version":0,"tests":[{"suite":"a","case":"bad\u{0}"}]}),
     ] {
         let rejected = decode(invalid);
         assert_eq!(
@@ -2349,21 +2300,18 @@ fn provider_run_preparation_selects_targets_and_validates_launch_data() {
         invalid[field] = value;
         assert_eq!(plan(invalid)["status"], "rejected");
     }
-    for version in [1, 2, 3] {
-        let mut old = manifest.clone();
-        old["requires"]["buildProviders"] = json!(version);
-        assert_eq!(validate(old)["status"], "rejected");
-    }
     for (field, value) in [
         ("fromTasks", json!({"templates":["run"]})),
         ("arguments", json!(["Main"])),
-        ("execution", json!("service")),
         ("extension", json!({"main":"Main"})),
     ] {
         let mut invalid = manifest.clone();
         invalid["buildSystems"][0]["run"][0][field] = value;
         assert_eq!(validate(invalid)["status"], "rejected");
     }
+    let mut service = manifest.clone();
+    service["buildSystems"][0]["run"][0]["execution"] = json!("service");
+    assert_eq!(validate(service)["status"], "ok");
     let workspace = TemporaryWorkspace::new("provider-run-launch");
     workspace.write("app/Main.java", "class Main {}");
     let decode = |result: Value| {
@@ -2438,11 +2386,11 @@ fn provider_debug_preparation_validates_native_target_and_same_plugin_adapter() 
         "{planned}"
     );
     assert_eq!(planned["plan"]["decoder"], "litheDebugPreparation");
-    for (field, value) in [("buildProviders", json!(4)), ("debugAdapters", json!(1))] {
-        let mut old = manifest.clone();
-        old["requires"][field] = value;
-        assert_eq!(validate(old)["status"], "rejected");
-    }
+    let refused = validate_command(json!({"manifest":manifest,"hostCapabilities":{
+        "buildProviders":[0],"buildSystems":[0],"settings":[0]}}))
+    .unwrap();
+    assert_eq!(refused["status"], "rejected");
+    assert_eq!(refused["error"]["field"], "requires.debugAdapters");
     for adapter in ["other/native", "missing", ""] {
         let mut invalid = manifest.clone();
         invalid["buildSystems"][0]["run"][0]["debug"]["adapter"] = json!(adapter);
@@ -2625,10 +2573,9 @@ fn model_inputs_reject_invalid_manifests_models_and_snapshot_smuggling() {
         "fixtures/build-systems/build-model-consumer.plugin.json"
     ))
     .unwrap();
-    for change in ["oldWire", "noCapability", "reexport", "unknownOption"] {
+    for change in ["noCapability", "reexport", "unknownOption"] {
         let mut manifest = consumer.clone();
         match change {
-            "oldWire" => manifest["requires"]["buildProviders"] = json!(5),
             "noCapability" => {
                 manifest["requires"]
                     .as_object_mut()
@@ -2770,14 +2717,13 @@ fn provider_run_options_preserve_argv_and_validate_declared_execution_and_cwd() 
         plan(manifest.clone(), absent).unwrap()["status"],
         "rejected"
     );
-    let mut old = manifest.clone();
-    old["requires"]["buildProviders"] = json!(9);
-    assert_eq!(validate(old.clone())["status"], "rejected");
-    old["buildSystems"][0]["run"][0]["execution"] = json!("application");
+    let mut application_manifest = manifest.clone();
+    application_manifest["buildSystems"][0]["run"][0]["execution"] = json!("application");
     let mut application = request.clone();
     application["launchOptions"]["execution"] = json!("application");
-    assert_eq!(validate(old.clone())["status"], "ok");
-    assert_eq!(plan(old, application).unwrap()["status"], "rejected");
+    assert_eq!(validate(application_manifest.clone())["status"], "ok");
+    let planned = plan(application_manifest, application).unwrap();
+    assert_eq!(planned["status"], "ok", "{planned}");
     let decode = |options: Value, result: Value| {
         build_decode_run_preparation_command(json!({"manifest":manifest,"buildSystemID":"gradle",
         "request":{"workspaceRoot":workspace.root(),"root":"app","launchOptions":options,"result":result}})).unwrap()
@@ -2804,7 +2750,7 @@ fn provider_run_options_preserve_argv_and_validate_declared_execution_and_cwd() 
 
 /// Runtime debugging requires an explicit process agreement and never a provider-selected host.
 #[test]
-fn provider_connection_debug_options_require_version_eleven_and_a_declared_registry_type() {
+fn provider_connection_debug_options_require_a_declared_registry_type() {
     let mut manifest: Value = serde_json::from_str(contract_file!(
         "fixtures/build-providers/build-provider-run-options.plugin.json"
     ))
@@ -2830,8 +2776,6 @@ fn provider_connection_debug_options_require_version_eleven_and_a_declared_regis
             json!({"manifest":manifest,"buildSystemID":"gradle","request":request}),
         )
     };
-    assert_eq!(plan(&manifest, &request).unwrap()["status"], "rejected");
-    manifest["requires"]["buildProviders"] = json!(11);
     assert_eq!(plan(&manifest, &request).unwrap()["status"], "rejected");
     let runs = manifest["buildSystems"][0]["run"].as_array_mut().unwrap();
     runs.iter_mut().find(|run| run["id"] == "service").unwrap()["debug"] =

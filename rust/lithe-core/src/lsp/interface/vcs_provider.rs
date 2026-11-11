@@ -1,13 +1,15 @@
 //! The VCS-provider protocol a plugin's LSP base-protocol process speaks.
 //!
 //! The manifest says how to start the process and which VCS it provides;
-//! the protocol version, the VCS ID, and the provider's capabilities are
-//! negotiated in `initialize` under `capabilities.experimental.litheVcs`.
+//! the protocol version (the `vcsProviders` capability version), the VCS ID,
+//! and the provider's capabilities are negotiated in `initialize` under
+//! `capabilities.experimental.litheVcs`.
 //! Only plugin-owned sessions are offered the protocol, and requests are
 //! written only to a session whose answer named a version this client
 //! offered, a valid VCS ID, and every required capability. The rules live in
 //! `shared/contracts/vcs-provider-v1.md`.
 
+use crate::plugins::capabilities::{versions as capability_versions, VCS_PROVIDERS};
 use crate::vcs::{negotiated_capabilities, Capabilities};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -15,8 +17,11 @@ use serde_json::{json, Value};
 /// Key under `capabilities.experimental` on both sides of the exchange.
 const EXPERIMENTAL_KEY: &str = "litheVcs";
 
-/// VCS-provider protocol versions this client speaks, in preference order.
-const SUPPORTED_VERSIONS: [u64; 1] = [1];
+/// VCS-provider protocol versions this client speaks: the versions of the
+/// `vcsProviders` capability.
+fn supported_versions() -> Vec<u64> {
+    super::offered_versions(capability_versions(VCS_PROVIDERS))
+}
 
 /// Feature name recorded in the session's server capabilities once a
 /// provider answered a supported version.
@@ -54,13 +59,16 @@ pub struct VcsNegotiation {
     /// The VCS the process provides; the host checks it against the
     /// manifest entry it launched.
     pub vcs: String,
-    /// Capabilities of protocol version 1 the provider supports.
+    /// Capabilities the provider supports.
     pub capabilities: Capabilities,
 }
 
 /// The client half of the negotiation, placed under `capabilities.experimental`.
 pub(crate) fn client_experimental_capabilities() -> (&'static str, Value) {
-    (EXPERIMENTAL_KEY, json!({ "versions": SUPPORTED_VERSIONS }))
+    (
+        EXPERIMENTAL_KEY,
+        json!({ "versions": supported_versions() }),
+    )
 }
 
 /// The provider's answer, or `None` when it chose no offered version, named
@@ -71,7 +79,7 @@ pub(crate) fn negotiate(capabilities: &Value) -> Option<VcsNegotiation> {
         .get("experimental")
         .and_then(|experimental| experimental.get(EXPERIMENTAL_KEY))?;
     let version = answer.get("version").and_then(Value::as_u64)?;
-    if !SUPPORTED_VERSIONS.contains(&version) {
+    if !supported_versions().contains(&version) {
         return None;
     }
     let vcs = answer
@@ -136,13 +144,13 @@ mod tests {
         json!({ "experimental": { "litheVcs": value } })
     }
 
-    const REQUIRED: &str = r#"{ "status": 1, "baseContent": 1, "checkin": 1, "rollback": 1 }"#;
+    const REQUIRED: &str = r#"{ "status": 0, "baseContent": 0, "checkin": 0, "rollback": 0 }"#;
 
     #[test]
     fn only_a_complete_answer_to_an_offered_version_counts() {
         let capabilities: Value = serde_json::from_str(REQUIRED).expect("JSON");
         let negotiation = negotiate(&answer(json!({
-            "version": 1, "vcs": "svn", "capabilities": capabilities, "future": true
+            "version": 0, "vcs": "svn", "capabilities": capabilities, "future": true
         })))
         .expect("negotiated");
         assert_eq!(negotiation.vcs, "svn");
@@ -151,10 +159,10 @@ mod tests {
         // capability map, or a missing required capability must keep VCS
         // requests off the session.
         for rejected in [
-            json!({ "version": 2, "vcs": "svn", "capabilities": capabilities }),
-            json!({ "version": 1, "vcs": "SVN", "capabilities": capabilities }),
-            json!({ "version": 1, "vcs": "svn" }),
-            json!({ "version": 1, "vcs": "svn", "capabilities": { "status": 1 } }),
+            json!({ "version": 1, "vcs": "svn", "capabilities": capabilities }),
+            json!({ "version": 0, "vcs": "SVN", "capabilities": capabilities }),
+            json!({ "version": 0, "vcs": "svn" }),
+            json!({ "version": 0, "vcs": "svn", "capabilities": { "status": 0 } }),
         ] {
             assert_eq!(negotiate(&answer(rejected.clone())), None, "{rejected}");
         }

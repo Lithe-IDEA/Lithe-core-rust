@@ -1,54 +1,58 @@
-//! Capability versions of declarative plugin API level 3.
+//! Capability versions of the declarative plugin API.
 //!
-//! Levels 1 and 2 version a manifest as one unit: a change to any section
-//! raised the level of every plugin and hid plugins that never use that
-//! section from older hosts. Level 3 versions each section on its own. A
-//! manifest lists in `requires` exactly the capabilities it uses, each with
-//! the version of that capability's contract it was written against, so a
-//! plugin without build systems never depends on the build-system contract
-//! and a new build-system version only affects plugins that opt into it.
+//! A capability owns one manifest section (or one family of fields) and the
+//! runtime protocol that serves it. A manifest lists in `requires` exactly the
+//! capabilities it uses, each with the version of that capability's contract
+//! it was written against, so a plugin without build systems never depends on
+//! the build-system contract and a later version of one capability only
+//! affects plugins that opt into it. Every capability currently supports only
+//! version 0. Everything outside the capability sections, including launches,
+//! tool references, and executable candidates, belongs to the base contract
+//! (`pluginAPIVersion`) and is never listed in `requires`.
+//!
+//! Closure rule: a host declares a capability version when it accepts every
+//! manifest form of that version and speaks its protocol. A feature a plugin
+//! offers may go unpresented by a host without breaking that declaration, and
+//! a host service a plugin needs is discovered at runtime (`getCapabilities`
+//! and permissions), not through `requires`.
+//!
+//! A runtime protocol carries the version of the capability that owns it, so
+//! the two can never disagree: `litheBuild` is `buildProviders`,
+//! `litheFunctions` is `backend`, `litheVcs` is `vcsProviders`, the toolchain
+//! protocol is `toolchainProviders`, the keymap protocol is
+//! `keymapImportProviders`, and `litheLogging` is `pluginAPIVersion`. Use
+//! [`versions`] and `SUPPORTED_PLUGIN_API_VERSIONS` for the versions this
+//! Core build speaks.
 //!
 //! `requires` is checked before the sections are decoded, so a Core build
 //! that does not know a capability reports which one is missing instead of
 //! an unknown field. Hosts state the capability versions they implement in
 //! `hostCapabilities`; validating a section is not the same as running it.
 //!
-//! Note: the decision is recorded in .agents/notes/implemented/architecture/2026-10-17-plugin-capability-versions.md
+//! Note: the decision is recorded in .agents/notes/implemented/architecture/2026-11-11-plugin-contract-v2-baseline.md
 
 use super::declarative::{PluginRejection, Validation};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// First plugin API level whose manifests declare capability versions.
-pub(crate) const CAPABILITIES_API_VERSION: u32 = 3;
-
-/// `languages[]`: file types and project markers. Version 3 adds a TextMate
-/// `grammar` and an editing `configuration`; see `super::grammar`. Version 2
-/// added a Monaco Monarch grammar and is withdrawn: the desktop editor runs
-/// TextMate grammars only, so no host implements it.
+/// `languages[]`: file types and project markers, a TextMate `grammar`, and an
+/// editing `configuration`; see `super::grammar`.
 pub(crate) const LANGUAGES: &str = "languages";
-/// `languageServers[]` apart from their launch fields. Version 2 adds
-/// `workspaceConfiguration`. Version 3 adds the session fields a plugin
-/// backend uses to talk to its own server: `requestMethods`, `commands`,
-/// `serializedCommands`, `forwardNotifications`, `state`, and `remote`.
+/// `languageServers[]`: the launch, `workspaceConfiguration`, and the session
+/// fields a plugin backend uses to talk to its own server (`requestMethods`,
+/// `commands`, `serializedCommands`, `forwardNotifications`, `state`, and
+/// `remote`).
 pub(crate) const LANGUAGE_SERVERS: &str = "languageServers";
-/// The launch fields language servers and own build providers share.
-/// Version 2 adds `runSelectedRuntime` for debug adapters; version 3 adds
-/// `launch.kind: "backend"`, a language server whose command line the
-/// plugin backend resolves.
-/// Version 4 names runtimes by tool-definition ID (`requiresTools`) instead
-/// of the host's closed runtime list.
-pub(crate) const SERVER_PROCESS: &str = "serverProcess";
 /// `vendor.bundledSignatureRequirement`: origin-scoped host-seal trust for a
 /// package whose independently installed versions require a publisher signature.
 pub(crate) const PACKAGE_TRUST: &str = "packageTrust";
 /// `executionProviders[]`: run and test templates.
 pub(crate) const EXECUTION_PROVIDERS: &str = "executionProviders";
-/// `settings[]`. Version 2 adds scopes, effects, settings pages, and the
-/// multiSelect, text, file, and directory types; see `super::settings`.
+/// `settings[]`: scopes, effects, settings pages, and the multiSelect, text,
+/// file, and directory types; see `super::settings`.
 pub(crate) const SETTINGS: &str = "settings";
-/// `ui`: tool windows and commands. Version 2 adds web content in a tool
-/// window.
+/// `ui`: tool windows with text, web, or host-rendered native content, and
+/// commands.
 pub(crate) const UI: &str = "ui";
 /// Declarative build detection, models, and command plans.
 pub(crate) const BUILD_SYSTEMS: &str = "buildSystems";
@@ -60,33 +64,28 @@ pub(crate) const BUILD_MODEL_INPUTS: &str = "buildModelInputs";
 /// process; see `crate::vcs`.
 pub(crate) const VCS_PROVIDERS: &str = "vcsProviders";
 
-/// `backend`: the plugin's own long-lived process; see `super::backend`.
-/// Version 1 serves only the plugin's web pages. Version 2 may start without
-/// a page (`onWorkspaceOpen`, a plugin command) and may be granted the
-/// `workspace` host service; it needs plugin-function protocol 3 for that.
+/// `backend`: the plugin's own long-lived process; see `super::backend`. It
+/// may start without a page (`onWorkspaceOpen`, a plugin command) and may be
+/// granted the `workspace` host service; it speaks the plugin-function
+/// protocol (`litheFunctions`).
 pub(crate) const BACKEND: &str = "backend";
 
-/// `projectGenerators[]`: entries of the New Project window. Version 1 lets a
-/// field select a host-managed runtime; version 2 selects installations of
-/// any plugin-defined tool with a `tool` field instead.
+/// `projectGenerators[]`: entries of the New Project window. A field selects
+/// installations of any plugin-defined tool with its `tool` field.
 pub(crate) const PROJECT_GENERATORS: &str = "projectGenerators";
 
-/// `debugAdapters[]`: debug adapters implemented by a plugin process; see
-/// `crate::debug::adapters`. Plugin API level 4. Version 3 adds declared
-/// adapter `features` and `defaults`.
+/// `debugAdapters[]`: debug adapters implemented by a plugin process, with
+/// declared adapter `features`, `defaults`, and argument and environment
+/// bindings; see `crate::debug::adapters`.
 pub(crate) const DEBUG_ADAPTERS: &str = "debugAdapters";
 
-/// First plugin API level that may require `debugAdapters` or `serverProcess` 2.
-pub(crate) const DEBUG_ADAPTERS_API_VERSION: u32 = 4;
-
-/// Shared executable candidate order and strict explicit selection.
-pub(crate) const EXECUTABLE_RESOLUTION: &str = "executableResolution";
 /// Independent providers that translate external shortcut settings.
 pub(crate) const KEYMAP_IMPORT_PROVIDERS: &str = "keymapImportProviders";
 /// `pluginFunctions`: functions exported to, and called from, other plugins;
 /// see `super::plugin_functions`.
 pub(crate) const PLUGIN_FUNCTIONS: &str = "pluginFunctions";
-/// Plugin-owned tool identities, discovery policy and executable candidates.
+/// `toolDefinitions[]`: plugin-owned tool identities, discovery policy, and
+/// executable candidates.
 pub(crate) const TOOL_DEFINITIONS: &str = "toolDefinitions";
 /// Backend facts that can influence the executable selected for a defined tool.
 pub(crate) const TOOLCHAIN_PROVIDERS: &str = "toolchainProviders";
@@ -94,29 +93,27 @@ pub(crate) const TOOLCHAIN_PROVIDERS: &str = "toolchainProviders";
 /// `crate::plugins::output_links`.
 pub(crate) const OUTPUT_LINK_MATCHERS: &str = "outputLinkMatchers";
 
-/// Capability versions this Core build validates and plans. Version 1 of a
-/// capability keeps the meaning its section had at API level 2.
+/// Capability versions this Core build validates and plans. A later version
+/// of a capability is appended to its list.
 pub const SUPPORTED_CAPABILITIES: &[(&str, &[u32])] = &[
-    (BACKEND, &[1, 2]),
-    (BUILD_MODEL_INPUTS, &[1]),
-    (BUILD_PROVIDERS, &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]),
-    (BUILD_SYSTEMS, &[1, 2, 3, 4]),
-    (DEBUG_ADAPTERS, &[1, 2, 3]),
-    (EXECUTION_PROVIDERS, &[1]),
-    (EXECUTABLE_RESOLUTION, &[1, 2]),
-    (KEYMAP_IMPORT_PROVIDERS, &[1]),
-    (LANGUAGE_SERVERS, &[1, 2, 3]),
-    (LANGUAGES, &[1, 3]),
-    (OUTPUT_LINK_MATCHERS, &[1]),
-    (PACKAGE_TRUST, &[1]),
-    (PLUGIN_FUNCTIONS, &[1]),
-    (PROJECT_GENERATORS, &[1, 2]),
-    (SERVER_PROCESS, &[1, 2, 3, 4]),
-    (SETTINGS, &[1, 2]),
-    (TOOL_DEFINITIONS, &[1]),
-    (TOOLCHAIN_PROVIDERS, &[1]),
-    (UI, &[1, 2, 3, 4]),
-    (VCS_PROVIDERS, &[1]),
+    (BACKEND, &[0]),
+    (BUILD_MODEL_INPUTS, &[0]),
+    (BUILD_PROVIDERS, &[0]),
+    (BUILD_SYSTEMS, &[0]),
+    (DEBUG_ADAPTERS, &[0]),
+    (EXECUTION_PROVIDERS, &[0]),
+    (KEYMAP_IMPORT_PROVIDERS, &[0]),
+    (LANGUAGE_SERVERS, &[0]),
+    (LANGUAGES, &[0]),
+    (OUTPUT_LINK_MATCHERS, &[0]),
+    (PACKAGE_TRUST, &[0]),
+    (PLUGIN_FUNCTIONS, &[0]),
+    (PROJECT_GENERATORS, &[0]),
+    (SETTINGS, &[0]),
+    (TOOL_DEFINITIONS, &[0]),
+    (TOOLCHAIN_PROVIDERS, &[0]),
+    (UI, &[0]),
+    (VCS_PROVIDERS, &[0]),
 ];
 
 /// Longest capability ID, so a hostile index cannot grow host state.
@@ -128,42 +125,17 @@ pub(crate) type Requires = BTreeMap<String, u32>;
 /// Capability ID to the versions a host implements, as the host sends them.
 pub(crate) type HostCapabilities = BTreeMap<String, Vec<u32>>;
 
-/// Checks a raw manifest's `requires` before its sections are decoded. Only
-/// level 3 manifests may, and must, declare it.
-pub(crate) fn check_manifest_requires(manifest: &Value, api_version: u64) -> Validation<()> {
-    let requires = manifest.get("requires");
-    if api_version < u64::from(CAPABILITIES_API_VERSION) {
-        return match requires {
-            Some(_) => Err(PluginRejection::at(
-                "plugin.manifest.invalid",
-                "requires",
-                "Capability versions require pluginAPIVersion 3.",
-            )),
-            None => Ok(()),
-        };
-    }
-    let Some(requires) = requires else {
+/// Checks a raw manifest's `requires` before its sections are decoded. Every
+/// manifest must declare it.
+pub(crate) fn check_manifest_requires(manifest: &Value) -> Validation<()> {
+    let Some(requires) = manifest.get("requires") else {
         return Err(PluginRejection::at(
             "plugin.manifest.invalid",
             "requires",
-            "A pluginAPIVersion 3 manifest lists the capabilities it uses in requires.",
+            "A manifest lists the capabilities it uses in requires.",
         ));
     };
     let requires = parse_requires(requires, "requires", "plugin.manifest.invalid")?;
-    // Capabilities introduced at level 4 must not leak into level 3 manifests,
-    // whose hosts were told that level 3 means exactly what it did before.
-    if api_version < u64::from(DEBUG_ADAPTERS_API_VERSION) {
-        if let Some((capability, version)) = requires
-            .iter()
-            .find(|(capability, version)| requires_api_4(capability, **version))
-        {
-            return Err(PluginRejection::at(
-                "plugin.api.unsupported",
-                format!("requires.{capability}"),
-                format!("Plugin capability {capability} {version} requires pluginAPIVersion 4."),
-            ));
-        }
-    }
     match requires
         .iter()
         .find(|(capability, version)| !core_supports(capability, **version))
@@ -210,10 +182,13 @@ pub(crate) fn parse_requires(
         }
         let version = version
             .as_u64()
-            .filter(|version| *version >= 1)
             .and_then(|version| u32::try_from(version).ok())
             .ok_or_else(|| {
-                PluginRejection::at(code, entry, "A capability version is a positive integer.")
+                PluginRejection::at(
+                    code,
+                    entry,
+                    "A capability version is a non-negative integer.",
+                )
             })?;
         requires.insert(capability.clone(), version);
     }
@@ -248,8 +223,8 @@ pub(crate) fn check_used(requires: &Requires, used: &BTreeSet<&'static str>) -> 
 }
 
 /// Whether a host can run every required capability. A host that sends no
-/// capabilities runs no level 3 plugin, and a capability this Core build
-/// cannot validate is never hosted, whatever the host claims.
+/// capabilities runs no plugin, and a capability this Core build cannot
+/// validate is never hosted, whatever the host claims.
 pub(crate) fn hosts(requires: &Requires, host: Option<&HostCapabilities>) -> bool {
     first_unhosted(requires, host).is_none()
 }
@@ -281,15 +256,18 @@ fn first_unhosted<'a>(
         .map(|(capability, version)| (capability.as_str(), *version))
 }
 
-/// Capability versions first available at plugin API level 4.
-fn requires_api_4(capability: &str, version: u32) -> bool {
-    capability == DEBUG_ADAPTERS || (capability == SERVER_PROCESS && version >= 2)
+/// Versions of `capability` this Core build validates and plans; empty when
+/// the capability is unknown.
+pub(crate) fn versions(capability: &str) -> &'static [u32] {
+    SUPPORTED_CAPABILITIES
+        .iter()
+        .find(|(id, _)| *id == capability)
+        .map(|(_, versions)| *versions)
+        .unwrap_or(&[])
 }
 
 fn core_supports(capability: &str, version: u32) -> bool {
-    SUPPORTED_CAPABILITIES
-        .iter()
-        .any(|(id, versions)| *id == capability && versions.contains(&version))
+    versions(capability).contains(&version)
 }
 
 fn is_capability_id(value: &str) -> bool {

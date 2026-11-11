@@ -27,7 +27,7 @@ fn open(build_systems: bool) -> u64 {
         opened["url"],
         "lithe-plugin://dev.lithe.fixture.web-panel/ui/index.html"
     );
-    assert_eq!(opened["bridgeVersion"], 2);
+    assert_eq!(opened["bridgeVersion"], 0);
     opened["page"].as_u64().expect("page")
 }
 
@@ -74,7 +74,7 @@ fn resources_stay_inside_the_package() {
     assert_eq!(bootstrap["kind"], "bootstrap");
     let script = bootstrap["body"].as_str().expect("script");
     assert!(script.contains("\"pluginID\":\"dev.lithe.fixture.web-panel\""));
-    assert!(script.contains("version: 2"));
+    assert!(script.contains("version: 0"));
     assert!(!script.contains("__LITHE_"));
     let entry = resource("/ui/index.html");
     assert_eq!(entry["kind"], "file");

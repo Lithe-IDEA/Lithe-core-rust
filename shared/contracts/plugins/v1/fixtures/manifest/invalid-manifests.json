@@ -1,11 +1,17 @@
 {
   "schemaVersion": 1,
-  "description": "Each case edits a valid fixture manifest and states the stable rejection code every host must report. Edits use JSON Pointer paths; `set` replaces or adds a value and `remove` deletes it.",
+  "description": "Each case edits a valid fixture manifest and states the stable rejection code every host must report. Edits use JSON Pointer paths; `set` replaces or adds a value and `remove` deletes it. When a case has `expectedField`, the reported error also names that manifest field.",
   "cases": [
     {
-      "name": "legacy native manifest schema",
+      "name": "manifest schemaVersion 1 is not accepted",
       "base": "language-packaged-server.plugin.json",
       "edits": [{ "op": "set", "path": "/schemaVersion", "value": 1 }],
+      "expectedCode": "plugin.schema.unsupported"
+    },
+    {
+      "name": "manifest schemaVersion 2 is not accepted",
+      "base": "language-packaged-server.plugin.json",
+      "edits": [{ "op": "set", "path": "/schemaVersion", "value": 2 }],
       "expectedCode": "plugin.schema.unsupported"
     },
     {
@@ -14,6 +20,8 @@
       "edits": [{ "op": "set", "path": "/pluginAPIVersion", "value": 99 }],
       "expectedCode": "plugin.api.unsupported"
     },
+    {"name": "pluginAPIVersion 4 is not accepted", "base": "language-packaged-server.plugin.json", "edits": [{"op": "set", "path": "/pluginAPIVersion", "value": 4}], "expectedCode": "plugin.api.unsupported", "expectedField": "pluginAPIVersion"},
+    {"name": "pluginAPIVersion 1 is not accepted", "base": "language-packaged-server.plugin.json", "edits": [{"op": "set", "path": "/pluginAPIVersion", "value": 1}], "expectedCode": "plugin.api.unsupported", "expectedField": "pluginAPIVersion"},
     {
       "name": "unknown top-level field",
       "base": "language-packaged-server.plugin.json",
@@ -45,10 +53,10 @@
       "expectedCode": "plugin.manifest.invalid"
     },
     {
-      "name": "unsupported runtime dependency",
+      "name": "runtime dependency not listed in requiresTools",
       "base": "language-packaged-server.plugin.json",
-      "edits": [{ "op": "set", "path": "/languageServers/0/runtimeDependencies", "value": [{ "tool": "Python 3" }] }],
-      "expectedCode": "plugin.runtime.unsupported"
+      "edits": [{ "op": "set", "path": "/languageServers/0/runtimeDependencies", "value": [{ "tool": "python" }] }],
+      "expectedCode": "plugin.runtime.undeclared"
     },
     {
       "name": "unknown permission",
@@ -105,34 +113,10 @@
       "expectedCode": "plugin.manifest.invalid"
     },
     {
-      "name": "runtime launch in an API 1 manifest",
-      "base": "language-packaged-server.plugin.json",
-      "edits": [{ "op": "set", "path": "/languageServers/0/launch", "value": { "kind": "runtime", "tool": "node", "entry": "language-server/lib/intelephense.js" } }, { "op": "set", "path": "/languageServers/0/runtimeDependencies", "value": [] }],
-      "expectedCode": "plugin.manifest.invalid"
-    },
-    {
-      "name": "initialization options in an API 1 manifest",
-      "base": "language-packaged-server.plugin.json",
-      "edits": [{ "op": "set", "path": "/languageServers/0/initializationOptions", "value": { "storagePath": "cache" } }],
-      "expectedCode": "plugin.manifest.invalid"
-    },
-    {
-      "name": "host integration in an API 1 manifest",
-      "base": "language-packaged-server.plugin.json",
-      "edits": [{ "op": "set", "path": "/languageServers/0/hostIntegration", "value": { "id": "jdt" } }],
-      "expectedCode": "plugin.manifest.invalid"
-    },
-    {
       "name": "runtime dependency states a minimum version",
       "base": "language-packaged-server.plugin.json",
       "edits": [{ "op": "set", "path": "/languageServers/0/runtimeDependencies", "value": [{ "tool": "node", "minimumVersion": "18" }] }],
       "expectedCode": "plugin.manifest.invalid"
-    },
-    {
-      "name": "runtime launch with a tool that cannot start an entry",
-      "base": "node-runtime.plugin.json",
-      "edits": [{ "op": "set", "path": "/languageServers/0/launch/tool", "value": "go" }],
-      "expectedCode": "plugin.runtime.unsupported"
     },
     {
       "name": "runtime entry escapes the package",
@@ -212,7 +196,6 @@
       "edits": [{ "op": "set", "path": "/languageServers/0/hostIntegration", "value": { "id": "roslyn" } }],
       "expectedCode": "plugin.integration.unsupported"
     },
-    {"name": "settings on API level 1", "base": "language-packaged-server.plugin.json", "edits": [{"op": "set", "path": "/settings", "value": [{"id": "x", "type": "boolean", "title": "X", "default": true}]}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "launch template names an undeclared setting", "base": "node-runtime.plugin.json", "edits": [{"op": "set", "path": "/languageServers/0/arguments/1", "value": "--log-level=${setting:verbosity}"}], "expectedCode": "plugin.template.invalid"},
     {"name": "setting shapes a package path", "base": "node-runtime.plugin.json", "edits": [{"op": "set", "path": "/languageServers/0/launch/runtimeArguments/1", "value": "--require=${pluginDir}/language-server/${setting:logLevel}.js"}], "expectedCode": "plugin.template.invalid"},
     {"name": "setting identifier with a separator", "base": "node-runtime.plugin.json", "edits": [{"op": "set", "path": "/settings/0/id", "value": "heap-mb"}], "expectedCode": "plugin.manifest.invalid"},
@@ -225,18 +208,6 @@
     {"name": "enum option value could inject an argument", "base": "node-runtime.plugin.json", "edits": [{"op": "set", "path": "/settings/1/options/0/value", "value": "error --inspect"}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "boolean default is text", "base": "node-runtime.plugin.json", "edits": [{"op": "set", "path": "/settings/2/default", "value": "false"}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "setting with an unknown field", "base": "node-runtime.plugin.json", "edits": [{"op": "set", "path": "/settings/2/scope", "value": "workspace"}], "expectedCode": "plugin.manifest.invalid"},
-    {
-      "name": "UI requires API level 2",
-      "base": "hello-lithe.plugin.json",
-      "edits": [
-        {
-          "op": "set",
-          "path": "/pluginAPIVersion",
-          "value": 1
-        }
-      ],
-      "expectedCode": "plugin.manifest.invalid"
-    },
     {
       "name": "UI permission is required",
       "base": "hello-lithe.plugin.json",
@@ -361,15 +332,6 @@
           "path": "/ui/commands/0/toolWindowID",
           "value": "dev.lithe.fixture.hello.open.toolbar"
         }
-      ],
-      "expectedCode": "plugin.manifest.invalid"
-    },
-    {
-      "name": "build systems need plugin API 3",
-      "base": "build-static-file.plugin.json",
-      "edits": [
-        { "op": "set", "path": "/pluginAPIVersion", "value": 2 },
-        { "op": "remove", "path": "/requires" }
       ],
       "expectedCode": "plugin.manifest.invalid"
     },
@@ -653,10 +615,10 @@
       "expectedCode": "plugin.manifest.invalid"
     },
     {
-      "name": "provider runtime the host cannot start",
+      "name": "provider runtime tool not listed in requiresTools",
       "base": "build-provider.plugin.json",
       "edits": [{ "op": "set", "path": "/buildSystems/0/provider/launch/tool", "value": "go" }],
-      "expectedCode": "plugin.runtime.unsupported"
+      "expectedCode": "plugin.runtime.undeclared"
     },
     {
       "name": "provider argument names an undeclared setting",
@@ -671,15 +633,9 @@
       "expectedCode": "plugin.manifest.invalid"
     },
     {
-      "name": "plugin API 3 without requires",
+      "name": "manifest without requires",
       "base": "build-static-file.plugin.json",
       "edits": [{ "op": "remove", "path": "/requires" }],
-      "expectedCode": "plugin.manifest.invalid"
-    },
-    {
-      "name": "requires below plugin API 3",
-      "base": "language-packaged-server.plugin.json",
-      "edits": [{ "op": "set", "path": "/requires", "value": { "languageServers": 1, "languages": 1, "serverProcess": 1 } }],
       "expectedCode": "plugin.manifest.invalid"
     },
     {
@@ -689,28 +645,28 @@
       "expectedCode": "plugin.manifest.invalid"
     },
     {
-      "name": "capability version is not a positive integer",
+      "name": "capability version is not a non-negative integer",
       "base": "build-static-file.plugin.json",
-      "edits": [{ "op": "set", "path": "/requires/buildSystems", "value": 0 }],
+      "edits": [{ "op": "set", "path": "/requires/buildSystems", "value": -1 }],
       "expectedCode": "plugin.manifest.invalid"
     },
     {
       "name": "malformed capability ID",
       "base": "build-static-file.plugin.json",
-      "edits": [{ "op": "set", "path": "/requires/build-systems", "value": 1 }],
+      "edits": [{ "op": "set", "path": "/requires/build-systems", "value": 0 }],
       "expectedCode": "plugin.manifest.invalid"
     },
     {
       "name": "future capability",
       "base": "build-static-file.plugin.json",
-      "edits": [{ "op": "set", "path": "/requires/debuggers", "value": 1 }],
+      "edits": [{ "op": "set", "path": "/requires/debuggers", "value": 0 }],
       "expectedCode": "plugin.api.unsupported"
     },
     {
       "name": "future capability is reported before its unknown section",
       "base": "build-static-file.plugin.json",
       "edits": [
-        { "op": "set", "path": "/requires/debuggers", "value": 1 },
+        { "op": "set", "path": "/requires/debuggers", "value": 0 },
         { "op": "set", "path": "/debuggers", "value": [{ "id": "lldb" }] }
       ],
       "expectedCode": "plugin.api.unsupported"
@@ -721,6 +677,7 @@
       "edits": [{ "op": "set", "path": "/requires/buildSystems", "value": 5 }],
       "expectedCode": "plugin.api.unsupported"
     },
+    {"name": "capability version 1 is not defined", "base": "build-static-file.plugin.json", "edits": [{"op": "set", "path": "/requires/buildSystems", "value": 1}], "expectedCode": "plugin.api.unsupported", "expectedField": "requires.buildSystems"},
     {
       "name": "used capability missing from requires",
       "base": "build-provider-language-server.plugin.json",
@@ -730,9 +687,11 @@
     {
       "name": "requires lists an unused capability",
       "base": "build-static-file.plugin.json",
-      "edits": [{ "op": "set", "path": "/requires/ui", "value": 1 }],
+      "edits": [{ "op": "set", "path": "/requires/ui", "value": 0 }],
       "expectedCode": "plugin.manifest.invalid"
     },
+    {"name": "serverProcess is not a capability", "base": "language-packaged-server.plugin.json", "edits": [{"op": "set", "path": "/requires/serverProcess", "value": 0}], "expectedCode": "plugin.api.unsupported", "expectedField": "requires.serverProcess"},
+    {"name": "executableResolution is not a capability", "base": "language-packaged-server.plugin.json", "edits": [{"op": "set", "path": "/requires/executableResolution", "value": 0}], "expectedCode": "plugin.api.unsupported", "expectedField": "requires.executableResolution"},
     {
       "name": "own provider without buildProviders capability",
       "base": "build-provider.plugin.json",
@@ -748,31 +707,13 @@
     {
       "name": "template build lists unused buildProviders capability",
       "base": "build-static-file.plugin.json",
-      "edits": [{ "op": "set", "path": "/requires/buildProviders", "value": 1 }],
-      "expectedCode": "plugin.manifest.invalid"
-    },
-    {
-      "name": "own provider process without serverProcess",
-      "base": "build-provider.plugin.json",
-      "edits": [{ "op": "remove", "path": "/requires/serverProcess" }],
+      "edits": [{ "op": "set", "path": "/requires/buildProviders", "value": 0 }],
       "expectedCode": "plugin.manifest.invalid"
     },
     {
       "name": "UI window shows neither text nor web content",
       "base": "hello-lithe.plugin.json",
       "edits": [{ "op": "remove", "path": "/ui/toolWindows/0/text" }],
-      "expectedCode": "plugin.manifest.invalid"
-    },
-    {
-      "name": "UI web content needs ui 2",
-      "base": "web-panel.plugin.json",
-      "edits": [{ "op": "set", "path": "/requires/ui", "value": 1 }],
-      "expectedCode": "plugin.manifest.invalid"
-    },
-    {
-      "name": "UI web content needs plugin API 3",
-      "base": "web-panel.plugin.json",
-      "edits": [{ "op": "set", "path": "/pluginAPIVersion", "value": 2 }, { "op": "remove", "path": "/requires" }],
       "expectedCode": "plugin.manifest.invalid"
     },
     {
@@ -803,12 +744,6 @@
       "name": "UI web content takes no other fields",
       "base": "web-panel.plugin.json",
       "edits": [{ "op": "set", "path": "/ui/toolWindows/0/web/allowNetwork", "value": true }],
-      "expectedCode": "plugin.manifest.invalid"
-    },
-    {
-      "name": "ui 2 without web content",
-      "base": "web-panel.plugin.json",
-      "edits": [{ "op": "remove", "path": "/ui/toolWindows/0/web" }, { "op": "set", "path": "/ui/toolWindows/0/text", "value": "Plain" }, { "op": "set", "path": "/permissions", "value": ["ui.contribute"] }],
       "expectedCode": "plugin.manifest.invalid"
     },
     {
@@ -866,12 +801,6 @@
       "expectedCode": "plugin.api.unsupported"
     },
     {
-      "name": "backend needs serverProcess",
-      "base": "backend.plugin.json",
-      "edits": [{ "op": "remove", "path": "/requires/serverProcess" }],
-      "expectedCode": "plugin.manifest.invalid"
-    },
-    {
       "name": "backend needs the backend.launch permission",
       "base": "backend.plugin.json",
       "edits": [{ "op": "set", "path": "/permissions", "value": ["credentials.store", "ui.contribute", "ui.web"] }],
@@ -880,7 +809,7 @@
     {
       "name": "backend serves only web pages",
       "base": "backend.plugin.json",
-      "edits": [{ "op": "remove", "path": "/ui/toolWindows/0/web" }, { "op": "set", "path": "/ui/toolWindows/0/text", "value": "No page" }, { "op": "set", "path": "/requires/ui", "value": 1 }, { "op": "set", "path": "/permissions", "value": ["backend.launch", "credentials.store", "ui.contribute"] }],
+      "edits": [{ "op": "remove", "path": "/ui/toolWindows/0/web" }, { "op": "set", "path": "/ui/toolWindows/0/text", "value": "No page" }, { "op": "set", "path": "/requires/ui", "value": 0 }, { "op": "set", "path": "/permissions", "value": ["backend.launch", "credentials.store", "ui.contribute"] }],
       "expectedCode": "plugin.manifest.invalid"
     },
     {
@@ -904,67 +833,45 @@
     {
       "name": "credentials.store without a backend",
       "base": "backend.plugin.json",
-      "edits": [{ "op": "remove", "path": "/backend" }, { "op": "set", "path": "/requires", "value": {"ui":  2} }, { "op": "set", "path": "/permissions", "value": ["credentials.store", "ui.contribute", "ui.web"] }],
+      "edits": [{ "op": "remove", "path": "/backend" }, { "op": "set", "path": "/requires", "value": {"ui": 0} }, { "op": "set", "path": "/permissions", "value": ["credentials.store", "ui.contribute", "ui.web"] }],
       "expectedCode": "plugin.manifest.invalid"
     },
     {
-      "name": "backend 2 still needs a way to start",
+      "name": "backend still needs a way to start",
       "base": "backend-workspace.plugin.json",
       "edits": [{ "op": "set", "path": "/activationEvents", "value": [] }],
       "expectedCode": "plugin.manifest.invalid"
     },
     {
-      "name": "onWorkspaceOpen needs backend 2",
-      "base": "backend.plugin.json",
-      "edits": [{ "op": "set", "path": "/activationEvents", "value": ["onView:dev.lithe.fixture.backend.window", "onWorkspaceOpen"] }],
-      "expectedCode": "plugin.activation.invalid"
-    },
-    {
-      "name": "workspace.metadata needs backend 2",
-      "base": "backend.plugin.json",
-      "edits": [{ "op": "set", "path": "/permissions", "value": ["backend.launch", "credentials.store", "ui.contribute", "ui.web", "workspace.metadata"] }],
-      "expectedCode": "plugin.manifest.invalid"
-    },
-    {
       "name": "workspace.metadata without a backend",
       "base": "backend.plugin.json",
-      "edits": [{ "op": "remove", "path": "/backend" }, { "op": "set", "path": "/requires", "value": {"ui":  2} }, { "op": "set", "path": "/permissions", "value": ["ui.contribute", "ui.web", "workspace.metadata"] }],
+      "edits": [{ "op": "remove", "path": "/backend" }, { "op": "set", "path": "/requires", "value": {"ui": 0} }, { "op": "set", "path": "/permissions", "value": ["ui.contribute", "ui.web", "workspace.metadata"] }],
       "expectedCode": "plugin.manifest.invalid"
     },
     {
-      "name": "backend 2 does not start on every launch",
+      "name": "backend does not start on every launch",
       "base": "backend-workspace.plugin.json",
       "edits": [{ "op": "set", "path": "/activationEvents", "value": ["onStartupFinished", "onWorkspaceOpen"] }],
       "expectedCode": "plugin.activation.invalid"
     },
     {
-      "name": "backend 2 is still one process for every workspace",
+      "name": "backend is one process for every workspace",
       "base": "backend-workspace.plugin.json",
       "edits": [{ "op": "set", "path": "/backend/arguments", "value": ["--cache", "${workspaceStateDir}"] }],
       "expectedCode": "plugin.manifest.invalid"
     },
-    {"name": "a grammar needs languages 3", "base": "language-grammar.plugin.json", "edits": [{"op": "set", "path": "/requires/languages", "value": 1}], "expectedCode": "plugin.manifest.invalid"},
-    {"name": "languages 2, the withdrawn Monarch grammar, is unsupported", "base": "language-grammar.plugin.json", "edits": [{"op": "set", "path": "/requires/languages", "value": 2}], "expectedCode": "plugin.api.unsupported"},
-    {"name": "languages 3 is used by a grammar or configuration", "base": "language-grammar.plugin.json", "edits": [{"op": "remove", "path": "/languages/0/grammar"}, {"op": "remove", "path": "/languages/0/configuration"}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "a grammar names a known engine", "base": "language-grammar.plugin.json", "edits": [{"op": "set", "path": "/languages/0/grammar/kind", "value": "monarch"}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "a grammar file stays in the package", "base": "language-grammar.plugin.json", "edits": [{"op": "set", "path": "/languages/0/grammar/path", "value": "../http.tmLanguage.json"}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "a comment delimiter is one short line", "base": "language-grammar.plugin.json", "edits": [{"op": "set", "path": "/languages/0/configuration/lineComment", "value": "#\n"}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "a runtime tool must be listed in requiresTools", "base": "tool-reference-launch.plugin.json", "edits": [{"op": "set", "path": "/requiresTools", "value": ["other-tool"]}], "expectedCode": "plugin.runtime.undeclared"},
-    {"name": "requiresTools needs serverProcess 4", "base": "tool-reference-launch.plugin.json", "edits": [{"op": "set", "path": "/requires/serverProcess", "value": 1}], "expectedCode": "plugin.manifest.invalid"},
-    {"name": "serverProcess 4 lists its tools", "base": "tool-reference-launch.plugin.json", "edits": [{"op": "remove", "path": "/requiresTools"}], "expectedCode": "plugin.manifest.invalid"},
+    {"name": "a runtime tool needs a requiresTools list", "base": "tool-reference-launch.plugin.json", "edits": [{"op": "remove", "path": "/requiresTools"}], "expectedCode": "plugin.runtime.undeclared"},
     {"name": "a required tool is a tool-definition ID", "base": "tool-reference-launch.plugin.json", "edits": [{"op": "set", "path": "/requiresTools", "value": ["Interpreter"]}], "expectedCode": "plugin.manifest.invalid"},
-    {"name": "adapter features need debugAdapters 3", "base": "debug-adapter-features.plugin.json", "edits": [{"op": "set", "path": "/requires/debugAdapters", "value": 2}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "a step filter argument is a DAP name", "base": "debug-adapter-features.plugin.json", "edits": [{"op": "set", "path": "/debugAdapters/0/features/stepFilters/argument", "value": "step filters"}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "a hot code replace request is a DAP name", "base": "debug-adapter-features.plugin.json", "edits": [{"op": "set", "path": "/debugAdapters/0/features/hotCodeReplace/request", "value": "1reload"}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "an output link pattern must compile", "base": "tool-reference-launch.plugin.json", "edits": [{"op": "set", "path": "/outputLinkMatchers/0/pattern", "value": "File ("}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "an output link without a resolver captures a path", "base": "tool-reference-launch.plugin.json", "edits": [{"op": "set", "path": "/outputLinkMatchers/0/pattern", "value": "File (?P<name>.+)"}], "expectedCode": "plugin.manifest.invalid"},
-    {"name": "run.start needs backend 2", "base": "backend.plugin.json", "edits": [{"op": "set", "path": "/permissions", "value": ["backend.launch", "credentials.store", "run.start", "ui.contribute", "ui.web"]}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "debug.start needs a declared adapter", "base": "backend-workspace.plugin.json", "edits": [{"op": "set", "path": "/permissions", "value": ["backend.launch", "debug.start"]}], "expectedCode": "plugin.manifest.invalid"},
-    {"name": "session fields need languageServers 3", "base": "language-server-backend-launch.plugin.json", "edits": [{"op": "set", "path": "/requires/languageServers", "value": 2}], "expectedCode": "plugin.manifest.invalid"},
-    {"name": "a backend launch needs serverProcess 3", "base": "language-server-backend-launch.plugin.json", "edits": [{"op": "set", "path": "/requires/serverProcess", "value": 2}], "expectedCode": "plugin.manifest.invalid"},
-    {"name": "serverProcess 3 needs pluginAPIVersion 4", "base": "language-server-backend-launch.plugin.json", "edits": [{"op": "set", "path": "/pluginAPIVersion", "value": 3}], "expectedCode": "plugin.api.unsupported"},
     {"name": "a backend launch needs a backend", "base": "language-server-backend-launch.plugin.json", "edits": [{"op": "remove", "path": "/backend"}, {"op": "remove", "path": "/requires/backend"}, {"op": "set", "path": "/permissions", "value": ["languageServer.launch", "languageServer.request"]}], "expectedCode": "plugin.manifest.invalid"},
-    {"name": "a backend launch needs backend 2", "base": "language-server-backend-launch.plugin.json", "edits": [{"op": "set", "path": "/requires/backend", "value": 1}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "a backend launch takes its arguments from the answer", "base": "language-server-backend-launch.plugin.json", "edits": [{"op": "set", "path": "/languageServers/0/arguments", "value": ["--stdio"]}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "a backend launch function is a function ID", "base": "language-server-backend-launch.plugin.json", "edits": [{"op": "set", "path": "/languageServers/0/launch/function", "value": "Resolve Launch"}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "a backend launch timeout stays in range", "base": "language-server-backend-launch.plugin.json", "edits": [{"op": "set", "path": "/languageServers/0/launch/timeoutMilliseconds", "value": 100}], "expectedCode": "plugin.manifest.invalid"},
@@ -978,7 +885,6 @@
     {"name": "state retention keeps a workspace for a day at least", "base": "language-server-backend-launch.plugin.json", "edits": [{"op": "set", "path": "/languageServers/0/state/retention/maxAgeDays", "value": 0}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "state belongs to a known scope", "base": "language-server-backend-launch.plugin.json", "edits": [{"op": "set", "path": "/languageServers/0/state/scope", "value": "user"}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "remote support is supported or unsupported", "base": "language-server-backend-launch.plugin.json", "edits": [{"op": "set", "path": "/languageServers/0/remote", "value": "partial"}], "expectedCode": "plugin.manifest.invalid"},
-    {"name": "a content provider needs backend 2", "base": "backend.plugin.json", "edits": [{"op": "set", "path": "/permissions/1", "value": "documents.contentProvider"}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "an export states its calling context", "base": "plugin-functions-exporter.plugin.json", "edits": [{"op": "remove", "path": "/pluginFunctions/exports/0/context"}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "an export names a context Lithe knows", "base": "plugin-functions-exporter.plugin.json", "edits": [{"op": "set", "path": "/pluginFunctions/exports/0/context", "value": "remote"}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "an export is an object, not a bare function ID", "base": "plugin-functions-exporter.plugin.json", "edits": [{"op": "set", "path": "/pluginFunctions/exports/0", "value": "document.format"}], "expectedCode": "plugin.manifest.invalid"},
@@ -987,13 +893,10 @@
     {"name": "an exported function ID is lowerCamelCase segments", "base": "plugin-functions-exporter.plugin.json", "edits": [{"op": "set", "path": "/pluginFunctions/exports/0/id", "value": "Document.Format"}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "a call states the contract version it was written for", "base": "plugin-functions-caller.plugin.json", "edits": [{"op": "remove", "path": "/pluginFunctions/calls/0/version"}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "a call never names the provider plugin", "base": "plugin-functions-caller.plugin.json", "edits": [{"op": "set", "path": "/pluginFunctions/calls/0/pluginID", "value": "dev.lithe.fixture.functionexporter"}], "expectedCode": "plugin.manifest.invalid"},
-    {"name": "exported and called functions need backend 2", "base": "plugin-functions-exporter.plugin.json", "edits": [{"op": "set", "path": "/requires/backend", "value": 1}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "pluginFunctions lists an export or a call", "base": "plugin-functions-exporter.plugin.json", "edits": [{"op": "set", "path": "/pluginFunctions", "value": {}}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "pluginFunctions is listed in requires", "base": "plugin-functions-caller.plugin.json", "edits": [{"op": "remove", "path": "/requires/pluginFunctions"}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "requires lists pluginFunctions only when the manifest uses it", "base": "plugin-functions-caller.plugin.json", "edits": [{"op": "remove", "path": "/pluginFunctions"}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "editor providers read the documents they answer for", "base": "editor-providers.plugin.json", "edits": [{"op": "set", "path": "/permissions", "value": ["backend.launch", "editor.providers", "workspace.metadata"]}], "expectedCode": "plugin.manifest.invalid"},
-    {"name": "a tool field needs projectGenerators 2", "base": "project-generator.plugin.json", "edits": [{"op": "set", "path": "/projectGenerators/0/fields/1", "value": {"id": "sdk", "type": "tool", "title": "SDK", "tool": "python"}}], "expectedCode": "plugin.manifest.invalid"},
-    {"name": "projectGenerators 2 has no runtime field", "base": "project-generator.plugin.json", "edits": [{"op": "set", "path": "/requires/projectGenerators", "value": 2}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "a tool field names a tool definition ID", "base": "project-generator-tool-field.plugin.json", "edits": [{"op": "set", "path": "/projectGenerators/0/fields/0/tool", "value": "Python Interpreter"}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "a tool field names a tool", "base": "project-generator-tool-field.plugin.json", "edits": [{"op": "remove", "path": "/projectGenerators/0/fields/0/tool"}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "a tool field minimum version is dotted numbers", "base": "project-generator-tool-field.plugin.json", "edits": [{"op": "set", "path": "/projectGenerators/0/fields/0/minimumVersion", "value": "latest"}], "expectedCode": "plugin.manifest.invalid"},

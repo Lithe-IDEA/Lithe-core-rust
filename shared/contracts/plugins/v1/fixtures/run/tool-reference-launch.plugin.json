@@ -1,18 +1,16 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 0,
   "id": "dev.lithe.fixture.tool-reference-launch",
   "displayName": "Tool Reference Launch Fixture",
   "version": "0.1.0",
-  "pluginAPIVersion": 4,
+  "pluginAPIVersion": 0,
   "requires": {
-    "backend": 2,
-    "debugAdapters": 1,
-    "executableResolution": 2,
-    "languageServers": 1,
-    "languages": 1,
-    "outputLinkMatchers": 1,
-    "serverProcess": 4,
-    "toolDefinitions": 1
+    "backend": 0,
+    "debugAdapters": 0,
+    "languageServers": 0,
+    "languages": 0,
+    "outputLinkMatchers": 0,
+    "toolDefinitions": 0
   },
   "requiresTools": ["interpreter"],
   "vendor": {

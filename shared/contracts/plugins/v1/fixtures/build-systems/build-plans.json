@@ -1634,7 +1634,7 @@
         "root": ".",
         "result": {
           "format": "litheBuildModel",
-          "version": 1,
+          "version": 0,
           "projects": [
             {
               "path": ".",
@@ -1798,7 +1798,7 @@
         "project": "app",
         "result": {
           "format": "litheDependencies",
-          "version": 1,
+          "version": 0,
           "dependencies": [
             {
               "name": "spring-web",
@@ -1850,7 +1850,7 @@
         "root": ".",
         "result": {
           "format": "litheBuildModel",
-          "version": 1,
+          "version": 0,
           "projects": [
             {
               "path": ".",
@@ -1892,7 +1892,7 @@
         "status": "rejected",
         "error": {
           "code": "plugin.build.invalidOutput",
-          "message": "Expected litheDependencies version 1."
+          "message": "Expected litheDependencies version 0."
         }
       }
     },

@@ -24,7 +24,6 @@ mod github;
 mod history_events;
 mod language_server_sessions;
 mod marketplace_plugins;
-mod plugins;
 mod project;
 mod project_generators;
 mod protocol;

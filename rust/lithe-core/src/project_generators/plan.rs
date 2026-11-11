@@ -1,9 +1,7 @@
 //! Turning a filled-in form into the steps a host runs.
 
 use super::form::{self, FormInput, FormState};
-use super::manifest::{
-    variable_is_known, GeneratorStep, ProjectGeneratorDeclaration, FIELD_RUNTIME, FIELD_TOOL,
-};
+use super::manifest::{variable_is_known, GeneratorStep, ProjectGeneratorDeclaration, FIELD_TOOL};
 use super::template::{self, FieldValue, Values, Variable};
 use crate::plugins::declarative::{is_safe_relative_path, PluginRejection, Validation};
 use serde_json::{json, Value};
@@ -136,21 +134,6 @@ pub(crate) fn plan(
         }
     }
 
-    let runtimes: Vec<Value> = generator
-        .fields
-        .iter()
-        .filter(|field| field.is(FIELD_RUNTIME))
-        .filter_map(|field| match state.values.get(&field.id) {
-            Some(FieldValue::Runtime { home, version }) if !home.is_empty() => Some(json!({
-                "field": field.id,
-                "runtime": field.runtime,
-                "home": home,
-                "version": version,
-            })),
-            _ => None,
-        })
-        .collect();
-
     let uses_network = generator
         .steps
         .iter()
@@ -161,7 +144,6 @@ pub(crate) fn plan(
         "projectName": input.project_name,
         "steps": steps,
         "openFiles": open_files,
-        "runtimes": runtimes,
         "toolPins": tool_pins(generator, &state),
         "usesNetwork": uses_network,
     }))
@@ -178,7 +160,9 @@ fn tool_pins(generator: &ProjectGeneratorDeclaration, state: &FormState) -> Vec<
         .filter_map(|field| {
             let pin_as = field.pin_as?;
             match state.values.get(&field.id) {
-                Some(FieldValue::Tool { home, executable }) if !home.is_empty() => Some(json!({
+                Some(FieldValue::Tool {
+                    home, executable, ..
+                }) if !home.is_empty() => Some(json!({
                     "field": field.id,
                     "tool": field.tool,
                     "pinAs": pin_as,

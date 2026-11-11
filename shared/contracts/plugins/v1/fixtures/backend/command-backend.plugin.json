@@ -1,13 +1,12 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 0,
   "id": "dev.lithe.fixture.workspacebackend",
   "displayName": "Workspace Backend",
   "version": "1.0.0",
-  "pluginAPIVersion": 3,
+  "pluginAPIVersion": 0,
   "requires": {
-    "backend": 2,
-    "serverProcess": 1,
-    "ui": 4
+    "backend": 0,
+    "ui": 0
   },
   "vendor": {
     "id": "org.example",

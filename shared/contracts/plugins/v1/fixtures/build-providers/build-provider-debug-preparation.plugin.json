@@ -1,16 +1,16 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 0,
   "id": "dev.lithe.fixture.build-provider-debug-preparation",
   "displayName": "Native Debug Preparation Fixture",
   "version": "0.1.0",
-  "pluginAPIVersion": 4,
+  "pluginAPIVersion": 0,
   "requires": {
-    "buildProviders": 5,
-    "buildSystems": 1,
-    "serverProcess": 1,
-    "settings": 1,
-    "debugAdapters": 2
+    "buildProviders": 0,
+    "buildSystems": 0,
+    "settings": 0,
+    "debugAdapters": 0
   },
+  "requiresTools": ["java"],
   "vendor": {
     "id": "org.example",
     "displayName": "Example",

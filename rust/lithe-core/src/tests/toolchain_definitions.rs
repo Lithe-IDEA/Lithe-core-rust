@@ -21,8 +21,8 @@ fn definition(id: &str) -> Value {
 }
 
 fn manifest(id: &str, definition: Value) -> Value {
-    json!({"schemaVersion":2,"id":id,"displayName":"Fixture tool","version":"1.0.0",
-        "pluginAPIVersion":3,"requires":{"toolDefinitions":1,"executableResolution":2},
+    json!({"schemaVersion":0,"id":id,"displayName":"Fixture tool","version":"1.0.0",
+        "pluginAPIVersion":0,"requires":{"toolDefinitions":0},
         "vendor":{"id":"org.example","displayName":"Fixture publisher","signatureRequirement":"publisherPackage"},
         "toolDefinitions":[definition]})
 }
@@ -111,8 +111,8 @@ fn registry_leaves_a_contested_tool_id_unowned_and_registers_the_rest() {
 fn registry_keeps_providers_that_name_a_contested_tool() {
     let first = manifest("dev.lithe.fixture.first", definition("compiler"));
     let second = manifest("dev.lithe.fixture.second", definition("compiler"));
-    let provider = json!({"schemaVersion":2,"id":"dev.lithe.fixture.provider","displayName":"Provider","version":"1.0.0",
-        "pluginAPIVersion":3,"requires":{"toolchainProviders":1,"backend":2,"serverProcess":1},
+    let provider = json!({"schemaVersion":0,"id":"dev.lithe.fixture.provider","displayName":"Provider","version":"1.0.0",
+        "pluginAPIVersion":0,"requires":{"toolchainProviders":0,"backend":0},
         "vendor":{"id":"org.example","displayName":"Fixture","signatureRequirement":"publisherPackage"},
         "permissions":["backend.launch","toolchains.provide"],
         "toolchainProviders":[{"id":"installs","displayName":"Installs","tools":["compiler"]}],
@@ -213,9 +213,9 @@ fn definitions_reuse_shared_candidate_graph_ordering() {
 }
 
 #[test]
-fn providers_use_existing_packaged_backend_and_new_query_trigger_only() {
-    let plugin = json!({"schemaVersion":2,"id":"dev.lithe.fixture.provider","displayName":"Provider","version":"1.0.0",
-        "pluginAPIVersion":3,"requires":{"toolchainProviders":1,"backend":2,"serverProcess":1},
+fn providers_use_packaged_backend_and_query_trigger_only() {
+    let plugin = json!({"schemaVersion":0,"id":"dev.lithe.fixture.provider","displayName":"Provider","version":"1.0.0",
+        "pluginAPIVersion":0,"requires":{"toolchainProviders":0,"backend":0},
         "vendor":{"id":"org.example","displayName":"Fixture","signatureRequirement":"publisherPackage"},
         "permissions":["backend.launch","toolchains.provide"],
         "toolchainProviders":[{"id":"manager","displayName":"Manager","tools":["compiler"],"watchFiles":[{"pattern":".compiler-version","reader":"native"}]}],
@@ -246,8 +246,8 @@ fn providers_use_existing_packaged_backend_and_new_query_trigger_only() {
 
 #[test]
 fn providers_without_watch_files_report_installations_only() {
-    let plugin = json!({"schemaVersion":2,"id":"dev.lithe.fixture.provider","displayName":"Provider","version":"1.0.0",
-        "pluginAPIVersion":3,"requires":{"toolchainProviders":1,"backend":2,"serverProcess":1},
+    let plugin = json!({"schemaVersion":0,"id":"dev.lithe.fixture.provider","displayName":"Provider","version":"1.0.0",
+        "pluginAPIVersion":0,"requires":{"toolchainProviders":0,"backend":0},
         "vendor":{"id":"org.example","displayName":"Fixture","signatureRequirement":"publisherPackage"},
         "permissions":["backend.launch","toolchains.provide"],
         "toolchainProviders":[{"id":"installs","displayName":"Installs","tools":["compiler"]}],
@@ -262,8 +262,7 @@ fn providers_without_watch_files_report_installations_only() {
 fn a_definition_plugin_may_provide_installations_of_its_own_tool() {
     let id = "dev.lithe.fixture.compiler";
     let mut plugin = manifest(id, definition(&format!("{id}:compiler")));
-    plugin["requires"] = json!({"toolDefinitions":1,"executableResolution":2,
-        "toolchainProviders":1,"backend":2,"serverProcess":1});
+    plugin["requires"] = json!({"toolDefinitions":0,"toolchainProviders":0,"backend":0});
     plugin["permissions"] = json!(["backend.launch", "toolchains.provide"]);
     plugin["toolchainProviders"] =
         json!([{"id":"installs","displayName":"Installs","tools":[format!("{id}:compiler")]}]);
@@ -275,7 +274,7 @@ fn a_definition_plugin_may_provide_installations_of_its_own_tool() {
 }
 
 #[test]
-fn build_toolchain_consumers_keep_resolution_two_without_owning_definitions() {
+fn build_toolchain_consumers_reference_definitions_without_owning_them() {
     let mut plugin: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../shared/contracts/plugins/v1/fixtures/build-systems/build-toolchains.plugin.json"
@@ -287,24 +286,19 @@ fn build_toolchain_consumers_keep_resolution_two_without_owning_definitions() {
     assert!(validate_manifest_value(plugin.clone()).is_ok());
     plugin["buildSystems"][0]["invocation"]["executables"][0]["toolchainID"] =
         json!("dev.lithe.fixture.compiler:../compiler");
-    assert!(validate_manifest_value(plugin.clone()).is_err());
-    plugin["buildSystems"][0]["invocation"]["executables"][0]["toolchainID"] =
-        json!("dev.lithe.fixture.compiler:compiler");
-    plugin["requires"]["executableResolution"] = json!(1);
     assert!(validate_manifest_value(plugin).is_err());
 }
 
 #[test]
-fn executable_resolution_two_does_not_enable_toolchain_fields_in_legacy_build_sets() {
+fn tool_definitions_do_not_enable_toolchain_layers_in_build_executable_sets() {
     let mut plugin: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../shared/contracts/plugins/v1/fixtures/build-systems/build-tool-path.plugin.json"
     )))
     .unwrap();
-    plugin["requires"]["executableResolution"] = json!(2);
-    assert!(validate_manifest_value(plugin.clone()).is_err());
-    plugin["requires"]["toolDefinitions"] = json!(1);
+    plugin["requires"]["toolDefinitions"] = json!(0);
     plugin["toolDefinitions"] = json!([definition("dev.lithe.fixture.build-tool-path:compiler")]);
+    assert!(validate_manifest_value(plugin.clone()).is_ok());
     plugin["buildSystems"][0]["invocation"]["executables"][0]["layer"] = json!("project");
     assert!(validate_manifest_value(plugin).is_err());
 }
@@ -312,26 +306,52 @@ fn executable_resolution_two_does_not_enable_toolchain_fields_in_legacy_build_se
 #[test]
 fn production_toolchain_fixtures_require_explicit_host_capabilities() {
     let sources = [
-        include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/contracts/plugins/v1/fixtures/toolchains/tool-definition.plugin.json"
-        )),
-        include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/contracts/plugins/v1/fixtures/toolchains/toolchain-provider.plugin.json"
-        )),
+        (
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../shared/contracts/plugins/v1/fixtures/toolchains/tool-definition.plugin.json"
+            )),
+            "requires.toolDefinitions",
+        ),
+        (
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../shared/contracts/plugins/v1/fixtures/toolchains/toolchain-provider.plugin.json"
+            )),
+            "requires.toolchainProviders",
+        ),
     ];
-    let old_host = json!({"backend":[1,2],"serverProcess":[1],"executableResolution":[1]});
-    let capable_host = json!({"backend":[1,2],"serverProcess":[1],"executableResolution":[1,2],"toolDefinitions":[1],"toolchainProviders":[1]});
-    for source in sources {
+    let limited_host = json!({"backend":[0]});
+    let capable_host = json!({"backend":[0],"toolDefinitions":[0],"toolchainProviders":[0]});
+    for (source, missing) in sources {
         let manifest: Value = serde_json::from_str(source).unwrap();
         assert!(validate_manifest_value(manifest.clone()).is_ok());
         let rejected =
-            validate_command(json!({"manifest":manifest,"hostCapabilities":old_host})).unwrap();
+            validate_command(json!({"manifest":manifest,"hostCapabilities":limited_host})).unwrap();
         assert_eq!(rejected["status"], "rejected", "{rejected}");
         assert_eq!(rejected["error"]["code"], "plugin.api.unsupported");
+        assert_eq!(rejected["error"]["field"], missing, "{rejected}");
         let accepted =
             validate_command(json!({"manifest":manifest,"hostCapabilities":capable_host})).unwrap();
         assert_eq!(accepted["status"], "ok", "{accepted}");
+    }
+}
+
+/// Launches, tool references, and executable candidates belong to the base
+/// contract, so naming them in `requires` is refused.
+#[test]
+fn base_contract_features_are_not_listed_in_requires() {
+    for capability in ["executableResolution", "serverProcess"] {
+        let mut plugin = manifest(
+            "dev.lithe.fixture.compiler",
+            definition("dev.lithe.fixture.compiler:compiler"),
+        );
+        plugin["requires"][capability] = json!(0);
+        let rejection = validate_manifest_value(plugin).unwrap_err();
+        assert_eq!(rejection.code(), "plugin.api.unsupported");
+        assert_eq!(
+            rejection.field(),
+            Some(format!("requires.{capability}").as_str())
+        );
     }
 }

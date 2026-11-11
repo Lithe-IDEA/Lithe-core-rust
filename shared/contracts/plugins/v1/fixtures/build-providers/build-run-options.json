@@ -1,6 +1,6 @@
 {
   "format": "litheBuildRunOptions",
-  "version": 1,
+  "version": 0,
   "launchOptions": {
     "execution": "service",
     "runtimeArguments": [

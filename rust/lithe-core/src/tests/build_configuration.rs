@@ -42,7 +42,7 @@ fn edit_request() -> Value {
 }
 
 #[test]
-fn native_configuration_requires_capability_seven_and_preserves_option_arguments() {
+fn native_configuration_needs_a_provider_host_and_preserves_option_arguments() {
     let executable = if cfg!(windows) {
         "C:/fixture/mvn.cmd"
     } else {
@@ -68,14 +68,11 @@ fn native_configuration_requires_capability_seven_and_preserves_option_arguments
         )["status"],
         "rejected"
     );
-    for version in 1..7 {
-        let mut old = manifest();
-        old["requires"]["buildProviders"] = json!(version);
-        assert_eq!(
-            validate_command(json!({"manifest":old})).unwrap()["status"],
-            "rejected"
-        );
-    }
+    let refused = validate_command(json!({"manifest":manifest(),"hostCapabilities":{
+        "buildSystems":[0],"settings":[0]}}))
+    .unwrap();
+    assert_eq!(refused["status"], "rejected", "{refused}");
+    assert_eq!(refused["error"]["field"], "requires.buildProviders");
 }
 
 #[test]
@@ -207,7 +204,7 @@ fn native_editing_rejects_stale_unknown_read_only_and_escaping_requests() {
 #[test]
 fn native_edit_receipt_is_bound_to_confirmed_source_and_contains_no_document() {
     let request = edit_request();
-    let receipt = json!({"format":"litheConfigurationEdit","version":1,"sourceID":"user", "revision":format!("sha256:{}", "b".repeat(64)),"changed":true});
+    let receipt = json!({"format":"litheConfigurationEdit","version":0,"sourceID":"user", "revision":format!("sha256:{}", "b".repeat(64)),"changed":true});
     let payload = |result: Value| json!({"snapshot":request["snapshot"],"edits":request["edits"],"result":result});
     assert_eq!(
         call(
@@ -230,7 +227,7 @@ fn native_edit_receipt_is_bound_to_confirmed_source_and_contains_no_document() {
             "rejected"
         );
     }
-    let unchanged = json!({"format":"litheConfigurationEdit","version":1,"sourceID":"user","revision":request["edits"]["revision"],"changed":false});
+    let unchanged = json!({"format":"litheConfigurationEdit","version":0,"sourceID":"user","revision":request["edits"]["revision"],"changed":false});
     assert_eq!(
         call(build_decode_configuration_edit_command, payload(unchanged))["status"],
         "ok"

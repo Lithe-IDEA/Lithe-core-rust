@@ -1,9 +1,15 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 0,
   "id": "dev.lithe.fixture.language-system-command",
   "displayName": "System Command Language Server Fixture",
   "version": "0.1.0",
-  "pluginAPIVersion": 1,
+  "pluginAPIVersion": 0,
+  "requires": {
+    "executionProviders": 0,
+    "languageServers": 0,
+    "languages": 0
+  },
+  "requiresTools": ["go"],
   "vendor": {
     "id": "dev.lithe",
     "displayName": "Lithe",

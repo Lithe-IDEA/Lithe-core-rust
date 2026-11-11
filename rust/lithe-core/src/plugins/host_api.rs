@@ -15,9 +15,7 @@ pub(crate) fn describe_command(payload: Value) -> Result<Value, CoreError> {
     if payload.as_object().is_none_or(|object| !object.is_empty()) {
         return Err(invalid());
     }
-    // Include every method compiled into this Core, irrespective of which
-    // protocol version a particular backend later negotiates.
-    let implicit = plugin_function::capabilities_answer(u64::MAX, &BTreeSet::new());
+    let implicit = plugin_function::capabilities_answer(0, &BTreeSet::new());
     let methods: Vec<Value> = HOST_METHODS
         .iter()
         .map(|entry| {
@@ -63,7 +61,7 @@ pub(crate) fn authorize_command(payload: Value) -> Result<Value, CoreError> {
         return Ok(json!({"allowed":false,"code":"plugin.host.unavailable"}));
     }
     let grants = input.grants.into_iter().collect();
-    let capabilities = plugin_function::capabilities_answer(u64::MAX, &grants);
+    let capabilities = plugin_function::capabilities_answer(0, &grants);
     let allowed = capabilities["services"][&input.service]["methods"]
         .as_array()
         .is_some_and(|methods| methods.iter().any(|method| method == &input.method));
@@ -83,7 +81,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn catalog_preserves_legacy_and_individual_grants() {
+    fn catalog_separates_service_grants_from_individual_method_grants() {
         let catalog = describe_command(json!({})).unwrap();
         let entries = catalog["methods"].as_array().unwrap();
         let method = |name: &str| {

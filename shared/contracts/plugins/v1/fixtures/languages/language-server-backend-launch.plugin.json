@@ -1,16 +1,14 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 0,
   "id": "dev.lithe.fixture.language-server-backend-launch",
   "displayName": "Backend Launched Language Server Fixture",
   "version": "0.1.0",
-  "pluginAPIVersion": 4,
+  "pluginAPIVersion": 0,
   "requires": {
-    "backend": 2,
-    "executableResolution": 2,
-    "languageServers": 3,
-    "languages": 1,
-    "serverProcess": 3,
-    "toolDefinitions": 1
+    "backend": 0,
+    "languageServers": 0,
+    "languages": 0,
+    "toolDefinitions": 0
   },
   "vendor": {
     "id": "org.example",

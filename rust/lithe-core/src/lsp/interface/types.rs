@@ -189,7 +189,7 @@ pub struct LspClientState {
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub plugin_functions: BTreeSet<String>,
     /// The `litheFunctions` version the backend chose; `None` when the
-    /// protocol was not negotiated. Version 2 adds host services.
+    /// protocol was not negotiated.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plugin_function_version: Option<u64>,
     /// Host services the plugin's permissions grant this session, from

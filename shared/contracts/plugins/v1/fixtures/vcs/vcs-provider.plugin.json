@@ -1,10 +1,11 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 0,
   "id": "dev.lithe.fixture.vcs-provider",
   "displayName": "VCS Provider Fixture",
   "version": "0.1.0",
-  "pluginAPIVersion": 3,
-  "requires": { "serverProcess": 1, "vcsProviders": 1 },
+  "pluginAPIVersion": 0,
+  "requires": { "vcsProviders": 0 },
+  "requiresTools": ["node"],
   "vendor": {
     "id": "org.example",
     "displayName": "Example",

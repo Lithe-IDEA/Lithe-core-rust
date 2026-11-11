@@ -1,10 +1,10 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 0,
   "id": "dev.lithe.fixture.debug-adapter-features",
   "displayName": "Debug Adapter Features Fixture",
   "version": "0.1.0",
-  "pluginAPIVersion": 4,
-  "requires": { "backend": 2, "debugAdapters": 3, "serverProcess": 1 },
+  "pluginAPIVersion": 0,
+  "requires": { "backend": 0, "debugAdapters": 0 },
   "vendor": {
     "id": "org.example",
     "displayName": "Example",

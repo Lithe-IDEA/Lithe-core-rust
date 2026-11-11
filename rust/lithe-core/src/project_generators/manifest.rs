@@ -82,12 +82,7 @@ pub(crate) const FIELD_TEXT: &str = "text";
 pub(crate) const FIELD_ENUM: &str = "enum";
 pub(crate) const FIELD_BOOLEAN: &str = "boolean";
 pub(crate) const FIELD_MULTI_SELECT: &str = "multiSelect";
-pub(crate) const FIELD_RUNTIME: &str = "runtime";
 pub(crate) const FIELD_TOOL: &str = "tool";
-/// The `requires.projectGenerators` version that introduces tool fields and
-/// retires runtime fields. A generator declared with version 2 selects every
-/// tool through its definition; version 1 keeps the runtime field.
-const TOOL_FIELDS_VERSION: u32 = 2;
 
 /// Where a tool field's selection is saved besides the generation steps.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -99,7 +94,7 @@ pub(crate) enum ToolPin {
 }
 
 /// One input of a generator. The types follow plugin settings, minus
-/// integer and paths, plus `runtime` (version 1) and `tool` (version 2).
+/// integer and paths, plus `tool`.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct GeneratorField {
@@ -134,17 +129,14 @@ pub(crate) struct GeneratorField {
     pub(crate) max_length: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) placeholder: Option<String>,
-    /// A text, runtime, or tool field may be left empty.
+    /// A text or tool field may be left empty.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub(crate) optional: bool,
-    /// Runtime a runtime field selects.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) runtime: Option<String>,
     /// Tool definition ID a tool field selects an installation of. Which
     /// plugin defines it is not fixed here, so any plugin may add a tool.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) tool: Option<String>,
-    /// Oldest acceptable runtime or tool version.
+    /// Oldest acceptable tool version.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) minimum_version: Option<String>,
     /// Saves a tool field's selection once the project exists.
@@ -424,13 +416,7 @@ impl GeneratorField {
 /// Validates every generator and sorts fields-free collections that have no
 /// meaningful order. Field and step order are kept: fields are drawn and
 /// defaults evaluated in order, steps run in order.
-///
-/// `version` is the manifest's `requires.projectGenerators`; it decides
-/// whether fields select a runtime (1) or a tool (2).
-pub(crate) fn validate_declarations(
-    generators: &[ProjectGeneratorDeclaration],
-    version: u32,
-) -> Validation<()> {
+pub(crate) fn validate_declarations(generators: &[ProjectGeneratorDeclaration]) -> Validation<()> {
     if generators.len() > MAX_GENERATORS {
         return Err(invalid(
             "projectGenerators",
@@ -446,13 +432,13 @@ pub(crate) fn validate_declarations(
                 "A project generator is declared more than once.",
             ));
         }
-        generator.validate(&field, version)?;
+        generator.validate(&field)?;
     }
     Ok(())
 }
 
 impl ProjectGeneratorDeclaration {
-    fn validate(&self, field: &str, version: u32) -> Validation<()> {
+    fn validate(&self, field: &str) -> Validation<()> {
         if !is_generator_id(&self.id) {
             return Err(invalid(
                 format!("{field}.id"),
@@ -487,7 +473,7 @@ impl ProjectGeneratorDeclaration {
             let item_field = format!("{field}.fields[{index}]");
             // A field reads only fields declared before it, so defaults are
             // evaluated in one pass and visibility never forms a cycle.
-            item.validate(&item_field, &declared, version)?;
+            item.validate(&item_field, &declared)?;
             if declared.insert(item.id.as_str(), item).is_some() {
                 return Err(invalid(
                     format!("{item_field}.id"),
@@ -534,13 +520,7 @@ impl ProjectGeneratorDeclaration {
 }
 
 impl GeneratorField {
-    fn validate(
-        &self,
-        field: &str,
-        earlier: &BTreeMap<&str, &GeneratorField>,
-        version: u32,
-    ) -> Validation<()> {
-        self.check_kind_for_version(field, version)?;
+    fn validate(&self, field: &str, earlier: &BTreeMap<&str, &GeneratorField>) -> Validation<()> {
         if !is_setting_identifier(&self.id) {
             return Err(invalid(
                 format!("{field}.id"),
@@ -563,10 +543,9 @@ impl GeneratorField {
             "options" => matches!(kind, FIELD_ENUM | FIELD_MULTI_SELECT),
             "presentation" => kind == FIELD_ENUM,
             "text" => kind == FIELD_TEXT,
-            "optional" => matches!(kind, FIELD_TEXT | FIELD_RUNTIME | FIELD_TOOL),
-            "runtime" => kind == FIELD_RUNTIME,
+            "optional" => matches!(kind, FIELD_TEXT | FIELD_TOOL),
             "tool" => kind == FIELD_TOOL,
-            "minimumVersion" => matches!(kind, FIELD_RUNTIME | FIELD_TOOL),
+            "minimumVersion" => kind == FIELD_TOOL,
             "maximumVersion" => matches!(kind, FIELD_TEXT | FIELD_ENUM),
             _ => false,
         };
@@ -578,7 +557,6 @@ impl GeneratorField {
                 self.pattern.is_some() || self.max_length.is_some() || self.placeholder.is_some(),
             ),
             ("optional", self.optional),
-            ("runtime", self.runtime.is_some()),
             ("tool", self.tool.is_some() || self.pin_as.is_some()),
             ("minimumVersion", self.minimum_version.is_some()),
             ("maximumVersion", self.maximum_version.is_some()),
@@ -688,33 +666,6 @@ impl GeneratorField {
                     ));
                 }
             }
-            FIELD_RUNTIME => {
-                // The runtime is the tool definition with the same ID; the
-                // host discovers installations and Core only checks the
-                // version.
-                if !self
-                    .runtime
-                    .as_deref()
-                    .is_some_and(crate::toolchain::definitions::tool_id)
-                {
-                    return Err(invalid(
-                        format!("{field}.runtime"),
-                        "A runtime field names a tool-definition ID.",
-                    ));
-                }
-                if let Some(version) = &self.minimum_version {
-                    crate::plugins::declarative::validate_minimum_version(
-                        version,
-                        &format!("{field}.minimumVersion"),
-                    )?;
-                }
-                if self.default.is_some() {
-                    return Err(invalid(
-                        format!("{field}.default"),
-                        "The host chooses the initial runtime.",
-                    ));
-                }
-            }
             FIELD_TOOL => {
                 if !self
                     .tool
@@ -742,28 +693,9 @@ impl GeneratorField {
             _ => {
                 return Err(invalid(
                     format!("{field}.type"),
-                    "A field type is text, enum, boolean, multiSelect, runtime, or tool.",
+                    "A field type is text, enum, boolean, multiSelect, or tool.",
                 ))
             }
-        }
-        Ok(())
-    }
-
-    /// Runtime fields belong to `projectGenerators` 1 and tool fields to 2,
-    /// so one generator never mixes the old runtime path with tool
-    /// definitions. The old path is removed once no plugin uses version 1.
-    fn check_kind_for_version(&self, field: &str, version: u32) -> Validation<()> {
-        if self.is(FIELD_TOOL) && version < TOOL_FIELDS_VERSION {
-            return Err(invalid(
-                format!("{field}.type"),
-                "A tool field needs requires.projectGenerators 2.",
-            ));
-        }
-        if self.is(FIELD_RUNTIME) && version >= TOOL_FIELDS_VERSION {
-            return Err(invalid(
-                format!("{field}.type"),
-                "projectGenerators 2 selects installations with a tool field, not a runtime field.",
-            ));
         }
         Ok(())
     }
@@ -911,9 +843,9 @@ fn check_conditions(
         let comparable = |value: &Value| match target.kind.as_str() {
             FIELD_ENUM => value.as_str().is_some_and(|text| target.offers(text)),
             FIELD_BOOLEAN => value.is_boolean(),
-            // A runtime or tool field compares as its home, so
-            // `notEquals ""` asks whether an installation was chosen.
-            FIELD_TEXT | FIELD_RUNTIME | FIELD_TOOL => value.is_string(),
+            // A tool field compares as its home, so `notEquals ""` asks
+            // whether an installation was chosen.
+            FIELD_TEXT | FIELD_TOOL => value.is_string(),
             _ => false,
         };
         if !comparisons.into_iter().all(comparable) {
@@ -970,15 +902,15 @@ fn check_variables(
         if !variable_is_known(variable, |id| fields.get(id).copied()) {
             return Err(invalid(
                 field,
-                "The template reads a field that is not declared earlier, a runtime version of a field that is not a runtime, or the executable of a field that is not a tool.",
+                "The template reads a field that is not declared earlier, or the version or executable of a field that is not a tool.",
             ));
         }
     }
     Ok(())
 }
 
-/// Whether a variable names a field `lookup` knows, with a version suffix
-/// only on runtime fields and `.executable` only on tool fields.
+/// Whether a variable names a field `lookup` knows, with the `.version`,
+/// `.major`, and `.executable` suffixes only on tool fields.
 pub(crate) fn variable_is_known<'a>(
     variable: &Variable,
     lookup: impl Fn(&str) -> Option<&'a GeneratorField>,
@@ -986,10 +918,9 @@ pub(crate) fn variable_is_known<'a>(
     match &variable.source {
         Source::ProjectName => true,
         Source::Field(id) => lookup(id).is_some(),
-        Source::RuntimeVersion(id) | Source::RuntimeMajor(id) => {
-            lookup(id).is_some_and(|field| field.is(FIELD_RUNTIME))
+        Source::ToolVersion(id) | Source::ToolMajor(id) | Source::ToolExecutable(id) => {
+            lookup(id).is_some_and(|field| field.is(FIELD_TOOL))
         }
-        Source::ToolExecutable(id) => lookup(id).is_some_and(|field| field.is(FIELD_TOOL)),
     }
 }
 

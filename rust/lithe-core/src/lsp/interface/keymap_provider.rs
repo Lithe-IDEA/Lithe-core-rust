@@ -1,5 +1,7 @@
-//! Negotiation for the independent shortcut import provider protocol.
+//! Negotiation for the independent shortcut import provider protocol. The
+//! protocol version is the `keymapImportProviders` capability version.
 
+use crate::plugins::capabilities::{versions as capability_versions, KEYMAP_IMPORT_PROVIDERS};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
@@ -10,6 +12,12 @@ pub(crate) const NEGOTIATED_EVENT: &str = "keymapImportProvidersNegotiated";
 pub(crate) const IMPORT_METHOD: &str = "lithe/keymap/import";
 /// Maximum encoded provider reply forwarded to the host for Core validation.
 pub(crate) const MAX_REPLY_BYTES: usize = 1024 * 1024;
+
+/// Protocol versions this client speaks: the versions of the
+/// `keymapImportProviders` capability.
+fn supported_versions() -> Vec<u64> {
+    super::offered_versions(capability_versions(KEYMAP_IMPORT_PROVIDERS))
+}
 
 fn valid_offer(providers: &BTreeSet<String>) -> bool {
     !providers.is_empty()
@@ -26,7 +34,7 @@ pub(crate) fn client_experimental_capabilities(
     valid_offer(providers).then(|| {
         (
             EXPERIMENTAL_KEY,
-            json!({"versions": [1], "providers": providers}),
+            json!({"versions": supported_versions(), "providers": providers}),
         )
     })
 }
@@ -37,7 +45,7 @@ pub(crate) fn negotiate(capabilities: &Value, offered: &BTreeSet<String>) -> Opt
         return None;
     }
     let answer = capabilities.pointer("/experimental/litheKeymapImport")?;
-    if answer.get("version")?.as_u64()? != 1 {
+    if !supported_versions().contains(&answer.get("version")?.as_u64()?) {
         return None;
     }
     let mut selected = BTreeSet::new();
@@ -79,7 +87,7 @@ mod tests {
         let offered = BTreeSet::from(["second".to_string(), "first".to_string()]);
         assert_eq!(
             client_experimental_capabilities(&offered).unwrap().1,
-            json!({"versions": [1], "providers": ["first", "second"]})
+            json!({"versions": [0], "providers": ["first", "second"]})
         );
     }
 
@@ -90,7 +98,7 @@ mod tests {
         for offered in [bad_id, many] {
             assert!(client_experimental_capabilities(&offered).is_none());
             let answer = json!({"experimental": {"litheKeymapImport": {
-                "version": 1, "providers": [offered.iter().next().unwrap()]
+                "version": 0, "providers": [offered.iter().next().unwrap()]
             }}});
             assert!(negotiate(&answer, &offered).is_none());
         }

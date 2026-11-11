@@ -1,10 +1,10 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 0,
   "id": "dev.lithe.fixture.project-generator",
   "displayName": "Project Generator Fixture",
   "version": "1.0.0",
-  "pluginAPIVersion": 3,
-  "requires": {"projectGenerators": 1},
+  "pluginAPIVersion": 0,
+  "requires": {"projectGenerators": 0},
   "vendor": {"id": "org.example", "displayName": "Example", "signatureRequirement": "publisherPackage"},
   "permissions": ["project.generate"],
   "activationEvents": [],
@@ -16,7 +16,7 @@
       "fields": [
         {"id": "buildSystem", "type": "enum", "title": "Build system", "presentation": "segmented",
          "options": [{"value": "none", "title": "None"}, {"value": "maven", "title": "Maven"}]},
-        {"id": "jdk", "type": "runtime", "title": "JDK", "runtime": "java", "minimumVersion": "17"},
+        {"id": "jdk", "type": "tool", "title": "JDK", "tool": "java", "minimumVersion": "17"},
         {"id": "sample", "type": "boolean", "title": "Add sample code", "default": true},
         {"id": "groupId", "type": "text", "title": "Group", "advanced": true, "default": "com.example",
          "pattern": "[a-z][a-z0-9]*(\\.[a-z][a-z0-9]*)*",
@@ -42,7 +42,7 @@
       "displayName": "Archetype",
       "section": "generator",
       "fields": [
-        {"id": "jdk", "type": "runtime", "title": "JDK", "runtime": "java"},
+        {"id": "jdk", "type": "tool", "title": "JDK", "tool": "java"},
         {"id": "artifactId", "type": "text", "title": "Artifact", "default": "${project.name|lower}",
          "pattern": "[a-z0-9-]+"},
         {"id": "version", "type": "text", "title": "Archetype version", "optional": true, "pattern": "[0-9.]+"}

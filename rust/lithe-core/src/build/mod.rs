@@ -38,7 +38,6 @@ mod test_outcome;
 mod test_outcome_merge;
 
 pub(crate) use commands::*;
-pub(crate) use invocation::host_runtime_version_arguments;
 pub(crate) use manifest::{
     activation_event, programs, validate_declarations, BuildSystemDeclaration, DeclarationContext,
     ProviderProcess,

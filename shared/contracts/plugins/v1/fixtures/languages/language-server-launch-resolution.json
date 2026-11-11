@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "description": "Golden launch of a language server whose backend resolves the command line (serverProcess 3). `languageServerLaunchPlan` is the first step: Core names the function to call and its params. `decodeLaunch` is the second step: Core bounds the function's `result` and returns the plan the host starts. A case runs against `plugin` and `languageID` unless it names its own, with `request` changed by `requestEdits` (JSON Pointer `set` or `remove`). `expected` is the command's data object, or `{status: \"rejected\", code}` for the stable rejection code. `resolveParams.platform.os` is the host's operating system and is not compared.",
+  "description": "Golden launch of a language server whose backend resolves the command line (a `backend` launch). `languageServerLaunchPlan` is the first step: Core names the function to call and its params. `decodeLaunch` is the second step: Core bounds the function's `result` and returns the plan the host starts. A case runs against `plugin` and `languageID` unless it names its own, with `request` changed by `requestEdits` (JSON Pointer `set` or `remove`). `expected` is the command's data object, or `{status: \"rejected\", code}` for the stable rejection code. `resolveParams.platform.os` is the host's operating system and is not compared.",
   "plugin": "language-server-backend-launch.plugin.json",
   "languageID": "scala",
   "request": {

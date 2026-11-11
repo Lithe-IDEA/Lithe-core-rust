@@ -30,3 +30,16 @@ pub(crate) use engine_logging::{resolve_engine_log_subject, ResolveEngineLogSubj
 pub(crate) use function_relay::RelaySnapshot;
 pub(crate) use transport::*;
 pub(crate) use types::*;
+
+/// The versions a Lithe runtime protocol offers in `initialize`. A runtime
+/// protocol has no version of its own: it speaks the version of the contract
+/// that owns it, the capability version of the manifest section that declares
+/// the provider (or the plugin API version for plugin logging). The host
+/// therefore offers exactly the versions of that contract it implements, and a
+/// reply counts as negotiated only when it names one of them.
+fn offered_versions(contract_versions: &[u32]) -> Vec<u64> {
+    contract_versions
+        .iter()
+        .map(|version| u64::from(*version))
+        .collect()
+}

@@ -8,10 +8,10 @@ reuses each enabled provider's plugin backend, sends `toolchains/query` through
 `lsp.toolchainRequest`, passes every raw reply with native facts to `decodeReply`,
 runs the definition's version probe on executables Core returns from
 `candidates`, and shows the result. Any change to a watched input reloads the
-whole snapshot. Nothing is saved by these pages. The pinned Stage D integration
-adds a separate fresh-resolution adapter for macOS Build and Provider Run;
-settings detections are never used as launch permits. Existing Java and
-language-server consumers still use their previous adapters. Windows has no
+whole snapshot. Nothing is saved by these pages. A separate fresh-resolution
+adapter serves macOS Build and Provider Run; settings detections are never used
+as launch permits. Java and language-server consumers resolve their tools with
+their own adapters. Windows has no
 toolchain adapter and does not advertise `toolDefinitions` or
 `toolchainProviders`, so Core refuses packages that require them there.
 Consumer migration, the native query lifecycle and cache, pin saving and
@@ -20,15 +20,14 @@ version-manager plugins are not specified yet. The manifest shape is
 
 ## Manifest admission and registry
 
-`toolDefinitions[]` needs `requires.toolDefinitions: 1` and
-`requires.executableResolution: 2`. `toolchainProviders[]` needs
-`requires.toolchainProviders: 1`, `backend: 2`, `serverProcess: 1`, and permissions
+`toolDefinitions[]` needs `requires.toolDefinitions: 0`. `toolchainProviders[]`
+needs `requires.toolchainProviders: 0`, `backend: 0`, and permissions
 `backend.launch` / `toolchains.provide`. Capability lists are exact: missing or
 unused capabilities reject the manifest. A definition/provider alone is a valid
-contribution. Old executable candidate sets retain their strict source types.
-Build consumers may also require executableResolution 2 for their existing
-`toolchain` candidate without contributing a definition; they do not gain
-definition-owned candidate fields.
+contribution. Executable candidate sets keep their strict source types; the
+`toolchain` candidate of a build consumer needs no definition, and a consumer
+does not gain definition-owned candidate fields (see
+[Executable resolution](../README.md#executable-resolution)).
 
 Definitions own IDs, labels/icons, `executableLayouts`, ordered `executables`,
 `version`, `homeLayouts`, `discovery`, `homeVariable`, `commands`, `wrappers`,
@@ -44,10 +43,10 @@ unique patterns; an absent one makes an installation-only provider, whose
 replies may not contain statements. Providers share the plugin's
 backend; admission permits a host-query trigger without a page or startup event,
 and the macOS host starts the backend on the first query. Bootstrap must be `packaged`, or
-`runtime` with `packagedRuntime`, without discovered runtime dependencies. Existing
-runtime launch tool restrictions remain for `serverProcess` 1 and 2, which name
-a closed set of runtimes. From `serverProcess` 4 a plugin names any tool definition
-by ID instead; see [`instantiateLaunch`](#launching-a-tool-definition).
+`runtime` with `packagedRuntime`, without discovered runtime dependencies. A
+launch names a tool definition by ID, and `requiresTools` lists it (see
+[Tool references](../README.md#tool-references)); see
+[`instantiateLaunch`](#launching-a-tool-definition).
 
 `toolchains.provide` may influence which program a defined tool launches. It does
 not grant arbitrary command replacement, installation, network or workspace-code
@@ -139,7 +138,8 @@ are 128 plugins, 512 aggregate definitions and 256 aggregate providers.
 ## Provider backend negotiation
 
 A provider answers over its plugin backend's JSON-RPC connection, the same
-`serverProcess` transport other backend requests use. The backend need not
+transport other backend requests use ([Process start](../README.md#process-start)).
+The backend need not
 declare a language, language server, Build provider or callable function.
 
 The host starts the backend with `lsp.startServer` and passes the manifest's
@@ -148,17 +148,19 @@ at least one provider is offered the protocol, in the client capabilities of
 `initialize`:
 
 ```json
-{"experimental": {"litheToolchains": {"versions": [1], "providers": ["first", "second"]}}}
+{"experimental": {"litheToolchains": {"versions": [0], "providers": ["first", "second"]}}}
 ```
 
 `providers` lists the declared IDs in sorted order. The backend selects in the
 server capabilities of its `initialize` result:
 
 ```json
-{"experimental": {"litheToolchains": {"version": 1, "providers": ["first"]}}}
+{"experimental": {"litheToolchains": {"version": 0, "providers": ["first"]}}}
 ```
 
-`version` must be an offered version and `providers` a non-empty list of
+The protocol has no version of its own: its version is that of the
+`toolchainProviders` capability, `0`. `version` must be an offered version and
+`providers` a non-empty list of
 offered IDs without repeats; other fields are ignored. Any other answer, including
 an unoffered version, an undeclared, repeated or non-string ID, or an empty list,
 enables no provider at all rather than a partial set, and no query is sent. On
@@ -174,7 +176,7 @@ the session's request timeout applies. Completion carries `result.value: {id,
 response}`: the wire ID and the complete, unvalidated response, error replies
 included. The host passes it with the same `params` to `decodeReply`.
 Cancellation and late results follow
-[`lsp.toolchainRequest`](https://github.com/1lck/Lithe-IDEA/blob/preview/shared/contracts/rust-core-api.md).
+[`lsp.toolchainRequest`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/shared/contracts/rust-core-api.md).
 
 ## Provider reply validation
 
@@ -272,7 +274,7 @@ rejected, so a cancelled or refused query never becomes a missing provider.
 ## Pins and snapshot resolution
 
 `resolvePins` validates an inert local document `{version:1,toolchains,pins?}`.
-`toolchains` retains legacy entries; `pins` maps directory keys to tool maps of
+`toolchains` holds per-tool entries; `pins` maps directory keys to tool maps of
 `{home,version,provider}`. It returns `{pin,sourceDirectory}`, both `null` if absent.
 Nearest exact ancestor wins; sibling prefixes do not match. Dormant pins survive
 missing definitions. No lookup grants execution authority or writes a file.
@@ -282,7 +284,7 @@ Saving, conflict protection and `.lithe/.gitignore` updates are not implemented.
 platform,workspaceRoot,filesystem}` and accepts `workspaceRoots`,
 `filesystemCaseSensitive`, `local`, `minimumVersion`, `probes`, `queries`,
 `systemInstallations`, `globalDefault`, `environment`, `commandHomes`,
-`projectCodeAllowed`, `providerChoices` and `fixed`. `local` defaults to an empty v1
+`projectCodeAllowed`, `providerChoices` and `fixed`. `local` defaults to an empty
 document. Probes are host observations `{executable,output,exitCode}` keyed by the
 canonical executable a selection reports; system installations are `{tool,home}`.
 Shell environment home variables and `commandHomes` come from the native login-shell
@@ -415,10 +417,10 @@ total time, and reports skipped work as diagnostics rather than a missing tool.
 Production-shape examples are [tool-definition.plugin.json](../fixtures/toolchains/tool-definition.plugin.json)
 and [toolchain-provider.plugin.json](../fixtures/toolchains/toolchain-provider.plugin.json).
 Core acceptance vectors are in
-[toolchain_definitions.rs](https://github.com/1lck/Lithe-IDEA/blob/preview/rust/lithe-core/src/tests/toolchain_definitions.rs),
+[toolchain_definitions.rs](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/lithe-core/src/tests/toolchain_definitions.rs),
 with sibling pins/query/resolution suites. The pin document, query exchange and
 one error reply per stable code that those suites share are inline in
-[toolchain_vectors.rs](https://github.com/1lck/Lithe-IDEA/blob/preview/rust/lithe-core/src/tests/toolchain_vectors.rs).
+[toolchain_vectors.rs](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/lithe-core/src/tests/toolchain_vectors.rs).
 Passing them is not native product verification. Contract changes must be mirrored after merge with
-`node scripts/contract.mjs sync --revision <merged-preview-commit>` in
+`node scripts/contract.mjs sync --revision <merged-commit>` in
 [lithe-plugin-docs](https://github.com/Lithe-IDEA/lithe-plugin-docs).

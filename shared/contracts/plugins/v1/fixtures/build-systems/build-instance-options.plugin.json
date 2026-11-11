@@ -1,11 +1,11 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 0,
   "id": "dev.lithe.fixture.build-instance-options",
   "displayName": "Instance Options Build Fixture",
   "version": "0.1.0",
-  "pluginAPIVersion": 3,
+  "pluginAPIVersion": 0,
   "requires": {
-    "buildSystems": 3
+    "buildSystems": 0
   },
   "vendor": {
     "id": "org.example",

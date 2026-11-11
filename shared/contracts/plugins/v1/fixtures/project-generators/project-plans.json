@@ -58,11 +58,14 @@
         "edited": [
           "groupId"
         ],
-        "runtimes": {
-          "jdk": {
-            "home": "/opt/jdk-21",
-            "version": "21.0.4"
-          }
+        "tools": {
+          "jdk": [
+            {
+              "home": "/opt/jdk-21",
+              "executable": "/opt/jdk-21/bin/java",
+              "version": "21.0.4"
+            }
+          ]
         }
       },
       "expected": {
@@ -80,7 +83,15 @@
             {
               "id": "jdk",
               "visible": true,
-              "value": "/opt/jdk-21"
+              "value": "/opt/jdk-21",
+              "installations": [
+                {
+                  "home": "/opt/jdk-21",
+                  "executable": "/opt/jdk-21/bin/java",
+                  "version": "21.0.4",
+                  "meetsMinimum": true
+                }
+              ]
             },
             {
               "id": "sample",
@@ -108,11 +119,14 @@
       "generatorID": "archetype",
       "form": {
         "projectName": "My-App",
-        "runtimes": {
-          "jdk": {
-            "home": "/opt/jdk-21",
-            "version": "21.0.4"
-          }
+        "tools": {
+          "jdk": [
+            {
+              "home": "/opt/jdk-21",
+              "executable": "/opt/jdk-21/bin/java",
+              "version": "21.0.4"
+            }
+          ]
         }
       },
       "expected": {
@@ -125,7 +139,15 @@
             {
               "id": "jdk",
               "visible": true,
-              "value": "/opt/jdk-21"
+              "value": "/opt/jdk-21",
+              "installations": [
+                {
+                  "home": "/opt/jdk-21",
+                  "executable": "/opt/jdk-21/bin/java",
+                  "version": "21.0.4",
+                  "meetsMinimum": true
+                }
+              ]
             },
             {
               "id": "artifactId",
@@ -152,11 +174,14 @@
         "values": {
           "buildSystem": "maven"
         },
-        "runtimes": {
-          "jdk": {
-            "home": "/opt/jdk-21",
-            "version": "21.0.4"
-          }
+        "tools": {
+          "jdk": [
+            {
+              "home": "/opt/jdk-21",
+              "executable": "/opt/jdk-21/bin/java",
+              "version": "21.0.4"
+            }
+          ]
         }
       },
       "expected": {
@@ -193,37 +218,32 @@
           "openFiles": [
             "src/com/example/Main.java"
           ],
-          "runtimes": [
-            {
-              "field": "jdk",
-              "runtime": "java",
-              "home": "/opt/jdk-21",
-              "version": "21.0.4"
-            }
-          ],
           "toolPins": [],
           "usesNetwork": false
         }
       }
     },
     {
-      "name": "plan rejects an old runtime",
+      "name": "plan rejects an old tool",
       "operation": "generationPlan",
       "generatorID": "app",
       "form": {
         "projectName": "demo",
-        "runtimes": {
-          "jdk": {
-            "home": "/opt/jdk-11",
-            "version": "11.0.2"
-          }
+        "tools": {
+          "jdk": [
+            {
+              "home": "/opt/jdk-11",
+              "executable": "/opt/jdk-11/bin/java",
+              "version": "11.0.2"
+            }
+          ]
         }
       },
       "expected": {
         "status": "rejected",
         "error": {
           "code": "plugin.project.invalidInput",
-          "message": "The value of jdk is not accepted (runtimeTooOld).",
+          "message": "The value of jdk is not accepted (toolTooOld).",
           "field": "values.jdk"
         }
       }
@@ -240,11 +260,14 @@
         "edited": [
           "version"
         ],
-        "runtimes": {
-          "jdk": {
-            "home": "/opt/jdk-21",
-            "version": "21.0.4"
-          }
+        "tools": {
+          "jdk": [
+            {
+              "home": "/opt/jdk-21",
+              "executable": "/opt/jdk-21/bin/java",
+              "version": "21.0.4"
+            }
+          ]
         }
       },
       "expected": {
@@ -270,14 +293,6 @@
             }
           ],
           "openFiles": [],
-          "runtimes": [
-            {
-              "field": "jdk",
-              "runtime": "java",
-              "home": "/opt/jdk-21",
-              "version": "21.0.4"
-            }
-          ],
           "toolPins": [],
           "usesNetwork": true
         }
@@ -309,7 +324,6 @@
             }
           ],
           "openFiles": [],
-          "runtimes": [],
           "toolPins": [],
           "usesNetwork": true
         }
@@ -500,7 +514,6 @@
             }
           ],
           "openFiles": [],
-          "runtimes": [],
           "toolPins": [
             {
               "field": "python",
@@ -548,7 +561,6 @@
           "projectName": "demo",
           "steps": [],
           "openFiles": [],
-          "runtimes": [],
           "toolPins": [],
           "usesNetwork": false
         }
@@ -583,7 +595,6 @@
             }
           ],
           "openFiles": [],
-          "runtimes": [],
           "toolPins": [
             {
               "field": "node",
@@ -678,7 +689,7 @@
       },
       "expected": {
         "status": "ok",
-        "plan": {"projectName": "demo", "steps": [], "openFiles": [], "runtimes": [], "toolPins": [], "usesNetwork": false}
+        "plan": {"projectName": "demo", "steps": [], "openFiles": [], "toolPins": [], "usesNetwork": false}
       }
     },
     {

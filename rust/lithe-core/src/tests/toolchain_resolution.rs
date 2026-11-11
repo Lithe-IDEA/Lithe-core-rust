@@ -691,8 +691,7 @@ fn self_provided(input: &mut Value) {
         .as_object_mut()
         .unwrap()
         .remove("discovery");
-    manifest["requires"] = json!({"toolDefinitions":1,"executableResolution":2,
-        "toolchainProviders":1,"backend":2,"serverProcess":1});
+    manifest["requires"] = json!({"toolDefinitions":0,"toolchainProviders":0,"backend":0});
     manifest["permissions"] = json!(["backend.launch", "toolchains.provide"]);
     manifest["toolchainProviders"] =
         json!([{"id":"installs","displayName":"Installed releases","tools":["java"]}]);

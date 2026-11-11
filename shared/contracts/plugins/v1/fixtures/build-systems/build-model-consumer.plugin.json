@@ -1,16 +1,16 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 0,
   "id": "dev.lithe.fixture.model-consumer",
   "displayName": "Model Consumer Fixture",
   "version": "0.1.0",
-  "pluginAPIVersion": 3,
+  "pluginAPIVersion": 0,
   "requires": {
-    "buildProviders": 6,
-    "buildSystems": 1,
-    "serverProcess": 1,
-    "settings": 1,
-    "buildModelInputs": 1
+    "buildProviders": 0,
+    "buildSystems": 0,
+    "settings": 0,
+    "buildModelInputs": 0
   },
+  "requiresTools": ["java"],
   "vendor": {
     "id": "org.example",
     "displayName": "Example",

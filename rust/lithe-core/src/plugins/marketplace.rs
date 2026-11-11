@@ -1,4 +1,4 @@
-//! Plugin marketplace contract v1: index validation, platform and plugin API
+//! Plugin marketplace contract: index validation, platform and plugin API
 //! filtering, source URL resolution, and install reviews.
 //!
 //! A marketplace source is a JSON index listing plugins and their release
@@ -8,7 +8,7 @@
 //! start, so macOS and Windows present the same catalog and the same trust
 //! prompts. The contract lives in `shared/contracts/plugins/v1/`.
 
-use super::capabilities::{self, HostCapabilities, Requires, CAPABILITIES_API_VERSION};
+use super::capabilities::{self, HostCapabilities, Requires};
 use super::declarative::{
     is_official_namespace, is_plugin_id, is_semantic_version, validate_manifest_value,
     PluginRejection, Validation, SUPPORTED_PLUGIN_API_VERSIONS,
@@ -20,7 +20,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use url::Url;
 
 /// Marketplace index schema version understood by this Core build.
-pub const MARKETPLACE_INDEX_SCHEMA_VERSION: u64 = 1;
+pub const MARKETPLACE_INDEX_SCHEMA_VERSION: u64 = 0;
 /// Index file a GitHub repository URL resolves to.
 pub const REPOSITORY_INDEX_FILE_NAME: &str = "lithe-plugin-index.json";
 /// Platforms with a Lithe host today. Other well-formed identifiers are
@@ -71,8 +71,9 @@ struct IndexVersion {
     version: String,
     #[serde(rename = "pluginAPIVersion")]
     plugin_api_version: u64,
-    /// Capability versions of a level 3 package, copied from its manifest
-    /// so hosts can tell before downloading whether they can run it.
+    /// Capability versions of the package, copied from its manifest so hosts
+    /// can tell before downloading whether they can run it. Kept optional
+    /// while decoding so a missing value is a precise index error.
     #[serde(default)]
     requires: Option<Value>,
     /// Calendar date `YYYY-MM-DD`, used for sorting and display only.
@@ -396,16 +397,13 @@ fn validate_entry(
         "latestReleaseDate": latest.version.release_date,
         "availability": availability,
         "versions": versions.iter().map(|listed| {
-            let mut value = json!({
+            json!({
                 "version": listed.version.version,
                 "pluginAPIVersion": listed.version.plugin_api_version,
+                "requires": listed.requires,
                 "releaseDate": listed.version.release_date,
                 "platforms": listed.platforms,
-            });
-            if let Some(requires) = &listed.requires {
-                value["requires"] = json!(requires);
-            }
-            value
+            })
         }).collect::<Vec<_>>(),
     }))
 }
@@ -414,28 +412,21 @@ fn validate_entry(
 struct ListedVersion<'a> {
     number: (u32, u32, u32),
     version: &'a IndexVersion,
-    requires: Option<Requires>,
+    requires: Requires,
     platforms: BTreeSet<String>,
 }
 
-/// Reads a version's `requires`, which level 3 lists and earlier levels do
-/// not. Unknown capability IDs are kept: they make the version unavailable
-/// on this host instead of rejecting the whole entry.
-fn index_requires(version: &IndexVersion, field: &str) -> Validation<Option<Requires>> {
+/// Reads a version's mandatory `requires`. Unknown capability IDs are kept:
+/// they make the version unavailable on this host instead of rejecting the
+/// whole entry.
+fn index_requires(version: &IndexVersion, field: &str) -> Validation<Requires> {
     let field = format!("{field}.requires");
-    match (&version.requires, version.plugin_api_version) {
-        (None, level) if level == u64::from(CAPABILITIES_API_VERSION) => Err(index_invalid(
+    match &version.requires {
+        None => Err(index_invalid(
             field,
-            "A pluginAPIVersion 3 version lists the capabilities it uses in requires.",
+            "A version lists the capabilities it uses in requires.",
         )),
-        (Some(_), level) if level < u64::from(CAPABILITIES_API_VERSION) => Err(index_invalid(
-            field,
-            "Capability versions require pluginAPIVersion 3.",
-        )),
-        (None, _) => Ok(None),
-        (Some(requires), _) => {
-            capabilities::parse_requires(requires, &field, "plugin.index.invalid").map(Some)
-        }
+        Some(requires) => capabilities::parse_requires(requires, &field, "plugin.index.invalid"),
     }
 }
 
@@ -460,16 +451,9 @@ fn availability(
         {
             continue;
         }
-        let hosted = match &listed.requires {
-            // A level 3 version runs where the host implements every
-            // capability version it requires, whatever else it lacks.
-            Some(requires) => capabilities::hosts(requires, host_capabilities),
-            // Core validates level 2 UI declarations on every platform, but
-            // only macOS has the level 2 UI host. Do not advertise an adapter
-            // Windows cannot run merely because validation succeeded.
-            None => version.plugin_api_version < 2 || platform.starts_with("darwin-"),
-        };
-        if !hosted {
+        // A version runs where the host implements every capability version
+        // it requires, whatever else it lacks.
+        if !capabilities::hosts(&listed.requires, host_capabilities) {
             continue;
         }
         let download = version
@@ -770,8 +754,8 @@ struct ValidateIndexPayload {
     index: Value,
     source_kind: SourceKind,
     platform: String,
-    /// Capability versions the host runs; without them no level 3 version
-    /// is offered.
+    /// Capability versions the host runs; without them no version is
+    /// offered.
     #[serde(default)]
     host_capabilities: Option<HostCapabilities>,
 }
@@ -794,8 +778,8 @@ struct InstallReviewPayload {
     /// first installation.
     #[serde(default)]
     approved_programs: Option<Vec<Value>>,
-    /// Capability versions the host runs. When sent, a level 3 package that
-    /// requires anything else is refused.
+    /// Capability versions the host runs. When sent, a package that requires
+    /// anything else is refused.
     #[serde(default)]
     host_capabilities: Option<HostCapabilities>,
 }

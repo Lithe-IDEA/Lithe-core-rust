@@ -128,17 +128,13 @@ pub(crate) fn invocation_plan(
         })
         .unwrap_or(request.platform);
     let invocation = &build_system.invocation;
-    let mut executables = candidates(
+    let executables = candidates(
         &invocation.executables,
         &root,
         platform,
         manifest,
         &request.settings,
     )?;
-    // Published v2 preview manifests adapt into the same candidate path.
-    if let Some(id) = &invocation.executable_setting {
-        executables.insert(0, json!({ "kind": "setting", "settingID": id, "path": manifest.executable_setting_value(id, &request.settings)? }));
-    }
     if executables.is_empty() {
         return Err(PluginRejection::new(
             "plugin.build.unavailable",

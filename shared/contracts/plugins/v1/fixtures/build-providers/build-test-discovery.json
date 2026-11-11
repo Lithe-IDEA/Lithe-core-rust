@@ -1,7 +1,7 @@
 {
   "result": {
     "format": "litheTestDiscovery",
-    "version": 1,
+    "version": 0,
     "tests": [
       {
         "suite": "ExampleSuite",

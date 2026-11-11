@@ -1,12 +1,11 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 0,
   "id": "dev.lithe.fixture.java-support",
   "displayName": "Tool definition fixture",
   "version": "1.0.0",
-  "pluginAPIVersion": 3,
+  "pluginAPIVersion": 0,
   "requires": {
-    "toolDefinitions": 1,
-    "executableResolution": 2
+    "toolDefinitions": 0
   },
   "vendor": {
     "id": "org.example",

@@ -10,6 +10,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
+/// Version of the `litheBuildConfiguration` snapshot and the
+/// `litheConfigurationEdit` receipt.
+const CONFIGURATION_VERSION: u32 = 0;
+
 const MAX_SOURCES: usize = 8;
 const MAX_FIELDS: usize = 64;
 const MAX_TEXT: usize = 8192;
@@ -151,7 +155,7 @@ fn invalid(message: &str) -> crate::plugins::declarative::PluginRejection {
 /// Shared by snapshot decoding and format-independent edit planning.
 pub(crate) fn validate(snapshot: &ConfigurationSnapshot) -> Validation<()> {
     if snapshot.format != "litheBuildConfiguration"
-        || snapshot.version != 1
+        || snapshot.version != CONFIGURATION_VERSION
         || snapshot.sources.len() > MAX_SOURCES
     {
         return Err(invalid("Unsupported or oversized native configuration."));
@@ -407,7 +411,7 @@ pub(crate) fn decode_edit(
     let receipt: EditReceipt = serde_json::from_value(request.result.clone())
         .map_err(|_| invalid("Invalid configuration edit receipt."))?;
     if receipt.format != "litheConfigurationEdit"
-        || receipt.version != 1
+        || receipt.version != CONFIGURATION_VERSION
         || receipt.source_id != source.id
         || !revision(&receipt.revision)
         || receipt.changed && (receipt.revision == "missing" || changed.is_empty())

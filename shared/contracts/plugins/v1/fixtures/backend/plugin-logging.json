@@ -1,7 +1,7 @@
 {
-  "version": 1,
-  "offer": { "litheLogging": { "versions": [1] } },
-  "answer": { "litheLogging": { "version": 1 } },
+  "version": 0,
+  "offer": { "litheLogging": { "versions": [0] } },
+  "answer": { "litheLogging": { "version": 0 } },
   "notifications": [
     { "kind": "operationFinished", "operation": "database.call", "durationMs": 18, "operationId": "7" },
     { "kind": "operationFailed", "operation": "database.call", "durationMs": 20, "code": "database.unavailable", "operationId": "8" },

@@ -184,8 +184,8 @@ fn valid_info(value: Option<&str>) -> bool {
 
 impl NativeUI {
     pub(super) fn validate(&self) -> Result<(), &'static str> {
-        if self.schema_version != 1 || !identifier(&self.id) || self.actions.len() > 64 {
-            return Err("Native UI requires schemaVersion 1, a stable ID and at most 64 actions.");
+        if self.schema_version != 0 || !identifier(&self.id) || self.actions.len() > 64 {
+            return Err("Native UI requires schemaVersion 0, a stable ID and at most 64 actions.");
         }
         if self
             .source

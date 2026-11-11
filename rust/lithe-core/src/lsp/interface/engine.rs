@@ -422,8 +422,8 @@ pub struct PluginHostResponse {
     pub result: Option<Value>,
     /// The host could not perform the service. Its message reaches the
     /// backend, bounded. Its code passes only when it is one a host may
-    /// report (`plugin_function::host_failure`); otherwise, and before
-    /// protocol version 3, it is `plugin.host.failed`.
+    /// report (`plugin_function::host_failure`); otherwise it is
+    /// `plugin.host.failed`.
     #[serde(default)]
     pub error: Option<PluginHostFailure>,
 }
@@ -433,14 +433,14 @@ pub struct PluginHostResponse {
 /// Why the host could not perform a forwarded host-service request.
 pub struct PluginHostFailure {
     pub message: String,
-    /// Stable `plugin.host.*` code of the failure, from protocol version 3.
+    /// Stable `plugin.host.*` code of the failure.
     #[serde(default)]
     pub code: Option<String>,
     /// Structured facts a backend may act on, such as the current version
-    /// of a `plugin.host.versionConflict`. From protocol version 3 it
-    /// reaches the backend as `error.data.details` when it is an object
-    /// within `plugin_function::MAX_HOST_DETAILS_BYTES`; otherwise it is
-    /// dropped and the code and message still arrive.
+    /// of a `plugin.host.versionConflict`. It reaches the backend as
+    /// `error.data.details` when it is an object within
+    /// `plugin_function::MAX_HOST_DETAILS_BYTES`; otherwise it is dropped and
+    /// the code and message still arrive.
     #[serde(default)]
     pub details: Option<Value>,
 }
@@ -459,7 +459,7 @@ pub struct PluginHostNotification {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// Whether a host notification was written to the backend. `false` means
-/// the backend negotiated a protocol version without the notification.
+/// the backend negotiated no plugin-function protocol version.
 pub struct PluginHostNotificationResponse {
     pub delivered: bool,
 }
@@ -482,8 +482,7 @@ pub struct PluginFunctionRequest {
     #[serde(default)]
     pub timeout_milliseconds: Option<u64>,
     /// Workspace context `{ contextID, generation }` the call belongs to.
-    /// It reaches a backend that negotiated protocol version 3 or later as
-    /// `params.context`, and is dropped for an older backend.
+    /// It reaches the backend as `params.context`.
     #[serde(default)]
     pub context: Option<Value>,
 }
@@ -1933,165 +1932,31 @@ impl RuntimeSession {
                 )
                 .with_details(super::build_provider::BUILD_PROVIDER_FEATURE));
             }
-            if super::build_provider::is_execution_method(&request.method)
-                && !state
-                    .client
-                    .server_capabilities
-                    .iter()
-                    .any(|feature| feature == super::build_provider::EXECUTION_FEATURE)
+            if request.params.get("launchOptions").is_some()
+                && request.method != super::build_provider::PREPARE_RUN_METHOD
             {
                 return Err(CoreError::new(
-                    ErrorCode::NotSupported,
-                    "The provider did not negotiate build execution.",
-                )
-                .with_details("plugin.build.unavailable"));
+                    ErrorCode::InvalidRequest,
+                    "Launch options apply only to run preparation.",
+                ));
             }
-            if matches!(
-                request.method.as_str(),
-                super::build_provider::TEST_METHOD | super::build_provider::DISCOVER_TESTS_METHOD
-            ) && !state
-                .client
-                .server_capabilities
-                .iter()
-                .any(|feature| feature == super::build_provider::TEST_EXECUTION_FEATURE)
+            if (request.params.get("selectorKind").is_some()
+                || request.params.get("selectors").is_some())
+                && request.method != super::build_provider::TEST_METHOD
             {
                 return Err(CoreError::new(
-                    ErrorCode::NotSupported,
-                    "The provider did not negotiate test execution.",
-                )
-                .with_details("plugin.build.unavailable"));
+                    ErrorCode::InvalidRequest,
+                    "Opaque selectors require a provider test request.",
+                ));
             }
-            if request.params.pointer("/launchOptions/debug").is_some()
-                && !state
-                    .client
-                    .server_capabilities
-                    .iter()
-                    .any(|feature| feature == super::build_provider::RUNTIME_DEBUG_FEATURE)
+            if request.params.get("testResults").is_some()
+                && (request.method != super::build_provider::TEST_METHOD
+                    || request.params["testResults"] != json!(true))
             {
                 return Err(CoreError::new(
-                    ErrorCode::NotSupported,
-                    "The provider did not negotiate runtime debug options.",
-                )
-                .with_details("plugin.build.unavailable"));
-            }
-            if request.params.get("launchOptions").is_some() {
-                if request.method != super::build_provider::PREPARE_RUN_METHOD {
-                    return Err(CoreError::new(
-                        ErrorCode::InvalidRequest,
-                        "Launch options apply only to run preparation.",
-                    ));
-                }
-                if !state
-                    .client
-                    .server_capabilities
-                    .iter()
-                    .any(|feature| feature == super::build_provider::RUN_OPTIONS_FEATURE)
-                {
-                    return Err(CoreError::new(
-                        ErrorCode::NotSupported,
-                        "The provider did not negotiate typed run options.",
-                    )
-                    .with_details("plugin.build.unavailable"));
-                }
-            }
-            if request.params.get("selectorKind").is_some()
-                || request.params.get("selectors").is_some()
-            {
-                if request.method != super::build_provider::TEST_METHOD {
-                    return Err(CoreError::new(
-                        ErrorCode::InvalidRequest,
-                        "Opaque selectors require a provider test request.",
-                    ));
-                }
-                if !state
-                    .client
-                    .server_capabilities
-                    .iter()
-                    .any(|feature| feature == super::build_provider::TEST_SELECTORS_FEATURE)
-                {
-                    return Err(CoreError::new(
-                        ErrorCode::NotSupported,
-                        "The provider did not negotiate opaque test selectors.",
-                    )
-                    .with_details("plugin.build.unavailable"));
-                }
-            }
-            if request.params.get("testResults").is_some() {
-                if request.method != super::build_provider::TEST_METHOD
-                    || request.params["testResults"] != json!(true)
-                {
-                    return Err(CoreError::new(
-                        ErrorCode::InvalidRequest,
-                        "Inline test reports require a provider test request.",
-                    ));
-                }
-                if !state
-                    .client
-                    .server_capabilities
-                    .iter()
-                    .any(|feature| feature == super::build_provider::TEST_REPORTS_FEATURE)
-                {
-                    return Err(CoreError::new(
-                        ErrorCode::NotSupported,
-                        "The provider did not negotiate inline test reports.",
-                    )
-                    .with_details("plugin.build.unavailable"));
-                }
-            }
-            if matches!(
-                request.method.as_str(),
-                super::build_provider::CONFIGURATION_METHOD
-                    | super::build_provider::EDIT_CONFIGURATION_METHOD
-            ) && !state
-                .client
-                .server_capabilities
-                .iter()
-                .any(|feature| feature == super::build_provider::CONFIGURATION_FEATURE)
-            {
-                return Err(CoreError::new(
-                    ErrorCode::NotSupported,
-                    "The provider did not negotiate native configuration.",
-                )
-                .with_details("plugin.build.unavailable"));
-            }
-            if request.method == super::build_provider::PREPARE_DEBUG_METHOD
-                && !state
-                    .client
-                    .server_capabilities
-                    .iter()
-                    .any(|feature| feature == super::build_provider::DEBUG_PREPARATION_FEATURE)
-            {
-                return Err(CoreError::new(
-                    ErrorCode::NotSupported,
-                    "The provider did not negotiate debug preparation.",
-                )
-                .with_details("plugin.build.unavailable"));
-            }
-            if request.method == super::build_provider::PREPARE_RUN_METHOD
-                && !state
-                    .client
-                    .server_capabilities
-                    .iter()
-                    .any(|feature| feature == super::build_provider::RUN_PREPARATION_FEATURE)
-            {
-                return Err(CoreError::new(
-                    ErrorCode::NotSupported,
-                    "The provider did not negotiate run preparation.",
-                )
-                .with_details("plugin.build.unavailable"));
-            }
-            if request.params.get("modelInputs").is_some()
-                && !state
-                    .client
-                    .server_capabilities
-                    .iter()
-                    .any(|feature| feature == super::build_provider::MODEL_INPUTS_FEATURE)
-            {
-                return Err(CoreError::new(
-                    ErrorCode::NotSupported,
-                    "The provider did not negotiate model inputs.",
-                )
-                .with_details("plugin.build.unavailable"));
+                    ErrorCode::InvalidRequest,
+                    "Inline test reports require a provider test request.",
+                ));
             }
             let mut params = request.params;
             if super::build_provider::is_progress_method(&request.method) {
@@ -2414,9 +2279,8 @@ impl RuntimeSession {
                 &request.params,
             )?;
             let mut params = params;
-            let version = state.client.plugin_function_version.unwrap_or(0);
-            super::plugin_function::attach_context(&mut params, version, request.context.as_ref())?;
-            super::plugin_function::attach_caller(&mut params, version, caller);
+            super::plugin_function::attach_context(&mut params, request.context.as_ref())?;
+            super::plugin_function::attach_caller(&mut params, caller);
             let timeout = request
                 .timeout_milliseconds
                 .map(|milliseconds| {
@@ -2479,19 +2343,13 @@ impl RuntimeSession {
                 })?;
             match (response.result, response.error) {
                 (_, Some(failure)) => {
-                    let version = state.client.plugin_function_version.unwrap_or(0);
-                    let (code, rpc_code) = if version >= super::plugin_function::CONTEXT_VERSION {
-                        super::plugin_function::host_failure(failure.code.as_deref())
-                    } else {
-                        (super::plugin_function::codes::HOST_FAILED, -32603)
-                    };
+                    let (code, rpc_code) =
+                        super::plugin_function::host_failure(failure.code.as_deref());
                     let mut data = json!({ "code": code });
-                    if version >= super::plugin_function::CONTEXT_VERSION {
-                        if let Some(details) =
-                            super::plugin_function::bounded_host_details(failure.details.as_ref())
-                        {
-                            data["details"] = details;
-                        }
+                    if let Some(details) =
+                        super::plugin_function::bounded_host_details(failure.details.as_ref())
+                    {
+                        data["details"] = details;
                     }
                     json_rpc_error_with_data(
                         &backend_id,
@@ -2502,10 +2360,7 @@ impl RuntimeSession {
                 }
                 (result, None) => {
                     let result = result.unwrap_or(Value::Null);
-                    if state.client.plugin_function_version.unwrap_or(0)
-                        >= super::plugin_function::CONTEXT_VERSION
-                        && result.to_string().len() > super::plugin_function::MAX_RESULT_BYTES
-                    {
+                    if result.to_string().len() > super::plugin_function::MAX_RESULT_BYTES {
                         json_rpc_error_with_code(
                             &backend_id,
                             -32014,
@@ -2522,8 +2377,8 @@ impl RuntimeSession {
     }
 
     /// Writes one host notification to a ready plugin-owned backend.
-    /// Returns `false`, writing nothing, when the backend negotiated a
-    /// protocol version without the notification.
+    /// Returns `false`, writing nothing, when the backend negotiated no
+    /// plugin-function protocol version.
     fn host_notify(&self, notification: PluginHostNotification) -> Result<bool, CoreError> {
         let outbound_order = self.lock_outbound_order()?;
         let message = {
@@ -2543,7 +2398,7 @@ impl RuntimeSession {
             let delivered = super::plugin_function::host_notification(
                 &notification.method,
                 &notification.params,
-                state.client.plugin_function_version.unwrap_or(0),
+                state.client.plugin_function_version,
                 &state.client.host_services,
             )?;
             if !delivered {
@@ -3301,27 +3156,23 @@ impl RuntimeSession {
                 {
                     if let Some(pending) = pending_before.as_ref() {
                         if let Some(operation_id) = &pending.operation_id {
-                            let (result, error) = match super::build_provider::execution_outcome(
-                                &value,
-                                state.client.server_capabilities.iter().any(|feature| {
-                                    feature == super::build_provider::TEST_REPORTS_FEATURE
-                                }),
-                            ) {
-                                Ok(result) => (Some(result), None),
-                                Err((code, message)) => (
-                                    None,
-                                    Some(runtime_error(
-                                        self,
-                                        code,
-                                        "request",
-                                        Some(&pending.method),
+                            let (result, error) =
+                                match super::build_provider::execution_outcome(&value) {
+                                    Ok(result) => (Some(result), None),
+                                    Err((code, message)) => (
                                         None,
-                                        &message,
-                                        None,
-                                        None,
-                                    )),
-                                ),
-                            };
+                                        Some(runtime_error(
+                                            self,
+                                            code,
+                                            "request",
+                                            Some(&pending.method),
+                                            None,
+                                            &message,
+                                            None,
+                                            None,
+                                        )),
+                                    ),
+                                };
                             push_request_event(
                                 self,
                                 &mut state,
@@ -5030,7 +4881,7 @@ fn cancel_host_request_locked(
     params: Option<&Value>,
     outbound: &mut Vec<String>,
 ) -> Result<bool, CoreError> {
-    if state.client.plugin_function_version.unwrap_or(0) < super::plugin_function::CONTEXT_VERSION {
+    if state.client.plugin_function_version.is_none() {
         return Ok(false);
     }
     let Some(backend_id) = params.and_then(|params| params.get("id")) else {
@@ -5102,12 +4953,7 @@ fn forward_host_request_locked(
 ) -> Result<Vec<String>, CoreError> {
     let backend_id = request.get("id").cloned().unwrap_or(Value::Null);
     if state.host_requests.len() >= super::plugin_function::MAX_PENDING_HOST_REQUESTS {
-        let version = state.client.plugin_function_version.unwrap_or(0);
-        let code = if version >= super::plugin_function::CONTEXT_VERSION {
-            super::plugin_function::codes::HOST_LIMIT_EXCEEDED
-        } else {
-            super::plugin_function::codes::HOST_FAILED
-        };
+        let code = super::plugin_function::codes::HOST_LIMIT_EXCEEDED;
         return Ok(vec![json_rpc_error_with_code(
             &backend_id,
             super::plugin_function::host_rpc_code(code),
@@ -8649,49 +8495,9 @@ mod tests {
         assert_eq!(error.details.as_deref(), Some("sessionStopped"));
     }
 
-    /// Execution must not reach a model-only provider.
     #[test]
-    fn provider_execution_requires_version_two() {
-        let harness = negotiated_build_provider();
-        let error = build_request(&harness, "lithe/build/execute", json!({}), None).unwrap_err();
-        assert!(matches!(error.code, ErrorCode::NotSupported));
-        assert!(harness
-            .server
-            .messages()
-            .iter()
-            .all(|message| message["method"] != "lithe/build/execute"));
-    }
-
-    #[test]
-    fn provider_test_execution_requires_version_three() {
-        for version in [1, 2] {
-            for method in ["lithe/build/test", "lithe/build/discoverTests"] {
-                let harness = plugin_backend(json!({"litheBuild":{"version":version}}));
-                let error = build_request(&harness, method, json!({}), None).unwrap_err();
-                assert!(matches!(error.code, ErrorCode::NotSupported));
-                assert!(harness
-                    .server
-                    .messages()
-                    .iter()
-                    .all(|message| message["method"] != method));
-            }
-        }
-    }
-
-    #[test]
-    fn provider_debug_preparation_requires_version_five_and_retains_progress() {
-        for version in [1, 2, 3, 4] {
-            let harness = plugin_backend(json!({"litheBuild":{"version":version}}));
-            let error =
-                build_request(&harness, "lithe/build/prepareDebug", json!({}), None).unwrap_err();
-            assert_eq!(error.details.as_deref(), Some("plugin.build.unavailable"));
-            assert!(harness
-                .server
-                .messages()
-                .iter()
-                .all(|message| message["method"] != "lithe/build/prepareDebug"));
-        }
-        let mut harness = plugin_backend(json!({"litheBuild":{"version":5}}));
+    fn provider_debug_preparation_retains_progress() {
+        let mut harness = plugin_backend(json!({"litheBuild":{"version":0}}));
         let operation =
             build_request(&harness, "lithe/build/prepareDebug", json!({}), None).unwrap();
         let request = harness
@@ -8721,59 +8527,37 @@ mod tests {
     }
 
     #[test]
-    fn inline_test_reports_cannot_reach_a_provider_without_version_eight() {
-        for version in [7, 8] {
-            let mut harness = plugin_backend(json!({"litheBuild":{"version":version}}));
-            let result = build_request(
-                &harness,
-                "lithe/build/test",
-                json!({"testResults":true}),
-                None,
-            );
-            if version == 7 {
-                assert!(matches!(result.unwrap_err().code, ErrorCode::NotSupported));
-                assert!(harness
-                    .server
-                    .messages()
-                    .iter()
-                    .all(|message| message["method"] != "lithe/build/test"));
-            } else {
-                let operation = result.unwrap();
-                let id = harness.server.await_request("lithe/build/test").unwrap();
-                let value = json!({"exitCode":1,"output":"failure","testResults":{"format":"litheTestResults","version":1,"tests":[]}});
-                harness
-                    .server
-                    .send(json!({"jsonrpc":"2.0","id":id,"result":value}));
-                let event = harness.await_event(|event| {
-                    event.kind == "requestCompleted"
-                        && event.operation_id.as_deref() == Some(operation.as_str())
-                });
-                assert_eq!(event.result.as_ref().unwrap()["value"], value);
-            }
-        }
+    fn inline_test_reports_reach_the_provider() {
+        let mut harness = plugin_backend(json!({"litheBuild":{"version":0}}));
+        let operation = build_request(
+            &harness,
+            "lithe/build/test",
+            json!({"testResults":true}),
+            None,
+        )
+        .unwrap();
+        let id = harness.server.await_request("lithe/build/test").unwrap();
+        let value = json!({"exitCode":1,"output":"failure","testResults":{"format":"litheTestResults","version":0,"tests":[]}});
+        harness
+            .server
+            .send(json!({"jsonrpc":"2.0","id":id,"result":value}));
+        let event = harness.await_event(|event| {
+            event.kind == "requestCompleted"
+                && event.operation_id.as_deref() == Some(operation.as_str())
+        });
+        assert_eq!(event.result.as_ref().unwrap()["value"], value);
     }
 
     #[test]
-    fn provider_native_configuration_requires_version_seven_and_returns_only_the_projection() {
-        for version in 1..7 {
-            let harness = plugin_backend(json!({"litheBuild":{"version":version}}));
-            let error =
-                build_request(&harness, "lithe/build/configuration", json!({}), None).unwrap_err();
-            assert!(matches!(error.code, ErrorCode::NotSupported));
-            assert!(harness
-                .server
-                .messages()
-                .iter()
-                .all(|message| message["method"] != "lithe/build/configuration"));
-        }
-        let mut harness = plugin_backend(json!({"litheBuild":{"version":7}}));
+    fn provider_native_configuration_returns_only_the_projection() {
+        let mut harness = plugin_backend(json!({"litheBuild":{"version":0}}));
         let operation =
             build_request(&harness, "lithe/build/configuration", json!({}), None).unwrap();
         let id = harness
             .server
             .await_request("lithe/build/configuration")
             .unwrap();
-        let result = json!({"format":"litheBuildConfiguration","version":1,"sources":[]});
+        let result = json!({"format":"litheBuildConfiguration","version":0,"sources":[]});
         harness
             .server
             .send(json!({"jsonrpc":"2.0","id":id,"result":result}));
@@ -8784,24 +8568,15 @@ mod tests {
         assert_eq!(event.result.as_ref().unwrap()["value"], result);
     }
 
-    /// User options must never be silently downgraded before a provider request.
+    /// Launch options reach the provider unchanged, and only run preparation accepts them.
     #[test]
-    fn provider_run_options_require_version_ten_before_wire_send() {
+    fn provider_run_options_reach_the_wire_for_run_preparation_only() {
         let fixture: Value = serde_json::from_str(include_str!(
             "../../../../../shared/contracts/plugins/v1/fixtures/build-providers/build-run-options.json"
         ))
         .unwrap();
         let params = json!({"launchOptions":fixture["launchOptions"]});
-        let old = plugin_backend(json!({"litheBuild":{"version":9}}));
-        let error =
-            build_request(&old, "lithe/build/prepareRun", params.clone(), None).unwrap_err();
-        assert!(matches!(error.code, ErrorCode::NotSupported));
-        assert!(old
-            .server
-            .messages()
-            .iter()
-            .all(|message| message["method"] != "lithe/build/prepareRun"));
-        let mut current = plugin_backend(json!({"litheBuild":{"version":10}}));
+        let mut current = plugin_backend(json!({"litheBuild":{"version":0}}));
         let error = build_request(&current, "lithe/build/model", params.clone(), None).unwrap_err();
         assert!(matches!(error.code, ErrorCode::InvalidRequest));
         let operation = build_request(&current, "lithe/build/prepareRun", params, None).unwrap();
@@ -8826,24 +8601,15 @@ mod tests {
         assert_eq!(event.result.as_ref().unwrap()["value"], fixture["result"]);
     }
 
-    /// Port ownership cannot be silently discarded by a version-10 process.
+    /// Port ownership reaches the provider and comes back in the raw plan.
     #[test]
-    fn provider_runtime_debug_requires_version_eleven_before_wire_send() {
+    fn provider_connection_debug_options_reach_the_wire() {
         let fixture: Value = serde_json::from_str(include_str!(
             "../../../../../shared/contracts/plugins/v1/fixtures/build-providers/build-connection-debug-options.json"
         ))
         .unwrap();
         let params = json!({"launchOptions":fixture["launchOptions"]});
-        let old = plugin_backend(json!({"litheBuild":{"version":10}}));
-        let error =
-            build_request(&old, "lithe/build/prepareRun", params.clone(), None).unwrap_err();
-        assert!(matches!(error.code, ErrorCode::NotSupported));
-        assert!(old
-            .server
-            .messages()
-            .iter()
-            .all(|message| message["method"] != "lithe/build/prepareRun"));
-        let mut current = plugin_backend(json!({"litheBuild":{"version":11}}));
+        let mut current = plugin_backend(json!({"litheBuild":{"version":0}}));
         let operation = build_request(&current, "lithe/build/prepareRun", params, None).unwrap();
         let id = current
             .server
@@ -8860,19 +8626,8 @@ mod tests {
     }
 
     #[test]
-    fn provider_run_preparation_requires_version_four_and_returns_raw_plan() {
-        for version in [1, 2, 3] {
-            let harness = plugin_backend(json!({"litheBuild":{"version":version}}));
-            let error =
-                build_request(&harness, "lithe/build/prepareRun", json!({}), None).unwrap_err();
-            assert!(matches!(error.code, ErrorCode::NotSupported));
-            assert!(harness
-                .server
-                .messages()
-                .iter()
-                .all(|message| message["method"] != "lithe/build/prepareRun"));
-        }
-        let mut harness = plugin_backend(json!({"litheBuild":{"version":4}}));
+    fn provider_run_preparation_returns_the_raw_plan() {
+        let mut harness = plugin_backend(json!({"litheBuild":{"version":0}}));
         let operation = build_request(&harness, "lithe/build/prepareRun", json!({}), None).unwrap();
         let id = harness
             .server
@@ -8894,7 +8649,7 @@ mod tests {
 
     #[test]
     fn provider_test_discovery_uses_the_existing_request_lifecycle() {
-        let mut harness = plugin_backend(json!({"litheBuild":{"version":3}}));
+        let mut harness = plugin_backend(json!({"litheBuild":{"version":0}}));
         let operation = build_request(
             &harness,
             "lithe/build/discoverTests",
@@ -8906,7 +8661,7 @@ mod tests {
             .server
             .await_request("lithe/build/discoverTests")
             .unwrap();
-        let result = json!({"format":"litheTestDiscovery","version":1,"tests":[]});
+        let result = json!({"format":"litheTestDiscovery","version":0,"tests":[]});
         harness
             .server
             .send(json!({"jsonrpc":"2.0","id":id,"result":result}));
@@ -8922,15 +8677,15 @@ mod tests {
     /// and replies are drained before checking that cancellation stayed final.
     #[test]
     fn provider_execution_progress_cancel_and_late_results_are_isolated() {
-        for (version, method) in [
-            (2, "lithe/build/execute"),
-            (3, "lithe/build/test"),
-            (4, "lithe/build/prepareRun"),
+        for method in [
+            "lithe/build/execute",
+            "lithe/build/test",
+            "lithe/build/prepareRun",
         ] {
             let mut harness = Harness::start(|_| {});
             harness
                 .server
-                .complete_initialize(json!({"experimental":{"litheBuild":{"version":version}}}));
+                .complete_initialize(json!({"experimental":{"litheBuild":{"version":0}}}));
             harness.await_state(LspLifecycleState::Ready);
             let operation =
                 build_request(&harness, method, json!({"operationID":"spoof"}), None).unwrap();
@@ -8993,12 +8748,12 @@ mod tests {
     /// may contribute progress to that new call.
     #[test]
     fn provider_execution_reused_host_ids_reject_old_wire_progress() {
-        for (version, method) in [
-            (2, "lithe/build/execute"),
-            (3, "lithe/build/test"),
-            (4, "lithe/build/prepareRun"),
+        for method in [
+            "lithe/build/execute",
+            "lithe/build/test",
+            "lithe/build/prepareRun",
         ] {
-            let mut harness = plugin_backend(json!({"litheBuild":{"version":version}}));
+            let mut harness = plugin_backend(json!({"litheBuild":{"version":0}}));
             let operation = "reused-build".to_string();
             let send = |harness: &Harness| {
                 harness
@@ -9049,15 +8804,15 @@ mod tests {
 
     #[test]
     fn provider_execution_validates_results_and_expires_without_sleeping() {
-        for (version, method) in [
-            (2, "lithe/build/execute"),
-            (3, "lithe/build/test"),
-            (4, "lithe/build/prepareRun"),
+        for method in [
+            "lithe/build/execute",
+            "lithe/build/test",
+            "lithe/build/prepareRun",
         ] {
             let mut harness = Harness::start(|_| {});
             harness
                 .server
-                .complete_initialize(json!({"experimental":{"litheBuild":{"version":version}}}));
+                .complete_initialize(json!({"experimental":{"litheBuild":{"version":0}}}));
             harness.await_state(LspLifecycleState::Ready);
             for (index, (reply, code)) in [
                 (json!({"exitCode":7,"output":"failed build"}), None),
@@ -9081,7 +8836,11 @@ mod tests {
                     })
                     .clone();
                 // Preparation returns raw launch data; the build decoder validates it.
-                let code = if version == 4 { None } else { code };
+                let code = if method == "lithe/build/prepareRun" {
+                    None
+                } else {
+                    code
+                };
                 assert_eq!(ended.error.as_ref().map(|error| error.code.as_str()), code);
                 if code.is_none() {
                     assert_eq!(ended.result.unwrap()["value"], reply);
@@ -9106,11 +8865,11 @@ mod tests {
         }
     }
 
-    /// A process that answered build-provider protocol version 1.
+    /// A process that answered the build-provider protocol with version 0.
     fn negotiated_build_provider() -> Harness {
         let mut harness = Harness::start(|_| {});
         harness.server.complete_initialize(json!({
-            "experimental": { "litheBuild": { "version": 1 } }
+            "experimental": { "litheBuild": { "version": 0 } }
         }));
         harness.await_state(LspLifecycleState::Ready);
         harness
@@ -9152,7 +8911,7 @@ mod tests {
             .expect("initialize should have been written");
         assert_eq!(
             initialize["params"]["capabilities"]["experimental"]["litheBuild"],
-            json!({ "versions": [11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1] })
+            json!({ "versions": [0] })
         );
 
         let error = build_request(&harness, "lithe/build/model", json!({}), None)
@@ -9165,40 +8924,42 @@ mod tests {
             .all(|message| message["method"] != "lithe/build/model"));
     }
 
-    /// A legacy backend must never silently execute without a declared shared input.
+    /// A reply naming a version the host did not offer negotiates nothing,
+    /// for the build protocol and the plugin-function protocol alike.
     #[test]
-    fn model_inputs_need_version_six_even_for_an_old_model_method() {
-        for version in [5, 6] {
-            let mut harness = Harness::start(|_| {});
-            harness
-                .server
-                .complete_initialize(json!({"experimental":{"litheBuild":{"version":version}}}));
-            harness.await_state(LspLifecycleState::Ready);
-            let params = json!({"modelInputs":{"version":1,"revision":7,"inputs":[]}});
-            let result = build_request(&harness, "lithe/build/model", params.clone(), None);
-            if version == 5 {
-                assert!(matches!(result.unwrap_err().code, ErrorCode::NotSupported));
-                assert!(harness
-                    .server
-                    .messages()
-                    .iter()
-                    .all(|message| message["method"] != "lithe/build/model"));
-            } else {
-                let operation = result.unwrap();
-                let id = harness
-                    .server
-                    .await_request("lithe/build/model")
-                    .expect("version six receives its snapshot");
-                assert_eq!(harness.written_request(&id)["params"], params);
-                harness
-                    .server
-                    .send(json!({"jsonrpc":"2.0","id":id,"result":{"projects":[]}}));
-                harness.await_event(|event| {
-                    event.operation_id.as_deref() == Some(&operation)
-                        && event.kind == "requestCompleted"
-                });
-            }
-        }
+    fn a_reply_naming_an_unoffered_version_negotiates_nothing() {
+        let harness = plugin_backend(json!({
+            "litheBuild": { "version": 1 },
+            "litheFunctions": { "version": 1, "functions": [{ "id": "snapshot.refresh" }] }
+        }));
+        let error = build_request(&harness, "lithe/build/model", json!({}), None)
+            .expect_err("version 1 was not offered");
+        assert!(matches!(error.code, ErrorCode::NotSupported));
+        let error = invoke(&harness, FUNCTION_PLUGIN, "snapshot.refresh", None)
+            .expect_err("version 1 was not offered");
+        assert!(matches!(error.code, ErrorCode::NotSupported));
+        assert!(harness.server.messages().iter().all(|message| {
+            message["method"] != "lithe/build/model" && message["method"] != "lithe/function/invoke"
+        }));
+    }
+
+    /// A model request carries the declared shared-input snapshot to the provider verbatim.
+    #[test]
+    fn model_inputs_reach_the_provider_verbatim() {
+        let mut harness = negotiated_build_provider();
+        let params = json!({"modelInputs":{"version":0,"revision":7,"inputs":[]}});
+        let operation = build_request(&harness, "lithe/build/model", params.clone(), None).unwrap();
+        let id = harness
+            .server
+            .await_request("lithe/build/model")
+            .expect("the provider receives its snapshot");
+        assert_eq!(harness.written_request(&id)["params"], params);
+        harness
+            .server
+            .send(json!({"jsonrpc":"2.0","id":id,"result":{"projects":[]}}));
+        harness.await_event(|event| {
+            event.operation_id.as_deref() == Some(&operation) && event.kind == "requestCompleted"
+        });
     }
 
     #[test]
@@ -9221,7 +8982,7 @@ mod tests {
 
         // A reply with a `locations` field proves no navigation normalizer
         // rewrites the document Core decodes.
-        let reply = json!({ "format": "litheBuildModel", "version": 1, "locations": [] });
+        let reply = json!({ "format": "litheBuildModel", "version": 0, "locations": [] });
         harness
             .server
             .send(json!({ "jsonrpc": "2.0", "id": request_id, "result": reply }));
@@ -9284,7 +9045,7 @@ mod tests {
                 }
             });
             harness.server.complete_initialize(json!({"experimental": {
-                "litheKeymapImport": {"version": 1, "providers": ["fixture"]}
+                "litheKeymapImport": {"version": 0, "providers": ["fixture"]}
             }}));
             harness.await_state(LspLifecycleState::Ready);
             let initialize = harness
@@ -9299,7 +9060,7 @@ mod tests {
             if plugin_owned {
                 assert_eq!(
                     offer,
-                    Some(&json!({"versions": [1], "providers": ["fixture"]}))
+                    Some(&json!({"versions": [0], "providers": ["fixture"]}))
                 );
             }
             let event = harness
@@ -9320,7 +9081,7 @@ mod tests {
             request.keymap_import_providers = vec!["fixture".to_string()];
         });
         harness.server.complete_initialize(json!({"experimental": {
-            "litheKeymapImport": {"version": 1, "providers": ["fixture", "other"]}
+            "litheKeymapImport": {"version": 0, "providers": ["fixture", "other"]}
         }}));
         harness.await_state(LspLifecycleState::Ready);
         assert!(harness
@@ -9336,7 +9097,7 @@ mod tests {
             request.keymap_import_providers = vec!["fixture".to_string()];
         });
         harness.server.complete_initialize(json!({"experimental": {
-            "litheKeymapImport": {"version": 1, "providers": ["fixture"]}
+            "litheKeymapImport": {"version": 0, "providers": ["fixture"]}
         }}));
         harness.await_state(LspLifecycleState::Ready);
         let request = |provider: &str| KeymapImportProviderRequest {
@@ -9384,7 +9145,7 @@ mod tests {
             request.keymap_import_providers = vec!["fixture".to_string()];
         });
         harness.server.complete_initialize(json!({"experimental": {
-            "litheKeymapImport": {"version": 1, "providers": ["fixture"]}
+            "litheKeymapImport": {"version": 0, "providers": ["fixture"]}
         }}));
         harness.await_state(LspLifecycleState::Ready);
         let mut request = KeymapImportProviderRequest {
@@ -9428,7 +9189,7 @@ mod tests {
             request.keymap_import_providers = vec!["fixture".to_string()];
         });
         harness.server.complete_initialize(json!({"experimental": {
-            "litheKeymapImport": {"version": 1, "providers": ["fixture"]}
+            "litheKeymapImport": {"version": 0, "providers": ["fixture"]}
         }}));
         harness.await_state(LspLifecycleState::Ready);
         let request = KeymapImportProviderRequest {
@@ -9516,7 +9277,7 @@ mod tests {
 
     #[test]
     fn a_query_reaches_only_a_selected_provider_and_returns_the_raw_response() {
-        let mut harness = toolchain_backend(json!({ "version": 1, "providers": ["mise"] }));
+        let mut harness = toolchain_backend(json!({ "version": 0, "providers": ["mise"] }));
         let initialize = harness
             .server
             .messages()
@@ -9525,7 +9286,7 @@ mod tests {
             .expect("initialize should have been written");
         assert_eq!(
             initialize["params"]["capabilities"]["experimental"]["litheToolchains"],
-            json!({ "versions": [1], "providers": ["mise"] })
+            json!({ "versions": [0], "providers": ["mise"] })
         );
         let event = harness
             .await_event(|event| event.kind == "toolchainProviders")
@@ -9566,7 +9327,7 @@ mod tests {
 
     #[test]
     fn an_undeclared_toolchain_provider_enables_nothing() {
-        let mut harness = toolchain_backend(json!({ "version": 1, "providers": ["mise", "asdf"] }));
+        let mut harness = toolchain_backend(json!({ "version": 0, "providers": ["mise", "asdf"] }));
         harness.poll();
         assert!(harness
             .events
@@ -9585,7 +9346,7 @@ mod tests {
     const VCS_PLUGIN: &str = "dev.lithe.fixture.vcs-provider";
 
     fn vcs_capabilities() -> Value {
-        json!({ "status": 1, "baseContent": 1, "checkin": 1, "rollback": 1, "update": 1 })
+        json!({ "status": 0, "baseContent": 0, "checkin": 0, "rollback": 0, "update": 0 })
     }
 
     fn vcs_backend(answer: Value) -> Harness {
@@ -9600,7 +9361,7 @@ mod tests {
     }
 
     fn negotiated_vcs_provider() -> Harness {
-        vcs_backend(json!({ "version": 1, "vcs": "svn", "capabilities": vcs_capabilities() }))
+        vcs_backend(json!({ "version": 0, "vcs": "svn", "capabilities": vcs_capabilities() }))
     }
 
     /// A native absolute path on every platform the tests run on.
@@ -9687,7 +9448,7 @@ mod tests {
             .any(|feature| feature == "litheVcs"));
     }
 
-    /// Version 1 has no host side for credentials or console routing yet: an
+    /// The host has no side for credentials or console routing: an
     /// authentication request is refused so the provider fails with
     /// `vcs.authentication.failed`, and an execution report is passed on as a
     /// session log entry.
@@ -9722,7 +9483,7 @@ mod tests {
     #[test]
     fn an_incomplete_vcs_answer_is_not_a_provider() {
         let mut harness = vcs_backend(json!({
-            "version": 1, "vcs": "svn", "capabilities": { "status": 1, "baseContent": 1 }
+            "version": 0, "vcs": "svn", "capabilities": { "status": 0, "baseContent": 0 }
         }));
         harness.poll();
         assert!(harness
@@ -9853,8 +9614,8 @@ mod tests {
 
     fn function_backend() -> Harness {
         plugin_backend(json!({
-            "litheBuild": { "version": 1 },
-            "litheFunctions": { "version": 1, "functions": [{ "id": "snapshot.refresh" }] }
+            "litheBuild": { "version": 0 },
+            "litheFunctions": { "version": 0, "functions": [{ "id": "snapshot.refresh" }] }
         }))
     }
 
@@ -10000,10 +9761,10 @@ mod tests {
         assert_eq!(
             initialize["params"]["capabilities"]["experimental"],
             json!({
-                "litheBuild": { "versions": [11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1] },
-                "litheFunctions": { "versions": [1, 2, 3, 4] },
-                "litheLogging": { "versions": [1] },
-                "litheVcs": { "versions": [1] }
+                "litheBuild": { "versions": [0] },
+                "litheFunctions": { "versions": [0] },
+                "litheLogging": { "versions": [0] },
+                "litheVcs": { "versions": [0] }
             })
         );
 
@@ -10259,12 +10020,12 @@ mod tests {
         assert!(harness.snapshot().pending_operation_ids.is_empty());
     }
 
-    /// A backend written before plugin functions keeps its build requests;
+    /// A backend that speaks only the build protocol keeps its build requests;
     /// it receives no function calls and its function messages are not
     /// mistaken for registrations.
     #[test]
     fn a_build_only_backend_keeps_working_without_plugin_functions() {
-        let mut harness = plugin_backend(json!({ "litheBuild": { "version": 1 } }));
+        let mut harness = plugin_backend(json!({ "litheBuild": { "version": 0 } }));
         let error = invoke(&harness, FUNCTION_PLUGIN, "snapshot.refresh", None)
             .expect_err("functions need the negotiated protocol");
         assert!(matches!(error.code, ErrorCode::NotSupported));
@@ -10287,7 +10048,7 @@ mod tests {
             .server
             .await_request("lithe/build/model")
             .expect("the build request should reach the backend");
-        let reply = json!({ "format": "litheBuildModel", "version": 1 });
+        let reply = json!({ "format": "litheBuildModel", "version": 0 });
         harness
             .server
             .send(json!({ "jsonrpc": "2.0", "id": request_id, "result": reply }));
@@ -10302,7 +10063,7 @@ mod tests {
     fn a_host_owned_session_serves_no_plugin_functions() {
         let mut harness = Harness::start(|_| {});
         harness.server.complete_initialize(json!({
-            "experimental": { "litheFunctions": { "version": 1, "functions": [{ "id": "snapshot.refresh" }] } }
+            "experimental": { "litheFunctions": { "version": 0, "functions": [{ "id": "snapshot.refresh" }] } }
         }));
         harness.await_state(LspLifecycleState::Ready);
         let initialize = harness
@@ -10405,7 +10166,7 @@ mod tests {
             json!([]),
         ] {
             let mut harness = plugin_backend(
-                json!({ "litheFunctions": { "version": 1, "functions": functions } }),
+                json!({ "litheFunctions": { "version": 0, "functions": functions } }),
             );
             let initialized = harness
                 .await_event(|event| event.kind == "functionsChanged")
@@ -10723,7 +10484,8 @@ mod tests {
     }
 
     /// Domain dispatch could route back into the backend that asked, whose
-    /// handler would wait on itself; version 1 also offers no host capability.
+    /// handler would wait on itself; a host method the host does not offer is
+    /// unavailable.
     #[test]
     fn a_backend_cannot_ask_the_host_to_dispatch_back_into_itself() {
         let harness = function_backend();
@@ -10755,14 +10517,14 @@ mod tests {
         }
     }
 
-    fn host_service_backend(version: u64, host_services: &[&str]) -> Harness {
+    fn host_service_backend(host_services: &[&str]) -> Harness {
         let host_services: Vec<String> = host_services.iter().map(ToString::to_string).collect();
         let mut harness = Harness::start(move |request| {
             request.plugin_id = Some(FUNCTION_PLUGIN.to_string());
             request.host_services = host_services.clone();
         });
         harness.server.complete_initialize(json!({
-            "experimental": { "litheFunctions": { "version": version } }
+            "experimental": { "litheFunctions": { "version": 0 } }
         }));
         harness.await_state(LspLifecycleState::Ready);
         harness
@@ -10800,7 +10562,7 @@ mod tests {
     /// later request.
     #[test]
     fn a_granted_host_service_request_round_trips_through_the_host() {
-        let mut harness = host_service_backend(2, &["credentials"]);
+        let mut harness = host_service_backend(&["credentials"]);
         harness.server.send(json!({
             "jsonrpc": "2.0", "id": "read",
             "method": "lithe/host/credentials/get",
@@ -10850,35 +10612,70 @@ mod tests {
         assert_eq!(reply["error"]["message"], "The keychain is locked.");
     }
 
-    /// Host services start with protocol version 2 and only for the services
-    /// the plugin's permissions grant; refusals never reach the host.
+    /// Host services are offered only for the services the plugin's
+    /// permissions grant; a refusal never reaches the host.
     #[test]
-    fn host_services_need_version_2_and_a_grant() {
-        for (version, services, code) in [
-            (1, &["credentials"][..], "plugin.host.unavailable"),
-            (2, &[][..], "plugin.host.permissionDenied"),
-        ] {
-            let mut harness = host_service_backend(version, services);
-            harness.server.send(json!({
-                "jsonrpc": "2.0", "id": "read",
-                "method": "lithe/host/credentials/get",
-                "params": { "key": "connection.prod" }
-            }));
-            let reply = await_reply(&harness, "read");
-            assert_eq!(reply["error"]["data"]["code"], code, "version {version}");
-            harness.poll();
-            assert!(harness
-                .events
-                .iter()
-                .all(|event| event.kind != "hostRequest"));
-        }
+    fn host_services_need_a_grant() {
+        let mut harness = host_service_backend(&[]);
+        harness.server.send(json!({
+            "jsonrpc": "2.0", "id": "read",
+            "method": "lithe/host/credentials/get",
+            "params": { "key": "connection.prod" }
+        }));
+        let reply = await_reply(&harness, "read");
+        assert_eq!(
+            reply["error"]["data"]["code"],
+            "plugin.host.permissionDenied"
+        );
+        harness.poll();
+        assert!(harness
+            .events
+            .iter()
+            .all(|event| event.kind != "hostRequest"));
+    }
+
+    /// A backend that negotiated no plugin-function protocol is offered no
+    /// host service and receives no host notification, whatever the plugin's
+    /// permissions grant.
+    #[test]
+    fn a_backend_without_the_function_protocol_gets_no_host_services() {
+        let mut harness = Harness::start(|request| {
+            request.plugin_id = Some(FUNCTION_PLUGIN.to_string());
+            request.host_services = vec!["credentials".to_string(), "workspace".to_string()];
+        });
+        harness.server.complete_initialize(json!({
+            "experimental": { "litheBuild": { "version": 0 } }
+        }));
+        harness.await_state(LspLifecycleState::Ready);
+        harness.server.send(json!({
+            "jsonrpc": "2.0", "id": "read",
+            "method": "lithe/host/credentials/get",
+            "params": { "key": "connection.prod" }
+        }));
+        let reply = await_reply(&harness, "read");
+        assert_eq!(reply["error"]["data"]["code"], "plugin.host.unavailable");
+        harness.poll();
+        assert!(harness
+            .events
+            .iter()
+            .all(|event| event.kind != "hostRequest"));
+        let request: PluginHostNotification = serde_json::from_value(json!({
+            "sessionId": harness.session_id,
+            "method": "lithe/host/workspace/didChangeContexts",
+            "params": { "revision": 2 },
+        }))
+        .expect("documented wire shape");
+        assert!(!harness
+            .session()
+            .host_notify(request)
+            .expect("a known notification"));
     }
 
     /// A host that stops answering cannot make a backend grow the session's
     /// state: requests beyond the bound fail at once.
     #[test]
     fn unanswered_host_requests_are_bounded() {
-        let harness = host_service_backend(2, &["credentials"]);
+        let harness = host_service_backend(&["credentials"]);
         let limit = super::super::plugin_function::MAX_PENDING_HOST_REQUESTS;
         for index in 0..=limit {
             harness.server.send(json!({
@@ -10888,24 +10685,25 @@ mod tests {
             }));
         }
         let reply = await_reply(&harness, &format!("read-{limit}"));
-        assert_eq!(reply["error"]["data"]["code"], "plugin.host.failed");
+        assert_eq!(reply["error"]["code"], -32014);
+        assert_eq!(reply["error"]["data"]["code"], "plugin.host.limitExceeded");
         assert_eq!(
             harness.session().lock_state().unwrap().host_requests.len(),
             limit
         );
     }
 
-    /// From version 3 Core answers capability discovery itself, listing
-    /// only the session's grants; the host never sees the request.
+    /// Core answers capability discovery itself, listing only the session's
+    /// grants; the host never sees the request.
     #[test]
     fn capability_discovery_is_answered_by_core() {
-        let mut harness = host_service_backend(3, &["workspace"]);
+        let mut harness = host_service_backend(&["workspace"]);
         harness.server.send(json!({
             "jsonrpc": "2.0", "id": "caps",
             "method": "lithe/host/getCapabilities"
         }));
         let reply = await_reply(&harness, "caps");
-        assert_eq!(reply["result"]["protocolVersion"], 3);
+        assert_eq!(reply["result"]["protocolVersion"], 0);
         assert_eq!(reply["result"]["backendAuthority"], "local");
         assert!(reply["result"]["services"]["workspace"].is_object());
         assert!(reply["result"]["services"]["credentials"].is_null());
@@ -10931,7 +10729,7 @@ mod tests {
             });
         });
         harness.server.complete_initialize(json!({
-            "experimental": { "litheFunctions": { "version": 3 } }
+            "experimental": { "litheFunctions": { "version": 0 } }
         }));
         harness.await_state(LspLifecycleState::Ready);
         harness.server.send(json!({
@@ -10989,12 +10787,12 @@ mod tests {
         }
     }
 
-    /// From version 3 a field a method does not define is answered as an
-    /// unsupported option naming it, so a backend can retry without it; the
-    /// host never sees the request.
+    /// A field a method does not define is answered as an unsupported option
+    /// naming it, so a backend can retry without it; the host never sees the
+    /// request.
     #[test]
-    fn an_unknown_option_is_named_to_a_version_3_backend() {
-        let mut harness = host_service_backend(3, &["workspace"]);
+    fn an_unknown_option_is_named_to_the_backend() {
+        let mut harness = host_service_backend(&["workspace"]);
         harness.server.send(json!({
             "jsonrpc": "2.0", "id": "folders",
             "method": "lithe/host/workspace/getFolders",
@@ -11020,11 +10818,11 @@ mod tests {
             .all(|event| event.kind != "hostRequest"));
     }
 
-    /// From version 3 a host failure's code reaches the backend when it is
-    /// one a host may report; an unknown code is `plugin.host.failed`.
+    /// A host failure's code reaches the backend when it is one a host may
+    /// report; an unknown code is `plugin.host.failed`.
     #[test]
-    fn typed_host_failures_reach_a_version_3_backend() {
-        let mut harness = host_service_backend(3, &["workspace"]);
+    fn typed_host_failures_reach_the_backend() {
+        let mut harness = host_service_backend(&["workspace"]);
         for (id, code, expected, rpc_code) in [
             (
                 "a",
@@ -11060,11 +10858,11 @@ mod tests {
         }
     }
 
-    /// A host failure's details reach a version 3 backend under
+    /// A host failure's details reach the backend under
     /// `error.data.details`, next to the stable code.
     #[test]
-    fn host_failure_details_reach_a_version_3_backend() {
-        let mut harness = host_service_backend(3, &["workspace"]);
+    fn host_failure_details_reach_the_backend() {
+        let mut harness = host_service_backend(&["workspace"]);
         harness.server.send(json!({
             "jsonrpc": "2.0", "id": "folders",
             "method": "lithe/host/workspace/getFolders",
@@ -11103,8 +10901,8 @@ mod tests {
     /// `lsp.hostNotify` writes an admitted notification to the backend and
     /// refuses one the session was not granted.
     #[test]
-    fn host_notifications_reach_a_version_3_backend() {
-        let harness = host_service_backend(3, &["workspace"]);
+    fn host_notifications_reach_the_backend() {
+        let harness = host_service_backend(&["workspace"]);
         let notify = |method: &str, params: Value| {
             let request: PluginHostNotification = serde_json::from_value(json!({
                 "sessionId": harness.session_id,
@@ -11125,27 +10923,11 @@ mod tests {
         assert!(notify("lithe/build/run", json!({})).is_err());
     }
 
-    /// A version 2 backend never receives a notification it cannot read.
-    #[test]
-    fn host_notifications_skip_a_version_2_backend() {
-        let harness = host_service_backend(2, &["workspace"]);
-        let request: PluginHostNotification = serde_json::from_value(json!({
-            "sessionId": harness.session_id,
-            "method": "lithe/host/workspace/didChangeContexts",
-            "params": { "revision": 2 },
-        }))
-        .expect("documented wire shape");
-        assert!(!harness
-            .session()
-            .host_notify(request)
-            .expect("a known notification"));
-    }
-
     /// A backend that cancels its own host request is answered at once, the
     /// host learns which request to stop, and its late answer is refused.
     #[test]
     fn a_backend_can_cancel_its_host_request() {
-        let mut harness = host_service_backend(3, &["workspace"]);
+        let mut harness = host_service_backend(&["workspace"]);
         harness.server.send(json!({
             "jsonrpc": "2.0", "id": "list",
             "method": "lithe/host/workspace/listContexts"
@@ -11173,12 +10955,12 @@ mod tests {
         assert!(host_response(&harness, &host_request_id, Some(json!({})), None).is_err());
     }
 
-    /// A call's workspace context reaches a version 3 backend as
-    /// `params.context`, and a malformed reference never leaves Core.
+    /// A call's workspace context reaches the backend as `params.context`,
+    /// and a malformed reference never leaves Core.
     #[test]
-    fn invocations_carry_the_workspace_context_from_version_3() {
+    fn invocations_carry_the_workspace_context() {
         let harness = plugin_backend(json!({
-            "litheFunctions": { "version": 3, "functions": [{ "id": "snapshot.refresh" }] }
+            "litheFunctions": { "version": 0, "functions": [{ "id": "snapshot.refresh" }] }
         }));
         let call = |context: Value| {
             let operation_id = harness.engine.next_operation_id();

@@ -1,9 +1,15 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 0,
   "id": "dev.lithe.fixture.node-runtime",
   "displayName": "Node Runtime Fixture",
   "version": "1.0.0",
-  "pluginAPIVersion": 2,
+  "pluginAPIVersion": 0,
+  "requires": {
+    "languageServers": 0,
+    "languages": 0,
+    "settings": 0
+  },
+  "requiresTools": ["node"],
   "vendor": {
     "id": "dev.lithe",
     "displayName": "Lithe",

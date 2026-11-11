@@ -1,10 +1,10 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 0,
   "id": "dev.lithe.fixture.functionexporter",
   "displayName": "Plugin function exporter fixture",
   "version": "1.0.0",
-  "pluginAPIVersion": 3,
-  "requires": {"pluginFunctions": 1, "backend": 2, "serverProcess": 1},
+  "pluginAPIVersion": 0,
+  "requires": {"pluginFunctions": 0, "backend": 0},
   "vendor": {"id": "org.example", "displayName": "Fixture publisher", "signatureRequirement": "publisherPackage"},
   "permissions": ["backend.launch"],
   "pluginFunctions": {

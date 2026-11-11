@@ -1,6 +1,6 @@
 {
   "format": "litheBuildConfiguration",
-  "version": 1,
+  "version": 0,
   "sources": [
     {
       "id": "user",

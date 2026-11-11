@@ -81,10 +81,6 @@ const EXECUTABLE_VARIABLES: &[&str] = &[
 /// What a candidate may start with, so a lookup stays beside the user's work.
 const EXECUTABLE_ROOTS: &[&str] = &["${workspaceFolder}/", "${fileDirectory}/"];
 
-/// Host-known runtimes a `runSelectedRuntime` launch may name below
-/// `serverProcess` 4; any other short ID refers to a plugin tool definition.
-const SELECTED_RUNTIME_TOOLS: &[&str] = &["node", "python"];
-
 /// Target kinds a selector may match.
 const TARGET_KINDS: &[&str] = &["connection", "executable", "file", "process", "runTarget"];
 
@@ -566,8 +562,8 @@ pub(crate) enum DebugProcess {
     SelectedRuntime(SelectedRuntimeProcess),
 }
 
-/// `serverProcess` 2: start the adapter on the runtime Run selected for the
-/// target, not on a runtime the plugin names a version of.
+/// Start the adapter on the runtime Run selected for the target, not on a
+/// runtime the plugin names a version of.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct SelectedRuntimeProcess {
@@ -629,19 +625,15 @@ impl DebugProcess {
         match self {
             Self::Server(process) => process.validate(
                 field,
-                context.plugin_api_version,
                 context.declared_settings,
                 ServerRole::DebugAdapter,
                 context.runtime_tools,
             ),
             Self::SelectedRuntime(process) => {
                 let tool = process.launch.tool.as_str();
-                context.runtime_tools.check(
-                    tool,
-                    SELECTED_RUNTIME_TOOLS,
-                    format!("{field}.launch.tool"),
-                    format!("The host cannot start a debug adapter on {tool}."),
-                )?;
+                context
+                    .runtime_tools
+                    .check(tool, format!("{field}.launch.tool"))?;
                 validate_process_arguments(
                     &process.arguments,
                     &process.validation_arguments,
@@ -663,7 +655,6 @@ impl DebugProcess {
 
 /// What validation needs from the manifest around the declarations.
 pub(crate) struct DeclarationContext<'a> {
-    pub(crate) plugin_api_version: u32,
     pub(crate) declared_settings: &'a DeclaredSettings,
     /// Language IDs of the plugin's `languageServers[]`.
     pub(crate) language_servers: &'a BTreeSet<String>,
@@ -700,8 +691,7 @@ pub(crate) fn validate_declarations(
     Ok(())
 }
 
-/// Whether any adapter starts on the selected runtime, which is the only use
-/// of `serverProcess` 2.
+/// Whether any adapter starts on the runtime Run selected.
 pub(crate) fn uses_selected_runtime(adapters: &[DebugAdapterDeclaration]) -> bool {
     adapters.iter().any(|adapter| {
         adapter
@@ -711,14 +701,6 @@ pub(crate) fn uses_selected_runtime(adapters: &[DebugAdapterDeclaration]) -> boo
             .and_then(DebugProcess::selected_runtime_tool)
             .is_some()
     })
-}
-
-/// Whether any adapter declares `features` or `defaults`, which need
-/// `debugAdapters` 3.
-pub(crate) fn uses_declared_features(adapters: &[DebugAdapterDeclaration]) -> bool {
-    adapters
-        .iter()
-        .any(|adapter| adapter.features.is_some() || adapter.defaults.is_some())
 }
 
 /// Whether any adapter serves `attach`, which needs its own permission.
@@ -2173,18 +2155,4 @@ fn sort_unique(values: &mut Vec<String>, field: &str) -> Validation<()> {
     } else {
         Err(invalid(field, "An entry is listed more than once."))
     }
-}
-
-/// New bindings have their own manifest admission version.
-pub(crate) fn uses_target_arguments(adapters: &[DebugAdapterDeclaration]) -> bool {
-    adapters
-        .iter()
-        .filter_map(|adapter| adapter.configurations.as_ref())
-        .any(|configs| {
-            [configs.launch.as_ref(), configs.attach.as_ref()]
-                .into_iter()
-                .flatten()
-                .filter_map(|config| config.target_bindings.as_ref())
-                .any(|bindings| bindings.args.is_some() || bindings.env.is_some())
-        })
 }

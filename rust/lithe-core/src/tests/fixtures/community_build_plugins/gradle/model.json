@@ -1,6 +1,6 @@
 {
   "format": "litheBuildModel",
-  "version": 1,
+  "version": 0,
   "projects": [
     {
       "path": "${workspace}",

@@ -1,10 +1,10 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 0,
   "id": "io.github.lithe-idea.gradle-build",
   "displayName": "Gradle",
   "version": "0.1.0",
-  "pluginAPIVersion": 3,
-  "requires": { "buildSystems": 1 },
+  "pluginAPIVersion": 0,
+  "requires": { "buildSystems": 0 },
   "vendor": {
     "id": "io.github.lithe-idea",
     "displayName": "Lithe Community",

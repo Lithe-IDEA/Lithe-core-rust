@@ -116,18 +116,6 @@ pub(crate) enum Platform {
     Windows,
 }
 
-impl ExecutableCandidate {
-    pub(crate) fn uses_resolution(&self) -> bool {
-        matches!(
-            self.source,
-            ExecutableSource::Setting { .. } | ExecutableSource::Toolchain { .. }
-        ) || self.id.is_some()
-            || self.priority.is_some()
-            || self.insert_before.is_some()
-            || self.insert_after.is_some()
-    }
-}
-
 /// Stable topological sort: explicit edges win, otherwise higher priority then
 /// original array index wins. No cross-set anchors or arbitrary host code.
 pub(crate) fn ordered_indices(

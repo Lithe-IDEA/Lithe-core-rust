@@ -1,10 +1,10 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 0,
   "id": "dev.lithe.fixture.debug-adapter-remote-attach",
   "displayName": "Debug Adapter Remote Attach Fixture",
   "version": "0.1.0",
-  "pluginAPIVersion": 4,
-  "requires": { "debugAdapters": 1, "serverProcess": 1 },
+  "pluginAPIVersion": 0,
+  "requires": { "debugAdapters": 0 },
   "vendor": {
     "id": "org.example",
     "displayName": "Example",

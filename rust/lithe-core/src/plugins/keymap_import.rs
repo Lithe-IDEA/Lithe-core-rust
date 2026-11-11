@@ -554,14 +554,21 @@ mod tests {
         .unwrap();
         let validate = crate::plugins::declarative::validate_manifest_value;
         assert!(validate(plugin.clone()).is_ok());
-        let old_host = json!({"backend": [1, 2], "serverProcess": [1]});
-        let new_host =
-            json!({"backend": [1, 2], "serverProcess": [1], "keymapImportProviders": [1]});
+        let host_without_importers = json!({"backend": [0]});
+        let host_with_importers = json!({"backend": [0], "keymapImportProviders": [0]});
         let command = crate::plugins::declarative::validate_command;
-        let rejected = command(json!({"manifest": plugin, "hostCapabilities": old_host})).unwrap();
+        let rejected = command(json!({
+            "manifest": plugin,
+            "hostCapabilities": host_without_importers
+        }))
+        .unwrap();
         assert_eq!(rejected["status"], "rejected");
         assert_eq!(rejected["error"]["code"], "plugin.api.unsupported");
-        let accepted = command(json!({"manifest": plugin, "hostCapabilities": new_host})).unwrap();
+        let accepted = command(json!({
+            "manifest": plugin,
+            "hostCapabilities": host_with_importers
+        }))
+        .unwrap();
         assert_eq!(accepted["status"], "ok");
 
         let mut duplicate = plugin.clone();
@@ -622,9 +629,12 @@ mod tests {
             validate(no_source_grant).unwrap_err().code,
             "plugin.permission.undeclared"
         );
-        let mut old_backend = plugin.clone();
-        old_backend["requires"]["backend"] = json!(1);
-        assert!(validate(old_backend).is_err());
+        let mut unknown_backend_version = plugin.clone();
+        unknown_backend_version["requires"]["backend"] = json!(1);
+        assert_eq!(
+            validate(unknown_backend_version).unwrap_err().code,
+            "plugin.api.unsupported"
+        );
         let mut unsafe_launch = plugin.clone();
         unsafe_launch["backend"]["launch"] =
             json!({"kind": "runtime", "tool": "node", "entry": "main.mjs"});

@@ -1,10 +1,11 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 0,
   "id": "dev.lithe.fixture.build-provider",
   "displayName": "Build Provider Fixture",
   "version": "0.1.0",
-  "pluginAPIVersion": 3,
-  "requires": { "buildProviders": 1, "buildSystems": 1, "serverProcess": 1, "settings": 1 },
+  "pluginAPIVersion": 0,
+  "requires": { "buildProviders": 0, "buildSystems": 0, "settings": 0 },
+  "requiresTools": ["java"],
   "vendor": {
     "id": "org.example",
     "displayName": "Example",

@@ -1,15 +1,15 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 0,
   "id": "dev.lithe.fixture.native-form",
   "displayName": "Native form fixture",
   "version": "0.1.0",
-  "pluginAPIVersion": 3,
+  "pluginAPIVersion": 0,
   "requires": {
-    "buildProviders": 1,
-    "buildSystems": 1,
-    "serverProcess": 1,
-    "ui": 3
+    "buildProviders": 0,
+    "buildSystems": 0,
+    "ui": 0
   },
+  "requiresTools": ["node"],
   "vendor": {
     "id": "org.example",
     "displayName": "Example",
@@ -94,7 +94,7 @@
         "title": "Native form",
         "placement": "bottom",
         "native": {
-          "schemaVersion": 1,
+          "schemaVersion": 0,
           "id": "form",
           "kind": "form",
           "nodes": [],

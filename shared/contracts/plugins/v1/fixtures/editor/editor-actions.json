@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "description": "Version 2 editor action validation. `host` is what the host declared in getCapabilities (`services.editor.options.actionIcons` and `limits.editorActionSourceBytes`); `kind` is `actions` for a collector result (one-based UTF-16 positions in `text`) or `invokeResult` for the result of a clicked action or alternative. Accepted cases list the normalized value; rejected cases reject the whole result.",
+  "description": "Editor action validation through `plugins.editorActions.decode`. Every case is sent as the request `{version, kind, icons, sourceBytes, text, value}`: `version` is required and is `0` (Core accepts only `0`, otherwise `Unsupported editor action validation version.`); `icons` and `sourceBytes` are the `host` members below, which the host declared in getCapabilities (`services.editor.options.actionIcons` and `limits.editorActionSourceBytes`); `kind` is `actions` for a collector result (one-based UTF-16 positions in `text`) or `invokeResult` for the result of a clicked action or alternative. Accepted cases list the normalized value; rejected cases reject the whole result.",
   "host": {
     "actionIcons": ["run", "run-all", "debug", "test", "test-passed", "test-failed", "test-skipped", "navigate-super", "navigate-implementations"],
     "actionSourceBytes": 1048576

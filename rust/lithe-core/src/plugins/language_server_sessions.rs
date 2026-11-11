@@ -1,12 +1,12 @@
 //! Plugin-owned language server sessions (plan API-25, with API-20 state).
 //!
-//! A plugin whose backend drives its own language server declares, at
-//! `languageServers` 3, which requests and notifications the backend may
-//! send to that server, which `workspace/executeCommand` commands run one at
-//! a time, which server notifications reach the backend, how long per-
+//! A plugin whose backend drives its own language server declares, in
+//! `languageServers`, which requests and notifications the backend may send
+//! to that server, which `workspace/executeCommand` commands run one at a
+//! time, which server notifications reach the backend, how long per-
 //! workspace state is kept, and whether the server works on a remote
-//! workspace. At `serverProcess` 3 the backend may also resolve the command
-//! line each time the server starts (`launch.kind: "backend"`).
+//! workspace. The backend may also resolve the command line each time the
+//! server starts (`launch.kind: "backend"`).
 //!
 //! Core validates those declarations, turns them into the session policy
 //! the LSP engine enforces, decodes the backend's launch answer, and selects
@@ -86,9 +86,9 @@ pub(crate) fn is_host_owned_method(method: &str) -> bool {
     method.starts_with("$/") || HOST_OWNED_METHODS.contains(&method)
 }
 
-/// The `languageServers` 3 session fields, flattened into the server's
-/// declaration. Every field is optional so a version 1 or 2 manifest that
-/// names one can be refused with the field it used.
+/// The `languageServers` session fields, flattened into the server's
+/// declaration. Every field is optional: a server that its backend does not
+/// drive declares none of them.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SessionDeclaration {
@@ -160,21 +160,6 @@ pub enum RemoteSupport {
 }
 
 impl SessionDeclaration {
-    /// The first session field the manifest names, for refusing it below
-    /// `languageServers` 3.
-    fn first_declared(&self) -> Option<&'static str> {
-        [
-            ("requestMethods", self.request_methods.is_some()),
-            ("commands", self.commands.is_some()),
-            ("serializedCommands", self.serialized_commands.is_some()),
-            ("forwardNotifications", self.forward_notifications.is_some()),
-            ("state", self.state.is_some()),
-            ("remote", self.remote.is_some()),
-        ]
-        .into_iter()
-        .find_map(|(name, present)| present.then_some(name))
-    }
-
     /// Whether the backend may talk to the server, which needs the
     /// `languageServer.request` permission.
     pub(crate) fn exposes_server(&self) -> bool {
@@ -186,16 +171,7 @@ impl SessionDeclaration {
     }
 
     /// Checks the session fields of the server at `field`.
-    pub(crate) fn validate(&self, field: &str, capability_version: u32) -> Validation<()> {
-        if capability_version < 3 {
-            return match self.first_declared() {
-                Some(name) => Err(invalid(
-                    format!("{field}.{name}"),
-                    "Language server session fields require languageServers 3.",
-                )),
-                None => Ok(()),
-            };
-        }
+    pub(crate) fn validate(&self, field: &str) -> Validation<()> {
         let methods = unique_names(
             self.request_methods.as_deref(),
             &format!("{field}.requestMethods"),

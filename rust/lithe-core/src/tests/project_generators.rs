@@ -46,11 +46,12 @@ fn fixtures_path() -> PathBuf {
 /// language requirement has exactly one provider.
 fn java_language_only() -> Value {
     json!({
-        "schemaVersion": 2,
+        "schemaVersion": 0,
         "id": "dev.lithe.fixture.java-language",
         "displayName": "Java Language Fixture",
         "version": "0.1.0",
-        "pluginAPIVersion": 1,
+        "pluginAPIVersion": 0,
+        "requires": {"languages": 0, "languageServers": 0},
         "vendor": {"id": "dev.lithe", "displayName": "Lithe", "signatureRequirement": "publisherPackage"},
         "permissions": ["languageServer.launch"],
         "activationEvents": ["onLanguage:java"],
@@ -70,12 +71,12 @@ fn java_language_only() -> Value {
 }
 
 fn host() -> Value {
-    json!({"languages": [1], "languageServers": [1, 2], "serverProcess": [1], "settings": [1, 2],
-           "buildSystems": [1], "projectGenerators": [1, 2], "debugAdapters": [1], "packageTrust": [1], "toolDefinitions": [1], "executableResolution": [1, 2]})
+    json!({"languages": [0], "languageServers": [0], "buildSystems": [0],
+           "projectGenerators": [0], "toolDefinitions": [0]})
 }
 
 /// A case names its manifest fixture in `manifest`; the default is the
-/// version 1 generator fixture.
+/// generator fixture.
 fn case_manifest(case: &Value) -> Value {
     match case["manifest"].as_str() {
         Some(file) => json(
@@ -128,7 +129,7 @@ fn catalog_lists_generators_with_requirement_providers() {
             {"manifest": json(FIXTURE), "enabled": true},
             {"manifest": build, "enabled": false},
             {"manifest": java_language_only(), "enabled": true},
-            {"manifest": {"schemaVersion": 2, "id": "broken"}, "enabled": true}
+            {"manifest": {"schemaVersion": 0, "id": "broken"}, "enabled": true}
         ],
         "hostCapabilities": host(),
     }))
@@ -162,13 +163,17 @@ fn catalog_lists_generators_with_requirement_providers() {
 fn catalog_skips_plugins_the_host_cannot_run() {
     let result = project_generator_catalog_command(json!({
         "plugins": [{"manifest": json(FIXTURE), "enabled": true}],
-        "hostCapabilities": {"languages": [1]},
+        "hostCapabilities": {"languages": [0]},
     }))
     .unwrap();
     assert_eq!(result["catalog"]["generators"], json!([]));
     assert_eq!(
         result["catalog"]["issues"][0]["error"]["code"],
         "plugin.api.unsupported"
+    );
+    assert_eq!(
+        result["catalog"]["issues"][0]["error"]["field"],
+        "requires.projectGenerators"
     );
 }
 
@@ -237,26 +242,25 @@ fn catalog_names_the_plugins_that_define_each_tool() {
             "{tool}"
         );
     }
-    // Version 1 generators have no tool fields.
-    let version_1 = project_generator_catalog_command(json!({
+    // A generator without tool fields lists no tools, and a tool nobody
+    // defines has no provider.
+    let plain = project_generator_catalog_command(json!({
         "plugins": [{"manifest": json(FIXTURE), "enabled": true}],
         "hostCapabilities": host(),
     }))
     .unwrap();
-    assert_eq!(version_1["catalog"]["generators"][0]["tools"], json!([]));
-}
-
-#[test]
-fn catalog_skips_tool_fields_on_hosts_without_projectgenerators_2() {
-    let result = project_generator_catalog_command(json!({
-        "plugins": [{"manifest": json(TOOL_FIELD_FIXTURE), "enabled": true}],
-        "hostCapabilities": {"projectGenerators": [1]},
-    }))
-    .unwrap();
-    assert_eq!(result["catalog"]["generators"], json!([]));
+    let entries = plain["catalog"]["generators"].as_array().unwrap();
+    let tools = |id: &str| {
+        entries
+            .iter()
+            .find(|entry| entry["generator"]["id"] == id)
+            .unwrap_or_else(|| panic!("{id}: {plain}"))["tools"]
+            .clone()
+    };
+    assert_eq!(tools("initializr"), json!([]));
     assert_eq!(
-        result["catalog"]["issues"][0]["error"]["field"],
-        "requires.projectGenerators"
+        tools("app"),
+        json!([{"fieldID": "jdk", "tool": "java", "providers": []}])
     );
 }
 
@@ -295,7 +299,17 @@ fn rejects_invalid_generator_declarations() {
         (
             "missing capability",
             Box::new(|manifest| {
-                manifest["requires"] = json!({"languages": 1});
+                manifest["requires"] = json!({"languages": 0});
+            }),
+            "plugin.manifest.invalid",
+        ),
+        (
+            "runtime field",
+            Box::new(|manifest| {
+                manifest["projectGenerators"][0]["fields"][1] = json!({
+                    "id": "jdk", "type": "runtime", "title": "JDK",
+                    "runtime": "java", "minimumVersion": "17"
+                });
             }),
             "plugin.manifest.invalid",
         ),
@@ -351,12 +365,37 @@ fn rejects_invalid_generator_declarations() {
 }
 
 #[test]
-fn project_generators_need_api_level_3() {
+fn project_generators_must_be_listed_in_requires() {
     let mut manifest = json(FIXTURE);
-    manifest["pluginAPIVersion"] = json!(2);
     manifest.as_object_mut().unwrap().remove("requires");
     let result = validate_command(json!({"manifest": manifest})).unwrap();
-    assert_eq!(result["status"], "rejected");
+    assert_eq!(result["status"], "rejected", "{result}");
+    assert_eq!(
+        result["error"]["code"], "plugin.manifest.invalid",
+        "{result}"
+    );
+    assert_eq!(result["error"]["field"], "requires", "{result}");
+
+    let mut manifest = json(FIXTURE);
+    manifest["requires"] = json!({"languages": 0});
+    let result = validate_command(json!({"manifest": manifest})).unwrap();
+    assert_eq!(result["status"], "rejected", "{result}");
+    assert_eq!(result["error"]["field"], "requires", "{result}");
+    assert!(
+        result["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("projectGenerators")),
+        "{result}"
+    );
+
+    let mut manifest = json(FIXTURE);
+    manifest["pluginAPIVersion"] = json!(1);
+    let result = validate_command(json!({"manifest": manifest})).unwrap();
+    assert_eq!(
+        result["error"]["code"], "plugin.api.unsupported",
+        "{result}"
+    );
+    assert_eq!(result["error"]["field"], "pluginAPIVersion", "{result}");
 }
 
 /// A generator command runs a program on the user's Mac, so the install

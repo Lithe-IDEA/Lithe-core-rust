@@ -1,4 +1,4 @@
-//! VCS providers declared by API level 3 plugins: manifest validation,
+//! VCS providers declared by plugins: manifest validation,
 //! install review, launch plans, root detection over real directories, and
 //! reply decoding, checked against `shared/fixtures/vcs/model-v1.json` and
 //! the Subversion provider manifest fixture.
@@ -88,8 +88,8 @@ fn the_provider_fixture_validates_and_is_reviewed_with_its_tool() {
 }
 
 /// A provider changes the working copy and starts its own process, so the
-/// manifest must ask for both, name its activation event, and say which
-/// contract versions it needs; Git stays reserved for the built-in support.
+/// manifest must ask for both, name its activation event, and list the
+/// capability it uses; Git stays reserved for the built-in support.
 #[test]
 fn provider_manifests_state_permissions_activation_and_requirements() {
     let rejected = |mutate: fn(&mut Value)| {
@@ -114,8 +114,12 @@ fn provider_manifests_state_permissions_activation_and_requirements() {
         "{missing_activation}"
     );
     let missing_requirement = rejected(|manifest| {
-        manifest["requires"] = json!({ "serverProcess": 1 });
+        manifest["requires"] = json!({ "languages": 0 });
     });
+    assert_eq!(
+        missing_requirement["field"], "requires",
+        "{missing_requirement}"
+    );
     assert!(
         missing_requirement.to_string().contains("vcsProviders"),
         "{missing_requirement}"
@@ -125,8 +129,12 @@ fn provider_manifests_state_permissions_activation_and_requirements() {
         manifest["activationEvents"] = json!(["onVcsRoot:git"]);
     });
     assert_eq!(reserved["code"], "plugin.vcs.reserved", "{reserved}");
-    let level_two = rejected(|manifest| manifest["pluginAPIVersion"] = json!(2));
-    assert_ne!(level_two["code"], "plugin.vcs.reserved", "{level_two}");
+    let unsupported = rejected(|manifest| manifest["pluginAPIVersion"] = json!(1));
+    assert_eq!(
+        unsupported["code"], "plugin.api.unsupported",
+        "{unsupported}"
+    );
+    assert_eq!(unsupported["field"], "pluginAPIVersion", "{unsupported}");
     let escaping = rejected(|manifest| {
         manifest["vcsProviders"][0]["metadataPaths"] = json!(["../wc.db"]);
     });
@@ -396,6 +404,6 @@ fn plugin_replies_match_the_validation_cases() {
         "capabilities": capabilities,
         "reply": {},
     }))
-    .expect_err("push has no reply shape in version 1");
+    .expect_err("push has no reply shape");
     assert!(matches!(error.code, ErrorCode::InvalidRequest), "{error:?}");
 }

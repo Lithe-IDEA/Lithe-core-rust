@@ -88,7 +88,7 @@ Swift 的事件值是**未经脱敏的内存输入**，不能自行序列化落�
 - 启动者显式声明 role、真实 `pluginId` 和 VCS `logSubject`；宿主不解析 providerID。
 - stderr 读取器限制每行 4 KiB、每秒 200 行，之后再走 `text` 的 1 KiB 脱敏规范化。与 v1 相比唯一的兼容变化是从任意 trim 的读取块改为逐行文本：保留行内空格，移除 LF 和末尾 CR，并应用已声明的长度上限和限流。
 - 上游明确给出的严重度通过独立的目录事件保留：`window/logMessage` 和 `window/showMessage` 的 type 1/2/3/4 分别为 ERROR/WARN/INFO/DEBUG，未知类型为 DEBUG。未分类的 stderr 是 DEBUG 排障证据，流名称不表示警告；实际的进程或协议失败由 `*.session.failed` 记录 ERROR，正常关闭仍是生命周期状态。
-- 插件自身使用独立协商的 `litheLogging` 1 和 `lithe/log`，由 Core 把四种受控事实映射到插件目录事件，不能再用 stderr 或任意自由消息代替。协议字段、op、限额和 fixture 以 [插件契约](../contracts/plugins/v1/README.md#structured-plugin-diagnostics-logging-protocol-1) 为准。
+- 插件自身使用独立协商的 `litheLogging` 0 和 `lithe/log`，由 Core 把四种受控事实映射到插件目录事件，不能再用 stderr 或任意自由消息代替。协议字段、op、限额和 fixture 以 [插件契约](../contracts/plugins/v1/README.md#structured-plugin-diagnostics) 为准。
 - 声明式贡献没有插件进程，不能发 `lithe/log`。实际执行它的一方通过 `diagnostics.recordPluginOperation` 代记每次尝试的一条终态，事件和通道与 SDK 插件相同：`plugins.operation.finished` 或 `plugins.operation.failed`，写入 `plugins/{plugin}/host`。平台层只上报观察到的阶段和耗时，级别和 `host.*` 失败类别只由 Core 按阶段决定；取消、停止和过期结果不记录。宿主当前代记下表四种贡献，唯一来源是 `rust/lithe-core/src/diagnostics/plugin_operations.rs` 的 `CONTRIBUTIONS`；输入、阶段到类别的对应和 -32064 见 [Rust Core API](../contracts/rust-core-api.md#engine-logging-v2-handoff-pr3)。
 
   | operation | 声明来源 | 记录方 | 可能的失败阶段 |

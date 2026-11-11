@@ -133,7 +133,6 @@ impl Fixture {
 struct Launch {
     plugin_id: &'static str,
     root_uri: &'static str,
-    protocol_version: u64,
     functions: Vec<&'static str>,
     host_services: Vec<String>,
 }
@@ -145,7 +144,6 @@ impl Launch {
         Self {
             plugin_id,
             root_uri: "file:///workspace",
-            protocol_version: 4,
             functions: Vec::new(),
             host_services: vec!["functions".to_string()],
         }
@@ -158,11 +156,6 @@ impl Launch {
 
     fn at(mut self, root_uri: &'static str) -> Self {
         self.root_uri = root_uri;
-        self
-    }
-
-    fn speaking(mut self, protocol_version: u64) -> Self {
-        self.protocol_version = protocol_version;
         self
     }
 
@@ -179,7 +172,7 @@ impl Launch {
             .collect();
         json!({
             "experimental": {
-                "litheFunctions": { "version": self.protocol_version, "functions": functions }
+                "litheFunctions": { "version": 0, "functions": functions }
             }
         })
     }
@@ -521,23 +514,6 @@ fn a_call_the_host_starts_carries_no_caller() {
 }
 
 #[test]
-fn a_callee_on_an_older_protocol_version_gets_no_caller() {
-    let fixture = Fixture::new();
-    let python = fixture.start(Launch::new(PYTHON));
-    let go = fixture.start(Launch::new(GO).speaking(3).serving(&[FORMAT]));
-    fixture.configure(standard_snapshot());
-
-    python.call("call-1", GO, FORMAT);
-
-    let (wire_id, received) = go.await_invoke();
-    assert!(received.get("caller").is_none(), "{received}");
-    // The rest of the call is unchanged for that callee.
-    assert_eq!(received["context"], workspace_context());
-    go.answer(&wire_id, json!({}));
-    assert_eq!(python.reply("call-1")["result"], json!({ "value": {} }));
-}
-
-#[test]
 fn a_failing_callee_keeps_its_own_error_code() {
     let fixture = Fixture::new();
     let python = fixture.start(Launch::new(PYTHON));
@@ -744,22 +720,8 @@ fn a_refused_call_never_reaches_the_callee() {
 }
 
 #[test]
-fn relay_methods_need_protocol_version_4_and_the_functions_grant() {
+fn relay_methods_need_the_functions_grant() {
     let fixture = Fixture::new();
-    let old_protocol = fixture.start(Launch::new(PYTHON).speaking(3));
-    old_protocol.call("call-1", GO, FORMAT);
-    assert_error(
-        &old_protocol.reply("call-1"),
-        "plugin.host.unavailable",
-        -32601,
-    );
-    old_protocol.ask("providers-1", PROVIDERS, json!({ "functionID": FORMAT }));
-    assert_error(
-        &old_protocol.reply("providers-1"),
-        "plugin.host.unavailable",
-        -32601,
-    );
-
     let ungranted = fixture.start(Launch::new(ALPHA).without_grant());
     ungranted.call("call-2", GO, FORMAT);
     assert_error(
@@ -767,15 +729,21 @@ fn relay_methods_need_protocol_version_4_and_the_functions_grant() {
         "plugin.host.permissionDenied",
         -32010,
     );
+    ungranted.ask("providers-2", PROVIDERS, json!({ "functionID": FORMAT }));
+    assert_error(
+        &ungranted.reply("providers-2"),
+        "plugin.host.permissionDenied",
+        -32010,
+    );
 }
 
 #[test]
-fn the_old_refusals_still_hold_with_the_relay() {
+fn domain_dispatch_and_cross_plugin_host_calls_are_refused() {
     let fixture = Fixture::new();
     let python = fixture.start(Launch::new(PYTHON).serving(&[LINT]));
     fixture.configure(standard_snapshot());
 
-    // A backend still cannot ask the host to run a function or a domain
+    // A backend cannot ask the host to run a function or a domain
     // operation, which could route back into the backend itself.
     for (id, method) in [
         ("invoke", "lithe/function/invoke"),
@@ -789,7 +757,7 @@ fn the_old_refusals_still_hold_with_the_relay() {
         );
     }
 
-    // The host still cannot call another plugin's function through a session.
+    // The host cannot call another plugin's function through a session.
     let error = python
         .host_call("host-call-1", GO, FORMAT)
         .expect_err("another plugin's function stays private");

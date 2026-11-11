@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 fn manifest() -> Value {
     serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../shared/contracts/plugins/v1/fixtures/settings/settings-v2.plugin.json"
+        "/../../shared/contracts/plugins/v1/fixtures/settings/settings.plugin.json"
     )))
     .unwrap()
 }
@@ -49,14 +49,14 @@ fn settings_state_dispatches_with_core_owned_sources_and_normalized_scope() {
         "plugins.declarative.settingsState",
         json!({
             "manifest": manifest(),
-            "globalDocument": "{\"dev.lithe.fixture.settings-v2\":{\"dialyzer\":false}}",
-            "projectDocument": "{\"dev.lithe.fixture.settings-v2\":{\"mixEnv\":\"test\"}}"
+            "globalDocument": "{\"dev.lithe.fixture.settings\":{\"dialyzer\":false}}",
+            "projectDocument": "{\"dev.lithe.fixture.settings\":{\"mixEnv\":\"test\"}}"
         }),
     );
     assert_eq!(result["ok"], true, "{result}");
     assert_eq!(result["data"]["status"], "ok", "{result}");
     let state = &result["data"]["state"];
-    assert_eq!(state["pluginID"], "dev.lithe.fixture.settings-v2");
+    assert_eq!(state["pluginID"], "dev.lithe.fixture.settings");
     let rows = state["rows"].as_array().unwrap();
     let dialyzer = rows
         .iter()

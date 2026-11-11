@@ -1,11 +1,11 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 0,
   "id": "dev.lithe.fixture.httpgrammar",
   "displayName": "HTTP Request Syntax",
   "version": "1.0.0",
-  "pluginAPIVersion": 3,
+  "pluginAPIVersion": 0,
   "requires": {
-    "languages": 3
+    "languages": 0
   },
   "vendor": {
     "id": "org.example",
