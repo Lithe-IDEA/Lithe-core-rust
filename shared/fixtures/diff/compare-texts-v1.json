@@ -403,7 +403,9 @@
             "newLine": 2,
             "left": "let total = compute(a, b);",
             "right": "let total = compute(a, b, c);",
-            "kind": "changed"
+            "kind": "changed",
+            "leftChanges": [],
+            "rightChanges": [[24, 27]]
           }
         ],
         "lines": [
@@ -658,7 +660,9 @@
             "newLine": 1,
             "left": "    return value",
             "right": "\t\treturn value",
-            "kind": "changed"
+            "kind": "changed",
+            "leftChanges": [[0, 4]],
+            "rightChanges": [[0, 2]]
           },
           {
             "oldLine": 2,

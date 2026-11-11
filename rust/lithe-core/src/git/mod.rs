@@ -8218,6 +8218,22 @@ fn flush_diff_changes(
             (false, true) => "addition",
             (false, false) => continue,
         };
+        let is_invisible_change = left.zip(right).and_then(|(left, right)| {
+            (without_one_trailing_cr(&left.text) == without_one_trailing_cr(&right.text))
+                .then_some(true)
+        });
+        let (left_changes, right_changes) = match left.zip(right) {
+            Some((left, right)) if is_invisible_change.is_none() => {
+                match crate::diff::inline_changes(
+                    without_one_trailing_cr(&left.text),
+                    without_one_trailing_cr(&right.text),
+                ) {
+                    Some((left, right)) => (Some(left), Some(right)),
+                    None => (None, None),
+                }
+            }
+            _ => (None, None),
+        };
         rows.push(GitDiffRowResponse {
             old_line: left.map(|entry| entry.number),
             new_line: right.map(|entry| entry.number),
@@ -8225,10 +8241,9 @@ fn flush_diff_changes(
             right: right.map(|entry| entry.text.clone()),
             kind: kind.to_string(),
             hunk_id: hunk_id.map(String::from),
-            is_invisible_change: left.zip(right).and_then(|(left, right)| {
-                (without_one_trailing_cr(&left.text) == without_one_trailing_cr(&right.text))
-                    .then_some(true)
-            }),
+            is_invisible_change,
+            left_changes,
+            right_changes,
         });
     }
     removed.clear();
@@ -8305,6 +8320,8 @@ fn parse_diff(
                 kind: "information".to_string(),
                 hunk_id: Some(hunk_id),
                 is_invisible_change: None,
+                left_changes: None,
+                right_changes: None,
             });
         } else if line.starts_with("diff --git") && current_hunk_id.is_some() {
             let hunk_id = current_hunk_id.take().expect("hunk should exist");
@@ -8361,6 +8378,8 @@ fn parse_diff(
                 kind: "context".to_string(),
                 hunk_id: current_hunk_id.clone(),
                 is_invisible_change: None,
+                left_changes: None,
+                right_changes: None,
             });
             old_line += 1;
             new_line += 1;

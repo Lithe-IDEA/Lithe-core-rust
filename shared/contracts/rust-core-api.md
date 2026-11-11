@@ -2613,7 +2613,13 @@ reference whose comparison must begin at the repository's object-format-specific
 `staged`, `untracked`, `contextLines`, and `ignoreAllWhitespace`, and returns `{ "patch": string, "rows": [],
 "hunks": [] }`. Rows contain one-based `oldLine`/`newLine` values where
 available, `left`/`right` text, a `kind` (`context`, `changed`, `addition`,
-`removal`, or `information`), and an optional `hunkID`. For `context` and
+`removal`, or `information`), and an optional `hunkID`. A `changed` row whose
+sides differ visibly also carries `leftChanges` and `rightChanges`: the stretches
+of each side that differ from the other, as ascending, non-touching half-open
+`[start, end)` UTF-16 column ranges, compared word by word (runs of letters,
+digits and `_`, runs of whitespace, and single other characters). They are
+omitted for lines over 4096 characters and for lines with nothing in common,
+which hosts show as wholly changed. For `context` and
 `information` rows both sides carry identical text, so `right` is omitted and
 clients must fall back to `left`. Hunk entries contain their header and the
 patch text needed for partial apply; rows are not duplicated per hunk, so
@@ -4299,7 +4305,8 @@ insert stay separate rows. The response is `{ rows, lines, oldLineCount,
 newLineCount, additions, deletions }`. `rows` are side-by-side
 `{ oldLine, newLine, left, right?, kind }` with one-based line numbers and
 `kind` of `context`, `changed`, `addition`, or `removal`; `context` rows omit
-`right` because both sides equal `left`. `lines` are unified
+`right` because both sides equal `left`. `changed` rows carry `leftChanges` and
+`rightChanges` under the same rules as `git.diff`. `lines` are unified
 `{ kind, content, oldLine, newLine }` with `kind` of `context`, `removed`, or
 `added`, each changed block listing its removals before its additions. See
 `shared/fixtures/diff/compare-texts-v1.json`.

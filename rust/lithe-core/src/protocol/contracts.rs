@@ -695,6 +695,13 @@ pub struct GitDiffRowResponse {
     /// Both sides look equal only after removing a trailing carriage return.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_invisible_change: Option<bool>,
+    /// For a `changed` row, the stretches of `left` that differ from `right`, as
+    /// half-open UTF-16 column ranges (`diff::inline_changes`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub left_changes: Option<Vec<[usize; 2]>>,
+    /// The stretches of `right` that differ from `left`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub right_changes: Option<Vec<[usize; 2]>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
