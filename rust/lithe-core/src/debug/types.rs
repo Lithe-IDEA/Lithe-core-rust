@@ -209,6 +209,18 @@ pub struct SessionRequest {
     pub session_id: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+/// Identifies one session for `debug.disconnect` and carries the user's debuggee policy.
+pub struct DisconnectRequest {
+    pub session_id: String,
+    /// Optional user choice for a launch session's local debuggee. When absent, launch
+    /// terminates it. An attach session never terminates the external process, even if
+    /// this is `true`, so a remote detach cannot kill a JVM the IDE does not own.
+    #[serde(default)]
+    pub terminate_debuggee: Option<bool>,
+}
+
 #[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// DAP request used to begin a debuggee session.

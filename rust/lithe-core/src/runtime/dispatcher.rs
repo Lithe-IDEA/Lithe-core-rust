@@ -1925,7 +1925,7 @@ fn execute_parsed(mut parsed: CoreRequest) -> CoreResponse {
             }
         }
         CoreCommand::DebugDisconnect => {
-            match serde_json::from_value::<crate::debug::SessionRequest>(parsed.payload)
+            match serde_json::from_value::<crate::debug::DisconnectRequest>(parsed.payload)
                 .map_err(|error| {
                     CoreError::new(
                         ErrorCode::InvalidRequest,

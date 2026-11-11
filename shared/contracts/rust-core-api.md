@@ -1413,7 +1413,7 @@ package manager owns the download and Lithe does not infer bytes from logs.
 | `debug.inspect` | Request normalized threads, frames, scopes, variables, or evaluation |
 | `debug.receive` | Reduce base64-encoded bytes received from a platform-owned DAP transport |
 | `debug.runInTerminalResponse` | Complete one adapter-requested native terminal launch |
-| `debug.disconnect` | Begin the DAP disconnect handshake without closing the native transport |
+| `debug.disconnect` | Begin the DAP disconnect handshake without closing the native transport; optional `terminateDebuggee` applies to launch sessions only |
 | `debug.destroySession` | Remove a session and its whole child tree after the platform closes its native transport; the response lists `destroyedChildSessionIds` (leaves first) whose transports the platform must also close |
 | `lsp.applyTextEdits` | Apply LSP UTF-16 text edits with range validation |
 | `lsp.plainSnippet` | Convert LSP snippet insert text into plain editor text |
@@ -3470,9 +3470,13 @@ The compatibility flow is captured in
 captured in `shared/fixtures/debug/exception-info-v1.json`.
 
 `debug.disconnect` emits the protocol handshake and enters `terminating`.
-Core derives DAP `terminateDebuggee` from the session's request kind: `launch`
-uses `true`, while `attach` and a session stopped before either request use
-`false`. This prevents a remote detach from killing a JVM the IDE does not own.
+`debug.disconnect` accepts an optional `terminateDebuggee: boolean`. When it is
+absent, Core derives DAP `terminateDebuggee` from the session's request kind:
+`launch` uses `true`, while `attach` and a session stopped before either request
+use `false`. A provided value applies to `launch` sessions only, so a user can
+keep a local debuggee running. An `attach` session never terminates the external
+process, even when `terminateDebuggee: true` is sent. This prevents a remote
+detach from killing a JVM the IDE does not own.
 The compatibility cases are in
 `shared/fixtures/debug/disconnect-policy-v1.json`. The platform keeps the
 socket or process alive long enough to flush the frame, then closes it and
