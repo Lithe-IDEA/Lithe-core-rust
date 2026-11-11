@@ -273,6 +273,8 @@ pub enum LspSemanticOperation {
     InlayHints,
     /// `textDocument/foldingRange`.
     FoldingRanges,
+    /// `textDocument/documentLink`: clickable ranges such as URLs and file references.
+    DocumentLinks,
     /// Full `textDocument/semanticTokens/full` with its negotiated legend.
     SemanticTokens,
     /// `textDocument/codeLens`.
@@ -4398,6 +4400,7 @@ fn semantic_method(operation: LspSemanticOperation) -> &'static str {
         LspSemanticOperation::ExecuteCommand => "workspace/executeCommand",
         LspSemanticOperation::InlayHints => "textDocument/inlayHint",
         LspSemanticOperation::FoldingRanges => "textDocument/foldingRange",
+        LspSemanticOperation::DocumentLinks => "textDocument/documentLink",
         LspSemanticOperation::SemanticTokens => "textDocument/semanticTokens/full",
         LspSemanticOperation::CodeLens => "textDocument/codeLens",
     }
@@ -4422,6 +4425,7 @@ fn semantic_capability(operation: LspSemanticOperation) -> Option<&'static str> 
         LspSemanticOperation::ExecuteCommand => Some("executeCommand"),
         LspSemanticOperation::InlayHints => Some("inlayHints"),
         LspSemanticOperation::FoldingRanges => Some("foldingRanges"),
+        LspSemanticOperation::DocumentLinks => Some("documentLinks"),
         LspSemanticOperation::SemanticTokens => Some("semanticTokens"),
         LspSemanticOperation::CodeLens => Some("codeLens"),
     }

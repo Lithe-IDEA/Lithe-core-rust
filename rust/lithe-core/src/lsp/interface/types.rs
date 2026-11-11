@@ -59,6 +59,15 @@ pub struct LspFoldingRangeResponse {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Normalized document link; `target` is absent when the server defers it to resolve.
+pub struct LspDocumentLinkResponse {
+    pub range: LspRangeResponse,
+    pub target: Option<String>,
+    pub tooltip: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 /// Normalized CodeLens payload awaiting an optional resolve operation.
 pub struct LspCodeLensResponse {
     pub range: LspRangeResponse,

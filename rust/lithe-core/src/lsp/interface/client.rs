@@ -1065,6 +1065,7 @@ fn validate_lsp_method(method: &str) -> Result<(), CoreError> {
         | "textDocument/inlayHint"
         | "textDocument/semanticTokens/full"
         | "textDocument/foldingRange"
+        | "textDocument/documentLink"
         | "textDocument/codeLens"
         | "textDocument/codeAction"
         | "completionItem/resolve"
@@ -1148,6 +1149,7 @@ fn feature_request_params(request: &ClientFeatureRequest) -> Result<Value, CoreE
         "textDocument/semanticTokens/full"
         | "textDocument/documentSymbol"
         | "textDocument/foldingRange"
+        | "textDocument/documentLink"
         | "textDocument/codeLens" => Ok(json!({
             "textDocument": text_document
         })),
@@ -1403,6 +1405,9 @@ fn lsp_feature_result_for_method(method: Option<&str>, result: Option<&Value>) -
         })),
         Some("textDocument/foldingRange") => Some(json!({
             "ranges": parse_folding_ranges(result)
+        })),
+        Some("textDocument/documentLink") => Some(json!({
+            "links": parse_document_links(result)
         })),
         Some("textDocument/codeLens") => Some(json!({
             "lenses": parse_code_lenses(result)
@@ -1703,6 +1708,32 @@ fn parse_folding_ranges(result: &Value) -> Vec<LspFoldingRangeResponse> {
         .unwrap_or_default()
 }
 
+/// Links without a range are dropped; a missing target stays `None` because the
+/// server may supply it only through `documentLink/resolve`, which Core does not call.
+fn parse_document_links(result: &Value) -> Vec<LspDocumentLinkResponse> {
+    result
+        .as_array()
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|link| {
+                    Some(LspDocumentLinkResponse {
+                        range: parse_lsp_range(link.get("range")?)?,
+                        target: link
+                            .get("target")
+                            .and_then(Value::as_str)
+                            .map(str::to_string),
+                        tooltip: link
+                            .get("tooltip")
+                            .and_then(Value::as_str)
+                            .map(str::to_string),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn parse_code_lenses(result: &Value) -> Vec<LspCodeLensResponse> {
     result
         .as_array()
@@ -1987,6 +2018,12 @@ fn feature_names_from_capabilities(capabilities: &Value) -> Vec<String> {
         "foldingRangeProvider",
         "foldingRanges",
     );
+    add_capability(
+        &mut values,
+        capabilities,
+        "documentLinkProvider",
+        "documentLinks",
+    );
     add_capability(&mut values, capabilities, "codeLensProvider", "codeLens");
     if capabilities
         .get("semanticTokensProvider")
@@ -2237,6 +2274,7 @@ fn feature_name_for_method(method: &str) -> Option<&'static str> {
         "textDocument/documentSymbol" => Some("documentSymbols"),
         "textDocument/inlayHint" => Some("inlayHints"),
         "textDocument/foldingRange" => Some("foldingRanges"),
+        "textDocument/documentLink" => Some("documentLinks"),
         "textDocument/codeLens" => Some("codeLens"),
         "textDocument/codeAction" => Some("codeActions"),
         "workspace/symbol" => Some("workspaceSymbols"),

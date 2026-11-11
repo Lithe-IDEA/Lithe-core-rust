@@ -656,6 +656,7 @@ fn client_core_initializes_and_applies_server_capabilities() {
                         "codeActionProvider": { "resolveProvider": true },
                         "inlayHintProvider": true,
                         "foldingRangeProvider": {},
+                        "documentLinkProvider": { "resolveProvider": true },
                         "codeLensProvider": { "resolveProvider": false },
                         "workspaceSymbolProvider": true
                     }
@@ -675,6 +676,10 @@ fn client_core_initializes_and_applies_server_capabilities() {
         .state
         .server_capabilities
         .contains(&"completionResolve".to_string()));
+    assert!(applied
+        .state
+        .server_capabilities
+        .contains(&"documentLinks".to_string()));
     for feature in [
         "inlayHints",
         "foldingRanges",
@@ -2012,6 +2017,76 @@ fn client_core_shapes_feature_responses_for_swift_models() {
     })
     .unwrap();
     assert_eq!(executed.events[0].result.as_ref().unwrap()["value"], 5005);
+}
+
+#[test]
+fn client_requests_and_normalizes_document_links() {
+    let uri = "file:///tmp/project/README.md";
+    let opened = client_open_document(ClientOpenDocumentRequest {
+        state: LspClientState::default(),
+        uri: uri.to_string(),
+        language_id: "markdown".to_string(),
+        text: "See https://example.com\nsecond line\n".to_string(),
+    })
+    .unwrap();
+
+    let request = client_feature_request(ClientFeatureRequest {
+        state: opened.state,
+        uri: uri.to_string(),
+        method: "textDocument/documentLink".to_string(),
+        position: None,
+        new_name: None,
+        range: None,
+        diagnostics: Vec::new(),
+        completion_context: None,
+        completion_item: None,
+        code_action: None,
+        command: None,
+        formatting_options: None,
+    })
+    .unwrap();
+    let request_json: Value = serde_json::from_str(&request.messages[0]).unwrap();
+    assert_eq!(request_json["method"], "textDocument/documentLink");
+    assert_eq!(request_json["params"]["textDocument"]["uri"], uri);
+
+    let response = client_apply_server_message(ClientApplyServerMessageRequest {
+        state: request.state,
+        message: json!({
+            "jsonrpc": "2.0",
+            "id": "1",
+            "result": [
+                {
+                    "range": {
+                        "start": { "line": 0, "character": 4 },
+                        "end": { "line": 0, "character": 23 }
+                    },
+                    "target": "https://example.com/",
+                    "tooltip": "Open link"
+                },
+                {
+                    "range": {
+                        "start": { "line": 1, "character": 0 },
+                        "end": { "line": 1, "character": 6 }
+                    }
+                },
+                { "target": "file:///tmp/project/missing-range.md" }
+            ]
+        })
+        .to_string(),
+    })
+    .unwrap();
+    let links = response.events[0].result.as_ref().unwrap()["links"]
+        .as_array()
+        .unwrap();
+    assert_eq!(links.len(), 2);
+    assert_eq!(links[0]["range"]["start"]["line"], 0);
+    assert_eq!(links[0]["range"]["start"]["utf16Column"], 4);
+    assert_eq!(links[0]["range"]["end"]["utf16Column"], 23);
+    assert_eq!(links[0]["target"], "https://example.com/");
+    assert_eq!(links[0]["tooltip"], "Open link");
+    assert_eq!(links[1]["range"]["end"]["line"], 1);
+    assert!(links[1]["target"].is_null());
+    assert!(links[1]["tooltip"].is_null());
 }
 
 #[test]
