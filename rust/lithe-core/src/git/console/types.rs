@@ -57,6 +57,10 @@ pub struct Record {
     pub remote_result: Option<RemoteResult>,
     #[serde(default)]
     pub truncated: bool,
+    /// The `query` of the record's `started` event: an internal query the workflow reported
+    /// only because the request asked for queries. Its output is folded unless it failed.
+    #[serde(default)]
+    pub query: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -137,7 +141,8 @@ pub struct OutputFragment {
     pub id: String,
     pub start: usize,
     pub end: usize,
-    /// text or progress; a folded progress range uses its last original line as its label.
+    /// text, progress or query; a folded progress range uses its last original line as its
+    /// label, and a query range, which folds a query's whole output, is labelled by `count`.
     pub kind: String,
     /// Number of original lines in the range.
     pub count: usize,
