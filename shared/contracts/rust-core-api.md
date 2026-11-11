@@ -1503,7 +1503,7 @@ package manager owns the download and Lithe does not infer bytes from logs.
 | `git.resolveFileContext` | Resolve a file to its owning Git checkout and relative path |
 | `git.write` | Validate and execute shared Git mutations such as stage, commit, branch, checkout, remote sync, clone, and stash |
 | `git.fetchPlan` | Validate Fetch choices; optionally inspect a repository to expand enabled per-remote commands |
-| `git.consolePresentation` | Pure IDEA-style configuration/progress folds, empty-output notices and search ranges over retained diagnostic snapshots |
+| `git.consolePresentation` | Pure IDEA-style configuration/progress/query folds, empty-output notices and search ranges over retained diagnostic snapshots |
 | `git.remoteUrl` | Read a configured remote URL silently; a missing remote returns a null URL |
 | `git.executionInspect` | Inspect executable capabilities, configuration provenance and effective Fetch preferences |
 | `git.executionConfigure` | Explicitly save or clear one allowlisted value in a selected config scope |
@@ -2059,7 +2059,7 @@ Each event has `operationId` and `type`:
 | Type | Additional fields |
 | --- | --- |
 | `requestStarted` | none; cancellation is registered before delivery |
-| `started` | `invocationId`, `workingDirectory`, `arguments`, nullable resolved `executable`, `temporaryConfig` key/value pairs, `displayArguments`, `globalArguments`, `source` |
+| `started` | `invocationId`, `workingDirectory`, `arguments`, nullable resolved `executable`, `temporaryConfig` key/value pairs, `displayArguments`, `globalArguments`, `source`, `query` |
 | `output` | `invocationId`, `stream` (`stdout`/`stderr`), `text`, `progress`, `truncated`, optional `progressDetails` (`stage`, nullable `percent`, `completed`, `total`) |
 | `finished` | `invocationId`, nullable `exitCode`, monotonic `durationMilliseconds`, nullable `error`, `expectedExit` |
 | `requestFinished` | nullable `error`, including failures before a child started; `unconfirmedInvocations`, the started records without `finished`; `failureRecord`, true when `error` is set, is not a cancellation, and no record of the request failed or is unconfirmed, so the host shows the error as its own record |
@@ -2102,7 +2102,13 @@ events. Internal read-only queries remain silent in the console while retaining
 normal workflow capture and result semantics, unless the request sets
 `gitExecution.reportQueries`: then each query produces the same `started`, `output`
 and `finished` events as a visible command, so the console records what the
-workbench read. Queries of a request whose provenance is `background` (an
+workbench read. Their `started` event carries `query: true`; every visible command
+carries `query: false`. A host passes the flag back as the console record's
+`query`, and `git.consolePresentation` then folds a query's whole output into one
+`query` output fragment whose `count` labels it, the way IDEA keeps silent
+handlers out of sight. A failed query and a query that wrote a single line keep
+their output visible. Search still counts and locates every folded line, so a
+host opens the fold on a hit. Queries of a request whose provenance is `background` (an
 automatic refresh or watcher, which runs too often to record) stay silent even
 then; provenance is `gitExecution.source`, or the envelope origin when that is
 unknown. Reported queries never authenticate or prompt; a query that needs

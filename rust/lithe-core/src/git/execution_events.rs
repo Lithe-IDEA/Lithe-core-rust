@@ -83,6 +83,9 @@ enum Kind<'a> {
         /// Native presentation folds global options without rewriting actual argv.
         display_arguments: Vec<String>,
         global_arguments: Vec<String>,
+        /// An internal query reported through `reportQueries`, as opposed to a command the
+        /// workflow runs visibly; consoles fold a query's output by default.
+        query: bool,
     },
     Output {
         invocation_id: u64,
@@ -240,6 +243,8 @@ pub(super) struct Invocation {
     /// stays visible while stdout is replaced with one explicit redaction marker.
     redact_configuration: Cell<bool>,
     configuration_marker_sent: bool,
+    /// The child is an internal query reported only because the request asked for queries.
+    query: bool,
 }
 impl Invocation {
     /// The invocation that reports a child: visible commands always report, and internal
@@ -250,7 +255,9 @@ impl Invocation {
             execution_policy::current().report_queries
                 && execution_policy::source() != Source::Background
         };
-        (visible || query()).then(Self::current).flatten()
+        let mut invocation = (visible || query()).then(Self::current).flatten()?;
+        invocation.query = !visible;
+        Some(invocation)
     }
     /// Whether an internal query's nonzero exit answered its question, such as a missing
     /// config key or an absent ref. A visible command's nonzero exit is always Git's failure.
@@ -278,6 +285,7 @@ impl Invocation {
                 pending_progress: None,
                 redact_configuration: Cell::new(false),
                 configuration_marker_sent: false,
+                query: false,
             })
         })
     }
@@ -361,6 +369,7 @@ impl Invocation {
                 invocation_id: self.id,
                 working_directory: root,
                 arguments: &arguments,
+                query: self.query,
             },
         );
     }
@@ -858,6 +867,37 @@ mod tests {
             .map(|event| event["failureRecord"].clone())
             .collect();
         assert_eq!(records, [true, false]);
+    }
+
+    #[test]
+    fn reported_queries_are_marked_apart_from_visible_commands() {
+        let options = crate::git::execution_policy::GitExecutionOptions {
+            report_queries: true,
+            ..Default::default()
+        };
+        let _policy = crate::git::execution_policy::Scope::begin(Some(options)).unwrap();
+        let events = capture_request(|| {
+            request_started(Some("marked"));
+            let query = Invocation::reported(false).unwrap();
+            query.started("/workspace", &["log".into()]);
+            query.finished(Some(0), None);
+            let command = Invocation::reported(true).unwrap();
+            command.started("/workspace", &["commit".into()]);
+            command.finished(Some(0), None);
+            request_finished(r#"{"ok":true,"data":{}}"#);
+        });
+        let marks: Vec<_> = events
+            .iter()
+            .filter(|event| event["type"] == "started")
+            .map(|event| (event["arguments"][0].clone(), event["query"].clone()))
+            .collect();
+        assert_eq!(
+            marks,
+            [
+                (serde_json::json!("log"), serde_json::json!(true)),
+                (serde_json::json!("commit"), serde_json::json!(false))
+            ]
+        );
     }
 
     #[test]
