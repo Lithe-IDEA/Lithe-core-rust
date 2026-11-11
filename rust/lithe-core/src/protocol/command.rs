@@ -382,6 +382,10 @@ pub enum CoreCommand {
     FileRead,
     /// Replaces one workspace-relative UTF-8 file (`file.write`).
     FileWrite,
+    /// Decodes bytes the host read, as `file.read` would (`text.decode`).
+    TextDecode,
+    /// Encodes text into bytes, as `file.write` would (`text.encode`).
+    TextEncode,
     /// Reduces one shared document persistence event (`document.lifecycle`).
     DocumentLifecycle,
     /// Classifies decoded Unicode text independently of its filename (`document.classifyText`).
@@ -1024,6 +1028,8 @@ impl CoreCommand {
             "workspace.searchTextBatch" => Some(Self::WorkspaceSearchTextBatch),
             "file.read" => Some(Self::FileRead),
             "file.write" => Some(Self::FileWrite),
+            "text.decode" => Some(Self::TextDecode),
+            "text.encode" => Some(Self::TextEncode),
             "document.lifecycle" => Some(Self::DocumentLifecycle),
             "document.classifyText" => Some(Self::DocumentClassifyText),
             "document.planSaveBatch" => Some(Self::DocumentPlanSaveBatch),

@@ -1542,6 +1542,11 @@ pub(crate) struct PathMapping {
 pub(crate) struct StartRequest {
     pub(crate) request: DebugRequest,
     pub(crate) facts: StartFacts,
+    /// A plugin backend's own DAP arguments from `lithe/host/debug/start`, as
+    /// `debug.decodeBackendConfiguration` accepted them. They go on top of the
+    /// adapter's arguments, so the host sends the result unchanged.
+    #[serde(default)]
+    pub(crate) configuration: Option<Map<String, Value>>,
 }
 
 /// The remote endpoint a start connects to, as the adapter will receive it.
@@ -1565,8 +1570,24 @@ pub(crate) struct StartArguments {
 }
 
 /// The default DAP arguments of a request with each binding filling its
-/// argument from the target, unless the defaults already set it.
+/// argument from the target, unless the defaults already set it, and then a
+/// backend's configuration replacing any argument it names.
 pub(crate) fn start_arguments(
+    adapter: &DebugAdapterDeclaration,
+    start: &StartRequest,
+) -> Validation<StartArguments> {
+    let mut started = bound_arguments(adapter, start)?;
+    if let Some(configuration) = &start.configuration {
+        super::backend_start::reject_host_keys(configuration)?;
+        for (key, value) in configuration {
+            started.arguments.insert(key.clone(), value.clone());
+        }
+    }
+    Ok(started)
+}
+
+/// The adapter's own arguments for a start: its defaults and target bindings.
+fn bound_arguments(
     adapter: &DebugAdapterDeclaration,
     start: &StartRequest,
 ) -> Validation<StartArguments> {

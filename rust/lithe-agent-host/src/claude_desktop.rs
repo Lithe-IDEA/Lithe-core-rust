@@ -690,6 +690,31 @@ mod tests {
             .collect()
     }
 
+    /// The shared fixture is what a client decodes cards against, so it must be
+    /// exactly what this presenter produces for each recorded call sequence.
+    #[test]
+    fn presented_updates_match_the_shared_card_fixture() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../../shared/fixtures/agent/claude-desktop-cards-v1.json"
+        ))
+        .unwrap();
+        for case in fixture["cases"].as_array().unwrap() {
+            let mut presenter = Presenter::default();
+            let presented: Vec<Value> = case["updates"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .flat_map(|update| presenter.present("s", update.clone()))
+                .collect();
+            assert_eq!(
+                Value::Array(presented),
+                case["presented"],
+                "{}",
+                case["name"]
+            );
+        }
+    }
+
     #[test]
     fn a_wrap_up_becomes_the_turn_answer_with_its_suggested_replies() {
         let mut presenter = Presenter::default();
