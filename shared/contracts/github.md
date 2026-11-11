@@ -87,8 +87,24 @@ GitHub sign-in unavailable rather than asking the user for a personal token.
 Supported operations are `deviceCode`, `deviceToken`, `currentUser`,
 `listBranches`, `compareBranches`, `listPullRequests`, `getPullRequest`, `createPullRequest`, `updatePullRequest`,
 `listPullRequestFiles`, `listPullRequestComments`,
-`createPullRequestComment`, `createPullRequestReview`, `mergePullRequest`, and
-`updatePullRequestMetadata`.
+`createPullRequestComment`, `createPullRequestReview`, `mergePullRequest`,
+`updatePullRequestMetadata`, `listReviewComments`, `listCheckRuns`, and
+`getCombinedStatus`.
+
+`listReviewComments` (`GET /repos/{owner}/{name}/pulls/{number}/comments`, first
+page of 100) needs `pullNumber` and returns a flat array of
+`{ id, path, line, side, body, author, inReplyTo, createdAt, url }` sorted by `id`.
+`line` is null for an outdated anchor, `side` is `LEFT` or `RIGHT`, and `inReplyTo`
+is the parent comment ID for replies (null for thread roots). Threads are built by
+the host from `inReplyTo`.
+
+`listCheckRuns` (`GET .../commits/{sha}/check-runs`) and `getCombinedStatus`
+(`GET .../commits/{sha}/status`) need `commit`, a hexadecimal SHA of at least four
+characters. Both return a flat array of `{ name, status, conclusion, detailsUrl }`
+sorted by `name`, so one list can show check runs and legacy statuses together.
+A pending legacy status becomes `status: "in_progress"` with `conclusion: null`;
+any other legacy state becomes `status: "completed"` with that state as
+`conclusion`. Only the first page of 100 check runs is requested.
 
 PR lists are sorted by descending number. Labels, assignees, comments, and
 files are deterministically ordered as demonstrated by
