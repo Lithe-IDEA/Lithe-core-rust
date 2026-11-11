@@ -273,6 +273,10 @@ pub enum LspSemanticOperation {
     InlayHints,
     /// `textDocument/foldingRange`.
     FoldingRanges,
+    /// `textDocument/documentLink`: clickable ranges such as URLs and file references.
+    DocumentLinks,
+    /// `workspace/symbol`: workspace-wide symbol search for `query`; names no document.
+    WorkspaceSymbols,
     /// Full `textDocument/semanticTokens/full` with its negotiated legend.
     SemanticTokens,
     /// `textDocument/codeLens`.
@@ -293,6 +297,9 @@ pub struct SemanticRequest {
     pub position: Option<LspPosition>,
     #[serde(default)]
     pub new_name: Option<String>,
+    /// Search text for `workspaceSymbols`; absent means the empty query.
+    #[serde(default)]
+    pub query: Option<String>,
     #[serde(default)]
     pub range: Option<LspRange>,
     #[serde(default)]
@@ -2702,6 +2709,10 @@ impl RuntimeSession {
 
             let pending_kind = requested_kind;
             let response = match request.operation {
+                LspSemanticOperation::WorkspaceSymbols => {
+                    let query = request.query.clone().unwrap_or_default();
+                    allocate_raw_request(state.client.clone(), method, json!({ "query": query }))?
+                }
                 LspSemanticOperation::ExecuteCommand => {
                     let command = request.command.ok_or_else(|| {
                         CoreError::new(
@@ -2735,6 +2746,7 @@ impl RuntimeSession {
                         method: method.to_string(),
                         position: request.position,
                         new_name: request.new_name,
+                        query: request.query,
                         range: request.range,
                         diagnostics: request.diagnostics,
                         completion_context: request.completion_context,
@@ -4398,6 +4410,8 @@ fn semantic_method(operation: LspSemanticOperation) -> &'static str {
         LspSemanticOperation::ExecuteCommand => "workspace/executeCommand",
         LspSemanticOperation::InlayHints => "textDocument/inlayHint",
         LspSemanticOperation::FoldingRanges => "textDocument/foldingRange",
+        LspSemanticOperation::DocumentLinks => "textDocument/documentLink",
+        LspSemanticOperation::WorkspaceSymbols => "workspace/symbol",
         LspSemanticOperation::SemanticTokens => "textDocument/semanticTokens/full",
         LspSemanticOperation::CodeLens => "textDocument/codeLens",
     }
@@ -4422,6 +4436,8 @@ fn semantic_capability(operation: LspSemanticOperation) -> Option<&'static str> 
         LspSemanticOperation::ExecuteCommand => Some("executeCommand"),
         LspSemanticOperation::InlayHints => Some("inlayHints"),
         LspSemanticOperation::FoldingRanges => Some("foldingRanges"),
+        LspSemanticOperation::DocumentLinks => Some("documentLinks"),
+        LspSemanticOperation::WorkspaceSymbols => Some("workspaceSymbols"),
         LspSemanticOperation::SemanticTokens => Some("semanticTokens"),
         LspSemanticOperation::CodeLens => Some("codeLens"),
     }
@@ -6321,6 +6337,7 @@ mod tests {
             self.session()
                 .request(
                     SemanticRequest {
+                        query: None,
                         session_id: self.session_id.clone(),
                         operation_id: Some(operation_id.clone()),
                         operation,
@@ -8124,6 +8141,7 @@ mod tests {
             .session()
             .request(
                 SemanticRequest {
+                    query: None,
                     session_id: harness.session_id.clone(),
                     operation_id: Some("op-formatting".to_string()),
                     operation: LspSemanticOperation::Formatting,
@@ -8191,6 +8209,7 @@ mod tests {
                 .session()
                 .request(
                     SemanticRequest {
+                        query: None,
                         session_id: harness.session_id.clone(),
                         operation_id: Some("op-formatting-2".to_string()),
                         operation: LspSemanticOperation::Formatting,
@@ -8321,6 +8340,7 @@ mod tests {
             .session()
             .request(
                 SemanticRequest {
+                    query: None,
                     session_id: harness.session_id.clone(),
                     operation_id: Some(operation_id.clone()),
                     operation: LspSemanticOperation::ExecuteCommand,

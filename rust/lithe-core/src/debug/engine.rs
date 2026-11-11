@@ -972,7 +972,7 @@ pub(crate) fn start_debugging_response(
 }
 
 /// Begins a graceful DAP disconnect while the host keeps transport ownership.
-pub(crate) fn disconnect(request: SessionRequest) -> Result<DebugSessionUpdate, CoreError> {
+pub(crate) fn disconnect(request: DisconnectRequest) -> Result<DebugSessionUpdate, CoreError> {
     with_session(&request.session_id, |session| {
         if matches!(
             session.state,
@@ -986,10 +986,14 @@ pub(crate) fn disconnect(request: SessionRequest) -> Result<DebugSessionUpdate, 
         session.fail_pending_start_debugging_requests(
             "The debug session stopped before the child session could start.",
         )?;
-        // An attach session does not own the remote JVM, so disconnect must
-        // never terminate it. A launch session owns the local debuggee.
         session.request_children_stop();
-        let terminate_debuggee = session.debug_request_kind == Some(DebugRequestKind::Launch);
+        // An attach session does not own the remote JVM, so disconnect must
+        // never terminate it. A launch session owns the local debuggee and
+        // follows the user's explicit choice, defaulting to termination.
+        let terminate_debuggee = match session.debug_request_kind {
+            Some(DebugRequestKind::Launch) => request.terminate_debuggee.unwrap_or(true),
+            Some(DebugRequestKind::Attach) | None => false,
+        };
         session.send_request(
             "disconnect",
             json!({"restart": false, "terminateDebuggee": terminate_debuggee}),
@@ -3536,8 +3540,9 @@ mod tests {
                 );
             }
 
-            let disconnected = disconnect(SessionRequest {
+            let disconnected = disconnect(DisconnectRequest {
                 session_id: session_id.clone(),
+                terminate_debuggee: case["requestedTerminateDebuggee"].as_bool(),
             })
             .unwrap();
             let request = decode_frame(&disconnected.outbound_frames[0]);
@@ -4358,8 +4363,9 @@ mod tests {
         })
         .unwrap();
         receive_messages(session_id, vec![fixture["adapterRequest"].clone()]);
-        let update = disconnect(SessionRequest {
+        let update = disconnect(DisconnectRequest {
             session_id: session_id.to_string(),
+            terminate_debuggee: None,
         })
         .unwrap();
         let response = decode_frame(&update.outbound_frames[0]);
@@ -5879,13 +5885,15 @@ mod tests {
         assert!(create_session(child_request("debug-tree-orphan", Some("missing"))).is_err());
         create_session(child_request(child, Some(parent))).unwrap();
 
-        let stopping = disconnect(SessionRequest {
+        let stopping = disconnect(DisconnectRequest {
             session_id: parent.to_string(),
+            terminate_debuggee: None,
         })
         .unwrap();
         assert_eq!(child_events(&stopping), vec![format!("stop:{child}")]);
-        let again = disconnect(SessionRequest {
+        let again = disconnect(DisconnectRequest {
             session_id: parent.to_string(),
+            terminate_debuggee: None,
         })
         .unwrap();
         assert!(child_events(&again).is_empty(), "stop is requested once");
@@ -6316,8 +6324,9 @@ mod tests {
             vec![json!({"seq": 9, "type": "event", "event": "terminated", "body": {}})],
         );
         assert_eq!(child_events(&update), vec![format!("stop:{child}")]);
-        let update = disconnect(SessionRequest {
+        let update = disconnect(DisconnectRequest {
             session_id: parent.to_string(),
+            terminate_debuggee: None,
         })
         .unwrap();
         assert!(child_events(&update).is_empty());

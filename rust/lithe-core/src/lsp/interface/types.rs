@@ -59,6 +59,28 @@ pub struct LspFoldingRangeResponse {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Normalized workspace symbol from either `SymbolInformation` or `WorkspaceSymbol`.
+pub struct LspWorkspaceSymbolResponse {
+    pub name: String,
+    /// Numeric LSP `SymbolKind`, when supplied by the server.
+    pub kind: Option<i64>,
+    pub container_name: Option<String>,
+    pub uri: String,
+    /// Null when the server returned only a URI and expects `workspaceSymbol/resolve`.
+    pub range: Option<LspRangeResponse>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+/// Normalized document link; `target` is absent when the server defers it to resolve.
+pub struct LspDocumentLinkResponse {
+    pub range: LspRangeResponse,
+    pub target: Option<String>,
+    pub tooltip: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 /// Normalized CodeLens payload awaiting an optional resolve operation.
 pub struct LspCodeLensResponse {
     pub range: LspRangeResponse,
@@ -340,6 +362,9 @@ pub struct ClientFeatureRequest {
     pub method: String,
     #[serde(default)]
     pub position: Option<LspPosition>,
+    /// Search text for `workspace/symbol`; absent means the empty query.
+    #[serde(default)]
+    pub query: Option<String>,
     #[serde(default)]
     pub new_name: Option<String>,
     #[serde(default)]

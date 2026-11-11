@@ -10,6 +10,15 @@
       }
     },
     {
+      "name": "local launch can keep the debuggee when the user asks",
+      "request": "launch",
+      "requestedTerminateDebuggee": false,
+      "expectedArguments": {
+        "restart": false,
+        "terminateDebuggee": false
+      }
+    },
+    {
       "name": "remote attach does not own the debuggee",
       "request": "attach",
       "expectedArguments": {
@@ -20,6 +29,15 @@
     {
       "name": "unstarted session has no debuggee ownership",
       "request": null,
+      "expectedArguments": {
+        "restart": false,
+        "terminateDebuggee": false
+      }
+    },
+    {
+      "name": "remote attach never terminates even when the user asks",
+      "request": "attach",
+      "requestedTerminateDebuggee": true,
       "expectedArguments": {
         "restart": false,
         "terminateDebuggee": false

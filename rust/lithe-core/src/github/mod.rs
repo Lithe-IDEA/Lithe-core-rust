@@ -195,6 +195,9 @@ pub struct RequestPlanRequest {
     /// Pull request number required by pull-request-scoped operations.
     #[serde(default)]
     pub pull_number: Option<u64>,
+    /// Full commit SHA required by commit-status operations.
+    #[serde(default)]
+    pub commit: Option<String>,
     /// OAuth application's public client identifier.
     #[serde(default)]
     pub client_id: Option<String>,
@@ -388,6 +391,44 @@ pub struct GitHubBranch {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Normalized CI check for one commit, from either check runs or commit statuses.
+pub struct GitHubCommitCheck {
+    /// Check name (check run name or commit status context).
+    pub name: String,
+    /// `queued`, `in_progress` or `completed`.
+    pub status: String,
+    /// Conclusion such as `success`, `failure`, `neutral` or `cancelled`; null while unfinished.
+    pub conclusion: Option<String>,
+    /// Provider page for the check, when GitHub supplies one.
+    pub details_url: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+/// Normalized pull request review thread comment anchored to a diff line.
+pub struct GitHubReviewComment {
+    /// GitHub database identifier.
+    pub id: u64,
+    /// Repository-relative file path.
+    pub path: String,
+    /// Line in the current diff; null when the anchor is outdated.
+    pub line: Option<u64>,
+    /// `LEFT` (deletion side) or `RIGHT` (addition side) when supplied.
+    pub side: Option<String>,
+    /// Markdown comment body.
+    pub body: String,
+    /// Comment author.
+    pub author: GitHubUser,
+    /// Parent comment identifier for replies; null for thread roots.
+    pub in_reply_to: Option<u64>,
+    /// ISO-8601 creation timestamp.
+    pub created_at: String,
+    /// Browser URL for this comment.
+    pub url: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 /// Normalized commit metadata included in a branch comparison.
 pub struct GitHubComparisonCommit {
     /// Full Git commit identifier.
@@ -563,6 +604,31 @@ pub fn request_plan(request: RequestPlanRequest) -> Result<GitHubRequestPlan, Co
             pull_request_plan(&request, "PATCH", "", Some(Value::Object(body)))?
         }
         "listPullRequestFiles" => pull_request_plan(&request, "GET", "/files", None)?,
+        "listReviewComments" => {
+            query.insert("per_page".to_string(), "100".to_string());
+            pull_request_plan(&request, "GET", "/comments", None)?
+        }
+        "listCheckRuns" => {
+            let (repository, commit) = commit_path(&request)?;
+            query.insert("per_page".to_string(), "100".to_string());
+            (
+                GitHubHost::Api,
+                "GET",
+                format!("/repos/{repository}/commits/{commit}/check-runs"),
+                None,
+                true,
+            )
+        }
+        "getCombinedStatus" => {
+            let (repository, commit) = commit_path(&request)?;
+            (
+                GitHubHost::Api,
+                "GET",
+                format!("/repos/{repository}/commits/{commit}/status"),
+                None,
+                true,
+            )
+        }
         "listPullRequestComments" => {
             let repository = repository_path(&request)?;
             let number = pull_number(&request)?;
@@ -670,6 +736,9 @@ pub fn normalize_response(request: NormalizeResponseRequest) -> Result<Value, Co
         .expect("pull request encodes")),
         "listPullRequestFiles" => normalize_file_list(value),
         "listPullRequestComments" => normalize_comment_list(value),
+        "listReviewComments" => normalize_review_comment_list(value),
+        "listCheckRuns" => normalize_check_run_list(value),
+        "getCombinedStatus" => normalize_combined_status(value),
         "createPullRequestComment" => {
             Ok(serde_json::to_value(normalize_comment(&value)?).expect("comment encodes"))
         }
@@ -681,6 +750,15 @@ pub fn normalize_response(request: NormalizeResponseRequest) -> Result<Value, Co
         )
         .with_details(request.operation)),
     }
+}
+
+fn commit_path(request: &RequestPlanRequest) -> Result<(String, String), CoreError> {
+    let repository = repository_path(request)?;
+    let commit = required_text(request.commit.as_deref(), "commit")?;
+    if !commit.bytes().all(|byte| byte.is_ascii_hexdigit()) || commit.len() < 4 {
+        return Err(invalid_field("commit"));
+    }
+    Ok((repository, commit.to_string()))
 }
 
 fn repository_path(request: &RequestPlanRequest) -> Result<String, CoreError> {
@@ -925,6 +1003,92 @@ fn normalize_comment(value: &Value) -> Result<GitHubComment, CoreError> {
             .unwrap_or("")
             .to_string(),
     })
+}
+
+fn normalize_review_comment_list(value: Value) -> Result<Value, CoreError> {
+    let array = value.as_array().ok_or_else(parse_shape_error)?;
+    let mut comments = array
+        .iter()
+        .map(|value| {
+            let object = object(value)?;
+            Ok(GitHubReviewComment {
+                id: integer(object, "id")?,
+                path: text(object, "path")?.to_string(),
+                line: object.get("line").and_then(Value::as_u64),
+                side: object
+                    .get("side")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                body: text(object, "body")?.to_string(),
+                author: normalize_user(object.get("user").ok_or_else(parse_shape_error)?)?,
+                in_reply_to: object.get("in_reply_to_id").and_then(Value::as_u64),
+                created_at: text(object, "created_at")?.to_string(),
+                url: object
+                    .get("html_url")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+            })
+        })
+        .collect::<Result<Vec<_>, CoreError>>()?;
+    comments.sort_by_key(|comment| comment.id);
+    Ok(serde_json::to_value(comments).expect("review comment list encodes"))
+}
+
+fn normalize_check_run_list(value: Value) -> Result<Value, CoreError> {
+    let runs = object(&value)?
+        .get("check_runs")
+        .and_then(Value::as_array)
+        .ok_or_else(parse_shape_error)?;
+    let mut checks = runs
+        .iter()
+        .map(|value| {
+            let object = object(value)?;
+            Ok(GitHubCommitCheck {
+                name: text(object, "name")?.to_string(),
+                status: text(object, "status")?.to_string(),
+                conclusion: object
+                    .get("conclusion")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                details_url: object
+                    .get("details_url")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+            })
+        })
+        .collect::<Result<Vec<_>, CoreError>>()?;
+    checks.sort_by(|left, right| left.name.cmp(&right.name));
+    Ok(serde_json::to_value(checks).expect("check run list encodes"))
+}
+
+/// Maps legacy commit statuses onto the check-run shape: `pending` becomes an
+/// unfinished `in_progress` check, and `success`, `failure` or `error` become
+/// completed checks whose conclusion is that same state.
+fn normalize_combined_status(value: Value) -> Result<Value, CoreError> {
+    let statuses = object(&value)?
+        .get("statuses")
+        .and_then(Value::as_array)
+        .ok_or_else(parse_shape_error)?;
+    let mut checks = statuses
+        .iter()
+        .map(|value| {
+            let object = object(value)?;
+            let state = text(object, "state")?;
+            let pending = state == "pending";
+            Ok(GitHubCommitCheck {
+                name: text(object, "context")?.to_string(),
+                status: if pending { "in_progress" } else { "completed" }.to_string(),
+                conclusion: (!pending).then(|| state.to_string()),
+                details_url: object
+                    .get("target_url")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+            })
+        })
+        .collect::<Result<Vec<_>, CoreError>>()?;
+    checks.sort_by(|left, right| left.name.cmp(&right.name));
+    Ok(serde_json::to_value(checks).expect("combined status encodes"))
 }
 
 fn normalize_file_list(value: Value) -> Result<Value, CoreError> {
