@@ -937,10 +937,7 @@ fn normalize_pull_request(value: &Value) -> Result<GitHubPullRequest, CoreError>
         url: text(object, "html_url")?.to_string(),
         author: normalize_user(object.get("user").ok_or_else(parse_shape_error)?)?,
         head_ref: text(head, "ref")?.to_string(),
-        head_sha: head
-            .get("sha")
-            .and_then(Value::as_str)
-            .map(str::to_string),
+        head_sha: head.get("sha").and_then(Value::as_str).map(str::to_string),
         head_repository: head
             .get("repo")
             .and_then(Value::as_object)
