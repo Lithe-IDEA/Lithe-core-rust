@@ -234,17 +234,26 @@ canonical C declarations are in `rust/lithe-core/include/lithe_core.h`.
 Native clients can link the same `staticlib` or `cdylib`; Rust hosts call
 `lithe_core::execute_json` and `lithe_core::cancel_operation` directly. Hosts
 call `lithe_core::execution::plan_launch_command` (or the
-`execution.planLaunchCommand` JSON command) before spawning a Java process. It
-estimates the Windows command-line limit and moves oversized classpath/module-path
-options into argument-file text, so macOS can apply the same automatic behavior
-without a Windows-only setting. The planner requires a Java executable and a
-known JDK feature version of at least 9, obtained through
-`java_feature_version_from_release`; other launches remain unchanged. It stops
-at the application target (class, JAR, or module), preserving all program arguments.
-JSON hosts may instead supply `javaReleaseContents`, an array of host-read
-release files ordered nearest first. Core reads the first `JAVA_VERSION` entry;
-an unrecognized version remains unknown rather than falling back to an ancestor.
-An explicit `javaFeatureVersion` takes precedence over the supplied contents.
+`execution.planLaunchCommand` JSON command) before spawning a Java process. The
+request fields are `executable` (required, non-empty launcher path), `arguments`
+(string array, excluding the executable), `javaFeatureVersion` (optional
+integer), `javaReleaseContents` (optional string array of host-read `release`
+file texts, nearest first), and `commandLineLimit` (optional byte budget; default
+30719, which is 32767 - 2048). An explicit `javaFeatureVersion` takes precedence
+over the contents. Core reads the first entry containing `JAVA_VERSION=`; an
+unrecognized value is unknown and does not fall back to a farther entry. The
+planner changes a launch only when the executable file name is `java`, `java.exe`,
+`javaw` or `javaw.exe`, the estimated command line exceeds the limit, the JDK
+feature version is known and at least 9, and a path-list option (`-cp`,
+`-classpath`, `--class-path`, `-p` or `--module-path`, in separate or `=` form)
+precedes the application target. Planning stops at the application target (main
+class, `-jar`, or `-m`/`--module`); program arguments stay verbatim. The response
+`data` is `{ arguments, argumentFile }`. `arguments` is the request list unchanged
+when no file is needed. Otherwise the element at `argumentFile.argumentIndex` is an
+empty placeholder that the host replaces with `@<argument file path>`, and
+`argumentFile` is `{ text, argumentIndex }`; it is `null` when the launch is
+unchanged. `lithe_core::execution::java_feature_version_from_release` reads the
+feature version from one release file text.
 Core owns the Unicode argument-file text and quoting. The Windows host encodes
 that text losslessly using the launcher's actual system code page, independently
 of the JDK feature version: JEP 400 does not make native launcher arguments UTF-8.
@@ -254,17 +263,10 @@ quoted values, since the native argument-file parser processes bytes.
 Every execution owns an exclusively created temporary file; partial writes and
 spawn failures clean it up, while successful launches retain it until that exact
 process exits. A replacement execution never shares its predecessor's file.
-For a known JDK older than 9, Rust hosts call
-`lithe_core::execution::plan_classpath_jar_launch` instead. Under the same
-command-line budget it replaces the effective `-cp`/`-classpath` value with a
-host-owned JAR path and returns the ASCII `META-INF/MANIFEST.MF` text: the
-`Class-Path` header lists every entry, in order, as an absolute percent-encoded
-UTF-8 `file:` URL (directories end in `/`), wrapped at 72 bytes. The host
-answers whether each entry is a directory and writes the manifest-only JAR with
-the same exclusive temporary-file lifecycle. Wildcard entries, drive-relative
-Windows entries, `-jar` launches, and unknown JDK versions stay direct. This is
-a Rust API only; there is no JSON command yet because the macOS process
-argument limit (`ARG_MAX`) is far above the Windows cap, so a direct JDK 8
+The `plan_classpath_jar_launch` fallback for known JDK versions older than 9 is not
+yet provided: there is no Rust API or JSON command for it. Those launches stay
+direct, so an oversized Windows JDK 8 command line is not shortened yet. The macOS
+process argument limit (`ARG_MAX`) is far above the Windows cap, so a direct JDK 8
 launch already succeeds there.
 Strings returned by the core are UTF-8 JSON allocated by Rust. The caller must
 release response strings with `lithe_core_free_string`.
