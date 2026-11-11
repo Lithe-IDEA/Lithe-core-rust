@@ -60,6 +60,13 @@ pub struct TextDiffRow {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub right: Option<String>,
     pub kind: TextDiffRowKind,
+    /// For a `changed` row, the stretches of `left` that differ from `right`, as
+    /// half-open UTF-16 column ranges; see `inline_changes`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub left_changes: Option<Vec<[usize; 2]>>,
+    /// The stretches of `right` that differ from `left`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub right_changes: Option<Vec<[usize; 2]>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -189,6 +196,8 @@ impl ComparisonBuilder {
             left: Some(text.to_string()),
             right: None,
             kind: TextDiffRowKind::Context,
+            left_changes: None,
+            right_changes: None,
         });
         self.lines.push(TextDiffLine {
             kind: TextDiffLineKind::Context,
@@ -213,12 +222,21 @@ impl ComparisonBuilder {
                 (false, true) => TextDiffRowKind::Addition,
                 (false, false) => continue,
             };
+            let (left_changes, right_changes) = match (left_index, right_index) {
+                (Some(left), Some(right)) => match inline_changes(old[left], new[right]) {
+                    Some((left, right)) => (Some(left), Some(right)),
+                    None => (None, None),
+                },
+                _ => (None, None),
+            };
             self.rows.push(TextDiffRow {
                 old_line: left_index.map(|index| index + 1),
                 new_line: right_index.map(|index| index + 1),
                 left: left_index.map(|index| old[index].to_string()),
                 right: right_index.map(|index| new[index].to_string()),
                 kind,
+                left_changes,
+                right_changes,
             });
         }
         for index in self.removed.drain(..) {
@@ -271,6 +289,135 @@ fn split_lines(text: &str) -> Vec<&str> {
         lines.push(&text[start..]);
     }
     lines
+}
+
+/// Longest line, in characters, whose changed stretches are computed. Longer
+/// lines (minified files, generated data) get no inline ranges.
+const MAX_INLINE_CHARS: usize = 4096;
+
+/// Splits a line into the tokens inline comparison works on: runs of letters,
+/// digits and underscores, runs of whitespace, and every other character alone.
+fn inline_tokens(text: &str) -> Vec<&str> {
+    #[derive(PartialEq)]
+    enum Class {
+        Word,
+        Space,
+        Other,
+    }
+    let class = |c: char| {
+        if c.is_alphanumeric() || c == '_' {
+            Class::Word
+        } else if c.is_whitespace() {
+            Class::Space
+        } else {
+            Class::Other
+        }
+    };
+    let mut tokens = Vec::new();
+    let mut start = 0;
+    let mut previous: Option<Class> = None;
+    for (index, c) in text.char_indices() {
+        let current = class(c);
+        let joins = matches!(
+            (&previous, &current),
+            (Some(Class::Word), Class::Word) | (Some(Class::Space), Class::Space)
+        );
+        if index > start && !joins {
+            tokens.push(&text[start..index]);
+            start = index;
+        }
+        previous = Some(current);
+    }
+    if start < text.len() {
+        tokens.push(&text[start..]);
+    }
+    tokens
+}
+
+/// The stretches in which two paired lines differ, compared word by word: for
+/// each side, half-open `[start, end)` UTF-16 column ranges, ascending and
+/// not touching. A deletion or insertion on one side has no range on the other.
+/// Lines that are equal give two empty lists; lines over `MAX_INLINE_CHARS`
+/// give `None`, and so do lines with nothing in common, which read better as a
+/// whole changed line than as one range covering it.
+pub(crate) fn inline_changes(
+    left: &str,
+    right: &str,
+) -> Option<(Vec<[usize; 2]>, Vec<[usize; 2]>)> {
+    if left.chars().count() > MAX_INLINE_CHARS || right.chars().count() > MAX_INLINE_CHARS {
+        return None;
+    }
+    let old = inline_tokens(left);
+    let new = inline_tokens(right);
+    // UTF-16 column at the start of each token, plus the end.
+    let columns = |tokens: &[&str]| {
+        let mut columns = Vec::with_capacity(tokens.len() + 1);
+        let mut column = 0;
+        columns.push(0);
+        for token in tokens {
+            column += token.encode_utf16().count();
+            columns.push(column);
+        }
+        columns
+    };
+    let old_columns = columns(&old);
+    let new_columns = columns(&new);
+    let mut left_ranges: Vec<[usize; 2]> = Vec::new();
+    let mut right_ranges: Vec<[usize; 2]> = Vec::new();
+    let mut shared = false;
+    let push = |ranges: &mut Vec<[usize; 2]>, start: usize, end: usize| {
+        if start >= end {
+            return;
+        }
+        match ranges.last_mut() {
+            Some(last) if last[1] >= start => last[1] = last[1].max(end),
+            _ => ranges.push([start, end]),
+        }
+    };
+    for op in capture_diff_slices(Algorithm::Myers, &old, &new) {
+        match op {
+            DiffOp::Equal { len, .. } => shared |= len > 0,
+            DiffOp::Delete {
+                old_index, old_len, ..
+            } => {
+                push(
+                    &mut left_ranges,
+                    old_columns[old_index],
+                    old_columns[old_index + old_len],
+                );
+            }
+            DiffOp::Insert {
+                new_index, new_len, ..
+            } => {
+                push(
+                    &mut right_ranges,
+                    new_columns[new_index],
+                    new_columns[new_index + new_len],
+                );
+            }
+            DiffOp::Replace {
+                old_index,
+                old_len,
+                new_index,
+                new_len,
+            } => {
+                push(
+                    &mut left_ranges,
+                    old_columns[old_index],
+                    old_columns[old_index + old_len],
+                );
+                push(
+                    &mut right_ranges,
+                    new_columns[new_index],
+                    new_columns[new_index + new_len],
+                );
+            }
+        }
+    }
+    if !shared && !(old.is_empty() && new.is_empty()) {
+        return None;
+    }
+    Some((left_ranges, right_ranges))
 }
 
 /// Character-bigram Dice coefficient over the trimmed lines, in [0, 1].
