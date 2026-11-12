@@ -16,12 +16,11 @@ plugin-sdk-e2e = []
 [dependencies]
 lithe-core-rules = { path = "../lithe-core-rules" }
 lithe-git-host = { path = "../lithe-git-host" }
-lithe-agent-host = { path = "../lithe-agent-host" }
 lithe-ide-host = { path = "../lithe-ide-host" }
 lithe-remote = { path = "../lithe-remote", default-features = false, features = ["client"] }
 ammonia = "4.1.4"
 base64 = "0.22"
-chrono = { version = "0.4", default-features = false, features = ["std"] }
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 encoding_rs = "0.8"
 comrak = { version = "0.54.0", default-features = false, features = ["shortcodes"] }
 rand = "0.8"
@@ -30,7 +29,7 @@ quick-xml = "0.37"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 rsa = { version = "0.9", features = ["pem"] }
 serde = { version = "1.0", features = ["derive", "rc"] }
-serde_json = "1.0"
+serde_json = { version = "1.0", features = ["preserve_order"] }
 sha1 = "0.10"
 sha2 = "0.10"
 shell-words = "=1.1.1"

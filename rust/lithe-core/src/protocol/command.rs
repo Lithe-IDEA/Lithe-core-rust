@@ -57,30 +57,6 @@ pub enum CoreCommand {
     Ping,
     /// Matches host-localized action text without workspace I/O (`search.actions`).
     SearchActions,
-    /// Detects Node.js and npm and lists catalog agent installs (`agent.status`).
-    AgentStatus,
-    /// Reads the effective native global instruction file (`agent.instructions.read`).
-    AgentInstructionsRead,
-    /// Saves a guarded native global instruction draft (`agent.instructions.save`).
-    AgentInstructionsSave,
-    /// Synchronizes a marked shared block in native user files (`agent.instructions.shared`).
-    AgentInstructionsShared,
-    /// Lists native skills or creates/imports one explicitly (`agent.skills`).
-    AgentSkills,
-    /// Manages a user Hook library and native Agent configuration (`agent.hooks`).
-    AgentHooks,
-    /// Installs a catalog ACP adapter with the user's npm (`agent.install`).
-    AgentInstall,
-    /// Removes a Lithe-managed ACP adapter install (`agent.uninstall`).
-    AgentUninstall,
-    /// Installs or updates an agent's CLI through its installation owner (`agent.installCli`).
-    AgentInstallCli,
-    /// Plans a rollback of one file's Agent edits from evidence and disk text (`agent.edits.reversePlan`).
-    AgentEditsReversePlan,
-    /// Validates an unsaved Hook draft field by field (`agent.hooks.validateDraft`).
-    AgentHooksValidateDraft,
-    /// Plans which pasted Agent images may be deleted (`agent.attachments.retentionPlan`).
-    AgentAttachmentsRetentionPlan,
     /// Budgets diff prefixes before crossing the native boundary (`ai.commitInputBudget`).
     AiCommitInputBudget,
     /// Plans a credential-free commit message request (`ai.planCommit`).
@@ -107,8 +83,6 @@ pub enum CoreCommand {
     McpFeaturedRegistry,
     /// Plans a format-preserving MCP entry write or removal (`mcp.planWrite`).
     McpPlanWrite,
-    /// Probes an explicitly selected server without calling its tools.
-    McpProbe,
     /// Reads or plans native per-tool exclusion lists.
     McpToolPolicy,
     /// Round-trips a quoted command line into exact argv boundaries.
@@ -851,18 +825,6 @@ impl CoreCommand {
         match value {
             "core.ping" => Some(Self::Ping),
             "ideHost.control" => Some(Self::IdeHostControl),
-            "agent.status" => Some(Self::AgentStatus),
-            "agent.instructions.read" => Some(Self::AgentInstructionsRead),
-            "agent.instructions.save" => Some(Self::AgentInstructionsSave),
-            "agent.instructions.shared" => Some(Self::AgentInstructionsShared),
-            "agent.skills" => Some(Self::AgentSkills),
-            "agent.hooks" => Some(Self::AgentHooks),
-            "agent.install" => Some(Self::AgentInstall),
-            "agent.uninstall" => Some(Self::AgentUninstall),
-            "agent.installCli" => Some(Self::AgentInstallCli),
-            "agent.edits.reversePlan" => Some(Self::AgentEditsReversePlan),
-            "agent.hooks.validateDraft" => Some(Self::AgentHooksValidateDraft),
-            "agent.attachments.retentionPlan" => Some(Self::AgentAttachmentsRetentionPlan),
             "ai.commitInputBudget" => Some(Self::AiCommitInputBudget),
             "ai.planCommit" => Some(Self::AiPlanCommit),
             "ai.decodeCommitMessage" => Some(Self::AiDecodeCommitMessage),
@@ -876,7 +838,6 @@ impl CoreCommand {
             "mcp.parseRegistry" => Some(Self::McpParseRegistry),
             "mcp.featuredRegistry" => Some(Self::McpFeaturedRegistry),
             "mcp.planWrite" => Some(Self::McpPlanWrite),
-            "mcp.probe" => Some(Self::McpProbe),
             "mcp.toolPolicy" => Some(Self::McpToolPolicy),
             "mcp.commandLine" => Some(Self::McpCommandLine),
             "mcp.librarySnapshot" => Some(Self::McpLibrarySnapshot),

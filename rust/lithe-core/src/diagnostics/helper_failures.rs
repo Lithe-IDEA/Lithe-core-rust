@@ -7,11 +7,11 @@ use std::sync::Once;
 
 static INSTALL: Once = Once::new();
 
-/// Every Core command, standalone ACP open and direct IDE/AskPass entry calls
-/// this before invoking helpers or starting workers. Subsequent calls are cheap.
+/// Every Core command and direct IDE/AskPass entry calls this before invoking
+/// helpers or starting workers. Subsequent calls are cheap.
 pub(crate) fn install() {
     INSTALL.call_once(|| {
-        lithe_agent_host::failure_log::install_failure_sink(sink);
+        lithe_git_host::failure_log::install_failure_sink(sink);
         lithe_git_host::failure_log::install_failure_sink(sink);
         lithe_ide_host::failure_log::install_failure_sink(sink);
         lithe_remote::failure_log::install_failure_sink(sink);
@@ -65,7 +65,6 @@ mod tests {
             ("error_domain", json!("io")),
         ];
         for (events, channel) in [
-            (lithe_agent_host::failure_log::EVENTS, "agent"),
             (lithe_git_host::failure_log::EVENTS, "vcs/git"),
             (lithe_ide_host::failure_log::EVENTS, "app"),
             (lithe_remote::failure_log::EVENTS, "remote"),

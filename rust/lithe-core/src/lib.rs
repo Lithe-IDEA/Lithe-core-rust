@@ -1,7 +1,6 @@
 //! Deterministic application services shared by the macOS and Windows hosts.
 
 mod action_search;
-mod agent;
 pub mod ai;
 mod build;
 mod community;
@@ -76,18 +75,16 @@ pub fn cancel_operation(operation_id: &str) -> bool {
 #[cfg(test)]
 mod tests;
 
-/// Executes a request with Git diagnostics, search snapshots, and Agent progress.
+/// Executes a request with Git diagnostics and search snapshots.
 /// The observer is scoped to this call; callbacks complete before the final JSON returns.
 pub fn execute_json_with_events(
     request: &str,
     sink: std::sync::Arc<dyn Fn(&str) + Send + Sync>,
 ) -> String {
-    agent::with_progress_sink(request, sink.clone(), || {
-        git::execution_events::with_sink(sink, || {
-            let response = execute_json(request);
-            git::execution_events::request_finished(&response);
-            response
-        })
+    git::execution_events::with_sink(sink, || {
+        let response = execute_json(request);
+        git::execution_events::request_finished(&response);
+        response
     })
 }
 
