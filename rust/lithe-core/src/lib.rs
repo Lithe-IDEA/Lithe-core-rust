@@ -13,7 +13,6 @@ mod git;
 mod github;
 mod keymap;
 mod lsp;
-mod mcp;
 mod network;
 pub mod plugins;
 pub mod process;

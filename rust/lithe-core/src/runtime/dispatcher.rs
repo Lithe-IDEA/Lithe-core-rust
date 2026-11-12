@@ -219,44 +219,6 @@ fn execute_parsed(mut parsed: CoreRequest) -> CoreResponse {
         CoreCommand::AiInlineEditDecode => {
             plugin_response(id, parsed.payload, crate::ai::decode_inline_edit_command)
         }
-        CoreCommand::McpParseConfiguration => {
-            match crate::mcp::parse_configuration(parsed.payload) {
-                Ok(data) => CoreResponse::success(id, data),
-                Err(error) => CoreResponse::failure(id, error),
-            }
-        }
-        CoreCommand::McpParseRegistry => match crate::mcp::parse_registry(parsed.payload) {
-            Ok(data) => CoreResponse::success(id, data),
-            Err(error) => CoreResponse::failure(id, error),
-        },
-        CoreCommand::McpFeaturedRegistry => match crate::mcp::featured_registry() {
-            Ok(data) => CoreResponse::success(id, data),
-            Err(error) => CoreResponse::failure(id, error),
-        },
-        CoreCommand::McpToolPolicy => match crate::mcp::tool_policy(parsed.payload) {
-            Ok(data) => CoreResponse::success(id, data),
-            Err(error) => CoreResponse::failure(id, error),
-        },
-        CoreCommand::McpCommandLine => match crate::mcp::command_line(parsed.payload) {
-            Ok(data) => CoreResponse::success(id, data),
-            Err(error) => CoreResponse::failure(id, error),
-        },
-        CoreCommand::McpPlanWrite => match crate::mcp::plan_write(parsed.payload) {
-            Ok(data) => CoreResponse::success(id, data),
-            Err(error) => CoreResponse::failure(id, error),
-        },
-        CoreCommand::McpLibrarySnapshot => match crate::mcp::library_snapshot(parsed.payload) {
-            Ok(data) => CoreResponse::success(id, data),
-            Err(error) => CoreResponse::failure(id, error),
-        },
-        CoreCommand::McpValidateDraft => match crate::mcp::validate_draft(parsed.payload) {
-            Ok(data) => CoreResponse::success(id, data),
-            Err(error) => CoreResponse::failure(id, error),
-        },
-        CoreCommand::McpBatchPlan => match crate::mcp::batch_plan(parsed.payload) {
-            Ok(data) => CoreResponse::success(id, data),
-            Err(error) => CoreResponse::failure(id, error),
-        },
         CoreCommand::PluginsNativeUIValidateData => plugin_response(
             id,
             parsed.payload,
