@@ -776,6 +776,7 @@ fn client_core_tracks_documents_and_feature_requests() {
         code_action: None,
         command: None,
         formatting_options: None,
+        include_declaration: None,
     })
     .unwrap();
     assert_eq!(
@@ -785,6 +786,47 @@ fn client_core_tracks_documents_and_feature_requests() {
     let request_message: Value = serde_json::from_str(&requested.messages[0]).unwrap();
     assert_eq!(request_message["method"], "textDocument/definition");
     assert_eq!(request_message["params"]["position"]["character"], 12);
+}
+
+/// The usages shown from a declaration ask the server to leave the
+/// declaration out; every other references request keeps it, as before.
+#[test]
+fn client_references_request_passes_include_declaration() {
+    let opened = client_open_document(ClientOpenDocumentRequest {
+        state: LspClientState::default(),
+        uri: "file:///tmp/project/Main.java".to_string(),
+        language_id: "java".to_string(),
+        text: "class Main {}\n".to_string(),
+    })
+    .unwrap();
+    for (include_declaration, sent) in [(None, true), (Some(true), true), (Some(false), false)] {
+        let requested = client_feature_request(ClientFeatureRequest {
+            query: None,
+            state: opened.state.clone(),
+            uri: "file:///tmp/project/Main.java".to_string(),
+            method: "textDocument/references".to_string(),
+            position: Some(LspPosition {
+                line: 0,
+                utf16_column: 7,
+            }),
+            new_name: None,
+            range: None,
+            diagnostics: Vec::new(),
+            completion_context: None,
+            completion_item: None,
+            code_action: None,
+            command: None,
+            formatting_options: None,
+            include_declaration,
+        })
+        .unwrap();
+        let message: Value = serde_json::from_str(&requested.messages[0]).unwrap();
+        assert_eq!(message["method"], "textDocument/references");
+        assert_eq!(
+            message["params"]["context"]["includeDeclaration"], sent,
+            "{include_declaration:?}"
+        );
+    }
 }
 
 #[test]
@@ -1199,6 +1241,7 @@ fn client_core_preserves_class_completion_namespace_and_import_edits() {
         code_action: None,
         command: None,
         formatting_options: None,
+        include_declaration: None,
     })
     .unwrap();
     let completed = client_apply_server_message(ClientApplyServerMessageRequest {
@@ -1248,6 +1291,7 @@ fn client_core_preserves_class_completion_namespace_and_import_edits() {
         code_action: None,
         command: None,
         formatting_options: None,
+        include_declaration: None,
     })
     .unwrap();
     let resolved = client_apply_server_message(ClientApplyServerMessageRequest {
@@ -1627,6 +1671,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
         code_action: None,
         command: None,
         formatting_options: None,
+        include_declaration: None,
     })
     .unwrap();
     let completed = client_apply_server_message(ClientApplyServerMessageRequest {
@@ -1680,6 +1725,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
         code_action: None,
         command: None,
         formatting_options: None,
+        include_declaration: None,
     })
     .unwrap();
     let renamed = client_apply_server_message(ClientApplyServerMessageRequest {
@@ -1722,6 +1768,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
         code_action: None,
         command: None,
         formatting_options: None,
+        include_declaration: None,
     })
     .unwrap();
     let formatted = client_apply_server_message(ClientApplyServerMessageRequest {
@@ -1801,6 +1848,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
         code_action: None,
         command: None,
         formatting_options: None,
+        include_declaration: None,
     })
     .unwrap();
     let code_action_request: Value = serde_json::from_str(&code_actions.messages[0]).unwrap();
@@ -1884,6 +1932,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
         })),
         command: None,
         formatting_options: None,
+        include_declaration: None,
     })
     .unwrap();
     let code_action_resolve_request: Value =
@@ -1951,6 +2000,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
         code_action: None,
         command: None,
         formatting_options: None,
+        include_declaration: None,
     })
     .unwrap();
     let completion_resolve_request: Value =
@@ -2004,6 +2054,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
             "arguments": [{ "label": "rename" }]
         })),
         formatting_options: None,
+        include_declaration: None,
     })
     .unwrap();
     let execute_request: Value = serde_json::from_str(&execute_command.messages[0]).unwrap();
@@ -2050,6 +2101,7 @@ fn client_requests_and_normalizes_document_links() {
         code_action: None,
         command: None,
         formatting_options: None,
+        include_declaration: None,
     })
     .unwrap();
     let request_json: Value = serde_json::from_str(&request.messages[0]).unwrap();
@@ -2112,6 +2164,7 @@ fn client_requests_and_normalizes_workspace_symbols_without_a_document() {
         code_action: None,
         command: None,
         formatting_options: None,
+        include_declaration: None,
     })
     .unwrap();
     let request_json: Value = serde_json::from_str(&request.messages[0]).unwrap();
@@ -2197,6 +2250,7 @@ fn client_core_requests_and_shapes_inlay_hints_folding_ranges_and_code_lenses() 
         code_action: None,
         command: None,
         formatting_options: None,
+        include_declaration: None,
     })
     .unwrap();
     let request_json: Value = serde_json::from_str(&inlay_request.messages[0]).unwrap();
@@ -2251,6 +2305,7 @@ fn client_core_requests_and_shapes_inlay_hints_folding_ranges_and_code_lenses() 
         code_action: None,
         command: None,
         formatting_options: None,
+        include_declaration: None,
     })
     .unwrap();
     let request_json: Value = serde_json::from_str(&folding_request.messages[0]).unwrap();
@@ -2295,6 +2350,7 @@ fn client_core_requests_and_shapes_inlay_hints_folding_ranges_and_code_lenses() 
         code_action: None,
         command: None,
         formatting_options: None,
+        include_declaration: None,
     })
     .unwrap();
     let code_lens_response = client_apply_server_message(ClientApplyServerMessageRequest {
@@ -2352,6 +2408,7 @@ fn navigation_locations_preserve_uris_without_fabricating_virtual_file_paths() {
         code_action: None,
         command: None,
         formatting_options: None,
+        include_declaration: None,
     })
     .unwrap();
     let response = client_apply_server_message(ClientApplyServerMessageRequest {

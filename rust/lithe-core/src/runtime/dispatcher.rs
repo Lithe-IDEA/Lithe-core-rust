@@ -1934,6 +1934,11 @@ fn execute_parsed(mut parsed: CoreRequest) -> CoreResponse {
             parsed.payload,
             crate::lsp::navigation_target::classify_command,
         ),
+        CoreCommand::LspDeclarationOrUsages => plugin_response(
+            id,
+            parsed.payload,
+            crate::lsp::declaration_or_usages::decide_command,
+        ),
         CoreCommand::EditorPlanTextEdits => plugin_response(
             id,
             parsed.payload,

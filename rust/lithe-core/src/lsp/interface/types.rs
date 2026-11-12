@@ -383,6 +383,9 @@ pub struct ClientFeatureRequest {
     /// Caller `FormattingOptions` for `formatting` and `rangeFormatting`.
     #[serde(default)]
     pub formatting_options: Option<Value>,
+    /// `textDocument/references` `context.includeDeclaration`; unset means `true`.
+    #[serde(default)]
+    pub include_declaration: Option<bool>,
 }
 
 #[cfg(test)]
