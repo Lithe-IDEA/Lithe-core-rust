@@ -463,6 +463,9 @@ pub enum CoreCommand {
     /// Decides whether a language-server jump target opens, opens read-only
     /// or is refused (`lsp.classifyNavigationTarget`).
     LspClassifyNavigationTarget,
+    /// Decides whether a go-to-declaration gesture opens the declaration or
+    /// shows its usages (`lsp.declarationOrUsages`).
+    LspDeclarationOrUsages,
     /// Applies a deterministic line-level editing transform
     /// (`editor.lineEdit`).
     EditorLineEdit,
@@ -1019,6 +1022,7 @@ impl CoreCommand {
             "lsp.planWorkspaceEdit" => Some(Self::LspPlanWorkspaceEdit),
             "lsp.documentIdentity" => Some(Self::LspDocumentIdentity),
             "lsp.classifyNavigationTarget" => Some(Self::LspClassifyNavigationTarget),
+            "lsp.declarationOrUsages" => Some(Self::LspDeclarationOrUsages),
             "editor.lineEdit" => Some(Self::EditorLineEdit),
             "editor.planTextEdits" => Some(Self::EditorPlanTextEdits),
             "editor.parseNavigationInput" => Some(Self::EditorParseNavigationInput),

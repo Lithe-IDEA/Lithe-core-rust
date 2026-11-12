@@ -1806,6 +1806,20 @@ isReadOnly }` where `classification` is `workspace`, `externalReadOnly` (a
 source file of the language that produced the jump, opened read-only) or
 `rejected`. See `rust/fixtures/lsp/navigation-target-v1.json`.
 
+`lsp.declarationOrUsages` accepts `{ uri, position, definitions }`: the
+document and zero-based `{ line, utf16Column }` of a go-to-declaration gesture
+(caret or clicked character) and the definition answer received for it, each
+`{ uri, range }` (at most 100). It returns `{ action }`: `usages` when every
+definition location is the gesture's own place, otherwise `definitions`,
+including an empty answer, which hosts report as no definition. A location is
+the gesture's own place when its `uri` equals `uri` and its range contains the
+position, end included, because an editor resolves the identifier left of the
+caret. This is IntelliJ IDEA's Go to Declaration or Usages: on `usages` the host
+asks for `references` with `includeDeclaration: false`, opens a single usage
+directly, lists several and reports none. Every gesture that goes to a
+declaration (Cmd/Ctrl+B, Cmd/Ctrl+click, F12, the editor menu) uses this
+decision. See `rust/fixtures/lsp/declaration-or-usages-v1.json`.
+
 `editor.parseNavigationInput` accepts `{ text }` and returns `{ target }`.
 `target` is null for invalid input, otherwise `{ line, column, selectsWholeLine }`
 contains zero-based line and UTF-16 column. One-based positive decimal line and
@@ -4838,6 +4852,12 @@ The result is `{ symbols: WorkspaceSymbolItem[] }`, where each item is
 `location` may carry only a `uri`; in that case `range` is null until the
 server's `workspaceSymbol/resolve` supplies it, which Core does not call. Items
 without `name` or `location.uri` are dropped.
+
+Operation `references` (`textDocument/references`) accepts optional
+`includeDeclaration` (boolean), sent as LSP `params.context.includeDeclaration`.
+Missing means `true`, the previous behaviour; the usages shown from a
+declaration (`lsp.declarationOrUsages`) pass `false` so the language server
+leaves the declaration out. Other operations ignore the field.
 
 Completion requests accept optional `completionContext` with LSP `triggerKind`
 (`1` invoked, `2` trigger character, `3` incomplete-list refresh) and

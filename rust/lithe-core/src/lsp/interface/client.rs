@@ -1132,7 +1132,7 @@ fn feature_request_params(request: &ClientFeatureRequest) -> Result<Value, CoreE
         "textDocument/references" => Ok(json!({
             "textDocument": text_document,
             "position": lsp_position_json(required_position(request)?),
-            "context": { "includeDeclaration": true }
+            "context": { "includeDeclaration": request.include_declaration.unwrap_or(true) }
         })),
         "textDocument/rename" => Ok(json!({
             "textDocument": text_document,
@@ -2465,6 +2465,7 @@ mod formatting_and_completion_tests {
             code_action: None,
             command: None,
             formatting_options: options,
+            include_declaration: None,
         }
     }
 

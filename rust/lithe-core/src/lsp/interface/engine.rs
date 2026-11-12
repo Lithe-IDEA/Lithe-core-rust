@@ -317,6 +317,12 @@ pub struct SemanticRequest {
     /// `formatting` and `rangeFormatting`; unset fields keep Core defaults.
     #[serde(default)]
     pub formatting_options: Option<Value>,
+    /// For `references`: whether the answer lists the declaration itself
+    /// (LSP `ReferenceContext.includeDeclaration`). Unset means `true`; the
+    /// usages shown from a declaration (`lsp.declarationOrUsages`) pass
+    /// `false` so the language server leaves the declaration out.
+    #[serde(default)]
+    pub include_declaration: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -2609,6 +2615,7 @@ impl RuntimeSession {
                         code_action: request.code_action,
                         command: request.command,
                         formatting_options: request.formatting_options,
+                        include_declaration: request.include_declaration,
                     };
                     client_feature_request_canonical(feature_request)?
                 }
@@ -6200,6 +6207,7 @@ mod tests {
                         code_action: None,
                         command: None,
                         formatting_options: None,
+                        include_declaration: None,
                     },
                     operation_id.clone(),
                 )
@@ -8001,6 +8009,7 @@ mod tests {
                     code_action: None,
                     command: None,
                     formatting_options: None,
+                    include_declaration: None,
                 },
                 "op-formatting".to_string(),
             )
@@ -8069,6 +8078,7 @@ mod tests {
                         code_action: None,
                         command: None,
                         formatting_options: None,
+                        include_declaration: None,
                     },
                     "op-formatting-2".to_string(),
                 )
@@ -8204,6 +8214,7 @@ mod tests {
                         "arguments": []
                     })),
                     formatting_options: None,
+                    include_declaration: None,
                 },
                 operation_id,
             )
