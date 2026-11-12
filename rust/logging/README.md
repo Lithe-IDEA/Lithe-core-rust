@@ -108,7 +108,7 @@ Swift 的事件值是**未经脱敏的内存输入**，不能自行序列化落�
 
 ## 八、辅助 crate
 
-- `rust/lithe-agent-host`、`rust/lithe-git-host`、`rust/lithe-ide-host` 和 `rust/lithe-remote` 的客户端链接进 Core，各自通过 `failure_log` 模块交出失败事实，依赖方向保持不变。sink 未注入时只增加原子计数，不写 stderr。
+- `rust/lithe-git-host`、`rust/lithe-ide-host` 和 `rust/lithe-remote` 的客户端链接进 Core，各自通过 `failure_log` 模块交出失败事实，依赖方向保持不变。sink 未注入时只增加原子计数，不写 stderr。
 - Core 的 `diagnostics/helper_failures` 是唯一的安装处。JSON dispatcher、独立 ACP FFI open、直接 IDE dispatcher 和 AskPass 入口在调用辅助 crate 前都经过它的 `Once`。sink 只转换标量字段，之后走相同的目录校验、脱敏和 256 条 Core 队列。这些事件的 owner 都是 `lithe-core`，错误只保留固定摘要和类别。
 - 辅助 crate 的收尾只记录丢失数据、能力或清理结果的意外错误。已断开的连接、已退出的进程，以及远程关闭或取消时的 Disconnected、Timeout，在类型化辅助函数里豁免；ACP Cancel 的 InternalError 无法区分正常断连与序列化失败，按预期缺失豁免。转发 accept 与 bridge 失败可能逐连接发生，目录 rate 为 12；`rust/lithe-remote/src/client/forward.rs` 在发送侧让每一族失败在进程内每 5 秒最多记录一条，并发转发连接也共用这个限制，正常断连不占日志配额。强制终止后进程仍未退出的最终超时保留 WARN。
 
@@ -158,7 +158,7 @@ Rust 通过静态 `EVENTS`（按 ID 排序）和二分查找的 `event_by_id` �
 
 ## 十二、用法门禁
 
-`scripts/logging/verify-log-usage.mjs` 扫描 `macos/Sources`、`rust/lithe-core/src`、`rust/lithe-agent-host/src`、`rust/lithe-git-host/src`、`rust/lithe-ide-host/src` 和 `rust/lithe-remote/src`。排除 `rust/lithe-remote/src/server/`、`rust/lithe-remote/src/bin/` 和 `rust/lithe-ide-host/src/bin/`：它们在远端主机或独立进程中运行，stderr 由宿主进程处理，以后单独迁移。
+`scripts/logging/verify-log-usage.mjs` 扫描 `macos/Sources`、`rust/lithe-core/src`、`rust/lithe-git-host/src`、`rust/lithe-ide-host/src` 和 `rust/lithe-remote/src`。排除 `rust/lithe-remote/src/server/`、`rust/lithe-remote/src/bin/` 和 `rust/lithe-ide-host/src/bin/`：它们在远端主机或独立进程中运行，stderr 由宿主进程处理，以后单独迁移。
 
 门禁只扫描生产代码：词法上遮蔽注释和字符串内容，排除 `Tests/`、`tests/`、`tests.rs`、文件名以 `_tests.rs` 结尾的 Rust 文件，以及明确标注 `#[cfg(test)]` 或 `#[cfg(all(test, …))]` 的项。它只检查列出的直接写法，不跨文件追踪别名或动态调用。规则分两类：
 

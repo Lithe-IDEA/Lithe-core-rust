@@ -192,21 +192,6 @@ fn execute_parsed(mut parsed: CoreRequest) -> CoreResponse {
                 "coreVersion": env!("CARGO_PKG_VERSION")
             }),
         ),
-        CoreCommand::AgentStatus => agent_response(id, parsed.payload, crate::agent::status),
-        CoreCommand::AgentInstructionsRead => {
-            agent_response(id, parsed.payload, crate::agent::instructions::read)
-        }
-        CoreCommand::AgentInstructionsSave => {
-            agent_response(id, parsed.payload, crate::agent::instructions::save)
-        }
-        CoreCommand::AgentInstructionsShared => {
-            agent_response(id, parsed.payload, crate::agent::instructions::shared)
-        }
-        CoreCommand::AgentSkills => agent_response(id, parsed.payload, crate::agent::skills),
-        CoreCommand::AgentHooks => agent_response(id, parsed.payload, crate::agent::hooks::execute),
-        CoreCommand::AgentEditsReversePlan => {
-            agent_response(id, parsed.payload, crate::agent::edits::reverse_plan)
-        }
         CoreCommand::AiCommitInputBudget => {
             plugin_response(id, parsed.payload, crate::ai::commit_input_budget_command)
         }
@@ -234,14 +219,6 @@ fn execute_parsed(mut parsed: CoreRequest) -> CoreResponse {
         CoreCommand::AiInlineEditDecode => {
             plugin_response(id, parsed.payload, crate::ai::decode_inline_edit_command)
         }
-        CoreCommand::AgentHooksValidateDraft => {
-            agent_response(id, parsed.payload, crate::agent::hooks::validate_draft)
-        }
-        CoreCommand::AgentAttachmentsRetentionPlan => agent_response(
-            id,
-            parsed.payload,
-            crate::agent::attachments::retention_plan,
-        ),
         CoreCommand::McpParseConfiguration => {
             match crate::mcp::parse_configuration(parsed.payload) {
                 Ok(data) => CoreResponse::success(id, data),
@@ -256,7 +233,6 @@ fn execute_parsed(mut parsed: CoreRequest) -> CoreResponse {
             Ok(data) => CoreResponse::success(id, data),
             Err(error) => CoreResponse::failure(id, error),
         },
-        CoreCommand::McpProbe => agent_response(id, parsed.payload, crate::mcp::probe),
         CoreCommand::McpToolPolicy => match crate::mcp::tool_policy(parsed.payload) {
             Ok(data) => CoreResponse::success(id, data),
             Err(error) => CoreResponse::failure(id, error),
@@ -743,11 +719,6 @@ fn execute_parsed(mut parsed: CoreRequest) -> CoreResponse {
             parsed.payload,
             crate::plugins::marketplace::install_review_command,
         ),
-        CoreCommand::AgentInstall => agent_response(id, parsed.payload, crate::agent::install),
-        CoreCommand::AgentUninstall => agent_response(id, parsed.payload, crate::agent::uninstall),
-        CoreCommand::AgentInstallCli => {
-            agent_response(id, parsed.payload, crate::agent::install_cli)
-        }
         CoreCommand::CommunityDiscourseAuthBegin => {
             match serde_json::from_value::<DiscourseAuthorizationBeginRequest>(parsed.payload)
                 .map_err(|error| {
