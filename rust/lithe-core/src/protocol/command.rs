@@ -75,24 +75,6 @@ pub enum CoreCommand {
     AiInlineEditPlan,
     /// Decodes the replacement text of an inline edit response (`ai.inlineEdit.decode`).
     AiInlineEditDecode,
-    /// Parses one Agent MCP configuration file into normalized servers (`mcp.parseConfiguration`).
-    McpParseConfiguration,
-    /// Normalizes a public Registry response into discoverable server drafts (`mcp.parseRegistry`).
-    McpParseRegistry,
-    /// Returns the bundled, offline discovery catalog (`mcp.featuredRegistry`).
-    McpFeaturedRegistry,
-    /// Plans a format-preserving MCP entry write or removal (`mcp.planWrite`).
-    McpPlanWrite,
-    /// Reads or plans native per-tool exclusion lists.
-    McpToolPolicy,
-    /// Round-trips a quoted command line into exact argv boundaries.
-    McpCommandLine,
-    /// Merges discovered MCP sources into library rows with ownership (`mcp.librarySnapshot`).
-    McpLibrarySnapshot,
-    /// Returns field-level issues for an MCP server editor draft (`mcp.validateDraft`).
-    McpValidateDraft,
-    /// Plans an all-or-nothing multi-file MCP library edit (`mcp.batchPlan`).
-    McpBatchPlan,
     /// Validates and normalizes a declarative plugin manifest (`plugins.declarative.validate`).
     PluginsDeclarativeValidate,
     /// Validates native plugin UI data with declaration identity and node budgets.
@@ -834,15 +816,6 @@ impl CoreCommand {
             "ai.pullRequest.decode" => Some(Self::AiPullRequestDecode),
             "ai.inlineEdit.plan" => Some(Self::AiInlineEditPlan),
             "ai.inlineEdit.decode" => Some(Self::AiInlineEditDecode),
-            "mcp.parseConfiguration" => Some(Self::McpParseConfiguration),
-            "mcp.parseRegistry" => Some(Self::McpParseRegistry),
-            "mcp.featuredRegistry" => Some(Self::McpFeaturedRegistry),
-            "mcp.planWrite" => Some(Self::McpPlanWrite),
-            "mcp.toolPolicy" => Some(Self::McpToolPolicy),
-            "mcp.commandLine" => Some(Self::McpCommandLine),
-            "mcp.librarySnapshot" => Some(Self::McpLibrarySnapshot),
-            "mcp.validateDraft" => Some(Self::McpValidateDraft),
-            "mcp.batchPlan" => Some(Self::McpBatchPlan),
             "plugins.declarative.validate" => Some(Self::PluginsDeclarativeValidate),
             "plugins.nativeUI.validateData" => Some(Self::PluginsNativeUIValidateData),
             "plugins.web.open" => Some(Self::PluginsWebOpen),
