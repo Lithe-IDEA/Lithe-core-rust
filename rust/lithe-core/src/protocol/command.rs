@@ -1223,6 +1223,78 @@ impl CoreCommand {
 #[cfg(test)]
 mod tests {
     use super::CoreCommand;
+    use std::collections::BTreeSet;
+    use std::path::Path;
+
+    /// Returns the command names that `CoreCommand::parse` matches, read from
+    /// this file so the test cannot drift from the parser it checks.
+    fn parsed_command_names(source: &str) -> Vec<String> {
+        let body = source
+            .split_once("pub fn parse(value: &str) -> Option<Self> {")
+            .and_then(|(_, rest)| rest.split_once("_ => None,"))
+            .map(|(body, _)| body)
+            .expect("CoreCommand::parse body");
+        body.lines()
+            .filter_map(|line| line.trim().strip_prefix('"'))
+            .filter_map(|line| line.split_once("\" =>"))
+            .map(|(name, _)| name.to_owned())
+            .collect()
+    }
+
+    /// Returns the first-column names of the `| Command | Purpose |` table.
+    fn documented_command_names(document: &str) -> Vec<String> {
+        document
+            .lines()
+            .skip_while(|line| !line.starts_with("| Command | Purpose |"))
+            .skip(2)
+            .take_while(|line| line.starts_with("| `"))
+            .map(|line| {
+                line["| `".len()..]
+                    .split_once('`')
+                    .expect("backticked command name")
+                    .0
+                    .to_owned()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn api_command_table_lists_exactly_the_parsed_commands() {
+        let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let source = std::fs::read_to_string(crate_root.join("src/protocol/command.rs"))
+            .expect("read command.rs");
+        let document = std::fs::read_to_string(crate_root.join("../contracts/rust-core-api.md"))
+            .expect("read rust-core-api.md");
+        let parsed = parsed_command_names(&source);
+        let documented = documented_command_names(&document);
+
+        assert!(
+            parsed.len() > 300,
+            "parser scan found {} names",
+            parsed.len()
+        );
+        for name in &parsed {
+            assert!(
+                CoreCommand::parse(name).is_some(),
+                "scanned {name} does not parse"
+            );
+        }
+        let unique: BTreeSet<_> = documented.iter().collect();
+        assert_eq!(
+            unique.len(),
+            documented.len(),
+            "duplicate rows in the command table"
+        );
+
+        let parsed: BTreeSet<_> = parsed.iter().collect();
+        let undocumented: Vec<_> = parsed.difference(&unique).collect();
+        let unknown: Vec<_> = unique.difference(&parsed).collect();
+        assert!(
+            undocumented.is_empty() && unknown.is_empty(),
+            "rust-core-api.md command table is out of date: missing {undocumented:?}, \
+             not parsed {unknown:?}"
+        );
+    }
 
     #[test]
     fn parses_semantic_lsp_runtime_commands() {
