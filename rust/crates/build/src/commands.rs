@@ -16,9 +16,9 @@ use super::outputs::{
 };
 use super::plans::{self, OutputPlanRequest, TaskPlanRequest, TestPlanRequest};
 use super::test_discovery::{self, DecodeTestDiscoveryRequest};
-use crate::plugins::declarative::{validate_manifest_value, DeclarativePluginManifest};
-use crate::protocol::CoreError;
+use super::BuildManifest;
 use lithe_plugin_model::{decode_payload, outcome, PluginRejection, Validation};
+use lithe_protocol::CoreError;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::Value;
@@ -48,25 +48,25 @@ struct ResolveOptionsRequest {
     model_values: Option<BTreeMap<String, Vec<String>>>,
 }
 
-fn with_build_system<T: DeserializeOwned>(
+fn with_build_system<M: BuildManifest, T: DeserializeOwned>(
     payload: Value,
     command: &str,
     key: &'static str,
     run: impl FnOnce(&BuildSystemDeclaration, &T) -> Validation<Value>,
 ) -> Result<Value, CoreError> {
-    with_manifest(payload, command, key, |build_system, request, _| {
+    with_manifest::<M, T>(payload, command, key, |build_system, request, _| {
         run(build_system, request)
     })
 }
 
-fn with_manifest<T: DeserializeOwned>(
+fn with_manifest<M: BuildManifest, T: DeserializeOwned>(
     payload: Value,
     command: &str,
     key: &'static str,
-    run: impl FnOnce(&BuildSystemDeclaration, &T, &DeclarativePluginManifest) -> Validation<Value>,
+    run: impl FnOnce(&BuildSystemDeclaration, &T, &M) -> Validation<Value>,
 ) -> Result<Value, CoreError> {
     let payload: BuildPayload<T> = decode_payload(payload, command)?;
-    Ok(outcome(validate_manifest_value(payload.manifest).and_then(
+    Ok(outcome(M::validate(payload.manifest).and_then(
         |manifest| {
             let build_system = manifest
                 .build_systems()
@@ -88,16 +88,16 @@ fn with_manifest<T: DeserializeOwned>(
 
 /// `build.detect`: build-system instances of a workspace, with the models
 /// that need no process.
-pub(crate) fn build_detect_command(payload: Value) -> Result<Value, CoreError> {
+pub fn build_detect_command<M: BuildManifest>(payload: Value) -> Result<Value, CoreError> {
     let request: DetectRequest = decode_payload(payload, "build.detect")?;
     Ok(outcome(
-        detect::detect(request).map(|detection| ("detection", detection)),
+        detect::detect::<M>(request).map(|detection| ("detection", detection)),
     ))
 }
 
 /// `build.invocationPlan`: executable candidates and version probes.
-pub(crate) fn build_invocation_plan_command(payload: Value) -> Result<Value, CoreError> {
-    with_manifest(
+pub fn build_invocation_plan_command<M: BuildManifest>(payload: Value) -> Result<Value, CoreError> {
+    with_manifest::<M, _>(
         payload,
         "build.invocationPlan",
         "invocation",
@@ -108,8 +108,10 @@ pub(crate) fn build_invocation_plan_command(payload: Value) -> Result<Value, Cor
 }
 
 /// `build.checkToolVersion`: compares probe output with a declared minimum.
-pub(crate) fn build_check_tool_version_command(payload: Value) -> Result<Value, CoreError> {
-    with_build_system(
+pub fn build_check_tool_version_command<M: BuildManifest>(
+    payload: Value,
+) -> Result<Value, CoreError> {
+    with_build_system::<M, _>(
         payload,
         "build.checkToolVersion",
         "version",
@@ -121,8 +123,8 @@ pub(crate) fn build_check_tool_version_command(payload: Value) -> Result<Value, 
 
 /// `build.resolveOptions`: effective option values, choices, and the
 /// fingerprint of the configuration.
-pub(crate) fn build_resolve_options_command(payload: Value) -> Result<Value, CoreError> {
-    with_build_system(
+pub fn build_resolve_options_command<M: BuildManifest>(payload: Value) -> Result<Value, CoreError> {
+    with_build_system::<M, _>(
         payload,
         "build.resolveOptions",
         "options",
@@ -142,8 +144,10 @@ pub(crate) fn build_resolve_options_command(payload: Value) -> Result<Value, Cor
 }
 
 /// `build.editStoredOption`: checks a local preference edit against its declaration.
-pub(crate) fn build_edit_stored_option_command(payload: Value) -> Result<Value, CoreError> {
-    with_build_system(
+pub fn build_edit_stored_option_command<M: BuildManifest>(
+    payload: Value,
+) -> Result<Value, CoreError> {
+    with_build_system::<M, _>(
         payload,
         "build.editStoredOption",
         "edit",
@@ -152,8 +156,8 @@ pub(crate) fn build_edit_stored_option_command(payload: Value) -> Result<Value, 
 }
 
 /// `build.modelPlan`: the command that prints a command-sourced model.
-pub(crate) fn build_model_plan_command(payload: Value) -> Result<Value, CoreError> {
-    with_build_system(
+pub fn build_model_plan_command<M: BuildManifest>(payload: Value) -> Result<Value, CoreError> {
+    with_build_system::<M, _>(
         payload,
         "build.modelPlan",
         "plan",
@@ -162,8 +166,8 @@ pub(crate) fn build_model_plan_command(payload: Value) -> Result<Value, CoreErro
 }
 
 /// `build.taskPlan`: one declared or model task as an argv plan.
-pub(crate) fn build_task_plan_command(payload: Value) -> Result<Value, CoreError> {
-    with_build_system(
+pub fn build_task_plan_command<M: BuildManifest>(payload: Value) -> Result<Value, CoreError> {
+    with_build_system::<M, _>(
         payload,
         "build.taskPlan",
         "plan",
@@ -172,8 +176,8 @@ pub(crate) fn build_task_plan_command(payload: Value) -> Result<Value, CoreError
 }
 
 /// `build.testPlan`: a test run and where its results will be.
-pub(crate) fn build_test_plan_command(payload: Value) -> Result<Value, CoreError> {
-    with_build_system(
+pub fn build_test_plan_command<M: BuildManifest>(payload: Value) -> Result<Value, CoreError> {
+    with_build_system::<M, _>(
         payload,
         "build.testPlan",
         "plan",
@@ -182,8 +186,10 @@ pub(crate) fn build_test_plan_command(payload: Value) -> Result<Value, CoreError
 }
 
 /// `build.testDiscoveryPlan`: a typed request for provider-owned test discovery.
-pub(crate) fn build_test_discovery_plan_command(payload: Value) -> Result<Value, CoreError> {
-    with_build_system(
+pub fn build_test_discovery_plan_command<M: BuildManifest>(
+    payload: Value,
+) -> Result<Value, CoreError> {
+    with_build_system::<M, _>(
         payload,
         "build.testDiscoveryPlan",
         "plan",
@@ -194,8 +200,10 @@ pub(crate) fn build_test_discovery_plan_command(payload: Value) -> Result<Value,
 }
 
 /// `build.decodeTestDiscovery`: validated, deterministic selectors for native UI.
-pub(crate) fn build_decode_test_discovery_command(payload: Value) -> Result<Value, CoreError> {
-    with_build_system(
+pub fn build_decode_test_discovery_command<M: BuildManifest>(
+    payload: Value,
+) -> Result<Value, CoreError> {
+    with_build_system::<M, _>(
         payload,
         "build.decodeTestDiscovery",
         "discovery",
@@ -206,8 +214,10 @@ pub(crate) fn build_decode_test_discovery_command(payload: Value) -> Result<Valu
 }
 
 /// `build.prepareRunPlan`: validates a provider-owned target launch request.
-pub(crate) fn build_prepare_run_plan_command(payload: Value) -> Result<Value, CoreError> {
-    with_manifest(
+pub fn build_prepare_run_plan_command<M: BuildManifest>(
+    payload: Value,
+) -> Result<Value, CoreError> {
+    with_manifest::<M, _>(
         payload,
         "build.prepareRunPlan",
         "plan",
@@ -218,8 +228,10 @@ pub(crate) fn build_prepare_run_plan_command(payload: Value) -> Result<Value, Co
 }
 
 /// `build.decodeRunPreparation`: validates portable process launch data.
-pub(crate) fn build_decode_run_preparation_command(payload: Value) -> Result<Value, CoreError> {
-    with_manifest(
+pub fn build_decode_run_preparation_command<M: BuildManifest>(
+    payload: Value,
+) -> Result<Value, CoreError> {
+    with_manifest::<M, _>(
         payload,
         "build.decodeRunPreparation",
         "launch",
@@ -230,8 +242,8 @@ pub(crate) fn build_decode_run_preparation_command(payload: Value) -> Result<Val
 }
 
 /// `build.dependencyPlan`: the command that prints a project's dependencies.
-pub(crate) fn build_dependency_plan_command(payload: Value) -> Result<Value, CoreError> {
-    with_build_system(
+pub fn build_dependency_plan_command<M: BuildManifest>(payload: Value) -> Result<Value, CoreError> {
+    with_build_system::<M, _>(
         payload,
         "build.dependencyPlan",
         "plan",
@@ -240,8 +252,8 @@ pub(crate) fn build_dependency_plan_command(payload: Value) -> Result<Value, Cor
 }
 
 /// `build.decodeModel`: the normalized model and its run entries.
-pub(crate) fn build_decode_model_command(payload: Value) -> Result<Value, CoreError> {
-    with_build_system(
+pub fn build_decode_model_command<M: BuildManifest>(payload: Value) -> Result<Value, CoreError> {
+    with_build_system::<M, _>(
         payload,
         "build.decodeModel",
         "model",
@@ -250,8 +262,10 @@ pub(crate) fn build_decode_model_command(payload: Value) -> Result<Value, CoreEr
 }
 
 /// `build.decodeTestResults`: per-case outcomes and a summary.
-pub(crate) fn build_decode_test_results_command(payload: Value) -> Result<Value, CoreError> {
-    with_build_system(
+pub fn build_decode_test_results_command<M: BuildManifest>(
+    payload: Value,
+) -> Result<Value, CoreError> {
+    with_build_system::<M, _>(
         payload,
         "build.decodeTestResults",
         "results",
@@ -262,8 +276,10 @@ pub(crate) fn build_decode_test_results_command(payload: Value) -> Result<Value,
 }
 
 /// `build.decodeDiagnostics`: file diagnostics from process output.
-pub(crate) fn build_decode_diagnostics_command(payload: Value) -> Result<Value, CoreError> {
-    with_build_system(
+pub fn build_decode_diagnostics_command<M: BuildManifest>(
+    payload: Value,
+) -> Result<Value, CoreError> {
+    with_build_system::<M, _>(
         payload,
         "build.decodeDiagnostics",
         "diagnostics",
@@ -274,8 +290,10 @@ pub(crate) fn build_decode_diagnostics_command(payload: Value) -> Result<Value, 
 }
 
 /// `build.decodeDependencies`: one project's dependency tree.
-pub(crate) fn build_decode_dependencies_command(payload: Value) -> Result<Value, CoreError> {
-    with_build_system(
+pub fn build_decode_dependencies_command<M: BuildManifest>(
+    payload: Value,
+) -> Result<Value, CoreError> {
+    with_build_system::<M, _>(
         payload,
         "build.decodeDependencies",
         "dependencies",
@@ -286,8 +304,10 @@ pub(crate) fn build_decode_dependencies_command(payload: Value) -> Result<Value,
 }
 
 /// `build.syncFingerprint`: a digest of the files the model depends on.
-pub(crate) fn build_sync_fingerprint_command(payload: Value) -> Result<Value, CoreError> {
-    with_build_system(
+pub fn build_sync_fingerprint_command<M: BuildManifest>(
+    payload: Value,
+) -> Result<Value, CoreError> {
+    with_build_system::<M, _>(
         payload,
         "build.syncFingerprint",
         "sync",
@@ -298,8 +318,10 @@ pub(crate) fn build_sync_fingerprint_command(payload: Value) -> Result<Value, Co
 }
 
 /// `build.prepareDebugPlan`: a selected provider run's native debug preparation.
-pub(crate) fn build_prepare_debug_plan_command(payload: Value) -> Result<Value, CoreError> {
-    with_build_system(
+pub fn build_prepare_debug_plan_command<M: BuildManifest>(
+    payload: Value,
+) -> Result<Value, CoreError> {
+    with_build_system::<M, _>(
         payload,
         "build.prepareDebugPlan",
         "plan",
@@ -310,8 +332,10 @@ pub(crate) fn build_prepare_debug_plan_command(payload: Value) -> Result<Value, 
 }
 
 /// `build.decodeDebugPreparation`: validates portable native debug target facts.
-pub(crate) fn build_decode_debug_preparation_command(payload: Value) -> Result<Value, CoreError> {
-    with_build_system(
+pub fn build_decode_debug_preparation_command<M: BuildManifest>(
+    payload: Value,
+) -> Result<Value, CoreError> {
+    with_build_system::<M, _>(
         payload,
         "build.decodeDebugPreparation",
         "preparation",
@@ -322,20 +346,24 @@ pub(crate) fn build_decode_debug_preparation_command(payload: Value) -> Result<V
 }
 
 /// `build.resolveModelInputs`: filters optional public models for one consumer.
-pub(crate) fn build_resolve_model_inputs_command(payload: Value) -> Result<Value, CoreError> {
-    with_build_system(
+pub fn build_resolve_model_inputs_command<M: BuildManifest>(
+    payload: Value,
+) -> Result<Value, CoreError> {
+    with_build_system::<M, _>(
         payload,
         "build.resolveModelInputs",
         "modelInputs",
         |build, request: &super::model_inputs::ResolveRequest| {
-            super::model_inputs::resolve(build, request)
+            super::model_inputs::resolve::<M>(build, request)
         },
     )
 }
 
 /// `build.configurationPlan`: read native facts through the owning provider.
-pub(crate) fn build_configuration_plan_command(payload: Value) -> Result<Value, CoreError> {
-    with_build_system(
+pub fn build_configuration_plan_command<M: BuildManifest>(
+    payload: Value,
+) -> Result<Value, CoreError> {
+    with_build_system::<M, _>(
         payload,
         "build.configurationPlan",
         "plan",
@@ -344,8 +372,10 @@ pub(crate) fn build_configuration_plan_command(payload: Value) -> Result<Value, 
 }
 
 /// `build.decodeConfiguration`: non-sensitive facts and bounded write bindings.
-pub(crate) fn build_decode_configuration_command(payload: Value) -> Result<Value, CoreError> {
-    with_build_system(
+pub fn build_decode_configuration_command<M: BuildManifest>(
+    payload: Value,
+) -> Result<Value, CoreError> {
+    with_build_system::<M, _>(
         payload,
         "build.decodeConfiguration",
         "configuration",
@@ -356,8 +386,10 @@ pub(crate) fn build_decode_configuration_command(payload: Value) -> Result<Value
 }
 
 /// `build.configurationEditPlan`: format-independent provider-owned editing.
-pub(crate) fn build_configuration_edit_plan_command(payload: Value) -> Result<Value, CoreError> {
-    with_build_system(
+pub fn build_configuration_edit_plan_command<M: BuildManifest>(
+    payload: Value,
+) -> Result<Value, CoreError> {
+    with_build_system::<M, _>(
         payload,
         "build.configurationEditPlan",
         "plan",
@@ -368,8 +400,10 @@ pub(crate) fn build_configuration_edit_plan_command(payload: Value) -> Result<Va
 }
 
 /// `build.decodeConfigurationEdit`: validates a receipt without document bytes.
-pub(crate) fn build_decode_configuration_edit_command(payload: Value) -> Result<Value, CoreError> {
-    with_build_system(
+pub fn build_decode_configuration_edit_command<M: BuildManifest>(
+    payload: Value,
+) -> Result<Value, CoreError> {
+    with_build_system::<M, _>(
         payload,
         "build.decodeConfigurationEdit",
         "edit",

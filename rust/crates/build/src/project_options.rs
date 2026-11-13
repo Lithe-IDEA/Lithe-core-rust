@@ -2,8 +2,8 @@
 //! This is storage syntax only: declarations still own option types, scope,
 //! defaults and contributions, and platforms own file access and publication.
 
-use crate::protocol::CoreError;
 use lithe_plugin_model::{decode_payload, outcome, PluginRejection, Validation};
+use lithe_protocol::CoreError;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -104,7 +104,7 @@ pub(super) fn validate(value: Value) -> Validation<Value> {
 
 /// Validates storage without dropping values belonging to inactive plugins or
 /// treating malformed documents as empty defaults. Never reads or writes a file.
-pub(crate) fn project_options_command(payload: Value) -> Result<Value, CoreError> {
+pub fn project_options_command(payload: Value) -> Result<Value, CoreError> {
     let request: Request = decode_payload(payload, "build.projectOptions")?;
     Ok(outcome(
         validate(request.document).map(|document| ("document", document)),

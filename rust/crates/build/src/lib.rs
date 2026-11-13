@@ -37,13 +37,39 @@ mod test_discovery;
 mod test_outcome;
 mod test_outcome_merge;
 
-pub(crate) use commands::*;
-pub(crate) use manifest::{
+pub use commands::*;
+pub use manifest::{
     activation_event, programs, validate_declarations, BuildSystemDeclaration, DeclarationContext,
     ProviderProcess,
 };
-pub(crate) use project_options::project_options_command;
-pub(crate) use run_start::run_decode_start_command;
-pub(crate) use stored_options::resolve_stored_options_command;
-pub(crate) use test_outcome::resolve_test_run_outcome;
-pub(crate) use test_outcome_merge::merge_test_outcomes;
+pub use project_options::project_options_command;
+pub use run_start::run_decode_start_command;
+pub use stored_options::resolve_stored_options_command;
+pub use test_outcome::resolve_test_run_outcome;
+pub use test_outcome_merge::merge_test_outcomes;
+
+use lithe_plugin_model::{PluginManifest, Validation};
+use serde_json::Value;
+use std::collections::BTreeMap;
+
+/// What the build commands read from a validated plugin manifest.
+///
+/// Every command that takes a manifest validates it again through
+/// [`PluginManifest::validate`], so a host never has to trust its own cache
+/// of a manifest; the plugin host implements this trait for its manifest type.
+pub trait BuildManifest: PluginManifest {
+    /// The build systems the plugin declares, in declaration order.
+    fn build_systems(&self) -> &[BuildSystemDeclaration];
+
+    /// The tool definition IDs the plugin requires.
+    fn required_tools(&self) -> &[String];
+
+    /// The executable path a declared executable setting selects, from the
+    /// stored setting values. Strict: an invalid stored value is rejected
+    /// rather than replaced by the setting's default.
+    fn executable_setting_value(
+        &self,
+        id: &str,
+        values: &BTreeMap<String, Value>,
+    ) -> Validation<Option<String>>;
+}

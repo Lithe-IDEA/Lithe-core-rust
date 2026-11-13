@@ -87,7 +87,7 @@ fn start_run(workspace: &Workspace, params: Value, temporary_directory: Option<&
     if let Some(directory) = temporary_directory {
         payload["temporaryDirectory"] = json!(directory);
     }
-    run_decode_start_command(payload).expect("payload is well formed")
+    run_decode_start_command::<Manifest>(payload).expect("payload is well formed")
 }
 
 /// A start of the fixture's required tool with room to vary the rest.
@@ -120,7 +120,7 @@ fn run_start_fixture_cases_decode_the_same_in_every_host() {
     let manifest = named_manifest(&fixture);
     for case in fixture["cases"].as_array().unwrap() {
         let name = case["name"].as_str().unwrap();
-        let outcome = run_decode_start_command(json!({
+        let outcome = run_decode_start_command::<Manifest>(json!({
             "manifest": manifest,
             "workspaceRoot": workspace.root(),
             "temporaryDirectory": temporary.root(),

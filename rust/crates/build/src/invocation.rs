@@ -11,7 +11,7 @@ use super::manifest::{
     BuildSystemDeclaration, ExecutableCandidate, ExecutableSource, Platform, RuntimeDependency,
     VersionProbe,
 };
-use crate::plugins::declarative::DeclarativePluginManifest;
+use super::BuildManifest;
 use lithe_plugin_model::executables::ordered_indices;
 use lithe_plugin_model::{
     reported_version, validate_minimum_version, version_components, PluginRejection, Validation,
@@ -45,7 +45,7 @@ fn candidates(
     candidates: &[ExecutableCandidate],
     root: &str,
     platform: Platform,
-    manifest: &DeclarativePluginManifest,
+    manifest: &impl BuildManifest,
     settings: &BTreeMap<String, Value>,
 ) -> Validation<Vec<Value>> {
     ordered_indices(candidates, "executables")?.into_iter()
@@ -84,7 +84,7 @@ fn runtime(
     runtime: &RuntimeDependency,
     root: &str,
     platform: Platform,
-    manifest: &DeclarativePluginManifest,
+    manifest: &impl BuildManifest,
     settings: &BTreeMap<String, Value>,
 ) -> Validation<Value> {
     let version = if runtime.is_host_managed() {
@@ -118,7 +118,7 @@ fn runtime(
 pub(crate) fn invocation_plan(
     build_system: &BuildSystemDeclaration,
     request: &InvocationRequest,
-    manifest: &DeclarativePluginManifest,
+    manifest: &impl BuildManifest,
 ) -> Validation<Value> {
     let root = decode::request_path(&request.root, "root")?;
     let platform = lithe_workspace::current()

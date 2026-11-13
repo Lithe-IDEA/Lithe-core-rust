@@ -38,7 +38,7 @@ This directory is the cross-platform source of truth:
 
 Validation and template expansion are implemented once in Rust Core
 (`rust/crates/core/src/plugins/`, with build systems in
-`rust/crates/core/src/build/`) and exposed through the
+`rust/crates/build/src/`) and exposed through the
 `plugins.declarative.*` commands in [`rust/contracts/rust-core-api.md`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/contracts/rust-core-api.md). Hosts must not
 reimplement them.
 

@@ -48,15 +48,16 @@ pub(crate) const MAX_CATEGORY_DEPTH: usize = 4;
 /// One project-level build tool a plugin describes.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct BuildSystemDeclaration {
-    pub(crate) id: String,
+pub struct BuildSystemDeclaration {
+    /// The build-system ID, unique within the plugin.
+    pub id: String,
     pub(crate) display_name: String,
     /// Optional, explicit read-only publication of the normalized model.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) model_sharing: Option<super::model_inputs::ModelSharing>,
+    pub model_sharing: Option<super::model_inputs::ModelSharing>,
     /// Exact optional producers; these are not installation dependencies.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) model_inputs: Vec<super::model_inputs::ModelInput>,
+    pub model_inputs: Vec<super::model_inputs::ModelInput>,
     /// Icon of the build system's tool window; display only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) icon: Option<UIIcon>,
@@ -66,7 +67,7 @@ pub(crate) struct BuildSystemDeclaration {
     pub(crate) host_integration: Option<String>,
     /// The process that answers the `provider` sources.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) provider: Option<ProviderDeclaration>,
+    pub provider: Option<ProviderDeclaration>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) options: Vec<OptionDeclaration>,
     /// Native non-sensitive settings and generic write bindings from the engine.
@@ -99,15 +100,17 @@ pub(crate) struct BuildSystemDeclaration {
 #[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
 #[allow(clippy::large_enum_variant)] // Decoded once per manifest validation.
-pub(crate) enum ProviderDeclaration {
+pub enum ProviderDeclaration {
+    /// The plugin's language server of one language answers build requests.
     LanguageServer(SharedProvider),
+    /// A provider process of its own.
     Process(ProcessProvider),
 }
 
 /// Build requests go to the language server of `languageServer`.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct SharedProvider {
+pub struct SharedProvider {
     #[serde(rename = "languageServer")]
     pub(crate) language_id: String,
     pub(crate) executes_project_code: bool,
@@ -117,7 +120,7 @@ pub(crate) struct SharedProvider {
 /// A provider process of its own.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct ProcessProvider {
+pub struct ProcessProvider {
     #[serde(flatten)]
     pub(crate) process: ServerProcess,
     pub(crate) executes_project_code: bool,
@@ -137,14 +140,16 @@ impl<'de> Deserialize<'de> for ProviderDeclaration {
 }
 
 /// Which process a provider's requests go to.
-pub(crate) enum ProviderProcess<'a> {
+pub enum ProviderProcess<'a> {
     /// The language server of this language ID.
     LanguageServer(&'a str),
+    /// A process the build system declares for itself.
     Own(&'a ServerProcess),
 }
 
 impl ProviderDeclaration {
-    pub(crate) fn process(&self) -> ProviderProcess<'_> {
+    /// The process the provider's requests go to.
+    pub fn process(&self) -> ProviderProcess<'_> {
         match self {
             Self::LanguageServer(shared) => ProviderProcess::LanguageServer(&shared.language_id),
             Self::Process(own) => ProviderProcess::Own(&own.process),
@@ -152,14 +157,15 @@ impl ProviderDeclaration {
     }
 
     /// Shown to the user; whether a provider may run is decided by trust.
-    pub(crate) fn executes_project_code(&self) -> bool {
+    pub fn executes_project_code(&self) -> bool {
         match self {
             Self::LanguageServer(shared) => shared.executes_project_code,
             Self::Process(own) => own.executes_project_code,
         }
     }
 
-    pub(crate) fn may_use_network(&self) -> bool {
+    /// Whether the provider may use the network; shown to the user.
+    pub fn may_use_network(&self) -> bool {
         match self {
             Self::LanguageServer(shared) => shared.may_use_network,
             Self::Process(own) => own.may_use_network,
@@ -979,18 +985,22 @@ fn check_target_tags(tags: &mut Vec<String>, scopes: &[Scope], field: &str) -> V
 
 /// Facts of the rest of the manifest a build-system declaration is checked
 /// against.
-pub(crate) struct DeclarationContext<'a> {
-    pub(crate) debug_adapters: &'a [crate::debug::adapters::DebugAdapterDeclaration],
-    pub(crate) official: bool,
+pub struct DeclarationContext<'a> {
+    /// Debug adapters the plugin declares; a debug run names one of them.
+    pub debug_adapters: &'a [lithe_debug::adapters::DebugAdapterDeclaration],
+    /// Whether the plugin is official; host integrations are reserved to official plugins.
+    pub official: bool,
     /// Setting IDs a provider's launch templates may name.
-    pub(crate) declared_settings: &'a lithe_plugin_model::settings::DeclaredSettings,
+    pub declared_settings: &'a lithe_plugin_model::settings::DeclaredSettings,
     /// Language IDs the plugin declares a language server for.
-    pub(crate) language_servers: &'a BTreeSet<String>,
+    pub language_servers: &'a BTreeSet<String>,
     /// Whether tool names are host runtimes or tool-definition IDs.
-    pub(crate) runtime_tools: lithe_plugin_model::process::RuntimeTools<'a>,
+    pub runtime_tools: lithe_plugin_model::process::RuntimeTools<'a>,
 }
 
-pub(crate) fn validate_declarations(
+/// Validates every build-system declaration of a manifest against the rest
+/// of it, and sorts the declarations by ID.
+pub fn validate_declarations(
     build_systems: &mut [BuildSystemDeclaration],
     context: &DeclarationContext<'_>,
 ) -> Validation<()> {
@@ -1019,7 +1029,7 @@ pub(crate) fn validate_declarations(
 }
 
 /// Activation event the host raises before using a build system.
-pub(crate) fn activation_event(build_system: &BuildSystemDeclaration) -> String {
+pub fn activation_event(build_system: &BuildSystemDeclaration) -> String {
     format!("onBuildSystem:{}", build_system.id)
 }
 
@@ -1027,7 +1037,7 @@ pub(crate) fn activation_event(build_system: &BuildSystemDeclaration) -> String 
 /// which arguments. Display text, detection, and output decoding are left
 /// out; changing them does not run anything new. A provider process of its
 /// own is reviewed like a language server, with the runtimes it needs.
-pub(crate) fn programs(build_system: &BuildSystemDeclaration) -> Vec<Value> {
+pub fn programs(build_system: &BuildSystemDeclaration) -> Vec<Value> {
     let mut programs = vec![program(build_system)];
     if let Some(ProviderDeclaration::Process(own)) = &build_system.provider {
         let mut provider = own.process.program(ServerRole::BuildProvider);
@@ -1249,7 +1259,7 @@ fn check_scopes(scopes: &mut Vec<Scope>, field: &str, allowed: &[Scope]) -> Vali
 
 impl BuildSystemDeclaration {
     /// Whether the build system starts a provider process of its own.
-    pub(crate) fn starts_own_provider(&self) -> bool {
+    pub fn starts_own_provider(&self) -> bool {
         matches!(self.provider, Some(ProviderDeclaration::Process(_)))
     }
 

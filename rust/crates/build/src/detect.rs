@@ -10,9 +10,9 @@ use super::decode::Workspace;
 use super::manifest::{BuildSystemDeclaration, ModelSource, Nesting, OptionKind, OptionScope};
 use super::options;
 use super::outputs::{model_value, read_model, source_marker};
-use crate::plugins::declarative::validate_manifest_value;
-use crate::protocol::CoreError;
+use super::BuildManifest;
 use lithe_plugin_model::{PluginRejection, Validation};
+use lithe_protocol::CoreError;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -72,7 +72,7 @@ fn is_below(path: &str, ancestor: &str) -> bool {
 /// with nested ones removed when the build system nests its projects.
 fn roots(
     declaration: &BuildSystemDeclaration,
-    directories: &[crate::execution::DirectoryContext],
+    directories: &[lithe_execution::DirectoryContext],
 ) -> Vec<(String, Vec<String>)> {
     let mut candidates: Vec<(String, Vec<String>)> = directories
         .iter()
@@ -148,8 +148,8 @@ fn instance(
 // the unmaterialized local projection.
 fn scan_directory_root(
     root: &Path,
-    scan: impl FnOnce(&Path) -> Result<Vec<crate::execution::DirectoryContext>, CoreError>,
-) -> Validation<Vec<crate::execution::DirectoryContext>> {
+    scan: impl FnOnce(&Path) -> Result<Vec<lithe_execution::DirectoryContext>, CoreError>,
+) -> Validation<Vec<lithe_execution::DirectoryContext>> {
     match lithe_workspace::fs::metadata(root) {
         Ok(metadata) if !metadata.is_dir() => return Ok(Vec::new()),
         Err(error) if matches!(error.kind(), ErrorKind::NotFound | ErrorKind::NotADirectory) => {
@@ -169,12 +169,12 @@ fn scan_directory_root(
 /// `build.detect`: every instance of every build system the enabled plugins
 /// declare. Invalid manifests are reported, not fatal; when two plugins
 /// declare one build-system ID, the higher priority answers for it.
-pub(crate) fn detect(request: DetectRequest) -> Validation<Value> {
+pub(crate) fn detect<M: BuildManifest>(request: DetectRequest) -> Validation<Value> {
     let workspace = Workspace::new(&request.workspace_root)?;
     let mut rejected = Vec::new();
     let mut manifests = Vec::new();
     for (index, plugin) in request.plugins.into_iter().enumerate() {
-        match validate_manifest_value(plugin.manifest) {
+        match M::validate(plugin.manifest) {
             Ok(manifest) => manifests.push(manifest),
             Err(error) => rejected.push(json!({ "index": index, "error": error })),
         }
@@ -222,7 +222,7 @@ pub(crate) fn detect(request: DetectRequest) -> Validation<Value> {
     if owners.is_empty() {
         return Ok(json!({ "instances": [], "rejected": rejected, "shadowed": shadowed }));
     }
-    let directories = scan_directory_root(&workspace.path, crate::execution::scan)?;
+    let directories = scan_directory_root(&workspace.path, lithe_execution::scan)?;
     let empty = BTreeMap::new();
     let mut seen = BTreeSet::new();
     let mut instances = Vec::new();

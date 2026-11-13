@@ -3,8 +3,8 @@
 
 use super::manifest::{BuildSystemDeclaration, OptionKind, OptionScope};
 use super::{options, project_options};
-use crate::protocol::CoreError;
 use lithe_plugin_model::{decode_payload, outcome, PluginRejection, Validation};
+use lithe_protocol::CoreError;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -148,7 +148,7 @@ fn effective(
 }
 
 /// Resolves storage only, retaining inactive systems and custom choices.
-pub(crate) fn resolve_stored_options_command(payload: Value) -> Result<Value, CoreError> {
+pub fn resolve_stored_options_command(payload: Value) -> Result<Value, CoreError> {
     let request: ResolveRequest = decode_payload(payload, "build.resolveStoredOptions")?;
     Ok(outcome((|| {
         let team = project_options::validate(request.document)?;

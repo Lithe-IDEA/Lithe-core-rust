@@ -27,6 +27,7 @@ use crate::build::{
     build_model_plan_command, build_task_plan_command, build_test_plan_command,
 };
 use crate::plugins::declarative::validate_command;
+use crate::plugins::declarative::DeclarativePluginManifest as Manifest;
 use crate::plugins::marketplace::install_review_command;
 use serde_json::{json, Value};
 use std::fs;
@@ -158,7 +159,7 @@ fn arguments(outcome: &Value) -> Vec<&str> {
 }
 
 fn detected_ids(workspace: &Workspace, manifest: Value) -> Vec<String> {
-    let outcome = build_detect_command(json!({
+    let outcome = build_detect_command::<Manifest>(json!({
         "workspaceRoot": workspace.root(),
         "plugins": [{ "manifest": manifest }],
         "options": {},
@@ -238,7 +239,7 @@ fn community_model_plans_name_the_plugin_directory_and_output() {
         })
     };
     let outcome = ok(
-        build_model_plan_command,
+        build_model_plan_command::<Manifest>,
         maven(),
         "maven",
         request(json!({ "profiles": ["release", "ci"], "offline": true })),
@@ -260,7 +261,7 @@ fn community_model_plans_name_the_plugin_directory_and_output() {
     assert_eq!(outcome["plan"]["executesProjectCode"], true);
 
     let outcome = ok(
-        build_model_plan_command,
+        build_model_plan_command::<Manifest>,
         gradle(),
         "gradle",
         request(json!({ "offline": true, "gradleUserHome": gradle_user_home })),
@@ -290,7 +291,7 @@ fn maven_captured_model_decodes() {
     let workspace = Workspace::new("community-maven-model");
     let output = workspace.capture("state/model.json", MAVEN_MODEL);
     let outcome = ok(
-        build_decode_model_command,
+        build_decode_model_command::<Manifest>,
         maven(),
         "maven",
         json!({ "workspaceRoot": workspace.root(), "root": ".", "outputFile": output }),
@@ -332,7 +333,7 @@ fn gradle_captured_model_decodes() {
     let workspace = Workspace::new("community-gradle-model");
     let output = workspace.capture("state/model.json", GRADLE_MODEL);
     let outcome = ok(
-        build_decode_model_command,
+        build_decode_model_command::<Manifest>,
         gradle(),
         "gradle",
         json!({ "workspaceRoot": workspace.root(), "root": ".", "outputFile": output }),
@@ -372,7 +373,7 @@ fn maven_task_plans() {
     let local_repository = workspace.path("m2");
     let app = json!({ "path": "app", "name": "app" });
     let outcome = ok(
-        build_task_plan_command,
+        build_task_plan_command::<Manifest>,
         maven(),
         "maven",
         json!({
@@ -396,7 +397,7 @@ fn maven_task_plans() {
     );
 
     let outcome = ok(
-        build_task_plan_command,
+        build_task_plan_command::<Manifest>,
         maven(),
         "maven",
         json!({
@@ -419,7 +420,7 @@ fn maven_task_plans() {
     );
 
     let outcome = ok(
-        build_task_plan_command,
+        build_task_plan_command::<Manifest>,
         maven(),
         "maven",
         json!({
@@ -441,7 +442,7 @@ fn maven_task_plans() {
 fn gradle_task_plans() {
     let task = |project: Value, path: &str| {
         let outcome = ok(
-            build_task_plan_command,
+            build_task_plan_command::<Manifest>,
             gradle(),
             "gradle",
             json!({
@@ -464,7 +465,7 @@ fn gradle_task_plans() {
 
     let custom = |project: Value| {
         let outcome = ok(
-            build_task_plan_command,
+            build_task_plan_command::<Manifest>,
             gradle(),
             "gradle",
             json!({
@@ -492,7 +493,7 @@ fn gradle_task_plans() {
 #[test]
 fn community_test_plans() {
     let outcome = ok(
-        build_test_plan_command,
+        build_test_plan_command::<Manifest>,
         maven(),
         "maven",
         json!({
@@ -519,7 +520,7 @@ fn community_test_plans() {
 
     let core = json!({ "path": "core", "name": "core", "properties": { "path": ":core", "taskPrefix": ":core:" } });
     let outcome = ok(
-        build_test_plan_command,
+        build_test_plan_command::<Manifest>,
         gradle(),
         "gradle",
         json!({ "root": ".", "project": core, "suite": "demo.core.GreeterTest" }),
@@ -539,7 +540,7 @@ fn community_test_plans() {
     );
 
     let outcome = ok(
-        build_test_plan_command,
+        build_test_plan_command::<Manifest>,
         gradle(),
         "gradle",
         json!({ "root": ".", "projects": [".", "app", "core"] }),
@@ -567,7 +568,7 @@ fn community_dependency_plans() {
     };
     let app = json!({ "path": "app", "name": "app", "properties": { "path": ":app", "taskPrefix": ":app:" } });
     let outcome = ok(
-        build_dependency_plan_command,
+        build_dependency_plan_command::<Manifest>,
         maven(),
         "maven",
         request(Some(app.clone())),
@@ -584,7 +585,7 @@ fn community_dependency_plans() {
         ]
     );
     let outcome = ok(
-        build_dependency_plan_command,
+        build_dependency_plan_command::<Manifest>,
         maven(),
         "maven",
         request(None),
@@ -597,7 +598,7 @@ fn community_dependency_plans() {
     );
 
     let outcome = ok(
-        build_dependency_plan_command,
+        build_dependency_plan_command::<Manifest>,
         gradle(),
         "gradle",
         request(Some(app)),
@@ -632,7 +633,7 @@ fn community_captured_dependencies_decode() {
             request["project"] = json!(project);
         }
         ok(
-            build_decode_dependencies_command,
+            build_decode_dependencies_command::<Manifest>,
             manifest,
             build_system,
             request,
@@ -690,7 +691,7 @@ fn community_diagnostics_decode() {
     let root = workspace.root();
     let decode = |manifest: Value, build_system: &str, output: String| {
         ok(
-            build_decode_diagnostics_command,
+            build_decode_diagnostics_command::<Manifest>,
             manifest,
             build_system,
             json!({ "workspaceRoot": root, "root": ".", "output": output }),

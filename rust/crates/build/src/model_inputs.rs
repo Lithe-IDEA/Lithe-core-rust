@@ -1,13 +1,13 @@
 //! Optional read-only model inputs between already enabled workspace providers.
 //! Sharing grants no installation, process, resource or private-function authority.
 
+use super::BuildManifest;
 use super::{
     decode,
     manifest::{is_entry_identifier, BuildSystemDeclaration},
     model::{ModelContentRoot, ModelProject, ModelTarget},
     options, plans,
 };
-use crate::plugins::declarative::validate_manifest_value;
 use lithe_plugin_model::{is_plugin_id, Validation};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -23,7 +23,7 @@ const MAX_BYTES: usize = 8 * 1024 * 1024;
 /// Producer opt-in; only these ordinary build options leave their owner.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ModelSharing {
+pub struct ModelSharing {
     #[serde(default)]
     pub(crate) options: Vec<String>,
 }
@@ -31,7 +31,7 @@ pub(crate) struct ModelSharing {
 /// Exact optional producer identity; package versions and permissions are not inherited.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct ModelInput {
+pub struct ModelInput {
     #[serde(rename = "pluginID")]
     pub(crate) plugin_id: String,
     #[serde(rename = "buildSystemID")]
@@ -127,7 +127,7 @@ fn invalid() -> lithe_plugin_model::PluginRejection {
 }
 
 /// Selects exact public producers and strips tasks, run plans, settings and unshared options.
-pub(crate) fn resolve(
+pub(crate) fn resolve<M: BuildManifest>(
     consumer: &BuildSystemDeclaration,
     request: &ResolveRequest,
 ) -> Validation<Value> {
@@ -139,7 +139,7 @@ pub(crate) fn resolve(
     }
     let mut sources = BTreeMap::new();
     for source in &request.sources {
-        let manifest = validate_manifest_value(source.manifest.clone())?;
+        let manifest = M::validate(source.manifest.clone())?;
         if source.instances.len() > MAX_INSTANCES
             || sources
                 .insert(manifest.id().to_string(), (manifest, source))

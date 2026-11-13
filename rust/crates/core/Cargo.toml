@@ -15,6 +15,7 @@ plugin-sdk-e2e = []
 
 [dependencies]
 lithe-ai = { path = "../ai" }
+lithe-build = { path = "../build" }
 lithe-core-rules = { path = "../core-rules" }
 lithe-debug = { path = "../debug" }
 lithe-diagnostics = { path = "../diagnostics" }
@@ -39,17 +40,13 @@ lithe-workspace = { path = "../workspace" }
 lithe-remote = { path = "../remote", default-features = false, features = ["client"] }
 ammonia = "4.1.4"
 base64 = "0.22"
-chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 encoding_rs = "0.8"
 comrak = { version = "0.54.0", default-features = false, features = ["shortcodes"] }
 regex = "1.11"
-quick-xml = "0.37"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 sha2 = "0.10"
-toml = { version = "1.1.4", default-features = false, features = ["parse", "serde"] }
 url = "2.5"
-ignore = "=0.4.33"
 
 [dev-dependencies]
 lithe-diagnostics = { path = "../diagnostics", features = ["test-support"] }

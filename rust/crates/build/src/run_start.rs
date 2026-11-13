@@ -9,10 +9,10 @@ use super::decode;
 use super::run_preparation::{
     process_fields, valid_configuration_type, DecodeRunPreparationRequest, MAX_ARGUMENT_BYTES,
 };
-use crate::plugins::declarative::validate_manifest_value;
-use crate::protocol::CoreError;
+use super::BuildManifest;
 use lithe_plugin_model::is_function_id;
 use lithe_plugin_model::{decode_payload, outcome, PluginRejection, Validation};
+use lithe_protocol::CoreError;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -88,10 +88,10 @@ fn invalid(field: &str, message: impl Into<String>) -> PluginRejection {
 
 /// `run.decodeStart`: the normalized start with its executable reference, process, the files
 /// to write with their final paths, and the debug and rerun choices.
-pub(crate) fn run_decode_start_command(payload: Value) -> Result<Value, CoreError> {
+pub fn run_decode_start_command<M: BuildManifest>(payload: Value) -> Result<Value, CoreError> {
     let payload: DecodeStartPayload = decode_payload(payload, "run.decodeStart")?;
     Ok(outcome(
-        validate_manifest_value(payload.manifest.clone())
+        M::validate(payload.manifest.clone())
             .and_then(|manifest| decode_start(&payload, manifest.required_tools()))
             .map(|start| ("start", start)),
     ))

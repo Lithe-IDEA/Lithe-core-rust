@@ -5,7 +5,7 @@ use super::decode::{self, Workspace};
 use super::manifest::{BuildSystemDeclaration, RunDeclaration, TaskSource};
 use super::plans;
 use super::run_preparation::{self, DecodeRunPreparationRequest, PrepareRunRequest};
-use crate::debug::adapters::{DebugAdapterDeclaration, DebugRequest};
+use lithe_debug::adapters::{DebugAdapterDeclaration, DebugRequest};
 use lithe_plugin_model::Validation;
 use serde::Deserialize;
 use serde_json::{json, Value};

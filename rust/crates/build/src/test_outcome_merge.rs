@@ -7,7 +7,7 @@
 //! compares strings only; how a tool names nested suites or how a host builds
 //! identifiers is decided by the provider adapter that builds the scope.
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
@@ -26,7 +26,7 @@ pub(crate) struct TestOutcomeScope {
 /// host keeps the payloads and maps the answer back by position.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct MergeTestOutcomesRequest {
+pub struct MergeTestOutcomesRequest {
     /// Identifiers of the stored history, in display order.
     #[serde(default)]
     pub(crate) previous: Vec<String>,
@@ -56,7 +56,7 @@ pub(crate) struct MergedTestOutcome {
 /// Output of `build.mergeTestOutcomes`.
 #[derive(Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct MergedTestOutcomes {
+pub struct MergedTestOutcomes {
     pub(crate) entries: Vec<MergedTestOutcome>,
 }
 
@@ -66,7 +66,7 @@ pub(crate) struct MergedTestOutcomes {
 /// run's results follow, but only those inside the scope: a run cannot
 /// overwrite what it did not claim. When an identifier repeats, the later
 /// entry wins and takes the later position.
-pub(crate) fn merge_test_outcomes(
+pub fn merge_test_outcomes(
     request: MergeTestOutcomesRequest,
 ) -> Result<MergedTestOutcomes, CoreError> {
     if request.scope.prefixes.iter().any(String::is_empty) {
@@ -121,7 +121,7 @@ mod tests {
     #[test]
     fn shared_fixture_cases_merge_to_their_expected_history() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../fixtures/build/test-outcome-merge-v1.json"
+            "../../../fixtures/build/test-outcome-merge-v1.json"
         ))
         .unwrap();
         let cases = fixture["cases"].as_array().unwrap();

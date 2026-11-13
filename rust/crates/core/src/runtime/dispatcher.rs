@@ -496,9 +496,11 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                 )
             })
         }
-        CoreCommand::RunDecodeStart => {
-            plugin_response(id, parsed.payload, crate::build::run_decode_start_command)
-        }
+        CoreCommand::RunDecodeStart => plugin_response(
+            id,
+            parsed.payload,
+            crate::build::run_decode_start_command::<Manifest>,
+        ),
         CoreCommand::DebugDecodeBackendConfiguration => plugin_response(
             id,
             parsed.payload,
@@ -514,9 +516,11 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             parsed.payload,
             crate::plugins::output_links::decode_resolution,
         ),
-        CoreCommand::BuildDetect => {
-            plugin_response(id, parsed.payload, crate::build::build_detect_command)
-        }
+        CoreCommand::BuildDetect => plugin_response(
+            id,
+            parsed.payload,
+            crate::build::build_detect_command::<Manifest>,
+        ),
         CoreCommand::BuildProjectOptions => {
             plugin_response(id, parsed.payload, crate::build::project_options_command)
         }
@@ -528,114 +532,122 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
         CoreCommand::BuildEditStoredOption => plugin_response(
             id,
             parsed.payload,
-            crate::build::build_edit_stored_option_command,
+            crate::build::build_edit_stored_option_command::<Manifest>,
         ),
         CoreCommand::BuildInvocationPlan => plugin_response(
             id,
             parsed.payload,
-            crate::build::build_invocation_plan_command,
+            crate::build::build_invocation_plan_command::<Manifest>,
         ),
         CoreCommand::BuildCheckToolVersion => plugin_response(
             id,
             parsed.payload,
-            crate::build::build_check_tool_version_command,
+            crate::build::build_check_tool_version_command::<Manifest>,
         ),
         CoreCommand::BuildResolveOptions => plugin_response(
             id,
             parsed.payload,
-            crate::build::build_resolve_options_command,
+            crate::build::build_resolve_options_command::<Manifest>,
         ),
-        CoreCommand::BuildModelPlan => {
-            plugin_response(id, parsed.payload, crate::build::build_model_plan_command)
-        }
-        CoreCommand::BuildTaskPlan => {
-            plugin_response(id, parsed.payload, crate::build::build_task_plan_command)
-        }
+        CoreCommand::BuildModelPlan => plugin_response(
+            id,
+            parsed.payload,
+            crate::build::build_model_plan_command::<Manifest>,
+        ),
+        CoreCommand::BuildTaskPlan => plugin_response(
+            id,
+            parsed.payload,
+            crate::build::build_task_plan_command::<Manifest>,
+        ),
         CoreCommand::BuildPrepareDebugPlan => plugin_response(
             id,
             parsed.payload,
-            crate::build::build_prepare_debug_plan_command,
+            crate::build::build_prepare_debug_plan_command::<Manifest>,
         ),
         CoreCommand::BuildDecodeDebugPreparation => plugin_response(
             id,
             parsed.payload,
-            crate::build::build_decode_debug_preparation_command,
+            crate::build::build_decode_debug_preparation_command::<Manifest>,
         ),
         CoreCommand::BuildResolveModelInputs => plugin_response(
             id,
             parsed.payload,
-            crate::build::build_resolve_model_inputs_command,
+            crate::build::build_resolve_model_inputs_command::<Manifest>,
         ),
         CoreCommand::BuildConfigurationEditPlan => plugin_response(
             id,
             parsed.payload,
-            crate::build::build_configuration_edit_plan_command,
+            crate::build::build_configuration_edit_plan_command::<Manifest>,
         ),
         CoreCommand::BuildDecodeConfigurationEdit => plugin_response(
             id,
             parsed.payload,
-            crate::build::build_decode_configuration_edit_command,
+            crate::build::build_decode_configuration_edit_command::<Manifest>,
         ),
         CoreCommand::BuildConfigurationPlan => plugin_response(
             id,
             parsed.payload,
-            crate::build::build_configuration_plan_command,
+            crate::build::build_configuration_plan_command::<Manifest>,
         ),
         CoreCommand::BuildDecodeConfiguration => plugin_response(
             id,
             parsed.payload,
-            crate::build::build_decode_configuration_command,
+            crate::build::build_decode_configuration_command::<Manifest>,
         ),
         CoreCommand::BuildPrepareRunPlan => plugin_response(
             id,
             parsed.payload,
-            crate::build::build_prepare_run_plan_command,
+            crate::build::build_prepare_run_plan_command::<Manifest>,
         ),
         CoreCommand::BuildDecodeRunPreparation => plugin_response(
             id,
             parsed.payload,
-            crate::build::build_decode_run_preparation_command,
+            crate::build::build_decode_run_preparation_command::<Manifest>,
         ),
-        CoreCommand::BuildTestPlan => {
-            plugin_response(id, parsed.payload, crate::build::build_test_plan_command)
-        }
+        CoreCommand::BuildTestPlan => plugin_response(
+            id,
+            parsed.payload,
+            crate::build::build_test_plan_command::<Manifest>,
+        ),
         CoreCommand::BuildTestDiscoveryPlan => plugin_response(
             id,
             parsed.payload,
-            crate::build::build_test_discovery_plan_command,
+            crate::build::build_test_discovery_plan_command::<Manifest>,
         ),
         CoreCommand::BuildDecodeTestDiscovery => plugin_response(
             id,
             parsed.payload,
-            crate::build::build_decode_test_discovery_command,
+            crate::build::build_decode_test_discovery_command::<Manifest>,
         ),
         CoreCommand::BuildDependencyPlan => plugin_response(
             id,
             parsed.payload,
-            crate::build::build_dependency_plan_command,
+            crate::build::build_dependency_plan_command::<Manifest>,
         ),
-        CoreCommand::BuildDecodeModel => {
-            plugin_response(id, parsed.payload, crate::build::build_decode_model_command)
-        }
+        CoreCommand::BuildDecodeModel => plugin_response(
+            id,
+            parsed.payload,
+            crate::build::build_decode_model_command::<Manifest>,
+        ),
         CoreCommand::BuildDecodeTestResults => plugin_response(
             id,
             parsed.payload,
-            crate::build::build_decode_test_results_command,
+            crate::build::build_decode_test_results_command::<Manifest>,
         ),
         CoreCommand::BuildDecodeDiagnostics => plugin_response(
             id,
             parsed.payload,
-            crate::build::build_decode_diagnostics_command,
+            crate::build::build_decode_diagnostics_command::<Manifest>,
         ),
         CoreCommand::BuildDecodeDependencies => plugin_response(
             id,
             parsed.payload,
-            crate::build::build_decode_dependencies_command,
+            crate::build::build_decode_dependencies_command::<Manifest>,
         ),
         CoreCommand::BuildSyncFingerprint => plugin_response(
             id,
             parsed.payload,
-            crate::build::build_sync_fingerprint_command,
+            crate::build::build_sync_fingerprint_command::<Manifest>,
         ),
         CoreCommand::BuildResolveTestRunOutcome => reducer_response(
             id,

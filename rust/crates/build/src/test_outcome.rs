@@ -7,7 +7,7 @@
 //! only the scope the host asked for, and the summary is whatever the
 //! provider's decoder produced.
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 
 /// How the test process ended, as observed by the host.
@@ -52,7 +52,7 @@ pub(crate) struct TestRunSummary {
 /// Input of `build.resolveTestRunOutcome`.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct ResolveTestRunOutcomeRequest {
+pub struct ResolveTestRunOutcomeRequest {
     pub(crate) termination: TestRunTermination,
     pub(crate) scope: TestRunScope,
     /// `None` when the run has no structured results (the provider declares
@@ -82,7 +82,7 @@ pub(crate) enum TestRunOutcome {
 /// Output of `build.resolveTestRunOutcome`.
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TestRunVerdict {
+pub struct TestRunVerdict {
     pub(crate) outcome: TestRunOutcome,
     pub(crate) success: bool,
     /// The tool's exit code when it exited by itself.
@@ -95,7 +95,7 @@ pub(crate) struct TestRunVerdict {
 /// outcome; reported failures outrank the exit code; a non-zero exit outranks
 /// an empty result; and a zero exit with decoded results but no executed test
 /// is not a pass.
-pub(crate) fn resolve_test_run_outcome(
+pub fn resolve_test_run_outcome(
     request: ResolveTestRunOutcomeRequest,
 ) -> Result<TestRunVerdict, CoreError> {
     if let Some(summary) = request.summary {
@@ -146,7 +146,7 @@ mod tests {
 
     fn fixture() -> Value {
         serde_json::from_str(include_str!(
-            "../../../../fixtures/build/test-run-outcome-v1.json"
+            "../../../fixtures/build/test-run-outcome-v1.json"
         ))
         .unwrap()
     }

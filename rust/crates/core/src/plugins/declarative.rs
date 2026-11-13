@@ -521,6 +521,38 @@ impl crate::vcs::VcsManifest for DeclarativePluginManifest {
     }
 }
 
+impl crate::build::BuildManifest for DeclarativePluginManifest {
+    /// Validated build systems, sorted by ID.
+    fn build_systems(&self) -> &[crate::build::BuildSystemDeclaration] {
+        &self.build_systems
+    }
+
+    /// Tool-definition IDs the plugin may start processes with, sorted.
+    fn required_tools(&self) -> &[String] {
+        &self.requires_tools
+    }
+
+    /// Strict executable selection preserves invalid stored values instead of
+    /// applying the UI settings resolver's tolerant fallback-to-default rule.
+    fn executable_setting_value(
+        &self,
+        id: &str,
+        values: &BTreeMap<String, Value>,
+    ) -> Validation<Option<String>> {
+        let setting = self
+            .settings
+            .iter()
+            .find(|setting| setting.id == id)
+            .ok_or_else(|| {
+                invalid(
+                    "executables.settingID",
+                    "The executable setting is not declared.",
+                )
+            })?;
+        setting.executable_value(values.get(id))
+    }
+}
+
 impl crate::debug::DebugManifest for DeclarativePluginManifest {
     fn debug_adapters(&self) -> &[crate::debug::adapters::DebugAdapterDeclaration] {
         &self.debug_adapters
@@ -1435,11 +1467,6 @@ impl DeclarativePluginManifest {
         &self.requires
     }
 
-    /// Validated build systems, sorted by ID.
-    pub(crate) fn build_systems(&self) -> &[crate::build::BuildSystemDeclaration] {
-        &self.build_systems
-    }
-
     /// Host services the plugin's backend may request, sorted; empty without
     /// a backend. Each is granted by one permission.
     pub(crate) fn backend_host_services(&self) -> Vec<&'static str> {
@@ -1474,11 +1501,6 @@ impl DeclarativePluginManifest {
         services.sort_unstable();
         services.dedup();
         services
-    }
-
-    /// Tool-definition IDs the plugin may start processes with, sorted.
-    pub(crate) fn required_tools(&self) -> &[String] {
-        &self.requires_tools
     }
 
     /// Checks `requiresTools` and returns its IDs. Every tool a process names
@@ -1565,26 +1587,6 @@ impl DeclarativePluginManifest {
         self.setting_actions
             .sort_by(|left, right| left.id.cmp(&right.id));
         Ok(())
-    }
-
-    /// Strict executable selection preserves invalid stored values instead of
-    /// applying the UI settings resolver's tolerant fallback-to-default rule.
-    pub(crate) fn executable_setting_value(
-        &self,
-        id: &str,
-        values: &BTreeMap<String, Value>,
-    ) -> Validation<Option<String>> {
-        let setting = self
-            .settings
-            .iter()
-            .find(|setting| setting.id == id)
-            .ok_or_else(|| {
-                invalid(
-                    "executables.settingID",
-                    "The executable setting is not declared.",
-                )
-            })?;
-        setting.executable_value(values.get(id))
     }
 
     /// Effective value of every declared setting and the layer it came from.

@@ -11,6 +11,7 @@ use crate::build::{
     build_resolve_options_command, build_sync_fingerprint_command, build_task_plan_command,
     build_test_discovery_plan_command, build_test_plan_command,
 };
+use crate::plugins::declarative::DeclarativePluginManifest as Manifest;
 use crate::plugins::declarative::{language_server_launch_plan_command, validate_command};
 use crate::plugins::marketplace::install_review_command;
 use crate::protocol::ErrorCode;
@@ -94,18 +95,18 @@ type Command = fn(Value) -> Result<Value, crate::protocol::CoreError>;
 
 fn operation(name: &str) -> Command {
     match name {
-        "invocationPlan" => build_invocation_plan_command,
-        "checkToolVersion" => build_check_tool_version_command,
-        "resolveOptions" => build_resolve_options_command,
-        "modelPlan" => build_model_plan_command,
-        "taskPlan" => build_task_plan_command,
-        "testPlan" => build_test_plan_command,
-        "dependencyPlan" => build_dependency_plan_command,
-        "decodeModel" => build_decode_model_command,
-        "decodeTestResults" => build_decode_test_results_command,
-        "decodeDiagnostics" => build_decode_diagnostics_command,
-        "decodeDependencies" => build_decode_dependencies_command,
-        "syncFingerprint" => build_sync_fingerprint_command,
+        "invocationPlan" => build_invocation_plan_command::<Manifest>,
+        "checkToolVersion" => build_check_tool_version_command::<Manifest>,
+        "resolveOptions" => build_resolve_options_command::<Manifest>,
+        "modelPlan" => build_model_plan_command::<Manifest>,
+        "taskPlan" => build_task_plan_command::<Manifest>,
+        "testPlan" => build_test_plan_command::<Manifest>,
+        "dependencyPlan" => build_dependency_plan_command::<Manifest>,
+        "decodeModel" => build_decode_model_command::<Manifest>,
+        "decodeTestResults" => build_decode_test_results_command::<Manifest>,
+        "decodeDiagnostics" => build_decode_diagnostics_command::<Manifest>,
+        "decodeDependencies" => build_decode_dependencies_command::<Manifest>,
+        "syncFingerprint" => build_sync_fingerprint_command::<Manifest>,
         other => panic!("unknown operation {other}"),
     }
 }
@@ -179,7 +180,7 @@ fn detect(workspace: &TemporaryWorkspace, manifests: Vec<Value>, options: Value)
         .into_iter()
         .map(|manifest| json!({ "manifest": manifest }))
         .collect();
-    let outcome = build_detect_command(json!({
+    let outcome = build_detect_command::<Manifest>(json!({
         "workspaceRoot": workspace.root(),
         "plugins": plugins,
         "options": options,
@@ -299,7 +300,7 @@ fn instance_options_drive_static_run_entries_without_crossing_roots_or_scopes() 
             .write(&format!("{root}/src/main.rs"), "fn main() {}\n");
     }
     let manifest = fixture("build-instance-options.plugin.json");
-    let result = build_detect_command(json!({
+    let result = build_detect_command::<Manifest>(json!({
         "workspaceRoot": workspace.root(), "plugins": [{"manifest":manifest}],
         "options":{"cargo":{"offline":true,"features":["gui"],"settingsFile":"/fixture/shared.xml"}},
         "instanceOptions":{"cargo":{
@@ -765,7 +766,7 @@ fn detection_returns_empty_for_non_directory_and_missing_workspace_roots() {
         workspace.0.join("missing"),
         workspace.0.join("Cargo.toml/missing"),
     ] {
-        let outcome = build_detect_command(json!({
+        let outcome = build_detect_command::<Manifest>(json!({
             "workspaceRoot": root.to_string_lossy(),
             "plugins": [{"manifest": fixture("build-static-file.plugin.json")}],
         }))
@@ -1987,19 +1988,19 @@ fn provider_execution_tasks_are_typed_and_need_a_provider_host() {
         .remove("scopes");
     run["buildSystems"][0]["run"] = json!([{"id":"run", "fromTasks":{"templates":["build"]}}]);
     assert_eq!(validate(run)["status"], "rejected");
-    let escape = build_task_plan_command(json!({
+    let escape = build_task_plan_command::<Manifest>(json!({
         "manifest":manifest, "buildSystemID":"gradle",
         "request":{"root":"app","task":"build","project":{"name":"escape","path":"../escape"}}
     }))
     .unwrap();
     assert_eq!(escape["status"], "rejected");
-    let oversized = build_task_plan_command(json!({
+    let oversized = build_task_plan_command::<Manifest>(json!({
         "manifest":manifest, "buildSystemID":"gradle",
         "request":{"root":".","task":"custom","userArguments":vec!["arg";65]}
     }))
     .unwrap();
     assert_eq!(oversized["status"], "rejected");
-    let result = build_task_plan_command(json!({
+    let result = build_task_plan_command::<Manifest>(json!({
         "manifest": manifest, "buildSystemID":"gradle", "request": {"root":".", "task":"build",
         "project": {"name":"app","path":"app"}, "options":{"offline":true}}
     }))
@@ -2098,7 +2099,7 @@ fn provider_tests_preserve_filters_and_report_ownership() {
     ))
     .unwrap();
     assert_eq!(validate(manifest.clone())["status"], "ok");
-    let plan = build_test_plan_command(
+    let plan = build_test_plan_command::<Manifest>(
         json!({"manifest": manifest, "buildSystemID":"gradle", "request":fixture["request"]}),
     )
     .unwrap();
@@ -2119,9 +2120,10 @@ fn provider_tests_preserve_filters_and_report_ownership() {
     );
 
     // A case-only filter is a typed value, not a CLI expression needing a suite.
-    let case_only = build_test_plan_command(json!({"manifest":manifest,"buildSystemID":"gradle",
+    let case_only =
+        build_test_plan_command::<Manifest>(json!({"manifest":manifest,"buildSystemID":"gradle",
         "request":{"root":".","case":"exact"}}))
-    .unwrap();
+        .unwrap();
     assert_eq!(case_only["status"], "ok", "{case_only}");
     for request in [
         json!({"root":"app","project":{"name":"escape","path":"../escape"}}),
@@ -2129,7 +2131,7 @@ fn provider_tests_preserve_filters_and_report_ownership() {
         json!({"root":".","suite":"bad\u{0}filter"}),
         json!({"root":".","userArguments":vec!["arg";65]}),
     ] {
-        let rejected = build_test_plan_command(
+        let rejected = build_test_plan_command::<Manifest>(
             json!({"manifest":manifest,"buildSystemID":"gradle","request":request}),
         )
         .unwrap();
@@ -2138,8 +2140,10 @@ fn provider_tests_preserve_filters_and_report_ownership() {
     let mut unsupported = manifest.clone();
     unsupported["buildSystems"][0]["test"]["filters"] = json!([]);
     assert_eq!(
-        build_test_plan_command(json!({"manifest":unsupported,"buildSystemID":"gradle",
-        "request":fixture["request"]}))
+        build_test_plan_command::<Manifest>(
+            json!({"manifest":unsupported,"buildSystemID":"gradle",
+        "request":fixture["request"]})
+        )
         .unwrap()["status"],
         "rejected"
     );
@@ -2199,10 +2203,11 @@ fn provider_test_discovery_is_bounded_deterministic_and_runnable() {
         "fixtures/build-providers/build-test-discovery.json"
     ))
     .unwrap();
-    let plan =
-        build_test_discovery_plan_command(json!({"manifest":manifest,"buildSystemID":"gradle",
-        "request":{"root":".","refresh":true}}))
-        .unwrap();
+    let plan = build_test_discovery_plan_command::<Manifest>(
+        json!({"manifest":manifest,"buildSystemID":"gradle",
+        "request":{"root":".","refresh":true}}),
+    )
+    .unwrap();
     assert_eq!(plan["status"], "ok", "{plan}");
     assert_eq!(
         plan["plan"]["provider"]["method"],
@@ -2210,7 +2215,7 @@ fn provider_test_discovery_is_bounded_deterministic_and_runnable() {
     );
     assert_eq!(plan["plan"]["provider"]["params"]["refresh"], true);
     let decode = |result: Value| {
-        build_decode_test_discovery_command(json!({"manifest":manifest,
+        build_decode_test_discovery_command::<Manifest>(json!({"manifest":manifest,
         "buildSystemID":"gradle","request":{"root":".","result":result}}))
         .unwrap()
     };
@@ -2230,7 +2235,7 @@ fn provider_test_discovery_is_bounded_deterministic_and_runnable() {
         let mut request = test.clone();
         request.as_object_mut().unwrap().remove("id");
         request["root"] = json!(".");
-        let runnable = build_test_plan_command(
+        let runnable = build_test_plan_command::<Manifest>(
             json!({"manifest":manifest,"buildSystemID":"gradle","request":request}),
         )
         .unwrap();
@@ -2267,7 +2272,7 @@ fn provider_run_preparation_selects_targets_and_validates_launch_data() {
     .unwrap();
     assert_eq!(validate(manifest.clone())["status"], "ok");
     let plan = |request: Value| {
-        build_prepare_run_plan_command(
+        build_prepare_run_plan_command::<Manifest>(
             json!({"manifest":manifest,"buildSystemID":"gradle","request":request}),
         )
         .unwrap()
@@ -2315,8 +2320,10 @@ fn provider_run_preparation_selects_targets_and_validates_launch_data() {
     let workspace = TemporaryWorkspace::new("provider-run-launch");
     workspace.write("app/Main.java", "class Main {}");
     let decode = |result: Value| {
-        build_decode_run_preparation_command(json!({"manifest":manifest,"buildSystemID":"gradle",
-        "request":{"workspaceRoot":workspace.root(),"root":"app","result":result}}))
+        build_decode_run_preparation_command::<Manifest>(
+            json!({"manifest":manifest,"buildSystemID":"gradle",
+        "request":{"workspaceRoot":workspace.root(),"root":"app","result":result}}),
+        )
         .unwrap()
     };
     let valid = decode(fixture["result"].clone());
@@ -2355,7 +2362,7 @@ fn provider_run_working_directory_rejects_external_symlinks() {
         "fixtures/build-providers/build-provider-run-preparation.plugin.json"
     ))
     .unwrap();
-    let result=build_decode_run_preparation_command(json!({"manifest":manifest,"buildSystemID":"gradle",
+    let result=build_decode_run_preparation_command::<Manifest>(json!({"manifest":manifest,"buildSystemID":"gradle",
         "request":{"workspaceRoot":workspace.root(),"root":".","result":{"executable":{"kind":"command","value":"java"},
             "arguments":[],"workingDirectory":"escape","environment":{}}}})).unwrap();
     assert_eq!(result["error"]["code"], "plugin.build.invalidOutput");
@@ -2377,7 +2384,7 @@ fn provider_debug_preparation_validates_native_target_and_same_plugin_adapter() 
     ))
     .unwrap();
     assert_eq!(validate(manifest.clone())["status"], "ok");
-    let planned = build_prepare_debug_plan_command(
+    let planned = build_prepare_debug_plan_command::<Manifest>(
         json!({"manifest":manifest,"buildSystemID":"gradle","request":run["request"]}),
     )
     .unwrap();
@@ -2403,7 +2410,7 @@ fn provider_debug_preparation_validates_native_target_and_same_plugin_adapter() 
     let workspace = TemporaryWorkspace::new("provider-native-debug");
     workspace.write("app/bin/sample", "sample");
     let decode = |result: Value| {
-        build_decode_debug_preparation_command(json!({"manifest":manifest,"buildSystemID":"gradle",
+        build_decode_debug_preparation_command::<Manifest>(json!({"manifest":manifest,"buildSystemID":"gradle",
         "request":{"workspaceRoot":workspace.root(),"root":"app","run":run["request"]["run"],"result":result}})).unwrap()
     };
     let valid = decode(fixture["result"].clone());
@@ -2443,7 +2450,7 @@ fn provider_debug_preparation_rejects_a_program_symlink_outside_the_instance() {
         workspace.0.join("app/program"),
     )
     .unwrap();
-    let result = build_decode_debug_preparation_command(json!({"manifest":manifest,"buildSystemID":"gradle","request":{
+    let result = build_decode_debug_preparation_command::<Manifest>(json!({"manifest":manifest,"buildSystemID":"gradle","request":{
         "workspaceRoot":workspace.root(),"root":"app","run":"application","result":{"program":"app/program","arguments":[],"workingDirectory":"app","environment":{}}}})).unwrap();
     assert_eq!(result["status"], "rejected");
 }
@@ -2512,7 +2519,7 @@ fn model_inputs_project_public_facts_and_preserve_configuration_identity() {
             "tasks":[{"command":"private"}],"run":[{"command":"private"}],"optionValues":{},"settings":{"secret":"private"}}
     }]}]});
     let resolve = |request: Value| {
-        build_resolve_model_inputs_command(
+        build_resolve_model_inputs_command::<Manifest>(
             json!({"manifest":consumer,"buildSystemID":"gradle","request":request}),
         )
         .unwrap()
@@ -2530,7 +2537,7 @@ fn model_inputs_project_public_facts_and_preserve_configuration_identity() {
         instance["model"]["targets"][0]["tags"],
         json!(["application"])
     );
-    let plan = build_task_plan_command(json!({"manifest":consumer,"buildSystemID":"gradle","request":{"root":"app","task":"build","modelInputs":snapshot}})).unwrap();
+    let plan = build_task_plan_command::<Manifest>(json!({"manifest":consumer,"buildSystemID":"gradle","request":{"root":"app","task":"build","modelInputs":snapshot}})).unwrap();
     assert_eq!(plan["status"], "ok", "{plan}");
     assert_eq!(plan["plan"]["provider"]["params"]["modelInputs"], *snapshot);
     let mut no_sharing = request.clone();
@@ -2616,7 +2623,7 @@ fn model_inputs_reject_invalid_manifests_models_and_snapshot_smuggling() {
             }
             _ => model["truncated"] = json!(true),
         }
-        let value = build_resolve_model_inputs_command(
+        let value = build_resolve_model_inputs_command::<Manifest>(
             json!({"manifest":consumer,"buildSystemID":"gradle","request":request}),
         )
         .unwrap();
@@ -2629,7 +2636,7 @@ fn model_inputs_reject_invalid_manifests_models_and_snapshot_smuggling() {
             assert_eq!(value["status"], "rejected", "{change}: {value}");
         }
     }
-    let resolved = build_resolve_model_inputs_command(
+    let resolved = build_resolve_model_inputs_command::<Manifest>(
         json!({"manifest":consumer,"buildSystemID":"gradle","request":request}),
     )
     .unwrap();
@@ -2653,7 +2660,7 @@ fn model_inputs_reject_invalid_manifests_models_and_snapshot_smuggling() {
             "unavailablePayload" => snapshot["inputs"][0]["state"] = json!("unavailable"),
             _ => snapshot["revision"] = json!(9007199254740992_u64),
         }
-        let plan = build_task_plan_command(json!({"manifest":consumer,"buildSystemID":"gradle","request":{"root":"app","task":"build","modelInputs":snapshot}})).unwrap();
+        let plan = build_task_plan_command::<Manifest>(json!({"manifest":consumer,"buildSystemID":"gradle","request":{"root":"app","task":"build","modelInputs":snapshot}})).unwrap();
         assert_eq!(plan["status"], "rejected", "{change}: {plan}");
     }
 }
@@ -2682,7 +2689,7 @@ fn provider_run_options_preserve_argv_and_validate_declared_execution_and_cwd() 
     request["workspaceRoot"] = json!(workspace.root());
     request["launchOptions"] = fixture["launchOptions"].clone();
     let plan = |manifest: Value, request: Value| {
-        build_prepare_run_plan_command(
+        build_prepare_run_plan_command::<Manifest>(
             json!({"manifest":manifest,"buildSystemID":"gradle","request":request}),
         )
     };
@@ -2725,7 +2732,7 @@ fn provider_run_options_preserve_argv_and_validate_declared_execution_and_cwd() 
     let planned = plan(application_manifest, application).unwrap();
     assert_eq!(planned["status"], "ok", "{planned}");
     let decode = |options: Value, result: Value| {
-        build_decode_run_preparation_command(json!({"manifest":manifest,"buildSystemID":"gradle",
+        build_decode_run_preparation_command::<Manifest>(json!({"manifest":manifest,"buildSystemID":"gradle",
         "request":{"workspaceRoot":workspace.root(),"root":"app","launchOptions":options,"result":result}})).unwrap()
     };
     let decoded = decode(fixture["launchOptions"].clone(), fixture["result"].clone());
@@ -2772,7 +2779,7 @@ fn provider_connection_debug_options_require_a_declared_registry_type() {
     request["workspaceRoot"] = json!(workspace.root());
     request["launchOptions"] = fixture["launchOptions"].clone();
     let plan = |manifest: &Value, request: &Value| {
-        build_prepare_run_plan_command(
+        build_prepare_run_plan_command::<Manifest>(
             json!({"manifest":manifest,"buildSystemID":"gradle","request":request}),
         )
     };
@@ -2836,7 +2843,7 @@ fn provider_run_options_refuse_explicit_cwd_symlinks_outside_workspace() {
     .unwrap();
     fixture["launchOptions"]["workingDirectory"] = json!("escape");
     fixture["result"]["workingDirectory"] = json!("escape");
-    let result = build_decode_run_preparation_command(json!({"manifest":manifest,"buildSystemID":"gradle",
+    let result = build_decode_run_preparation_command::<Manifest>(json!({"manifest":manifest,"buildSystemID":"gradle",
         "request":{"workspaceRoot":workspace.root(),"root":"app","launchOptions":fixture["launchOptions"],"result":fixture["result"]}})).unwrap();
     assert_eq!(result["error"]["code"], "plugin.build.invalidOutput");
 }

@@ -875,16 +875,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "lithe-build"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "lithe-debug",
+ "lithe-execution",
+ "lithe-plugin-model",
+ "lithe-protocol",
+ "lithe-remote",
+ "lithe-workspace",
+ "quick-xml",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "toml",
+ "url",
+]
+
+[[package]]
 name = "lithe-core"
 version = "0.1.0"
 dependencies = [
  "ammonia",
  "base64",
- "chrono",
  "comrak",
  "encoding_rs",
- "ignore",
  "lithe-ai",
+ "lithe-build",
  "lithe-core-rules",
  "lithe-debug",
  "lithe-diagnostics",
@@ -907,12 +926,10 @@ dependencies = [
  "lithe-toolchain",
  "lithe-vcs",
  "lithe-workspace",
- "quick-xml",
  "regex",
  "serde",
  "serde_json",
  "sha2",
- "toml",
  "url",
 ]
 

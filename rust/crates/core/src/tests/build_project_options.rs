@@ -1,6 +1,7 @@
 //! Native Build document storage syntax shared by macOS and Windows.
 
 use crate::build::project_options_command;
+use crate::plugins::declarative::DeclarativePluginManifest as Manifest;
 use serde_json::{json, Value};
 
 #[test]
@@ -17,7 +18,7 @@ fn local_option_edits_check_declarations_preserve_siblings_and_reset_to_team_val
     // fixture's instance-scoped scalars; the storage rules do not depend on the tool.
     manifest["buildSystems"][0]["options"][1]["scope"] = json!("workspace");
     let edit = |local: &Value, root: &str, id: &str, value: Value, model: Value| {
-        crate::build::build_edit_stored_option_command(json!({"manifest":manifest,"buildSystemID":"cargo","request":{
+        crate::build::build_edit_stored_option_command::<Manifest>(json!({"manifest":manifest,"buildSystemID":"cargo","request":{
             "document":fixture["team"],"local":local,"root":root,"optionID":id,"value":value,"modelValues":model
         }})).unwrap()
     };
