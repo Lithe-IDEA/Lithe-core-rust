@@ -8209,7 +8209,7 @@ fn flush_diff_changes(
 ) {
     let removed_text: Vec<&str> = removed.iter().map(|entry| entry.text.as_str()).collect();
     let added_text: Vec<&str> = added.iter().map(|entry| entry.text.as_str()).collect();
-    for (left_index, right_index) in crate::diff::pair_lines(&removed_text, &added_text) {
+    for (left_index, right_index) in lithe_diff::pair_lines(&removed_text, &added_text) {
         let left = left_index.map(|index| &removed[index]);
         let right = right_index.map(|index| &added[index]);
         let kind = match (left.is_some(), right.is_some()) {
@@ -8224,7 +8224,7 @@ fn flush_diff_changes(
         });
         let (left_changes, right_changes) = match left.zip(right) {
             Some((left, right)) if is_invisible_change.is_none() => {
-                match crate::diff::inline_changes(
+                match lithe_diff::inline_changes(
                     without_one_trailing_cr(&left.text),
                     without_one_trailing_cr(&right.text),
                 ) {

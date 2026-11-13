@@ -5,7 +5,7 @@
 //! presentation detail; Core owns line splitting, the diff algorithm, and how a
 //! block of removals is aligned against a block of additions.
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use similar::{capture_diff_slices, Algorithm, DiffOp};
@@ -52,13 +52,16 @@ pub enum TextDiffRowKind {
 #[serde(rename_all = "camelCase")]
 /// One aligned side-by-side row with one-based line numbers.
 pub struct TextDiffRow {
+    /// One-based line in the old text; absent for an addition.
     pub old_line: Option<usize>,
+    /// One-based line in the new text; absent for a removal.
     pub new_line: Option<usize>,
     /// Old-side text; for `context` rows it is also the new-side text.
     pub left: Option<String>,
     /// New-side text; omitted for `context` rows, whose sides are identical.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub right: Option<String>,
+    /// Rendering category of the row.
     pub kind: TextDiffRowKind,
     /// For a `changed` row, the stretches of `left` that differ from `right`, as
     /// half-open UTF-16 column ranges; see `inline_changes`.
@@ -73,8 +76,11 @@ pub struct TextDiffRow {
 #[serde(rename_all = "camelCase")]
 /// Unified rendering category of one line.
 pub enum TextDiffLineKind {
+    /// A line present in both texts.
     Context,
+    /// A line only present in the old text.
     Removed,
+    /// A line only present in the new text.
     Added,
 }
 
@@ -83,9 +89,13 @@ pub enum TextDiffLineKind {
 /// One unified line in original order: each changed block lists its removals
 /// before its additions, matching `git diff` output.
 pub struct TextDiffLine {
+    /// Rendering category of the line.
     pub kind: TextDiffLineKind,
+    /// Line text without its terminator.
     pub content: String,
+    /// One-based line in the old text; absent for an added line.
     pub old_line: Option<usize>,
+    /// One-based line in the new text; absent for a removed line.
     pub new_line: Option<usize>,
 }
 
@@ -93,18 +103,22 @@ pub struct TextDiffLine {
 #[serde(rename_all = "camelCase")]
 /// Complete line comparison projected both side by side and unified.
 pub struct CompareTextsResponse {
+    /// Side-by-side projection.
     pub rows: Vec<TextDiffRow>,
+    /// Unified projection.
     pub lines: Vec<TextDiffLine>,
     /// Logical line count of the old text after line-ending normalization.
     pub old_line_count: usize,
     /// Logical line count of the new text after line-ending normalization.
     pub new_line_count: usize,
+    /// Number of added lines.
     pub additions: usize,
+    /// Number of removed lines.
     pub deletions: usize,
 }
 
 /// Command adapter for `diff.compareTexts`.
-pub(crate) fn compare_texts_command(payload: Value) -> Result<Value, CoreError> {
+pub fn compare_texts_command(payload: Value) -> Result<Value, CoreError> {
     let request: CompareTextsRequest = serde_json::from_value(payload).map_err(|error| {
         CoreError::new(ErrorCode::InvalidRequest, "Invalid text comparison request")
             .with_details(error.to_string())
@@ -340,10 +354,7 @@ fn inline_tokens(text: &str) -> Vec<&str> {
 /// Lines that are equal give two empty lists; lines over `MAX_INLINE_CHARS`
 /// give `None`, and so do lines with nothing in common, which read better as a
 /// whole changed line than as one range covering it.
-pub(crate) fn inline_changes(
-    left: &str,
-    right: &str,
-) -> Option<(Vec<[usize; 2]>, Vec<[usize; 2]>)> {
+pub fn inline_changes(left: &str, right: &str) -> Option<(Vec<[usize; 2]>, Vec<[usize; 2]>)> {
     if left.chars().count() > MAX_INLINE_CHARS || right.chars().count() > MAX_INLINE_CHARS {
         return None;
     }
@@ -467,7 +478,7 @@ pub(crate) fn line_similarity(left: &str, right: &str) -> f32 {
 /// "changed" rows. This aligns the two blocks by similarity instead, keeping the
 /// matching non-crossing so line numbers stay monotonic in the rendered list.
 /// Each returned pair indexes into `removed` and `added`.
-pub(crate) fn pair_lines(removed: &[&str], added: &[&str]) -> Vec<(Option<usize>, Option<usize>)> {
+pub fn pair_lines(removed: &[&str], added: &[&str]) -> Vec<(Option<usize>, Option<usize>)> {
     let rows = removed.len();
     let columns = added.len();
 

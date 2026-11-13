@@ -14,7 +14,6 @@ use crate::git::{
     GitWorktreesRequest, GitWriteRequest, PatchApplyRequest, PatchExportRequest,
     PatchPreviewRequest, WorkspaceRepositoriesRequest,
 };
-use crate::github::{NormalizeResponseRequest, ParseRemoteRequest, RequestPlanRequest};
 use crate::project::MarkdownRenderRequest;
 use crate::project::{
     self, DirectoryListingRequest, DocumentLifecycleRequest, FileReadRequest, FileWriteRequest,
@@ -29,6 +28,7 @@ use crate::project::{
 use crate::protocol::CoreResponse;
 use crate::protocol::{CoreCommand, CoreRequest};
 use crate::protocol::{CoreError, ErrorCode};
+use lithe_github::{NormalizeResponseRequest, ParseRemoteRequest, RequestPlanRequest};
 use serde_json::json;
 
 pub fn execute_json(request: &str) -> String {
@@ -66,27 +66,15 @@ fn plugin_response(
 fn ai_response(id: Option<String>, command: &str, payload: serde_json::Value) -> CoreResponse {
     match lithe_ai::execute(command, payload) {
         Ok(data) => CoreResponse::success(id, data),
-        Err(error) => CoreResponse::failure(id, error.into()),
+        Err(error) => CoreResponse::failure(id, crate::protocol::ai_error(error)),
     }
 }
 
-fn agent_response<T: serde::de::DeserializeOwned>(
-    id: Option<String>,
-    payload: serde_json::Value,
-    operation: fn(T) -> Result<serde_json::Value, CoreError>,
-) -> CoreResponse {
-    match serde_json::from_value::<T>(payload)
-        .map_err(|error| {
-            CoreError::new(
-                ErrorCode::InvalidRequest,
-                "Invalid agent management request",
-            )
-            .with_details(error.to_string())
-        })
-        .and_then(operation)
-    {
+/// Runs one rule in `lithe-core-rules`.
+fn rules_response(id: Option<String>, command: &str, payload: serde_json::Value) -> CoreResponse {
+    match lithe_core_rules::execute(command, payload) {
         Ok(data) => CoreResponse::success(id, data),
-        Err(error) => CoreResponse::failure(id, error),
+        Err(error) => CoreResponse::failure(id, crate::protocol::rule_error(error)),
     }
 }
 
@@ -875,13 +863,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                 Err(error) => CoreResponse::failure(id, error),
             }
         }
-        CoreCommand::SearchActions => agent_response(
-            id,
-            parsed.payload,
-            |request: crate::action_search::Request| {
-                crate::action_search::search(request).map(|indices| json!({"indices": indices}))
-            },
-        ),
+        CoreCommand::SearchActions => rules_response(id, "search.actions", parsed.payload),
         CoreCommand::WorkspaceSearch => {
             match serde_json::from_value::<SearchRequest>(parsed.payload)
                 .map_err(|error| {
@@ -1198,7 +1180,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::DiffCompareTexts => {
-            plugin_response(id, parsed.payload, crate::diff::compare_texts_command)
+            plugin_response(id, parsed.payload, lithe_diff::compare_texts_command)
         }
         CoreCommand::ExecutionResolveSearchPath => {
             match serde_json::from_value::<crate::execution::SearchPathRequest>(parsed.payload) {
@@ -1233,12 +1215,12 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::ProcessLifecycleResolve => {
-            match serde_json::from_value::<crate::process::lifecycle::LifecycleRequest>(
+            match serde_json::from_value::<lithe_process::lifecycle::LifecycleRequest>(
                 parsed.payload,
             ) {
                 Ok(request) => CoreResponse::success(
                     id,
-                    serde_json::to_value(crate::process::lifecycle::resolve(&request))
+                    serde_json::to_value(lithe_process::lifecycle::resolve(&request))
                         .expect("process lifecycle plan should encode"),
                 ),
                 Err(error) => CoreResponse::failure(
@@ -1252,12 +1234,12 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::ProcessLifecycleInventory => {
-            match serde_json::from_value::<crate::process::inventory::InventoryRequest>(
+            match serde_json::from_value::<lithe_process::inventory::InventoryRequest>(
                 parsed.payload,
             ) {
                 Ok(request) => CoreResponse::success(
                     id,
-                    serde_json::to_value(crate::process::inventory::classify(&request))
+                    serde_json::to_value(lithe_process::inventory::classify(&request))
                         .expect("process inventory should encode"),
                 ),
                 Err(error) => CoreResponse::failure(
@@ -1271,11 +1253,11 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::ProcessLifecycleSettle => {
-            match serde_json::from_value::<crate::process::lifecycle::SettleRequest>(parsed.payload)
+            match serde_json::from_value::<lithe_process::lifecycle::SettleRequest>(parsed.payload)
             {
                 Ok(request) => CoreResponse::success(
                     id,
-                    serde_json::to_value(crate::process::lifecycle::settle(&request))
+                    serde_json::to_value(lithe_process::lifecycle::settle(&request))
                         .expect("process lifecycle settlement should encode"),
                 ),
                 Err(error) => CoreResponse::failure(
@@ -1289,88 +1271,36 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::KeymapParseContext => {
-            match serde_json::from_value::<crate::keymap::ParseContextRequest>(parsed.payload) {
-                Ok(request) => CoreResponse::success(
-                    id,
-                    serde_json::to_value(crate::keymap::parse_context(request))
-                        .expect("context plan should encode"),
-                ),
-                Err(_) => CoreResponse::failure(
-                    id,
-                    CoreError::new(ErrorCode::InvalidRequest, "Invalid keymap parse request"),
-                ),
-            }
+            rules_response(id, "keymap.parseContext", parsed.payload)
         }
         CoreCommand::KeymapEvaluateContext => {
-            let result =
-                serde_json::from_value::<crate::keymap::EvaluateContextRequest>(parsed.payload)
-                    .map_err(|_| {
-                        CoreError::new(
-                            ErrorCode::InvalidRequest,
-                            "Invalid keymap evaluation request",
-                        )
-                    })
-                    .and_then(crate::keymap::evaluate_context);
-            match result {
-                Ok(data) => CoreResponse::success(
-                    id,
-                    serde_json::to_value(data).expect("context result should encode"),
-                ),
-                Err(error) => CoreResponse::failure(id, error),
-            }
+            rules_response(id, "keymap.evaluateContext", parsed.payload)
         }
         CoreCommand::KeymapAnalyzeConflicts => {
-            let result =
-                serde_json::from_value::<crate::keymap::AnalyzeConflictsRequest>(parsed.payload)
-                    .map_err(|_| {
-                        CoreError::new(ErrorCode::InvalidRequest, "Invalid keymap conflict request")
-                    })
-                    .and_then(crate::keymap::analyze_conflicts);
-            match result {
-                Ok(data) => CoreResponse::success(
-                    id,
-                    serde_json::to_value(data).expect("conflict result should encode"),
-                ),
-                Err(error) => CoreResponse::failure(id, error),
-            }
+            rules_response(id, "keymap.analyzeConflicts", parsed.payload)
         }
         CoreCommand::KeymapModifierGestureStep => {
-            match lithe_core_rules::execute("keymap.modifierGestureStep", parsed.payload) {
-                Ok(data) => CoreResponse::success(id, data),
-                Err(error) => CoreResponse::failure(id, error.into()),
-            }
+            rules_response(id, "keymap.modifierGestureStep", parsed.payload)
         }
         CoreCommand::EditorWorkbenchStateReduce => {
-            match lithe_core_rules::execute("editor.workbenchState.reduce", parsed.payload) {
-                Ok(data) => CoreResponse::success(id, data),
-                Err(error) => CoreResponse::failure(id, error.into()),
-            }
+            rules_response(id, "editor.workbenchState.reduce", parsed.payload)
         }
         CoreCommand::WorkspaceClassifyVisibility => {
-            match lithe_core_rules::execute("workspace.classifyVisibility", parsed.payload) {
-                Ok(data) => CoreResponse::success(id, data),
-                Err(error) => CoreResponse::failure(id, error.into()),
-            }
+            rules_response(id, "workspace.classifyVisibility", parsed.payload)
         }
         CoreCommand::WorkspaceVisibilityDefaults => {
-            match lithe_core_rules::execute("workspace.visibilityDefaults", parsed.payload) {
-                Ok(data) => CoreResponse::success(id, data),
-                Err(error) => CoreResponse::failure(id, error.into()),
-            }
+            rules_response(id, "workspace.visibilityDefaults", parsed.payload)
         }
         CoreCommand::WorkbenchChromeLayoutReduce => {
-            match lithe_core_rules::execute("workbench.chromeLayout.reduce", parsed.payload) {
-                Ok(data) => CoreResponse::success(id, data),
-                Err(error) => CoreResponse::failure(id, error.into()),
-            }
+            rules_response(id, "workbench.chromeLayout.reduce", parsed.payload)
         }
         CoreCommand::TerminalParseLinkTarget => {
             let result =
-                serde_json::from_value::<crate::terminal::ParseLinkTargetsRequest>(parsed.payload)
+                serde_json::from_value::<lithe_terminal::ParseLinkTargetsRequest>(parsed.payload)
                     .map_err(|_| {
                         CoreError::new(ErrorCode::InvalidRequest, "Invalid terminal link request")
                     })
-                    .and_then(crate::terminal::parse_link_targets);
+                    .and_then(lithe_terminal::parse_link_targets);
             match result {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -1833,7 +1763,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             plugin_response(id, parsed.payload, crate::editor::recovery::decide_command)
         }
         CoreCommand::KeymapSchemesReduce => {
-            plugin_response(id, parsed.payload, crate::keymap::schemes::reduce_command)
+            rules_response(id, "keymap.schemes.reduce", parsed.payload)
         }
         CoreCommand::EditorPlanTextEdits => plugin_response(
             id,
@@ -1887,17 +1817,15 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::NetworkProxyPolicy => {
-            match serde_json::from_value::<crate::network::NetworkProxyPolicyRequest>(
-                parsed.payload,
-            )
-            .map_err(|error| {
-                CoreError::new(
-                    ErrorCode::InvalidRequest,
-                    "Invalid network proxy policy request",
-                )
-                .with_details(error.to_string())
-            })
-            .map(crate::network::proxy_policy)
+            match serde_json::from_value::<lithe_network::NetworkProxyPolicyRequest>(parsed.payload)
+                .map_err(|error| {
+                    CoreError::new(
+                        ErrorCode::InvalidRequest,
+                        "Invalid network proxy policy request",
+                    )
+                    .with_details(error.to_string())
+                })
+                .map(lithe_network::proxy_policy)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -3631,7 +3559,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                     CoreError::new(ErrorCode::InvalidRequest, "Invalid GitHub remote request")
                         .with_details(error.to_string())
                 })
-                .and_then(crate::github::parse_remote)
+                .and_then(lithe_github::parse_remote)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -3646,7 +3574,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                     CoreError::new(ErrorCode::InvalidRequest, "Invalid GitHub request plan")
                         .with_details(error.to_string())
                 })
-                .and_then(crate::github::request_plan)
+                .and_then(lithe_github::request_plan)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -3690,7 +3618,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::GitHubPullRequestCheckoutPlan => {
-            match serde_json::from_value::<crate::github::PullRequestCheckoutPlanRequest>(
+            match serde_json::from_value::<lithe_github::PullRequestCheckoutPlanRequest>(
                 parsed.payload,
             )
             .map_err(|error| {
@@ -3700,7 +3628,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                 )
                 .with_details(error.to_string())
             })
-            .and_then(crate::github::pull_request_checkout_plan)
+            .and_then(lithe_github::pull_request_checkout_plan)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -3710,7 +3638,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::GitHubDeviceAuthorizationTransition => {
-            match serde_json::from_value::<crate::github::DeviceAuthorizationTransitionRequest>(
+            match serde_json::from_value::<lithe_github::DeviceAuthorizationTransitionRequest>(
                 parsed.payload,
             )
             .map_err(|error| {
@@ -3720,7 +3648,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                 )
                 .with_details(error.to_string())
             })
-            .and_then(crate::github::device_authorization_transition)
+            .and_then(lithe_github::device_authorization_transition)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -3735,7 +3663,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                     CoreError::new(ErrorCode::InvalidRequest, "Invalid GitHub response")
                         .with_details(error.to_string())
                 })
-                .and_then(crate::github::normalize_response)
+                .and_then(lithe_github::normalize_response)
             {
                 Ok(data) => CoreResponse::success(id, data),
                 Err(error) => CoreResponse::failure(id, error),

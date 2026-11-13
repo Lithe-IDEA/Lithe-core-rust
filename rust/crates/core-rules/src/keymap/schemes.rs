@@ -1,7 +1,7 @@
 //! Named shortcut schemes with independent overrides and an undeletable default.
 
 use super::bindings::{parse_binding, BindingPlatform};
-use crate::protocol::{CoreError, ErrorCode};
+use crate::{RuleError, RuleErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -46,9 +46,9 @@ struct Request {
     bindings: Bindings,
 }
 
-fn rejected(reason: &str) -> CoreError {
-    CoreError::new(
-        ErrorCode::InvalidRequest,
+fn rejected(reason: &str) -> RuleError {
+    RuleError::new(
+        RuleErrorCode::InvalidRequest,
         "Shortcut scheme operation was rejected",
     )
     .with_details(reason)
@@ -62,7 +62,7 @@ fn valid_id(value: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
-fn validate_bindings(bindings: &Bindings) -> Result<(), CoreError> {
+fn validate_bindings(bindings: &Bindings) -> Result<(), RuleError> {
     if bindings.len() > 4096 {
         return Err(rejected("too_many_bindings"));
     }
@@ -81,7 +81,13 @@ fn validate_bindings(bindings: &Bindings) -> Result<(), CoreError> {
     Ok(())
 }
 
-pub(crate) fn reduce_command(payload: Value) -> Result<Value, CoreError> {
+/// Command name of [`reduce_schemes_json`].
+pub const REDUCE_SCHEMES: &str = "keymap.schemes.reduce";
+
+/// Applies one scheme operation (`update`, `select`, `saveAs`, `rename` or `delete`; empty only
+/// normalizes) to the saved schemes, creating the undeletable default from the current bindings
+/// on first use.
+pub fn reduce_schemes_json(payload: Value) -> Result<Value, RuleError> {
     if payload.to_string().len() > 1024 * 1024 {
         return Err(rejected("too_large"));
     }
@@ -200,31 +206,32 @@ mod tests {
     use super::*;
     #[test]
     fn migration_copy_switch_and_delete_preserve_independent_overrides() {
-        let default = reduce_command(json!({"current":{"search.files":["meta+f"]}})).unwrap();
-        let copied = reduce_command(
+        let default = reduce_schemes_json(json!({"current":{"search.files":["meta+f"]}})).unwrap();
+        let copied = reduce_schemes_json(
             json!({"state":default["state"],"operation":"saveAs","id":"mine","name":"My keys"}),
         )
         .unwrap();
-        let edited = reduce_command(json!({"state":copied["state"],"operation":"update","bindings":{"search.files":["meta+g"]}})).unwrap();
-        let switched =
-            reduce_command(json!({"state":edited["state"],"operation":"select","id":"default"}))
-                .unwrap();
+        let edited = reduce_schemes_json(json!({"state":copied["state"],"operation":"update","bindings":{"search.files":["meta+g"]}})).unwrap();
+        let switched = reduce_schemes_json(
+            json!({"state":edited["state"],"operation":"select","id":"default"}),
+        )
+        .unwrap();
         assert_eq!(switched["bindings"]["search.files"], json!(["meta+f"]));
         let deleted =
-            reduce_command(json!({"state":edited["state"],"operation":"delete","id":"mine"}))
+            reduce_schemes_json(json!({"state":edited["state"],"operation":"delete","id":"mine"}))
                 .unwrap();
         assert_eq!(deleted["state"]["active"], "default");
         assert_eq!(deleted["bindings"], default["bindings"]);
     }
     #[test]
     fn invalid_names_duplicate_names_and_default_deletion_are_rejected() {
-        assert!(reduce_command(json!({"operation":"saveAs","id":"a","name":" \n"})).is_err());
-        assert!(reduce_command(json!({"operation":"delete","id":"default"})).is_err());
-        let state = reduce_command(json!({"operation":"saveAs","id":"a","name":"Mine"})).unwrap()
-            ["state"]
+        assert!(reduce_schemes_json(json!({"operation":"saveAs","id":"a","name":" \n"})).is_err());
+        assert!(reduce_schemes_json(json!({"operation":"delete","id":"default"})).is_err());
+        let state = reduce_schemes_json(json!({"operation":"saveAs","id":"a","name":"Mine"}))
+            .unwrap()["state"]
             .clone();
         assert_eq!(
-            reduce_command(json!({"state":state,"operation":"saveAs","id":"b","name":"mine"}))
+            reduce_schemes_json(json!({"state":state,"operation":"saveAs","id":"b","name":"mine"}))
                 .unwrap_err()
                 .details
                 .as_deref(),

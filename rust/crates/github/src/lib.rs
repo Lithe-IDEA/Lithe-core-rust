@@ -6,7 +6,7 @@
 //!
 //! Device polling: .agents/notes/implemented/bug-fix/2026-11-04-github-device-authorization-deadline.md
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -32,7 +32,9 @@ pub struct PullRequestCheckoutPlanRequest {
 #[serde(rename_all = "camelCase")]
 /// Actions shown before fetching and creating a local branch.
 pub struct PullRequestCheckoutPlan {
+    /// Whether the checkout can proceed; false while `conflict` is set.
     pub allowed: bool,
+    /// Local branch to create, `pr/<number>-<sanitized head ref>`.
     pub branch: String,
     /// `branchExists` requires the existing local ref to be resolved by the user.
     pub conflict: Option<&'static str>,

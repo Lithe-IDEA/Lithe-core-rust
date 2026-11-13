@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use serde::{Deserialize, Serialize};
 
-use crate::process::lifecycle::{
+use crate::lifecycle::{
     resolve, LifecycleContext, LifecyclePlan, LifecycleRecord, LifecycleRequest, Ownership,
     RecordKind, TerminationSettings,
 };
@@ -278,8 +278,7 @@ pub fn classify(request: &InventoryRequest) -> Inventory {
                     if request.application_session_id <= 0 && item.category == ItemCategory::Other {
                         // The scope proves ownership, but the missing original SID
                         // cannot distinguish an ordinary tool from a kept daemon.
-                        record.declared_policy =
-                            Some(crate::process::lifecycle::ExitPolicy::AskOnExit);
+                        record.declared_policy = Some(crate::lifecycle::ExitPolicy::AskOnExit);
                     }
                     record
                 })
@@ -582,7 +581,7 @@ mod tests {
     #[test]
     fn shared_fixture_inventories_match() {
         let fixture: Fixture = serde_json::from_str(include_str!(
-            "../../../../fixtures/process-lifecycle/inventory-v1.json"
+            "../../../fixtures/process-lifecycle/inventory-v1.json"
         ))
         .expect("fixture should parse");
         assert_eq!(fixture.schema_version, 1);

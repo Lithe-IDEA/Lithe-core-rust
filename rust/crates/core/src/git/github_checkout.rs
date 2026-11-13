@@ -3,7 +3,7 @@
 //! Note: .agents/notes/implemented/bug-fix/2026-11-04-github-pull-request-checkout-safety.md
 
 use super::*;
-use crate::github::{
+use lithe_github::{
     parse_remote, pull_request_checkout_plan, GitHubRepository, ParseRemoteRequest,
     PullRequestCheckoutPlan, PullRequestCheckoutPlanRequest,
 };

@@ -38,21 +38,27 @@ pub enum NetworkProxyType {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NetworkProxyPolicyRequest {
+    /// Mode the user selected.
     pub mode: NetworkProxyMode,
     /// Proxy protocol for the custom mode; defaults to HTTP when absent.
     #[serde(default)]
     pub proxy_type: Option<NetworkProxyType>,
+    /// Custom proxy host; surrounding whitespace is ignored.
     #[serde(default)]
     pub host: String,
+    /// Custom proxy port; zero means not configured.
     #[serde(default)]
     pub port: u16,
+    /// Proxy account; surrounding whitespace is ignored and empty means none.
     #[serde(default)]
     pub username: String,
+    /// Proxy password, forwarded only when `password_identity` matches the server.
     #[serde(default)]
     pub password: String,
     /// Identity stored with a restored password; absent for an explicit draft.
     #[serde(default)]
     pub password_identity: Option<NetworkProxyIdentity>,
+    /// Hosts that bypass the proxy; blank entries are dropped.
     #[serde(default)]
     pub exclusions: Vec<String>,
 }
@@ -62,9 +68,13 @@ pub struct NetworkProxyPolicyRequest {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NetworkProxyIdentity {
+    /// Proxy protocol the password was saved for.
     pub proxy_type: NetworkProxyType,
+    /// Proxy host the password was saved for, compared case-insensitively.
     pub host: String,
+    /// Proxy port the password was saved for.
     pub port: u16,
+    /// Account the password belongs to.
     pub username: String,
 }
 
@@ -87,12 +97,19 @@ pub enum NetworkProxyPolicyKind {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NetworkProxyPolicy {
+    /// Policy the network stack applies.
     pub policy: NetworkProxyPolicyKind,
+    /// Protocol of the custom server; HTTP when the request named none.
     pub proxy_type: NetworkProxyType,
+    /// Trimmed custom host; empty unless `policy` is custom.
     pub host: String,
+    /// Custom port; zero unless `policy` is custom.
     pub port: u16,
+    /// Trimmed account; empty unless `policy` is custom.
     pub username: String,
+    /// Password; empty unless `policy` is custom and the saved identity matches the server.
     pub password: String,
+    /// Trimmed, non-empty bypass hosts; empty unless `policy` is custom.
     pub exclusions: Vec<String>,
     /// True when the caller-selected mode could actually be honored; false
     /// for an incomplete custom server that normalized to the system policy.

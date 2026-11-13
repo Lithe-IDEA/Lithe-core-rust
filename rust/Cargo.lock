@@ -886,9 +886,15 @@ dependencies = [
  "ignore",
  "lithe-ai",
  "lithe-core-rules",
+ "lithe-diff",
  "lithe-git-host",
+ "lithe-github",
  "lithe-ide-host",
+ "lithe-network",
+ "lithe-process",
+ "lithe-protocol",
  "lithe-remote",
+ "lithe-terminal",
  "quick-xml",
  "rand",
  "regex",
@@ -896,9 +902,7 @@ dependencies = [
  "serde_json",
  "serde_yaml_ng",
  "sha2",
- "similar",
  "toml",
- "unicode-normalization",
  "url",
  "zip",
 ]
@@ -909,6 +913,17 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "unicode-normalization",
+]
+
+[[package]]
+name = "lithe-diff"
+version = "0.1.0"
+dependencies = [
+ "lithe-protocol",
+ "serde",
+ "serde_json",
+ "similar",
 ]
 
 [[package]]
@@ -920,6 +935,15 @@ dependencies = [
  "serde",
  "serde_json",
  "windows-sys",
+]
+
+[[package]]
+name = "lithe-github"
+version = "0.1.0"
+dependencies = [
+ "lithe-protocol",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -938,6 +962,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "lithe-network"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-process"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-protocol"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "lithe-remote"
 version = "0.1.0"
 dependencies = [
@@ -947,6 +995,14 @@ dependencies = [
  "serde_json",
  "sha2",
  "trash",
+]
+
+[[package]]
+name = "lithe-terminal"
+version = "0.1.0"
+dependencies = [
+ "lithe-protocol",
+ "serde",
 ]
 
 [[package]]

@@ -6,9 +6,12 @@
 //! network stack: `connectionProxyDictionary` plus an authentication delegate
 //! on macOS, and the HTTP client configuration on Windows.
 
-pub(crate) mod proxy;
+mod proxy;
 
-pub(crate) use proxy::{proxy_policy, NetworkProxyPolicyRequest};
+pub use proxy::{
+    proxy_policy, NetworkProxyIdentity, NetworkProxyMode, NetworkProxyPolicy,
+    NetworkProxyPolicyKind, NetworkProxyPolicyRequest, NetworkProxyType,
+};
 
 #[cfg(test)]
 mod tests;

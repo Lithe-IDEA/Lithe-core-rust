@@ -1,0 +1,12 @@
+[package]
+name = "lithe-process"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Child-process lifecycle and inventory decisions shared by every Lithe host"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1.0"

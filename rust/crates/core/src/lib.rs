@@ -1,25 +1,18 @@
 //! Deterministic application services shared by the macOS and Windows hosts.
 
-mod action_search;
 mod build;
 mod debug;
 pub mod diagnostics;
-mod diff;
 mod editor;
 pub mod execution;
 mod git;
-mod github;
-mod keymap;
 mod lsp;
-mod network;
 pub mod plugins;
-pub mod process;
 mod project;
 mod project_generators;
 mod protocol;
 mod remote;
 mod runtime;
-mod terminal;
 /// Shared toolchain policy, independent of plugin transport and native discovery.
 pub mod toolchain;
 mod vcs;
