@@ -373,6 +373,28 @@ impl Harness {
     }
 }
 
+/// A real cold Windows language server can take longer than ten seconds.
+/// Exercise the omitted-field default with an injected instant: it must
+/// allow that handshake while still disposing of a server that never replies.
+#[test]
+fn default_initialize_budget_survives_cold_start_and_still_expires() {
+    let parsed: StartServerRequest = serde_json::from_value(json!({
+        "providerId": "cold-fixture", "executablePath": "/scripted-server",
+        "rootUri": "file:///workspace", "workingDirectory": "/workspace"
+    }))
+    .unwrap();
+    let harness = Harness::start(|request| {
+        request.initialize_timeout_milliseconds = parsed.initialize_timeout_milliseconds;
+    });
+    let session = harness.session();
+    let now = Instant::now();
+    session.expire_deadlines_at(now + Duration::from_secs(15));
+    assert_eq!(harness.snapshot().state, LspLifecycleState::Initializing);
+    session.expire_deadlines_at(now + Duration::from_secs(61));
+    assert_eq!(harness.snapshot().state, LspLifecycleState::Failed);
+    assert!(session.process.exit_status().is_some());
+}
+
 /// Criterion 1: a spawned process that never initializes cannot become ready.
 #[test]
 fn a_server_that_never_answers_initialize_fails_instead_of_becoming_ready() {

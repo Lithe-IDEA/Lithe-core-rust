@@ -43,7 +43,10 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
-const DEFAULT_INITIALIZE_TIMEOUT_MS: u64 = 10_000;
+// Cold language-server runtimes can spend more than ten seconds loading their
+// bundles before answering initialize. This remains one bounded handshake,
+// independent of request deadlines, with normal cancellation and disposal.
+const DEFAULT_INITIALIZE_TIMEOUT_MS: u64 = 60_000;
 const DEFAULT_REQUEST_TIMEOUT_MS: u64 = 30_000;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS: u64 = 2_000;
 /// Upper bound of one build-provider request. A model request can load a
