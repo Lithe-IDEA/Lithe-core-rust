@@ -435,7 +435,7 @@ by the platform. The behavior fixture is
 ### Optional PHP support
 
 PHP plugin installation is explicit. The base application ships neither a PHP
-package nor Node/Bun/Intelephense. macOS installs the Lithe Store community package
+package nor Node/Bun/Intelephense. macOS installs the Lithe Store package
 `io.github.lithe-idea.php-support` through plugin management; the package does not
 bundle Intelephense, which the user installs, and its tools are user-owned and
 never deleted by Lithe.

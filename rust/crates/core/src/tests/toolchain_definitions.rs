@@ -60,7 +60,7 @@ fn tool_definitions_second_tool_needs_only_plugin_data() {
     }
 }
 
-/// Every plugin is a community plugin, so a short ID needs no host-attested origin.
+/// No plugin needs a host-attested origin for a short ID.
 #[test]
 fn registry_accepts_short_ids_from_any_enabled_plugin() {
     let plugin = manifest("dev.lithe.fixture.compiler", definition("compiler"));

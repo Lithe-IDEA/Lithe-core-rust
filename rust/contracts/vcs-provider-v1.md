@@ -359,7 +359,7 @@ must not contain credentials.
 
 ## Subversion provider notes
 
-Subversion is provided by the community plugin
+Subversion is provided by the plugin
 [lithe-plugin-svn](https://github.com/Lithe-IDEA/lithe-plugin-svn)
 (`io.github.lithe-idea.svn-support`), released independently of Lithe. It calls
 the user's `svn` client, 1.8 or newer, and parses its `--xml` output. Its README

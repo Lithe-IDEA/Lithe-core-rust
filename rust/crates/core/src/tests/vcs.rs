@@ -289,13 +289,13 @@ fn detection_lists_providers_and_reports_conflicts_and_rejections() {
     let sandbox = Sandbox::new("vcs-providers");
     // `com.` sorts before `dev.`, so only the namespace rule lets the
     // official fixture win.
-    let mut community = svn_provider();
-    community["id"] = json!("com.example.svn");
+    let mut unofficial = svn_provider();
+    unofficial["id"] = json!("com.example.svn");
     let mut broken = svn_provider();
     broken["vcsProviders"][0]["id"] = json!("SVN");
     for plugins in [
-        vec![community.clone(), broken.clone(), svn_provider()],
-        vec![svn_provider(), broken.clone(), community.clone()],
+        vec![unofficial.clone(), broken.clone(), svn_provider()],
+        vec![svn_provider(), broken.clone(), unofficial.clone()],
     ] {
         let outcome = vcs_detect_roots_command::<Manifest>(json!({
             "workspaceRoot": sandbox.0.to_string_lossy(),

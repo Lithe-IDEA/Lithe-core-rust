@@ -162,9 +162,9 @@ fn bundled_publisher_trust_requires_an_explicit_host_capability() {
         bad["vendor"][field] = json!(value);
         assert_eq!(validate(bad)["status"], "rejected", "{field}: {value}");
     }
-    let mut community = manifest.clone();
-    community["id"] = json!("io.example.fixture");
-    assert_eq!(validate(community)["status"], "rejected");
+    let mut unofficial = manifest.clone();
+    unofficial["id"] = json!("io.example.fixture");
+    assert_eq!(validate(unofficial)["status"], "rejected");
     let mut missing = manifest.clone();
     missing["requires"]
         .as_object_mut()

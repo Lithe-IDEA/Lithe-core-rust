@@ -1,7 +1,7 @@
-//! The Maven and Gradle community build plugins, checked against what real
+//! The published Maven and Gradle build plugins, checked against what real
 //! Maven and Gradle wrote for them.
 //!
-//! `fixtures/community_build_plugins/` holds each plugin's `plugin.json` and
+//! `fixtures/published_build_plugins/` holds each plugin's `plugin.json` and
 //! the documents its own integration test captured from a real build:
 //!
 //! - Maven: `github.com/Lithe-IDEA/lithe-plugin-maven`, `plugin.json` at
@@ -36,7 +36,7 @@ use std::path::PathBuf;
 macro_rules! plugin_file {
     ($tool:literal, $name:literal) => {
         include_str!(concat!(
-            "fixtures/community_build_plugins/",
+            "fixtures/published_build_plugins/",
             $tool,
             "/",
             $name
@@ -109,7 +109,7 @@ fn capture_for_workspace(captured: &str, workspace_root: &str) -> String {
 }
 
 #[test]
-fn community_captured_documents_escape_workspace_paths() {
+fn published_captured_documents_escape_workspace_paths() {
     let captured = r#"{
         "root": "${workspace}",
         "nested": [{ "path": "${workspace}/core" }],
@@ -186,7 +186,7 @@ fn strings(value: &Value, key: &str) -> Vec<String> {
 /// Both packages pass the checks Lithe runs before loading and installing a
 /// plugin, and installing one shows the build tool it will run.
 #[test]
-fn community_build_plugins_validate_and_review() {
+fn published_build_plugins_validate_and_review() {
     for (manifest, build_system) in [(maven(), "maven"), (gradle(), "gradle")] {
         let outcome = validate_command(json!({ "manifest": manifest.clone() })).unwrap();
         assert_eq!(outcome["status"], "ok", "{build_system}: {outcome}");
@@ -203,8 +203,8 @@ fn community_build_plugins_validate_and_review() {
 
 /// A multi-module build is one instance at its outermost build file.
 #[test]
-fn community_build_plugins_detect_one_instance_per_build() {
-    let workspace = Workspace::new("community-maven-detect");
+fn published_build_plugins_detect_one_instance_per_build() {
+    let workspace = Workspace::new("published-maven-detect");
     workspace
         .write(
             "pom.xml",
@@ -213,7 +213,7 @@ fn community_build_plugins_detect_one_instance_per_build() {
         .write("app/pom.xml", "<project/>");
     assert_eq!(detected_ids(&workspace, maven()), ["maven:."]);
 
-    let workspace = Workspace::new("community-gradle-detect");
+    let workspace = Workspace::new("published-gradle-detect");
     workspace
         .write("settings.gradle", "include 'app'\n")
         .write("build.gradle", "\n")
@@ -224,8 +224,8 @@ fn community_build_plugins_detect_one_instance_per_build() {
 /// The model command loads the bundled extension or init script from the
 /// installed plugin and writes to the file Lithe chose.
 #[test]
-fn community_model_plans_name_the_plugin_directory_and_output() {
-    let workspace = Workspace::new("community-model-plans");
+fn published_model_plans_name_the_plugin_directory_and_output() {
+    let workspace = Workspace::new("published-model-plans");
     let plugin_directory = workspace.path("plugins/p");
     let output_file = workspace.path("state/model.json");
     let gradle_user_home = workspace.path("caches/gradle");
@@ -288,7 +288,7 @@ fn community_model_plans_name_the_plugin_directory_and_output() {
 /// and offers the profiles the POMs declare.
 #[test]
 fn maven_captured_model_decodes() {
-    let workspace = Workspace::new("community-maven-model");
+    let workspace = Workspace::new("published-maven-model");
     let output = workspace.capture("state/model.json", MAVEN_MODEL);
     let outcome = ok(
         build_decode_model_command::<Manifest>,
@@ -330,7 +330,7 @@ fn maven_captured_model_decodes() {
 /// JavaExec task becomes a run entry that runs by its task path.
 #[test]
 fn gradle_captured_model_decodes() {
-    let workspace = Workspace::new("community-gradle-model");
+    let workspace = Workspace::new("published-gradle-model");
     let output = workspace.capture("state/model.json", GRADLE_MODEL);
     let outcome = ok(
         build_decode_model_command::<Manifest>,
@@ -369,7 +369,7 @@ fn gradle_captured_model_decodes() {
 /// run by their full coordinates, and toolbar options apply to both.
 #[test]
 fn maven_task_plans() {
-    let workspace = Workspace::new("community-maven-task-plans");
+    let workspace = Workspace::new("published-maven-task-plans");
     let local_repository = workspace.path("m2");
     let app = json!({ "path": "app", "name": "app" });
     let outcome = ok(
@@ -491,7 +491,7 @@ fn gradle_task_plans() {
 /// Test runs select a class or method and read the reports the build tool
 /// writes for the selected project.
 #[test]
-fn community_test_plans() {
+fn published_test_plans() {
     let outcome = ok(
         build_test_plan_command::<Manifest>,
         maven(),
@@ -551,8 +551,8 @@ fn community_test_plans() {
 /// A project's dependency tree names the project in the build tool's own
 /// terms; the workspace tree asks for every project.
 #[test]
-fn community_dependency_plans() {
-    let workspace = Workspace::new("community-dependency-plans");
+fn published_dependency_plans() {
+    let workspace = Workspace::new("published-dependency-plans");
     let plugin_directory = workspace.path("plugins/p");
     let output_file = workspace.path("state/deps.json");
     let request = |project: Option<Value>| {
@@ -623,9 +623,9 @@ fn community_dependency_plans() {
 /// The captured trees decode with their scopes, project nodes and
 /// transitive children intact.
 #[test]
-fn community_captured_dependencies_decode() {
+fn published_captured_dependencies_decode() {
     let decode = |manifest: Value, build_system: &str, captured: &str, project: Option<&str>| {
-        let workspace = Workspace::new("community-dependencies");
+        let workspace = Workspace::new("published-dependencies");
         let output = workspace.capture("state/deps.json", captured);
         let mut request =
             json!({ "workspaceRoot": workspace.root(), "root": ".", "outputFile": output });
@@ -686,8 +686,8 @@ fn community_captured_dependencies_decode() {
 
 /// Compiler output in each tool's format becomes workspace-relative problems.
 #[test]
-fn community_diagnostics_decode() {
-    let workspace = Workspace::new("community-diagnostics");
+fn published_diagnostics_decode() {
+    let workspace = Workspace::new("published-diagnostics");
     let root = workspace.root();
     let decode = |manifest: Value, build_system: &str, output: String| {
         ok(

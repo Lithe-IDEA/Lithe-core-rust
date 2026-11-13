@@ -2,7 +2,6 @@ mod build_configuration;
 mod build_project_options;
 mod build_runtime_versions;
 mod build_systems;
-mod community_build_plugins;
 mod core_request_traces;
 mod declarative_plugins;
 mod detectors;
@@ -45,6 +44,7 @@ mod plugin_settings_documents;
 mod project;
 mod project_generators;
 mod protocol;
+mod published_build_plugins;
 mod rank_names;
 #[cfg(unix)]
 mod remote_sessions;
