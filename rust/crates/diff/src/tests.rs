@@ -2,7 +2,7 @@ use super::{
     compare_texts, compare_texts_command, line_similarity, pair_lines, CompareTextsRequest,
     MAX_ALIGNMENT_CELLS, MAX_TEXT_BYTES,
 };
-use crate::protocol::ErrorCode;
+use lithe_protocol::ErrorCode;
 use serde_json::{json, Value};
 
 fn fixture() -> Value {

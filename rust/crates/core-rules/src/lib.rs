@@ -8,6 +8,7 @@
 //! command dispatch, so hosts reach the rules over the usual Core C ABI. Rule failures use
 //! [`RuleError`], which `lithe-core` maps one to one onto its stable error codes.
 
+pub mod action_search;
 mod dispatch;
 pub mod editor;
 mod error;

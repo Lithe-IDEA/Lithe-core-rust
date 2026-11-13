@@ -16,8 +16,14 @@ plugin-sdk-e2e = []
 [dependencies]
 lithe-ai = { path = "../ai" }
 lithe-core-rules = { path = "../core-rules" }
+lithe-diff = { path = "../diff" }
 lithe-git-host = { path = "../git-host" }
+lithe-github = { path = "../github" }
 lithe-ide-host = { path = "../ide-host" }
+lithe-network = { path = "../network" }
+lithe-process = { path = "../process" }
+lithe-protocol = { path = "../protocol" }
+lithe-terminal = { path = "../terminal" }
 lithe-remote = { path = "../remote", default-features = false, features = ["client"] }
 ammonia = "4.1.4"
 base64 = "0.22"
@@ -32,10 +38,8 @@ serde_json = { version = "1.0", features = ["preserve_order"] }
 sha2 = "0.10"
 toml = { version = "1.1.4", default-features = false, features = ["parse", "serde"] }
 serde_yaml_ng = "0.10.0"
-similar = { version = "3.2", default-features = false, features = ["std"] }
 zip = { version = "2.4", default-features = false, features = ["deflate"] }
 url = "2.5"
-unicode-normalization = "0.1"
 ignore = "=0.4.33"
 
 [target.'cfg(unix)'.dev-dependencies]

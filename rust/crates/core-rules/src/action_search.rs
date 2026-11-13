@@ -1,7 +1,8 @@
 //! Bounded, stateless matching of host-localized action catalog snapshots.
 
-use crate::protocol::{CoreError, ErrorCode};
+use crate::{RuleError, RuleErrorCode};
 use serde::Deserialize;
+use serde_json::{json, Value};
 use unicode_normalization::UnicodeNormalization;
 
 const MAX_CANDIDATES: usize = 4096;
@@ -11,20 +12,20 @@ const MAX_FIELDS: usize = 16;
 
 /// Caller-owned action text; position in the request is its opaque identity.
 #[derive(Deserialize)]
-pub(crate) struct Candidate {
+struct Candidate {
     /// Original and localized presentation fields, in their display order.
     texts: Vec<String>,
 }
 
 /// One small action catalog; matching never scans workspace files or retains data.
 #[derive(Deserialize)]
-pub(crate) struct Request {
+struct Request {
     query: String,
     candidates: Vec<Candidate>,
 }
 
 /// Returns matching candidate offsets in input order, preserving native actions.
-pub(crate) fn search(request: Request) -> Result<Vec<usize>, CoreError> {
+fn search(request: Request) -> Result<Vec<usize>, RuleError> {
     let bytes = request.candidates.iter().try_fold(0usize, |total, item| {
         item.texts
             .iter()
@@ -38,8 +39,8 @@ pub(crate) fn search(request: Request) -> Result<Vec<usize>, CoreError> {
             .any(|candidate| candidate.texts.len() > MAX_FIELDS)
         || bytes.is_none_or(|count| count > MAX_TEXT_BYTES)
     {
-        return Err(CoreError::new(
-            ErrorCode::InvalidRequest,
+        return Err(RuleError::new(
+            RuleErrorCode::InvalidRequest,
             "Action search exceeds its input budget",
         ));
     }
@@ -75,6 +76,21 @@ pub(crate) fn search(request: Request) -> Result<Vec<usize>, CoreError> {
         .collect())
 }
 
+/// Command name of [`search_actions_json`].
+pub const SEARCH_ACTIONS: &str = "search.actions";
+
+/// Matches a JSON action catalog and returns `{"indices": [...]}` in input order.
+pub fn search_actions_json(payload: Value) -> Result<Value, RuleError> {
+    let request: Request = serde_json::from_value(payload).map_err(|error| {
+        RuleError::new(
+            RuleErrorCode::InvalidRequest,
+            "Invalid action search request",
+        )
+        .with_details(error.to_string())
+    })?;
+    search(request).map(|indices| json!({ "indices": indices }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,7 +120,7 @@ mod tests {
         };
         assert!(matches!(
             search(request).unwrap_err().code,
-            ErrorCode::InvalidRequest
+            RuleErrorCode::InvalidRequest
         ));
         let request = Request {
             query: "x".into(),

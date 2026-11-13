@@ -4,7 +4,9 @@
 //! Core owns what a binding string means, which bindings are in force after
 //! defaults, presets and user overrides are layered, and which of them collide.
 
+use crate::{RuleError, RuleErrorCode};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::BTreeMap;
 
 const MAX_ENTRIES: usize = 20_000;
@@ -199,15 +201,15 @@ fn normalize_when(when: &Option<String>) -> Option<String> {
 /// Layers bindings per command and reports every collision among the result.
 pub fn analyze_conflicts(
     request: AnalyzeConflictsRequest,
-) -> Result<AnalyzeConflictsResponse, crate::CoreError> {
+) -> Result<AnalyzeConflictsResponse, RuleError> {
     let total: usize = request
         .layers
         .iter()
         .map(|layer| layer.entries.len() + layer.disabled_commands.len())
         .sum();
     if total > MAX_ENTRIES {
-        return Err(crate::CoreError::new(
-            crate::ErrorCode::InvalidRequest,
+        return Err(RuleError::new(
+            RuleErrorCode::InvalidRequest,
             "Too many keymap bindings",
         ));
     }
@@ -265,6 +267,20 @@ pub fn analyze_conflicts(
         })
         .collect();
     Ok(AnalyzeConflictsResponse { conflicts, invalid })
+}
+
+/// Command name of [`analyze_conflicts_json`].
+pub const ANALYZE_CONFLICTS: &str = "keymap.analyzeConflicts";
+
+/// Runs `analyze_conflicts` on a JSON payload.
+pub fn analyze_conflicts_json(payload: Value) -> Result<Value, RuleError> {
+    let request: AnalyzeConflictsRequest = serde_json::from_value(payload).map_err(|_| {
+        RuleError::new(
+            RuleErrorCode::InvalidRequest,
+            "Invalid keymap conflict request",
+        )
+    })?;
+    Ok(serde_json::to_value(analyze_conflicts(request)?).expect("conflict result should encode"))
 }
 
 #[cfg(test)]

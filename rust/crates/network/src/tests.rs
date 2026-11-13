@@ -2,7 +2,7 @@
 
 use serde_json::{json, Value};
 
-use crate::network::{proxy_policy, NetworkProxyPolicyRequest};
+use crate::{proxy_policy, NetworkProxyPolicyRequest};
 
 fn policy_for(request: Value) -> Value {
     let request: NetworkProxyPolicyRequest =

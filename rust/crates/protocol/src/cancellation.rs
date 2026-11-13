@@ -1,6 +1,6 @@
 //! Cooperative operation cancellation and per-thread deadline tracking.
 
-use crate::protocol::{CoreError, ErrorCode};
+use crate::{CoreError, ErrorCode};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -80,6 +80,10 @@ impl Drop for Scope {
     }
 }
 
+/// Cancels the innermost live scope registered under `operation_id`.
+///
+/// Returns `false` when no scope with that identifier is running, so a late or
+/// repeated cancellation is harmless.
 pub fn cancel(operation_id: &str) -> bool {
     registry()
         .lock()
@@ -123,7 +127,7 @@ pub fn check() -> Result<(), CoreError> {
 ///
 /// Cleanup must determine whether a ref already moved without inheriting the
 /// cancelled request token. The original thread state is restored on every exit.
-pub(crate) fn with_cleanup_deadline<T>(timeout: Duration, operation: impl FnOnce() -> T) -> T {
+pub fn with_cleanup_deadline<T>(timeout: Duration, operation: impl FnOnce() -> T) -> T {
     struct RestoreState(Option<State>);
     impl Drop for RestoreState {
         fn drop(&mut self) {
@@ -144,10 +148,7 @@ pub(crate) fn with_cleanup_deadline<T>(timeout: Duration, operation: impl FnOnce
 ///
 /// Active requests retain their absolute deadline and cancellation token. Only
 /// an already cancelled or timed-out request needs an independent cleanup scope.
-pub(crate) fn with_mutation_inspection<T>(
-    cleanup_timeout: Duration,
-    operation: impl FnOnce() -> T,
-) -> T {
+pub fn with_mutation_inspection<T>(cleanup_timeout: Duration, operation: impl FnOnce() -> T) -> T {
     if check().is_ok() {
         operation()
     } else {
@@ -162,7 +163,7 @@ fn registry() -> &'static Mutex<Registrations> {
 #[cfg(test)]
 mod tests {
     use super::{cancel, check, with_mutation_inspection, Scope, CURRENT};
-    use crate::protocol::ErrorCode;
+    use crate::ErrorCode;
     use std::thread;
     use std::time::{Duration, Instant};
 

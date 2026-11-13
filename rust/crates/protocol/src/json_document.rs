@@ -9,7 +9,7 @@ use std::{collections::BTreeMap, fmt, marker::PhantomData};
 
 /// An ordered object that rejects duplicate keys at deserialization.
 #[derive(Debug, PartialEq, Serialize)]
-pub(crate) struct UniqueMap<T>(pub(crate) BTreeMap<String, T>);
+pub struct UniqueMap<T>(pub BTreeMap<String, T>);
 
 impl<T> Default for UniqueMap<T> {
     fn default() -> Self {
@@ -102,6 +102,6 @@ impl<'de> Deserialize<'de> for DuplicateCheckedValue {
 
 /// Parses JSON without losing duplicate keys, including nested objects and
 /// escaped spellings. Callers own byte budgets and schema-specific failures.
-pub(crate) fn parse_unique_json(content: &str) -> Result<Value, serde_json::Error> {
+pub fn parse_unique_json(content: &str) -> Result<Value, serde_json::Error> {
     serde_json::from_str::<DuplicateCheckedValue>(content).map(|value| value.0)
 }

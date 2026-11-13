@@ -119,7 +119,8 @@ an IPC round trip per key event. The maximum table has 4096 outcomes.
 and returns `{matches: boolean}`. It evaluates the same precompiled table,
 rejecting oversized, noncanonical, duplicate-key or incorrectly sized plans
 with `invalid_request`; it never reparses source. Parsed tables are portable
-data, not authorization tokens. Neither command retains global state.
+data, not authorization tokens. Neither command retains global state. Both live
+in the pure crate `rust/crates/core-rules`.
 
 Windows validates imports before changing the preset/store and validates
 additions/updates before persistence. Hydrated/default/extension bindings stay
@@ -147,6 +148,7 @@ is the double-tap Shift gesture. Parse failures are listed in `invalid` with `em
 `multiple_keys`, `too_long` or `too_many_steps` and never take part in conflicts; more than
 20000 entries is `invalid_request`. Hosts reject saving a binding when a conflict contains the edited
 command. Native key-event conversion and the synchronous matching path stay in the host.
+The analysis lives in the pure crate `rust/crates/core-rules`.
 See `rust/fixtures/keymap/binding-conflicts-v1.json`.
 
 `keymap.modifierGestureStep` accepts `{state?, event, timestamp}` and returns `{state, triggered}`. It is the
@@ -238,7 +240,8 @@ release response strings with `lithe_core_free_string`.
 alongside their current interface translations. Plugin-owned titles stay verbatim.
 Core performs case-insensitive, NFC-normalized Unicode subsequence matching after removing query
 whitespace, preserving input order and returning zero-based candidate offsets.
-It retains no catalog, performs no workspace I/O, and never executes actions.
+It retains no catalog, performs no workspace I/O, and never executes actions. The
+matcher lives in the pure crate `rust/crates/core-rules`.
 The request is limited to 4096 candidates, 16 fields per candidate, 2 MiB of text
 and a 4096-byte query; excess input returns `invalid_request`.
 [Action search fixtures](../fixtures/search/actions-v1.json) cover both languages,
@@ -473,7 +476,7 @@ or removing a command fails until the table changes in the same commit.
 | `workspace.searchIndex.warm` | Build or reuses the workspace search index |
 | `workspace.searchIndex.update` | Apply changed paths to the search index |
 | `workspace.searchIndex.invalidate` | Drop a workspace's cached search index |
-| `search.actions` | Match host-localized action text without workspace I/O |
+| `search.actions` | Match host-localized action text without workspace I/O (from `lithe-core-rules`) |
 | `workspace.search` | Search visible file names and UTF-8 text files |
 | `workspace.searchEverywhere` | Search file paths, contents, and symbols |
 | `workspace.replacePreview` | Return deterministic replacement lines and complete replacement text |
@@ -504,9 +507,9 @@ or removing a command fails until the table changes in the same commit.
 | `processLifecycle.inventory` | Group a process snapshot of one Lithe instance into terminals, Agent tasks and background services |
 | `processLifecycle.settle` | Turn confirmation answers into what ends, what is kept and the updated settings |
 | `markdown.render` | Render and sanitizes shared Markdown |
-| `keymap.parseContext` | Compile a bounded boolean shortcut context |
-| `keymap.evaluateContext` | Evaluate a precompiled shortcut context |
-| `keymap.analyzeConflicts` | Find conflicts among the final layered shortcut bindings |
+| `keymap.parseContext` | Compile a bounded boolean shortcut context (from `lithe-core-rules`) |
+| `keymap.evaluateContext` | Evaluate a precompiled shortcut context (from `lithe-core-rules`) |
+| `keymap.analyzeConflicts` | Find conflicts among the final layered shortcut bindings (from `lithe-core-rules`) |
 | `keymap.modifierGestureStep` | Advance the double-Shift gesture recognizer by one event. The rule itself lives in `lithe-core-rules` so the Windows frontend can run it synchronously |
 | `editor.workbenchState.reduce` | Apply one editor-group state transition: open, close, move, pin, preview, merge or normalize. The rule lives in `lithe-core-rules` so the Windows frontend can run it synchronously inside store updates |
 | `workspace.classifyVisibility` | Classify a batch of workspace-relative paths as hidden or visible. The rule lives in `lithe-core-rules` so the Windows frontend can run it synchronously |
@@ -549,7 +552,7 @@ or removing a command fails until the table changes in the same commit.
 | `editor.preferences.resolve` | Resolve persisted editor presentation preferences |
 | `editor.recent.reduce` | Reduce and queries bounded recent-file history |
 | `editor.recovery.decide` | Decide how a native checkpoint should recover |
-| `keymap.schemes.reduce` | Reduce named shortcut schemes |
+| `keymap.schemes.reduce` | Reduce named shortcut schemes (from `lithe-core-rules`) |
 | `editor.planTextEdits` | Validate and order a plugin document edit batch into UTF-16 offsets with the document's line ending |
 | `editor.parseNavigationInput` | Parse a bounded line or line:column input into zero-based editor coordinates |
 | `editor.navigationHistory.reduce` | Reduce one bounded back/forward navigation history event and return the next state plus the location to open |
@@ -5815,6 +5818,7 @@ characters without controls and are case-insensitively unique; IDs are ASCII alp
 hyphen or underscore, up to 64 bytes. Bindings use existing explicit-modifier key syntax.
 Failures use `invalid_request` plus stable details such as `invalid_name`, `duplicate_name`,
 `too_many_schemes`, `missing_scheme`, `default_is_fixed` and `invalid_binding`.
-No third-party keymap import or plugin protocol change is introduced.
+No third-party keymap import or plugin protocol change is introduced. The reducer
+lives in the pure crate `rust/crates/core-rules`.
 
 Executable vectors: `rust/fixtures/editor/ide-essentials-v1.json` (C ABI tests).

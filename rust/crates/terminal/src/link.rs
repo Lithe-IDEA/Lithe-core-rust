@@ -14,6 +14,7 @@ const MAX_TEXT_BYTES: usize = 4096;
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 /// Candidate link texts plus the facts needed to resolve them.
 pub struct ParseLinkTargetsRequest {
+    /// Link texts detected in terminal output, each resolved independently.
     pub texts: Vec<String>,
     /// Working directory relative paths are resolved against.
     #[serde(default)]
@@ -247,10 +248,10 @@ fn parse_one(text: &str, request: &ParseLinkTargetsRequest) -> Option<LinkTarget
 /// Resolves every candidate text; the response has the same length and order as the request.
 pub fn parse_link_targets(
     request: ParseLinkTargetsRequest,
-) -> Result<ParseLinkTargetsResponse, crate::CoreError> {
+) -> Result<ParseLinkTargetsResponse, lithe_protocol::CoreError> {
     if request.texts.len() > MAX_TEXTS {
-        return Err(crate::CoreError::new(
-            crate::ErrorCode::InvalidRequest,
+        return Err(lithe_protocol::CoreError::new(
+            lithe_protocol::ErrorCode::InvalidRequest,
             "Too many terminal link candidates",
         ));
     }

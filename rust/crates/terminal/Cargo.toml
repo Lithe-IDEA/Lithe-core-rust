@@ -1,0 +1,10 @@
+[package]
+name = "lithe-terminal"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Terminal output link detection shared by every Lithe host"
+
+[dependencies]
+lithe-protocol = { path = "../protocol" }
+serde = { version = "1.0", features = ["derive"] }

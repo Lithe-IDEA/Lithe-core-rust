@@ -1,10 +1,6 @@
 //! Bounded context parsing and Core-owned truth tables for synchronous key dispatch.
 
-mod bindings;
-pub(crate) mod schemes;
-
-pub use bindings::{analyze_conflicts, AnalyzeConflictsRequest};
-
+use crate::{RuleError, RuleErrorCode};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -346,7 +342,7 @@ pub fn parse_context(request: ParseContextRequest) -> ParseContextResponse {
 /// Evaluates a portable precompiled table, rejecting malformed or oversized tables.
 pub fn evaluate_context(
     request: EvaluateContextRequest,
-) -> Result<EvaluateContextResponse, crate::CoreError> {
+) -> Result<EvaluateContextResponse, RuleError> {
     let parsed = request.parsed;
     if parsed.keys.len() > MAX_CONTEXT_KEYS
         || parsed.values.len() != 1usize << parsed.keys.len()
@@ -355,8 +351,8 @@ pub fn evaluate_context(
             key.is_empty() || key.len() > MAX_SOURCE_BYTES || !key.chars().all(key_character)
         })
     {
-        return Err(crate::CoreError::new(
-            crate::ErrorCode::InvalidRequest,
+        return Err(RuleError::new(
+            RuleErrorCode::InvalidRequest,
             "Invalid compiled keymap context",
         ));
     }
@@ -366,6 +362,35 @@ pub fn evaluate_context(
     Ok(EvaluateContextResponse {
         matches: parsed.values[index],
     })
+}
+
+/// Command name of [`parse_context_json`].
+pub const PARSE_CONTEXT: &str = "keymap.parseContext";
+
+/// Command name of [`evaluate_context_json`].
+pub const EVALUATE_CONTEXT: &str = "keymap.evaluateContext";
+
+/// Runs `parse_context` on a JSON payload. Syntax errors in the expression are part of the
+/// successful response; only an undecodable payload fails.
+pub fn parse_context_json(payload: serde_json::Value) -> Result<serde_json::Value, RuleError> {
+    let request: ParseContextRequest = serde_json::from_value(payload).map_err(|_| {
+        RuleError::new(
+            RuleErrorCode::InvalidRequest,
+            "Invalid keymap parse request",
+        )
+    })?;
+    Ok(serde_json::to_value(parse_context(request)).expect("context plan should encode"))
+}
+
+/// Runs `evaluate_context` on a JSON payload.
+pub fn evaluate_context_json(payload: serde_json::Value) -> Result<serde_json::Value, RuleError> {
+    let request: EvaluateContextRequest = serde_json::from_value(payload).map_err(|_| {
+        RuleError::new(
+            RuleErrorCode::InvalidRequest,
+            "Invalid keymap evaluation request",
+        )
+    })?;
+    Ok(serde_json::to_value(evaluate_context(request)?).expect("context result should encode"))
 }
 
 #[cfg(test)]
