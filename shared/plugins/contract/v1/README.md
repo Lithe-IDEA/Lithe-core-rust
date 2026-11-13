@@ -1265,7 +1265,7 @@ the plugin, sorted by `kind`, language, and tool:
 | `packagedLanguageServer` | `languageID`, `path`, `arguments`, `validationArguments` | Executable inside the package, with its launch arguments and validation probe |
 | `systemLanguageServer` | `languageID`, `commands`, `arguments`, `validationArguments` | Command resolved by host tool discovery |
 | `runtimeLanguageServer` | `languageID`, `tool`, `packagedRuntime`, `entry`, `runtimeArguments`, `arguments`, `validationArguments` | Package entry started by a runtime; `packagedRuntime` is `null` for a discovered runtime |
-| `buildSystem` | `buildSystemID`, `invocation`, `options`, `tasks`, `run`, `test`, `model`, `dependencies`, `hostIntegration`?, `provider`? | Every command line the build system can plan; `provider` is the shared form, which sends build requests to a language server |
+| `buildSystem` | `buildSystemID`, `invocation`, `options`, `tasks`, `run`, `test`, `model`, `dependencies`, `provider`? | Every command line the build system can plan; `provider` is the shared form, which sends build requests to a language server |
 | `packagedBuildProvider`, `systemBuildProvider`, `runtimeBuildProvider` | the matching language-server fields with `buildSystemID`, `executesProjectCode`, `mayUseNetwork` instead of `languageID` | A build provider with a process of its own |
 | `packagedVcsProvider`, `systemVcsProvider`, `runtimeVcsProvider` | the matching language-server fields with `vcs`, `vcsTool`, `mayUseNetwork` instead of `languageID` | A VCS provider process; `vcsTool` is the declared VCS client or `null` |
 | `runtime` | `tool`, `minimumVersion`? | Runtime the host discovers and passes to a language server, build provider, or VCS provider |
@@ -1366,13 +1366,12 @@ cleanup, or bundle hashes in a real workflow.
 Maven, …) as data. Every build tool gets the same model and the same
 commands: Core validates the declaration, detects instances, decodes the
 model, and expands every command line; the host only runs the processes Core
-planned and passes their output back. A community plugin therefore needs no
+planned and passes their output back. A plugin therefore needs no
 host change to add a build tool, and no host code branches on a build-system
 ID. One complete fixture covers each plugin-described model source:
 `build-static-file` reads a project file, `build-command-stdout` decodes a
 command's standard output, and `build-command-output-file` decodes a file the
-command writes; the reserved `hostIntegration` source has no fixture, because
-Core implements no integration. They use Cargo, Go, and Gradle as realistic inputs;
+command writes. They use Cargo, Go, and Gradle as realistic inputs;
 they are not those plugins. `build-provider` and `build-provider-language-server` show the two
 forms of a build provider, and `fixtures/build-systems/build-plans.json` is the golden list
 of plans and decoded outputs every host gets from them.
@@ -1392,12 +1391,12 @@ declaration are relative, use `/`, and stay inside their base directory
 | `runtimeDependencies` | `node` and `go` are host-managed: only `id` and `minimumVersion`, discovered with the user's runtime settings; `build.invocationPlan` returns the probe arguments Core reads their version with, so hosts keep no per-runtime probe. Any other runtime without `executables` names the [tool definition](toolchains/README.md) with the same ID, so its `id` must be a valid tool-definition ID and it declares only `minimumVersion`: `build.invocationPlan` returns it with `hostManaged: false`, `version: null`, and the single candidate `{ "kind": "toolchain", "toolchainID": <id>, "root": <root> }`, whose resolution checks `minimumVersion`, and `build.checkToolVersion` for it is `plugin.build.unavailable` because Core reads no version. Any other runtime describes its own `executables` and `version` probe, so the runtime list is open; a runtime whose only candidate is a `toolchain` candidate may omit the probe, since the definition checks the version. |
 | `options` | Build dimensions the user chooses: `boolean`, `singleSelect`, `multiSelect`, `text`, `file`, `directory`. Each contributes `arguments` and `environment` (with `${value}`) when it has a value. Choices are declared, come from the model (`choicesFromModel`), or are free (`allowCustom`). |
 | `provider` | The process that answers model and dependency requests when no command prints them; see [Build providers](#build-providers). |
-| `model` | `static` (a `toml` file read during detection, no process), `command` (a command whose output Core decodes; it states `executesProjectCode` and `mayUseNetwork`), `provider`, or `hostIntegration`. |
+| `model` | `static` (a `toml` file read during detection, no process), `command` (a command whose output Core decodes; it states `executesProjectCode` and `mayUseNetwork`), or `provider`. |
 | `tasks` | The task catalog. `scopes` say what a task runs on (`workspace`, `project`, `target`); `targetTags` restrict targets; `requiresUserArguments` makes the host ask for arguments. A `fromModel` task is the template for tasks the model lists. |
 | `run` | Run entries from model targets (`fromTargets.tags`, with `arguments`) or model tasks (`fromTasks`, reusing the template task's arguments). |
-| `test` | How tests run: `scopes`, `targetTags`, the `filters` (`suite`, `case`) it can select, and `results` (`junitXml` or `litheTestResults` report globs relative to the project, or `hostIntegration`). A workspace run reads the globs under the root and every model project. A requested filter must reach the command line through a template whose conditions hold; a `case` guarded by `suiteSelected` therefore needs its suite. |
+| `test` | How tests run: `scopes`, `targetTags`, the `filters` (`suite`, `case`) it can select, and `results` (`junitXml` or `litheTestResults` report globs relative to the project). A workspace run reads the globs under the root and every model project. A requested filter must reach the command line through a template whose conditions hold; a `case` guarded by `suiteSelected` therefore needs its suite. |
 | `diagnostics` | `lineMatcher` patterns with capture-group numbers, or `litheDiagnostics` lines. |
-| `dependencies` | A command (with `scopes`) whose output Core decodes, as a flat list through a `map` or as a tree from `litheDependencies`; `provider` (with `scopes`, `workspace` and `project` only); or `hostIntegration`. |
+| `dependencies` | A command (with `scopes`) whose output Core decodes, as a flat list through a `map` or as a tree from `litheDependencies`; or `provider` (with `scopes`, `workspace` and `project` only). |
 | `sync` | Files whose change makes the model stale, relative to the root and to each project. |
 | `layout` | `excluded` directories relative to each project, added to every project as `excluded` content roots. |
 
@@ -1576,8 +1575,8 @@ Canonical examples: `fixtures/build-providers/build-provider-execution.plugin.js
 A build system's `test` may declare `source: "provider"`. It keeps the existing scopes, target tags and
 supported filters, but `arguments` must be `[]`. It requires a plugin-owned
 Provider process; `results` may be omitted or use `junitXml`/`litheTestResults`
-reports. `hostIntegration` is refused: the plugin owns test execution and
-report production, and the host reuses the existing report decoder.
+reports: the plugin owns test execution and report production, and the host
+reuses the existing report decoder.
 
 `build.testPlan` returns `provider: { method: "lithe/build/test", params }`
 and the usual `results` metadata instead of argv. The effective
@@ -2133,17 +2132,17 @@ A host that declares `buildProviders` keeps providers apart:
 `hostIntegration` is reserved. Core implements no build-system host
 integration: every build tool is described by its plugin's data and backend,
 and no host code branches on a build-system ID. Any `hostIntegration` name is
-`plugin.integration.unsupported`, and a model, test-result, or dependency source
-of `hostIntegration` is refused with it. Build systems use the declarative
-contract, a canonical format, or a `provider` instead.
+refused with `plugin.integration.unsupported` at
+`buildSystems[<n>].hostIntegration`. Model, test-result, and dependency sources
+have no `hostIntegration` kind: build systems use the declarative contract, a
+canonical format, or a `provider`.
 
 ### Commands
 
 The `build.*` Core commands (see `rust/contracts/rust-core-api.md`) take the
 manifest, the build-system ID, and a request, and revalidate the manifest
 every time. `build.detect` walks the workspace once for all enabled plugins
-and returns instances, with the model of `static` and `hostIntegration`
-sources. `build.invocationPlan` and `build.checkToolVersion` resolve the
+and returns instances, with the model of `static` sources. `build.invocationPlan` and `build.checkToolVersion` resolve the
 executable; `build.resolveOptions` checks stored option values and returns
 the configuration fingerprint; `build.modelPlan`, `build.taskPlan`,
 `build.testPlan`, and `build.dependencyPlan` return argv plans, or provider
@@ -2700,7 +2699,7 @@ Two rules keep these directions from forming a loop:
 ### Declarative or backend implementation
 
 - A domain operation has exactly one implementation, chosen in the manifest
-  (`source`: `static`, `command`, `hostIntegration`, or `provider`). Core plans
+  (`source`: `static`, `command`, or `provider`). Core plans
   only that one. There is no runtime fallback from a backend to a template or
   back: the two may differ in meaning, and a fallback would hide the failure.
 - A backend implements a domain operation through its typed method and Core's

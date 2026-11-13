@@ -1,15 +1,14 @@
 //! `buildSystems` declarations and their validation.
 //!
-//! A declaration is data only. Everything a community plugin needs is
+//! A declaration is data only. Everything a plugin needs is
 //! expressible here: any command or packaged script as the executable, any
 //! runtime it depends on (described by how to find and probe it), and any
 //! output, either through a selector map over a public format or by printing
 //! one of the canonical `lithe*` formats. What no command can print is
 //! answered by a `provider`: a server process of the plugin, declared with
 //! the language-server launch fields or shared with one of its language
-//! servers. The only named host code is a `hostIntegration`: a host-side
-//! model decoder any plugin selects by ID; the host never special-cases a
-//! build tool by name.
+//! servers. The host never special-cases a build tool by name:
+//! `hostIntegration` is reserved and refused whatever it names.
 
 use super::select::{self, FieldSpec, Predicate};
 use super::template::{self, Allowed, Availability, BuildArgument, Variable};
@@ -24,11 +23,6 @@ use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
-
-/// Host integrations a build system may name. The Core implements none:
-/// every build tool is described by its plugin's data and backend, so any
-/// name is refused with `plugin.integration.unsupported`.
-const HOST_INTEGRATIONS: &[&str] = &[];
 
 const MAX_BUILD_SYSTEMS: usize = 16;
 const MAX_LIST: usize = 32;
@@ -63,8 +57,11 @@ pub struct BuildSystemDeclaration {
     pub(crate) icon: Option<UIIcon>,
     pub(crate) detection: Detection,
     pub(crate) invocation: Invocation,
+    /// Reserved. Core implements no build-system host integration: every
+    /// build tool is described by its plugin's data and backend, so any
+    /// value is refused with `plugin.integration.unsupported`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) host_integration: Option<String>,
+    pub(crate) host_integration: Option<Value>,
     /// The process that answers the `provider` sources.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<ProviderDeclaration>,
@@ -234,7 +231,7 @@ pub(crate) use lithe_plugin_model::executables::{ExecutableCandidate, Executable
 /// user's runtime settings. Any other runtime either describes how to find
 /// and probe it, or lists no executables and names the tool definition with
 /// its ID, which finds the executable and checks `minimumVersion`. A
-/// community plugin is never limited to a host list.
+/// plugin is never limited to a host list.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct RuntimeDependency {
@@ -429,8 +426,6 @@ pub(crate) enum ModelSource {
         executes_project_code: bool,
         may_use_network: bool,
     },
-    /// The named host integration reads the model.
-    HostIntegration,
     /// The provider answers `lithe/build/model` with a `litheBuildModel`.
     Provider,
 }
@@ -821,14 +816,9 @@ pub(crate) enum TestResultsSource {
     /// A canonical document returned by the same provider test operation.
     Provider,
     /// JUnit XML report files, globbed relative to the project directory.
-    JunitXml {
-        reports: Vec<String>,
-    },
+    JunitXml { reports: Vec<String> },
     /// Canonical result files, globbed relative to the project directory.
-    LitheTestResults {
-        reports: Vec<String>,
-    },
-    HostIntegration,
+    LitheTestResults { reports: Vec<String> },
 }
 
 /// How build output becomes file diagnostics.
@@ -907,12 +897,9 @@ pub(crate) enum DependenciesSource {
         executes_project_code: bool,
         may_use_network: bool,
     },
-    HostIntegration,
     /// The provider answers `lithe/build/dependencies` with
     /// `litheDependencies`.
-    Provider {
-        scopes: Vec<Scope>,
-    },
+    Provider { scopes: Vec<Scope> },
 }
 
 /// Mapping of one dependency element onto a flat list. Dependency trees
@@ -988,8 +975,6 @@ fn check_target_tags(tags: &mut Vec<String>, scopes: &[Scope], field: &str) -> V
 pub struct DeclarationContext<'a> {
     /// Debug adapters the plugin declares; a debug run names one of them.
     pub debug_adapters: &'a [lithe_debug::adapters::DebugAdapterDeclaration],
-    /// Whether the plugin is official; host integrations are reserved to official plugins.
-    pub official: bool,
     /// Setting IDs a provider's launch templates may name.
     pub declared_settings: &'a lithe_plugin_model::settings::DeclaredSettings,
     /// Language IDs the plugin declares a language server for.
@@ -1110,9 +1095,6 @@ fn program(build_system: &BuildSystemDeclaration) -> Value {
         "model": model,
         "dependencies": dependencies,
     });
-    if let Some(integration) = &build_system.host_integration {
-        program["hostIntegration"] = json!(integration);
-    }
     // Build requests reaching a language server change what that process
     // is asked to do, so the shared form is part of this entry.
     if let Some(ProviderDeclaration::LanguageServer(shared)) = &build_system.provider {
@@ -1278,7 +1260,7 @@ impl BuildSystemDeclaration {
         if let Some(icon) = &self.icon {
             icon.validate_at(&format!("{field}.icon"))?;
         }
-        self.validate_integration(field, context.official)?;
+        self.validate_integration(field)?;
         self.validate_provider(field, context)?;
         self.validate_detection(field)?;
         let option_ids = self.validate_options(field)?;
@@ -1303,40 +1285,19 @@ impl BuildSystemDeclaration {
         self.validate_option_emission(field)
     }
 
-    fn validate_integration(&self, field: &str, official: bool) -> Validation<()> {
+    fn validate_integration(&self, field: &str) -> Validation<()> {
         let Some(integration) = &self.host_integration else {
-            let named = matches!(self.model, Some(ModelSource::HostIntegration))
-                || matches!(self.dependencies, Some(DependenciesSource::HostIntegration))
-                || matches!(
-                    self.test.as_ref().and_then(|test| test.results.as_ref()),
-                    Some(TestResultsSource::HostIntegration)
-                );
-            if named {
-                return Err(invalid(
-                    format!("{field}.hostIntegration"),
-                    "A host-integration source requires hostIntegration.",
-                ));
-            }
             return Ok(());
         };
-        let field = format!("{field}.hostIntegration");
-        if !HOST_INTEGRATIONS.contains(&integration.as_str()) {
-            return Err(PluginRejection::at(
-                "plugin.integration.unsupported",
-                field,
-                format!("The host has no build integration named {integration}."),
-            ));
-        }
-        // An integration runs trusted host code against the plugin's files,
-        // so a community package must not be able to request one.
-        if !official {
-            return Err(PluginRejection::at(
-                "plugin.integration.unsupported",
-                field,
-                "Host integrations are reserved to official plugins.",
-            ));
-        }
-        Ok(())
+        let message = match integration.as_str() {
+            Some(name) => format!("The host has no build integration named {name}."),
+            None => "The host has no build integration.".to_owned(),
+        };
+        Err(PluginRejection::at(
+            "plugin.integration.unsupported",
+            format!("{field}.hostIntegration"),
+            message,
+        ))
     }
 
     fn validate_provider(&self, field: &str, context: &DeclarationContext<'_>) -> Validation<()> {
@@ -1838,7 +1799,7 @@ impl BuildSystemDeclaration {
                     (_, Some(map)) => map.validate(&format!("{field}.map"), &model_options),
                 }
             }
-            Some(ModelSource::HostIntegration | ModelSource::Provider) => Ok(()),
+            Some(ModelSource::Provider) => Ok(()),
         }
     }
 
@@ -2041,13 +2002,8 @@ impl BuildSystemDeclaration {
             ));
         }
         if test.source == TaskSource::Provider {
-            if !test.arguments.is_empty()
-                || matches!(test.results, Some(TestResultsSource::HostIntegration))
-            {
-                return Err(invalid(
-                    &field,
-                    "Provider tests require empty arguments and plugin-owned reports.",
-                ));
+            if !test.arguments.is_empty() {
+                return Err(invalid(&field, "Provider tests require empty arguments."));
             }
         } else {
             if matches!(test.results, Some(TestResultsSource::Provider)) {

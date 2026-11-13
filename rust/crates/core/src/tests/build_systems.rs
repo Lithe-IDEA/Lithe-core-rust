@@ -2162,11 +2162,7 @@ fn provider_tests_require_a_provider_host_and_an_owned_process() {
         "buildSystems":[0],"settings":[0]}}))
     .unwrap();
     assert_eq!(refused["error"]["field"], "requires.buildProviders");
-    for (field, value) in [
-        ("arguments", json!(["test"])),
-        ("source", json!("command")),
-        ("results", json!({"decoder":"hostIntegration"})),
-    ] {
+    for (field, value) in [("arguments", json!(["test"])), ("source", json!("command"))] {
         let mut invalid = manifest.clone();
         invalid["buildSystems"][0]["test"][field] = value;
         assert_eq!(validate(invalid)["status"], "rejected");

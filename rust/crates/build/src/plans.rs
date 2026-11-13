@@ -45,20 +45,6 @@ pub(crate) fn unavailable(build_system: &BuildSystemDeclaration, what: &str) -> 
     )
 }
 
-/// Core provides no host integration any more: the only one moved a
-/// built-in tool onto the plugin model, and that tool now ships as a plugin
-/// that decodes its own output. A declaration that still names one fails
-/// here instead of reaching tool-specific host code.
-pub(super) fn unsupported_integration(build_system: &BuildSystemDeclaration) -> PluginRejection {
-    PluginRejection::new(
-        "plugin.integration.unsupported",
-        format!(
-            "{} names no host integration this host provides.",
-            build_system.display_name
-        ),
-    )
-}
-
 /// A project, target, or task the host selected from the model.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -801,7 +787,6 @@ pub(crate) fn test_plan(
             "decoder": "litheTestResults",
             "reports": reports(globs),
         }),
-        Some(TestResultsSource::HostIntegration) => json!({ "decoder": "hostIntegration" }),
         Some(TestResultsSource::Provider) => json!({ "decoder": "provider" }),
     };
     let mut extra = Map::new();
@@ -979,7 +964,6 @@ pub(crate) fn dependency_plan(
                 ),
             )
         }
-        DependenciesSource::HostIntegration => Err(unsupported_integration(build_system)),
         DependenciesSource::Provider { scopes } => {
             check_scope(scopes)?;
             let mut params = provider_hints(request)?;

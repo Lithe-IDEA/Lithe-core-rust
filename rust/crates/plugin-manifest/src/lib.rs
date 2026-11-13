@@ -13,8 +13,8 @@
 
 use lithe_plugin_model::capabilities::{self, HostCapabilities, Requires};
 use lithe_plugin_model::process::{
-    collect_setting_references, is_packaged_runtime_path, validate_launch_value,
-    LanguageServerLaunch, LaunchVariable, RuntimeTools, ServerProcess, ServerRole,
+    collect_setting_references, validate_launch_value, LanguageServerLaunch, LaunchVariable,
+    RuntimeTools, ServerProcess, ServerRole,
 };
 use lithe_plugin_model::settings::{
     DeclaredSettings, ResolvedSetting, SettingAction, SettingDeclaration, SettingLayers,
@@ -93,16 +93,6 @@ const KNOWN_PERMISSIONS: &[&str] = &[
 ];
 /// Most tool definitions one plugin may require.
 const MAX_REQUIRED_TOOLS: usize = 32;
-/// Native host integrations a language server may ask for. The Core
-/// implements none: a language server's run, test and debug support comes
-/// from the plugin's own backend and providers, so every name is rejected
-/// with `plugin.integration.unsupported`. The declaration stays in the
-/// contract so a manifest naming one fails validation instead of parsing.
-const KNOWN_HOST_INTEGRATIONS: &[&str] = &[];
-/// Host capability: running a program of the language.
-const HOST_CAPABILITY_RUN: &str = "run";
-/// Host capability: discovering and running tests of the language.
-const HOST_CAPABILITY_TESTING: &str = "testing";
 /// CPU architectures a host may report for `${arch}`.
 const KNOWN_ARCHITECTURES: &[&str] = &["arm64", "x86_64"];
 
@@ -337,10 +327,12 @@ struct LanguageServerDeclaration {
     language_identifier: Option<String>,
     #[serde(flatten)]
     process: ServerProcess,
-    /// Native host integration this server needs, with the package files it
-    /// consumes.
+    /// Reserved. Core implements no host integration: a language server's
+    /// run, test and debug support comes from the plugin's own backend and
+    /// providers, so any value is refused with `plugin.integration.unsupported`
+    /// instead of loading without it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    host_integration: Option<HostIntegrationDeclaration>,
+    host_integration: Option<Value>,
     /// Settings the server reads through `workspace/configuration` and
     /// receives again in `workspace/didChangeConfiguration` whenever one of
     /// the settings it names changes. String values are templates like
@@ -352,40 +344,6 @@ struct LanguageServerDeclaration {
     /// and how the host keeps the server's state.
     #[serde(flatten)]
     session: lithe_plugin_language_servers::SessionDeclaration,
-}
-
-/// A named piece of host code and the package resources it reads. The plugin
-/// owns the files; the host owns the behavior and is told where they are.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct HostIntegrationDeclaration {
-    id: String,
-    /// Process-backed features of the server's language that the host's own
-    /// implementation provides through this integration. A language owned by
-    /// a plugin gets none of them unless the plugin names it here or supplies
-    /// an execution provider for it. Sorted and unique once validated.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    capabilities: Vec<String>,
-    /// Resource name to package-relative path templates.
-    #[serde(default)]
-    resources: BTreeMap<String, ResourcePaths>,
-}
-
-/// One package path, or an ordered list of them.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(untagged)]
-enum ResourcePaths {
-    One(String),
-    Many(Vec<String>),
-}
-
-impl ResourcePaths {
-    fn paths(&self) -> &[String] {
-        match self {
-            Self::One(path) => std::slice::from_ref(path),
-            Self::Many(paths) => paths,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -748,10 +706,6 @@ impl DeclarativePluginManifest {
         let mut referenced_immediate_settings = BTreeSet::new();
         for (index, server) in self.language_servers.iter_mut().enumerate() {
             let field = format!("languageServers[{index}]");
-            if let Some(integration) = &mut server.host_integration {
-                integration.capabilities =
-                    sorted_unique(std::mem::take(&mut integration.capabilities));
-            }
             if !language_ids.contains(&server.language_id) {
                 return Err(invalid(
                     format!("{field}.languageID"),
@@ -800,43 +754,6 @@ impl DeclarativePluginManifest {
         self.execution_providers
             .sort_by(|left, right| left.language_id.cmp(&right.language_id));
 
-        // One feature of a language has one owner. Two would leave it to
-        // host wiring order whether the plugin's command or the host's
-        // implementation runs.
-        for (index, server) in self.language_servers.iter().enumerate() {
-            let Some(integration) = &server.host_integration else {
-                continue;
-            };
-            let Some(provider) = self
-                .execution_providers
-                .iter()
-                .find(|provider| provider.language_id == server.language_id)
-            else {
-                continue;
-            };
-            let declared_twice = [
-                (HOST_CAPABILITY_RUN, provider.run.is_some()),
-                (HOST_CAPABILITY_TESTING, provider.test.is_some()),
-            ]
-            .into_iter()
-            .find(|(capability, provided)| {
-                *provided
-                    && integration
-                        .capabilities
-                        .iter()
-                        .any(|name| name == capability)
-            });
-            if let Some((capability, _)) = declared_twice {
-                return Err(invalid(
-                    format!("languageServers[{index}].hostIntegration.capabilities"),
-                    format!(
-                        "The {capability} capability is already provided by the execution provider of {}.",
-                        server.language_id
-                    ),
-                ));
-            }
-        }
-
         if self.language_servers.is_empty()
             && self.execution_providers.is_empty()
             && self.ui.is_none()
@@ -867,7 +784,6 @@ impl DeclarativePluginManifest {
             &mut self.build_systems,
             &lithe_build::DeclarationContext {
                 debug_adapters: &self.debug_adapters,
-                official: is_official_namespace(&self.id),
                 declared_settings: &declared_settings,
                 language_servers: &server_languages,
                 runtime_tools,
@@ -1616,11 +1532,6 @@ impl DeclarativePluginManifest {
         for server in &self.language_servers {
             let mut program = server.process.program(ServerRole::LanguageServer);
             program["languageID"] = json!(server.language_id);
-            // Integration resources are files host code loads or runs for
-            // the plugin, so repointing one is a new program as well.
-            if let Some(integration) = &server.host_integration {
-                program["hostIntegration"] = json!(integration);
-            }
             programs.push(program);
             programs.extend(server.process.runtime_programs());
         }
@@ -1801,80 +1712,15 @@ impl LanguageServerDeclaration {
             }
         }
         if let Some(integration) = &self.host_integration {
-            self.validate_host_integration(integration, field)?;
-        }
-        Ok(())
-    }
-
-    fn validate_host_integration(
-        &self,
-        integration: &HostIntegrationDeclaration,
-        field: &str,
-    ) -> Validation<()> {
-        let field = format!("{field}.hostIntegration");
-        if !KNOWN_HOST_INTEGRATIONS.contains(&integration.id.as_str()) {
+            let field = format!("{field}.hostIntegration.id");
+            let message = match integration.get("id").and_then(Value::as_str) {
+                Some(id) => format!("The host has no integration named {id}."),
+                None => "The host has no language-server integration.".to_owned(),
+            };
             return Err(PluginRejection::at(
                 "plugin.integration.unsupported",
-                format!("{field}.id"),
-                format!("The host has no integration named {}.", integration.id),
-            ));
-        }
-        // (capability, resources the host code behind it reads); empty
-        // because no integration exists.
-        let capabilities: &[(&str, &[&str])] = &[];
-        for name in &integration.capabilities {
-            let capabilities_field = format!("{field}.capabilities");
-            let Some((_, needed)) = capabilities.iter().find(|(known, _)| known == name) else {
-                return Err(invalid(
-                    capabilities_field,
-                    format!("The integration does not provide the capability {name}."),
-                ));
-            };
-            if let Some(missing) = needed
-                .iter()
-                .find(|resource| !integration.resources.contains_key(**resource))
-            {
-                return Err(invalid(
-                    capabilities_field,
-                    format!("The capability {name} requires the resource {missing}."),
-                ));
-            }
-        }
-        // (name, required, accepts a list); empty because no integration exists.
-        let known: &[(&str, bool, bool)] = &[];
-        for (name, paths) in &integration.resources {
-            let resource_field = format!("{field}.resources.{name}");
-            let Some((_, _, accepts_list)) = known.iter().find(|(known, _, _)| known == name)
-            else {
-                return Err(invalid(
-                    resource_field,
-                    "The integration does not use this resource.",
-                ));
-            };
-            if matches!(paths, ResourcePaths::Many(_)) != *accepts_list {
-                return Err(invalid(
-                    resource_field,
-                    "The resource has the wrong shape for this integration.",
-                ));
-            }
-            if paths
-                .paths()
-                .iter()
-                .any(|path| !is_packaged_runtime_path(path))
-            {
-                return Err(invalid(
-                    resource_field,
-                    "Integration resources must be paths inside the plugin package that vary only by ${arch}.",
-                ));
-            }
-        }
-        if let Some((name, _, _)) = known
-            .iter()
-            .find(|(name, required, _)| *required && !integration.resources.contains_key(*name))
-        {
-            return Err(invalid(
-                format!("{field}.resources"),
-                format!("The integration requires the resource {name}."),
+                field,
+                message,
             ));
         }
         Ok(())
@@ -2393,12 +2239,7 @@ fn language_server_launch_plan(
             *timeout_milliseconds,
             request,
         )?,
-        _ => server_launch_plan(
-            manifest,
-            &server.process,
-            server.host_integration.as_ref(),
-            request,
-        )?,
+        _ => server_launch_plan(manifest, &server.process, request)?,
     };
     if let Some(configuration) = &server.workspace_configuration {
         plan["workspaceConfiguration"] = expand_configuration(
@@ -2616,7 +2457,7 @@ fn build_provider_launch_plan(
             language_server_launch_plan(manifest, language_id, request)?
         }
         lithe_build::ProviderProcess::Own(process) => {
-            server_launch_plan(manifest, process, None, request)?
+            server_launch_plan(manifest, process, request)?
         }
     };
     plan["buildProvider"] = description;
@@ -2641,7 +2482,7 @@ fn vcs_provider_launch_plan(
                 format!("The plugin declares no VCS provider {vcs_id}."),
             )
         })?;
-    let mut plan = server_launch_plan(manifest, &provider.process, None, request)?;
+    let mut plan = server_launch_plan(manifest, &provider.process, request)?;
     plan["vcsProvider"] = provider.descriptor(&manifest.id);
     Ok(plan)
 }
@@ -2659,7 +2500,7 @@ fn backend_launch_plan(
             "The plugin declares no backend.",
         )
     })?;
-    let mut plan = server_launch_plan(manifest, &backend.process, None, request)?;
+    let mut plan = server_launch_plan(manifest, &backend.process, request)?;
     plan["backend"] = lithe_plugin_backend::plan_descriptor(
         manifest.capability_version(capabilities::BACKEND),
         &manifest.backend_host_services(),
@@ -2689,9 +2530,7 @@ fn debug_adapter_launch_plan(
             )
         })?;
     let mut plan = match &adapter.launch.process {
-        Some(DebugProcess::Server(process)) => {
-            server_launch_plan(manifest, process, None, request)?
-        }
+        Some(DebugProcess::Server(process)) => server_launch_plan(manifest, process, request)?,
         Some(DebugProcess::SelectedRuntime(_)) => {
             return Err(PluginRejection::new(
                 "plugin.launch.unavailable",
@@ -2878,7 +2717,6 @@ pub fn debug_executable_plan_command(payload: Value) -> Result<Value, CoreError>
 fn server_launch_plan(
     manifest: &DeclarativePluginManifest,
     process: &ServerProcess,
-    host_integration: Option<&HostIntegrationDeclaration>,
     request: &LanguageServerLaunchPlanRequest,
 ) -> Validation<Value> {
     let effective_settings = manifest.effective_settings(request.layers());
@@ -2994,25 +2832,6 @@ fn server_launch_plan(
     });
     if let Some(options) = &process.initialization_options {
         plan["initializationOptions"] = expand_launch_value(options, &values, &mut requirements);
-    }
-    if let Some(integration) = host_integration {
-        let mut resources = serde_json::Map::new();
-        for (name, paths) in &integration.resources {
-            let expanded: Vec<String> = paths
-                .paths()
-                .iter()
-                .map(|path| path.replace("${arch}", values.architecture))
-                .collect();
-            requirements.package_paths.extend(expanded.iter().cloned());
-            resources.insert(
-                name.clone(),
-                match paths {
-                    ResourcePaths::One(_) => json!(expanded[0]),
-                    ResourcePaths::Many(_) => json!(expanded),
-                },
-            );
-        }
-        plan["hostIntegration"] = json!({ "id": integration.id, "resources": resources });
     }
     let mut directories = Vec::new();
     if requirements.uses_state_directory {

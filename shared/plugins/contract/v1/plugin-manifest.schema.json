@@ -1459,22 +1459,7 @@
           "additionalProperties": false,
           "required": ["id"],
           "properties": {
-            "id": { "type": "string", "minLength": 1 },
-            "capabilities": {
-              "description": "Process-backed features of the language a host integration would provide.",
-              "type": "array",
-              "uniqueItems": true,
-              "items": { "enum": ["debug", "run", "testing"] }
-            },
-            "resources": {
-              "type": "object",
-              "additionalProperties": {
-                "oneOf": [
-                  { "type": "string", "minLength": 1 },
-                  { "type": "array", "items": { "type": "string", "minLength": 1 } }
-                ]
-              }
-            }
+            "id": { "type": "string", "minLength": 1 }
           }
         }
       }
@@ -2860,18 +2845,6 @@
               }
             },
             {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "source"
-              ],
-              "properties": {
-                "source": {
-                  "const": "hostIntegration"
-                }
-              }
-            },
-            {
               "description": "The build provider answers lithe/build/model with a litheBuildModel document.",
               "type": "object",
               "additionalProperties": false,
@@ -3165,18 +3138,6 @@
                   ],
                   "properties": {
                     "decoder": {
-                      "const": "hostIntegration"
-                    }
-                  }
-                },
-                {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": [
-                    "decoder"
-                  ],
-                  "properties": {
-                    "decoder": {
                       "const": "provider"
                     }
                   }
@@ -3318,18 +3279,6 @@
                 },
                 "mayUseNetwork": {
                   "type": "boolean"
-                }
-              }
-            },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "source"
-              ],
-              "properties": {
-                "source": {
-                  "const": "hostIntegration"
                 }
               }
             },

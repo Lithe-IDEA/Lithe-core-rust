@@ -14,7 +14,7 @@ use super::manifest::{
 };
 use super::model::{self, BuildModel, ModelBuilder};
 use super::options;
-use super::plans::{self, invalid_selection, unavailable, unsupported_integration};
+use super::plans::{self, invalid_selection, unavailable};
 use super::select::{self, Node};
 use lithe_plugin_model::Validation;
 use quick_xml::events::{BytesStart, Event};
@@ -151,7 +151,6 @@ pub(crate) fn read_model(
                 _ => model::map_canonical(&mut builder, decode::document(&text, Format::Json)?)?,
             }
         }
-        Some(ModelSource::HostIntegration) => return Err(unsupported_integration(build_system)),
         Some(ModelSource::Provider) => {
             model::map_canonical(&mut builder, provider_result(result)?.clone())?;
         }
@@ -408,7 +407,6 @@ pub(crate) fn decode_test_results(
             request.not_before_millis,
             |text, base| canonical_cases(text, &workspace, base),
         ),
-        TestResultsSource::HostIntegration => return Err(unsupported_integration(build_system)),
     };
     let cases = aggregate(cases);
     let summary = summary(&cases);
@@ -1028,7 +1026,6 @@ pub(crate) fn decode_dependencies(
             CanonicalDependencies::deserialize(provider_result(request.result.as_ref())?),
             &mut budget,
         )?,
-        DependenciesSource::HostIntegration => return Err(unsupported_integration(build_system)),
     };
     Ok(json!({
         "project": project,

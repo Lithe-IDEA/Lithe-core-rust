@@ -572,7 +572,7 @@ fn capitalized(text: &str) -> String {
 
 /// A packaged runtime path is package-relative text whose only variable is
 /// `${arch}`, so one package can carry a runtime per architecture.
-pub fn is_packaged_runtime_path(value: &str) -> bool {
+fn is_packaged_runtime_path(value: &str) -> bool {
     let Some(parts) = parse_template_with(value, LaunchVariable::parse) else {
         return false;
     };
