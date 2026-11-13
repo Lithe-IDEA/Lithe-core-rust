@@ -4,7 +4,7 @@
 //   node shared/plugins/scripts/sdk-e2e.mjs
 //
 // The scenario files are Cargo integration tests of lithe-core, declared in
-// rust/lithe-core/Cargo.toml behind the `plugin-sdk-e2e` feature, so a plain
+// rust/crates/core/Cargo.toml behind the `plugin-sdk-e2e` feature, so a plain
 // `cargo test` skips them. This script builds the sample backends and then
 // runs those tests, which exercise the Node.js, Java and Rust SDKs, the native
 // build workflows and shortcut import against Core at this working tree.

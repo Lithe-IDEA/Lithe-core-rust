@@ -417,10 +417,10 @@ total time, and reports skipped work as diagnostics rather than a missing tool.
 Production-shape examples are [tool-definition.plugin.json](../fixtures/toolchains/tool-definition.plugin.json)
 and [toolchain-provider.plugin.json](../fixtures/toolchains/toolchain-provider.plugin.json).
 Core acceptance vectors are in
-[toolchain_definitions.rs](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/lithe-core/src/tests/toolchain_definitions.rs),
+[toolchain_definitions.rs](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/crates/core/src/tests/toolchain_definitions.rs),
 with sibling pins/query/resolution suites. The pin document, query exchange and
 one error reply per stable code that those suites share are inline in
-[toolchain_vectors.rs](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/lithe-core/src/tests/toolchain_vectors.rs).
+[toolchain_vectors.rs](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/crates/core/src/tests/toolchain_vectors.rs).
 Passing them is not native product verification. Contract changes land in
 the same pull request as the Core code that enforces them; there is no other
 copy to update.

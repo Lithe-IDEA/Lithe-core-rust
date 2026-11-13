@@ -153,7 +153,7 @@ See `rust/fixtures/keymap/binding-conflicts-v1.json`.
 double-Shift gesture as a pure transition: `event` is `{kind: "keyDown"}`, `{kind: "reset"}` or
 `{kind: "flags", shift, otherModifiers}`; `timestamp` is seconds on a clock the host keeps; `state` is opaque
 host-held memory (omit it for the idle state) that the host sends back with the next event. The rule lives in the
-pure crate `rust/lithe-core-rules` (no I/O, no clock) so it can run on a synchronous key path; hosts call it
+pure crate `rust/crates/core-rules` (no I/O, no clock) so it can run on a synchronous key path; hosts call it
 through the C ABI. A malformed payload is `invalid_request`. Hosts only convert native events to this input and act
 on `triggered`; Core and the rules crate test the rule step by step against
 `rust/fixtures/keymap/modifier-gesture-v1.json`.
@@ -177,7 +177,7 @@ returned as sent, so a host may send only the groups an action involves. `emptyG
 stale), and `focusedGroup` moves to the first remaining group when its group was removed. Actions that name an unknown
 group or an unknown move destination change nothing. `removedGroupIds` lists removed groups in their previous order so
 hosts prune their own layout tree; split directions, ratios, pixels and dragging never reach Core. A malformed payload is
-`invalid_request`. It lives in `rust/lithe-core-rules` and hosts call it synchronously through the C ABI, one call per
+`invalid_request`. It lives in `rust/crates/core-rules` and hosts call it synchronously through the C ABI, one call per
 user action. Core and the rules crate run every case of
 `rust/fixtures/editor/workbench-state-v1.json` through it.
 
@@ -191,7 +191,7 @@ Local History leave the path out; `watchedDespiteHiding` marks the hidden projec
 events must still be delivered, except the built-in noise below it such as `.lithe/run/local.json`. Hosts send all children
 of a directory in one call. `workspace.visibilityDefaults` takes `{}` and returns the built-in lists
 (`hiddenDirectoryNames`, `hiddenFilePatterns`, `builtInPatterns`, `configurationDirectory`, `configurationPattern`) so hosts
-display them without keeping a copy. Both live in `rust/lithe-core-rules` like `keymap.modifierGestureStep` and are tested
+display them without keeping a copy. Both live in `rust/crates/core-rules` like `keymap.modifierGestureStep` and are tested
 against `rust/fixtures/workspace/visibility-v1.json`.
 
 ## Terminal link targets
@@ -225,7 +225,7 @@ int32_t lithe_core_remove_log_waker(void *context);
 ```
 
 The macOS package uses the small C bridge in `macos/Sources/LitheRustCore/`. The
-canonical C declarations are in `rust/lithe-core/include/lithe_core.h`.
+canonical C declarations are in `rust/crates/core/include/lithe_core.h`.
 Native clients link the `staticlib`; Rust hosts call
 `lithe_core::execute_json` and `lithe_core::cancel_operation` directly.
 Strings returned by the core are UTF-8 JSON allocated by Rust. The caller must
@@ -3684,7 +3684,7 @@ Windows consumes the original fields and may ignore this marker.
 ### AI configuration
 
 These commands, like every `ai.*` command, are implemented in the `lithe-ai` crate
-(`rust/lithe-ai`); `lithe-core` only routes them.
+(`rust/crates/ai`); `lithe-core` only routes them.
 
 `ai.configuration.sources` takes `{source, home, environment}` (`source` is
 `codex` or `claude`, `home` an absolute path, `environment` only the directory

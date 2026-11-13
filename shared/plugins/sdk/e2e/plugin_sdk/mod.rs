@@ -10,7 +10,7 @@
 //! registration, and state recovery across a restart. Both samples answer it
 //! identically, which keeps the SDKs' behaviour aligned.
 //!
-//! `rust/lithe-core/Cargo.toml` declares these files as lithe-core
+//! `rust/crates/core/Cargo.toml` declares these files as lithe-core
 //! integration tests behind the `plugin-sdk-e2e` feature, and
 //! `shared/plugins/scripts/sdk-e2e.mjs` builds the samples and runs them;
 //! `LITHE_PLUGIN_SDK_ROOT` names the `shared/plugins` directory that holds
