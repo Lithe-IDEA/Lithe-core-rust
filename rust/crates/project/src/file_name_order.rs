@@ -1,8 +1,8 @@
 //! `workspace.orderEntries`: orders natively enumerated siblings with the shared
 //! file name order in `lithe_core_rules::file_names`.
 
-use crate::protocol::{CoreError, ErrorCode};
 use lithe_core_rules::file_names::FileNameKey;
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -39,7 +39,7 @@ struct OrderEntry {
 /// Returns `{ order }`, the request indices in display order. The order is total and
 /// deterministic: names compare with IDEA's `FileNameComparator`, and identical names
 /// keep their request order. Oversized requests fail with `invalid_request`.
-pub(crate) fn order_entries_command(payload: Value) -> Result<Value, CoreError> {
+pub fn order_entries_command(payload: Value) -> Result<Value, CoreError> {
     let request: OrderEntriesRequest = serde_json::from_value(payload).map_err(|error| {
         CoreError::new(ErrorCode::InvalidRequest, "Invalid entry order request")
             .with_details(error.to_string())

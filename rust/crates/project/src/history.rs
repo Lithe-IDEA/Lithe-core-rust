@@ -1,8 +1,8 @@
 //! Versioned local-history snapshots with bounded retention and storage validation.
 
-use crate::project::files::VisibilityRules;
-use crate::protocol::{invalid_relative_path, CoreError, ErrorCode};
-use crate::protocol::{HistoryEntriesResponse, HistoryEntryResponse};
+use crate::contracts::{HistoryEntriesResponse, HistoryEntryResponse};
+use crate::files::VisibilityRules;
+use lithe_protocol::{invalid_relative_path, CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
 use std::fs;
@@ -68,18 +68,27 @@ const BUILT_IN_IGNORED_DIRECTORY_NAMES: &[&str] = &[
 #[serde(rename_all = "camelCase")]
 /// Snapshot contents, reason, visibility, and retention policy for one record.
 pub struct HistoryRecordRequest {
+    /// Absolute workspace root that bounds every path in the request.
     pub workspace_root: String,
+    /// Directory holding this project's local-history snapshots and metadata.
     pub storage_root: String,
+    /// Workspace-relative path of the file to snapshot.
     pub path: String,
+    /// Why the snapshot is taken; must pass [`is_valid_reason`].
     pub reason: String,
+    /// Text to record; absent reads the file from disk.
     #[serde(default)]
     pub content: Option<String>,
+    /// Whether recording also drops expired snapshots and enforces the storage cap; defaults to true.
     #[serde(default = "default_prune_expired")]
     pub prune_expired: bool,
+    /// Extra directory names hidden from the tree, on top of the built-in ones.
     #[serde(default)]
     pub hidden_directory_names: Vec<String>,
+    /// Hidden-path globs; `!` lines turn built-in hidden folders back on.
     #[serde(default)]
     pub hidden_file_patterns: Vec<String>,
+    /// Rules for files whose changes are not recorded.
     #[serde(default)]
     pub ignore_rules: HistoryIgnoreRules,
     /// Storage cap in bytes; `None` keeps the 100 MB default.
@@ -98,8 +107,10 @@ pub struct HistoryRecordRequest {
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryIgnoreRules {
+    /// Globs in hidden-path syntax; `!` lines turn built-in folders back on.
     #[serde(default)]
     pub path_patterns: Vec<String>,
+    /// Case-insensitive regexes matched against the workspace-relative path.
     #[serde(default)]
     pub path_regexes: Vec<String>,
 }
@@ -135,8 +146,10 @@ fn built_in_ignore_pattern(name: &str) -> String {
 #[serde(rename_all = "camelCase")]
 /// Rules and an optional sample path for the settings preview.
 pub struct HistoryIgnorePreviewRequest {
+    /// Workspace-relative sample path to test; absent only validates the rules.
     #[serde(default)]
     pub path: Option<String>,
+    /// Rules being edited in settings.
     #[serde(default)]
     pub ignore_rules: HistoryIgnoreRules,
     /// Hidden-path entries, so the preview honours built-ins the user turned off.
@@ -151,7 +164,9 @@ pub struct HistoryIgnorePreviewRequest {
 #[serde(rename_all = "camelCase")]
 /// One regex rule the regex engine rejected, by its position in the list.
 pub struct HistoryIgnoreRegexError {
+    /// Position of the rejected regex in `pathRegexes`.
     pub index: usize,
+    /// The regex engine's error message.
     pub message: String,
 }
 
@@ -163,9 +178,12 @@ pub enum HistoryIgnoreMatch {
     Hidden,
     /// The wildcard rule as written, built-in or the user's own.
     Pattern {
+        /// The wildcard rule.
         pattern: String,
     },
+    /// A regex rule, by its position in `pathRegexes`.
     Regex {
+        /// Position of the matching regex in `pathRegexes`.
         index: usize,
     },
 }
@@ -174,9 +192,11 @@ pub enum HistoryIgnoreMatch {
 #[serde(rename_all = "camelCase")]
 /// Validation and sample-path result for the local history settings.
 pub struct HistoryIgnorePreviewResponse {
+    /// Regexes that failed to compile.
     pub regex_errors: Vec<HistoryIgnoreRegexError>,
     /// The built-in wildcard rules, for settings to show and edit against.
     pub built_in_ignore_patterns: Vec<String>,
+    /// Rule that keeps the sample path out of history; absent when it would be recorded.
     pub matched: Option<HistoryIgnoreMatch>,
     /// Whether Git ignores the path, for comparison only: local history does not
     /// follow Git ignore rules. `None` without a path, a workspace or a repository.
@@ -187,6 +207,7 @@ pub struct HistoryIgnorePreviewResponse {
 #[serde(rename_all = "camelCase")]
 /// One project's history storage, for usage reporting or clearing.
 pub struct HistoryStorageRequest {
+    /// Directory holding this project's local-history snapshots and metadata.
     pub storage_root: String,
     /// Cap reported by `usage`; `None` keeps the 100 MB default.
     #[serde(default)]
@@ -197,7 +218,9 @@ pub struct HistoryStorageRequest {
 #[serde(rename_all = "camelCase")]
 /// Allocated bytes of one project's history and the cap that eviction keeps.
 pub struct HistoryUsageResponse {
+    /// Bytes the snapshots and metadata occupy on disk.
     pub used_bytes: u64,
+    /// Storage cap in bytes that eviction keeps the history under.
     pub limit_bytes: u64,
 }
 
@@ -205,12 +228,17 @@ pub struct HistoryUsageResponse {
 #[serde(rename_all = "camelCase")]
 /// Optional file filter and visibility policy for listing snapshot metadata.
 pub struct HistoryEntriesRequest {
+    /// Absolute workspace root that bounds every path in the request.
     pub workspace_root: String,
+    /// Directory holding this project's local-history snapshots and metadata.
     pub storage_root: String,
+    /// Workspace-relative file to list; absent lists every visible file.
     #[serde(default)]
     pub path: Option<String>,
+    /// Extra directory names hidden from the tree, on top of the built-in ones.
     #[serde(default)]
     pub hidden_directory_names: Vec<String>,
+    /// Hidden-path globs; `!` lines turn built-in hidden folders back on.
     #[serde(default)]
     pub hidden_file_patterns: Vec<String>,
 }
@@ -219,7 +247,9 @@ pub struct HistoryEntriesRequest {
 #[serde(rename_all = "camelCase")]
 /// Validated storage-relative path of snapshot content to read.
 pub struct HistoryContentRequest {
+    /// Directory holding this project's local-history snapshots and metadata.
     pub storage_root: String,
+    /// Storage-relative content path from a history entry.
     pub content_path: String,
 }
 
@@ -227,8 +257,11 @@ pub struct HistoryContentRequest {
 #[serde(rename_all = "camelCase")]
 /// Request to move all history metadata after a workspace path relocation.
 pub struct HistoryRelocateRequest {
+    /// Directory holding this project's local-history snapshots and metadata.
     pub storage_root: String,
+    /// Workspace-relative path before the move.
     pub source_path: String,
+    /// Workspace-relative path after the move.
     pub destination_path: String,
 }
 
@@ -236,9 +269,13 @@ pub struct HistoryRelocateRequest {
 #[serde(rename_all = "camelCase")]
 /// Request to assign or clear the user label on one snapshot.
 pub struct HistoryRenameRequest {
+    /// Directory holding this project's local-history snapshots and metadata.
     pub storage_root: String,
+    /// Workspace-relative path of the file the snapshot belongs to.
     pub path: String,
+    /// Identity of the snapshot to label.
     pub id: String,
+    /// New label; absent or blank clears it.
     #[serde(default)]
     pub label: Option<String>,
 }
@@ -247,8 +284,11 @@ pub struct HistoryRenameRequest {
 #[serde(rename_all = "camelCase")]
 /// Request to delete one snapshot and its metadata entry.
 pub struct HistoryDeleteRequest {
+    /// Directory holding this project's local-history snapshots and metadata.
     pub storage_root: String,
+    /// Workspace-relative path of the file the snapshot belongs to.
     pub path: String,
+    /// Identity of the snapshot to delete.
     pub id: String,
 }
 
@@ -315,7 +355,7 @@ pub fn record(request: HistoryRecordRequest) -> Result<Option<HistoryEntryRespon
     let Ok(text) = std::str::from_utf8(&content) else {
         return Ok(None);
     };
-    if !crate::project::is_plain_text(text) {
+    if !crate::is_plain_text(text) {
         return Ok(None);
     }
     let storage = storage_root(&request.storage_root)?;
@@ -446,9 +486,7 @@ pub fn entries(request: HistoryEntriesRequest) -> Result<HistoryEntriesResponse,
 /// Returns `{ snapshots: [{ source, reason }] }` in recording order. A save records the
 /// text it replaces and the text it writes, so a history entry exists for the saved state
 /// immediately rather than only after the next edit.
-pub(crate) fn plan_event_command(
-    payload: serde_json::Value,
-) -> Result<serde_json::Value, CoreError> {
+pub fn plan_event_command(payload: serde_json::Value) -> Result<serde_json::Value, CoreError> {
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase", deny_unknown_fields)]
     struct Request {
@@ -1164,7 +1202,8 @@ fn monotonic_nonce() -> u128 {
         .unwrap_or_default()
 }
 
-pub(crate) fn is_valid_reason(value: &str) -> bool {
+/// Whether `value` is a snapshot reason Core records.
+pub fn is_valid_reason(value: &str) -> bool {
     matches!(
         value,
         "projectBaseline"
@@ -1211,7 +1250,7 @@ fn parse_iso_timestamp(value: &str) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tests::support::temporary_root;
+    use crate::test_support::temporary_root;
 
     fn record_request(
         workspace: &Path,

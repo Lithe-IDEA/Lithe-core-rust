@@ -736,7 +736,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                 CoreError::new(ErrorCode::InvalidRequest, "Invalid indexing policy")
                     .with_details(error.to_string())
             })
-            .and_then(project::indexing::configure)
+            .and_then(|request| project::indexing::configure(request, crate::lsp::indexing_changed))
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -753,8 +753,9 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                 CoreError::new(ErrorCode::InvalidRequest, "Invalid indexing refresh")
                     .with_details(error.to_string())
             })
-            .and_then(project::indexing::refresh_indexing)
-            {
+            .and_then(|request| {
+                project::indexing::refresh_indexing(request, crate::lsp::indexing_changed)
+            }) {
                 Ok(data) => CoreResponse::success(
                     id,
                     serde_json::to_value(data).expect("indexing status should encode"),
@@ -887,8 +888,9 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                     CoreError::new(ErrorCode::InvalidRequest, "Invalid search index update")
                         .with_details(error.to_string())
                 })
-                .and_then(project::update_search_index)
-            {
+                .and_then(|request| {
+                    project::update_search_index(request, crate::lsp::indexing_changed)
+                }) {
                 Ok(data) => CoreResponse::success(
                     id,
                     serde_json::to_value(data).expect("search index status should encode"),

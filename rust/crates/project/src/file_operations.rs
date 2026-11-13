@@ -12,7 +12,7 @@
 //! reports that the name now exists, add that name to `existing` and plan again. Core
 //! never touches the file system.
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashSet;
@@ -61,7 +61,7 @@ struct PlanPasteRequest {
 ///
 /// Returns `{ name }`. The name always carries the copy suffix, because a duplicate lives
 /// next to its source.
-pub(crate) fn plan_duplicate_command(payload: Value) -> Result<Value, CoreError> {
+pub fn plan_duplicate_command(payload: Value) -> Result<Value, CoreError> {
     let request: PlanDuplicateRequest = serde_json::from_value(payload).map_err(invalid)?;
     let item = CopyItem {
         name: request.name,
@@ -81,7 +81,7 @@ pub(crate) fn plan_duplicate_command(payload: Value) -> Result<Value, CoreError>
 /// Returns `{ names }`, one per item in request order. An item keeps its own name when
 /// that name is free; otherwise it receives the copy suffix. Items planned earlier in the
 /// same paste count as taken, so two sources with the same name never collide.
-pub(crate) fn plan_paste_command(payload: Value) -> Result<Value, CoreError> {
+pub fn plan_paste_command(payload: Value) -> Result<Value, CoreError> {
     let request: PlanPasteRequest = serde_json::from_value(payload).map_err(invalid)?;
     if request.items.len() > MAX_PASTE_ITEMS {
         return Err(CoreError::new(

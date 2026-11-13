@@ -6,8 +6,9 @@
 //! order all come from the same matcher that backs `workspace.searchEverywhere`.
 
 use super::name_matching::match_name;
-use crate::protocol::{CoreError, ErrorCode, SearchNameRange};
+use crate::contracts::SearchNameRange;
 use lithe_core_rules::file_names::FileNameKey;
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -47,7 +48,7 @@ struct RankCandidate {
 /// compares them with the workspace-relative, `/`-separated path of each file under its root.
 #[derive(Deserialize, Serialize, Default, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct RankContext {
+pub struct RankContext {
     /// Paths of open editors, including the active one.
     #[serde(default)]
     pub(crate) open_paths: Vec<String>,
@@ -124,7 +125,7 @@ struct RankedName {
 /// recency of recent files, then IDEA's file-name order, then request order. A candidate
 /// matches through its name, or through its path at a reduced degree. Oversized requests fail
 /// with `invalid_request` instead of being truncated.
-pub(crate) fn rank_names_command(payload: Value) -> Result<Value, CoreError> {
+pub fn rank_names_command(payload: Value) -> Result<Value, CoreError> {
     let request: RankNamesRequest = serde_json::from_value(payload).map_err(|error| {
         CoreError::new(ErrorCode::InvalidRequest, "Invalid name ranking request")
             .with_details(error.to_string())

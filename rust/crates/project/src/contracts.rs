@@ -1,4 +1,5 @@
-//! Serializable response models shared across every host boundary.
+//! Serializable response models of the project services: workspace snapshots,
+//! directory listings, search results, file reads and writes, and local history.
 
 use serde::Serialize;
 
@@ -6,8 +7,11 @@ use serde::Serialize;
 #[serde(rename_all = "camelCase")]
 /// One file or directory in a deterministic workspace tree.
 pub struct WorkspaceNode {
+    /// Normalized workspace-relative path; empty for the root.
     pub path: String,
+    /// Last path component, or the root folder's name.
     pub name: String,
+    /// Whether this node is a directory.
     pub is_directory: bool,
     /// Omitted for unloaded directories/files; an empty array is a known directory leaf.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -21,7 +25,9 @@ pub struct WorkspaceSnapshotResponse {
     /// Optional directories that could not be read; hosts must not infer deletions from this inventory.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub incomplete_directories: Vec<String>,
+    /// Root of the visible tree; it has no children when the request skipped the tree.
     pub root: WorkspaceNode,
+    /// Every visible workspace-relative file path.
     pub files: Vec<String>,
     /// Linked worktrees checked out inside their own repository. They are left
     /// out of `root` and `files`; hosts use them to ignore watcher events.
@@ -56,9 +62,13 @@ pub struct DirectoryListing {
 pub struct SearchMatch {
     /// Result category: file path, file content, or symbol.
     pub kind: String,
+    /// Workspace-relative path of the matched file.
     pub path: String,
+    /// One-based line of a content match; absent for file and symbol matches.
     pub line: Option<usize>,
+    /// Text shown for the match: the trimmed line, the path, or the symbol name.
     pub preview: String,
+    /// Symbol name of a symbol match.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub symbol_name: Option<String>,
     /// Matching fragments in the displayed name, measured in UTF-16 code units.
@@ -82,7 +92,9 @@ pub struct SearchMatch {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchNameRange {
+    /// First matched UTF-16 code unit.
     pub start: usize,
+    /// Matched length in UTF-16 code units.
     pub length: usize,
 }
 
@@ -90,6 +102,7 @@ pub struct SearchNameRange {
 #[serde(rename_all = "camelCase")]
 /// Bounded, deterministically ordered search matches.
 pub struct SearchResponse {
+    /// Matches in result order, already capped per category.
     pub matches: Vec<SearchMatch>,
 }
 
@@ -97,9 +110,13 @@ pub struct SearchResponse {
 #[serde(rename_all = "camelCase")]
 /// Preview of replacements occurring on one source line.
 pub struct ReplacementMatch {
+    /// One-based line holding the replaced occurrences.
     pub line: usize,
+    /// The line before replacement.
     pub before: String,
+    /// The line after every occurrence on it is replaced.
     pub after: String,
+    /// Number of occurrences replaced on this line.
     pub occurrence_count: usize,
 }
 
@@ -107,8 +124,11 @@ pub struct ReplacementMatch {
 #[serde(rename_all = "camelCase")]
 /// All preview matches and resulting text for one file.
 pub struct ReplacementFile {
+    /// Workspace-relative path of the file.
     pub path: String,
+    /// Changed lines in line order.
     pub matches: Vec<ReplacementMatch>,
+    /// Whole file text after replacement.
     pub replacement_text: String,
 }
 
@@ -116,6 +136,7 @@ pub struct ReplacementFile {
 #[serde(rename_all = "camelCase")]
 /// Non-mutating replacement preview grouped by workspace-relative path.
 pub struct ReplacementPreviewResponse {
+    /// Files with at least one replacement, sorted by path.
     pub files: Vec<ReplacementFile>,
 }
 
@@ -123,7 +144,9 @@ pub struct ReplacementPreviewResponse {
 #[serde(rename_all = "camelCase")]
 /// Decoded contents read from one workspace-relative path.
 pub struct FileReadResponse {
+    /// Normalized workspace-relative path that was read.
     pub path: String,
+    /// Decoded text without the byte order mark.
     pub text: String,
     /// Stable id of the encoding used to decode `text`.
     pub encoding: String,
@@ -139,6 +162,7 @@ pub struct FileReadResponse {
 #[serde(rename_all = "camelCase")]
 /// Path and byte count produced by a successful file write.
 pub struct FileWriteResponse {
+    /// Normalized workspace-relative path that was written.
     pub path: String,
     /// Encoded length including any byte order mark.
     pub bytes_written: usize,
@@ -154,12 +178,19 @@ pub struct FileWriteResponse {
 #[serde(rename_all = "camelCase")]
 /// Metadata for one retained local-history snapshot.
 pub struct HistoryEntryResponse {
+    /// Snapshot identity, unique within the file's history.
     pub id: String,
+    /// Capture time in seconds since the Unix epoch.
     pub timestamp: i64,
+    /// Workspace-relative path of the file the snapshot belongs to.
     pub relative_path: String,
+    /// Why the snapshot was taken, such as `projectBaseline`; see [`crate::is_valid_reason`].
     pub reason: String,
+    /// Storage-relative path of the snapshot content, read with `history.content`.
     pub content_path: String,
+    /// Size of the snapshot content in bytes.
     pub byte_count: usize,
+    /// User label assigned through `history.rename`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
 }
@@ -168,5 +199,6 @@ pub struct HistoryEntryResponse {
 #[serde(rename_all = "camelCase")]
 /// Local-history entries in deterministic newest-first order.
 pub struct HistoryEntriesResponse {
+    /// Snapshot metadata, newest first.
     pub entries: Vec<HistoryEntryResponse>,
 }

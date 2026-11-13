@@ -71,6 +71,7 @@ fn search_exclusions_filter_names_content_and_replacement_and_keep_cache_variant
             "root": root, "paths": ["src/Name.swift"]
         }))
         .unwrap(),
+        crate::lsp::indexing_changed,
     )
     .unwrap();
     for excluded in [false, true] {
@@ -324,7 +325,7 @@ fn search_everywhere_matches_names_before_limits_and_shares_utf16_fragments() {
     let update = |paths: &[&str]| {
         crate::project::files::update_search_index(serde_json::from_value(serde_json::json!({
             "root": root, "paths": paths, "hiddenDirectoryNames": ["excluded", ".build", "target"]
-        })).unwrap()).unwrap()
+        })).unwrap(), crate::lsp::indexing_changed).unwrap()
     };
     fs::write(root.join(".build/checkouts/NameGuide.swift"), "").unwrap();
     update(&[".build/checkouts/NameGuide.swift"]);
@@ -2190,4 +2191,115 @@ fn file_encoding_options_are_optional_and_validated() {
     );
     assert_eq!(lossy["data"]["lossy"], true);
     fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn replacement_text_command_uses_search_boundaries_and_line_semantics() {
+    let call = |payload: serde_json::Value| -> serde_json::Value {
+        serde_json::from_str(&crate::execute_json(
+            &serde_json::json!({
+                "id": "replace", "command": "workspace.replaceText", "payload": payload
+            })
+            .to_string(),
+        ))
+        .unwrap()
+    };
+    let whole = call(serde_json::json!({"text": "$foo foo\nfoo!", "query": "foo",
+        "replacement": "bar", "wholeWords": true}));
+    assert_eq!(
+        whole["data"],
+        serde_json::json!({"text": "$foo bar\nbar!", "count": 2})
+    );
+    let lines = call(
+        serde_json::json!({"text": "foo 1\nfoo 2", "query": "^foo (\\d)",
+        "replacement": "bar $1", "regularExpression": true}),
+    );
+    assert_eq!(
+        lines["data"],
+        serde_json::json!({"text": "bar 1\nbar 2", "count": 2})
+    );
+    let single = call(
+        serde_json::json!({"text": "😀 foo foo\nfoo", "query": "foo",
+        "replacement": "bar", "from": {"line": 1, "column": 9}}),
+    );
+    assert_eq!(
+        single["data"],
+        serde_json::json!({"text": "😀 foo bar\nfoo", "count": 1})
+    );
+    let adjacent = call(serde_json::json!({"text": "foofoo", "query": "foo",
+        "replacement": "bar", "from": {"line": 1, "column": 4}}));
+    assert_eq!(
+        adjacent["data"],
+        serde_json::json!({"text": "foobar", "count": 1})
+    );
+}
+
+#[test]
+fn provider_batch_search_uses_same_unicode_and_word_boundaries_as_replacement() {
+    let response: serde_json::Value = serde_json::from_str(&crate::execute_json(
+        &serde_json::json!({
+            "id": "provider", "command": "workspace.searchTextBatch", "payload": {
+                "query": "foo", "wholeWords": true, "contextLines": 1,
+                "files": [{"path": "wsl://fixture/a", "text": "before\n😀 $foo foo\nafter"}]
+            }
+        })
+        .to_string(),
+    ))
+    .unwrap();
+    assert_eq!(response["ok"], true, "{response}");
+    let found = &response["data"]["files"][0]["matches"][0];
+    assert_eq!(found["line"], 2);
+    assert_eq!(
+        found["ranges"],
+        serde_json::json!([{"start": 8, "length": 3}])
+    );
+    assert_eq!(found["contextBefore"], serde_json::json!(["before"]));
+    assert_eq!(found["contextAfter"], serde_json::json!(["after"]));
+    let too_many: Vec<_> = (0..33)
+        .map(|index| serde_json::json!({"path": index.to_string(), "text": ""}))
+        .collect();
+    let rejected: serde_json::Value = serde_json::from_str(&crate::execute_json(&serde_json::json!({
+        "id": "provider-limit", "command": "workspace.searchTextBatch", "payload": {"query": "x", "files": too_many}
+    }).to_string())).unwrap();
+    assert_eq!(rejected["ok"], false);
+}
+
+#[test]
+fn shared_text_snapshot_contract_fixture() {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../fixtures/search/text-snapshot-v1.json"
+    ))
+    .unwrap();
+    for case in fixture["cases"].as_array().unwrap() {
+        let request = serde_json::json!({
+            "id": "fixture", "command": case["command"], "payload": case["payload"]
+        });
+        let response: serde_json::Value =
+            serde_json::from_str(&crate::execute_json(&request.to_string())).unwrap();
+        assert_eq!(response["ok"], true, "{}: {response}", case["name"]);
+        assert_eq!(response["data"], case["expected"], "{}", case["name"]);
+    }
+}
+
+#[test]
+fn shared_workspace_change_fixture() {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../fixtures/workspace/change-filter-v1.json"
+    ))
+    .unwrap();
+    let paths: Vec<String> = serde_json::from_value(fixture["paths"].clone()).unwrap();
+    let retained: Vec<_> = paths
+        .iter()
+        .filter(|path| crate::project::is_workspace_event_relevant(path))
+        .collect();
+    assert_eq!(serde_json::to_value(retained).unwrap(), fixture["expected"]);
+    let response: serde_json::Value = serde_json::from_str(&crate::execute_json(
+        &serde_json::json!({
+            "id": "filter", "command": "workspace.filterChanges", "payload": paths
+        })
+        .to_string(),
+    ))
+    .unwrap();
+    assert_eq!(response["ok"], true, "{response}");
+    assert_eq!(response["data"], fixture["expected"]);
 }

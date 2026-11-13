@@ -1,10 +1,10 @@
 //! Incremental workspace search indexing with exact final-content matching.
 
-use crate::project::files::{
+use crate::files::{
     is_inside_nested_linked_worktree, read_searchable_text, relative_path, visible_children,
     ChildOrder, VisibilityRules,
 };
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use lithe_workspace::{self as workspace, fs};
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
@@ -291,7 +291,7 @@ impl WorkspaceSearchIndex {
             names_only,
         };
         for path in paths {
-            crate::protocol::cancellation::check()?;
+            lithe_protocol::cancellation::check()?;
             if let Some(policy) = &policy {
                 policy.check()?;
             }
@@ -477,7 +477,7 @@ fn collect_files(
     files: &mut Vec<PathBuf>,
     policy: Option<&super::indexing::IndexingContext>,
 ) -> Result<(), CoreError> {
-    crate::protocol::cancellation::check()?;
+    lithe_protocol::cancellation::check()?;
     if rules.is_delegated(path) {
         return Ok(());
     }
@@ -565,7 +565,7 @@ mod tests {
 
     #[test]
     fn names_and_cold_text_do_not_wait_for_content_build_and_invalidation_discards_its_slot() {
-        let root = crate::tests::support::temporary_root("independent-search-sources");
+        let root = crate::test_support::temporary_root("independent-search-sources");
         fs::create_dir_all(&root).unwrap();
         struct Cleanup(PathBuf);
         impl Drop for Cleanup {
@@ -620,7 +620,7 @@ mod tests {
 
     #[test]
     fn source_caps_build_only_required_cold_indexes_and_skip_generated_text_enumeration() {
-        let root = crate::tests::support::temporary_root("search-source-caps");
+        let root = crate::test_support::temporary_root("search-source-caps");
         fs::create_dir_all(root.join("src")).unwrap();
         let root = root.canonicalize().unwrap();
         struct Cleanup(PathBuf);
@@ -710,7 +710,7 @@ mod tests {
 
     #[test]
     fn missing_descendants_are_skipped_but_root_and_cancellation_errors_propagate() {
-        let root = crate::tests::support::temporary_root("search-missing-descendant");
+        let root = crate::test_support::temporary_root("search-missing-descendant");
         let rules = VisibilityRules {
             hidden_directories: vec![],
             delegated_roots: Vec::new(),
@@ -726,8 +726,8 @@ mod tests {
             ErrorCode::WorkspaceNotFound
         ));
         let operation_id = root.to_string_lossy().into_owned();
-        let _scope = crate::protocol::cancellation::Scope::begin(Some(operation_id.clone()), None);
-        assert!(crate::protocol::cancellation::cancel(&operation_id));
+        let _scope = lithe_protocol::cancellation::Scope::begin(Some(operation_id.clone()), None);
+        assert!(lithe_protocol::cancellation::cancel(&operation_id));
         assert!(matches!(
             collect_files(&root, &root.join("vanished"), &rules, &mut paths, None)
                 .unwrap_err()
@@ -740,7 +740,7 @@ mod tests {
     #[test]
     fn inaccessible_generated_subtree_preserves_source_and_text_results() {
         use std::os::unix::fs::PermissionsExt;
-        let root = crate::tests::support::temporary_root("search-unreadable-generated");
+        let root = crate::test_support::temporary_root("search-unreadable-generated");
         let blocked = root.join(".build/blocked");
         fs::create_dir_all(&blocked).unwrap();
         fs::create_dir_all(root.join("src")).unwrap();
@@ -802,7 +802,7 @@ mod tests {
 
     #[test]
     fn directory_exclusions_prune_enumeration_and_incremental_updates() {
-        let root = crate::tests::support::temporary_root("search-directory-pruning");
+        let root = crate::test_support::temporary_root("search-directory-pruning");
         fs::create_dir_all(&root).unwrap();
         let root = root.canonicalize().unwrap();
         struct Cleanup(PathBuf);
@@ -826,8 +826,7 @@ mod tests {
             fs::write(file, "Name before").unwrap();
         }
         let fixture: serde_json::Value =
-            serde_json::from_str(include_str!("../../../../fixtures/search/exclusions.json"))
-                .unwrap();
+            serde_json::from_str(include_str!("../../../fixtures/search/exclusions.json")).unwrap();
         // The patterns come from the shared fixture, so Rust and Swift always
         // judge the same list.
         let rules = VisibilityRules {
@@ -885,7 +884,7 @@ mod tests {
 
     #[test]
     fn changing_exclusions_releases_old_indexes_and_bounds_resident_variants() {
-        let root = crate::tests::support::temporary_root("search-cache-exclusions");
+        let root = crate::test_support::temporary_root("search-cache-exclusions");
         fs::create_dir_all(&root).unwrap();
         let root = root.canonicalize().unwrap();
         struct Cleanup(PathBuf);

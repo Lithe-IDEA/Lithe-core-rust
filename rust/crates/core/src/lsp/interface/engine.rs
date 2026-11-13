@@ -6036,6 +6036,7 @@ mod tests {
                     "includedDirectories": [], "gitIgnoreEnabled": false
                 }))
                 .unwrap(),
+                crate::lsp::indexing_changed,
             )
             .unwrap()
             .revision;
@@ -7337,7 +7338,7 @@ mod tests {
                 *self.process.lock().unwrap() = Some(process.handle.clone());
                 let status = crate::project::indexing::configure(serde_json::from_value(json!({
                     "root": self.root, "manualExcludedDirectories": ["reactor"], "includedDirectories": [], "gitIgnoreEnabled": false
-                })).unwrap())?;
+                })).unwrap(), crate::lsp::indexing_changed)?;
                 self.revision.store(status.revision, Ordering::Release);
                 Ok(process)
             }
@@ -7378,7 +7379,7 @@ mod tests {
             let installed = if initially_configured {
                 crate::project::indexing::configure(serde_json::from_value(json!({
             "root":root,"manualExcludedDirectories":[],"includedDirectories":[],"gitIgnoreEnabled":false
-        })).unwrap()).unwrap().revision
+        })).unwrap(), crate::lsp::indexing_changed).unwrap().revision
             } else {
                 0
             };
@@ -7499,7 +7500,7 @@ mod tests {
         let root_uri = url::Url::from_directory_path(&root).unwrap().to_string();
         let status = crate::project::indexing::configure(serde_json::from_value(json!({
             "root": root, "manualExcludedDirectories": ["reactor"], "includedDirectories": [], "gitIgnoreEnabled": false
-        })).unwrap()).unwrap();
+        })).unwrap(), crate::lsp::indexing_changed).unwrap();
         let old = crate::project::indexing::context(&root).unwrap();
         crate::project::indexing::release(crate::project::indexing::ReleaseIndexingRequest {
             root: root.to_string_lossy().into_owned(),
@@ -7545,7 +7546,7 @@ mod tests {
         assert_eq!(git.exit_code, 0, "{}", git.stderr);
         let status = crate::project::indexing::configure(serde_json::from_value(json!({
             "root": root, "manualExcludedDirectories": [], "includedDirectories": [], "gitIgnoreEnabled": true
-        })).unwrap()).unwrap();
+        })).unwrap(), crate::lsp::indexing_changed).unwrap();
         let harness = Harness::start(|request| {
             workspace.configure(request);
             request.root_uri = url::Url::from_directory_path(&root).unwrap().to_string();
@@ -7603,6 +7604,7 @@ mod tests {
                 "includedDirectories":[],"gitIgnoreEnabled":false
             }))
             .unwrap(),
+            crate::lsp::indexing_changed,
         )
         .unwrap();
         apply_indexing_to_sessions(&root, vec![harness.session()]).unwrap();

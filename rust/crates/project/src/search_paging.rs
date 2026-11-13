@@ -3,7 +3,8 @@
 use super::files::{
     compare_search_matches, search_everywhere, search_everywhere_with_page, SearchRequest,
 };
-use crate::protocol::{CoreError, ErrorCode, SearchMatch, SearchResponse};
+use crate::contracts::{SearchMatch, SearchResponse};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
@@ -11,7 +12,7 @@ use std::cmp::Ordering;
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 /// Optional paging fields leave the existing synchronous request contract unchanged.
-pub(crate) struct SearchPageRequest {
+pub struct SearchPageRequest {
     #[serde(flatten)]
     search: SearchRequest,
     page_size: Option<usize>,
@@ -117,7 +118,7 @@ impl SearchPage {
 }
 
 /// Executes legacy requests unchanged, or bounded pages with a query-bound continuation.
-pub(crate) fn search_page(request: SearchPageRequest) -> Result<serde_json::Value, CoreError> {
+pub fn search_page(request: SearchPageRequest) -> Result<serde_json::Value, CoreError> {
     let Some(size) = request.page_size else {
         return search_everywhere(request.search)
             .map(|response| serde_json::to_value(response).unwrap());

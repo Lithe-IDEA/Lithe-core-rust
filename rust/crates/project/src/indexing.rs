@@ -1,7 +1,7 @@
 //! Workspace-owned indexing exclusions, independent of tree visibility and Git writes.
 
 use super::files::{existing_root, relative_path};
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -12,8 +12,11 @@ use std::sync::{Arc, Mutex, OnceLock};
 #[serde(rename_all = "camelCase")]
 /// User-owned policy. Missing policies preserve legacy Core callers' behavior.
 pub struct IndexingPolicy {
+    /// Workspace-relative directories the user excluded.
     pub manual_excluded_directories: Vec<String>,
+    /// Workspace-relative directories kept indexed even when Git ignores them.
     pub included_directories: Vec<String>,
+    /// Whether directories Git ignores are excluded too.
     pub git_ignore_enabled: bool,
 }
 
@@ -21,14 +24,18 @@ pub struct IndexingPolicy {
 #[serde(rename_all = "camelCase")]
 /// Installs a policy before workspace consumers start; refresh discards Git decisions.
 pub struct ConfigureIndexingRequest {
+    /// Absolute workspace root that bounds every path in the request.
     pub root: String,
     /// Runtime identity. Omitted by legacy callers, which share one guarded lease.
     #[serde(default)]
     pub owner_id: Option<String>,
+    /// Policy to install for `root`.
     #[serde(flatten)]
     pub policy: IndexingPolicy,
+    /// Discard cached Git decisions even when the policy is unchanged.
     #[serde(default)]
     pub refresh: bool,
+    /// Workspace-relative directories whose exclusion reason the response reports.
     #[serde(default)]
     pub paths: Vec<String>,
 }
@@ -37,14 +44,18 @@ pub struct ConfigureIndexingRequest {
 #[serde(rename_all = "camelCase")]
 /// Effective directory reasons and Git availability, never a claim about third-party scans.
 pub struct IndexingStatus {
+    /// Lease token the caller passes back to release or refresh.
     pub revision: u64,
+    /// Excluded workspace-relative directories mapped to `manual` or `git`.
     pub excluded_directories: BTreeMap<String, String>,
+    /// Whether Git could not answer, so Git-ignored directories stayed indexed.
     pub git_ignore_failed: bool,
 }
 
 /// Immutable policy generation with lazily cached Git directory decisions.
-pub(crate) struct IndexingContext {
-    pub(crate) revision: u64,
+pub struct IndexingContext {
+    /// Policy generation; each installation advances it.
+    pub revision: u64,
     /// Watcher scan refreshes retain the installation being committed or rolled back.
     installation_revision: u64,
     /// Legacy release token; watcher refreshes preserve host ownership.
@@ -100,13 +111,12 @@ fn validate_paths(paths: &mut Vec<String>) -> Result<(), CoreError> {
 }
 
 /// Registers a project policy atomically. In-flight readers cannot publish a retired generation.
-pub fn configure(request: ConfigureIndexingRequest) -> Result<IndexingStatus, CoreError> {
-    configure_with_provider_update(request, crate::lsp::indexing_changed)
-}
-
-fn configure_with_provider_update(
+///
+/// `update_providers` reconciles the running providers (language servers) of a
+/// root with the new policy; the caller that owns them passes it in.
+pub fn configure(
     mut request: ConfigureIndexingRequest,
-    mut update_provider: impl FnMut(&Path) -> Result<(), CoreError>,
+    mut update_providers: impl FnMut(&Path) -> Result<(), CoreError>,
 ) -> Result<IndexingStatus, CoreError> {
     if request
         .owner_id
@@ -232,7 +242,7 @@ fn configure_with_provider_update(
                 }
             }
         }
-        update_provider(&root)?;
+        update_providers(&root)?;
         {
             // Publication and policy replacement share the registry lock. A
             // scan cannot pass its generation check and then publish an old set.
@@ -291,7 +301,7 @@ fn configure_with_provider_update(
             super::search_index::invalidate_root(&root);
             // Restore providers that received only part of the failed update.
             // Preserve the original error if shutdown/cancellation also blocks recovery.
-            if let Err(error) = update_provider(&root) {
+            if let Err(error) = update_providers(&root) {
                 lithe_diagnostics::core_events::recovery_failed(
                     "app.indexing.rollback_failed",
                     "provider",
@@ -357,7 +367,9 @@ fn rollback_failed_policy(root: &Path, failed: &Arc<IndexingContext>) -> Result<
 #[serde(rename_all = "camelCase")]
 /// Revision-guarded release; a late old window must not retire a newly opened project.
 pub struct ReleaseIndexingRequest {
+    /// Absolute workspace root that bounds every path in the request.
     pub root: String,
+    /// Lease token from the configure response.
     pub revision: u64,
     /// Releases only this runtime's lease, never another runtime using the same root.
     #[serde(default)]
@@ -368,7 +380,9 @@ pub struct ReleaseIndexingRequest {
 #[serde(rename_all = "camelCase")]
 /// Refreshes external Git facts without replacing the caller's published lease.
 pub struct RefreshIndexingRequest {
+    /// Absolute workspace root that bounds every path in the request.
     pub root: String,
+    /// Runtime that owns the lease.
     pub owner_id: String,
     /// Existing release token, not the internal scan generation.
     pub revision: u64,
@@ -376,7 +390,11 @@ pub struct RefreshIndexingRequest {
 
 /// Invalidates cached decisions for a live owner and reconciles existing providers.
 /// No content index is built, and a late request cannot acquire or revive a lease.
-pub fn refresh_indexing(request: RefreshIndexingRequest) -> Result<IndexingStatus, CoreError> {
+/// `update_providers` reconciles the root's running providers, as for [`configure`].
+pub fn refresh_indexing(
+    request: RefreshIndexingRequest,
+    mut update_providers: impl FnMut(&Path) -> Result<(), CoreError>,
+) -> Result<IndexingStatus, CoreError> {
     let root = existing_root(&request.root)?;
     let owner = Some(request.owner_id);
     let check_lease = |context: &IndexingContext| -> Result<(), CoreError> {
@@ -410,7 +428,7 @@ pub fn refresh_indexing(request: RefreshIndexingRequest) -> Result<IndexingStatu
         next
     };
     super::search_index::invalidate_root(&root);
-    crate::lsp::indexing_changed(&root)?;
+    update_providers(&root)?;
     // Release and replacement use this same lock: never acknowledge a retired owner.
     let _entries = policies()
         .lock()
@@ -446,6 +464,7 @@ pub fn refresh_indexing(request: RefreshIndexingRequest) -> Result<IndexingStatu
     })
 }
 
+/// Releases a lease; returns whether a live lease was released.
 pub fn release(request: ReleaseIndexingRequest) -> Result<bool, CoreError> {
     release_lease(request, false)
 }
@@ -504,13 +523,14 @@ fn release_lease(
     Ok(true)
 }
 
-pub(crate) fn context(root: &Path) -> Option<Arc<IndexingContext>> {
+/// Installed policy for `root`, if any.
+pub fn context(root: &Path) -> Option<Arc<IndexingContext>> {
     policies().lock().ok()?.get(root).cloned()
 }
 
 /// Provider requests without a live owner retain their standalone behavior.
 /// Retired records still cancel late inventory readers through `context`.
-pub(crate) fn active_provider_context(root: &Path) -> Option<Arc<IndexingContext>> {
+pub fn active_provider_context(root: &Path) -> Option<Arc<IndexingContext>> {
     context(root).filter(|context| !context.retired.load(Ordering::Acquire))
 }
 
@@ -552,9 +572,7 @@ fn refreshed_context(old: &IndexingContext) -> Arc<IndexingContext> {
 
 /// Resolve native Git decisions before a live provider receives a new generation.
 /// This reuses the inventory walker (no file text reads) and prunes excluded trees.
-pub(crate) fn prepare_provider_exclusions(
-    root: &Path,
-) -> Result<Option<Arc<IndexingContext>>, CoreError> {
+pub fn prepare_provider_exclusions(root: &Path) -> Result<Option<Arc<IndexingContext>>, CoreError> {
     let Some(context) = active_provider_context(root) else {
         return Ok(None);
     };
@@ -585,8 +603,9 @@ fn contains(directory: &str, path: &str) -> bool {
 }
 
 impl IndexingContext {
-    pub(crate) fn check(&self) -> Result<(), CoreError> {
-        crate::protocol::cancellation::check()?;
+    /// Fails with `cancelled` when the request was cancelled or this policy was replaced.
+    pub fn check(&self) -> Result<(), CoreError> {
+        lithe_protocol::cancellation::check()?;
         if self.retired.load(Ordering::Acquire) {
             return Err(CoreError::new(
                 ErrorCode::Cancelled,
@@ -736,7 +755,7 @@ pub(crate) fn is_excluded(root: &Path, path: &Path, is_directory: bool) -> Resul
 }
 
 /// Resolved roots for provider adapters. Git decisions are populated by the project scan.
-pub(crate) fn excluded_roots(root: &Path) -> Vec<String> {
+pub fn excluded_roots(root: &Path) -> Vec<String> {
     let Some(context) = active_provider_context(root) else {
         return Vec::new();
     };
@@ -762,7 +781,7 @@ pub(crate) fn excluded_roots(root: &Path) -> Vec<String> {
 }
 
 /// File URIs are normalized through the same workspace root as index consumers.
-pub(crate) fn uri_is_excluded(root_uri: &str, uri: &str) -> Result<bool, CoreError> {
+pub fn uri_is_excluded(root_uri: &str, uri: &str) -> Result<bool, CoreError> {
     let root = url::Url::parse(root_uri)
         .ok()
         .and_then(|value| value.to_file_path().ok());
@@ -806,6 +825,7 @@ mod tests {
                     "includedDirectories":[],"gitIgnoreEnabled":true
                 }))
                 .unwrap(),
+                |_| Ok(()),
             )
             .unwrap()
             .revision
@@ -817,11 +837,14 @@ mod tests {
             .contains(&"ignored/deep/Excluded.txt".into()));
         let stale = context(&workspace.0).unwrap();
         fs::write(workspace.0.join(".gitignore"), "ignored/\n").unwrap();
-        let refreshed = refresh_indexing(RefreshIndexingRequest {
-            root: workspace.0.to_string_lossy().into_owned(),
-            owner_id: "first".into(),
-            revision: first,
-        })
+        let refreshed = refresh_indexing(
+            RefreshIndexingRequest {
+                root: workspace.0.to_string_lossy().into_owned(),
+                owner_id: "first".into(),
+                revision: first,
+            },
+            |_| Ok(()),
+        )
         .unwrap();
         assert_eq!(refreshed.revision, first);
         assert!(stale.check().is_err());
@@ -829,11 +852,14 @@ mod tests {
             .files()
             .contains(&"ignored/deep/Excluded.txt".into()));
         fs::write(workspace.0.join(".gitignore"), "").unwrap();
-        refresh_indexing(RefreshIndexingRequest {
-            root: workspace.0.to_string_lossy().into_owned(),
-            owner_id: "second".into(),
-            revision: second,
-        })
+        refresh_indexing(
+            RefreshIndexingRequest {
+                root: workspace.0.to_string_lossy().into_owned(),
+                owner_id: "second".into(),
+                revision: second,
+            },
+            |_| Ok(()),
+        )
         .unwrap();
         assert!(workspace
             .files()
@@ -848,11 +874,14 @@ mod tests {
         }
         let revision = install("reopened");
         let current = context(&workspace.0).unwrap();
-        let error = refresh_indexing(RefreshIndexingRequest {
-            root: workspace.0.to_string_lossy().into_owned(),
-            owner_id: "first".into(),
-            revision: first,
-        })
+        let error = refresh_indexing(
+            RefreshIndexingRequest {
+                root: workspace.0.to_string_lossy().into_owned(),
+                owner_id: "first".into(),
+                revision: first,
+            },
+            |_| Ok(()),
+        )
         .err()
         .expect("closed owner must fail");
         assert!(matches!(error.code, ErrorCode::Cancelled));
@@ -868,7 +897,7 @@ mod tests {
     #[test]
     fn directory_action_fixture_preserves_real_git_search_eligibility() {
         let fixture: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../fixtures/workspace/directory-actions-v1.json"
+            "../../../fixtures/workspace/directory-actions-v1.json"
         ))
         .unwrap();
         let workspace = Workspace::new();
@@ -963,7 +992,7 @@ mod tests {
     struct Workspace(PathBuf);
     impl Workspace {
         fn new() -> Self {
-            let root = crate::tests::support::temporary_root("indexing-policy");
+            let root = crate::test_support::temporary_root("indexing-policy");
             fs::create_dir_all(root.join("ignored/deep")).unwrap();
             fs::create_dir_all(root.join("src")).unwrap();
             fs::write(root.join("ignored/deep/Excluded.txt"), "Excluded needle").unwrap();
@@ -976,6 +1005,7 @@ mod tests {
                 "manualExcludedDirectories": manual, "includedDirectories": included,
                 "gitIgnoreEnabled": git, "refresh": true}))
                 .unwrap(),
+                |_| Ok(()),
             )
             .unwrap()
         }
@@ -1073,6 +1103,7 @@ mod tests {
                     "root":parent.0,"workspaceRoots":roots,"paths":["ignored/Visible.txt"]
                 }))
                 .unwrap(),
+                |_| Ok(()),
             )
             .unwrap();
             assert_eq!(
@@ -1155,7 +1186,7 @@ mod tests {
         parent.configure(&[], &[], false);
         nested.configure(&["deep"], &[], false);
         let fixture: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../fixtures/workspace/indexing-policy-v1.json"
+            "../../../fixtures/workspace/indexing-policy-v1.json"
         ))
         .unwrap();
         for case in fixture["ownershipCases"].as_array().unwrap() {
@@ -1284,6 +1315,7 @@ mod tests {
                 "root": workspace.0, "paths": [".gitignore"]
             }))
             .unwrap(),
+            |_| Ok(()),
         )
         .unwrap();
         let after = context(&workspace.0).unwrap();
@@ -1346,7 +1378,7 @@ mod tests {
             configure(serde_json::from_value(json!({
             "root": workspace.0, "ownerId": owner, "manualExcludedDirectories": if excluded { vec!["ignored"] } else { vec![] },
             "includedDirectories": [], "gitIgnoreEnabled": false, "refresh": refresh
-        })).unwrap()).unwrap().revision
+        })).unwrap(), |_| Ok(())).unwrap().revision
         };
         let close = |owner: &str, revision| {
             release(ReleaseIndexingRequest {
@@ -1414,11 +1446,11 @@ mod tests {
             "includedDirectories":[],"gitIgnoreEnabled":false
         })).unwrap()
         };
-        let original = configure(request("owner-a", false)).unwrap();
-        let other = configure(request("owner-b", false)).unwrap();
+        let original = configure(request("owner-a", false), |_| Ok(())).unwrap();
+        let other = configure(request("owner-b", false), |_| Ok(())).unwrap();
         let old_context = context(&workspace.0).unwrap();
         let mut calls = 0;
-        let result = configure_with_provider_update(request("owner-a", true), |_| {
+        let result = configure(request("owner-a", true), |_| {
             calls += 1;
             if calls == 1 {
                 if watcher_refresh {
@@ -1463,10 +1495,10 @@ mod tests {
             "includedDirectories":[],"gitIgnoreEnabled":false
         })).unwrap()
         };
-        configure(request(false)).unwrap();
+        configure(request(false), |_| Ok(())).unwrap();
         let mut received = 0;
-        let result = configure_with_provider_update(request(true), |_| {
-            received = configure(request(true))?.revision;
+        let result = configure(request(true), |_| {
+            received = configure(request(true), |_| Ok(()))?.revision;
             Err(CoreError::new(
                 ErrorCode::Cancelled,
                 "caller cancelled after concurrent publication",
@@ -1491,10 +1523,10 @@ mod tests {
             "includedDirectories":[],"gitIgnoreEnabled":false,"refresh":refresh
         })).unwrap()
         };
-        let original = configure(request("owner-a", false, false)).unwrap();
+        let original = configure(request("owner-a", false, false), |_| Ok(())).unwrap();
         let mut other = 0;
-        let cancelled = configure_with_provider_update(request("owner-a", false, true), |_| {
-            other = configure(request("owner-b", true, false))?.revision;
+        let cancelled = configure(request("owner-a", false, true), |_| {
+            other = configure(request("owner-b", true, false), |_| Ok(()))?.revision;
             Ok(())
         });
         assert!(matches!(
@@ -1535,9 +1567,9 @@ mod tests {
         };
         let mut received = 0;
         let mut other = 0;
-        let cancelled = configure_with_provider_update(request("owner-a", false), |_| {
-            received = configure(request("owner-a", false))?.revision;
-            other = configure(request("owner-b", true))?.revision;
+        let cancelled = configure(request("owner-a", false), |_| {
+            received = configure(request("owner-a", false), |_| Ok(()))?.revision;
+            other = configure(request("owner-b", true), |_| Ok(()))?.revision;
             Ok(())
         });
         assert!(cancelled.is_err());
@@ -1564,8 +1596,8 @@ mod tests {
             "root":workspace.0,"ownerId":"owner-a","manualExcludedDirectories":[],"includedDirectories":[],"gitIgnoreEnabled":false,"refresh":refresh
         })).unwrap()
         };
-        let original = configure(request(false)).unwrap();
-        let cancelled = configure_with_provider_update(request(true), |_| {
+        let original = configure(request(false), |_| Ok(())).unwrap();
+        let cancelled = configure(request(true), |_| {
             assert!(release(ReleaseIndexingRequest {
                 root: workspace.0.to_string_lossy().into_owned(),
                 owner_id: Some("owner-a".into()),
@@ -1628,7 +1660,7 @@ mod tests {
         workspace.configure(&["ignored"], &[], true);
         assert_eq!(workspace.files(), ["src/Included.txt"]);
         let status = configure(serde_json::from_value(json!({"root":workspace.0,
-            "manualExcludedDirectories":["ignored"],"includedDirectories":[],"gitIgnoreEnabled":true})).unwrap()).unwrap();
+            "manualExcludedDirectories":["ignored"],"includedDirectories":[],"gitIgnoreEnabled":true})).unwrap(), |_| Ok(())).unwrap();
         assert!(status.git_ignore_failed);
         assert_eq!(status.excluded_directories["ignored"], "manual");
     }

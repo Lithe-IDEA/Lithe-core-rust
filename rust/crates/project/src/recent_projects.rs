@@ -5,7 +5,7 @@
 //! survive, in what order, and how pins interact with the retention capacity,
 //! so every platform keeps the same set after the same sequence of actions.
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
@@ -27,6 +27,7 @@ const MAX_PATH_BYTES: usize = 4096;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RecentProjectEntry {
+    /// Host-normalized root path, compared byte for byte.
     pub path: String,
     /// Missing timestamps from older stores sort as the oldest entries.
     #[serde(default)]
@@ -42,19 +43,29 @@ pub struct RecentProjectEntry {
 pub enum RecentProjectsAction {
     /// The project was opened at `openedAt`; it moves first and keeps its pin.
     Record {
+        /// Root path of the opened project.
         path: String,
+        /// Open time in milliseconds since the Unix epoch.
         #[serde(rename = "openedAt")]
         opened_at: i64,
     },
     /// Projects removed by the user or found unavailable by the host.
-    Remove { paths: Vec<String> },
+    Remove {
+        /// Root paths to drop.
+        paths: Vec<String>,
+    },
     /// Flips the pin of an existing project; unknown paths are ignored.
-    TogglePinned { path: String },
+    TogglePinned {
+        /// Root path whose pin flips.
+        path: String,
+    },
     /// Adds projects discovered elsewhere (for example another IDE) that are
     /// not already listed. The first import is stamped `openedAt` and each
     /// later one a millisecond older, preserving the source order.
     Import {
+        /// Discovered root paths in source order.
         paths: Vec<String>,
+        /// Time stamped on the first import, in milliseconds since the Unix epoch.
         #[serde(rename = "openedAt")]
         opened_at: i64,
     },
@@ -66,7 +77,9 @@ pub enum RecentProjectsAction {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RecentProjectsRequest {
+    /// Stored list before the action.
     pub entries: Vec<RecentProjectEntry>,
+    /// Action to apply.
     pub action: RecentProjectsAction,
     /// Unpinned capacity; defaults to [`DEFAULT_RECENT_PROJECT_CAPACITY`].
     #[serde(default)]
@@ -78,13 +91,16 @@ pub struct RecentProjectsRequest {
 #[derive(Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecentProjectsResponse {
+    /// Retained list: pinned first, then most recently opened.
     pub entries: Vec<RecentProjectEntry>,
+    /// Paths this reduction added.
     pub added: Vec<String>,
+    /// Paths this reduction dropped.
     pub removed: Vec<String>,
 }
 
 /// JSON entry point for `workspace.recentProjects.reduce`.
-pub(crate) fn reduce_command(payload: Value) -> Result<Value, CoreError> {
+pub fn reduce_command(payload: Value) -> Result<Value, CoreError> {
     let request: RecentProjectsRequest = serde_json::from_value(payload).map_err(|error| {
         CoreError::new(ErrorCode::InvalidRequest, "Invalid recent projects request")
             .with_details(error.to_string())

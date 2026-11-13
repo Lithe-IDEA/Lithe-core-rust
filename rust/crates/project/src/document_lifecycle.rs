@@ -1,6 +1,6 @@
 //! Deterministic document persistence states shared by every platform editor.
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -88,22 +88,35 @@ impl DocumentLifecycleState {
 pub enum DocumentLifecycleEvent {
     /// The platform editor applied local text and advanced its revision.
     Edited {
+        /// Editor revision after the edit.
         revision: u64,
         /// Whether the new editor text equals the last persisted snapshot.
         matches_saved_content: bool,
     },
     /// A caller is ready to persist the current immutable snapshot.
-    SaveStarted { operation_id: String },
+    SaveStarted {
+        /// Identity of the save that now owns persistence.
+        operation_id: String,
+    },
     /// The write owned by the matching operation completed successfully.
-    SaveSucceeded { operation_id: String },
+    SaveSucceeded {
+        /// Identity of the save that completed.
+        operation_id: String,
+    },
     /// The write owned by the matching operation failed.
-    SaveFailed { operation_id: String },
+    SaveFailed {
+        /// Identity of the save that failed.
+        operation_id: String,
+    },
     /// A watcher observed a disk change not attributed to the current save.
     ExternalChanged,
     /// The platform observed a missing file or rejected a guarded write.
     DiskConflict,
     /// A requested disk reload completed and installed this revision.
-    ReloadSucceeded { revision: u64 },
+    ReloadSucceeded {
+        /// Editor revision holding the reloaded text.
+        revision: u64,
+    },
     /// The user chose the live editor text after a conflict.
     KeepEditor,
     /// The user requested that disk replace the live editor text.
@@ -132,7 +145,9 @@ pub enum DocumentLifecycleAction {
 #[serde(rename_all = "camelCase")]
 /// Request for one deterministic document lifecycle transition.
 pub struct DocumentLifecycleRequest {
+    /// Current persistence state of the document.
     pub state: DocumentLifecycleState,
+    /// Event to apply to `state`.
     pub event: DocumentLifecycleEvent,
 }
 
@@ -140,7 +155,9 @@ pub struct DocumentLifecycleRequest {
 #[serde(rename_all = "camelCase")]
 /// Next state and platform effect for one lifecycle event.
 pub struct DocumentLifecycleDecision {
+    /// State after the event.
     pub state: DocumentLifecycleState,
+    /// Work the platform must do next.
     pub action: DocumentLifecycleAction,
 }
 

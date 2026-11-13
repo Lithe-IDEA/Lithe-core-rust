@@ -898,10 +898,7 @@ dependencies = [
 name = "lithe-core"
 version = "0.1.0"
 dependencies = [
- "ammonia",
  "base64",
- "comrak",
- "encoding_rs",
  "lithe-ai",
  "lithe-build",
  "lithe-core-rules",
@@ -917,6 +914,7 @@ dependencies = [
  "lithe-network",
  "lithe-plugin-model",
  "lithe-process",
+ "lithe-project",
  "lithe-project-generators",
  "lithe-protocol",
  "lithe-remote",
@@ -1086,6 +1084,27 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "lithe-project"
+version = "0.1.0"
+dependencies = [
+ "ammonia",
+ "base64",
+ "comrak",
+ "encoding_rs",
+ "lithe-core-rules",
+ "lithe-diagnostics",
+ "lithe-git",
+ "lithe-protocol",
+ "lithe-request-context",
+ "lithe-workspace",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "url",
 ]
 
 [[package]]

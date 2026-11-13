@@ -4,15 +4,14 @@
 //! here, so every `crate::protocol::...` path names the same type a domain crate returns.
 
 mod command;
-mod contracts;
 mod event;
 
 pub use command::*;
-pub use contracts::*;
 pub use event::*;
 pub use lithe_git::contracts::*;
+pub use lithe_project::contracts::*;
 pub(crate) use lithe_protocol::cancellation;
-pub use lithe_protocol::{invalid_relative_path, CoreError, CoreResponse, ErrorCode, ResponseData};
+pub use lithe_protocol::{CoreError, CoreResponse, ErrorCode, ResponseData};
 
 /// Maps an `ai.*` failure onto the Core error of the same category name.
 pub(crate) fn ai_error(error: lithe_ai::AiError) -> CoreError {

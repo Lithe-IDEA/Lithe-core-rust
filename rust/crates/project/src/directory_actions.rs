@@ -17,7 +17,7 @@
 //! The sequence contract is `rust/fixtures/workspace/directory-actions-v1.json`; the
 //! request and response shapes are pinned by `directory-rules-v1.json`.
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -90,7 +90,7 @@ struct RelocateRequest {
 /// exclusion that a manually excluded ancestor still enforces; the state is then the
 /// input. Excluding remembers the replaced role and canceling restores it; changing a role
 /// keeps include exceptions; excluding deletes only the directory's own exception.
-pub(crate) fn reduce_command(payload: Value) -> Result<Value, CoreError> {
+pub fn reduce_command(payload: Value) -> Result<Value, CoreError> {
     let request: ReduceRequest = parse(payload)?;
     validate_path(&request.path)?;
     validate_rules(&request.rules)?;
@@ -154,7 +154,7 @@ pub(crate) fn reduce_command(payload: Value) -> Result<Value, CoreError> {
 /// With a `destination` the key is rewritten under it, in `target` for a move across
 /// workspace roots and in `rules` otherwise; without one the keys are dropped. `target` is
 /// absent from the response unless the request had one.
-pub(crate) fn relocate_command(payload: Value) -> Result<Value, CoreError> {
+pub fn relocate_command(payload: Value) -> Result<Value, CoreError> {
     let request: RelocateRequest = parse(payload)?;
     validate_path(&request.source)?;
     if let Some(destination) = &request.destination {

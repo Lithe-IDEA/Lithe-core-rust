@@ -11,7 +11,7 @@ use encoding_rs::{
 };
 use sha2::{Digest, Sha256};
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 
 /// UTF-8 byte order mark.
 const UTF8_BOM: [u8; 3] = [0xEF, 0xBB, 0xBF];

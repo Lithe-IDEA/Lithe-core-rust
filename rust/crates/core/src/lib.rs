@@ -6,7 +6,7 @@ use lithe_debug as debug;
 pub use lithe_execution as execution;
 mod lsp;
 pub mod plugins;
-mod project;
+use lithe_project as project;
 use lithe_project_generators as project_generators;
 mod protocol;
 mod runtime;

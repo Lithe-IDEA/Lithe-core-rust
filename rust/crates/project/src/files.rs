@@ -3,13 +3,13 @@
 use super::encoding::{self, DocumentEncoding};
 use super::search_index::{self, UpdateOutcome, WorkspaceSearchIndex};
 use super::search_paging::SearchPage;
-use crate::protocol::{invalid_relative_path, CoreError, ErrorCode};
-use crate::protocol::{
+use crate::contracts::{
     DirectoryListing, DirectoryListingResponse, FileReadResponse, FileWriteResponse,
     ReplacementPreviewResponse, SearchMatch, SearchResponse, WorkspaceNode,
     WorkspaceSnapshotResponse,
 };
 use lithe_core_rules::file_names::FileNameKey;
+use lithe_protocol::{invalid_relative_path, CoreError, ErrorCode};
 use lithe_workspace::fs;
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
@@ -45,10 +45,14 @@ fn is_workspace_event_relevant_with(relative: &str, hidden_file_patterns: &[Stri
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum WorkspaceChangeFilterRequest {
+    /// Changed workspace-relative paths, filtered with the built-in rules only.
     Paths(Vec<String>),
+    /// Changed paths plus the hidden-path entries that adjust the built-in folders.
     #[serde(rename_all = "camelCase")]
     WithRules {
+        /// Changed workspace-relative paths.
         paths: Vec<String>,
+        /// Hidden-path entries; only their `!` lines matter here.
         #[serde(default)]
         hidden_file_patterns: Vec<String>,
     },
@@ -76,12 +80,15 @@ const MAX_OPEN_FILE_SIZE: u64 = 32 * 1024 * 1024;
 #[serde(rename_all = "camelCase")]
 /// Workspace root and visibility overrides used to build a file-tree snapshot.
 pub struct WorkspaceSnapshotRequest {
+    /// Absolute workspace root that bounds every path in the request.
     pub root: String,
     /// Explicit roots of this workspace; nested roots own their inventories independently.
     #[serde(default)]
     pub workspace_roots: Vec<String>,
+    /// Extra directory names hidden from the tree, on top of the built-in ones.
     #[serde(default)]
     pub hidden_directory_names: Vec<String>,
+    /// Hidden-path globs; `!` lines turn built-in hidden folders back on.
     #[serde(default)]
     pub hidden_file_patterns: Vec<String>,
     /// When false, the response keeps only the file list and returns `root`
@@ -99,12 +106,15 @@ fn default_include_tree() -> bool {
 #[serde(rename_all = "camelCase")]
 /// Workspace-relative directories whose visible children a host is loading.
 pub struct DirectoryListingRequest {
+    /// Absolute workspace root that bounds every path in the request.
     pub root: String,
     /// Workspace-relative directories; an empty string is the root itself.
     #[serde(default)]
     pub paths: Vec<String>,
+    /// Extra directory names hidden from the tree, on top of the built-in ones.
     #[serde(default)]
     pub hidden_directory_names: Vec<String>,
+    /// Hidden-path globs; `!` lines turn built-in hidden folders back on.
     #[serde(default)]
     pub hidden_file_patterns: Vec<String>,
 }
@@ -116,30 +126,41 @@ pub struct SearchRequest {
     /// Workspace-relative scopes, applied before result caps without changing policy ownership.
     #[serde(default)]
     pub scope_paths: Vec<String>,
+    /// Absolute workspace root that bounds every path in the request.
     pub root: String,
     /// Request-local ownership boundaries; omitted roots preserve single-root behavior.
     #[serde(default)]
     pub workspace_roots: Vec<String>,
+    /// Text to search for: a literal, or a pattern when `regular_expression` is set.
     pub query: String,
+    /// Match letter case exactly.
     #[serde(default)]
     pub case_sensitive: bool,
+    /// Match only at word boundaries.
     #[serde(default)]
     pub whole_words: bool,
+    /// Treat `query` as a regular expression.
     #[serde(default)]
     pub regular_expression: bool,
+    /// Overall result cap, clamped to 1..=10000.
     #[serde(default = "default_max_results")]
     pub max_results: usize,
+    /// Cap on file-name matches; absent uses the overall cap.
     #[serde(default)]
     pub max_file_results: Option<usize>,
+    /// Cap on content matches; absent uses the overall cap.
     #[serde(default)]
     pub max_content_results: Option<usize>,
+    /// Cap on symbol matches; absent uses the overall cap.
     #[serde(default)]
     pub max_symbol_results: Option<usize>,
     /// Search Everywhere may discover generated file names without indexing their contents.
     #[serde(default)]
     pub include_generated_file_names: bool,
+    /// Extra directory names hidden from the tree, on top of the built-in ones.
     #[serde(default)]
     pub hidden_directory_names: Vec<String>,
+    /// Hidden-path globs; `!` lines turn built-in hidden folders back on.
     #[serde(default)]
     pub hidden_file_patterns: Vec<String>,
     /// Comma-separated file masks such as `*.md, *.txt`; empty means no filter.
@@ -167,12 +188,15 @@ pub struct SearchRequest {
 #[serde(rename_all = "camelCase")]
 /// Workspace root and visibility rules used to warm or invalidate an index.
 pub struct SearchIndexRequest {
+    /// Absolute workspace root that bounds every path in the request.
     pub root: String,
     /// Explicit workspace roots used when warming this index variant.
     #[serde(default)]
     pub workspace_roots: Vec<String>,
+    /// Extra directory names hidden from the tree, on top of the built-in ones.
     #[serde(default)]
     pub hidden_directory_names: Vec<String>,
+    /// Hidden-path globs; `!` lines turn built-in hidden folders back on.
     #[serde(default)]
     pub hidden_file_patterns: Vec<String>,
 }
@@ -181,14 +205,18 @@ pub struct SearchIndexRequest {
 #[serde(rename_all = "camelCase")]
 /// Changed workspace-relative paths to apply to a cached search index.
 pub struct SearchIndexUpdateRequest {
+    /// Absolute workspace root that bounds every path in the request.
     pub root: String,
     /// Explicit workspace roots used when rebuilding after an update.
     #[serde(default)]
     pub workspace_roots: Vec<String>,
+    /// Workspace-relative paths that changed on disk.
     #[serde(default)]
     pub paths: Vec<String>,
+    /// Extra directory names hidden from the tree, on top of the built-in ones.
     #[serde(default)]
     pub hidden_directory_names: Vec<String>,
+    /// Hidden-path globs; `!` lines turn built-in hidden folders back on.
     #[serde(default)]
     pub hidden_file_patterns: Vec<String>,
 }
@@ -197,11 +225,14 @@ pub struct SearchIndexUpdateRequest {
 #[serde(rename_all = "camelCase")]
 /// Search-index size and whether an incremental request required a rebuild.
 pub struct SearchIndexStatusResponse {
+    /// Files held in the index.
     pub file_count: usize,
     /// Always zero: Core no longer indexes language symbols. The field stays
     /// because the macOS bridge still decodes it as required.
     pub symbol_count: usize,
+    /// Trigram postings held in the index.
     pub posting_count: usize,
+    /// Whether the update had to discard the index for a full rebuild.
     pub rebuilt: bool,
 }
 
@@ -209,29 +240,40 @@ pub struct SearchIndexStatusResponse {
 #[serde(rename_all = "camelCase")]
 /// Search and replacement options used to produce a non-mutating preview.
 pub struct ReplacementPreviewRequest {
+    /// Absolute workspace root that bounds every path in the request.
     pub root: String,
     /// Nested roots are previewed through their own root and policy.
     #[serde(default)]
     pub workspace_roots: Vec<String>,
+    /// Text to replace: a literal, or a pattern when `regular_expression` is set.
     pub query: String,
+    /// Replacement text; regex replacements may reference capture groups.
     pub replacement: String,
+    /// Match letter case exactly.
     #[serde(default)]
     pub case_sensitive: bool,
+    /// Match only at word boundaries.
     #[serde(default)]
     pub whole_words: bool,
+    /// Treat `query` as a regular expression.
     #[serde(default)]
     pub regular_expression: bool,
     /// Preserve all-uppercase or initial-uppercase shape from literal matches.
     #[serde(default)]
     pub preserve_case: bool,
+    /// Comma-separated file masks such as `*.md, *.txt`; empty means no filter.
     #[serde(default)]
     pub file_mask: String,
+    /// Workspace-relative files to preview; empty previews every indexed candidate.
     #[serde(default)]
     pub paths: Vec<String>,
+    /// Unsaved editor text by workspace-relative path, used instead of the file on disk.
     #[serde(default)]
     pub text_overrides: HashMap<String, String>,
+    /// Extra directory names hidden from the tree, on top of the built-in ones.
     #[serde(default)]
     pub hidden_directory_names: Vec<String>,
+    /// Hidden-path globs; `!` lines turn built-in hidden folders back on.
     #[serde(default)]
     pub hidden_file_patterns: Vec<String>,
 }
@@ -283,7 +325,7 @@ pub fn replace_text(request: ReplacementTextRequest) -> Result<serde_json::Value
     let mut count = 0usize;
     let mut lines = Vec::new();
     for (index, line) in request.text.split('\n').enumerate() {
-        crate::protocol::cancellation::check()?;
+        lithe_protocol::cancellation::check()?;
         if let Some(position) = &request.from {
             if count == 0 && index + 1 >= position.line.max(1) {
                 let column = if index + 1 == position.line.max(1) {
@@ -373,7 +415,7 @@ pub fn search_text_batch(request: SearchTextBatchRequest) -> Result<serde_json::
     let context = request.context_lines.min(20);
     let mut files = Vec::new();
     for file in request.files {
-        crate::protocol::cancellation::check()?;
+        lithe_protocol::cancellation::check()?;
         if file.text.contains('\0') {
             continue;
         }
@@ -401,7 +443,9 @@ pub fn search_text_batch(request: SearchTextBatchRequest) -> Result<serde_json::
 #[serde(rename_all = "camelCase")]
 /// Request to read one validated workspace-relative text file.
 pub struct FileReadRequest {
+    /// Absolute workspace root that bounds every path in the request.
     pub root: String,
+    /// Workspace-relative path of the file to read.
     pub path: String,
     /// Stable encoding id or alias to decode with; absent means detect.
     #[serde(default)]
@@ -412,8 +456,11 @@ pub struct FileReadRequest {
 #[serde(rename_all = "camelCase")]
 /// Request to replace one validated workspace-relative text file.
 pub struct FileWriteRequest {
+    /// Absolute workspace root that bounds every path in the request.
     pub root: String,
+    /// Workspace-relative path of the file to replace.
     pub path: String,
+    /// Complete new file text.
     pub text: String,
     /// Stable encoding id or alias to encode with; absent means UTF-8.
     #[serde(default)]
@@ -487,7 +534,7 @@ pub fn list_directories(
     let rules = VisibilityRules::new(request.hidden_directory_names, request.hidden_file_patterns);
     let mut directories = Vec::new();
     for relative in request.paths {
-        crate::protocol::cancellation::check()?;
+        lithe_protocol::cancellation::check()?;
         let Some(directory) = listable_directory(&root, &relative, &rules) else {
             continue;
         };
@@ -622,7 +669,7 @@ fn search_with_index(
     let mut file_matches = 0;
 
     for id in index.all_file_ids() {
-        crate::protocol::cancellation::check()?;
+        lithe_protocol::cancellation::check()?;
         if matches.len() >= limit || file_matches >= file_limit {
             break;
         }
@@ -659,7 +706,7 @@ fn search_with_index(
         candidates.sort_by_key(|id| index.file(*id).map(|file| file.path.as_str()));
     }
     for id in candidates {
-        crate::protocol::cancellation::check()?;
+        lithe_protocol::cancellation::check()?;
         if matches.len() >= limit || content_matches >= content_limit {
             break;
         }
@@ -679,7 +726,7 @@ fn search_with_index(
             continue;
         };
         for (index, line) in text.split('\n').enumerate() {
-            crate::protocol::cancellation::check()?;
+            lithe_protocol::cancellation::check()?;
             if matcher.matches(line) {
                 let result = SearchMatch {
                     kind: "content".to_string(),
@@ -799,7 +846,7 @@ pub(crate) fn search_everywhere_with_page(
             .read()
             .map_err(|_| CoreError::new(ErrorCode::Unknown, "Search index lock was poisoned"))?;
         for id in names.all_file_ids() {
-            crate::protocol::cancellation::check()?;
+            lithe_protocol::cancellation::check()?;
             let Some(file) = names.file(id) else { continue };
             if !scope_allows(&request.scope_paths, &file.path)
                 || !file_mask_allows(&masks, &file.path)
@@ -1049,7 +1096,7 @@ pub fn replace_preview(
     let masks = parse_file_mask(&request.file_mask);
     let mut files = Vec::new();
     for path in paths {
-        crate::protocol::cancellation::check()?;
+        lithe_protocol::cancellation::check()?;
         let relative = safe_relative_path_string(&path)?;
         if !file_mask_allows(&masks, &relative) {
             continue;
@@ -1067,12 +1114,12 @@ pub fn replace_preview(
         let mut matches = Vec::new();
         let mut replaced_lines = Vec::new();
         for (index, line) in text.split('\n').enumerate() {
-            crate::protocol::cancellation::check()?;
+            lithe_protocol::cancellation::check()?;
             let (after, occurrence_count) =
                 matcher.replace_with_options(line, &request.replacement, request.preserve_case);
             replaced_lines.push(after.clone());
             if occurrence_count > 0 {
-                matches.push(crate::protocol::ReplacementMatch {
+                matches.push(crate::contracts::ReplacementMatch {
                     line: index + 1,
                     before: line.to_string(),
                     after,
@@ -1081,7 +1128,7 @@ pub fn replace_preview(
             }
         }
         if !matches.is_empty() {
-            files.push(crate::protocol::ReplacementFile {
+            files.push(crate::contracts::ReplacementFile {
                 path: relative,
                 matches,
                 replacement_text: replaced_lines.join("\n"),
@@ -1116,8 +1163,11 @@ pub fn warm_search_index(
 }
 
 /// Applies changed paths to a cached index, rebuilding when its rules changed.
+/// `update_providers` reconciles the root's running providers once Git
+/// decisions are rebuilt, as for [`crate::indexing::configure`].
 pub fn update_search_index(
     request: SearchIndexUpdateRequest,
+    mut update_providers: impl FnMut(&Path) -> Result<(), CoreError>,
 ) -> Result<SearchIndexStatusResponse, CoreError> {
     let root = existing_root(&request.root)?;
     let rules = VisibilityRules::new(request.hidden_directory_names, request.hidden_file_patterns)
@@ -1138,7 +1188,7 @@ pub fn update_search_index(
     let index = search_index::get_or_build(&root, &rules)?;
     // Refresh starts with no Git decisions. Publish only after traversal has
     // resolved them, otherwise providers briefly (or permanently) lose exclusions.
-    super::super::lsp::indexing_changed(&root)?;
+    update_providers(&root)?;
     let index = index
         .read()
         .map_err(|_| CoreError::new(ErrorCode::Unknown, "Search index lock was poisoned"))?;
@@ -1162,8 +1212,8 @@ pub fn invalidate_search_index(request: SearchIndexRequest) -> Result<(), CoreEr
 
 /// Reads one bounded, workspace-contained text file.
 ///
-/// Without `encoding` the codec is detected from the BOM and bytes (see
-/// [`super::encoding`]); with one, the bytes are decoded leniently through it.
+/// Without `encoding` the codec is detected from the byte order mark and
+/// the bytes; with one, the bytes are decoded leniently through it.
 pub fn read_file(request: FileReadRequest) -> Result<FileReadResponse, CoreError> {
     let root = existing_root(&request.root)?;
     let path = safe_relative_path(&root, &request.path)?;
@@ -1203,6 +1253,7 @@ pub struct TextDecodeRequest {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TextDecodeResponse {
+    /// Decoded text without the byte order mark.
     pub text: String,
     /// Stable id of the encoding used to decode `text`.
     pub encoding: String,
@@ -1218,6 +1269,7 @@ pub struct TextDecodeResponse {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TextEncodeRequest {
+    /// Text to encode.
     pub text: String,
     /// Stable encoding id or alias to encode with; absent means UTF-8.
     #[serde(default)]
@@ -1358,7 +1410,7 @@ pub fn write_file(request: FileWriteRequest) -> Result<FileWriteResponse, CoreEr
 /// Matching is `lithe-core-rules`' [`shared_visibility::VisibilityRules`], the same code the
 /// hosts reach through `workspace.classifyVisibility`; only the delegated roots, which depend on
 /// the file system, are added here.
-pub(crate) struct VisibilityRules {
+pub struct VisibilityRules {
     pub(crate) hidden_directories: Vec<String>,
     pub(crate) hidden_file_patterns: Vec<String>,
     /// Canonical nested roots delegated by this request, never by the global policy registry.
@@ -1367,7 +1419,7 @@ pub(crate) struct VisibilityRules {
 
 impl VisibilityRules {
     /// Adds the built-in rules except those turned off by a `!` entry.
-    pub(crate) fn new(hidden_directories: Vec<String>, hidden_files: Vec<String>) -> Self {
+    pub fn new(hidden_directories: Vec<String>, hidden_files: Vec<String>) -> Self {
         let rules = shared_visibility::VisibilityRules::new(hidden_directories, hidden_files);
         Self {
             hidden_directories: rules.hidden_directories,
@@ -1398,7 +1450,8 @@ impl VisibilityRules {
             .any(|root| path.starts_with(root))
     }
 
-    pub(crate) fn is_hidden(&self, path: &str, is_directory: bool) -> bool {
+    /// Whether the workspace-relative `path` is hidden by these rules.
+    pub fn is_hidden(&self, path: &str, is_directory: bool) -> bool {
         shared_visibility::is_path_hidden(
             &self.hidden_directories,
             &self.hidden_file_patterns,
@@ -1416,7 +1469,7 @@ fn scan_node(
     nested_worktrees: &mut Vec<String>,
     incomplete_directories: &mut Vec<String>,
 ) -> Result<WorkspaceNode, CoreError> {
-    crate::protocol::cancellation::check()?;
+    lithe_protocol::cancellation::check()?;
     let metadata = fs::symlink_metadata(path)?;
     let relative = relative_path(path, root);
     let name = path
@@ -1451,7 +1504,7 @@ fn scan_node(
     );
     let mut visible_children = Vec::new();
     for (child_path, _) in listing.children {
-        crate::protocol::cancellation::check()?;
+        lithe_protocol::cancellation::check()?;
         match scan_node(
             &child_path,
             root,
@@ -1494,7 +1547,7 @@ fn collect_snapshot_files(
     nested_worktrees: &mut Vec<String>,
     incomplete_directories: &mut Vec<String>,
 ) -> Result<(), CoreError> {
-    crate::protocol::cancellation::check()?;
+    lithe_protocol::cancellation::check()?;
     if rules.is_delegated(path) || super::indexing::is_excluded(root, path, true)? {
         return Ok(());
     }
@@ -1567,10 +1620,10 @@ pub(crate) struct VisibleDirectory {
     pub(crate) nested_worktrees: Vec<PathBuf>,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 thread_local! {
     /// Scoped enumeration trace for pruning regressions; absent in production builds.
-    pub(crate) static DIRECTORY_VISITS: std::cell::RefCell<Option<Vec<PathBuf>>> = const { std::cell::RefCell::new(None) };
+    pub static DIRECTORY_VISITS: std::cell::RefCell<Option<Vec<PathBuf>>> = const { std::cell::RefCell::new(None) };
 }
 
 /// Lists the children that workspace scans descend into. Snapshot and search
@@ -1581,7 +1634,7 @@ pub(crate) fn visible_children(
     rules: &VisibilityRules,
     order: ChildOrder,
 ) -> Result<VisibleDirectory, CoreError> {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     DIRECTORY_VISITS.with_borrow_mut(|visits| {
         if let Some(visits) = visits {
             visits.push(path.to_path_buf());
@@ -1947,7 +2000,7 @@ struct Matcher {
 
 impl Matcher {
     /// Projects original byte ranges into the editor's UTF-16 coordinate space.
-    fn content_ranges(&self, text: &str) -> Vec<crate::protocol::SearchNameRange> {
+    fn content_ranges(&self, text: &str) -> Vec<crate::contracts::SearchNameRange> {
         let ranges = if let Some(regex) = &self.regex {
             regex
                 .find_iter(text)
@@ -1964,7 +2017,7 @@ impl Matcher {
                 let first = units;
                 units += text[start..end].encode_utf16().count();
                 offset = end;
-                crate::protocol::SearchNameRange {
+                crate::contracts::SearchNameRange {
                     start: first,
                     length: units - first,
                 }
@@ -2180,7 +2233,8 @@ pub(crate) fn read_searchable_text(path: &Path) -> Option<String> {
     is_plain_text(&text).then_some(text)
 }
 
-pub(crate) fn is_plain_text(text: &str) -> bool {
+/// Whether `text` has no NUL or other control characters besides tab, line feed, vertical tab, form feed and carriage return.
+pub fn is_plain_text(text: &str) -> bool {
     text.chars().all(|character| {
         let value = character as u32;
         value != 0 && !(value < 0x09 || (value > 0x0D && value < 0x20) || value == 0x7F)
@@ -2204,94 +2258,6 @@ mod event_filter_tests {
         assert!(!filter.allows("other/a.ts"));
         let rooted = SearchPathFilters::new(&["module/src".into()], &[], "module").unwrap();
         assert!(rooted.allows("src/a.ts"));
-    }
-
-    #[test]
-    fn replacement_text_command_uses_search_boundaries_and_line_semantics() {
-        let call = |payload: serde_json::Value| -> serde_json::Value {
-            serde_json::from_str(&crate::execute_json(
-                &serde_json::json!({
-                    "id": "replace", "command": "workspace.replaceText", "payload": payload
-                })
-                .to_string(),
-            ))
-            .unwrap()
-        };
-        let whole = call(serde_json::json!({"text": "$foo foo\nfoo!", "query": "foo",
-            "replacement": "bar", "wholeWords": true}));
-        assert_eq!(
-            whole["data"],
-            serde_json::json!({"text": "$foo bar\nbar!", "count": 2})
-        );
-        let lines = call(
-            serde_json::json!({"text": "foo 1\nfoo 2", "query": "^foo (\\d)",
-            "replacement": "bar $1", "regularExpression": true}),
-        );
-        assert_eq!(
-            lines["data"],
-            serde_json::json!({"text": "bar 1\nbar 2", "count": 2})
-        );
-        let single = call(
-            serde_json::json!({"text": "😀 foo foo\nfoo", "query": "foo",
-            "replacement": "bar", "from": {"line": 1, "column": 9}}),
-        );
-        assert_eq!(
-            single["data"],
-            serde_json::json!({"text": "😀 foo bar\nfoo", "count": 1})
-        );
-        let adjacent = call(serde_json::json!({"text": "foofoo", "query": "foo",
-            "replacement": "bar", "from": {"line": 1, "column": 4}}));
-        assert_eq!(
-            adjacent["data"],
-            serde_json::json!({"text": "foobar", "count": 1})
-        );
-    }
-
-    #[test]
-    fn provider_batch_search_uses_same_unicode_and_word_boundaries_as_replacement() {
-        let response: serde_json::Value = serde_json::from_str(&crate::execute_json(
-            &serde_json::json!({
-                "id": "provider", "command": "workspace.searchTextBatch", "payload": {
-                    "query": "foo", "wholeWords": true, "contextLines": 1,
-                    "files": [{"path": "wsl://fixture/a", "text": "before\n😀 $foo foo\nafter"}]
-                }
-            })
-            .to_string(),
-        ))
-        .unwrap();
-        assert_eq!(response["ok"], true, "{response}");
-        let found = &response["data"]["files"][0]["matches"][0];
-        assert_eq!(found["line"], 2);
-        assert_eq!(
-            found["ranges"],
-            serde_json::json!([{"start": 8, "length": 3}])
-        );
-        assert_eq!(found["contextBefore"], serde_json::json!(["before"]));
-        assert_eq!(found["contextAfter"], serde_json::json!(["after"]));
-        let too_many: Vec<_> = (0..33)
-            .map(|index| serde_json::json!({"path": index.to_string(), "text": ""}))
-            .collect();
-        let rejected: serde_json::Value = serde_json::from_str(&crate::execute_json(&serde_json::json!({
-            "id": "provider-limit", "command": "workspace.searchTextBatch", "payload": {"query": "x", "files": too_many}
-        }).to_string())).unwrap();
-        assert_eq!(rejected["ok"], false);
-    }
-
-    #[test]
-    fn shared_text_snapshot_contract_fixture() {
-        let fixture: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../fixtures/search/text-snapshot-v1.json"
-        ))
-        .unwrap();
-        for case in fixture["cases"].as_array().unwrap() {
-            let request = serde_json::json!({
-                "id": "fixture", "command": case["command"], "payload": case["payload"]
-            });
-            let response: serde_json::Value =
-                serde_json::from_str(&crate::execute_json(&request.to_string())).unwrap();
-            assert_eq!(response["ok"], true, "{}: {response}", case["name"]);
-            assert_eq!(response["data"], case["expected"], "{}", case["name"]);
-        }
     }
 
     #[test]
@@ -2371,28 +2337,5 @@ mod event_filter_tests {
             assert_eq!(event["results"]["matches"].as_array().unwrap().len(), 1);
             assert_eq!(event["results"]["matches"][0]["path"], path);
         }
-    }
-
-    #[test]
-    fn shared_workspace_change_fixture() {
-        let fixture: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../fixtures/workspace/change-filter-v1.json"
-        ))
-        .unwrap();
-        let paths: Vec<String> = serde_json::from_value(fixture["paths"].clone()).unwrap();
-        let retained: Vec<_> = paths
-            .iter()
-            .filter(|path| is_workspace_event_relevant(path))
-            .collect();
-        assert_eq!(serde_json::to_value(retained).unwrap(), fixture["expected"]);
-        let response: serde_json::Value = serde_json::from_str(&crate::execute_json(
-            &serde_json::json!({
-                "id": "filter", "command": "workspace.filterChanges", "payload": paths
-            })
-            .to_string(),
-        ))
-        .unwrap();
-        assert_eq!(response["ok"], true, "{response}");
-        assert_eq!(response["data"], fixture["expected"]);
     }
 }

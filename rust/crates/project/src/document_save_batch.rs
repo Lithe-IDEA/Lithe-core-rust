@@ -9,12 +9,12 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Maximum number of open documents accepted by one batch request.
-pub(crate) const MAX_SAVE_BATCH_DOCUMENTS: usize = 10_000;
+pub const MAX_SAVE_BATCH_DOCUMENTS: usize = 10_000;
 
 /// Persistence facts a platform reports for one open document.
 #[derive(Debug, Deserialize)]
@@ -104,7 +104,7 @@ struct ReduceResponse {
 /// A writable document takes part when it is dirty or when its editor view may
 /// hold unsynchronized input. Returns `invalidRequest` for malformed payloads,
 /// empty or duplicate identities, or more than [`MAX_SAVE_BATCH_DOCUMENTS`].
-pub(crate) fn plan_command(payload: Value) -> Result<Value, CoreError> {
+pub fn plan_command(payload: Value) -> Result<Value, CoreError> {
     let request: PlanRequest = decode(payload)?;
     validate_documents(&request.documents)?;
     let members = request
@@ -123,7 +123,7 @@ pub(crate) fn plan_command(payload: Value) -> Result<Value, CoreError> {
 ///
 /// Returns `invalidRequest` when results do not name each member exactly once,
 /// in addition to the document validation of [`plan_command`].
-pub(crate) fn reduce_command(payload: Value) -> Result<Value, CoreError> {
+pub fn reduce_command(payload: Value) -> Result<Value, CoreError> {
     let request: ReduceRequest = decode(payload)?;
     validate_documents(&request.documents)?;
     if request.members.len() > MAX_SAVE_BATCH_DOCUMENTS {
