@@ -557,7 +557,7 @@ or removing a command fails until the table changes in the same commit.
 | `editor.parseNavigationInput` | Parse a bounded line or line:column input into zero-based editor coordinates |
 | `editor.navigationHistory.reduce` | Reduce one bounded back/forward navigation history event and return the next state plus the location to open |
 | `editor.lineCommentToken` | Resolve the line comment token for a file extension or language id |
-| `network.proxyPolicy` | Normalize the stored proxy settings into the policy a network stack must apply (mode, server, credentials, exclusions) |
+| `network.proxyPolicy` | Normalize the stored proxy settings into the policy a network stack must apply (mode, server, credentials, exclusion rules) |
 | `lsp.plainSnippet` | Convert LSP snippet insert text into plain editor text |
 | `lsp.builtinCompletions` | Return lightweight current-file identifier completions |
 | `lsp.builtinHover` | Return lightweight current-symbol hover text |
@@ -2125,7 +2125,8 @@ network stack must apply. It accepts `{ "mode": "system" | "direct" |
 "username": string }, "exclusions"?: string[] }` (`port` must fit in 16 bits,
 otherwise the request is rejected with `invalid_request`) and returns
 `{ "policy": "system" | "direct" | "custom", "proxyType", "host", "port",
-"username", "password", "exclusions", "configured" }`.
+"username", "password", "exclusions", "exclusionRules", "invalidExclusions",
+"configured" }`.
 
 An optional `passwordIdentity` binds a restored password to its saved proxy
 type, host, port and username; a mismatch removes the password. Host matching
@@ -2142,6 +2143,35 @@ or port normalizes to `policy: "system"` with `configured: false`; system and
 direct never carry credentials, so hosts can forward the plan to their network
 stack without a second credential-scoping decision. Deterministic cases are
 pinned by `rust/fixtures/network/proxy-policy-v1.json`.
+
+Core alone reads what an exclusion entry means. For a custom policy,
+`exclusionRules` lists the entries as `{ "kind", "value" }` in entry order, a
+repeated rule once, and `invalidExclusions` lists the trimmed entries that have
+none of the forms below; both are empty for system and direct. Entries are
+compared lowercase and without one trailing dot:
+
+| Entry | `kind` | `value` |
+| --- | --- | --- |
+| `<local>` | `local` | empty |
+| `address/prefix` with a valid prefix length | `cidr` | network address with the host bits cleared, `/`, prefix length |
+| an IPv4 or IPv6 address, IPv6 optionally in brackets | `ip` | canonical address |
+| `*.domain` or `.domain` | `suffix` | `domain` |
+| any other name | `host` | the name |
+
+A name must not be empty or contain white space, `*`, `/`, `:`, brackets,
+angle brackets, or an empty label; an entry such as `*`, `*.`, `10.0.0.0/33`
+or `example.com:8080` is invalid and sends no host direct.
+
+A request goes direct when its host, lowercase and without one trailing dot,
+matches any rule; an empty host never does. `host` matches an equal host;
+`suffix` matches the domain itself or a host ending with `.` and the domain;
+`ip` matches a host that is an equal address of the same family; `cidr`
+matches a host that is an address of the same family inside the block, so an
+IPv4-mapped IPv6 host matches neither an IPv4 address nor an IPv4 block; an
+IPv6 host may carry a non-empty `%zone`, which is not compared; `local` matches
+a host that is not an address and contains no dot. Network stacks apply exactly this comparison
+and replay `rust/fixtures/network/proxy-bypass-v1.json`, whose cases list the
+rules of each exclusion list and which hosts go direct.
 
 The `debug.*` commands are the shared Debug Adapter Protocol boundary. Rust
 owns DAP framing, request sequences, response correlation, initialization and

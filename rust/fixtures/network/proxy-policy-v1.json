@@ -22,6 +22,8 @@
         "username": "",
         "password": "",
         "exclusions": [],
+        "exclusionRules": [],
+        "invalidExclusions": [],
         "configured": false
       }
     },
@@ -41,6 +43,8 @@
         "username": "",
         "password": "",
         "exclusions": [],
+        "exclusionRules": [],
+        "invalidExclusions": [],
         "configured": false
       }
     },
@@ -70,6 +74,17 @@
           "127.0.0.1",
           "*.internal.example"
         ],
+        "exclusionRules": [
+          {
+            "kind": "ip",
+            "value": "127.0.0.1"
+          },
+          {
+            "kind": "suffix",
+            "value": "internal.example"
+          }
+        ],
+        "invalidExclusions": [],
         "configured": true
       }
     },
@@ -89,6 +104,8 @@
         "username": "",
         "password": "",
         "exclusions": [],
+        "exclusionRules": [],
+        "invalidExclusions": [],
         "configured": true
       }
     },
@@ -107,6 +124,8 @@
         "username": "",
         "password": "",
         "exclusions": [],
+        "exclusionRules": [],
+        "invalidExclusions": [],
         "configured": true
       }
     },
@@ -125,6 +144,8 @@
         "username": "",
         "password": "",
         "exclusions": [],
+        "exclusionRules": [],
+        "invalidExclusions": [],
         "configured": false
       }
     },
@@ -143,6 +164,8 @@
         "username": "",
         "password": "",
         "exclusions": [],
+        "exclusionRules": [],
+        "invalidExclusions": [],
         "configured": false
       }
     },
@@ -170,7 +193,9 @@
         "password": "sample-value",
         "policy": "custom",
         "configured": true,
-        "exclusions": []
+        "exclusions": [],
+        "exclusionRules": [],
+        "invalidExclusions": []
       }
     },
     {
@@ -197,7 +222,9 @@
         "password": "",
         "policy": "custom",
         "configured": true,
-        "exclusions": []
+        "exclusions": [],
+        "exclusionRules": [],
+        "invalidExclusions": []
       }
     },
     {
@@ -224,7 +251,9 @@
         "password": "",
         "policy": "custom",
         "configured": true,
-        "exclusions": []
+        "exclusions": [],
+        "exclusionRules": [],
+        "invalidExclusions": []
       }
     },
     {
@@ -251,7 +280,9 @@
         "password": "",
         "policy": "custom",
         "configured": true,
-        "exclusions": []
+        "exclusions": [],
+        "exclusionRules": [],
+        "invalidExclusions": []
       }
     },
     {
@@ -278,7 +309,9 @@
         "password": "",
         "policy": "custom",
         "configured": true,
-        "exclusions": []
+        "exclusions": [],
+        "exclusionRules": [],
+        "invalidExclusions": []
       }
     }
   ]
