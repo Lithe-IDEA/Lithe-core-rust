@@ -1,6 +1,6 @@
 //! Bounded recent-file and recent-edit history, independent of native storage and widgets.
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -51,7 +51,9 @@ fn valid_path(path: &str) -> bool {
     !path.is_empty() && path.len() <= 32_768 && !path.contains(['\0', '\r', '\n'])
 }
 
-pub(crate) fn reduce_command(payload: Value) -> Result<Value, CoreError> {
+/// Applies one opened, edited or removed event to the recent-file list and
+/// filters it by query (`editor.recent.reduce`).
+pub fn reduce_command(payload: Value) -> Result<Value, CoreError> {
     let mut request: Request = serde_json::from_value(payload)
         .map_err(|_| CoreError::new(ErrorCode::InvalidRequest, "Invalid recent-file request"))?;
     if request.entries.len() > MAX_ENTRIES || request.query.len() > 4096 {

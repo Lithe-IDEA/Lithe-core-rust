@@ -1,12 +1,13 @@
 //! Conversion of LSP snippets into insertion-ready plain text.
 
-use super::edits::TextResponse;
+use crate::edits::TextResponse;
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 /// LSP snippet whose placeholders should be reduced to insertion text.
 pub struct PlainSnippetRequest {
+    /// Snippet in LSP snippet syntax.
     pub value: String,
 }
 
@@ -17,7 +18,9 @@ pub fn plain_snippet(request: PlainSnippetRequest) -> TextResponse {
     }
 }
 
-pub(crate) fn snippet_plain_text(value: &str) -> String {
+/// Removes snippet control syntax from `value`, keeping each placeholder's
+/// default text.
+pub fn snippet_plain_text(value: &str) -> String {
     let mut output = String::new();
     let mut chars = value.chars().peekable();
     while let Some(character) = chars.next() {

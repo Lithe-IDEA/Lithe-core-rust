@@ -7,12 +7,12 @@
 //! platform keeps the returned state and restores its previous value when
 //! opening the returned destination fails.
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Maximum number of locations retained by each history direction.
-pub(crate) const MAX_HISTORY_ENTRIES: usize = 100;
+pub const MAX_HISTORY_ENTRIES: usize = 100;
 
 /// One editor location recorded in navigation history.
 ///
@@ -85,7 +85,7 @@ struct Response {
 ///
 /// Returns `invalidRequest` for malformed payloads or empty document
 /// identities. Oversized stacks keep their newest entries.
-pub(crate) fn reduce_command(payload: Value) -> Result<Value, CoreError> {
+pub fn reduce_command(payload: Value) -> Result<Value, CoreError> {
     let request: Request = serde_json::from_value(payload).map_err(|error| {
         CoreError::new(
             ErrorCode::InvalidRequest,

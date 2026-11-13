@@ -1747,20 +1747,20 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             parsed.payload,
             crate::lsp::declaration_or_usages::decide_command,
         ),
-        CoreCommand::EditorFind => match crate::editor::find::command(parsed.payload, document) {
+        CoreCommand::EditorFind => match lithe_editor::find::command(parsed.payload, document) {
             Ok(data) => CoreResponse::success(id, data),
             Err(error) => CoreResponse::failure(id, error),
         },
         CoreCommand::EditorPreferencesResolve => plugin_response(
             id,
             parsed.payload,
-            crate::editor::preferences::resolve_command,
+            lithe_editor::preferences::resolve_command,
         ),
         CoreCommand::EditorRecentReduce => {
-            plugin_response(id, parsed.payload, crate::editor::recent::reduce_command)
+            plugin_response(id, parsed.payload, lithe_editor::recent::reduce_command)
         }
         CoreCommand::EditorRecoveryDecide => {
-            plugin_response(id, parsed.payload, crate::editor::recovery::decide_command)
+            plugin_response(id, parsed.payload, lithe_editor::recovery::decide_command)
         }
         CoreCommand::KeymapSchemesReduce => {
             rules_response(id, "keymap.schemes.reduce", parsed.payload)
@@ -1768,20 +1768,20 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
         CoreCommand::EditorPlanTextEdits => plugin_response(
             id,
             parsed.payload,
-            crate::editor::text_edit_plan::plan_command,
+            lithe_editor::text_edit_plan::plan_command,
         ),
         CoreCommand::EditorParseNavigationInput => plugin_response(
             id,
             parsed.payload,
-            crate::editor::navigation_input::parse_command,
+            lithe_editor::navigation_input::parse_command,
         ),
         CoreCommand::EditorNavigationHistoryReduce => plugin_response(
             id,
             parsed.payload,
-            crate::editor::navigation_history::reduce_command,
+            lithe_editor::navigation_history::reduce_command,
         ),
         CoreCommand::EditorLineEdit => {
-            match serde_json::from_value::<crate::editor::LineEditRequest>(parsed.payload)
+            match serde_json::from_value::<lithe_editor::LineEditRequest>(parsed.payload)
                 .map_err(|error| {
                     CoreError::new(
                         ErrorCode::InvalidRequest,
@@ -1789,7 +1789,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                     )
                     .with_details(error.to_string())
                 })
-                .and_then(crate::editor::line_edit)
+                .and_then(lithe_editor::line_edit)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -1799,7 +1799,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::EditorLineCommentToken => {
-            match serde_json::from_value::<crate::editor::LineCommentTokenRequest>(parsed.payload)
+            match serde_json::from_value::<lithe_editor::LineCommentTokenRequest>(parsed.payload)
                 .map_err(|error| {
                     CoreError::new(
                         ErrorCode::InvalidRequest,
@@ -1807,7 +1807,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                     )
                     .with_details(error.to_string())
                 })
-                .map(crate::editor::line_comment_token)
+                .map(lithe_editor::line_comment_token)
             {
                 Ok(data) => CoreResponse::success(
                     id,

@@ -1,0 +1,11 @@
+[package]
+name = "lithe-text"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "UTF-16 positions, text edit planning and the in-process completions, hover, navigation and snippets that work without a language server"
+
+[dependencies]
+lithe-protocol = { path = "../protocol" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }

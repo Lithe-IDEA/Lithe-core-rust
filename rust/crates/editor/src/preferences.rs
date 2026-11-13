@@ -1,6 +1,6 @@
 //! Defaults and bounded persisted options for native editor presentation.
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -14,7 +14,9 @@ struct Stored {
     auto_save_delay_milliseconds: Option<u64>,
 }
 
-pub(crate) fn resolve_command(payload: Value) -> Result<Value, CoreError> {
+/// Resolves stored editor preferences into effective values, filling in
+/// defaults and clamping the auto-save delay (`editor.preferences.resolve`).
+pub fn resolve_command(payload: Value) -> Result<Value, CoreError> {
     let stored: Stored = serde_json::from_value(payload)
         .map_err(|_| CoreError::new(ErrorCode::InvalidRequest, "Invalid editor preferences"))?;
     let style = match stored.cursor_style.as_deref() {

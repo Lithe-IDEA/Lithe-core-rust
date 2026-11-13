@@ -1,10 +1,8 @@
 //! In-process document symbols, references, renames, and semantic-token helpers.
 
-use super::edits::{range_for_offsets, utf16_position_to_byte_offset};
-use crate::lsp::interface::{
-    LspPosition, LspPositionResponse, LspRangeResponse, LspTextEditResponse,
-};
-use crate::protocol::{CoreError, ErrorCode};
+use crate::edits::{range_for_offsets, utf16_position_to_byte_offset};
+use crate::position::{LspPosition, LspPositionResponse, LspRangeResponse, LspTextEditResponse};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -12,8 +10,11 @@ use std::collections::BTreeMap;
 #[serde(rename_all = "camelCase")]
 /// Document and cursor used by lightweight completion or hover.
 pub struct BuiltinRequest {
+    /// Path of the document.
     pub file_path: String,
+    /// Current document text.
     pub text: String,
+    /// Cursor position.
     pub position: LspPosition,
 }
 
@@ -21,9 +22,13 @@ pub struct BuiltinRequest {
 #[serde(rename_all = "camelCase")]
 /// Document, cursor, and LSP method used by lightweight navigation.
 pub struct BuiltinNavigationRequest {
+    /// Path of the document.
     pub file_path: String,
+    /// Current document text.
     pub text: String,
+    /// Cursor position.
     pub position: LspPosition,
+    /// LSP navigation method, such as `textDocument/definition`.
     pub method: String,
 }
 
@@ -31,6 +36,7 @@ pub struct BuiltinNavigationRequest {
 #[serde(rename_all = "camelCase")]
 /// Deterministically ordered completion candidates from the current document.
 pub struct BuiltinCompletionResponse {
+    /// Candidates in display order.
     pub items: Vec<BuiltinCompletionItem>,
 }
 
@@ -38,11 +44,15 @@ pub struct BuiltinCompletionResponse {
 #[serde(rename_all = "camelCase")]
 /// Completion candidate expressed in the normalized Core response shape.
 pub struct BuiltinCompletionItem {
+    /// Text shown in the completion list.
     pub label: String,
+    /// Text inserted when the candidate is accepted.
     pub insert_text: String,
     /// Numeric LSP `CompletionItemKind`, when the fallback can infer one.
     pub kind: Option<i32>,
+    /// Extra description shown next to the label.
     pub detail: Option<String>,
+    /// Replacement of the typed prefix.
     pub text_edit: LspTextEditResponse,
 }
 
@@ -50,6 +60,7 @@ pub struct BuiltinCompletionItem {
 #[serde(rename_all = "camelCase")]
 /// Optional hover result for the identifier at the cursor.
 pub struct BuiltinHoverResponse {
+    /// Hover for the identifier at the cursor, if any.
     pub hover: Option<BuiltinHover>,
 }
 
@@ -57,8 +68,11 @@ pub struct BuiltinHoverResponse {
 #[serde(rename_all = "camelCase")]
 /// Lightweight hover contents and the identifier range they describe.
 pub struct BuiltinHover {
+    /// Hover text.
     pub contents: String,
+    /// Whether `contents` is Markdown rather than plain text.
     pub is_markdown: bool,
+    /// Range of the identifier the hover describes.
     pub range: LspRangeResponse,
 }
 
@@ -66,6 +80,7 @@ pub struct BuiltinHover {
 #[serde(rename_all = "camelCase")]
 /// Locations found by the lightweight navigation fallback.
 pub struct BuiltinNavigationResponse {
+    /// Targets found, in document order.
     pub locations: Vec<BuiltinLocation>,
 }
 
@@ -73,9 +88,13 @@ pub struct BuiltinNavigationResponse {
 #[serde(rename_all = "camelCase")]
 /// One normalized navigation target.
 pub struct BuiltinLocation {
+    /// Path of the document that contains the target.
     pub file_path: String,
+    /// Range of the target.
     pub range: LspRangeResponse,
+    /// Whether the host should open the target read-only.
     pub is_read_only: bool,
+    /// Path to show instead of `file_path`, when one applies.
     pub display_path: Option<String>,
 }
 

@@ -5,29 +5,9 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-#[derive(Debug, Clone, Copy, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Half-open document range expressed in zero-based LSP coordinates.
-pub struct LspRange {
-    pub start: LspPosition,
-    pub end: LspPosition,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Zero-based LSP line and UTF-16 code-unit column.
-pub struct LspPosition {
-    pub line: i64,
-    pub utf16_column: i64,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-/// Normalized text replacement returned to host applications.
-pub struct LspTextEditResponse {
-    pub range: LspRangeResponse,
-    pub new_text: String,
-}
+pub(crate) use lithe_text::{
+    LspDocumentContentChange, LspPosition, LspPositionResponse, LspRange, LspRangeResponse,
+};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -88,22 +68,6 @@ pub struct LspCodeLensResponse {
     pub data: Option<Value>,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-/// Serializable form of an LSP document range.
-pub struct LspRangeResponse {
-    pub start: LspPositionResponse,
-    pub end: LspPositionResponse,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-/// Serializable form of a zero-based LSP position.
-pub struct LspPositionResponse {
-    pub line: i64,
-    pub utf16_column: i64,
-}
-
 #[derive(Debug, Clone, Copy, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// LSP `TextDocumentSyncKind` advertised by the server.
@@ -115,17 +79,6 @@ pub enum LspTextDocumentSyncKind {
     Full,
     /// The server accepts range-based incremental `didChange` payloads.
     Incremental,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// One LSP `textDocument/didChange` content change.
-pub struct LspDocumentContentChange {
-    /// Inclusive start / exclusive end range; omitted for a full-document replacement.
-    #[serde(default)]
-    pub range: Option<LspRange>,
-    #[serde(default)]
-    pub text: String,
 }
 
 /// Options a host declares for the services it serves one plugin session,

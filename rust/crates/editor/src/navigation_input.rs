@@ -1,6 +1,6 @@
 //! Parsing bounded, one-based Go to Line input into portable editor positions.
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -14,7 +14,13 @@ struct Request {
     text: String,
 }
 
-pub(crate) fn parse_command(payload: Value) -> Result<Value, CoreError> {
+/// Parses one-based `line` or `line:column` Go to Line input
+/// (`editor.parseNavigationInput`).
+///
+/// Returns `{ target }`, where `target` holds the zero-based `line` and
+/// `column` and `selectsWholeLine`, or null when the input is not a valid
+/// position.
+pub fn parse_command(payload: Value) -> Result<Value, CoreError> {
     let request: Request = serde_json::from_value(payload).map_err(|_| {
         CoreError::new(
             ErrorCode::InvalidRequest,

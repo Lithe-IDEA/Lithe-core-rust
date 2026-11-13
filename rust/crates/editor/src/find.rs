@@ -3,7 +3,7 @@
 //! The host owns the immutable document snapshot. Core borrows it for one worker request,
 //! keeps no text cache, and returns only byte ranges and requested replacements.
 
-use crate::protocol::{cancellation, CoreError, ErrorCode};
+use lithe_protocol::{cancellation, CoreError, ErrorCode};
 use regex::RegexBuilder;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -48,7 +48,14 @@ fn invalid(reason: &str) -> CoreError {
     .with_details(reason)
 }
 
-pub(crate) fn command(payload: Value, source: Option<&str>) -> Result<Value, CoreError> {
+/// Finds matches in the borrowed document `source` and, when a replacement is
+/// requested, plans the edits (`editor.find`).
+///
+/// Returns `{ matches, edits, selected, truncated }` with byte ranges into
+/// `source`. Malformed requests, a missing document, oversized inputs and
+/// ranges off character boundaries return `invalidRequest` with the reason in
+/// the details.
+pub fn command(payload: Value, source: Option<&str>) -> Result<Value, CoreError> {
     let request: Request =
         serde_json::from_value(payload).map_err(|_| invalid("invalid_request"))?;
     let source = source.ok_or_else(|| invalid("missing_document"))?;

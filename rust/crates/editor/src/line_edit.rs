@@ -8,7 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 
 /// Line-level editing operations supported by `editor.lineEdit`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -34,10 +34,14 @@ pub enum LineEditOperation {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LineEditRequest {
+    /// Line operation to perform.
     pub operation: LineEditOperation,
+    /// Full document text the selection refers to.
     pub source: String,
+    /// Start of the selection; defaults to the start of the document.
     #[serde(default)]
     pub selection_start: usize,
+    /// Length of the selection; zero means a caret.
     #[serde(default)]
     pub selection_length: usize,
     /// Line comment token; required by `ToggleLineComment`.
@@ -62,15 +66,21 @@ pub struct LineCommentTokenRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LineEditOutcome {
+    /// Whether the operation changed the text.
     pub applied: bool,
+    /// Replacement text for the replaced range; present only when applied.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
+    /// Start of the range `text` replaces; present only when applied.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replaced_start: Option<usize>,
+    /// Length of the range `text` replaces; present only when applied.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replaced_length: Option<usize>,
+    /// Start of the selection to restore; present only when applied.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selection_start: Option<usize>,
+    /// Length of the selection to restore; present only when applied.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selection_length: Option<usize>,
 }
@@ -110,6 +120,7 @@ impl LineEditOutcome {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LineCommentToken {
+    /// Line comment token, such as `//` or `#`.
     pub token: Option<String>,
 }
 

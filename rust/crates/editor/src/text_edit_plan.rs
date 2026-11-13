@@ -5,11 +5,11 @@
 //! line index, ordering and overlap rules as `lsp.applyTextEdits`, and returns
 //! UTF-16 offsets plus replacement text in the document's line ending.
 
-use crate::lsp::{
+use lithe_protocol::{CoreError, ErrorCode};
+use lithe_text::{
     normalize_line_breaks, plan_replacements, EditRejection, EditRejectionReason, PositionPolicy,
     RawTextEdit, TextLineIndex,
 };
-use crate::protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -76,7 +76,7 @@ fn reason_name(reason: EditRejectionReason) -> &'static str {
 /// with `reason`, the caller-order `editIndex`/`otherEditIndex`, or
 /// `positionIndex` for a failed extra position. An empty batch still reports
 /// the document's line ending.
-pub(crate) fn plan_command(payload: Value) -> Result<Value, CoreError> {
+pub fn plan_command(payload: Value) -> Result<Value, CoreError> {
     let request: Request = serde_json::from_value(payload).map_err(|error| {
         CoreError::new(
             ErrorCode::InvalidRequest,

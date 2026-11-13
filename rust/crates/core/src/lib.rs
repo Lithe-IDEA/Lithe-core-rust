@@ -2,7 +2,6 @@
 
 mod build;
 mod debug;
-mod editor;
 pub mod execution;
 mod git;
 mod lsp;

@@ -888,6 +888,7 @@ dependencies = [
  "lithe-core-rules",
  "lithe-diagnostics",
  "lithe-diff",
+ "lithe-editor",
  "lithe-git-host",
  "lithe-github",
  "lithe-ide-host",
@@ -896,6 +897,7 @@ dependencies = [
  "lithe-protocol",
  "lithe-remote",
  "lithe-terminal",
+ "lithe-text",
  "quick-xml",
  "rand",
  "regex",
@@ -937,6 +939,17 @@ dependencies = [
  "serde",
  "serde_json",
  "similar",
+]
+
+[[package]]
+name = "lithe-editor"
+version = "0.1.0"
+dependencies = [
+ "lithe-protocol",
+ "lithe-text",
+ "regex",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1016,6 +1029,15 @@ version = "0.1.0"
 dependencies = [
  "lithe-protocol",
  "serde",
+]
+
+[[package]]
+name = "lithe-text"
+version = "0.1.0"
+dependencies = [
+ "lithe-protocol",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

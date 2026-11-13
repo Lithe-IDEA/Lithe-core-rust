@@ -1,6 +1,6 @@
 //! Recovery decisions and storage budgets; native adapters own atomic file I/O.
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -20,7 +20,9 @@ struct Request {
     discarded: bool,
 }
 
-pub(crate) fn decide_command(payload: Value) -> Result<Value, CoreError> {
+/// Decides what to do with one crash-recovery checkpoint and reports the
+/// storage budgets (`editor.recovery.decide`).
+pub fn decide_command(payload: Value) -> Result<Value, CoreError> {
     let request: Request = serde_json::from_value(payload)
         .map_err(|_| CoreError::new(ErrorCode::InvalidRequest, "Invalid recovery decision"))?;
     if request.base_hash.len() > 128 || request.disk_hash.as_ref().is_some_and(|h| h.len() > 128) {

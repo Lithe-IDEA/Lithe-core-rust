@@ -1,16 +1,18 @@
 //! UTF-16-aware text edit validation and application.
 
-use crate::lsp::interface::{
+use crate::position::{
     LspDocumentContentChange, LspPosition, LspPositionResponse, LspRange, LspRangeResponse,
 };
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 /// Source text and LSP edits to validate and apply as one operation.
 pub struct ApplyTextEditsRequest {
+    /// Document text the edits apply to.
     pub text: String,
+    /// Edits in any order; they must not overlap.
     #[serde(default)]
     pub edits: Vec<LspTextEdit>,
 }
@@ -19,7 +21,9 @@ pub struct ApplyTextEditsRequest {
 #[serde(rename_all = "camelCase")]
 /// Replacement expressed in LSP UTF-16 coordinates.
 pub struct LspTextEdit {
+    /// Range the edit replaces.
     pub range: LspRange,
+    /// Replacement text.
     pub new_text: String,
 }
 
@@ -27,6 +31,7 @@ pub struct LspTextEdit {
 #[serde(rename_all = "camelCase")]
 /// Text-only response shared by edit and snippet commands.
 pub struct TextResponse {
+    /// Resulting text.
     pub text: String,
 }
 
@@ -68,7 +73,7 @@ pub fn apply_text_edits(request: ApplyTextEditsRequest) -> Result<TextResponse, 
 
 /// How a position that does not name an exact code-unit boundary is treated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PositionPolicy {
+pub enum PositionPolicy {
     /// LSP wire semantics: a column past the line end clamps before the line
     /// terminator and a column inside a surrogate pair resolves to the start of
     /// that character. Missing and negative lines or columns are rejected.
@@ -79,25 +84,31 @@ pub(crate) enum PositionPolicy {
 }
 
 /// Zero-based line and UTF-16 column pair with the edit's replacement text.
-pub(crate) struct RawTextEdit {
+pub struct RawTextEdit {
+    /// Line and UTF-16 column where the replaced range starts.
     pub start: (i64, i64),
+    /// Line and UTF-16 column just after the replaced range.
     pub end: (i64, i64),
+    /// Replacement text.
     pub text: String,
 }
 
 /// One validated replacement in byte offsets of the planned text.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PlannedReplacement {
+pub struct PlannedReplacement {
     /// Position of the edit in the caller's batch.
     pub index: usize,
+    /// Byte offset where the replaced range starts.
     pub start: usize,
+    /// Byte offset just after the replaced range.
     pub end: usize,
+    /// Replacement text.
     pub text: String,
 }
 
 /// Stable rejection classes for one edit batch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EditRejectionReason {
+pub enum EditRejectionReason {
     /// A position names a line or column that does not exist.
     RangeOutOfBounds,
     /// `start` is after `end`.
@@ -110,8 +121,10 @@ pub(crate) enum EditRejectionReason {
 
 /// First rejection found in a batch, with indices in the caller's order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EditRejection {
+pub struct EditRejection {
+    /// Why the batch was refused.
     pub reason: EditRejectionReason,
+    /// Index of the offending edit in the caller's batch.
     pub edit_index: usize,
     /// The lower-priority partner of an overlap; `None` for single-edit faults.
     pub other_edit_index: Option<usize>,
@@ -119,7 +132,7 @@ pub(crate) struct EditRejection {
 
 /// Line table of a text in byte offsets. `\r\n`, `\n` and a lone `\r` each
 /// terminate one line, as the LSP specification and Monaco define them.
-pub(crate) struct TextLineIndex<'a> {
+pub struct TextLineIndex<'a> {
     text: &'a str,
     line_starts: Vec<usize>,
     /// Byte offset just before each line's terminator (or the text end).
@@ -129,7 +142,8 @@ pub(crate) struct TextLineIndex<'a> {
 }
 
 impl<'a> TextLineIndex<'a> {
-    pub(crate) fn new(text: &'a str) -> Self {
+    /// Indexes the lines of `text`.
+    pub fn new(text: &'a str) -> Self {
         let bytes = text.as_bytes();
         let mut line_starts = vec![0];
         let mut content_ends = Vec::new();
@@ -163,7 +177,7 @@ impl<'a> TextLineIndex<'a> {
 
     /// Wire name of the document's line ending: `lf`, `crlf`, `cr` or `mixed`.
     /// A text without terminators reports `lf`.
-    pub(crate) fn line_ending(&self) -> &'static str {
+    pub fn line_ending(&self) -> &'static str {
         match self.separators.as_slice() {
             [] | ["\n"] => "lf",
             ["\r\n"] => "crlf",
@@ -174,12 +188,12 @@ impl<'a> TextLineIndex<'a> {
 
     /// Separator written for inserted line breaks: the first one in the text,
     /// LF when there is none.
-    pub(crate) fn insertion_separator(&self) -> &'static str {
+    pub fn insertion_separator(&self) -> &'static str {
         self.separators.first().copied().unwrap_or("\n")
     }
 
     /// Resolves a zero-based line and UTF-16 column to a byte offset.
-    pub(crate) fn resolve(
+    pub fn resolve(
         &self,
         (line, column): (i64, i64),
         policy: PositionPolicy,
@@ -219,7 +233,7 @@ impl<'a> TextLineIndex<'a> {
 /// Zero-length insertions at the same position keep the caller's order, and an
 /// insertion at a replaced range's boundary is adjacent rather than
 /// overlapping, independent of where it appears in the batch.
-pub(crate) fn plan_replacements(
+pub fn plan_replacements(
     index: &TextLineIndex<'_>,
     edits: Vec<RawTextEdit>,
     policy: PositionPolicy,
@@ -257,7 +271,7 @@ pub(crate) fn plan_replacements(
 }
 
 /// Rewrites every `\r\n`, `\r` and `\n` in `text` as `separator`.
-pub(crate) fn normalize_line_breaks(text: &str, separator: &str) -> String {
+pub fn normalize_line_breaks(text: &str, separator: &str) -> String {
     if !text.contains(['\r', '\n']) {
         return text.to_string();
     }
@@ -279,7 +293,7 @@ pub(crate) fn normalize_line_breaks(text: &str, separator: &str) -> String {
 }
 
 /// Applies ranged content changes sequentially in the given order.
-pub(crate) fn apply_content_changes_sequential(
+pub fn apply_content_changes_sequential(
     text: &str,
     changes: &[LspDocumentContentChange],
 ) -> Result<String, CoreError> {
