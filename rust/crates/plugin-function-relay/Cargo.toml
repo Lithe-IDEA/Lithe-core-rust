@@ -1,0 +1,13 @@
+[package]
+name = "lithe-plugin-function-relay"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Cross-plugin function relay rules: who may call which exported function, and the calls in flight"
+
+[dependencies]
+lithe-plugin-functions = { path = "../plugin-functions" }
+lithe-plugin-model = { path = "../plugin-model" }
+lithe-plugin-rpc = { path = "../plugin-rpc" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }

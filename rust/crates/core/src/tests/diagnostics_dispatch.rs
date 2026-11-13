@@ -101,3 +101,34 @@ fn shared_window_commands_cover_dispatch_shapes_and_unique_errors() {
         assert!(seen_codes.contains(&code));
     }
 }
+
+#[test]
+fn engine_logging_commands_route_through_the_dispatcher() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../fixtures/diagnostics/engine-logging-v2.json"
+    ))
+    .unwrap();
+    for name in ["trace", "drain", "resolveSubject"] {
+        assert!(crate::CoreCommand::parse(fixture[name]["command"].as_str().unwrap()).is_some());
+    }
+    let response: Value =
+        serde_json::from_str(&execute_json(&fixture["resolveSubject"].to_string())).unwrap();
+    assert_eq!(response["data"], fixture["resolveSubject"]["result"]);
+    let response: Value =
+        serde_json::from_str(&execute_json(&fixture["drain"].to_string())).unwrap();
+    assert_eq!(response["ok"], true);
+    assert!(response["data"]["events"].is_array());
+    assert!(response["data"]["dropped"].as_u64().is_some());
+    for payload in [
+        json!({}),
+        json!({"role":"unknown", "providerId":"id"}),
+        json!({"role":"language_server", "providerId": 5}),
+    ] {
+        let response: Value = serde_json::from_str(&execute_json(
+            &json!({"version":1, "command":"diagnostics.resolveEngineLogSubject", "payload":payload})
+                .to_string(),
+        ))
+        .unwrap();
+        assert_eq!(response["error"]["code"], "invalid_request");
+    }
+}

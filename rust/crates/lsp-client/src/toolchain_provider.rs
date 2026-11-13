@@ -2,9 +2,10 @@
 //!
 //! The manifest lists the providers; `initialize` offers them under
 //! `capabilities.experimental.litheToolchains`, and the backend selects a version
-//! (the `toolchainProviders` capability version) and a subset of the offer. `toolchains/query` is written only to a session whose
-//! answer passed [`negotiate`]. Replies stay untrusted here: Core transports them
-//! unchanged, and `toolchains.decodeReply` validates them against native facts.
+//! (the `toolchainProviders` capability version) and a subset of the offer.
+//! `toolchains/query` is written only to a session whose answer passed the
+//! negotiation. Replies stay untrusted here: Core transports them unchanged,
+//! and `toolchains.decodeReply` validates them against native facts.
 //! The rules live in `shared/plugins/contract/v1/toolchains/README.md`.
 
 use lithe_plugin_model::capabilities::{versions as capability_versions, TOOLCHAIN_PROVIDERS};
@@ -21,10 +22,10 @@ fn supported_versions() -> Vec<u64> {
 }
 
 /// The only method this protocol writes.
-pub(crate) const QUERY_METHOD: &str = "toolchains/query";
+pub const QUERY_METHOD: &str = "toolchains/query";
 
 /// Client event that carries the negotiated providers to the engine.
-pub(crate) const NEGOTIATED_EVENT: &str = "toolchainProvidersNegotiated";
+pub const NEGOTIATED_EVENT: &str = "toolchainProvidersNegotiated";
 
 /// The offer for a session launched with `providers`; `None` when it declares none.
 pub(crate) fn client_experimental_capabilities(
@@ -59,7 +60,7 @@ pub(crate) fn negotiate(capabilities: &Value, offered: &BTreeSet<String>) -> Opt
 
 /// Wraps the complete JSON-RPC response for `toolchains.decodeReply`, which owns
 /// every success and error rule, with the wire ID the request was written under.
-pub(crate) fn reply_outcome(response: &Value) -> Value {
+pub fn reply_outcome(response: &Value) -> Value {
     json!({ "value": { "id": response.get("id"), "response": response } })
 }
 

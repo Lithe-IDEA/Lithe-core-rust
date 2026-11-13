@@ -3,7 +3,7 @@
 //! locally owned clients, and installed versions, may receive the result.
 
 use super::engine;
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -53,7 +53,7 @@ fn invalid() -> CoreError {
 }
 
 fn root_identity(uri: &str) -> Result<String, CoreError> {
-    if uri.len() > crate::lsp::MAX_PATH_BYTES || uri.contains('\0') {
+    if uri.len() > lithe_document_uri::MAX_PATH_BYTES || uri.contains('\0') {
         return Err(invalid());
     }
     let parsed = Url::parse(uri).map_err(|_| invalid())?;

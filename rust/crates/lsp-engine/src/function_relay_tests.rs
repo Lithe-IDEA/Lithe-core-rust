@@ -12,11 +12,11 @@
 //! bounded readers or on a bounded poll of the session events, and time-based
 //! outcomes use synthetic instants passed to `expire_deadlines_at`.
 
-use super::super::function_relay::RelaySnapshot;
 use super::tests::start_request;
 use super::*;
 use lithe_lsp_transport::process::{LspProcessLauncher, LspProcessSpec, LspProcessStreams};
 use lithe_lsp_transport::scripted::ScriptedServer;
+use lithe_plugin_function_relay::RelaySnapshot;
 use lithe_plugin_rpc::FunctionReference;
 
 const PYTHON: &str = "dev.lithe.fixture.python";

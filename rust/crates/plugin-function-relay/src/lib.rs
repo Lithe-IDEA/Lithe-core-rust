@@ -62,7 +62,7 @@ pub(crate) const RUNNING_GRACE: Duration = Duration::from_secs(2);
 /// Operation IDs of relayed calls start with this. The engine keeps them out
 /// of the callee session's host events, because no host operation waits for
 /// them: the answer goes to the calling plugin.
-pub(crate) const OPERATION_PREFIX: &str = "relay-call-";
+pub const OPERATION_PREFIX: &str = "relay-call-";
 
 /// Most plugins one snapshot may list. Guards the table, not the product.
 const MAX_SNAPSHOT_PLUGINS: usize = 4096;
@@ -71,7 +71,9 @@ const MAX_SNAPSHOT_PLUGINS: usize = 4096;
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum ContextAuthority {
+    /// The context runs on this machine.
     Local,
+    /// The context runs on a remote host.
     Remote,
 }
 
@@ -80,26 +82,26 @@ pub enum ContextAuthority {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RelayContext {
     #[serde(rename = "contextID")]
-    pub context_id: String,
-    pub generation: u64,
-    pub authority: ContextAuthority,
+    pub(crate) context_id: String,
+    pub(crate) generation: u64,
+    pub(crate) authority: ContextAuthority,
 }
 
 /// A function an enabled plugin exports.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RelayExport {
-    pub id: String,
-    pub version: u32,
-    pub context: String,
+    pub(crate) id: String,
+    pub(crate) version: u32,
+    pub(crate) context: String,
 }
 
 /// A function an enabled plugin declared it calls.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RelayCall {
-    pub id: String,
-    pub version: u32,
+    pub(crate) id: String,
+    pub(crate) version: u32,
 }
 
 /// What the relay needs to know about one enabled plugin.
@@ -107,11 +109,11 @@ pub struct RelayCall {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RelayPlugin {
     #[serde(rename = "pluginID")]
-    pub plugin_id: String,
+    pub(crate) plugin_id: String,
     #[serde(default)]
-    pub exports: Vec<RelayExport>,
+    pub(crate) exports: Vec<RelayExport>,
     #[serde(default)]
-    pub calls: Vec<RelayCall>,
+    pub(crate) calls: Vec<RelayCall>,
 }
 
 /// The host's complete view: the enabled plugins and the live workspace
@@ -122,23 +124,26 @@ pub struct RelayPlugin {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RelaySnapshot {
     #[serde(default)]
-    pub plugins: Vec<RelayPlugin>,
+    pub(crate) plugins: Vec<RelayPlugin>,
     #[serde(default)]
-    pub contexts: Vec<RelayContext>,
+    pub(crate) contexts: Vec<RelayContext>,
 }
 
 /// Why a relayed call (or a discovery) did not succeed. `code` is the stable
 /// `plugin.function.*` or `plugin.host.*` code the calling plugin branches on.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct RelayFailure {
+pub struct RelayFailure {
+    /// Stable `plugin.function.*` or `plugin.host.*` code.
     pub code: &'static str,
+    /// Message for the calling plugin.
     pub message: String,
     /// The callee's own code (`error.data.code`) when its function failed.
     pub plugin_error_code: Option<String>,
 }
 
 impl RelayFailure {
-    pub(crate) fn new(code: &'static str, message: &str) -> Self {
+    /// A failure without a callee code.
+    pub fn new(code: &'static str, message: &str) -> Self {
         Self {
             code,
             message: message.to_string(),
@@ -150,7 +155,7 @@ impl RelayFailure {
 /// Which call a new request was made while serving, as the engine resolved
 /// the request's `parentOperationID`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CallParent {
+pub enum CallParent {
     /// The request named no parent: every relayed call the caller's session
     /// is running counts as one.
     Unstated,
@@ -164,17 +169,22 @@ pub(crate) enum CallParent {
 }
 
 /// One request of a plugin to call an exported function.
-pub(crate) struct RelayRequest {
+pub struct RelayRequest {
+    /// Session of the calling plugin's backend.
     pub caller_session: String,
+    /// Plugin ID of the caller.
     pub caller_plugin: String,
     /// JSON-RPC ID of the request, echoed in the answer.
     pub rpc_id: Value,
+    /// Plugin ID that exports the function.
     pub callee_plugin: String,
+    /// Exported function to call.
     pub function_id: String,
     /// A JSON object.
     pub params: Value,
     /// `{ contextID, generation }`.
     pub context: Value,
+    /// Requested timeout; `None` takes the default. Capped at the relay maximum.
     pub timeout: Option<Duration>,
     /// The call this request was made while serving; decides the new call's
     /// plugin chain and which ended call cancels it.
@@ -182,14 +192,17 @@ pub(crate) struct RelayRequest {
 }
 
 /// How the callee's side of a call ended.
-pub(crate) enum CalleeOutcome {
+pub enum CalleeOutcome {
     /// The function returned this value.
     Succeeded(Value),
     /// The call ended without a value; `code` is the engine's request code,
     /// such as `plugin.function.failed` or `requestTimeout`.
     Failed {
+        /// Engine request code.
         code: String,
+        /// Failure message.
         message: String,
+        /// The callee's own code (`error.data.code`), if it sent one.
         plugin_error_code: Option<String>,
     },
 }
@@ -197,36 +210,54 @@ pub(crate) enum CalleeOutcome {
 /// Work the engine must do after a state change. Every action runs outside
 /// all session locks.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum RelayAction {
+pub enum RelayAction {
     /// Answer the calling plugin's request.
     Reply {
+        /// Session of the calling plugin.
         session_id: String,
+        /// JSON-RPC ID of the caller's request.
         rpc_id: Value,
+        /// Value or failure to answer with.
         outcome: Result<Value, RelayFailure>,
     },
     /// Tell the callee session to stop one running call.
     CancelCallee {
+        /// Session of the callee.
         session_id: String,
+        /// Operation the callee runs the call as.
         operation_id: String,
     },
     /// Find the callee's backend and send it the call.
-    Dispatch { call_id: u64 },
+    Dispatch {
+        /// The admitted call.
+        call_id: u64,
+    },
 }
 
 /// Everything the engine needs to send one call to the callee's backend.
-pub(crate) struct DispatchPlan {
+pub struct DispatchPlan {
+    /// Session of the calling plugin's backend.
     pub caller_session: String,
+    /// Plugin ID of the caller.
     pub caller_plugin: String,
+    /// Plugin ID that exports the function.
     pub callee_plugin: String,
+    /// Exported function to call.
     pub function_id: String,
+    /// Call parameters, a JSON object.
     pub params: Value,
+    /// `{ contextID, generation }` the call runs in.
     pub context: Value,
+    /// Time left before the call's deadline.
     pub remaining: Duration,
 }
 
 /// Tells the caller's session that the callee's backend must be started.
-pub(crate) struct StartNotice {
+pub struct StartNotice {
+    /// Session of the calling plugin, which announces that the callee's
+    /// backend must start.
     pub caller_session: String,
+    /// Plugin whose backend must start.
     pub callee_plugin: String,
 }
 
@@ -266,7 +297,7 @@ struct Call {
 
 /// The relay's tables. See the module comment.
 #[derive(Default)]
-pub(crate) struct FunctionRelay {
+pub struct FunctionRelay {
     plugins: BTreeMap<String, RelayPlugin>,
     contexts: BTreeMap<String, RelayContext>,
     calls: BTreeMap<u64, Call>,
@@ -275,10 +306,7 @@ pub(crate) struct FunctionRelay {
 
 impl FunctionRelay {
     /// Replaces the snapshot and ends the calls it no longer allows.
-    pub(crate) fn configure(
-        &mut self,
-        snapshot: RelaySnapshot,
-    ) -> Result<Vec<RelayAction>, &'static str> {
+    pub fn configure(&mut self, snapshot: RelaySnapshot) -> Result<Vec<RelayAction>, &'static str> {
         check_snapshot(&snapshot)?;
         self.plugins = snapshot
             .plugins
@@ -302,11 +330,7 @@ impl FunctionRelay {
     /// Answers `lithe/host/functions/providers`: the enabled plugins that
     /// export `function_id`, sorted by plugin ID, with the contract version
     /// each exports so a mismatch with the caller's declaration is visible.
-    pub(crate) fn providers(
-        &self,
-        caller_plugin: &str,
-        function_id: &str,
-    ) -> Result<Value, RelayFailure> {
+    pub fn providers(&self, caller_plugin: &str, function_id: &str) -> Result<Value, RelayFailure> {
         self.declared_version(caller_plugin, function_id)?;
         let providers: Vec<Value> = self
             .plugins
@@ -323,7 +347,7 @@ impl FunctionRelay {
     /// Checks one call request. The checks run in a fixed order, so the same
     /// request always reports the same reason. On success the call is
     /// recorded and the returned actions ask the engine to dispatch it.
-    pub(crate) fn admit(
+    pub fn admit(
         &mut self,
         request: RelayRequest,
         now: Instant,
@@ -410,7 +434,7 @@ impl FunctionRelay {
 
     /// What the engine needs to send the call, or `None` when it already
     /// ended.
-    pub(crate) fn dispatch_plan(&self, call_id: u64, now: Instant) -> Option<DispatchPlan> {
+    pub fn dispatch_plan(&self, call_id: u64, now: Instant) -> Option<DispatchPlan> {
         let call = self.calls.get(&call_id)?;
         Some(DispatchPlan {
             caller_session: call.caller_session.clone(),
@@ -425,7 +449,7 @@ impl FunctionRelay {
 
     /// Records that no ready backend serves the call yet. Returns the notice
     /// for the host to start one, only the first time the call waits.
-    pub(crate) fn wait_for_provider(&mut self, call_id: u64, now: Instant) -> Option<StartNotice> {
+    pub fn wait_for_provider(&mut self, call_id: u64, now: Instant) -> Option<StartNotice> {
         let call = self.calls.get_mut(&call_id)?;
         call.phase = Phase::WaitingForProvider;
         if call.give_up_at.is_some() {
@@ -442,7 +466,7 @@ impl FunctionRelay {
     /// the request is written, so an answer that beats the caller of this
     /// method still finds its call. Returns false when the call already
     /// ended.
-    pub(crate) fn started(&mut self, call_id: u64, session_id: &str, operation_id: &str) -> bool {
+    pub fn started(&mut self, call_id: u64, session_id: &str, operation_id: &str) -> bool {
         let Some(call) = self.calls.get_mut(&call_id) else {
             return false;
         };
@@ -455,24 +479,20 @@ impl FunctionRelay {
 
     /// Whether the call exists and its callee session has it. The engine asks
     /// before writing the request, to skip a call that ended while it queued.
-    pub(crate) fn is_running(&self, call_id: u64) -> bool {
+    pub fn is_running(&self, call_id: u64) -> bool {
         self.calls
             .get(&call_id)
             .is_some_and(|call| matches!(call.phase, Phase::Running { .. }))
     }
 
     /// The call could not be sent to the callee's backend.
-    pub(crate) fn dispatch_failed(
-        &mut self,
-        call_id: u64,
-        failure: RelayFailure,
-    ) -> Vec<RelayAction> {
+    pub fn dispatch_failed(&mut self, call_id: u64, failure: RelayFailure) -> Vec<RelayAction> {
         self.end_call(call_id, Some(Err(failure)), false)
     }
 
     /// The callee's session finished an operation. Anything that is not a
     /// running relayed call returns no actions.
-    pub(crate) fn callee_finished(
+    pub fn callee_finished(
         &mut self,
         session_id: &str,
         operation_id: &str,
@@ -486,7 +506,7 @@ impl FunctionRelay {
 
     /// The calling plugin withdrew its request with `$/cancelRequest`.
     /// Returns `None` when the request names no relayed call.
-    pub(crate) fn cancel_from_caller(
+    pub fn cancel_from_caller(
         &mut self,
         session_id: &str,
         rpc_id: &Value,
@@ -506,7 +526,7 @@ impl FunctionRelay {
     /// A session stopped or failed. Calls it made end silently, because
     /// nobody is left to answer, and their callees are cancelled. Calls it
     /// was serving fail for their callers.
-    pub(crate) fn session_ended(&mut self, session_id: &str) -> Vec<RelayAction> {
+    pub fn session_ended(&mut self, session_id: &str) -> Vec<RelayAction> {
         let made: Vec<u64> = self
             .calls
             .values()
@@ -537,7 +557,7 @@ impl FunctionRelay {
 
     /// A backend of `plugin_id` became ready or registered functions: calls
     /// that waited for it are dispatched again.
-    pub(crate) fn provider_changed(&mut self, plugin_id: &str) -> Vec<RelayAction> {
+    pub fn provider_changed(&mut self, plugin_id: &str) -> Vec<RelayAction> {
         self.calls
             .values_mut()
             .filter(|call| {
@@ -556,7 +576,7 @@ impl FunctionRelay {
     /// timeout normally answers first; the relay ends it only `RUNNING_GRACE`
     /// after the deadline, so a callee that never answers cannot leave the
     /// call open, and it cancels the callee.
-    pub(crate) fn expire(&mut self, now: Instant) -> Vec<RelayAction> {
+    pub fn expire(&mut self, now: Instant) -> Vec<RelayAction> {
         let mut due = Vec::new();
         for call in self.calls.values() {
             let running = matches!(call.phase, Phase::Running { .. });

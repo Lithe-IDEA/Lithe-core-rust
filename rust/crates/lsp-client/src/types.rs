@@ -5,7 +5,7 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-pub(crate) use lithe_text::{
+pub use lithe_text::{
     LspDocumentContentChange, LspPosition, LspPositionResponse, LspRange, LspRangeResponse,
 };
 
@@ -13,39 +13,39 @@ pub(crate) use lithe_text::{
 #[serde(rename_all = "camelCase")]
 /// Normalized inlay hint independent of provider-specific extensions.
 pub struct LspInlayHintResponse {
-    pub position: LspPositionResponse,
-    pub label: String,
+    pub(crate) position: LspPositionResponse,
+    pub(crate) label: String,
     /// Numeric LSP `InlayHintKind`, when supplied by the server.
     pub kind: Option<i64>,
-    pub tooltip: Option<String>,
-    pub padding_left: bool,
-    pub padding_right: bool,
-    pub text_edits: Vec<Value>,
-    pub data: Option<Value>,
+    pub(crate) tooltip: Option<String>,
+    pub(crate) padding_left: bool,
+    pub(crate) padding_right: bool,
+    pub(crate) text_edits: Vec<Value>,
+    pub(crate) data: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// Normalized folding range using UTF-16 columns when supplied by the server.
 pub struct LspFoldingRangeResponse {
-    pub start_line: i64,
-    pub start_utf16_column: Option<i64>,
-    pub end_line: i64,
-    pub end_utf16_column: Option<i64>,
+    pub(crate) start_line: i64,
+    pub(crate) start_utf16_column: Option<i64>,
+    pub(crate) end_line: i64,
+    pub(crate) end_utf16_column: Option<i64>,
     /// Server-provided LSP fold category such as `comment`, `imports`, or `region`.
     pub kind: Option<String>,
-    pub collapsed_text: Option<String>,
+    pub(crate) collapsed_text: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// Normalized workspace symbol from either `SymbolInformation` or `WorkspaceSymbol`.
 pub struct LspWorkspaceSymbolResponse {
-    pub name: String,
+    pub(crate) name: String,
     /// Numeric LSP `SymbolKind`, when supplied by the server.
     pub kind: Option<i64>,
-    pub container_name: Option<String>,
-    pub uri: String,
+    pub(crate) container_name: Option<String>,
+    pub(crate) uri: String,
     /// Null when the server returned only a URI and expects `workspaceSymbol/resolve`.
     pub range: Option<LspRangeResponse>,
 }
@@ -54,18 +54,18 @@ pub struct LspWorkspaceSymbolResponse {
 #[serde(rename_all = "camelCase")]
 /// Normalized document link; `target` is absent when the server defers it to resolve.
 pub struct LspDocumentLinkResponse {
-    pub range: LspRangeResponse,
-    pub target: Option<String>,
-    pub tooltip: Option<String>,
+    pub(crate) range: LspRangeResponse,
+    pub(crate) target: Option<String>,
+    pub(crate) tooltip: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// Normalized CodeLens payload awaiting an optional resolve operation.
 pub struct LspCodeLensResponse {
-    pub range: LspRangeResponse,
-    pub command: Option<Value>,
-    pub data: Option<Value>,
+    pub(crate) range: LspRangeResponse,
+    pub(crate) command: Option<Value>,
+    pub(crate) data: Option<Value>,
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -103,12 +103,16 @@ impl HostOptions {
 #[serde(rename_all = "camelCase")]
 /// Pure client protocol state carried between JSON command invocations.
 pub struct LspClientState {
+    /// ID the next outbound request takes.
     #[serde(default = "default_next_request_id")]
     pub next_request_id: u64,
+    /// Whether the `initialize` response arrived.
     #[serde(default)]
     pub initialized: bool,
+    /// Whether `shutdown` was sent; no new requests follow it.
     #[serde(default)]
     pub shutdown_requested: bool,
+    /// Feature names the server's capabilities advertise.
     #[serde(default)]
     pub server_capabilities: Vec<String>,
     /// `completionProvider` options by registration id: the static capability
@@ -125,16 +129,21 @@ pub struct LspClientState {
     /// `None` means saves were not requested; `Some` is the server's includeText flag.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text_document_save_include_text: Option<bool>,
+    /// Documents synchronized with the server, by URI.
     #[serde(default)]
     pub open_documents: BTreeMap<String, LspClientDocument>,
+    /// Method of every request awaiting a response, by request ID.
     #[serde(default)]
     pub pending_requests: BTreeMap<String, String>,
     /// Legend captured when a semantic request is sent; registrations may change
     /// before the response arrives.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub pending_semantic_legends: BTreeMap<String, Value>,
+    /// Latest published diagnostics, by document URI.
     #[serde(default)]
     pub diagnostics: BTreeMap<String, Vec<LspClientDiagnostic>>,
+    /// Document version each published diagnostic set belongs to,
+    /// when the server named one.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub diagnostic_versions: BTreeMap<String, i64>,
     /// Plugin functions the backend registered, once `litheFunctions` was
@@ -209,8 +218,11 @@ fn default_next_request_id() -> u64 {
 #[serde(rename_all = "camelCase")]
 /// Document version and contents currently synchronized with the server.
 pub struct LspClientDocument {
+    /// Document URI as the host opened it.
     pub uri: String,
+    /// LSP language identifier.
     pub language_id: String,
+    /// Version sent with the last `didOpen` or `didChange`.
     pub version: i64,
     /// Shared so that copying the client state, which every request, document
     /// change, and server message does while holding the session locks, does
@@ -222,42 +234,47 @@ pub struct LspClientDocument {
 #[serde(rename_all = "camelCase")]
 /// Diagnostic normalized to fields supported by every frontend.
 pub struct LspClientDiagnostic {
-    pub range: LspRangeResponse,
-    pub severity: Option<i64>,
+    pub(crate) range: LspRangeResponse,
+    pub(crate) severity: Option<i64>,
+    /// Diagnostic text as the server reported it.
     pub message: String,
-    pub source: Option<String>,
-    pub code: Option<String>,
+    pub(crate) source: Option<String>,
+    pub(crate) code: Option<String>,
     #[serde(default)]
-    pub tags: Vec<i64>,
+    pub(crate) tags: Vec<i64>,
     #[serde(default)]
-    pub related_information: Vec<LspClientDiagnosticRelatedInformation>,
+    pub(crate) related_information: Vec<LspClientDiagnosticRelatedInformation>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// Related diagnostic message and its source location.
 pub struct LspClientDiagnosticRelatedInformation {
-    pub location: LspClientDiagnosticLocation,
-    pub message: String,
+    pub(crate) location: LspClientDiagnosticLocation,
+    pub(crate) message: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// URI and range referenced by related diagnostic information.
 pub struct LspClientDiagnosticLocation {
-    pub uri: String,
-    pub range: LspRangeResponse,
+    pub(crate) uri: String,
+    pub(crate) range: LspRangeResponse,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 /// Inputs for constructing the LSP initialize request and initial client state.
 pub struct ClientInitializeRequest {
+    /// Client state to start from.
     #[serde(default)]
     pub state: LspClientState,
+    /// Workspace root URI.
     pub root_uri: String,
+    /// Host process ID; `None` sends `null`.
     #[serde(default)]
     pub process_id: Option<i64>,
+    /// Server-specific `initializationOptions`.
     #[serde(default)]
     pub initialization_options: Option<Value>,
 }
@@ -266,10 +283,14 @@ pub struct ClientInitializeRequest {
 #[serde(rename_all = "camelCase")]
 /// Inputs for opening a complete document in pure client state.
 pub struct ClientOpenDocumentRequest {
+    /// Current client state.
     #[serde(default)]
     pub state: LspClientState,
+    /// Document URI.
     pub uri: String,
+    /// LSP language identifier.
     pub language_id: String,
+    /// Complete document text.
     pub text: String,
 }
 
@@ -277,8 +298,10 @@ pub struct ClientOpenDocumentRequest {
 #[serde(rename_all = "camelCase")]
 /// Inputs for updating a synchronized document's contents.
 pub struct ClientChangeDocumentRequest {
+    /// Current client state.
     #[serde(default)]
     pub state: LspClientState,
+    /// URI of an open document.
     pub uri: String,
     /// Complete text after the change. Optional when `content_changes` is set.
     #[serde(default)]
@@ -292,8 +315,10 @@ pub struct ClientChangeDocumentRequest {
 #[serde(rename_all = "camelCase")]
 /// Inputs for closing a document in pure client state.
 pub struct ClientCloseDocumentRequest {
+    /// Current client state.
     #[serde(default)]
     pub state: LspClientState,
+    /// URI of an open document.
     pub uri: String,
 }
 
@@ -301,6 +326,7 @@ pub struct ClientCloseDocumentRequest {
 #[serde(rename_all = "camelCase")]
 /// Inputs for the LSP shutdown handshake.
 pub struct ClientShutdownRequest {
+    /// Current client state.
     #[serde(default)]
     pub state: LspClientState,
 }
@@ -309,28 +335,38 @@ pub struct ClientShutdownRequest {
 #[serde(rename_all = "camelCase")]
 /// Generic feature request translated into one provider-neutral JSON-RPC call.
 pub struct ClientFeatureRequest {
+    /// Current client state.
     #[serde(default)]
     pub state: LspClientState,
+    /// Document the request is about; empty for `workspace/symbol`.
     pub uri: String,
+    /// LSP method to call.
     pub method: String,
+    /// Cursor position for position-based methods.
     #[serde(default)]
     pub position: Option<LspPosition>,
     /// Search text for `workspace/symbol`; absent means the empty query.
     #[serde(default)]
     pub query: Option<String>,
+    /// New symbol name for `rename`.
     #[serde(default)]
     pub new_name: Option<String>,
+    /// Selection for range-based methods.
     #[serde(default)]
     pub range: Option<LspRange>,
+    /// Diagnostics in `range`, sent as the `codeAction` context.
     #[serde(default)]
     pub diagnostics: Vec<LspClientDiagnostic>,
     /// LSP completion trigger context; validated by the shared request mapper.
     #[serde(default)]
     pub completion_context: Option<Value>,
+    /// Item to complete for `completionItem/resolve`.
     #[serde(default)]
     pub completion_item: Option<Value>,
+    /// Action to complete for `codeAction/resolve`.
     #[serde(default)]
     pub code_action: Option<Value>,
+    /// Command to run for `workspace/executeCommand`.
     #[serde(default)]
     pub command: Option<Value>,
     /// Caller `FormattingOptions` for `formatting` and `rangeFormatting`.
@@ -355,8 +391,11 @@ pub struct ClientApplyServerMessageRequest {
 #[serde(rename_all = "camelCase")]
 /// Updated client state, outbound messages, and host-facing events.
 pub struct LspClientResponse {
+    /// Client state after the step.
     pub state: LspClientState,
+    /// Encoded JSON-RPC messages to write to the server, in order.
     pub messages: Vec<String>,
+    /// Events for the host, in order.
     pub events: Vec<LspClientEvent>,
 }
 
@@ -367,18 +406,25 @@ pub struct LspClientEvent {
     /// Pure-client event category: `diagnostics`, `notification`, `response`,
     /// `error`, `functionsChanged`, or `functionProgress`.
     pub kind: String,
+    /// Request a `response` or `error` event answers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub request_id: Option<String>,
+    /// Method of the notification or the answered request.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub method: Option<String>,
+    /// Document a `diagnostics` event is about.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub uri: Option<String>,
+    /// Document version the diagnostics belong to, when the server named one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<i64>,
+    /// Published diagnostics of a `diagnostics` event.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub diagnostics: Option<Vec<LspClientDiagnostic>>,
+    /// Result or notification parameters, shaped into the host model.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<Value>,
+    /// Error message of an `error` event.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }

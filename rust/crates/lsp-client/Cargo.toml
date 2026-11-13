@@ -1,0 +1,20 @@
+[package]
+name = "lithe-lsp-client"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "The stateful LSP client: capability negotiation, documents, feature requests and the provider protocols a server offers"
+
+[dependencies]
+lithe-diagnostics = { path = "../diagnostics" }
+lithe-document-uri = { path = "../document-uri" }
+lithe-plugin-editor = { path = "../plugin-editor" }
+lithe-plugin-keymap-import = { path = "../plugin-keymap-import" }
+lithe-plugin-model = { path = "../plugin-model" }
+lithe-plugin-rpc = { path = "../plugin-rpc" }
+lithe-protocol = { path = "../protocol" }
+lithe-text = { path = "../text" }
+lithe-vcs = { path = "../vcs" }
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+url = "2.5"

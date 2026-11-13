@@ -33,10 +33,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 /// `plugin.json` schema version that identifies a declarative manifest.
 pub const DECLARATIVE_MANIFEST_SCHEMA_VERSION: u32 = 0;
-/// Base-contract versions (`pluginAPIVersion`) this Core build can host. The
-/// version is independent of the Lithe application version, and a later one
-/// is appended to this list.
-pub const SUPPORTED_PLUGIN_API_VERSIONS: &[u32] = &[0];
+pub use lithe_plugin_model::capabilities::SUPPORTED_PLUGIN_API_VERSIONS;
 
 const PERMISSION_LANGUAGE_SERVER: &str = "languageServer.launch";
 const PERMISSION_RUN: &str = "process.run";

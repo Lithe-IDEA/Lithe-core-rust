@@ -7,11 +7,11 @@ use std::collections::BTreeSet;
 
 const EXPERIMENTAL_KEY: &str = "litheKeymapImport";
 /// Client event carrying the provider subset selected during initialization.
-pub(crate) const NEGOTIATED_EVENT: &str = "keymapImportProvidersNegotiated";
+pub const NEGOTIATED_EVENT: &str = "keymapImportProvidersNegotiated";
 /// Host-to-provider request for one explicitly selected source snapshot.
-pub(crate) const IMPORT_METHOD: &str = "lithe/keymap/import";
+pub const IMPORT_METHOD: &str = "lithe/keymap/import";
 /// Maximum encoded provider reply forwarded to the host for Core validation.
-pub(crate) const MAX_REPLY_BYTES: usize = 1024 * 1024;
+pub const MAX_REPLY_BYTES: usize = 1024 * 1024;
 
 /// Protocol versions this client speaks: the versions of the
 /// `keymapImportProviders` capability.
@@ -67,7 +67,7 @@ mod tests {
     #[test]
     fn shortcut_providers_negotiate_only_an_offered_subset() {
         let fixtures: Value = serde_json::from_str(include_str!(
-            "../../../../../fixtures/keymap/provider-negotiation-v1.json"
+            "../../../fixtures/keymap/provider-negotiation-v1.json"
         ))
         .unwrap();
         for case in fixtures["cases"].as_array().unwrap() {

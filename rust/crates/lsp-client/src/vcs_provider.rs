@@ -9,8 +9,8 @@
 //! offered, a valid VCS ID, and every required capability. The rules live in
 //! `rust/contracts/vcs-provider-v1.md`.
 
-use crate::vcs::{negotiated_capabilities, Capabilities};
 use lithe_plugin_model::capabilities::{versions as capability_versions, VCS_PROVIDERS};
+use lithe_vcs::{negotiated_capabilities, Capabilities};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -28,7 +28,7 @@ fn supported_versions() -> Vec<u64> {
 pub(crate) const VCS_PROVIDER_FEATURE: &str = "litheVcs";
 
 /// Client event that carries the negotiated provider to the engine.
-pub(crate) const NEGOTIATED_EVENT: &str = "vcsProviderNegotiated";
+pub const NEGOTIATED_EVENT: &str = "vcsProviderNegotiated";
 
 /// Longest provider error message passed to the host, in UTF-8 bytes.
 const MAX_MESSAGE_BYTES: usize = 4096;
@@ -85,7 +85,7 @@ pub(crate) fn negotiate(capabilities: &Value) -> Option<VcsNegotiation> {
     let vcs = answer
         .get("vcs")
         .and_then(Value::as_str)
-        .filter(|vcs| crate::vcs::is_vcs_id(vcs))?;
+        .filter(|vcs| lithe_vcs::is_vcs_id(vcs))?;
     Some(VcsNegotiation {
         vcs: vcs.to_string(),
         capabilities: negotiated_capabilities(answer.get("capabilities")?)?,
@@ -94,9 +94,11 @@ pub(crate) fn negotiate(capabilities: &Value) -> Option<VcsNegotiation> {
 
 /// A failed VCS request: a contract code and the provider's message.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct VcsFailure {
-    pub(crate) code: &'static str,
-    pub(crate) message: String,
+pub struct VcsFailure {
+    /// Stable contract error code.
+    pub code: &'static str,
+    /// The provider's message, cut to a bounded length.
+    pub message: String,
 }
 
 fn bounded_message(value: &str) -> String {
@@ -110,7 +112,7 @@ fn bounded_message(value: &str) -> String {
 /// Normalizes the provider's JSON-RPC response. A success is wrapped as
 /// `{ "value": result }` like build-provider replies, so the host passes
 /// `value` to `vcs.decodeReply` unchanged.
-pub(crate) fn reply_outcome(response: &Value) -> Result<Value, VcsFailure> {
+pub fn reply_outcome(response: &Value) -> Result<Value, VcsFailure> {
     if let Some(error) = response.get("error") {
         let message = error
             .get("message")

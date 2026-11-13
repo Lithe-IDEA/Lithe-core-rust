@@ -35,6 +35,11 @@ use crate::{PluginRejection, Validation};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
+/// Base-contract versions (`pluginAPIVersion`) this Core build can host. The
+/// version is independent of the Lithe application version, and a later one
+/// is appended to this list.
+pub const SUPPORTED_PLUGIN_API_VERSIONS: &[u32] = &[0];
+
 /// `languages[]`: file types and project markers, a TextMate `grammar`, and an
 /// editing `configuration`; see `lithe_plugin_grammar`.
 pub const LANGUAGES: &str = "languages";

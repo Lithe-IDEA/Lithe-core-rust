@@ -1,9 +1,9 @@
 //! Pure LSP client-state transitions and JSON-RPC message construction.
 
 use super::types::*;
-use crate::lsp::apply_content_changes_sequential;
-use crate::protocol::{CoreError, ErrorCode};
 use lithe_document_uri::{file_path_for_uri, file_path_from_uri, hex_value};
+use lithe_protocol::{CoreError, ErrorCode};
+use lithe_text::apply_content_changes_sequential;
 use serde_json::{json, Value};
 
 /// Creates a host-owned initialize request for stateless client tests.
@@ -13,7 +13,7 @@ pub fn client_initialize(request: ClientInitializeRequest) -> Result<LspClientRe
 }
 
 /// Offers plugin functions only when the runtime owns an identified plugin session.
-pub(super) fn client_initialize_for_plugin(
+pub fn client_initialize_for_plugin(
     request: ClientInitializeRequest,
     plugin_owned: bool,
 ) -> Result<LspClientResponse, CoreError> {
@@ -290,15 +290,10 @@ pub fn client_shutdown(request: ClientShutdownRequest) -> Result<LspClientRespon
     Ok(client_response(state, vec![message], Vec::new()))
 }
 
-pub(crate) fn client_feature_request_canonical(
+/// Translates one feature request into its JSON-RPC call. Every method except
+/// `workspace/symbol` must name a document the client has open.
+pub fn client_feature_request(
     request: ClientFeatureRequest,
-) -> Result<LspClientResponse, CoreError> {
-    client_feature_request_with_document_ownership(request, true)
-}
-
-fn client_feature_request_with_document_ownership(
-    request: ClientFeatureRequest,
-    require_open_document: bool,
 ) -> Result<LspClientResponse, CoreError> {
     // `workspace/symbol` is workspace-wide: it names no document, so an empty URI is accepted.
     let workspace_wide = request.method == "workspace/symbol";
@@ -310,7 +305,7 @@ fn client_feature_request_with_document_ownership(
     let uri = request.uri.clone();
     let method = request.method.clone();
     let mut state = request.state;
-    if !workspace_wide && require_open_document && !state.open_documents.contains_key(&uri) {
+    if !workspace_wide && !state.open_documents.contains_key(&uri) {
         return Err(CoreError::new(
             ErrorCode::InvalidRequest,
             "Cannot request LSP features for a document that is not open.",
@@ -337,7 +332,7 @@ pub fn client_apply_server_message(
 ///
 /// Takes the message already parsed: the engine parses each server message once,
 /// outside the session state lock, and reduces it while holding that lock.
-pub(super) fn client_apply_server_message_for_plugin(
+pub fn client_apply_server_message_for_plugin(
     mut state: LspClientState,
     message: &Value,
     plugin_owned: bool,
@@ -863,7 +858,8 @@ fn json_rpc_request(id: &str, method: &str, params: Value) -> Result<String, Cor
     }))
 }
 
-pub(super) fn json_rpc_notification(method: &str, params: Value) -> Result<String, CoreError> {
+/// Encodes a JSON-RPC notification.
+pub fn json_rpc_notification(method: &str, params: Value) -> Result<String, CoreError> {
     encode_json_rpc(json!({
         "jsonrpc": "2.0",
         "method": method,
@@ -882,7 +878,8 @@ fn json_rpc_message_without_params(id: Option<&str>, method: &str) -> Result<Str
     encode_json_rpc(message)
 }
 
-pub(super) fn json_rpc_result(id: &Value, result: Value) -> Result<String, CoreError> {
+/// Encodes a successful JSON-RPC response to request `id`.
+pub fn json_rpc_result(id: &Value, result: Value) -> Result<String, CoreError> {
     encode_json_rpc(json!({
         "jsonrpc": "2.0",
         "id": id,
@@ -921,7 +918,7 @@ fn experimental_capabilities(
 }
 
 /// A JSON-RPC error whose `data.code` carries a stable plugin-contract code.
-pub(super) fn json_rpc_error_with_code(
+pub fn json_rpc_error_with_code(
     id: &Value,
     code: i64,
     message: &str,
@@ -932,7 +929,7 @@ pub(super) fn json_rpc_error_with_code(
 
 /// A JSON-RPC error with the given `data`, which holds at least the stable
 /// plugin-contract `code`.
-pub(super) fn json_rpc_error_with_data(
+pub fn json_rpc_error_with_data(
     id: &Value,
     code: i64,
     message: &str,
@@ -2187,7 +2184,7 @@ fn apply_dynamic_unregistration(state: &mut LspClientState, message: &Value) {
 /// list the de-duplicated union over the static capability and dynamic
 /// registrations in registration order, or `None` while the session offers no
 /// completion. Entries that are not non-empty strings are dropped.
-pub(super) fn completion_options(state: &LspClientState) -> Option<Value> {
+pub fn completion_options(state: &LspClientState) -> Option<Value> {
     if !state
         .server_capabilities
         .iter()
@@ -2320,7 +2317,7 @@ mod semantic_tests {
     #[test]
     fn semantic_tokens_decode_relative_utf16_positions_and_reject_malformed_data() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../../fixtures/lsp/semantic-tokens-v1.json"
+            "../../../fixtures/lsp/semantic-tokens-v1.json"
         ))
         .unwrap();
         let options = fixture["serverOptions"].clone();
@@ -2499,7 +2496,7 @@ mod formatting_and_completion_tests {
     #[test]
     fn document_symbol_golden_fixture_matches_normalization() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../../fixtures/lsp/document-symbols-v1.json"
+            "../../../fixtures/lsp/document-symbols-v1.json"
         ))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {

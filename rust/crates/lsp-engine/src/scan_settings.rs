@@ -14,13 +14,13 @@ pub(crate) fn configuration(provider: &str, root_uri: &str, base: Option<&Value>
         return base.cloned();
     };
     let root = root.canonicalize().unwrap_or(root);
-    if crate::project::indexing::context(&root).is_none() {
+    if lithe_project::indexing::context(&root).is_none() {
         return base.cloned();
     }
     Some(with_roots(
         provider,
         base,
-        &crate::project::indexing::excluded_roots(&root),
+        &lithe_project::indexing::excluded_roots(&root),
     ))
 }
 

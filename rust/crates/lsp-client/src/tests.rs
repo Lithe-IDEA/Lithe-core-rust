@@ -1,251 +1,11 @@
 use super::*;
-use crate::protocol::ErrorCode;
+use lithe_protocol::ErrorCode;
 use serde_json::{json, Value};
 
 #[test]
-fn text_edits_use_lsp_utf16_positions() {
-    let response = apply_text_edits(ApplyTextEditsRequest {
-        text: "one 😀\ntwo three\n".to_string(),
-        edits: vec![
-            LspTextEdit {
-                range: LspRange {
-                    start: LspPosition {
-                        line: 0,
-                        utf16_column: 4,
-                    },
-                    end: LspPosition {
-                        line: 0,
-                        utf16_column: 6,
-                    },
-                },
-                new_text: "rocket".to_string(),
-            },
-            LspTextEdit {
-                range: LspRange {
-                    start: LspPosition {
-                        line: 1,
-                        utf16_column: 4,
-                    },
-                    end: LspPosition {
-                        line: 1,
-                        utf16_column: 9,
-                    },
-                },
-                new_text: "four".to_string(),
-            },
-        ],
-    })
-    .unwrap();
-
-    assert_eq!(response.text, "one rocket\ntwo four\n");
-}
-
-#[test]
-fn text_edits_reject_invalid_and_overlapping_ranges() {
-    let invalid = apply_text_edits(ApplyTextEditsRequest {
-        text: "one line".to_string(),
-        edits: vec![LspTextEdit {
-            range: LspRange {
-                start: LspPosition {
-                    line: 9,
-                    utf16_column: 0,
-                },
-                end: LspPosition {
-                    line: 9,
-                    utf16_column: 1,
-                },
-            },
-            new_text: "x".to_string(),
-        }],
-    })
-    .unwrap_err();
-    assert_eq!(invalid.details.as_deref(), Some("invalidRange"));
-
-    let overlapping = apply_text_edits(ApplyTextEditsRequest {
-        text: "one line".to_string(),
-        edits: vec![
-            LspTextEdit {
-                range: LspRange {
-                    start: LspPosition {
-                        line: 0,
-                        utf16_column: 0,
-                    },
-                    end: LspPosition {
-                        line: 0,
-                        utf16_column: 4,
-                    },
-                },
-                new_text: "a".to_string(),
-            },
-            LspTextEdit {
-                range: LspRange {
-                    start: LspPosition {
-                        line: 0,
-                        utf16_column: 2,
-                    },
-                    end: LspPosition {
-                        line: 0,
-                        utf16_column: 6,
-                    },
-                },
-                new_text: "b".to_string(),
-            },
-        ],
-    })
-    .unwrap_err();
-    assert_eq!(overlapping.details.as_deref(), Some("overlappingEdits"));
-}
-
-#[test]
-fn snippet_plain_text_removes_tab_stops_and_keeps_defaults() {
-    assert_eq!(snippet_plain_text("print(${1:value})$0"), "print(value)");
-    assert_eq!(snippet_plain_text("${1:let} ${2:name} = $3"), "let name = ");
-}
-
-#[test]
-fn builtin_completion_returns_current_file_identifiers_for_prefix() {
-    let response = builtin_completions(BuiltinRequest {
-        file_path: "/tmp/main.swift".to_string(),
-        text: "struct RocketShip {}\nlet rocketSpeed = Roc\n".to_string(),
-        position: LspPosition {
-            line: 1,
-            utf16_column: 19,
-        },
-    })
-    .unwrap();
-
-    assert!(response.items.iter().any(|item| item.label == "RocketShip"));
-    let item = response
-        .items
-        .iter()
-        .find(|item| item.label == "RocketShip")
-        .unwrap();
-    assert_eq!(item.text_edit.range.start.utf16_column, 18);
-    assert_eq!(item.text_edit.new_text, "RocketShip");
-}
-
-#[test]
-fn builtin_hover_returns_current_identifier_range() {
-    let response = builtin_hover(BuiltinRequest {
-        file_path: "/tmp/main.rs".to_string(),
-        text: "fn launch() {}\n".to_string(),
-        position: LspPosition {
-            line: 0,
-            utf16_column: 4,
-        },
-    })
-    .unwrap();
-
-    let hover = response.hover.unwrap();
-    assert_eq!(hover.contents, "`launch`");
-    assert_eq!(hover.range.start.utf16_column, 3);
-    assert_eq!(hover.range.end.utf16_column, 9);
-}
-
-#[test]
-fn builtin_navigation_prefers_declarations_and_finds_references() {
-    let text = "let service = 1\nprint(service)\n";
-    let definitions = builtin_navigation(BuiltinNavigationRequest {
-        file_path: "/tmp/main.swift".to_string(),
-        text: text.to_string(),
-        position: LspPosition {
-            line: 1,
-            utf16_column: 8,
-        },
-        method: "textDocument/definition".to_string(),
-    })
-    .unwrap();
-    assert_eq!(definitions.locations.len(), 1);
-    assert_eq!(definitions.locations[0].range.start.line, 0);
-    assert_eq!(definitions.locations[0].range.start.utf16_column, 4);
-
-    let references = builtin_navigation(BuiltinNavigationRequest {
-        file_path: "/tmp/main.swift".to_string(),
-        text: text.to_string(),
-        position: LspPosition {
-            line: 1,
-            utf16_column: 8,
-        },
-        method: "textDocument/references".to_string(),
-    })
-    .unwrap();
-    assert_eq!(references.locations.len(), 2);
-}
-
-#[test]
-fn document_uri_matches_shared_fixture() {
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../fixtures/lsp/document-uri-v1.json"
-    ))
-    .unwrap();
-    for case in fixture["cases"].as_array().unwrap() {
-        let response: Value = serde_json::from_str(&crate::execute_json(
-            &json!({"command":"lsp.documentUri", "payload":{
-                "path":case["path"], "platform":case["platform"]
-            }})
-            .to_string(),
-        ))
-        .unwrap();
-        if case["uri"].is_null() {
-            assert_eq!(response["ok"], false, "{}: {response}", case["name"]);
-        } else {
-            assert_eq!(response["ok"], true, "{}: {response}", case["name"]);
-            assert_eq!(response["data"]["uri"], case["uri"], "{}", case["name"]);
-        }
-    }
-}
-
-#[test]
-fn document_paths_resolve_inside_lsp_requests_without_changing_virtual_uris() {
-    let mut request = json!({"uri":{"path":"C:\\work\\A#B.txt","platform":"auto"},
-        "virtualUri":"untitled://contents/A#B", "text":"unchanged",
-        "diagnostics":[{"relatedInformation":[{"location":{"uri":{"path":"/work/A#B.txt","platform":"posix"}}},
-            {"location":{"uri":"untitled://contents/A#B"}}]}]});
-    resolve_request_paths("lsp.request", &mut request).unwrap();
-    assert_eq!(request["uri"], "file:///C:/work/A%23B.txt");
-    assert_eq!(request["virtualUri"], "untitled://contents/A#B");
-    assert_eq!(
-        request["diagnostics"][0]["relatedInformation"][0]["location"]["uri"],
-        "file:///work/A%23B.txt"
-    );
-    assert_eq!(
-        request["diagnostics"][0]["relatedInformation"][1]["location"]["uri"],
-        "untitled://contents/A#B"
-    );
-    let mut changes = json!({"changes":[
-        {"uri":{"path":"/work/A?.txt","platform":"posix"},"kind":"changed"},
-        {"uri":"file:///already%20encoded","kind":"deleted"}
-    ]});
-    resolve_request_paths("lsp.workspaceFilesChanged", &mut changes).unwrap();
-    assert_eq!(changes["changes"][0]["uri"], "file:///work/A%3F.txt");
-    assert_eq!(changes["changes"][1]["uri"], "file:///already%20encoded");
-    let mut invalid = json!({"uri":{"path":"relative","platform":"posix"}});
-    assert!(resolve_request_paths("lsp.syncDocument", &mut invalid).is_err());
-}
-
-#[test]
-fn document_uri_accepts_non_ascii_windows_extended_length_paths() {
-    let path = format!("C:\\{}\\Main.txt", vec!["目".repeat(100); 120].join("\\"));
-    assert!(path.len() > 32_768);
-    assert!(path.encode_utf16().count() < 32_767);
-    let response: Value = serde_json::from_str(&crate::execute_json(
-        &json!({"command":"lsp.documentUri", "payload":{"path":path,"platform":"windows"}})
-            .to_string(),
-    ))
-    .unwrap();
-    assert_eq!(response["ok"], true);
-    assert!(response["data"]["uri"]
-        .as_str()
-        .unwrap()
-        .starts_with("file:///C:/"));
-}
-
-#[test]
 fn document_uri_identity_keeps_reserved_characters_distinct() {
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../fixtures/lsp/document-uri-v1.json"
-    ))
-    .unwrap();
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../../fixtures/lsp/document-uri-v1.json")).unwrap();
     for case in fixture["identityCases"].as_array().unwrap() {
         let opened_uri = case["opened"].as_str().unwrap();
         let published_uri = case["published"].as_str().unwrap();
@@ -491,7 +251,7 @@ fn client_core_tracks_documents_and_feature_requests() {
     let did_change: Value = serde_json::from_str(&changed.messages[0]).unwrap();
     assert_eq!(did_change["method"], "textDocument/didChange");
 
-    let requested = client_feature_request_canonical(ClientFeatureRequest {
+    let requested = client_feature_request(ClientFeatureRequest {
         query: None,
         state: changed.state,
         uri: "file:///tmp/project/main.rs".to_string(),
@@ -532,7 +292,7 @@ fn client_references_request_passes_include_declaration() {
     })
     .unwrap();
     for (include_declaration, sent) in [(None, true), (Some(true), true), (Some(false), false)] {
-        let requested = client_feature_request_canonical(ClientFeatureRequest {
+        let requested = client_feature_request(ClientFeatureRequest {
             query: None,
             state: opened.state.clone(),
             uri: "file:///tmp/project/Main.java".to_string(),
@@ -956,7 +716,7 @@ fn client_core_preserves_class_completion_namespace_and_import_edits() {
         text: "<?php\nnew Car".to_string(),
     })
     .unwrap();
-    let requested = client_feature_request_canonical(ClientFeatureRequest {
+    let requested = client_feature_request(ClientFeatureRequest {
         query: None,
         state: opened.state,
         uri: "file:///tmp/project/index.php".to_string(),
@@ -1004,7 +764,7 @@ fn client_core_preserves_class_completion_namespace_and_import_edits() {
     assert_eq!(completion["items"][0]["data"]["fqn"], "Carbon\\Carbon");
     assert!(completion["items"][0].get("additionalTextEdits").is_none());
 
-    let resolve = client_feature_request_canonical(ClientFeatureRequest {
+    let resolve = client_feature_request(ClientFeatureRequest {
         query: None,
         state: completed.state,
         uri: "file:///tmp/project/index.php".to_string(),
@@ -1339,7 +1099,7 @@ fn client_core_shapes_feature_responses_for_host_models() {
         text: "fn main() { la }\n".to_string(),
     })
     .unwrap();
-    let requested = client_feature_request_canonical(ClientFeatureRequest {
+    let requested = client_feature_request(ClientFeatureRequest {
         query: None,
         state: opened.state,
         uri: "file:///tmp/project/main.rs".to_string(),
@@ -1393,7 +1153,7 @@ fn client_core_shapes_feature_responses_for_host_models() {
 
     assert_eq!(result["items"][0]["insertTextFormat"], 2);
 
-    let rename = client_feature_request_canonical(ClientFeatureRequest {
+    let rename = client_feature_request(ClientFeatureRequest {
         query: None,
         state: completed.state,
         uri: "file:///tmp/project/main.rs".to_string(),
@@ -1439,7 +1199,7 @@ fn client_core_shapes_feature_responses_for_host_models() {
         "start"
     );
 
-    let formatting = client_feature_request_canonical(ClientFeatureRequest {
+    let formatting = client_feature_request(ClientFeatureRequest {
         query: None,
         state: renamed.state,
         uri: "file:///tmp/project/main.rs".to_string(),
@@ -1478,7 +1238,7 @@ fn client_core_shapes_feature_responses_for_host_models() {
         2
     );
 
-    let code_actions = client_feature_request_canonical(ClientFeatureRequest {
+    let code_actions = client_feature_request(ClientFeatureRequest {
         query: None,
         state: formatted.state,
         uri: "file:///tmp/project/main.rs".to_string(),
@@ -1598,7 +1358,7 @@ fn client_core_shapes_feature_responses_for_host_models() {
         "rust-analyzer.applySourceChange"
     );
 
-    let code_action_resolve = client_feature_request_canonical(ClientFeatureRequest {
+    let code_action_resolve = client_feature_request(ClientFeatureRequest {
         query: None,
         state: code_actioned.state,
         uri: "file:///tmp/project/main.rs".to_string(),
@@ -1659,7 +1419,7 @@ fn client_core_shapes_feature_responses_for_host_models() {
         "start"
     );
 
-    let completion_resolve = client_feature_request_canonical(ClientFeatureRequest {
+    let completion_resolve = client_feature_request(ClientFeatureRequest {
         query: None,
         state: code_action_resolved.state,
         uri: "file:///tmp/project/main.rs".to_string(),
@@ -1721,7 +1481,7 @@ fn client_core_shapes_feature_responses_for_host_models() {
         "Launches the app."
     );
 
-    let execute_command = client_feature_request_canonical(ClientFeatureRequest {
+    let execute_command = client_feature_request(ClientFeatureRequest {
         query: None,
         state: completion_resolved.state,
         uri: "file:///tmp/project/main.rs".to_string(),
@@ -1772,7 +1532,7 @@ fn client_requests_and_normalizes_document_links() {
     })
     .unwrap();
 
-    let request = client_feature_request_canonical(ClientFeatureRequest {
+    let request = client_feature_request(ClientFeatureRequest {
         query: None,
         state: opened.state,
         uri: uri.to_string(),
@@ -1835,7 +1595,7 @@ fn client_requests_and_normalizes_document_links() {
 
 #[test]
 fn client_requests_and_normalizes_workspace_symbols_without_a_document() {
-    let request = client_feature_request_canonical(ClientFeatureRequest {
+    let request = client_feature_request(ClientFeatureRequest {
         state: LspClientState::default(),
         uri: String::new(),
         method: "workspace/symbol".to_string(),
@@ -1912,7 +1672,7 @@ fn client_core_requests_and_shapes_inlay_hints_folding_ranges_and_code_lenses() 
     })
     .unwrap();
 
-    let inlay_request = client_feature_request_canonical(ClientFeatureRequest {
+    let inlay_request = client_feature_request(ClientFeatureRequest {
         query: None,
         state: opened.state,
         uri: uri.to_string(),
@@ -1976,7 +1736,7 @@ fn client_core_requests_and_shapes_inlay_hints_folding_ranges_and_code_lenses() 
     assert_eq!(hint["textEdits"][0]["range"]["start"]["utf16Column"], 12);
     assert_eq!(hint["data"]["id"], "hint-1");
 
-    let folding_request = client_feature_request_canonical(ClientFeatureRequest {
+    let folding_request = client_feature_request(ClientFeatureRequest {
         query: None,
         state: inlay_response.state,
         uri: uri.to_string(),
@@ -2021,7 +1781,7 @@ fn client_core_requests_and_shapes_inlay_hints_folding_ranges_and_code_lenses() 
     assert_eq!(range["kind"], "region");
     assert_eq!(range["collapsedText"], "methods");
 
-    let code_lens_request = client_feature_request_canonical(ClientFeatureRequest {
+    let code_lens_request = client_feature_request(ClientFeatureRequest {
         query: None,
         state: folding_response.state,
         uri: uri.to_string(),
@@ -2076,7 +1836,7 @@ fn navigation_locations_preserve_uris_without_fabricating_virtual_file_paths() {
         text: "class Main {}\n".to_string(),
     })
     .unwrap();
-    let requested = client_feature_request_canonical(ClientFeatureRequest {
+    let requested = client_feature_request(ClientFeatureRequest {
         query: None,
         state: opened.state,
         uri: uri.to_string(),
@@ -2415,24 +2175,17 @@ fn client_core_rejects_unknown_server_requests_with_method_not_found() {
 #[test]
 fn client_diagnostic_code_action_fixture_preserves_core_fields() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../fixtures/lsp/diagnostic-code-actions-v1.json"
+        "../../../fixtures/lsp/diagnostic-code-actions-v1.json"
     ))
     .unwrap();
     for case in fixture["severityCases"].as_array().unwrap() {
         let mut diagnostic = fixture["diagnostic"].clone();
         diagnostic["severity"] = case["severity"].clone();
-        // Exercise the exact JSON boundary used by Windows, including nullable
-        // severity, unknown tags and UTF-16 related locations.
-        let semantic: SemanticRequest = serde_json::from_value(json!({
-            "sessionId": "fixture-session", "operation": "codeActions",
-            "uri": fixture["uri"], "range": diagnostic["range"],
-            "diagnostics": [diagnostic]
-        }))
-        .unwrap();
-        assert_eq!(
-            serde_json::to_value(&semantic.diagnostics[0]).unwrap(),
-            diagnostic
-        );
+        // Exercise the exact JSON boundary used by Windows (the diagnostics of a
+        // codeActions request), including nullable severity, unknown tags and
+        // UTF-16 related locations.
+        let decoded: LspClientDiagnostic = serde_json::from_value(diagnostic.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&decoded).unwrap(), diagnostic);
         let opened = client_open_document(ClientOpenDocumentRequest {
             state: LspClientState::default(),
             uri: fixture["uri"].as_str().unwrap().to_string(),
@@ -2440,7 +2193,7 @@ fn client_diagnostic_code_action_fixture_preserves_core_fields() {
             text: "class Main {}".to_string(),
         })
         .unwrap();
-        let response = client_feature_request_canonical(
+        let response = client_feature_request(
             serde_json::from_value(json!({
                 "state": opened.state,
                 "uri": fixture["uri"], "method": "textDocument/codeAction",
@@ -2472,7 +2225,7 @@ fn client_diagnostic_code_action_fixture_preserves_core_fields() {
 #[test]
 fn client_completion_preserves_refresh_context_and_incomplete_lists() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../fixtures/lsp/completion-refresh-v1.json"
+        "../../../fixtures/lsp/completion-refresh-v1.json"
     ))
     .unwrap();
     for case in fixture["cases"].as_array().unwrap() {
@@ -2489,7 +2242,7 @@ fn client_completion_preserves_refresh_context_and_incomplete_lists() {
             "completionContext": case["context"]
         }))
         .unwrap();
-        let requested = client_feature_request_canonical(request).unwrap();
+        let requested = client_feature_request(request).unwrap();
         let message: Value = serde_json::from_str(&requested.messages[0]).unwrap();
         assert_eq!(message["params"]["context"], case["context"]);
         let completed = client_apply_server_message(ClientApplyServerMessageRequest {
@@ -2526,43 +2279,11 @@ fn client_completion_rejects_invalid_trigger_context() {
             "position":{"line":0,"utf16Column":0}, "completionContext":context
         }))
         .unwrap();
-        let error = client_feature_request_canonical(request).unwrap_err();
+        let error = client_feature_request(request).unwrap_err();
         assert!(matches!(error.code, ErrorCode::InvalidRequest));
         assert!(matches!(
             error.message.as_str(),
             "Invalid completion trigger kind" | "Completion trigger character is required"
         ));
-    }
-}
-
-#[test]
-fn text_edits_follow_shared_windows_fixture() {
-    let fixture: Value =
-        serde_json::from_str(include_str!("../../../../fixtures/lsp/text-edits-v1.json")).unwrap();
-    for case in fixture["cases"].as_array().unwrap() {
-        let edits: Vec<Value> = case["edits"].as_array().unwrap().iter().map(|edit| serde_json::json!({
-            "range": { "start": { "line": edit["range"]["start"]["line"], "utf16Column": edit["range"]["start"]["character"] },
-                       "end": { "line": edit["range"]["end"]["line"], "utf16Column": edit["range"]["end"]["character"] } },
-            "newText": edit["newText"]
-        })).collect();
-        let result = apply_text_edits(
-            serde_json::from_value(serde_json::json!({ "text": case["text"], "edits": edits }))
-                .unwrap(),
-        );
-        if let Some(expected) = case.get("expectedError") {
-            assert_eq!(
-                result.unwrap_err().details.as_deref(),
-                expected.as_str(),
-                "{}",
-                case["name"]
-            );
-        } else {
-            assert_eq!(
-                result.unwrap().text,
-                case["expectedText"].as_str().unwrap(),
-                "{}",
-                case["name"]
-            );
-        }
     }
 }

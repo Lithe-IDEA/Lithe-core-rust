@@ -27,14 +27,12 @@ lithe-git = { path = "../git" }
 lithe-git-host = { path = "../git-host" }
 lithe-github = { path = "../github" }
 lithe-ide-host = { path = "../ide-host" }
+lithe-lsp-engine = { path = "../lsp-engine" }
 lithe-lsp-policy = { path = "../lsp-policy" }
-lithe-lsp-transport = { path = "../lsp-transport" }
 lithe-network = { path = "../network" }
-lithe-plugin-backend = { path = "../plugin-backend" }
 lithe-plugin-content-providers = { path = "../plugin-content-providers" }
 lithe-plugin-editor = { path = "../plugin-editor" }
-lithe-plugin-functions = { path = "../plugin-functions" }
-lithe-plugin-grammar = { path = "../plugin-grammar" }
+lithe-plugin-function-relay = { path = "../plugin-function-relay" }
 lithe-plugin-keymap-import = { path = "../plugin-keymap-import" }
 lithe-plugin-language-servers = { path = "../plugin-language-servers" }
 lithe-plugin-manifest = { path = "../plugin-manifest" }

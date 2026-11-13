@@ -15,3 +15,6 @@ pub use edits::*;
 pub use position::*;
 pub use snippets::*;
 pub use symbols::*;
+
+#[cfg(test)]
+mod tests;

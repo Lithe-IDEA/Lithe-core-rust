@@ -71,7 +71,7 @@ fn search_exclusions_filter_names_content_and_replacement_and_keep_cache_variant
             "root": root, "paths": ["src/Name.swift"]
         }))
         .unwrap(),
-        crate::lsp::indexing_changed,
+        lithe_lsp_engine::indexing_changed,
     )
     .unwrap();
     for excluded in [false, true] {
@@ -325,7 +325,7 @@ fn search_everywhere_matches_names_before_limits_and_shares_utf16_fragments() {
     let update = |paths: &[&str]| {
         crate::project::files::update_search_index(serde_json::from_value(serde_json::json!({
             "root": root, "paths": paths, "hiddenDirectoryNames": ["excluded", ".build", "target"]
-        })).unwrap(), crate::lsp::indexing_changed).unwrap()
+        })).unwrap(), lithe_lsp_engine::indexing_changed).unwrap()
     };
     fs::write(root.join(".build/checkouts/NameGuide.swift"), "").unwrap();
     update(&[".build/checkouts/NameGuide.swift"]);

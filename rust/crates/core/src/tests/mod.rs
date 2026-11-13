@@ -8,6 +8,7 @@ mod declarative_plugins;
 mod detectors;
 mod diagnostics_dispatch;
 mod directory_actions;
+mod document_uri;
 mod editor_dispatch;
 mod execution_commands;
 mod file_name_order;

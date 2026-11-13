@@ -4,7 +4,6 @@ use lithe_build as build;
 use lithe_debug as debug;
 /// Run configurations and launch environments, kept in their own crate.
 pub use lithe_execution as execution;
-mod lsp;
 use lithe_project as project;
 use lithe_project_generators as project_generators;
 mod protocol;
@@ -37,12 +36,12 @@ pub fn start_lsp_owned(
     mut payload: serde_json::Value,
     registered: impl FnOnce(&str),
 ) -> Result<serde_json::Value, CoreError> {
-    lsp::resolve_request_paths("lsp.startServer", &mut payload)?;
+    lithe_document_uri::resolve_request_paths("lsp.startServer", &mut payload)?;
     let request = serde_json::from_value(payload).map_err(|error| {
         CoreError::new(ErrorCode::InvalidRequest, "Invalid language-server launch.")
             .with_details(error.to_string())
     })?;
-    let response = lsp::interface::start_server_owned(request, registered)?;
+    let response = lithe_lsp_engine::start_server_owned(request, registered)?;
     serde_json::to_value(response).map_err(|error| {
         CoreError::new(
             ErrorCode::Unknown,

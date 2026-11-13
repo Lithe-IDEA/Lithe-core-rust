@@ -29,12 +29,12 @@ fn supported_versions() -> Vec<u64> {
 /// Feature name recorded in the session's server capabilities once a
 /// provider answered a supported version. Every build method is available to
 /// a session that carries it.
-pub(crate) const BUILD_PROVIDER_FEATURE: &str = "litheBuild";
+pub const BUILD_PROVIDER_FEATURE: &str = "litheBuild";
 
 /// Task execution shares the workspace session and operation lifecycle.
 pub(crate) const EXECUTE_METHOD: &str = "lithe/build/execute";
 /// Prepares a bounded launch, while the host owns the application.
-pub(crate) const PREPARE_RUN_METHOD: &str = "lithe/build/prepareRun";
+pub const PREPARE_RUN_METHOD: &str = "lithe/build/prepareRun";
 /// Returns non-sensitive native settings and source/write metadata.
 pub(crate) const CONFIGURATION_METHOD: &str = "lithe/build/configuration";
 /// Provider-owned native editing; only a receipt crosses the wire.
@@ -42,7 +42,7 @@ pub(crate) const EDIT_CONFIGURATION_METHOD: &str = "lithe/build/editConfiguratio
 /// Prepares a native debug target, never an adapter process.
 pub(crate) const PREPARE_DEBUG_METHOD: &str = "lithe/build/prepareDebug";
 /// Runs tests while retaining the bounded execution lifecycle.
-pub(crate) const TEST_METHOD: &str = "lithe/build/test";
+pub const TEST_METHOD: &str = "lithe/build/test";
 /// Returns exact selectors; decoding remains a separate Core command.
 pub(crate) const DISCOVER_TESTS_METHOD: &str = "lithe/build/discoverTests";
 /// Progress never uses caller-chosen host operation IDs.
@@ -67,7 +67,7 @@ pub(crate) fn negotiated(capabilities: &Value) -> bool {
 }
 
 /// Whether `method` is a request of the negotiated protocol.
-pub(crate) fn is_build_method(method: &str) -> bool {
+pub fn is_build_method(method: &str) -> bool {
     MODEL_METHODS.contains(&method)
         || is_execution_method(method)
         || method == DISCOVER_TESTS_METHOD
@@ -78,12 +78,12 @@ pub(crate) fn is_build_method(method: &str) -> bool {
 }
 
 /// Whether the method shares bounded output, progress, and final result handling.
-pub(crate) fn is_execution_method(method: &str) -> bool {
+pub fn is_execution_method(method: &str) -> bool {
     matches!(method, EXECUTE_METHOD | TEST_METHOD)
 }
 
 /// A preparation has progress and cancellation, but its reply is a launch plan.
-pub(crate) fn is_progress_method(method: &str) -> bool {
+pub fn is_progress_method(method: &str) -> bool {
     is_execution_method(method) || method == PREPARE_RUN_METHOD || method == PREPARE_DEBUG_METHOD
 }
 
@@ -109,7 +109,7 @@ pub(crate) fn progress(params: Option<&Value>) -> Option<Value> {
 
 /// Stable outcome for a provider-owned task. Tool failure is an exit code,
 /// while malformed replies and JSON-RPC errors are protocol failures.
-pub(crate) fn execution_outcome(reply: &Value) -> Result<Value, (&'static str, String)> {
+pub fn execution_outcome(reply: &Value) -> Result<Value, (&'static str, String)> {
     if reply.get("error").is_some() {
         return Err((
             "plugin.build.failed",
@@ -221,7 +221,7 @@ mod tests {
     #[test]
     fn execution_replies_and_progress_match_the_shared_contract() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../../../shared/plugins/contract/v1/fixtures/build-providers/build-execution-protocol.json"
+            "../../../../shared/plugins/contract/v1/fixtures/build-providers/build-execution-protocol.json"
         ))
         .unwrap();
         assert_eq!(

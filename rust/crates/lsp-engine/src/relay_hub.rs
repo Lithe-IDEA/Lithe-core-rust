@@ -18,19 +18,19 @@
 //! which the session fails and its process is killed. One such backend cannot
 //! hold up the calls of other plugins.
 
-use super::super::function_relay::{
-    CallParent, CalleeOutcome, DispatchPlan, FunctionRelay, RelayAction, RelayFailure,
-    RelayRequest, RelaySnapshot, OPERATION_PREFIX,
-};
 use super::{
     json_rpc_error_with_data, json_rpc_result, push_negotiated_provider_event, LspLifecycleState,
     LspRuntimeError, PluginFunctionRequest, RuntimeSession, SessionState,
 };
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_plugin_function_relay::{
+    CallParent, CalleeOutcome, DispatchPlan, FunctionRelay, RelayAction, RelayFailure,
+    RelayRequest, RelaySnapshot, OPERATION_PREFIX,
+};
 use lithe_plugin_rpc::{
     bounded_host_message, codes, host_rpc_code, FunctionReference, FUNCTIONS_INVOKE,
     FUNCTIONS_PROVIDERS, INVOKE_METHOD,
 };
+use lithe_protocol::{CoreError, ErrorCode};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::sync::{mpsc, Arc, Mutex, MutexGuard, PoisonError, Weak};

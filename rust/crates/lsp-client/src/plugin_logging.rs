@@ -3,13 +3,15 @@
 //! The protocol version is the plugin API version (the base contract),
 //! negotiated in `initialize` under `capabilities.experimental.litheLogging`.
 
-use lithe_plugin_manifest::SUPPORTED_PLUGIN_API_VERSIONS;
+use lithe_plugin_model::capabilities::SUPPORTED_PLUGIN_API_VERSIONS;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub(super) const FEATURE: &str = "litheLogging";
-pub(super) const METHOD: &str = "lithe/log";
+/// Key of the protocol under `capabilities.experimental`.
+pub const FEATURE: &str = "litheLogging";
+/// Notification a plugin sends one diagnostic fact with.
+pub const METHOD: &str = "lithe/log";
 const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
 /// Closed facts select catalog severity; a plugin cannot choose a disk event or channel.
@@ -42,12 +44,12 @@ fn supported_versions() -> Vec<u64> {
 }
 
 /// The client half of the negotiation, placed under `capabilities.experimental`.
-pub(super) fn client_experimental_capabilities() -> (&'static str, Value) {
+pub(crate) fn client_experimental_capabilities() -> (&'static str, Value) {
     (FEATURE, json!({ "versions": supported_versions() }))
 }
 
 /// Whether the server's `initialize` capabilities chose a version this client offered.
-pub(super) fn negotiated(capabilities: &Value) -> bool {
+pub(crate) fn negotiated(capabilities: &Value) -> bool {
     capabilities
         .pointer("/experimental/litheLogging/version")
         .and_then(Value::as_u64)
@@ -70,19 +72,21 @@ fn known_operation(operation: &str, functions: &BTreeSet<String>) -> bool {
         )
         || operation == super::keymap_provider::IMPORT_METHOD
         || super::build_provider::is_build_method(operation)
-        || crate::vcs::is_vcs_method(operation)
+        || lithe_vcs::is_vcs_method(operation)
 }
 
 /// A catalog fact with no plugin-selected identity, message, severity, or raw error text.
-pub(super) struct Fact {
-    pub(super) event: &'static str,
-    pub(super) fields: BTreeMap<String, Value>,
+pub struct Fact {
+    /// Catalog event the fact maps to.
+    pub event: &'static str,
+    /// Validated catalog fields of the event.
+    pub fields: BTreeMap<String, Value>,
     /// Wire correlation is resolved to the owning host operation by the runtime.
-    pub(super) wire_operation: Option<String>,
+    pub wire_operation: Option<String>,
 }
 
 /// Rejects unknown fields and unregistered operations without echoing private input.
-pub(super) fn decode(plugin: &str, functions: &BTreeSet<String>, params: &Value) -> Option<Fact> {
+pub fn decode(plugin: &str, functions: &BTreeSet<String>, params: &Value) -> Option<Fact> {
     let input = Input::deserialize(params).ok()?;
     if !token(&input.operation, 64)
         || !known_operation(&input.operation, functions)
@@ -134,7 +138,7 @@ mod tests {
     #[test]
     fn shared_plugin_logging_fixture_matches_ingress_and_catalog() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../../../shared/plugins/contract/v1/fixtures/backend/plugin-logging.json"
+            "../../../../shared/plugins/contract/v1/fixtures/backend/plugin-logging.json"
         ))
         .unwrap();
         let functions = fixture["registeredFunctions"]

@@ -14,12 +14,12 @@
 //! the operation's `requestCompleted` event. Cancelling, timing out, and
 //! failing the session therefore only pick the operations to complete.
 
-use crate::protocol::{CoreError, ErrorCode};
 use lithe_plugin_language_servers::{
     is_protocol_name, matches_pattern, Gate, RemoteSupport, DID_CHANGE_CONFIGURATION,
     EXECUTE_COMMAND,
 };
 use lithe_plugin_rpc::{codes, MAX_HOST_NOTIFICATION_BYTES};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -73,7 +73,7 @@ pub struct SessionPolicy {
 
 impl SessionPolicy {
     /// Checks the bounds of a policy that a plugin-owned session received.
-    pub(super) fn validate(&self, plugin_id: Option<&str>) -> Result<(), CoreError> {
+    pub fn validate(&self, plugin_id: Option<&str>) -> Result<(), CoreError> {
         let invalid = |field: &str| {
             CoreError::new(
                 ErrorCode::InvalidRequest,
@@ -118,24 +118,31 @@ impl SessionPolicy {
 /// A request that waits for its gates to open. Core allocates the JSON-RPC
 /// request only when the gates open, so cancelling it writes nothing.
 #[derive(Debug, Clone)]
-pub(super) struct HeldRequest {
+pub struct HeldRequest {
+    /// Host operation the request belongs to.
     pub operation_id: String,
+    /// Method to send once the gates open.
     pub method: String,
+    /// Request parameters.
     pub params: Value,
+    /// When the request arrived.
     pub created_at: Instant,
+    /// When the request times out if its gates stay closed.
     pub deadline: Instant,
 }
 
 /// An operation that must be completed, with the method its event names.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Waiter {
+pub struct Waiter {
+    /// Host operation to complete.
     pub operation_id: String,
+    /// Method the completion event names.
     pub method: String,
 }
 
 /// What the engine does with an admitted request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Admission {
+pub enum Admission {
     /// Allocate the request and write it to the server now.
     Send,
     /// The request waits in the policy until a gate opens.
@@ -146,17 +153,22 @@ pub(super) enum Admission {
 }
 
 /// One request being admitted.
-pub(super) struct Arrival<'a> {
+pub struct Arrival<'a> {
+    /// Host operation the request belongs to.
     pub operation_id: &'a str,
+    /// Requested method.
     pub method: &'a str,
+    /// Request parameters.
     pub params: &'a Value,
+    /// Arrival time.
     pub now: Instant,
+    /// When the request times out.
     pub deadline: Instant,
 }
 
 /// What a server notification changed in the policy.
 #[derive(Debug, Default)]
-pub(super) struct Observation {
+pub struct Observation {
     /// The `pluginServerNotification` result to publish for the backend.
     pub forward: Option<Value>,
     /// Requests whose gates are now open, in arrival order.
@@ -181,7 +193,7 @@ struct RunningCommand {
 /// Mutable part of the policy: gates opened so far, requests waiting for
 /// them, and serialized commands in flight.
 #[derive(Debug)]
-pub(super) struct PluginServerState {
+pub struct PluginServerState {
     policy: SessionPolicy,
     open_gates: BTreeSet<String>,
     held: VecDeque<HeldRequest>,
@@ -190,7 +202,9 @@ pub(super) struct PluginServerState {
 }
 
 impl PluginServerState {
-    pub(super) fn new(policy: SessionPolicy) -> Self {
+    /// Fresh state for a session started under `policy`: no gate open,
+    /// nothing held or running.
+    pub fn new(policy: SessionPolicy) -> Self {
         Self {
             policy,
             open_gates: BTreeSet::new(),
@@ -203,7 +217,7 @@ impl PluginServerState {
     /// Refuses a call that names another plugin or another server than the
     /// one this session runs. The host resolves the server by ID, so a
     /// mismatch means it resolved a session of a different contribution.
-    pub(super) fn check_owner(
+    pub fn check_owner(
         &self,
         session_plugin_id: Option<&str>,
         plugin_id: &str,
@@ -216,7 +230,7 @@ impl PluginServerState {
     }
 
     /// Decides what happens to a request the backend sent to the server.
-    pub(super) fn admit_request(&mut self, arrival: Arrival<'_>) -> Result<Admission, CoreError> {
+    pub fn admit_request(&mut self, arrival: Arrival<'_>) -> Result<Admission, CoreError> {
         if !self.policy.request_methods.contains(arrival.method) {
             return Err(not_declared("The language-server method is not declared."));
         }
@@ -271,7 +285,7 @@ impl PluginServerState {
     /// Decides whether a notification may be sent. Gates never hold a
     /// notification: it carries no answer a backend waits for, and the
     /// configuration notification may be exactly what opens a gate.
-    pub(super) fn admit_notification(&self, method: &str, params: &Value) -> Result<(), CoreError> {
+    pub fn admit_notification(&self, method: &str, params: &Value) -> Result<(), CoreError> {
         // A command is only run as a request, where it is checked against
         // the declared commands.
         let declared = method == DID_CHANGE_CONFIGURATION
@@ -287,7 +301,7 @@ impl PluginServerState {
 
     /// Applies a notification the server sent: it may open gates and may
     /// be one the backend asked to receive.
-    pub(super) fn observe(&mut self, method: &str, params: &Value) -> Observation {
+    pub fn observe(&mut self, method: &str, params: &Value) -> Observation {
         for gate in &self.policy.gates {
             if gate.method == method && matches_pattern(params, &gate.pattern) {
                 self.open_gates.insert(gate.id.clone());
@@ -308,7 +322,7 @@ impl PluginServerState {
 
     /// Whether the operation has no request on the wire: it waits behind a
     /// gate or joined another request. Cancelling it only completes it.
-    pub(super) fn is_unsent(&self, operation_id: &str) -> bool {
+    pub fn is_unsent(&self, operation_id: &str) -> bool {
         if self
             .held
             .iter()
@@ -324,13 +338,13 @@ impl PluginServerState {
     }
 
     /// Whether the operation came through `admit_request` and is not done.
-    pub(super) fn owns(&self, operation_id: &str) -> bool {
+    pub fn owns(&self, operation_id: &str) -> bool {
         self.owned.contains_key(operation_id)
     }
 
     /// Requests whose deadline passed while they waited for a gate. Their
     /// ownership ends when the engine finishes them.
-    pub(super) fn expired_held(&self, now: Instant) -> Vec<Waiter> {
+    pub fn expired_held(&self, now: Instant) -> Vec<Waiter> {
         self.held
             .iter()
             .filter(|held| now >= held.deadline)
@@ -339,14 +353,14 @@ impl PluginServerState {
     }
 
     /// Every request still waiting for a gate, for a session that ended.
-    pub(super) fn all_held(&self) -> Vec<Waiter> {
+    pub fn all_held(&self) -> Vec<Waiter> {
         self.held.iter().map(HeldRequest::waiter).collect()
     }
 
     /// Ends the policy's ownership of an operation the engine completes and
     /// returns the requests that joined it, which complete the same way. A
     /// joiner that finishes on its own (cancelled) just leaves the list.
-    pub(super) fn finish(&mut self, operation_id: &str) -> Vec<Waiter> {
+    pub fn finish(&mut self, operation_id: &str) -> Vec<Waiter> {
         self.held.retain(|held| held.operation_id != operation_id);
         let Some(owned) = self.owned.remove(operation_id) else {
             return Vec::new();
@@ -380,7 +394,7 @@ impl PluginServerState {
     }
 
     /// The method a finished operation was admitted with.
-    pub(super) fn method_of(&self, operation_id: &str) -> Option<&str> {
+    pub fn method_of(&self, operation_id: &str) -> Option<&str> {
         self.owned
             .get(operation_id)
             .map(|owned| owned.method.as_str())
@@ -455,7 +469,7 @@ impl HeldRequest {
 /// The `plugin.host.*` code a backend sees for a failure the engine reports
 /// with its own runtime code. Anything that ends a request without an
 /// answer from the server means the server is not usable now.
-pub(super) fn host_error_code(runtime_code: &str) -> &str {
+pub fn host_error_code(runtime_code: &str) -> &str {
     match runtime_code {
         "requestTimeout" => codes::HOST_TIMEOUT,
         "requestCancelled" => codes::HOST_CANCELLED,
@@ -467,7 +481,7 @@ pub(super) fn host_error_code(runtime_code: &str) -> &str {
 /// Marks locations that are not files as read-only and gives them a path to
 /// show. The host opens such a location through the plugin's content
 /// provider, so it can never write the document back.
-pub(super) fn normalize_navigation_result(mut result: Option<Value>) -> Option<Value> {
+pub fn normalize_navigation_result(mut result: Option<Value>) -> Option<Value> {
     let locations = result
         .as_mut()
         .and_then(|result| result.get_mut("locations"))
@@ -517,7 +531,7 @@ fn byte_size(value: &Value) -> usize {
 
 /// The refusal for a call that reached a session of another contribution,
 /// or a session that is no plugin-owned language server at all.
-pub(super) fn foreign_contribution() -> CoreError {
+pub fn foreign_contribution() -> CoreError {
     refusal(
         ErrorCode::PermissionDenied,
         "The language server belongs to another contribution.",
@@ -526,7 +540,7 @@ pub(super) fn foreign_contribution() -> CoreError {
 }
 
 /// The refusal for a call to a server that is not running yet or any more.
-pub(super) fn unavailable() -> CoreError {
+pub fn unavailable() -> CoreError {
     refusal(
         ErrorCode::InvalidRequest,
         "The language server is not ready.",

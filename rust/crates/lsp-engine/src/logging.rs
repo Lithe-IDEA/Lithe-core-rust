@@ -1,6 +1,6 @@
 //! Catalog identities, role routing, and bounded stderr framing for managed engines.
 
-use super::engine::LspRuntimeError;
+use crate::LspRuntimeError;
 use lithe_diagnostics::channel::{digest_segment, identity_segment, validate_segment};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -88,7 +88,7 @@ impl SessionLogIdentity {
 /// Pure host request for the exact routing identity used at engine startup.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct ResolveEngineLogSubjectRequest {
+pub struct ResolveEngineLogSubjectRequest {
     /// Explicit protocol role; never inferred from a provider name.
     role: SessionRole,
     /// Opaque provider catalog identity, including IDs unsafe as path segments.
@@ -102,7 +102,7 @@ pub(crate) struct ResolveEngineLogSubjectRequest {
 /// Core-derived routing segment and channel, without starting a session or doing I/O.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ResolvedEngineLogSubject {
+pub struct ResolvedEngineLogSubject {
     /// Complete logical channel selected by the engine role.
     channel: String,
     /// Safe identity segment shared by Core and host-owned catalog facts.
@@ -110,7 +110,7 @@ pub(crate) struct ResolvedEngineLogSubject {
 }
 
 /// Reuses startup identity rules so pre-start host facts route to the same channel.
-pub(crate) fn resolve_engine_log_subject(
+pub fn resolve_engine_log_subject(
     request: ResolveEngineLogSubjectRequest,
 ) -> ResolvedEngineLogSubject {
     let identity = SessionLogIdentity::new(
@@ -472,13 +472,14 @@ mod tests {
             ),
             (SessionRole::Backend, "opaque:any", None, None),
         ] {
-            let response: Value = serde_json::from_str(&crate::runtime::execute_json(&json!({
-                "version": 1, "command": "diagnostics.resolveEngineLogSubject",
-                "payload": {"role": role, "providerId": provider, "pluginId": plugin, "logSubject": subject}
-            }).to_string())).unwrap();
+            let request: ResolveEngineLogSubjectRequest = serde_json::from_value(json!({
+                "role": role, "providerId": provider, "pluginId": plugin, "logSubject": subject
+            }))
+            .unwrap();
+            let response = serde_json::to_value(resolve_engine_log_subject(request)).unwrap();
             let expected = SessionLogIdentity::new(role, provider, plugin, subject);
             assert_eq!(
-                response["data"],
+                response,
                 json!({"channel": expected.channel(), "segment": expected.subject})
             );
         }
@@ -487,14 +488,7 @@ mod tests {
             json!({"role":"unknown", "providerId":"id"}),
             json!({"role":"language_server", "providerId": 5}),
         ] {
-            let response: Value = serde_json::from_str(&crate::runtime::execute_json(
-                &json!({
-                    "version":1, "command":"diagnostics.resolveEngineLogSubject", "payload":payload
-                })
-                .to_string(),
-            ))
-            .unwrap();
-            assert_eq!(response["error"]["code"], "invalid_request");
+            assert!(serde_json::from_value::<ResolveEngineLogSubjectRequest>(payload).is_err());
         }
     }
 

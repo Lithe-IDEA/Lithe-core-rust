@@ -176,7 +176,9 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
         );
     };
 
-    if let Err(error) = crate::lsp::resolve_request_paths(&parsed.command, &mut parsed.payload) {
+    if let Err(error) =
+        lithe_document_uri::resolve_request_paths(&parsed.command, &mut parsed.payload)
+    {
         return CoreResponse::failure(id, error);
     }
 
@@ -720,8 +722,9 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                 CoreError::new(ErrorCode::InvalidRequest, "Invalid indexing policy")
                     .with_details(error.to_string())
             })
-            .and_then(|request| project::indexing::configure(request, crate::lsp::indexing_changed))
-            {
+            .and_then(|request| {
+                project::indexing::configure(request, lithe_lsp_engine::indexing_changed)
+            }) {
                 Ok(data) => CoreResponse::success(
                     id,
                     serde_json::to_value(data).expect("indexing status should encode"),
@@ -738,7 +741,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                     .with_details(error.to_string())
             })
             .and_then(|request| {
-                project::indexing::refresh_indexing(request, crate::lsp::indexing_changed)
+                project::indexing::refresh_indexing(request, lithe_lsp_engine::indexing_changed)
             }) {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -873,7 +876,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                         .with_details(error.to_string())
                 })
                 .and_then(|request| {
-                    project::update_search_index(request, crate::lsp::indexing_changed)
+                    project::update_search_index(request, lithe_lsp_engine::indexing_changed)
                 }) {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -1744,12 +1747,12 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::LspApplyTextEdits => {
-            match serde_json::from_value::<crate::lsp::ApplyTextEditsRequest>(parsed.payload)
+            match serde_json::from_value::<lithe_text::ApplyTextEditsRequest>(parsed.payload)
                 .map_err(|error| {
                     CoreError::new(ErrorCode::InvalidRequest, "Invalid LSP text edit request")
                         .with_details(error.to_string())
                 })
-                .and_then(crate::lsp::apply_text_edits)
+                .and_then(lithe_text::apply_text_edits)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -1866,7 +1869,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::LspPlainSnippet => {
-            match serde_json::from_value::<crate::lsp::PlainSnippetRequest>(parsed.payload).map_err(
+            match serde_json::from_value::<lithe_text::PlainSnippetRequest>(parsed.payload).map_err(
                 |error| {
                     CoreError::new(ErrorCode::InvalidRequest, "Invalid LSP snippet request")
                         .with_details(error.to_string())
@@ -1874,19 +1877,19 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             ) {
                 Ok(request) => CoreResponse::success(
                     id,
-                    serde_json::to_value(crate::lsp::plain_snippet(request))
+                    serde_json::to_value(lithe_text::plain_snippet(request))
                         .expect("LSP snippet response should encode"),
                 ),
                 Err(error) => CoreResponse::failure(id, error),
             }
         }
         CoreCommand::LspBuiltinCompletions => {
-            match serde_json::from_value::<crate::lsp::BuiltinRequest>(parsed.payload)
+            match serde_json::from_value::<lithe_text::BuiltinRequest>(parsed.payload)
                 .map_err(|error| {
                     CoreError::new(ErrorCode::InvalidRequest, "Invalid LSP completion request")
                         .with_details(error.to_string())
                 })
-                .and_then(crate::lsp::builtin_completions)
+                .and_then(lithe_text::builtin_completions)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -1896,12 +1899,12 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::LspBuiltinHover => {
-            match serde_json::from_value::<crate::lsp::BuiltinRequest>(parsed.payload)
+            match serde_json::from_value::<lithe_text::BuiltinRequest>(parsed.payload)
                 .map_err(|error| {
                     CoreError::new(ErrorCode::InvalidRequest, "Invalid LSP hover request")
                         .with_details(error.to_string())
                 })
-                .and_then(crate::lsp::builtin_hover)
+                .and_then(lithe_text::builtin_hover)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -1911,12 +1914,12 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::LspBuiltinNavigation => {
-            match serde_json::from_value::<crate::lsp::BuiltinNavigationRequest>(parsed.payload)
+            match serde_json::from_value::<lithe_text::BuiltinNavigationRequest>(parsed.payload)
                 .map_err(|error| {
                     CoreError::new(ErrorCode::InvalidRequest, "Invalid LSP navigation request")
                         .with_details(error.to_string())
                 })
-                .and_then(crate::lsp::builtin_navigation)
+                .and_then(lithe_text::builtin_navigation)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -1941,7 +1944,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             lithe_lsp_policy::problems::query_command,
         ),
         CoreCommand::LspStartServer => {
-            match serde_json::from_value::<crate::lsp::StartServerRequest>(parsed.payload)
+            match serde_json::from_value::<lithe_lsp_engine::StartServerRequest>(parsed.payload)
                 .map_err(|error| {
                     CoreError::new(
                         ErrorCode::InvalidRequest,
@@ -1949,7 +1952,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                     )
                     .with_details(error.to_string())
                 })
-                .and_then(crate::lsp::start_server)
+                .and_then(lithe_lsp_engine::start_server)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -1959,12 +1962,12 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::LspStopServer => {
-            match serde_json::from_value::<crate::lsp::SessionRequest>(parsed.payload)
+            match serde_json::from_value::<lithe_lsp_engine::SessionRequest>(parsed.payload)
                 .map_err(|error| {
                     CoreError::new(ErrorCode::InvalidRequest, "Invalid LSP stop-server request")
                         .with_details(error.to_string())
                 })
-                .and_then(crate::lsp::stop_server)
+                .and_then(lithe_lsp_engine::stop_server)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -1974,7 +1977,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::LspUpdateWorkspaceConfiguration => {
-            match serde_json::from_value::<crate::lsp::UpdateWorkspaceConfigurationRequest>(
+            match serde_json::from_value::<lithe_lsp_engine::UpdateWorkspaceConfigurationRequest>(
                 parsed.payload,
             )
             .map_err(|error| {
@@ -1984,7 +1987,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                 )
                 .with_details(error.to_string())
             })
-            .and_then(crate::lsp::update_workspace_configuration)
+            .and_then(lithe_lsp_engine::update_workspace_configuration)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -1995,7 +1998,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::LspSaveDocument => {
-            match serde_json::from_value::<crate::lsp::SaveDocumentRequest>(parsed.payload)
+            match serde_json::from_value::<lithe_lsp_engine::SaveDocumentRequest>(parsed.payload)
                 .map_err(|error| {
                     CoreError::new(
                         ErrorCode::InvalidRequest,
@@ -2003,14 +2006,14 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                     )
                     .with_details(error.to_string())
                 })
-                .and_then(crate::lsp::save_document)
+                .and_then(lithe_lsp_engine::save_document)
             {
                 Ok(sent) => CoreResponse::success(id, json!({"sent": sent})),
                 Err(error) => CoreResponse::failure(id, error),
             }
         }
         CoreCommand::LspDocumentUri => {
-            plugin_response(id, parsed.payload, crate::lsp::document_uri_command)
+            plugin_response(id, parsed.payload, lithe_document_uri::document_uri_command)
         }
         CoreCommand::LspSyncDocument => {
             let uri = parsed
@@ -2018,7 +2021,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                 .get("uri")
                 .and_then(serde_json::Value::as_str)
                 .map(str::to_owned);
-            match serde_json::from_value::<crate::lsp::SyncDocumentRequest>(parsed.payload)
+            match serde_json::from_value::<lithe_lsp_engine::SyncDocumentRequest>(parsed.payload)
                 .map_err(|error| {
                     CoreError::new(
                         ErrorCode::InvalidRequest,
@@ -2026,7 +2029,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                     )
                     .with_details(error.to_string())
                 })
-                .and_then(crate::lsp::sync_document)
+                .and_then(lithe_lsp_engine::sync_document)
             {
                 Ok(data) => {
                     let mut encoded = serde_json::to_value(data)
@@ -2038,15 +2041,17 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::LspWorkspaceFilesChanged => {
-            match serde_json::from_value::<crate::lsp::WorkspaceFilesChangedRequest>(parsed.payload)
-                .map_err(|error| {
-                    CoreError::new(
-                        ErrorCode::InvalidRequest,
-                        "Invalid LSP workspace-files-changed request",
-                    )
-                    .with_details(error.to_string())
-                })
-                .and_then(crate::lsp::workspace_files_changed)
+            match serde_json::from_value::<lithe_lsp_engine::WorkspaceFilesChangedRequest>(
+                parsed.payload,
+            )
+            .map_err(|error| {
+                CoreError::new(
+                    ErrorCode::InvalidRequest,
+                    "Invalid LSP workspace-files-changed request",
+                )
+                .with_details(error.to_string())
+            })
+            .and_then(lithe_lsp_engine::workspace_files_changed)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -2057,7 +2062,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::LspCloseDocument => {
-            match serde_json::from_value::<crate::lsp::CloseDocumentRequest>(parsed.payload)
+            match serde_json::from_value::<lithe_lsp_engine::CloseDocumentRequest>(parsed.payload)
                 .map_err(|error| {
                     CoreError::new(
                         ErrorCode::InvalidRequest,
@@ -2065,7 +2070,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                     )
                     .with_details(error.to_string())
                 })
-                .and_then(crate::lsp::close_document)
+                .and_then(lithe_lsp_engine::close_document)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -2075,12 +2080,12 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::LspRequest => {
-            match serde_json::from_value::<crate::lsp::SemanticRequest>(parsed.payload)
+            match serde_json::from_value::<lithe_lsp_engine::SemanticRequest>(parsed.payload)
                 .map_err(|error| {
                     CoreError::new(ErrorCode::InvalidRequest, "Invalid semantic LSP request")
                         .with_details(error.to_string())
                 })
-                .and_then(crate::lsp::semantic_request)
+                .and_then(lithe_lsp_engine::semantic_request)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -2090,12 +2095,12 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::LspBuildRequest => {
-            match serde_json::from_value::<crate::lsp::BuildProviderRequest>(parsed.payload)
+            match serde_json::from_value::<lithe_lsp_engine::BuildProviderRequest>(parsed.payload)
                 .map_err(|error| {
                     CoreError::new(ErrorCode::InvalidRequest, "Invalid build-provider request")
                         .with_details(error.to_string())
                 })
-                .and_then(crate::lsp::build_provider_request)
+                .and_then(lithe_lsp_engine::build_provider_request)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -2105,15 +2110,17 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::LspToolchainRequest => {
-            match serde_json::from_value::<crate::lsp::ToolchainProviderRequest>(parsed.payload)
-                .map_err(|error| {
-                    CoreError::new(
-                        ErrorCode::InvalidRequest,
-                        "Invalid toolchain-provider request",
-                    )
-                    .with_details(error.to_string())
-                })
-                .and_then(crate::lsp::toolchain_provider_request)
+            match serde_json::from_value::<lithe_lsp_engine::ToolchainProviderRequest>(
+                parsed.payload,
+            )
+            .map_err(|error| {
+                CoreError::new(
+                    ErrorCode::InvalidRequest,
+                    "Invalid toolchain-provider request",
+                )
+                .with_details(error.to_string())
+            })
+            .and_then(lithe_lsp_engine::toolchain_provider_request)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -2123,12 +2130,14 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::LspKeymapImportRequest => {
-            match serde_json::from_value::<crate::lsp::KeymapImportProviderRequest>(parsed.payload)
-                .map_err(|error| {
-                    CoreError::new(ErrorCode::InvalidRequest, "Invalid shortcut import request")
-                        .with_details(error.to_string())
-                })
-                .and_then(crate::lsp::keymap_import_provider_request)
+            match serde_json::from_value::<lithe_lsp_engine::KeymapImportProviderRequest>(
+                parsed.payload,
+            )
+            .map_err(|error| {
+                CoreError::new(ErrorCode::InvalidRequest, "Invalid shortcut import request")
+                    .with_details(error.to_string())
+            })
+            .and_then(lithe_lsp_engine::keymap_import_provider_request)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -2138,12 +2147,12 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::LspVcsRequest => {
-            match serde_json::from_value::<crate::lsp::VcsProviderRequest>(parsed.payload)
+            match serde_json::from_value::<lithe_lsp_engine::VcsProviderRequest>(parsed.payload)
                 .map_err(|error| {
                     CoreError::new(ErrorCode::InvalidRequest, "Invalid VCS-provider request")
                         .with_details(error.to_string())
                 })
-                .and_then(crate::lsp::vcs_provider_request)
+                .and_then(lithe_lsp_engine::vcs_provider_request)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -2152,16 +2161,18 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                 Err(error) => CoreResponse::failure(id, error),
             }
         }
-        CoreCommand::LspFunctionProvider => {
-            plugin_response(id, parsed.payload, crate::lsp::function_provider_command)
-        }
+        CoreCommand::LspFunctionProvider => plugin_response(
+            id,
+            parsed.payload,
+            lithe_lsp_engine::function_provider_command,
+        ),
         CoreCommand::LspFunctionRequest => {
-            match serde_json::from_value::<crate::lsp::PluginFunctionRequest>(parsed.payload)
+            match serde_json::from_value::<lithe_lsp_engine::PluginFunctionRequest>(parsed.payload)
                 .map_err(|error| {
                     CoreError::new(ErrorCode::InvalidRequest, "Invalid plugin-function request")
                         .with_details(error.to_string())
                 })
-                .and_then(crate::lsp::plugin_function_request)
+                .and_then(lithe_lsp_engine::plugin_function_request)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -2171,36 +2182,38 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::LspConfigureFunctionRelay => {
-            match serde_json::from_value::<crate::lsp::RelaySnapshot>(parsed.payload)
-                .map_err(|error| {
-                    CoreError::new(ErrorCode::InvalidRequest, "Invalid function relay snapshot")
-                        .with_details(error.to_string())
-                })
-                .and_then(crate::lsp::configure_function_relay)
+            match serde_json::from_value::<lithe_plugin_function_relay::RelaySnapshot>(
+                parsed.payload,
+            )
+            .map_err(|error| {
+                CoreError::new(ErrorCode::InvalidRequest, "Invalid function relay snapshot")
+                    .with_details(error.to_string())
+            })
+            .and_then(lithe_lsp_engine::configure_function_relay)
             {
                 Ok(()) => CoreResponse::success(id, json!({})),
                 Err(error) => CoreResponse::failure(id, error),
             }
         }
         CoreCommand::LspHostResponse => {
-            match serde_json::from_value::<crate::lsp::PluginHostResponse>(parsed.payload)
+            match serde_json::from_value::<lithe_lsp_engine::PluginHostResponse>(parsed.payload)
                 .map_err(|error| {
                     CoreError::new(ErrorCode::InvalidRequest, "Invalid host-service response")
                         .with_details(error.to_string())
                 })
-                .and_then(crate::lsp::plugin_host_response)
+                .and_then(lithe_lsp_engine::plugin_host_response)
             {
                 Ok(()) => CoreResponse::success(id, json!({})),
                 Err(error) => CoreResponse::failure(id, error),
             }
         }
         CoreCommand::LspHostNotify => {
-            match serde_json::from_value::<crate::lsp::PluginHostNotification>(parsed.payload)
+            match serde_json::from_value::<lithe_lsp_engine::PluginHostNotification>(parsed.payload)
                 .map_err(|error| {
                     CoreError::new(ErrorCode::InvalidRequest, "Invalid host notification")
                         .with_details(error.to_string())
                 })
-                .and_then(crate::lsp::plugin_host_notify)
+                .and_then(lithe_lsp_engine::plugin_host_notify)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -2210,7 +2223,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::LspPluginServerRequest => {
-            match serde_json::from_value::<crate::lsp::PluginServerRequest>(parsed.payload)
+            match serde_json::from_value::<lithe_lsp_engine::PluginServerRequest>(parsed.payload)
                 .map_err(|error| {
                     CoreError::new(
                         ErrorCode::InvalidRequest,
@@ -2218,7 +2231,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                     )
                     .with_details(error.to_string())
                 })
-                .and_then(crate::lsp::plugin_server_request)
+                .and_then(lithe_lsp_engine::plugin_server_request)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -2229,7 +2242,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::LspPluginServerNotify => {
-            match serde_json::from_value::<crate::lsp::PluginServerNotify>(parsed.payload)
+            match serde_json::from_value::<lithe_lsp_engine::PluginServerNotify>(parsed.payload)
                 .map_err(|error| {
                     CoreError::new(
                         ErrorCode::InvalidRequest,
@@ -2237,7 +2250,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                     )
                     .with_details(error.to_string())
                 })
-                .and_then(crate::lsp::plugin_server_notify)
+                .and_then(lithe_lsp_engine::plugin_server_notify)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -2248,7 +2261,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::LspCancelOperation => {
-            match serde_json::from_value::<crate::lsp::CancelOperationRequest>(parsed.payload)
+            match serde_json::from_value::<lithe_lsp_engine::CancelOperationRequest>(parsed.payload)
                 .map_err(|error| {
                     CoreError::new(
                         ErrorCode::InvalidRequest,
@@ -2256,7 +2269,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                     )
                     .with_details(error.to_string())
                 })
-                .and_then(crate::lsp::cancel_operation)
+                .and_then(lithe_lsp_engine::cancel_operation)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -2266,12 +2279,12 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::LspPollEvents => {
-            match serde_json::from_value::<crate::lsp::SessionRequest>(parsed.payload)
+            match serde_json::from_value::<lithe_lsp_engine::SessionRequest>(parsed.payload)
                 .map_err(|error| {
                     CoreError::new(ErrorCode::InvalidRequest, "Invalid LSP poll-events request")
                         .with_details(error.to_string())
                 })
-                .and_then(crate::lsp::poll_events)
+                .and_then(lithe_lsp_engine::poll_events)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -2281,7 +2294,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::LspSetDetailedDiagnostics => {
-            match serde_json::from_value::<crate::lsp::SetDetailedDiagnosticsRequest>(
+            match serde_json::from_value::<lithe_lsp_engine::SetDetailedDiagnosticsRequest>(
                 parsed.payload,
             )
             .map_err(|_| {
@@ -2290,19 +2303,19 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                     "Invalid detailed diagnostics request",
                 )
             })
-            .and_then(crate::lsp::set_detailed_diagnostics)
+            .and_then(lithe_lsp_engine::set_detailed_diagnostics)
             {
                 Ok(()) => CoreResponse::success(id, json!({})),
                 Err(error) => CoreResponse::failure(id, error),
             }
         }
         CoreCommand::LspWaitEvents => {
-            match serde_json::from_value::<crate::lsp::WaitEventsRequest>(parsed.payload)
+            match serde_json::from_value::<lithe_lsp_engine::WaitEventsRequest>(parsed.payload)
                 .map_err(|error| {
                     CoreError::new(ErrorCode::InvalidRequest, "Invalid LSP wait-events request")
                         .with_details(error.to_string())
                 })
-                .and_then(crate::lsp::wait_events)
+                .and_then(lithe_lsp_engine::wait_events)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -2312,7 +2325,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::LspDestroyServer => {
-            match serde_json::from_value::<crate::lsp::SessionRequest>(parsed.payload)
+            match serde_json::from_value::<lithe_lsp_engine::SessionRequest>(parsed.payload)
                 .map_err(|error| {
                     CoreError::new(
                         ErrorCode::InvalidRequest,
@@ -2320,7 +2333,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                     )
                     .with_details(error.to_string())
                 })
-                .and_then(crate::lsp::destroy_server)
+                .and_then(lithe_lsp_engine::destroy_server)
             {
                 Ok(data) => CoreResponse::success(
                     id,
@@ -3873,12 +3886,12 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::DiagnosticsResolveEngineLogSubject => {
-            match serde_json::from_value::<crate::lsp::ResolveEngineLogSubjectRequest>(
+            match serde_json::from_value::<lithe_lsp_engine::ResolveEngineLogSubjectRequest>(
                 parsed.payload,
             ) {
                 Ok(request) => CoreResponse::success(
                     id,
-                    serde_json::to_value(crate::lsp::resolve_engine_log_subject(request))
+                    serde_json::to_value(lithe_lsp_engine::resolve_engine_log_subject(request))
                         .expect("Engine log subject should encode"),
                 ),
                 Err(_) => CoreResponse::failure(

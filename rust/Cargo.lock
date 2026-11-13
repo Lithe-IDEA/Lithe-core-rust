@@ -912,14 +912,13 @@ dependencies = [
  "lithe-git-host",
  "lithe-github",
  "lithe-ide-host",
+ "lithe-lsp-engine",
  "lithe-lsp-policy",
  "lithe-lsp-transport",
  "lithe-network",
- "lithe-plugin-backend",
  "lithe-plugin-content-providers",
  "lithe-plugin-editor",
- "lithe-plugin-functions",
- "lithe-plugin-grammar",
+ "lithe-plugin-function-relay",
  "lithe-plugin-keymap-import",
  "lithe-plugin-language-servers",
  "lithe-plugin-manifest",
@@ -1086,6 +1085,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "lithe-lsp-client"
+version = "0.1.0"
+dependencies = [
+ "lithe-diagnostics",
+ "lithe-document-uri",
+ "lithe-plugin-editor",
+ "lithe-plugin-keymap-import",
+ "lithe-plugin-model",
+ "lithe-plugin-rpc",
+ "lithe-protocol",
+ "lithe-text",
+ "lithe-vcs",
+ "serde",
+ "serde_json",
+ "url",
+]
+
+[[package]]
+name = "lithe-lsp-engine"
+version = "0.1.0"
+dependencies = [
+ "lithe-diagnostics",
+ "lithe-document-uri",
+ "lithe-git",
+ "lithe-lsp-client",
+ "lithe-lsp-transport",
+ "lithe-plugin-editor",
+ "lithe-plugin-function-relay",
+ "lithe-plugin-language-servers",
+ "lithe-plugin-rpc",
+ "lithe-plugin-server-policy",
+ "lithe-project",
+ "lithe-protocol",
+ "lithe-text",
+ "lithe-vcs",
+ "lithe-workspace",
+ "serde",
+ "serde_json",
+ "url",
+]
+
+[[package]]
 name = "lithe-lsp-policy"
 version = "0.1.0"
 dependencies = [
@@ -1143,6 +1184,17 @@ version = "0.1.0"
 dependencies = [
  "lithe-plugin-model",
  "lithe-protocol",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-plugin-function-relay"
+version = "0.1.0"
+dependencies = [
+ "lithe-plugin-functions",
+ "lithe-plugin-model",
+ "lithe-plugin-rpc",
  "serde",
  "serde_json",
 ]
@@ -1259,6 +1311,18 @@ dependencies = [
  "lithe-plugin-keymap-import",
  "lithe-plugin-language-servers",
  "lithe-plugin-model",
+ "lithe-protocol",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-plugin-server-policy"
+version = "0.1.0"
+dependencies = [
+ "lithe-document-uri",
+ "lithe-plugin-language-servers",
+ "lithe-plugin-rpc",
  "lithe-protocol",
  "serde",
  "serde_json",
