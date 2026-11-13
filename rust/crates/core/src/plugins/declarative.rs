@@ -505,6 +505,14 @@ fn parse_template(value: &str) -> Option<Vec<TemplatePart<TemplateVariable>>> {
     parse_template_with(value, TemplateVariable::parse)
 }
 
+/// Validates a raw manifest value and returns its normalized form as JSON, the
+/// shape [`crate::toolchain::ManifestValidator`] gives toolchain policy.
+pub fn validated_manifest_json(value: Value) -> Validation<Value> {
+    let manifest = validate_manifest_value(value)?;
+    serde_json::to_value(manifest)
+        .map_err(|_| invalid("manifest", "The validated manifest cannot be encoded."))
+}
+
 /// Validates a raw manifest value and returns its normalized form.
 pub fn validate_manifest_value(value: Value) -> Validation<DeclarativePluginManifest> {
     // Check the version gates first so a future schema reports the precise

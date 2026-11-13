@@ -374,3 +374,26 @@ fn toolchain_pin_edits_enforce_final_collection_limits_and_validate_the_source()
     );
     assert!(response["data"].get("edit").is_none());
 }
+
+#[test]
+fn source_edits_match_shared_fixture() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../fixtures/toolchain-pin-storage.json"
+    ))
+    .unwrap();
+    for case in fixture["cases"].as_array().unwrap() {
+        let response: Value = serde_json::from_str(&crate::execute_json(
+            &json!({"command": case["command"], "payload": case["input"]}).to_string(),
+        ))
+        .unwrap();
+        if let Some(code) = case.get("error") {
+            assert_eq!(response["data"]["status"], "rejected", "{case}: {response}");
+            assert_eq!(
+                &response["data"]["error"]["code"], code,
+                "{case}: {response}"
+            );
+        } else {
+            assert_eq!(response["data"], case["expected"], "{case}: {response}");
+        }
+    }
+}

@@ -416,12 +416,18 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                 Err(error) => CoreResponse::failure(id, error),
             }
         }
-        CoreCommand::ToolchainsRegistry => {
-            plugin_response(id, parsed.payload, crate::toolchain::registry_command)
-        }
-        CoreCommand::ToolchainsDecodeReply => {
-            plugin_response(id, parsed.payload, crate::toolchain::decode_reply_command)
-        }
+        CoreCommand::ToolchainsRegistry => plugin_response(id, parsed.payload, |payload| {
+            crate::toolchain::registry_command(
+                payload,
+                crate::plugins::declarative::validated_manifest_json,
+            )
+        }),
+        CoreCommand::ToolchainsDecodeReply => plugin_response(id, parsed.payload, |payload| {
+            crate::toolchain::decode_reply_command(
+                payload,
+                crate::plugins::declarative::validated_manifest_json,
+            )
+        }),
         CoreCommand::ToolchainsFailureReply => {
             plugin_response(id, parsed.payload, crate::toolchain::failure_reply_command)
         }
@@ -456,23 +462,38 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             parsed.payload,
             crate::toolchain::edit_consumer_preferences_command,
         ),
-        CoreCommand::ToolchainsResolve => {
-            plugin_response(id, parsed.payload, crate::toolchain::resolve_command)
+        CoreCommand::ToolchainsResolve => plugin_response(id, parsed.payload, |payload| {
+            crate::toolchain::resolve_command(
+                payload,
+                crate::plugins::declarative::validated_manifest_json,
+            )
+        }),
+        CoreCommand::ToolchainsCheckVersion => plugin_response(id, parsed.payload, |payload| {
+            crate::toolchain::check_version_command(
+                payload,
+                crate::plugins::declarative::validated_manifest_json,
+            )
+        }),
+        CoreCommand::ToolchainsDiscoveryPlan => plugin_response(id, parsed.payload, |payload| {
+            crate::toolchain::discovery_plan_command(
+                payload,
+                crate::plugins::declarative::validated_manifest_json,
+            )
+        }),
+        CoreCommand::ToolchainsCandidates => plugin_response(id, parsed.payload, |payload| {
+            crate::toolchain::candidates_command(
+                payload,
+                crate::plugins::declarative::validated_manifest_json,
+            )
+        }),
+        CoreCommand::ToolchainsInstantiateLaunch => {
+            plugin_response(id, parsed.payload, |payload| {
+                crate::toolchain::instantiate_launch_command(
+                    payload,
+                    crate::plugins::declarative::validated_manifest_json,
+                )
+            })
         }
-        CoreCommand::ToolchainsCheckVersion => {
-            plugin_response(id, parsed.payload, crate::toolchain::check_version_command)
-        }
-        CoreCommand::ToolchainsDiscoveryPlan => {
-            plugin_response(id, parsed.payload, crate::toolchain::discovery_plan_command)
-        }
-        CoreCommand::ToolchainsCandidates => {
-            plugin_response(id, parsed.payload, crate::toolchain::candidates_command)
-        }
-        CoreCommand::ToolchainsInstantiateLaunch => plugin_response(
-            id,
-            parsed.payload,
-            crate::toolchain::instantiate_launch_command,
-        ),
         CoreCommand::RunDecodeStart => {
             plugin_response(id, parsed.payload, crate::build::run_decode_start_command)
         }

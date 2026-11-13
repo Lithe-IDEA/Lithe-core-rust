@@ -2,7 +2,7 @@
 
 /// Normalizes a bounded absolute path using the target platform's separators.
 /// Native adapters must supply canonical filesystem facts separately.
-pub(crate) fn normalize(path: &str, platform: &str, case_sensitive: bool) -> Option<String> {
+pub fn normalize(path: &str, platform: &str, case_sensitive: bool) -> Option<String> {
     if path.is_empty() || path.len() > 4096 || path.chars().any(char::is_control) {
         return None;
     }
@@ -68,7 +68,7 @@ pub(crate) fn normalize(path: &str, platform: &str, case_sensitive: bool) -> Opt
 }
 
 /// Compares complete native path components with target-platform case rules.
-pub(crate) fn within(path: &str, root: &str, platform: &str, case_sensitive: bool) -> bool {
+pub fn within(path: &str, root: &str, platform: &str, case_sensitive: bool) -> bool {
     let Some(path) = normalize(path, platform, case_sensitive) else {
         return false;
     };
@@ -78,14 +78,8 @@ pub(crate) fn within(path: &str, root: &str, platform: &str, case_sensitive: boo
     path == root || path.starts_with(&format!("{}/", root.trim_end_matches('/')))
 }
 
-/// Uses the default target-platform case rules for native containment.
-#[cfg(test)]
-pub(crate) fn path_within(path: &str, root: &str, platform: &str) -> bool {
-    within(path, root, platform, platform != "windows")
-}
-
 /// Joins a package-independent relative executable layout beneath a native home.
-pub(crate) fn join(home: &str, relative: &str, platform: &str) -> Option<String> {
+pub fn join(home: &str, relative: &str, platform: &str) -> Option<String> {
     if relative.is_empty()
         || relative.contains(['\\', ':'])
         || relative.chars().any(char::is_control)

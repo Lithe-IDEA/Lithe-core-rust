@@ -237,7 +237,7 @@ fn automatic(inheritance: Vec<Value>) -> Value {
 
 /// Validates dormant IDs as inert preferences without requiring installation
 /// or package trust. Their presence never registers a tool or grants authority.
-pub(crate) fn validate(document: &Value) -> Validation<()> {
+pub fn validate(document: &Value) -> Validation<()> {
     if document.to_string().len() > MAX_DOCUMENT_BYTES {
         return Err(limit("document"));
     }
@@ -346,29 +346,16 @@ mod tests {
     #[test]
     fn shared_preferences_fixture_resolves_without_native_or_domain_facts() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../fixtures/toolchains/consumer-preferences.json"
+            "../../../fixtures/toolchains/consumer-preferences.json"
         ))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {
             let input = json!({"document":fixture["document"],"tool":"dev.example.runtime:sdk",
                 "directory":case["directory"],"consumer":case["consumer"]});
-            let result = crate::toolchain::resolve_consumer_preferences_command(input).unwrap();
+            let result = crate::resolve_consumer_preferences_command(input).unwrap();
             assert_eq!(result["status"], "ok", "{result}");
             assert_eq!(result["preferences"]["fixed"], case["expected"]);
         }
-    }
-
-    #[test]
-    fn consumer_preferences_json_dispatcher_preserves_the_value_boundary() {
-        let payload = request(document());
-        let response: Value = serde_json::from_str(&crate::execute_json(&json!({
-            "id":"consumer-preferences","command":"toolchains.resolveConsumerPreferences","payload":payload
-        }).to_string())).unwrap();
-        assert_eq!(response["ok"], true, "{response}");
-        assert_eq!(
-            response["data"]["preferences"]["fixed"],
-            json!({"home":"/fixture/sdk-one"})
-        );
     }
 
     #[test]

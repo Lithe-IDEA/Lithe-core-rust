@@ -11,7 +11,7 @@ const MAX_LEGACY_PROPERTIES: usize = 16;
 
 /// Resolves a stored pin without granting execution authority or modifying the document.
 /// Callers must independently require an active definition and validate native files.
-pub(crate) fn resolve(input: &Value) -> Validation<Value> {
+pub fn resolve(input: &Value) -> Validation<Value> {
     let request = object(input, "input", &["document", "directory", "tool"])?;
     let document = required(request, "document", "input")?;
     validate(document)?;
@@ -127,7 +127,7 @@ pub(crate) fn edit(input: &Value) -> Validation<Value> {
 
 /// Checks the complete local document, retaining legacy entries and dormant tool IDs.
 /// This validation is lexical only; paths are never probed, canonicalized, or launched.
-pub(crate) fn validate(document: &Value) -> Validation<()> {
+pub fn validate(document: &Value) -> Validation<()> {
     let root = object(document, "document", &["version", "toolchains", "pins"])?;
     if required(root, "version", "document")?.as_u64() != Some(1) {
         return Err(invalid(

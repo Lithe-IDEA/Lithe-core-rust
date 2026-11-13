@@ -901,6 +901,7 @@ dependencies = [
  "lithe-request-context",
  "lithe-terminal",
  "lithe-text",
+ "lithe-toolchain",
  "lithe-workspace",
  "quick-xml",
  "rand",
@@ -1082,6 +1083,18 @@ name = "lithe-text"
 version = "0.1.0"
 dependencies = [
  "lithe-protocol",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-toolchain"
+version = "0.1.0"
+dependencies = [
+ "ignore",
+ "lithe-plugin-model",
+ "lithe-protocol",
+ "regex",
  "serde",
  "serde_json",
 ]

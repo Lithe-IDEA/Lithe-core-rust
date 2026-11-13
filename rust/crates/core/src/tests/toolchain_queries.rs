@@ -1,6 +1,7 @@
 //! Pure query validation with inert native filesystem facts and cross-platform paths.
 
 use super::toolchain_vectors::{error_responses, query_request, query_response, HOME, WORKSPACE};
+use crate::plugins::declarative::validated_manifest_json;
 use crate::toolchain::{paths, query};
 use serde_json::{json, Value};
 
@@ -35,7 +36,7 @@ fn input() -> Value {
 
 #[test]
 fn toolchain_queries_decode_installed_contract_reply_without_native_io() {
-    let outcome = query::decode(&input()).unwrap();
+    let outcome = query::decode(&input(), validated_manifest_json).unwrap();
     assert_eq!(outcome["installations"][0]["home"], HOME);
     assert_eq!(
         outcome["installations"][0]["executable"],
@@ -61,7 +62,7 @@ fn toolchain_queries_preserve_bounded_string_and_numeric_wire_identities() {
         value["request"]["id"] = case["id"].clone();
         value["response"]["id"] = case["id"].clone();
         assert_eq!(
-            query::decode(&value).is_ok(),
+            query::decode(&value, validated_manifest_json).is_ok(),
             case["accepted"].as_bool().unwrap(),
             "{case}"
         );
@@ -75,7 +76,9 @@ fn toolchain_queries_preserve_bounded_string_and_numeric_wire_identities() {
         value["request"]["id"] = request;
         value["response"]["id"] = response;
         assert_eq!(
-            query::decode(&value).unwrap_err().code,
+            query::decode(&value, validated_manifest_json)
+                .unwrap_err()
+                .code,
             "plugin.toolchain.invalidReply"
         );
     }
@@ -87,7 +90,7 @@ fn toolchain_queries_uninstalled_request_is_structured_unmet_data() {
     value["response"]["result"]["installations"] = json!([]);
     value["response"]["result"]["statements"][0]["installation"] = Value::Null;
     value["response"]["result"]["statements"][0]["request"] = json!("99");
-    let outcome = query::decode(&value).unwrap();
+    let outcome = query::decode(&value, validated_manifest_json).unwrap();
     assert_eq!(outcome["diagnostics"][0]["code"], "requestedNotInstalled");
     assert_eq!(outcome["diagnostics"][0]["request"], "99");
     assert!(outcome["statements"][0]["installation"].is_null());
@@ -102,7 +105,7 @@ fn toolchain_queries_unknown_definitions_retain_no_path_or_execution_authority()
         .remove(0);
     value["response"]["result"]["installations"][0]["home"] = json!("unusable-relative-home");
     value["response"]["result"]["statements"][0]["installation"] = json!("unusable-relative-home");
-    let outcome = query::decode(&value).unwrap();
+    let outcome = query::decode(&value, validated_manifest_json).unwrap();
     assert_eq!(outcome["installations"], json!([]));
     assert_eq!(outcome["statements"], json!([]));
     assert_eq!(outcome["diagnostics"][0]["code"], "definitionUnavailable");
@@ -119,7 +122,7 @@ fn toolchain_queries_filter_unsolicited_tools_before_native_path_validation() {
         .push(json!({"tool":"git","version":"1","home":"unusable-relative-home"}));
     value["response"]["result"]["statements"].as_array_mut().unwrap().push(json!({"tool":"git","scope":"project","source":"unusable-relative-source","request":"1","installation":null,"kind":"declaration","reader":"native"}));
     assert_eq!(
-        query::decode(&value).unwrap()["installations"]
+        query::decode(&value, validated_manifest_json).unwrap()["installations"]
             .as_array()
             .unwrap()
             .len(),
@@ -133,14 +136,18 @@ fn toolchain_queries_refuse_workspace_homes_and_canonical_symlink_targets() {
         let mut value = input();
         value["filesystem"][1]["canonicalPath"] = json!(target);
         assert_eq!(
-            query::decode(&value).unwrap_err().code(),
+            query::decode(&value, validated_manifest_json)
+                .unwrap_err()
+                .code(),
             "plugin.toolchain.unsafePath"
         );
     }
     let mut value = input();
     value["filesystem"][2]["canonicalPath"] = json!(format!("{WORKSPACE}/malicious-java"));
     assert_eq!(
-        query::decode(&value).unwrap_err().code(),
+        query::decode(&value, validated_manifest_json)
+            .unwrap_err()
+            .code(),
         "plugin.toolchain.unsafePath"
     );
 }
@@ -150,14 +157,18 @@ fn toolchain_queries_require_executable_and_same_tool_installation_reference() {
     let mut value = input();
     value["filesystem"][2]["executable"] = json!(false);
     assert_eq!(
-        query::decode(&value).unwrap_err().code(),
+        query::decode(&value, validated_manifest_json)
+            .unwrap_err()
+            .code(),
         "plugin.toolchain.unsafePath"
     );
     value = input();
     value["response"]["result"]["statements"][0]["installation"] =
         json!("/opt/lithe-fixtures/unlisted");
     assert_eq!(
-        query::decode(&value).unwrap_err().code(),
+        query::decode(&value, validated_manifest_json)
+            .unwrap_err()
+            .code(),
         "plugin.toolchain.invalidReply"
     );
 }
@@ -168,7 +179,7 @@ fn toolchain_queries_deduplicate_identical_source_facts_but_reject_conflicting_c
     let duplicate = value["response"]["result"]["statements"][0].clone();
     value["response"]["result"]["statements"] = json!([duplicate.clone(), duplicate]);
     assert_eq!(
-        query::decode(&value).unwrap()["statements"]
+        query::decode(&value, validated_manifest_json).unwrap()["statements"]
             .as_array()
             .unwrap()
             .len(),
@@ -178,7 +189,9 @@ fn toolchain_queries_deduplicate_identical_source_facts_but_reject_conflicting_c
         let mut conflict = value.clone();
         conflict["response"]["result"]["statements"][1][field] = conflicting;
         assert_eq!(
-            query::decode(&conflict).unwrap_err().code(),
+            query::decode(&conflict, validated_manifest_json)
+                .unwrap_err()
+                .code(),
             "plugin.toolchain.invalidReply",
             "{field}"
         );
@@ -195,14 +208,18 @@ fn toolchain_queries_refuse_mismatched_rpc_and_operation_generations() {
             json!("other")
         };
         assert_eq!(
-            query::decode(&value).unwrap_err().code(),
+            query::decode(&value, validated_manifest_json)
+                .unwrap_err()
+                .code(),
             "plugin.toolchain.operationExpired"
         );
     }
     let mut value = input();
     value["response"]["id"] = json!(2);
     assert_eq!(
-        query::decode(&value).unwrap_err().code(),
+        query::decode(&value, validated_manifest_json)
+            .unwrap_err()
+            .code(),
         "plugin.toolchain.invalidReply"
     );
     value = input();
@@ -210,7 +227,9 @@ fn toolchain_queries_refuse_mismatched_rpc_and_operation_generations() {
     value["request"]["params"]["context"] = Value::Null;
     value["currentGeneration"] = json!(2);
     assert_eq!(
-        query::decode(&value).unwrap_err().code(),
+        query::decode(&value, validated_manifest_json)
+            .unwrap_err()
+            .code(),
         "plugin.toolchain.operationExpired"
     );
 }
@@ -224,7 +243,7 @@ fn toolchain_queries_keep_every_error_mapping_unique_and_validate_the_pair() {
         response["error"]["data"]["operationID"] =
             value["request"]["params"]["operationID"].clone();
         value["response"] = response;
-        let error = query::decode(&value).unwrap_err();
+        let error = query::decode(&value, validated_manifest_json).unwrap_err();
         assert_eq!(
             Some(error.code()),
             value["response"]["error"]["data"]["code"].as_str()
@@ -233,7 +252,9 @@ fn toolchain_queries_keep_every_error_mapping_unique_and_validate_the_pair() {
         assert!(numbers.insert(number));
         value["response"]["error"]["code"] = json!(-1);
         assert_eq!(
-            query::decode(&value).unwrap_err().code(),
+            query::decode(&value, validated_manifest_json)
+                .unwrap_err()
+                .code(),
             "plugin.toolchain.invalidReply"
         );
     }
@@ -244,7 +265,9 @@ fn toolchain_queries_validate_declared_reader_and_project_ancestor() {
     let mut value = input();
     value["response"]["result"]["statements"][0]["reader"] = json!("compatible");
     assert_eq!(
-        query::decode(&value).unwrap_err().code(),
+        query::decode(&value, validated_manifest_json)
+            .unwrap_err()
+            .code(),
         "plugin.toolchain.invalidReply"
     );
     value = input();
@@ -256,14 +279,18 @@ fn toolchain_queries_validate_declared_reader_and_project_ancestor() {
     value["response"]["result"]["statements"][0]["source"] =
         json!("/opt/lithe-fixtures/sibling/mise.toml");
     assert_eq!(
-        query::decode(&value).unwrap_err().code(),
+        query::decode(&value, validated_manifest_json)
+            .unwrap_err()
+            .code(),
         "plugin.toolchain.unsafePath"
     );
     value = input();
     value["request"]["params"]["workspace"] = Value::Null;
     value["request"]["params"]["context"] = Value::Null;
     assert_eq!(
-        query::decode(&value).unwrap_err().code(),
+        query::decode(&value, validated_manifest_json)
+            .unwrap_err()
+            .code(),
         "plugin.toolchain.invalidReply"
     );
 }
@@ -277,7 +304,7 @@ fn toolchain_queries_nested_source_pattern_uses_declared_anchor_not_parent() {
         .unwrap()
         .push(fact(&source, "file", false));
     value["response"]["result"]["statements"][0]["source"] = json!(source);
-    let result = query::decode(&value).unwrap();
+    let result = query::decode(&value, validated_manifest_json).unwrap();
     assert_eq!(result["statements"][0]["sourceDirectory"], WORKSPACE);
 }
 
@@ -286,7 +313,9 @@ fn toolchain_queries_reject_unknown_fields_missing_null_and_duplicate_identities
     let mut value = input();
     value["request"]["params"]["arbitrary"] = json!(true);
     assert_eq!(
-        query::decode(&value).unwrap_err().code(),
+        query::decode(&value, validated_manifest_json)
+            .unwrap_err()
+            .code(),
         "plugin.toolchain.invalidParams"
     );
     value = input();
@@ -295,20 +324,26 @@ fn toolchain_queries_reject_unknown_fields_missing_null_and_duplicate_identities
         .unwrap()
         .remove("installation");
     assert_eq!(
-        query::decode(&value).unwrap_err().code(),
+        query::decode(&value, validated_manifest_json)
+            .unwrap_err()
+            .code(),
         "plugin.toolchain.invalidReply"
     );
     value = input();
     value["request"]["params"]["tools"] = json!(["java", "java"]);
     assert_eq!(
-        query::decode(&value).unwrap_err().code(),
+        query::decode(&value, validated_manifest_json)
+            .unwrap_err()
+            .code(),
         "plugin.toolchain.invalidParams"
     );
     value = input();
     let duplicate = value["filesystem"][0].clone();
     value["filesystem"].as_array_mut().unwrap().push(duplicate);
     assert_eq!(
-        query::decode(&value).unwrap_err().code(),
+        query::decode(&value, validated_manifest_json)
+            .unwrap_err()
+            .code(),
         "plugin.toolchain.invalidParams"
     );
 }
@@ -318,7 +353,9 @@ fn toolchain_queries_refuse_remote_authority_without_local_fallback() {
     let mut value = input();
     value["request"]["params"]["authority"] = json!({"kind":"remote","id":"ssh-1"});
     assert_eq!(
-        query::decode(&value).unwrap_err().code(),
+        query::decode(&value, validated_manifest_json)
+            .unwrap_err()
+            .code(),
         "plugin.toolchain.authorityUnsupported"
     );
 }
@@ -328,29 +365,36 @@ fn toolchain_queries_keep_missing_watch_inputs_and_enforce_reply_limits() {
     let mut value = input();
     value["response"]["result"]["watch"] = json!(["/opt/lithe-fixtures/missing.toml"]);
     assert_eq!(
-        query::decode(&value).unwrap()["watch"],
+        query::decode(&value, validated_manifest_json).unwrap()["watch"],
         value["response"]["result"]["watch"]
     );
     value["response"]["result"]["watch"] = json!(vec!["/opt/lithe-fixtures/missing.toml"; 257]);
     assert_eq!(
-        query::decode(&value).unwrap_err().code(),
+        query::decode(&value, validated_manifest_json)
+            .unwrap_err()
+            .code(),
         "plugin.toolchain.limitExceeded"
     );
 }
 
+/// Uses the default target-platform case rules for native containment.
+fn path_within(path: &str, root: &str, platform: &str) -> bool {
+    paths::within(path, root, platform, platform != "windows")
+}
+
 #[test]
 fn toolchain_queries_apply_windows_drive_unc_and_case_rules_without_host_paths() {
-    assert!(paths::path_within(
+    assert!(path_within(
         r"C:\Workspace\bin\java.exe",
         "c:/workspace",
         "windows"
     ));
-    assert!(!paths::path_within(
+    assert!(!path_within(
         r"C:\WorkspaceOther\java.exe",
         "c:/workspace",
         "windows"
     ));
-    assert!(paths::path_within(
+    assert!(path_within(
         r"\\server\share\workspace\java.exe",
         "//SERVER/share/workspace",
         "windows"

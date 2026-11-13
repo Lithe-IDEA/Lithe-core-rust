@@ -24,7 +24,7 @@ pub enum FixedToolchainSelection {
 
 impl FixedToolchainSelection {
     /// Validates a saved path lexically, without looking up its definition or files.
-    pub(crate) fn parse(value: &Value) -> Validation<Self> {
+    pub fn parse(value: &Value) -> Validation<Self> {
         let invalid = || {
             PluginRejection::at(
                 "plugin.toolchain.invalidParams",

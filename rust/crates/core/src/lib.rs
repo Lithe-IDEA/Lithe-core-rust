@@ -10,7 +10,7 @@ mod project_generators;
 mod protocol;
 mod runtime;
 /// Shared toolchain policy, independent of plugin transport and native discovery.
-pub mod toolchain;
+pub use lithe_toolchain as toolchain;
 mod vcs;
 
 pub use protocol::{

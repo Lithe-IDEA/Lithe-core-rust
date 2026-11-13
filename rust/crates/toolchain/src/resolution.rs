@@ -1,6 +1,7 @@
 //! Resolves captured toolchain candidates without native I/O or manager semantics.
 
 use super::{definitions, fixed::FixedToolchainSelection, paths, pins, query};
+use crate::ManifestValidator;
 use lithe_plugin_model::{PluginRejection, Validation};
 use regex::RegexBuilder;
 use serde::Deserialize;
@@ -104,9 +105,12 @@ fn capture(definition: &Value, output: &str, minimum: Option<&str>) -> Validatio
 }
 
 /// Uses only the installed definition's regular expression, never a tool-name branch.
-pub(crate) fn check_version(input: &Value) -> Validation<Value> {
+pub(crate) fn check_version(
+    input: &Value,
+    validate_manifest: ManifestValidator,
+) -> Validation<Value> {
     fields(input, &["registry", "tool", "output", "minimumVersion"])?;
-    let registry = definitions::registry(&input["registry"])?;
+    let registry = definitions::registry(&input["registry"], validate_manifest)?;
     let tool = input["tool"].as_str().ok_or_else(|| reject("tool"))?;
     let definition = enabled(&registry, tool).ok_or_else(|| reject("tool"))?;
     let output = input["output"].as_str().ok_or_else(|| reject("output"))?;
@@ -155,7 +159,10 @@ fn launch_mismatch(message: &str) -> PluginRejection {
 /// The definition alone says how its tool starts an entry or takes arguments, so a plugin and a
 /// host never branch on a tool name. A part the caller supplies that the template cannot carry,
 /// or a variable the caller leaves out, is `plugin.toolchain.launchMismatch`.
-pub(crate) fn instantiate_launch(input: &Value) -> Validation<Value> {
+pub(crate) fn instantiate_launch(
+    input: &Value,
+    validate_manifest: ManifestValidator,
+) -> Validation<Value> {
     fields(
         input,
         &[
@@ -168,7 +175,7 @@ pub(crate) fn instantiate_launch(input: &Value) -> Validation<Value> {
             "arguments",
         ],
     )?;
-    let registry = definitions::registry(&input["registry"])?;
+    let registry = definitions::registry(&input["registry"], validate_manifest)?;
     let tool = input["tool"].as_str().ok_or_else(|| reject("tool"))?;
     let definition = enabled(&registry, tool).ok_or_else(|| reject("tool"))?;
     let executable = launch_text(input, "executable")?.ok_or_else(|| reject("executable"))?;
@@ -224,9 +231,12 @@ pub(crate) fn instantiate_launch(input: &Value) -> Validation<Value> {
 
 /// Exposes both installation routes per tool: definition-owned scans the host expands,
 /// and enabled providers the host queries. Native expansion and checks stay in hosts.
-pub(crate) fn discovery_plan(input: &Value) -> Validation<Value> {
+pub(crate) fn discovery_plan(
+    input: &Value,
+    validate_manifest: ManifestValidator,
+) -> Validation<Value> {
     fields(input, &["registry", "platform"])?;
-    let registry = definitions::registry(&input["registry"])?;
+    let registry = definitions::registry(&input["registry"], validate_manifest)?;
     let platform = input["platform"]
         .as_str()
         .ok_or_else(|| reject("platform"))?;
@@ -887,7 +897,7 @@ fn automatic_choice(
 /// resolving a directory: login-shell homes and the discovered installations with their
 /// checked executables, versions or skip reasons, and Core's automatic choice. Hosts
 /// probe only the executables returned here, then call again with `probes`.
-pub(crate) fn candidates(input: &Value) -> Validation<Value> {
+pub(crate) fn candidates(input: &Value, validate_manifest: ManifestValidator) -> Validation<Value> {
     fields(
         input,
         &[
@@ -907,7 +917,7 @@ pub(crate) fn candidates(input: &Value) -> Validation<Value> {
             "environment",
         ],
     )?;
-    let registry = definitions::registry(&input["registry"])?;
+    let registry = definitions::registry(&input["registry"], validate_manifest)?;
     let tool = input["tool"]
         .as_str()
         .filter(|tool| definitions::tool_id(tool))
@@ -1000,7 +1010,7 @@ pub(crate) fn candidates(input: &Value) -> Validation<Value> {
 }
 
 /// Resolves definitions, provider replies, pins and trusted native observations once.
-pub(crate) fn resolve(input: &Value) -> Validation<Value> {
+pub(crate) fn resolve(input: &Value, validate_manifest: ManifestValidator) -> Validation<Value> {
     fields(
         input,
         &[
@@ -1028,7 +1038,7 @@ pub(crate) fn resolve(input: &Value) -> Validation<Value> {
             "fixed",
         ],
     )?;
-    let registry = definitions::registry(&input["registry"])?;
+    let registry = definitions::registry(&input["registry"], validate_manifest)?;
     let tool = input["tool"]
         .as_str()
         .filter(|tool| definitions::tool_id(tool))
@@ -1169,7 +1179,7 @@ pub(crate) fn resolve(input: &Value) -> Validation<Value> {
         )) {
             return Err(reject("queries.providerID"));
         }
-        let decoded = match query::decode(value) {
+        let decoded = match query::decode(value, validate_manifest) {
             Ok(decoded) => decoded,
             Err(error)
                 if matches!(

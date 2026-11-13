@@ -4,9 +4,9 @@
 //! publication. Reading or editing these documents never grants execution authority.
 
 use super::pins;
-use crate::protocol::json_document::parse_unique_json;
 use ignore::gitignore::GitignoreBuilder;
 use lithe_plugin_model::{PluginRejection, Validation};
+use lithe_protocol::json_document::parse_unique_json;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -189,29 +189,6 @@ fn prepare_ignore(original: Option<&str>) -> Validation<(String, bool)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn source_edits_match_shared_fixture() {
-        let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../fixtures/toolchain-pin-storage.json"
-        ))
-        .unwrap();
-        for case in fixture["cases"].as_array().unwrap() {
-            let response: Value = serde_json::from_str(&crate::execute_json(
-                &json!({"command": case["command"], "payload": case["input"]}).to_string(),
-            ))
-            .unwrap();
-            if let Some(code) = case.get("error") {
-                assert_eq!(response["data"]["status"], "rejected", "{case}: {response}");
-                assert_eq!(
-                    &response["data"]["error"]["code"], code,
-                    "{case}: {response}"
-                );
-            } else {
-                assert_eq!(response["data"], case["expected"], "{case}: {response}");
-            }
-        }
-    }
 
     #[test]
     fn ignore_growth_cannot_publish_a_document_the_next_edit_would_refuse() {

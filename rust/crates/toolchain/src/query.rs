@@ -1,6 +1,7 @@
 //! Validates provider query replies against host-owned identity and filesystem facts.
 
 use super::paths;
+use crate::ManifestValidator;
 use lithe_plugin_model::{PluginRejection, Validation};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -219,7 +220,7 @@ fn object_keys(
 }
 
 /// Maps each query error to one stable JSON-RPC number without transport work.
-pub(crate) fn rpc_code(code: &str) -> Option<i64> {
+pub fn rpc_code(code: &str) -> Option<i64> {
     Some(match code {
         "plugin.toolchain.methodUnavailable" => -32601,
         INVALID => -32602,
@@ -553,7 +554,7 @@ fn checked_installation(
 /// Validates an external installation against trusted, authority-local native facts.
 /// Returns canonical home/executable paths without touching the native filesystem.
 /// Project-code candidates require their separate consumer trust policy.
-pub(crate) fn validate_installation(
+pub fn validate_installation(
     home: &str,
     definition: &Value,
     filesystem: &[Value],
@@ -579,7 +580,7 @@ pub(crate) fn validate_installation(
 
 /// Decodes one provider reply using only the revalidated registry and native facts.
 /// No filesystem, process, environment or JSON-RPC transport is accessed here.
-pub(crate) fn decode(input: &Value) -> Validation<Value> {
+pub fn decode(input: &Value, validate_manifest: ManifestValidator) -> Validation<Value> {
     object_keys(
         input,
         &[
@@ -604,7 +605,7 @@ pub(crate) fn decode(input: &Value) -> Validation<Value> {
         ],
         INVALID,
     )?;
-    let registry = super::definitions::registry(&input["registry"])?;
+    let registry = super::definitions::registry(&input["registry"], validate_manifest)?;
     let request_value = &input["request"];
     let request: Request = serde_json::from_value(request_value.clone())
         .map_err(|_| reject(INVALID, "request", "Malformed toolchain query request."))?;

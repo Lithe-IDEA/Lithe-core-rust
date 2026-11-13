@@ -2,22 +2,28 @@
 //!
 //! No manager configuration, native scanning or process lifecycle belongs here.
 
-pub(crate) mod definitions;
-pub(crate) mod fixed;
-pub(crate) mod paths;
+pub mod definitions;
+pub mod fixed;
+pub mod paths;
 mod pin_sources;
-pub(crate) mod pins;
-pub(crate) mod preferences;
-pub(crate) mod query;
+pub mod pins;
+pub mod preferences;
+pub mod query;
 mod resolution;
 
-use crate::protocol::CoreError;
 use lithe_plugin_model::{PluginRejection, Validation};
+use lithe_protocol::CoreError;
 use serde_json::{json, Value};
+
+/// Revalidates one complete plugin manifest and returns its normalized JSON form.
+///
+/// The plugin host owns the manifest schema; it supplies this function so toolchain
+/// policy reads only manifests that passed the same validation as installation.
+pub type ManifestValidator = fn(Value) -> Validation<Value>;
 
 fn command(
     input: Value,
-    operation: fn(&Value) -> Validation<Value>,
+    operation: impl FnOnce(&Value) -> Validation<Value>,
     key: &str,
 ) -> Result<Value, CoreError> {
     let result = if input.to_string().len() > 4 * 1024 * 1024 {
@@ -35,14 +41,30 @@ fn command(
 }
 
 /// Registers the definitions of enabled plugins; a tool ID declared by several plugins
-/// belongs to none of them and is reported in `conflicts` instead.
-pub fn registry_command(input: Value) -> Result<Value, CoreError> {
-    command(input, definitions::registry, "registry")
+/// belongs to none of them and is reported in `conflicts` instead. `validate_manifest`
+/// revalidates each manifest; see [`definitions::registry`].
+pub fn registry_command(
+    input: Value,
+    validate_manifest: ManifestValidator,
+) -> Result<Value, CoreError> {
+    command(
+        input,
+        |input| definitions::registry(input, validate_manifest),
+        "registry",
+    )
 }
 
 /// Validates one provider reply against its request and host filesystem facts.
-pub fn decode_reply_command(input: Value) -> Result<Value, CoreError> {
-    command(input, query::decode, "snapshot")
+/// `validate_manifest` revalidates the registry it carries.
+pub fn decode_reply_command(
+    input: Value,
+    validate_manifest: ManifestValidator,
+) -> Result<Value, CoreError> {
+    command(
+        input,
+        |input| query::decode(input, validate_manifest),
+        "snapshot",
+    )
 }
 
 /// Builds the error reply for a query that timed out or found no backend.
@@ -86,26 +108,61 @@ pub fn edit_consumer_preferences_command(input: Value) -> Result<Value, CoreErro
 }
 
 /// Resolves one tool using the same validated registry and candidate snapshot.
-pub fn resolve_command(input: Value) -> Result<Value, CoreError> {
-    command(input, resolution::resolve, "resolution")
+pub fn resolve_command(
+    input: Value,
+    validate_manifest: ManifestValidator,
+) -> Result<Value, CoreError> {
+    command(
+        input,
+        |input| resolution::resolve(input, validate_manifest),
+        "resolution",
+    )
 }
 
 /// Extracts and compares a version using only its enabled plugin definition.
-pub fn check_version_command(input: Value) -> Result<Value, CoreError> {
-    command(input, resolution::check_version, "version")
+pub fn check_version_command(
+    input: Value,
+    validate_manifest: ManifestValidator,
+) -> Result<Value, CoreError> {
+    command(
+        input,
+        |input| resolution::check_version(input, validate_manifest),
+        "version",
+    )
 }
 
 /// Expands a tool definition's launch template for a selected executable.
-pub fn instantiate_launch_command(input: Value) -> Result<Value, CoreError> {
-    command(input, resolution::instantiate_launch, "launch")
+pub fn instantiate_launch_command(
+    input: Value,
+    validate_manifest: ManifestValidator,
+) -> Result<Value, CoreError> {
+    command(
+        input,
+        |input| resolution::instantiate_launch(input, validate_manifest),
+        "launch",
+    )
 }
 
 /// Produces bounded scan declarations, not a native scan or tool-name table.
-pub fn discovery_plan_command(input: Value) -> Result<Value, CoreError> {
-    command(input, resolution::discovery_plan, "plan")
+pub fn discovery_plan_command(
+    input: Value,
+    validate_manifest: ManifestValidator,
+) -> Result<Value, CoreError> {
+    command(
+        input,
+        |input| resolution::discovery_plan(input, validate_manifest),
+        "plan",
+    )
 }
 
 /// Lists checked installations, versions and the automatic choice for a settings page.
-pub fn candidates_command(input: Value) -> Result<Value, CoreError> {
-    command(input, resolution::candidates, "candidates")
+pub fn candidates_command(
+    input: Value,
+    validate_manifest: ManifestValidator,
+) -> Result<Value, CoreError> {
+    command(
+        input,
+        |input| resolution::candidates(input, validate_manifest),
+        "candidates",
+    )
 }

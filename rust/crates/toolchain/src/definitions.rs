@@ -1,7 +1,7 @@
 //! Validates plugin-owned tool policies and constructs the enabled-plugin registry.
 //! Filesystem evidence and native execution remain host-owned responsibilities.
 
-use crate::plugins::declarative::validate_manifest_value;
+use crate::ManifestValidator;
 use lithe_plugin_model::executables::{ordered_indices, ExecutableCandidate};
 use lithe_plugin_model::{invalid, UIIcon, Validation};
 use regex::Regex;
@@ -9,7 +9,7 @@ use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Validates a short tool ID or a plugin-qualified tool ID, without granting ownership.
-pub(crate) fn tool_id(value: &str) -> bool {
+pub fn tool_id(value: &str) -> bool {
     let local = |s: &str| {
         s.len() <= 64
             && s.as_bytes().first().is_some_and(u8::is_ascii_lowercase)
@@ -689,7 +689,7 @@ fn provider(value: &Value) -> Validation<()> {
 }
 
 /// Checks declaration shape and deterministic policy without asserting native trust.
-pub(crate) fn validate_declarations(
+pub fn validate_declarations(
     plugin_id: &str,
     definitions: &[Value],
     providers: &[Value],
@@ -729,7 +729,10 @@ pub(crate) fn validate_declarations(
 /// owner. Those definitions are left out and reported in `conflicts`; every other definition
 /// still registers. Duplicate plugin IDs make the enabled set ambiguous, so they reject the
 /// whole batch.
-pub(crate) fn registry(input: &Value) -> Validation<Value> {
+///
+/// `validate_manifest` revalidates each complete manifest. The plugin host supplies it:
+/// only the host assembles the sections every domain contributes to a manifest.
+pub fn registry(input: &Value, validate_manifest: ManifestValidator) -> Validation<Value> {
     object(input, &["plugins"], &["plugins"], "registry")?;
     let plugins = list(&input["plugins"], 0, 128, "plugins")?;
     let mut definitions = Vec::new();
@@ -738,9 +741,7 @@ pub(crate) fn registry(input: &Value) -> Validation<Value> {
     let mut plugin_ids = BTreeSet::new();
     for entry in plugins {
         object(entry, &["manifest"], &["manifest"], "plugins")?;
-        let manifest = validate_manifest_value(entry["manifest"].clone())?;
-        let manifest = serde_json::to_value(manifest)
-            .map_err(|_| invalid("manifest", "The validated manifest cannot be encoded."))?;
+        let manifest = validate_manifest(entry["manifest"].clone())?;
         let plugin_id = text(&manifest["id"], 128, "id")?;
         if !plugin_ids.insert(plugin_id.to_owned()) {
             return Err(invalid(

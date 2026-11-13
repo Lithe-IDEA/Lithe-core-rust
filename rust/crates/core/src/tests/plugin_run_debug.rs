@@ -7,6 +7,7 @@
 use super::support::temporary_root;
 use crate::build::run_decode_start_command;
 use crate::debug::decode_backend_configuration_command;
+use crate::plugins::declarative::validated_manifest_json;
 use crate::plugins::declarative::{language_server_launch_plan_command, validate_manifest_value};
 use crate::plugins::output_links::{decode_resolution, match_lines};
 use crate::toolchain::instantiate_launch_command;
@@ -458,7 +459,7 @@ fn instantiate(tool_definition: Value, parts: Value) -> Value {
     for (key, value) in parts.as_object().unwrap() {
         input[key] = value.clone();
     }
-    instantiate_launch_command(input).expect("input is well formed")
+    instantiate_launch_command(input, validated_manifest_json).expect("input is well formed")
 }
 
 #[test]
@@ -514,13 +515,16 @@ fn a_launch_the_definition_cannot_express_is_a_mismatch() {
 
 #[test]
 fn launching_a_tool_nobody_defined_is_refused() {
-    let outcome = instantiate_launch_command(json!({
-        "registry": { "plugins": [{
-            "manifest": parse(TOOL_REFERENCE_MANIFEST),
-        }] },
-        "tool": "missing-tool",
-        "executable": "/opt/missing/bin/tool",
-    }))
+    let outcome = instantiate_launch_command(
+        json!({
+            "registry": { "plugins": [{
+                "manifest": parse(TOOL_REFERENCE_MANIFEST),
+            }] },
+            "tool": "missing-tool",
+            "executable": "/opt/missing/bin/tool",
+        }),
+        validated_manifest_json,
+    )
     .expect("input is well formed");
 
     assert_rejected(
