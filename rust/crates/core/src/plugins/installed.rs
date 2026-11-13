@@ -56,7 +56,7 @@ pub fn select_command(payload: Value) -> Result<Value, CoreError> {
             rejected.push(json!({"index":index,"code":"plugin.installed.invalidIdentity"}));
             continue;
         }
-        let Some(version) = super::declarative::is_semantic_version(&entry.version)
+        let Some(version) = lithe_plugin_model::is_semantic_version(&entry.version)
             .then(|| PluginVersion::parse(&entry.version))
             .flatten()
         else {

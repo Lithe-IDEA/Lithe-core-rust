@@ -12,7 +12,7 @@ use super::manifest::{
     ModelMap, ProjectRule, RuleMatch, TargetRule, TaskGroup,
 };
 use super::select::{self, FieldSpec, Node};
-use crate::plugins::declarative::{is_identifier, Validation};
+use lithe_plugin_model::{is_identifier, Validation};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};

@@ -59,7 +59,7 @@ pub(crate) fn project_toolchain(request: ProjectToolchainRequest) -> Result<Valu
             return Err(invalid_paths());
         }
         for (id, value) in entries {
-            if !crate::plugins::declarative::is_identifier(id) || !value.is_object() {
+            if !lithe_plugin_model::is_identifier(id) || !value.is_object() {
                 return Err(invalid_paths());
             }
             let executable = saved_path(&value["executable"])?;

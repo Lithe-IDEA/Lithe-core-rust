@@ -1,7 +1,7 @@
 //! Inert consumer-owned choices; native hosts must attest paths and version probes.
 
 use super::pins;
-use crate::plugins::declarative::{PluginRejection, Validation};
+use lithe_plugin_model::{PluginRejection, Validation};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 

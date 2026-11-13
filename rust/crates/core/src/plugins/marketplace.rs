@@ -9,11 +9,12 @@
 //! prompts. The contract lives in `shared/plugins/contract/v1/`.
 
 use super::capabilities::{self, HostCapabilities, Requires};
-use super::declarative::{
-    is_official_namespace, is_plugin_id, is_semantic_version, validate_manifest_value,
-    PluginRejection, Validation, SUPPORTED_PLUGIN_API_VERSIONS,
+use super::declarative::{validate_manifest_value, SUPPORTED_PLUGIN_API_VERSIONS};
+use crate::protocol::CoreError;
+use lithe_plugin_model::{
+    decode_payload, is_official_namespace, is_plugin_id, is_semantic_version, PluginRejection,
+    Validation,
 };
-use crate::protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -782,19 +783,6 @@ struct InstallReviewPayload {
     /// anything else is refused.
     #[serde(default)]
     host_capabilities: Option<HostCapabilities>,
-}
-
-fn decode_payload<T: for<'de> Deserialize<'de>>(
-    payload: Value,
-    command: &str,
-) -> Result<T, CoreError> {
-    serde_json::from_value(payload).map_err(|error| {
-        CoreError::new(
-            ErrorCode::InvalidRequest,
-            format!("Invalid {command} payload"),
-        )
-        .with_details(error.to_string())
-    })
 }
 
 fn outcome(key: &str, result: Validation<Value>) -> Value {

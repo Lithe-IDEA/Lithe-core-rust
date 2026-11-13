@@ -10,7 +10,7 @@ use super::manifest::{
     FIELD_MULTI_SELECT, FIELD_TEXT, FIELD_TOOL,
 };
 use super::template::{FieldValue, Values};
-use crate::plugins::declarative::version_components;
+use lithe_plugin_model::version_components;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};

@@ -5,7 +5,7 @@
 use super::decode::{self, Workspace};
 use super::manifest::{BuildExecution, BuildSystemDeclaration, TaskSource};
 use super::plans::{self, OutputPlanRequest, SelectedEntity};
-use crate::plugins::declarative::{is_bare_command, is_identifier, is_plugin_id, Validation};
+use lithe_plugin_model::{is_bare_command, is_identifier, is_plugin_id, Validation};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;

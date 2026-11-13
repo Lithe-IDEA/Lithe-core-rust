@@ -20,7 +20,7 @@
 //!
 //! Note: the decision is recorded in .agents/notes/implemented/architecture/2026-10-31-plugin-editor-extension-apis.md
 
-use super::declarative::{invalid, is_safe_relative_path, PluginRejection, Validation};
+use lithe_plugin_model::{invalid, is_safe_relative_path, PluginRejection, Validation};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 

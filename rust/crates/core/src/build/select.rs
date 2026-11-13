@@ -8,7 +8,7 @@
 //! There are no functions or expressions; filtering is done by `where`
 //! predicates, so a mapping stays data a reviewer can read.
 
-use crate::plugins::declarative::{invalid, Validation};
+use lithe_plugin_model::{invalid, Validation};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 

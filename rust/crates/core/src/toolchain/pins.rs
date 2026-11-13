@@ -1,6 +1,6 @@
 //! Validates inert machine-local pins and resolves directory inheritance without I/O.
 
-use crate::plugins::declarative::{PluginRejection, Validation};
+use lithe_plugin_model::{PluginRejection, Validation};
 use serde_json::{json, Map, Value};
 
 const MAX_DIRECTORIES: usize = 1024;

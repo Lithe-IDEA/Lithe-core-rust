@@ -5,8 +5,8 @@
 //! existing files are never replaced, and the bytes actually written are
 //! bounded regardless of what the headers claim.
 
-use crate::plugins::declarative::{PluginRejection, Validation};
 use crate::protocol::CoreError;
+use lithe_plugin_model::{PluginRejection, Validation};
 use std::collections::HashSet;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};

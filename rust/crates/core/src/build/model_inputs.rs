@@ -7,7 +7,8 @@ use super::{
     model::{ModelContentRoot, ModelProject, ModelTarget},
     options, plans,
 };
-use crate::plugins::declarative::{is_plugin_id, validate_manifest_value, Validation};
+use crate::plugins::declarative::validate_manifest_value;
+use lithe_plugin_model::{is_plugin_id, Validation};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -121,7 +122,7 @@ pub(crate) struct ResolveRequest {
     pub(crate) sources: Vec<Source>,
 }
 
-fn invalid() -> crate::plugins::declarative::PluginRejection {
+fn invalid() -> lithe_plugin_model::PluginRejection {
     plans::invalid_selection("Invalid or oversized shared build model input.")
 }
 

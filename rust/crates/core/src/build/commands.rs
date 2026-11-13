@@ -16,11 +16,9 @@ use super::outputs::{
 };
 use super::plans::{self, OutputPlanRequest, TaskPlanRequest, TestPlanRequest};
 use super::test_discovery::{self, DecodeTestDiscoveryRequest};
-use crate::plugins::declarative::{
-    decode_payload, outcome, validate_manifest_value, DeclarativePluginManifest, PluginRejection,
-    Validation,
-};
+use crate::plugins::declarative::{validate_manifest_value, DeclarativePluginManifest};
 use crate::protocol::CoreError;
+use lithe_plugin_model::{decode_payload, outcome, PluginRejection, Validation};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::Value;

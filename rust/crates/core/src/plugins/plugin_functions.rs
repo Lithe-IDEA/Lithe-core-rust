@@ -22,8 +22,8 @@
 //! Note: the decision is recorded in .agents/notes/implemented/architecture/2026-10-20-plugin-function-contract.md
 //! and .agents/notes/proposed/architecture/2026-10-25-plugin-dependencies-and-exports.md
 
-use super::declarative::{invalid, Validation};
-use crate::lsp::interface::plugin_function::is_function_id;
+use lithe_plugin_model::is_function_id;
+use lithe_plugin_model::{invalid, Validation};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 

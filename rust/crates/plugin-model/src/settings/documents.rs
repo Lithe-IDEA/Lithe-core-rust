@@ -6,8 +6,9 @@
 use super::{
     resolve, SettingAction, SettingDeclaration, SettingEffect, SettingLayers, SettingScope,
 };
-use crate::plugins::declarative::{is_plugin_id, PluginRejection, Validation};
-use crate::protocol::json_document::{parse_unique_json, UniqueMap};
+use crate::names::is_plugin_id;
+use crate::rejection::{PluginRejection, Validation};
+use lithe_protocol::json_document::{parse_unique_json, UniqueMap};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -19,7 +20,7 @@ const MAX_DOCUMENT_BYTES: usize = 1024 * 1024;
 /// override and exposes inheritance.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct SettingsEdit {
+pub struct SettingsEdit {
     /// Declaration identifier, unique within the complete edit batch.
     pub(crate) id: String,
     /// A declaration-validated value, or null to remove only this layer.
@@ -65,7 +66,7 @@ fn read_document(content: Option<&str>, field: &str) -> Validation<Document> {
 
 /// Projects declared rows and raw launch layers from complete native documents.
 /// Unknown settings remain in storage but are not sent across the UI boundary.
-pub(crate) fn document_state(
+pub fn document_state(
     plugin: &str,
     declarations: &[SettingDeclaration],
     actions: &[SettingAction],
@@ -176,7 +177,7 @@ fn editor_input(declaration: &SettingDeclaration, value: &Value) -> Value {
 
 /// Validates the entire batch before editing one layer. Siblings and dormant
 /// values survive; the host receives text to publish, never an I/O instruction.
-pub(crate) fn edit_document(
+pub fn edit_document(
     plugin: &str,
     declarations: &[SettingDeclaration],
     scope: SettingScope,
@@ -184,7 +185,7 @@ pub(crate) fn edit_document(
     edits: Vec<SettingsEdit>,
 ) -> Validation<Value> {
     let mut document = read_document(content, "document")?;
-    if edits.is_empty() || edits.len() > crate::plugins::declarative::MAX_SETTINGS {
+    if edits.is_empty() || edits.len() > super::MAX_SETTINGS {
         return Err(PluginRejection::at(
             "plugin.settings.invalidEdit",
             "edits",

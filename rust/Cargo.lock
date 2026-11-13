@@ -894,6 +894,7 @@ dependencies = [
  "lithe-github",
  "lithe-ide-host",
  "lithe-network",
+ "lithe-plugin-model",
  "lithe-process",
  "lithe-protocol",
  "lithe-remote",
@@ -1016,6 +1017,16 @@ dependencies = [
 name = "lithe-network"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-plugin-model"
+version = "0.1.0"
+dependencies = [
+ "lithe-protocol",
+ "regex",
  "serde",
  "serde_json",
 ]

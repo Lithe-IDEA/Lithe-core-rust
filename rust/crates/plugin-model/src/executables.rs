@@ -1,7 +1,8 @@
 //! Shared executable candidate declarations and deterministic ordering.
 //! Native discovery, trust and probing remain injected host responsibilities.
 
-use super::declarative::{invalid, is_identifier, Validation};
+use crate::names::is_identifier;
+use crate::rejection::{invalid, Validation};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -9,9 +10,10 @@ use std::collections::{BTreeMap, BTreeSet};
 /// A source plus optional ordering constraints within one plugin-owned set.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ExecutableCandidate {
+pub struct ExecutableCandidate {
+    /// The kind of place the executable is found.
     #[serde(flatten)]
-    pub(crate) source: ExecutableSource,
+    pub source: ExecutableSource,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) id: Option<String>,
     /// Higher priorities run first; absent means 0. Ties use array order.
@@ -21,8 +23,9 @@ pub(crate) struct ExecutableCandidate {
     pub(crate) insert_before: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) insert_after: Option<String>,
+    /// Operating systems the candidate applies to; empty means every one.
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub(crate) platforms: Vec<Platform>,
+    pub platforms: Vec<Platform>,
 }
 
 impl<'de> Deserialize<'de> for ExecutableCandidate {
@@ -79,29 +82,42 @@ impl<'de> Deserialize<'de> for ExecutableCandidate {
     rename_all_fields = "camelCase",
     deny_unknown_fields
 )]
-pub(crate) enum ExecutableSource {
+pub enum ExecutableSource {
+    /// A wrapper inside the project root; it always runs project code.
     ProjectFile {
+        /// Wrapper path, relative to the project root.
         path: String,
+        /// Further project files that must exist beside the wrapper.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         requires: Vec<String>,
     },
+    /// A path below a directory named by an environment variable the
+    /// manifest lists in `environmentInputs`.
     Environment {
+        /// Environment variable holding the directory.
         variable: String,
+        /// Executable path below that directory.
         path: String,
     },
+    /// A bare command name found on `PATH`.
     Command {
+        /// Bare command name.
         command: String,
     },
+    /// A declared runtime dependency itself.
     Runtime {
+        /// Tool-definition ID of the runtime.
         runtime: String,
     },
     /// Global file preference; empty skips, any invalid nonempty value fails.
     Setting {
+        /// ID of the global file setting.
         #[serde(rename = "settingID")]
         setting_id: String,
     },
     /// Existing host toolchain registry, using the instance's canonical local selection.
     Toolchain {
+        /// Tool-definition ID whose selected instance is used.
         #[serde(rename = "toolchainID")]
         toolchain_id: String,
     },
@@ -110,18 +126,18 @@ pub(crate) enum ExecutableSource {
 /// Operating system filter, applied after validating the complete candidate set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
-pub(crate) enum Platform {
+pub enum Platform {
+    /// macOS.
     Macos,
+    /// Linux.
     Linux,
+    /// Windows.
     Windows,
 }
 
 /// Stable topological sort: explicit edges win, otherwise higher priority then
 /// original array index wins. No cross-set anchors or arbitrary host code.
-pub(crate) fn ordered_indices(
-    candidates: &[ExecutableCandidate],
-    field: &str,
-) -> Validation<Vec<usize>> {
+pub fn ordered_indices(candidates: &[ExecutableCandidate], field: &str) -> Validation<Vec<usize>> {
     let mut ids = BTreeMap::new();
     for (index, candidate) in candidates.iter().enumerate() {
         if let Some(id) = &candidate.id {

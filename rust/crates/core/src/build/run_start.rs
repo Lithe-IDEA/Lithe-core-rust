@@ -9,11 +9,10 @@ use super::decode;
 use super::run_preparation::{
     process_fields, valid_configuration_type, DecodeRunPreparationRequest, MAX_ARGUMENT_BYTES,
 };
-use crate::lsp::interface::plugin_function::is_function_id;
-use crate::plugins::declarative::{
-    decode_payload, outcome, validate_manifest_value, PluginRejection, Validation,
-};
+use crate::plugins::declarative::validate_manifest_value;
 use crate::protocol::CoreError;
+use lithe_plugin_model::is_function_id;
+use lithe_plugin_model::{decode_payload, outcome, PluginRejection, Validation};
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};

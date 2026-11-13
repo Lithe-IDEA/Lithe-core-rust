@@ -2,8 +2,8 @@
 //! This is storage syntax only: declarations still own option types, scope,
 //! defaults and contributions, and platforms own file access and publication.
 
-use crate::plugins::declarative::{decode_payload, outcome, PluginRejection, Validation};
 use crate::protocol::CoreError;
+use lithe_plugin_model::{decode_payload, outcome, PluginRejection, Validation};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;

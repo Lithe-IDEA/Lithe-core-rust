@@ -1,7 +1,7 @@
 //! Resolves captured toolchain candidates without native I/O or manager semantics.
 
 use super::{definitions, fixed::FixedToolchainSelection, paths, pins, query};
-use crate::plugins::declarative::{PluginRejection, Validation};
+use lithe_plugin_model::{PluginRejection, Validation};
 use regex::RegexBuilder;
 use serde::Deserialize;
 use serde_json::{json, Value};

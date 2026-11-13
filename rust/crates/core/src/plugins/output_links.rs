@@ -5,8 +5,8 @@
 //! console lines, and turns a match into a workspace location, or into the
 //! groups a plugin backend resolves. A host only shows links and opens them.
 
-use super::declarative::{invalid, Validation};
 use crate::protocol::{CoreError, ErrorCode};
+use lithe_plugin_model::{invalid, Validation};
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -102,7 +102,7 @@ pub(crate) fn validate_declarations(
                     "A resolve function needs a backend process.",
                 ));
             }
-            if !crate::lsp::interface::plugin_function::is_function_id(&resolve.function) {
+            if !lithe_plugin_model::is_function_id(&resolve.function) {
                 return Err(invalid(
                     format!("{field}.resolve.function"),
                     "The resolve function is not a valid function ID.",

@@ -1,9 +1,9 @@
 //! The `projectGenerators` section of a manifest and its validation.
 
 use super::template::{self, Source, Variable};
-use crate::plugins::declarative::{
-    invalid, is_bare_command, is_safe_relative_path, is_setting_identifier, TemplatePart, UIIcon,
-    Validation,
+use lithe_plugin_model::settings::is_setting_identifier;
+use lithe_plugin_model::{
+    invalid, is_bare_command, is_safe_relative_path, TemplatePart, UIIcon, Validation,
 };
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -678,7 +678,7 @@ impl GeneratorField {
                     ));
                 }
                 if let Some(version) = &self.minimum_version {
-                    crate::plugins::declarative::validate_minimum_version(
+                    lithe_plugin_model::validate_minimum_version(
                         version,
                         &format!("{field}.minimumVersion"),
                     )?;

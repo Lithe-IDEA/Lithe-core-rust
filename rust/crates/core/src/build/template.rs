@@ -7,9 +7,9 @@
 //! must be guarded by a condition, so a template never expands to an empty
 //! or half-filled argument.
 
-use crate::plugins::declarative::{
-    is_setting_identifier, parse_template_with, regex_literal, template, PluginRejection,
-    TemplatePart, Validation,
+use lithe_plugin_model::settings::is_setting_identifier;
+use lithe_plugin_model::{
+    invalid_template, parse_template_with, regex_literal, PluginRejection, TemplatePart, Validation,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -274,7 +274,7 @@ pub(crate) fn validate_arguments(
         let element = format!("{field}[{index}]");
         let conditions = argument.conditions();
         if !conditions.is_empty() && !allowed.conditions {
-            return Err(template(
+            return Err(invalid_template(
                 element,
                 "Conditional arguments are not allowed in this list.",
             ));
@@ -283,7 +283,7 @@ pub(crate) fn validate_arguments(
             .iter()
             .find(|condition| conditions.contains(&condition.opposite()))
         {
-            return Err(template(
+            return Err(invalid_template(
                 element,
                 format!("The conditions contradict each other ({condition:?})."),
             ));
@@ -293,7 +293,7 @@ pub(crate) fn validate_arguments(
                 .iter()
                 .any(|condition| condition.is_test_filter())
         {
-            return Err(template(
+            return Err(invalid_template(
                 element,
                 "Suite and case conditions are only allowed in test arguments.",
             ));
@@ -310,10 +310,10 @@ fn validate_element(
     field: &str,
 ) -> Validation<()> {
     if value.contains('\0') {
-        return Err(template(field, "Arguments must not contain NUL."));
+        return Err(invalid_template(field, "Arguments must not contain NUL."));
     }
     let Some(parts) = parse(value) else {
-        return Err(template(
+        return Err(invalid_template(
             field,
             "The argument uses an unknown or unterminated template variable.",
         ));
@@ -330,19 +330,19 @@ fn validate_element(
             continue;
         };
         if variable.is_whole_argument() && parts.len() != 1 {
-            return Err(template(
+            return Err(invalid_template(
                 field,
                 "${optionArguments} and ${userArguments} must be a whole argument.",
             ));
         }
         let unavailable = || {
-            template(
+            invalid_template(
                 field,
                 "The argument uses a variable that is not available in this list.",
             )
         };
         let unguarded = |condition: &str| {
-            template(
+            invalid_template(
                 field,
                 format!("This variable may be absent; guard it with \"when\": \"{condition}\"."),
             )
@@ -397,7 +397,7 @@ fn validate_element(
                 };
                 if let Some(id) = id {
                     if !options.contains(id) {
-                        return Err(template(
+                        return Err(invalid_template(
                             field,
                             format!("${{optionArguments:{id}}} names an undeclared option."),
                         ));

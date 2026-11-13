@@ -31,7 +31,7 @@
 //!
 //! Note: the decision is recorded in .agents/notes/implemented/architecture/2026-11-11-plugin-contract-v2-baseline.md
 
-use super::declarative::{PluginRejection, Validation};
+use lithe_plugin_model::{PluginRejection, Validation};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 

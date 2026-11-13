@@ -24,6 +24,7 @@ lithe-git-host = { path = "../git-host" }
 lithe-github = { path = "../github" }
 lithe-ide-host = { path = "../ide-host" }
 lithe-network = { path = "../network" }
+lithe-plugin-model = { path = "../plugin-model" }
 lithe-process = { path = "../process" }
 lithe-protocol = { path = "../protocol" }
 lithe-request-context = { path = "../request-context" }

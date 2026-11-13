@@ -14,18 +14,19 @@
 //!
 //! Note: the decision is recorded in .agents/notes/implemented/architecture/2026-10-21-plugin-settings-surfaces.md
 
-#[path = "settings_documents.rs"]
 mod documents;
-pub(crate) use documents::{document_state, edit_document, SettingsEdit};
-#[path = "settings_pages.rs"]
+pub use documents::{document_state, edit_document, SettingsEdit};
 mod pages;
-pub(crate) use pages::page_sections;
+pub use pages::page_sections;
 
-use super::declarative::{invalid, PluginRejection, Validation};
+use crate::rejection::{invalid, PluginRejection, Validation};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
+
+/// Most settings one plugin may declare, so its pages stay pages.
+pub const MAX_SETTINGS: usize = 32;
 
 /// A whole number within a declared range.
 const SETTING_INTEGER: &str = "integer";
@@ -46,7 +47,7 @@ const MAX_ENUM_OPTIONS: usize = 16;
 /// Most choices one multiSelect setting may offer.
 const MAX_MULTI_SELECT_OPTIONS: usize = 32;
 /// Longest setting ID, option value, title, unit, and section heading.
-pub(crate) const MAX_SETTING_TEXT: usize = 120;
+pub const MAX_SETTING_TEXT: usize = 120;
 /// Longest pattern a text setting may declare.
 const MAX_PATTERN: usize = 256;
 /// Default and largest `maxLength` of a text setting.
@@ -58,7 +59,7 @@ const MAX_PATH_LENGTH: usize = 1024;
 /// Where a project may replace the value the user chose for every project.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) enum SettingScope {
+pub enum SettingScope {
     /// One value for every workspace.
     Global,
     /// A workspace may override the global value.
@@ -69,7 +70,7 @@ pub(crate) enum SettingScope {
 /// what to do after a change: nothing, push it, restart, or reload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) enum SettingEffect {
+pub enum SettingEffect {
     /// The next start of the plugin's processes uses it.
     Restart,
     /// Pushed to running language servers through `workspaceConfiguration`.
@@ -85,24 +86,24 @@ pub(crate) enum SettingEffect {
 /// declares; the host shows the page while any plugin contributes to it.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) enum SettingPage {
-    /// Languages & Frameworks › <language>.
+pub enum SettingPage {
+    /// Languages & Frameworks › *language*.
     #[serde(rename = "languageID")]
     Language(String),
-    /// Build Tools › <build system>.
+    /// Build Tools › *build system*.
     #[serde(rename = "buildSystemID")]
     BuildSystem(String),
 }
 
 /// A button the host draws on a settings page that invokes one of the same
-/// plugin's [plugin functions](crate::lsp::interface::plugin_function). The
+/// plugin's plugin functions (see [`crate::is_function_id`]). The
 /// host owns the button; the plugin owns what the function does, so a
 /// "Reindex" or "Download sources" action needs no host code.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct SettingAction {
+pub struct SettingAction {
     /// Identifier, unique among the plugin's actions.
-    pub(crate) id: String,
+    pub id: String,
     /// Button label.
     title: String,
     /// Explanation shown next to the button.
@@ -125,7 +126,7 @@ pub(crate) struct SettingAction {
 
 /// Resolves one declared action without native I/O or runtime admission. Only
 /// an explicit native confirmation allows a confirmation-required invocation.
-pub(crate) fn plan_action(
+pub fn plan_action(
     plugin_id: &str,
     actions: &[SettingAction],
     action_id: &str,
@@ -161,10 +162,11 @@ pub(crate) fn plan_action(
 }
 
 /// Most actions one plugin may declare.
-pub(crate) const MAX_SETTING_ACTIONS: usize = 16;
+pub const MAX_SETTING_ACTIONS: usize = 16;
 
 impl SettingAction {
-    pub(crate) fn validate(&self, field: &str) -> Validation<()> {
+    /// Checks the action as the manifest entry at `field`.
+    pub fn validate(&self, field: &str) -> Validation<()> {
         if !is_setting_identifier(&self.id) {
             return Err(invalid(
                 format!("{field}.id"),
@@ -196,7 +198,7 @@ impl SettingAction {
         if let Some(page) = &self.page {
             check_page(page, field)?;
         }
-        if !crate::lsp::interface::plugin_function::is_function_id(&self.function) {
+        if !crate::names::is_function_id(&self.function) {
             return Err(invalid(
                 format!("{field}.function"),
                 "An action names a plugin function ID.",
@@ -225,9 +227,9 @@ fn check_page(page: &SettingPage, field: &str) -> Validation<()> {
 /// it cannot add arguments or select files inside the package.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct SettingDeclaration {
+pub struct SettingDeclaration {
     /// Identifier used in `${setting:<id>}` and as the stored key.
-    pub(crate) id: String,
+    pub id: String,
     /// One of the `SETTING_*` kinds.
     #[serde(rename = "type")]
     kind: String,
@@ -287,7 +289,7 @@ struct SettingOption {
 
 /// Setting IDs a template may name, with the restrictions their kinds carry.
 #[derive(Debug, Clone, Default)]
-pub(crate) struct DeclaredSettings {
+pub struct DeclaredSettings {
     /// Global paths that may explicitly select a build executable.
     executables: BTreeSet<String>,
     /// Settings a launch reads when it starts.
@@ -303,42 +305,40 @@ pub(crate) struct DeclaredSettings {
 
 impl DeclaredSettings {
     /// Whether the global file setting may select the build executable.
-    pub(crate) fn is_executable(&self, id: &str) -> bool {
+    pub fn is_executable(&self, id: &str) -> bool {
         self.executables.contains(id)
     }
 
     /// Whether the setting holds the path of one file, so a declaration can
     /// read the file the user chose.
-    pub(crate) fn is_file(&self, id: &str) -> bool {
+    pub fn is_file(&self, id: &str) -> bool {
         self.files.contains(id)
     }
 
     /// Whether a start-time template may name the setting.
-    pub(crate) fn contains(&self, id: &str) -> bool {
+    pub fn contains(&self, id: &str) -> bool {
         self.launch.contains(id)
     }
 
     /// Whether the setting exists but only applies through
     /// `workspaceConfiguration`.
-    pub(crate) fn is_immediate(&self, id: &str) -> bool {
+    pub fn is_immediate(&self, id: &str) -> bool {
         self.immediate.contains(id)
     }
 
     /// Whether a template must use the setting as a whole value.
-    pub(crate) fn requires_whole_value(&self, id: &str) -> bool {
+    pub fn requires_whole_value(&self, id: &str) -> bool {
         self.whole_value.contains(id)
     }
 
-    pub(crate) fn first_unreferenced_immediate(
-        &self,
-        references: &BTreeSet<String>,
-    ) -> Option<String> {
+    /// An `immediate` setting that none of `references` names, if any.
+    pub fn first_unreferenced_immediate(&self, references: &BTreeSet<String>) -> Option<String> {
         self.immediate.difference(references).next().cloned()
     }
 
     /// The settings `workspaceConfiguration` may name: every one, since
     /// the host re-expands it whenever a value changes.
-    pub(crate) fn for_configuration(&self) -> Self {
+    pub fn for_configuration(&self) -> Self {
         let mut all = self.clone();
         all.launch.extend(self.immediate.iter().cloned());
         all.immediate.clear();
@@ -349,34 +349,40 @@ impl DeclaredSettings {
 /// Layer the effective value of a setting came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) enum SettingSource {
+pub enum SettingSource {
+    /// The declared default.
     Default,
+    /// The user's global value.
     Global,
+    /// The project's value.
     Project,
 }
 
 /// Effective value of one setting and the layer it came from.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ResolvedSetting {
-    pub(crate) id: String,
-    pub(crate) value: Value,
-    pub(crate) source: SettingSource,
+pub struct ResolvedSetting {
+    /// Setting ID.
+    pub id: String,
+    /// Effective value.
+    pub value: Value,
+    /// Layer the value came from.
+    pub source: SettingSource,
 }
 
 /// Values a host stored for one plugin's settings.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct SettingLayers<'a> {
+pub struct SettingLayers<'a> {
     /// The user's value for every workspace, by setting ID.
-    pub(crate) global: &'a BTreeMap<String, Value>,
+    pub global: &'a BTreeMap<String, Value>,
     /// The current workspace's overrides, by setting ID.
-    pub(crate) project: &'a BTreeMap<String, Value>,
+    pub project: &'a BTreeMap<String, Value>,
 }
 
 impl SettingDeclaration {
     /// Unlike display/configuration settings, an explicit invalid executable
     /// value must terminate resolution rather than silently choose a default.
-    pub(crate) fn executable_value(&self, stored: Option<&Value>) -> Validation<Option<String>> {
+    pub fn executable_value(&self, stored: Option<&Value>) -> Validation<Option<String>> {
         let value = stored.unwrap_or(&self.default);
         let valid = self.accepts(value)
             && value.as_str().is_some_and(|path| {
@@ -422,7 +428,7 @@ impl SettingDeclaration {
     }
 
     /// Whether `value` is a value this setting can hold.
-    pub(crate) fn accepts(&self, value: &Value) -> bool {
+    pub fn accepts(&self, value: &Value) -> bool {
         match self.kind.as_str() {
             SETTING_INTEGER => value.as_i64().is_some_and(|number| {
                 self.minimum.is_none_or(|minimum| number >= minimum)
@@ -459,7 +465,7 @@ impl SettingDeclaration {
     }
 
     /// Checks the declaration against the `settings` capability contract.
-    pub(crate) fn validate(&self, field: &str) -> Validation<()> {
+    pub fn validate(&self, field: &str) -> Validation<()> {
         if !is_setting_identifier(&self.id) {
             return Err(invalid(
                 format!("{field}.id"),
@@ -661,7 +667,7 @@ impl SettingDeclaration {
 }
 
 /// Checks a manifest's settings and returns what templates may name.
-pub(crate) fn declared(settings: &[SettingDeclaration]) -> DeclaredSettings {
+pub fn declared(settings: &[SettingDeclaration]) -> DeclaredSettings {
     let mut declared = DeclaredSettings::default();
     for setting in settings {
         if setting.kind == SETTING_FILE {
@@ -692,10 +698,7 @@ pub(crate) fn declared(settings: &[SettingDeclaration]) -> DeclaredSettings {
 /// the setting allows one, then the global value, then the default. A stored
 /// value the declaration no longer accepts is skipped, because a plugin
 /// update may narrow a range and a launch must not fail for that.
-pub(crate) fn resolve(
-    settings: &[SettingDeclaration],
-    layers: SettingLayers<'_>,
-) -> Vec<ResolvedSetting> {
+pub fn resolve(settings: &[SettingDeclaration], layers: SettingLayers<'_>) -> Vec<ResolvedSetting> {
     settings
         .iter()
         .map(|setting| {
@@ -723,7 +726,7 @@ pub(crate) fn resolve(
 }
 
 /// Effective values by setting ID, as launch templates read them.
-pub(crate) fn effective_values(
+pub fn effective_values(
     settings: &[SettingDeclaration],
     layers: SettingLayers<'_>,
 ) -> BTreeMap<String, Value> {
@@ -735,7 +738,7 @@ pub(crate) fn effective_values(
 
 /// Text a setting contributes inside a longer template: the number,
 /// `true`/`false`, the text, or the chosen options joined by commas.
-pub(crate) fn setting_text(value: Option<&Value>) -> String {
+pub fn setting_text(value: Option<&Value>) -> String {
     match value {
         Some(Value::String(text)) => text.clone(),
         Some(Value::Array(items)) => items
@@ -748,7 +751,9 @@ pub(crate) fn setting_text(value: Option<&Value>) -> String {
     }
 }
 
-pub(crate) fn is_setting_identifier(value: &str) -> bool {
+/// A setting ID: a lowercase letter followed by ASCII letters and digits,
+/// within the text bound.
+pub fn is_setting_identifier(value: &str) -> bool {
     let mut characters = value.chars();
     characters
         .next()
@@ -950,7 +955,3 @@ mod tests {
         assert!(wrong.validate("settings[0]").is_err());
     }
 }
-
-#[cfg(test)]
-#[path = "settings_document_tests.rs"]
-mod document_tests;

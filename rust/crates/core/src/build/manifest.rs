@@ -13,10 +13,12 @@
 
 use super::select::{self, FieldSpec, Predicate};
 use super::template::{self, Allowed, Availability, BuildArgument, Variable};
-use crate::plugins::declarative::{
-    invalid, is_bare_command, is_identifier, is_safe_relative_path, is_setting_identifier,
-    sorted_unique, template as template_error, validate_minimum_version, PluginRejection,
-    ServerProcess, ServerRole, UIIcon, Validation, KNOWN_RUNTIME_TOOLS,
+use lithe_plugin_model::process::{ServerProcess, ServerRole};
+use lithe_plugin_model::settings::is_setting_identifier;
+use lithe_plugin_model::{
+    invalid, invalid_template as template_error, is_bare_command, is_identifier,
+    is_safe_relative_path, sorted_unique, validate_minimum_version, PluginRejection, UIIcon,
+    Validation,
 };
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -213,7 +215,13 @@ pub(crate) struct Invocation {
     pub(crate) minimum_version: Option<String>,
 }
 
-pub(crate) use crate::plugins::executables::{ExecutableCandidate, ExecutableSource, Platform};
+/// Runtime tools the host discovers and manages itself for build-system
+/// runtime dependencies: it exports each as `LITHE_<TOOL>_PATH` and puts its
+/// directory on the process's `PATH`. Server processes never use this list;
+/// they name tool definitions from `requiresTools`.
+pub(crate) const KNOWN_RUNTIME_TOOLS: &[&str] = &["go", "node"];
+
+pub(crate) use lithe_plugin_model::executables::{ExecutableCandidate, ExecutableSource, Platform};
 
 /// A runtime the tool needs. Runtimes the host already manages (`node`,
 /// `go`) take only an ID and an optional minimum version and follow the
@@ -975,11 +983,11 @@ pub(crate) struct DeclarationContext<'a> {
     pub(crate) debug_adapters: &'a [crate::debug::adapters::DebugAdapterDeclaration],
     pub(crate) official: bool,
     /// Setting IDs a provider's launch templates may name.
-    pub(crate) declared_settings: &'a crate::plugins::settings::DeclaredSettings,
+    pub(crate) declared_settings: &'a lithe_plugin_model::settings::DeclaredSettings,
     /// Language IDs the plugin declares a language server for.
     pub(crate) language_servers: &'a BTreeSet<String>,
     /// Whether tool names are host runtimes or tool-definition IDs.
-    pub(crate) runtime_tools: crate::plugins::declarative::RuntimeTools<'a>,
+    pub(crate) runtime_tools: lithe_plugin_model::process::RuntimeTools<'a>,
 }
 
 pub(crate) fn validate_declarations(
@@ -1598,7 +1606,7 @@ impl BuildSystemDeclaration {
                 }),
             )
         {
-            crate::plugins::executables::ordered_indices(list, &location)?;
+            lithe_plugin_model::executables::ordered_indices(list, &location)?;
             for candidate in list {
                 if let ExecutableSource::Setting { setting_id } = &candidate.source {
                     if !context.declared_settings.is_executable(setting_id) {

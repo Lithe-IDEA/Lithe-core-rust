@@ -6,11 +6,9 @@
 //! and the session are the generic debug engine's job; nothing here is specific to a language.
 
 use super::adapters::DebugRequest;
-use crate::plugins::declarative::{
-    decode_payload, is_identifier, outcome, validate_manifest_value, DeclarativePluginManifest,
-    PluginRejection, Validation,
-};
+use crate::plugins::declarative::{validate_manifest_value, DeclarativePluginManifest};
 use crate::protocol::CoreError;
+use lithe_plugin_model::{decode_payload, is_identifier, outcome, PluginRejection, Validation};
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 

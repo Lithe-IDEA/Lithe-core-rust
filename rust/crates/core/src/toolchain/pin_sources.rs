@@ -4,9 +4,9 @@
 //! publication. Reading or editing these documents never grants execution authority.
 
 use super::pins;
-use crate::plugins::declarative::{PluginRejection, Validation};
 use crate::protocol::json_document::parse_unique_json;
 use ignore::gitignore::GitignoreBuilder;
+use lithe_plugin_model::{PluginRejection, Validation};
 use serde::Deserialize;
 use serde_json::{json, Value};
 

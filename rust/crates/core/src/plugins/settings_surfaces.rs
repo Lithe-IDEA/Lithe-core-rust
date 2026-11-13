@@ -2,8 +2,9 @@
 //! Native adapters supply installed identities and directory equality facts;
 //! these commands never discover files, subscribe windows or launch plugins.
 
-use super::{decode_payload, outcome, validate_manifest_value, SettingsOwner};
-use crate::{plugins::declarative::PluginRejection, protocol::CoreError};
+use super::{validate_manifest_value, SettingsOwner};
+use crate::protocol::CoreError;
+use lithe_plugin_model::{decode_payload, outcome, PluginRejection};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -80,7 +81,7 @@ pub fn settings_catalog_command(payload: Value) -> Result<Value, CoreError> {
         }
         let mut pages = BTreeMap::<String, Value>::new();
         for (id, (manifest, _)) in manifests {
-            for page in crate::plugins::settings::page_sections(
+            for page in lithe_plugin_model::settings::page_sections(
                 &manifest.settings,
                 &manifest.setting_actions,
             ) {

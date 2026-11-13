@@ -13,19 +13,13 @@
 //! state directories to prune. The host calls the function, creates the
 //! directories, and starts the process; it never interprets the answer.
 
-use super::declarative::{
+use crate::protocol::{CoreError, ErrorCode};
+use lithe_plugin_model::{
     decode_payload, invalid, is_safe_relative_path, PluginRejection, Validation,
 };
-use crate::protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
-
-/// How long the host waits for a launch function by default, in
-/// milliseconds; a manifest may choose a value within the bounds below.
-pub(crate) const RESOLVE_TIMEOUT_MILLISECONDS: u64 = 30_000;
-const MIN_RESOLVE_TIMEOUT_MILLISECONDS: u64 = 1_000;
-const MAX_RESOLVE_TIMEOUT_MILLISECONDS: u64 = 120_000;
 
 /// How long a forwarded request may take when the backend names no timeout,
 /// and the longest timeout it may name, in milliseconds.
@@ -293,22 +287,6 @@ pub(crate) fn is_protocol_name(value: &str) -> bool {
         && !value
             .chars()
             .any(|character| character.is_whitespace() || character.is_control())
-}
-
-/// Checks `launch.timeoutMilliseconds` of a backend launch.
-pub(crate) fn validate_resolve_timeout(value: Option<u64>, field: &str) -> Validation<()> {
-    match value {
-        Some(milliseconds)
-            if !(MIN_RESOLVE_TIMEOUT_MILLISECONDS..=MAX_RESOLVE_TIMEOUT_MILLISECONDS)
-                .contains(&milliseconds) =>
-        {
-            Err(invalid(
-                field,
-                "timeoutMilliseconds must be between 1000 and 120000.",
-            ))
-        }
-        _ => Ok(()),
-    }
 }
 
 /// Writable host directories of one start, each already trimmed of a

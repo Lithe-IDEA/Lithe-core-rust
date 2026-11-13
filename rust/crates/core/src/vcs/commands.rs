@@ -9,10 +9,9 @@ use super::manifest::{built_in_git_markers, VcsProviderDeclaration, BUILT_IN_GIT
 use super::model::{is_root_relative, Capabilities};
 use super::requests::{self, Operation};
 use super::roots::{self, Mapping, MarkerSet};
-use crate::plugins::declarative::{
-    decode_payload, is_official_namespace, outcome, validate_manifest_value,
-};
+use crate::plugins::declarative::validate_manifest_value;
 use crate::protocol::{CoreError, ErrorCode};
+use lithe_plugin_model::{decode_payload, is_official_namespace, outcome};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;

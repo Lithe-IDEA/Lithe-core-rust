@@ -11,8 +11,8 @@ pub(crate) mod preferences;
 pub(crate) mod query;
 mod resolution;
 
-use crate::plugins::declarative::{PluginRejection, Validation};
 use crate::protocol::CoreError;
+use lithe_plugin_model::{PluginRejection, Validation};
 use serde_json::{json, Value};
 
 fn command(

@@ -1,8 +1,9 @@
 //! Validates plugin-owned tool policies and constructs the enabled-plugin registry.
 //! Filesystem evidence and native execution remain host-owned responsibilities.
 
-use crate::plugins::declarative::{invalid, validate_manifest_value, UIIcon, Validation};
-use crate::plugins::executables::{ordered_indices, ExecutableCandidate};
+use crate::plugins::declarative::validate_manifest_value;
+use lithe_plugin_model::executables::{ordered_indices, ExecutableCandidate};
+use lithe_plugin_model::{invalid, UIIcon, Validation};
 use regex::Regex;
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};

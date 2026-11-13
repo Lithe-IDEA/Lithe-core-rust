@@ -3,7 +3,7 @@
 use super::form::{self, FormInput, FormState};
 use super::manifest::{variable_is_known, GeneratorStep, ProjectGeneratorDeclaration, FIELD_TOOL};
 use super::template::{self, FieldValue, Values, Variable};
-use crate::plugins::declarative::{is_safe_relative_path, PluginRejection, Validation};
+use lithe_plugin_model::{is_safe_relative_path, PluginRejection, Validation};
 use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -296,10 +296,8 @@ fn template_files(
         let parts = template::parse(&relative_text)
             .filter(|parts| {
                 parts.iter().all(|part| match part {
-                    crate::plugins::declarative::TemplatePart::Variable(variable) => {
-                        known(variable)
-                    }
-                    crate::plugins::declarative::TemplatePart::Text(_) => true,
+                    lithe_plugin_model::TemplatePart::Variable(variable) => known(variable),
+                    lithe_plugin_model::TemplatePart::Text(_) => true,
                 })
             })
             .ok_or_else(|| template_error(format!("{relative_text} names an unknown variable.")))?;

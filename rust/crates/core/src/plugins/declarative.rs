@@ -13,12 +13,21 @@
 
 use super::capabilities::{self, HostCapabilities, Requires};
 use super::language_server_sessions;
-pub(crate) use super::settings::is_setting_identifier;
-use super::settings::{
-    DeclaredSettings, ResolvedSetting, SettingAction, SettingDeclaration, SettingLayers,
-    MAX_SETTING_ACTIONS,
-};
 use crate::protocol::{CoreError, ErrorCode};
+use lithe_plugin_model::process::{
+    collect_setting_references, is_packaged_runtime_path, validate_launch_value,
+    LanguageServerLaunch, LaunchVariable, RuntimeTools, ServerProcess, ServerRole,
+};
+use lithe_plugin_model::settings::{
+    DeclaredSettings, ResolvedSetting, SettingAction, SettingDeclaration, SettingLayers,
+    MAX_SETTINGS, MAX_SETTING_ACTIONS,
+};
+use lithe_plugin_model::{
+    decode_payload, invalid, invalid_template, is_bare_command, is_identifier,
+    is_official_namespace, is_plugin_id, is_safe_relative_path, is_semantic_version, outcome,
+    parse_template_with, regex_literal, sorted_unique, PluginRejection, TemplatePart, UIIcon,
+    Validation,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -29,9 +38,6 @@ pub const DECLARATIVE_MANIFEST_SCHEMA_VERSION: u32 = 0;
 /// version is independent of the Lithe application version, and a later one
 /// is appended to this list.
 pub const SUPPORTED_PLUGIN_API_VERSIONS: &[u32] = &[0];
-
-/// ID prefix reserved to plugins published and signed by Lithe.
-pub const OFFICIAL_PLUGIN_NAMESPACE: &str = "dev.lithe";
 
 const PERMISSION_LANGUAGE_SERVER: &str = "languageServer.launch";
 const PERMISSION_RUN: &str = "process.run";
@@ -86,11 +92,6 @@ const KNOWN_PERMISSIONS: &[&str] = &[
     PERMISSION_VCS,
     PERMISSION_WORKSPACE_METADATA,
 ];
-/// Runtime tools the host discovers and manages itself for build-system
-/// runtime dependencies: it exports each as `LITHE_<TOOL>_PATH` and puts its
-/// directory on the process's `PATH`. Server processes never use this list;
-/// they name tool definitions from `requiresTools`.
-pub(crate) const KNOWN_RUNTIME_TOOLS: &[&str] = &["go", "node"];
 /// Most tool definitions one plugin may require.
 const MAX_REQUIRED_TOOLS: usize = 32;
 /// Native host integrations a language server may ask for. The Core
@@ -105,56 +106,6 @@ const HOST_CAPABILITY_RUN: &str = "run";
 const HOST_CAPABILITY_TESTING: &str = "testing";
 /// CPU architectures a host may report for `${arch}`.
 const KNOWN_ARCHITECTURES: &[&str] = &["arm64", "x86_64"];
-/// Most settings one plugin may declare, so its pages stay pages.
-pub(crate) const MAX_SETTINGS: usize = 32;
-/// Prefix of a launch template variable that names a plugin setting.
-const SETTING_VARIABLE_PREFIX: &str = "setting:";
-
-/// Stable reason a declarative manifest or plan request was refused.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct PluginRejection {
-    /// Stable `plugin.*` code listed in the contract README.
-    pub code: &'static str,
-    /// User-facing English summary without host paths.
-    pub message: String,
-    /// JSON path of the offending manifest field, when one applies.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub field: Option<String>,
-}
-
-impl PluginRejection {
-    #[cfg(test)]
-    pub(crate) fn code(&self) -> &'static str {
-        self.code
-    }
-
-    #[cfg(test)]
-    pub(crate) fn field(&self) -> Option<&str> {
-        self.field.as_deref()
-    }
-
-    pub(crate) fn new(code: &'static str, message: impl Into<String>) -> Self {
-        Self {
-            code,
-            message: message.into(),
-            field: None,
-        }
-    }
-
-    pub(crate) fn at(
-        code: &'static str,
-        field: impl Into<String>,
-        message: impl Into<String>,
-    ) -> Self {
-        Self {
-            code,
-            message: message.into(),
-            field: Some(field.into()),
-        }
-    }
-}
-
-pub(crate) type Validation<T> = Result<T, PluginRejection>;
 
 /// Root of a declarative `plugin.json`. Unknown fields are refused so a newer
 /// manifest feature cannot be silently ignored by an older host.
@@ -311,91 +262,6 @@ struct UICommand {
     icon: Option<UIIcon>,
 }
 
-/// Icon identity is portable data; hosts own asset resolution, sizing and states.
-/// Custom assets are package-relative and are decoded only by the platform adapter.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct UIIcon {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    host: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    path: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    dark_path: Option<String>,
-    #[serde(default)]
-    mode: UIIconMode,
-}
-
-/// How the host paints an icon resource.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-enum UIIconMode {
-    /// Tinted with the current theme foreground, like built-in icons.
-    #[default]
-    Template,
-    /// Drawn with its own colors, untinted.
-    Original,
-}
-
-impl UIIcon {
-    /// Native actions reuse the host vocabulary, without package resource loading.
-    pub(crate) fn is_valid_host_icon(&self) -> bool {
-        self.host.is_some() && self.validate().is_ok()
-    }
-
-    fn validate(&self) -> Validation<()> {
-        self.validate_at("ui.icon")
-    }
-
-    /// Validates the icon and reports a failure at `field`; build systems
-    /// reuse the UI icon vocabulary for their tool windows and toolbar toggles.
-    pub(crate) fn validate_at(&self, field: &str) -> Validation<()> {
-        const HOST_IDS: &[&str] = &[
-            "tool-window",
-            "plugin",
-            "database",
-            "services",
-            "terminal",
-            "search",
-            "refresh",
-            "reset",
-            "run",
-            "debug",
-            "settings",
-            "add",
-            "remove",
-            "git",
-            "problems",
-        ];
-        let valid_path = |path: &str| {
-            is_safe_relative_path(path)
-                && path.len() <= 256
-                && !path.contains(':')
-                && !path.chars().any(char::is_control)
-                && path.split('/').all(|part| !part.is_empty() && part != ".")
-                && (path.ends_with(".svg") || path.ends_with(".png"))
-        };
-        let valid = match (&self.host, &self.path) {
-            (Some(host), None) => {
-                HOST_IDS.contains(&host.as_str())
-                    && self.dark_path.is_none()
-                    && self.mode == UIIconMode::Template
-            }
-            (None, Some(path)) => {
-                valid_path(path) && self.dark_path.as_deref().is_none_or(valid_path)
-            }
-            _ => false,
-        };
-        if !valid {
-            return Err(invalid(
-                field,
-                "An icon must name a supported host icon or safe package SVG/PNG resources.",
-            ));
-        }
-        Ok(())
-    }
-}
-
 /// Host surface that may list a plugin command.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -489,76 +355,6 @@ struct LanguageServerDeclaration {
     session: language_server_sessions::SessionDeclaration,
 }
 
-/// How the host starts a process that speaks the LSP base protocol. A
-/// language server and a build-system provider are the same kind of process,
-/// so both declare it with these fields and share their validation, install
-/// review entries, and launch plan. Flattened into its owner, which rejects
-/// unknown fields.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ServerProcess {
-    launch: LanguageServerLaunch,
-    #[serde(default)]
-    arguments: Vec<String>,
-    /// Arguments of a probe that must exit successfully before the host
-    /// trusts a candidate executable; empty means no probe.
-    #[serde(default)]
-    validation_arguments: Vec<String>,
-    #[serde(default)]
-    runtime_dependencies: Vec<RuntimeDependency>,
-    /// LSP `initializationOptions` sent verbatim after template expansion of
-    /// its string values.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    initialization_options: Option<Value>,
-}
-
-/// What a server process is for, which names it in rejection messages.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ServerRole {
-    LanguageServer,
-    BuildProvider,
-    VcsProvider,
-    Backend,
-    DebugAdapter,
-}
-
-/// Tools a server process may name for its launch and dependencies: the
-/// tool-definition IDs the manifest lists in `requiresTools`.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct RuntimeTools<'a>(&'a BTreeSet<String>);
-
-impl<'a> RuntimeTools<'a> {
-    /// The tools a manifest lists in `requiresTools`.
-    pub(crate) fn new(tools: &'a BTreeSet<String>) -> Self {
-        Self(tools)
-    }
-
-    /// Checks that one tool a process names is listed in `requiresTools`.
-    pub(crate) fn check(self, tool: &str, field: String) -> Validation<()> {
-        if self.0.contains(tool) {
-            Ok(())
-        } else {
-            Err(PluginRejection::at(
-                "plugin.runtime.undeclared",
-                field,
-                format!("The tool {tool} is not listed in requiresTools."),
-            ))
-        }
-    }
-}
-
-impl ServerRole {
-    fn noun(self) -> &'static str {
-        match self {
-            Self::LanguageServer => "language server",
-            Self::BuildProvider => "build provider",
-            Self::VcsProvider => "VCS provider",
-            Self::Backend => "plugin backend",
-            Self::DebugAdapter => "debug adapter",
-        }
-    }
-}
-
 /// A named piece of host code and the package resources it reads. The plugin
 /// owns the files; the host owns the behavior and is told where they are.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -591,65 +387,6 @@ impl ResourcePaths {
             Self::Many(paths) => paths,
         }
     }
-}
-
-/// Where the language-server executable comes from.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
-enum LanguageServerLaunch {
-    /// An executable inside the plugin package, relative to the package root.
-    Packaged { path: String },
-    /// Bare command names the host resolves through its tool discovery.
-    SystemCommand { commands: Vec<String> },
-    /// A packaged entry file started by a host-discovered runtime, so the
-    /// package needs no launcher script.
-    Runtime {
-        /// Tool-definition ID, listed in `requiresTools`, whose launch
-        /// template starts the entry.
-        tool: String,
-        /// Lowest acceptable runtime version, for example `21` or `18.17`.
-        #[serde(
-            default,
-            rename = "minimumVersion",
-            skip_serializing_if = "Option::is_none"
-        )]
-        minimum_version: Option<String>,
-        /// Runtime executable shipped inside the package, relative to its
-        /// root; it may vary by `${arch}`. When set, the host starts exactly
-        /// this file instead of discovering the tool on the machine.
-        #[serde(
-            default,
-            rename = "packagedRuntime",
-            skip_serializing_if = "Option::is_none"
-        )]
-        packaged_runtime: Option<String>,
-        /// Runtime options placed before the entry.
-        #[serde(default, rename = "runtimeArguments")]
-        runtime_arguments: Vec<String>,
-        /// Entry file inside the package, such as a script for `node`.
-        entry: String,
-    },
-    /// The plugin backend resolves the command line each time the server
-    /// starts: the host calls `function` and passes its answer to
-    /// `plugins.languageServers.decodeLaunch`. Language servers only.
-    Backend {
-        /// ID of a function the plugin backend registers.
-        function: String,
-        /// How long the host waits for the function, within
-        /// `language_server_sessions::RESOLVE_TIMEOUT_MILLISECONDS`.
-        #[serde(
-            default,
-            rename = "timeoutMilliseconds",
-            skip_serializing_if = "Option::is_none"
-        )]
-        timeout_milliseconds: Option<u64>,
-    },
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct RuntimeDependency {
-    tool: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -742,57 +479,6 @@ impl TemplateVariable {
     }
 }
 
-/// One piece of a parsed `${...}` template: literal text or a variable of the
-/// template family that parsed it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum TemplatePart<Variable = TemplateVariable> {
-    Text(String),
-    Variable(Variable),
-}
-
-/// Variables of language-server launch templates. They name host-owned
-/// locations, so a package never embeds a machine path.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum LaunchVariable {
-    /// Root of the installed, read-only plugin package.
-    PluginDir,
-    /// Writable directory the host keeps for this plugin's server and removes
-    /// when the plugin is uninstalled.
-    StateDir,
-    /// Writable directory for this server's state of the current workspace.
-    WorkspaceStateDir,
-    /// Absolute session plugin files directory supplied by the writable storage adapter.
-    LogDir,
-    /// Host CPU architecture, one of `KNOWN_ARCHITECTURES`.
-    Arch,
-    /// Current value of the plugin setting with this ID.
-    Setting(String),
-}
-
-impl LaunchVariable {
-    fn parse(name: &str) -> Option<Self> {
-        match name {
-            "pluginDir" => Some(Self::PluginDir),
-            "stateDir" => Some(Self::StateDir),
-            "workspaceStateDir" => Some(Self::WorkspaceStateDir),
-            "logDir" => Some(Self::LogDir),
-            "arch" => Some(Self::Arch),
-            _ => name
-                .strip_prefix(SETTING_VARIABLE_PREFIX)
-                .filter(|id| is_setting_identifier(id))
-                .map(|id| Self::Setting(id.to_string())),
-        }
-    }
-}
-
-/// Which launch value a template belongs to. The validation probe runs before
-/// any workspace is open, so it cannot name state directories.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LaunchTemplateContext {
-    Start,
-    ValidationProbe,
-}
-
 /// Which command template an argument list belongs to; each allows a
 /// different set of variables.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -815,32 +501,8 @@ impl TemplateContext {
     }
 }
 
-fn parse_template(value: &str) -> Option<Vec<TemplatePart>> {
+fn parse_template(value: &str) -> Option<Vec<TemplatePart<TemplateVariable>>> {
     parse_template_with(value, TemplateVariable::parse)
-}
-
-/// Splits a template into text and variables, using `parse` for the variable
-/// names of one template family. `None` for an unknown or unterminated
-/// variable. Build-system templates share this parser with plugin templates.
-pub(crate) fn parse_template_with<Variable>(
-    value: &str,
-    parse: fn(&str) -> Option<Variable>,
-) -> Option<Vec<TemplatePart<Variable>>> {
-    let mut parts = Vec::new();
-    let mut rest = value;
-    while let Some(start) = rest.find("${") {
-        if start > 0 {
-            parts.push(TemplatePart::Text(rest[..start].to_string()));
-        }
-        let after = &rest[start + 2..];
-        let end = after.find('}')?;
-        parts.push(TemplatePart::Variable(parse(&after[..end])?));
-        rest = &after[end + 1..];
-    }
-    if !rest.is_empty() {
-        parts.push(TemplatePart::Text(rest.to_string()));
-    }
-    Some(parts)
 }
 
 /// Validates a raw manifest value and returns its normalized form.
@@ -1846,7 +1508,7 @@ impl DeclarativePluginManifest {
             }
         }
         self.settings.sort_by(|left, right| left.id.cmp(&right.id));
-        Ok(super::settings::declared(&self.settings))
+        Ok(lithe_plugin_model::settings::declared(&self.settings))
     }
 
     /// Checks the settings-page actions and sorts them by ID.
@@ -1898,13 +1560,13 @@ impl DeclarativePluginManifest {
 
     /// Effective value of every declared setting and the layer it came from.
     pub(crate) fn resolve_settings(&self, layers: SettingLayers<'_>) -> Vec<ResolvedSetting> {
-        super::settings::resolve(&self.settings, layers)
+        lithe_plugin_model::settings::resolve(&self.settings, layers)
     }
 
     /// Value of every declared setting for one launch; see
-    /// `super::settings::resolve` for the fallback order.
+    /// `lithe_plugin_model::settings::resolve` for the fallback order.
     fn effective_settings(&self, layers: SettingLayers<'_>) -> BTreeMap<String, Value> {
-        super::settings::effective_values(&self.settings, layers)
+        lithe_plugin_model::settings::effective_values(&self.settings, layers)
     }
 
     /// Every program the host may start on this plugin's behalf, in a stable
@@ -2088,7 +1750,7 @@ impl LanguageServerDeclaration {
             // The host re-expands it on every change without a launch, so
             // only setting values may vary.
             if mentions_launch_directory(configuration) {
-                return Err(template(
+                return Err(invalid_template(
                     field,
                     "workspaceConfiguration may only use ${setting:<id>} variables.",
                 ));
@@ -2183,385 +1845,6 @@ impl LanguageServerDeclaration {
     }
 }
 
-impl ServerProcess {
-    /// Package files the launch starts, as (launch field, package-relative
-    /// path): a `packaged` executable, or a `runtime` entry and its shipped
-    /// runtime. A `${arch}` runtime path varies per machine, so only the
-    /// installer can resolve it and it is left out.
-    pub(crate) fn packaged_files(&self) -> Vec<(&'static str, &str)> {
-        match &self.launch {
-            LanguageServerLaunch::Packaged { path } => vec![("path", path)],
-            LanguageServerLaunch::Runtime {
-                entry,
-                packaged_runtime,
-                ..
-            } => {
-                let mut files = vec![("entry", entry.as_str())];
-                if let Some(runtime) = packaged_runtime
-                    .as_deref()
-                    .filter(|path| !path.contains("${"))
-                {
-                    files.push(("packagedRuntime", runtime));
-                }
-                files
-            }
-            LanguageServerLaunch::SystemCommand { .. } | LanguageServerLaunch::Backend { .. } => {
-                Vec::new()
-            }
-        }
-    }
-
-    /// Whether the plugin backend resolves the command line at start.
-    pub(crate) fn is_backend_launch(&self) -> bool {
-        matches!(self.launch, LanguageServerLaunch::Backend { .. })
-    }
-
-    /// Checks the launch, its arguments and probe, the initialization
-    /// options, and the runtime dependencies. Arguments and options are
-    /// launch templates.
-    pub(crate) fn validate(
-        &self,
-        field: &str,
-        declared_settings: &DeclaredSettings,
-        role: ServerRole,
-        runtime_tools: RuntimeTools<'_>,
-    ) -> Validation<()> {
-        let noun = role.noun();
-        match &self.launch {
-            LanguageServerLaunch::Packaged { path } => {
-                if !is_safe_relative_path(path) {
-                    return Err(invalid(
-                        format!("{field}.launch.path"),
-                        format!("The packaged {noun} must stay inside the plugin package."),
-                    ));
-                }
-            }
-            LanguageServerLaunch::SystemCommand { commands } => {
-                if commands.is_empty() || commands.iter().any(|command| !is_bare_command(command)) {
-                    return Err(invalid(
-                        format!("{field}.launch.commands"),
-                        "System commands must be bare executable names.",
-                    ));
-                }
-            }
-            LanguageServerLaunch::Runtime {
-                tool,
-                minimum_version,
-                packaged_runtime,
-                runtime_arguments,
-                entry,
-            } => {
-                runtime_tools.check(tool, format!("{field}.launch.tool"))?;
-                if let Some(version) = minimum_version {
-                    validate_minimum_version(version, &format!("{field}.launch.minimumVersion"))?;
-                }
-                if let Some(path) = packaged_runtime {
-                    let runtime_field = format!("{field}.launch.packagedRuntime");
-                    if !is_packaged_runtime_path(path) {
-                        return Err(invalid(
-                            runtime_field,
-                            "The packaged runtime must be a path inside the plugin package that varies only by ${arch}.",
-                        ));
-                    }
-                    // The plugin ships the runtime it needs, so there is no
-                    // discovered candidate whose version could be checked.
-                    if minimum_version.is_some() {
-                        return Err(invalid(
-                            runtime_field,
-                            "A packaged runtime cannot also state a minimum version.",
-                        ));
-                    }
-                }
-                if !is_safe_relative_path(entry) {
-                    return Err(invalid(
-                        format!("{field}.launch.entry"),
-                        format!("The {noun} entry must stay inside the plugin package."),
-                    ));
-                }
-                validate_launch_templates(
-                    runtime_arguments,
-                    LaunchTemplateContext::Start,
-                    declared_settings,
-                    &format!("{field}.launch.runtimeArguments"),
-                )?;
-                // The host's probe of a runtime is its version check; a second
-                // probe would have no defined command line.
-                if !self.validation_arguments.is_empty() {
-                    return Err(invalid(
-                        format!("{field}.validationArguments"),
-                        "A runtime launch is verified by its minimum version, not by a probe.",
-                    ));
-                }
-            }
-            LanguageServerLaunch::Backend {
-                function,
-                timeout_milliseconds,
-            } => {
-                return self.validate_backend_launch(field, function, *timeout_milliseconds, role);
-            }
-        }
-        if self
-            .arguments
-            .iter()
-            .chain(&self.validation_arguments)
-            .any(|argument| argument.contains('\0'))
-        {
-            return Err(invalid(
-                format!("{field}.arguments"),
-                format!("{} arguments must not contain NUL.", capitalized(noun)),
-            ));
-        }
-        validate_launch_templates(
-            &self.arguments,
-            LaunchTemplateContext::Start,
-            declared_settings,
-            &format!("{field}.arguments"),
-        )?;
-        validate_launch_templates(
-            &self.validation_arguments,
-            LaunchTemplateContext::ValidationProbe,
-            declared_settings,
-            &format!("{field}.validationArguments"),
-        )?;
-        if let Some(options) = &self.initialization_options {
-            let options_field = format!("{field}.initializationOptions");
-            if !options.is_object() {
-                return Err(invalid(
-                    options_field,
-                    "initializationOptions must be a JSON object.",
-                ));
-            }
-            validate_launch_value(options, declared_settings, &options_field)?;
-        }
-        for dependency in &self.runtime_dependencies {
-            let dependencies_field = format!("{field}.runtimeDependencies");
-            runtime_tools.check(&dependency.tool, dependencies_field.clone())?;
-            // The launch runtime is already discovered for the process, and
-            // only the launch declaration can state its version requirement.
-            if matches!(&self.launch, LanguageServerLaunch::Runtime { tool, .. } if *tool == dependency.tool)
-            {
-                return Err(invalid(
-                    dependencies_field,
-                    "The launch runtime must not be repeated as a runtime dependency.",
-                ));
-            }
-        }
-        Ok(())
-    }
-
-    /// Checks a launch the plugin backend resolves. Only a language server
-    /// may use it, and its command line, probe, options, and runtimes all
-    /// come from the backend's answer, so the manifest declares none of them.
-    fn validate_backend_launch(
-        &self,
-        field: &str,
-        function: &str,
-        timeout_milliseconds: Option<u64>,
-        role: ServerRole,
-    ) -> Validation<()> {
-        if role != ServerRole::LanguageServer {
-            return Err(invalid(
-                format!("{field}.launch.kind"),
-                format!(
-                    "A {} cannot be started through the plugin backend.",
-                    role.noun()
-                ),
-            ));
-        }
-        if !crate::lsp::interface::plugin_function::is_function_id(function) {
-            return Err(invalid(
-                format!("{field}.launch.function"),
-                "The launch function must be a plugin function ID.",
-            ));
-        }
-        language_server_sessions::validate_resolve_timeout(
-            timeout_milliseconds,
-            &format!("{field}.launch.timeoutMilliseconds"),
-        )?;
-        let declared = [
-            ("arguments", !self.arguments.is_empty()),
-            ("validationArguments", !self.validation_arguments.is_empty()),
-            ("runtimeDependencies", !self.runtime_dependencies.is_empty()),
-            (
-                "initializationOptions",
-                self.initialization_options.is_some(),
-            ),
-        ];
-        if let Some((name, _)) = declared.iter().find(|(_, present)| *present) {
-            return Err(invalid(
-                format!("{field}.{name}"),
-                "A backend launch takes its command line and options from the backend's answer.",
-            ));
-        }
-        Ok(())
-    }
-
-    /// Install-review entry of the process, without its owner's ID: the
-    /// executable, its arguments and probe, and the initialization options.
-    pub(crate) fn program(&self, role: ServerRole) -> Value {
-        let suffix = match role {
-            ServerRole::LanguageServer => "LanguageServer",
-            ServerRole::BuildProvider => "BuildProvider",
-            ServerRole::VcsProvider => "VcsProvider",
-            ServerRole::Backend => "Backend",
-            ServerRole::DebugAdapter => "DebugAdapter",
-        };
-        let mut program = match &self.launch {
-            LanguageServerLaunch::Packaged { path } => json!({
-                "kind": format!("packaged{suffix}"),
-                "path": path,
-                "arguments": self.arguments,
-                "validationArguments": self.validation_arguments,
-            }),
-            LanguageServerLaunch::SystemCommand { commands } => json!({
-                "kind": format!("system{suffix}"),
-                "commands": commands,
-                "arguments": self.arguments,
-                "validationArguments": self.validation_arguments,
-            }),
-            LanguageServerLaunch::Runtime {
-                tool,
-                packaged_runtime,
-                runtime_arguments,
-                entry,
-                ..
-            } => json!({
-                "kind": format!("runtime{suffix}"),
-                "tool": tool,
-                "packagedRuntime": packaged_runtime,
-                "entry": entry,
-                "runtimeArguments": runtime_arguments,
-                "arguments": self.arguments,
-                "validationArguments": self.validation_arguments,
-            }),
-            // The backend chooses the command line when the server starts,
-            // so the review shows the function that will choose it.
-            LanguageServerLaunch::Backend {
-                function,
-                timeout_milliseconds,
-            } => json!({
-                "kind": format!("backend{suffix}"),
-                "function": function,
-                "timeoutMilliseconds": timeout_milliseconds
-                    .unwrap_or(language_server_sessions::RESOLVE_TIMEOUT_MILLISECONDS),
-            }),
-        };
-        // Initialization options can name code the server loads (bundles or
-        // extensions, for example), so changing them is a new program too.
-        if let Some(options) = &self.initialization_options {
-            program["initializationOptions"] = options.clone();
-        }
-        program
-    }
-
-    /// Whether any start template names `${workspaceStateDir}`, which only
-    /// a process bound to one workspace can be given.
-    pub(crate) fn uses_workspace_state_directory(&self) -> bool {
-        let runtime_arguments = match &self.launch {
-            LanguageServerLaunch::Runtime {
-                runtime_arguments, ..
-            } => runtime_arguments.as_slice(),
-            _ => &[],
-        };
-        let mentions = |text: &str| {
-            parse_template_with(text, LaunchVariable::parse)
-                .unwrap_or_default()
-                .iter()
-                .any(|part| {
-                    matches!(
-                        part,
-                        TemplatePart::Variable(LaunchVariable::WorkspaceStateDir)
-                    )
-                })
-        };
-        fn strings<'a>(value: &'a Value, out: &mut Vec<&'a str>) {
-            match value {
-                Value::String(text) => out.push(text),
-                Value::Array(items) => items.iter().for_each(|item| strings(item, out)),
-                Value::Object(members) => members.values().for_each(|item| strings(item, out)),
-                _ => {}
-            }
-        }
-        let mut option_strings = Vec::new();
-        if let Some(options) = &self.initialization_options {
-            strings(options, &mut option_strings);
-        }
-        self.arguments
-            .iter()
-            .chain(runtime_arguments)
-            .map(String::as_str)
-            .chain(option_strings)
-            .any(mentions)
-    }
-
-    /// Install-review entries of the runtimes the host discovers for it.
-    pub(crate) fn runtime_programs(&self) -> Vec<Value> {
-        self.runtime_requirements()
-            .into_iter()
-            .map(|mut runtime| {
-                runtime["kind"] = json!("runtime");
-                runtime
-            })
-            .collect()
-    }
-
-    /// Runtimes the host must discover for this process, sorted by tool. The
-    /// launch runtime comes first in declaration terms but is merged here so
-    /// hosts resolve every tool the same way. Every entry names a tool
-    /// definition, so every entry carries `kind: "tool"`.
-    fn runtime_requirements(&self) -> Vec<Value> {
-        let mut requirements: Vec<(&str, Option<&str>)> = self
-            .runtime_dependencies
-            .iter()
-            .map(|dependency| (dependency.tool.as_str(), None))
-            .collect();
-        // A packaged runtime is part of the plugin, not a host requirement.
-        if let LanguageServerLaunch::Runtime {
-            tool,
-            minimum_version,
-            packaged_runtime: None,
-            ..
-        } = &self.launch
-        {
-            requirements.push((tool.as_str(), minimum_version.as_deref()));
-        }
-        requirements.sort();
-        requirements.dedup();
-        requirements
-            .into_iter()
-            .map(|(tool, minimum_version)| {
-                let mut requirement = json!({ "tool": tool, "kind": "tool" });
-                if let Some(version) = minimum_version {
-                    requirement["minimumVersion"] = json!(version);
-                }
-                requirement
-            })
-            .collect()
-    }
-}
-
-fn capitalized(text: &str) -> String {
-    let mut characters = text.chars();
-    characters
-        .next()
-        .map(|first| first.to_uppercase().chain(characters).collect())
-        .unwrap_or_default()
-}
-
-/// A packaged runtime path is package-relative text whose only variable is
-/// `${arch}`, so one package can carry a runtime per architecture.
-fn is_packaged_runtime_path(value: &str) -> bool {
-    let Some(parts) = parse_template_with(value, LaunchVariable::parse) else {
-        return false;
-    };
-    parts.iter().all(|part| {
-        matches!(
-            part,
-            TemplatePart::Text(_) | TemplatePart::Variable(LaunchVariable::Arch)
-        )
-    }) && is_safe_relative_path(&value.replace("${arch}", "arch"))
-}
-
 /// A window body is literal text, one package HTML page, or host-rendered
 /// native content.
 fn validate_window_body(window: &UIToolWindow, index: usize) -> Validation<()> {
@@ -2605,238 +1888,6 @@ fn validate_window_body(window: &UIToolWindow, index: usize) -> Validation<()> {
             "A tool window shows exactly one of text and web content.",
         )),
     }
-}
-
-/// A minimum version is one to three dot-separated numbers; hosts compare it
-/// numerically against the leading components of the runtime's own version.
-pub(crate) fn validate_minimum_version(value: &str, field: &str) -> Validation<()> {
-    let parts: Vec<&str> = value.split('.').collect();
-    let numeric = parts.iter().all(|part| {
-        !part.is_empty()
-            && part.len() <= 9
-            && part.chars().all(|character| character.is_ascii_digit())
-    });
-    if numeric && parts.len() <= 3 {
-        Ok(())
-    } else {
-        Err(invalid(
-            field.to_string(),
-            "A minimum version must be one to three dot-separated numbers.",
-        ))
-    }
-}
-
-/// Checks the start and probe arguments of a process that has no launch of
-/// its own to validate, such as a debug adapter on the selected runtime.
-pub(crate) fn validate_process_arguments(
-    arguments: &[String],
-    validation_arguments: &[String],
-    declared_settings: &DeclaredSettings,
-    field: &str,
-) -> Validation<()> {
-    if arguments
-        .iter()
-        .chain(validation_arguments)
-        .any(|argument| argument.contains('\0'))
-    {
-        return Err(invalid(
-            format!("{field}.arguments"),
-            "Process arguments must not contain NUL.",
-        ));
-    }
-    validate_launch_templates(
-        arguments,
-        LaunchTemplateContext::Start,
-        declared_settings,
-        &format!("{field}.arguments"),
-    )?;
-    validate_launch_templates(
-        validation_arguments,
-        LaunchTemplateContext::ValidationProbe,
-        declared_settings,
-        &format!("{field}.validationArguments"),
-    )
-}
-
-fn validate_launch_templates(
-    values: &[String],
-    context: LaunchTemplateContext,
-    declared_settings: &DeclaredSettings,
-    field: &str,
-) -> Validation<()> {
-    for (index, value) in values.iter().enumerate() {
-        validate_launch_template(
-            value,
-            context,
-            declared_settings,
-            &format!("{field}[{index}]"),
-        )?;
-    }
-    Ok(())
-}
-
-/// Collects setting IDs referenced by every template string in a JSON value.
-fn collect_setting_references(value: &Value, references: &mut BTreeSet<String>) {
-    match value {
-        Value::String(text) => {
-            if let Some(parts) = parse_template_with(text, LaunchVariable::parse) {
-                for part in parts {
-                    if let TemplatePart::Variable(LaunchVariable::Setting(id)) = part {
-                        references.insert(id);
-                    }
-                }
-            }
-        }
-        Value::Array(items) => {
-            for item in items {
-                collect_setting_references(item, references);
-            }
-        }
-        Value::Object(members) => {
-            for item in members.values() {
-                collect_setting_references(item, references);
-            }
-        }
-        _ => {}
-    }
-}
-
-/// Checks every string inside a JSON value as a start-time launch template.
-fn validate_launch_value(
-    value: &Value,
-    declared_settings: &DeclaredSettings,
-    field: &str,
-) -> Validation<()> {
-    match value {
-        Value::String(text) => {
-            validate_launch_template(text, LaunchTemplateContext::Start, declared_settings, field)
-        }
-        Value::Array(items) => items.iter().enumerate().try_for_each(|(index, item)| {
-            validate_launch_value(item, declared_settings, &format!("{field}[{index}]"))
-        }),
-        Value::Object(members) => members.iter().try_for_each(|(key, item)| {
-            validate_launch_value(item, declared_settings, &format!("{field}.{key}"))
-        }),
-        _ => Ok(()),
-    }
-}
-
-fn validate_launch_template(
-    value: &str,
-    context: LaunchTemplateContext,
-    declared_settings: &DeclaredSettings,
-    field: &str,
-) -> Validation<()> {
-    if value.contains('\0') {
-        return Err(template(
-            field.to_string(),
-            "Launch values must not contain NUL.",
-        ));
-    }
-    let Some(parts) = parse_template_with(value, LaunchVariable::parse) else {
-        return Err(template(
-            field.to_string(),
-            "The value uses an unknown or unterminated template variable.",
-        ));
-    };
-    let mut package_reference = false;
-    for (index, part) in parts.iter().enumerate() {
-        match part {
-            // A setting must exist, may not shape a package path, and is not
-            // available to the probe, which runs before settings are read.
-            TemplatePart::Variable(LaunchVariable::Setting(id)) => {
-                if context == LaunchTemplateContext::ValidationProbe {
-                    return Err(template(
-                        field.to_string(),
-                        "The validation probe cannot use settings.",
-                    ));
-                }
-                if declared_settings.is_immediate(id) {
-                    return Err(template(
-                        field.to_string(),
-                        format!(
-                            "The setting {id} applies immediately, so only workspaceConfiguration may use it."
-                        ),
-                    ));
-                }
-                if !declared_settings.contains(id) {
-                    return Err(template(
-                        field.to_string(),
-                        format!("The value refers to the undeclared setting {id}."),
-                    ));
-                }
-                // Text and paths are a whole value, or the value of one
-                // `name=` argument, never part of a longer one.
-                if declared_settings.requires_whole_value(id) {
-                    let whole = match parts.as_slice() {
-                        [_] => true,
-                        [TemplatePart::Text(prefix), _] => prefix.ends_with('='),
-                        _ => false,
-                    };
-                    if !whole || index + 1 != parts.len() {
-                        return Err(template(
-                            field.to_string(),
-                            format!(
-                                "The text or path setting {id} must be a whole value or follow a name= prefix."
-                            ),
-                        ));
-                    }
-                }
-                if package_reference {
-                    return Err(template(
-                        field.to_string(),
-                        "A package path may only vary by ${arch}.",
-                    ));
-                }
-            }
-            TemplatePart::Variable(
-                LaunchVariable::StateDir
-                | LaunchVariable::WorkspaceStateDir
-                | LaunchVariable::LogDir,
-            ) if context == LaunchTemplateContext::ValidationProbe => {
-                return Err(template(
-                    field.to_string(),
-                    "The validation probe runs without a workspace and cannot use state directories.",
-                ));
-            }
-            // Everything after `${pluginDir}` is a package path the host
-            // verifies before launch, so it has to be `/`-rooted text and may
-            // only vary by architecture.
-            TemplatePart::Variable(LaunchVariable::PluginDir) => {
-                let rooted = matches!(
-                    parts.get(index + 1),
-                    Some(TemplatePart::Text(text)) if text.starts_with('/') && text.len() > 1
-                );
-                if package_reference || !rooted {
-                    return Err(template(
-                        field.to_string(),
-                        "${pluginDir} must be used once and be followed by a path inside the package.",
-                    ));
-                }
-                package_reference = true;
-            }
-            TemplatePart::Variable(variable)
-                if package_reference && *variable != LaunchVariable::Arch =>
-            {
-                return Err(template(
-                    field.to_string(),
-                    "A package path may only vary by ${arch}.",
-                ));
-            }
-            TemplatePart::Text(text)
-                if package_reference
-                    && (text.contains('\\')
-                        || text.split('/').any(|component| component == "..")) =>
-            {
-                return Err(template(
-                    field.to_string(),
-                    "A package path must stay inside the plugin package.",
-                ));
-            }
-            _ => {}
-        }
-    }
-    Ok(())
 }
 
 impl ExecutionProviderDeclaration {
@@ -2918,7 +1969,7 @@ impl ExecutionProviderDeclaration {
                 })
             });
             if !names_test {
-                return Err(template(
+                return Err(invalid_template(
                     format!("{test_field}.testCaseArguments"),
                     "The test case command must reference the test name.",
                 ));
@@ -2963,17 +2014,17 @@ fn validate_arguments(
         let element = format!("{field}[{index}]");
         let value = argument.value();
         if value.contains('\0') {
-            return Err(template(element, "Arguments must not contain NUL."));
+            return Err(invalid_template(element, "Arguments must not contain NUL."));
         }
         let Some(parts) = parse_template(value) else {
-            return Err(template(
+            return Err(invalid_template(
                 element,
                 "The argument uses an unknown or unterminated template variable.",
             ));
         };
         let condition = argument.condition();
         if condition.is_some() && context != TemplateContext::TestCase {
-            return Err(template(
+            return Err(invalid_template(
                 element,
                 "Conditional arguments are only allowed in test case commands.",
             ));
@@ -2983,13 +2034,13 @@ fn validate_arguments(
                 continue;
             };
             if !context.allows(*variable) {
-                return Err(template(
+                return Err(invalid_template(
                     element,
                     "The argument uses a variable that is not available in this command.",
                 ));
             }
             if *variable == TemplateVariable::UserArguments && parts.len() != 1 {
-                return Err(template(
+                return Err(invalid_template(
                     element,
                     "${userArguments} must be a whole argument.",
                 ));
@@ -3000,7 +2051,7 @@ fn validate_arguments(
                 && variable.needs_file()
                 && condition != Some(ArgumentCondition::FileSelected)
             {
-                return Err(template(
+                return Err(invalid_template(
                     element,
                     "File variables in a test case command require \"when\": \"fileSelected\".",
                 ));
@@ -3352,7 +2403,7 @@ fn backend_resolved_launch_plan(
             "kind": "backend",
             "function": function,
             "timeoutMilliseconds": timeout_milliseconds
-                .unwrap_or(language_server_sessions::RESOLVE_TIMEOUT_MILLISECONDS),
+                .unwrap_or(lithe_plugin_model::process::RESOLVE_TIMEOUT_MILLISECONDS),
         },
         "resolveParams": language_server_sessions::resolve_params(
             server_id,
@@ -3468,7 +2519,7 @@ fn expand_configuration(value: &Value, settings: &BTreeMap<String, Value>) -> Va
                     .map(|part| match part {
                         TemplatePart::Text(text) => text,
                         TemplatePart::Variable(LaunchVariable::Setting(id)) => {
-                            super::settings::setting_text(settings.get(&id))
+                            lithe_plugin_model::settings::setting_text(settings.get(&id))
                         }
                         TemplatePart::Variable(_) => String::new(),
                     })
@@ -3651,7 +2702,7 @@ fn hosting_language_server_plan(
                 "kind": "backend",
                 "function": function,
                 "timeoutMilliseconds": timeout_milliseconds
-                    .unwrap_or(language_server_sessions::RESOLVE_TIMEOUT_MILLISECONDS),
+                    .unwrap_or(lithe_plugin_model::process::RESOLVE_TIMEOUT_MILLISECONDS),
             },
             "arguments": [],
             "validationArguments": [],
@@ -4027,7 +3078,9 @@ fn expand_launch_template(
             }
             TemplatePart::Variable(LaunchVariable::Arch) => expanded.push_str(values.architecture),
             TemplatePart::Variable(LaunchVariable::Setting(id)) => {
-                expanded.push_str(&super::settings::setting_text(values.settings.get(&id)));
+                expanded.push_str(&lithe_plugin_model::settings::setting_text(
+                    values.settings.get(&id),
+                ));
             }
         }
     }
@@ -4037,34 +3090,6 @@ fn expand_launch_template(
             .insert(expanded[start..].trim_end_matches('/').to_string());
     }
     expanded
-}
-
-pub(crate) fn version_components(value: &str) -> Vec<u64> {
-    value
-        .split('.')
-        .filter_map(|part| part.parse().ok())
-        .collect()
-}
-
-/// First dotted number in a version probe's output, at most three
-/// components: `20.11.0` from `v20.11.0`, `1.22.4` from
-/// `go version go1.22.4 darwin/arm64`. A tool whose output needs more than
-/// this is checked through its tool definition instead.
-pub(crate) fn reported_version(output: &str) -> Option<Vec<u64>> {
-    let line = output
-        .lines()
-        .find(|line| line.contains(|character: char| character.is_ascii_digit()))?;
-    let start = line.find(|character: char| character.is_ascii_digit())?;
-    let text: String = line[start..]
-        .chars()
-        .take_while(|character| character.is_ascii_digit() || *character == '.')
-        .collect();
-    // A sentence-ending period is not a component.
-    text.split('.')
-        .take_while(|part| !part.is_empty())
-        .take(3)
-        .map(|part| part.parse().ok())
-        .collect()
 }
 
 fn test_template<'a>(
@@ -4142,19 +3167,6 @@ fn directory_argument(path: &str) -> String {
     }
 }
 
-/// Escapes regular-expression metacharacters so a test name matches only
-/// literally, in both PCRE (PHPUnit) and RE2 (Go) syntax.
-pub(crate) fn regex_literal(value: &str) -> String {
-    let mut escaped = String::with_capacity(value.len());
-    for character in value.chars() {
-        if "\\*?+[](){}^$|.".contains(character) {
-            escaped.push('\\');
-        }
-        escaped.push(character);
-    }
-    escaped
-}
-
 fn matches_pattern(pattern: &str, name: &str) -> bool {
     let pieces: Vec<&str> = pattern.split('*').collect();
     if pieces.len() == 1 {
@@ -4197,64 +3209,8 @@ fn unavailable(language_id: &str, operation: &str) -> PluginRejection {
     )
 }
 
-pub(crate) fn invalid(field: impl Into<String>, message: impl Into<String>) -> PluginRejection {
-    PluginRejection::at("plugin.manifest.invalid", field, message)
-}
-
-pub(crate) fn template(field: impl Into<String>, message: impl Into<String>) -> PluginRejection {
-    PluginRejection::at("plugin.template.invalid", field, message)
-}
-
 fn file_name(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
-}
-
-pub(crate) fn is_safe_relative_path(value: &str) -> bool {
-    !value.is_empty()
-        && !value.starts_with('/')
-        && !value.contains('\0')
-        && !value.contains('\\')
-        && !value.split('/').any(|component| component == "..")
-}
-
-pub(crate) fn is_bare_command(value: &str) -> bool {
-    !value.is_empty()
-        && value != "."
-        && value != ".."
-        && !value.contains('/')
-        && !value.contains('\\')
-        && !value.contains('\0')
-        && !value.chars().any(char::is_whitespace)
-}
-
-pub(crate) fn is_identifier(value: &str) -> bool {
-    !value.is_empty()
-        && value.chars().all(|character| {
-            character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
-        })
-}
-
-/// True for IDs reserved to Lithe's official plugins (`dev.lithe` and
-/// `dev.lithe.*`). Third-party sources and unsigned packages may not use it.
-pub(crate) fn is_official_namespace(id: &str) -> bool {
-    id == OFFICIAL_PLUGIN_NAMESPACE || id.starts_with(&format!("{OFFICIAL_PLUGIN_NAMESPACE}."))
-}
-
-pub(crate) fn is_plugin_id(value: &str) -> bool {
-    !value.is_empty()
-        && value != "."
-        && value != ".."
-        && value.chars().all(|character| {
-            character.is_ascii_lowercase() || character.is_ascii_digit() || ".-".contains(character)
-        })
-}
-
-pub(crate) fn is_semantic_version(value: &str) -> bool {
-    let parts: Vec<&str> = value.split('.').collect();
-    parts.len() == 3
-        && parts.iter().all(|part| {
-            !part.is_empty() && part.chars().all(|character| character.is_ascii_digit())
-        })
 }
 
 /// Trims and lowercases complete file names and markers. A leading `.` is
@@ -4284,14 +3240,6 @@ fn normalized_extensions(values: &[String]) -> Vec<String> {
             })
             .collect(),
     )
-}
-
-pub(crate) fn sorted_unique(values: Vec<String>) -> Vec<String> {
-    values
-        .into_iter()
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect()
 }
 
 // MARK: Command entry points
@@ -4341,31 +3289,6 @@ enum LaunchSelection<'a> {
     VcsProvider(&'a str),
     Backend,
     DebugAdapter(&'a str),
-}
-
-pub(crate) fn decode_payload<T: for<'de> Deserialize<'de>>(
-    payload: Value,
-    command: &str,
-) -> Result<T, CoreError> {
-    serde_json::from_value(payload).map_err(|error| {
-        CoreError::new(
-            ErrorCode::InvalidRequest,
-            format!("Invalid {command} payload"),
-        )
-        .with_details(error.to_string())
-    })
-}
-
-pub(crate) fn outcome(result: Validation<(&'static str, Value)>) -> Value {
-    match result {
-        Ok((key, value)) => {
-            let mut object = serde_json::Map::new();
-            object.insert("status".to_string(), json!("ok"));
-            object.insert(key.to_string(), value);
-            Value::Object(object)
-        }
-        Err(rejection) => json!({ "status": "rejected", "error": rejection }),
-    }
 }
 
 /// `plugins.declarative.validate`: returns `{status: "ok", plugin}` with the
@@ -4549,7 +3472,7 @@ pub fn settings_state_command(payload: Value) -> Result<Value, CoreError> {
                     "The manifest does not match the captured installed package identity.",
                 ));
             }
-            super::settings::document_state(
+            lithe_plugin_model::settings::document_state(
                 &manifest.id,
                 &manifest.settings,
                 &manifest.setting_actions,
@@ -4594,7 +3517,7 @@ pub fn settings_action_plan_command(payload: Value) -> Result<Value, CoreError> 
                     "The installed package identity changed before the action was planned.",
                 ));
             }
-            super::settings::plan_action(
+            lithe_plugin_model::settings::plan_action(
                 &manifest.id,
                 &manifest.setting_actions,
                 &payload.action_id,
@@ -4615,9 +3538,9 @@ pub fn settings_action_plan_command(payload: Value) -> Result<Value, CoreError> 
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct SettingsEditPayload {
     manifest: Value,
-    scope: super::settings::SettingScope,
+    scope: lithe_plugin_model::settings::SettingScope,
     document: Option<String>,
-    edits: Vec<super::settings::SettingsEdit>,
+    edits: Vec<lithe_plugin_model::settings::SettingsEdit>,
 }
 
 /// `plugins.declarative.editSettings`: validates all edits and returns complete
@@ -4626,7 +3549,7 @@ pub fn edit_settings_command(payload: Value) -> Result<Value, CoreError> {
     let payload: SettingsEditPayload = decode_payload(payload, "plugins.declarative.editSettings")?;
     Ok(outcome(validate_manifest_value(payload.manifest).and_then(
         |manifest| {
-            super::settings::edit_document(
+            lithe_plugin_model::settings::edit_document(
                 &manifest.id,
                 &manifest.settings,
                 payload.scope,

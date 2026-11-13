@@ -8,7 +8,7 @@
 //! Lists the host renders as sets are sorted here, and every list is capped,
 //! so both hosts show the same result for the same reply.
 
-use crate::plugins::declarative::{PluginRejection, Validation};
+use lithe_plugin_model::{PluginRejection, Validation};
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 

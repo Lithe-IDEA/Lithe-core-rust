@@ -6,7 +6,7 @@
 //! must reach the project unchanged. In files, only `{{` followed by
 //! `project.` or `field.` is a variable; any other `{{` is copied as text.
 
-use crate::plugins::declarative::{parse_template_with, TemplatePart};
+use lithe_plugin_model::{parse_template_with, TemplatePart};
 use std::collections::BTreeMap;
 
 /// What a variable reads.

@@ -8,11 +8,11 @@
 //! belong to the running provider and are negotiated in `initialize`.
 
 use super::model::is_vcs_id;
-use crate::plugins::declarative::{
-    invalid, is_bare_command, is_safe_relative_path, sorted_unique, PluginRejection, ServerProcess,
-    ServerRole, Validation,
+use lithe_plugin_model::process::{ServerProcess, ServerRole};
+use lithe_plugin_model::settings::DeclaredSettings;
+use lithe_plugin_model::{
+    invalid, is_bare_command, is_safe_relative_path, sorted_unique, PluginRejection, Validation,
 };
-use crate::plugins::settings::DeclaredSettings;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
@@ -119,7 +119,7 @@ fn is_marker_name(value: &str) -> bool {
 pub(crate) struct DeclarationContext<'a> {
     pub(crate) declared_settings: &'a DeclaredSettings,
     /// Whether tool names are host runtimes or tool-definition IDs.
-    pub(crate) runtime_tools: crate::plugins::declarative::RuntimeTools<'a>,
+    pub(crate) runtime_tools: lithe_plugin_model::process::RuntimeTools<'a>,
 }
 
 /// Validates every declaration and sorts them by ID.

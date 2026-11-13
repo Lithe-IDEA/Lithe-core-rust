@@ -94,7 +94,7 @@ pub(crate) fn valid_provider_id(id: &str) -> bool {
 /// Validates and orders provider declarations without knowing their source formats.
 pub(crate) fn validate_declarations(
     providers: &mut [ProviderDeclaration],
-) -> super::declarative::Validation<()> {
+) -> lithe_plugin_model::Validation<()> {
     let mut ids = BTreeSet::new();
     for provider in providers.iter() {
         if !valid_provider_id(&provider.id)
@@ -107,7 +107,7 @@ pub(crate) fn validate_declarations(
             || provider.inputs.is_empty()
             || provider.inputs.len() > MAX_INPUT_SELECTORS
         {
-            return Err(super::declarative::invalid(
+            return Err(lithe_plugin_model::invalid(
                 "keymapImportProviders",
                 "Invalid or duplicate shortcut import provider.",
             ));
@@ -143,7 +143,7 @@ pub(crate) fn validate_declarations(
             };
             !valid || !probes.insert(probe)
         }) {
-            return Err(super::declarative::invalid(
+            return Err(lithe_plugin_model::invalid(
                 "keymapImportProviders.recognition",
                 "Invalid or duplicate shortcut source recognition probe.",
             ));
@@ -154,7 +154,7 @@ pub(crate) fn validate_declarations(
             .iter()
             .any(|input| !valid_selector(input) || !inputs.insert(input))
         {
-            return Err(super::declarative::invalid(
+            return Err(lithe_plugin_model::invalid(
                 "keymapImportProviders.inputs",
                 "Invalid or duplicate shortcut source selector.",
             ));

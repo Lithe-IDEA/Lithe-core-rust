@@ -17,7 +17,7 @@ use super::manifest::{
 use super::model::{entry_id, BuildModel, ModelProject};
 use super::options::{self, OptionContribution};
 use super::template::{self, BuildArgument, Selected, Values, Variable};
-use crate::plugins::declarative::{PluginRejection, Validation};
+use lithe_plugin_model::{PluginRejection, Validation};
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};

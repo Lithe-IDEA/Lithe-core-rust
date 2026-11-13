@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 /// Groups only explicitly placed rows and actions. Unplaced declarations remain
 /// on the plugin's own page; an action alone is sufficient to create a page.
-pub(crate) fn page_sections(rows: &[SettingDeclaration], actions: &[SettingAction]) -> Vec<Value> {
+pub fn page_sections(rows: &[SettingDeclaration], actions: &[SettingAction]) -> Vec<Value> {
     let mut pages: BTreeMap<SettingPage, BTreeMap<String, (Vec<usize>, Vec<usize>)>> =
         BTreeMap::new();
     for (index, row) in rows.iter().enumerate() {

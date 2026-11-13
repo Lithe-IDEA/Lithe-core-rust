@@ -11,11 +11,11 @@ use super::manifest::{
     BuildSystemDeclaration, ExecutableCandidate, ExecutableSource, Platform, RuntimeDependency,
     VersionProbe,
 };
-use crate::plugins::declarative::{
-    reported_version, validate_minimum_version, version_components, DeclarativePluginManifest,
-    PluginRejection, Validation,
+use crate::plugins::declarative::DeclarativePluginManifest;
+use lithe_plugin_model::executables::ordered_indices;
+use lithe_plugin_model::{
+    reported_version, validate_minimum_version, version_components, PluginRejection, Validation,
 };
-use crate::plugins::executables::ordered_indices;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;

@@ -36,6 +36,7 @@ mod language_server_sessions;
 mod marketplace_plugins;
 mod plugin_editor_resources;
 mod plugin_run_debug;
+mod plugin_settings_documents;
 mod project;
 mod project_generators;
 mod protocol;

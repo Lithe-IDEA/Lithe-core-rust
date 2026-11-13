@@ -5,7 +5,7 @@
 
 use super::manifest::{BuildSystemDeclaration, OptionDeclaration, OptionKind};
 use super::template::{self, Values};
-use crate::plugins::declarative::Validation;
+use lithe_plugin_model::Validation;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;

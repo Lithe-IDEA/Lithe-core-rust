@@ -16,7 +16,7 @@ use super::model::{self, BuildModel, ModelBuilder};
 use super::options;
 use super::plans::{self, invalid_selection, unavailable, unsupported_integration};
 use super::select::{self, Node};
-use crate::plugins::declarative::Validation;
+use lithe_plugin_model::Validation;
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
 use regex::Regex;

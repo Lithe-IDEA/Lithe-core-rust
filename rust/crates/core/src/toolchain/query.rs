@@ -1,7 +1,7 @@
 //! Validates provider query replies against host-owned identity and filesystem facts.
 
 use super::paths;
-use crate::plugins::declarative::{PluginRejection, Validation};
+use lithe_plugin_model::{PluginRejection, Validation};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};

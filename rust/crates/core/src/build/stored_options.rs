@@ -3,8 +3,8 @@
 
 use super::manifest::{BuildSystemDeclaration, OptionKind, OptionScope};
 use super::{options, project_options};
-use crate::plugins::declarative::{decode_payload, outcome, PluginRejection, Validation};
 use crate::protocol::CoreError;
+use lithe_plugin_model::{decode_payload, outcome, PluginRejection, Validation};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};

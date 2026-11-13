@@ -5,7 +5,7 @@
 use super::decode::{invalid_output, MAX_OUTPUT_BYTES};
 use super::manifest::BuildSystemDeclaration;
 use super::plans::{self, PlanBase, SelectedEntity, TestPlanRequest};
-use crate::plugins::declarative::Validation;
+use lithe_plugin_model::Validation;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};

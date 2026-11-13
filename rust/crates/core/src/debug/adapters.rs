@@ -18,11 +18,9 @@
 //! Note: the decision is recorded in .agents/notes/proposed/architecture/2026-10-25-unified-debug-engine-and-adapter-registry.md
 
 use super::types::{DebugAdapterDefaults, DebugAdapterFeatures, DeclaredAdapterBehavior};
-use crate::plugins::declarative::{
-    invalid, is_safe_relative_path, validate_process_arguments, PluginRejection, ServerProcess,
-    ServerRole, Validation,
-};
-use crate::plugins::settings::DeclaredSettings;
+use lithe_plugin_model::process::{validate_process_arguments, ServerProcess, ServerRole};
+use lithe_plugin_model::settings::DeclaredSettings;
+use lithe_plugin_model::{invalid, is_safe_relative_path, PluginRejection, Validation};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeSet, HashSet};
@@ -659,7 +657,7 @@ pub(crate) struct DeclarationContext<'a> {
     /// Language IDs of the plugin's `languageServers[]`.
     pub(crate) language_servers: &'a BTreeSet<String>,
     /// Whether tool names are host runtimes or tool-definition IDs.
-    pub(crate) runtime_tools: crate::plugins::declarative::RuntimeTools<'a>,
+    pub(crate) runtime_tools: lithe_plugin_model::process::RuntimeTools<'a>,
 }
 
 /// Validates every declaration and sorts them by ID.

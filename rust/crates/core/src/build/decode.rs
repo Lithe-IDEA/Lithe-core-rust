@@ -6,7 +6,7 @@
 //! path or dropped, so a hostile tool cannot make the host open files
 //! outside the workspace.
 
-use crate::plugins::declarative::{PluginRejection, Validation};
+use lithe_plugin_model::{PluginRejection, Validation};
 use lithe_workspace::{self as workspace, fs};
 use serde_json::Value;
 use std::path::{Component, Path, PathBuf};

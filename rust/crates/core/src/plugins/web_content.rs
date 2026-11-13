@@ -11,8 +11,9 @@
 //! Note: the decision is recorded in Lithe-IDEA's
 //! .agents/notes/implemented/architecture/2026-10-18-plugin-web-content-in-host-windows.md
 
-use super::declarative::{decode_payload, validate_manifest_value};
+use super::declarative::validate_manifest_value;
 use crate::protocol::{CoreError, ErrorCode};
+use lithe_plugin_model::decode_payload;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use std::collections::hash_map::RandomState;

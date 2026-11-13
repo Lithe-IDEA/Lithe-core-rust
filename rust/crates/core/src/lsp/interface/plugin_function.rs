@@ -21,6 +21,7 @@
 use crate::plugins::capabilities::{versions as capability_versions, BACKEND};
 use crate::plugins::language_server_sessions::{self, is_protocol_name};
 use crate::protocol::{CoreError, ErrorCode};
+use lithe_plugin_model::{is_function_id, MAX_FUNCTION_ID_BYTES};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
@@ -49,7 +50,6 @@ pub(crate) const PROGRESS_METHOD: &str = "lithe/function/progress";
 
 /// Upper bound of functions one session may have registered at a time.
 const MAX_FUNCTIONS: usize = 256;
-const MAX_FUNCTION_ID_BYTES: usize = 128;
 const MAX_PLUGIN_ID_BYTES: usize = 128;
 const MAX_PLUGIN_ERROR_CODE_BYTES: usize = 64;
 /// Bound of a backend-supplied failure or progress message, in UTF-8 bytes.
@@ -1822,19 +1822,6 @@ fn descriptor_ids(
         return Err("Too many functions are registered.");
     }
     Ok(ids)
-}
-
-/// Dot-separated lowerCamelCase segments, for example `snapshot.refresh`.
-pub(crate) fn is_function_id(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= MAX_FUNCTION_ID_BYTES
-        && value.split('.').all(|segment| {
-            let mut characters = segment.chars();
-            characters
-                .next()
-                .is_some_and(|first| first.is_ascii_lowercase())
-                && characters.all(|character| character.is_ascii_alphanumeric())
-        })
 }
 
 /// The manifest's plugin ID alphabet: lowercase letters, digits, `.` and `-`.

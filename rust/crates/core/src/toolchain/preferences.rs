@@ -5,7 +5,7 @@
 //! and revalidate the owning document after collecting native evidence.
 
 use super::{fixed::FixedToolchainSelection, pins};
-use crate::plugins::declarative::{PluginRejection, Validation};
+use lithe_plugin_model::{PluginRejection, Validation};
 use serde_json::{json, Map, Value};
 
 const MAX_DOCUMENT_BYTES: usize = 2 * 1024 * 1024;
@@ -303,7 +303,7 @@ fn tools_map(value: &Value, field: &str, workspace: bool, consumer: bool) -> Val
 fn valid_consumer(value: &str) -> bool {
     value.len() <= 256
         && value.split_once('/').is_some_and(|(plugin, local)| {
-            crate::plugins::declarative::is_plugin_id(plugin) && pins::valid_local_id(local)
+            lithe_plugin_model::is_plugin_id(plugin) && pins::valid_local_id(local)
         })
 }
 

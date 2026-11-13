@@ -9,8 +9,8 @@
 //! their shape, so no tool or language has a branch here.
 
 use super::editor_actions::{normalize_names, uri, Location, LspPosition, LspRange};
-use crate::lsp::interface::plugin_function::is_function_id;
 use crate::protocol::{CoreError, ErrorCode};
+use lithe_plugin_model::is_function_id;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::BTreeSet;

@@ -5,7 +5,7 @@
 
 use super::manifest::BuildSystemDeclaration;
 use super::plans::{self, OutputPlanRequest};
-use crate::plugins::declarative::Validation;
+use lithe_plugin_model::Validation;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -148,8 +148,8 @@ pub(crate) fn decode(
     Ok(json!(snapshot))
 }
 
-fn invalid(message: &str) -> crate::plugins::declarative::PluginRejection {
-    crate::plugins::declarative::PluginRejection::new("plugin.build.invalidConfiguration", message)
+fn invalid(message: &str) -> lithe_plugin_model::PluginRejection {
+    lithe_plugin_model::PluginRejection::new("plugin.build.invalidConfiguration", message)
 }
 
 /// Shared by snapshot decoding and format-independent edit planning.

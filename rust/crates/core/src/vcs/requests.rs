@@ -9,8 +9,8 @@
 //! the VCS client with them.
 
 use super::model::{self, Capabilities, MAX_HISTORY_PAGE, MAX_MESSAGE_BYTES};
-use crate::plugins::declarative::Validation;
 use crate::protocol::{CoreError, ErrorCode};
+use lithe_plugin_model::Validation;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::{json, Value};

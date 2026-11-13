@@ -8,8 +8,8 @@
 //! action may carry alternatives, and a clicked action may return a reveal
 //! result.
 
-use crate::lsp::interface::plugin_function::is_function_id;
 use crate::protocol::{CoreError, ErrorCode};
+use lithe_plugin_model::is_function_id;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;

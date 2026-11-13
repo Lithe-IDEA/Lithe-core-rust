@@ -8,7 +8,6 @@ pub mod declarative;
 /// Independent, host-rendered editor actions of ordinary tool plugins.
 pub mod editor_actions;
 pub mod editor_providers;
-pub(crate) mod executables;
 pub(crate) mod grammar;
 /// Public host-method catalog and authorization for platform dispatchers.
 pub(crate) mod host_api;
@@ -23,7 +22,6 @@ pub(crate) mod native_ui;
 /// Plugin-declared console link patterns and their resolution.
 pub(crate) mod output_links;
 pub(crate) mod plugin_functions;
-pub(crate) mod settings;
 /// Plugin pages in host tool windows: loading rules and the web bridge.
 pub(crate) mod web_content;
 

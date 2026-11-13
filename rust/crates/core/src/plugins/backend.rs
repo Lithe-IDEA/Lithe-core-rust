@@ -23,8 +23,9 @@
 //! Note: the decisions are recorded in .agents/notes/implemented/architecture/2026-10-24-database-provider-plugin.md
 //! and .agents/notes/implemented/architecture/2026-10-30-plugin-backend-workspace-context.md
 
-use super::declarative::{invalid, ServerProcess, ServerRole, Validation};
-use super::settings::DeclaredSettings;
+use lithe_plugin_model::process::{ServerProcess, ServerRole};
+use lithe_plugin_model::settings::DeclaredSettings;
+use lithe_plugin_model::{invalid, Validation};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -60,7 +61,7 @@ pub(crate) struct DeclarationContext<'a> {
     /// A provider capability may start this backend for a host-owned query.
     pub(crate) provider_query_trigger: bool,
     /// The tool-definition IDs from `requiresTools`.
-    pub(crate) runtime_tools: crate::plugins::declarative::RuntimeTools<'a>,
+    pub(crate) runtime_tools: lithe_plugin_model::process::RuntimeTools<'a>,
 }
 
 impl BackendDeclaration {
