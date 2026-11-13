@@ -1,6 +1,6 @@
 //! Filesystem adapter for workspace engines, with no local fallback on remote errors.
 
-use super::workspace::{self, Host};
+use crate::scope::{self as workspace, Host};
 use lithe_remote::client::session::ClientError;
 use lithe_remote::protocol::{methods, ErrorCode};
 use serde::de::DeserializeOwned;
@@ -13,28 +13,28 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 // consumers (for example snapshot hashing) can still read larger files.
 const MAX_READ_BYTES: u64 = 32 * 1024 * 1024;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 thread_local! { static STAT_REQUESTS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
 
 /// Counts stat requests on the current test thread without retaining paths.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub(crate) fn stat_requests_for_test() -> usize {
     STAT_REQUESTS.with(std::cell::Cell::get)
 }
 
 fn rpc<T: DeserializeOwned>(host: &Host, method: &str, params: Value) -> io::Result<T> {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     if method == methods::FS_STAT {
         STAT_REQUESTS.with(|count| count.set(count.get() + 1));
     }
-    crate::protocol::cancellation::check().map_err(|error| io::Error::other(error.message))?;
-    let result = super::workspace_host::request_cancellable(
+    lithe_protocol::cancellation::check().map_err(|error| io::Error::other(error.message))?;
+    let result = crate::host::request_cancellable(
         &host.connection.session,
         method,
         params,
         Duration::from_secs(30),
     );
-    crate::protocol::cancellation::check()
+    lithe_protocol::cancellation::check()
         .map_err(|error| io::Error::new(io::ErrorKind::Interrupted, error.message))?;
     let value = result.map_err(|error| {
         let kind = match &error {
@@ -59,7 +59,7 @@ fn rpc<T: DeserializeOwned>(host: &Host, method: &str, params: Value) -> io::Res
 /// kinds assigned in `rpc`. Callers that tolerate unreadable paths must still
 /// stop on these, or a dead connection looks like a smaller project. Always
 /// false for local workspaces, where such kinds describe the path itself.
-pub(crate) fn is_transport_failure(error: &io::Error) -> bool {
+pub fn is_transport_failure(error: &io::Error) -> bool {
     workspace::is_remote()
         && matches!(
             error.kind(),
@@ -75,35 +75,37 @@ fn path(host: &Host, path: &Path) -> io::Result<String> {
 }
 
 /// Metadata retaining the host's file kind and permissions.
-pub(crate) struct Metadata {
+pub struct Metadata {
     kind: methods::FileKind,
     size: u64,
     mode: u32,
     modified: Option<SystemTime>,
 }
+// Mirrors `std::fs::Metadata`, which has `len` without `is_empty`.
+#[allow(clippy::len_without_is_empty)]
 impl Metadata {
     /// Size in bytes as reported by the owning filesystem.
-    pub(crate) fn len(&self) -> u64 {
+    pub fn len(&self) -> u64 {
         self.size
     }
     /// Whether the entry itself is a regular file.
-    pub(crate) fn is_file(&self) -> bool {
+    pub fn is_file(&self) -> bool {
         self.kind == methods::FileKind::File
     }
     /// Whether the entry itself is a directory.
-    pub(crate) fn is_dir(&self) -> bool {
+    pub fn is_dir(&self) -> bool {
         self.kind == methods::FileKind::Directory
     }
     /// Kind of the entry itself, without following symbolic links.
-    pub(crate) fn file_type(&self) -> FileType {
+    pub fn file_type(&self) -> FileType {
         FileType(self.kind)
     }
     /// POSIX mode used by guarded Git snapshots.
-    pub(crate) fn mode(&self) -> u32 {
+    pub fn mode(&self) -> u32 {
         self.mode
     }
     /// Host modification time; absent timestamps are not treated as fresh output.
-    pub(crate) fn modified(&self) -> io::Result<SystemTime> {
+    pub fn modified(&self) -> io::Result<SystemTime> {
         self.modified.ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::Unsupported,
@@ -114,18 +116,18 @@ impl Metadata {
 }
 
 /// Filesystem entry kind independent of the client operating system.
-pub(crate) struct FileType(methods::FileKind);
+pub struct FileType(methods::FileKind);
 impl FileType {
     /// Whether the entry is a regular file, without following links.
-    pub(crate) fn is_file(&self) -> bool {
+    pub fn is_file(&self) -> bool {
         self.0 == methods::FileKind::File
     }
     /// Whether the entry is a directory, without following links.
-    pub(crate) fn is_dir(&self) -> bool {
+    pub fn is_dir(&self) -> bool {
         self.0 == methods::FileKind::Directory
     }
     /// Whether the entry is a symbolic link.
-    pub(crate) fn is_symlink(&self) -> bool {
+    pub fn is_symlink(&self) -> bool {
         self.0 == methods::FileKind::Symlink
     }
 }
@@ -172,7 +174,7 @@ fn remote_metadata(metadata: methods::FileMetadata) -> Metadata {
 }
 
 /// Reads metadata of the entry itself on the workspace host.
-pub(crate) fn symlink_metadata(path_value: impl AsRef<Path>) -> io::Result<Metadata> {
+pub fn symlink_metadata(path_value: impl AsRef<Path>) -> io::Result<Metadata> {
     let path_value = path_value.as_ref();
     match workspace::current() {
         Some(host) => rpc::<methods::FileMetadata>(
@@ -186,7 +188,7 @@ pub(crate) fn symlink_metadata(path_value: impl AsRef<Path>) -> io::Result<Metad
 }
 
 /// Reads target metadata, resolving symbolic links on the owning host.
-pub(crate) fn metadata(path_value: impl AsRef<Path>) -> io::Result<Metadata> {
+pub fn metadata(path_value: impl AsRef<Path>) -> io::Result<Metadata> {
     if workspace::is_remote() {
         let value = symlink_metadata(path_value.as_ref())?;
         if value.file_type().is_symlink() {
@@ -199,7 +201,7 @@ pub(crate) fn metadata(path_value: impl AsRef<Path>) -> io::Result<Metadata> {
 }
 
 /// Tests existence without treating host failures as a missing path.
-pub(crate) fn try_exists(path_value: impl AsRef<Path>) -> io::Result<bool> {
+pub fn try_exists(path_value: impl AsRef<Path>) -> io::Result<bool> {
     match metadata(path_value) {
         Ok(_) => Ok(true),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
@@ -207,7 +209,7 @@ pub(crate) fn try_exists(path_value: impl AsRef<Path>) -> io::Result<bool> {
     }
 }
 /// Tests whether a path is a directory without suppressing host failures.
-pub(crate) fn is_dir(path_value: impl AsRef<Path>) -> io::Result<bool> {
+pub fn is_dir(path_value: impl AsRef<Path>) -> io::Result<bool> {
     match metadata(path_value) {
         Ok(value) => Ok(value.is_dir()),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
@@ -215,7 +217,7 @@ pub(crate) fn is_dir(path_value: impl AsRef<Path>) -> io::Result<bool> {
     }
 }
 /// Tests whether a path is a regular file on its owning filesystem.
-pub(crate) fn is_file(path_value: impl AsRef<Path>) -> io::Result<bool> {
+pub fn is_file(path_value: impl AsRef<Path>) -> io::Result<bool> {
     match metadata(path_value) {
         Ok(value) => Ok(value.is_file()),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
@@ -224,7 +226,7 @@ pub(crate) fn is_file(path_value: impl AsRef<Path>) -> io::Result<bool> {
 }
 
 /// Resolves links while preserving the native workspace URL identity.
-pub(crate) fn canonicalize(path_value: impl AsRef<Path>) -> io::Result<PathBuf> {
+pub fn canonicalize(path_value: impl AsRef<Path>) -> io::Result<PathBuf> {
     let path_value = path_value.as_ref();
     match workspace::current() {
         Some(host) => {
@@ -240,7 +242,7 @@ pub(crate) fn canonicalize(path_value: impl AsRef<Path>) -> io::Result<PathBuf> 
 }
 
 /// Reads a link's stored target without resolving it.
-pub(crate) fn read_link(path_value: impl AsRef<Path>) -> io::Result<PathBuf> {
+pub fn read_link(path_value: impl AsRef<Path>) -> io::Result<PathBuf> {
     match workspace::current() {
         Some(host) => {
             let metadata: methods::FileMetadata = rpc(
@@ -260,7 +262,7 @@ pub(crate) fn read_link(path_value: impl AsRef<Path>) -> io::Result<PathBuf> {
 }
 
 /// Streaming file reader; remote reads use bounded chunks rather than mirroring a file.
-pub(crate) struct File(FileReader);
+pub struct File(FileReader);
 enum FileReader {
     Local(std::fs::File),
     Remote {
@@ -274,7 +276,7 @@ enum FileReader {
 }
 impl File {
     /// Opens a regular file on its owning host.
-    pub(crate) fn open(path_value: impl AsRef<Path>) -> io::Result<Self> {
+    pub fn open(path_value: impl AsRef<Path>) -> io::Result<Self> {
         match workspace::current() {
             Some(host) => {
                 let metadata = metadata(path_value.as_ref())?;
@@ -352,7 +354,7 @@ impl Read for File {
 }
 
 /// Reads file bytes through the selected host adapter.
-pub(crate) fn read(path_value: impl AsRef<Path>) -> io::Result<Vec<u8>> {
+pub fn read(path_value: impl AsRef<Path>) -> io::Result<Vec<u8>> {
     let path_value = path_value.as_ref();
     if !workspace::is_remote() {
         return std::fs::read(path_value);
@@ -377,12 +379,12 @@ pub(crate) fn read(path_value: impl AsRef<Path>) -> io::Result<Vec<u8>> {
     Ok(bytes)
 }
 /// Reads UTF-8 text through the selected host adapter.
-pub(crate) fn read_to_string(path_value: impl AsRef<Path>) -> io::Result<String> {
+pub fn read_to_string(path_value: impl AsRef<Path>) -> io::Result<String> {
     String::from_utf8(read(path_value)?)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
 }
 /// Atomically replaces remote content; local behavior retains standard filesystem semantics.
-pub(crate) fn write(path_value: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> io::Result<()> {
+pub fn write(path_value: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> io::Result<()> {
     match workspace::current() {
         Some(host) => {
             check_write_size(bytes.as_ref().len() as u64)?;
@@ -398,7 +400,7 @@ pub(crate) fn write(path_value: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> io
     }
 }
 /// Writes and synchronizes a session record before publishing its manifest.
-pub(crate) fn write_synced(path_value: &Path, bytes: &[u8]) -> io::Result<()> {
+pub fn write_synced(path_value: &Path, bytes: &[u8]) -> io::Result<()> {
     if workspace::is_remote() {
         return write(path_value, bytes);
     }
@@ -412,7 +414,7 @@ pub(crate) fn write_synced(path_value: &Path, bytes: &[u8]) -> io::Result<()> {
     file.sync_all()
 }
 /// Appends ignore rules, rejecting remote changes since the read used for this append.
-pub(crate) fn append(path_value: &Path, bytes: &[u8]) -> io::Result<()> {
+pub fn append(path_value: &Path, bytes: &[u8]) -> io::Result<()> {
     match workspace::current() {
         Some(host) => {
             let remote = path(&host, path_value)?;
@@ -456,11 +458,7 @@ fn check_write_size(length: u64) -> io::Result<()> {
 }
 
 /// Creates one directory with optional permissions applied at creation.
-pub(crate) fn create_dir_mode(
-    path_value: &Path,
-    recursive: bool,
-    mode: Option<u32>,
-) -> io::Result<()> {
+pub fn create_dir_mode(path_value: &Path, recursive: bool, mode: Option<u32>) -> io::Result<()> {
     match workspace::current() {
         Some(host) => rpc::<Value>(
             &host,
@@ -481,15 +479,15 @@ pub(crate) fn create_dir_mode(
     }
 }
 /// Creates a directory without recursively creating parents.
-pub(crate) fn create_dir(path_value: impl AsRef<Path>) -> io::Result<()> {
+pub fn create_dir(path_value: impl AsRef<Path>) -> io::Result<()> {
     create_dir_mode(path_value.as_ref(), false, None)
 }
 /// Creates a directory and any missing parents.
-pub(crate) fn create_dir_all(path_value: impl AsRef<Path>) -> io::Result<()> {
+pub fn create_dir_all(path_value: impl AsRef<Path>) -> io::Result<()> {
     create_dir_mode(path_value.as_ref(), true, None)
 }
 /// Removes a disposable directory tree from its owning host.
-pub(crate) fn remove_dir_all(path_value: impl AsRef<Path>) -> io::Result<()> {
+pub fn remove_dir_all(path_value: impl AsRef<Path>) -> io::Result<()> {
     match workspace::current() {
         Some(host) => rpc::<Value>(
             &host,
@@ -502,7 +500,7 @@ pub(crate) fn remove_dir_all(path_value: impl AsRef<Path>) -> io::Result<()> {
 }
 
 /// Deletes owned scratch state even after the user cancels its operation.
-pub(crate) fn cleanup_directory(path_value: &Path) {
+pub fn cleanup_directory(path_value: &Path) {
     let result = if let Some(host) = workspace::current() {
         path(&host, path_value).and_then(|path| {
             host.connection
@@ -537,14 +535,14 @@ pub(crate) fn cleanup_directory(path_value: &Path) {
     }
 }
 /// Renames a file on its owning host, replacing an existing target.
-pub(crate) fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) -> io::Result<()> {
+pub fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) -> io::Result<()> {
     match workspace::current() {
         Some(host) => rpc::<Value>(&host, methods::FS_RENAME, json!({"from": path(&host, from.as_ref())?, "to": path(&host, to.as_ref())?, "overwrite": true})).map(|_| ()),
         None => std::fs::rename(from, to),
     }
 }
 /// Copies a file on the host without transferring its content through the client.
-pub(crate) fn copy(from: impl AsRef<Path>, to: impl AsRef<Path>) -> io::Result<u64> {
+pub fn copy(from: impl AsRef<Path>, to: impl AsRef<Path>) -> io::Result<u64> {
     match workspace::current() {
         Some(host) => {
             rpc::<Value>(
@@ -559,26 +557,26 @@ pub(crate) fn copy(from: impl AsRef<Path>, to: impl AsRef<Path>) -> io::Result<u
 }
 
 /// Directory entry preserving the client's workspace path identity.
-pub(crate) struct DirEntry {
+pub struct DirEntry {
     path: PathBuf,
     kind: methods::FileKind,
 }
 impl DirEntry {
     /// Name of this entry, without its parent path.
-    pub(crate) fn file_name(&self) -> std::ffi::OsString {
+    pub fn file_name(&self) -> std::ffi::OsString {
         self.path.file_name().unwrap_or_default().to_owned()
     }
     /// Entry path in native workspace identity.
-    pub(crate) fn path(&self) -> PathBuf {
+    pub fn path(&self) -> PathBuf {
         self.path.clone()
     }
     /// File type, without following symbolic links.
-    pub(crate) fn file_type(&self) -> io::Result<FileType> {
+    pub fn file_type(&self) -> io::Result<FileType> {
         Ok(FileType(self.kind))
     }
 }
 /// Lists a directory through the selected workspace adapter.
-pub(crate) fn read_dir(
+pub fn read_dir(
     path_value: impl AsRef<Path>,
 ) -> io::Result<std::vec::IntoIter<io::Result<DirEntry>>> {
     let path_value = path_value.as_ref();
@@ -622,7 +620,7 @@ pub(crate) fn read_dir(
 }
 
 /// Allocates a private host scratch directory; its caller owns deletion.
-pub(crate) fn remote_temp_directory(prefix: &str) -> io::Result<Option<PathBuf>> {
+pub fn remote_temp_directory(prefix: &str) -> io::Result<Option<PathBuf>> {
     workspace::current()
         .map(|host| {
             rpc::<methods::RealPathResult>(

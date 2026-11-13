@@ -1,7 +1,7 @@
 //! Reviewed local history mutations with immutable snapshots and durable recovery refs.
 
 use super::*;
-use crate::remote::workspace_io::{self as fs, File};
+use lithe_workspace::fs::{self, File};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeSet, HashMap};
 use std::sync::{Mutex, OnceLock};
@@ -134,9 +134,8 @@ impl RewriteLease {
                 .map_err(|_| invalid("Unsupported Git metadata path encoding"))?
                 .trim(),
         );
-        let common = crate::remote::workspace::identity_key(
-            &fs::canonicalize(&common).map_err(snapshot_io_error)?,
-        );
+        let common =
+            lithe_workspace::identity_key(&fs::canonicalize(&common).map_err(snapshot_io_error)?);
         let mut active = ACTIVE_REWRITES
             .get_or_init(|| Mutex::new(HashMap::new()))
             .lock()

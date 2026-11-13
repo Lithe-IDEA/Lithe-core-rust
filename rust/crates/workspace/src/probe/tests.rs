@@ -1,9 +1,14 @@
 use super::*;
 #[cfg(unix)]
-use crate::tests::support::temporary_root;
+use crate::sessions;
+#[cfg(unix)]
 use serde_json::json;
 #[cfg(unix)]
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
+use std::sync::atomic::{AtomicU64, Ordering};
+#[cfg(unix)]
+use std::sync::OnceLock;
 
 fn connection(value: serde_json::Value) -> SshConnection {
     serde_json::from_value(value).expect("valid connection")
@@ -385,4 +390,22 @@ fn private_key_paths_with_spaces_are_quoted() {
         option_value(&command, "IdentityFile").as_deref(),
         Some("\"/Users/me/My Keys/id_rsa\"")
     );
+}
+
+/// A scratch directory no other fixture shares, even across processes.
+#[cfg(unix)]
+fn temporary_root(label: &str) -> PathBuf {
+    static NONCE: OnceLock<u128> = OnceLock::new();
+    static SEQUENCE: AtomicU64 = AtomicU64::new(0);
+    let nonce = NONCE.get_or_init(|| {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be valid")
+            .as_nanos()
+    });
+    let sequence = SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!(
+        "lithe-workspace-{label}-{}-{nonce}-{sequence}",
+        std::process::id()
+    ))
 }

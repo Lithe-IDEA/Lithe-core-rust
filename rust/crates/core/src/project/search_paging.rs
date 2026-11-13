@@ -128,8 +128,7 @@ pub(crate) fn search_page(request: SearchPageRequest) -> Result<serde_json::Valu
             "Search page size must be between 1 and 200",
         ));
     }
-    let identity =
-        crate::remote::workspace::identity_key(std::path::Path::new(&request.search.root));
+    let identity = lithe_workspace::identity_key(std::path::Path::new(&request.search.root));
     let fingerprint = format!(
         "{:x}",
         Sha256::digest(

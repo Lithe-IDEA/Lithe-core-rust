@@ -9,7 +9,6 @@ pub mod plugins;
 mod project;
 mod project_generators;
 mod protocol;
-mod remote;
 mod runtime;
 /// Shared toolchain policy, independent of plugin transport and native discovery.
 pub mod toolchain;

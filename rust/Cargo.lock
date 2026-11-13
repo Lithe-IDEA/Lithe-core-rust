@@ -899,6 +899,7 @@ dependencies = [
  "lithe-request-context",
  "lithe-terminal",
  "lithe-text",
+ "lithe-workspace",
  "quick-xml",
  "rand",
  "regex",
@@ -1049,6 +1050,21 @@ dependencies = [
  "lithe-protocol",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "lithe-workspace"
+version = "0.1.0"
+dependencies = [
+ "lithe-diagnostics",
+ "lithe-git-host",
+ "lithe-protocol",
+ "lithe-remote",
+ "lithe-request-context",
+ "rand",
+ "serde",
+ "serde_json",
+ "url",
 ]
 
 [[package]]

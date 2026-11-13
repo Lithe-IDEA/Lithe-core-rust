@@ -5,9 +5,9 @@
 //! (open and recently visited files); the score, the UTF-16 highlight ranges and the tie-break
 //! order all come from the same matcher that backs `workspace.searchEverywhere`.
 
-use lithe_core_rules::file_names::FileNameKey;
 use super::name_matching::match_name;
 use crate::protocol::{CoreError, ErrorCode, SearchNameRange};
+use lithe_core_rules::file_names::FileNameKey;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;

@@ -121,7 +121,7 @@ pub(crate) fn invocation_plan(
     manifest: &DeclarativePluginManifest,
 ) -> Validation<Value> {
     let root = decode::request_path(&request.root, "root")?;
-    let platform = crate::remote::workspace::current()
+    let platform = lithe_workspace::current()
         .map(|host| match host.connection.session.hello().host.os {
             lithe_remote::protocol::methods::OperatingSystem::Linux => Platform::Linux,
             lithe_remote::protocol::methods::OperatingSystem::Macos => Platform::Macos,

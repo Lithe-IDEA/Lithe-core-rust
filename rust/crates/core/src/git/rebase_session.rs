@@ -2,7 +2,7 @@
 
 use super::rewrite::{GitHistoryRewriteBlocker, GitHistoryRewriteCommit, RewriteLease};
 use super::*;
-use crate::remote::workspace_io as fs;
+use lithe_workspace::fs;
 use std::collections::{BTreeMap, BTreeSet};
 
 const SESSION_DIRECTORY: &str = "lithe-rebase-session";

@@ -3,8 +3,8 @@
 //! A remote request never falls back to the placeholder filesystem or local
 //! executables. Git continues to own Git semantics; this boundary supplies IO.
 
-use super::sessions::{lookup, Connection};
-use crate::protocol::{CoreError, ErrorCode};
+use crate::sessions::{lookup, Connection};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -13,50 +13,32 @@ use std::sync::Arc;
 /// Host and path identity supplied by the native workspace registry.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct Workspace {
+pub struct Workspace {
     session_id: String,
     local_root: PathBuf,
     remote_root: PathBuf,
 }
 
+/// The connected host a request's workspace lives on, and its path mapping.
 #[derive(Clone)]
-pub(crate) struct Host {
-    pub(crate) connection: Arc<Connection>,
+pub struct Host {
+    /// Session that reaches the host.
+    pub connection: Arc<Connection>,
     workspace: Workspace,
 }
 
 thread_local! { static HOST: RefCell<Option<Host>> = const { RefCell::new(None) }; }
 
 /// Restores the caller's host for nested Core requests and error paths.
-pub(crate) struct Scope(Option<Host>);
+pub struct Scope(Option<Host>);
 
 impl Scope {
-    pub(crate) fn begin(workspace: Option<Workspace>, command: &str) -> Result<Self, CoreError> {
+    /// Installs the host of `workspace` for the current request, or no host
+    /// when `workspace` is `None`. Fails when a root is relative or climbs
+    /// with `..`, or when the session is not connected.
+    pub fn begin(workspace: Option<Workspace>) -> Result<Self, CoreError> {
         let host = workspace
             .map(|workspace| {
-                if !(command.starts_with("git.")
-                    || command.starts_with("build.")
-                    || matches!(
-                        command,
-                        "workspace.repositories"
-                            | "workspace.snapshot"
-                            | "workspace.listDirectories"
-                            | "workspace.search"
-                            | "workspace.searchEverywhere"
-                            | "file.read"
-                            | "file.write"
-                            | "workspace.searchIndex.warm"
-                            | "workspace.searchIndex.update"
-                            | "workspace.searchIndex.invalidate"
-                            | "workspace.replacePreview"
-                            | "lsp.startServer"
-                    ))
-                {
-                    return Err(CoreError::new(
-                        ErrorCode::NotSupported,
-                        "This command has no remote workspace adapter",
-                    ));
-                }
                 if !valid_root(&workspace.local_root)
                     || workspace.local_root.file_name().is_none()
                     || !valid_root(&workspace.remote_root)
@@ -77,7 +59,7 @@ impl Scope {
 }
 
 /// Installs an already validated session owner on a backend worker.
-pub(crate) fn enter(host: Option<Host>) -> Scope {
+pub fn enter(host: Option<Host>) -> Scope {
     Scope(HOST.with(|current| current.replace(host)))
 }
 
@@ -94,18 +76,19 @@ impl Drop for Scope {
     }
 }
 
-pub(crate) fn current() -> Option<Host> {
+/// The host installed for the current request, if any.
+pub fn current() -> Option<Host> {
     HOST.with(|host| host.borrow().clone())
 }
 
 /// Whether filesystem and tool operations belong to a connected workspace host.
-pub(crate) fn is_remote() -> bool {
+pub fn is_remote() -> bool {
     current().is_some()
 }
 
 impl Host {
     /// Maps schema-owned file URIs while preserving host identity and escaping.
-    pub(crate) fn map_uri(&self, value: &str, outbound: bool) -> Option<String> {
+    pub fn map_uri(&self, value: &str, outbound: bool) -> Option<String> {
         let uri = url::Url::parse(value).ok()?;
         if uri.scheme() != "file"
             || uri
@@ -127,7 +110,10 @@ impl Host {
             .ok()
             .map(|uri| uri.to_string())
     }
-    pub(crate) fn remote_path(&self, path: &Path) -> PathBuf {
+
+    /// Translates a placeholder path to the host path it stands for; paths
+    /// outside the workspace stay as they are.
+    pub fn remote_path(&self, path: &Path) -> PathBuf {
         if let Ok(suffix) = path.strip_prefix(self.host_paths_root()) {
             return Path::new("/").join(suffix);
         }
@@ -139,7 +125,7 @@ impl Host {
             .unwrap_or_else(|_| path.to_owned())
     }
 
-    pub(super) fn local_path(&self, path: &Path) -> PathBuf {
+    pub(crate) fn local_path(&self, path: &Path) -> PathBuf {
         if path == self.workspace.remote_root {
             return self.workspace.local_root.clone();
         }
@@ -165,27 +151,27 @@ impl Host {
         self.workspace.local_root.with_file_name(name)
     }
 
-    pub(super) fn identity(&self) -> &str {
+    pub(crate) fn identity(&self) -> &str {
         &self.workspace.session_id
     }
 }
 
 /// Projects host paths back onto the native workspace's URL identity.
-pub(crate) fn local_path(path: &Path) -> PathBuf {
+pub fn local_path(path: &Path) -> PathBuf {
     current()
         .map(|host| host.local_path(path))
         .unwrap_or_else(|| path.to_owned())
 }
 
 /// Translates a schema-owned path to its host; opaque argv and text stay untouched.
-pub(crate) fn remote_path(path: &Path) -> PathBuf {
+pub fn remote_path(path: &Path) -> PathBuf {
     current()
         .map(|host| host.remote_path(path))
         .unwrap_or_else(|| path.to_owned())
 }
 
 /// Includes host identity in process-local repository coordination keys.
-pub(crate) fn identity_key(path: &Path) -> PathBuf {
+pub fn identity_key(path: &Path) -> PathBuf {
     current()
         .map(|host| PathBuf::from(host.identity()).join(path.strip_prefix("/").unwrap_or(path)))
         .unwrap_or_else(|| path.to_owned())

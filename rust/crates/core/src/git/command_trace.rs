@@ -68,7 +68,7 @@ impl Trace {
             arguments: arguments.to_vec(),
             repository: repository.to_owned(),
             source,
-            remote: crate::remote::workspace::is_remote(),
+            remote: lithe_workspace::is_remote(),
             visible,
             op: context.op,
             started: Instant::now(),

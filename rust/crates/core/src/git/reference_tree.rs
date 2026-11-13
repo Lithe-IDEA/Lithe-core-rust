@@ -5,8 +5,8 @@
 //! indentation, row identities, and virtualization stay in the views; Core only
 //! decides the grouping and the sibling order.
 
-use lithe_core_rules::file_names::FileNameKey;
 use crate::protocol::{CoreError, ErrorCode};
+use lithe_core_rules::file_names::FileNameKey;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;

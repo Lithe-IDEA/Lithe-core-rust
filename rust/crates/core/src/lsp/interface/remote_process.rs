@@ -4,10 +4,10 @@
 
 use super::process::{LspProcessHandle, LspProcessSpec, LspProcessStreams};
 use crate::protocol::{cancellation, CoreError, ErrorCode};
-use crate::remote::sessions::{request_error, Connection};
-use crate::remote::workspace::Host;
 use lithe_remote::client::session::{ClientError, Event};
 use lithe_remote::protocol::methods::{self, EnvironmentSource, OutputStream, SpawnParams};
+use lithe_workspace::sessions::{request_error, Connection};
+use lithe_workspace::Host;
 use serde_json::json;
 use serde_json::Value;
 use std::collections::VecDeque;

@@ -2,8 +2,8 @@
 
 use super::{command_trace, execution_events, execution_policy, GitProcessOutput};
 use crate::protocol::{CoreError, ErrorCode};
-use crate::remote::{workspace, workspace_host};
 use lithe_remote::protocol::methods::{self, EnvironmentSource, OutputStream, SpawnParams};
+use lithe_workspace::{self as workspace, host as workspace_host};
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::time::Duration;

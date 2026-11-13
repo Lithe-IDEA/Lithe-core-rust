@@ -1,9 +1,9 @@
 //! Streams a native source file to verified host staging without enlarging frames.
 //! The caller owns package trust; this adapter owns transfer integrity and cleanup.
 
-use super::sessions::{lookup, request_error};
-use super::workspace_host::request_cancellable;
-use crate::protocol::{cancellation, CoreError, ErrorCode};
+use crate::host::request_cancellable;
+use crate::sessions::{lookup, request_error};
+use lithe_protocol::{cancellation, CoreError, ErrorCode};
 use lithe_remote::protocol::methods;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -16,7 +16,7 @@ const STEP: Duration = Duration::from_secs(30);
 /// Native upload source and host destination, plus caller-verified expected hash.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct Request {
+pub struct Request {
     session_id: String,
     source_path: String,
     path: String,
@@ -25,7 +25,7 @@ pub(crate) struct Request {
 }
 
 /// Uses handshake facts without running another shell or using the local platform.
-pub(crate) fn host_info(session_id: &str) -> Result<Value, CoreError> {
+pub fn host_info(session_id: &str) -> Result<Value, CoreError> {
     let connection = lookup(session_id)?;
     serde_json::to_value(&connection.session.hello().host).map_err(|error| {
         CoreError::new(ErrorCode::ParseFailed, "Invalid host capabilities")
@@ -34,7 +34,7 @@ pub(crate) fn host_info(session_id: &str) -> Result<Value, CoreError> {
 }
 
 /// Uploads one bounded file; any failure aborts its connection-owned staging inode.
-pub(crate) fn upload(request: Request) -> Result<Value, CoreError> {
+pub fn upload(request: Request) -> Result<Value, CoreError> {
     cancellation::check()?;
     if !Path::new(&request.source_path).is_absolute() {
         return Err(CoreError::new(

@@ -7,9 +7,9 @@
 //! it by id. OpenSSH runs in its own process tree, which closing a connection
 //! ends.
 
-use super::{classify, diagnostics, ssh_hop, ProbeStatus, ProbedHost, SshConnection};
-use crate::protocol::{CoreError, ErrorCode};
+use crate::probe::{classify, diagnostics, ssh_hop, ProbeStatus, ProbedHost, SshConnection};
 use lithe_git_host::ProcessTree;
+use lithe_protocol::{CoreError, ErrorCode};
 use lithe_remote::client::launch::{launch, launch_command, LaunchError, Launched};
 use lithe_remote::client::session::{ClientError, ConnectOptions};
 use lithe_remote::client::{Hop, RemoteSession, ServerArtifact, ServerTarget, TransportChain};
@@ -54,9 +54,11 @@ struct ServerInput {
     path: String,
 }
 
+/// `remote.connect`: the connection, the server builds Core may install,
+/// and where to install them.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct ConnectRequest {
+pub struct ConnectRequest {
     connection: SshConnection,
     servers: Vec<ServerInput>,
     server_version: String,
@@ -65,9 +67,10 @@ pub(crate) struct ConnectRequest {
     install_root: Option<String>,
 }
 
+/// The session `remote.connect` opened.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct OpenedSession {
+pub struct OpenedSession {
     id: String,
     /// Whether this connection uploaded the server.
     uploaded: bool,
@@ -76,9 +79,10 @@ pub(crate) struct OpenedSession {
     home_directory: Option<String>,
 }
 
+/// `remote.connect` result. Connection failures are results, not errors.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ConnectResult {
+pub struct ConnectResult {
     /// `connected` only when `session` is set.
     status: ProbeStatus,
     session: Option<OpenedSession>,
@@ -87,28 +91,27 @@ pub(crate) struct ConnectResult {
     diagnostics: String,
 }
 
-pub(crate) struct Connection {
-    pub(crate) session: RemoteSession,
-    pub(crate) git_tool: Mutex<Option<(String, String)>>,
-    transport: ConnectionTransport,
+/// One open host connection in the registry.
+pub struct Connection {
+    /// Framed workspace session to the host server.
+    pub session: RemoteSession,
+    /// Git executable path and version found on the host, once resolved.
+    pub git_tool: Mutex<Option<(String, String)>>,
+    pub(crate) transport: ConnectionTransport,
 }
 
 /// Owns the native transport independently of the framed workspace session.
-enum ConnectionTransport {
+pub(crate) enum ConnectionTransport {
     Ssh {
         child: Mutex<Child>,
         tree: ProcessTree,
     },
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     InProcess,
 }
 
-#[cfg(all(test, unix))]
-#[path = "sessions_integration_tests.rs"]
-mod integration_tests;
-
 impl Connection {
-    fn close(&self) {
+    pub(crate) fn close(&self) {
         if let Err(error) = self.session.request_value(
             methods::SERVER_SHUTDOWN,
             serde_json::Value::Null,
@@ -145,7 +148,7 @@ impl Connection {
                     record_cleanup_io("wait", &error);
                 }
             }
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             ConnectionTransport::InProcess => {}
         }
     }
@@ -195,12 +198,12 @@ impl Drop for ConnectingGuard {
     }
 }
 
-fn registry() -> &'static Mutex<HashMap<String, Arc<Connection>>> {
+pub(crate) fn registry() -> &'static Mutex<HashMap<String, Arc<Connection>>> {
     static CONNECTIONS: OnceLock<Mutex<HashMap<String, Arc<Connection>>>> = OnceLock::new();
     CONNECTIONS.get_or_init(Mutex::default)
 }
 
-pub(super) fn lookup(id: &str) -> Result<Arc<Connection>, CoreError> {
+pub(crate) fn lookup(id: &str) -> Result<Arc<Connection>, CoreError> {
     registry()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -215,12 +218,12 @@ pub(super) fn lookup(id: &str) -> Result<Arc<Connection>, CoreError> {
 }
 
 /// Opens a connection and registers it.
-pub(crate) fn connect(request: ConnectRequest) -> Result<ConnectResult, CoreError> {
+pub fn connect(request: ConnectRequest) -> Result<ConnectResult, CoreError> {
     connect_with(request, None)
 }
 
 /// `ssh_program` replaces the `ssh` found on `PATH`; tests use a stand-in.
-pub(super) fn connect_with(
+pub(crate) fn connect_with(
     request: ConnectRequest,
     ssh_program: Option<&str>,
 ) -> Result<ConnectResult, CoreError> {
@@ -327,7 +330,7 @@ pub(super) fn connect_with(
         Err(error)
     };
     let (result, output, input) = loop {
-        if let Err(error) = crate::protocol::cancellation::check() {
+        if let Err(error) = lithe_protocol::cancellation::check() {
             return abandon(error, &mut child);
         }
         if CLOSING.load(Ordering::SeqCst) {
@@ -521,16 +524,17 @@ pub(super) fn connect_with(
     })
 }
 
+/// `remote.readDir`: one directory on a connected host.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct ReadDirRequest {
+pub struct ReadDirRequest {
     session_id: String,
     /// Absolute path on the remote host.
     path: String,
 }
 
 /// Lists a remote directory; the result is the protocol's `fs.readDir`.
-pub(crate) fn read_dir(request: ReadDirRequest) -> Result<serde_json::Value, CoreError> {
+pub fn read_dir(request: ReadDirRequest) -> Result<serde_json::Value, CoreError> {
     let connection = lookup(&request.session_id)?;
     connection
         .session
@@ -549,16 +553,17 @@ const WRITE_BYTES_PER_SECOND: u64 = 64 * 1024;
 /// Largest file opened for editing; bigger files stay on the host.
 const MAX_EDIT_BYTES: u64 = 16 * 1024 * 1024;
 
+/// `remote.readFile`: one file on a connected host.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct ReadFileRequest {
+pub struct ReadFileRequest {
     session_id: String,
     path: String,
 }
 
 /// Reads a whole file for the editor: `{ data (base64), size, modifiedMs }`.
 /// The version identifies the read for a later conflict-checked write.
-pub(crate) fn read_file(request: ReadFileRequest) -> Result<serde_json::Value, CoreError> {
+pub fn read_file(request: ReadFileRequest) -> Result<serde_json::Value, CoreError> {
     let connection = lookup(&request.session_id)?;
     let metadata = connection
         .session
@@ -588,9 +593,10 @@ pub(crate) fn read_file(request: ReadFileRequest) -> Result<serde_json::Value, C
     }))
 }
 
+/// `remote.writeFile`: new content for one file on a connected host.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct WriteFileRequest {
+pub struct WriteFileRequest {
     session_id: String,
     path: String,
     /// Base64 content that replaces the whole file.
@@ -604,7 +610,7 @@ pub(crate) struct WriteFileRequest {
 /// Saves a file atomically on the host: `{ status: "saved", size,
 /// modifiedMs }`, or `{ status: "conflict" }` when it changed since it was
 /// read or, for a new file, when one appeared.
-pub(crate) fn write_file(request: WriteFileRequest) -> Result<serde_json::Value, CoreError> {
+pub fn write_file(request: WriteFileRequest) -> Result<serde_json::Value, CoreError> {
     let connection = lookup(&request.session_id)?;
     let content = methods::decode_bytes(&request.data).map_err(|error| {
         CoreError::new(
@@ -658,14 +664,15 @@ pub(crate) fn write_file(request: WriteFileRequest) -> Result<serde_json::Value,
     }
 }
 
+/// `remote.disconnect`: the session to close.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct DisconnectRequest {
+pub struct DisconnectRequest {
     session_id: String,
 }
 
 /// Closes a connection; closing an unknown or closed one succeeds.
-pub(crate) fn disconnect(request: DisconnectRequest) -> bool {
+pub fn disconnect(request: DisconnectRequest) -> bool {
     let connection = registry()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -679,7 +686,7 @@ pub(crate) fn disconnect(request: DisconnectRequest) -> bool {
 
 /// Closes every open connection, for application exit. Connections close in
 /// parallel so a dead host costs one grace period, not one per connection.
-pub(crate) fn close_all() -> usize {
+pub fn close_all() -> usize {
     CLOSING.store(true, Ordering::SeqCst);
     let count = close_registered();
     // Attempts still opening notice the flag within one poll interval and
@@ -692,13 +699,13 @@ pub(crate) fn close_all() -> usize {
 }
 
 /// Closes the registered connections in parallel.
-pub(super) fn close_registered() -> usize {
+pub(crate) fn close_registered() -> usize {
     close_registry(registry())
 }
 
 /// Drains the owned registry, allowing isolated lifecycle tests without closing
 /// unrelated sessions concurrently exercising the application registry.
-pub(super) fn close_registry(connections: &Mutex<HashMap<String, Arc<Connection>>>) -> usize {
+pub(crate) fn close_registry(connections: &Mutex<HashMap<String, Arc<Connection>>>) -> usize {
     let connections: Vec<Arc<Connection>> = connections
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -725,7 +732,7 @@ pub(super) fn close_registry(connections: &Mutex<HashMap<String, Arc<Connection>
 }
 
 /// Translates host transport failures without losing their stable remote category.
-pub(crate) fn request_error(session_id: &str, error: ClientError) -> CoreError {
+pub fn request_error(session_id: &str, error: ClientError) -> CoreError {
     match error {
         ClientError::Remote(error) => {
             let code = match error.code {
@@ -820,7 +827,7 @@ fn keep_tail(
 
 /// Unguessable connection id, so one host request cannot address a
 /// connection it did not open by counting.
-fn nonce() -> String {
+pub(crate) fn nonce() -> String {
     use rand::RngCore;
     let mut bytes = [0_u8; 16];
     rand::rngs::OsRng.fill_bytes(&mut bytes);

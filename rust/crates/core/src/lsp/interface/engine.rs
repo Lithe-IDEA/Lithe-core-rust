@@ -784,7 +784,7 @@ struct RuntimeSession {
     plugin_id: Option<String>,
     log_identity: SessionLogIdentity,
     /// Fixed workspace host, inherited by protocol workers; never a global selection.
-    workspace_host: Option<crate::remote::workspace::Host>,
+    workspace_host: Option<lithe_workspace::Host>,
     /// Plugin-declared settings answered to `workspace/configuration`.
     /// Replaced as a whole by `lsp.updateWorkspaceConfiguration`; never held
     /// across another lock.
@@ -1408,7 +1408,7 @@ impl LspEngine {
     ) -> Result<StartServerResponse, CoreError> {
         validate_start_request(&request)?;
         self.cleanup_failed_start()?;
-        if crate::remote::workspace::is_remote()
+        if lithe_workspace::is_remote()
             && request
                 .session_policy
                 .as_ref()
@@ -1467,8 +1467,7 @@ impl LspEngine {
                     ..LspClientState::default()
                 },
                 root_uri: request.root_uri.clone(),
-                process_id: (!crate::remote::workspace::is_remote())
-                    .then_some(std::process::id() as i64),
+                process_id: (!lithe_workspace::is_remote()).then_some(std::process::id() as i64),
                 initialization_options: request.initialization_options,
             },
             request.plugin_id.is_some(),
@@ -1495,7 +1494,7 @@ impl LspEngine {
             ),
             provider_id: request.provider_id,
             plugin_id: request.plugin_id,
-            workspace_host: crate::remote::workspace::current(),
+            workspace_host: lithe_workspace::current(),
             plugin_configuration: Mutex::new(workspace_configuration.map(Arc::new)),
             root_uri: request.root_uri,
             indexing_roots: Mutex::default(),
@@ -2871,7 +2870,7 @@ impl RuntimeSession {
     ) {
         let output_session = self.clone();
         thread::spawn(move || {
-            let _host = crate::remote::workspace::enter(output_session.workspace_host.clone());
+            let _host = lithe_workspace::enter(output_session.workspace_host.clone());
             let mut frame_buffer = Vec::new();
             let mut chunk = vec![0_u8; 8 * 1024];
             while output_session.active.load(Ordering::Acquire) {
@@ -4146,7 +4145,7 @@ fn ensure_not_terminal(lifecycle: LspLifecycleState) -> Result<(), CoreError> {
 /// `None` for other schemes and for files that do not exist.
 fn resolved_file_of_uri(uri: &str) -> Option<PathBuf> {
     let path = url::Url::parse(uri).ok()?.to_file_path().ok()?;
-    crate::remote::workspace_io::canonicalize(path).ok()
+    lithe_workspace::fs::canonicalize(path).ok()
 }
 
 /// Which open documents the host reached through a symbolic link.
@@ -4233,7 +4232,7 @@ fn canonical_workspace_path(root_uri: &str) -> Option<PathBuf> {
     let path = url::Url::parse(root_uri).ok()?.to_file_path().ok()?;
     // Core policy identity uses the native canonical path, including Windows'
     // verbatim prefix. A protocol/display path is not a policy registry key.
-    crate::remote::workspace_io::canonicalize(path).ok()
+    lithe_workspace::fs::canonicalize(path).ok()
 }
 
 fn canonical_workspace_root(root_uri: &str) -> Option<String> {

@@ -7,7 +7,7 @@
 //! outside the workspace.
 
 use crate::plugins::declarative::{PluginRejection, Validation};
-use crate::remote::{workspace, workspace_io as fs};
+use lithe_workspace::{self as workspace, fs};
 use serde_json::Value;
 use std::path::{Component, Path, PathBuf};
 use std::time::UNIX_EPOCH;

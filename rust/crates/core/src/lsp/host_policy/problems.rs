@@ -6,8 +6,8 @@
 //! compared with the IDEA natural file-name order that the Project view uses,
 //! which keeps `File2` before `File10` on both platforms.
 
-use lithe_core_rules::file_names::FileNameKey;
 use crate::protocol::{CoreError, ErrorCode};
+use lithe_core_rules::file_names::FileNameKey;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::cmp::Ordering;

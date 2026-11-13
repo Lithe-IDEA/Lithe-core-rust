@@ -21,7 +21,7 @@ pub struct CoreRequest {
     pub git_execution: Option<crate::git::execution_policy::GitExecutionOptions>,
     /// Remote host selected by the native workspace registry; absent for local workspaces.
     #[serde(default)]
-    pub(crate) remote_workspace: Option<crate::remote::workspace::Workspace>,
+    pub(crate) remote_workspace: Option<lithe_workspace::Workspace>,
     /// Host-reported provenance used only for diagnostics traces; never changes behavior.
     #[serde(default)]
     pub origin: Option<RequestOrigin>,

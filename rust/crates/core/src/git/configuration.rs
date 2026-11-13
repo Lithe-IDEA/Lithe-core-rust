@@ -526,7 +526,7 @@ pub(crate) fn dispatch(payload: Value, save: bool) -> Result<Value, CoreError> {
 /// best effort: a binary that starts but cannot report a version still stays
 /// selected.
 pub(crate) fn locate_executable() -> Result<Value, CoreError> {
-    if let Some(host) = crate::remote::workspace::current() {
+    if let Some(host) = lithe_workspace::current() {
         let params =
             super::remote_process::parameters(&host, "/", &["--version".into()], false, true, &[])?;
         return Ok(json!({"executable": params.argv.first(),

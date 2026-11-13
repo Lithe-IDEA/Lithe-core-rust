@@ -94,7 +94,7 @@ pub struct SystemProcessLauncher;
 
 impl LspProcessLauncher for SystemProcessLauncher {
     fn launch(&self, spec: LspProcessSpec) -> Result<LspProcessStreams, CoreError> {
-        if let Some(host) = crate::remote::workspace::current() {
+        if let Some(host) = lithe_workspace::current() {
             return super::remote_process::launch(host, spec);
         }
         let mut command = language_server_command(&spec);

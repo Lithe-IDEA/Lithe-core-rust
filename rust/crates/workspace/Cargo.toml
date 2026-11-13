@@ -1,0 +1,21 @@
+[package]
+name = "lithe-workspace"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Workspace host routing for Lithe Core: remote sessions and the local-or-remote filesystem"
+
+[features]
+# Lets lithe-core's tests register an in-process host session and count host stat requests.
+test-support = []
+
+[dependencies]
+lithe-diagnostics = { path = "../diagnostics" }
+lithe-git-host = { path = "../git-host" }
+lithe-protocol = { path = "../protocol" }
+lithe-remote = { path = "../remote", default-features = false, features = ["client"] }
+lithe-request-context = { path = "../request-context" }
+rand = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+url = "2.5"

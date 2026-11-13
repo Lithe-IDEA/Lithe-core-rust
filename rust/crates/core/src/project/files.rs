@@ -1,7 +1,6 @@
 //! Workspace traversal, file operations, search, and replacement previews.
 
 use super::encoding::{self, DocumentEncoding};
-use lithe_core_rules::file_names::FileNameKey;
 use super::search_index::{self, UpdateOutcome, WorkspaceSearchIndex};
 use super::search_paging::SearchPage;
 use crate::protocol::{invalid_relative_path, CoreError, ErrorCode};
@@ -10,7 +9,8 @@ use crate::protocol::{
     ReplacementPreviewResponse, SearchMatch, SearchResponse, WorkspaceNode,
     WorkspaceSnapshotResponse,
 };
-use crate::remote::workspace_io as fs;
+use lithe_core_rules::file_names::FileNameKey;
+use lithe_workspace::fs;
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};

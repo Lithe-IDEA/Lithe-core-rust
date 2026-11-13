@@ -5,7 +5,7 @@ use crate::project::files::{
     ChildOrder, VisibilityRules,
 };
 use crate::protocol::{CoreError, ErrorCode};
-use crate::remote::{workspace, workspace_io as fs};
+use lithe_workspace::{self as workspace, fs};
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};

@@ -149,11 +149,19 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
     if let Err(error) = crate::protocol::cancellation::check() {
         return CoreResponse::failure(id, error);
     }
-    let _workspace =
-        match crate::remote::workspace::Scope::begin(parsed.remote_workspace, &parsed.command) {
-            Ok(scope) => scope,
-            Err(error) => return CoreResponse::failure(id, error),
-        };
+    if parsed.remote_workspace.is_some() && !has_remote_workspace_adapter(&parsed.command) {
+        return CoreResponse::failure(
+            id,
+            CoreError::new(
+                ErrorCode::NotSupported,
+                "This command has no remote workspace adapter",
+            ),
+        );
+    }
+    let _workspace = match lithe_workspace::Scope::begin(parsed.remote_workspace) {
+        Ok(scope) => scope,
+        Err(error) => return CoreResponse::failure(id, error),
+    };
     let _git_policy = match crate::git::execution_policy::Scope::begin(parsed.git_execution) {
         Ok(scope) => scope,
         Err(error) => return CoreResponse::failure(id, error),
@@ -2991,8 +2999,8 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             Err(error) => CoreResponse::failure(id, error),
         },
         CoreCommand::RemoteProbe => {
-            match serde_json::from_value::<crate::remote::ProbeRequest>(parsed.payload) {
-                Ok(request) => match crate::remote::probe(request) {
+            match serde_json::from_value::<lithe_workspace::probe::ProbeRequest>(parsed.payload) {
+                Ok(request) => match lithe_workspace::probe::probe(request) {
                     Ok(result) => CoreResponse::success(
                         id,
                         serde_json::to_value(result).expect("remote probe result should encode"),
@@ -3007,9 +3015,10 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::RemoteConnect => {
-            match serde_json::from_value::<crate::remote::sessions::ConnectRequest>(parsed.payload)
-            {
-                Ok(request) => match crate::remote::sessions::connect(request) {
+            match serde_json::from_value::<lithe_workspace::sessions::ConnectRequest>(
+                parsed.payload,
+            ) {
+                Ok(request) => match lithe_workspace::sessions::connect(request) {
                     Ok(result) => CoreResponse::success(
                         id,
                         serde_json::to_value(result).expect("remote connect result should encode"),
@@ -3024,9 +3033,10 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::RemoteReadDir => {
-            match serde_json::from_value::<crate::remote::sessions::ReadDirRequest>(parsed.payload)
-            {
-                Ok(request) => match crate::remote::sessions::read_dir(request) {
+            match serde_json::from_value::<lithe_workspace::sessions::ReadDirRequest>(
+                parsed.payload,
+            ) {
+                Ok(request) => match lithe_workspace::sessions::read_dir(request) {
                     Ok(result) => CoreResponse::success(id, result),
                     Err(error) => CoreResponse::failure(id, error),
                 },
@@ -3041,9 +3051,10 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::RemoteReadFile => {
-            match serde_json::from_value::<crate::remote::sessions::ReadFileRequest>(parsed.payload)
-            {
-                Ok(request) => match crate::remote::sessions::read_file(request) {
+            match serde_json::from_value::<lithe_workspace::sessions::ReadFileRequest>(
+                parsed.payload,
+            ) {
+                Ok(request) => match lithe_workspace::sessions::read_file(request) {
                     Ok(result) => CoreResponse::success(id, result),
                     Err(error) => CoreResponse::failure(id, error),
                 },
@@ -3055,10 +3066,10 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::RemoteWriteFile => {
-            match serde_json::from_value::<crate::remote::sessions::WriteFileRequest>(
+            match serde_json::from_value::<lithe_workspace::sessions::WriteFileRequest>(
                 parsed.payload,
             ) {
-                Ok(request) => match crate::remote::sessions::write_file(request) {
+                Ok(request) => match lithe_workspace::sessions::write_file(request) {
                     Ok(result) => CoreResponse::success(id, result),
                     Err(error) => CoreResponse::failure(id, error),
                 },
@@ -3075,7 +3086,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                     CoreError::new(ErrorCode::InvalidRequest, "Invalid host capture request")
                         .with_details(error.to_string())
                 })
-                .and_then(crate::remote::workspace_host::capture_process)
+                .and_then(lithe_workspace::host::capture_process)
             {
                 Ok(value) => CoreResponse::success(id, value),
                 Err(error) => CoreResponse::failure(id, error),
@@ -3086,10 +3097,10 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
         | CoreCommand::RemoteRunWatch
         | CoreCommand::RemoteRunTerminal => {
             let operation = match command {
-                CoreCommand::RemoteHostRequest => crate::remote::workspace_host::request,
-                CoreCommand::RemoteRunProcess => crate::remote::workspace_host::run_process,
-                CoreCommand::RemoteRunWatch => crate::remote::workspace_host::run_watch,
-                _ => crate::remote::workspace_host::run_terminal,
+                CoreCommand::RemoteHostRequest => lithe_workspace::host::request,
+                CoreCommand::RemoteRunProcess => lithe_workspace::host::run_process,
+                CoreCommand::RemoteRunWatch => lithe_workspace::host::run_watch,
+                _ => lithe_workspace::host::run_terminal,
             };
             match serde_json::from_value(parsed.payload)
                 .map_err(|error| {
@@ -3108,7 +3119,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                     CoreError::new(ErrorCode::InvalidRequest, "Invalid upload request")
                         .with_details(error.to_string())
                 })
-                .and_then(crate::remote::upload::upload)
+                .and_then(lithe_workspace::upload::upload)
             {
                 Ok(value) => CoreResponse::success(id, value),
                 Err(error) => CoreResponse::failure(id, error),
@@ -3120,19 +3131,19 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                 .get("sessionId")
                 .and_then(serde_json::Value::as_str)
                 .ok_or_else(|| CoreError::new(ErrorCode::InvalidRequest, "Missing host session"))
-                .and_then(crate::remote::upload::host_info)
+                .and_then(lithe_workspace::upload::host_info)
             {
                 Ok(value) => CoreResponse::success(id, value),
                 Err(error) => CoreResponse::failure(id, error),
             }
         }
         CoreCommand::RemoteDisconnect => {
-            match serde_json::from_value::<crate::remote::sessions::DisconnectRequest>(
+            match serde_json::from_value::<lithe_workspace::sessions::DisconnectRequest>(
                 parsed.payload,
             ) {
                 Ok(request) => CoreResponse::success(
                     id,
-                    json!({ "closed": crate::remote::sessions::disconnect(request) }),
+                    json!({ "closed": lithe_workspace::sessions::disconnect(request) }),
                 ),
                 Err(error) => CoreResponse::failure(
                     id,
@@ -3146,7 +3157,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
         }
         CoreCommand::RemoteCloseAll => CoreResponse::success(
             id,
-            json!({ "closed": crate::remote::sessions::close_all() }),
+            json!({ "closed": lithe_workspace::sessions::close_all() }),
         ),
         CoreCommand::RemoteAuthRespond => {
             #[derive(serde::Deserialize)]
@@ -3158,7 +3169,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             match serde_json::from_value::<Reply>(parsed.payload) {
                 Ok(reply) => CoreResponse::success(
                     id,
-                    json!({ "accepted": crate::remote::respond(&reply.request_id, reply.answer) }),
+                    json!({ "accepted": lithe_workspace::probe::respond(&reply.request_id, reply.answer) }),
                 ),
                 Err(_) => CoreResponse::failure(
                     id,
@@ -3913,6 +3924,29 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
     } else {
         response
     }
+}
+
+/// Commands whose engines read and run through the request's workspace host;
+/// every other command refuses a remote workspace instead of touching the
+/// local placeholder folder.
+fn has_remote_workspace_adapter(command: &str) -> bool {
+    command.starts_with("git.")
+        || command.starts_with("build.")
+        || matches!(
+            command,
+            "workspace.repositories"
+                | "workspace.snapshot"
+                | "workspace.listDirectories"
+                | "workspace.search"
+                | "workspace.searchEverywhere"
+                | "file.read"
+                | "file.write"
+                | "workspace.searchIndex.warm"
+                | "workspace.searchIndex.update"
+                | "workspace.searchIndex.invalidate"
+                | "workspace.replacePreview"
+                | "lsp.startServer"
+        )
 }
 
 #[cfg(test)]

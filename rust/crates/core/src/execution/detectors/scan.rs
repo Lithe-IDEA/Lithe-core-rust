@@ -1,7 +1,7 @@
 //! Bounded workspace traversal shared by all run-configuration detectors.
 
 use crate::protocol::{CoreError, ErrorCode};
-use crate::remote::workspace_io as fs;
+use lithe_workspace::fs;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 

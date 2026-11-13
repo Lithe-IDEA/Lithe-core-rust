@@ -9,19 +9,13 @@
 //!
 //! Note: .agents/notes/implemented/feature/2026-10-24-remote-ssh-connections.md
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use lithe_remote::client::bootstrap::{parse_probe, probe_command};
 use lithe_remote::client::{Hop, SshHop, TransportChain};
 use lithe_request_context::events as execution_events;
 use serde::{Deserialize, Serialize};
 use std::process::{Command, ExitStatus};
 use std::time::{Duration, Instant};
-
-pub(crate) mod sessions;
-pub(crate) mod upload;
-pub(crate) mod workspace;
-pub(crate) mod workspace_host;
-pub(crate) mod workspace_io;
 
 /// Seconds OpenSSH waits for the TCP connection when the profile sets none.
 const DEFAULT_CONNECT_TIMEOUT_SECONDS: u32 = 15;
@@ -37,7 +31,7 @@ const DIAGNOSTICS_LIMIT: usize = 4 * 1024;
 /// OpenSSH ask follow-up questions, such as a one-time code.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub(crate) enum Authentication {
+pub enum Authentication {
     /// OpenSSH's own order: keys and agent first, then interactive methods.
     #[default]
     Auto,
@@ -53,7 +47,7 @@ pub(crate) enum Authentication {
 /// authentication are sent; names and colors stay in the host.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct SshConnection {
+pub struct SshConnection {
     /// Host name, address, or a `Host` alias from the user's SSH configuration.
     host: String,
     /// `None` keeps the port from the SSH configuration (22 by default).
@@ -75,9 +69,10 @@ pub(crate) struct SshConnection {
     keep_alive_seconds: Option<u32>,
 }
 
+/// `remote.probe`: the saved connection to check.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct ProbeRequest {
+pub struct ProbeRequest {
     connection: SshConnection,
 }
 
@@ -85,7 +80,7 @@ pub(crate) struct ProbeRequest {
 /// errors, so the host can show a specific explanation for each.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) enum ProbeStatus {
+pub enum ProbeStatus {
     /// A shell ran on the host and a server build exists for it.
     Connected,
     /// The host answered, but no server build exists for its platform.
@@ -100,32 +95,34 @@ pub(crate) enum ProbeStatus {
     Failed,
 }
 
+/// Platform facts the host's shell reported.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ProbedHost {
+pub struct ProbedHost {
     /// `uname -s`, for example `Linux` or `Darwin`.
-    system: String,
+    pub(crate) system: String,
     /// `uname -m`, for example `x86_64` or `arm64`.
-    machine: String,
-    home_directory: Option<String>,
+    pub(crate) machine: String,
+    pub(crate) home_directory: Option<String>,
     /// Rust target of the server build for this host, or `None`.
-    server_target: Option<&'static str>,
+    pub(crate) server_target: Option<&'static str>,
     /// Facts for display, such as the distribution and memory.
-    details: lithe_remote::client::bootstrap::HostDetails,
+    pub(crate) details: lithe_remote::client::bootstrap::HostDetails,
 }
 
+/// `remote.probe` result: the outcome, and the host when its shell ran.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ProbeResult {
-    status: ProbeStatus,
+pub struct ProbeResult {
+    pub(crate) status: ProbeStatus,
     /// Present when the host's shell ran the probe.
-    host: Option<ProbedHost>,
+    pub(crate) host: Option<ProbedHost>,
     /// Redacted tail of OpenSSH's standard error.
-    diagnostics: String,
+    pub(crate) diagnostics: String,
 }
 
 /// Probes the host named by the request's connection.
-pub(crate) fn probe(request: ProbeRequest) -> Result<ProbeResult, CoreError> {
+pub fn probe(request: ProbeRequest) -> Result<ProbeResult, CoreError> {
     probe_with(request, None)
 }
 
@@ -167,7 +164,7 @@ fn probe_with(request: ProbeRequest, ssh_program: Option<&str>) -> Result<ProbeR
         &mut process,
         None,
         || {
-            if let Err(error) = crate::protocol::cancellation::check() {
+            if let Err(error) = lithe_protocol::cancellation::check() {
                 stop = Some(error);
             } else if Instant::now() >= deadline {
                 stop = Some(CoreError::new(
@@ -225,11 +222,11 @@ fn probe_with(request: ProbeRequest, ssh_program: Option<&str>) -> Result<ProbeR
 }
 
 /// Answers a prompt that a running probe relayed.
-pub(crate) fn respond(request_id: &str, answer: Option<String>) -> bool {
+pub fn respond(request_id: &str, answer: Option<String>) -> bool {
     lithe_git_host::authentication::respond(request_id, answer)
 }
 
-fn ssh_hop(connection: &SshConnection) -> Result<SshHop, CoreError> {
+pub(crate) fn ssh_hop(connection: &SshConnection) -> Result<SshHop, CoreError> {
     let invalid = |reason: &str| CoreError::new(ErrorCode::InvalidRequest, reason.to_string());
     let host = connection.host.trim();
     if host.is_empty() || host.contains('@') {
@@ -310,7 +307,7 @@ fn ssh_hop(connection: &SshConnection) -> Result<SshHop, CoreError> {
 
 /// Interprets the finished probe. OpenSSH reports connection failures only
 /// as text, so the categories match its stable English messages.
-fn classify(exit: Option<ExitStatus>, stdout: &[u8], stderr: &[u8]) -> ProbeResult {
+pub(crate) fn classify(exit: Option<ExitStatus>, stdout: &[u8], stderr: &[u8]) -> ProbeResult {
     let stderr_text = String::from_utf8_lossy(stderr);
     let diagnostics = diagnostics(&stderr_text);
     if let Some(report) = parse_probe(stdout) {
@@ -375,7 +372,7 @@ fn classify(exit: Option<ExitStatus>, stdout: &[u8], stderr: &[u8]) -> ProbeResu
 
 /// Keeps the end of the output, where OpenSSH prints the reason it gave up,
 /// and removes credentials and home directory paths.
-fn diagnostics(stderr: &str) -> String {
+pub(crate) fn diagnostics(stderr: &str) -> String {
     let trimmed = stderr.trim();
     let mut start = trimmed.len().saturating_sub(DIAGNOSTICS_LIMIT);
     while !trimmed.is_char_boundary(start) {

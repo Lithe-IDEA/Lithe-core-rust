@@ -369,7 +369,7 @@ pub fn history_page(request: GitHistoryPageRequest) -> Result<GitHistoryPageResp
         (session, lease)
     };
     if session.root != root
-        || session.host_key != crate::remote::workspace::identity_key(std::path::Path::new(&root))
+        || session.host_key != lithe_workspace::identity_key(std::path::Path::new(&root))
         || session.reference != request.reference
         || session.order != request.order
     {
@@ -633,7 +633,7 @@ pub fn close_history_cursor(
             .is_some_and(|session| {
                 session.root != root
                     || session.host_key
-                        != crate::remote::workspace::identity_key(std::path::Path::new(&root))
+                        != lithe_workspace::identity_key(std::path::Path::new(&root))
             })
         {
             return Err(invalid_history_cursor(&request.cursor));
@@ -751,7 +751,7 @@ impl HistorySession {
                     "git-history-cursor-{}",
                     NEXT_HISTORY_CURSOR.fetch_add(1, Ordering::Relaxed)
                 ),
-                host_key: crate::remote::workspace::identity_key(std::path::Path::new(&root)),
+                host_key: lithe_workspace::identity_key(std::path::Path::new(&root)),
                 root,
                 reference,
                 order,

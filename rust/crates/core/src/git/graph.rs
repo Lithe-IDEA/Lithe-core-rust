@@ -22,8 +22,8 @@
 //! `NaturalComparator`), Apache-2.0, Copyright 2000-2024 JetBrains s.r.o. and
 //! contributors. See `macos/Resources/GitGraph/NOTICE.txt`.
 
-use lithe_core_rules::file_names::compare_reference_names;
 use crate::protocol::{CoreError, ErrorCode};
+use lithe_core_rules::file_names::compare_reference_names;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::cmp::Ordering;

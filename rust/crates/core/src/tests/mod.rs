@@ -29,6 +29,8 @@ mod project;
 mod project_generators;
 mod protocol;
 mod rank_names;
+#[cfg(unix)]
+mod remote_sessions;
 mod request_events;
 mod run_configuration;
 pub(crate) mod support;

@@ -4,8 +4,8 @@
 //! failed creation, and caller disconnect all close the remote process tree;
 //! ordinary host requests cannot create an unobserved streaming resource.
 
-use super::sessions::{lookup, request_error};
-use crate::protocol::{cancellation, CoreError, ErrorCode};
+use crate::sessions::{lookup, request_error};
+use lithe_protocol::{cancellation, CoreError, ErrorCode};
 use lithe_remote::client::session::{ClientError, Event, RemoteSession};
 use lithe_remote::protocol::methods;
 use lithe_request_context::events as execution_events;
@@ -21,7 +21,7 @@ const CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
 const EARLY_EVENT_LIMIT: usize = 8 * 1024 * 1024;
 
 /// Waits for finite host work while preserving the owning Core cancellation.
-pub(crate) fn request_cancellable(
+pub fn request_cancellable(
     session: &RemoteSession,
     method: &str,
     params: Value,
@@ -41,7 +41,7 @@ pub(crate) fn request_cancellable(
 /// One host operation. Parameters retain the versioned remote protocol shape.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct Request {
+pub struct Request {
     session_id: String,
     #[serde(default)]
     method: String,
@@ -52,7 +52,7 @@ pub(crate) struct Request {
 }
 
 /// Forwards finite host operations and controls of already observed resources.
-pub(crate) fn request(request: Request) -> Result<Value, CoreError> {
+pub fn request(request: Request) -> Result<Value, CoreError> {
     if !allowed_method(&request.method) {
         return Err(CoreError::new(
             ErrorCode::InvalidRequest,
@@ -111,24 +111,24 @@ fn allowed_method(method: &str) -> bool {
 }
 
 /// Starts a process with a subscription installed before any output can arrive.
-pub(crate) fn run_process(request: Request) -> Result<Value, CoreError> {
+pub fn run_process(request: Request) -> Result<Value, CoreError> {
     run_resource(request, "process", methods::PROCESS_SPAWN)
 }
 
 /// Starts a PTY with the same subscription, cancellation and cleanup ownership.
-pub(crate) fn run_terminal(request: Request) -> Result<Value, CoreError> {
+pub fn run_terminal(request: Request) -> Result<Value, CoreError> {
     run_resource(request, "terminal", methods::TERMINAL_OPEN)
 }
 
 /// Owns a recursive watch until cancellation, disconnect, or root removal.
-pub(crate) fn run_watch(request: Request) -> Result<Value, CoreError> {
+pub fn run_watch(request: Request) -> Result<Value, CoreError> {
     run_resource(request, "watch", methods::WATCH_START)
 }
 
 /// Bounded byte capture for tool probes; long-lived backends use streaming calls.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct CaptureRequest {
+pub struct CaptureRequest {
     session_id: String,
     params: methods::SpawnParams,
     timeout_milliseconds: u64,
@@ -136,7 +136,7 @@ pub(crate) struct CaptureRequest {
 }
 
 /// Captures one process without leaking a child on timeout or excessive output.
-pub(crate) fn capture_process(request: CaptureRequest) -> Result<Value, CoreError> {
+pub fn capture_process(request: CaptureRequest) -> Result<Value, CoreError> {
     if !(1..=30_000).contains(&request.timeout_milliseconds)
         || !(1..=methods::MAX_TRANSFER_BYTES as usize).contains(&request.max_output_bytes)
         || request.params.pipe_stdin
@@ -262,7 +262,7 @@ fn run_on_session(
 }
 
 /// Runs an owned host process with byte-preserving output and optional input.
-pub(crate) fn process_observing(
+pub fn process_observing(
     session: &RemoteSession,
     params: methods::SpawnParams,
     input: Option<&[u8]>,

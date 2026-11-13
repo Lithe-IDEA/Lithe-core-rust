@@ -4,7 +4,7 @@
 //! build-system modules remain owned by their provider and bypass these defaults.
 
 use crate::protocol::CoreError;
-use crate::remote::workspace_io as fs;
+use lithe_workspace::fs;
 use std::collections::BTreeSet;
 use std::io;
 use std::ops::ControlFlow;

@@ -1,9 +1,9 @@
 //! Incremental Git history on the workspace host, without local reader threads.
 
 use crate::protocol::{cancellation, CoreError, ErrorCode};
-use crate::remote::workspace::{self, Host};
 use lithe_remote::client::session::Event;
 use lithe_remote::protocol::methods::{self, OutputStream};
+use lithe_workspace::{self as workspace, Host};
 use serde_json::json;
 use std::collections::VecDeque;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};

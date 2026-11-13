@@ -2225,7 +2225,7 @@ fn project_inputs(root: &Path) -> Result<ProjectInputs, CoreError> {
             crate::protocol::cancellation::check()?;
             // The scan lists files through the workspace adapter, so content reads
             // must use the same adapter or remote projects look permanently unreadable.
-            match crate::remote::workspace_io::read(&path) {
+            match lithe_workspace::fs::read(&path) {
                 Ok(bytes) => {
                     result
                         .inputs
@@ -2312,7 +2312,7 @@ fn declared_node_version(root: &Path) -> Option<String> {
     highest_version(
         project_manifest_paths(root, &["package.json"])
             .into_iter()
-            .filter_map(|path| crate::remote::workspace_io::read_to_string(path).ok())
+            .filter_map(|path| lithe_workspace::fs::read_to_string(path).ok())
             .filter_map(|text| serde_json::from_str::<Value>(&text).ok())
             .filter_map(|document| {
                 document

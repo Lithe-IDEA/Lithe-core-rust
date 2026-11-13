@@ -173,7 +173,7 @@ pub(crate) fn source_marker(
         .find(|path| {
             workspace
                 .read_path(path)
-                .is_some_and(|path| crate::remote::workspace_io::is_file(path).unwrap_or(false))
+                .is_some_and(|path| lithe_workspace::fs::is_file(path).unwrap_or(false))
         })
 }
 

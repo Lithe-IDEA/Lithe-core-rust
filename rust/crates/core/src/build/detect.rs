@@ -149,7 +149,7 @@ fn scan_directory_root(
     root: &Path,
     scan: impl FnOnce(&Path) -> Result<Vec<crate::execution::DirectoryContext>, CoreError>,
 ) -> Validation<Vec<crate::execution::DirectoryContext>> {
-    match crate::remote::workspace_io::metadata(root) {
+    match lithe_workspace::fs::metadata(root) {
         Ok(metadata) if !metadata.is_dir() => return Ok(Vec::new()),
         Err(error) if matches!(error.kind(), ErrorKind::NotFound | ErrorKind::NotADirectory) => {
             return Ok(Vec::new());

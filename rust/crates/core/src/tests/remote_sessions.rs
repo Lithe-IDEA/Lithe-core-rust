@@ -1,9 +1,15 @@
 //! Real framed-host integration coverage for remote workspace semantic engines.
 
-use super::*;
+use lithe_protocol::ErrorCode;
+use lithe_remote::client::session::ConnectOptions;
+use lithe_remote::client::RemoteSession;
+use lithe_remote::protocol::methods;
+use lithe_workspace::test_support;
 use serde_json::{json, Value};
 use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
 
 const STEP: Duration = Duration::from_secs(10);
 
@@ -18,7 +24,7 @@ struct HostFixture {
 
 impl HostFixture {
     fn new() -> Self {
-        let root = crate::tests::support::temporary_root("remote-git-integration");
+        let root = super::support::temporary_root("remote-git-integration");
         std::fs::create_dir_all(root.join("host")).unwrap();
         std::fs::create_dir_all(root.join("placeholder")).unwrap();
         let root = root.canonicalize().unwrap();
@@ -42,15 +48,7 @@ impl HostFixture {
         )
         .unwrap();
         drop(events);
-        let id = nonce();
-        registry().lock().unwrap().insert(
-            id.clone(),
-            Arc::new(Connection {
-                session,
-                git_tool: Mutex::new(None),
-                transport: ConnectionTransport::InProcess,
-            }),
-        );
+        let id = test_support::register_in_process(session);
         Self {
             id,
             root,
@@ -71,7 +69,7 @@ impl HostFixture {
 
     fn request_at(&self, remote_root: &std::path::Path, command: &str, payload: Value) -> Value {
         let response: Value = serde_json::from_str(&crate::execute_json(&json!({
-            "id": nonce(), "command": command, "timeoutMilliseconds": 30_000,
+            "id": test_support::unique_id(), "command": command, "timeoutMilliseconds": 30_000,
             "remoteWorkspace": {"sessionId": self.id, "localRoot": self.root.join("placeholder"), "remoteRoot": remote_root},
             "payload": payload,
         }).to_string())).unwrap();
@@ -200,13 +198,11 @@ fn remote_build_detects_a_root_opened_through_a_host_symbolic_link() {
 impl Drop for HostFixture {
     fn drop(&mut self) {
         let _ = crate::execute_json(&json!({
-            "id": nonce(), "command": "workspace.searchIndex.invalidate", "timeoutMilliseconds": 1_000,
+            "id": test_support::unique_id(), "command": "workspace.searchIndex.invalidate", "timeoutMilliseconds": 1_000,
             "remoteWorkspace": {"sessionId": self.id, "localRoot": self.root.join("placeholder"), "remoteRoot": self.root.join("host")},
             "payload": {"root": self.root.join("placeholder")}
         }).to_string());
-        if let Some(connection) = registry().lock().unwrap().remove(&self.id) {
-            connection.close();
-        }
+        test_support::unregister(&self.id);
         let _ = self.socket.shutdown(Shutdown::Both);
         if self.done.recv_timeout(STEP + STEP).is_ok() {
             if let Some(worker) = self.worker.take() {
@@ -262,7 +258,7 @@ fn remote_directory_listing_uses_host_paths_visibility_and_natural_order() {
     );
     // File type already arrives with readDir. Growing the number of regular
     // files must not add one network round trip per file.
-    let count = crate::remote::workspace_io::stat_requests_for_test;
+    let count = test_support::stat_requests;
     let before = count();
     host.call("workspace.listDirectories", json!({"paths": [""]}));
     let baseline_stats = count() - before;
@@ -297,7 +293,7 @@ fn remote_search_reads_host_content_and_applies_incremental_updates_without_loca
     // Warm the same URL locally first: host identity must separate its empty index.
     let local: Value = serde_json::from_str(&crate::execute_json(
         &json!({
-            "id": nonce(), "command": "workspace.searchEverywhere",
+            "id": test_support::unique_id(), "command": "workspace.searchEverywhere",
             "payload": {"root": host.root.join("placeholder"), "query": "RemoteName"}
         })
         .to_string(),
@@ -350,7 +346,7 @@ fn remote_search_reads_host_content_and_applies_incremental_updates_without_loca
     );
     let local: Value = serde_json::from_str(&crate::execute_json(
         &json!({
-            "id": nonce(), "command": "workspace.searchIndex.invalidate",
+            "id": test_support::unique_id(), "command": "workspace.searchIndex.invalidate",
             "payload": {"root": host.root.join("placeholder")}
         })
         .to_string(),
@@ -463,7 +459,7 @@ fn discovered_repository_keeps_host_identity(symlink: bool) {
     let local_git = |arguments: &[&str]| {
         let response: Value = serde_json::from_str(&crate::execute_json(
             &json!({
-                "id": nonce(), "command": "git.command", "timeoutMilliseconds": 10_000,
+                "id": test_support::unique_id(), "command": "git.command", "timeoutMilliseconds": 10_000,
                 "payload": {"root": expected, "arguments": arguments}
             })
             .to_string(),
@@ -657,7 +653,7 @@ fn remote_git_configuration_reports_the_host_executable_and_sources() {
     host.git(&["config", "fetch.prune", "true"]);
     let request = |command| -> Value {
         serde_json::from_str(&crate::execute_json(&json!({
-            "id": nonce(), "command": command, "timeoutMilliseconds": 10_000,
+            "id": test_support::unique_id(), "command": command, "timeoutMilliseconds": 10_000,
             "remoteWorkspace": {"sessionId": host.id, "localRoot": host.root.join("placeholder"), "remoteRoot": host.root.join("host")},
             // This client override must not be used on the workspace host.
             "gitExecution": {"executable": "/fixture/client-only/git"},
@@ -683,22 +679,22 @@ fn remote_git_configuration_reports_the_host_executable_and_sources() {
     assert!(entry["origin"].as_str().unwrap().contains(".git/config"));
     // Disconnect after a cached resolution: errors must still propagate instead
     // of showing an empty setting or probing the client's selected executable.
-    lookup(&host.id).unwrap().close();
+    test_support::drop_link(&host.id);
     let closed = request("git.executable");
     assert_eq!(closed["ok"], false, "{closed}");
 }
 
 #[test]
 fn remote_workspace_file_limits_preserve_host_content_and_report_disconnects() {
-    use crate::remote::{workspace, workspace_io as fs};
+    use lithe_workspace::{self as workspace, fs};
     use std::io::Read;
 
     let host = HostFixture::new();
-    let _deadline = crate::protocol::cancellation::Scope::begin(None, Some(10_000));
+    let _deadline = lithe_protocol::cancellation::Scope::begin(None, Some(10_000));
     let workspace = serde_json::from_value(json!({"sessionId": host.id,
         "localRoot": host.root.join("placeholder"), "remoteRoot": host.root.join("host")}))
     .unwrap();
-    let _workspace = workspace::Scope::begin(Some(workspace), "git.status").unwrap();
+    let _workspace = workspace::Scope::begin(Some(workspace)).unwrap();
     let local = host.root.join("placeholder");
     let remote = host.root.join("host");
     let content = vec![b'x'; 2 * 1024 * 1024 + 7];
@@ -731,7 +727,7 @@ fn remote_workspace_file_limits_preserve_host_content_and_report_disconnects() {
 
     assert!(!fs::try_exists(local.join("absent")).unwrap());
     assert!(fs::is_dir(&local).unwrap());
-    lookup(&host.id).unwrap().close();
+    test_support::drop_link(&host.id);
     assert!(fs::try_exists(local.join("file")).is_err());
     assert!(fs::is_dir(&local).is_err());
     assert_eq!(std::fs::read_dir(local).unwrap().count(), 0);
@@ -742,10 +738,10 @@ fn remote_workspace_file_limits_preserve_host_content_and_report_disconnects() {
 #[test]
 fn shared_run_scan_reads_the_host_tree_and_stops_when_the_link_drops() {
     use crate::execution::workspace_scan::{scan_run_workspace, scan_with_reader};
-    use crate::remote::{workspace, workspace_io as fs};
+    use lithe_workspace::{self as workspace, fs};
 
     let host = HostFixture::new();
-    let _deadline = crate::protocol::cancellation::Scope::begin(None, Some(10_000));
+    let _deadline = lithe_protocol::cancellation::Scope::begin(None, Some(10_000));
     let local = host.root.join("placeholder");
     let remote = host.root.join("host");
     std::fs::create_dir_all(remote.join("service/api")).unwrap();
@@ -755,7 +751,7 @@ fn shared_run_scan_reads_the_host_tree_and_stops_when_the_link_drops() {
         json!({"sessionId": host.id, "localRoot": local, "remoteRoot": remote}),
     )
     .unwrap();
-    let _workspace = workspace::Scope::begin(Some(workspace), "build.detect").unwrap();
+    let _workspace = workspace::Scope::begin(Some(workspace)).unwrap();
 
     let scan = scan_run_workspace(&local, Some(3)).unwrap();
     let files: Vec<_> = scan
@@ -810,7 +806,7 @@ fn shared_run_scan_reads_the_host_tree_and_stops_when_the_link_drops() {
                 Ok((entry.path(), kind.is_dir(), kind.is_symlink()))
             })
             .collect::<std::io::Result<Vec<_>>>();
-        lookup(&host.id).unwrap().close();
+        test_support::drop_link(&host.id);
         entries
     });
     assert!(
@@ -825,8 +821,8 @@ fn shared_run_scan_reads_the_host_tree_and_stops_when_the_link_drops() {
 fn captured_host_process_preserves_binary_streams_and_cleans_up_limit_failures() {
     let host = HostFixture::new();
     let capture = |argv: &[&str], timeout: u64, limit: usize| {
-        let _scope = crate::protocol::cancellation::Scope::begin(None, Some(5_000));
-        crate::remote::workspace_host::capture_process(
+        let _scope = lithe_protocol::cancellation::Scope::begin(None, Some(5_000));
+        lithe_workspace::host::capture_process(
             serde_json::from_value(json!({
                 "sessionId": host.id, "params": {"processId": 0, "argv": argv},
                 "timeoutMilliseconds": timeout, "maxOutputBytes": limit
@@ -865,7 +861,7 @@ fn captured_host_process_preserves_binary_streams_and_cleans_up_limit_failures()
         capture(&["/bin/sleep", "60"], 50, 128).unwrap_err().code,
         ErrorCode::TimedOut
     ));
-    let connection = lookup(&host.id).unwrap();
+    let connection = test_support::connection(&host.id);
     let deadline = Instant::now() + STEP;
     loop {
         let state = connection
@@ -897,7 +893,7 @@ fn native_plugin_upload_streams_beyond_one_frame_and_rejects_mismatch_without_pu
         let request = serde_json::from_value(json!({"sessionId": host.id,
             "sourcePath": source, "path": path, "sha256": expected, "mode": 0o500}))
         .unwrap();
-        super::super::upload::upload(request)
+        lithe_workspace::upload::upload(request)
     };
     let receipt = upload(&target, &digest).unwrap();
     assert_eq!(receipt["sha256"], digest);
@@ -936,7 +932,7 @@ fn plugin_stdio_uses_its_owned_host_and_reclaims_the_remote_process() {
     let workspace = serde_json::from_value(json!({"sessionId": host.id,
         "localRoot": host.root.join("placeholder"), "remoteRoot": host.root.join("host")}))
     .unwrap();
-    let scope = super::super::workspace::Scope::begin(Some(workspace), "lsp.startServer").unwrap();
+    let scope = lithe_workspace::Scope::begin(Some(workspace)).unwrap();
     let streams = SystemProcessLauncher
         .launch(LspProcessSpec {
             executable: "/bin/sh".into(),
@@ -996,8 +992,8 @@ fn plugin_protocol_maps_owned_uris_without_rewriting_source_text() {
     let workspace = serde_json::from_value(json!({"sessionId": host.id,
         "localRoot": host.root.join("placeholder"), "remoteRoot": host.root.join("host")}))
     .unwrap();
-    let _scope = super::super::workspace::Scope::begin(Some(workspace), "lsp.startServer").unwrap();
-    let owner = super::super::workspace::current().unwrap();
+    let _scope = lithe_workspace::Scope::begin(Some(workspace)).unwrap();
+    let owner = lithe_workspace::current().unwrap();
     let local = url::Url::from_file_path(host.root.join("placeholder/a space.txt"))
         .unwrap()
         .to_string();

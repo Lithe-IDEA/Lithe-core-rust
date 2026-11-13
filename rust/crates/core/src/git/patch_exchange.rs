@@ -5,7 +5,7 @@ use super::{
     operation_state, repository_root, resolve_commit_revision, validate_root, CoreError, ErrorCode,
     GitCommandResponse, GitOperationStateRequest, TemporaryGitCommitContext,
 };
-use crate::remote::workspace_io as fs;
+use lithe_workspace::fs;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;

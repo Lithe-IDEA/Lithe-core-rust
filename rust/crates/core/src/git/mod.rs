@@ -121,7 +121,7 @@ use crate::protocol::{
     GitStashesResponse, GitStatusResponse, GitWatchContextResponse, GitWorktreeResponse,
     GitWorktreesResponse, WorkspaceRepositoriesResponse, WorkspaceRepositoryResponse,
 };
-use crate::remote::workspace_io as fs;
+use lithe_workspace::fs;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::{HashSet, VecDeque};
@@ -1637,7 +1637,7 @@ fn write_with_trace(request: GitWriteRequest) -> Result<GitCommandResponse, Core
                     "Invalid clone destination",
                 ));
             }
-            let destination = crate::remote::workspace::remote_path(Path::new(&destination))
+            let destination = lithe_workspace::remote_path(Path::new(&destination))
                 .to_string_lossy()
                 .into_owned();
             arguments = vec!["clone".into(), "--".into(), remote, destination];
@@ -5299,7 +5299,7 @@ fn git_resolved_path(root: &str, arguments: &[&str], label: &str) -> Result<Path
         ));
     }
     validate_windows_git_path(Path::new(path)).map_err(git_path_error)?;
-    Ok(crate::remote::workspace::local_path(Path::new(path)))
+    Ok(lithe_workspace::local_path(Path::new(path)))
 }
 
 fn git_ignore_io_error(action: &str, error: std::io::Error) -> CoreError {
@@ -7054,7 +7054,7 @@ fn create_worktree(root: &str, request: &GitWriteRequest) -> Result<GitCommandRe
             ))
         }
     };
-    let destination = crate::remote::workspace::remote_path(Path::new(&destination))
+    let destination = lithe_workspace::remote_path(Path::new(&destination))
         .to_string_lossy()
         .into_owned();
     arguments.extend(["--".into(), destination, source]);
@@ -7114,7 +7114,7 @@ fn mutate_worktree(root: &str, request: &GitWriteRequest) -> Result<GitCommandRe
         "unlockWorktree" => arguments.push("unlock".into()),
         _ => unreachable!("caller restricts worktree mutations"),
     }
-    let destination = crate::remote::workspace::remote_path(Path::new(&destination))
+    let destination = lithe_workspace::remote_path(Path::new(&destination))
         .to_string_lossy()
         .into_owned();
     arguments.extend(["--".into(), destination]);
@@ -8747,7 +8747,7 @@ fn run_git(directory: &Path, arguments: &[&str]) -> Result<std::process::Output,
         .iter()
         .map(|value| value.to_string())
         .collect::<Vec<_>>();
-    if crate::remote::workspace::is_remote() {
+    if lithe_workspace::is_remote() {
         let output = capture_git_process(
             &directory.to_string_lossy(),
             &arguments,
