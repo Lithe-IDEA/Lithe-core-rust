@@ -621,7 +621,7 @@ pub fn decode(input: &Value, validate_manifest: ManifestValidator) -> Validation
         || params
             .tools
             .iter()
-            .any(|tool| !super::definitions::tool_id(tool))
+            .any(|tool| !lithe_plugin_model::is_tool_id(tool))
         || params.tools.iter().collect::<BTreeSet<_>>().len() != params.tools.len()
         || !params.tools.windows(2).all(|pair| pair[0] < pair[1])
         || !request_value["params"].as_object().is_some_and(|object| {
@@ -852,7 +852,7 @@ pub fn decode(input: &Value, validate_manifest: ManifestValidator) -> Validation
     let mut installations = BTreeMap::new();
     let mut references = BTreeMap::new();
     for installation in &reply.installations {
-        if !super::definitions::tool_id(&installation.tool)
+        if !lithe_plugin_model::is_tool_id(&installation.tool)
             || !bounded(&installation.version, 128)
             || !bounded(&installation.home, 4096)
         {
@@ -898,7 +898,7 @@ pub fn decode(input: &Value, validate_manifest: ManifestValidator) -> Validation
     let mut statement_facts = BTreeMap::new();
     let mut diagnostics = BTreeMap::new();
     for statement in &reply.statements {
-        if !super::definitions::tool_id(&statement.tool)
+        if !lithe_plugin_model::is_tool_id(&statement.tool)
             || !bounded(&statement.source, 4096)
             || !bounded(&statement.request, 512)
             || statement

@@ -83,3 +83,39 @@ pub fn is_function_id(value: &str) -> bool {
                 && characters.all(|character| character.is_ascii_alphanumeric())
         })
 }
+
+/// Longest tool ID, namespace and separator included, in bytes.
+const MAX_TOOL_ID_BYTES: usize = 192;
+
+/// A tool ID: a short [local ID](is_local_tool_id), or `<namespace>:<local>`
+/// with a [namespace](is_tool_namespace) such as a plugin ID. It says nothing
+/// about which plugin defines the tool; that is the host registry's decision.
+pub fn is_tool_id(value: &str) -> bool {
+    value.len() <= MAX_TOOL_ID_BYTES
+        && match value.split_once(':') {
+            Some((namespace, local)) => is_tool_namespace(namespace) && is_local_tool_id(local),
+            None => is_local_tool_id(value),
+        }
+}
+
+/// The namespace of a qualified tool or provider ID: non-empty `.`- or
+/// `-`-separated parts of lowercase letters and digits.
+pub fn is_tool_namespace(value: &str) -> bool {
+    !value.is_empty()
+        && value.split(['.', '-']).all(|part| {
+            !part.is_empty()
+                && part
+                    .bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+        })
+}
+
+/// The local part of a tool or provider ID: at most 64 bytes, a lowercase
+/// letter first, then lowercase letters, digits and `-`.
+pub fn is_local_tool_id(value: &str) -> bool {
+    value.len() <= 64
+        && value.as_bytes().first().is_some_and(u8::is_ascii_lowercase)
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+}

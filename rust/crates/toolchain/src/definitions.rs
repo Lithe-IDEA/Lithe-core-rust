@@ -3,35 +3,10 @@
 
 use crate::ManifestValidator;
 use lithe_plugin_model::executables::{ordered_indices, ExecutableCandidate};
-use lithe_plugin_model::{invalid, UIIcon, Validation};
+use lithe_plugin_model::{invalid, is_tool_id, UIIcon, Validation};
 use regex::Regex;
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
-
-/// Validates a short tool ID or a plugin-qualified tool ID, without granting ownership.
-pub fn tool_id(value: &str) -> bool {
-    let local = |s: &str| {
-        s.len() <= 64
-            && s.as_bytes().first().is_some_and(u8::is_ascii_lowercase)
-            && s.bytes()
-                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-    };
-    value.len() <= 192
-        && match value.split_once(':') {
-            Some((plugin, id)) => {
-                !id.contains(':')
-                    && !plugin.is_empty()
-                    && plugin.split(['.', '-']).all(|part| {
-                        !part.is_empty()
-                            && part
-                                .bytes()
-                                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
-                    })
-                    && local(id)
-            }
-            None => local(value),
-        }
-}
 
 /// Checks declared export names; native process-environment filtering still applies.
 pub(crate) fn safe_environment_name(value: &str) -> bool {
@@ -234,7 +209,7 @@ fn candidates(definition: &Value) -> Validation<Vec<usize>> {
         object(value, &allowed, required, "executables")?;
         for key in ["id", "insertBefore", "insertAfter"] {
             if let Some(id) = value.get(key) {
-                if !text(id, 64, key).is_ok_and(|id| tool_id(id) && !id.contains(':')) {
+                if !text(id, 64, key).is_ok_and(|id| is_tool_id(id) && !id.contains(':')) {
                     return Err(invalid(
                         "executables",
                         "Candidate IDs and anchors must be bounded local identifiers.",
@@ -449,7 +424,7 @@ fn definition(plugin_id: &str, value: &Value) -> Validation<()> {
         "toolDefinitions",
     )?;
     let id = text(&value["id"], 192, "toolDefinitions.id")?;
-    if !tool_id(id)
+    if !is_tool_id(id)
         || id
             .split_once(':')
             .is_some_and(|(owner, _)| owner != plugin_id)
@@ -654,14 +629,20 @@ fn provider(value: &Value) -> Validation<()> {
         "toolchainProviders",
     )?;
     let id = text(&value["id"], 64, "toolchainProviders.id")?;
-    if !tool_id(id) || id.contains(':') {
+    if !is_tool_id(id) || id.contains(':') {
         return Err(invalid(
             "toolchainProviders.id",
             "A provider ID is local to its plugin.",
         ));
     }
     text(&value["displayName"], 64, "toolchainProviders.displayName")?;
-    strings(&value["tools"], 1, 32, "toolchainProviders.tools", tool_id)?;
+    strings(
+        &value["tools"],
+        1,
+        32,
+        "toolchainProviders.tools",
+        is_tool_id,
+    )?;
     let mut patterns = BTreeSet::new();
     let watches = match value.get("watchFiles") {
         Some(watches) => list(watches, 1, 32, "watchFiles")?,

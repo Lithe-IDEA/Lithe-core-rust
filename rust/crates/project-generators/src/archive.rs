@@ -5,8 +5,8 @@
 //! existing files are never replaced, and the bytes actually written are
 //! bounded regardless of what the headers claim.
 
-use crate::protocol::CoreError;
 use lithe_plugin_model::{PluginRejection, Validation};
+use lithe_protocol::CoreError;
 use std::collections::HashSet;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
@@ -51,7 +51,7 @@ pub(crate) fn extract(archive: &Path, destination: &Path) -> Result<usize, Extra
 }
 
 fn checkpoint() -> Result<(), CoreError> {
-    crate::protocol::cancellation::check()
+    lithe_protocol::cancellation::check()
 }
 
 fn extract_with_checkpoint(
@@ -419,13 +419,13 @@ mod tests {
         let destination = directory.path().join("project");
         fs::create_dir(&destination).unwrap();
         let id = format!("archive-chunks-{}", rand::random::<u64>());
-        let _scope = crate::protocol::cancellation::Scope::begin(Some(id.clone()), Some(3000));
+        let _scope = lithe_protocol::cancellation::Scope::begin(Some(id.clone()), Some(3000));
         let result = extract_with_checkpoint(&path, &destination, MAX_EXTRACTED_BYTES, &mut || {
             // Observe one completed write, then cancel before another chunk.
             if fs::metadata(destination.join("large.txt"))
                 .is_ok_and(|metadata| metadata.len() >= COPY_CHUNK_BYTES as u64)
             {
-                assert!(crate::protocol::cancellation::cancel(&id));
+                assert!(lithe_protocol::cancellation::cancel(&id));
             }
             checkpoint()
         });
@@ -449,7 +449,7 @@ mod tests {
             {
                 // An already reached deadline controls the event order without
                 // sleeping or relying on the speed of filesystem extraction.
-                crate::protocol::cancellation::with_cleanup_deadline(
+                lithe_protocol::cancellation::with_cleanup_deadline(
                     std::time::Duration::ZERO,
                     checkpoint,
                 )
@@ -460,7 +460,7 @@ mod tests {
         let Err(ExtractionError::Interrupted(error)) = result else {
             panic!("chunk timeout must remain an operation interruption");
         };
-        assert!(matches!(error.code, crate::protocol::ErrorCode::TimedOut));
+        assert!(matches!(error.code, lithe_protocol::ErrorCode::TimedOut));
         assert_eq!(
             fs::metadata(destination.join("large.txt")).unwrap().len(),
             COPY_CHUNK_BYTES as u64
@@ -542,16 +542,14 @@ mod tests {
         let payload = serde_json::json!({"archivePath": path, "destination": destination});
         let id = format!("archive-command-{}", rand::random::<u64>());
         {
-            let _scope = crate::protocol::cancellation::Scope::begin(Some(id.clone()), None);
-            assert!(crate::protocol::cancellation::cancel(&id));
-            let error = crate::project_generators::project_extract_archive_command(payload.clone())
-                .unwrap_err();
-            assert!(matches!(error.code, crate::protocol::ErrorCode::Cancelled));
+            let _scope = lithe_protocol::cancellation::Scope::begin(Some(id.clone()), None);
+            assert!(lithe_protocol::cancellation::cancel(&id));
+            let error = crate::project_extract_archive_command(payload.clone()).unwrap_err();
+            assert!(matches!(error.code, lithe_protocol::ErrorCode::Cancelled));
         }
-        crate::protocol::cancellation::with_cleanup_deadline(std::time::Duration::ZERO, || {
-            let error =
-                crate::project_generators::project_extract_archive_command(payload).unwrap_err();
-            assert!(matches!(error.code, crate::protocol::ErrorCode::TimedOut));
+        lithe_protocol::cancellation::with_cleanup_deadline(std::time::Duration::ZERO, || {
+            let error = crate::project_extract_archive_command(payload).unwrap_err();
+            assert!(matches!(error.code, lithe_protocol::ErrorCode::TimedOut));
         });
         assert_eq!(fs::read_dir(destination).unwrap().count(), 0);
     }

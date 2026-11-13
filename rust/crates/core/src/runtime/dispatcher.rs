@@ -662,21 +662,24 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
         CoreCommand::VcsDecodeReply => {
             plugin_response(id, parsed.payload, crate::vcs::vcs_decode_reply_command)
         }
-        CoreCommand::ProjectGeneratorCatalog => plugin_response(
-            id,
-            parsed.payload,
-            crate::project_generators::project_generator_catalog_command,
-        ),
-        CoreCommand::ProjectGeneratorForm => plugin_response(
-            id,
-            parsed.payload,
-            crate::project_generators::project_generator_form_command,
-        ),
-        CoreCommand::ProjectGenerationPlan => plugin_response(
-            id,
-            parsed.payload,
-            crate::project_generators::project_generation_plan_command,
-        ),
+        CoreCommand::ProjectGeneratorCatalog => plugin_response(id, parsed.payload, |payload| {
+            crate::project_generators::project_generator_catalog_command(
+                payload,
+                crate::plugins::declarative::validate_manifest_value,
+            )
+        }),
+        CoreCommand::ProjectGeneratorForm => plugin_response(id, parsed.payload, |payload| {
+            crate::project_generators::project_generator_form_command(
+                payload,
+                crate::plugins::declarative::validate_manifest_value,
+            )
+        }),
+        CoreCommand::ProjectGenerationPlan => plugin_response(id, parsed.payload, |payload| {
+            crate::project_generators::project_generation_plan_command(
+                payload,
+                crate::plugins::declarative::validate_manifest_value,
+            )
+        }),
         CoreCommand::ProjectCheckName => plugin_response(
             id,
             parsed.payload,

@@ -1490,7 +1490,7 @@ impl BuildSystemDeclaration {
             // A runtime without executables is a tool-definition ID, which
             // may also be plugin-qualified.
             let valid_id = if runtime.names_tool_definition() {
-                crate::toolchain::definitions::tool_id(&runtime.id)
+                lithe_plugin_model::is_tool_id(&runtime.id)
             } else {
                 is_entry_identifier(&runtime.id)
             };
@@ -2274,7 +2274,7 @@ fn check_candidate(
             }
         }
         ExecutableSource::Toolchain { toolchain_id } => {
-            if !crate::toolchain::definitions::tool_id(toolchain_id) {
+            if !lithe_plugin_model::is_tool_id(toolchain_id) {
                 return Err(invalid(
                     format!("{field}.toolchainID"),
                     "Invalid toolchain ID.",

@@ -52,7 +52,7 @@ fn resolve_choice(input: &Value) -> Validation<Value> {
         .get("tool")
         .and_then(Value::as_str)
         .ok_or_else(|| invalid("tool"))?;
-    if !pins::valid_tool_id(tool) {
+    if !lithe_plugin_model::is_tool_id(tool) {
         return Err(invalid("tool"));
     }
     let consumer = request
@@ -282,7 +282,7 @@ fn scope(value: &Value, field: &str, workspace: bool) -> Validation<()> {
 
 fn tools_map(value: &Value, field: &str, workspace: bool, consumer: bool) -> Validation<()> {
     for (tool, binding) in map(value, field, MAX_TOOLS)? {
-        if !pins::valid_tool_id(tool) {
+        if !lithe_plugin_model::is_tool_id(tool) {
             return Err(invalid(field));
         }
         if binding.get("inherit").is_some() {
@@ -303,7 +303,7 @@ fn tools_map(value: &Value, field: &str, workspace: bool, consumer: bool) -> Val
 fn valid_consumer(value: &str) -> bool {
     value.len() <= 256
         && value.split_once('/').is_some_and(|(plugin, local)| {
-            lithe_plugin_model::is_plugin_id(plugin) && pins::valid_local_id(local)
+            lithe_plugin_model::is_plugin_id(plugin) && lithe_plugin_model::is_local_tool_id(local)
         })
 }
 

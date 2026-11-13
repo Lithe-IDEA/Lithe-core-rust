@@ -7,7 +7,7 @@ pub use lithe_execution as execution;
 mod lsp;
 pub mod plugins;
 mod project;
-mod project_generators;
+use lithe_project_generators as project_generators;
 mod protocol;
 mod runtime;
 /// Shared toolchain policy, independent of plugin transport and native discovery.

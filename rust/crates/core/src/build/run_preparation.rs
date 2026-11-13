@@ -293,7 +293,7 @@ pub(crate) fn decode(
     let kind = executable["kind"].as_str().ok_or_else(invalid)?;
     let name = executable["value"].as_str().ok_or_else(invalid)?;
     if !(kind == "command" && name.len() <= 120 && is_bare_command(name)
-        || kind == "toolchain" && crate::toolchain::definitions::tool_id(name))
+        || kind == "toolchain" && lithe_plugin_model::is_tool_id(name))
     {
         return Err(invalid());
     }

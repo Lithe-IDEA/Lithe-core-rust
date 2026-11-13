@@ -39,7 +39,7 @@ const MAX_TIMEOUT_SECONDS: u32 = 1800;
 /// One way to start a project, listed in the New Project window.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct ProjectGeneratorDeclaration {
+pub struct ProjectGeneratorDeclaration {
     /// Lowercase letters, digits, and hyphens; unique within the plugin.
     pub(crate) id: String,
     pub(crate) display_name: String,
@@ -353,7 +353,7 @@ impl GeneratorStep {
 /// is the approved value, so an update that adds a command or changes what
 /// one runs is a new program the user must approve. File and archive steps
 /// start no process and are covered by the `project.generate` permission.
-pub(crate) fn programs(generator: &ProjectGeneratorDeclaration) -> Vec<Value> {
+pub fn programs(generator: &ProjectGeneratorDeclaration) -> Vec<Value> {
     generator
         .steps
         .iter()
@@ -416,7 +416,7 @@ impl GeneratorField {
 /// Validates every generator and sorts fields-free collections that have no
 /// meaningful order. Field and step order are kept: fields are drawn and
 /// defaults evaluated in order, steps run in order.
-pub(crate) fn validate_declarations(generators: &[ProjectGeneratorDeclaration]) -> Validation<()> {
+pub fn validate_declarations(generators: &[ProjectGeneratorDeclaration]) -> Validation<()> {
     if generators.len() > MAX_GENERATORS {
         return Err(invalid(
             "projectGenerators",
@@ -670,7 +670,7 @@ impl GeneratorField {
                 if !self
                     .tool
                     .as_deref()
-                    .is_some_and(crate::toolchain::definitions::tool_id)
+                    .is_some_and(lithe_plugin_model::is_tool_id)
                 {
                     return Err(invalid(
                         format!("{field}.tool"),

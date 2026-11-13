@@ -920,7 +920,7 @@ pub(crate) fn candidates(input: &Value, validate_manifest: ManifestValidator) ->
     let registry = definitions::registry(&input["registry"], validate_manifest)?;
     let tool = input["tool"]
         .as_str()
-        .filter(|tool| definitions::tool_id(tool))
+        .filter(|tool| lithe_plugin_model::is_tool_id(tool))
         .ok_or_else(|| reject("tool"))?;
     let definition = enabled(&registry, tool).ok_or_else(|| reject("tool"))?;
     let (snapshot, _) = prepare(input, definition)?;
@@ -1041,7 +1041,7 @@ pub(crate) fn resolve(input: &Value, validate_manifest: ManifestValidator) -> Va
     let registry = definitions::registry(&input["registry"], validate_manifest)?;
     let tool = input["tool"]
         .as_str()
-        .filter(|tool| definitions::tool_id(tool))
+        .filter(|tool| lithe_plugin_model::is_tool_id(tool))
         .ok_or_else(|| reject("tool"))?;
     let directory = input["directory"]
         .as_str()

@@ -28,6 +28,7 @@ lithe-ide-host = { path = "../ide-host" }
 lithe-network = { path = "../network" }
 lithe-plugin-model = { path = "../plugin-model" }
 lithe-process = { path = "../process" }
+lithe-project-generators = { path = "../project-generators" }
 lithe-protocol = { path = "../protocol" }
 lithe-request-context = { path = "../request-context" }
 lithe-terminal = { path = "../terminal" }
@@ -41,14 +42,12 @@ base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 encoding_rs = "0.8"
 comrak = { version = "0.54.0", default-features = false, features = ["shortcodes"] }
-rand = "0.8"
 regex = "1.11"
 quick-xml = "0.37"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 sha2 = "0.10"
 toml = { version = "1.1.4", default-features = false, features = ["parse", "serde"] }
-zip = { version = "2.4", default-features = false, features = ["deflate"] }
 url = "2.5"
 ignore = "=0.4.33"
 

@@ -1,6 +1,8 @@
 //! Validates inert machine-local pins and resolves directory inheritance without I/O.
 
-use lithe_plugin_model::{PluginRejection, Validation};
+use lithe_plugin_model::{
+    is_local_tool_id, is_tool_id, is_tool_namespace, PluginRejection, Validation,
+};
 use serde_json::{json, Map, Value};
 
 const MAX_DIRECTORIES: usize = 1024;
@@ -27,7 +29,7 @@ pub fn resolve(input: &Value) -> Validation<Value> {
         ));
     }
     let tool = text(required(request, "tool", "input")?, "tool", 192)?;
-    if !valid_tool_id(tool) {
+    if !is_tool_id(tool) {
         return Err(invalid("tool", "Expected a valid tool identifier."));
     }
     let pins = document.get("pins").and_then(Value::as_object);
@@ -80,7 +82,7 @@ pub(crate) fn edit(input: &Value) -> Validation<Value> {
             &format!("{field}.tool"),
             192,
         )?;
-        if !valid_tool_id(tool) || !seen.insert(tool) {
+        if !is_tool_id(tool) || !seen.insert(tool) {
             return Err(invalid(
                 format!("{field}.tool"),
                 "Expected a unique valid tool identifier.",
@@ -173,7 +175,7 @@ pub fn validate(document: &Value) -> Validation<()> {
         count(tools.len(), MAX_TOOLS_PER_DIRECTORY, &field)?;
         for (tool, pin) in tools {
             let field = format!("{field}.{tool}");
-            if !valid_tool_id(tool) {
+            if !is_tool_id(tool) {
                 return Err(invalid(&field, "Expected a valid tool identifier."));
             }
             validate_pin(pin, &field)?;
@@ -208,8 +210,8 @@ fn validate_pin(value: &Value, field: &str) -> Validation<()> {
     )?;
     let valid = provider.split_once(':').is_some_and(|(plugin, id)| {
         plugin.starts_with(|character: char| character.is_ascii_lowercase())
-            && valid_namespace(plugin)
-            && valid_local_id(id)
+            && is_tool_namespace(plugin)
+            && is_local_tool_id(id)
     });
     if !valid {
         return Err(invalid(
@@ -230,36 +232,6 @@ pub(super) fn valid_directory(value: &str) -> bool {
             && value
                 .split('/')
                 .all(|part| !part.is_empty() && part != "." && part != ".."))
-}
-
-/// Checks both reserved short IDs and plugin-qualified IDs, not registry membership.
-pub(super) fn valid_tool_id(value: &str) -> bool {
-    value.len() <= 192
-        && match value.split_once(':') {
-            Some((namespace, id)) => valid_namespace(namespace) && valid_local_id(id),
-            None => valid_local_id(value),
-        }
-}
-
-/// Checks the lowercase dotted/dashed namespace grammar used by tool IDs.
-fn valid_namespace(value: &str) -> bool {
-    !value.is_empty()
-        && value.split(['.', '-']).all(|part| {
-            !part.is_empty()
-                && part
-                    .bytes()
-                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
-        })
-}
-
-/// Checks the bounded local portion of a tool or provider ID.
-pub(super) fn valid_local_id(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 64
-        && value.as_bytes()[0].is_ascii_lowercase()
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
 }
 
 /// Recognizes POSIX, drive-rooted Windows, and UNC paths on either build platform.

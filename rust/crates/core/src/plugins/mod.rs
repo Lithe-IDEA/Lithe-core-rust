@@ -1,7 +1,7 @@
 //! Plugin manifests, capabilities, installation and the services plugins contribute.
 
 pub(crate) mod backend;
-pub mod capabilities;
+pub use lithe_plugin_model::capabilities;
 /// Read-only documents a plugin backend serves as a URI scheme.
 pub(crate) mod content_providers;
 pub mod declarative;

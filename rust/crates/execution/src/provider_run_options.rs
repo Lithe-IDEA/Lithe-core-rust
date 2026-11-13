@@ -48,7 +48,7 @@ impl BuildProviderRunOptions {
             || serde_json::to_vec(&self.options).map_or(true, |bytes| bytes.len() > 65536)
             || self.tools.len() > 64
             || self.tools.iter().any(|(id, value)| {
-                !lithe_toolchain::definitions::tool_id(id)
+                !lithe_plugin_model::is_tool_id(id)
                     || value.as_ref().is_some_and(|value| {
                         serde_json::to_value(value)
                             .ok()

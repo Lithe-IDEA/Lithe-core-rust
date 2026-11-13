@@ -525,6 +525,52 @@ impl crate::debug::DebugManifest for DeclarativePluginManifest {
     }
 }
 
+impl crate::project_generators::GeneratorManifest for DeclarativePluginManifest {
+    fn id(&self) -> &str {
+        &self.id
+    }
+
+    fn display_name(&self) -> &str {
+        &self.display_name
+    }
+
+    fn requires(&self) -> &Requires {
+        &self.requires
+    }
+
+    fn project_generators(&self) -> &[crate::project_generators::ProjectGeneratorDeclaration] {
+        &self.project_generators
+    }
+
+    fn declares_language(&self, language_id: &str) -> bool {
+        self.languages
+            .iter()
+            .any(|language| language.id == language_id)
+    }
+
+    fn declares_build_system(&self, build_system_id: &str) -> bool {
+        self.build_systems
+            .iter()
+            .any(|system| system.id == build_system_id)
+    }
+
+    /// Whether the plugin declares a definition that `tool` names. A
+    /// definition is addressed by its short ID or as `<pluginID>:<id>`; both
+    /// spellings count as a declaration here. Whether the host adopts the
+    /// short ID is its registry's decision: when several enabled plugins define
+    /// the same short ID, it belongs to none of them.
+    fn declares_tool(&self, tool: &str) -> bool {
+        // `Some(local)` when `tool` is spelled `<this plugin>:<local>`.
+        let local_name = tool
+            .strip_prefix(self.id.as_str())
+            .and_then(|rest| rest.strip_prefix(':'));
+        self.tool_definitions
+            .iter()
+            .filter_map(|definition| definition["id"].as_str())
+            .any(|id| tool == id || local_name == Some(id))
+    }
+}
+
 /// Validates a raw manifest value and returns its normalized form as JSON, the
 /// shape [`crate::toolchain::ManifestValidator`] gives toolchain policy.
 pub fn validated_manifest_json(value: Value) -> Validation<Value> {
@@ -1381,39 +1427,6 @@ impl DeclarativePluginManifest {
         self.requires.get(capability).copied().unwrap_or_default()
     }
 
-    /// Name shown to the user.
-    pub(crate) fn display_name(&self) -> &str {
-        &self.display_name
-    }
-
-    /// IDs of the languages the plugin declares.
-    pub(crate) fn language_ids(&self) -> impl Iterator<Item = &str> {
-        self.languages.iter().map(|language| language.id.as_str())
-    }
-
-    /// Whether the plugin declares a definition that `tool` names. A
-    /// definition is addressed by its short ID or as `<pluginID>:<id>`; both
-    /// spellings count as a declaration here. Whether the host adopts the
-    /// short ID is its registry's decision: when several enabled plugins define
-    /// the same short ID, it belongs to none of them.
-    pub(crate) fn declares_tool(&self, tool: &str) -> bool {
-        // `Some(local)` when `tool` is spelled `<this plugin>:<local>`.
-        let local_name = tool
-            .strip_prefix(self.id.as_str())
-            .and_then(|rest| rest.strip_prefix(':'));
-        self.tool_definitions
-            .iter()
-            .filter_map(|definition| definition["id"].as_str())
-            .any(|id| tool == id || local_name == Some(id))
-    }
-
-    /// Validated project generators, in declaration order.
-    pub(crate) fn project_generators(
-        &self,
-    ) -> &[crate::project_generators::ProjectGeneratorDeclaration] {
-        &self.project_generators
-    }
-
     /// Normalized, sorted permission list.
     pub(crate) fn permissions(&self) -> &[String] {
         &self.permissions
@@ -1484,7 +1497,7 @@ impl DeclarativePluginManifest {
         }
         let mut tools = BTreeSet::new();
         for (index, tool) in self.requires_tools.iter().enumerate() {
-            if !crate::toolchain::definitions::tool_id(tool) {
+            if !lithe_plugin_model::is_tool_id(tool) {
                 return Err(invalid(
                     format!("requiresTools[{index}]"),
                     "A required tool is a short or plugin-qualified tool-definition ID.",

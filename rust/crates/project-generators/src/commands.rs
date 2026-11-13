@@ -9,10 +9,10 @@ use super::archive;
 use super::form::{self, FormInput};
 use super::manifest::{GeneratorSection, ProjectGeneratorDeclaration, FIELD_TOOL};
 use super::plan;
-use crate::plugins::capabilities::HostCapabilities;
-use crate::plugins::declarative::{validate_manifest_value, DeclarativePluginManifest};
-use crate::protocol::CoreError;
+use super::GeneratorManifest;
+use lithe_plugin_model::capabilities::{self, HostCapabilities};
 use lithe_plugin_model::{decode_payload, outcome, PluginRejection, Validation};
+use lithe_protocol::CoreError;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -69,8 +69,12 @@ struct ExtractPayload {
 }
 
 /// `project.generatorCatalog`: every generator of the given plugins, with
-/// the plugins that provide each requirement.
-pub(crate) fn project_generator_catalog_command(payload: Value) -> Result<Value, CoreError> {
+/// the plugins that provide each requirement. `validate_manifest` is the
+/// plugin host's manifest validation.
+pub fn project_generator_catalog_command<M: GeneratorManifest>(
+    payload: Value,
+    validate_manifest: fn(Value) -> Validation<M>,
+) -> Result<Value, CoreError> {
     let payload: CatalogPayload = decode_payload(payload, "project.generatorCatalog")?;
     let mut manifests = Vec::new();
     let mut issues = Vec::new();
@@ -80,9 +84,9 @@ pub(crate) fn project_generator_catalog_command(payload: Value) -> Result<Value,
             .get("id")
             .and_then(Value::as_str)
             .map(str::to_string);
-        let validated = validate_manifest_value(plugin.manifest).and_then(|manifest| {
+        let validated = validate_manifest(plugin.manifest).and_then(|manifest| {
             if let Some(host) = &payload.host_capabilities {
-                crate::plugins::capabilities::check_hosted(manifest.requires(), host)?;
+                capabilities::check_hosted(manifest.requires(), host)?;
             }
             Ok(manifest)
         });
@@ -92,7 +96,7 @@ pub(crate) fn project_generator_catalog_command(payload: Value) -> Result<Value,
         }
     }
 
-    let providers = |matches: &dyn Fn(&DeclarativePluginManifest) -> bool| -> Vec<Value> {
+    let providers = |matches: &dyn Fn(&M) -> bool| -> Vec<Value> {
         manifests
             .iter()
             .filter(|(manifest, _)| matches(manifest))
@@ -118,19 +122,12 @@ pub(crate) fn project_generator_catalog_command(payload: Value) -> Result<Value,
                             (Some(id), _) => (
                                 "languageID",
                                 id,
-                                providers(&|candidate| {
-                                    candidate.language_ids().any(|language| language == id)
-                                }),
+                                providers(&|candidate| candidate.declares_language(id)),
                             ),
                             (_, Some(id)) => (
                                 "buildSystemID",
                                 id,
-                                providers(&|candidate| {
-                                    candidate
-                                        .build_systems()
-                                        .iter()
-                                        .any(|system| &system.id == id)
-                                }),
+                                providers(&|candidate| candidate.declares_build_system(id)),
                             ),
                             _ => unreachable!("validated requirement names one ID"),
                         };
@@ -169,9 +166,9 @@ pub(crate) fn project_generator_catalog_command(payload: Value) -> Result<Value,
 /// no installation can tell the user which plugin to enable or install. Core
 /// only names declarations; whether a definition is trusted, and whether the
 /// tool is installed, is the host's registry and discovery.
-fn tool_providers(
+fn tool_providers<M: GeneratorManifest>(
     generator: &ProjectGeneratorDeclaration,
-    providers: &dyn Fn(&dyn Fn(&DeclarativePluginManifest) -> bool) -> Vec<Value>,
+    providers: &dyn Fn(&dyn Fn(&M) -> bool) -> Vec<Value>,
 ) -> Vec<Value> {
     generator
         .fields
@@ -189,9 +186,13 @@ fn tool_providers(
 }
 
 /// `project.generatorForm`: field values, visibility, and problems.
-pub(crate) fn project_generator_form_command(payload: Value) -> Result<Value, CoreError> {
+pub fn project_generator_form_command<M: GeneratorManifest>(
+    payload: Value,
+    validate_manifest: fn(Value) -> Validation<M>,
+) -> Result<Value, CoreError> {
     let payload: FormPayload = decode_payload(payload, "project.generatorForm")?;
     Ok(outcome(with_generator(
+        validate_manifest,
         payload.manifest,
         &payload.generator_id,
         |generator| Ok(("form", form::evaluate(generator, &payload.form).to_json())),
@@ -199,9 +200,13 @@ pub(crate) fn project_generator_form_command(payload: Value) -> Result<Value, Co
 }
 
 /// `project.generationPlan`: the steps that create the project.
-pub(crate) fn project_generation_plan_command(payload: Value) -> Result<Value, CoreError> {
+pub fn project_generation_plan_command<M: GeneratorManifest>(
+    payload: Value,
+    validate_manifest: fn(Value) -> Validation<M>,
+) -> Result<Value, CoreError> {
     let payload: PlanPayload = decode_payload(payload, "project.generationPlan")?;
     Ok(outcome(with_generator(
+        validate_manifest,
         payload.manifest,
         &payload.generator_id,
         |generator| {
@@ -211,7 +216,7 @@ pub(crate) fn project_generation_plan_command(payload: Value) -> Result<Value, C
 }
 
 /// `project.checkName`: whether a name can be a new project's directory.
-pub(crate) fn project_check_name_command(payload: Value) -> Result<Value, CoreError> {
+pub fn project_check_name_command(payload: Value) -> Result<Value, CoreError> {
     let payload: CheckNamePayload = decode_payload(payload, "project.checkName")?;
     Ok(outcome(Ok((
         "name",
@@ -220,7 +225,7 @@ pub(crate) fn project_check_name_command(payload: Value) -> Result<Value, CoreEr
 }
 
 /// `project.extractArchive`: extracts a downloaded archive into staging.
-pub(crate) fn project_extract_archive_command(payload: Value) -> Result<Value, CoreError> {
+pub fn project_extract_archive_command(payload: Value) -> Result<Value, CoreError> {
     let payload: ExtractPayload = decode_payload(payload, "project.extractArchive")?;
     let result = match archive::extract(&payload.archive_path, &payload.destination) {
         Ok(files) => Ok(files),
@@ -234,12 +239,13 @@ pub(crate) fn project_extract_archive_command(payload: Value) -> Result<Value, C
     ))
 }
 
-fn with_generator(
+fn with_generator<M: GeneratorManifest>(
+    validate_manifest: fn(Value) -> Validation<M>,
     manifest: Value,
     generator_id: &str,
     run: impl FnOnce(&ProjectGeneratorDeclaration) -> Validation<(&'static str, Value)>,
 ) -> Validation<(&'static str, Value)> {
-    let manifest = validate_manifest_value(manifest)?;
+    let manifest = validate_manifest(manifest)?;
     let generator = manifest
         .project_generators()
         .iter()

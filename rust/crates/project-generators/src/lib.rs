@@ -31,5 +31,29 @@ mod manifest;
 mod plan;
 mod template;
 
-pub(crate) use commands::*;
-pub(crate) use manifest::{programs, validate_declarations, ProjectGeneratorDeclaration};
+pub use commands::{
+    project_check_name_command, project_extract_archive_command, project_generation_plan_command,
+    project_generator_catalog_command, project_generator_form_command,
+};
+pub use manifest::{programs, validate_declarations, ProjectGeneratorDeclaration};
+
+use lithe_plugin_model::capabilities::Requires;
+
+/// What the `project.*` commands read from one plugin manifest that the
+/// plugin host validated; the host's manifest type implements it.
+pub trait GeneratorManifest {
+    /// The plugin ID.
+    fn id(&self) -> &str;
+    /// The name shown to the user.
+    fn display_name(&self) -> &str;
+    /// Capability versions the manifest requires.
+    fn requires(&self) -> &Requires;
+    /// The validated `projectGenerators`, in declaration order.
+    fn project_generators(&self) -> &[ProjectGeneratorDeclaration];
+    /// Whether the plugin declares the language `language_id`.
+    fn declares_language(&self, language_id: &str) -> bool;
+    /// Whether the plugin declares the build system `build_system_id`.
+    fn declares_build_system(&self, build_system_id: &str) -> bool;
+    /// Whether the plugin declares a definition of the tool `tool` names.
+    fn declares_tool(&self, tool: &str) -> bool;
+}

@@ -31,67 +31,67 @@
 //!
 //! Note: the decision is recorded in .agents/notes/implemented/architecture/2026-11-11-plugin-contract-v2-baseline.md
 
-use lithe_plugin_model::{PluginRejection, Validation};
+use crate::{PluginRejection, Validation};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// `languages[]`: file types and project markers, a TextMate `grammar`, and an
-/// editing `configuration`; see `super::grammar`.
-pub(crate) const LANGUAGES: &str = "languages";
+/// editing `configuration`; see `lithe_core::plugins::grammar`.
+pub const LANGUAGES: &str = "languages";
 /// `languageServers[]`: the launch, `workspaceConfiguration`, and the session
 /// fields a plugin backend uses to talk to its own server (`requestMethods`,
 /// `commands`, `serializedCommands`, `forwardNotifications`, `state`, and
 /// `remote`).
-pub(crate) const LANGUAGE_SERVERS: &str = "languageServers";
+pub const LANGUAGE_SERVERS: &str = "languageServers";
 /// `vendor.bundledSignatureRequirement`: origin-scoped host-seal trust for a
 /// package whose independently installed versions require a publisher signature.
-pub(crate) const PACKAGE_TRUST: &str = "packageTrust";
+pub const PACKAGE_TRUST: &str = "packageTrust";
 /// `executionProviders[]`: run and test templates.
-pub(crate) const EXECUTION_PROVIDERS: &str = "executionProviders";
+pub const EXECUTION_PROVIDERS: &str = "executionProviders";
 /// `settings[]`: scopes, effects, settings pages, and the multiSelect, text,
-/// file, and directory types; see `super::settings`.
-pub(crate) const SETTINGS: &str = "settings";
+/// file, and directory types; see [`crate::settings`].
+pub const SETTINGS: &str = "settings";
 /// `ui`: tool windows with text, web, or host-rendered native content, and
 /// commands.
-pub(crate) const UI: &str = "ui";
+pub const UI: &str = "ui";
 /// Declarative build detection, models, and command plans.
-pub(crate) const BUILD_SYSTEMS: &str = "buildSystems";
+pub const BUILD_SYSTEMS: &str = "buildSystems";
 /// `buildSystems[].provider`, whether it owns or shares a language server process.
-pub(crate) const BUILD_PROVIDERS: &str = "buildProviders";
+pub const BUILD_PROVIDERS: &str = "buildProviders";
 /// Optional public model snapshots between enabled build providers.
-pub(crate) const BUILD_MODEL_INPUTS: &str = "buildModelInputs";
+pub const BUILD_MODEL_INPUTS: &str = "buildModelInputs";
 /// `vcsProviders[]`: version control systems implemented by a plugin
-/// process; see `crate::vcs`.
-pub(crate) const VCS_PROVIDERS: &str = "vcsProviders";
+/// process; see `lithe_vcs`.
+pub const VCS_PROVIDERS: &str = "vcsProviders";
 
-/// `backend`: the plugin's own long-lived process; see `super::backend`. It
+/// `backend`: the plugin's own long-lived process; see `lithe_core::plugins::backend`. It
 /// may start without a page (`onWorkspaceOpen`, a plugin command) and may be
 /// granted the `workspace` host service; it speaks the plugin-function
 /// protocol (`litheFunctions`).
-pub(crate) const BACKEND: &str = "backend";
+pub const BACKEND: &str = "backend";
 
 /// `projectGenerators[]`: entries of the New Project window. A field selects
 /// installations of any plugin-defined tool with its `tool` field.
-pub(crate) const PROJECT_GENERATORS: &str = "projectGenerators";
+pub const PROJECT_GENERATORS: &str = "projectGenerators";
 
 /// `debugAdapters[]`: debug adapters implemented by a plugin process, with
 /// declared adapter `features`, `defaults`, and argument and environment
-/// bindings; see `crate::debug::adapters`.
-pub(crate) const DEBUG_ADAPTERS: &str = "debugAdapters";
+/// bindings; see `lithe_debug::adapters`.
+pub const DEBUG_ADAPTERS: &str = "debugAdapters";
 
 /// Independent providers that translate external shortcut settings.
-pub(crate) const KEYMAP_IMPORT_PROVIDERS: &str = "keymapImportProviders";
+pub const KEYMAP_IMPORT_PROVIDERS: &str = "keymapImportProviders";
 /// `pluginFunctions`: functions exported to, and called from, other plugins;
-/// see `super::plugin_functions`.
-pub(crate) const PLUGIN_FUNCTIONS: &str = "pluginFunctions";
+/// see `lithe_core::plugins::plugin_functions`.
+pub const PLUGIN_FUNCTIONS: &str = "pluginFunctions";
 /// `toolDefinitions[]`: plugin-owned tool identities, discovery policy, and
 /// executable candidates.
-pub(crate) const TOOL_DEFINITIONS: &str = "toolDefinitions";
+pub const TOOL_DEFINITIONS: &str = "toolDefinitions";
 /// Backend facts that can influence the executable selected for a defined tool.
-pub(crate) const TOOLCHAIN_PROVIDERS: &str = "toolchainProviders";
+pub const TOOLCHAIN_PROVIDERS: &str = "toolchainProviders";
 /// `outputLinkMatchers[]`: patterns that turn console output into links; see
-/// `crate::plugins::output_links`.
-pub(crate) const OUTPUT_LINK_MATCHERS: &str = "outputLinkMatchers";
+/// `lithe_core::plugins::output_links`.
+pub const OUTPUT_LINK_MATCHERS: &str = "outputLinkMatchers";
 
 /// Capability versions this Core build validates and plans. A later version
 /// of a capability is appended to its list.
@@ -120,14 +120,14 @@ pub const SUPPORTED_CAPABILITIES: &[(&str, &[u32])] = &[
 const MAX_CAPABILITY_ID: usize = 64;
 
 /// Capability ID to the contract version a plugin was written against.
-pub(crate) type Requires = BTreeMap<String, u32>;
+pub type Requires = BTreeMap<String, u32>;
 
 /// Capability ID to the versions a host implements, as the host sends them.
-pub(crate) type HostCapabilities = BTreeMap<String, Vec<u32>>;
+pub type HostCapabilities = BTreeMap<String, Vec<u32>>;
 
 /// Checks a raw manifest's `requires` before its sections are decoded. Every
 /// manifest must declare it.
-pub(crate) fn check_manifest_requires(manifest: &Value) -> Validation<()> {
+pub fn check_manifest_requires(manifest: &Value) -> Validation<()> {
     let Some(requires) = manifest.get("requires") else {
         return Err(PluginRejection::at(
             "plugin.manifest.invalid",
@@ -151,11 +151,7 @@ pub(crate) fn check_manifest_requires(manifest: &Value) -> Validation<()> {
 
 /// Reads a `requires` object. IDs are checked for shape only, so an index
 /// can list a plugin for a capability this Core build does not know yet.
-pub(crate) fn parse_requires(
-    value: &Value,
-    field: &str,
-    code: &'static str,
-) -> Validation<Requires> {
+pub fn parse_requires(value: &Value, field: &str, code: &'static str) -> Validation<Requires> {
     let Value::Object(entries) = value else {
         return Err(PluginRejection::at(
             code,
@@ -198,7 +194,7 @@ pub(crate) fn parse_requires(
 /// Checks that `requires` lists exactly the capabilities a decoded manifest
 /// uses. A missing entry would let a host that lacks the capability accept
 /// the plugin; an extra one would hide it from hosts it could run on.
-pub(crate) fn check_used(requires: &Requires, used: &BTreeSet<&'static str>) -> Validation<()> {
+pub fn check_used(requires: &Requires, used: &BTreeSet<&'static str>) -> Validation<()> {
     if let Some(missing) = used
         .iter()
         .find(|capability| !requires.contains_key(**capability))
@@ -225,12 +221,12 @@ pub(crate) fn check_used(requires: &Requires, used: &BTreeSet<&'static str>) -> 
 /// Whether a host can run every required capability. A host that sends no
 /// capabilities runs no plugin, and a capability this Core build cannot
 /// validate is never hosted, whatever the host claims.
-pub(crate) fn hosts(requires: &Requires, host: Option<&HostCapabilities>) -> bool {
+pub fn hosts(requires: &Requires, host: Option<&HostCapabilities>) -> bool {
     first_unhosted(requires, host).is_none()
 }
 
 /// Rejects a manifest that requires a capability version the host lacks.
-pub(crate) fn check_hosted(requires: &Requires, host: &HostCapabilities) -> Validation<()> {
+pub fn check_hosted(requires: &Requires, host: &HostCapabilities) -> Validation<()> {
     match first_unhosted(requires, Some(host)) {
         Some((capability, version)) => Err(PluginRejection::at(
             "plugin.api.unsupported",
@@ -258,7 +254,7 @@ fn first_unhosted<'a>(
 
 /// Versions of `capability` this Core build validates and plans; empty when
 /// the capability is unknown.
-pub(crate) fn versions(capability: &str) -> &'static [u32] {
+pub fn versions(capability: &str) -> &'static [u32] {
     SUPPORTED_CAPABILITIES
         .iter()
         .find(|(id, _)| *id == capability)
