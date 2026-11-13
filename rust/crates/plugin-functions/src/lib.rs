@@ -17,7 +17,7 @@
 //! without a context the host knows is rejected, so a function that nobody
 //! described the acceptable context of is never callable across plugins.
 //!
-//! The relay itself lives in `crate::lsp::interface::function_relay`.
+//! The relay itself lives in the language-server runtime of `lithe-core`.
 //!
 //! Note: the decision is recorded in .agents/notes/implemented/architecture/2026-10-20-plugin-function-contract.md
 //! and .agents/notes/proposed/architecture/2026-10-25-plugin-dependencies-and-exports.md
@@ -39,7 +39,7 @@ pub(crate) const MAX_CONTRACT_VERSION: u32 = 1000;
 pub(crate) const CONTEXT_WORKSPACE: &str = "workspace";
 
 /// Every calling context this Core build knows.
-pub(crate) const KNOWN_CONTEXTS: &[&str] = &[CONTEXT_WORKSPACE];
+pub const KNOWN_CONTEXTS: &[&str] = &[CONTEXT_WORKSPACE];
 
 /// A function this plugin offers to other plugins.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -66,7 +66,7 @@ pub(crate) struct CallDeclaration {
 /// The `pluginFunctions` section.
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct PluginFunctionsDeclaration {
+pub struct PluginFunctionsDeclaration {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) exports: Vec<ExportDeclaration>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -76,12 +76,12 @@ pub(crate) struct PluginFunctionsDeclaration {
 impl PluginFunctionsDeclaration {
     /// Whether the plugin exports at least one function, which lets the host
     /// start its backend when another plugin calls it.
-    pub(crate) fn exports_any(&self) -> bool {
+    pub fn exports_any(&self) -> bool {
         !self.exports.is_empty()
     }
 
     /// Whether the plugin may call exported functions of other plugins.
-    pub(crate) fn calls_any(&self) -> bool {
+    pub fn calls_any(&self) -> bool {
         !self.calls.is_empty()
     }
 }
@@ -90,7 +90,7 @@ impl PluginFunctionsDeclaration {
 /// declaration always plans the same way. The caller has already checked that
 /// the plugin declares a backend, the only process that registers functions
 /// for the protocol that carries relayed calls.
-pub(crate) fn validate(section: &mut PluginFunctionsDeclaration) -> Validation<()> {
+pub fn validate(section: &mut PluginFunctionsDeclaration) -> Validation<()> {
     if section.exports.is_empty() && section.calls.is_empty() {
         return Err(invalid(
             "pluginFunctions",

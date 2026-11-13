@@ -6,7 +6,7 @@ import java.util.regex.Pattern;
 
 /**
  * Wire constants and validation shared with Lithe's Rust Core
- * ({@code rust/crates/core/src/lsp/interface/plugin_function.rs} in the Lithe
+ * ({@code rust/crates/plugin-rpc/src/lib.rs} in the Lithe
  * repository) and the Node.js
  * SDK. The SDK checks the same rules locally so a plugin author sees a mistake
  * when registering a handler instead of as a refused session at runtime.

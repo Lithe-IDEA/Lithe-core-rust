@@ -385,12 +385,12 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
         CoreCommand::PluginsHostApiDescribe => plugin_response(
             id,
             parsed.payload,
-            crate::plugins::host_api::describe_command,
+            lithe_plugin_rpc::host_api::describe_command,
         ),
         CoreCommand::PluginsHostApiAuthorize => plugin_response(
             id,
             parsed.payload,
-            crate::plugins::host_api::authorize_command,
+            lithe_plugin_rpc::host_api::authorize_command,
         ),
         CoreCommand::PluginsEditorProvidersDecode => plugin_response(
             id,
@@ -400,17 +400,17 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
         CoreCommand::KeymapDecodeImport => plugin_response(
             id,
             parsed.payload,
-            crate::plugins::keymap_import::decode_command,
+            lithe_plugin_keymap_import::decode_command,
         ),
         CoreCommand::KeymapPlanImportSources => plugin_response(
             id,
             parsed.payload,
-            crate::plugins::keymap_import::plan_sources_command,
+            lithe_plugin_keymap_import::plan_sources_command::<Manifest>,
         ),
         CoreCommand::KeymapPlanImportBindings => plugin_response(
             id,
             parsed.payload,
-            crate::plugins::keymap_import::plan_bindings_command,
+            lithe_plugin_keymap_import::plan_bindings_command,
         ),
         CoreCommand::DebugStartOrContinue => {
             match crate::debug::start_or_continue(parsed.payload) {

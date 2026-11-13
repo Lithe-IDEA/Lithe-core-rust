@@ -1,0 +1,10 @@
+[package]
+name = "lithe-plugin-functions"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "pluginFunctions of a plugin manifest: functions a plugin exports to other plugins and the exported functions it calls"
+
+[dependencies]
+lithe-plugin-model = { path = "../plugin-model" }
+serde = { version = "1.0", features = ["derive"] }

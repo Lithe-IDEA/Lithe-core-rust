@@ -12,16 +12,22 @@
 //! of an invocation. Functions never replace a domain
 //! operation: a build model, dependency tree, or task still travels over its
 //! typed `lithe/build/*` method and Core's plan and decode commands. This
-//! module holds the deterministic rules (identifiers, registration, invocation
+//! crate holds the deterministic rules (identifiers, registration, invocation
 //! planning, outcome and progress normalization, and the refusal of requests a
 //! backend may not make); the session engine applies them to live traffic.
 //! The rules live in the plugin contract
-//! (`shared/plugins/contract/v1/README.md`, "Plugin functions").
+//! (`shared/plugins/contract/v1/README.md`, "Plugin functions"). The
+//! [`host_api`] commands expose the same host-method catalog to native
+//! dispatchers.
 
-use crate::plugins::capabilities::{versions as capability_versions, BACKEND};
-use crate::protocol::{CoreError, ErrorCode};
-use lithe_plugin_language_servers::{self, is_protocol_name};
+pub mod host_api;
+
+use lithe_plugin_language_servers::is_protocol_name;
+use lithe_plugin_model::capabilities::{
+    offered_versions, versions as capability_versions, BACKEND,
+};
 use lithe_plugin_model::{is_function_id, MAX_FUNCTION_ID_BYTES};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
@@ -32,21 +38,21 @@ const EXPERIMENTAL_KEY: &str = "litheFunctions";
 /// Plugin-function protocol versions this client speaks: the versions of the
 /// `backend` capability.
 fn supported_versions() -> Vec<u64> {
-    super::offered_versions(capability_versions(BACKEND))
+    offered_versions(capability_versions(BACKEND))
 }
 
 /// Feature name recorded in the session's server capabilities once a backend
 /// answered a supported version with a valid function list.
-pub(crate) const FUNCTIONS_FEATURE: &str = "litheFunctions";
+pub const FUNCTIONS_FEATURE: &str = "litheFunctions";
 
 /// Host-to-backend request that runs one registered function.
-pub(crate) const INVOKE_METHOD: &str = "lithe/function/invoke";
+pub const INVOKE_METHOD: &str = "lithe/function/invoke";
 /// Backend-to-host request adding functions after `initialize`.
-pub(crate) const REGISTER_METHOD: &str = "lithe/function/register";
+pub const REGISTER_METHOD: &str = "lithe/function/register";
 /// Backend-to-host request withdrawing functions; running calls are revoked.
-pub(crate) const UNREGISTER_METHOD: &str = "lithe/function/unregister";
+pub const UNREGISTER_METHOD: &str = "lithe/function/unregister";
 /// Backend-to-host notification reporting progress of one running call.
-pub(crate) const PROGRESS_METHOD: &str = "lithe/function/progress";
+pub const PROGRESS_METHOD: &str = "lithe/function/progress";
 
 /// Upper bound of functions one session may have registered at a time.
 const MAX_FUNCTIONS: usize = 256;
@@ -56,15 +62,15 @@ const MAX_PLUGIN_ERROR_CODE_BYTES: usize = 64;
 const MAX_MESSAGE_BYTES: usize = 1024;
 /// Bound of one serialized function result. Larger documents belong in a
 /// domain protocol with its own decoder, not in a plugin-private reply.
-pub(crate) const MAX_RESULT_BYTES: usize = 1 << 20;
+pub const MAX_RESULT_BYTES: usize = 1 << 20;
 /// Upper bound of one invocation's deadline, matching build-provider requests.
-pub(crate) const MAX_FUNCTION_TIMEOUT_MS: u64 = 60 * 60_000;
+pub const MAX_FUNCTION_TIMEOUT_MS: u64 = 60 * 60_000;
 
 /// Host service that keeps secrets for the plugin, private to its ID.
-pub(crate) const HOST_SERVICE_CREDENTIALS: &str = "credentials";
+pub const HOST_SERVICE_CREDENTIALS: &str = "credentials";
 /// Host service listing open workspace contexts and their folders, granted
 /// by `workspace.metadata` to a `backend` process.
-pub(crate) const HOST_SERVICE_WORKSPACE: &str = "workspace";
+pub const HOST_SERVICE_WORKSPACE: &str = "workspace";
 /// Capability discovery. Every negotiated plugin-owned session has it;
 /// Core answers it without involving the host.
 const HOST_SERVICE_HOST: &str = "host";
@@ -76,7 +82,7 @@ const HOST_SERVICE_SUBSCRIPTIONS: &str = "subscriptions";
 /// manifest's `requires.pluginFunctions.calls`, not from a permission: the
 /// caller's declaration plus the provider's `exports` is the consent, and
 /// Core's relay checks both on every call.
-pub(crate) const HOST_SERVICE_FUNCTIONS: &str = "functions";
+pub const HOST_SERVICE_FUNCTIONS: &str = "functions";
 /// Services granted as a whole by their aggregate grant. Every other host
 /// method is granted individually, so adding a method to `workspace` or
 /// `editor` never widens an existing permission.
@@ -88,7 +94,7 @@ pub(crate) const GRANTABLE_HOST_SERVICES: &[&str] = &[
 
 /// Whether a launch grant names a service granted as a whole or an implemented
 /// host method.
-pub(crate) fn is_host_grant(grant: &str) -> bool {
+pub fn is_host_grant(grant: &str) -> bool {
     GRANTABLE_HOST_SERVICES.contains(&grant)
         || HOST_METHODS
             .iter()
@@ -97,7 +103,7 @@ pub(crate) fn is_host_grant(grant: &str) -> bool {
 
 /// Methods admitted by one manifest permission. The platform intersects these
 /// with its registered method handlers before starting the backend.
-pub(crate) fn methods_for_permission(permission: &str) -> Vec<&'static str> {
+pub fn methods_for_permission(permission: &str) -> Vec<&'static str> {
     HOST_METHODS
         .iter()
         .filter(|entry| entry.permission == Some(permission))
@@ -106,7 +112,7 @@ pub(crate) fn methods_for_permission(permission: &str) -> Vec<&'static str> {
 }
 
 /// Permissions for the additive host services.
-pub(crate) const HOST_PERMISSIONS: &[&str] = &[
+pub const HOST_PERMISSIONS: &[&str] = &[
     "workspace.files.read",
     "workspace.files.watch",
     "workspace.search",
@@ -129,7 +135,7 @@ pub(crate) const HOST_PERMISSIONS: &[&str] = &[
 /// Permission of the `languageServer` host service (plan API-25): a backend
 /// may send requests and notifications to, and report the status of, the
 /// language servers its own plugin declares.
-pub(crate) const PERMISSION_LANGUAGE_SERVER_REQUEST: &str = "languageServer.request";
+pub const PERMISSION_LANGUAGE_SERVER_REQUEST: &str = "languageServer.request";
 /// Permission of `documents/registerContentProvider` (plan API-12): the
 /// backend supplies the read-only text of URIs of a scheme it registers.
 pub(crate) const PERMISSION_DOCUMENTS_CONTENT_PROVIDER: &str = "documents.contentProvider";
@@ -137,32 +143,33 @@ pub(crate) const PERMISSION_DOCUMENTS_CONTENT_PROVIDER: &str = "documents.conten
 const CREDENTIALS_GET: &str = "lithe/host/credentials/get";
 const CREDENTIALS_SET: &str = "lithe/host/credentials/set";
 const CREDENTIALS_DELETE: &str = "lithe/host/credentials/delete";
-pub(crate) const GET_CAPABILITIES: &str = "lithe/host/getCapabilities";
+/// Host method that reports the protocol version and granted host services.
+pub const GET_CAPABILITIES: &str = "lithe/host/getCapabilities";
 const SUBSCRIPTIONS_DISPOSE: &str = "lithe/host/subscriptions/dispose";
 const WORKSPACE_LIST_CONTEXTS: &str = "lithe/host/workspace/listContexts";
 const WORKSPACE_GET_CONTEXT: &str = "lithe/host/workspace/getContext";
 const WORKSPACE_GET_FOLDERS: &str = "lithe/host/workspace/getFolders";
 /// Backend request listing the plugins that export a function it may call.
-pub(crate) const FUNCTIONS_PROVIDERS: &str = "lithe/host/functions/providers";
+pub const FUNCTIONS_PROVIDERS: &str = "lithe/host/functions/providers";
 /// Backend request calling a function another plugin exports.
-pub(crate) const FUNCTIONS_INVOKE: &str = "lithe/host/functions/invoke";
+pub const FUNCTIONS_INVOKE: &str = "lithe/host/functions/invoke";
 const MAX_CREDENTIAL_KEY_BYTES: usize = 128;
 /// Bound of one stored secret, in UTF-8 bytes; enough for a password, a
 /// token, or a private key, not for documents.
 pub(crate) const MAX_CREDENTIAL_SECRET_BYTES: usize = 16 * 1024;
 /// Host requests one session may have awaiting the host's answer.
-pub(crate) const MAX_PENDING_HOST_REQUESTS: usize = 16;
+pub const MAX_PENDING_HOST_REQUESTS: usize = 16;
 /// Bound of the serialized `details` object of one host failure; enough
 /// for a few numbers and identifiers, not for documents.
 pub(crate) const MAX_HOST_DETAILS_BYTES: usize = 4 * 1024;
 /// Bound of the serialized params of one host-to-backend notification,
 /// the same as one function result.
-pub(crate) const MAX_HOST_NOTIFICATION_BYTES: usize = MAX_RESULT_BYTES;
+pub const MAX_HOST_NOTIFICATION_BYTES: usize = MAX_RESULT_BYTES;
 
 /// Stable codes of the plugin-function contract. Synchronous refusals carry
 /// them in `CoreError::details`; asynchronous outcomes in the runtime error's
 /// `code`; refused backend requests in the JSON-RPC error's `data.code`.
-pub(crate) mod codes {
+pub mod codes {
     /// The session cannot serve plugin functions: it belongs to no plugin, or
     /// its backend did not negotiate the protocol.
     pub const UNAVAILABLE: &str = "plugin.function.unavailable";
@@ -283,14 +290,16 @@ pub(crate) mod codes {
 /// The host routes by plugin identity first, so a reference can never reach
 /// a session of another plugin.
 pub struct FunctionReference {
+    /// Plugin that registered the function.
     #[serde(rename = "pluginID")]
     pub plugin_id: String,
+    /// Function ID within that plugin.
     #[serde(rename = "functionID")]
     pub function_id: String,
 }
 
 /// What a session knows when an invocation is planned.
-pub(crate) struct FunctionSession<'a> {
+pub struct FunctionSession<'a> {
     /// Plugin that started the session; `None` for host-owned servers.
     pub plugin_id: Option<&'a str>,
     /// Whether the backend negotiated a supported protocol version.
@@ -301,8 +310,10 @@ pub(crate) struct FunctionSession<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Terminal failure of one invocation, before it becomes a runtime error.
-pub(crate) struct FunctionFailure {
+pub struct FunctionFailure {
+    /// Stable contract code of the failure.
     pub code: &'static str,
+    /// Bounded message for the user.
     pub message: String,
     /// Plugin-defined code from `error.data.code`, for the plugin's own UI.
     /// Lithe never interprets it.
@@ -311,15 +322,17 @@ pub(crate) struct FunctionFailure {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// One accepted progress report.
-pub(crate) struct FunctionProgress {
+pub struct FunctionProgress {
+    /// Operation the report belongs to.
     pub operation_id: String,
+    /// Bounded status text, when the backend sent one.
     pub message: Option<String>,
     /// Whole percent in `0..=100`.
     pub percentage: Option<u64>,
 }
 
 /// The client half of the negotiation, placed under `capabilities.experimental`.
-pub(crate) fn client_experimental_capabilities() -> (&'static str, Value) {
+pub fn client_experimental_capabilities() -> (&'static str, Value) {
     (
         EXPERIMENTAL_KEY,
         json!({ "versions": supported_versions() }),
@@ -330,7 +343,7 @@ pub(crate) fn client_experimental_capabilities() -> (&'static str, Value) {
 /// client offered, or `None` when the protocol was not negotiated. A
 /// malformed function list rejects the whole answer, so a session never
 /// starts with half a registry.
-pub(crate) fn negotiate(capabilities: &Value) -> Option<(u64, BTreeSet<String>)> {
+pub fn negotiate(capabilities: &Value) -> Option<(u64, BTreeSet<String>)> {
     let answer = capabilities
         .get("experimental")
         .and_then(|experimental| experimental.get(EXPERIMENTAL_KEY))?;
@@ -348,7 +361,7 @@ pub(crate) fn negotiate(capabilities: &Value) -> Option<(u64, BTreeSet<String>)>
 /// The registry after a `lithe/function/register` request. The request is
 /// all or nothing: one malformed, duplicate, or already registered function,
 /// or exceeding the session limit, refuses every function in it.
-pub(crate) fn apply_registration(
+pub fn apply_registration(
     current: &BTreeSet<String>,
     params: Option<&Value>,
 ) -> Result<BTreeSet<String>, &'static str> {
@@ -364,7 +377,7 @@ pub(crate) fn apply_registration(
 
 /// The registry and the withdrawn IDs after a `lithe/function/unregister`
 /// request, all or nothing like registration.
-pub(crate) fn apply_unregistration(
+pub fn apply_unregistration(
     current: &BTreeSet<String>,
     params: Option<&Value>,
 ) -> Result<(BTreeSet<String>, Vec<String>), &'static str> {
@@ -390,7 +403,7 @@ pub(crate) fn apply_unregistration(
 /// Params of the `lithe/function/invoke` request for `reference`, or the
 /// refusal with its stable code in `details`. Checks run in a fixed order so
 /// every host reports the same code for the same request.
-pub(crate) fn plan_invocation(
+pub fn plan_invocation(
     session: &FunctionSession<'_>,
     reference: &FunctionReference,
     operation_id: &str,
@@ -448,7 +461,7 @@ pub(crate) fn plan_invocation(
 /// Normalizes the backend's JSON-RPC response to an invocation. A success is
 /// wrapped as `{ "value": result }` like build-provider replies, so `null` is
 /// a valid result distinct from a missing one.
-pub(crate) fn invocation_outcome(response: &Value) -> Result<Value, FunctionFailure> {
+pub fn invocation_outcome(response: &Value) -> Result<Value, FunctionFailure> {
     if let Some(error) = response.get("error") {
         let message = error
             .get("message")
@@ -482,7 +495,7 @@ pub(crate) fn invocation_outcome(response: &Value) -> Result<Value, FunctionFail
 
 /// A progress report that is well formed, or `None` to ignore it. Whether the
 /// operation is still running is the engine's check, not this function's.
-pub(crate) fn parse_progress(params: Option<&Value>) -> Option<FunctionProgress> {
+pub fn parse_progress(params: Option<&Value>) -> Option<FunctionProgress> {
     let params = params?.as_object()?;
     let operation_id = params.get("operationID")?.as_str()?.to_string();
     let message = match params.get("message") {
@@ -505,7 +518,7 @@ pub(crate) fn parse_progress(params: Option<&Value>) -> Option<FunctionProgress>
 /// requesting backend, whose handler would then wait on itself; host
 /// capabilities are offered only to a plugin-owned session that negotiated
 /// the protocol.
-pub(crate) fn refused_backend_request(method: &str) -> Option<&'static str> {
+pub fn refused_backend_request(method: &str) -> Option<&'static str> {
     if method == INVOKE_METHOD
         || method.starts_with("lithe/build/")
         || method.starts_with("lithe/keymap/")
@@ -520,11 +533,12 @@ pub(crate) fn refused_backend_request(method: &str) -> Option<&'static str> {
 
 /// Why a backend's `lithe/host/*` request is not forwarded to the host.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct HostRequestRefusal {
+pub struct HostRequestRefusal {
     /// JSON-RPC error code of the answer.
     pub rpc_code: i64,
     /// Stable contract code, sent as `error.data.code`.
     pub code: &'static str,
+    /// Message of the JSON-RPC error.
     pub message: &'static str,
     /// Sent as `error.data.details`, such as the `option` a host does not
     /// support.
@@ -533,7 +547,7 @@ pub(crate) struct HostRequestRefusal {
 
 /// Where an accepted `lithe/host/*` request goes.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum HostRoute {
+pub enum HostRoute {
     /// To the host, as a `hostRequest` event of this service.
     Forward(&'static str),
     /// Answered by Core with this result; the host never sees the request.
@@ -919,7 +933,7 @@ fn is_implicit_service(service: &str) -> bool {
 /// `plugin.host.unsupportedOption` naming it, so a later host can add it as
 /// an option without a new version and a backend can tell an option this
 /// host lacks from a malformed request.
-pub(crate) fn host_request(
+pub fn host_request(
     method: &str,
     params: Option<&Value>,
     version: Option<u64>,
@@ -969,7 +983,7 @@ pub(crate) fn host_request(
 /// The params the host receives for an accepted request: the backend's own,
 /// except that a status message is cut to the bound a progress message has,
 /// so a hostile backend cannot inflate every event that carries it.
-pub(crate) fn forwarded_host_params(method: &str, params: Option<&Value>) -> Value {
+pub fn forwarded_host_params(method: &str, params: Option<&Value>) -> Value {
     let mut forwarded = params.cloned().unwrap_or(Value::Null);
     if method == LANGUAGE_SERVER_SET_STATUS {
         if let Some(message) = forwarded.get_mut("message") {
@@ -1151,7 +1165,7 @@ fn is_language_server_state(value: &str) -> bool {
 /// backend negotiated no protocol version (`version` is `None`), so the host
 /// may skip it; a method outside the table, one whose service the session
 /// was not granted, or malformed params are the host's mistake and refused.
-pub(crate) fn host_notification(
+pub fn host_notification(
     method: &str,
     params: &Value,
     version: Option<u64>,
@@ -1414,22 +1428,21 @@ fn check_host_params(rule: HostParams, params: Option<&Value>) -> Result<(), Hos
             let provider = params
                 .get("providerID")
                 .and_then(Value::as_str)
-                .is_some_and(crate::plugins::keymap_import::valid_provider_id);
+                .is_some_and(lithe_plugin_keymap_import::valid_provider_id);
             let valid_chunk = !chunk
                 || (opaque_id("fileID")
                     && params
                         .get("offset")
                         .and_then(Value::as_u64)
                         .is_some_and(|offset| {
-                            offset <= crate::plugins::keymap_import::MAX_INPUT_FILE_BYTES as u64
+                            offset <= lithe_plugin_keymap_import::MAX_INPUT_FILE_BYTES as u64
                         })
                     && params
                         .get("maximumBytes")
                         .and_then(Value::as_u64)
                         .is_some_and(|size| {
                             size > 0
-                                && size
-                                    <= crate::plugins::keymap_import::MAX_INPUT_CHUNK_BYTES as u64
+                                && size <= lithe_plugin_keymap_import::MAX_INPUT_CHUNK_BYTES as u64
                         }));
             if !opaque_id("snapshotID") || !provider || !valid_chunk {
                 return Err(invalid(
@@ -1653,10 +1666,7 @@ pub(crate) fn is_context_reference(value: &Value) -> bool {
 /// Adds the workspace context the host named to the params of one
 /// `lithe/function/invoke`. A malformed reference is refused, and a call
 /// without a context is written unchanged.
-pub(crate) fn attach_context(
-    invoke_params: &mut Value,
-    context: Option<&Value>,
-) -> Result<(), CoreError> {
+pub fn attach_context(invoke_params: &mut Value, context: Option<&Value>) -> Result<(), CoreError> {
     let Some(context) = context else {
         return Ok(());
     };
@@ -1680,7 +1690,7 @@ pub(crate) fn attach_context(
 /// key state by caller without trusting anything in the params. A call the
 /// host itself starts (`caller` is `None`) never carries one: its absence
 /// means the host.
-pub(crate) fn attach_caller(invoke_params: &mut Value, caller: Option<&str>) {
+pub fn attach_caller(invoke_params: &mut Value, caller: Option<&str>) {
     let Some(caller) = caller else {
         return;
     };
@@ -1694,7 +1704,7 @@ pub(crate) fn attach_caller(invoke_params: &mut Value, caller: Option<&str>) {
 /// standard meaning keep the JSON-RPC or LSP number, and the rest take
 /// numbers from the server-defined range, after -32000, which backends use
 /// for their own failures.
-pub(crate) fn host_rpc_code(code: &str) -> i64 {
+pub fn host_rpc_code(code: &str) -> i64 {
     match code {
         codes::HOST_UNAVAILABLE => -32601,
         codes::HOST_INVALID_PARAMS => -32602,
@@ -1738,7 +1748,7 @@ pub(crate) fn host_rpc_code(code: &str) -> i64 {
 /// serialized, such as the current version of a `versionConflict` or the
 /// index of the edit a range error names. Anything else is dropped, so a
 /// host cannot inflate the reply or send a value a backend must not parse.
-pub(crate) fn bounded_host_details(details: Option<&Value>) -> Option<Value> {
+pub fn bounded_host_details(details: Option<&Value>) -> Option<Value> {
     let details = details?;
     if !details.is_object() {
         return None;
@@ -1751,7 +1761,7 @@ pub(crate) fn bounded_host_details(details: Option<&Value>) -> Option<Value> {
 /// host failed a forwarded request. Only the codes a host may report pass
 /// through; anything else, including none, is `plugin.host.failed`, so a
 /// host cannot impersonate Core's own refusals of other kinds.
-pub(crate) fn host_failure(code: Option<&str>) -> (&'static str, i64) {
+pub fn host_failure(code: Option<&str>) -> (&'static str, i64) {
     let code = match code {
         Some(codes::HOST_UNAVAILABLE) => codes::HOST_UNAVAILABLE,
         Some(codes::HOST_PERMISSION_DENIED) => codes::HOST_PERMISSION_DENIED,
@@ -1792,7 +1802,7 @@ fn is_credential_key(value: &str) -> bool {
 }
 
 /// Truncates a host's failure message like a backend's.
-pub(crate) fn bounded_host_message(value: &str) -> String {
+pub fn bounded_host_message(value: &str) -> String {
     bounded_message(value)
 }
 
@@ -1825,7 +1835,7 @@ fn descriptor_ids(
 }
 
 /// The manifest's plugin ID alphabet: lowercase letters, digits, `.` and `-`.
-pub(crate) fn is_plugin_id(value: &str) -> bool {
+pub fn is_plugin_id(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= MAX_PLUGIN_ID_BYTES
         && value.chars().all(|character| {

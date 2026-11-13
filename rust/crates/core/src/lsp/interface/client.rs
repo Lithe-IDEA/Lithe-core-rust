@@ -1,6 +1,5 @@
 //! Pure LSP client-state transitions and JSON-RPC message construction.
 
-use super::plugin_function;
 use super::types::*;
 use crate::lsp::apply_content_changes_sequential;
 use crate::protocol::{CoreError, ErrorCode};
@@ -406,20 +405,20 @@ pub(super) fn client_apply_server_message_for_plugin(
                     responses.push(json_rpc_result(id, Value::Null)?);
                 }
             }
-            plugin_function::REGISTER_METHOD | plugin_function::UNREGISTER_METHOD
+            lithe_plugin_rpc::REGISTER_METHOD | lithe_plugin_rpc::UNREGISTER_METHOD
                 if plugin_owned
                     && !state.shutdown_requested
                     && state
                         .server_capabilities
                         .iter()
-                        .any(|feature| feature == plugin_function::FUNCTIONS_FEATURE) =>
+                        .any(|feature| feature == lithe_plugin_rpc::FUNCTIONS_FEATURE) =>
             {
                 let params = message.get("params");
-                let outcome = if method == plugin_function::REGISTER_METHOD {
-                    plugin_function::apply_registration(&state.plugin_functions, params)
+                let outcome = if method == lithe_plugin_rpc::REGISTER_METHOD {
+                    lithe_plugin_rpc::apply_registration(&state.plugin_functions, params)
                         .map(|registry| (registry, Vec::new()))
                 } else {
-                    plugin_function::apply_unregistration(&state.plugin_functions, params)
+                    lithe_plugin_rpc::apply_unregistration(&state.plugin_functions, params)
                 };
                 match outcome {
                     Ok((registry, removed)) => {
@@ -447,7 +446,7 @@ pub(super) fn client_apply_server_message_for_plugin(
                                 id,
                                 -32602,
                                 reason,
-                                plugin_function::codes::INVALID_REGISTRATION,
+                                lithe_plugin_rpc::codes::INVALID_REGISTRATION,
                             )?);
                         }
                     }
@@ -472,17 +471,17 @@ pub(super) fn client_apply_server_message_for_plugin(
                     });
                 }
             }
-            plugin_function::PROGRESS_METHOD
+            lithe_plugin_rpc::PROGRESS_METHOD
                 if plugin_owned
                     && !state.shutdown_requested
                     && state
                         .server_capabilities
                         .iter()
-                        .any(|feature| feature == plugin_function::FUNCTIONS_FEATURE) =>
+                        .any(|feature| feature == lithe_plugin_rpc::FUNCTIONS_FEATURE) =>
             {
                 // Malformed reports are dropped here; reports for an operation
                 // that is no longer running are dropped by the engine.
-                if let Some(progress) = plugin_function::parse_progress(message.get("params")) {
+                if let Some(progress) = lithe_plugin_rpc::parse_progress(message.get("params")) {
                     let mut result = json!({ "operationID": progress.operation_id });
                     if let Some(text) = progress.message {
                         result["message"] = json!(text);
@@ -537,7 +536,7 @@ pub(super) fn client_apply_server_message_for_plugin(
             }
             _ if plugin_owned && request_id.is_some() && method.starts_with("lithe/host/") => {
                 let id = request_id.expect("guarded above");
-                match plugin_function::host_request(
+                match lithe_plugin_rpc::host_request(
                     method,
                     message.get("params"),
                     state.plugin_function_version,
@@ -545,17 +544,17 @@ pub(super) fn client_apply_server_message_for_plugin(
                 ) {
                     // The engine answers once the host has; the request
                     // carries the backend's own ID back to it.
-                    Ok(plugin_function::HostRoute::Answer(mut result)) => {
+                    Ok(lithe_plugin_rpc::HostRoute::Answer(mut result)) => {
                         // getCapabilities also reports the options of the
                         // granted host services.
-                        if let (plugin_function::GET_CAPABILITIES, Some(editor)) =
+                        if let (lithe_plugin_rpc::GET_CAPABILITIES, Some(editor)) =
                             (method, &state.host_options.editor)
                         {
                             editor.report(&mut result, &state.host_services);
                         }
                         responses.push(json_rpc_result(id, result)?)
                     }
-                    Ok(plugin_function::HostRoute::Forward(service)) => {
+                    Ok(lithe_plugin_rpc::HostRoute::Forward(service)) => {
                         events.push(LspClientEvent {
                             kind: "hostRequest".to_string(),
                             request_id: None,
@@ -566,7 +565,7 @@ pub(super) fn client_apply_server_message_for_plugin(
                             result: Some(json!({
                                 "id": id,
                                 "service": service,
-                                "params": plugin_function::forwarded_host_params(
+                                "params": lithe_plugin_rpc::forwarded_host_params(
                                     method,
                                     message.get("params"),
                                 ),
@@ -577,7 +576,7 @@ pub(super) fn client_apply_server_message_for_plugin(
                     // Another plugin's function: the engine's relay checks the
                     // call against the plugins' manifests and answers the
                     // backend itself, so the reducer only names the request.
-                    Ok(plugin_function::HostRoute::Relay) => events.push(LspClientEvent {
+                    Ok(lithe_plugin_rpc::HostRoute::Relay) => events.push(LspClientEvent {
                         kind: "functionRelayRequest".to_string(),
                         request_id: None,
                         method: Some(method.to_string()),
@@ -606,7 +605,7 @@ pub(super) fn client_apply_server_message_for_plugin(
             }
             _ => {
                 if let Some(id) = request_id {
-                    responses.push(match plugin_function::refused_backend_request(method) {
+                    responses.push(match lithe_plugin_rpc::refused_backend_request(method) {
                         Some(code) => json_rpc_error_with_code(
                             id,
                             -32601,
@@ -651,7 +650,7 @@ pub(super) fn client_apply_server_message_for_plugin(
                 }
                 let functions = plugin_owned
                     .then(|| {
-                        plugin_function::negotiate(
+                        lithe_plugin_rpc::negotiate(
                             result.get("capabilities").unwrap_or(&Value::Null),
                         )
                     })
@@ -674,7 +673,7 @@ pub(super) fn client_apply_server_message_for_plugin(
                     state.plugin_function_version = None;
                     state
                         .server_capabilities
-                        .retain(|feature| feature != plugin_function::FUNCTIONS_FEATURE);
+                        .retain(|feature| feature != lithe_plugin_rpc::FUNCTIONS_FEATURE);
                 }
                 // Only a plugin's own process may act as a VCS provider; a
                 // host-owned server that happens to answer is ignored.
@@ -903,7 +902,7 @@ fn experimental_capabilities(
         let (logging_key, logging_offer) =
             super::plugin_logging::client_experimental_capabilities();
         experimental[logging_key] = logging_offer;
-        let (functions_key, functions_offer) = plugin_function::client_experimental_capabilities();
+        let (functions_key, functions_offer) = lithe_plugin_rpc::client_experimental_capabilities();
         experimental[functions_key] = functions_offer;
         let (vcs_key, vcs_offer) = super::vcs_provider::client_experimental_capabilities();
         experimental[vcs_key] = vcs_offer;
@@ -1438,7 +1437,7 @@ fn lsp_feature_result_for_method(method: Option<&str>, result: Option<&Value>) -
         // reinterprets fields of the document Core decodes.
         Some(method)
             if super::build_provider::is_build_method(method)
-                || method == plugin_function::INVOKE_METHOD =>
+                || method == lithe_plugin_rpc::INVOKE_METHOD =>
         {
             Some(json!({ "value": result }))
         }
@@ -2061,8 +2060,8 @@ fn feature_names_from_capabilities(capabilities: &Value) -> Vec<String> {
     if super::build_provider::negotiated(capabilities) {
         insert_unique(&mut values, super::build_provider::BUILD_PROVIDER_FEATURE);
     }
-    if plugin_function::negotiate(capabilities).is_some() {
-        insert_unique(&mut values, plugin_function::FUNCTIONS_FEATURE);
+    if lithe_plugin_rpc::negotiate(capabilities).is_some() {
+        insert_unique(&mut values, lithe_plugin_rpc::FUNCTIONS_FEATURE);
     }
     if super::vcs_provider::negotiate(capabilities).is_some() {
         insert_unique(&mut values, super::vcs_provider::VCS_PROVIDER_FEATURE);

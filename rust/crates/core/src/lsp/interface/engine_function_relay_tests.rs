@@ -13,11 +13,11 @@
 //! outcomes use synthetic instants passed to `expire_deadlines_at`.
 
 use super::super::function_relay::RelaySnapshot;
-use super::super::plugin_function::FunctionReference;
 use super::tests::start_request;
 use super::*;
 use lithe_lsp_transport::process::{LspProcessLauncher, LspProcessSpec, LspProcessStreams};
 use lithe_lsp_transport::scripted::ScriptedServer;
+use lithe_plugin_rpc::FunctionReference;
 
 const PYTHON: &str = "dev.lithe.fixture.python";
 const GO: &str = "dev.lithe.fixture.go";

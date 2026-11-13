@@ -157,7 +157,7 @@ pub struct DeclarativePluginManifest {
     project_generators: Vec<crate::project_generators::ProjectGeneratorDeclaration>,
     /// The plugin's own process serving its pages; see `super::backend`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    backend: Option<super::backend::BackendDeclaration>,
+    backend: Option<lithe_plugin_backend::BackendDeclaration>,
     /// Tool policies owned by plugins, never a host-maintained definition table.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     tool_definitions: Vec<Value>,
@@ -166,7 +166,7 @@ pub struct DeclarativePluginManifest {
     toolchain_providers: Vec<Value>,
     /// Independent shortcut importers implemented by this plugin's backend.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    keymap_import_providers: Vec<super::keymap_import::ProviderDeclaration>,
+    keymap_import_providers: Vec<lithe_plugin_keymap_import::ProviderDeclaration>,
     /// Tool-definition IDs the plugin's processes and Run requests name;
     /// hosts resolve them through plugin-owned toolchains.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -178,7 +178,7 @@ pub struct DeclarativePluginManifest {
     /// Functions this plugin exports to other plugins and the exported
     /// functions it calls; see `super::plugin_functions`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    plugin_functions: Option<super::plugin_functions::PluginFunctionsDeclaration>,
+    plugin_functions: Option<lithe_plugin_functions::PluginFunctionsDeclaration>,
 }
 
 /// UI supplied by plugins. The host owns every window shell: docking, title,
@@ -514,6 +514,12 @@ impl lithe_plugin_model::PluginManifest for DeclarativePluginManifest {
     }
 }
 
+impl lithe_plugin_keymap_import::KeymapImportManifest for DeclarativePluginManifest {
+    fn keymap_import_providers(&self) -> &[lithe_plugin_keymap_import::ProviderDeclaration] {
+        &self.keymap_import_providers
+    }
+}
+
 impl crate::vcs::VcsManifest for DeclarativePluginManifest {
     fn vcs_providers(&self) -> &[crate::vcs::VcsProviderDeclaration] {
         &self.vcs_providers
@@ -637,7 +643,10 @@ pub fn validate_manifest_value(value: Value) -> Validation<DeclarativePluginMani
     for (field, limit) in [
         ("toolDefinitions", 32),
         ("toolchainProviders", 8),
-        ("keymapImportProviders", super::keymap_import::MAX_PROVIDERS),
+        (
+            "keymapImportProviders",
+            lithe_plugin_keymap_import::MAX_PROVIDERS,
+        ),
     ] {
         if value.get(field).is_some_and(|section| {
             !section
@@ -875,12 +884,12 @@ impl DeclarativePluginManifest {
         self.validate_backend_launches()?;
         self.validate_toolchains()?;
         if !self.keymap_import_providers.is_empty() {
-            super::keymap_import::validate_declarations(&mut self.keymap_import_providers)?;
+            lithe_plugin_keymap_import::validate_declarations(&mut self.keymap_import_providers)?;
             self.validate_packaged_provider_backend()?;
         }
         self.validate_plugin_functions()?;
         if let Some(backend) = &self.backend {
-            backend.validate(&super::backend::DeclarationContext {
+            backend.validate(&lithe_plugin_backend::DeclarationContext {
                 declared_settings: &declared_settings,
                 has_web_window: self
                     .ui
@@ -890,7 +899,7 @@ impl DeclarativePluginManifest {
                 activates_on_workspace_open: self
                     .activation_events
                     .iter()
-                    .any(|event| event == super::backend::ON_WORKSPACE_OPEN),
+                    .any(|event| event == lithe_plugin_backend::ON_WORKSPACE_OPEN),
                 // A language server the backend launches starts the backend
                 // when the host asks it for the server's command line; an
                 // exported function starts it when another plugin calls it.
@@ -902,7 +911,7 @@ impl DeclarativePluginManifest {
                         .iter()
                         .any(|server| server.process.is_backend_launch())
                     || self.plugin_functions.as_ref().is_some_and(
-                        super::plugin_functions::PluginFunctionsDeclaration::exports_any,
+                        lithe_plugin_functions::PluginFunctionsDeclaration::exports_any,
                     ),
                 runtime_tools,
             })?;
@@ -1051,7 +1060,7 @@ impl DeclarativePluginManifest {
                 "Exported and called plugin functions need the plugin backend.",
             ));
         }
-        super::plugin_functions::validate(section)
+        lithe_plugin_functions::validate(section)
     }
 
     /// Host-queried providers must start without relying on the discovery they provide.
@@ -1179,8 +1188,7 @@ impl DeclarativePluginManifest {
     fn validate_permissions(&mut self) -> Validation<()> {
         for permission in &self.permissions {
             if !KNOWN_PERMISSIONS.contains(&permission.as_str())
-                && !crate::lsp::interface::plugin_function::HOST_PERMISSIONS
-                    .contains(&permission.as_str())
+                && !lithe_plugin_rpc::HOST_PERMISSIONS.contains(&permission.as_str())
             {
                 return Err(PluginRejection::at(
                     "plugin.permission.unknown",
@@ -1289,7 +1297,7 @@ impl DeclarativePluginManifest {
         if self
             .permissions
             .iter()
-            .any(|p| crate::lsp::interface::plugin_function::HOST_PERMISSIONS.contains(&p.as_str()))
+            .any(|p| lithe_plugin_rpc::HOST_PERMISSIONS.contains(&p.as_str()))
             && self.backend.is_none()
         {
             return Err(invalid(
@@ -1328,8 +1336,7 @@ impl DeclarativePluginManifest {
         // The backend reaches only the servers whose session fields expose
         // them; the grant without one would show the user a capability
         // nothing exercises.
-        let language_server_request =
-            crate::lsp::interface::plugin_function::PERMISSION_LANGUAGE_SERVER_REQUEST;
+        let language_server_request = lithe_plugin_rpc::PERMISSION_LANGUAGE_SERVER_REQUEST;
         if self
             .language_servers
             .iter()
@@ -1398,7 +1405,7 @@ impl DeclarativePluginManifest {
         // because pages and commands can start it too, so it is checked here
         // and kept out of the exact provider match below.
         if self.backend.is_some() {
-            declared.remove(super::backend::ON_WORKSPACE_OPEN);
+            declared.remove(lithe_plugin_backend::ON_WORKSPACE_OPEN);
         }
         // Every provider needs an event, and every event needs a provider:
         // an event without one would promise activation the host cannot do.
@@ -1474,18 +1481,17 @@ impl DeclarativePluginManifest {
             return services;
         }
         if self.permissions.iter().any(|p| p == PERMISSION_CREDENTIALS) {
-            services.push(super::backend::HOST_SERVICE_CREDENTIALS);
+            services.push(lithe_plugin_backend::HOST_SERVICE_CREDENTIALS);
         }
         if self
             .permissions
             .iter()
             .any(|p| p == PERMISSION_WORKSPACE_METADATA)
         {
-            services.push(super::backend::HOST_SERVICE_WORKSPACE);
+            services.push(lithe_plugin_backend::HOST_SERVICE_WORKSPACE);
         }
         for permission in &self.permissions {
-            services
-                .extend(crate::lsp::interface::plugin_function::methods_for_permission(permission));
+            services.extend(lithe_plugin_rpc::methods_for_permission(permission));
         }
         // Calling another plugin's exported function takes no permission: the
         // declaration, and the receiver's own export, are the consent. The
@@ -1493,9 +1499,9 @@ impl DeclarativePluginManifest {
         if self
             .plugin_functions
             .as_ref()
-            .is_some_and(super::plugin_functions::PluginFunctionsDeclaration::calls_any)
+            .is_some_and(lithe_plugin_functions::PluginFunctionsDeclaration::calls_any)
         {
-            services.push(crate::lsp::interface::plugin_function::HOST_SERVICE_FUNCTIONS);
+            services.push(lithe_plugin_rpc::HOST_SERVICE_FUNCTIONS);
         }
         services.sort_unstable();
         services.dedup();
@@ -1651,7 +1657,7 @@ impl DeclarativePluginManifest {
             programs.extend(crate::project_generators::programs(generator));
         }
         if let Some(backend) = &self.backend {
-            programs.extend(super::backend::programs(backend));
+            programs.extend(lithe_plugin_backend::programs(backend));
         }
         // Order by kind, then language or tool, then the full serialized
         // value as a total tie-breaker; duplicates (two servers needing the
@@ -2654,7 +2660,7 @@ fn backend_launch_plan(
         )
     })?;
     let mut plan = server_launch_plan(manifest, &backend.process, None, request)?;
-    plan["backend"] = super::backend::plan_descriptor(
+    plan["backend"] = lithe_plugin_backend::plan_descriptor(
         manifest.capability_version(capabilities::BACKEND),
         &manifest.backend_host_services(),
     );

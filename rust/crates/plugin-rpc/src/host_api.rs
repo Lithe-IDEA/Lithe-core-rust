@@ -4,18 +4,18 @@
 //! method table and grant decisions stay with the same Core code that already
 //! validates backend requests, so a new method cannot widen an old grant.
 
-use crate::lsp::interface::plugin_function::{self, HOST_METHODS, HOST_SERVICE_FUNCTIONS};
-use crate::protocol::{CoreError, ErrorCode};
+use crate::{capabilities_answer, HOST_METHODS, HOST_SERVICE_FUNCTIONS};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
 /// Describes host methods using the same catalog as backend request routing.
-pub(crate) fn describe_command(payload: Value) -> Result<Value, CoreError> {
+pub fn describe_command(payload: Value) -> Result<Value, CoreError> {
     if payload.as_object().is_none_or(|object| !object.is_empty()) {
         return Err(invalid());
     }
-    let implicit = plugin_function::capabilities_answer(0, &BTreeSet::new());
+    let implicit = capabilities_answer(0, &BTreeSet::new());
     let methods: Vec<Value> = HOST_METHODS
         .iter()
         .map(|entry| {
@@ -45,7 +45,7 @@ struct Authorization {
 }
 
 /// Reuses Core's capability decisions with the host's current session grants.
-pub(crate) fn authorize_command(payload: Value) -> Result<Value, CoreError> {
+pub fn authorize_command(payload: Value) -> Result<Value, CoreError> {
     let input: Authorization = serde_json::from_value(payload).map_err(|_| invalid())?;
     if input.method.len() > 256
         || input.service.len() > 128
@@ -61,7 +61,7 @@ pub(crate) fn authorize_command(payload: Value) -> Result<Value, CoreError> {
         return Ok(json!({"allowed":false,"code":"plugin.host.unavailable"}));
     }
     let grants = input.grants.into_iter().collect();
-    let capabilities = plugin_function::capabilities_answer(0, &grants);
+    let capabilities = capabilities_answer(0, &grants);
     let allowed = capabilities["services"][&input.service]["methods"]
         .as_array()
         .is_some_and(|methods| methods.iter().any(|method| method == &input.method));
@@ -104,10 +104,9 @@ mod tests {
 
     #[test]
     fn authorization_does_not_widen_metadata_grants_or_accept_spoofed_services() {
-        let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../fixtures/plugins/host-api-v1.json"
-        ))
-        .unwrap();
+        let fixture: Value =
+            serde_json::from_str(include_str!("../../../fixtures/plugins/host-api-v1.json"))
+                .unwrap();
         for case in fixture["authorization"].as_array().unwrap() {
             assert_eq!(
                 authorize_command(case["input"].clone()).unwrap(),

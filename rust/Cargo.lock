@@ -915,13 +915,17 @@ dependencies = [
  "lithe-lsp-policy",
  "lithe-lsp-transport",
  "lithe-network",
+ "lithe-plugin-backend",
  "lithe-plugin-content-providers",
  "lithe-plugin-editor",
+ "lithe-plugin-functions",
  "lithe-plugin-grammar",
+ "lithe-plugin-keymap-import",
  "lithe-plugin-language-servers",
  "lithe-plugin-model",
  "lithe-plugin-native-ui",
  "lithe-plugin-output-links",
+ "lithe-plugin-rpc",
  "lithe-process",
  "lithe-project",
  "lithe-project-generators",
@@ -1113,6 +1117,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lithe-plugin-backend"
+version = "0.1.0"
+dependencies = [
+ "lithe-plugin-model",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "lithe-plugin-content-providers"
 version = "0.1.0"
 dependencies = [
@@ -1133,10 +1146,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "lithe-plugin-functions"
+version = "0.1.0"
+dependencies = [
+ "lithe-plugin-model",
+ "serde",
+]
+
+[[package]]
 name = "lithe-plugin-grammar"
 version = "0.1.0"
 dependencies = [
  "lithe-plugin-model",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-plugin-keymap-import"
+version = "0.1.0"
+dependencies = [
+ "lithe-plugin-model",
+ "lithe-protocol",
  "serde",
  "serde_json",
 ]
@@ -1180,6 +1211,18 @@ dependencies = [
  "lithe-protocol",
  "lithe-toolchain",
  "regex",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-plugin-rpc"
+version = "0.1.0"
+dependencies = [
+ "lithe-plugin-keymap-import",
+ "lithe-plugin-language-servers",
+ "lithe-plugin-model",
+ "lithe-protocol",
  "serde",
  "serde_json",
 ]

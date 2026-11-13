@@ -1,0 +1,14 @@
+[package]
+name = "lithe-plugin-rpc"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Plugin backend JSON-RPC: litheFunctions negotiation, function calls, the host-method and host-notification catalog and its grants"
+
+[dependencies]
+lithe-plugin-keymap-import = { path = "../plugin-keymap-import" }
+lithe-plugin-language-servers = { path = "../plugin-language-servers" }
+lithe-plugin-model = { path = "../plugin-model" }
+lithe-protocol = { path = "../protocol" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }

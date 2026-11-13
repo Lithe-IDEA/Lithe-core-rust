@@ -483,7 +483,7 @@ pub struct PluginFunctionRequest {
     pub session_id: String,
     #[serde(default)]
     pub operation_id: Option<String>,
-    pub function: super::plugin_function::FunctionReference,
+    pub function: lithe_plugin_rpc::FunctionReference,
     /// Serializable function input; must be a JSON object.
     #[serde(default = "empty_object")]
     pub params: Value,
@@ -2274,11 +2274,11 @@ impl RuntimeSession {
                 .client
                 .server_capabilities
                 .iter()
-                .any(|feature| feature == super::plugin_function::FUNCTIONS_FEATURE);
+                .any(|feature| feature == lithe_plugin_rpc::FUNCTIONS_FEATURE);
             // Progress echoes this per-request wire ID, never the reusable host ID.
             let wire_operation_id = state.client.next_request_id.to_string();
-            let params = super::plugin_function::plan_invocation(
-                &super::plugin_function::FunctionSession {
+            let params = lithe_plugin_rpc::plan_invocation(
+                &lithe_plugin_rpc::FunctionSession {
                     plugin_id: self.plugin_id.as_deref(),
                     negotiated,
                     functions: &state.client.plugin_functions,
@@ -2288,19 +2288,19 @@ impl RuntimeSession {
                 &request.params,
             )?;
             let mut params = params;
-            super::plugin_function::attach_context(&mut params, request.context.as_ref())?;
-            super::plugin_function::attach_caller(&mut params, caller);
+            lithe_plugin_rpc::attach_context(&mut params, request.context.as_ref())?;
+            lithe_plugin_rpc::attach_caller(&mut params, caller);
             let timeout = request
                 .timeout_milliseconds
                 .map(|milliseconds| {
                     Duration::from_millis(
-                        milliseconds.clamp(1, super::plugin_function::MAX_FUNCTION_TIMEOUT_MS),
+                        milliseconds.clamp(1, lithe_plugin_rpc::MAX_FUNCTION_TIMEOUT_MS),
                     )
                 })
                 .unwrap_or(state.request_timeout);
             let response = allocate_raw_request(
                 state.client.clone(),
-                super::plugin_function::INVOKE_METHOD,
+                lithe_plugin_rpc::INVOKE_METHOD,
                 params,
             )?;
             let request_id = (response.state.next_request_id - 1).to_string();
@@ -2311,7 +2311,7 @@ impl RuntimeSession {
                 PendingRequest {
                     kind: PendingKind::Feature,
                     operation_id: Some(operation_id.clone()),
-                    method: super::plugin_function::INVOKE_METHOD.to_string(),
+                    method: lithe_plugin_rpc::INVOKE_METHOD.to_string(),
                     document_uri: None,
                     document_version: None,
                     created_at: now,
@@ -2352,29 +2352,28 @@ impl RuntimeSession {
                 })?;
             match (response.result, response.error) {
                 (_, Some(failure)) => {
-                    let (code, rpc_code) =
-                        super::plugin_function::host_failure(failure.code.as_deref());
+                    let (code, rpc_code) = lithe_plugin_rpc::host_failure(failure.code.as_deref());
                     let mut data = json!({ "code": code });
                     if let Some(details) =
-                        super::plugin_function::bounded_host_details(failure.details.as_ref())
+                        lithe_plugin_rpc::bounded_host_details(failure.details.as_ref())
                     {
                         data["details"] = details;
                     }
                     json_rpc_error_with_data(
                         &backend_id,
                         rpc_code,
-                        &super::plugin_function::bounded_host_message(&failure.message),
+                        &lithe_plugin_rpc::bounded_host_message(&failure.message),
                         data,
                     )?
                 }
                 (result, None) => {
                     let result = result.unwrap_or(Value::Null);
-                    if result.to_string().len() > super::plugin_function::MAX_RESULT_BYTES {
+                    if result.to_string().len() > lithe_plugin_rpc::MAX_RESULT_BYTES {
                         json_rpc_error_with_code(
                             &backend_id,
                             -32014,
                             "Host result exceeds the byte limit.",
-                            super::plugin_function::codes::HOST_LIMIT_EXCEEDED,
+                            lithe_plugin_rpc::codes::HOST_LIMIT_EXCEEDED,
                         )?
                     } else {
                         json_rpc_result(&backend_id, result)?
@@ -2404,7 +2403,7 @@ impl RuntimeSession {
                     "Language server is not ready.",
                 ));
             }
-            let delivered = super::plugin_function::host_notification(
+            let delivered = lithe_plugin_rpc::host_notification(
                 &notification.method,
                 &notification.params,
                 state.client.plugin_function_version,
@@ -2497,7 +2496,7 @@ impl RuntimeSession {
                 .cloned()
                 .ok_or_else(|| {
                     CoreError::new(ErrorCode::InvalidRequest, "settings must be an object.")
-                        .with_details(super::plugin_function::codes::HOST_INVALID_PARAMS)
+                        .with_details(lithe_plugin_rpc::codes::HOST_INVALID_PARAMS)
                 })?;
             return Ok(self.update_plugin_configuration(settings)?.sent);
         }
@@ -3137,23 +3136,22 @@ impl RuntimeSession {
                 }
                 Some(PendingKind::Feature)
                     if pending_before.as_ref().is_some_and(|pending| {
-                        pending.method == super::plugin_function::INVOKE_METHOD
+                        pending.method == lithe_plugin_rpc::INVOKE_METHOD
                     }) =>
                 {
                     if let Some(operation_id) = pending_before
                         .as_ref()
                         .and_then(|pending| pending.operation_id.as_ref())
                     {
-                        let (result, error) =
-                            match super::plugin_function::invocation_outcome(&value) {
-                                Ok(result) => (Some(result), None),
-                                Err(failure) => (None, Some(function_runtime_error(self, failure))),
-                            };
+                        let (result, error) = match lithe_plugin_rpc::invocation_outcome(&value) {
+                            Ok(result) => (Some(result), None),
+                            Err(failure) => (None, Some(function_runtime_error(self, failure))),
+                        };
                         push_request_event(
                             self,
                             &mut state,
                             operation_id,
-                            super::plugin_function::INVOKE_METHOD,
+                            lithe_plugin_rpc::INVOKE_METHOD,
                             result,
                             error,
                         );
@@ -4080,7 +4078,7 @@ fn validate_start_request(request: &StartServerRequest) -> Result<(), CoreError>
             || request
                 .host_services
                 .iter()
-                .any(|service| !super::plugin_function::is_host_grant(service)))
+                .any(|service| !lithe_plugin_rpc::is_host_grant(service)))
     {
         return Err(invalid_field("hostServices"));
     }
@@ -4625,13 +4623,13 @@ fn pending_function_request<'a>(
             .pending_requests
             .get(&call.request_id)
             .map(String::as_str)
-            != Some(super::plugin_function::INVOKE_METHOD)
+            != Some(lithe_plugin_rpc::INVOKE_METHOD)
     {
         return None;
     }
     state.pending.get(&call.request_id).filter(|pending| {
         pending.kind == PendingKind::Feature
-            && pending.method == super::plugin_function::INVOKE_METHOD
+            && pending.method == lithe_plugin_rpc::INVOKE_METHOD
             && pending.operation_id.as_deref() == Some(operation_id)
     })
 }
@@ -4662,8 +4660,8 @@ fn revoke_function_calls_locked(
         };
         state.pending.remove(&request_id);
         state.client.pending_requests.remove(&request_id);
-        let failure = super::plugin_function::FunctionFailure {
-            code: super::plugin_function::codes::REVOKED,
+        let failure = lithe_plugin_rpc::FunctionFailure {
+            code: lithe_plugin_rpc::codes::REVOKED,
             message: "The plugin withdrew this function while it was running.".to_string(),
             plugin_error_code: None,
         };
@@ -4672,7 +4670,7 @@ fn revoke_function_calls_locked(
             session,
             state,
             &operation_id,
-            super::plugin_function::INVOKE_METHOD,
+            lithe_plugin_rpc::INVOKE_METHOD,
             None,
             Some(error),
         );
@@ -4788,7 +4786,7 @@ fn push_function_progress_locked(
             session_id: session.id.clone(),
             state: None,
             operation_id: Some(operation_id),
-            method: Some(super::plugin_function::INVOKE_METHOD.to_string()),
+            method: Some(lithe_plugin_rpc::INVOKE_METHOD.to_string()),
             uri: None,
             version: None,
             diagnostics: None,
@@ -4917,7 +4915,7 @@ fn cancel_host_request_locked(
         &backend_id,
         -32800,
         "The plugin process cancelled this host-service request.",
-        super::plugin_function::codes::HOST_CANCELLED,
+        lithe_plugin_rpc::codes::HOST_CANCELLED,
     )?);
     let sequence = take_sequence(state);
     enqueue_runtime_event(
@@ -4964,11 +4962,11 @@ fn forward_host_request_locked(
     request: Value,
 ) -> Result<Vec<String>, CoreError> {
     let backend_id = request.get("id").cloned().unwrap_or(Value::Null);
-    if state.host_requests.len() >= super::plugin_function::MAX_PENDING_HOST_REQUESTS {
-        let code = super::plugin_function::codes::HOST_LIMIT_EXCEEDED;
+    if state.host_requests.len() >= lithe_plugin_rpc::MAX_PENDING_HOST_REQUESTS {
+        let code = lithe_plugin_rpc::codes::HOST_LIMIT_EXCEEDED;
         return Ok(vec![json_rpc_error_with_code(
             &backend_id,
-            super::plugin_function::host_rpc_code(code),
+            lithe_plugin_rpc::host_rpc_code(code),
             "Too many host-service requests are waiting for the host.",
             code,
         )?]);
@@ -5052,13 +5050,13 @@ fn push_functions_event(session: &RuntimeSession, state: &mut SessionState, resu
 
 fn function_runtime_error(
     session: &RuntimeSession,
-    failure: super::plugin_function::FunctionFailure,
+    failure: lithe_plugin_rpc::FunctionFailure,
 ) -> LspRuntimeError {
     let mut error = runtime_error(
         session,
         failure.code,
         "request",
-        Some(super::plugin_function::INVOKE_METHOD),
+        Some(lithe_plugin_rpc::INVOKE_METHOD),
         None,
         &failure.message,
         None,
@@ -5225,7 +5223,7 @@ fn plugin_server_answer(
     method: &str,
     reply: &Value,
 ) -> (Option<Value>, Option<LspRuntimeError>) {
-    use super::plugin_function::{bounded_host_message, codes, MAX_RESULT_BYTES};
+    use lithe_plugin_rpc::{bounded_host_message, codes, MAX_RESULT_BYTES};
     let failure = |code: &str, message: &str| {
         runtime_error(
             session,
@@ -9667,7 +9665,7 @@ mod tests {
                 PluginFunctionRequest {
                     session_id: harness.session_id.clone(),
                     operation_id: Some(operation_id.clone()),
-                    function: super::super::plugin_function::FunctionReference {
+                    function: lithe_plugin_rpc::FunctionReference {
                         plugin_id: plugin_id.to_string(),
                         function_id: function_id.to_string(),
                     },
@@ -10694,7 +10692,7 @@ mod tests {
     #[test]
     fn unanswered_host_requests_are_bounded() {
         let harness = host_service_backend(&["credentials"]);
-        let limit = super::super::plugin_function::MAX_PENDING_HOST_REQUESTS;
+        let limit = lithe_plugin_rpc::MAX_PENDING_HOST_REQUESTS;
         for index in 0..=limit {
             harness.server.send(json!({
                 "jsonrpc": "2.0", "id": format!("read-{index}"),
@@ -10986,7 +10984,7 @@ mod tests {
                 PluginFunctionRequest {
                     session_id: harness.session_id.clone(),
                     operation_id: Some(operation_id.clone()),
-                    function: super::super::plugin_function::FunctionReference {
+                    function: lithe_plugin_rpc::FunctionReference {
                         plugin_id: FUNCTION_PLUGIN.to_string(),
                         function_id: "snapshot.refresh".to_string(),
                     },

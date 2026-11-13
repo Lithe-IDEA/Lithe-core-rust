@@ -23,7 +23,7 @@ node shared/plugins/scripts/sdk-e2e.mjs                  # 三个 SDK 对当前 
 ```
 
 修改 `shared/plugins/contract/v1/`、`rust/crates/plugin-model/src/capabilities.rs` 或
-`rust/crates/core/src/lsp/interface/plugin_function.rs` 的 PR，要在同一个 PR 里更新
+`rust/crates/plugin-rpc/src/lib.rs` 的 PR，要在同一个 PR 里更新
 [协议更新记录](shared/plugins/reference/protocol-changelog.md)。
 
 ---
@@ -43,4 +43,4 @@ Lithe's cross-platform application core, and the single source of the plugin con
 
 **Plugin authors** start at [`shared/plugins/README.md`](shared/plugins/README.md) and never need to clone the Lithe application repository.
 
-A pull request that changes `shared/plugins/contract/v1/`, `rust/crates/plugin-model/src/capabilities.rs` or `rust/crates/core/src/lsp/interface/plugin_function.rs` updates the [protocol changelog](shared/plugins/reference/protocol-changelog.md) in the same pull request.
+A pull request that changes `shared/plugins/contract/v1/`, `rust/crates/plugin-model/src/capabilities.rs` or `rust/crates/plugin-rpc/src/lib.rs` updates the [protocol changelog](shared/plugins/reference/protocol-changelog.md) in the same pull request.

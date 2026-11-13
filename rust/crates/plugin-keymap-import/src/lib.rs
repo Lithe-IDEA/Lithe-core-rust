@@ -1,28 +1,31 @@
 //! Shared validation for normalized shortcut import provider replies.
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_plugin_model::PluginManifest;
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Maximum number of import providers one plugin may declare or negotiate.
-pub(crate) const MAX_PROVIDERS: usize = 8;
+pub const MAX_PROVIDERS: usize = 8;
 const MAX_BYTES: usize = 1024 * 1024;
 const MAX_COMMANDS: usize = 4096;
 const MAX_KEYS_PER_COMMAND: usize = 8;
 const MAX_INPUT_SELECTORS: usize = 16;
 const MAX_RECOGNITION_PROBES: usize = 16;
 const MAX_INPUT_FILES: usize = 128;
-pub(crate) const MAX_INPUT_FILE_BYTES: usize = 1_048_576;
+/// Largest declared input file a provider may read.
+pub const MAX_INPUT_FILE_BYTES: usize = 1_048_576;
 const MAX_INPUT_TOTAL_BYTES: usize = 8_388_608;
-pub(crate) const MAX_INPUT_CHUNK_BYTES: usize = 131_072;
+/// Largest chunk of an input file one host read returns.
+pub const MAX_INPUT_CHUNK_BYTES: usize = 131_072;
 const MAX_DIRECTORY_ENTRIES: usize = 4_096;
 const MAX_DIRECTORY_MATCHES: usize = 64;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 /// One plugin-owned importer; the identifier is local to its package.
-pub(crate) struct ProviderDeclaration {
+pub struct ProviderDeclaration {
     id: String,
     display_name: String,
     recognition: Vec<RecognitionProbe>,
@@ -83,7 +86,7 @@ fn valid_selector(selector: &InputSelector) -> bool {
 }
 
 /// Plugin-local provider IDs are opaque and cannot be paths.
-pub(crate) fn valid_provider_id(id: &str) -> bool {
+pub fn valid_provider_id(id: &str) -> bool {
     id.len() <= 64
         && id.as_bytes().first().is_some_and(u8::is_ascii_lowercase)
         && id
@@ -92,7 +95,7 @@ pub(crate) fn valid_provider_id(id: &str) -> bool {
 }
 
 /// Validates and orders provider declarations without knowing their source formats.
-pub(crate) fn validate_declarations(
+pub fn validate_declarations(
     providers: &mut [ProviderDeclaration],
 ) -> lithe_plugin_model::Validation<()> {
     let mut ids = BTreeSet::new();
@@ -244,7 +247,7 @@ fn supported_key(key: &str) -> bool {
 
 /// Validates an untrusted provider reply against the host's current action IDs.
 /// This does not inspect source formats, resolve conditions or apply the bindings.
-pub(crate) fn decode_command(payload: Value) -> Result<Value, CoreError> {
+pub fn decode_command(payload: Value) -> Result<Value, CoreError> {
     if serde_json::to_vec(&payload).map_err(|_| invalid())?.len() > MAX_BYTES {
         return Err(invalid());
     }
@@ -310,7 +313,7 @@ struct CurrentBindings {
 /// Plans only the keys displaced by an import; existing custom owners and
 /// duplicate imported claims are conflicts. The host applies the result only
 /// after rechecking the current settings and source revisions.
-pub(crate) fn plan_bindings_command(payload: Value) -> Result<Value, CoreError> {
+pub fn plan_bindings_command(payload: Value) -> Result<Value, CoreError> {
     if serde_json::to_vec(&payload).map_err(|_| invalid())?.len() > MAX_BYTES {
         return Err(invalid());
     }
@@ -412,9 +415,16 @@ struct SourcePlanRequest {
     provider_id: String,
 }
 
+/// What a source plan reads from one plugin manifest that the plugin host
+/// validated; the host's manifest type implements it.
+pub trait KeymapImportManifest: PluginManifest {
+    /// The manifest's validated `keymapImportProviders`.
+    fn keymap_import_providers(&self) -> &[ProviderDeclaration];
+}
+
 /// Plans the declared inputs for a plugin-local import provider. The caller
 /// supplies a previously accepted manifest; this operation also validates it.
-pub(crate) fn plan_sources_command(payload: Value) -> Result<Value, CoreError> {
+pub fn plan_sources_command<M: KeymapImportManifest>(payload: Value) -> Result<Value, CoreError> {
     let bad_plan = || {
         CoreError::new(
             ErrorCode::InvalidRequest,
@@ -428,17 +438,13 @@ pub(crate) fn plan_sources_command(payload: Value) -> Result<Value, CoreError> {
     if !valid_provider_id(&request.provider_id) {
         return Err(bad_plan());
     }
-    let manifest =
-        super::declarative::validate_manifest_value(request.manifest).map_err(|_| bad_plan())?;
-    let manifest = serde_json::to_value(manifest).map_err(|_| bad_plan())?;
-    let provider = manifest["keymapImportProviders"]
-        .as_array()
-        .and_then(|providers| {
-            providers
-                .iter()
-                .find(|provider| provider["id"] == request.provider_id)
-        })
+    let manifest = M::validate(request.manifest).map_err(|_| bad_plan())?;
+    let provider = manifest
+        .keymap_import_providers()
+        .iter()
+        .find(|provider| provider.id == request.provider_id)
         .ok_or_else(bad_plan)?;
+    let provider = serde_json::to_value(provider).map_err(|_| bad_plan())?;
     Ok(serde_json::json!({
         "inputs": provider["inputs"],
         "recognition": provider["recognition"],
@@ -453,33 +459,13 @@ pub(crate) fn plan_sources_command(payload: Value) -> Result<Value, CoreError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_command, plan_sources_command};
+    use super::decode_command;
     use serde_json::{json, Value};
-
-    #[test]
-    fn import_binding_plans_follow_shared_fixtures() {
-        let fixtures: Value = serde_json::from_str(include_str!(
-            "../../../../fixtures/keymap/import-plan-v1.json"
-        ))
-        .unwrap();
-        for case in fixtures["cases"].as_array().unwrap() {
-            let request = json!({"id": "fixture", "command": "keymap.planImportBindings", "payload": case["request"]});
-            let response: Value =
-                serde_json::from_str(&crate::execute_json(&request.to_string())).unwrap();
-            if let Some(expected) = case.get("expected") {
-                assert_eq!(response["ok"], true, "{}: {response}", case["name"]);
-                assert_eq!(&response["data"], expected, "{}", case["name"]);
-            } else {
-                assert_eq!(response["ok"], false, "{}", case["name"]);
-                assert!(response.get("data").is_none());
-            }
-        }
-    }
 
     #[test]
     fn normalized_import_provider_replies_follow_shared_fixtures() {
         let fixtures: Value = serde_json::from_str(include_str!(
-            "../../../../fixtures/keymap/import-provider-v1.json"
+            "../../../fixtures/keymap/import-provider-v1.json"
         ))
         .unwrap();
         for case in fixtures["cases"].as_array().unwrap() {
@@ -493,31 +479,6 @@ mod tests {
                 );
             } else {
                 assert!(actual.is_err(), "{name}");
-            }
-        }
-    }
-
-    #[test]
-    fn dispatcher_returns_the_validated_reply_without_partial_results() {
-        let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../fixtures/keymap/import-provider-v1.json"
-        ))
-        .unwrap();
-        for case in fixture["cases"].as_array().unwrap() {
-            let request = json!({"id": "fixture", "command": "keymap.decodeImport", "payload": case["request"]});
-            let response: Value =
-                serde_json::from_str(&crate::execute_json(&request.to_string())).unwrap();
-            assert_eq!(response["id"], "fixture");
-            match case.get("expected") {
-                Some(expected) => {
-                    assert_eq!(response["ok"], true, "{}", case["name"]);
-                    assert_eq!(&response["data"], expected, "{}", case["name"]);
-                }
-                None => {
-                    assert_eq!(response["ok"], false, "{}", case["name"]);
-                    assert_eq!(response["error"]["code"], "invalid_request");
-                    assert!(response.get("data").is_none());
-                }
             }
         }
     }
@@ -544,140 +505,5 @@ mod tests {
             ]}}))
             .is_err()
         );
-    }
-
-    #[test]
-    fn import_provider_manifest_is_generic_bounded_and_permission_checked() {
-        let plugin: Value = serde_json::from_str(include_str!(
-            "../../../../../shared/plugins/contract/v1/fixtures/keymap-import/keymap-import-provider.plugin.json"
-        ))
-        .unwrap();
-        let validate = crate::plugins::declarative::validate_manifest_value;
-        assert!(validate(plugin.clone()).is_ok());
-        let host_without_importers = json!({"backend": [0]});
-        let host_with_importers = json!({"backend": [0], "keymapImportProviders": [0]});
-        let command = crate::plugins::declarative::validate_command;
-        let rejected = command(json!({
-            "manifest": plugin,
-            "hostCapabilities": host_without_importers
-        }))
-        .unwrap();
-        assert_eq!(rejected["status"], "rejected");
-        assert_eq!(rejected["error"]["code"], "plugin.api.unsupported");
-        let accepted = command(json!({
-            "manifest": plugin,
-            "hostCapabilities": host_with_importers
-        }))
-        .unwrap();
-        assert_eq!(accepted["status"], "ok");
-
-        let mut duplicate = plugin.clone();
-        duplicate["keymapImportProviders"][1]["id"] = json!("first");
-        assert!(validate(duplicate).is_err());
-        let mut malformed = plugin.clone();
-        malformed["keymapImportProviders"][0]["id"] = json!("../private");
-        assert!(validate(malformed).is_err());
-        let mut traversal = plugin.clone();
-        traversal["keymapImportProviders"][0]["inputs"][0]["path"] = json!("../credentials");
-        assert!(validate(traversal).is_err());
-        let mut wildcard = plugin.clone();
-        wildcard["keymapImportProviders"][1]["inputs"][1]["extension"] = json!("*");
-        assert!(validate(wildcard).is_err());
-        let mut duplicate_inputs = plugin.clone();
-        duplicate_inputs["keymapImportProviders"][0]["inputs"] = json!([
-            {"kind": "file", "path": "bindings.json"},
-            {"kind": "file", "path": "bindings.json"}
-        ]);
-        assert!(validate(duplicate_inputs).is_err());
-        let mut no_recognition = plugin.clone();
-        no_recognition["keymapImportProviders"][0]["recognition"] = json!([]);
-        assert!(validate(no_recognition).is_err());
-        let mut duplicate_recognition = plugin.clone();
-        duplicate_recognition["keymapImportProviders"][0]["recognition"] = json!([
-            {"kind": "file", "path": "bindings.json"}, {"kind": "file", "path": "bindings.json"}
-        ]);
-        assert!(validate(duplicate_recognition).is_err());
-        let mut bad_root = plugin.clone();
-        bad_root["keymapImportProviders"][0]["recognition"][1]["components"] =
-            json!(["..", "User"]);
-        assert!(validate(bad_root).is_err());
-        let mut bad_pattern = plugin.clone();
-        bad_pattern["keymapImportProviders"][0]["recognition"][1]["components"] =
-            json!(["First*", "User"]);
-        assert!(validate(bad_pattern).is_err());
-        let mut too_broad = plugin.clone();
-        too_broad["keymapImportProviders"][0]["recognition"][1]["components"] = json!(["*", "*"]);
-        assert!(validate(too_broad).is_err());
-        let mut unanchored = plugin.clone();
-        unanchored["keymapImportProviders"][0]["recognition"][1]["components"] =
-            json!(["*", "User"]);
-        assert!(validate(unanchored).is_err());
-        let mut international = plugin.clone();
-        international["keymapImportProviders"][0]["displayName"] = json!("编".repeat(64));
-        assert!(validate(international.clone()).is_ok());
-        international["keymapImportProviders"][0]["displayName"] = json!("编".repeat(65));
-        assert!(validate(international).is_err());
-        let mut no_grant = plugin.clone();
-        no_grant["permissions"] = json!(["backend.launch"]);
-        assert_eq!(
-            validate(no_grant).unwrap_err().code,
-            "plugin.permission.undeclared"
-        );
-        let mut no_source_grant = plugin.clone();
-        no_source_grant["permissions"] = json!(["backend.launch", "keymaps.provide"]);
-        assert_eq!(
-            validate(no_source_grant).unwrap_err().code,
-            "plugin.permission.undeclared"
-        );
-        let mut unknown_backend_version = plugin.clone();
-        unknown_backend_version["requires"]["backend"] = json!(1);
-        assert_eq!(
-            validate(unknown_backend_version).unwrap_err().code,
-            "plugin.api.unsupported"
-        );
-        let mut unsafe_launch = plugin.clone();
-        unsafe_launch["backend"]["launch"] =
-            json!({"kind": "runtime", "tool": "node", "entry": "main.mjs"});
-        assert!(validate(unsafe_launch).is_err());
-        let mut too_many = plugin;
-        too_many["keymapImportProviders"] = json!((0..9)
-            .map(|i| json!({"id": format!("provider-{i}"), "displayName": "Provider"}))
-            .collect::<Vec<_>>());
-        assert!(validate(too_many).is_err());
-    }
-
-    #[test]
-    fn source_plans_only_expose_inputs_of_the_requested_provider() {
-        let plugin: Value = serde_json::from_str(include_str!(
-            "../../../../../shared/plugins/contract/v1/fixtures/keymap-import/keymap-import-provider.plugin.json"
-        ))
-        .unwrap();
-        let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../fixtures/keymap/source-plans-v1.json"
-        ))
-        .unwrap();
-        for case in fixture["cases"].as_array().unwrap() {
-            let actual =
-                plan_sources_command(json!({"manifest": plugin, "providerID": case["providerID"]}));
-            if case["expected"].is_null() {
-                assert!(actual.is_err());
-            } else {
-                let actual = actual.unwrap();
-                assert_eq!(actual["inputs"], case["expected"]["inputs"]);
-                assert_eq!(actual["recognition"], case["expected"]["recognition"]);
-                assert_eq!(actual["limits"], fixture["limits"]);
-            }
-        }
-        let mut invalid = plugin;
-        invalid["keymapImportProviders"][0]["inputs"][0]["path"] = json!("../credentials");
-        assert!(
-            plan_sources_command(json!({"manifest": invalid, "providerID": "second"})).is_err()
-        );
-        let mut invalid: Value = serde_json::from_str(include_str!(
-            "../../../../../shared/plugins/contract/v1/fixtures/keymap-import/keymap-import-provider.plugin.json"
-        ))
-        .unwrap();
-        invalid["keymapImportProviders"][1]["recognition"][0]["path"] = json!("../private");
-        assert!(plan_sources_command(json!({"manifest": invalid, "providerID": "first"})).is_err());
     }
 }

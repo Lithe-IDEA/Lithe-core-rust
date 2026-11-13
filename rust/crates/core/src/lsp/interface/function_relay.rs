@@ -21,9 +21,9 @@
 //! The rules live in the plugin contract
 //! (`shared/plugins/contract/v1/README.md`, "Plugin functions").
 
-use super::plugin_function::{codes, is_plugin_id};
-use crate::plugins::plugin_functions::KNOWN_CONTEXTS;
+use lithe_plugin_functions::KNOWN_CONTEXTS;
 use lithe_plugin_model::is_function_id;
+use lithe_plugin_rpc::{codes, is_plugin_id};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};

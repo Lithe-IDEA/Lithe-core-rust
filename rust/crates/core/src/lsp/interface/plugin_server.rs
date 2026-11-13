@@ -14,12 +14,12 @@
 //! the operation's `requestCompleted` event. Cancelling, timing out, and
 //! failing the session therefore only pick the operations to complete.
 
-use super::plugin_function::{codes, MAX_HOST_NOTIFICATION_BYTES};
 use crate::protocol::{CoreError, ErrorCode};
 use lithe_plugin_language_servers::{
     is_protocol_name, matches_pattern, Gate, RemoteSupport, DID_CHANGE_CONFIGURATION,
     EXECUTE_COMMAND,
 };
+use lithe_plugin_rpc::{codes, MAX_HOST_NOTIFICATION_BYTES};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};

@@ -21,10 +21,10 @@ fn supported_versions() -> Vec<u64> {
 
 fn valid_offer(providers: &BTreeSet<String>) -> bool {
     !providers.is_empty()
-        && providers.len() <= crate::plugins::keymap_import::MAX_PROVIDERS
+        && providers.len() <= lithe_plugin_keymap_import::MAX_PROVIDERS
         && providers
             .iter()
-            .all(|id| crate::plugins::keymap_import::valid_provider_id(id))
+            .all(|id| lithe_plugin_keymap_import::valid_provider_id(id))
 }
 
 /// Offers this protocol only for a bounded set of declared provider identities.
@@ -107,8 +107,8 @@ mod tests {
     #[test]
     fn backend_cannot_recursively_invoke_an_import() {
         assert_eq!(
-            super::super::plugin_function::refused_backend_request(IMPORT_METHOD),
-            Some(super::super::plugin_function::codes::RECURSIVE_CALL)
+            lithe_plugin_rpc::refused_backend_request(IMPORT_METHOD),
+            Some(lithe_plugin_rpc::codes::RECURSIVE_CALL)
         );
     }
 }
