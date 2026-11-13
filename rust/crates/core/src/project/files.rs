@@ -1,7 +1,7 @@
 //! Workspace traversal, file operations, search, and replacement previews.
 
 use super::encoding::{self, DocumentEncoding};
-use super::file_name_order::FileNameKey;
+use lithe_core_rules::file_names::FileNameKey;
 use super::search_index::{self, UpdateOutcome, WorkspaceSearchIndex};
 use super::search_paging::SearchPage;
 use crate::protocol::{invalid_relative_path, CoreError, ErrorCode};
@@ -1550,7 +1550,7 @@ fn node_name(path: &Path) -> String {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ChildOrder {
     /// The rows the project tree displays: IDEA's natural file-name order, where digit
-    /// runs compare by value (see `file_name_order`).
+    /// runs compare by value (see `lithe_core_rules::file_names`).
     Tree,
     /// The sequence behind flat file lists and the search index: lowercased names in
     /// byte order. Consumers that keep only the first N entries of that sequence, such
