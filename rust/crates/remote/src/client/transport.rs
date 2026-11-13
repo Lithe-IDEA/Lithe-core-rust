@@ -26,12 +26,16 @@ const SSH_KEEPALIVE_MISSES: u32 = 3;
 /// Ordered hops from the local machine to the workspace host.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct TransportChain {
+    /// Hops in order, outermost first; empty for the local machine.
     pub hops: Vec<Hop>,
 }
 
+/// One hop of a transport chain.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Hop {
+    /// An SSH connection to a host.
     Ssh(SshHop),
+    /// An `exec` into a running container.
     Container(ContainerHop),
 }
 
@@ -44,12 +48,14 @@ pub struct SshHop {
     pub program: String,
     /// `host`, `user@host` or a `Host` alias from the SSH configuration.
     pub destination: String,
+    /// Port passed as `-p`; the SSH configuration decides when absent.
     pub port: Option<u16>,
     /// Extra `-o key=value` options, in order.
     pub options: Vec<(String, String)>,
 }
 
 impl SshHop {
+    /// A hop to `destination` with the default `ssh` executable and no options.
     pub fn new(destination: impl Into<String>) -> Self {
         Self {
             program: "ssh".into(),
@@ -60,9 +66,12 @@ impl SshHop {
     }
 }
 
+/// Container engine whose CLI runs the `exec`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ContainerEngine {
+    /// Docker, or a Docker-compatible CLI.
     Docker,
+    /// Podman.
     Podman,
 }
 
@@ -79,6 +88,7 @@ impl ContainerEngine {
 /// and Colima use the Docker engine with their own `program`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ContainerHop {
+    /// Engine whose command-line syntax the hop uses.
     pub engine: ContainerEngine,
     /// Engine CLI executable. Defaults to the engine name.
     pub program: String,
@@ -86,11 +96,15 @@ pub struct ContainerHop {
     pub container: String,
     /// `user`, `uid` or `user:group`; the image default when absent.
     pub user: Option<String>,
+    /// Working directory passed as `-w`; the image default when absent.
     pub working_directory: Option<String>,
+    /// Variables passed as `-e`; names must be valid environment variable names.
     pub environment: BTreeMap<String, String>,
 }
 
 impl ContainerHop {
+    /// A hop into `container` with the engine's default executable and the image
+    /// defaults for user, directory and environment.
     pub fn new(engine: ContainerEngine, container: impl Into<String>) -> Self {
         Self {
             engine,
@@ -103,14 +117,21 @@ impl ContainerHop {
     }
 }
 
+/// Why a transport chain could not build a command line.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TransportError {
     /// An argument that must cross an SSH hop contains a character that
     /// cannot be passed safely to every supported login shell.
-    UnsafeArgument { argument: String },
+    UnsafeArgument {
+        /// The rejected argument.
+        argument: String,
+    },
     /// A hop field is malformed, for example a destination starting with `-`
     /// that SSH would parse as an option.
-    InvalidHop { reason: String },
+    InvalidHop {
+        /// What is wrong, for people.
+        reason: String,
+    },
 }
 
 impl fmt::Display for TransportError {
@@ -128,10 +149,12 @@ impl fmt::Display for TransportError {
 impl std::error::Error for TransportError {}
 
 impl TransportChain {
+    /// The chain without hops, which runs programs on the local machine.
     pub fn local() -> Self {
         Self::default()
     }
 
+    /// A chain through `hops`, outermost first.
     pub fn new(hops: Vec<Hop>) -> Self {
         Self { hops }
     }

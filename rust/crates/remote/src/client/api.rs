@@ -45,17 +45,24 @@ const INPUT_RETRY_MAX: Duration = Duration::from_millis(50);
 pub struct WriteOptions {
     /// Version last read; the write fails with `CONFLICT` if the file changed.
     pub expected: Option<FileVersion>,
+    /// Replace an existing file without an `expected` check.
     pub overwrite: bool,
+    /// Create missing parent directories first.
     pub create_parents: bool,
 }
 
 /// What to run in [`RemoteSession::spawn`].
 #[derive(Clone, Debug, Default)]
 pub struct SpawnSpec {
+    /// Program and arguments; a program without `/` is resolved through `PATH`.
     pub argv: Vec<String>,
+    /// Absolute host working directory; the server's own when absent.
     pub cwd: Option<String>,
+    /// Base environment the `env` variables are applied to.
     pub environment: EnvironmentSource,
+    /// Variables added to, or replacing, the base environment.
     pub env: BTreeMap<String, String>,
+    /// Keep standard input open for [`ProcessHandle::write_stdin`].
     pub pipe_stdin: bool,
 }
 
@@ -64,48 +71,70 @@ pub struct SpawnSpec {
 pub struct TerminalSpec {
     /// `None` starts the user's login shell.
     pub argv: Option<Vec<String>>,
+    /// Absolute host working directory; when absent, the user's home, or `/`
+    /// without one.
     pub cwd: Option<String>,
+    /// Variables added to the server environment.
     pub env: BTreeMap<String, String>,
+    /// Initial width in character cells.
     pub columns: u16,
+    /// Initial height in character cells.
     pub rows: u16,
 }
 
 /// A finished process's collected output.
 #[derive(Debug, Default)]
 pub struct ProcessOutput {
+    /// Everything the process wrote to standard output.
     pub stdout: Vec<u8>,
+    /// Everything the process wrote to standard error.
     pub stderr: Vec<u8>,
+    /// Exit report; [`ProcessHandle::wait`] only returns once it arrived.
     pub exit: Option<ProcessExitEvent>,
 }
 
+/// An event of one spawned process.
 #[derive(Debug)]
 pub enum ProcessEvent {
+    /// Decoded bytes from one output stream.
     Output(OutputStream, Vec<u8>),
+    /// The process exited; no output follows.
     Exit(ProcessExitEvent),
 }
 
+/// An event of one terminal.
 #[derive(Debug)]
 pub enum TerminalEvent {
+    /// Decoded bytes the terminal's program wrote.
     Output(Vec<u8>),
+    /// The terminal's program exited; no output follows.
     Exit(TerminalExitEvent),
 }
 
+/// An event of one watch.
 #[derive(Debug)]
 pub enum WatchEvent {
+    /// Coalesced changes below the watched root.
     Changed(WatchChangedEvent),
+    /// The watch degraded or ended.
     Error(WatchErrorEvent),
 }
 
+/// An event of one tunnel.
 #[derive(Debug)]
 pub enum TunnelEvent {
+    /// Decoded bytes the target sent.
     Data(Vec<u8>),
+    /// The tunnel ended; no data follows.
     Closed(TunnelClosedEvent),
 }
 
 /// Every entry of a finished walk.
 #[derive(Debug)]
 pub struct WalkOutcome {
+    /// Entries in walk order.
     pub entries: Vec<WalkEntry>,
+    /// The walk's final report.
     pub done: WalkDoneEvent,
 }
 
@@ -141,20 +170,24 @@ impl RemoteSession {
         }
     }
 
+    /// Sends `server.ping` and returns the round-trip time.
     pub fn ping(&self) -> Result<Duration, ClientError> {
         let started = Instant::now();
         self.call_unit(methods::SERVER_PING, &json!({}))?;
         Ok(started.elapsed())
     }
 
+    /// Lists the processes, terminals and watches the session still runs.
     pub fn state(&self) -> Result<ServerState, ClientError> {
         self.call(methods::SERVER_STATE, &json!({}))
     }
 
+    /// Metadata of `path` itself, without following a final link.
     pub fn stat(&self, path: &str) -> Result<FileMetadata, ClientError> {
         self.call(methods::FS_STAT, &PathParams { path: path.into() })
     }
 
+    /// Lists one directory, sorted by name byte order.
     pub fn read_dir(&self, path: &str) -> Result<ReadDirResult, ClientError> {
         self.call(methods::FS_READ_DIR, &PathParams { path: path.into() })
     }
@@ -192,6 +225,7 @@ impl RemoteSession {
         }
     }
 
+    /// Replaces the whole file atomically and returns its metadata after the write.
     pub fn write_file(
         &self,
         path: &str,
@@ -210,6 +244,7 @@ impl RemoteSession {
         )
     }
 
+    /// Creates a directory; with `recursive`, also its missing parents.
     pub fn create_dir(&self, path: &str, recursive: bool) -> Result<(), ClientError> {
         self.call_unit(
             methods::FS_CREATE_DIR,
@@ -221,6 +256,7 @@ impl RemoteSession {
         )
     }
 
+    /// Removes a path; a non-empty directory needs `recursive`.
     pub fn remove(&self, path: &str, recursive: bool) -> Result<(), ClientError> {
         self.call_unit(
             methods::FS_REMOVE,
@@ -231,6 +267,7 @@ impl RemoteSession {
         )
     }
 
+    /// Renames or moves `from` to `to`.
     pub fn rename(&self, from: &str, to: &str, overwrite: bool) -> Result<(), ClientError> {
         self.call_unit(
             methods::FS_RENAME,
@@ -262,11 +299,13 @@ impl RemoteSession {
         )
     }
 
+    /// Resolves every link of `path`.
     pub fn real_path(&self, path: &str) -> Result<String, ClientError> {
         self.call::<_, RealPathResult>(methods::FS_REAL_PATH, &PathParams { path: path.into() })
             .map(|result| result.path)
     }
 
+    /// Sets the permission bits of `path`.
     pub fn set_permissions(&self, path: &str, mode: u32) -> Result<(), ClientError> {
         self.call_unit(
             methods::FS_SET_PERMISSIONS,
@@ -277,6 +316,7 @@ impl RemoteSession {
         )
     }
 
+    /// Reports whether the volume holding `path` is case-sensitive.
     pub fn volume_info(&self, path: &str) -> Result<VolumeInfo, ClientError> {
         self.call(methods::FS_VOLUME_INFO, &PathParams { path: path.into() })
     }
@@ -333,6 +373,7 @@ impl RemoteSession {
         result
     }
 
+    /// Spawns a process, subscribing to its events before it starts.
     pub fn spawn(&self, spec: SpawnSpec) -> Result<ProcessHandle<'_>, ClientError> {
         let process_id = self.allocate_id();
         let events = self.subscribe("process", process_id);
@@ -361,6 +402,7 @@ impl RemoteSession {
         }
     }
 
+    /// Opens a terminal, subscribing to its events before it starts.
     pub fn open_terminal(&self, spec: TerminalSpec) -> Result<TerminalHandle<'_>, ClientError> {
         let terminal_id = self.allocate_id();
         let events = self.subscribe("terminal", terminal_id);
@@ -400,6 +442,8 @@ impl RemoteSession {
         }
     }
 
+    /// Watches `root` recursively, subscribing to its events before the watch
+    /// starts.
     pub fn watch(
         &self,
         root: &str,
@@ -429,6 +473,8 @@ impl RemoteSession {
         }
     }
 
+    /// Returns the user's login environment; `refresh` re-runs the login shell
+    /// instead of using the session's cached result.
     pub fn resolve_environment(
         &self,
         refresh: bool,
@@ -440,11 +486,13 @@ impl RemoteSession {
         )
     }
 
+    /// Lists the TCP ports listening on the host.
     pub fn listening_ports(&self) -> Result<Vec<ListeningPort>, ClientError> {
         self.call::<_, ListeningPortsResult>(methods::PORTS_LISTENING, &json!({}))
             .map(|result| result.ports)
     }
 
+    /// Connects a tunnel to `target`, subscribing to its events before it opens.
     pub fn open_tunnel(&self, target: TunnelTarget) -> Result<TunnelHandle<'_>, ClientError> {
         let tunnel_id = self.allocate_id();
         let events = self.subscribe("tunnel", tunnel_id);
@@ -465,14 +513,19 @@ impl RemoteSession {
     }
 }
 
+/// A spawned process. Dropping it only ends the subscription; the process
+/// keeps running until it exits or is killed.
 pub struct ProcessHandle<'a> {
     session: &'a RemoteSession,
+    /// Client-chosen process id.
     pub id: u64,
+    /// Operating-system pid, for diagnostics only.
     pub pid: u32,
     events: Receiver<Event>,
 }
 
 impl ProcessHandle<'_> {
+    /// Writes to standard input, retrying while the process is not reading.
     pub fn write_stdin(&self, data: &[u8]) -> Result<(), ClientError> {
         self.session.call_input(
             methods::PROCESS_WRITE_STDIN,
@@ -480,6 +533,7 @@ impl ProcessHandle<'_> {
         )
     }
 
+    /// Closes standard input, so the process reads end-of-file.
     pub fn close_stdin(&self) -> Result<(), ClientError> {
         self.session.call_unit(
             methods::PROCESS_CLOSE_STDIN,
@@ -489,6 +543,8 @@ impl ProcessHandle<'_> {
         )
     }
 
+    /// Sends `SIGTERM`, or `SIGKILL` with `force`, to every process of the
+    /// process's session.
     pub fn kill(&self, force: bool) -> Result<(), ClientError> {
         self.session.call_unit(
             methods::PROCESS_KILL,
@@ -547,14 +603,19 @@ impl Drop for ProcessHandle<'_> {
     }
 }
 
+/// An open terminal. Dropping it only ends the subscription; the terminal
+/// keeps running until it exits or is closed.
 pub struct TerminalHandle<'a> {
     session: &'a RemoteSession,
+    /// Client-chosen terminal id.
     pub id: u64,
+    /// Operating-system pid of the terminal's program, for diagnostics only.
     pub pid: u32,
     events: Receiver<Event>,
 }
 
 impl TerminalHandle<'_> {
+    /// Writes input, retrying while the terminal is not read.
     pub fn write(&self, data: &[u8]) -> Result<(), ClientError> {
         self.session.call_input(
             methods::TERMINAL_WRITE,
@@ -565,6 +626,7 @@ impl TerminalHandle<'_> {
         )
     }
 
+    /// Changes the terminal's size in character cells.
     pub fn resize(&self, columns: u16, rows: u16) -> Result<(), ClientError> {
         self.session.call_unit(
             methods::TERMINAL_RESIZE,
@@ -586,6 +648,7 @@ impl TerminalHandle<'_> {
         )
     }
 
+    /// Next event, or `None` once the subscription ended.
     pub fn next_event(&self, timeout: Duration) -> Result<Option<TerminalEvent>, ClientError> {
         let Some(event) = receive_optional(&self.events, timeout)? else {
             return Ok(None);
@@ -603,8 +666,11 @@ impl Drop for TerminalHandle<'_> {
     }
 }
 
+/// An active watch. Dropping it only ends the subscription; the watch keeps
+/// running until it is stopped.
 pub struct WatchHandle<'a> {
     session: &'a RemoteSession,
+    /// Client-chosen watch id.
     pub id: u64,
     /// Directories registered by a per-directory backend.
     pub watched_directories: Option<u64>,
@@ -612,6 +678,7 @@ pub struct WatchHandle<'a> {
 }
 
 impl WatchHandle<'_> {
+    /// Next event, or `None` once the subscription ended.
     pub fn next_event(&self, timeout: Duration) -> Result<Option<WatchEvent>, ClientError> {
         let Some(event) = receive_optional(&self.events, timeout)? else {
             return Ok(None);
@@ -622,6 +689,7 @@ impl WatchHandle<'_> {
         }))
     }
 
+    /// Stops the watch.
     pub fn stop(&self) -> Result<(), ClientError> {
         self.session
             .call_unit(methods::WATCH_STOP, &WatchParams { watch_id: self.id })
@@ -634,21 +702,27 @@ impl Drop for WatchHandle<'_> {
     }
 }
 
+/// An open tunnel. Dropping it only ends the subscription; the tunnel stays
+/// open until it is closed or the connection ends.
 pub struct TunnelHandle<'a> {
     session: &'a RemoteSession,
+    /// Client-chosen tunnel id.
     pub id: u64,
     events: Receiver<Event>,
 }
 
 impl<'a> TunnelHandle<'a> {
+    /// Sends bytes, retrying while the target is not reading.
     pub fn write(&self, data: &[u8]) -> Result<(), ClientError> {
         self.writer().write(data)
     }
 
+    /// Ends the outgoing direction; see [`TunnelWriter::shutdown_write`].
     pub fn shutdown_write(&self) -> Result<(), ClientError> {
         self.writer().shutdown_write()
     }
 
+    /// Aborts both directions; see [`TunnelWriter::close`].
     pub fn close(&self) -> Result<(), ClientError> {
         self.writer().close()
     }
@@ -662,6 +736,7 @@ impl<'a> TunnelHandle<'a> {
         }
     }
 
+    /// Next event, or `None` once the subscription ended.
     pub fn next_event(&self, timeout: Duration) -> Result<Option<TunnelEvent>, ClientError> {
         let Some(event) = receive_optional(&self.events, timeout)? else {
             return Ok(None);
@@ -675,6 +750,7 @@ impl<'a> TunnelHandle<'a> {
     }
 }
 
+/// The write side of a tunnel, see [`TunnelHandle::writer`].
 #[derive(Clone, Copy)]
 pub struct TunnelWriter<'a> {
     session: &'a RemoteSession,
@@ -682,6 +758,7 @@ pub struct TunnelWriter<'a> {
 }
 
 impl TunnelWriter<'_> {
+    /// Sends bytes, retrying while the target is not reading.
     pub fn write(&self, data: &[u8]) -> Result<(), ClientError> {
         self.session.call_input(
             methods::TUNNEL_WRITE,

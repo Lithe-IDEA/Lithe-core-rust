@@ -59,7 +59,9 @@ const EXIT_POLL_INTERVAL: Duration = Duration::from_millis(20);
 /// Server-initiated notification.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Event {
+    /// Event name, `<family>.<name>`.
     pub event: String,
+    /// Event parameters, including the `<family>Id` of the resource.
     pub params: Value,
     /// Position in the session's event stream.
     pub seq: Option<u64>,
@@ -81,16 +83,19 @@ impl Event {
     }
 }
 
+/// Failure of a session request or of establishing the session.
 #[derive(Debug)]
 pub enum ClientError {
     /// The server answered with an error.
     Remote(RemoteError),
+    /// The transport chain could not build a command line.
     Transport(TransportError),
     /// The transport command could not be started.
     Spawn(io::Error),
     /// The stream ended or broke. `diagnostics` holds the transport's last
     /// standard-error output, which names SSH or container failures.
     Disconnected {
+        /// Last standard-error output of the transport, up to 8 KiB.
         diagnostics: String,
     },
     /// No response arrived in time. A late response is discarded.
@@ -165,11 +170,13 @@ type Routes = Mutex<HashMap<(String, u64), SyncSender<Event>>>;
 /// Options for establishing a session.
 #[derive(Clone, Debug)]
 pub struct ConnectOptions {
+    /// Client identification sent in `server.hello` for server diagnostics.
     pub client_name: String,
     /// Bounds transport start-up, the preamble and `server.hello` together.
     pub handshake_timeout: Duration,
     /// How long a persistent session keeps running without a client.
     pub idle_timeout: Option<Duration>,
+    /// When event delivery starts.
     pub resume: ResumeMode,
 }
 
@@ -178,7 +185,10 @@ pub struct ConnectOptions {
 pub enum ResumeMode {
     /// Right after `server.hello`, with every kept event after the given
     /// sequence number (`None`: every kept event). Suits new sessions.
-    Immediately { after_seq: Option<u64> },
+    Immediately {
+        /// Last sequence number the client already received.
+        after_seq: Option<u64>,
+    },
     /// Only when the caller calls [`RemoteSession::resume`]. A reconnecting
     /// client first reads `server.state` and subscribes to the resources it
     /// reattaches to, so their missed events reach those subscriptions.
@@ -298,6 +308,8 @@ impl Outgoing {
     }
 }
 
+/// A connected remote server: typed requests, resource subscriptions and the
+/// general event channel over one transport stream.
 pub struct RemoteSession {
     outgoing: Arc<Outgoing>,
     pending: Arc<Mutex<Pending>>,
@@ -531,6 +543,8 @@ impl RemoteSession {
         receiver
     }
 
+    /// Ends the subscription of one resource; its later events go to the general
+    /// event channel.
     pub fn unsubscribe(&self, family: &str, id: u64) {
         lock(&self.routes).remove(&(family.to_owned(), id));
     }

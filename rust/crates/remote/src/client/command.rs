@@ -20,15 +20,19 @@ const EXIT_POLL_INTERVAL: Duration = Duration::from_millis(20);
 /// keep them open indefinitely.
 const OUTPUT_DRAIN_GRACE: Duration = Duration::from_millis(500);
 
+/// Result of a finished one-shot command.
 #[derive(Debug)]
 pub struct CommandOutput {
     /// Exit code; `None` when the command was terminated by a signal.
     pub status: Option<i32>,
+    /// Standard output, at most the first 1 MiB.
     pub stdout: Vec<u8>,
+    /// Standard error, at most the first 1 MiB.
     pub stderr: Vec<u8>,
 }
 
 impl CommandOutput {
+    /// Whether the command exited with status 0.
     pub fn success(&self) -> bool {
         self.status == Some(0)
     }
