@@ -2658,7 +2658,7 @@ same plugin, for example from that plugin's own window, and another plugin
 can call only an [exported function](#cross-plugin-calls).
 Functions complement the
 typed domain protocols; they never replace them. The protocol is implemented in
-Rust Core (`rust/crates/plugin-rpc/src/lib.rs` and
+Rust Core (`rust/crates/plugin-rpc/src/` and
 `rust/crates/plugin-function-relay/src/lib.rs`).
 A host starts every build provider process as a session of the plugin that
 owns it and invokes its functions from that plugin's web pages (the
