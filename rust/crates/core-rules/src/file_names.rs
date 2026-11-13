@@ -8,12 +8,11 @@
 //!
 //! Adapted from intellij-community `NaturalComparator` and `FileNameComparator` at
 //! d8c6714c7a3c110c56994d6b0f10814f902100e7 (Apache-2.0, Copyright JetBrains s.r.o.
-//! and contributors). The macOS Swift port (`NaturalNameOrder`) and the Windows
-//! TypeScript port follow the same source and share
-//! `rust/fixtures/workspace/file-name-order-v1.json`.
+//! and contributors). The shared fixture
+//! `rust/fixtures/workspace/file-name-order-v1.json` fixes the expected order.
 //!
-//! Hosts that enumerate a directory natively (Windows local, SSH and WSL trees, and
-//! macOS plugin listings) do not compare names themselves; they send the siblings to
+//! Hosts that enumerate a directory natively (local, SSH and WSL trees, and plugin
+//! listings) do not compare names themselves; they send the siblings to
 //! `workspace.orderEntries`, which `lithe-core` answers with this order, and apply the
 //! returned permutation.
 

@@ -13,9 +13,7 @@ mod runtime;
 pub use lithe_toolchain as toolchain;
 use lithe_vcs as vcs;
 
-pub use protocol::{
-    CoreCommand, CoreError, CoreEvent, CoreRequest, CoreResponse, ErrorCode, ResponseData,
-};
+pub use protocol::{CoreCommand, CoreError, CoreRequest, CoreResponse, ErrorCode, ResponseData};
 
 /// The `ai.*` commands, kept in their own crate (`rust/crates/ai`); re-exported so the former
 /// `lithe_core::ai` paths keep resolving.
@@ -56,8 +54,7 @@ pub fn start_lsp_owned(
 
 /// Requests cooperative cancellation of an active operation.
 ///
-/// Native Rust hosts use this entry point while the Swift and C++ clients keep
-/// using the stable `lithe_core_cancel` C ABI.
+/// Rust callers use this entry point; C ABI hosts call `lithe_core_cancel`.
 pub fn cancel_operation(operation_id: &str) -> bool {
     protocol::cancellation::cancel(operation_id)
 }

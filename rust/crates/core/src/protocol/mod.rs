@@ -4,12 +4,8 @@
 //! here, so every `crate::protocol::...` path names the same type a domain crate returns.
 
 mod command;
-mod event;
 
 pub use command::*;
-pub use event::*;
-pub use lithe_git::contracts::*;
-pub use lithe_project::contracts::*;
 pub(crate) use lithe_protocol::cancellation;
 pub use lithe_protocol::{CoreError, CoreResponse, ErrorCode, ResponseData};
 

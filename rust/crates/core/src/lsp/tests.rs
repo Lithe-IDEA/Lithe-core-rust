@@ -491,7 +491,7 @@ fn client_core_tracks_documents_and_feature_requests() {
     let did_change: Value = serde_json::from_str(&changed.messages[0]).unwrap();
     assert_eq!(did_change["method"], "textDocument/didChange");
 
-    let requested = client_feature_request(ClientFeatureRequest {
+    let requested = client_feature_request_canonical(ClientFeatureRequest {
         query: None,
         state: changed.state,
         uri: "file:///tmp/project/main.rs".to_string(),
@@ -532,7 +532,7 @@ fn client_references_request_passes_include_declaration() {
     })
     .unwrap();
     for (include_declaration, sent) in [(None, true), (Some(true), true), (Some(false), false)] {
-        let requested = client_feature_request(ClientFeatureRequest {
+        let requested = client_feature_request_canonical(ClientFeatureRequest {
             query: None,
             state: opened.state.clone(),
             uri: "file:///tmp/project/Main.java".to_string(),
@@ -956,7 +956,7 @@ fn client_core_preserves_class_completion_namespace_and_import_edits() {
         text: "<?php\nnew Car".to_string(),
     })
     .unwrap();
-    let requested = client_feature_request(ClientFeatureRequest {
+    let requested = client_feature_request_canonical(ClientFeatureRequest {
         query: None,
         state: opened.state,
         uri: "file:///tmp/project/index.php".to_string(),
@@ -1004,7 +1004,7 @@ fn client_core_preserves_class_completion_namespace_and_import_edits() {
     assert_eq!(completion["items"][0]["data"]["fqn"], "Carbon\\Carbon");
     assert!(completion["items"][0].get("additionalTextEdits").is_none());
 
-    let resolve = client_feature_request(ClientFeatureRequest {
+    let resolve = client_feature_request_canonical(ClientFeatureRequest {
         query: None,
         state: completed.state,
         uri: "file:///tmp/project/index.php".to_string(),
@@ -1331,7 +1331,7 @@ fn client_core_rejects_duplicate_shutdown_requests() {
 }
 
 #[test]
-fn client_core_shapes_feature_responses_for_swift_models() {
+fn client_core_shapes_feature_responses_for_host_models() {
     let opened = client_open_document(ClientOpenDocumentRequest {
         state: LspClientState::default(),
         uri: "file:///tmp/project/main.rs".to_string(),
@@ -1339,7 +1339,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
         text: "fn main() { la }\n".to_string(),
     })
     .unwrap();
-    let requested = client_feature_request(ClientFeatureRequest {
+    let requested = client_feature_request_canonical(ClientFeatureRequest {
         query: None,
         state: opened.state,
         uri: "file:///tmp/project/main.rs".to_string(),
@@ -1393,7 +1393,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
 
     assert_eq!(result["items"][0]["insertTextFormat"], 2);
 
-    let rename = client_feature_request(ClientFeatureRequest {
+    let rename = client_feature_request_canonical(ClientFeatureRequest {
         query: None,
         state: completed.state,
         uri: "file:///tmp/project/main.rs".to_string(),
@@ -1439,7 +1439,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
         "start"
     );
 
-    let formatting = client_feature_request(ClientFeatureRequest {
+    let formatting = client_feature_request_canonical(ClientFeatureRequest {
         query: None,
         state: renamed.state,
         uri: "file:///tmp/project/main.rs".to_string(),
@@ -1478,7 +1478,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
         2
     );
 
-    let code_actions = client_feature_request(ClientFeatureRequest {
+    let code_actions = client_feature_request_canonical(ClientFeatureRequest {
         query: None,
         state: formatted.state,
         uri: "file:///tmp/project/main.rs".to_string(),
@@ -1598,7 +1598,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
         "rust-analyzer.applySourceChange"
     );
 
-    let code_action_resolve = client_feature_request(ClientFeatureRequest {
+    let code_action_resolve = client_feature_request_canonical(ClientFeatureRequest {
         query: None,
         state: code_actioned.state,
         uri: "file:///tmp/project/main.rs".to_string(),
@@ -1659,7 +1659,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
         "start"
     );
 
-    let completion_resolve = client_feature_request(ClientFeatureRequest {
+    let completion_resolve = client_feature_request_canonical(ClientFeatureRequest {
         query: None,
         state: code_action_resolved.state,
         uri: "file:///tmp/project/main.rs".to_string(),
@@ -1675,8 +1675,8 @@ fn client_core_shapes_feature_responses_for_swift_models() {
             "kind": 3,
             "textEdit": {
                 "range": {
-                    "start": { "line": 0, "utf16Column": 12 },
-                    "end": { "line": 0, "utf16Column": 14 }
+                    "start": { "line": 0, "character": 12 },
+                    "end": { "line": 0, "character": 14 }
                 },
                 "newText": "launch"
             },
@@ -1721,7 +1721,7 @@ fn client_core_shapes_feature_responses_for_swift_models() {
         "Launches the app."
     );
 
-    let execute_command = client_feature_request(ClientFeatureRequest {
+    let execute_command = client_feature_request_canonical(ClientFeatureRequest {
         query: None,
         state: completion_resolved.state,
         uri: "file:///tmp/project/main.rs".to_string(),
@@ -1772,7 +1772,7 @@ fn client_requests_and_normalizes_document_links() {
     })
     .unwrap();
 
-    let request = client_feature_request(ClientFeatureRequest {
+    let request = client_feature_request_canonical(ClientFeatureRequest {
         query: None,
         state: opened.state,
         uri: uri.to_string(),
@@ -1835,7 +1835,7 @@ fn client_requests_and_normalizes_document_links() {
 
 #[test]
 fn client_requests_and_normalizes_workspace_symbols_without_a_document() {
-    let request = client_feature_request(ClientFeatureRequest {
+    let request = client_feature_request_canonical(ClientFeatureRequest {
         state: LspClientState::default(),
         uri: String::new(),
         method: "workspace/symbol".to_string(),
@@ -1912,7 +1912,7 @@ fn client_core_requests_and_shapes_inlay_hints_folding_ranges_and_code_lenses() 
     })
     .unwrap();
 
-    let inlay_request = client_feature_request(ClientFeatureRequest {
+    let inlay_request = client_feature_request_canonical(ClientFeatureRequest {
         query: None,
         state: opened.state,
         uri: uri.to_string(),
@@ -1976,7 +1976,7 @@ fn client_core_requests_and_shapes_inlay_hints_folding_ranges_and_code_lenses() 
     assert_eq!(hint["textEdits"][0]["range"]["start"]["utf16Column"], 12);
     assert_eq!(hint["data"]["id"], "hint-1");
 
-    let folding_request = client_feature_request(ClientFeatureRequest {
+    let folding_request = client_feature_request_canonical(ClientFeatureRequest {
         query: None,
         state: inlay_response.state,
         uri: uri.to_string(),
@@ -2021,7 +2021,7 @@ fn client_core_requests_and_shapes_inlay_hints_folding_ranges_and_code_lenses() 
     assert_eq!(range["kind"], "region");
     assert_eq!(range["collapsedText"], "methods");
 
-    let code_lens_request = client_feature_request(ClientFeatureRequest {
+    let code_lens_request = client_feature_request_canonical(ClientFeatureRequest {
         query: None,
         state: folding_response.state,
         uri: uri.to_string(),
@@ -2076,7 +2076,7 @@ fn navigation_locations_preserve_uris_without_fabricating_virtual_file_paths() {
         text: "class Main {}\n".to_string(),
     })
     .unwrap();
-    let requested = client_feature_request(ClientFeatureRequest {
+    let requested = client_feature_request_canonical(ClientFeatureRequest {
         query: None,
         state: opened.state,
         uri: uri.to_string(),
@@ -2440,7 +2440,7 @@ fn client_diagnostic_code_action_fixture_preserves_core_fields() {
             text: "class Main {}".to_string(),
         })
         .unwrap();
-        let response = client_feature_request(
+        let response = client_feature_request_canonical(
             serde_json::from_value(json!({
                 "state": opened.state,
                 "uri": fixture["uri"], "method": "textDocument/codeAction",
@@ -2489,7 +2489,7 @@ fn client_completion_preserves_refresh_context_and_incomplete_lists() {
             "completionContext": case["context"]
         }))
         .unwrap();
-        let requested = client_feature_request(request).unwrap();
+        let requested = client_feature_request_canonical(request).unwrap();
         let message: Value = serde_json::from_str(&requested.messages[0]).unwrap();
         assert_eq!(message["params"]["context"], case["context"]);
         let completed = client_apply_server_message(ClientApplyServerMessageRequest {
@@ -2526,7 +2526,7 @@ fn client_completion_rejects_invalid_trigger_context() {
             "position":{"line":0,"utf16Column":0}, "completionContext":context
         }))
         .unwrap();
-        let error = client_feature_request(request).unwrap_err();
+        let error = client_feature_request_canonical(request).unwrap_err();
         assert!(matches!(error.code, ErrorCode::InvalidRequest));
         assert!(matches!(
             error.message.as_str(),

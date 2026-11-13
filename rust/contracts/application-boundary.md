@@ -1,7 +1,7 @@
 # Application Boundary Contract
 
-The application boundary describes product behavior that a SwiftUI/AppKit or
-React/Tauri Windows UI can consume. It does not describe widgets, threads, processes,
+The application boundary describes product behavior that the desktop clients
+consume through the C ABI. It does not describe widgets, threads, processes,
 or operating-system APIs. It defines the cross-platform contract; current
 product scope and setup are documented in [`README.md`](https://github.com/1lck/Lithe-IDEA/blob/preview/README.md); the
 verification scripts are the executable source of boundary checks.
@@ -180,77 +180,6 @@ configured web browser, independently of the file type's default editor. The
 browser reads the saved file; this action does not save buffers or start a web
 server. File URLs preserve Unicode and reserved characters. Browser discovery
 and launch belong to platform adapters, and launch failures are shown to the user.
-
-## Module Lifecycle Contract
-
-The macOS reference product implements the built-in manifest in
-`rust/fixtures/modules/built-in-v1.json`. Module IDs and manifest fields are
-platform-neutral compatibility surfaces. A future Windows implementation may
-adopt the contract independently without sharing Swift implementation code or
-being coupled to the macOS migration schedule. An implementation of this
-contract must preserve these invariants:
-
-- A disabled module is not instantiated and owns no task, timer, watcher,
-  session, connection, or child process.
-- An on-demand module is instantiated only after its capability is requested.
-- Sleeping stops every owned resource and releases the module instance.
-- Active non-interruptible work holds a lease that blocks sleep with a reason.
-- Wake reconstructs the module, activates declared dependencies first, and
-  republishes capabilities and contributions.
-- Required modules cannot be disabled. A provider cannot be disabled while an
-  enabled module depends on it.
-- Module state is one of `disabled`, `inactive`, `activating`, `active`, `idle`,
-  `preparingToSleep`, `sleeping`, `sleepBlocked`, or `failed`.
-- Native plugin manifests, compatibility, ownership, and signatures are
-  validated before Bundle loading. A failed optional package is reported to
-  plugin management and does not prevent required modules from starting.
-- Successfully loaded native plugin module IDs remain durably marked for the
-  process lifetime. An unclean exit leaves the mark behind, so the next launch
-  quarantines those modules before constructing any plugin Bundle. A clean
-  application termination clears the mark.
-- Disabling a loaded in-process native plugin stops its module-owned resources
-  immediately. Its code remains mapped until restart, and the next launch
-  skips the Bundle before invoking its principal class or factories.
-- Plugin update, rollback, and uninstall operations that affect mapped code
-  are finalized before plugin scanning on the next launch.
-- Native plugin factories receive a read-only host context. Host services use
-  stable IDs and shared protocols; plugin code cannot import a platform
-  composition root or the application executable.
-- AI Assistance, Terminal, Git, Search, Local History, and Debug are built-in
-  lifecycle modules. They are not marketplace plugins.
-- Every language provider, build tool and ecosystem runner is represented by an
-  independently configurable language-support plugin; Core names none of them.
-  On macOS, Go and PHP are community declarative
-  plugins from Lithe Store (`io.github.lithe-idea.go-support`,
-  `io.github.lithe-idea.php-support`); the retired official IDs
-  `dev.lithe.plugin.go-support` and `dev.lithe.plugin.php-support` keep their
-  pinned publisher signature requirement but have no official source. The
-  remaining providers share the host's generic language-server module.
-- A downloadable language support package may declare language-server,
-  execution, testing, and debug module IDs under one language ID. All referenced
-  modules must be owned by the same package. Execution and testing may share a
-  module when they share one toolchain lifecycle; language-server and debug
-  lifecycles remain independently addressable.
-- Plugin-owned Run and Test operations may reuse deterministic shared launch
-  plans, but the actual child process must use a session owned by the plugin
-  module. A disabled plugin language must not fall back to a built-in process
-  provider.
-- Process-backed language ownership comes from verified installed manifests,
-  including packages that are disabled, quarantined, or failed to load. Those
-  states make the capability unavailable; they never restore a host process
-  fallback.
-- Extension execution shutdown completes only after its operating-system
-  process exits. A bounded force-stop failure remains visible as an active
-  module resource. Active Run and Test sessions hold leases; successful LSP
-  document synchronization refreshes the owning module's idle timer.
-- Language package manifests include inert file-extension, file-name, and
-  project-file recognition metadata. The host may use this metadata to suggest
-  an uninstalled plugin, but it must not load the Bundle or probe a toolchain
-  during recognition.
-
-Platform products do not share module-runtime implementation code. The stable
-manifest, lifecycle semantics, and deterministic JSON representation are the
-portable boundary.
 
 ## Document Lifecycle Contract
 

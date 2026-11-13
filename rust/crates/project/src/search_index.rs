@@ -827,8 +827,8 @@ mod tests {
         }
         let fixture: serde_json::Value =
             serde_json::from_str(include_str!("../../../fixtures/search/exclusions.json")).unwrap();
-        // The patterns come from the shared fixture, so Rust and Swift always
-        // judge the same list.
+        // The patterns come from the shared fixture, so every host judges the
+        // same list.
         let rules = VisibilityRules {
             hidden_directories: vec![],
             delegated_roots: Vec::new(),

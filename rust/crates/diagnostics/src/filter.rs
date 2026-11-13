@@ -44,7 +44,7 @@ pub struct FilterTerm {
     #[serde(default)]
     pub negate: bool,
 }
-/// Half-open UTF-16 offsets include the negation prefix and quotes, for SwiftUI highlighting.
+/// Half-open UTF-16 offsets include the negation prefix and quotes, so hosts can highlight each term.
 #[derive(Debug, Serialize)]
 pub struct ParsedFilterTerm {
     /// Owned predicate independent of its source spelling.

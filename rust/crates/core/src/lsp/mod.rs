@@ -7,11 +7,4 @@ pub(crate) use interface::*;
 pub(crate) use lithe_text::*;
 
 #[cfg(test)]
-pub(crate) fn client_feature_request(
-    request: ClientFeatureRequest,
-) -> Result<LspClientResponse, crate::protocol::CoreError> {
-    interface::client_feature_request_canonical(languages::swift::adapt_feature_request(request))
-}
-
-#[cfg(test)]
 mod tests;
