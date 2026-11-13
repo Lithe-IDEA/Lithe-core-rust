@@ -2570,7 +2570,12 @@ its optional `hostOptions` (plugin-owned sessions only; `editor:{actionIcons,
 actionSourceBytes, providerTypes}` declares the icons, collector source bound and
 provider types the host implements, reported through `lithe/host/getCapabilities`
 to sessions granted the matching editor methods), plus
-initialize, request, and shutdown deadlines.
+initialize, request, and shutdown deadlines. Omitted
+`initializeTimeoutMilliseconds` allows 60000 milliseconds for one startup
+handshake (previously 10000); cold runtime loading can exceed ten seconds.
+An explicit deadline still takes precedence. Cancellation and timeout still
+terminate and dispose of the owned process tree; this does not add retries or
+change feature-request deadlines.
 Rust owns the returned
 session's child process, stdin/stdout/stderr, framing buffer, JSON-RPC request
 IDs, document versions, pending deadlines, capabilities, diagnostics, and
