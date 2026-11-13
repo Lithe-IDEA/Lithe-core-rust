@@ -38,12 +38,11 @@ pub use commands::{
 pub use manifest::{programs, validate_declarations, ProjectGeneratorDeclaration};
 
 use lithe_plugin_model::capabilities::Requires;
+use lithe_plugin_model::PluginManifest;
 
 /// What the `project.*` commands read from one plugin manifest that the
 /// plugin host validated; the host's manifest type implements it.
-pub trait GeneratorManifest {
-    /// The plugin ID.
-    fn id(&self) -> &str;
+pub trait GeneratorManifest: PluginManifest {
     /// The name shown to the user.
     fn display_name(&self) -> &str;
     /// Capability versions the manifest requires.

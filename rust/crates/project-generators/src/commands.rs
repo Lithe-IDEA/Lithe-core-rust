@@ -69,11 +69,10 @@ struct ExtractPayload {
 }
 
 /// `project.generatorCatalog`: every generator of the given plugins, with
-/// the plugins that provide each requirement. `validate_manifest` is the
-/// plugin host's manifest validation.
+/// the plugins that provide each requirement. Manifests the plugin host's
+/// validation (`M::validate`) rejects are reported in `issues`.
 pub fn project_generator_catalog_command<M: GeneratorManifest>(
     payload: Value,
-    validate_manifest: fn(Value) -> Validation<M>,
 ) -> Result<Value, CoreError> {
     let payload: CatalogPayload = decode_payload(payload, "project.generatorCatalog")?;
     let mut manifests = Vec::new();
@@ -84,7 +83,7 @@ pub fn project_generator_catalog_command<M: GeneratorManifest>(
             .get("id")
             .and_then(Value::as_str)
             .map(str::to_string);
-        let validated = validate_manifest(plugin.manifest).and_then(|manifest| {
+        let validated = M::validate(plugin.manifest).and_then(|manifest| {
             if let Some(host) = &payload.host_capabilities {
                 capabilities::check_hosted(manifest.requires(), host)?;
             }
@@ -188,11 +187,9 @@ fn tool_providers<M: GeneratorManifest>(
 /// `project.generatorForm`: field values, visibility, and problems.
 pub fn project_generator_form_command<M: GeneratorManifest>(
     payload: Value,
-    validate_manifest: fn(Value) -> Validation<M>,
 ) -> Result<Value, CoreError> {
     let payload: FormPayload = decode_payload(payload, "project.generatorForm")?;
-    Ok(outcome(with_generator(
-        validate_manifest,
+    Ok(outcome(with_generator::<M>(
         payload.manifest,
         &payload.generator_id,
         |generator| Ok(("form", form::evaluate(generator, &payload.form).to_json())),
@@ -202,11 +199,9 @@ pub fn project_generator_form_command<M: GeneratorManifest>(
 /// `project.generationPlan`: the steps that create the project.
 pub fn project_generation_plan_command<M: GeneratorManifest>(
     payload: Value,
-    validate_manifest: fn(Value) -> Validation<M>,
 ) -> Result<Value, CoreError> {
     let payload: PlanPayload = decode_payload(payload, "project.generationPlan")?;
-    Ok(outcome(with_generator(
-        validate_manifest,
+    Ok(outcome(with_generator::<M>(
         payload.manifest,
         &payload.generator_id,
         |generator| {
@@ -240,12 +235,11 @@ pub fn project_extract_archive_command(payload: Value) -> Result<Value, CoreErro
 }
 
 fn with_generator<M: GeneratorManifest>(
-    validate_manifest: fn(Value) -> Validation<M>,
     manifest: Value,
     generator_id: &str,
     run: impl FnOnce(&ProjectGeneratorDeclaration) -> Validation<(&'static str, Value)>,
 ) -> Validation<(&'static str, Value)> {
-    let manifest = validate_manifest(manifest)?;
+    let manifest = M::validate(manifest)?;
     let generator = manifest
         .project_generators()
         .iter()

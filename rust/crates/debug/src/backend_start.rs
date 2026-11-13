@@ -47,15 +47,14 @@ fn invalid(field: &str, message: impl Into<String>) -> PluginRejection {
 /// `debug.decodeBackendConfiguration`: the qualified adapter, request, label and checked
 /// arguments of one backend-initiated debug start.
 ///
-/// The plugin host owns the manifest schema and supplies `validate_manifest`, so a
-/// start is checked against the same declaration the plugin installed with.
+/// The plugin host owns the manifest schema (`M::validate`), so a start is checked
+/// against the same declaration the plugin installed with.
 pub fn decode_backend_configuration_command<M: DebugManifest>(
     payload: Value,
-    validate_manifest: fn(Value) -> Validation<M>,
 ) -> Result<Value, CoreError> {
     let payload: DecodePayload = decode_payload(payload, "debug.decodeBackendConfiguration")?;
     Ok(outcome(
-        validate_manifest(payload.manifest)
+        M::validate(payload.manifest)
             .and_then(|manifest| decode(&manifest, payload.params))
             .map(|start| ("start", start)),
     ))

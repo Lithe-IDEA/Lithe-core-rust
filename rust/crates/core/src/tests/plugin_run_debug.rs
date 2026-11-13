@@ -8,6 +8,7 @@ use super::support::temporary_root;
 use crate::build::run_decode_start_command;
 use crate::debug::decode_backend_configuration_command;
 use crate::plugins::declarative::validated_manifest_json;
+use crate::plugins::declarative::DeclarativePluginManifest as Manifest;
 use crate::plugins::declarative::{language_server_launch_plan_command, validate_manifest_value};
 use crate::plugins::output_links::{decode_resolution, match_lines};
 use crate::toolchain::instantiate_launch_command;
@@ -362,13 +363,10 @@ fn debug_start_fixture_cases_decode_the_same_in_every_host() {
     let manifest = named_manifest(&fixture);
     for case in fixture["cases"].as_array().unwrap() {
         let name = case["name"].as_str().unwrap();
-        let outcome = decode_backend_configuration_command(
-            json!({
-                "manifest": manifest,
-                "params": case["params"],
-            }),
-            crate::plugins::declarative::validate_manifest_value,
-        )
+        let outcome = decode_backend_configuration_command::<Manifest>(json!({
+            "manifest": manifest,
+            "params": case["params"],
+        }))
         .expect("payload is well formed");
         if let Some(start) = case.get("start") {
             assert_eq!(outcome["status"], "ok", "{name}: {outcome}");
@@ -388,18 +386,15 @@ fn debug_start_fixture_cases_decode_the_same_in_every_host() {
 #[test]
 fn debug_start_configuration_is_limited_to_256_kib() {
     let start = |filler: usize| {
-        decode_backend_configuration_command(
-            json!({
-                "manifest": parse(DEBUG_FEATURES_MANIFEST),
-                "params": {
-                    "label": "Debug",
-                    "adapter": "script",
-                    "request": "launch",
-                    "configuration": { "program": "x".repeat(filler) },
-                },
-            }),
-            crate::plugins::declarative::validate_manifest_value,
-        )
+        decode_backend_configuration_command::<Manifest>(json!({
+            "manifest": parse(DEBUG_FEATURES_MANIFEST),
+            "params": {
+                "label": "Debug",
+                "adapter": "script",
+                "request": "launch",
+                "configuration": { "program": "x".repeat(filler) },
+            },
+        }))
         .expect("payload is well formed")
     };
     // The serialized object also holds the member name and punctuation.

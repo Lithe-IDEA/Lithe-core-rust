@@ -505,31 +505,29 @@ fn parse_template(value: &str) -> Option<Vec<TemplatePart<TemplateVariable>>> {
     parse_template_with(value, TemplateVariable::parse)
 }
 
-impl crate::vcs::VcsManifest for DeclarativePluginManifest {
+impl lithe_plugin_model::PluginManifest for DeclarativePluginManifest {
+    fn validate(value: Value) -> Validation<Self> {
+        validate_manifest_value(value)
+    }
+
     fn id(&self) -> &str {
         &self.id
     }
+}
 
+impl crate::vcs::VcsManifest for DeclarativePluginManifest {
     fn vcs_providers(&self) -> &[crate::vcs::VcsProviderDeclaration] {
         &self.vcs_providers
     }
 }
 
 impl crate::debug::DebugManifest for DeclarativePluginManifest {
-    fn id(&self) -> &str {
-        &self.id
-    }
-
     fn debug_adapters(&self) -> &[crate::debug::adapters::DebugAdapterDeclaration] {
         &self.debug_adapters
     }
 }
 
 impl crate::project_generators::GeneratorManifest for DeclarativePluginManifest {
-    fn id(&self) -> &str {
-        &self.id
-    }
-
     fn display_name(&self) -> &str {
         &self.display_name
     }

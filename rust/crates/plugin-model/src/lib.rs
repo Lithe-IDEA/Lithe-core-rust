@@ -16,6 +16,7 @@
 pub mod capabilities;
 pub mod executables;
 mod icon;
+mod manifest;
 mod names;
 pub mod process;
 mod rejection;
@@ -24,6 +25,7 @@ mod template;
 mod version;
 
 pub use icon::UIIcon;
+pub use manifest::PluginManifest;
 pub use names::{
     is_bare_command, is_function_id, is_identifier, is_local_tool_id, is_official_namespace,
     is_plugin_id, is_safe_relative_path, is_semantic_version, is_tool_id, is_tool_namespace,

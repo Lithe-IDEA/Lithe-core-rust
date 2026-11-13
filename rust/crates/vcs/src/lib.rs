@@ -28,11 +28,11 @@ pub use manifest::{
 pub use model::{is_vcs_id, negotiated_capabilities, Capabilities};
 pub use requests::{is_vcs_method, plan, Operation, PlannedRequest};
 
+use lithe_plugin_model::PluginManifest;
+
 /// What `vcs.detectRoots` reads from one plugin manifest that the plugin host
 /// validated; the host's manifest type implements it.
-pub trait VcsManifest {
-    /// The plugin ID.
-    fn id(&self) -> &str;
+pub trait VcsManifest: PluginManifest {
     /// The manifest's validated `vcsProviders`, sorted by VCS ID.
     fn vcs_providers(&self) -> &[VcsProviderDeclaration];
 }

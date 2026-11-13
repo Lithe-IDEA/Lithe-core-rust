@@ -38,11 +38,11 @@ pub use types::{
 };
 pub use variable_paging::{plan_variable_page, reduce_variable_page};
 
+use lithe_plugin_model::PluginManifest;
+
 /// What `debug.decodeBackendConfiguration` reads from one plugin manifest that
 /// the plugin host validated; the host's manifest type implements it.
-pub trait DebugManifest {
-    /// The plugin ID.
-    fn id(&self) -> &str;
+pub trait DebugManifest: PluginManifest {
     /// The manifest's validated `debugAdapters`.
     fn debug_adapters(&self) -> &[adapters::DebugAdapterDeclaration];
 }

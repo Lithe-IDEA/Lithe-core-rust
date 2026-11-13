@@ -1,4 +1,5 @@
-use crate::plugins::declarative::{validate_command, validate_manifest_value};
+use crate::plugins::declarative::validate_command;
+use crate::plugins::declarative::DeclarativePluginManifest as Manifest;
 use crate::plugins::marketplace::install_review_command;
 use crate::project_generators::{
     project_check_name_command, project_generation_plan_command, project_generator_catalog_command,
@@ -95,23 +96,17 @@ fn golden_project_plans_match() {
         let name = case["name"].as_str().unwrap();
         let manifest = case_manifest(case);
         let actual = match case["operation"].as_str().unwrap() {
-            "generatorForm" => project_generator_form_command(
-                json!({
-                    "manifest": manifest,
-                    "generatorID": case["generatorID"],
-                    "form": case["form"],
-                }),
-                validate_manifest_value,
-            ),
-            "generationPlan" => project_generation_plan_command(
-                json!({
-                    "manifest": manifest,
-                    "generatorID": case["generatorID"],
-                    "packagePath": fixtures_path(),
-                    "form": case["form"],
-                }),
-                validate_manifest_value,
-            ),
+            "generatorForm" => project_generator_form_command::<Manifest>(json!({
+                "manifest": manifest,
+                "generatorID": case["generatorID"],
+                "form": case["form"],
+            })),
+            "generationPlan" => project_generation_plan_command::<Manifest>(json!({
+                "manifest": manifest,
+                "generatorID": case["generatorID"],
+                "packagePath": fixtures_path(),
+                "form": case["form"],
+            })),
             "checkName" => project_check_name_command(json!({"projectName": case["projectName"]})),
             operation => panic!("{name}: unknown operation {operation}"),
         }
@@ -130,18 +125,15 @@ fn catalog_lists_generators_with_requirement_providers() {
     let mut build = json(BUILD_FIXTURE);
     build["buildSystems"][0]["id"] = json!("maven");
     build["activationEvents"] = json!(["onBuildSystem:maven"]);
-    let result = project_generator_catalog_command(
-        json!({
-            "plugins": [
-                {"manifest": json(FIXTURE), "enabled": true},
-                {"manifest": build, "enabled": false},
-                {"manifest": java_language_only(), "enabled": true},
-                {"manifest": {"schemaVersion": 0, "id": "broken"}, "enabled": true}
-            ],
-            "hostCapabilities": host(),
-        }),
-        validate_manifest_value,
-    )
+    let result = project_generator_catalog_command::<Manifest>(json!({
+        "plugins": [
+            {"manifest": json(FIXTURE), "enabled": true},
+            {"manifest": build, "enabled": false},
+            {"manifest": java_language_only(), "enabled": true},
+            {"manifest": {"schemaVersion": 0, "id": "broken"}, "enabled": true}
+        ],
+        "hostCapabilities": host(),
+    }))
     .unwrap();
     assert_eq!(result["status"], "ok");
     let generators = result["catalog"]["generators"].as_array().unwrap();
@@ -170,13 +162,10 @@ fn catalog_lists_generators_with_requirement_providers() {
 
 #[test]
 fn catalog_skips_plugins_the_host_cannot_run() {
-    let result = project_generator_catalog_command(
-        json!({
-            "plugins": [{"manifest": json(FIXTURE), "enabled": true}],
-            "hostCapabilities": {"languages": [0]},
-        }),
-        validate_manifest_value,
-    )
+    let result = project_generator_catalog_command::<Manifest>(json!({
+        "plugins": [{"manifest": json(FIXTURE), "enabled": true}],
+        "hostCapabilities": {"languages": [0]},
+    }))
     .unwrap();
     assert_eq!(result["catalog"]["generators"], json!([]));
     assert_eq!(
@@ -205,16 +194,13 @@ fn catalog_names_the_plugins_that_define_each_tool() {
     let mut generators = json(TOOL_FIELD_FIXTURE);
     // Point the first field at the tool the definition fixture declares.
     generators["projectGenerators"][0]["fields"][0]["tool"] = json!(tool);
-    let result = project_generator_catalog_command(
-        json!({
-            "plugins": [
-                {"manifest": generators, "enabled": true},
-                {"manifest": json(TOOL_DEFINITION_FIXTURE), "enabled": false},
-            ],
-            "hostCapabilities": host(),
-        }),
-        validate_manifest_value,
-    )
+    let result = project_generator_catalog_command::<Manifest>(json!({
+        "plugins": [
+            {"manifest": generators, "enabled": true},
+            {"manifest": json(TOOL_DEFINITION_FIXTURE), "enabled": false},
+        ],
+        "hostCapabilities": host(),
+    }))
     .unwrap();
     assert_eq!(result["status"], "ok", "{result}");
     assert_eq!(result["catalog"]["issues"], json!([]), "{result}");
@@ -242,16 +228,13 @@ fn catalog_names_the_plugins_that_define_each_tool() {
     ] {
         let mut generators = json(TOOL_FIELD_FIXTURE);
         generators["projectGenerators"][0]["fields"][0]["tool"] = json!(tool);
-        let qualified = project_generator_catalog_command(
-            json!({
-                "plugins": [
-                    {"manifest": generators, "enabled": true},
-                    {"manifest": json(TOOL_DEFINITION_FIXTURE), "enabled": true},
-                ],
-                "hostCapabilities": host(),
-            }),
-            validate_manifest_value,
-        )
+        let qualified = project_generator_catalog_command::<Manifest>(json!({
+            "plugins": [
+                {"manifest": generators, "enabled": true},
+                {"manifest": json(TOOL_DEFINITION_FIXTURE), "enabled": true},
+            ],
+            "hostCapabilities": host(),
+        }))
         .unwrap();
         let providers = &qualified["catalog"]["generators"][0]["tools"][0]["providers"];
         assert_eq!(
@@ -262,13 +245,10 @@ fn catalog_names_the_plugins_that_define_each_tool() {
     }
     // A generator without tool fields lists no tools, and a tool nobody
     // defines has no provider.
-    let plain = project_generator_catalog_command(
-        json!({
-            "plugins": [{"manifest": json(FIXTURE), "enabled": true}],
-            "hostCapabilities": host(),
-        }),
-        validate_manifest_value,
-    )
+    let plain = project_generator_catalog_command::<Manifest>(json!({
+        "plugins": [{"manifest": json(FIXTURE), "enabled": true}],
+        "hostCapabilities": host(),
+    }))
     .unwrap();
     let entries = plain["catalog"]["generators"].as_array().unwrap();
     let tools = |id: &str| {
@@ -289,7 +269,7 @@ fn catalog_names_the_plugins_that_define_each_tool() {
 /// the plan: the plan is built from the newest listed installation instead.
 #[test]
 fn a_plan_never_uses_an_installation_the_host_did_not_list() {
-    let plan = project_generation_plan_command(json!({
+    let plan = project_generation_plan_command::<Manifest>(json!({
         "manifest": json(TOOL_FIELD_FIXTURE),
         "generatorID": "python-app",
         "packagePath": fixtures_path(),
@@ -300,7 +280,7 @@ fn a_plan_never_uses_an_installation_the_host_did_not_list() {
                 {"home": "/opt/python-3.12", "executable": "/opt/python-3.12/bin/python3", "version": "3.12.4"}
             ]},
         },
-    }), validate_manifest_value)
+    }))
     .unwrap();
     assert_eq!(plan["status"], "ok", "{plan}");
     assert_eq!(plan["plan"]["toolPins"][0]["home"], "/opt/python-3.12");

@@ -10,7 +10,7 @@ use super::model::{is_root_relative, Capabilities};
 use super::requests::{self, Operation};
 use super::roots::{self, Mapping, MarkerSet};
 use super::VcsManifest;
-use lithe_plugin_model::{decode_payload, is_official_namespace, outcome, Validation};
+use lithe_plugin_model::{decode_payload, is_official_namespace, outcome};
 use lithe_protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -62,12 +62,9 @@ fn precedes(candidate: &Owner<'_>, current: &Owner<'_>) -> bool {
 /// provider (and of the built-in Git), ambiguous directories, and which
 /// mappings applied.
 ///
-/// `validate_manifest` is the plugin host's manifest validation; manifests it
-/// rejects are reported in `rejected` instead of contributing providers.
-pub fn vcs_detect_roots_command<M: VcsManifest>(
-    payload: Value,
-    validate_manifest: fn(Value) -> Validation<M>,
-) -> Result<Value, CoreError> {
+/// Manifests the plugin host's validation (`M::validate`) rejects are reported
+/// in `rejected` instead of contributing providers.
+pub fn vcs_detect_roots_command<M: VcsManifest>(payload: Value) -> Result<Value, CoreError> {
     let request: DetectRootsRequest = decode_payload(payload, "vcs.detectRoots")?;
     let workspace = PathBuf::from(&request.workspace_root);
     if !workspace.is_absolute() || request.workspace_root.contains('\0') {
@@ -83,7 +80,7 @@ pub fn vcs_detect_roots_command<M: VcsManifest>(
     let mut rejected = Vec::new();
     let mut manifests = Vec::new();
     for (index, plugin) in request.plugins.into_iter().enumerate() {
-        match validate_manifest(plugin.manifest) {
+        match M::validate(plugin.manifest) {
             Ok(manifest) => manifests.push(manifest),
             Err(error) => rejected.push(json!({ "index": index, "error": error })),
         }
