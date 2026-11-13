@@ -414,7 +414,7 @@ pub(crate) fn decode_resolution(payload: Value) -> Result<Value, CoreError> {
     let path = uri
         .strip_prefix("file://")
         .filter(|path| path.starts_with('/'))
-        .map(crate::lsp::interface::percent_decode)
+        .map(lithe_document_uri::percent_decode)
         .filter(|path| !path.chars().any(char::is_control))
         .ok_or_else(|| request_error("A resolve reply names a local file URI."))?;
     let position = |name: &str| -> Result<Option<u64>, CoreError> {

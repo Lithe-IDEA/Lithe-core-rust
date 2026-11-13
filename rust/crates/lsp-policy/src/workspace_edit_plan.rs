@@ -8,12 +8,9 @@
 //! encoding-preserving writes, editor buffers, stale-input checks and the
 //! rollback the plan prescribes.
 
-use crate::lsp::{
-    percent_decode,
-    workspace_scope::{comparable, WorkspaceScope},
-    DocumentPathPlatform,
-};
-use crate::protocol::{CoreError, ErrorCode};
+use crate::workspace_scope::{comparable, WorkspaceScope};
+use lithe_document_uri::{native_path, DocumentPathPlatform};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
@@ -47,40 +44,6 @@ struct Target {
     edits: Vec<Value>,
 }
 
-/// Native path named by an LSP document or workspace-edit key; `None` for a
-/// non-file URI. Shared with navigation results and diagnostic placement.
-/// Core's URI projection keeps the leading slash of `file:///C:/...`; strip it
-/// so drive paths parse as Windows paths.
-pub(super) fn native_path(key: &str) -> Option<String> {
-    let path = match key.split_once(':') {
-        // A one-letter "scheme" is a drive letter, not a URI scheme.
-        Some((scheme, rest))
-            if scheme.len() > 1
-                && scheme.starts_with(|c: char| c.is_ascii_alphabetic())
-                && scheme
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.')) =>
-        {
-            if !scheme.eq_ignore_ascii_case("file") {
-                return None;
-            }
-            let rest = rest.strip_prefix("//").unwrap_or(rest);
-            // `file:///p` leaves `/p`; `file://host/share` leaves `host/share`.
-            if rest.starts_with('/') {
-                percent_decode(rest)
-            } else {
-                format!("//{}", percent_decode(rest))
-            }
-        }
-        _ => key.to_string(),
-    };
-    let bytes = path.as_bytes();
-    if bytes.len() >= 3 && bytes[0] == b'/' && bytes[1].is_ascii_alphabetic() && bytes[2] == b':' {
-        return Some(path[1..].to_string());
-    }
-    Some(path)
-}
-
 /// Plans one workspace edit.
 ///
 /// Returns `{ rejection, targets }`. On success `rejection` is null and
@@ -95,7 +58,7 @@ pub(super) fn native_path(key: &str) -> Option<String> {
 /// open document returns `rejection: { code: "outsideWorkspace" |
 /// "readOnlyDocument", path }` and no targets. Unparseable native paths return
 /// `invalid_request`.
-pub(crate) fn plan_command(payload: Value) -> Result<Value, CoreError> {
+pub fn plan_command(payload: Value) -> Result<Value, CoreError> {
     let request: Request = serde_json::from_value(payload).map_err(|error| {
         CoreError::new(
             ErrorCode::InvalidRequest,
@@ -157,33 +120,4 @@ pub(crate) fn plan_command(payload: Value) -> Result<Value, CoreError> {
             "edits": target.edits,
         })).collect::<Vec<_>>(),
     }))
-}
-
-#[cfg(test)]
-mod tests {
-    use serde_json::{json, Value};
-
-    /// Every shared-fixture case yields its expected data or error code
-    /// through the public JSON command.
-    #[test]
-    fn matches_shared_fixture() {
-        let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../fixtures/lsp/workspace-edit-plan-v1.json"
-        ))
-        .unwrap();
-        for case in fixture["cases"].as_array().unwrap() {
-            let response: Value = serde_json::from_str(&crate::execute_json(
-                &json!({"command": "lsp.planWorkspaceEdit", "payload": case["request"]})
-                    .to_string(),
-            ))
-            .unwrap();
-            if let Some(code) = case.get("expectedError") {
-                assert_eq!(response["ok"], false, "{}: {response}", case["name"]);
-                assert_eq!(&response["error"]["code"], code, "{}", case["name"]);
-            } else {
-                assert_eq!(response["ok"], true, "{}: {response}", case["name"]);
-                assert_eq!(response["data"], case["expected"], "{}", case["name"]);
-            }
-        }
-    }
 }

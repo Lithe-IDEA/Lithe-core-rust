@@ -8,7 +8,7 @@
 //! language server for references without the declaration when Core says
 //! `usages`; Core owns the decision so every host and gesture agree.
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -59,7 +59,7 @@ struct Request {
 /// its range contains the position, end included: an editor resolves the
 /// identifier left of the caret, so a caret right after a declaration's name
 /// is still on that declaration.
-pub(crate) fn decide_command(payload: Value) -> Result<Value, CoreError> {
+pub fn decide_command(payload: Value) -> Result<Value, CoreError> {
     let request: Request = serde_json::from_value(payload).map_err(|error| {
         invalid("Invalid declaration-or-usages request").with_details(error.to_string())
     })?;
@@ -83,33 +83,4 @@ pub(crate) fn decide_command(payload: Value) -> Result<Value, CoreError> {
 
 fn invalid(message: &str) -> CoreError {
     CoreError::new(ErrorCode::InvalidRequest, message)
-}
-
-#[cfg(test)]
-mod tests {
-    use serde_json::{json, Value};
-
-    /// Every shared-fixture case yields its expected data or error code
-    /// through the public JSON command.
-    #[test]
-    fn matches_shared_fixture() {
-        let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../fixtures/lsp/declaration-or-usages-v1.json"
-        ))
-        .unwrap();
-        for case in fixture["cases"].as_array().unwrap() {
-            let response: Value = serde_json::from_str(&crate::execute_json(
-                &json!({"command": "lsp.declarationOrUsages", "payload": case["request"]})
-                    .to_string(),
-            ))
-            .unwrap();
-            if let Some(code) = case.get("expectedError") {
-                assert_eq!(response["ok"], false, "{}: {response}", case["name"]);
-                assert_eq!(&response["error"]["code"], code, "{}", case["name"]);
-            } else {
-                assert_eq!(response["ok"], true, "{}: {response}", case["name"]);
-                assert_eq!(response["data"], case["expected"], "{}", case["name"]);
-            }
-        }
-    }
 }

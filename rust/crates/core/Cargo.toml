@@ -20,12 +20,14 @@ lithe-core-rules = { path = "../core-rules" }
 lithe-debug = { path = "../debug" }
 lithe-diagnostics = { path = "../diagnostics" }
 lithe-diff = { path = "../diff" }
+lithe-document-uri = { path = "../document-uri" }
 lithe-editor = { path = "../editor" }
 lithe-execution = { path = "../execution" }
 lithe-git = { path = "../git" }
 lithe-git-host = { path = "../git-host" }
 lithe-github = { path = "../github" }
 lithe-ide-host = { path = "../ide-host" }
+lithe-lsp-policy = { path = "../lsp-policy" }
 lithe-network = { path = "../network" }
 lithe-plugin-model = { path = "../plugin-model" }
 lithe-process = { path = "../process" }

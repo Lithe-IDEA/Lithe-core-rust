@@ -503,7 +503,7 @@ fn display_path(uri: &str) -> Option<String> {
         None => remainder.trim_start_matches('/'),
     };
     let path = path.split(['?', '#']).next().unwrap_or(path);
-    let decoded = super::client::percent_decode(path);
+    let decoded = lithe_document_uri::percent_decode(path);
     let components: Vec<&str> = decoded
         .split('/')
         .filter(|component| !component.is_empty())

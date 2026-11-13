@@ -10,14 +10,14 @@
 //! clock, which keeps the policy deterministic and unaffected by wall-clock
 //! adjustments.
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Consecutive failures after which automatic starts stop until the user retries.
-pub(crate) const MAX_CONSECUTIVE_FAILURES: u32 = 3;
+pub const MAX_CONSECUTIVE_FAILURES: u32 = 3;
 /// Minimum delay between a failure and the next automatic start.
-pub(crate) const FAILURE_COOLDOWN_MS: u64 = 5_000;
+pub const FAILURE_COOLDOWN_MS: u64 = 5_000;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -75,7 +75,7 @@ struct Response {
 }
 
 /// Executes `lsp.activationPolicy`.
-pub(crate) fn policy_command(payload: Value) -> Result<Value, CoreError> {
+pub fn policy_command(payload: Value) -> Result<Value, CoreError> {
     let request: Request = serde_json::from_value(payload).map_err(|error| {
         CoreError::new(
             ErrorCode::InvalidRequest,

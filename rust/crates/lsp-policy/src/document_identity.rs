@@ -1,10 +1,8 @@
 //! Lexical workspace identities for diagnostics; the host owns native file I/O.
 
-use crate::lsp::{
-    workspace_edit_plan::native_path, workspace_scope::WorkspaceScope, DocumentPathPlatform,
-    MAX_PATH_BYTES,
-};
-use crate::protocol::{CoreError, ErrorCode};
+use crate::workspace_scope::WorkspaceScope;
+use lithe_document_uri::{native_path, DocumentPathPlatform, MAX_PATH_BYTES};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use url::Url;
@@ -21,7 +19,7 @@ struct Request {
 /// Resolves one server-supplied identity to a native path and workspace-relative
 /// display path. Non-file URIs, ambiguous drive-relative paths and outside targets
 /// return a null document. The result grants no permission to follow symlinks.
-pub(crate) fn resolve_command(payload: Value) -> Result<Value, CoreError> {
+pub fn resolve_command(payload: Value) -> Result<Value, CoreError> {
     let request: Request = serde_json::from_value(payload).map_err(|error| {
         CoreError::new(
             ErrorCode::InvalidRequest,
@@ -105,28 +103,4 @@ pub(crate) fn resolve_command(payload: Value) -> Result<Value, CoreError> {
         path
     };
     Ok(json!({"document": {"path": path, "relativePath": relative}}))
-}
-
-#[cfg(test)]
-mod tests {
-    use serde_json::{json, Value};
-
-    #[test]
-    fn matches_shared_fixture() {
-        let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../fixtures/lsp/document-identity-v1.json"
-        ))
-        .unwrap();
-        for case in fixture["cases"].as_array().unwrap() {
-            let response: Value = serde_json::from_str(&crate::execute_json(
-                &json!({"command":"lsp.documentIdentity", "payload":case["request"]}).to_string(),
-            ))
-            .unwrap();
-            if let Some(code) = case.get("error") {
-                assert_eq!(&response["error"]["code"], code, "{case}");
-            } else {
-                assert_eq!(response["data"], case["expected"], "{case}: {response}");
-            }
-        }
-    }
 }

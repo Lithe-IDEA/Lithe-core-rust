@@ -4,6 +4,7 @@ use super::plugin_function;
 use super::types::*;
 use crate::lsp::apply_content_changes_sequential;
 use crate::protocol::{CoreError, ErrorCode};
+use lithe_document_uri::{file_path_for_uri, file_path_from_uri, hex_value};
 use serde_json::{json, Value};
 
 /// Creates a host-owned initialize request for stateless client tests.
@@ -1928,53 +1929,6 @@ fn parse_lsp_position_value(value: &Value) -> Option<Value> {
             .and_then(Value::as_i64)
             .unwrap_or(0)
     }))
-}
-
-/// Decodes a file URI using native drive/UNC syntax; opaque inputs retain
-/// their percent-decoded spelling for existing non-file consumers.
-pub(crate) fn file_path_from_uri(uri: &str) -> String {
-    file_path_for_uri(uri).unwrap_or_else(|| percent_decode(uri))
-}
-
-fn file_path_for_uri(uri: &str) -> Option<String> {
-    let (scheme, _) = uri.split_once(':')?;
-    if !scheme.eq_ignore_ascii_case("file") {
-        return None;
-    }
-    // Workspace edits already decode percent escapes, UNC authorities and the
-    // leading slash of file:///C:/... without depending on the build host OS.
-    crate::lsp::workspace_edit_plan::native_path(uri)
-}
-
-/// Decodes `%XX` escapes in a URI component, keeping the input when the
-/// decoded bytes are not UTF-8.
-pub(crate) fn percent_decode(value: &str) -> String {
-    let mut decoded = Vec::with_capacity(value.len());
-    let bytes = value.as_bytes();
-    let mut index = 0;
-    while index < bytes.len() {
-        if bytes[index] == b'%' && index + 2 < bytes.len() {
-            if let (Some(high), Some(low)) =
-                (hex_value(bytes[index + 1]), hex_value(bytes[index + 2]))
-            {
-                decoded.push((high << 4) | low);
-                index += 3;
-                continue;
-            }
-        }
-        decoded.push(bytes[index]);
-        index += 1;
-    }
-    String::from_utf8(decoded).unwrap_or_else(|_| value.to_string())
-}
-
-fn hex_value(value: u8) -> Option<u8> {
-    match value {
-        b'0'..=b'9' => Some(value - b'0'),
-        b'a'..=b'f' => Some(value - b'a' + 10),
-        b'A'..=b'F' => Some(value - b'A' + 10),
-        _ => None,
-    }
 }
 
 fn text_document_sync_kind(capabilities: &Value) -> LspTextDocumentSyncKind {

@@ -15,7 +15,7 @@
 //! Only labels cross the boundary. The platform keeps the full items and
 //! applies the returned indices, which keeps the per-keystroke payload small.
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
@@ -45,7 +45,7 @@ struct Response {
 }
 
 /// Executes `lsp.mergeCompletions`.
-pub(crate) fn merge_command(payload: Value) -> Result<Value, CoreError> {
+pub fn merge_command(payload: Value) -> Result<Value, CoreError> {
     let request: Request = serde_json::from_value(payload).map_err(|error| {
         CoreError::new(
             ErrorCode::InvalidRequest,

@@ -7,8 +7,9 @@
 //! at stay closed. Hosts own symlink resolution and the path-to-language
 //! lookup and pass both as facts; Core owns the decision.
 
-use crate::lsp::{workspace_scope::WorkspaceScope, DocumentPathPlatform};
-use crate::protocol::{CoreError, ErrorCode};
+use crate::workspace_scope::WorkspaceScope;
+use lithe_document_uri::DocumentPathPlatform;
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -49,7 +50,7 @@ struct Request {
 /// real root): an in-workspace symlink to the outside must not skip the
 /// source-file check, and an outside path to a workspace file still opens
 /// under its outside path. Missing real paths fall back to the opened ones.
-pub(crate) fn classify_command(payload: Value) -> Result<Value, CoreError> {
+pub fn classify_command(payload: Value) -> Result<Value, CoreError> {
     let request: Request = serde_json::from_value(payload).map_err(|error| {
         CoreError::new(
             ErrorCode::InvalidRequest,
@@ -91,33 +92,4 @@ fn classify(request: &Request) -> Result<&'static str, CoreError> {
     } else {
         "rejected"
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use serde_json::{json, Value};
-
-    /// Every shared-fixture case yields its expected data or error code
-    /// through the public JSON command.
-    #[test]
-    fn matches_shared_fixture() {
-        let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../fixtures/lsp/navigation-target-v1.json"
-        ))
-        .unwrap();
-        for case in fixture["cases"].as_array().unwrap() {
-            let response: Value = serde_json::from_str(&crate::execute_json(
-                &json!({"command": "lsp.classifyNavigationTarget", "payload": case["request"]})
-                    .to_string(),
-            ))
-            .unwrap();
-            if let Some(code) = case.get("expectedError") {
-                assert_eq!(response["ok"], false, "{}: {response}", case["name"]);
-                assert_eq!(&response["error"]["code"], code, "{}", case["name"]);
-            } else {
-                assert_eq!(response["ok"], true, "{}: {response}", case["name"]);
-                assert_eq!(response["data"], case["expected"], "{}", case["name"]);
-            }
-        }
-    }
 }

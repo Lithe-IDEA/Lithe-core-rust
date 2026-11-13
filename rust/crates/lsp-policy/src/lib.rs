@@ -2,12 +2,14 @@
 //! their native language-server sessions and editor presentation.
 //!
 //! Every command here is a pure function of the facts the platform submits:
-//! no process, document, or clock is owned by Core. Platforms keep the native
+//! this crate owns no process, document or clock. Platforms keep the native
 //! I/O, the per-session storage of returned state, and localization.
 
-pub(crate) mod activation;
-pub(crate) mod completion_merge;
-pub(crate) mod problems;
-
-#[cfg(test)]
-mod tests;
+pub mod activation;
+pub mod completion_merge;
+pub mod declaration_or_usages;
+pub mod document_identity;
+pub mod navigation_target;
+pub mod problems;
+pub mod workspace_edit_plan;
+mod workspace_scope;

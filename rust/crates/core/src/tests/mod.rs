@@ -34,6 +34,7 @@ mod git_workspace_status;
 mod github;
 mod history_events;
 mod language_server_sessions;
+mod lsp_policy;
 mod marketplace_plugins;
 mod plugin_editor_resources;
 mod plugin_run_debug;

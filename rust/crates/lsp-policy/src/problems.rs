@@ -6,8 +6,8 @@
 //! compared with the IDEA natural file-name order that the Project view uses,
 //! which keeps `File2` before `File10` on both platforms.
 
-use crate::protocol::{CoreError, ErrorCode};
 use lithe_core_rules::file_names::FileNameKey;
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::cmp::Ordering;
@@ -176,7 +176,7 @@ struct Entry<'a> {
 }
 
 /// Executes `lsp.problems.query`.
-pub(crate) fn query_command(payload: Value) -> Result<Value, CoreError> {
+pub fn query_command(payload: Value) -> Result<Value, CoreError> {
     let request: Request = serde_json::from_value(payload).map_err(|error| {
         CoreError::new(ErrorCode::InvalidRequest, "Invalid Problems query request")
             .with_details(error.to_string())

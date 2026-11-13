@@ -1,50 +1,51 @@
 //! Platform-neutral conversion of absolute filesystem paths to LSP file URIs.
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use url::Url;
 
 /// Largest UTF-8 spelling of a Windows extended-length path (32,767 UTF-16
 /// units); shared by native path and server document identity validation.
-pub(crate) const MAX_PATH_BYTES: usize = 4 * 32_767;
+pub const MAX_PATH_BYTES: usize = 4 * 32_767;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Request {
     path: String,
-    platform: Platform,
+    platform: DocumentPathPlatform,
 }
 
 /// Path syntax of a native absolute path; `auto` recognizes drive and UNC paths.
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub(crate) enum Platform {
+pub enum DocumentPathPlatform {
+    /// POSIX syntax: the path must start with `/`.
     Posix,
+    /// Windows syntax: drive letters, UNC shares and extended-length prefixes.
     Windows,
+    /// Windows when the path names a drive or a UNC share, POSIX otherwise.
     Auto,
 }
 
-pub(crate) fn document_uri_command(payload: Value) -> Result<Value, CoreError> {
+/// `lsp.documentUri`: the canonical file URI of `path` under `platform`.
+pub fn document_uri_command(payload: Value) -> Result<Value, CoreError> {
     let request: Request = serde_json::from_value(payload).map_err(|_| invalid())?;
     Ok(json!({"uri": document_uri(&request.path, request.platform)?}))
 }
 
-/// Public alias for planners that compare native paths through their URIs.
-pub(crate) type DocumentPathPlatform = Platform;
-
-impl Platform {
+impl DocumentPathPlatform {
     /// Canonical file URI of an absolute native path; see `lsp.documentUri`.
-    pub(crate) fn document_uri(self, path: &str) -> Result<String, CoreError> {
+    pub fn document_uri(self, path: &str) -> Result<String, CoreError> {
         document_uri(path, self)
     }
 
     /// True when `path` uses Windows syntax: drive or UNC, or `windows` explicitly.
-    pub(crate) fn is_windows_path(self, path: &str) -> bool {
+    pub fn is_windows_path(self, path: &str) -> bool {
         match self {
-            Platform::Windows => true,
-            Platform::Posix => false,
-            Platform::Auto => {
+            DocumentPathPlatform::Windows => true,
+            DocumentPathPlatform::Posix => false,
+            DocumentPathPlatform::Auto => {
                 path.starts_with("\\\\")
                     || path.starts_with("//")
                     || path.as_bytes().get(1) == Some(&b':')
@@ -53,29 +54,29 @@ impl Platform {
     }
 }
 
-fn document_uri(path: &str, platform: Platform) -> Result<String, CoreError> {
+fn document_uri(path: &str, platform: DocumentPathPlatform) -> Result<String, CoreError> {
     if path.len() > MAX_PATH_BYTES || path.contains('\0') {
         return Err(invalid());
     }
     let platform = match platform {
-        Platform::Auto
+        DocumentPathPlatform::Auto
             if path.starts_with("\\\\")
                 || path.starts_with("//")
                 || (path.as_bytes().get(1) == Some(&b':')) =>
         {
-            Platform::Windows
+            DocumentPathPlatform::Windows
         }
-        Platform::Auto => Platform::Posix,
+        DocumentPathPlatform::Auto => DocumentPathPlatform::Posix,
         platform => platform,
     };
     let path = match platform {
-        Platform::Posix => {
+        DocumentPathPlatform::Posix => {
             if !path.starts_with('/') {
                 return Err(invalid());
             }
             path.to_owned()
         }
-        Platform::Windows => {
+        DocumentPathPlatform::Windows => {
             let path = path.replace('\\', "/");
             if let Some(rest) = path.strip_prefix("//?/UNC/") {
                 format!("//{rest}")
@@ -85,12 +86,12 @@ fn document_uri(path: &str, platform: Platform) -> Result<String, CoreError> {
                 path
             }
         }
-        Platform::Auto => unreachable!("auto platform is resolved above"),
+        DocumentPathPlatform::Auto => unreachable!("auto platform is resolved above"),
     };
     let mut url = Url::parse("file:///").expect("constant file URI must parse");
     let rest = match platform {
-        Platform::Posix => &path[1..],
-        Platform::Windows if path.starts_with("//") => {
+        DocumentPathPlatform::Posix => &path[1..],
+        DocumentPathPlatform::Windows if path.starts_with("//") => {
             let (host, rest) = path[2..].split_once('/').ok_or_else(invalid)?;
             if host.is_empty() || rest.is_empty() {
                 return Err(invalid());
@@ -98,7 +99,7 @@ fn document_uri(path: &str, platform: Platform) -> Result<String, CoreError> {
             url.set_host(Some(host)).map_err(|_| invalid())?;
             rest
         }
-        Platform::Windows => {
+        DocumentPathPlatform::Windows => {
             let bytes = path.as_bytes();
             if bytes.len() < 3
                 || !bytes[0].is_ascii_alphabetic()
@@ -109,12 +110,12 @@ fn document_uri(path: &str, platform: Platform) -> Result<String, CoreError> {
             }
             path.as_str()
         }
-        Platform::Auto => unreachable!("auto platform is resolved above"),
+        DocumentPathPlatform::Auto => unreachable!("auto platform is resolved above"),
     };
     // url::PathSegmentsMut ignores `..` rather than removing the preceding
     // component. Resolve dot segments before inserting and keep drive/share
     // roots intact. Empty trailing components retain a directory separator.
-    let root_components = usize::from(matches!(platform, Platform::Windows));
+    let root_components = usize::from(matches!(platform, DocumentPathPlatform::Windows));
     let mut normalized = Vec::new();
     for segment in rest.split('/') {
         match segment {
@@ -144,7 +145,7 @@ fn document_uri(path: &str, platform: Platform) -> Result<String, CoreError> {
 /// Accept a native path alongside existing string URIs without another IPC
 /// round trip. Only URI fields of named LSP operations are interpreted; opaque
 /// server payloads and virtual URIs remain untouched.
-pub(crate) fn resolve_request_paths(command: &str, payload: &mut Value) -> Result<(), CoreError> {
+pub fn resolve_request_paths(command: &str, payload: &mut Value) -> Result<(), CoreError> {
     match command {
         "lsp.startServer" => resolve_field(payload, "rootUri"),
         "lsp.request" => {
@@ -182,7 +183,7 @@ pub(crate) fn resolve_request_paths(command: &str, payload: &mut Value) -> Resul
 }
 
 /// Resolve a named URI field at a command-specific boundary.
-pub(crate) fn resolve_field(parent: &mut Value, key: &str) -> Result<(), CoreError> {
+fn resolve_field(parent: &mut Value, key: &str) -> Result<(), CoreError> {
     let Some(value) = parent.get_mut(key) else {
         return Ok(());
     };

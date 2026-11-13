@@ -1777,22 +1777,22 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
         CoreCommand::LspDocumentIdentity => plugin_response(
             id,
             parsed.payload,
-            crate::lsp::document_identity::resolve_command,
+            lithe_lsp_policy::document_identity::resolve_command,
         ),
         CoreCommand::LspPlanWorkspaceEdit => plugin_response(
             id,
             parsed.payload,
-            crate::lsp::workspace_edit_plan::plan_command,
+            lithe_lsp_policy::workspace_edit_plan::plan_command,
         ),
         CoreCommand::LspClassifyNavigationTarget => plugin_response(
             id,
             parsed.payload,
-            crate::lsp::navigation_target::classify_command,
+            lithe_lsp_policy::navigation_target::classify_command,
         ),
         CoreCommand::LspDeclarationOrUsages => plugin_response(
             id,
             parsed.payload,
-            crate::lsp::declaration_or_usages::decide_command,
+            lithe_lsp_policy::declaration_or_usages::decide_command,
         ),
         CoreCommand::EditorFind => match lithe_editor::find::command(parsed.payload, document) {
             Ok(data) => CoreResponse::success(id, data),
@@ -1944,17 +1944,17 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
         CoreCommand::LspMergeCompletions => plugin_response(
             id,
             parsed.payload,
-            crate::lsp::host_policy::completion_merge::merge_command,
+            lithe_lsp_policy::completion_merge::merge_command,
         ),
         CoreCommand::LspActivationPolicy => plugin_response(
             id,
             parsed.payload,
-            crate::lsp::host_policy::activation::policy_command,
+            lithe_lsp_policy::activation::policy_command,
         ),
         CoreCommand::LspProblemsQuery => plugin_response(
             id,
             parsed.payload,
-            crate::lsp::host_policy::problems::query_command,
+            lithe_lsp_policy::problems::query_command,
         ),
         CoreCommand::LspStartServer => {
             match serde_json::from_value::<crate::lsp::StartServerRequest>(parsed.payload)

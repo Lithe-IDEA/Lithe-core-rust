@@ -905,12 +905,14 @@ dependencies = [
  "lithe-debug",
  "lithe-diagnostics",
  "lithe-diff",
+ "lithe-document-uri",
  "lithe-editor",
  "lithe-execution",
  "lithe-git",
  "lithe-git-host",
  "lithe-github",
  "lithe-ide-host",
+ "lithe-lsp-policy",
  "lithe-network",
  "lithe-plugin-model",
  "lithe-process",
@@ -973,6 +975,16 @@ dependencies = [
  "serde",
  "serde_json",
  "similar",
+]
+
+[[package]]
+name = "lithe-document-uri"
+version = "0.1.0"
+dependencies = [
+ "lithe-protocol",
+ "serde",
+ "serde_json",
+ "url",
 ]
 
 [[package]]
@@ -1058,6 +1070,18 @@ dependencies = [
  "sha2",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "lithe-lsp-policy"
+version = "0.1.0"
+dependencies = [
+ "lithe-core-rules",
+ "lithe-document-uri",
+ "lithe-protocol",
+ "serde",
+ "serde_json",
+ "url",
 ]
 
 [[package]]

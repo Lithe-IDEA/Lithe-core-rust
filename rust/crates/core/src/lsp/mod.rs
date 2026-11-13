@@ -1,13 +1,7 @@
 //! Language tooling is split by responsibility while this facade keeps the Core command API stable.
 
-pub(crate) mod declaration_or_usages;
-pub(crate) mod document_identity;
-pub(crate) mod host_policy;
 pub(crate) mod interface;
 mod languages;
-pub(crate) mod navigation_target;
-pub(crate) mod workspace_edit_plan;
-mod workspace_scope;
 
 pub(crate) use interface::*;
 pub(crate) use lithe_text::*;

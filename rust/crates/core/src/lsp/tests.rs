@@ -173,26 +173,6 @@ fn builtin_navigation_prefers_declarations_and_finds_references() {
 }
 
 #[test]
-fn file_uri_paths_decode_spaces_and_utf8_characters() {
-    assert_eq!(
-        file_path_from_uri("file:///C:/work/Main.java"),
-        "C:/work/Main.java"
-    );
-    assert_eq!(
-        file_path_from_uri("file:///C%3A/work/A%20B.java"),
-        "C:/work/A B.java"
-    );
-    assert_eq!(
-        file_path_from_uri("file:///tmp/go%20project/%E4%B8%AD%E6%96%87/main.go"),
-        "/tmp/go project/中文/main.go"
-    );
-    assert_eq!(
-        file_path_from_uri("file://server/share/Main.java"),
-        "//server/share/Main.java"
-    );
-}
-
-#[test]
 fn document_uri_matches_shared_fixture() {
     let fixture: Value = serde_json::from_str(include_str!(
         "../../../../fixtures/lsp/document-uri-v1.json"

@@ -6,8 +6,8 @@
 //! the `lsp.documentUri` rules. Windows comparisons ignore ASCII case, as the
 //! Windows filesystem does. No filesystem access happens here.
 
-use crate::lsp::DocumentPathPlatform;
-use crate::protocol::CoreError;
+use lithe_document_uri::{percent_decode, DocumentPathPlatform};
+use lithe_protocol::CoreError;
 
 /// One workspace root in canonical URI form.
 pub(crate) struct WorkspaceScope {
@@ -41,7 +41,7 @@ impl WorkspaceScope {
         // The case-folded prefix has the same byte length as the original URI
         // prefix because only ASCII letters are folded.
         let relative = &uri[self.prefix.len()..];
-        Ok(Some(crate::lsp::percent_decode(relative)))
+        Ok(Some(percent_decode(relative)))
     }
 }
 
