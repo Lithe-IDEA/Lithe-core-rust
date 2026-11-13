@@ -38,9 +38,9 @@ fn generic_preference_edits_preserve_run_metadata_without_creating_legacy_defaul
     );
     for original in [
         serde_json::json!({"version":2,"configurations":[]}),
-        serde_json::json!({"version":1,"configurations":[{"id":"user:legacy","type":"java.main","mainClass":"fixture.Main","workingDirectory":".","future":"preserve"}]}),
+        serde_json::json!({"version":1,"configurations":[{"id":"user:legacy","type":"example.main","entry":"fixture.Main","workingDirectory":".","future":"preserve"}]}),
         serde_json::json!({"version":2,"configurations":[{"id":"user:task","env":{"TOKEN":"fixture-value"},"future":[1,2]}],
-            "futureMetadata":{"keep":true},"toolchain":{"java":{"homePath":"/fixture/legacy-jdk"},"futureToolchain":{"keep":true}}}),
+            "futureMetadata":{"keep":true},"toolchain":{"runtime":{"homePath":"/fixture/legacy-runtime"},"futureToolchain":{"keep":true}}}),
     ] {
         let result = call(
             "runConfig.updateToolPreferences",
@@ -101,7 +101,7 @@ fn generic_preference_editor_rejects_invalid_documents_and_references_without_wr
         ),
         (
             serde_json::json!({"version":2,"configurations":[]}),
-            serde_json::json!({"version":1,"workspace":{"tools":{"java":{"inherit":"workspace"}}}}),
+            serde_json::json!({"version":1,"workspace":{"tools":{"runtime":{"inherit":"workspace"}}}}),
         ),
     ] {
         let result: Value = serde_json::from_str(&execute_json(
@@ -145,7 +145,7 @@ fn project_tool_preferences_preserve_symbolic_choices_across_legacy_editor_saves
     let changed = call(
         "runConfig.updateOptions",
         serde_json::json!({"root":root,"scope":"local","configurationId":"","localDocument":document,
-        "toolchain":{"javaHomePath":"/fixture/changed-jdk"}}),
+        "toolchain":{"legacyHomePath":"/fixture/changed-home"}}),
     );
     assert_eq!(changed["ok"], true, "{changed}");
     let saved: Value = serde_json::from_str(changed["data"]["document"].as_str().unwrap()).unwrap();
@@ -241,11 +241,11 @@ fn resolve_prefers_a_host_provided_local_document() {
     fs::create_dir_all(root.join(".lithe/run")).unwrap();
     seed_generated(
         &root,
-        r#"{"version":2,"configurations":[{"id":"current-file","name":"Current File","provider":"java.current-file","execution":"application","toolchains":{"java":"project-jdk"}}]}"#,
+        r#"{"version":2,"configurations":[{"id":"current-file","name":"Current File","provider":"example.current-file","execution":"application","toolchains":{"runtime":"project-runtime"}}]}"#,
     );
     fs::write(
         root.join(".lithe/run/local.json"),
-        r#"{"version":2,"configurations":[{"id":"current-file","name":"Project Local","provider":"java.current-file","cwd":"."}]}"#,
+        r#"{"version":2,"configurations":[{"id":"current-file","name":"Project Local","provider":"example.current-file","cwd":"."}]}"#,
     )
     .unwrap();
 
@@ -260,7 +260,7 @@ fn resolve_prefers_a_host_provided_local_document() {
                     "configurations": [{
                         "id": "current-file",
                         "name": "This PC",
-                        "provider": "java.current-file",
+                        "provider": "example.current-file",
                         "cwd": "."
                     }]
                 }
@@ -291,7 +291,7 @@ fn resolve_prefers_a_host_provided_local_document() {
                     "configurations": [{
                         "id": "current-file",
                         "name": "Legacy This PC",
-                        "type": "java.current-file",
+                        "type": "example.current-file",
                         "programArguments": ["--dev"]
                     }]
                 }
@@ -450,15 +450,15 @@ fn run_configuration_inspect_reports_malformed_and_unsupported_documents() {
 fn run_configuration_inspection_summarizes_changed_inputs() {
     let root = temporary_root("run-config-input-summary");
     fs::create_dir_all(root.join("src")).unwrap();
-    fs::write(root.join("src/App.java"), "class App {}").unwrap();
+    fs::write(root.join("src/app.txt"), "app").unwrap();
     fs::write(root.join("package.json"), r#"{"name":"demo"}"#).unwrap();
-    let generated = generate_run_configuration(&root, &["src/App.java"], None);
-    let generated_again = generate_run_configuration(&root, &["src/App.java"], None);
+    let generated = generate_run_configuration(&root, &["src/app.txt"]);
+    let generated_again = generate_run_configuration(&root, &["src/app.txt"]);
     assert_eq!(generated, generated_again);
     write_generated_run_document(&root, &generated);
     fs::write(root.join("package.json"), r#"{"name":"renamed"}"#).unwrap();
 
-    let inspected = inspect_run_configuration(&root, None);
+    let inspected = inspect_run_configuration(&root);
     assert_eq!(
         inspected["diagnostics"][0]["message"],
         "Project inputs changed: 0 added, 0 removed, 1 modified"
@@ -467,15 +467,8 @@ fn run_configuration_inspection_summarizes_changed_inputs() {
     fs::remove_dir_all(root).unwrap();
 }
 
-fn generate_run_configuration(
-    root: &std::path::Path,
-    paths: &[&str],
-    java_entrypoints: Option<Value>,
-) -> Value {
-    let mut payload = serde_json::json!({ "root": root, "paths": paths, "modulePaths": [] });
-    if let Some(entrypoints) = java_entrypoints {
-        payload["javaEntrypoints"] = entrypoints;
-    }
+fn generate_run_configuration(root: &std::path::Path, paths: &[&str]) -> Value {
+    let payload = serde_json::json!({ "root": root, "paths": paths, "modulePaths": [] });
     let response: Value = serde_json::from_str(&execute_json(
         &serde_json::json!({ "id": "generate", "command": "runConfig.generate", "payload": payload })
             .to_string(),
@@ -487,14 +480,11 @@ fn generate_run_configuration(
 
 fn write_generated_run_document(root: &std::path::Path, generated: &Value) {
     fs::create_dir_all(root.join(".lithe/run")).unwrap();
-    seed_generated(&root, serde_json::to_string(generated).unwrap());
+    seed_generated(root, serde_json::to_string(generated).unwrap());
 }
 
-fn inspect_run_configuration(root: &std::path::Path, java_entrypoints: Option<Value>) -> Value {
-    let mut payload = serde_json::json!({ "root": root });
-    if let Some(entrypoints) = java_entrypoints {
-        payload["javaEntrypoints"] = entrypoints;
-    }
+fn inspect_run_configuration(root: &std::path::Path) -> Value {
+    let payload = serde_json::json!({ "root": root });
     let response: Value = serde_json::from_str(&execute_json(
         &serde_json::json!({ "id": "inspect", "command": "runConfig.inspect", "payload": payload })
             .to_string(),
@@ -511,11 +501,11 @@ fn run_configuration_resolve_matches_toolchains_and_rejects_unsafe_paths() {
     fs::create_dir_all(root.join(".lithe/toolchains")).unwrap();
     seed_generated(
         &root,
-        r#"{"version":1,"configurations":[{"id":"current-file","name":"Current File","type":"java.current-file","toolchains":{"java":"project-jdk"}}]}"#,
+        r#"{"version":1,"configurations":[{"id":"current-file","name":"Current File","type":"example.current-file","toolchains":{"runtime":"project-runtime"}}]}"#,
     );
     seed_requirements(
         &root,
-        r#"{"version":1,"toolchains":{"project-jdk":{"type":"java","minimumVersion":"21","preferredVendor":"temurin"}}}"#,
+        r#"{"version":1,"toolchains":{"project-runtime":{"type":"runtime","minimumVersion":"21","preferredVendor":"temurin"}}}"#,
     );
 
     let resolve = |version: &str, vendor: &str| -> Value {
@@ -526,8 +516,8 @@ fn run_configuration_resolve_matches_toolchains_and_rejects_unsafe_paths() {
                 "payload": {
                     "root": root,
                     "toolchainCandidates": [{
-                        "id": "project-jdk",
-                        "type": "java",
+                        "id": "project-runtime",
+                        "type": "runtime",
                         "version": version,
                         "vendor": vendor
                     }]
@@ -577,7 +567,7 @@ fn legacy_v2_runtime_requirements_are_reconciled_without_regeneration() {
     seed_generated(
         &root,
         r#"{"version":2,"configurations":[
-            {"id":"spring","name":"backend","provider":"spring-boot.maven","execution":"service","cwd":".","toolchains":{"java":"project-jdk","maven":"project-maven"}},
+            {"id":"service","name":"backend","provider":"build.service","execution":"service","cwd":".","toolchains":{"runtime":"project-runtime","build":"project-build"}},
             {"id":"npm","name":"web","provider":"npm.script","execution":"service","command":"npm","args":["run","dev"],"cwd":"web","toolchains":{}},
             {"id":"bun","name":"bun web","provider":"npm.script","execution":"service","command":"bun","args":["run","dev"],"cwd":"bun-web","toolchains":{"runtime":"project-node"}}
         ]}"#,
@@ -585,8 +575,8 @@ fn legacy_v2_runtime_requirements_are_reconciled_without_regeneration() {
     seed_requirements(
         &root,
         r#"{"version":1,"toolchains":{
-            "project-jdk":{"type":"java"},
-            "project-maven":{"type":"maven","java":"project-jdk"},
+            "project-runtime":{"type":"runtime"},
+            "project-build":{"type":"build-tool"},
             "project-node":{"type":"node","minimumVersion":"22"}
         }}"#,
     );
@@ -598,8 +588,8 @@ fn legacy_v2_runtime_requirements_are_reconciled_without_regeneration() {
             "payload": {
                 "root": root,
                 "toolchainCandidates": [
-                    {"id":"project-jdk","type":"java","version":"21","vendor":"Temurin"},
-                    {"id":"project-maven","type":"maven","version":"3.9.9","vendor":""}
+                    {"id":"project-runtime","type":"runtime","version":"21","vendor":"Example"},
+                    {"id":"project-build","type":"build-tool","version":"3.9.9","vendor":""}
                 ]
             }
         })
@@ -656,7 +646,7 @@ fn shared_run_configuration_fixtures_have_the_versioned_contract_shape() {
 #[test]
 fn shared_hybrid_fixture_executes_scoped_toolchain_expectations() {
     let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../fixtures/run-configuration/hybrid-spring-vue.json");
+        .join("../fixtures/run-configuration/hybrid-service-web.json");
     let fixture: Value = serde_json::from_str(&fs::read_to_string(fixture_path).unwrap()).unwrap();
     let root = temporary_root("run-config-hybrid-fixture");
     fs::create_dir_all(root.join(".lithe/run")).unwrap();
@@ -674,8 +664,8 @@ fn shared_hybrid_fixture_executes_scoped_toolchain_expectations() {
             "payload": {
                 "root": root,
                 "toolchainCandidates": [
-                    {"id":"project-jdk","type":"java","version":"21","vendor":"Temurin"},
-                    {"id":"project-maven","type":"maven","version":"3.9.9","vendor":""}
+                    {"id":"project-runtime","type":"runtime","version":"21","vendor":"Example"},
+                    {"id":"project-build","type":"build-tool","version":"3.9.9","vendor":""}
                 ]
             }
         })
@@ -725,7 +715,7 @@ fn shared_editor_save_fixture_executes_the_document_contract() {
     fs::create_dir_all(root.join("backend")).unwrap();
     seed_generated(
         &root,
-        r#"{"version":2,"configurations":[{"id":"spring","name":"Spring","provider":"spring-boot.maven","execution":"service","toolchains":{"java":"project-jdk","maven":"project-maven"},"extensions":{"maven":{"module":"."}}}]}"#,
+        r#"{"version":2,"configurations":[{"id":"server","name":"Server","provider":"build.service","execution":"service","toolchains":{"runtime":"project-runtime"},"extensions":{"build":{"module":"."}}}]}"#,
     );
 
     let mut request = fixture["request"].clone();
@@ -753,7 +743,7 @@ fn migration_leaves_sidecar_documents_at_their_own_version() {
     fs::create_dir_all(root.join(".lithe/toolchains")).unwrap();
     seed_generated(
         &root,
-        r#"{"version":1,"configurations":[{"id":"current-file","name":"Current File","type":"java.current-file"}]}"#,
+        r#"{"version":1,"configurations":[{"id":"current-file","name":"Current File","type":"example.current-file"}]}"#,
     );
     fs::write(
         root.join(".lithe/project.json"),
@@ -778,10 +768,10 @@ fn migration_leaves_sidecar_documents_at_their_own_version() {
     fs::remove_dir_all(root).unwrap();
 }
 
-/// A non-Java service must reach a launch plan without acquiring a Java
-/// toolchain or a JAVA_HOME it has no use for.
+/// A service that names no toolchain reaches a launch plan with its own
+/// command and no toolchain binding.
 #[test]
-fn process_configurations_launch_without_java_assumptions() {
+fn process_configurations_launch_without_a_toolchain() {
     let root = temporary_root("run-config-process");
     fs::create_dir_all(root.join(".lithe/run")).unwrap();
     fs::create_dir_all(root.join("frontend")).unwrap();
@@ -816,7 +806,6 @@ fn process_configurations_launch_without_java_assumptions() {
     assert_eq!(plan["data"]["arguments"], serde_json::json!(["run", "dev"]));
     assert_eq!(plan["data"]["workingDirectory"], "frontend");
     assert_eq!(plan["data"]["env"]["PORT"], "3000");
-    assert!(plan["data"]["environment"]["JAVA_HOME"].is_null());
 
     fs::remove_dir_all(root).unwrap();
 }
@@ -851,14 +840,13 @@ fn toolchain_backed_process_uses_the_generic_runtime_binding() {
         serde_json::json!(["run", "./cmd/api"])
     );
     assert_eq!(plan["data"]["env"]["APP_ENV"], "dev");
-    assert!(plan["data"]["environment"]["JAVA_HOME"].is_null());
 
     fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
-fn pure_go_generation_does_not_require_java_or_add_java_current_file() {
-    let root = temporary_root("pure-go-no-jdk");
+fn pure_go_generation_adds_no_current_file_configuration() {
+    let root = temporary_root("pure-go-generation");
     fs::create_dir_all(&root).unwrap();
     fs::write(root.join("go.mod"), "module example.com/api\n\ngo 1.24\n").unwrap();
     fs::write(root.join("main.go"), "package main\nfunc main() {}\n").unwrap();
@@ -882,7 +870,6 @@ fn pure_go_generation_does_not_require_java_or_add_java_current_file() {
     assert!(!configurations
         .iter()
         .any(|value| value["id"] == "current-file"));
-    assert!(generated["data"]["toolchainRequirements"]["toolchains"]["project-jdk"].is_null());
 
     fs::remove_dir_all(root).unwrap();
 }
@@ -934,7 +921,6 @@ fn multi_language_generation_declares_only_consumed_runtime_requirements() {
     for id in ["project-go", "project-python", "project-cargo"] {
         assert!(requirements[id].is_null(), "{id}: {requirements}");
     }
-    assert!(requirements["project-jdk"].is_null(), "{requirements}");
     for provider in ["go.main", "python.script", "cargo.binary"] {
         let configuration = generated["data"]["generated"]["configurations"]
             .as_array()
@@ -949,7 +935,7 @@ fn multi_language_generation_declares_only_consumed_runtime_requirements() {
 }
 
 #[test]
-fn unknown_provider_without_an_executable_never_falls_into_maven() {
+fn unknown_provider_without_an_executable_is_rejected() {
     let root = temporary_root("run-config-unknown-provider");
     fs::create_dir_all(root.join(".lithe/run")).unwrap();
     seed_generated(
@@ -979,8 +965,8 @@ fn unknown_provider_without_an_executable_never_falls_into_maven() {
 }
 
 /// Generic editor options must patch the common process shape. Writing
-/// them into extensions.maven makes the UI appear to save successfully
-/// while Go/Python/Node launch plans continue using the old arguments.
+/// them into a provider extension makes the UI appear to save successfully
+/// while process launch plans continue using the old arguments.
 #[test]
 fn process_options_update_common_arguments_and_environment() {
     let root = temporary_root("run-config-process-options");
@@ -1023,7 +1009,7 @@ fn process_options_update_common_arguments_and_environment() {
         serde_json::json!(["app.py", "--port", "9000"])
     );
     assert_eq!(patch["env"]["APP_ENV"], "test");
-    assert!(patch["extensions"]["maven"].is_null());
+    assert!(patch.get("extensions").is_none(), "{patch}");
 
     fs::write(
         root.join(".lithe/run/local.json"),
@@ -1094,11 +1080,11 @@ fn resolve_chooses_detected_default_unless_the_project_names_one() {
     seed_generated(
         &root,
         serde_json::json!({"version": 2, "configurations": [
-            {"id": "current-file", "name": "Current File", "provider": "java.current-file",
+            {"id": "current-file", "name": "Current File", "provider": "example.current-file",
              "execution": "application", "toolchains": {}},
-            {"id": "java-main:demo.Tool", "name": "Tool", "provider": "java.main",
+            {"id": "example-main:demo.Tool", "name": "Tool", "provider": "example.main",
              "execution": "application", "toolchains": {}},
-            {"id": "spring-boot.maven:.", "name": "app", "provider": "spring-boot.maven",
+            {"id": "build.service:.", "name": "app", "provider": "build.service",
              "execution": "service", "toolchains": {}}
         ]}),
     );
@@ -1106,19 +1092,19 @@ fn resolve_chooses_detected_default_unless_the_project_names_one() {
     assert_eq!(detected["ok"], true, "{detected}");
     assert_eq!(
         detected["data"]["defaultRunConfiguration"],
-        "spring-boot.maven:."
+        "build.service:."
     );
 
     fs::create_dir_all(root.join(".lithe")).unwrap();
     fs::write(
         root.join(".lithe/project.json"),
-        r#"{"version":1,"defaultRunConfiguration":"java-main:demo.Tool"}"#,
+        r#"{"version":1,"defaultRunConfiguration":"example-main:demo.Tool"}"#,
     )
     .unwrap();
     let named = run_config_command("runConfig.resolve", serde_json::json!({ "root": root }));
     assert_eq!(
         named["data"]["defaultRunConfiguration"],
-        "java-main:demo.Tool"
+        "example-main:demo.Tool"
     );
 }
 
@@ -1195,24 +1181,6 @@ fn working_directory_override_must_name_an_existing_project_directory() {
     let document: Value =
         serde_json::from_str(updated["data"]["document"].as_str().unwrap()).unwrap();
     assert_eq!(document["configurations"][0]["cwd"], "backend");
-}
-
-#[test]
-fn java_selection_rejects_ambiguous_or_invalid_host_snapshots() {
-    for payload in [
-        serde_json::json!({"root":"/unused","requirements":{"version":1,"toolchains":{}},"candidates":[]}),
-        serde_json::json!({"requirements":{"version":999,"toolchains":{}},"candidates":[]}),
-        serde_json::json!({"requirements":{"toolchains":{}},"candidates":[]}),
-    ] {
-        let response: Value = serde_json::from_str(&execute_json(
-            &serde_json::json!({
-                "id":"snapshot","command":"runConfig.selectJava","payload":payload
-            })
-            .to_string(),
-        ))
-        .unwrap();
-        assert_eq!(response["ok"], false, "{response}");
-    }
 }
 
 #[test]
@@ -1400,7 +1368,7 @@ fn build_provider_configurations_persist_before_generation_and_reuse_identity() 
         ("projectID", serde_json::json!("")),
         ("userArguments", serde_json::json!(["bad\u{0}"])),
         ("userArguments", serde_json::json!(vec!["a"; 65])),
-        ("command", serde_json::json!("java")),
+        ("command", serde_json::json!("runtime")),
     ] {
         let mut invalid = fixture["reference"].clone();
         invalid[field] = value;
@@ -1419,7 +1387,7 @@ fn build_provider_configurations_persist_before_generation_and_reuse_identity() 
         serde_json::json!([])
     );
     let mut invalid = document.clone();
-    invalid["configurations"][0]["command"] = serde_json::json!("java");
+    invalid["configurations"][0]["command"] = serde_json::json!("runtime");
     fs::write(&local, invalid.to_string()).unwrap();
     assert_eq!(
         call("runConfig.resolve", serde_json::json!({"root":root}))["ok"],
@@ -1757,7 +1725,7 @@ fn provider_run_options_reject_malformed_or_oversized_values() {
     }
 }
 
-/// A non-Java provider owns discovery; regenerating labels must retain user choices,
+/// A build provider owns discovery; regenerating labels must retain user choices,
 /// while withdrawing a target must not resurrect it from the previous detected layer.
 #[test]
 fn generic_provider_runs_regenerate_without_language_facts_and_keep_stable_overrides() {
@@ -1796,7 +1764,14 @@ fn generic_provider_runs_regenerate_without_language_facts_and_keep_stable_overr
     let id = configuration["id"].clone();
     assert_eq!(configuration["provider"], "build.provider");
     assert!(configuration["toolchains"].as_object().unwrap().is_empty());
-    assert!(configuration["extensions"].get("maven").is_none());
+    assert!(
+        configuration["extensions"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .all(|key| key == "build"),
+        "{configuration}"
+    );
     fs::write(
         root.join(".lithe/run/local.json"),
         serde_json::json!({"version":2,"configurations":[
@@ -1859,7 +1834,7 @@ fn generic_provider_runs_regenerate_without_language_facts_and_keep_stable_overr
     assert!(!root.join(".lithe/run/generated.json").exists());
 }
 
-/// Providers receive saved typed choices; Core does not assemble a Maven goal or reread its POM.
+/// Providers receive saved typed choices; Core does not assemble a build goal or reread a build file.
 #[test]
 fn provider_launch_inputs_preserve_document_layers_and_current_selector() {
     let root = temporary_root("provider-launch-inputs");
@@ -1873,7 +1848,11 @@ fn provider_launch_inputs_preserve_document_layers_and_current_selector() {
         }
     }
     let _cleanup = Cleanup(root.clone());
-    fs::write(root.join("nested/pom.xml"), "deliberately not a POM").unwrap();
+    fs::write(
+        root.join("nested/build.manifest"),
+        "deliberately not a manifest",
+    )
+    .unwrap();
     let generated = serde_json::json!({"version":2,"configurations":[{"id":"service","name":"Service","provider":"build.provider","execution":"service",
         "cwd":"nested","env":{},"extensions":{"build":{"pluginID":"dev.example.engine","buildSystemID":"engine","root":"nested","run":"serve",
         "projectID":"project","targetID":"target","execution":"service"},"build-run":{"runtimeArguments":["--message=base value"]}}}]});
@@ -1938,14 +1917,9 @@ fn provider_launch_inputs_require_a_typed_reference_after_domain_migration() {
         }
     }
     let _cleanup = Cleanup(root.clone());
-    for provider in [
-        "maven.module",
-        "spring-boot.maven",
-        "quarkus.maven",
-        "micronaut.maven",
-    ] {
+    for provider in ["legacy.module", "legacy.framework", "legacy.service"] {
         let generated = serde_json::json!({"version":2,"configurations":[{"id":"legacy","name":"Legacy",
-            "provider":provider,"execution":"task","extensions":{"maven":{"module":".","profiles":["saved"],"skipTests":false}}}]});
+            "provider":provider,"execution":"task","extensions":{"legacy":{"module":".","profiles":["saved"],"skipTests":false}}}]});
         seed_generated(&root, generated.to_string());
         let reply: Value = serde_json::from_str(&execute_json(
             &serde_json::json!({"id":"unmigrated","command":"runConfig.providerLaunchInputs",

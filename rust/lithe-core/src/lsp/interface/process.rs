@@ -7,7 +7,7 @@
 //! against a scripted server instead of a real one.
 //!
 //! On Windows a server and everything it starts share one Job Object, so a
-//! batch launcher's JVM ends with it and none outlives a crashed host.
+//! runtime a batch launcher starts ends with it and none outlives a crashed host.
 
 use crate::protocol::{CoreError, ErrorCode};
 use std::collections::BTreeMap;
@@ -385,7 +385,7 @@ mod tests {
     #[test]
     fn batch_language_server_uses_cmd_exe() {
         let spec = LspProcessSpec {
-            executable: PathBuf::from(r"C:\Program Files\Lithe\jdtls.bat"),
+            executable: PathBuf::from(r"C:\Program Files\Lithe\language-server.bat"),
             arguments: vec!["-data".to_string(), r"C:\workspace data".to_string()],
             working_directory: PathBuf::from(r"C:\workspace"),
             environment: BTreeMap::new(),
@@ -434,7 +434,7 @@ mod tests {
 
     /// Not a scenario of its own: a no-op unless the termination test launches
     /// this test binary with it. It then stays alive until its inherited stdin
-    /// closes, like the JVM a batch language-server launcher starts.
+    /// closes, like the runtime a batch language-server launcher starts.
     #[test]
     fn stdin_hold_helper() {
         if std::env::var_os(STDIN_HOLD_ENV).is_none() {
@@ -529,7 +529,7 @@ mod tests {
         let executable = root.join("scripted server.cmd");
         let echo_output = root.join("arguments.txt");
         // The script forwards `%*` to a native Windows program, which parses the
-        // command line the way a real language server such as java.exe does.
+        // command line the way a real native language server does.
         // This test binary plays that program: starting PowerShell here instead
         // took from 0.2 s to the whole per-test budget on CI runners.
         fs::write(

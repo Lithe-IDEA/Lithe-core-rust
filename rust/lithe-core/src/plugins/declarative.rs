@@ -2446,8 +2446,8 @@ impl ServerProcess {
                     .unwrap_or(language_server_sessions::RESOLVE_TIMEOUT_MILLISECONDS),
             }),
         };
-        // Initialization options can name code the server loads (JDT LS
-        // bundles, for example), so changing them is a new program too.
+        // Initialization options can name code the server loads (bundles or
+        // extensions, for example), so changing them is a new program too.
         if let Some(options) = &self.initialization_options {
             program["initializationOptions"] = options.clone();
         }

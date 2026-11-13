@@ -45,11 +45,11 @@
 | `command`（标准输出） | 运行命令，解码标准输出（`jsonStream` 或规范格式） | `build-command-stdout`（Go） |
 | `command`（输出文件） | 运行命令，解码它写到 `${outputFile}` 的文件 | `build-command-output-file`（Gradle） |
 | `provider` | 由插件的构建提供者回答 `lithe/build/model` | [构建提供者](build-providers.md) |
-| `hostIntegration` | 交给宿主集成：只限官方插件，目前只有 `maven`，其他是 `plugin.integration.unsupported`。新的构建系统用声明式契约或规范格式，不用它 | — |
+| `hostIntegration` | 保留字段：任何 ID 都返回 `plugin.integration.unsupported`。构建系统用声明式契约或规范格式 | — |
 
 `command` 来源要声明 `executesProjectCode` 和 `mayUseNetwork`。命令只在宿主按请求启动时运行，静态文件在检测时读取。`map` 只负责选取值，不是转换语言：map 表达不了的（其他文件格式、从工具读出的任务、显式的父子关系、计算出的标签、依赖树）由插件自己的命令或构建提供者输出规范格式 `litheBuildModel`、`litheDependencies`、`litheTestResults` 或 `litheDiagnostics`（`version` 都是 `0`）。不符合解码器的输出是 `plugin.build.invalidOutput`。
 
-构建系统的 `hostIntegration` 和语言服务器的 `hostIntegration` 是两个不同的声明：前者只限官方插件；后者任何插件都可以声明，见[语言服务器的宿主集成](../../contract/v1/README.md#language-server-host-integrations)。
+构建系统的 `hostIntegration` 和语言服务器的 `hostIntegration` 都是保留字段：Core 不实现任何宿主集成，任何 ID 都返回 `plugin.integration.unsupported`，见[语言服务器的宿主集成](../../contract/v1/README.md#language-server-host-integrations)。
 
 ### 选项、可执行文件与准备任务
 
@@ -70,7 +70,7 @@
 | [Optional read-only model inputs](../../contract/v1/README.md#optional-read-only-model-inputs) | 插件之间共享只读模型 |
 | [Declarative project preparation](../../contract/v1/README.md#declarative-project-preparation) | 运行前准备任务 |
 | [Executable resolution](../../contract/v1/README.md#executable-resolution) | 可执行文件候选、排序、严格选择 |
-| [Host integrations](../../contract/v1/README.md#host-integrations) | 构建系统的宿主集成（只限官方插件） |
+| [Host integrations](../../contract/v1/README.md#host-integrations) | 构建系统的宿主集成（保留字段，Core 不实现） |
 | [Commands](../../contract/v1/README.md#commands) | `build.*` Core 命令：检测、规划、解码、同步指纹 |
 
 ### 示例与用例
@@ -142,11 +142,11 @@ IDs of build systems, tasks, and run entries start with a lowercase letter and u
 | `command` (stdout) | Run a command and decode its standard output (`jsonStream` or a canonical format) | `build-command-stdout` (Go) |
 | `command` (output file) | Run a command and decode the file it writes to `${outputFile}` | `build-command-output-file` (Gradle) |
 | `provider` | The plugin's build provider answers `lithe/build/model` | [Build providers](build-providers.md) |
-| `hostIntegration` | Handed to a host integration: official plugins only, currently only `maven`, otherwise `plugin.integration.unsupported`. New build systems use the declarative contract or a canonical format instead | — |
+| `hostIntegration` | Reserved: every ID returns `plugin.integration.unsupported`. Build systems use the declarative contract or a canonical format | — |
 
 A `command` source declares `executesProjectCode` and `mayUseNetwork`. A command runs only when the host starts it on request; a static file is read during detection. A `map` only selects values and is not a transformation language: whatever a map cannot express (other file formats, tasks read from the tool, explicit parent links, computed tags, dependency trees) is the plugin's own command or build provider printing the canonical `litheBuildModel`, `litheDependencies`, `litheTestResults`, or `litheDiagnostics` (all `version` `0`). Output that does not fit its decoder is `plugin.build.invalidOutput`.
 
-A build system's `hostIntegration` and a language server's `hostIntegration` are two different declarations: the first is limited to official plugins; any plugin may declare the second, see [language server host integrations](../../contract/v1/README.md#language-server-host-integrations).
+A build system's `hostIntegration` and a language server's `hostIntegration` are both reserved: Core implements no host integration, and every ID returns `plugin.integration.unsupported`; see [language server host integrations](../../contract/v1/README.md#language-server-host-integrations).
 
 ### Options, executables, and preparation tasks
 
@@ -167,7 +167,7 @@ A build system's `hostIntegration` and a language server's `hostIntegration` are
 | [Optional read-only model inputs](../../contract/v1/README.md#optional-read-only-model-inputs) | Sharing read-only models between plugins |
 | [Declarative project preparation](../../contract/v1/README.md#declarative-project-preparation) | Tasks that run before a launch |
 | [Executable resolution](../../contract/v1/README.md#executable-resolution) | Executable candidates, ordering, strict selection |
-| [Host integrations](../../contract/v1/README.md#host-integrations) | Host integrations for build systems (official plugins only) |
+| [Host integrations](../../contract/v1/README.md#host-integrations) | Host integrations for build systems (reserved; Core implements none) |
 | [Commands](../../contract/v1/README.md#commands) | `build.*` Core commands: detection, plans, decoding, sync fingerprints |
 
 ### Examples and cases

@@ -56,7 +56,7 @@ fn toolchain_pins_do_not_match_sibling_prefixes_or_other_tools() {
 fn toolchain_pins_retain_dormant_namespaced_values_and_legacy_data() {
     let document = json!({
         "version":1,
-        "toolchains":{"project-jdk":{"home":"relative legacy home","javaHome":"legacy JDK"},"custom old key":{"executable":"legacy-command"}},
+        "toolchains":{"project-runtime":{"home":"relative legacy home","legacyHome":"legacy runtime"},"custom old key":{"executable":"legacy-command"}},
         "pins":{".":{"dev.lithe.fixture.disabled:compiler":pin("/opt/lithe-fixtures/compiler")}}
     });
     let before = document.clone();
@@ -192,7 +192,16 @@ fn toolchain_pins_reject_invalid_tools_providers_and_unknown_fields() {
     let mut document = local_pins();
     document["pins"]["."]["java"]["extra"] = json!(true);
     assert!(pins::validate(&document).is_err());
+    // Legacy entries are opaque string records: any key is kept, but a value must
+    // be a string and an entry holds at most 16 properties.
     let document = json!({"version":1,"toolchains":{"old":{"unknown":"path"}}});
+    assert!(pins::validate(&document).is_ok());
+    let document = json!({"version":1,"toolchains":{"old":{"unknown":true}}});
+    assert!(pins::validate(&document).is_err());
+    let crowded: serde_json::Map<String, Value> = (0..17)
+        .map(|index| (format!("key{index}"), json!("path")))
+        .collect();
+    let document = json!({"version":1,"toolchains":{"old":crowded}});
     assert!(pins::validate(&document).is_err());
     assert!(pins::resolve(
         &json!({"document":local_pins(),"directory":".","tool":"java","unknown":true})

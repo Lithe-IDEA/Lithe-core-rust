@@ -56,28 +56,16 @@
 | `validationArguments` | 候选在使用前必须以状态 0 退出的探针；为空时宿主信任候选，由 LSP 握手决定。 |
 | `runtimeDependencies` | 宿主要发现并传给服务器的工具，每一项是 `requiresTools` 列出的工具定义 ID。宿主把每个路径导出为 `LITHE_<TOOL>_PATH`（用户设置的值优先），并把其目录加到服务器的 `PATH` 前面。项目本地副本不会被选中。 |
 | `initializationOptions` | 作为 LSP `initializationOptions` 发送的 JSON 对象；其中每个字符串值都是启动模板。 |
-| `hostIntegration` | 任何插件都可以声明，见下一节。 |
+| `hostIntegration` | 保留字段，见下一节。 |
 | `requestMethods`、`commands`、`serializedCommands`、`forwardNotifications`、`state`、`remote` | 后端可以向运行中的服务器发什么，以及宿主怎样保存它的状态，见“插件自有会话”。 |
 
 宿主拥有语言服务器进程的生命周期、LSP 会话，以及在提供者被停用时停止进程。
 
 #### 宿主集成（`hostIntegration`）
 
-有些服务器需要数据表达不了的行为，例如从构建文件算出的项目模型、虚拟文档、测试和调试的接线。这些行为是宿主代码，称为宿主集成。服务器按名称选择一个集成，并说明它需要的文件在插件自己包里的哪个位置：
+`hostIntegration` 是保留字段。Core 不实现任何宿主集成，也不按语言 ID、服务器 ID 或工具名走特殊逻辑；语言在启动之外需要的一切，都由插件自己的后端、提供者和声明给出。声明任何 `hostIntegration` ID 都返回 `plugin.integration.unsupported`，字段为 `languageServers[<n>].hostIntegration.id`。
 
-```json
-"hostIntegration": {
-  "id": "jdt",
-  "capabilities": ["debug", "run", "testing"],
-  "resources": { "configuration": "language-server/configuration/${arch}", "lombokAgent": "…" }
-}
-```
-
-- 插件拥有文件，宿主拥有行为。宿主只对声明它的服务器启用集成，从不按语言 ID 匹配，也不在包外查找文件。
-- 集成是宿主代码，但只读取声明插件自己包里的资源，交给同一个插件启动的语言服务器或辅助进程。它不授予插件运行自己服务器进程之外的权限。
-- `capabilities` 列出语言服务器的哪些功能由集成提供，取值是 `run`、`testing`、`debug`。没有列出、又没有执行提供者提供的功能，对这种语言不可用。
-- 每个集成定义自己提供的能力和读取的资源。能力未提供、资源未声明、或在执行提供者已经提供的语言上又列出 `run` 或 `testing`，都是 `plugin.manifest.invalid`。
-- 契约目前只定义了 `jdt` 这一个集成 ID：它要求 `runtime` 启动（`java` 工具），`configuration`、`lombokAgent` 为必需资源。宿主没有实现的 ID 返回 `plugin.integration.unsupported`。桌面端源码中目前没有找到 `jdt` 的实现，因此声明它会被拒绝（见“桌面端现状”）。
+声明了某种语言的插件拥有这种语言依赖进程的功能：宿主不再为它运行内置工具，插件缺失或被停用时也不会回退到内置实现。插件的 `executionProviders` 没有提供的功能，对这种语言不可用。
 
 #### 启动模板
 
@@ -219,7 +207,6 @@
 | 语言服务器启动 | 已支持 `packaged`、包内运行时、`systemCommand`（只在 PATH 上查找，依赖项目工具链或用户覆盖的启动计划会被拒绝）和后端应答的命令行。后端应答 `{kind: "tool"}` 在启动时被拒绝，因为工具还没有经过工具链注册表解析 |
 | 语言服务器呈现 | 只呈现诊断。补全、悬停、跳转、重命名、格式化没有编辑器界面，插件即使提供了也不会显示 |
 | 插件自有会话与 `languageServer/*` 方法 | 已接通，策略由 Core 执行 |
-| `jdt` 宿主集成 | 桌面端源码中未找到实现，声明会收到 `plugin.integration.unsupported` |
 | 执行提供者（`run`、`test`、`executionProviders`） | 未声明。需要它的插件不会被提供安装 |
 | 输出链接 | 已支持。Build、Run、Test 控制台的文字变成链接，带 `resolve` 的匹配器在点击时调用后端 |
 | 内容提供者 | 已支持 `documents/registerContentProvider` |
@@ -231,7 +218,7 @@
 | [Languages](../../contract/v1/README.md#languages) | 语言 ID、扩展名、文件名、项目标记、依赖路径 |
 | [Grammars and editor configuration](../../contract/v1/README.md#grammars-and-editor-configuration) | TextMate 语法的上限和拒绝规则、注释与括号配置、在后台运行 |
 | [Language servers](../../contract/v1/README.md#language-servers) | 启动方式（含 `backend`）、参数、探测参数、运行时依赖 |
-| [Language server host integrations](../../contract/v1/README.md#language-server-host-integrations) | 宿主集成与 `jdt` |
+| [Language server host integrations](../../contract/v1/README.md#language-server-host-integrations) | 宿主集成（保留字段，Core 不实现） |
 | [Workspace configuration](../../contract/v1/README.md#workspace-configuration) | `workspaceConfiguration` 的展开与推送 |
 | [Plugin-owned sessions](../../contract/v1/README.md#plugin-owned-sessions) | 会话字段、会话策略、gate、状态目录与回收、准备状态 |
 | [Runtime launch](../../contract/v1/README.md#runtime-launch) | 用 `java` 或 `node` 等工具启动包内入口文件 |
@@ -319,28 +306,16 @@ The rules for `id`, `fileExtensions`, `fileNames`, `projectFileNames`, and `depe
 | `validationArguments` | A probe that must exit with status 0 before a candidate is used; empty means the host trusts the candidate and lets the LSP handshake decide. |
 | `runtimeDependencies` | Tools the host discovers and passes to the server, each a tool-definition ID that `requiresTools` lists. The host exports each path as `LITHE_<TOOL>_PATH` (a user-set value takes precedence) and prepends its directory to the server's `PATH`. A project-local copy is never chosen. |
 | `initializationOptions` | A JSON object sent as the LSP `initializationOptions`. Every string value inside it is a launch template. |
-| `hostIntegration` | Any plugin may declare one; see the next section. |
+| `hostIntegration` | Reserved; see the next section. |
 | `requestMethods`, `commands`, `serializedCommands`, `forwardNotifications`, `state`, `remote` | What the backend may ask of the running server and how the host keeps its state; see "Plugin-owned sessions". |
 
 The host owns the language server process lifecycle, the LSP session, and stopping the process when the provider is disabled.
 
 #### Host integrations (`hostIntegration`)
 
-Some servers need behavior data cannot express: a project model computed from build files, virtual documents, test and debug wiring. That behavior is host code, called a host integration. A server selects one by name and says where the files it needs are inside the plugin's own package:
+`hostIntegration` is reserved. Core implements no host integration and runs no special logic for a language ID, a server ID, or a tool name; everything a language needs beyond its launch comes from the plugin's own backend, providers, and declarations. Any `hostIntegration` ID returns `plugin.integration.unsupported`, at `languageServers[<n>].hostIntegration.id`.
 
-```json
-"hostIntegration": {
-  "id": "jdt",
-  "capabilities": ["debug", "run", "testing"],
-  "resources": { "configuration": "language-server/configuration/${arch}", "lombokAgent": "…" }
-}
-```
-
-- The plugin owns the files; the host owns the behavior. The host enables an integration only for the server that declares it, never matches on a language ID, and never looks for files outside the package.
-- The integration is host code, but it reads only resources inside the declaring plugin's own package and hands them to the language server or helper process that same plugin starts. It grants no permission beyond running the plugin's own server process.
-- `capabilities` lists which features the integration provides for the language: `run`, `testing`, or `debug`. A feature that is neither listed nor supplied by an execution provider is unavailable for the language.
-- Each integration defines the capabilities it provides and the resources each one reads. A capability it does not provide, a capability whose resource is not declared, or `run` or `testing` for a language whose execution provider already supplies it, is `plugin.manifest.invalid`.
-- The contract defines one integration ID, `jdt`: it requires a `runtime` launch with the `java` tool, and `configuration` and `lombokAgent` are required resources. An ID the host does not implement returns `plugin.integration.unsupported`. No implementation of `jdt` was found in the desktop source, so declaring it is refused (see "Desktop status").
+A plugin that declares a language owns its process-backed features: the host stops running its built-in tools for that language, so a missing or disabled plugin never falls back to them. A feature that none of the plugin's `executionProviders` supplies is unavailable for the language.
 
 #### Launch templates
 
@@ -482,7 +457,6 @@ Discovery returns `{id: "<language>:workspace", kind: "workspace"}` followed by 
 | Language server launch | Supported for `packaged`, a packaged runtime, `systemCommand` (PATH only; a plan that depends on a project toolchain or a user override is refused), and a backend-answered command line. A backend answer of `{kind: "tool"}` is refused at start, because the tool is not yet resolved through the toolchain registry |
 | Language server presentation | Only diagnostics are shown. Completion, hover, navigation, rename, and formatting have no editor surface; a plugin that provides them sees no effect |
 | Plugin-owned sessions and `languageServer/*` methods | Wired; Core enforces the policy |
-| `jdt` host integration | No implementation found in the desktop source; declaring it is refused with `plugin.integration.unsupported` |
 | Execution providers (`run`, `test`, `executionProviders`) | Not declared. A plugin that needs them is not offered for installation |
 | Output links | Supported. Console text in Build, Run, and Test becomes links; a matcher with `resolve` calls the backend on click |
 | Content providers | `documents/registerContentProvider` supported |
@@ -494,7 +468,7 @@ Discovery returns `{id: "<language>:workspace", kind: "workspace"}` followed by 
 | [Languages](../../contract/v1/README.md#languages) | Language IDs, extensions, file names, project markers, dependency paths |
 | [Grammars and editor configuration](../../contract/v1/README.md#grammars-and-editor-configuration) | TextMate grammar limits and refusal rules, comment and bracket configuration, background execution |
 | [Language servers](../../contract/v1/README.md#language-servers) | Launch kinds (including `backend`), arguments, probe arguments, runtime dependencies |
-| [Language server host integrations](../../contract/v1/README.md#language-server-host-integrations) | Host integrations and `jdt` |
+| [Language server host integrations](../../contract/v1/README.md#language-server-host-integrations) | Host integrations (reserved; Core implements none) |
 | [Workspace configuration](../../contract/v1/README.md#workspace-configuration) | Expanding and pushing `workspaceConfiguration` |
 | [Plugin-owned sessions](../../contract/v1/README.md#plugin-owned-sessions) | Session fields, session policy, gates, state directories and pruning, preparation status |
 | [Runtime launch](../../contract/v1/README.md#runtime-launch) | Starting a package entry file with a tool such as `java` or `node` |

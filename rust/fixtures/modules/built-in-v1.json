@@ -58,7 +58,6 @@
       "dependencies": ["dev.lithe.workspace"],
       "capabilities": ["dev.lithe.capability.execution-workspace"],
       "contributions": [
-        { "id": "execution.maven", "kind": "toolWindow", "actionID": "execution.maven.toggle", "rendererID": "execution.maven" },
         { "id": "execution.run", "kind": "toolWindow", "actionID": "execution.run.toggle", "rendererID": "execution.run" },
         { "id": "execution.tests", "kind": "toolWindow", "actionID": "execution.tests.toggle", "rendererID": "execution.tests" }
       ],

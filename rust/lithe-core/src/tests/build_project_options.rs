@@ -156,11 +156,11 @@ fn native_build_options_validate_the_shared_cases_without_dropping_custom_values
     .unwrap();
     let result = project_options_command(json!({"document":defaults})).unwrap();
     assert_eq!(
-        result["document"]["systems"]["maven"]["savedChoices"]["profiles"],
+        result["document"]["systems"]["make"]["savedChoices"]["profiles"],
         json!(["ci", "manual"])
     );
     assert_eq!(
-        result["document"]["systems"]["maven"]["instances"]["services/a"]["offline"],
+        result["document"]["systems"]["make"]["instances"]["services/a"]["offline"],
         true
     );
 }

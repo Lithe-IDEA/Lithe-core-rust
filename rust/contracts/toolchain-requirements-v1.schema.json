@@ -19,9 +19,7 @@
         "type": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
         "minimumVersion": { "type": "string", "minLength": 1 },
         "preferredVendor": { "type": "string", "minLength": 1 },
-        "wrapper": { "type": "string", "pattern": "^(?!/)(?!.*(^|/)\\.\\.(?:/|$)).*$" },
-        "version": { "type": "string", "minLength": 1 },
-        "java": { "type": "string", "minLength": 1 }
+        "version": { "type": "string", "minLength": 1 }
       },
       "additionalProperties": false
     }

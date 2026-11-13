@@ -44,8 +44,8 @@ pub(super) fn client_initialize_for_plugin(
                         "completionItem": {
                             "snippetSupport": true,
                             "documentationFormat": ["markdown", "plaintext"],
-                            // Intelephense and JDT LS omit typed class/namespace labels
-                            // unless the client advertises labelDetailsSupport.
+                            // Some servers (Intelephense, for one) omit typed class and
+                            // namespace labels unless the client advertises labelDetailsSupport.
                             "labelDetailsSupport": true,
                             "resolveSupport": {
                                 "properties": [
@@ -1512,7 +1512,7 @@ fn parse_completion_item(item: &Value) -> Option<Value> {
     {
         mapped["additionalTextEdits"] = json!(edits);
     }
-    // `data: null` makes Intelephense/JDT LS treat resolve as a no-op, so only
+    // `data: null` makes some servers treat resolve as a no-op, so only
     // forward a real resolve token. Namespace display lives in labelDetails;
     // import `use`/`import` edits usually arrive only from completionItem/resolve.
     if let Some(data) = item.get("data").filter(|value| !value.is_null()) {
@@ -2404,7 +2404,7 @@ mod semantic_tests {
         let mut state = LspClientState::default();
         apply_dynamic_registration(
             &mut state,
-            &json!({"params": {"registrations": [{"id": "java", "method": "textDocument/semanticTokens", "registerOptions": options()}]}}),
+            &json!({"params": {"registrations": [{"id": "semantic", "method": "textDocument/semanticTokens", "registerOptions": options()}]}}),
         );
         assert!(state
             .server_capabilities
@@ -2412,7 +2412,7 @@ mod semantic_tests {
         let id = allocate_request(&mut state, "textDocument/semanticTokens/full");
         apply_dynamic_unregistration(
             &mut state,
-            &json!({"params": {"unregisterations": [{"id": "java", "method": "textDocument/semanticTokens"}]}}),
+            &json!({"params": {"unregisterations": [{"id": "semantic", "method": "textDocument/semanticTokens"}]}}),
         );
         assert!(!state
             .server_capabilities

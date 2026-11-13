@@ -2,7 +2,6 @@
 
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
-use std::path::PathBuf;
 
 /// Returns a pointer to the static, NUL-terminated Core ABI version.
 ///
@@ -93,32 +92,6 @@ pub unsafe extern "C" fn lithe_core_execute_document_json(
             r#"{"id":null,"ok":false,"error":{"code":"invalid_request","message":"Invalid editor source","details":"source_too_large_or_invalid"}}"#,
         ),
     }
-}
-
-/// Loads the merged language-provider catalog for an optional workspace root.
-///
-/// The returned string is owned by the caller and must be released exactly
-/// once with [`lithe_core_free_string`].
-///
-/// # Safety
-///
-/// `workspace_root` must be null or point to a readable, NUL-terminated byte
-/// string for the duration of this call.
-#[no_mangle]
-pub unsafe extern "C" fn lithe_core_lsp_provider_catalog_json(
-    workspace_root: *const c_char,
-) -> *mut c_char {
-    let root = if workspace_root.is_null() {
-        None
-    } else {
-        let value = CStr::from_ptr(workspace_root).to_string_lossy();
-        if value.trim().is_empty() {
-            None
-        } else {
-            Some(PathBuf::from(value.as_ref()))
-        }
-    };
-    response_pointer(&crate::lsp::provider_catalog_json(root.as_deref()))
 }
 
 /// Requests cooperative cancellation of an in-flight operation. The call is

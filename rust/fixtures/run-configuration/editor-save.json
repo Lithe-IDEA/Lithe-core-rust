@@ -5,24 +5,22 @@
     "payload": {
       "root": "/workspace",
       "scope": "project",
-      "configurationId": "spring",
+      "configurationId": "server",
       "workingDirectory": "backend",
-      "jvmArguments": "-Xmx2g",
       "arguments": "--dev",
-      "environment": { "APP_ENV": "dev" },
-      "mavenProfiles": [],
-      "javaHomePath": "",
-      "mavenExecutablePath": "",
-      "mavenJavaHomePath": "",
+      "environment": {
+        "APP_ENV": "dev"
+      },
       "toolchain": {
-        "javaHomePath": "C:/lithe-fixture/jdk-21",
-        "mavenExecutablePath": "C:/lithe-fixture/apache-maven",
-        "mavenJavaHomePath": "C:/lithe-fixture/jdk-17"
+        "runtimeExecutablePaths": {
+          "project-runtime": "C:/lithe-fixture/runtime/bin/runtime.exe"
+        }
       }
     }
   },
   "expected": {
     "localDocument": "string",
-    "projectDocument": "string"
+    "projectDocument": "string",
+    "toolchainDocument": "string"
   }
 }

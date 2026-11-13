@@ -165,7 +165,7 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | 编辑器 Provider 单次调用时限 | hover、completion 400 ms，definition 1500 ms，其余类型 2000 ms；迟到的答复直接丢弃，注册不能自定义时限 |
 | `languageServer/request` | `timeoutMilliseconds` 1–300000 ms，默认 60000；每个会话最多 128 个等待 gate 打开的请求，第 129 个返回 `plugin.host.busy` |
 | `languageServer/setStatus` | `message` 按字符边界截到 1024 字节 |
-| `run/start` | `label` 1–256 字符；`temporaryFiles` 最多 4 个，每个文本 ≤4 MiB；`rerun.data` ≤64 KiB |
+| `run/start` | `label` 1–256 字符；`temporaryFiles` 最多 4 个，每个文本或 base64 字节 ≤4 MiB；`rerun.data` ≤64 KiB |
 | `debug/start` | `configuration` ≤256 KiB |
 | 内容提供者 | 提供的内容 ≤1 MiB，宿主等待 30 秒 |
 | `functions/invoke` | `timeoutMilliseconds` 默认 60000 ms，上限 600000 ms；`parentOperationID` 1–128 字节 |
@@ -337,7 +337,7 @@ Notifications the host sends to a backend (the backend answers none), also prefi
 | Editor provider call budget | 400 ms for hover and completion, 1500 ms for definition, 2000 ms for the other types; a late answer is dropped, and a registration cannot set its own budget |
 | `languageServer/request` | `timeoutMilliseconds` 1–300000 ms, default 60000; at most 128 requests per session waiting for a gate to open, and the 129th returns `plugin.host.busy` |
 | `languageServer/setStatus` | `message` is cut to 1024 bytes on a character boundary |
-| `run/start` | `label` 1–256 characters; `temporaryFiles` at most 4, each up to 4 MiB of text; `rerun.data` up to 64 KiB |
+| `run/start` | `label` 1–256 characters; `temporaryFiles` at most 4, each up to 4 MiB of text or base64 bytes; `rerun.data` up to 64 KiB |
 | `debug/start` | `configuration` up to 256 KiB |
 | Content providers | Provided content up to 1 MiB; the host waits 30 seconds |
 | `functions/invoke` | `timeoutMilliseconds` defaults to 60000 ms, capped at 600000 ms; `parentOperationID` is 1–128 bytes |

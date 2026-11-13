@@ -77,7 +77,7 @@ and resolution. A separate fresh resolution serves Build tools and run plans
 whose `toolchain` executable names a plugin-defined tool rather than a host
 toolchain; settings detections never grant launch authority. Saving pins,
 `toolchainConsumers`, generic runtime launches and live backend activation remain
-unsupported, and Java and language-server consumers keep their previous adapters. Version-manager
+unsupported, and language-server consumers keep their previous adapters. Version-manager
 implementations such as mise belong to their own plugin packages. See
 [the implemented slice](toolchains/README.md).
 
@@ -294,7 +294,7 @@ activation event, and a plugin may consist of grammars alone.
 | `validationArguments` | Probe that must exit with status 0 before a candidate is used; empty means the host trusts the candidate and lets the LSP handshake decide. |
 | `runtimeDependencies` | Tools the host must discover and pass to the server, each a tool-definition ID that `requiresTools` lists (see [Tool references](#tool-references)). The host exports each path as `LITHE_<TOOL>_PATH` (`LITHE_NODE_PATH`, `LITHE_GO_PATH`; a user-set value takes precedence) and prepends its directory to the server's `PATH`, because servers such as gopls run the tool themselves and an app opened from the Dock does not inherit the shell `PATH`. A project-local copy is never chosen, since servers start automatically when a file opens. |
 | `initializationOptions` | A JSON object sent as the LSP `initializationOptions`. Every string value inside it is a launch template. |
-| `hostIntegration` | Any plugin may declare one. A named integration implemented in the host, with the package resources it reads; see [Language server host integrations](#language-server-host-integrations). |
+| `hostIntegration` | Reserved. Core implements no host integration, so any ID is refused; see [Language server host integrations](#language-server-host-integrations). |
 | `requestMethods`, `commands`, `serializedCommands`, `forwardNotifications`, `state`, `remote` | What the plugin backend may ask of the running server and how the host keeps its state; see [Plugin-owned sessions](#plugin-owned-sessions). |
 
 The host owns the language-server process lifecycle, the LSP session, and
@@ -306,59 +306,19 @@ the same meaning and validation; see [Build providers](#build-providers).
 
 #### Language server host integrations
 
-Most of a language server is described by its launch. A few servers also need
-behavior that data cannot express: a project model computed from build files,
-virtual documents, test and debug wiring. That behavior is code in the host,
-called a host integration. A server opts into one by name and tells it where
-the files it needs are inside the plugin's own package:
-
-```json
-"hostIntegration": {
-  "id": "jdt",
-  "capabilities": ["debug", "run", "testing"],
-  "resources": { "configuration": "language-server/configuration/${arch}", "lombokAgent": "…" }
-}
-```
-
-The plugin owns the files; the host owns the behavior. The host enables an
-integration only for the server that declares it and never matches on a
-language ID or looks for the files anywhere else, so removing the plugin
-removes the integration's inputs with it. Any plugin may declare one, whatever
-its namespace. The integration is host code, but it reads only resources inside
-the declaring plugin's own package and hands them to the language server or
-helper process that same plugin starts (extension bundles, agents, a test
-runner, debugging); it grants the plugin no permission beyond running its own
-server process, which an installed plugin may already do once the user confirms
-the install review. An ID the host does not implement is refused with
-`plugin.integration.unsupported`. A build system's `hostIntegration` is a
-different declaration and stays limited to official plugins; see
+`hostIntegration` is reserved. Core implements no host integration and never
+matches on a language ID, a server ID or a tool name: everything a language
+needs beyond its launch comes from the plugin's own backend, providers and
+declarations. Any `hostIntegration` ID is refused with
+`plugin.integration.unsupported`, at `languageServers[<n>].hostIntegration.id`,
+so a manifest naming one fails validation instead of loading without it. A build
+system's `hostIntegration` is a separate declaration with the same rule; see
 [Host integrations](#host-integrations) under [Build systems](#build-systems).
-
-Each resource is a package-relative path, or a list of them, that may vary
-only by `${arch}`. An integration defines which names it reads; a missing
-required name, an unknown name, or the wrong shape is `plugin.manifest.invalid`.
 
 A plugin that declares a language owns its process-backed features: the host
 stops running its built-in tools for that language, so a missing or disabled
-plugin never falls back to them. `capabilities` is how the plugin hands a
-feature back. It lists the features of the server's language that the host's
-own implementation provides through the integration: `run`, `testing`, and
-`debug`. A feature that is neither listed here nor supplied by one of the
-plugin's `executionProviders` is unavailable for the language. Omitting the
-list claims nothing.
-
-Each integration defines the capabilities it provides and the resources each
-one reads. A capability the integration does not provide, a capability whose
-resource is not declared, and `run` or `testing` listed for a language whose
-execution provider already supplies it are all `plugin.manifest.invalid`. The
-normalized manifest lists capabilities sorted and without duplicates.
-
-| Integration | Requires | Capabilities | Resources |
-| --- | --- | --- | --- |
-| `jdt` | A `runtime` launch with the `java` tool | `run`. `debug`: needs `extensionBundleDirectories`, which must contain the Java Debug Server bundle. `testing`: needs `extensionBundleDirectories` with the Java Test bundles, and `testRunner`. | `configuration` (required): the Equinox configuration directory, of which the host gives each launch a writable copy. `lombokAgent` (required): the Lombok agent JAR. `extensionBundleDirectories` (list): directories whose JAR files are loaded as JDT LS extension bundles, in declared order and then by file name. `testRunner`: the standalone Java test runner JAR. |
-
-The launch plan returns `hostIntegration` as `{id, resources}` with every
-path expanded, and lists the paths in `requiredPackagePaths`.
+plugin never falls back to them. A feature that none of the plugin's
+`executionProviders` supplies is unavailable for the language.
 
 
 #### Workspace configuration
@@ -1111,9 +1071,9 @@ back to Provider discovery.
 A host-managed `node` or `go` dependency may select one such candidate,
 while retaining Core's version probe. Any other dependency that declares no
 `executables` is already this candidate for the definition with its own ID, and
-that definition checks `minimumVersion`. Maven declares its namespace-owned tool
-and uses the short `java` definition for its Java prerequisite; no Maven-specific
-JDK registry entry is added. Its backend bootstrap remains a separate consumer.
+that definition checks `minimumVersion`. A tool that needs another tool as a
+prerequisite names that tool's definition; Core adds no registry entry for any
+particular tool.
 Passive import performs no version or runtime probes; a definition that requires
 verification is not reported as an already verified import executable.
 A toolchain that resolves to a project file remains project code,
@@ -1411,8 +1371,8 @@ host change to add a build tool, and no host code branches on a build-system
 ID. One complete fixture covers each plugin-described model source:
 `build-static-file` reads a project file, `build-command-stdout` decodes a
 command's standard output, and `build-command-output-file` decodes a file the
-command writes; the `hostIntegration` source, whose model a host integration
-supplies, has no fixture. They use Cargo, Go, and Gradle as realistic inputs;
+command writes; the reserved `hostIntegration` source has no fixture, because
+Core implements no integration. They use Cargo, Go, and Gradle as realistic inputs;
 they are not those plugins. `build-provider` and `build-provider-language-server` show the two
 forms of a build provider, and `fixtures/build-systems/build-plans.json` is the golden list
 of plans and decoded outputs every host gets from them.
@@ -1637,7 +1597,7 @@ Workspace-wide reports still require a current project model when the build
 system has one. Configuration validity is retained through diagnostic and
 report decoding; late results cannot update a changed workspace/configuration.
 
-Java/Maven migration remains separate. No new resource/cache location is introduced.
+No new resource/cache location is introduced.
 Canonical examples: `fixtures/build-providers/build-provider-tests.plugin.json` and
 `fixtures/build-providers/build-test-protocol.json`.
 
@@ -1830,7 +1790,7 @@ Saved Run configurations keep their existing selectors and prepare again for Deb
 
 Fixtures: [native declaration](fixtures/build-providers/build-provider-debug-preparation.plugin.json)
 and [native result](fixtures/build-providers/build-debug-preparation.json). This does not provide
-Java/JDT preparation, long-running services or cross-plugin collaboration.
+preparation through a language server, long-running services or cross-plugin collaboration.
 
 
 The native Build tree re-resolves model IDs before preparation. Source/model,
@@ -1991,8 +1951,8 @@ applications retain their existing native ownership.
 This facility never installs or activates a producer, invokes its private
 functions, grants permissions, leases a process or resolves a package version.
 There is no general plugin-dependency/export API. Backend authors must handle
-unavailable and non-ready slots explicitly. Language integration and existing
-Java/Maven business migration remain separate work. Shared fixtures:
+unavailable and non-ready slots explicitly. Language integration remains
+separate work. Shared fixtures:
 `fixtures/build-systems/build-model-producer.plugin.json` and
 `fixtures/build-systems/build-model-consumer.plugin.json`.
 
@@ -2075,7 +2035,7 @@ Shared fixture:
 The build backend owns filtering, custom resource directories, profiles and
 reactor semantics. Hosts await successful completion, retain one operation
 identity through cancellation/configuration changes, and only then resolve and
-launch Java. Per-run option/tool overrides are ephemeral host inputs to the
+launch the program. Per-run option/tool overrides are ephemeral host inputs to the
 existing validated plan; they never mutate saved build defaults or claim that
 the persistent model reflects a different configuration.
 
@@ -2170,12 +2130,12 @@ A host that declares `buildProviders` keeps providers apart:
 
 ### Host integrations
 
-`hostIntegration` names host code that owns one concern while a built-in tool
-migrates onto this model. Only official plugins may name one, and only
-`maven` exists; a model, test-result, or dependency source of
-`hostIntegration` needs it. Anything else is
-`plugin.integration.unsupported`. New build systems use the declarative
-contract or a canonical format instead.
+`hostIntegration` is reserved. Core implements no build-system host
+integration: every build tool is described by its plugin's data and backend,
+and no host code branches on a build-system ID. Any `hostIntegration` name is
+`plugin.integration.unsupported`, and a model, test-result, or dependency source
+of `hostIntegration` is refused with it. Build systems use the declarative
+contract, a canonical format, or a `provider` instead.
 
 ### Commands
 
@@ -2553,8 +2513,8 @@ field, and `optional` only on a `text` or `tool` field.
 
 `maximumVersion` is a template over earlier fields naming the highest version
 the value may be, compared numerically by dotted components. It reads
-`${field.<id>.major}` of a `tool` field: a target Java release that must not
-exceed the selected JDK declares `"maximumVersion": "${field.jdk.major}"`.
+`${field.<id>.major}` of a `tool` field: a target language level that must not
+exceed the selected compiler declares `"maximumVersion": "${field.compiler.major}"`.
 While the bound expands to an empty string (no tool chosen yet) nothing is
 checked.
 
@@ -2614,8 +2574,10 @@ directory). A condition on a hidden field is false.
 Strings in the manifest use `${…}`: `${project.name}`, `${field.<id>}` (a
 text or option value, `true`/`false`, a comma-separated list, or the home
 directory of a tool), `${field.<id>.version}` and `${field.<id>.major}` (tool
-fields only: the version of the chosen installation, and its major number,
-`21` for `21.0.4` and `8` for `1.8.0_412`), and `${field.<id>.executable}`
+fields only: the version of the chosen installation as its definition's
+`version.pattern` captured it, and that version's first numeric component,
+`21` for `21.0.4`; a definition whose tool uses another numbering, such as a
+legacy `1.` prefix, normalizes it in the pattern), and `${field.<id>.executable}`
 (tool fields only: the path of the tool's executable in the chosen
 installation). The three suffixed variables are rejected when the manifest is
 validated if the field is not a `tool` field. Modifiers follow `|` and apply
@@ -3322,9 +3284,14 @@ context it started in has closed.
   inside it) and the environment have the bounds of
   [run preparation](#provider-run-preparation). An unknown
   `process` field is refused.
-- `temporaryFiles` is at most four `{name, contents}` files of up to 4 MiB of
-  text each. The host writes them into its own temporary directory before the
-  process starts, removes them when the run ends, and replaces
+- `temporaryFiles` is at most four files of up to 4 MiB each. A file is
+  `{name, contents}`, text the host writes as UTF-8, or `{name, base64}`,
+  bytes in standard base64 the host writes unchanged; a file with both or
+  neither is refused at `temporaryFiles[<n>]`. Bytes are for a format whose
+  encoding the plugin must choose, such as a launcher that reads its argument
+  file in the system code page: the plugin encodes the file and the host never
+  transcodes it. The host writes the files into its own temporary directory
+  before the process starts, removes them when the run ends, and replaces
   `${temporaryFile:<name>}` in `process.arguments` and `process.environment`
   with the file's path. A name is unique, 1 to 64 letters, digits, `.`, `_` or
   `-`, and starts with a letter or digit. A plugin therefore never needs to
@@ -4020,7 +3987,7 @@ command payload is a Core `invalid_request` failure instead.
 | `plugin.test.invalidIdentifier` | Core | Empty or multi-line test identifier |
 | `plugin.test.unsupportedProject` | Core | No project marker in the workspace |
 | `plugin.execution.unavailable` | Core | The plugin has no run/test provider for the language |
-| `plugin.integration.unsupported` | Core | A host integration the host does not implement, or a build system's host integration requested by a plugin outside the official namespace |
+| `plugin.integration.unsupported` | Core | A `hostIntegration` ID; Core implements none |
 | `plugin.launch.unavailable` | Core | The plugin has no language server for the language, no provider process for the build system, or no such VCS provider |
 | `plugin.build.unavailable` | Core | The plugin declares no such build system, or the build system does not declare the requested operation |
 | `plugin.build.invalidSelection` | Core | A build request selects a scope, target, filter, or argument the declaration does not allow, or misses a required path |

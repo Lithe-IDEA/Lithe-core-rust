@@ -231,6 +231,42 @@ fn temporary_files_refuse_what_the_host_could_not_write_safely() {
             "temporaryFiles[0].contents",
         ),
         (
+            "a file with both text and bytes",
+            tool_run(
+                json!([]),
+                json!({}),
+                json!([{ "name": "a", "contents": "", "base64": "" }]),
+            ),
+            Some(absolute.as_str()),
+            "temporaryFiles[0]",
+        ),
+        (
+            "a file with neither text nor bytes",
+            tool_run(json!([]), json!({}), json!([{ "name": "a" }])),
+            Some(absolute.as_str()),
+            "temporaryFiles[0]",
+        ),
+        (
+            "bytes that are not standard base64",
+            tool_run(
+                json!([]),
+                json!({}),
+                json!([{ "name": "a", "base64": "not base64!" }]),
+            ),
+            Some(absolute.as_str()),
+            "temporaryFiles[0].base64",
+        ),
+        (
+            "bytes beyond 4 MiB",
+            tool_run(
+                json!([]),
+                json!({}),
+                json!([{ "name": "a", "base64": "A".repeat((4 * 1024 * 1024 / 3 + 1) * 4) }]),
+            ),
+            Some(absolute.as_str()),
+            "temporaryFiles[0].base64",
+        ),
+        (
             "a reference to a file the start does not declare",
             tool_run(json!(["${temporaryFile:missing}"]), json!({}), json!([])),
             Some(absolute.as_str()),
@@ -261,6 +297,34 @@ fn temporary_files_refuse_what_the_host_could_not_write_safely() {
         let outcome = start_run(&workspace, params, directory);
         assert_rejected(&outcome, "plugin.run.invalidStart", field, name);
     }
+}
+
+/// Bytes pass through unchanged, so a plugin can write a file in the encoding its format
+/// requires; Core never transcodes them.
+#[test]
+fn temporary_file_bytes_reach_the_host_as_given() {
+    let workspace = Workspace::new("run-start-bytes", &[]);
+    let directory = temporary_root("run-start-bytes-directory")
+        .to_string_lossy()
+        .into_owned();
+    // 0x95 0x5C is a double-byte character whose trail byte is a backslash.
+    let outcome = start_run(
+        &workspace,
+        tool_run(
+            json!(["@${temporaryFile:args}"]),
+            json!({}),
+            json!([{ "name": "args", "base64": "lVwK" }]),
+        ),
+        Some(&directory),
+    );
+
+    assert_eq!(outcome["status"], "ok", "{outcome}");
+    let path = format!("{directory}{}args", std::path::MAIN_SEPARATOR);
+    assert_eq!(outcome["start"]["arguments"], json!([format!("@{path}")]));
+    assert_eq!(
+        outcome["start"]["temporaryFiles"],
+        json!([{ "path": path, "base64": "lVwK" }])
+    );
 }
 
 #[test]

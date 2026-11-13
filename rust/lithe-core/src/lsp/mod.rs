@@ -11,7 +11,6 @@ pub(crate) mod workspace_edit_plan;
 mod workspace_scope;
 
 pub(crate) use interface::*;
-pub(crate) use languages::*;
 pub(crate) use lightweight::*;
 
 #[cfg(test)]

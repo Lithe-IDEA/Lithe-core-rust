@@ -5,8 +5,8 @@
 //! A plugin describes a way to start a project as data (`projectGenerators`
 //! in `plugin.json`): where it is listed, which fields the user fills in,
 //! which plugins the result needs, and the steps that produce it — template
-//! files from the package, a scaffolding command such as `mvn
-//! archetype:generate`, or a zip archive such as Spring Initializr's. Core
+//! files from the package, a scaffolding command the plugin names, or a zip
+//! archive downloaded from a project starter service. Core
 //! validates the declaration, evaluates the form (derived defaults,
 //! visibility, errors), and turns a filled form into a plan: expanded files,
 //! argv, and URLs. Hosts own the window, resolve executables, download, run

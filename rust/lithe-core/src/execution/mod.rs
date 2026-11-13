@@ -30,9 +30,3 @@ pub use environment::{
     resolve_launch_environment, resolve_search_path, LaunchEnvironmentRequest,
     LaunchEnvironmentResponse, SearchPathCandidate, SearchPathRequest,
 };
-
-mod launch_plan;
-pub use launch_plan::{
-    java_feature_version_from_release, plan_launch_command, LaunchArgumentFile, LaunchCommandPlan,
-    LaunchCommandRequest,
-};

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "systems": {
-    "maven": {
+    "make": {
       "options": {},
       "instanceDefaults": {
         "profiles": [
