@@ -1331,53 +1331,6 @@ fn client_core_rejects_duplicate_shutdown_requests() {
 }
 
 #[test]
-fn frame_message_uses_lsp_content_length_bytes() {
-    let message = r#"{"jsonrpc":"2.0","method":"window/logMessage","params":{"message":"你好"}}"#;
-    let framed = frame_message(FrameMessageRequest {
-        message: message.to_string(),
-    })
-    .unwrap();
-    assert!(framed
-        .frame
-        .starts_with(&format!("Content-Length: {}\r\n\r\n", message.len())));
-    assert!(framed.frame.ends_with(message));
-}
-
-#[test]
-fn parse_server_messages_returns_complete_messages_and_remaining_buffer() {
-    let first = r#"{"jsonrpc":"2.0","id":1,"result":null}"#;
-    let second = r#"{"jsonrpc":"2.0","method":"window/logMessage","params":{"message":"ok"}}"#;
-    let first_frame = frame_message(FrameMessageRequest {
-        message: first.to_string(),
-    })
-    .unwrap()
-    .frame;
-    let second_frame = frame_message(FrameMessageRequest {
-        message: second.to_string(),
-    })
-    .unwrap()
-    .frame;
-    let split_at = first_frame.len() - 3;
-    let partial = parse_server_messages(ParseServerMessagesRequest {
-        buffer: Vec::new(),
-        chunk: first_frame.as_bytes()[..split_at].to_vec(),
-    })
-    .unwrap();
-    assert!(partial.messages.is_empty());
-    assert_eq!(partial.buffer, first_frame.as_bytes()[..split_at]);
-
-    let mut next_chunk = first_frame.as_bytes()[split_at..].to_vec();
-    next_chunk.extend(second_frame.as_bytes());
-    let parsed = parse_server_messages(ParseServerMessagesRequest {
-        buffer: partial.buffer,
-        chunk: next_chunk,
-    })
-    .unwrap();
-    assert_eq!(parsed.messages, vec![first.to_string(), second.to_string()]);
-    assert!(parsed.buffer.is_empty());
-}
-
-#[test]
 fn client_core_shapes_feature_responses_for_swift_models() {
     let opened = client_open_document(ClientOpenDocumentRequest {
         state: LspClientState::default(),

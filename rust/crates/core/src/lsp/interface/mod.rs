@@ -9,12 +9,7 @@ mod keymap_provider;
 pub(crate) mod plugin_function;
 mod plugin_logging;
 mod plugin_server;
-pub(crate) mod process;
-pub(crate) mod remote_process;
-#[cfg(test)]
-mod scripted;
 mod toolchain_provider;
-mod transport;
 mod types;
 mod vcs_provider;
 
@@ -23,7 +18,6 @@ pub(crate) use engine::*;
 pub(crate) use engine_logging::{resolve_engine_log_subject, ResolveEngineLogSubjectRequest};
 pub(crate) use function_relay::RelaySnapshot;
 pub(crate) use lithe_document_uri::{document_uri_command, resolve_request_paths, MAX_PATH_BYTES};
-pub(crate) use transport::*;
 pub(crate) use types::*;
 
 /// The versions a Lithe runtime protocol offers in `initialize`. A runtime

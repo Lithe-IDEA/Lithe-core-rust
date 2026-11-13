@@ -924,9 +924,7 @@ fn native_plugin_upload_streams_beyond_one_frame_and_rejects_mismatch_without_pu
 
 #[test]
 fn plugin_stdio_uses_its_owned_host_and_reclaims_the_remote_process() {
-    use crate::lsp::interface::process::{
-        LspProcessLauncher, LspProcessSpec, SystemProcessLauncher,
-    };
+    use lithe_lsp_transport::process::{LspProcessLauncher, LspProcessSpec, SystemProcessLauncher};
     use std::io::Read;
     let host = HostFixture::new();
     let workspace = serde_json::from_value(json!({"sessionId": host.id,
@@ -1018,7 +1016,7 @@ fn plugin_protocol_maps_owned_uris_without_rewriting_source_text() {
     let value = json!({"method": "textDocument/didOpen", "params": {"textDocument": {"uri": local,
         "text": format!("// {local}"), "languageId": "plaintext", "version": 1}}});
     let mapped: Value = serde_json::from_str(
-        &crate::lsp::interface::remote_process::map_message(&owner, &value.to_string(), true, None)
+        &lithe_lsp_transport::remote_process::map_message(&owner, &value.to_string(), true, None)
             .unwrap(),
     )
     .unwrap();
@@ -1029,7 +1027,7 @@ fn plugin_protocol_maps_owned_uris_without_rewriting_source_text() {
     );
     let edit = json!({"method": "workspace/applyEdit", "params": {"edit": {"changes": {remote.clone(): [{"newText": local}]}}}});
     let mapped: Value = serde_json::from_str(
-        &crate::lsp::interface::remote_process::map_message(&owner, &edit.to_string(), false, None)
+        &lithe_lsp_transport::remote_process::map_message(&owner, &edit.to_string(), false, None)
             .unwrap(),
     )
     .unwrap();
@@ -1039,7 +1037,7 @@ fn plugin_protocol_maps_owned_uris_without_rewriting_source_text() {
     );
     let map = |value: &Value, outbound, method| -> Value {
         serde_json::from_str(
-            &crate::lsp::interface::remote_process::map_message(
+            &lithe_lsp_transport::remote_process::map_message(
                 &owner,
                 &value.to_string(),
                 outbound,

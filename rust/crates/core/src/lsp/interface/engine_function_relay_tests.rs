@@ -14,10 +14,10 @@
 
 use super::super::function_relay::RelaySnapshot;
 use super::super::plugin_function::FunctionReference;
-use super::super::process::{LspProcessLauncher, LspProcessSpec, LspProcessStreams};
-use super::super::scripted::ScriptedServer;
 use super::tests::start_request;
 use super::*;
+use lithe_lsp_transport::process::{LspProcessLauncher, LspProcessSpec, LspProcessStreams};
+use lithe_lsp_transport::scripted::ScriptedServer;
 
 const PYTHON: &str = "dev.lithe.fixture.python";
 const GO: &str = "dev.lithe.fixture.go";

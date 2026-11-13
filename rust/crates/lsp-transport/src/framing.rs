@@ -1,6 +1,6 @@
 //! Bounded encoding and incremental parsing of LSP transport frames.
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 
 const MAX_HEADER_BYTES: usize = 64 * 1024;
@@ -10,6 +10,7 @@ const MAX_MESSAGE_BYTES: usize = 64 * 1024 * 1024;
 #[serde(rename_all = "camelCase")]
 /// JSON-RPC message to encode with the LSP content-length framing protocol.
 pub struct FrameMessageRequest {
+    /// Serialized JSON-RPC message body.
     pub message: String,
 }
 
@@ -17,6 +18,7 @@ pub struct FrameMessageRequest {
 #[serde(rename_all = "camelCase")]
 /// Complete transport frame ready to write to a language server.
 pub struct FrameMessageResponse {
+    /// `Content-Length` header, blank line and body.
     pub frame: String,
 }
 
@@ -24,8 +26,10 @@ pub struct FrameMessageResponse {
 #[serde(rename_all = "camelCase")]
 /// Previously buffered bytes and the newest process-output chunk.
 pub struct ParseServerMessagesRequest {
+    /// Unconsumed bytes returned by the previous parse.
     #[serde(default)]
     pub buffer: Vec<u8>,
+    /// Bytes read from the server since the previous parse.
     #[serde(default)]
     pub chunk: Vec<u8>,
 }
@@ -34,7 +38,9 @@ pub struct ParseServerMessagesRequest {
 #[serde(rename_all = "camelCase")]
 /// Complete JSON-RPC messages plus the unconsumed partial frame.
 pub struct ParseServerMessagesResponse {
+    /// Bytes of an incomplete trailing frame, passed back with the next chunk.
     pub buffer: Vec<u8>,
+    /// Bodies of the complete frames, in arrival order.
     pub messages: Vec<String>,
 }
 /// Encodes one JSON-RPC message with its UTF-8 byte length.
@@ -147,5 +153,53 @@ mod tests {
             chunk: b"Content-Length: 1\r\n\r\n\xff".to_vec(),
         });
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn frame_message_uses_lsp_content_length_bytes() {
+        let message =
+            r#"{"jsonrpc":"2.0","method":"window/logMessage","params":{"message":"你好"}}"#;
+        let framed = frame_message(FrameMessageRequest {
+            message: message.to_string(),
+        })
+        .unwrap();
+        assert!(framed
+            .frame
+            .starts_with(&format!("Content-Length: {}\r\n\r\n", message.len())));
+        assert!(framed.frame.ends_with(message));
+    }
+
+    #[test]
+    fn parse_server_messages_returns_complete_messages_and_remaining_buffer() {
+        let first = r#"{"jsonrpc":"2.0","id":1,"result":null}"#;
+        let second = r#"{"jsonrpc":"2.0","method":"window/logMessage","params":{"message":"ok"}}"#;
+        let first_frame = frame_message(FrameMessageRequest {
+            message: first.to_string(),
+        })
+        .unwrap()
+        .frame;
+        let second_frame = frame_message(FrameMessageRequest {
+            message: second.to_string(),
+        })
+        .unwrap()
+        .frame;
+        let split_at = first_frame.len() - 3;
+        let partial = parse_server_messages(ParseServerMessagesRequest {
+            buffer: Vec::new(),
+            chunk: first_frame.as_bytes()[..split_at].to_vec(),
+        })
+        .unwrap();
+        assert!(partial.messages.is_empty());
+        assert_eq!(partial.buffer, first_frame.as_bytes()[..split_at]);
+
+        let mut next_chunk = first_frame.as_bytes()[split_at..].to_vec();
+        next_chunk.extend(second_frame.as_bytes());
+        let parsed = parse_server_messages(ParseServerMessagesRequest {
+            buffer: partial.buffer,
+            chunk: next_chunk,
+        })
+        .unwrap();
+        assert_eq!(parsed.messages, vec![first.to_string(), second.to_string()]);
+        assert!(parsed.buffer.is_empty());
     }
 }

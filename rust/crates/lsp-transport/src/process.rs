@@ -9,7 +9,7 @@
 //! On Windows a server and everything it starts share one Job Object, so a
 //! runtime a batch launcher starts ends with it and none outlives a crashed host.
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
 #[cfg(target_os = "windows")]
@@ -25,9 +25,14 @@ use std::os::windows::process::CommandExt;
 /// Everything needed to start a language server, after provider adaptation has
 /// already rewritten the arguments.
 pub struct LspProcessSpec {
+    /// Program to start.
     pub executable: PathBuf,
+    /// Arguments after the program, one entry per argument.
     pub arguments: Vec<String>,
+    /// Directory the process starts in.
     pub working_directory: PathBuf,
+    /// Variables added to the inherited environment, or to the login
+    /// environment on a remote workspace host.
     pub environment: BTreeMap<String, String>,
 }
 
@@ -78,8 +83,11 @@ pub trait LspProcessHandle: Send + Sync {
 
 /// A launched process and the two streams the engine reads on its own threads.
 pub struct LspProcessStreams {
+    /// Input, exit and disposal control of the process.
     pub handle: Arc<dyn LspProcessHandle>,
+    /// The server's stdout, carrying framed LSP messages.
     pub output: Box<dyn Read + Send>,
+    /// The server's stderr, read as log lines.
     pub errors: Box<dyn Read + Send>,
 }
 
@@ -95,7 +103,7 @@ pub struct SystemProcessLauncher;
 impl LspProcessLauncher for SystemProcessLauncher {
     fn launch(&self, spec: LspProcessSpec) -> Result<LspProcessStreams, CoreError> {
         if let Some(host) = lithe_workspace::current() {
-            return super::remote_process::launch(host, spec);
+            return crate::remote_process::launch(host, spec);
         }
         let mut command = language_server_command(&spec);
         command
@@ -405,7 +413,7 @@ mod tests {
     }
 
     /// Libtest name of [`argv_echo_helper`], which the batch test re-launches.
-    const ARGV_ECHO_TEST: &str = "lsp::interface::process::tests::argv_echo_helper";
+    const ARGV_ECHO_TEST: &str = "process::tests::argv_echo_helper";
     /// Separates libtest's own arguments from the arguments under test.
     const ARGV_ECHO_MARKER: &str = "lithe-argv-echo";
     const ARGV_ECHO_EXECUTABLE_ENV: &str = "LITHE_TEST_ARGV_ECHO_EXECUTABLE";
@@ -428,7 +436,7 @@ mod tests {
 
     /// Libtest name of [`stdin_hold_helper`], which the termination test
     /// re-launches from a batch script.
-    const STDIN_HOLD_TEST: &str = "lsp::interface::process::tests::stdin_hold_helper";
+    const STDIN_HOLD_TEST: &str = "process::tests::stdin_hold_helper";
     const STDIN_HOLD_ENV: &str = "LITHE_TEST_STDIN_HOLD";
     const STDIN_HOLD_READY: &str = "lithe-stdin-hold-ready";
 

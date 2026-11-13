@@ -8,14 +8,12 @@ use super::engine_logging::{
     EngineLog, EngineLogInput, SessionLogIdentity, SessionRole, StderrFact, StderrLines,
 };
 use super::plugin_server::{self, Admission, Arrival, PluginServerState};
-use super::process::{LspProcessHandle, LspProcessLauncher, LspProcessSpec, SystemProcessLauncher};
 use super::{
     client_change_document, client_close_document, client_feature_request_canonical,
-    client_open_document, client_shutdown, frame_message, parse_server_messages,
-    ClientChangeDocumentRequest, ClientCloseDocumentRequest, ClientFeatureRequest,
-    ClientInitializeRequest, ClientOpenDocumentRequest, ClientShutdownRequest, FrameMessageRequest,
-    LspClientDiagnostic, LspClientDocument, LspClientState, LspDocumentContentChange, LspPosition,
-    LspRange, ParseServerMessagesRequest,
+    client_open_document, client_shutdown, ClientChangeDocumentRequest, ClientCloseDocumentRequest,
+    ClientFeatureRequest, ClientInitializeRequest, ClientOpenDocumentRequest,
+    ClientShutdownRequest, LspClientDiagnostic, LspClientDocument, LspClientState,
+    LspDocumentContentChange, LspPosition, LspRange,
 };
 use crate::plugins::language_server_sessions::{
     RemoteSupport, DEFAULT_REQUEST_TIMEOUT_MILLISECONDS, DID_CHANGE_CONFIGURATION,
@@ -25,6 +23,12 @@ use crate::protocol::{CoreError, ErrorCode};
 use lithe_diagnostics::plugin_operations::{
     self as plugin_operations, Attempt, AttemptHandoff, AttemptSlot, Stage as AttemptStage,
     LANGUAGE_SERVER_START,
+};
+use lithe_lsp_transport::framing::{
+    frame_message, parse_server_messages, FrameMessageRequest, ParseServerMessagesRequest,
+};
+use lithe_lsp_transport::process::{
+    LspProcessHandle, LspProcessLauncher, LspProcessSpec, SystemProcessLauncher,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -3038,7 +3042,7 @@ impl RuntimeSession {
         // value parsed above instead of parsing the same text again.
         let value = match &self.workspace_host {
             Some(host) => {
-                let mapped = super::remote_process::map_message(
+                let mapped = lithe_lsp_transport::remote_process::map_message(
                     host,
                     &message,
                     false,
@@ -3996,7 +4000,9 @@ impl RuntimeSession {
     ) -> Result<(), CoreError> {
         for message in messages {
             let message = match &self.workspace_host {
-                Some(host) => super::remote_process::map_message(host, &message, true, None)?,
+                Some(host) => {
+                    lithe_lsp_transport::remote_process::map_message(host, &message, true, None)?
+                }
                 None => message,
             };
             let frame = frame_message(FrameMessageRequest { message })?.frame;
@@ -5856,8 +5862,8 @@ mod function_relay_tests;
 
 #[cfg(test)]
 mod tests {
-    use super::super::scripted::ScriptedServer;
     use super::*;
+    use lithe_lsp_transport::scripted::ScriptedServer;
     /// The capabilities every test needs to reach `Ready` with a usable feature
     /// surface. Individual tests narrow or extend this.
     fn ready_capabilities() -> Value {
@@ -7333,7 +7339,7 @@ mod tests {
             fn launch(
                 &self,
                 spec: LspProcessSpec,
-            ) -> Result<super::super::process::LspProcessStreams, CoreError> {
+            ) -> Result<lithe_lsp_transport::process::LspProcessStreams, CoreError> {
                 let process = self.inner.launch(spec)?;
                 *self.process.lock().unwrap() = Some(process.handle.clone());
                 let status = crate::project::indexing::configure(serde_json::from_value(json!({

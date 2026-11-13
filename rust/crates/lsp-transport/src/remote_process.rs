@@ -2,8 +2,8 @@
 //! The process handle keeps its original connection; changing workspaces never
 //! redirects a running backend or its cleanup to another host.
 
-use super::process::{LspProcessHandle, LspProcessSpec, LspProcessStreams};
-use crate::protocol::{cancellation, CoreError, ErrorCode};
+use crate::process::{LspProcessHandle, LspProcessSpec, LspProcessStreams};
+use lithe_protocol::{cancellation, CoreError, ErrorCode};
 use lithe_remote::client::session::{ClientError, Event};
 use lithe_remote::protocol::methods::{self, EnvironmentSource, OutputStream, SpawnParams};
 use lithe_workspace::sessions::{request_error, Connection};
@@ -26,7 +26,7 @@ const INPUT_BYTES: usize = 8 * 1024 * 1024;
 
 /// Rewrites protocol-owned URI fields, including WorkspaceEdit map keys. Text,
 /// snippets, hover contents and arbitrary plugin function values stay verbatim.
-pub(crate) fn map_message(
+pub fn map_message(
     host: &Host,
     message: &str,
     outbound: bool,
@@ -444,7 +444,7 @@ impl LspProcessHandle for RemoteProcess {
     }
 }
 
-pub(super) fn launch(host: Host, spec: LspProcessSpec) -> Result<LspProcessStreams, CoreError> {
+pub(crate) fn launch(host: Host, spec: LspProcessSpec) -> Result<LspProcessStreams, CoreError> {
     let connection = host.connection.clone();
     let id = connection.session.allocate_id();
     let events = connection.session.subscribe("process", id);

@@ -7,10 +7,8 @@
 //! test deliver bytes and exits at chosen moments, so each rule is asserted
 //! directly rather than approximated.
 
-#![cfg(test)]
-
-use super::process::{LspProcessHandle, LspProcessLauncher, LspProcessSpec, LspProcessStreams};
-use crate::protocol::{CoreError, ErrorCode};
+use crate::process::{LspProcessHandle, LspProcessLauncher, LspProcessSpec, LspProcessStreams};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde_json::Value;
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -52,7 +50,14 @@ struct ScriptedInputPause {
     release_requested: bool,
 }
 
+impl Default for ScriptedServer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ScriptedServer {
+    /// A server that has not been launched and has written nothing.
     pub fn new() -> Self {
         Self {
             shared: Arc::new(ScriptedShared {
@@ -229,6 +234,7 @@ impl ScriptedServer {
         self.shared.ready.notify_all();
     }
 
+    /// True once the engine closed the server's stdin.
     pub fn input_was_closed(&self) -> bool {
         self.shared.input_closed.load(Ordering::Acquire)
     }

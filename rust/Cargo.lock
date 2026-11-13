@@ -913,6 +913,7 @@ dependencies = [
  "lithe-github",
  "lithe-ide-host",
  "lithe-lsp-policy",
+ "lithe-lsp-transport",
  "lithe-network",
  "lithe-plugin-model",
  "lithe-process",
@@ -1082,6 +1083,19 @@ dependencies = [
  "serde",
  "serde_json",
  "url",
+]
+
+[[package]]
+name = "lithe-lsp-transport"
+version = "0.1.0"
+dependencies = [
+ "lithe-diagnostics",
+ "lithe-git-host",
+ "lithe-protocol",
+ "lithe-remote",
+ "lithe-workspace",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
