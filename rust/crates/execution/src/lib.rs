@@ -4,7 +4,7 @@ mod argument_text;
 mod configuration;
 mod context_selection;
 mod detectors;
-pub(crate) mod generated_layer;
+pub mod generated_layer;
 mod provider_run_options;
 mod provider_runs;
 mod title_action;
@@ -16,13 +16,13 @@ pub use configuration::{
 };
 mod types;
 
-pub(crate) use argument_text::{format_argument_text, ArgumentTextRequest};
-pub(crate) use configuration::*;
-pub(crate) use context_selection::{select_context_configuration, ContextSelectionRequest};
-pub(crate) use detectors::{scan, DirectoryContext};
-pub(crate) use title_action::{decide_title_action, TitleActionRequest};
+pub use argument_text::{format_argument_text, ArgumentTextRequest};
+pub use configuration::*;
+pub use context_selection::{select_context_configuration, ContextSelectionRequest};
+pub use detectors::{scan, DirectoryContext};
+pub use title_action::{decide_title_action, TitleActionRequest};
 
-pub(crate) mod workspace_scan;
+pub mod workspace_scan;
 pub use workspace_scan::is_run_scan_excluded_directory;
 
 mod environment;

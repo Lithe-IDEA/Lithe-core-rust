@@ -20,7 +20,7 @@ mod scan;
 mod shell;
 
 use super::types::{Confidence, Execution, RunCategory};
-use crate::protocol::CoreError;
+use lithe_protocol::CoreError;
 use std::collections::BTreeMap;
 use std::path::Path;
 

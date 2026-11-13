@@ -84,8 +84,8 @@ pub(super) fn cached_document(cache_directory: &Path, root: &Path) -> Option<Val
 
 /// Replaces the detected document or the requirements of `root` as if
 /// generation had produced them; the part passed as `None` is kept.
-#[cfg(test)]
-pub(crate) fn seed(root: &Path, document: Option<Value>, requirements: Option<Value>) {
+#[cfg(any(test, feature = "test-support"))]
+pub fn seed(root: &Path, document: Option<Value>, requirements: Option<Value>) {
     let current = get(root);
     let document = match document {
         Some(mut document) => {

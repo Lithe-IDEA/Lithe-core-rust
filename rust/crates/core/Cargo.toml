@@ -17,6 +17,7 @@ plugin-sdk-e2e = []
 lithe-ai = { path = "../ai" }
 lithe-core-rules = { path = "../core-rules" }
 lithe-diagnostics = { path = "../diagnostics" }
+lithe-execution = { path = "../execution" }
 lithe-diff = { path = "../diff" }
 lithe-editor = { path = "../editor" }
 lithe-git = { path = "../git" }
@@ -46,13 +47,13 @@ serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 sha2 = "0.10"
 toml = { version = "1.1.4", default-features = false, features = ["parse", "serde"] }
-serde_yaml_ng = "0.10.0"
 zip = { version = "2.4", default-features = false, features = ["deflate"] }
 url = "2.5"
 ignore = "=0.4.33"
 
 [dev-dependencies]
 lithe-diagnostics = { path = "../diagnostics", features = ["test-support"] }
+lithe-execution = { path = "../execution", features = ["test-support"] }
 lithe-git = { path = "../git", features = ["test-support"] }
 lithe-workspace = { path = "../workspace", features = ["test-support"] }
 

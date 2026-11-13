@@ -4,7 +4,7 @@
 //! It never inspects a build file or runs a tool.
 
 use super::{existing_root, local_layer_document, read_local_toolchains, validate_version_value};
-use crate::protocol::{invalid_relative_path, CoreError, ErrorCode};
+use lithe_protocol::{invalid_relative_path, CoreError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 /// Reads current tool selections even when no Run configuration was generated.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct ProjectToolchainRequest {
+pub struct ProjectToolchainRequest {
     /// Absolute native workspace root, owned by the platform.
     pub(crate) root: String,
     /// Current Provider project root, relative to that workspace.
@@ -27,7 +27,7 @@ pub(crate) struct ProjectToolchainRequest {
 }
 
 /// Returns saved paths, never resolved executables.
-pub(crate) fn project_toolchain(request: ProjectToolchainRequest) -> Result<Value, CoreError> {
+pub fn project_toolchain(request: ProjectToolchainRequest) -> Result<Value, CoreError> {
     if request.path.len() > 1024
         || invalid_relative_path(&request.path)
         || request.path.contains('\\')
@@ -115,9 +115,7 @@ pub(crate) fn project_toolchain(request: ProjectToolchainRequest) -> Result<Valu
             let extensions = serde_json::from_value(config["extensions"].clone())
                 .map_err(|_| invalid_paths())?;
             let choices =
-                crate::execution::provider_run_options::BuildProviderRunOptions::from_extensions(
-                    &extensions,
-                )?;
+                crate::provider_run_options::BuildProviderRunOptions::from_extensions(&extensions)?;
             let tools = choices.active_tools();
             if !tools.is_empty() {
                 result["definedTools"] = json!(tools);

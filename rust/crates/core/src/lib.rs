@@ -2,7 +2,8 @@
 
 mod build;
 mod debug;
-pub mod execution;
+/// Run configurations and launch environments, kept in their own crate.
+pub use lithe_execution as execution;
 mod lsp;
 pub mod plugins;
 mod project;

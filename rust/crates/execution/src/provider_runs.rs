@@ -3,7 +3,7 @@
 
 use super::configuration::{BuildProviderRunReference, RunConfiguration};
 use super::types::{Confidence, RunCategory};
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -34,7 +34,7 @@ pub(super) fn validate(runs: &[ProviderRunConfiguration]) -> Result<(), CoreErro
         if run.name.trim().is_empty()
             || run.name.len() > 4096
             || run.name.chars().any(char::is_control)
-            || crate::protocol::invalid_relative_path(&run.project_path)
+            || lithe_protocol::invalid_relative_path(&run.project_path)
             || run.project_path.is_empty()
             || run.project_path.len() > 4096
             || run.project_path.contains(['\\', '\0'])

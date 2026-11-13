@@ -21,7 +21,7 @@ pub(crate) struct ContextCandidate {
 /// Identity and ordered candidates for a context launch or editor action.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ContextSelectionRequest {
+pub struct ContextSelectionRequest {
     /// Source identity supplied by the platform's provider.
     source_path: String,
     /// Entry symbol supplied by the platform's provider.
@@ -35,7 +35,7 @@ pub(crate) struct ContextSelectionRequest {
 }
 
 /// Returns the matching preferred or edited entry, preserving input order on ties.
-pub(crate) fn select_context_configuration(request: ContextSelectionRequest) -> Option<String> {
+pub fn select_context_configuration(request: ContextSelectionRequest) -> Option<String> {
     let path_key = |path: &str| {
         if request.case_insensitive_paths {
             path.replace('\\', "/").to_lowercase()
@@ -58,31 +58,4 @@ pub(crate) fn select_context_configuration(request: ContextSelectionRequest) -> 
             (!preferred as u8 * 2) + candidate.generated as u8
         })
         .map(|candidate| candidate.id.clone())
-}
-
-#[cfg(test)]
-mod tests {
-    use serde_json::Value;
-
-    #[test]
-    fn context_selection_command_matches_shared_provider_neutral_cases() {
-        let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../fixtures/run-configuration/context-selection.json"
-        ))
-        .unwrap();
-        for case in fixture["cases"].as_array().unwrap() {
-            let request = serde_json::json!({
-                "id": "context-selection", "command": "runConfig.selectContextConfiguration",
-                "payload": case["request"]
-            });
-            let response: Value =
-                serde_json::from_str(&crate::execute_json(&request.to_string())).unwrap();
-            assert_eq!(response["ok"], true, "{}: {response}", case["name"]);
-            assert_eq!(
-                response["data"]["configurationId"], case["expected"],
-                "{}",
-                case["name"]
-            );
-        }
-    }
 }

@@ -1,6 +1,6 @@
 //! Bounded workspace traversal shared by all run-configuration detectors.
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use lithe_workspace::fs;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -15,7 +15,9 @@ const MAX_DEPTH: usize = 6;
 /// directory.
 #[derive(Debug, Clone)]
 pub struct DirectoryContext {
+    /// Absolute project root the scan started from.
     pub root: PathBuf,
+    /// Absolute path of this directory.
     pub path: PathBuf,
     /// Project-relative, forward-slashed, `.` for the project root.
     pub relative: String,

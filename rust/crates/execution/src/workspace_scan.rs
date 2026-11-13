@@ -3,7 +3,7 @@
 //! Automatic discovery is best effort below the required workspace root. Declared
 //! build-system modules remain owned by their provider and bypass these defaults.
 
-use crate::protocol::CoreError;
+use lithe_protocol::CoreError;
 use lithe_workspace::fs;
 use std::collections::BTreeSet;
 use std::io;
@@ -59,20 +59,24 @@ pub fn is_run_scan_excluded_directory(name: &str) -> bool {
 }
 
 /// One directory's files, without following directory symlinks.
-pub(crate) struct ScannedDirectory {
+pub struct ScannedDirectory {
+    /// Absolute path of the directory.
     pub path: PathBuf,
+    /// Names of the regular files directly inside it.
     pub files: BTreeSet<String>,
 }
 
 /// A partial scan must never be used as evidence of deletion or freshness.
-pub(crate) struct WorkspaceScan {
+pub struct WorkspaceScan {
+    /// Readable directories, sorted by path.
     pub directories: Vec<ScannedDirectory>,
+    /// Workspace-relative paths that could not be read; their contents are unknown.
     pub unreadable_paths: BTreeSet<String>,
 }
 
 /// Traverses automatic discovery inputs. A depth limit belongs only to heuristic
 /// service detection; fingerprints and explicit host file lists use no depth limit.
-pub(crate) fn scan_run_workspace(
+pub fn scan_run_workspace(
     root: &Path,
     max_depth: Option<usize>,
 ) -> Result<WorkspaceScan, CoreError> {
@@ -89,8 +93,9 @@ fn read_directory(path: &Path) -> io::Result<Vec<(PathBuf, bool, bool)>> {
         .collect()
 }
 
-// Crate-visible so remote integration tests can drop the link between reads.
-pub(crate) fn scan_with_reader(
+/// Same traversal as [`scan_run_workspace`] with an injected directory reader,
+/// so tests can fail or remove a directory between reads.
+pub fn scan_with_reader(
     root: &Path,
     max_depth: Option<usize>,
     read: &impl Fn(&Path) -> io::Result<Vec<(PathBuf, bool, bool)>>,
@@ -119,7 +124,7 @@ fn visit_with_reader(
     let mut directory_count = 0;
     let mut pending = vec![(root.to_owned(), 0)];
     while let Some((path, depth)) = pending.pop() {
-        crate::protocol::cancellation::check()?;
+        lithe_protocol::cancellation::check()?;
         if max_depth.is_some() && directory_count >= MAX_HEURISTIC_DIRECTORIES {
             unreadable_paths.insert(relative(root, &path));
             unreadable_paths.extend(pending.iter().map(|(path, _)| relative(root, path)));
@@ -141,7 +146,7 @@ fn visit_with_reader(
         let mut files = BTreeSet::new();
         let mut children = Vec::new();
         for (child, directory, symlink) in entries {
-            crate::protocol::cancellation::check()?;
+            lithe_protocol::cancellation::check()?;
             let Some(name) = child.file_name().and_then(|name| name.to_str()) else {
                 unreadable_paths.insert(relative(root, &child));
                 continue;

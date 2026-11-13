@@ -1,11 +1,11 @@
 //! Run-configuration schemas, layered overrides, and deterministic generation.
 
 mod project_toolchain;
-pub(crate) use project_toolchain::{project_toolchain, ProjectToolchainRequest};
+pub use project_toolchain::{project_toolchain, ProjectToolchainRequest};
 
 use super::generated_layer::{self, GeneratedLayer};
 use super::types::{Confidence, Execution, RunCategory};
-use crate::protocol::{invalid_relative_path, CoreError, ErrorCode};
+use lithe_protocol::{invalid_relative_path, CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -27,6 +27,7 @@ const SIDECAR_VERSION: u32 = 1;
 #[serde(rename_all = "camelCase")]
 /// Request to validate the layered configuration documents for a workspace.
 pub struct InspectRequest {
+    /// Canonical workspace root whose `.lithe` documents are inspected.
     pub root: String,
     /// Settings-only reads may skip source hashing; omitted preserves full inspection.
     #[serde(default)]
@@ -43,6 +44,7 @@ pub struct InspectRequest {
 #[serde(rename_all = "camelCase")]
 /// Request to regenerate detected configurations from the current project tree.
 pub struct GenerateRequest {
+    /// Canonical workspace root scanned for run entries.
     pub root: String,
     /// Complete generic run selectors; omission preserves older callers.
     #[serde(default)]
@@ -58,7 +60,9 @@ pub struct GenerateRequest {
 #[serde(rename_all = "camelCase")]
 /// Request to merge configuration layers and resolve host toolchains.
 pub struct ResolveRequest {
+    /// Canonical workspace root whose layers are merged.
     pub root: String,
+    /// Executables the host discovered; requirements pick among these by role.
     #[serde(default)]
     pub toolchain_candidates: Vec<ToolchainCandidate>,
     /// Host-owned local layer. When present, Core uses it instead of `.lithe/run/local.json`.
@@ -78,8 +82,10 @@ pub struct ToolchainCandidate {
     /// Toolchain role such as `node`, not a display label.
     #[serde(rename = "type")]
     pub kind: String,
+    /// Reported version, empty when the host could not read one.
     #[serde(default)]
     pub version: String,
+    /// Distribution vendor, empty when unknown.
     #[serde(default)]
     pub vendor: String,
 }
@@ -88,7 +94,9 @@ pub struct ToolchainCandidate {
 #[serde(rename_all = "camelCase")]
 /// Request to turn one resolved configuration into a process launch plan.
 pub struct LaunchPlanRequest {
+    /// Canonical workspace root whose layers are merged before planning.
     pub root: String,
+    /// Merged configuration identity to plan.
     pub configuration_id: String,
     /// Host-owned local layer. When present, Core uses it instead of `.lithe/run/local.json`.
     #[serde(default)]
@@ -147,7 +155,7 @@ pub fn update_tool_preferences(request: UpdateToolPreferencesRequest) -> Result<
     }
     configuration_ids(&document)?;
     validate_tool_preferences(&document)?;
-    crate::toolchain::preferences::validate(&request.preferences)
+    lithe_toolchain::preferences::validate(&request.preferences)
         .map_err(|error| CoreError::new(ErrorCode::InvalidRequest, error.message))?;
     let object = document
         .as_object_mut()
@@ -164,16 +172,20 @@ pub fn update_tool_preferences(request: UpdateToolPreferencesRequest) -> Result<
 #[serde(rename_all = "camelCase")]
 /// Editable options applied to a team or machine-local configuration layer.
 pub struct UpdateOptionsRequest {
+    /// Canonical workspace root that owns the edited layer.
     pub root: String,
     /// Persistence layer: `project` for shared configuration or `local` for this host.
     pub scope: String,
+    /// Merged configuration identity to patch.
     pub configuration_id: String,
+    /// Working directory relative to the workspace root; empty keeps the merged value.
     #[serde(default)]
     pub working_directory: String,
     /// Common program arguments. `programArguments` remains a wire alias for
     /// clients from before the generic run-options migration.
     #[serde(default, alias = "programArguments")]
     pub arguments: String,
+    /// Environment variables replacing the configuration's own entries.
     #[serde(default)]
     pub environment: BTreeMap<String, String>,
     /// Portable provider choices. Omission preserves the existing namespace.
@@ -195,9 +207,11 @@ pub struct UpdateOptionsRequest {
 #[serde(rename_all = "camelCase")]
 /// Request to add an explicitly user-authored run configuration.
 pub struct CreateUserConfigurationRequest {
+    /// Canonical workspace root that receives the new entry.
     pub root: String,
     /// Persistence layer: `project` for shared configuration or `local` for this host.
     pub scope: String,
+    /// Display name shown in the Run list.
     pub name: String,
     /// UI configuration kind mapped to a namespaced provider during creation.
     #[serde(rename = "type")]
@@ -211,19 +225,26 @@ pub struct CreateUserConfigurationRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BuildProviderRunReference {
+    /// Plugin that declared the build system.
     #[serde(rename = "pluginID")]
     pub plugin_id: String,
+    /// Build system identifier within that plugin.
     #[serde(rename = "buildSystemID")]
     pub build_system_id: String,
+    /// Workspace-relative provider root, forward-slashed.
     pub root: String,
+    /// Run declaration identifier within the build system.
     pub run: String,
+    /// Opaque project identity reported by the build model.
     #[serde(rename = "projectID")]
     pub project_id: String,
+    /// Opaque target identity reported by the build model.
     #[serde(rename = "targetID")]
     pub target_id: String,
     /// Omitted older references are applications; the current declaration must match at launch.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub execution: Option<Execution>,
+    /// User arguments appended after the provider's own arguments.
     #[serde(default)]
     pub user_arguments: Vec<String>,
 }
@@ -283,9 +304,12 @@ impl BuildProviderRunReference {
 #[serde(rename_all = "camelCase")]
 /// Versioned run-configuration document stored below `.lithe/run`.
 pub struct RunConfigurationDocument {
+    /// Document schema version; v1 documents are migrated on read.
     pub version: u32,
+    /// Generation record; present only in the generated layer.
     #[serde(default)]
     pub generator: Option<GeneratorMetadata>,
+    /// Entries in document order; later layers override by `id`.
     #[serde(default)]
     pub configurations: Vec<RunConfiguration>,
 }
@@ -337,6 +361,7 @@ fn migrate_configuration_value(item: &mut Value) {
 ///
 /// `inputs` maps each workspace-relative input to `sha256:<hex>` of its bytes.
 pub struct GeneratorMetadata {
+    /// Combined hash over `inputs` and the generator revision.
     pub fingerprint: String,
     /// Identity of generic run declarations and opaque targets, separate from
     /// the file inputs so a provider answer alone can mark the layer stale.
@@ -345,6 +370,7 @@ pub struct GeneratorMetadata {
     /// Unreadable inputs retained as unknown; a partial baseline cannot prove freshness.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub unreadable_paths: BTreeSet<String>,
+    /// Workspace-relative input path mapped to `sha256:<hex>` of its bytes.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub inputs: BTreeMap<String, String>,
 }
@@ -361,36 +387,49 @@ pub struct DebugCapability {
 #[serde(rename_all = "camelCase")]
 /// Ecosystem-neutral command, identity, and launch metadata for one runnable item.
 pub struct RunConfiguration {
+    /// Stable identity the team and local layers use to override this entry.
     pub id: String,
+    /// Display name shown in the Run list.
     pub name: String,
     /// Open namespaced discriminator, e.g. `npm.script`, `cargo.run`.
     /// Deliberately not an enum: new ecosystems must not require a contract change.
     pub provider: String,
+    /// How the entry behaves once started.
     #[serde(default)]
     pub execution: Execution,
     /// Whether the entry runs this project or the infrastructure it depends on.
     /// Omitted for project entries so existing documents stay byte-identical.
     #[serde(default, skip_serializing_if = "RunCategory::is_project")]
     pub category: RunCategory,
+    /// Executable to start; absent for groups and provider-prepared launches.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
+    /// Arguments passed to `command`, without shell interpretation.
     #[serde(default)]
     pub args: Vec<String>,
+    /// Working directory relative to the workspace root.
     #[serde(default = "dot")]
     pub cwd: String,
+    /// Environment variables added for this entry.
     #[serde(default)]
     pub env: BTreeMap<String, String>,
+    /// How the entry was discovered; higher confidence wins deduplication.
     #[serde(default)]
     pub confidence: Confidence,
+    /// Toolchain role mapped to the requirement identity it consumes, such as
+    /// `runtime` to `project-node`.
     #[serde(default)]
     pub toolchains: BTreeMap<String, String>,
+    /// Debug adapter that can launch this entry, when one is declared.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub debug: Option<DebugCapability>,
+    /// Configuration identities started together when `execution` is `group`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub members: Vec<String>,
     /// Ecosystem-specific payload keyed by namespace (`npm`, `build`, ...).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub extensions: BTreeMap<String, Value>,
+    /// Hidden from the resolved list; set by a user or when the working directory is missing.
     #[serde(default)]
     pub disabled: bool,
     /// Workspace-relative manifest or source file that produced the configuration.
@@ -420,8 +459,10 @@ pub struct ToolchainRequirement {
     /// Toolchain role matched against [`ToolchainCandidate::kind`].
     #[serde(rename = "type")]
     pub kind: String,
+    /// Lowest acceptable version; newer releases also satisfy it.
     #[serde(default)]
     pub minimum_version: Option<String>,
+    /// Vendor preferred when several candidates satisfy the version.
     #[serde(default)]
     pub preferred_vendor: Option<String>,
     /// Exact version prefix; [`Self::minimum_version`] accepts newer releases.
@@ -1419,7 +1460,7 @@ fn validate_tool_preferences(document: &Value) -> Result<(), CoreError> {
         .get("toolchain")
         .and_then(|value| value.get("preferences"))
     {
-        crate::toolchain::preferences::validate(preferences)
+        lithe_toolchain::preferences::validate(preferences)
             .map_err(|error| CoreError::new(ErrorCode::InvalidRequest, error.message))?;
     }
     Ok(())
@@ -2222,7 +2263,7 @@ fn project_inputs(root: &Path) -> Result<ProjectInputs, CoreError> {
                 .expect("scan stays within root")
                 .to_string_lossy()
                 .replace('\\', "/");
-            crate::protocol::cancellation::check()?;
+            lithe_protocol::cancellation::check()?;
             // The scan lists files through the workspace adapter, so content reads
             // must use the same adapter or remote projects look permanently unreadable.
             match lithe_workspace::fs::read(&path) {

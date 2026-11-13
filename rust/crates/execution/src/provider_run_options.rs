@@ -1,8 +1,8 @@
 //! Persists portable user choices separately from opaque provider target identities.
 //! Only the selected provider interprets runtime arguments, entrypoints and build options.
 
-use crate::protocol::{CoreError, ErrorCode};
-pub use crate::toolchain::fixed::FixedToolchainSelection;
+use lithe_protocol::{CoreError, ErrorCode};
+pub use lithe_toolchain::fixed::FixedToolchainSelection;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -48,7 +48,7 @@ impl BuildProviderRunOptions {
             || serde_json::to_vec(&self.options).map_or(true, |bytes| bytes.len() > 65536)
             || self.tools.len() > 64
             || self.tools.iter().any(|(id, value)| {
-                !crate::toolchain::definitions::tool_id(id)
+                !lithe_toolchain::definitions::tool_id(id)
                     || value.as_ref().is_some_and(|value| {
                         serde_json::to_value(value)
                             .ok()

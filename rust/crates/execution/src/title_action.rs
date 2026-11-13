@@ -48,7 +48,7 @@ pub(crate) enum TitleConfiguration {
 /// The facts one decision depends on.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct TitleActionRequest {
+pub struct TitleActionRequest {
     pub(crate) action: TitleAction,
     pub(crate) trigger: TitleTrigger,
     /// The user chose Current File over the project's configurations.
@@ -64,7 +64,7 @@ pub(crate) struct TitleActionRequest {
 /// What the host does with the press.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
-pub(crate) enum TitleDecision {
+pub enum TitleDecision {
     /// Act on the current file.
     CurrentFile,
     /// Keep the press until the configurations are read.
@@ -86,7 +86,7 @@ pub(crate) enum TitleDecision {
 }
 
 /// Decides what one press does.
-pub(crate) fn decide_title_action(request: TitleActionRequest) -> TitleDecision {
+pub fn decide_title_action(request: TitleActionRequest) -> TitleDecision {
     if request.current_file_chosen {
         return TitleDecision::CurrentFile;
     }
@@ -122,7 +122,7 @@ mod tests {
     #[test]
     fn title_actions_match_the_shared_fixture() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../fixtures/run-configuration/title-action-v1.json"
+            "../../../fixtures/run-configuration/title-action-v1.json"
         ))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {
