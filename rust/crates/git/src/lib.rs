@@ -1687,10 +1687,7 @@ fn write_with_trace(request: GitWriteRequest) -> Result<GitCommandResponse, Core
             if request.operation == "stashApply" {
                 return apply_stash(&root, &reference);
             }
-            let action = match request.operation.as_str() {
-                _ => "drop",
-            };
-            arguments = vec!["stash".into(), action.into(), reference];
+            arguments = vec!["stash".into(), "drop".into(), reference];
         }
         "stashPop" => {
             let requested = validated_stash_reference(request.reference.as_deref())?;
@@ -4148,10 +4145,14 @@ fn line_history_endpoint(start: usize, count: usize) -> usize {
 /// the unified-format rule that a zero-count side starts between lines.
 /// Returns matched `(snapshot_line, revision_line)` pairs plus unmapped lines
 /// flagged as provably inserted (`true`) or unreliably rewritten (`false`).
+/// Matched `(snapshot_line, revision_line)` pairs, and the unmapped snapshot
+/// lines flagged as inserted (`true`) or rewritten (`false`).
+type SnapshotLineMap = (Vec<(usize, usize)>, Vec<(usize, bool)>);
+
 fn map_snapshot_lines(
     snapshot_line_count: usize,
     hunks: &[(usize, usize, usize, usize)],
-) -> (Vec<(usize, usize)>, Vec<(usize, bool)>) {
+) -> SnapshotLineMap {
     let mut mapped = Vec::new();
     let mut unmapped = Vec::new();
     let mut snapshot_line = 1usize;
@@ -4241,6 +4242,10 @@ fn line_history_translate_lines(
     translated
 }
 
+/// The ranges a merge touched, the path at the merge, and the path it was
+/// renamed from.
+type MergeRanges = (Vec<GitLineHistoryRange>, String, Option<String>);
+
 /// Recovers merge relevance by replaying the first-parent chain between the
 /// pinned base and the merge's first parent. Text anchoring cannot disambiguate
 /// duplicate or blank lines, so every touched commit's diff translates the
@@ -4253,7 +4258,7 @@ fn line_history_merge_ranges(
     base_path: &str,
     compare_base: &str,
     hash: &str,
-) -> Result<Option<(Vec<GitLineHistoryRange>, String, Option<String>)>, CoreError> {
+) -> Result<Option<MergeRanges>, CoreError> {
     let mut lines: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
     for (start, end) in base_intervals {
         for line in *start..=*end {
@@ -8343,36 +8348,36 @@ fn parse_diff(
             file_header_lines = vec![line.to_string()];
         } else if current_hunk_id.is_none() {
             file_header_lines.push(line.to_string());
-        } else if line.starts_with('-') {
+        } else if let Some(rest) = line.strip_prefix('-') {
             unified.push(GitDiffUnifiedLineResponse {
                 line_type: "removed".into(),
-                content: without_one_trailing_cr(&line[1..]).into(),
+                content: without_one_trailing_cr(rest).into(),
                 old_line: Some(old_line),
                 new_line: None,
             });
             current_hunk_lines.push(line.to_string());
             removed.push(DiffEntry {
                 number: old_line,
-                text: line.chars().skip(1).collect(),
+                text: rest.to_string(),
             });
             old_line += 1;
-        } else if line.starts_with('+') {
+        } else if let Some(rest) = line.strip_prefix('+') {
             unified.push(GitDiffUnifiedLineResponse {
                 line_type: "added".into(),
-                content: without_one_trailing_cr(&line[1..]).into(),
+                content: without_one_trailing_cr(rest).into(),
                 old_line: None,
                 new_line: Some(new_line),
             });
             current_hunk_lines.push(line.to_string());
             added.push(DiffEntry {
                 number: new_line,
-                text: line.chars().skip(1).collect(),
+                text: rest.to_string(),
             });
             new_line += 1;
-        } else if line.starts_with(' ') {
+        } else if let Some(rest) = line.strip_prefix(' ') {
             unified.push(GitDiffUnifiedLineResponse {
                 line_type: "context".into(),
-                content: without_one_trailing_cr(&line[1..]).into(),
+                content: without_one_trailing_cr(rest).into(),
                 old_line: Some(old_line),
                 new_line: Some(new_line),
             });
@@ -8382,7 +8387,7 @@ fn parse_diff(
             rows.push(GitDiffRowResponse {
                 old_line: Some(old_line),
                 new_line: Some(new_line),
-                left: Some(line.chars().skip(1).collect::<String>()),
+                left: Some(rest.to_string()),
                 right: None,
                 kind: "context".to_string(),
                 hunk_id: current_hunk_id.clone(),
@@ -8392,8 +8397,6 @@ fn parse_diff(
             });
             old_line += 1;
             new_line += 1;
-        } else if line.starts_with("\\ No newline") {
-            current_hunk_lines.push(line.to_string());
         } else {
             current_hunk_lines.push(line.to_string());
         }

@@ -1050,14 +1050,14 @@ fn update_configuration_options(
         None
     } else {
         Some(normalize_working_directory(
-            &root,
+            root,
             request.working_directory.trim(),
         )?)
     };
     let mut document = if request.scope == "local" {
-        local_layer_document(&root, request.local_document)?
+        local_layer_document(root, request.local_document)?
     } else {
-        read_document_value(&root, relative)?
+        read_document_value(root, relative)?
             .unwrap_or_else(|| json!({"version": VERSION, "configurations": []}))
     };
     validate_version_value(&document)?;

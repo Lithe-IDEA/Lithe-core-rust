@@ -343,6 +343,7 @@ struct PendingProgress {
     text: String,
     stage: String,
 }
+#[allow(clippy::too_many_arguments)]
 fn emit_output(
     sink: &EventSink,
     operation_id: &str,

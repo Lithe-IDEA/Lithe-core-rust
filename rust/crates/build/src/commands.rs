@@ -151,7 +151,7 @@ pub fn build_edit_stored_option_command<M: BuildManifest>(
         payload,
         "build.editStoredOption",
         "edit",
-        |system, request| super::stored_options::edit(system, request),
+        super::stored_options::edit,
     )
 }
 

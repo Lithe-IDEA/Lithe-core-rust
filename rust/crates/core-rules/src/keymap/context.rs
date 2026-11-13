@@ -133,7 +133,7 @@ fn tokenize(source: &str) -> Result<Vec<(Token, usize)>, ContextError> {
             }
             '!' => Token::Not,
             '&' | '|' | '=' => {
-                if !chars.peek().is_some_and(|(_, next)| *next == ch) {
+                if chars.peek().is_none_or(|(_, next)| *next != ch) {
                     return Err(diagnostic("invalid_character", offset));
                 }
                 chars.next();

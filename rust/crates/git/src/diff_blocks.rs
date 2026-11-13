@@ -134,23 +134,24 @@ impl SingleHunkDocument {
             old_start,
             new_start,
         };
-        (document.old().len() == old_count && document.new().len() == new_count).then_some(document)
+        (document.old_lines().len() == old_count && document.new_lines().len() == new_count)
+            .then_some(document)
     }
 
     /// Parses a section whose hunk spans both complete files.
     fn parse_complete(section: &str) -> Option<Self> {
         let document = Self::parse(section)?;
         let expected = |count: usize| usize::from(count > 0);
-        (document.old_start == expected(document.old().len())
-            && document.new_start == expected(document.new().len()))
+        (document.old_start == expected(document.old_lines().len())
+            && document.new_start == expected(document.new_lines().len()))
         .then_some(document)
     }
 
-    fn old(&self) -> Vec<RawLine> {
+    fn old_lines(&self) -> Vec<RawLine> {
         self.side(Operation::Removed)
     }
 
-    fn new(&self) -> Vec<RawLine> {
+    fn new_lines(&self) -> Vec<RawLine> {
         self.side(Operation::Added)
     }
 
@@ -507,14 +508,14 @@ pub(super) fn plan_blocks(
         None => None,
     };
     let runs = visible.runs();
-    let (head_lines, worktree_lines) = (visible.old(), visible.new());
+    let (head_lines, worktree_lines) = (visible.old_lines(), visible.new_lines());
     if matches!(worktree.status, "A" | "D") {
         let [run] = runs.as_slice() else {
             return None;
         };
         let checked = indexed
             .as_ref()
-            .is_some_and(|indexed| indexed.new() == worktree_lines);
+            .is_some_and(|indexed| indexed.new_lines() == worktree_lines);
         // Whole-file inclusion stages the file through `git add`, which keeps
         // its bytes even when the patch text could not be decoded faithfully.
         return Some(vec![whole_file_block(
@@ -524,7 +525,7 @@ pub(super) fn plan_blocks(
         )]);
     }
     let (index_head, index_lines, index_runs) = match &indexed {
-        Some(indexed) => (indexed.old(), indexed.new(), indexed.runs()),
+        Some(indexed) => (indexed.old_lines(), indexed.new_lines(), indexed.runs()),
         None => (head_lines.clone(), head_lines.clone(), Vec::new()),
     };
     if index_head != head_lines {
@@ -937,7 +938,7 @@ pub fn stage_gutter_change_command(payload: Value) -> Result<Value, CoreError> {
     }
     let document = SingleHunkDocument::parse_complete(&file.patch)
         .ok_or_else(|| invalid(GUTTER_CHANGE_STALE))?;
-    let (index_lines, worktree_lines) = (document.old(), document.new());
+    let (index_lines, worktree_lines) = (document.old_lines(), document.new_lines());
     if !displayed(
         &index_lines,
         request.original_start,

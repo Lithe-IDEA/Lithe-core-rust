@@ -312,16 +312,15 @@ fn candidates(definition: &Value) -> Validation<Vec<usize>> {
                     return Err(invalid("executables", "A shell environment candidate must match the home variable and executable layout."));
                 }
             }
-            "command" => {
+            "command"
                 if !definition["commands"]
                     .as_array()
-                    .is_some_and(|commands| commands.contains(&value["command"]))
-                {
-                    return Err(invalid(
-                        "executables.command",
-                        "A command must belong to its tool definition.",
-                    ));
-                }
+                    .is_some_and(|commands| commands.contains(&value["command"])) =>
+            {
+                return Err(invalid(
+                    "executables.command",
+                    "A command must belong to its tool definition.",
+                ));
             }
             _ => (),
         }

@@ -136,7 +136,7 @@ impl Detected {
     }
 
     /// Marks a detection as external infrastructure rather than project code.
-    pub fn as_infrastructure(mut self) -> Self {
+    pub fn into_infrastructure(mut self) -> Self {
         self.category = RunCategory::Infrastructure;
         self
     }

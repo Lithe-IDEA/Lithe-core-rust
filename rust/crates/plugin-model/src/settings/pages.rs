@@ -4,11 +4,13 @@ use super::{SettingAction, SettingDeclaration, SettingPage};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
+/// Row and action indices placed in one section.
+type SectionIndices = (Vec<usize>, Vec<usize>);
+
 /// Groups only explicitly placed rows and actions. Unplaced declarations remain
 /// on the plugin's own page; an action alone is sufficient to create a page.
 pub fn page_sections(rows: &[SettingDeclaration], actions: &[SettingAction]) -> Vec<Value> {
-    let mut pages: BTreeMap<SettingPage, BTreeMap<String, (Vec<usize>, Vec<usize>)>> =
-        BTreeMap::new();
+    let mut pages: BTreeMap<SettingPage, BTreeMap<String, SectionIndices>> = BTreeMap::new();
     for (index, row) in rows.iter().enumerate() {
         if let Some(page) = &row.page {
             pages

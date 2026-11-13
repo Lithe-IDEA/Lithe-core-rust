@@ -1227,7 +1227,7 @@ pub fn host_notification(
                     .get("commandID")
                     .and_then(Value::as_str)
                     .is_some_and(is_command_id)
-                && object.get("context").map_or(true, is_context_reference)
+                && object.get("context").is_none_or(is_context_reference)
         }
         NotificationParams::RunExit => {
             only(&["runID", "exitCode", "signal"])
@@ -1235,11 +1235,11 @@ pub fn host_notification(
                     .get("runID")
                     .and_then(Value::as_str)
                     .is_some_and(|id| id.len() <= MAX_RUN_ID_BYTES && is_credential_key(id))
-                && object.get("exitCode").map_or(true, |code| {
+                && object.get("exitCode").is_none_or(|code| {
                     code.as_i64()
                         .is_some_and(|code| i32::try_from(code).is_ok())
                 })
-                && object.get("signal").map_or(true, |signal| {
+                && object.get("signal").is_none_or(|signal| {
                     signal
                         .as_u64()
                         .is_some_and(|signal| (1..=127).contains(&signal))
@@ -1381,10 +1381,10 @@ fn check_host_params(rule: HostParams, params: Option<&Value>) -> Result<(), Hos
                 ));
             }
             if with_secret
-                && !params
+                && params
                     .get("secret")
                     .and_then(Value::as_str)
-                    .is_some_and(|secret| secret.len() <= MAX_CREDENTIAL_SECRET_BYTES)
+                    .is_none_or(|secret| secret.len() > MAX_CREDENTIAL_SECRET_BYTES)
             {
                 return Err(invalid("A secret is a string of at most 16 KiB."));
             }
@@ -1519,7 +1519,7 @@ fn check_language_server_params(
         }
         if params
             .get("percentage")
-            .is_some_and(|value| !value.as_u64().is_some_and(|percentage| percentage <= 100))
+            .is_some_and(|value| value.as_u64().is_none_or(|percentage| percentage > 100))
         {
             return Err(invalid("percentage is a whole number from 0 to 100."));
         }
@@ -1586,7 +1586,7 @@ fn check_function_invoke_params(
     }
     if params
         .get("timeoutMilliseconds")
-        .is_some_and(|value| !value.as_u64().is_some_and(|milliseconds| milliseconds >= 1))
+        .is_some_and(|value| value.as_u64().is_none_or(|milliseconds| milliseconds < 1))
     {
         return Err(invalid("A timeout is a positive number of milliseconds."));
     }

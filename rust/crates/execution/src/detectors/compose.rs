@@ -47,7 +47,7 @@ pub fn detect(ctx: &DirectoryContext) -> Vec<Detected> {
                 "compose",
                 serde_json::json!({ "file": file, "service": name }),
             )
-            .as_infrastructure()
+            .into_infrastructure()
         })
         .collect::<Vec<_>>();
     // The whole stack is usually what the user wants first, so offer it as a
@@ -64,7 +64,7 @@ pub fn detect(ctx: &DirectoryContext) -> Vec<Detected> {
                 file,
             )
             .with_extension("compose", serde_json::json!({ "file": file }))
-            .as_infrastructure(),
+            .into_infrastructure(),
         );
     }
     detected

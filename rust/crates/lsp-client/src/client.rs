@@ -389,13 +389,13 @@ pub fn client_apply_server_message_for_plugin(
                 }
             }
             "client/registerCapability" => {
-                apply_dynamic_registration(&mut state, &message);
+                apply_dynamic_registration(&mut state, message);
                 if let Some(id) = request_id {
                     responses.push(json_rpc_result(id, Value::Null)?);
                 }
             }
             "client/unregisterCapability" => {
-                apply_dynamic_unregistration(&mut state, &message);
+                apply_dynamic_unregistration(&mut state, message);
                 if let Some(id) = request_id {
                     responses.push(json_rpc_result(id, Value::Null)?);
                 }
@@ -623,7 +623,7 @@ pub fn client_apply_server_message_for_plugin(
                 }
             }
         }
-    } else if let Some(id) = lsp_message_id(&message) {
+    } else if let Some(id) = lsp_message_id(message) {
         let pending = state.pending_requests.remove(&id);
         if pending.as_deref() == Some("initialize") {
             if let Some(result) = message
@@ -1456,10 +1456,7 @@ fn parse_completion_items(result: &Value) -> Vec<Value> {
     let Some(values) = values else {
         return Vec::new();
     };
-    values
-        .iter()
-        .filter_map(|item| parse_completion_item(item))
-        .collect()
+    values.iter().filter_map(parse_completion_item).collect()
 }
 
 fn parse_completion_item(item: &Value) -> Option<Value> {
@@ -1556,10 +1553,11 @@ fn hover_contents(value: &Value) -> Option<(String, bool)> {
                     .map(|kind| kind == "markdown")
                     .unwrap_or(false);
                 Some((value.to_string(), is_markdown))
-            } else if let Some(value) = object.get("language").and_then(Value::as_str) {
-                Some((value.to_string(), true))
             } else {
-                None
+                object
+                    .get("language")
+                    .and_then(Value::as_str)
+                    .map(|value| (value.to_string(), true))
             }
         }
         Value::Array(values) => {
@@ -2399,7 +2397,7 @@ mod formatting_and_completion_tests {
             method: method.to_string(),
             position: None,
             new_name: None,
-            range: with_range.then(|| LspRange {
+            range: with_range.then_some(LspRange {
                 start: LspPosition {
                     line: 1,
                     utf16_column: 2,

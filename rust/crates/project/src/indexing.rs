@@ -598,7 +598,7 @@ fn contains(directory: &str, path: &str) -> bool {
     directory == "."
         || path == directory
         || path
-            .strip_prefix(&directory[..])
+            .strip_prefix(directory)
             .is_some_and(|suffix| suffix.starts_with('/'))
 }
 
@@ -1137,7 +1137,9 @@ mod tests {
         })
         .unwrap();
         assert_eq!(
-            search(&parent.0, &[parent.0.clone()]).matches.len(),
+            search(&parent.0, std::slice::from_ref(&parent.0))
+                .matches
+                .len(),
             3,
             "removing an added root restores parent scanning even while its policy is retired"
         );

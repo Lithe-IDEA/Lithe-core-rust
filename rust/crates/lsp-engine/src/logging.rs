@@ -216,12 +216,12 @@ impl EngineLog {
                         .cloned()
                         .unwrap_or_else(|| json!("")),
                 );
-                copy(&mut fields, "truncated", &input, "truncated");
+                copy(&mut fields, "truncated", input, "truncated");
             }
             Self::ProcessCleanupFailed | Self::StderrReadFailed => failure(&mut fields, code),
             Self::MessageLogged | Self::MessageShown => {
-                copy(&mut fields, "diagnostic", &input, "diagnostic");
-                copy(&mut fields, "severity", &input, "severity");
+                copy(&mut fields, "diagnostic", input, "diagnostic");
+                copy(&mut fields, "severity", input, "severity");
                 let severity = match input["severity"].as_str() {
                     Some("error") => Some("error"),
                     Some("warning") => Some("warning"),
@@ -238,13 +238,13 @@ impl EngineLog {
                 }
             }
             Self::TraceReceived => {
-                copy(&mut fields, "diagnostic", &input, "diagnostic");
+                copy(&mut fields, "diagnostic", input, "diagnostic");
             }
             Self::NotificationReceived => {
-                copy(&mut fields, "method", &input, "method");
+                copy(&mut fields, "method", input, "method");
             }
             Self::SessionUpdated => {
-                copy(&mut fields, "state", &input, "state");
+                copy(&mut fields, "state", input, "state");
                 if input["state"] == "failed" {
                     id = identity.event("session.failed");
                     fields.insert("code".into(), json!(code));

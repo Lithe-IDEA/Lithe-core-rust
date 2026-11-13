@@ -681,13 +681,13 @@ impl FunctionRelay {
                 let named = self
                     .calls
                     .get(&call_id)
-                    .filter(|call| served_here(*call))
+                    .filter(|call| served_here(call))
                     .ok_or_else(not_running)?;
                 parents.insert(named.id);
                 chain.extend(named.chain.iter().cloned());
             }
             CallParent::Unstated => {
-                for served in self.calls.values().filter(|call| served_here(*call)) {
+                for served in self.calls.values().filter(|call| served_here(call)) {
                     parents.insert(served.id);
                     for plugin in &served.chain {
                         if !chain.contains(plugin) {

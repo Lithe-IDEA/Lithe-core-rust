@@ -2039,7 +2039,7 @@ fn partial_frames_are_buffered_and_consecutive_frames_arrive_in_order() {
 
     let first = split(uri, "first");
     let boundary = first.len() - 12;
-    harness.server.send_raw(first[..boundary].as_bytes());
+    harness.server.send_raw(&first.as_bytes()[..boundary]);
     thread::sleep(Duration::from_millis(40));
     harness.poll();
     assert!(

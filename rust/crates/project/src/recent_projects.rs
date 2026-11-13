@@ -210,9 +210,9 @@ fn deduplicate(entries: Vec<RecentProjectEntry>) -> Vec<RecentProjectEntry> {
 fn order_and_limit(entries: Vec<RecentProjectEntry>, capacity: usize) -> Vec<RecentProjectEntry> {
     let (mut pinned, mut unpinned): (Vec<_>, Vec<_>) =
         entries.into_iter().partition(|entry| entry.pinned);
-    // `sort_by` is stable, so equal timestamps keep the caller's order.
-    pinned.sort_by(|left, right| right.last_opened_at.cmp(&left.last_opened_at));
-    unpinned.sort_by(|left, right| right.last_opened_at.cmp(&left.last_opened_at));
+    // `sort_by_key` is stable, so equal timestamps keep the caller's order.
+    pinned.sort_by_key(|entry| std::cmp::Reverse(entry.last_opened_at));
+    unpinned.sort_by_key(|entry| std::cmp::Reverse(entry.last_opened_at));
     unpinned.truncate(capacity);
     // Pins are exempt from the capacity but still bounded by the input limit.
     pinned.truncate(MAX_ENTRIES);

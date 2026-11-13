@@ -114,7 +114,7 @@ fn flags_changed(
         }
         if let Some(previous) = state.last_standalone_tap {
             let gap = timestamp - previous;
-            if gap >= 0.0 && gap < THRESHOLD_SECONDS {
+            if (0.0..THRESHOLD_SECONDS).contains(&gap) {
                 state.last_standalone_tap = None;
                 return true;
             }

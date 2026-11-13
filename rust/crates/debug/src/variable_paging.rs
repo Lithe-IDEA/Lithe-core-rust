@@ -250,7 +250,7 @@ fn next_request(state: &VariablePageState) -> Option<VariablePageRequest> {
         .try_fold(0u64, |sum, remaining| {
             remaining.map(|value| sum.saturating_add(value))
         });
-    (count > 0).then(|| VariablePageRequest {
+    (count > 0).then_some(VariablePageRequest {
         filter: segment.filter,
         start: segment.next_start,
         count: count as u32,

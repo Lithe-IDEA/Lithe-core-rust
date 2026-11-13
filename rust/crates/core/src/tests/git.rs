@@ -5865,7 +5865,7 @@ charlie
     // cannot silently degrade to plain LF content.
     let crlf_snapshot = String::from("alpha\r\nbravo-two\r\ncharlie\r\n");
     assert!(
-        crlf_snapshot.as_bytes().iter().any(|byte| *byte == b'\r'),
+        crlf_snapshot.as_bytes().contains(&b'\r'),
         "fixture must carry real carriage returns"
     );
     let response = line_history_query(&root, "doc.txt", &crlf_snapshot, 2, 2);

@@ -116,7 +116,7 @@ pub fn version(
     }
     let started = Instant::now();
     let output = crate::run(
-        &mut Command::new(program).arg("--version"),
+        Command::new(program).arg("--version"),
         None,
         || cancelled() || started.elapsed() >= Duration::from_secs(5),
         || {},

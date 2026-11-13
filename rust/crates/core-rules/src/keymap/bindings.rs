@@ -84,7 +84,7 @@ fn key_alias(token: &str) -> String {
 fn parse_step(text: &str, platform: BindingPlatform) -> Result<BindingStep, &'static str> {
     // A trailing plus is the `+` key itself (`ctrl++`), not an empty segment.
     let (head, plus_key) = match text.strip_suffix('+') {
-        Some(rest) if rest.is_empty() => ("", true),
+        Some("") => ("", true),
         Some(rest) => match rest.strip_suffix('+') {
             Some(head) => (head, true),
             None => return Err("empty_key"),

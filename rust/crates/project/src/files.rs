@@ -662,7 +662,7 @@ fn search_with_index(
         &request.exclude_path_patterns,
         &request.path_filter_prefix,
     )?;
-    let limit = request.max_results.max(1).min(10_000);
+    let limit = request.max_results.clamp(1, 10_000);
     let file_limit = request.max_file_results.unwrap_or(limit).min(limit);
     let content_limit = request.max_content_results.unwrap_or(limit).min(limit);
     let mut matches = Vec::new();
@@ -798,7 +798,7 @@ pub(crate) fn search_everywhere_with_page(
         &request.exclude_path_patterns,
         &request.path_filter_prefix,
     )?;
-    let limit = request.max_results.max(1).min(10_000);
+    let limit = request.max_results.clamp(1, 10_000);
     let file_limit = if page.as_ref().is_some_and(|page| page.exhausted("file")) {
         0
     } else {

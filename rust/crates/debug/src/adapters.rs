@@ -1965,7 +1965,7 @@ pub fn plan(
         ));
     }
     if uses_selected_runtime(std::slice::from_ref(adapter))
-        && facts.runtime_selection.map_or(true, Generation::is_stale)
+        && facts.runtime_selection.is_none_or(Generation::is_stale)
     {
         return Err(PluginRejection::at(
             "debug.runtime.stale",
@@ -2013,15 +2013,14 @@ pub fn plan(
             return Err(missing("target.executable", "executable"));
         }
         Some(source)
-            if source != TARGET_EXECUTABLE
-                && target.path.as_deref().map_or(true, str::is_empty) =>
+            if source != TARGET_EXECUTABLE && target.path.as_deref().is_none_or(str::is_empty) =>
         {
             return Err(missing("target.path", "path"));
         }
         _ => {}
     }
     if bindings.args.is_some()
-        && target.arguments.as_ref().map_or(true, |args| {
+        && target.arguments.as_ref().is_none_or(|args| {
             args.len() > 1024
                 || args
                     .iter()
@@ -2031,7 +2030,7 @@ pub fn plan(
         return Err(missing("target.arguments", "bounded arguments"));
     }
     if bindings.env.is_some()
-        && target.environment.as_ref().map_or(true, |env| {
+        && target.environment.as_ref().is_none_or(|env| {
             env.len() > 64
                 || env.iter().any(|(key, value)| {
                     key.is_empty()
@@ -2055,7 +2054,7 @@ pub fn plan(
         && target
             .working_directory
             .as_deref()
-            .map_or(true, str::is_empty)
+            .is_none_or(str::is_empty)
     {
         return Err(missing("target.workingDirectory", "working directory"));
     }

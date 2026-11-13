@@ -138,7 +138,7 @@ pub fn validate_declarations(
                         && components
                             .iter()
                             .position(|part| part == "*")
-                            .map_or(true, |index| index + 1 == components.len())
+                            .is_none_or(|index| index + 1 == components.len())
                         && components.iter().all(|part| {
                             part == "*" || (!part.contains('/') && safe_relative_path(part))
                         })

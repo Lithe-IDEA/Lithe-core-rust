@@ -1351,19 +1351,18 @@ impl BuildSystemDeclaration {
                 }
             }
         }
-        if provider_runs
+        if (provider_runs
             || provider_tests
             || self
                 .tasks
                 .iter()
-                .any(|task| task.source == TaskSource::Provider)
+                .any(|task| task.source == TaskSource::Provider))
+            && !matches!(provider, ProviderDeclaration::Process(_))
         {
-            if !matches!(provider, ProviderDeclaration::Process(_)) {
-                return Err(invalid(
-                    &field,
-                    "Provider execution requires a plugin-owned provider process.",
-                ));
-            }
+            return Err(invalid(
+                &field,
+                "Provider execution requires a plugin-owned provider process.",
+            ));
         }
         match provider {
             ProviderDeclaration::LanguageServer(shared) => {

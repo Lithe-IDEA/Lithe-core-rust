@@ -161,13 +161,16 @@ pub fn project_generator_catalog_command<M: GeneratorManifest>(
     ))))
 }
 
+/// Lists the plugins whose manifest passes the given test.
+type ProviderSearch<'a, M> = dyn Fn(&dyn Fn(&M) -> bool) -> Vec<Value> + 'a;
+
 /// The plugins that declare the tool each tool field selects, so a field with
 /// no installation can tell the user which plugin to enable or install. Core
 /// only names declarations; whether a definition is trusted, and whether the
 /// tool is installed, is the host's registry and discovery.
 fn tool_providers<M: GeneratorManifest>(
     generator: &ProjectGeneratorDeclaration,
-    providers: &dyn Fn(&dyn Fn(&M) -> bool) -> Vec<Value>,
+    providers: &ProviderSearch<'_, M>,
 ) -> Vec<Value> {
     generator
         .fields

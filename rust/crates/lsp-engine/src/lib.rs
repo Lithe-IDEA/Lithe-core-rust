@@ -5560,6 +5560,7 @@ fn push_log_event(
     push_classified_log_event(session, state, level, identity, message, detail, None);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn push_issue_log_event(
     session: &RuntimeSession,
     state: &mut SessionState,
@@ -5635,6 +5636,7 @@ fn take_sequence(state: &mut SessionState) -> u64 {
     sequence
 }
 
+#[allow(clippy::too_many_arguments)]
 fn runtime_error(
     session: &RuntimeSession,
     code: &str,
