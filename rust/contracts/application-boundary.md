@@ -27,7 +27,7 @@ no runtime JSON loading, package download or write to installed resources occurs
 The locale registry preserves each platform's persisted identifiers and default
 language. Explicit fallback chains resolve shared entries during generation;
 all existing platform catalogs and presentation-owned bilingual copy use this source. Translation coverage is not a
-capability claim. [Format fixtures](../fixtures/i18n/format-v1.json) bind generation
+capability claim. [Format fixtures](https://github.com/1lck/Lithe-IDEA/blob/preview/shared/i18n/fixtures/format-v1.json) bind generation
 to native positional formatting, literal percent signs and unmodified argument data.
 
 ## Feature Contracts
