@@ -6253,3 +6253,65 @@ and deduplicated. No setting values cross windows: receivers read their own
 project layers. Native owners must recheck window/project lifetime on delivery.
 Invalid surface input returns `plugin.settings.invalidSurface`; owner mismatch
 returns `plugin.settings.ownerChanged`. Shared vectors: `rust/fixtures/plugins/settings-surfaces.json`.
+
+
+### Editor essentials (desktop internal commands)
+
+`editor.find` executes through `lithe_core_execute_document_json(request, bytes, length)`.
+The caller owns valid UTF-8 bytes for the synchronous call; Core borrows them only until
+return, retains no pointer or text cache, and returns its normal owned response string
+(free with `lithe_core_free_string`). A null buffer is valid only at length zero.
+The ordinary JSON entry point rejects this command with `missing_document`.
+Cancellation uses the operation ID registry, including cancellation checks between matches.
+The host must run on a worker and guard the document snapshot and query generation before
+applying ranges or a replacement. This ABI adds no public plugin host methods.
+
+The payload is `{query, caseSensitive?:false, wholeWord?:false, regex?:false,
+range?:{start,end}, replacement?:string, replaceStart?:number, caret?:0, backwards?:false}`.
+All offsets are original UTF-8 byte offsets, half-open and on rune boundaries. An omitted
+range searches the whole snapshot. Regex uses Unicode case folding/word boundaries and
+multiline anchors; regex replacement expands `$1`/`${name}` captures; literal replacement
+preserves dollar signs. `replaceStart` selects only that match; omitted means replace all.
+Results are `{matches:[{start,end}],edits:[{start,end,text}],selected:number|null,truncated}`.
+Scoped requests also return `range`, adjusted for the planned replacement lengths so the
+selection remains valid after applying a bulk edit.
+Limits: 64 MiB source, 4096-byte query, 10,000 returned matches, 8 MiB total inserted text,
+1 MiB compiled regex and 2 MiB DFA. A truncated search is useful for navigation but bulk
+replacement fails atomically. Invalid requests return `invalid_request` with stable details:
+`invalid_request`, `missing_document`, `invalid_range`, `invalid_pattern`, `query_too_large`,
+`source_too_large`, `source_too_large_or_invalid`, `replacement_too_large`, `too_many_matches`.
+Source, query and replacement are never included in errors or diagnostic logs.
+
+`editor.preferences.resolve` accepts optional `lineNumbers`, `whitespace`, `cursorStyle`
+(`line`, `block`, `underline`), `cursorBlink` and `autoSaveDelayMilliseconds`. It returns
+actual values and minimum/maximum delay. Defaults: true, false, line, true, 1500 ms;
+unknown styles resolve to line and delay clamps to 250–60,000 ms.
+
+`editor.recent.reduce` accepts `entries`, optional `event:{kind,path,name,line,column}`,
+`query` and `onlyEdited`. It returns bounded `entries` and filtered `results`. Paths are
+opaque host-owned workspace-relative identities, position is zero-based UTF-16. Kinds are
+opened/edited/removed. Logical sequence numbers produce deterministic MRU order independent
+of clocks; edit recency survives subsequent opens. Up to 80 entries, 4096-byte query,
+32,768-byte path, 1024-byte name. Native storage and rendering belong to the host.
+
+`editor.recovery.decide` accepts `{baseHash,diskHash?,scratch?,bytes?,saved?,discarded?}`.
+It returns action `remove`, `tooLarge`, `restoreScratch`, `restore`, or `restoreConflict`,
+plus `maxDocumentBytes` (64 MiB), `maxStorageBytes` (256 MiB), `maxDocuments` (64).
+Hash equality is a native fact (including actual encoding bytes where applicable).
+Missing or changed disk data retains a conflict; it never authorizes an overwrite.
+The native adapter owns private atomic checkpoint files in application data, quota
+accounting, write serialization, and explicit save/discard cleanup. Recovery is independent
+of auto-save. A save/remove queued after a checkpoint must win over that checkpoint.
+
+`keymap.schemes.reduce` accepts `{state:{active,schemes:[{id,name,bindings}]},current?,
+operation?,id?,name?,bindings?}` and returns `{state,bindings}` for the active scheme.
+Empty state migrates current overrides into default. Operations: empty (resolve), update,
+select, saveAs (clone active), rename and delete. Default cannot be renamed/deleted;
+deleting the active custom scheme selects default. Up to 16 schemes; names trim to 1–64
+characters without controls and are case-insensitively unique; IDs are ASCII alphanumeric,
+hyphen or underscore, up to 64 bytes. Bindings use existing explicit-modifier key syntax.
+Failures use `invalid_request` plus stable details such as `invalid_name`, `duplicate_name`,
+`too_many_schemes`, `missing_scheme`, `default_is_fixed` and `invalid_binding`.
+No third-party keymap import or plugin protocol change is introduced.
+
+Executable vectors: `rust/fixtures/editor/ide-essentials-v1.json` (C ABI tests).

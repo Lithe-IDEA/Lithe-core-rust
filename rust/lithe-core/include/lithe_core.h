@@ -13,6 +13,8 @@ const char *lithe_core_version(void);
 int32_t lithe_core_is_plain_text(const uint8_t *bytes, size_t length);
 int32_t lithe_core_git_askpass(const char *prompt);
 char *lithe_core_execute_json(const char *request);
+/* Immutable source borrowed only until return; response uses lithe_core_free_string. */
+char *lithe_core_execute_document_json(const char *request, const uint8_t *bytes, size_t length);
 char *lithe_core_execute_json_with_events(const char *request, void (*callback)(const char *, void *), void *context);
 char *lithe_core_lsp_provider_catalog_json(const char *workspace_root);
 int32_t lithe_core_cancel(const char *operation_id);

@@ -6,9 +6,13 @@
 //! the same contract in a follow-up change; the contract and fixtures here
 //! are the canonical reference for that migration.
 
+pub(crate) mod find;
 pub(crate) mod line_edit;
 pub(crate) mod navigation_history;
 pub(crate) mod navigation_input;
+pub(crate) mod preferences;
+pub(crate) mod recent;
+pub(crate) mod recovery;
 pub(crate) mod text_edit_plan;
 
 pub(crate) use line_edit::{

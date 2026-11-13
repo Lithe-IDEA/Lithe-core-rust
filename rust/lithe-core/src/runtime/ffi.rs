@@ -54,6 +54,47 @@ pub unsafe extern "C" fn lithe_core_execute_json(request: *const c_char) -> *mut
     response_pointer(&crate::execute_json(&request))
 }
 
+/// Executes a request over borrowed UTF-8 text without a JSON copy of the source.
+/// Uses the ordinary dispatcher, request trace, cancellation and response envelope.
+/// Core never retains the source pointer. The caller releases the returned string
+/// exactly once using [`lithe_core_free_string`].
+///
+/// # Safety
+/// `request` follows [`lithe_core_execute_json`]. `bytes` points to `length` immutable,
+/// readable bytes until this synchronous call returns, or is null for an empty input.
+#[no_mangle]
+pub unsafe extern "C" fn lithe_core_execute_document_json(
+    request: *const c_char,
+    bytes: *const u8,
+    length: usize,
+) -> *mut c_char {
+    if request.is_null() {
+        // SAFETY: The normal entry point explicitly accepts null requests.
+        return lithe_core_execute_json(request);
+    }
+    let source = if length == 0 {
+        Ok("")
+    } else if bytes.is_null() || length > 64 * 1024 * 1024 {
+        Err(())
+    } else {
+        // SAFETY: The caller guarantees this non-null slice remains readable and immutable.
+        std::str::from_utf8(std::slice::from_raw_parts(bytes, length)).map_err(|_| ())
+    };
+    match source {
+        Ok(text) => {
+            // SAFETY: The request is a readable NUL-terminated string for this call.
+            let request = CStr::from_ptr(request).to_string_lossy();
+            response_pointer(&super::dispatcher::execute_document_json(
+                &request,
+                Some(text),
+            ))
+        }
+        Err(()) => response_pointer(
+            r#"{"id":null,"ok":false,"error":{"code":"invalid_request","message":"Invalid editor source","details":"source_too_large_or_invalid"}}"#,
+        ),
+    }
+}
+
 /// Loads the merged language-provider catalog for an optional workspace root.
 ///
 /// The returned string is owned by the caller and must be released exactly
@@ -232,5 +273,52 @@ mod text_content_tests {
         ))
         .unwrap();
         assert_eq!(response["error"]["code"], "invalid_request");
+    }
+}
+
+#[cfg(test)]
+mod editor_essentials_tests {
+    use super::*;
+    use serde_json::{json, Value};
+    #[test]
+    fn borrowed_document_abi_matches_shared_vectors() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../../fixtures/editor/ide-essentials-v1.json"
+        ))
+        .unwrap();
+        for case in fixture["cases"].as_array().unwrap() {
+            let request = CString::new(
+                json!({"command":case["command"],"payload":case["payload"]}).to_string(),
+            )
+            .unwrap();
+            let document = case["document"].as_str().unwrap_or("");
+            let pointer = unsafe {
+                lithe_core_execute_document_json(
+                    request.as_ptr(),
+                    document.as_ptr(),
+                    document.len(),
+                )
+            };
+            let response: Value =
+                unsafe { serde_json::from_str(CStr::from_ptr(pointer).to_str().unwrap()).unwrap() };
+            unsafe { lithe_core_free_string(pointer) };
+            assert_eq!(
+                response["data"], case["expected"],
+                "{}: {}",
+                case["name"], response
+            );
+        }
+    }
+    #[test]
+    fn borrowed_document_rejects_invalid_pointer_and_utf8_without_replacement() {
+        let request = CString::new(r#"{"command":"editor.find","payload":{"query":"a"}}"#).unwrap();
+        let invalid = [0xff];
+        for (data, len) in [(std::ptr::null(), 1), (invalid.as_ptr(), 1)] {
+            let pointer = unsafe { lithe_core_execute_document_json(request.as_ptr(), data, len) };
+            let response: Value =
+                unsafe { serde_json::from_str(CStr::from_ptr(pointer).to_str().unwrap()).unwrap() };
+            unsafe { lithe_core_free_string(pointer) };
+            assert_eq!(response["error"]["code"], "invalid_request");
+        }
     }
 }
