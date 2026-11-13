@@ -4707,8 +4707,11 @@ bridge exposes the same lifetime and result contract. Fixtures live in
 ### Process lifecycle decisions
 
 `processLifecycle.resolve` accepts `{ context, settings, records }` and returns
-`{ gracefulStopMilliseconds, decisions }` with exactly one decision per record,
-in request order. `context` is `quit`, `closeTerminalTab`, `agentDisconnect`,
+`{ gracefulStopMilliseconds, gracefulStopRule, decisions }` with exactly one
+decision per record, in request order. `gracefulStopRule` is
+`{ defaultSeconds, minSeconds, maxSeconds }`, the default of
+`settings.gracefulStopSeconds` and the limits it is clamped to, in seconds;
+settings pages read it instead of copying the numbers. `context` is `quit`, `closeTerminalTab`, `agentDisconnect`,
 `crashRecovery`, `startupSweep`, `finalSweep`, or `closeWorkspace` (a project or
 window closes while Lithe keeps running). Each record carries a host-chosen `id`, a
 `kind` (`run`, `terminal`, `agentTask`, `languageServer`, `debugAdapter`,
