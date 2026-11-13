@@ -2,7 +2,7 @@
 
 Run `scripts/rust-core/verify-rust-core-comments.sh` from any directory. It checks
 module documentation, English comments, unsafe API safety sections, exported
-Rustdoc, and intra-doc links in `lithe-core` and `lithe-core-rules`.
+Rustdoc, and intra-doc links in `lithe-core`, `lithe-core-rules` and `lithe-ai`.
 
 The small `comment-lexer` helper uses pinned `rustc_lexer` tokens to distinguish
 comments from ordinary, raw, and byte string literals. It does not parse source

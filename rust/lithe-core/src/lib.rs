@@ -1,7 +1,6 @@
 //! Deterministic application services shared by the macOS and Windows hosts.
 
 mod action_search;
-pub mod ai;
 mod build;
 mod community;
 mod debug;
@@ -29,6 +28,10 @@ mod vcs;
 pub use protocol::{
     CoreCommand, CoreError, CoreEvent, CoreRequest, CoreResponse, ErrorCode, ResponseData,
 };
+
+/// The `ai.*` commands, kept in their own crate (`rust/lithe-ai`); re-exported so the former
+/// `lithe_core::ai` paths keep resolving.
+pub use lithe_ai as ai;
 
 /// The cancellation scope of one request, for a host crate that answers some
 /// commands itself and still has to honour `cancel_operation` and timeouts the

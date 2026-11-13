@@ -133,10 +133,13 @@ pub(crate) fn plan_commit_bounded(
     plan_commit_with_truncation(provider, options, files, &truncated)
 }
 
+/// The diff prefix one file may send, in characters, and whether that cuts the diff.
 #[derive(Serialize)]
-pub(crate) struct InputBudget {
-    pub(crate) characters: usize,
-    pub(crate) truncated: bool,
+pub struct InputBudget {
+    /// Characters of the file's diff that fit in its share of the total budget.
+    pub characters: usize,
+    /// Whether the prefix is shorter than the whole diff.
+    pub truncated: bool,
 }
 
 // The JSON boundary and the typed planner use the same allocation state.
@@ -163,8 +166,12 @@ impl DiffBudget {
     }
 }
 
-// Keep large editor-owned diffs on the host and pass only Core-selected prefixes.
-pub(crate) fn commit_input_budget(
+/// Splits `maximum` diff characters across files of the given `lengths`.
+///
+/// Keeps large editor-owned diffs on the host: only the Core-selected prefixes cross the
+/// boundary. Fails with `AI_COMMIT_INVALID_OPTIONS` outside 8,000–120,000 characters or above
+/// 1,000 files.
+pub fn commit_input_budget(
     maximum: usize,
     lengths: &[usize],
 ) -> Result<Vec<InputBudget>, &'static str> {
@@ -310,7 +317,9 @@ pub(crate) fn chat_token_field(field: &ChatTokenLimitField) -> ChatTokenField {
     }
 }
 
-pub(crate) fn sensitive_path(path: &str) -> bool {
+/// Reports whether `path` names a file that commonly holds credentials (`.env`, private keys,
+/// `auth.json` and similar). Commit generation refuses to send such files to a provider.
+pub fn sensitive_path(path: &str) -> bool {
     let path = path.replace('\\', "/").to_lowercase();
     let name = path.rsplit('/').next().unwrap_or("");
     name == ".env"

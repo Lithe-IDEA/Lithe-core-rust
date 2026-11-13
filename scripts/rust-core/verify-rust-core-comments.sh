@@ -6,8 +6,9 @@ ROOT_DIR="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 # Keep this helper, Rustdoc and subsequent checks in one native build-state
 # directory. A desktop worktree supplies its own existing Cargo target.
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT_DIR/.artifacts/rust-core-checks}"
-# lithe-core-rules is part of Core and holds reusable editor/UI rules.
-SOURCE_DIRS=("$ROOT_DIR/rust/lithe-core/src" "$ROOT_DIR/rust/lithe-core-rules/src")
+# lithe-core-rules is part of Core and holds reusable editor/UI rules; lithe-ai holds the
+# ai.* commands.
+SOURCE_DIRS=("$ROOT_DIR/rust/lithe-core/src" "$ROOT_DIR/rust/lithe-core-rules/src" "$ROOT_DIR/rust/lithe-ai/src")
 cd "$ROOT_DIR"
 
 rust_files=()
@@ -105,7 +106,7 @@ fi
 # Let Rust understand visibility instead of treating pub items in private
 # modules as exported APIs. This covers public functions, types, variants, and
 # fields without requiring documentation for every internal helper.
-for manifest in rust/lithe-core/Cargo.toml rust/lithe-core-rules/Cargo.toml; do
+for manifest in rust/lithe-core/Cargo.toml rust/lithe-core-rules/Cargo.toml rust/lithe-ai/Cargo.toml; do
     cargo rustdoc --quiet \
         --manifest-path "$manifest" \
         --lib -- \

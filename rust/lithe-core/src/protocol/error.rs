@@ -120,6 +120,17 @@ pub fn invalid_relative_path(value: &str) -> bool {
         || normalized.split('/').any(|component| component == "..")
 }
 
+impl From<lithe_ai::AiError> for CoreError {
+    /// AI errors already use Core's category names, so the mapping is one to one.
+    fn from(error: lithe_ai::AiError) -> Self {
+        let code = match error.code {
+            lithe_ai::AiErrorCode::InvalidRequest => ErrorCode::InvalidRequest,
+            lithe_ai::AiErrorCode::NotSupported => ErrorCode::NotSupported,
+        };
+        Self::new(code, error.message)
+    }
+}
+
 impl From<lithe_core_rules::RuleError> for CoreError {
     /// Rule errors already use Core's category names, so the mapping is one to one.
     fn from(error: lithe_core_rules::RuleError) -> Self {

@@ -3711,6 +3711,9 @@ Windows consumes the original fields and may ignore this marker.
 
 ### AI configuration
 
+These commands, like every `ai.*` command, are implemented in the `lithe-ai` crate
+(`rust/lithe-ai`); `lithe-core` only routes them.
+
 `ai.configuration.sources` takes `{source, home, environment}` (`source` is
 `codex` or `claude`, `home` an absolute path, `environment` only the directory
 overrides `CODEX_HOME` / `CLAUDE_CONFIG_DIR`) and returns `{files}`: the native
