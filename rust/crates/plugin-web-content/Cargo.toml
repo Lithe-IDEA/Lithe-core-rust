@@ -1,0 +1,13 @@
+[package]
+name = "lithe-plugin-web-content"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Plugin pages in host tool windows: what a page is served, the bridge requests it may make, and how replies and events are framed"
+
+[dependencies]
+lithe-plugin-manifest = { path = "../plugin-manifest" }
+lithe-plugin-model = { path = "../plugin-model" }
+lithe-protocol = { path = "../protocol" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }

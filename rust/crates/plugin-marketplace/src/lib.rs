@@ -8,13 +8,13 @@
 //! start, so macOS and Windows present the same catalog and the same trust
 //! prompts. The contract lives in `shared/plugins/contract/v1/`.
 
-use super::capabilities::{self, HostCapabilities, Requires};
-use crate::protocol::CoreError;
 use lithe_plugin_manifest::{validate_manifest_value, SUPPORTED_PLUGIN_API_VERSIONS};
+use lithe_plugin_model::capabilities::{self, HostCapabilities, Requires};
 use lithe_plugin_model::{
     decode_payload, is_official_namespace, is_plugin_id, is_semantic_version, PluginRejection,
     Validation,
 };
+use lithe_protocol::CoreError;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};

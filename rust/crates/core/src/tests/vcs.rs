@@ -4,7 +4,6 @@
 //! the Subversion provider manifest fixture.
 
 use super::support::temporary_root;
-use crate::plugins::marketplace::install_review_command;
 use crate::protocol::ErrorCode;
 use crate::vcs::{
     negotiated_capabilities, vcs_decode_reply_command, vcs_detect_roots_command,
@@ -12,6 +11,7 @@ use crate::vcs::{
 };
 use lithe_plugin_manifest::DeclarativePluginManifest as Manifest;
 use lithe_plugin_manifest::{language_server_launch_plan_command, validate_command};
+use lithe_plugin_marketplace::install_review_command;
 use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};

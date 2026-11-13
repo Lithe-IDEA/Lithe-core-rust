@@ -11,9 +11,9 @@
 //! Note: the decision is recorded in Lithe-IDEA's
 //! .agents/notes/implemented/architecture/2026-10-18-plugin-web-content-in-host-windows.md
 
-use crate::protocol::{CoreError, ErrorCode};
 use lithe_plugin_manifest::validate_manifest_value;
 use lithe_plugin_model::decode_payload;
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use std::collections::hash_map::RandomState;
@@ -981,5 +981,4 @@ pub fn event_command(payload: Value) -> Result<Value, CoreError> {
 }
 
 #[cfg(test)]
-#[path = "web_content_tests.rs"]
 mod tests;

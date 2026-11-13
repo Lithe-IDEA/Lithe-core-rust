@@ -484,7 +484,7 @@ fn build_providers_require_their_own_host_capability() {
 /// through its initialization options.
 #[test]
 fn runtime_launch_and_initialization_options_are_reviewed_programs() {
-    let outcome = crate::plugins::marketplace::install_review_command(json!({
+    let outcome = lithe_plugin_marketplace::install_review_command(json!({
         "manifest": fixture("publisher-bundled.plugin.json"),
     }))
     .expect("payload is well formed");
@@ -499,7 +499,7 @@ fn runtime_launch_and_initialization_options_are_reviewed_programs() {
     assert_eq!(server["packagedRuntime"], "runtime/${arch}/bin/java");
     assert!(programs.iter().all(|program| program["kind"] != "runtime"));
 
-    let outcome = crate::plugins::marketplace::install_review_command(json!({
+    let outcome = lithe_plugin_marketplace::install_review_command(json!({
         "manifest": fixture("node-runtime.plugin.json"),
     }))
     .expect("payload is well formed");
@@ -681,7 +681,7 @@ fn plugin_backend_is_planned_without_a_workspace_and_names_its_host_services() {
     }))
     .is_err());
 
-    let review = crate::plugins::marketplace::install_review_command(json!({
+    let review = lithe_plugin_marketplace::install_review_command(json!({
         "manifest": fixture("backend.plugin.json"),
     }))
     .expect("payload is well formed");
@@ -1507,7 +1507,7 @@ fn debug_adapter_inside_a_backend_launched_language_server_plans_without_scratch
 
 #[test]
 fn debug_adapter_inside_the_language_server_is_a_reviewed_program() {
-    let review = crate::plugins::marketplace::install_review_command(json!({
+    let review = lithe_plugin_marketplace::install_review_command(json!({
         "manifest": fixture("debug-adapter-language-server.plugin.json"),
     }))
     .expect("payload is well formed");

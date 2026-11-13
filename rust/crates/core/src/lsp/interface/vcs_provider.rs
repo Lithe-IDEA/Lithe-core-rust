@@ -9,8 +9,8 @@
 //! offered, a valid VCS ID, and every required capability. The rules live in
 //! `rust/contracts/vcs-provider-v1.md`.
 
-use crate::plugins::capabilities::{versions as capability_versions, VCS_PROVIDERS};
 use crate::vcs::{negotiated_capabilities, Capabilities};
+use lithe_plugin_model::capabilities::{versions as capability_versions, VCS_PROVIDERS};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 

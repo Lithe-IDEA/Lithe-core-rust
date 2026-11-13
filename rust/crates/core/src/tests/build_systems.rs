@@ -11,10 +11,10 @@ use crate::build::{
     build_resolve_options_command, build_sync_fingerprint_command, build_task_plan_command,
     build_test_discovery_plan_command, build_test_plan_command,
 };
-use crate::plugins::marketplace::install_review_command;
 use crate::protocol::ErrorCode;
 use lithe_plugin_manifest::DeclarativePluginManifest as Manifest;
 use lithe_plugin_manifest::{language_server_launch_plan_command, validate_command};
+use lithe_plugin_marketplace::install_review_command;
 use serde_json::{json, Value};
 use std::fs;
 use std::path::PathBuf;

@@ -1,10 +1,10 @@
-use crate::plugins::marketplace::install_review_command;
 use crate::project_generators::{
     project_check_name_command, project_generation_plan_command, project_generator_catalog_command,
     project_generator_form_command,
 };
 use lithe_plugin_manifest::validate_command;
 use lithe_plugin_manifest::DeclarativePluginManifest as Manifest;
+use lithe_plugin_marketplace::install_review_command;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 

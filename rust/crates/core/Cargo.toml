@@ -38,10 +38,12 @@ lithe-plugin-grammar = { path = "../plugin-grammar" }
 lithe-plugin-keymap-import = { path = "../plugin-keymap-import" }
 lithe-plugin-language-servers = { path = "../plugin-language-servers" }
 lithe-plugin-manifest = { path = "../plugin-manifest" }
+lithe-plugin-marketplace = { path = "../plugin-marketplace" }
 lithe-plugin-model = { path = "../plugin-model" }
 lithe-plugin-native-ui = { path = "../plugin-native-ui" }
 lithe-plugin-output-links = { path = "../plugin-output-links" }
 lithe-plugin-rpc = { path = "../plugin-rpc" }
+lithe-plugin-web-content = { path = "../plugin-web-content" }
 lithe-process = { path = "../process" }
 lithe-project = { path = "../project" }
 lithe-project-generators = { path = "../project-generators" }
@@ -53,7 +55,6 @@ lithe-toolchain = { path = "../toolchain" }
 lithe-vcs = { path = "../vcs" }
 lithe-workspace = { path = "../workspace" }
 lithe-remote = { path = "../remote", default-features = false, features = ["client"] }
-regex = "1.11"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 url = "2.5"

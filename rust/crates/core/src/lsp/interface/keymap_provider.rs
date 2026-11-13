@@ -1,7 +1,7 @@
 //! Negotiation for the independent shortcut import provider protocol. The
 //! protocol version is the `keymapImportProviders` capability version.
 
-use crate::plugins::capabilities::{versions as capability_versions, KEYMAP_IMPORT_PROVIDERS};
+use lithe_plugin_model::capabilities::{versions as capability_versions, KEYMAP_IMPORT_PROVIDERS};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 

@@ -7,7 +7,7 @@
 //! unchanged, and `toolchains.decodeReply` validates them against native facts.
 //! The rules live in `shared/plugins/contract/v1/toolchains/README.md`.
 
-use crate::plugins::capabilities::{versions as capability_versions, TOOLCHAIN_PROVIDERS};
+use lithe_plugin_model::capabilities::{versions as capability_versions, TOOLCHAIN_PROVIDERS};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 

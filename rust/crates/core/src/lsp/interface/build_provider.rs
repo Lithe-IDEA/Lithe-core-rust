@@ -14,7 +14,7 @@
 //! source-backed native configuration. The rules live in the plugin contract
 //! (`shared/plugins/contract/v1/README.md`, "Build providers").
 
-use crate::plugins::capabilities::{versions as capability_versions, BUILD_PROVIDERS};
+use lithe_plugin_model::capabilities::{versions as capability_versions, BUILD_PROVIDERS};
 use serde_json::{json, Value};
 
 /// Key under `capabilities.experimental` on both sides of the exchange.
