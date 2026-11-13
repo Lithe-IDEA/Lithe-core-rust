@@ -49,6 +49,7 @@ fn launch_path(path: PathBuf) -> PathBuf {
 }
 
 /// Verbatim (`\\?\`) and UNC (`\\server`) paths keep their native form because `/` is not valid there.
+#[cfg(any(windows, test))]
 fn forward_slash_path(path: &str) -> String {
     if path.starts_with(r"\\") {
         path.to_owned()

@@ -1,10 +1,7 @@
-//! Failure type whose JSON shape matches the Core error envelope.
+//! Failure type that `lithe-core` maps one to one onto its error envelope.
 
-use serde::Serialize;
-
-/// Stable failure categories. Names serialize exactly like the matching `lithe-core` codes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
+/// Stable failure categories, each matching the `lithe-core` error code of the same name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuleErrorCode {
     /// The request envelope or payload does not match the command contract.
     InvalidRequest,
@@ -13,15 +10,13 @@ pub enum RuleErrorCode {
 }
 
 /// A rule failure with a stable category and a message that is safe to display.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuleError {
     /// Machine-readable category.
     pub code: RuleErrorCode,
     /// Short summary of the failure.
     pub message: String,
     /// Optional diagnostic context; never contains secrets.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<String>,
 }
 

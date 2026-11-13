@@ -3,11 +3,7 @@ name = "lithe-core-rules"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
-description = "Pure synchronous rules shared by Lithe Core and the Windows frontend (compiled to wasm)"
-
-[lib]
-# `rlib` is linked into lithe-core; `cdylib` produces the wasm module on wasm32 targets.
-crate-type = ["rlib", "cdylib"]
+description = "Pure synchronous rules linked into Lithe Core"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

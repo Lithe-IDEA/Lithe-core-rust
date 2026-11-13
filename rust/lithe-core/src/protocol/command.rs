@@ -274,20 +274,6 @@ pub enum CoreCommand {
     PluginsMarketplaceResolveSource,
     /// Lists a package's permissions and programs before installation (`plugins.marketplace.installReview`).
     PluginsMarketplaceInstallReview,
-    /// Starts a Discourse user API key authorization (`community.discourse.auth.begin`).
-    CommunityDiscourseAuthBegin,
-    /// Decrypts and verifies a Discourse authorization callback (`community.discourse.auth.complete`).
-    CommunityDiscourseAuthComplete,
-    /// Lists normalized latest or top Discourse topics (`community.discourse.topics`).
-    CommunityDiscourseTopics,
-    /// Reads one normalized Discourse topic (`community.discourse.topic`).
-    CommunityDiscourseTopic,
-    /// Lists normalized Discourse categories (`community.discourse.categories`).
-    CommunityDiscourseCategories,
-    /// Searches Discourse topics and posts (`community.discourse.search`).
-    CommunityDiscourseSearch,
-    /// Revokes the current Discourse user API key (`community.discourse.auth.revoke`).
-    CommunityDiscourseAuthRevoke,
     /// Builds the visible project tree (`workspace.snapshot`).
     WorkspaceSnapshot,
     /// Configure workspace indexing independently of tree visibility.
@@ -946,13 +932,6 @@ impl CoreCommand {
             "plugins.marketplace.validateIndex" => Some(Self::PluginsMarketplaceValidateIndex),
             "plugins.marketplace.resolveSource" => Some(Self::PluginsMarketplaceResolveSource),
             "plugins.marketplace.installReview" => Some(Self::PluginsMarketplaceInstallReview),
-            "community.discourse.auth.begin" => Some(Self::CommunityDiscourseAuthBegin),
-            "community.discourse.auth.complete" => Some(Self::CommunityDiscourseAuthComplete),
-            "community.discourse.topics" => Some(Self::CommunityDiscourseTopics),
-            "community.discourse.topic" => Some(Self::CommunityDiscourseTopic),
-            "community.discourse.categories" => Some(Self::CommunityDiscourseCategories),
-            "community.discourse.search" => Some(Self::CommunityDiscourseSearch),
-            "community.discourse.auth.revoke" => Some(Self::CommunityDiscourseAuthRevoke),
             "workspace.snapshot" => Some(Self::WorkspaceSnapshot),
             "workspace.releaseIndexing" => Some(Self::WorkspaceReleaseIndexing),
             "workspace.configureIndexing" => Some(Self::WorkspaceConfigureIndexing),
@@ -1322,21 +1301,6 @@ mod tests {
             "lsp.pollEvents",
             "lsp.waitEvents",
             "lsp.destroyServer",
-        ] {
-            assert!(CoreCommand::parse(command).is_some(), "missing {command}");
-        }
-    }
-
-    #[test]
-    fn parses_discourse_authorization_commands() {
-        for command in [
-            "community.discourse.auth.begin",
-            "community.discourse.auth.complete",
-            "community.discourse.auth.revoke",
-            "community.discourse.categories",
-            "community.discourse.search",
-            "community.discourse.topic",
-            "community.discourse.topics",
         ] {
             assert!(CoreCommand::parse(command).is_some(), "missing {command}");
         }

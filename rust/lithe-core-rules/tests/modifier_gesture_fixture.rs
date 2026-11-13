@@ -1,20 +1,16 @@
-//! Drives the shared double-Shift fixture through the JSON envelope, exactly like the hosts do.
+//! Drives the shared double-Shift fixture through the rule dispatch that `lithe-core` forwards to.
 
-use lithe_core_rules::{execute_json, keymap::THRESHOLD_SECONDS};
+use lithe_core_rules::{execute, keymap::THRESHOLD_SECONDS, RuleErrorCode};
 use serde_json::{json, Value};
 
 const FIXTURE: &str = include_str!("../../fixtures/keymap/modifier-gesture-v1.json");
 
 fn step(state: &Value, event: Value, timestamp: f64) -> Value {
-    let request = json!({
-        "id": "fixture",
-        "command": "keymap.modifierGestureStep",
-        "payload": {"state": state, "event": event, "timestamp": timestamp},
-    });
-    let response: Value = serde_json::from_str(&execute_json(&request.to_string())).unwrap();
-    assert_eq!(response["ok"], true, "{response}");
-    assert_eq!(response["id"], "fixture");
-    response["data"].clone()
+    execute(
+        "keymap.modifierGestureStep",
+        json!({"state": state, "event": event, "timestamp": timestamp}),
+    )
+    .unwrap()
 }
 
 #[test]
@@ -57,22 +53,13 @@ fn every_fixture_sequence_matches_step_by_step() {
 
 #[test]
 fn malformed_requests_use_core_error_codes() {
-    let unknown: Value = serde_json::from_str(&execute_json(
-        r#"{"id":"a","command":"keymap.nope","payload":{}}"#,
-    ))
-    .unwrap();
-    assert_eq!(unknown["ok"], false);
-    assert_eq!(unknown["error"]["code"], "not_supported");
+    let unknown = execute("keymap.nope", json!({})).unwrap_err();
+    assert_eq!(unknown.code, RuleErrorCode::NotSupported);
 
-    let bad_payload: Value = serde_json::from_str(&execute_json(
-        r#"{"id":"b","command":"keymap.modifierGestureStep","payload":{"event":{"kind":"flags"}}}"#,
-    ))
-    .unwrap();
-    assert_eq!(bad_payload["ok"], false);
-    assert_eq!(bad_payload["error"]["code"], "invalid_request");
-    assert_eq!(bad_payload["id"], "b");
-
-    let not_json: Value = serde_json::from_str(&execute_json("{")).unwrap();
-    assert_eq!(not_json["error"]["code"], "invalid_request");
-    assert!(not_json["id"].is_null());
+    let bad_payload = execute(
+        "keymap.modifierGestureStep",
+        json!({"event": {"kind": "flags"}}),
+    )
+    .unwrap_err();
+    assert_eq!(bad_payload.code, RuleErrorCode::InvalidRequest);
 }

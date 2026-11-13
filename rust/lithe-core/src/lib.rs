@@ -2,7 +2,6 @@
 
 mod action_search;
 mod build;
-mod community;
 mod debug;
 pub mod diagnostics;
 mod diff;

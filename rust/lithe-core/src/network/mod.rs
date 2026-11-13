@@ -8,10 +8,7 @@
 
 pub(crate) mod proxy;
 
-pub(crate) use proxy::{
-    proxy_policy, NetworkProxyMode, NetworkProxyPolicy, NetworkProxyPolicyKind,
-    NetworkProxyPolicyRequest, NetworkProxyType,
-};
+pub(crate) use proxy::{proxy_policy, NetworkProxyPolicyRequest};
 
 #[cfg(test)]
 mod tests;

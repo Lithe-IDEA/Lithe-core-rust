@@ -6,7 +6,7 @@ license = "Apache-2.0"
 description = "Cross-platform application core for Lithe"
 
 [lib]
-crate-type = ["rlib", "staticlib", "cdylib"]
+crate-type = ["rlib", "staticlib"]
 
 [features]
 # Builds the plugin SDK end-to-end tests in shared/plugins/sdk/e2e; run them
@@ -27,15 +27,10 @@ comrak = { version = "0.54.0", default-features = false, features = ["shortcodes
 rand = "0.8"
 regex = "1.11"
 quick-xml = "0.37"
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
-rsa = { version = "0.9", features = ["pem"] }
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
-sha1 = "0.10"
 sha2 = "0.10"
-shell-words = "=1.1.1"
 toml = { version = "1.1.4", default-features = false, features = ["parse", "serde"] }
-toml_edit = "0.25"
 serde_yaml_ng = "0.10.0"
 similar = { version = "3.2", default-features = false, features = ["std"] }
 zip = { version = "2.4", default-features = false, features = ["deflate"] }

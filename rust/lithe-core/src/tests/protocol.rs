@@ -517,6 +517,14 @@ fn every_ai_crate_command_is_routed_by_core() {
 }
 
 #[test]
+fn unparseable_requests_fail_without_an_id() {
+    let response: Value = serde_json::from_str(&execute_json("{")).unwrap();
+    assert_eq!(response["ok"], false);
+    assert_eq!(response["error"]["code"], "invalid_request");
+    assert!(response["id"].is_null());
+}
+
+#[test]
 fn terminal_link_fixtures_cross_the_json_boundary() {
     let fixture: Value = serde_json::from_str(include_str!(
         "../../../fixtures/terminal/link-target-v1.json"

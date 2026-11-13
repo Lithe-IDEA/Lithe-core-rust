@@ -1774,6 +1774,7 @@ pub(crate) fn host_failure(code: Option<&str>) -> (&'static str, i64) {
         Some(codes::HOST_TOOL_UNRESOLVED) => codes::HOST_TOOL_UNRESOLVED,
         Some(codes::HOST_FOREIGN_CONTRIBUTION) => codes::HOST_FOREIGN_CONTRIBUTION,
         // A backend exit is reported to pages, never to the backend itself.
+        Some(codes::BACKEND_EXITED) => codes::HOST_FAILED,
         _ => codes::HOST_FAILED,
     };
     (code, host_rpc_code(code))

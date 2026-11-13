@@ -99,7 +99,6 @@ pub(crate) fn plan(request: Request) -> Result<Plan, CoreError> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use serde_json::json;
 
     fn call(payload: serde_json::Value) -> serde_json::Value {

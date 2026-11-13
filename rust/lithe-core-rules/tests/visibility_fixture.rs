@@ -1,15 +1,12 @@
-//! Drives the shared hidden-path fixture through the JSON envelope, exactly like the hosts do.
+//! Drives the shared hidden-path fixture through the rule dispatch that `lithe-core` forwards to.
 
-use lithe_core_rules::execute_json;
+use lithe_core_rules::{execute, RuleErrorCode};
 use serde_json::{json, Value};
 
 const FIXTURE: &str = include_str!("../../fixtures/workspace/visibility-v1.json");
 
 fn call(command: &str, payload: Value) -> Value {
-    let request = json!({"id": "fixture", "command": command, "payload": payload});
-    let response: Value = serde_json::from_str(&execute_json(&request.to_string())).unwrap();
-    assert_eq!(response["ok"], true, "{response}");
-    response["data"].clone()
+    execute(command, payload).unwrap()
 }
 
 #[test]
@@ -52,10 +49,10 @@ fn every_case_is_classified_in_one_batch() {
 
 #[test]
 fn malformed_requests_use_core_error_codes() {
-    let response: Value = serde_json::from_str(&execute_json(
-        r#"{"id":"a","command":"workspace.classifyVisibility","payload":{"entries":[{"path":1}]}}"#,
-    ))
-    .unwrap();
-    assert_eq!(response["ok"], false);
-    assert_eq!(response["error"]["code"], "invalid_request");
+    let error = execute(
+        "workspace.classifyVisibility",
+        json!({"entries": [{"path": 1}]}),
+    )
+    .unwrap_err();
+    assert_eq!(error.code, RuleErrorCode::InvalidRequest);
 }
