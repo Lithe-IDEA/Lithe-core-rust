@@ -129,9 +129,9 @@ pub(crate) fn upload(request: Request) -> Result<Value, CoreError> {
             if !matches!(&error, lithe_remote::client::session::ClientError::Remote(remote)
                 if remote.code == lithe_remote::protocol::ErrorCode::NotFound)
             {
-                crate::diagnostics::core_events::cleanup_failed(
+                lithe_diagnostics::core_events::cleanup_failed(
                     "remote.upload.abort_failed",
-                    &crate::diagnostics::core_events::client_failure_category(&error),
+                    &error.failure_category(),
                 );
             }
         }

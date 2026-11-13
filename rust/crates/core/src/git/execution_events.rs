@@ -625,7 +625,10 @@ pub(crate) fn redact(text: &str) -> String {
             .expect("valid URL redaction")
     });
     let text = pattern.replace_all(text, "$1://redacted@").into_owned();
-    crate::diagnostics::redact_text(crate::diagnostics::RedactTextRequest { text }).redacted
+    lithe_diagnostics::redaction::redact_text(lithe_diagnostics::redaction::RedactTextRequest {
+        text,
+    })
+    .redacted
 }
 
 #[derive(Default)]

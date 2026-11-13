@@ -7,10 +7,10 @@
 
 use super::console::Source;
 use super::{execution_events, execution_policy};
-use crate::diagnostics::core_events;
-use crate::diagnostics::record::LogLevel;
-use crate::diagnostics::request_trace;
 use crate::protocol::{CoreError, ErrorCode};
+use crate::runtime::request_trace;
+use lithe_diagnostics::core_events;
+use lithe_diagnostics::record::LogLevel;
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::time::Instant;

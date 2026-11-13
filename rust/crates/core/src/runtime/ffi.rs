@@ -178,7 +178,7 @@ pub unsafe extern "C" fn lithe_core_install_log_waker(
     context: *mut std::ffi::c_void,
 ) {
     if let Some(callback) = callback {
-        crate::diagnostics::core_events::install_waker(callback, context as usize);
+        lithe_diagnostics::core_events::install_waker(callback, context as usize);
     }
 }
 
@@ -187,7 +187,7 @@ pub unsafe extern "C" fn lithe_core_install_log_waker(
 /// so the host may release it.
 #[no_mangle]
 pub extern "C" fn lithe_core_remove_log_waker(context: *mut std::ffi::c_void) -> i32 {
-    crate::diagnostics::core_events::remove_waker(context as usize) as i32
+    lithe_diagnostics::core_events::remove_waker(context as usize) as i32
 }
 
 /// Runs the native authentication helper without initializing the application.

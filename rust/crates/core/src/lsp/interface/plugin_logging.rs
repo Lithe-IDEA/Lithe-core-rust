@@ -151,10 +151,10 @@ mod tests {
         {
             let fact = decode(fixture["plugin"].as_str().unwrap(), &functions, input).unwrap();
             assert_eq!(fact.event, fixture["events"][index]);
-            let mut record = crate::diagnostics::record::StructuredLogEvent {
+            let mut record = lithe_diagnostics::record::StructuredLogEvent {
                 ts: "2026-11-04T00:00:00.000Z".into(),
                 seq: 0,
-                level: crate::diagnostics::catalog::event_by_id(fact.event)
+                level: lithe_diagnostics::catalog::event_by_id(fact.event)
                     .unwrap()
                     .level,
                 event: fact.event.into(),
@@ -163,7 +163,7 @@ mod tests {
                 fields: fact.fields,
             };
             let channel =
-                crate::diagnostics::record::prepare_catalog_event(&mut record, &Value::Null)
+                lithe_diagnostics::record::prepare_catalog_event(&mut record, &Value::Null)
                     .unwrap();
             assert_eq!(channel, fixture["channel"]);
             assert_eq!(
@@ -195,8 +195,8 @@ mod tests {
             }
             let fact = decode("io.example.database", &functions, &input).unwrap();
             assert_eq!(fact.event, expected);
-            crate::diagnostics::catalog::validate_fields(fact.event, &fact.fields).unwrap();
-            let metadata = crate::diagnostics::catalog::event_by_id(expected).unwrap();
+            lithe_diagnostics::catalog::validate_fields(fact.event, &fact.fields).unwrap();
+            let metadata = lithe_diagnostics::catalog::event_by_id(expected).unwrap();
             assert_eq!(serde_json::to_value(metadata.level).unwrap(), level);
             assert_eq!(fact.wire_operation.as_deref(), Some("request-7"));
             for (field, value) in [

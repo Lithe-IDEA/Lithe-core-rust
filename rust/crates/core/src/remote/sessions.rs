@@ -116,10 +116,10 @@ impl Connection {
         ) {
             // A peer that already closed needs no shutdown; other failures use WARN.
             if !matches!(error, ClientError::Disconnected { .. }) {
-                crate::diagnostics::core_events::recovery_failed(
+                lithe_diagnostics::core_events::recovery_failed(
                     "remote.session.cleanup_failed",
                     "shutdown",
-                    &crate::diagnostics::core_events::client_failure_category(&error),
+                    &error.failure_category(),
                     "remote",
                 );
             }
@@ -154,7 +154,7 @@ impl Connection {
 /// Records one failed SSH transport cleanup step. The caller keeps its own
 /// result; WARN reports a process that may outlive the session.
 fn record_cleanup_io(stage: &str, error: &std::io::Error) {
-    crate::diagnostics::core_events::recovery_failed(
+    lithe_diagnostics::core_events::recovery_failed(
         "remote.session.cleanup_failed",
         stage,
         &format!("{:?}", error.kind()),
@@ -393,7 +393,7 @@ pub(super) fn connect_with(
             .take();
         if let Some(reader) = reader {
             if reader.join().is_err() {
-                crate::diagnostics::core_events::recovery_failed(
+                lithe_diagnostics::core_events::recovery_failed(
                     "remote.session.diagnostics_failed",
                     "reader",
                     "reader_panicked",
@@ -713,7 +713,7 @@ pub(super) fn close_registry(connections: &Mutex<HashMap<String, Arc<Connection>
     for closer in closers {
         if closer.join().is_err() {
             // Parallel close owns recovery; WARN reports a distinct worker panic.
-            crate::diagnostics::core_events::recovery_failed(
+            lithe_diagnostics::core_events::recovery_failed(
                 "remote.session.cleanup_failed",
                 "closer",
                 "closer_panicked",
@@ -799,7 +799,7 @@ fn keep_tail(
                 Ok(0) => return,
                 Err(error) => {
                     // Once per reader completion; WARN explains truncated launch evidence.
-                    crate::diagnostics::core_events::recovery_failed(
+                    lithe_diagnostics::core_events::recovery_failed(
                         "remote.session.diagnostics_failed",
                         "stderr",
                         &format!("{:?}", error.kind()),

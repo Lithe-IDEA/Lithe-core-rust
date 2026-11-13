@@ -8,10 +8,10 @@ use super::projection_v2::{
 };
 use super::protocol::{frame_message, parse_messages};
 use super::types::*;
-use crate::diagnostics::channel::identity_segment;
 use crate::protocol::{CoreError, ErrorCode};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
+use lithe_diagnostics::channel::identity_segment;
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Mutex, OnceLock};
@@ -2006,8 +2006,8 @@ impl DebugSession {
 
     fn log_fact(&self, event: &str, mut fields: BTreeMap<String, Value>, op: Option<String>) {
         fields.insert("adapter".into(), json!(self.log_adapter));
-        if crate::diagnostics::core_events::record(event, fields, op).is_err() {
-            crate::diagnostics::core_events::note_dropped();
+        if lithe_diagnostics::core_events::record(event, fields, op).is_err() {
+            lithe_diagnostics::core_events::note_dropped();
         }
     }
 
@@ -3309,9 +3309,9 @@ mod tests {
         assert!(subject.starts_with("invalid-"));
         assert_eq!(subject, identity_segment(adapter));
         assert!(!subject.contains("private"));
-        let mut fact = crate::diagnostics::record::StructuredLogEvent {
+        let mut fact = lithe_diagnostics::record::StructuredLogEvent {
             ts: "2026-11-04T00:00:00.000Z".into(),
-            level: crate::diagnostics::record::LogLevel::Debug,
+            level: lithe_diagnostics::record::LogLevel::Debug,
             seq: 1,
             event: "debug.operation.cancelled".into(),
             op: Some("owned-operation".into()),
@@ -3322,14 +3322,14 @@ mod tests {
             ]),
         };
         let channel =
-            crate::diagnostics::record::prepare_catalog_event(&mut fact, &json!({})).unwrap();
-        assert_eq!(fact.level, crate::diagnostics::record::LogLevel::Debug);
+            lithe_diagnostics::record::prepare_catalog_event(&mut fact, &json!({})).unwrap();
+        assert_eq!(fact.level, lithe_diagnostics::record::LogLevel::Debug);
         assert_eq!(fact.op.as_deref(), Some("owned-operation"));
         assert_eq!(fact.fields.len(), 2);
         assert!(channel.starts_with("debug/invalid-"));
         fact.fields
             .insert("message".into(), json!("forbidden protocol payload"));
-        assert!(crate::diagnostics::record::prepare_catalog_event(&mut fact, &json!({})).is_err());
+        assert!(lithe_diagnostics::record::prepare_catalog_event(&mut fact, &json!({})).is_err());
     }
 
     #[test]

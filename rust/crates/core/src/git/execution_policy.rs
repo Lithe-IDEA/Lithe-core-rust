@@ -76,7 +76,7 @@ pub(super) fn current() -> GitExecutionOptions {
 /// envelope's when the policy names none.
 pub(super) fn source() -> super::console::Source {
     match current().source {
-        super::console::Source::Unknown => crate::diagnostics::request_trace::current().source,
+        super::console::Source::Unknown => crate::runtime::request_trace::current().source,
         source => source,
     }
 }

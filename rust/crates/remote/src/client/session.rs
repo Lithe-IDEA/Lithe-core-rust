@@ -119,6 +119,38 @@ impl fmt::Display for ClientError {
 
 impl std::error::Error for ClientError {}
 
+impl ClientError {
+    /// Stable transport or protocol category for logs. It never copies a peer
+    /// message, address or diagnostics text.
+    pub fn failure_category(&self) -> String {
+        match self {
+            Self::Timeout => "timeout".into(),
+            Self::Disconnected { .. } => "closed".into(),
+            Self::Transport(_) => "transport".into(),
+            Self::Spawn(_) => "spawn".into(),
+            Self::Protocol(_) => "protocol".into(),
+            Self::Remote(error) => format!(
+                "remote_{}",
+                serde_json::to_value(error.code)
+                    .expect("protocol code encodes")
+                    .as_str()
+                    .expect("protocol code is a token")
+                    .to_ascii_lowercase()
+            ),
+        }
+    }
+
+    /// True when a cleanup request found nothing to clean. The server prunes
+    /// exited processes, stopped watches and closed terminals, so
+    /// `UnknownResource` is the expected missing case, not a cleanup failure.
+    pub fn is_resource_already_gone(&self) -> bool {
+        matches!(
+            self,
+            Self::Remote(remote) if remote.code == crate::protocol::ErrorCode::UnknownResource
+        )
+    }
+}
+
 type Reply = Result<Value, ClientError>;
 
 #[derive(Default)]
@@ -794,6 +826,36 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn failure_categories_never_contain_peer_details() {
+        use crate::protocol::ErrorCode;
+        for (error, expected) in [
+            (ClientError::Timeout, "timeout"),
+            (
+                ClientError::Disconnected {
+                    diagnostics: "/private/address".into(),
+                },
+                "closed",
+            ),
+            (ClientError::Protocol("private payload".into()), "protocol"),
+            (
+                ClientError::Remote(RemoteError::new(
+                    ErrorCode::PermissionDenied,
+                    "private scratch",
+                )),
+                "remote_permission_denied",
+            ),
+        ] {
+            assert_eq!(error.failure_category(), expected);
+            assert!(!error.is_resource_already_gone());
+        }
+        assert!(ClientError::Remote(RemoteError::new(
+            ErrorCode::UnknownResource,
+            "process 7 is not active"
+        ))
+        .is_resource_already_gone());
+    }
 
     fn waiter(outgoing: Arc<Outgoing>, payload: Vec<u8>) -> (PendingRequest, SyncSender<Reply>) {
         let (sender, reply) = mpsc::sync_channel(1);

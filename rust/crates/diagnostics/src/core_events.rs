@@ -113,7 +113,7 @@ pub fn record(
         }
     }
     let fact = prepare(event, fields, op)?;
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     let Some(fact) = capture::divert(fact) else {
         return Ok(());
     };
@@ -154,7 +154,7 @@ fn wake() {
 /// `callback` must not unwind, must not call back into Core synchronously, and
 /// must be safe to run on any thread. `context` must stay valid until
 /// [`remove_waker`] returns for the same context or another install replaces it.
-pub(crate) unsafe fn install_waker(callback: unsafe extern "C" fn(*mut c_void), context: usize) {
+pub unsafe fn install_waker(callback: unsafe extern "C" fn(*mut c_void), context: usize) {
     *WAKER.lock().unwrap_or_else(|e| e.into_inner()) = Some(Waker { callback, context });
     // A request raised while no writer was installed was never delivered.
     WAKE_REQUESTED.store(false, Ordering::Release);
@@ -165,7 +165,7 @@ pub(crate) unsafe fn install_waker(callback: unsafe extern "C" fn(*mut c_void), 
 
 /// Removes the callback only when `context` still owns it. Returns whether it
 /// was removed; either way no callback for `context` is running afterward.
-pub(crate) fn remove_waker(context: usize) -> bool {
+pub fn remove_waker(context: usize) -> bool {
     let mut waker = WAKER.lock().unwrap_or_else(|e| e.into_inner());
     if waker.is_some_and(|current| current.context == context) {
         *waker = None;
@@ -177,11 +177,11 @@ pub(crate) fn remove_waker(context: usize) -> bool {
 
 /// Reports whether `record` would keep a fact of this level and channel root.
 /// Callers check it before building fields so rejected facts cost one branch.
-pub(crate) fn accepts(level: LogLevel, root: &str) -> bool {
+pub fn accepts(level: LogLevel, root: &str) -> bool {
     if level != LogLevel::Debug {
         return true;
     }
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     if let Some(debug) = capture::debug_override() {
         return debug;
     }
@@ -195,7 +195,7 @@ pub(crate) fn accepts(level: LogLevel, root: &str) -> bool {
 
 /// Applies the host's detailed-diagnostics state; `roots: None` enables every root.
 /// The default is disabled, so a host that never calls this receives no DEBUG facts.
-pub(crate) fn configure(debug: bool, roots: Option<Vec<String>>) {
+pub fn configure(debug: bool, roots: Option<Vec<String>>) {
     *DEBUG_ROOTS.write().unwrap_or_else(|e| e.into_inner()) = roots;
     DEBUG_ENABLED.store(debug, Ordering::Release);
 }
@@ -204,7 +204,9 @@ fn channel_root(channel: &str) -> &str {
     channel.split('/').next().unwrap_or(channel)
 }
 
-pub(super) fn prepare(
+/// Validates one Core-owned fact against the catalog and normalizes its fields
+/// without enqueueing it. [`record`] enqueues what this returns.
+pub fn prepare(
     event: &str,
     fields: BTreeMap<String, Value>,
     op: Option<String>,
@@ -245,7 +247,7 @@ pub fn drain() -> DrainedCoreEvents {
 
 /// Records a known category-only cleanup fact; invalid declarations count as lost
 /// evidence instead of silently disappearing or falling back to a second writer.
-pub(crate) fn cleanup_failed(event: &str, category: &str) {
+pub fn cleanup_failed(event: &str, category: &str) {
     if record(
         event,
         if event == "app.workspace.scratch_cleanup_failed" {
@@ -266,7 +268,7 @@ pub(crate) fn cleanup_failed(event: &str, category: &str) {
 }
 
 /// Records only workspace-relative traversal identity and a stable Core category.
-pub(crate) fn directory_skipped(event: &str, path: &str, code: &crate::protocol::ErrorCode) {
+pub fn directory_skipped(event: &str, path: &str, code: &lithe_protocol::ErrorCode) {
     let category = serde_json::to_value(code).expect("Core error category encodes");
     if record(
         event,
@@ -284,7 +286,8 @@ pub(crate) fn directory_skipped(event: &str, path: &str, code: &crate::protocol:
     }
 }
 
-pub(crate) fn note_dropped() {
+/// Counts one fact that could not be recorded, so the next drain reports it.
+pub fn note_dropped() {
     {
         let mut queue = queue();
         queue.dropped = queue.dropped.saturating_add(1);
@@ -295,7 +298,7 @@ pub(crate) fn note_dropped() {
 
 /// Hands a category-only recovery failure to the host; callers own the decision
 /// to continue, so WARN describes degradation without exposing error payloads.
-pub(crate) fn recovery_failed(event: &str, stage: &str, code: &str, domain: &str) {
+pub fn recovery_failed(event: &str, stage: &str, code: &str, domain: &str) {
     let fields = BTreeMap::from([
         ("stage".into(), json!(stage)),
         ("error".into(), json!("Core recovery failed")),
@@ -309,14 +312,14 @@ pub(crate) fn recovery_failed(event: &str, stage: &str, code: &str, domain: &str
 
 /// Fixed-size cleanup summary: batch callers emit once rather than once per file.
 #[derive(Default)]
-pub(crate) struct StorageCleanup {
+pub struct StorageCleanup {
     count: i64,
     first: Option<std::io::ErrorKind>,
 }
 
 impl StorageCleanup {
     /// Missing staging files are normal after failed creation or concurrent eviction.
-    pub(crate) fn observe(&mut self, result: std::io::Result<()>) {
+    pub fn observe(&mut self, result: std::io::Result<()>) {
         match result {
             Ok(()) => {}
             // log-exempt: Expected absence: creation may have failed before a file existed.
@@ -329,7 +332,7 @@ impl StorageCleanup {
     }
 
     /// Removes a directory only when empty; retained contents belong to the caller.
-    pub(crate) fn empty_directory(&mut self, path: &std::path::Path) {
+    pub fn empty_directory(&mut self, path: &std::path::Path) {
         match std::fs::read_dir(path) {
             Ok(mut entries) => match entries.next() {
                 None => self.observe(std::fs::remove_dir(path)),
@@ -341,7 +344,7 @@ impl StorageCleanup {
     }
 
     /// Records one WARN at the storage recovery boundary, preserving normal results.
-    pub(crate) fn finish(self, stage: &str) {
+    pub fn finish(self, stage: &str) {
         if let Some(kind) = self.first {
             if record(
                 "app.storage.cleanup_failed",
@@ -362,10 +365,20 @@ impl StorageCleanup {
     }
 }
 
+/// Records a recovery failure whose cause is a
+/// [`CoreError`](lithe_protocol::CoreError), keeping only its
+/// stable code token so details and paths never reach the log.
+pub fn core_failed(event: &str, stage: &str, error: &lithe_protocol::CoreError) {
+    let code = serde_json::to_value(&error.code).expect("Core error codes serialize");
+    let code = code.as_str().expect("Core error codes serialize as tokens");
+    recovery_failed(event, stage, code, "core");
+}
+
 /// Test-only per-thread sink: traces recorded on the capturing thread bypass the
 /// process queue, so parallel tests never observe or drain each other's facts.
-#[cfg(test)]
-pub(crate) mod capture {
+/// Other crates' tests reach it through the `test-support` feature.
+#[cfg(any(test, feature = "test-support"))]
+pub mod capture {
     use super::CoreEvent;
     use std::cell::RefCell;
 
@@ -379,7 +392,7 @@ pub(crate) mod capture {
     }
 
     /// Runs `body` with this thread's facts captured; `debug` replaces the global gate.
-    pub(crate) fn run<T>(debug: bool, body: impl FnOnce() -> T) -> (T, Vec<CoreEvent>) {
+    pub fn run<T>(debug: bool, body: impl FnOnce() -> T) -> (T, Vec<CoreEvent>) {
         let previous = CURRENT.with(|current| {
             current.borrow_mut().replace(Capture {
                 debug,
@@ -441,46 +454,6 @@ mod tests {
     }
 
     #[test]
-    fn remote_failure_categories_never_contain_peer_details() {
-        use lithe_remote::client::session::ClientError;
-        use lithe_remote::protocol::{ErrorCode, RemoteError};
-        for (error, expected) in [
-            (ClientError::Timeout, "timeout"),
-            (
-                ClientError::Disconnected {
-                    diagnostics: "/private/address".into(),
-                },
-                "closed",
-            ),
-            (ClientError::Protocol("private payload".into()), "protocol"),
-            (
-                ClientError::Remote(RemoteError::new(
-                    ErrorCode::PermissionDenied,
-                    "private scratch",
-                )),
-                "remote_permission_denied",
-            ),
-        ] {
-            assert_eq!(client_failure_category(&error), expected);
-            assert!(!remote_resource_already_gone(&error));
-        }
-        assert!(remote_resource_already_gone(&ClientError::Remote(
-            RemoteError::new(ErrorCode::UnknownResource, "process 7 is not active")
-        )));
-        let safe = prepare(
-            "app.workspace.scratch_cleanup_failed",
-            BTreeMap::from([
-                ("error".into(), json!("Scratch cleanup failed")),
-                ("error_code".into(), json!("PermissionDenied")),
-                ("error_domain".into(), json!("io")),
-            ]),
-            None,
-        )
-        .unwrap();
-        assert_eq!(safe.channel, "app");
-    }
-
-    #[test]
     fn queue_rejects_non_core_owner_and_invalid_fields() {
         assert_eq!(
             prepare("app.font.missing", BTreeMap::new(), None)
@@ -500,48 +473,5 @@ mod tests {
             None
         )
         .is_err());
-    }
-}
-
-/// Records a recovery failure whose cause is a [`CoreError`], keeping only its
-/// stable code token so details and paths never reach the log.
-pub(crate) fn core_failed(event: &str, stage: &str, error: &crate::protocol::CoreError) {
-    let code = serde_json::to_value(&error.code).expect("Core error codes serialize");
-    let code = code.as_str().expect("Core error codes serialize as tokens");
-    recovery_failed(event, stage, code, "core");
-}
-
-/// True when a remote cleanup request found nothing to clean: the host prunes
-/// exited processes, stopped watches and closed terminals, so `UnknownResource`
-/// is the expected missing case rather than a cleanup failure.
-pub(crate) fn remote_resource_already_gone(
-    error: &lithe_remote::client::session::ClientError,
-) -> bool {
-    matches!(
-        error,
-        lithe_remote::client::session::ClientError::Remote(remote)
-            if remote.code == lithe_remote::protocol::ErrorCode::UnknownResource
-    )
-}
-
-/// Stable transport/protocol category; never copies a peer message or address.
-pub(crate) fn client_failure_category(
-    error: &lithe_remote::client::session::ClientError,
-) -> String {
-    use lithe_remote::client::session::ClientError;
-    match error {
-        ClientError::Timeout => "timeout".into(),
-        ClientError::Disconnected { .. } => "closed".into(),
-        ClientError::Transport(_) => "transport".into(),
-        ClientError::Spawn(_) => "spawn".into(),
-        ClientError::Protocol(_) => "protocol".into(),
-        ClientError::Remote(error) => format!(
-            "remote_{}",
-            serde_json::to_value(error.code)
-                .expect("protocol code encodes")
-                .as_str()
-                .expect("protocol code is a token")
-                .to_ascii_lowercase()
-        ),
     }
 }

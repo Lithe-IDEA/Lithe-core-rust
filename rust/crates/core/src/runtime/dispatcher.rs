@@ -1,6 +1,5 @@
 //! Validation and routing from versioned command names to their owning domains.
 
-use crate::diagnostics::{BuildManifestRequest, RedactTextRequest};
 use crate::git::{
     self, GitApplyRequest, GitBlameRequest, GitBranchNamePreviewRequest,
     GitCheckoutPreflightRequest, GitCommandRequest, GitCommitFilesRequest, GitCommitRequest,
@@ -28,6 +27,7 @@ use crate::project::{
 use crate::protocol::CoreResponse;
 use crate::protocol::{CoreCommand, CoreRequest};
 use crate::protocol::{CoreError, ErrorCode};
+use lithe_diagnostics::{manifest::BuildManifestRequest, redaction::RedactTextRequest};
 use lithe_github::{NormalizeResponseRequest, ParseRemoteRequest, RequestPlanRequest};
 use serde_json::json;
 
@@ -37,7 +37,7 @@ pub fn execute_json(request: &str) -> String {
 
 /// Borrows an immutable document for one request; no text is retained after dispatch.
 pub(crate) fn execute_document_json(request: &str, document: Option<&str>) -> String {
-    crate::diagnostics::helper_failures::install();
+    crate::runtime::helper_failures::install();
     let response = execute(request, document);
     serde_json::to_string(&response).unwrap_or_else(|_| {
         serde_json::to_string(&CoreResponse::failure(
@@ -111,7 +111,7 @@ struct CoreEventConfiguration {
 
 // Domain failures retain their unique numeric logging codes inside the existing Core envelope.
 fn log_v2_result<T: serde::Serialize>(
-    result: Result<T, crate::diagnostics::channel::LogError>,
+    result: Result<T, lithe_diagnostics::channel::LogError>,
 ) -> serde_json::Value {
     match result {
         Ok(value) => serde_json::json!({"result": value}),
@@ -131,7 +131,7 @@ fn execute(request: &str, document: Option<&str>) -> CoreResponse {
         }
     };
     // The trace spans every scope below and records once, after the final response.
-    let trace = crate::diagnostics::request_trace::Request::begin(&parsed);
+    let trace = crate::runtime::request_trace::Request::begin(&parsed);
     let response = execute_parsed(parsed, document);
     trace.finish(&response);
     response
@@ -3670,12 +3670,12 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::DiagnosticsPrepareLogEvent => {
-            match serde_json::from_value::<crate::diagnostics::logging::LogEventRequest>(
+            match serde_json::from_value::<lithe_diagnostics::logging::LogEventRequest>(
                 parsed.payload,
             ) {
                 Ok(request) => CoreResponse::success(
                     id,
-                    serde_json::to_value(crate::diagnostics::logging::prepare_log_event(request))
+                    serde_json::to_value(lithe_diagnostics::logging::prepare_log_event(request))
                         .expect("Log event should encode"),
                 ),
                 Err(_) => CoreResponse::failure(
@@ -3685,12 +3685,12 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::DiagnosticsQueryLogs => {
-            match serde_json::from_value::<crate::diagnostics::logging::LogQueryRequest>(
+            match serde_json::from_value::<lithe_diagnostics::logging::LogQueryRequest>(
                 parsed.payload,
             ) {
                 Ok(request) => CoreResponse::success(
                     id,
-                    serde_json::to_value(crate::diagnostics::logging::query_logs(request))
+                    serde_json::to_value(lithe_diagnostics::logging::query_logs(request))
                         .expect("Log query should encode"),
                 ),
                 Err(_) => CoreResponse::failure(
@@ -3701,19 +3701,19 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
         }
         CoreCommand::DiagnosticsRecordPluginOperation => CoreResponse::success(
             id,
-            log_v2_result(crate::diagnostics::plugin_operations::record_request(
+            log_v2_result(lithe_diagnostics::plugin_operations::record_request(
                 parsed.payload,
             )),
         ),
         CoreCommand::DiagnosticsDrainCoreEvents => CoreResponse::success(
             id,
-            serde_json::to_value(crate::diagnostics::core_events::drain())
+            serde_json::to_value(lithe_diagnostics::core_events::drain())
                 .expect("Core logs encode"),
         ),
         CoreCommand::DiagnosticsConfigureCoreEvents => {
             match serde_json::from_value::<CoreEventConfiguration>(parsed.payload) {
                 Ok(configuration) => {
-                    crate::diagnostics::core_events::configure(
+                    lithe_diagnostics::core_events::configure(
                         configuration.debug,
                         configuration.roots,
                     );
@@ -3730,12 +3730,12 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::DiagnosticsEncodeLogBatch => {
-            match serde_json::from_value::<crate::diagnostics::record::EncodeLogBatchRequest>(
+            match serde_json::from_value::<lithe_diagnostics::record::EncodeLogBatchRequest>(
                 parsed.payload,
             ) {
                 Ok(request) => CoreResponse::success(
                     id,
-                    serde_json::to_value(crate::diagnostics::record::encode_log_batch(request))
+                    serde_json::to_value(lithe_diagnostics::record::encode_log_batch(request))
                         .expect("Log batch should encode"),
                 ),
                 Err(_) => CoreResponse::failure(
@@ -3745,12 +3745,12 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::DiagnosticsParseLogFilter => {
-            match serde_json::from_value::<crate::diagnostics::filter::ParseLogFilterRequest>(
+            match serde_json::from_value::<lithe_diagnostics::filter::ParseLogFilterRequest>(
                 parsed.payload,
             ) {
                 Ok(request) => CoreResponse::success(
                     id,
-                    serde_json::to_value(crate::diagnostics::filter::parse_log_filter(request))
+                    serde_json::to_value(lithe_diagnostics::filter::parse_log_filter(request))
                         .expect("Filter response serializes"),
                 ),
                 Err(_) => CoreResponse::failure(
@@ -3763,12 +3763,12 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::DiagnosticsComposeLogFilter => {
-            match serde_json::from_value::<crate::diagnostics::filter::ComposeLogFilterRequest>(
+            match serde_json::from_value::<lithe_diagnostics::filter::ComposeLogFilterRequest>(
                 parsed.payload,
             ) {
                 Ok(request) => CoreResponse::success(
                     id,
-                    log_v2_result(crate::diagnostics::filter::compose_log_filter(request)),
+                    log_v2_result(lithe_diagnostics::filter::compose_log_filter(request)),
                 ),
                 Err(_) => CoreResponse::failure(
                     id,
@@ -3780,12 +3780,12 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::DiagnosticsFormatLogRecords => {
-            match serde_json::from_value::<crate::diagnostics::format::FormatLogRecordsRequest>(
+            match serde_json::from_value::<lithe_diagnostics::format::FormatLogRecordsRequest>(
                 parsed.payload,
             ) {
                 Ok(request) => CoreResponse::success(
                     id,
-                    log_v2_result(crate::diagnostics::format::format_log_records(request)),
+                    log_v2_result(lithe_diagnostics::format::format_log_records(request)),
                 ),
                 Err(_) => CoreResponse::failure(
                     id,
@@ -3797,12 +3797,12 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::DiagnosticsPlanLogCollection => {
-            match serde_json::from_value::<crate::diagnostics::collection::PlanLogCollectionRequest>(
+            match serde_json::from_value::<lithe_diagnostics::collection::PlanLogCollectionRequest>(
                 parsed.payload,
             ) {
                 Ok(request) => CoreResponse::success(
                     id,
-                    log_v2_result(crate::diagnostics::collection::plan_log_collection(request)),
+                    log_v2_result(lithe_diagnostics::collection::plan_log_collection(request)),
                 ),
                 Err(_) => CoreResponse::failure(
                     id,
@@ -3811,12 +3811,12 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::DiagnosticsQueryLogsV2 => {
-            match serde_json::from_value::<crate::diagnostics::query_v2::LogQueryV2Request>(
+            match serde_json::from_value::<lithe_diagnostics::query_v2::LogQueryV2Request>(
                 parsed.payload,
             ) {
                 Ok(request) => CoreResponse::success(
                     id,
-                    log_v2_result(crate::diagnostics::query_v2::query_logs_v2(request)),
+                    log_v2_result(lithe_diagnostics::query_v2::query_logs_v2(request)),
                 ),
                 Err(_) => CoreResponse::failure(
                     id,
@@ -3825,12 +3825,12 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::DiagnosticsPlanLogRetention => {
-            match serde_json::from_value::<crate::diagnostics::retention::PlanLogRetentionRequest>(
+            match serde_json::from_value::<lithe_diagnostics::retention::PlanLogRetentionRequest>(
                 parsed.payload,
             ) {
                 Ok(request) => CoreResponse::success(
                     id,
-                    log_v2_result(crate::diagnostics::retention::plan_log_retention(request)),
+                    log_v2_result(lithe_diagnostics::retention::plan_log_retention(request)),
                 ),
                 Err(_) => CoreResponse::failure(
                     id,
@@ -3857,12 +3857,12 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }
         }
         CoreCommand::DiagnosticsResolveLogChannel => {
-            match serde_json::from_value::<crate::diagnostics::channel::ResolveLogChannelRequest>(
+            match serde_json::from_value::<lithe_diagnostics::channel::ResolveLogChannelRequest>(
                 parsed.payload,
             ) {
                 Ok(request) => CoreResponse::success(
                     id,
-                    log_v2_result(crate::diagnostics::channel::resolve_log_channel(request)),
+                    log_v2_result(lithe_diagnostics::channel::resolve_log_channel(request)),
                 ),
                 Err(_) => CoreResponse::failure(
                     id,
@@ -3880,7 +3880,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }) {
                 Ok(request) => CoreResponse::success(
                     id,
-                    serde_json::to_value(crate::diagnostics::redact_text(request))
+                    serde_json::to_value(lithe_diagnostics::redaction::redact_text(request))
                         .expect("Diagnostics redact response should encode"),
                 ),
                 Err(error) => CoreResponse::failure(id, error),
@@ -3896,7 +3896,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             }) {
                 Ok(request) => CoreResponse::success(
                     id,
-                    serde_json::to_value(crate::diagnostics::build_manifest(request))
+                    serde_json::to_value(lithe_diagnostics::manifest::build_manifest(request))
                         .expect("Diagnostics manifest response should encode"),
                 ),
                 Err(error) => CoreResponse::failure(id, error),
@@ -3922,8 +3922,8 @@ mod tests {
 
     #[test]
     fn configure_core_events_sets_the_debug_gate_and_rejects_unknown_fields() {
-        use crate::diagnostics::core_events::{accepts, configure};
-        use crate::diagnostics::record::LogLevel;
+        use lithe_diagnostics::core_events::{accepts, configure};
+        use lithe_diagnostics::record::LogLevel;
         let send = |payload: Value| -> Value {
             serde_json::from_str(&execute_json(
                 &json!({"command": "diagnostics.configureCoreEvents", "payload": payload})

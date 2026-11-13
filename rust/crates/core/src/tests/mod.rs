@@ -6,6 +6,7 @@ mod community_build_plugins;
 mod core_request_traces;
 mod declarative_plugins;
 mod detectors;
+mod diagnostics_dispatch;
 mod directory_actions;
 mod file_name_order;
 mod file_operations;

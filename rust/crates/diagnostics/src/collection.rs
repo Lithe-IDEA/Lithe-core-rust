@@ -241,12 +241,7 @@ mod tests {
     }
 
     #[test]
-    fn collection_dispatch_rejects_duplicate_inventories_with_a_distinct_code() {
-        let request = serde_json::json!({"version":1,"command":"diagnostics.planLogCollection","payload":{
-            "files":[],"currentSession":"","session":"all"}});
-        let response: serde_json::Value =
-            serde_json::from_str(&crate::runtime::execute_json(&request.to_string())).unwrap();
-        assert_eq!(response["data"]["result"]["reads"], serde_json::json!([]));
+    fn collection_rejects_duplicate_inventories_with_a_distinct_code() {
         let file = serde_json::json!({"relativePath":"sessions/2026-11-03T00-00-00_abcdef12/app.log","sizeBytes":1,"modifiedAt":"2026-11-03T01:00:00Z"});
         let input =
             serde_json::json!({"files":[file.clone(),file],"currentSession":"","session":"all"});
@@ -261,7 +256,7 @@ mod tests {
     #[test]
     fn shared_collection_fixture_keeps_active_channels_and_category_compatibility() {
         let fixture: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../fixtures/diagnostics/logging-v2.json"
+            "../../../fixtures/diagnostics/logging-v2.json"
         ))
         .unwrap();
         for case in fixture["collection"].as_array().unwrap() {

@@ -196,11 +196,11 @@ impl Drop for RemoteHistory {
             // A finished log process is already pruned by the host, which is the
             // expected missing case. Drop owns other cleanup failures; WARN keeps
             // the page result.
-            if !crate::diagnostics::core_events::remote_resource_already_gone(&error) {
-                crate::diagnostics::core_events::recovery_failed(
+            if !error.is_resource_already_gone() {
+                lithe_diagnostics::core_events::recovery_failed(
                     "vcs.history.cleanup_failed",
                     "remote-kill",
-                    &crate::diagnostics::core_events::client_failure_category(&error),
+                    &error.failure_category(),
                     "remote",
                 );
             }

@@ -3325,7 +3325,7 @@ fn commit_selected_paths(
     if committed_head.exit_code != 0 {
         if let Err(error) = temporary_context.cleanup_reference(root) {
             // Preserve the commit result; WARN reports a separate leaked reference.
-            crate::diagnostics::core_events::core_failed(
+            lithe_diagnostics::core_events::core_failed(
                 "vcs.commit.cleanup_failed",
                 "reference",
                 &error,
@@ -3342,7 +3342,7 @@ fn commit_selected_paths(
     if !unexpected_paths.is_empty() {
         if let Err(error) = temporary_context.cleanup_reference(root) {
             // Preserve the commit result; WARN reports a separate leaked reference.
-            crate::diagnostics::core_events::core_failed(
+            lithe_diagnostics::core_events::core_failed(
                 "vcs.commit.cleanup_failed",
                 "reference",
                 &error,
@@ -3378,7 +3378,7 @@ fn commit_selected_paths(
     if updated.exit_code != 0 {
         if let Err(error) = temporary_context.cleanup_reference(root) {
             // Preserve the commit result; WARN reports a separate leaked reference.
-            crate::diagnostics::core_events::core_failed(
+            lithe_diagnostics::core_events::core_failed(
                 "vcs.commit.cleanup_failed",
                 "reference",
                 &error,

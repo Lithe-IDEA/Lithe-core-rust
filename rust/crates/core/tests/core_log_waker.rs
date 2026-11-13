@@ -3,7 +3,9 @@
 //! The queue and waker are process globals, so this file is its own test binary
 //! and keeps every assertion in one test: no other test can record or drain.
 
-use lithe_core::diagnostics::core_events::{drain, record};
+// Links the C ABI under test.
+use lithe_core as _;
+use lithe_diagnostics::core_events::{drain, record};
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::ffi::c_void;

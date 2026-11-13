@@ -6,10 +6,10 @@
 //! or gives up. A host notice backed by these facts links to this record; the host
 //! adds its own terminal event only for facts Core does not have.
 
-use super::core_events;
-use super::record::LogLevel;
 use crate::git::console::Source;
 use crate::protocol::{CoreRequest, CoreResponse, ErrorCode};
+use lithe_diagnostics::core_events;
+use lithe_diagnostics::record::LogLevel;
 use serde_json::{json, Value};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -261,7 +261,7 @@ pub(crate) fn identity(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::diagnostics::core_events::capture;
+    use lithe_diagnostics::core_events::capture;
 
     fn request(value: Value) -> CoreRequest {
         serde_json::from_value(value).unwrap()

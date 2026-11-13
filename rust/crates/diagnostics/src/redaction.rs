@@ -8,6 +8,7 @@ use std::sync::LazyLock;
 #[serde(rename_all = "camelCase")]
 /// Raw text a host wants scrubbed before it leaves the machine in a diagnostic bundle.
 pub struct RedactTextRequest {
+    /// Text to scrub.
     pub text: String,
 }
 
@@ -15,6 +16,7 @@ pub struct RedactTextRequest {
 #[serde(rename_all = "camelCase")]
 /// Text with credentials, tokens, and home-directory paths replaced by stable placeholders.
 pub struct RedactTextResponse {
+    /// The scrubbed text.
     pub redacted: String,
 }
 

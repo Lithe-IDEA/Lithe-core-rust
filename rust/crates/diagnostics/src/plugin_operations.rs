@@ -227,7 +227,7 @@ pub fn record(input: DeclarativeOperation) -> Result<(), LogError> {
 
 /// Engine-side recording: a rejected or dropped fact becomes the queue's drop count.
 pub(crate) fn record_or_note_drop(input: DeclarativeOperation) {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     test_capture::push(&input);
     if record(input).is_err() {
         core_events::note_dropped();
@@ -276,7 +276,7 @@ pub struct AttemptHandoff {
 
 /// Declarative attempt in flight inside a Core engine.
 #[derive(Debug)]
-pub(crate) struct Attempt {
+pub struct Attempt {
     contribution: &'static Contribution,
     plugin_id: String,
     operation_id: String,
@@ -287,14 +287,11 @@ pub(crate) struct Attempt {
 /// Shared by every code path that can end one attempt. Whichever path reaches a
 /// terminal result first takes the attempt, so it is recorded at most once even
 /// when two paths race to end it.
-pub(crate) type AttemptSlot = Arc<Mutex<Option<Attempt>>>;
+pub type AttemptSlot = Arc<Mutex<Option<Attempt>>>;
 
 impl Attempt {
     /// Slot holding a handed-off attempt, timed from now.
-    pub(crate) fn slot(
-        contribution: &'static Contribution,
-        handoff: AttemptHandoff,
-    ) -> AttemptSlot {
+    pub fn slot(contribution: &'static Contribution, handoff: AttemptHandoff) -> AttemptSlot {
         Arc::new(Mutex::new(Some(Self {
             contribution,
             plugin_id: handoff.plugin_id,
@@ -305,13 +302,13 @@ impl Attempt {
     }
 
     /// Slot for work that carries no declarative attempt; finishing it is a no-op.
-    pub(crate) fn none() -> AttemptSlot {
+    pub fn none() -> AttemptSlot {
         Arc::new(Mutex::new(None))
     }
 }
 
 /// Records the attempt's terminal result unless another path already did.
-pub(crate) fn finish(slot: &AttemptSlot, failure: Option<Stage>) {
+pub fn finish(slot: &AttemptSlot, failure: Option<Stage>) {
     let Some(attempt) = slot.lock().unwrap_or_else(|e| e.into_inner()).take() else {
         return;
     };
@@ -326,15 +323,16 @@ pub(crate) fn finish(slot: &AttemptSlot, failure: Option<Stage>) {
 }
 
 /// Ends the attempt without a result: the user cancelled or stopped it.
-pub(crate) fn abandon(slot: &AttemptSlot) {
+pub fn abandon(slot: &AttemptSlot) {
     slot.lock().unwrap_or_else(|e| e.into_inner()).take();
 }
 
 /// Engine results as recorded, for engine tests. The process queue is shared and
 /// bounded, so a parallel test run can fill it; tests read their own facts back
-/// by plugin ID instead.
-#[cfg(test)]
-pub(crate) mod test_capture {
+/// by plugin ID instead. Other crates' tests reach it through the `test-support`
+/// feature.
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_capture {
     use super::DeclarativeOperation;
     use std::sync::Mutex;
 
@@ -348,7 +346,7 @@ pub(crate) mod test_capture {
     }
 
     /// Removes and returns the facts recorded for `plugin_id`, in record order.
-    pub(crate) fn take(plugin_id: &str) -> Vec<DeclarativeOperation> {
+    pub fn take(plugin_id: &str) -> Vec<DeclarativeOperation> {
         let mut facts = FACTS.lock().unwrap_or_else(|e| e.into_inner());
         let (taken, kept) = facts
             .drain(..)
@@ -405,7 +403,7 @@ mod tests {
             assert_eq!(finished.event, "plugins.operation.finished");
             assert_eq!(finished.fields["operation"], json!(row.operation));
             assert_eq!(finished.op.as_deref(), Some("attempt-7"));
-            assert!(finished.fields.get("code").is_none());
+            assert!(!finished.fields.contains_key("code"));
             for stage in STAGES {
                 let result = prepare(json!({"pluginId":"io.example.contribution",
                     "operation":row.operation, "outcome":"failed", "stage":stage,
@@ -527,7 +525,7 @@ mod tests {
     #[test]
     fn diagnostics_host_plugin_operations_match_shared_fixture() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../fixtures/diagnostics/engine-logging-v2.json"
+            "../../../fixtures/diagnostics/engine-logging-v2.json"
         ))
         .unwrap();
         for case in fixture["hostOperations"].as_array().unwrap() {

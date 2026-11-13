@@ -1,6 +1,6 @@
 //! One installation boundary for helper facts entering the bounded Core handoff.
 
-use super::core_events;
+use lithe_diagnostics::{channel::LogError, core_events};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::sync::Once;
@@ -11,7 +11,6 @@ static INSTALL: Once = Once::new();
 /// helpers or starting workers. Subsequent calls are cheap.
 pub(crate) fn install() {
     INSTALL.call_once(|| {
-        lithe_git_host::failure_log::install_failure_sink(sink);
         lithe_git_host::failure_log::install_failure_sink(sink);
         lithe_ide_host::failure_log::install_failure_sink(sink);
         lithe_remote::failure_log::install_failure_sink(sink);
@@ -31,7 +30,7 @@ fn fields(input: &[(&'static str, Value)]) -> BTreeMap<String, Value> {
 fn dispatch(
     event: &str,
     input: &[(&'static str, Value)],
-    record: impl FnOnce(&str, BTreeMap<String, Value>) -> Result<(), super::channel::LogError>,
+    record: impl FnOnce(&str, BTreeMap<String, Value>) -> Result<(), LogError>,
     dropped: impl FnOnce(),
 ) {
     if record(event, fields(input)).is_err() {
@@ -51,6 +50,7 @@ fn sink(event: &str, input: &[(&'static str, Value)]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lithe_diagnostics::catalog;
     use serde_json::json;
     use std::cell::{Cell, RefCell};
 
@@ -70,10 +70,7 @@ mod tests {
             (lithe_remote::failure_log::EVENTS, "remote"),
         ] {
             for id in events {
-                assert_eq!(
-                    super::super::catalog::event_by_id(id).unwrap().owner,
-                    "lithe-core"
-                );
+                assert_eq!(catalog::event_by_id(id).unwrap().owner, "lithe-core");
                 // Exercise the exact sink conversion/validation into an owned
                 // queue, so parallel host drains cannot steal this assertion.
                 let queue = RefCell::new(Vec::new());

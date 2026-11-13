@@ -886,6 +886,7 @@ dependencies = [
  "ignore",
  "lithe-ai",
  "lithe-core-rules",
+ "lithe-diagnostics",
  "lithe-diff",
  "lithe-git-host",
  "lithe-github",
@@ -914,6 +915,18 @@ dependencies = [
  "serde",
  "serde_json",
  "unicode-normalization",
+]
+
+[[package]]
+name = "lithe-diagnostics"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "lithe-protocol",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

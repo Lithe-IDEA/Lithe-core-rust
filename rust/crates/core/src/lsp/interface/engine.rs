@@ -17,15 +17,15 @@ use super::{
     LspClientDiagnostic, LspClientDocument, LspClientState, LspDocumentContentChange, LspPosition,
     LspRange, ParseServerMessagesRequest,
 };
-use crate::diagnostics::plugin_operations::{
-    self as plugin_operations, Attempt, AttemptHandoff, AttemptSlot, Stage as AttemptStage,
-    LANGUAGE_SERVER_START,
-};
 use crate::plugins::language_server_sessions::{
     RemoteSupport, DEFAULT_REQUEST_TIMEOUT_MILLISECONDS, DID_CHANGE_CONFIGURATION,
     MAX_REQUEST_TIMEOUT_MILLISECONDS,
 };
 use crate::protocol::{CoreError, ErrorCode};
+use lithe_diagnostics::plugin_operations::{
+    self as plugin_operations, Attempt, AttemptHandoff, AttemptSlot, Stage as AttemptStage,
+    LANGUAGE_SERVER_START,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -605,7 +605,7 @@ pub struct LspRuntimeEvent {
     pub fields: Option<BTreeMap<String, Value>>,
     /// Canonical catalog severity for v2; independent of the preserved v1 level.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub catalog_level: Option<crate::diagnostics::record::LogLevel>,
+    pub catalog_level: Option<lithe_diagnostics::record::LogLevel>,
     pub sequence: u64,
     pub provider_id: String,
     pub session_id: String,
@@ -4361,16 +4361,16 @@ fn enqueue_runtime_event(
             event.fields.take().expect("source catalog fields"),
         );
         let level = if id == "log.dropped" {
-            Some(crate::diagnostics::record::LogLevel::Warn)
+            Some(lithe_diagnostics::record::LogLevel::Warn)
         } else {
-            crate::diagnostics::catalog::event_by_id(&id).map(|entry| entry.level)
+            lithe_diagnostics::catalog::event_by_id(&id).map(|entry| entry.level)
         };
         // In-memory v1 detail is retained for old hosts. The v2 fields always pass
         // the same normalization and catalog routing boundary as persisted facts.
         // A fact that fails that boundary keeps only its v1 fields; the runtime
         // event itself is never dropped and Core never panics on source data.
         if let Some(level) = level {
-            let mut fact = crate::diagnostics::record::StructuredLogEvent {
+            let mut fact = lithe_diagnostics::record::StructuredLogEvent {
                 ts: String::new(),
                 level,
                 seq: 0,
@@ -4379,7 +4379,7 @@ fn enqueue_runtime_event(
                 msg: String::new(),
                 fields,
             };
-            if let Ok(channel) = crate::diagnostics::record::prepare_catalog_event(
+            if let Ok(channel) = lithe_diagnostics::record::prepare_catalog_event(
                 &mut fact,
                 &json!({"channel": session.log_identity.channel()}),
             ) {
@@ -5509,7 +5509,7 @@ fn receive_plugin_diagnostic(
     let Some(fact) = valid else {
         if !state.rejected_plugin_diagnostics {
             state.rejected_plugin_diagnostics = true;
-            if crate::diagnostics::core_events::record(
+            if lithe_diagnostics::core_events::record(
                 "plugins.diagnostics.rejected",
                 BTreeMap::from([
                     ("plugin".into(), json!(plugin)),
@@ -5519,7 +5519,7 @@ fn receive_plugin_diagnostic(
             )
             .is_err()
             {
-                crate::diagnostics::core_events::note_dropped();
+                lithe_diagnostics::core_events::note_dropped();
             }
         }
         return;
@@ -5529,7 +5529,7 @@ fn receive_plugin_diagnostic(
         state.plugin_diagnostics_count = 0;
     }
     if state.plugin_diagnostics_count >= MAX_PLUGIN_DIAGNOSTICS_PER_MINUTE {
-        crate::diagnostics::core_events::note_dropped();
+        lithe_diagnostics::core_events::note_dropped();
         return;
     }
     state.plugin_diagnostics_count += 1;
@@ -5541,8 +5541,8 @@ fn receive_plugin_diagnostic(
             .get(wire)
             .and_then(|pending| pending.operation_id.clone())
     });
-    if crate::diagnostics::core_events::record(fact.event, fact.fields, operation).is_err() {
-        crate::diagnostics::core_events::note_dropped();
+    if lithe_diagnostics::core_events::record(fact.event, fact.fields, operation).is_err() {
+        lithe_diagnostics::core_events::note_dropped();
     }
 }
 
@@ -6409,7 +6409,7 @@ mod tests {
             assert_eq!(event.plugin_id.as_deref(), Some("io.example.tools"));
             assert_eq!(
                 event.catalog_level,
-                Some(crate::diagnostics::record::LogLevel::Debug)
+                Some(lithe_diagnostics::record::LogLevel::Debug)
             );
             let mut legacy = serde_json::to_value(event).unwrap();
             for key in [
@@ -6451,7 +6451,7 @@ mod tests {
             );
             assert_eq!(
                 event.catalog_level,
-                Some(crate::diagnostics::record::LogLevel::Warn)
+                Some(lithe_diagnostics::record::LogLevel::Warn)
             );
             assert_eq!(event.kind, "log");
             assert_eq!(event.level.as_deref(), Some("warning"));
@@ -6676,7 +6676,7 @@ mod tests {
             assert_eq!(event.role, Some(SessionRole::Vcs));
             assert_eq!(
                 event.catalog_level,
-                Some(crate::diagnostics::record::LogLevel::Warn)
+                Some(lithe_diagnostics::record::LogLevel::Warn)
             );
             assert_eq!(event.message.as_deref(), Some(method));
             assert!(event.level.is_some() && event.detail.is_some());
@@ -6713,12 +6713,12 @@ mod tests {
             .unwrap();
         assert_eq!(
             event.catalog_level,
-            Some(crate::diagnostics::record::LogLevel::Debug)
+            Some(lithe_diagnostics::record::LogLevel::Debug)
         );
         assert_eq!(event.level.as_deref(), Some("info"));
         let fields = event.fields.unwrap();
         assert_eq!(fields["diagnostic"], "trace token=<redacted>");
-        let encoded = crate::diagnostics::record::encode_log_batch(
+        let encoded = lithe_diagnostics::record::encode_log_batch(
             serde_json::from_value(json!({"validateCatalog":true,"events":[{
                 "ts":"2026-11-03T00:00:00.000Z", "seq":1, "level":"DEBUG",
                 "event":"vcs.trace.received", "msg":"", "fields":fields

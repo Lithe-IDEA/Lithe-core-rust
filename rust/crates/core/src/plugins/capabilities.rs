@@ -21,7 +21,7 @@
 //! `litheFunctions` is `backend`, `litheVcs` is `vcsProviders`, the toolchain
 //! protocol is `toolchainProviders`, the keymap protocol is
 //! `keymapImportProviders`, and `litheLogging` is `pluginAPIVersion`. Use
-//! [`versions`] and `SUPPORTED_PLUGIN_API_VERSIONS` for the versions this
+//! `versions` and `SUPPORTED_PLUGIN_API_VERSIONS` for the versions this
 //! Core build speaks.
 //!
 //! `requires` is checked before the sections are decoded, so a Core build

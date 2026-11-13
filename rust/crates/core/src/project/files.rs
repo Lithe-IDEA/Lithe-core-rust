@@ -1468,7 +1468,7 @@ fn scan_node(
                 ) =>
             {
                 incomplete_directories.push(relative_path(&child_path, root));
-                crate::diagnostics::core_events::directory_skipped(
+                lithe_diagnostics::core_events::directory_skipped(
                     "app.workspace.directory_skipped",
                     &relative_path(&child_path, root),
                     &error.code,
@@ -1523,7 +1523,7 @@ fn collect_snapshot_files(
                     return Err(error);
                 }
                 incomplete_directories.push(relative_path(&child_path, root));
-                crate::diagnostics::core_events::directory_skipped(
+                lithe_diagnostics::core_events::directory_skipped(
                     "app.workspace.directory_skipped",
                     &relative_path(&child_path, root),
                     &error.code,

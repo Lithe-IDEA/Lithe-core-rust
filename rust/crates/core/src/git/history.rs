@@ -179,7 +179,7 @@ pub fn history(request: GitHistoryRequest) -> Result<GitHistoryResponse, CoreErr
             cursor: cursor.to_string(),
         }) {
             // The legacy snapshot is complete; WARN reports cursor cleanup only.
-            crate::diagnostics::core_events::core_failed(
+            lithe_diagnostics::core_events::core_failed(
                 "vcs.history.cleanup_failed",
                 "cursor",
                 &error,
@@ -528,11 +528,7 @@ fn release_locate_cursor(root: &str, cursor: Option<String>) {
         cursor,
     }) {
         // The failed page already ended its stream; report cleanup only.
-        crate::diagnostics::core_events::core_failed(
-            "vcs.history.cleanup_failed",
-            "cursor",
-            &error,
-        );
+        lithe_diagnostics::core_events::core_failed("vcs.history.cleanup_failed", "cursor", &error);
     }
 }
 
@@ -786,7 +782,7 @@ impl HistorySession {
             let mut bytes = Vec::new();
             if let Err(error) = stderr.read_to_end(&mut bytes) {
                 // One reader completion, not per chunk: WARN explains partial diagnostics.
-                crate::diagnostics::core_events::recovery_failed(
+                lithe_diagnostics::core_events::recovery_failed(
                     "vcs.history.read_failed",
                     "stderr",
                     &format!("{:?}", error.kind()),
@@ -915,7 +911,7 @@ impl HistorySession {
                 if let Err(error) = child.kill() {
                     // An already reaped child is expected; other cleanup failures are distinct.
                     if !matches!(child.try_wait(), Ok(Some(_))) {
-                        crate::diagnostics::core_events::recovery_failed(
+                        lithe_diagnostics::core_events::recovery_failed(
                             "vcs.history.cleanup_failed",
                             "kill",
                             &format!("{:?}", error.kind()),
@@ -943,7 +939,7 @@ impl HistorySession {
         };
         if let Some(reader) = self.stdout_reader.take() {
             if reader.join().is_err() {
-                crate::diagnostics::core_events::recovery_failed(
+                lithe_diagnostics::core_events::recovery_failed(
                     "vcs.history.cleanup_failed",
                     "stdout-reader",
                     "reader_panicked",
@@ -957,7 +953,7 @@ impl HistorySession {
             .and_then(|reader| match reader.join() {
                 Ok(bytes) => Some(bytes),
                 Err(_) => {
-                    crate::diagnostics::core_events::recovery_failed(
+                    lithe_diagnostics::core_events::recovery_failed(
                         "vcs.history.cleanup_failed",
                         "stderr-reader",
                         "reader_panicked",
@@ -985,7 +981,7 @@ impl HistorySession {
     fn stop(mut self) {
         if let Err(error) = self.finish_process(true) {
             // This owner stops the cursor without failing the completed page.
-            crate::diagnostics::core_events::core_failed(
+            lithe_diagnostics::core_events::core_failed(
                 "vcs.history.cleanup_failed",
                 "wait",
                 &error,
@@ -998,7 +994,7 @@ impl Drop for HistorySession {
     fn drop(&mut self) {
         if let Err(error) = self.finish_process(true) {
             // This owner stops the cursor without failing the completed page.
-            crate::diagnostics::core_events::core_failed(
+            lithe_diagnostics::core_events::core_failed(
                 "vcs.history.cleanup_failed",
                 "wait",
                 &error,

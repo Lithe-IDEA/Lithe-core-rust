@@ -16,6 +16,7 @@ plugin-sdk-e2e = []
 [dependencies]
 lithe-ai = { path = "../ai" }
 lithe-core-rules = { path = "../core-rules" }
+lithe-diagnostics = { path = "../diagnostics" }
 lithe-diff = { path = "../diff" }
 lithe-git-host = { path = "../git-host" }
 lithe-github = { path = "../github" }
@@ -41,6 +42,9 @@ serde_yaml_ng = "0.10.0"
 zip = { version = "2.4", default-features = false, features = ["deflate"] }
 url = "2.5"
 ignore = "=0.4.33"
+
+[dev-dependencies]
+lithe-diagnostics = { path = "../diagnostics", features = ["test-support"] }
 
 [target.'cfg(unix)'.dev-dependencies]
 lithe-remote = { path = "../remote", default-features = false, features = ["server"] }

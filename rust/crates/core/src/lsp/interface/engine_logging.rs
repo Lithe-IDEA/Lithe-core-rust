@@ -1,7 +1,7 @@
 //! Catalog identities, role routing, and bounded stderr framing for managed engines.
 
 use super::engine::LspRuntimeError;
-use crate::diagnostics::channel::{digest_segment, identity_segment, validate_segment};
+use lithe_diagnostics::channel::{digest_segment, identity_segment, validate_segment};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -427,9 +427,9 @@ mod tests {
                     &json!({"type":kind,"message":"upstream fact"}),
                 );
                 let (id, fields) = event.fact(&identity, &input, None);
-                crate::diagnostics::catalog::validate_fields(&id, &fields).unwrap();
+                lithe_diagnostics::catalog::validate_fields(&id, &fields).unwrap();
                 assert_eq!(
-                    crate::diagnostics::catalog::event_by_id(&id)
+                    lithe_diagnostics::catalog::event_by_id(&id)
                         .unwrap()
                         .level
                         .label(),
@@ -438,7 +438,7 @@ mod tests {
             }
         }
         assert_eq!(
-            crate::diagnostics::catalog::event_by_id("lsp.stderr.received")
+            lithe_diagnostics::catalog::event_by_id("lsp.stderr.received")
                 .unwrap()
                 .level
                 .label(),
@@ -606,7 +606,7 @@ mod tests {
                 EngineLog::SessionUpdated,
             ] {
                 assert!(
-                    crate::diagnostics::catalog::event_by_id(&identity.event(event.suffix()))
+                    lithe_diagnostics::catalog::event_by_id(&identity.event(event.suffix()))
                         .is_some()
                 );
             }
@@ -620,7 +620,7 @@ mod tests {
         ] {
             let identity = SessionLogIdentity::new(role, "tool-a", Some("io.plugin"), Some("git"));
             let (id, fields) = EngineLog::ProcessCleanupFailed.fact(&identity, &Value::Null, None);
-            crate::diagnostics::catalog::validate_fields(&id, &fields).unwrap();
+            lithe_diagnostics::catalog::validate_fields(&id, &fields).unwrap();
             assert_eq!(fields["error_code"], "operation_failed");
         }
         for (role, value) in [
@@ -634,7 +634,7 @@ mod tests {
                 first.channel(),
                 SessionLogIdentity::new(role, value, Some(value), Some(value)).channel()
             );
-            assert!(crate::diagnostics::channel::LogChannel::parse(&first.channel()).is_ok());
+            assert!(lithe_diagnostics::channel::LogChannel::parse(&first.channel()).is_ok());
         }
         let missing = SessionLogIdentity::new(SessionRole::Vcs, "opaque:id", None, None);
         assert!(missing.subject.starts_with("invalid-"));

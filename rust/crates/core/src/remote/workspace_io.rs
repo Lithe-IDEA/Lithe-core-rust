@@ -529,7 +529,7 @@ pub(crate) fn cleanup_directory(path_value: &Path) {
     if let Err(error) = result {
         if error.kind() != io::ErrorKind::NotFound {
             // Scratch names can identify user paths; log only the error category.
-            crate::diagnostics::core_events::cleanup_failed(
+            lithe_diagnostics::core_events::cleanup_failed(
                 "app.workspace.scratch_cleanup_failed",
                 &format!("{:?}", error.kind()),
             );

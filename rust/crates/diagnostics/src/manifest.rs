@@ -19,11 +19,17 @@ pub struct DiagnosticsFileEntry {
 /// Environment facts a host gathers natively and passes in for the manifest; the
 /// Core never reads the filesystem or process table itself.
 pub struct DiagnosticsEnvironmentInfo {
+    /// Application version string as the host displays it.
     pub app_version: String,
+    /// Operating system name, such as `macOS` or `Windows`.
     pub os_name: String,
+    /// Operating system version string.
     pub os_version: String,
+    /// Logical CPU cores available to the process.
     pub cpu_core_count: u32,
+    /// Resident memory of the host process in bytes.
     pub memory_rss_bytes: u64,
+    /// Free bytes on the volume that holds the logs.
     pub disk_free_bytes: u64,
 }
 
@@ -31,7 +37,9 @@ pub struct DiagnosticsEnvironmentInfo {
 #[serde(rename_all = "camelCase")]
 /// Request to shape one deterministic manifest from host-gathered facts.
 pub struct BuildManifestRequest {
+    /// Environment facts the host gathered.
     pub environment: DiagnosticsEnvironmentInfo,
+    /// Files the host already redacted and staged, in any order.
     pub files: Vec<DiagnosticsFileEntry>,
     /// Milliseconds since epoch when the export was requested, supplied by the
     /// host so the manifest is reproducible in tests without a system clock
@@ -45,9 +53,13 @@ pub struct BuildManifestRequest {
 pub struct DiagnosticsManifest {
     /// Additive technical provenance marker; v1 hosts may ignore it.
     pub redaction: &'static str,
+    /// Manifest format version.
     pub schema_version: u32,
+    /// Export request time copied from the request.
     pub generated_at_epoch_milliseconds: i64,
+    /// Environment facts copied from the request.
     pub environment: DiagnosticsEnvironmentInfo,
+    /// Staged files sorted by relative path.
     pub files: Vec<DiagnosticsFileEntry>,
 }
 

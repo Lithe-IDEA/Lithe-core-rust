@@ -649,7 +649,10 @@ fn batch_result(result: Result<String, LogError>, channel: Option<String>) -> En
     }
 }
 
-pub(crate) fn prepare_catalog_event(
+/// Checks one structured event against the catalog, fills its catalog level,
+/// and returns the channel it belongs on. `input` supplies the channel for the
+/// `log.dropped` and `log.repeated` system events.
+pub fn prepare_catalog_event(
     event: &mut StructuredLogEvent,
     input: &Value,
 ) -> Result<String, LogError> {
@@ -661,10 +664,10 @@ pub(crate) fn prepare_catalog_event(
             &["count", "first", "last", "of"]
         };
         if event.fields.len() != keys.len()
-            || !event
+            || event
                 .fields
                 .get("count")
-                .is_some_and(|v| v.as_u64().is_some())
+                .is_none_or(|v| v.as_u64().is_none())
             || keys
                 .iter()
                 .skip(1)
@@ -786,12 +789,12 @@ pub fn dropped_event(ts: &str, seq: u64, count: u64) -> StructuredLogEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::diagnostics::{channel, query_v2, retention};
+    use crate::{channel, query_v2, retention};
     use serde_json::json;
 
     fn fixture() -> Value {
         serde_json::from_str(include_str!(
-            "../../../../fixtures/diagnostics/logging-v2.json"
+            "../../../fixtures/diagnostics/logging-v2.json"
         ))
         .unwrap()
     }
@@ -1207,90 +1210,6 @@ mod tests {
         assert!(!line.contains("fixture-token"));
         assert!(line.contains("<HOME>"));
         assert!(decode_line(&line).is_ok());
-    }
-
-    #[test]
-    fn diagnostics_v2_commands_dispatch_with_stable_domain_errors() {
-        let cases = [
-            ("diagnostics.encodeLogBatch", json!({"events":[]})),
-            ("diagnostics.queryLogsV2", json!({"sources":[]})),
-            ("diagnostics.parseLogFilter", json!({"expression":""})),
-            (
-                "diagnostics.composeLogFilter",
-                json!({"expression":"","term":{"kind":"text","value":"test"}}),
-            ),
-            (
-                "diagnostics.formatLogRecords",
-                json!({"lines":[],"format":"json"}),
-            ),
-            (
-                "diagnostics.planLogRetention",
-                json!({"currentSession":"", "now":"2026-11-03T00:00:00Z"}),
-            ),
-            (
-                "diagnostics.resolveLogChannel",
-                json!({"channel":"vcs/git"}),
-            ),
-        ];
-        for (command, payload) in cases {
-            let response: Value = serde_json::from_str(&crate::runtime::execute_json(
-                &json!({"id":"fixture", "version":1, "command":command, "payload":payload})
-                    .to_string(),
-            ))
-            .unwrap();
-            assert_eq!(response["ok"], true, "{response}");
-            assert!(response["data"].get("error").is_none(), "{response}");
-        }
-        let response: Value = serde_json::from_str(&crate::runtime::execute_json(&json!({"version":1,"command":"diagnostics.resolveLogChannel","payload":{"channel":"vcs/.."}}).to_string())).unwrap();
-        assert_eq!(response["data"]["error"]["code"], -32033);
-    }
-
-    #[test]
-    fn shared_window_commands_cover_dispatch_shapes_and_unique_errors() {
-        let fixture = fixture();
-        let mut seen_codes = std::collections::BTreeSet::new();
-        let mut seen_commands = std::collections::BTreeSet::new();
-        for case in fixture["windowCommands"].as_array().unwrap() {
-            let mut payload = case["request"].clone();
-            if let Some(count) = case["repeatCount"].as_u64() {
-                payload["lines"] =
-                    json!(vec![case["repeatLine"].as_str().unwrap(); count as usize]);
-            }
-            let response: Value = serde_json::from_str(&crate::runtime::execute_json(
-                &json!({"version":1,"command":case["command"],"payload":payload}).to_string(),
-            ))
-            .unwrap();
-            assert_eq!(response["ok"], true, "{response}");
-            if let Some(code) = case["code"].as_i64() {
-                assert_eq!(
-                    response["data"]["error"]["code"], code,
-                    "{case}: {response}"
-                );
-                assert!(fixture["errorCodes"][code.to_string()].is_string());
-                seen_codes.insert(code);
-            } else {
-                // parse returns diagnostics directly; other pure v2 commands use the domain envelope.
-                let actual = if case["command"] == "diagnostics.parseLogFilter"
-                    || case["command"] == "diagnostics.buildManifest"
-                {
-                    &response["data"]
-                } else {
-                    &response["data"]["result"]
-                };
-                assert_eq!(actual, &case["expected"], "{case}: {response}");
-            }
-            seen_commands.insert(case["command"].as_str().unwrap());
-        }
-        for command in [
-            "diagnostics.parseLogFilter",
-            "diagnostics.composeLogFilter",
-            "diagnostics.formatLogRecords",
-        ] {
-            assert!(seen_commands.contains(command));
-        }
-        for code in [-32060, -32061, -32062, -32063] {
-            assert!(seen_codes.contains(&code));
-        }
     }
 
     #[test]

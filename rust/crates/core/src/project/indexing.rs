@@ -277,7 +277,7 @@ fn configure_with_provider_update(
             true,
         ) {
             // Failed installation owns recovery; WARN keeps the original failure.
-            crate::diagnostics::core_events::recovery_failed(
+            lithe_diagnostics::core_events::recovery_failed(
                 "app.indexing.rollback_failed",
                 "lease",
                 serde_json::to_value(&error.code)
@@ -292,7 +292,7 @@ fn configure_with_provider_update(
             // Restore providers that received only part of the failed update.
             // Preserve the original error if shutdown/cancellation also blocks recovery.
             if let Err(error) = update_provider(&root) {
-                crate::diagnostics::core_events::recovery_failed(
+                lithe_diagnostics::core_events::recovery_failed(
                     "app.indexing.rollback_failed",
                     "provider",
                     serde_json::to_value(&error.code)

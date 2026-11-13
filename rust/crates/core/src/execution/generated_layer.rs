@@ -140,14 +140,14 @@ pub(super) fn cache_document(
         .and_then(|()| fs::rename(&temporary, &path));
     if let Err(error) = written {
         // Cache persistence is optional; WARN explains a cold next session.
-        crate::diagnostics::core_events::recovery_failed(
+        lithe_diagnostics::core_events::recovery_failed(
             "app.cache.write_failed",
             "generated-cache",
             &format!("{:?}", error.kind()),
             "io",
         );
         // This boundary keeps the primary result; WARN exposes leftover staging.
-        let mut cleanup = crate::diagnostics::core_events::StorageCleanup::default();
+        let mut cleanup = lithe_diagnostics::core_events::StorageCleanup::default();
         cleanup.observe(fs::remove_file(&temporary));
         cleanup.finish("generated-cache");
     }
