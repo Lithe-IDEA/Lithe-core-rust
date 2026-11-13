@@ -1,7 +1,6 @@
 use super::*;
 #[cfg(unix)]
 use crate::sessions;
-#[cfg(unix)]
 use serde_json::json;
 #[cfg(unix)]
 use std::path::{Path, PathBuf};
@@ -345,6 +344,7 @@ fn connecting_without_a_matching_server_reports_the_platform() {
     assert_eq!(value["host"]["system"], local_uname("-s"));
 }
 
+#[cfg(unix)]
 #[test]
 fn unknown_server_targets_are_rejected() {
     let request: sessions::ConnectRequest = serde_json::from_value(json!({
@@ -357,6 +357,7 @@ fn unknown_server_targets_are_rejected() {
     assert!(matches!(error.code, ErrorCode::InvalidRequest), "{error:?}");
 }
 
+#[cfg(unix)]
 #[test]
 fn closed_connections_cannot_be_used() {
     let request: sessions::ReadDirRequest =
@@ -371,6 +372,7 @@ fn closed_connections_cannot_be_used() {
 }
 
 // Application exit closes whatever is open and must be safe with nothing open.
+#[cfg(unix)]
 #[test]
 fn closing_all_connections_with_none_open_succeeds() {
     let connections = std::sync::Mutex::new(std::collections::HashMap::new());
@@ -379,6 +381,7 @@ fn closing_all_connections_with_none_open_succeeds() {
 
 // ssh splits an option value on whitespace, so a key path with spaces must
 // reach it quoted.
+#[cfg(unix)]
 #[test]
 fn private_key_paths_with_spaces_are_quoted() {
     let command = command_line(json!({

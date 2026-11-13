@@ -595,6 +595,8 @@ pub fn prepare_provider_exclusions(root: &Path) -> Result<Option<Arc<IndexingCon
 fn contains(directory: &str, path: &str) -> bool {
     #[cfg(windows)]
     let (directory, path) = (directory.to_lowercase(), path.to_lowercase());
+    #[cfg(windows)]
+    let (directory, path) = (directory.as_str(), path.as_str());
     directory == "."
         || path == directory
         || path

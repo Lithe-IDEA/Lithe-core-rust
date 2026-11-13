@@ -2395,8 +2395,10 @@ fn document_saves_honor_server_options_and_never_replace_newer_editor_text() {
 }
 
 /// Removes a scratch directory when the owning test ends or unwinds.
+#[cfg(unix)]
 struct ScratchDirectory(PathBuf);
 
+#[cfg(unix)]
 impl Drop for ScratchDirectory {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
@@ -2459,6 +2461,7 @@ fn diagnostics_published_under_the_resolved_path_reach_the_linked_document() {
     assert_eq!(event.diagnostics.map(|list| list.len()), Some(1));
 }
 
+#[cfg(unix)]
 fn open_document(uri: &str) -> (String, LspClientDocument) {
     (
         uri.to_string(),
