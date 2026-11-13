@@ -9,8 +9,8 @@
 //! prompts. The contract lives in `shared/plugins/contract/v1/`.
 
 use super::capabilities::{self, HostCapabilities, Requires};
-use super::declarative::{validate_manifest_value, SUPPORTED_PLUGIN_API_VERSIONS};
 use crate::protocol::CoreError;
+use lithe_plugin_manifest::{validate_manifest_value, SUPPORTED_PLUGIN_API_VERSIONS};
 use lithe_plugin_model::{
     decode_payload, is_official_namespace, is_plugin_id, is_semantic_version, PluginRejection,
     Validation,

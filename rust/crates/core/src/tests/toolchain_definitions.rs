@@ -1,7 +1,5 @@
-use crate::plugins::declarative::{
-    validate_command, validate_manifest_value, validated_manifest_json,
-};
 use crate::toolchain::definitions::{registry, validate_declarations};
+use lithe_plugin_manifest::{validate_command, validate_manifest_value, validated_manifest_json};
 use serde_json::{json, Value};
 
 fn definition(id: &str) -> Value {

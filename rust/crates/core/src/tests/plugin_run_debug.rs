@@ -7,10 +7,10 @@
 use super::support::temporary_root;
 use crate::build::run_decode_start_command;
 use crate::debug::decode_backend_configuration_command;
-use crate::plugins::declarative::validated_manifest_json;
-use crate::plugins::declarative::DeclarativePluginManifest as Manifest;
-use crate::plugins::declarative::{language_server_launch_plan_command, validate_manifest_value};
 use crate::toolchain::instantiate_launch_command;
+use lithe_plugin_manifest::validated_manifest_json;
+use lithe_plugin_manifest::DeclarativePluginManifest as Manifest;
+use lithe_plugin_manifest::{language_server_launch_plan_command, validate_manifest_value};
 use lithe_plugin_output_links::{decode_resolution, match_lines};
 use serde_json::{json, Value};
 use std::fs;

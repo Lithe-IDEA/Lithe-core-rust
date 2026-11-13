@@ -2,9 +2,9 @@
 //! Native adapters supply installed identities and directory equality facts;
 //! these commands never discover files, subscribe windows or launch plugins.
 
-use super::{validate_manifest_value, SettingsOwner};
-use crate::protocol::CoreError;
+use crate::{validate_manifest_value, SettingsOwner};
 use lithe_plugin_model::{decode_payload, outcome, PluginRejection};
+use lithe_protocol::CoreError;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};

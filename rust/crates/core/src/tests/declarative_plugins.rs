@@ -1,4 +1,4 @@
-use crate::plugins::declarative::{
+use lithe_plugin_manifest::{
     discover_tests_command, language_server_launch_plan_command, resolve_settings_command,
     run_plan_command, test_plan_command, validate_command, workspace_configuration_command,
 };
@@ -1349,7 +1349,7 @@ fn debug_adapter_console_commands_are_sorted_for_the_host() {
 }
 
 fn debug_start(request: &str, target: Value) -> Value {
-    crate::plugins::declarative::debug_start_arguments_command(json!({
+    lithe_plugin_manifest::debug_start_arguments_command(json!({
         "manifest": fixture("debug-adapter.plugin.json"),
         "adapterID": "example",
         "request": request,
@@ -1627,7 +1627,7 @@ fn debug_start_arguments_fill_bindings_without_overriding_defaults() {
 }
 
 fn remote_start_with(manifest: Value, adapter: &str, request: &str, target: Value) -> Value {
-    crate::plugins::declarative::debug_start_arguments_command(json!({
+    lithe_plugin_manifest::debug_start_arguments_command(json!({
         "manifest": manifest,
         "adapterID": adapter,
         "request": request,
@@ -1984,7 +1984,7 @@ fn debug_adapter_launch_plan_says_which_adapters_attach_to_a_remote_endpoint() {
 }
 
 fn debug_start_native(target: Value) -> Value {
-    crate::plugins::declarative::debug_start_arguments_command(json!({
+    lithe_plugin_manifest::debug_start_arguments_command(json!({
         "manifest": fixture("debug-adapter.plugin.json"),
         "adapterID": "native",
         "request": "launch",
@@ -2004,8 +2004,7 @@ fn debug_executable_plan(adapter: &str, extra: Value) -> Value {
     for (key, value) in extra.as_object().unwrap() {
         payload[key] = value.clone();
     }
-    crate::plugins::declarative::debug_executable_plan_command(payload)
-        .expect("payload is well formed")
+    lithe_plugin_manifest::debug_executable_plan_command(payload).expect("payload is well formed")
 }
 
 #[test]
@@ -2122,7 +2121,7 @@ fn debug_executable_plan_is_empty_for_an_adapter_without_a_lookup() {
 #[test]
 fn debug_start_arguments_put_a_backend_configuration_on_top() {
     let start = |configuration: Value| {
-        crate::plugins::declarative::debug_start_arguments_command(json!({
+        lithe_plugin_manifest::debug_start_arguments_command(json!({
             "manifest": fixture("debug-adapter.plugin.json"),
             "adapterID": "example",
             "request": "launch",
@@ -2154,7 +2153,7 @@ fn debug_start_arguments_put_a_backend_configuration_on_top() {
 fn debug_start_arguments_refuse_stale_registrations_and_missing_target_facts() {
     let missing = debug_start("launch", json!({ "kind": "file" }));
     assert_eq!(missing["error"]["code"], "debug.target.invalid");
-    let stale = crate::plugins::declarative::debug_start_arguments_command(json!({
+    let stale = lithe_plugin_manifest::debug_start_arguments_command(json!({
         "manifest": fixture("debug-adapter.plugin.json"),
         "adapterID": "example",
         "request": "launch",

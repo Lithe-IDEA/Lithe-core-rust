@@ -11,8 +11,7 @@
 //! can show them next to the affected plugin. Only a malformed command
 //! payload is a Core `invalid_request` failure.
 
-use super::capabilities::{self, HostCapabilities, Requires};
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_plugin_model::capabilities::{self, HostCapabilities, Requires};
 use lithe_plugin_model::process::{
     collect_setting_references, is_packaged_runtime_path, validate_launch_value,
     LanguageServerLaunch, LaunchVariable, RuntimeTools, ServerProcess, ServerRole,
@@ -27,6 +26,7 @@ use lithe_plugin_model::{
     parse_template_with, regex_literal, sorted_unique, PluginRejection, TemplatePart, UIIcon,
     Validation,
 };
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -118,7 +118,7 @@ pub struct DeclarativePluginManifest {
     #[serde(rename = "pluginAPIVersion")]
     plugin_api_version: u32,
     /// Capability versions the manifest was written against; see
-    /// `super::capabilities`.
+    /// `lithe_plugin_model::capabilities`.
     requires: Requires,
     vendor: PluginVendor,
     #[serde(default)]
@@ -133,29 +133,29 @@ pub struct DeclarativePluginManifest {
     language_servers: Vec<LanguageServerDeclaration>,
     #[serde(default)]
     execution_providers: Vec<ExecutionProviderDeclaration>,
-    /// User-adjustable options of the plugin; see `super::settings`.
+    /// User-adjustable options of the plugin; see `lithe_plugin_model::settings`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     settings: Vec<SettingDeclaration>,
     /// Buttons on settings pages that invoke the plugin's functions.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     setting_actions: Vec<SettingAction>,
     /// Project-level build tools the plugin describes. The shape and its
-    /// validation live in `crate::build`.
+    /// validation live in `lithe_build`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    build_systems: Vec<crate::build::BuildSystemDeclaration>,
+    build_systems: Vec<lithe_build::BuildSystemDeclaration>,
     /// Version control systems the plugin implements. The shape and its
     /// validation live in `lithe_vcs`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    vcs_providers: Vec<crate::vcs::VcsProviderDeclaration>,
+    vcs_providers: Vec<lithe_vcs::VcsProviderDeclaration>,
     /// Debug adapters the plugin implements. The shape and its validation
-    /// live in `crate::debug::adapters`.
+    /// live in `lithe_debug::adapters`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    debug_adapters: Vec<crate::debug::adapters::DebugAdapterDeclaration>,
+    debug_adapters: Vec<lithe_debug::adapters::DebugAdapterDeclaration>,
     /// Entries of the New Project window. The shape and its validation live
-    /// in `crate::project_generators`.
+    /// in `lithe_project_generators`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    project_generators: Vec<crate::project_generators::ProjectGeneratorDeclaration>,
-    /// The plugin's own process serving its pages; see `super::backend`.
+    project_generators: Vec<lithe_project_generators::ProjectGeneratorDeclaration>,
+    /// The plugin's own process serving its pages; see `lithe_plugin_backend`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     backend: Option<lithe_plugin_backend::BackendDeclaration>,
     /// Tool policies owned by plugins, never a host-maintained definition table.
@@ -176,7 +176,7 @@ pub struct DeclarativePluginManifest {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     output_link_matchers: Vec<lithe_plugin_output_links::OutputLinkMatcher>,
     /// Functions this plugin exports to other plugins and the exported
-    /// functions it calls; see `super::plugin_functions`.
+    /// functions it calls; see `lithe_plugin_functions`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     plugin_functions: Option<lithe_plugin_functions::PluginFunctionsDeclaration>,
 }
@@ -520,15 +520,15 @@ impl lithe_plugin_keymap_import::KeymapImportManifest for DeclarativePluginManif
     }
 }
 
-impl crate::vcs::VcsManifest for DeclarativePluginManifest {
-    fn vcs_providers(&self) -> &[crate::vcs::VcsProviderDeclaration] {
+impl lithe_vcs::VcsManifest for DeclarativePluginManifest {
+    fn vcs_providers(&self) -> &[lithe_vcs::VcsProviderDeclaration] {
         &self.vcs_providers
     }
 }
 
-impl crate::build::BuildManifest for DeclarativePluginManifest {
+impl lithe_build::BuildManifest for DeclarativePluginManifest {
     /// Validated build systems, sorted by ID.
-    fn build_systems(&self) -> &[crate::build::BuildSystemDeclaration] {
+    fn build_systems(&self) -> &[lithe_build::BuildSystemDeclaration] {
         &self.build_systems
     }
 
@@ -558,13 +558,13 @@ impl crate::build::BuildManifest for DeclarativePluginManifest {
     }
 }
 
-impl crate::debug::DebugManifest for DeclarativePluginManifest {
-    fn debug_adapters(&self) -> &[crate::debug::adapters::DebugAdapterDeclaration] {
+impl lithe_debug::DebugManifest for DeclarativePluginManifest {
+    fn debug_adapters(&self) -> &[lithe_debug::adapters::DebugAdapterDeclaration] {
         &self.debug_adapters
     }
 }
 
-impl crate::project_generators::GeneratorManifest for DeclarativePluginManifest {
+impl lithe_project_generators::GeneratorManifest for DeclarativePluginManifest {
     fn display_name(&self) -> &str {
         &self.display_name
     }
@@ -573,7 +573,7 @@ impl crate::project_generators::GeneratorManifest for DeclarativePluginManifest 
         &self.requires
     }
 
-    fn project_generators(&self) -> &[crate::project_generators::ProjectGeneratorDeclaration] {
+    fn project_generators(&self) -> &[lithe_project_generators::ProjectGeneratorDeclaration] {
         &self.project_generators
     }
 
@@ -607,7 +607,7 @@ impl crate::project_generators::GeneratorManifest for DeclarativePluginManifest 
 }
 
 /// Validates a raw manifest value and returns its normalized form as JSON, the
-/// shape [`crate::toolchain::ManifestValidator`] gives toolchain policy.
+/// shape [`lithe_toolchain::ManifestValidator`] gives toolchain policy.
 pub fn validated_manifest_json(value: Value) -> Validation<Value> {
     let manifest = validate_manifest_value(value)?;
     serde_json::to_value(manifest)
@@ -862,10 +862,10 @@ impl DeclarativePluginManifest {
             ));
         }
         self.validate_ui()?;
-        crate::project_generators::validate_declarations(&self.project_generators)?;
-        crate::build::validate_declarations(
+        lithe_project_generators::validate_declarations(&self.project_generators)?;
+        lithe_build::validate_declarations(
             &mut self.build_systems,
-            &crate::build::DeclarationContext {
+            &lithe_build::DeclarationContext {
                 debug_adapters: &self.debug_adapters,
                 official: is_official_namespace(&self.id),
                 declared_settings: &declared_settings,
@@ -873,9 +873,9 @@ impl DeclarativePluginManifest {
                 runtime_tools,
             },
         )?;
-        crate::vcs::validate_declarations(
+        lithe_vcs::validate_declarations(
             &mut self.vcs_providers,
-            &crate::vcs::DeclarationContext {
+            &lithe_vcs::DeclarationContext {
                 declared_settings: &declared_settings,
                 runtime_tools,
             },
@@ -1006,9 +1006,9 @@ impl DeclarativePluginManifest {
             .iter()
             .map(|server| server.language_id.clone())
             .collect();
-        crate::debug::adapters::validate_declarations(
+        lithe_debug::adapters::validate_declarations(
             &mut self.debug_adapters,
-            &crate::debug::adapters::DeclarationContext {
+            &lithe_debug::adapters::DeclarationContext {
                 declared_settings,
                 language_servers: &language_servers,
                 runtime_tools,
@@ -1037,7 +1037,7 @@ impl DeclarativePluginManifest {
         if self.tool_definitions.is_empty() && self.toolchain_providers.is_empty() {
             return Ok(());
         }
-        crate::toolchain::definitions::validate_declarations(
+        lithe_toolchain::definitions::validate_declarations(
             &self.id,
             &self.tool_definitions,
             &self.toolchain_providers,
@@ -1212,7 +1212,7 @@ impl DeclarativePluginManifest {
             || self
                 .build_systems
                 .iter()
-                .any(crate::build::BuildSystemDeclaration::starts_own_provider)
+                .any(lithe_build::BuildSystemDeclaration::starts_own_provider)
         {
             required.insert(PERMISSION_LANGUAGE_SERVER);
         }
@@ -1256,7 +1256,7 @@ impl DeclarativePluginManifest {
         if !self.debug_adapters.is_empty() {
             required.insert(PERMISSION_DEBUG_LAUNCH);
         }
-        if crate::debug::adapters::serves_attach(&self.debug_adapters) {
+        if lithe_debug::adapters::serves_attach(&self.debug_adapters) {
             required.insert(PERMISSION_DEBUG_ATTACH);
         } else if self
             .permissions
@@ -1383,13 +1383,13 @@ impl DeclarativePluginManifest {
             }
         }
         for build_system in &self.build_systems {
-            expected.insert(crate::build::activation_event(build_system));
+            expected.insert(lithe_build::activation_event(build_system));
         }
         for provider in &self.vcs_providers {
-            expected.insert(crate::vcs::activation_event(provider));
+            expected.insert(lithe_vcs::activation_event(provider));
         }
         for adapter in &self.debug_adapters {
-            expected.insert(crate::debug::adapters::activation_event(adapter));
+            expected.insert(lithe_debug::adapters::activation_event(adapter));
         }
         if let Some(ui) = &self.ui {
             for window in &ui.tool_windows {
@@ -1435,13 +1435,13 @@ impl DeclarativePluginManifest {
 
 impl DeclarativePluginManifest {
     /// Stable plugin ID.
-    pub(crate) fn id(&self) -> &str {
+    pub fn id(&self) -> &str {
         &self.id
     }
 
     /// Package-relative HTML entry of this plugin's web tool window
     /// `window_id`, or `None` when the plugin declares no such web window.
-    pub(crate) fn web_window_entry(&self, window_id: &str) -> Option<&str> {
+    pub fn web_window_entry(&self, window_id: &str) -> Option<&str> {
         self.ui
             .as_ref()?
             .tool_windows
@@ -1453,7 +1453,7 @@ impl DeclarativePluginManifest {
     }
 
     /// Plugin version, `major.minor.patch`.
-    pub(crate) fn version(&self) -> &str {
+    pub fn version(&self) -> &str {
         &self.version
     }
 
@@ -1464,12 +1464,12 @@ impl DeclarativePluginManifest {
     }
 
     /// Normalized, sorted permission list.
-    pub(crate) fn permissions(&self) -> &[String] {
+    pub fn permissions(&self) -> &[String] {
         &self.permissions
     }
 
     /// Capability versions the manifest requires.
-    pub(crate) fn requires(&self) -> &Requires {
+    pub fn requires(&self) -> &Requires {
         &self.requires
     }
 
@@ -1611,7 +1611,7 @@ impl DeclarativePluginManifest {
     /// probe, and the run/test argument templates. An update that changes any
     /// of these, even with the same executable, is a new program and must be
     /// approved again.
-    pub(crate) fn programs(&self) -> Vec<Value> {
+    pub fn programs(&self) -> Vec<Value> {
         let mut programs = Vec::new();
         for server in &self.language_servers {
             let mut program = server.process.program(ServerRole::LanguageServer);
@@ -1645,16 +1645,16 @@ impl DeclarativePluginManifest {
             }
         }
         for build_system in &self.build_systems {
-            programs.extend(crate::build::programs(build_system));
+            programs.extend(lithe_build::programs(build_system));
         }
         for provider in &self.vcs_providers {
-            programs.extend(crate::vcs::programs(provider));
+            programs.extend(lithe_vcs::programs(provider));
         }
         for adapter in &self.debug_adapters {
-            programs.extend(crate::debug::adapters::programs(adapter));
+            programs.extend(lithe_debug::adapters::programs(adapter));
         }
         for generator in &self.project_generators {
-            programs.extend(crate::project_generators::programs(generator));
+            programs.extend(lithe_project_generators::programs(generator));
         }
         if let Some(backend) = &self.backend {
             programs.extend(lithe_plugin_backend::programs(backend));
@@ -2611,11 +2611,11 @@ fn build_provider_launch_plan(
         "mayUseNetwork": provider.may_use_network(),
     });
     let mut plan = match provider.process() {
-        crate::build::ProviderProcess::LanguageServer(language_id) => {
+        lithe_build::ProviderProcess::LanguageServer(language_id) => {
             description["languageServer"] = json!(language_id);
             language_server_launch_plan(manifest, language_id, request)?
         }
-        crate::build::ProviderProcess::Own(process) => {
+        lithe_build::ProviderProcess::Own(process) => {
             server_launch_plan(manifest, process, None, request)?
         }
     };
@@ -2677,7 +2677,7 @@ fn debug_adapter_launch_plan(
     adapter_id: &str,
     request: &LanguageServerLaunchPlanRequest,
 ) -> Validation<Value> {
-    use crate::debug::adapters::DebugProcess;
+    use lithe_debug::adapters::DebugProcess;
     let adapter = manifest
         .debug_adapters
         .iter()
@@ -2765,7 +2765,7 @@ pub fn debug_start_arguments_command(payload: Value) -> Result<Value, CoreError>
         #[serde(rename = "adapterID")]
         adapter_id: String,
         #[serde(flatten)]
-        start: crate::debug::adapters::StartRequest,
+        start: lithe_debug::adapters::StartRequest,
     }
     let payload: Payload = decode_payload(payload, COMMAND)?;
     let started = validate_manifest_value(payload.manifest).and_then(|manifest| {
@@ -2782,7 +2782,7 @@ pub fn debug_start_arguments_command(payload: Value) -> Result<Value, CoreError>
                     ),
                 )
             })?;
-        crate::debug::adapters::start_arguments(adapter, &payload.start)
+        lithe_debug::adapters::start_arguments(adapter, &payload.start)
     });
     // `connection` is present only for a remote target, so a host that never
     // attaches to one can ignore it.
@@ -3468,7 +3468,6 @@ pub fn resolve_settings_command(payload: Value) -> Result<Value, CoreError> {
     ))
 }
 
-#[path = "settings_surfaces.rs"]
 mod settings_surfaces;
 pub use settings_surfaces::{
     settings_catalog_command, settings_delivery_command, settings_navigation_command,

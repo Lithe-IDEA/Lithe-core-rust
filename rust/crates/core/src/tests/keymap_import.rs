@@ -1,8 +1,8 @@
 //! Shortcut import through the dispatcher and the host manifest: binding
 //! plans, provider replies, provider declarations and source plans.
 
-use crate::plugins::declarative::DeclarativePluginManifest as Manifest;
 use lithe_plugin_keymap_import::plan_sources_command;
+use lithe_plugin_manifest::DeclarativePluginManifest as Manifest;
 use serde_json::{json, Value};
 
 #[test]
@@ -57,11 +57,11 @@ fn import_provider_manifest_is_generic_bounded_and_permission_checked() {
         "../../../../../shared/plugins/contract/v1/fixtures/keymap-import/keymap-import-provider.plugin.json"
     ))
     .unwrap();
-    let validate = crate::plugins::declarative::validate_manifest_value;
+    let validate = lithe_plugin_manifest::validate_manifest_value;
     assert!(validate(plugin.clone()).is_ok());
     let host_without_importers = json!({"backend": [0]});
     let host_with_importers = json!({"backend": [0], "keymapImportProviders": [0]});
-    let command = crate::plugins::declarative::validate_command;
+    let command = lithe_plugin_manifest::validate_command;
     let rejected = command(json!({
         "manifest": plugin,
         "hostCapabilities": host_without_importers

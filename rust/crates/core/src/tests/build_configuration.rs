@@ -4,8 +4,8 @@ use crate::build::{
     build_configuration_edit_plan_command, build_configuration_plan_command,
     build_decode_configuration_command, build_decode_configuration_edit_command,
 };
-use crate::plugins::declarative::validate_command;
-use crate::plugins::declarative::DeclarativePluginManifest as Manifest;
+use lithe_plugin_manifest::validate_command;
+use lithe_plugin_manifest::DeclarativePluginManifest as Manifest;
 use serde_json::{json, Value};
 
 fn manifest() -> Value {

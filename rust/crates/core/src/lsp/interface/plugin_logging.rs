@@ -3,7 +3,7 @@
 //! The protocol version is the plugin API version (the base contract),
 //! negotiated in `initialize` under `capabilities.experimental.litheLogging`.
 
-use crate::plugins::declarative::SUPPORTED_PLUGIN_API_VERSIONS;
+use lithe_plugin_manifest::SUPPORTED_PLUGIN_API_VERSIONS;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};

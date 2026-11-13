@@ -1,7 +1,5 @@
 //! Validation and routing from versioned command names to their owning domains.
 
-/// The manifest type every domain command validates plugin manifests with.
-use crate::plugins::declarative::DeclarativePluginManifest as Manifest;
 use crate::project::MarkdownRenderRequest;
 use crate::project::{
     self, DirectoryListingRequest, DocumentLifecycleRequest, FileReadRequest, FileWriteRequest,
@@ -31,6 +29,8 @@ use lithe_git::{
     PatchPreviewRequest, WorkspaceRepositoriesRequest,
 };
 use lithe_github::{NormalizeResponseRequest, ParseRemoteRequest, RequestPlanRequest};
+/// The manifest type every domain command validates plugin manifests with.
+use lithe_plugin_manifest::DeclarativePluginManifest as Manifest;
 use serde_json::json;
 
 pub fn execute_json(request: &str) -> String {
@@ -255,35 +255,29 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             parsed.payload,
             crate::plugins::web_content::event_command,
         ),
-        CoreCommand::PluginsDeclarativeValidate => plugin_response(
-            id,
-            parsed.payload,
-            crate::plugins::declarative::validate_command,
-        ),
-        CoreCommand::PluginsDeclarativeRunPlan => plugin_response(
-            id,
-            parsed.payload,
-            crate::plugins::declarative::run_plan_command,
-        ),
+        CoreCommand::PluginsDeclarativeValidate => {
+            plugin_response(id, parsed.payload, lithe_plugin_manifest::validate_command)
+        }
+        CoreCommand::PluginsDeclarativeRunPlan => {
+            plugin_response(id, parsed.payload, lithe_plugin_manifest::run_plan_command)
+        }
         CoreCommand::PluginsDeclarativeDiscoverTests => plugin_response(
             id,
             parsed.payload,
-            crate::plugins::declarative::discover_tests_command,
+            lithe_plugin_manifest::discover_tests_command,
         ),
-        CoreCommand::PluginsDeclarativeTestPlan => plugin_response(
-            id,
-            parsed.payload,
-            crate::plugins::declarative::test_plan_command,
-        ),
+        CoreCommand::PluginsDeclarativeTestPlan => {
+            plugin_response(id, parsed.payload, lithe_plugin_manifest::test_plan_command)
+        }
         CoreCommand::PluginsDeclarativeLanguageServerLaunchPlan => plugin_response(
             id,
             parsed.payload,
-            crate::plugins::declarative::language_server_launch_plan_command,
+            lithe_plugin_manifest::language_server_launch_plan_command,
         ),
         CoreCommand::PluginsLanguageServersDecodeLaunch => plugin_response(
             id,
             parsed.payload,
-            crate::plugins::declarative::decode_language_server_launch_command,
+            lithe_plugin_manifest::decode_language_server_launch_command,
         ),
         CoreCommand::PluginsLanguageServersStateRetention => plugin_response(
             id,
@@ -320,17 +314,17 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
         CoreCommand::DebugAdaptersStartArguments => plugin_response(
             id,
             parsed.payload,
-            crate::plugins::declarative::debug_start_arguments_command,
+            lithe_plugin_manifest::debug_start_arguments_command,
         ),
         CoreCommand::DebugAdaptersExecutablePlan => plugin_response(
             id,
             parsed.payload,
-            crate::plugins::declarative::debug_executable_plan_command,
+            lithe_plugin_manifest::debug_executable_plan_command,
         ),
         CoreCommand::PluginsDeclarativeResolveSettings => plugin_response(
             id,
             parsed.payload,
-            crate::plugins::declarative::resolve_settings_command,
+            lithe_plugin_manifest::resolve_settings_command,
         ),
         CoreCommand::PluginsInstalledSelect => plugin_response(
             id,
@@ -340,42 +334,42 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
         CoreCommand::PluginsSettingsCatalog => plugin_response(
             id,
             parsed.payload,
-            crate::plugins::declarative::settings_catalog_command,
+            lithe_plugin_manifest::settings_catalog_command,
         ),
         CoreCommand::PluginsSettingsNavigation => plugin_response(
             id,
             parsed.payload,
-            crate::plugins::declarative::settings_navigation_command,
+            lithe_plugin_manifest::settings_navigation_command,
         ),
         CoreCommand::PluginsSettingsDelivery => plugin_response(
             id,
             parsed.payload,
-            crate::plugins::declarative::settings_delivery_command,
+            lithe_plugin_manifest::settings_delivery_command,
         ),
         CoreCommand::PluginsDeclarativeSettingsState => plugin_response(
             id,
             parsed.payload,
-            crate::plugins::declarative::settings_state_command,
+            lithe_plugin_manifest::settings_state_command,
         ),
         CoreCommand::PluginsDeclarativeSettingsActionPlan => plugin_response(
             id,
             parsed.payload,
-            crate::plugins::declarative::settings_action_plan_command,
+            lithe_plugin_manifest::settings_action_plan_command,
         ),
         CoreCommand::PluginsDeclarativeEditSettings => plugin_response(
             id,
             parsed.payload,
-            crate::plugins::declarative::edit_settings_command,
+            lithe_plugin_manifest::edit_settings_command,
         ),
         CoreCommand::PluginsDeclarativeWorkspaceConfiguration => plugin_response(
             id,
             parsed.payload,
-            crate::plugins::declarative::workspace_configuration_command,
+            lithe_plugin_manifest::workspace_configuration_command,
         ),
         CoreCommand::PluginsDeclarativeDecodeGrammar => plugin_response(
             id,
             parsed.payload,
-            crate::plugins::declarative::decode_grammar_command,
+            lithe_plugin_manifest::decode_grammar_command,
         ),
         CoreCommand::PluginsEditorActionsDecode => plugin_response(
             id,
@@ -421,13 +415,13 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
         CoreCommand::ToolchainsRegistry => plugin_response(id, parsed.payload, |payload| {
             crate::toolchain::registry_command(
                 payload,
-                crate::plugins::declarative::validated_manifest_json,
+                lithe_plugin_manifest::validated_manifest_json,
             )
         }),
         CoreCommand::ToolchainsDecodeReply => plugin_response(id, parsed.payload, |payload| {
             crate::toolchain::decode_reply_command(
                 payload,
-                crate::plugins::declarative::validated_manifest_json,
+                lithe_plugin_manifest::validated_manifest_json,
             )
         }),
         CoreCommand::ToolchainsFailureReply => {
@@ -467,32 +461,32 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
         CoreCommand::ToolchainsResolve => plugin_response(id, parsed.payload, |payload| {
             crate::toolchain::resolve_command(
                 payload,
-                crate::plugins::declarative::validated_manifest_json,
+                lithe_plugin_manifest::validated_manifest_json,
             )
         }),
         CoreCommand::ToolchainsCheckVersion => plugin_response(id, parsed.payload, |payload| {
             crate::toolchain::check_version_command(
                 payload,
-                crate::plugins::declarative::validated_manifest_json,
+                lithe_plugin_manifest::validated_manifest_json,
             )
         }),
         CoreCommand::ToolchainsDiscoveryPlan => plugin_response(id, parsed.payload, |payload| {
             crate::toolchain::discovery_plan_command(
                 payload,
-                crate::plugins::declarative::validated_manifest_json,
+                lithe_plugin_manifest::validated_manifest_json,
             )
         }),
         CoreCommand::ToolchainsCandidates => plugin_response(id, parsed.payload, |payload| {
             crate::toolchain::candidates_command(
                 payload,
-                crate::plugins::declarative::validated_manifest_json,
+                lithe_plugin_manifest::validated_manifest_json,
             )
         }),
         CoreCommand::ToolchainsInstantiateLaunch => {
             plugin_response(id, parsed.payload, |payload| {
                 crate::toolchain::instantiate_launch_command(
                     payload,
-                    crate::plugins::declarative::validated_manifest_json,
+                    lithe_plugin_manifest::validated_manifest_json,
                 )
             })
         }

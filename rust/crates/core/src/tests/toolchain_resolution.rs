@@ -3,11 +3,11 @@
 use super::toolchain_vectors::{
     local_pins, query_request, query_response, HOME, MANUAL_HOME, WORKSPACE,
 };
-use crate::plugins::declarative::validated_manifest_json;
 use crate::toolchain::{
     candidates_command, check_version_command, discovery_plan_command, failure_reply_command,
     resolve_command,
 };
+use lithe_plugin_manifest::validated_manifest_json;
 use serde_json::{json, Value};
 
 const OLD: &str = "/opt/lithe-fixtures/installs/java/17.0.12";

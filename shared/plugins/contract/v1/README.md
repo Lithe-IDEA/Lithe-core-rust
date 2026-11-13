@@ -37,8 +37,8 @@ This directory is the cross-platform source of truth:
 | `fixtures/marketplace/` | Marketplace index, availability, source URL, and install review golden cases |
 
 Validation and template expansion are implemented once in Rust Core
-(`rust/crates/core/src/plugins/`, with build systems in
-`rust/crates/build/src/`) and exposed through the
+(`rust/crates/plugin-manifest/` and the `rust/crates/plugin-*` crates beside
+it, with build systems in `rust/crates/build/src/`) and exposed through the
 `plugins.declarative.*` commands in [`rust/contracts/rust-core-api.md`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/contracts/rust-core-api.md). Hosts must not
 reimplement them.
 
@@ -1040,7 +1040,7 @@ Optional metadata applies within **one candidate set owned by one plugin**:
   conflicting metadata are manifest errors. Filter platforms only after sorting,
   so anchors remain valid even if they do not apply to the current platform.
 
-`plugins::executables` owns the reusable source types and deterministic order;
+`lithe_plugin_model::executables` owns the reusable source types and deterministic order;
 `ExecutableCandidateResolver` receives file-system, Setting (already validated by
 Core), Environment, Runtime and command-discovery capabilities from the host.
 Results distinguish `skip`, `resolved` and `terminalFailure`; plugins declare data

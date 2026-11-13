@@ -11,10 +11,10 @@ use crate::build::{
     build_resolve_options_command, build_sync_fingerprint_command, build_task_plan_command,
     build_test_discovery_plan_command, build_test_plan_command,
 };
-use crate::plugins::declarative::DeclarativePluginManifest as Manifest;
-use crate::plugins::declarative::{language_server_launch_plan_command, validate_command};
 use crate::plugins::marketplace::install_review_command;
 use crate::protocol::ErrorCode;
+use lithe_plugin_manifest::DeclarativePluginManifest as Manifest;
+use lithe_plugin_manifest::{language_server_launch_plan_command, validate_command};
 use serde_json::{json, Value};
 use std::fs;
 use std::path::PathBuf;
@@ -1918,7 +1918,7 @@ fn invalid_tool_path_values_reject_plans_while_the_settings_display_stays_tolera
         json!({"root":".","platform":"macos","settings":{"toolPath":false}}),
     );
     assert_eq!(result["status"], "rejected", "{result}");
-    let displayed = crate::plugins::declarative::resolve_settings_command(
+    let displayed = lithe_plugin_manifest::resolve_settings_command(
         json!({"manifest":manifest,"settings":{"toolPath":false}}),
     )
     .unwrap();
@@ -2464,7 +2464,7 @@ fn provider_debug_target_bindings_keep_exact_arguments_and_require_bounded_facts
     let target = json!({"kind":"executable","path":"/workspace/app/main","workingDirectory":"/workspace/app",
         "arguments":["a b","x#y"],"environment":{"MODE":"debug"}});
     let arguments = |target: Value| {
-        crate::plugins::declarative::debug_start_arguments_command(json!({"manifest":manifest,
+        lithe_plugin_manifest::debug_start_arguments_command(json!({"manifest":manifest,
         "adapterID":"native","request":"launch","facts":{"registration":{"generation":7,"currentGeneration":7},"target":target}})).unwrap()
     };
     let result = arguments(target.clone());

@@ -922,6 +922,7 @@ dependencies = [
  "lithe-plugin-grammar",
  "lithe-plugin-keymap-import",
  "lithe-plugin-language-servers",
+ "lithe-plugin-manifest",
  "lithe-plugin-model",
  "lithe-plugin-native-ui",
  "lithe-plugin-output-links",
@@ -1178,6 +1179,29 @@ version = "0.1.0"
 dependencies = [
  "lithe-plugin-model",
  "lithe-protocol",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-plugin-manifest"
+version = "0.1.0"
+dependencies = [
+ "lithe-build",
+ "lithe-debug",
+ "lithe-plugin-backend",
+ "lithe-plugin-functions",
+ "lithe-plugin-grammar",
+ "lithe-plugin-keymap-import",
+ "lithe-plugin-language-servers",
+ "lithe-plugin-model",
+ "lithe-plugin-native-ui",
+ "lithe-plugin-output-links",
+ "lithe-plugin-rpc",
+ "lithe-project-generators",
+ "lithe-protocol",
+ "lithe-toolchain",
+ "lithe-vcs",
  "serde",
  "serde_json",
 ]

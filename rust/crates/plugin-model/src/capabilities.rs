@@ -36,7 +36,7 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// `languages[]`: file types and project markers, a TextMate `grammar`, and an
-/// editing `configuration`; see `lithe_core::plugins::grammar`.
+/// editing `configuration`; see `lithe_plugin_grammar`.
 pub const LANGUAGES: &str = "languages";
 /// `languageServers[]`: the launch, `workspaceConfiguration`, and the session
 /// fields a plugin backend uses to talk to its own server (`requestMethods`,
@@ -64,7 +64,7 @@ pub const BUILD_MODEL_INPUTS: &str = "buildModelInputs";
 /// process; see `lithe_vcs`.
 pub const VCS_PROVIDERS: &str = "vcsProviders";
 
-/// `backend`: the plugin's own long-lived process; see `lithe_core::plugins::backend`. It
+/// `backend`: the plugin's own long-lived process; see `lithe_plugin_backend`. It
 /// may start without a page (`onWorkspaceOpen`, a plugin command) and may be
 /// granted the `workspace` host service; it speaks the plugin-function
 /// protocol (`litheFunctions`).
@@ -82,7 +82,7 @@ pub const DEBUG_ADAPTERS: &str = "debugAdapters";
 /// Independent providers that translate external shortcut settings.
 pub const KEYMAP_IMPORT_PROVIDERS: &str = "keymapImportProviders";
 /// `pluginFunctions`: functions exported to, and called from, other plugins;
-/// see `lithe_core::plugins::plugin_functions`.
+/// see `lithe_plugin_functions`.
 pub const PLUGIN_FUNCTIONS: &str = "pluginFunctions";
 /// `toolDefinitions[]`: plugin-owned tool identities, discovery policy, and
 /// executable candidates.
@@ -90,7 +90,7 @@ pub const TOOL_DEFINITIONS: &str = "toolDefinitions";
 /// Backend facts that can influence the executable selected for a defined tool.
 pub const TOOLCHAIN_PROVIDERS: &str = "toolchainProviders";
 /// `outputLinkMatchers[]`: patterns that turn console output into links; see
-/// `lithe_core::plugins::output_links`.
+/// `lithe_plugin_output_links`.
 pub const OUTPUT_LINK_MATCHERS: &str = "outputLinkMatchers";
 
 /// Capability versions this Core build validates and plans. A later version

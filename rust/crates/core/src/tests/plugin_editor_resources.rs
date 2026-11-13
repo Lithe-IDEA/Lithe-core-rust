@@ -1,6 +1,6 @@
 //! Independent static editor resources, without language-server or Run providers.
 
-use crate::plugins::declarative::{decode_grammar_command, validate_command};
+use lithe_plugin_manifest::{decode_grammar_command, validate_command};
 use serde_json::{json, Value};
 
 macro_rules! contract_file {

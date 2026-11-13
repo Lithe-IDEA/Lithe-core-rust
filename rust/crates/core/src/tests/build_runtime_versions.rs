@@ -2,7 +2,7 @@
 //! definition with the same ID, which checks the version itself.
 
 use crate::build::{build_check_tool_version_command, build_invocation_plan_command};
-use crate::plugins::declarative::DeclarativePluginManifest as Manifest;
+use lithe_plugin_manifest::DeclarativePluginManifest as Manifest;
 use serde_json::{json, Value};
 
 fn manifest() -> Value {

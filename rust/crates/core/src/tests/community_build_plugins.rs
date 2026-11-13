@@ -26,9 +26,9 @@ use crate::build::{
     build_decode_model_command, build_dependency_plan_command, build_detect_command,
     build_model_plan_command, build_task_plan_command, build_test_plan_command,
 };
-use crate::plugins::declarative::validate_command;
-use crate::plugins::declarative::DeclarativePluginManifest as Manifest;
 use crate::plugins::marketplace::install_review_command;
+use lithe_plugin_manifest::validate_command;
+use lithe_plugin_manifest::DeclarativePluginManifest as Manifest;
 use serde_json::{json, Value};
 use std::fs;
 use std::path::PathBuf;

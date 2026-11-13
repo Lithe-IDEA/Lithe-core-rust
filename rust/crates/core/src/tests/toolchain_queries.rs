@@ -1,8 +1,8 @@
 //! Pure query validation with inert native filesystem facts and cross-platform paths.
 
 use super::toolchain_vectors::{error_responses, query_request, query_response, HOME, WORKSPACE};
-use crate::plugins::declarative::validated_manifest_json;
 use crate::toolchain::{paths, query};
+use lithe_plugin_manifest::validated_manifest_json;
 use serde_json::{json, Value};
 
 fn contract(name: &str) -> Value {

@@ -1,7 +1,7 @@
 //! Native Build document storage syntax shared by macOS and Windows.
 
 use crate::build::project_options_command;
-use crate::plugins::declarative::DeclarativePluginManifest as Manifest;
+use lithe_plugin_manifest::DeclarativePluginManifest as Manifest;
 use serde_json::{json, Value};
 
 #[test]
