@@ -371,7 +371,7 @@ fn tool_choices(field: &GeneratorField, input: &FormInput) -> Vec<ToolChoice> {
 }
 
 /// Compares a value with the field's `maximumVersion`, expanded over the
-/// earlier fields. An empty value or bound (no JDK chosen yet) is left to the
+/// earlier fields. An empty value or bound (no tool chosen yet) is left to the
 /// fields' own checks.
 fn version_too_high(
     field: &GeneratorField,
@@ -493,9 +493,9 @@ mod tests {
     fn hidden_fields_are_not_validated_or_read() {
         let generator = generator(json!([
             {"id": "buildSystem", "type": "enum", "title": "Build", "options": [
-                {"value": "none", "title": "None"}, {"value": "maven", "title": "Maven"}]},
+                {"value": "none", "title": "None"}, {"value": "packaged", "title": "Packaged"}]},
             {"id": "groupId", "type": "text", "title": "Group",
-             "visibleWhen": {"field": "buildSystem", "equals": "maven"}}
+             "visibleWhen": {"field": "buildSystem", "equals": "packaged"}}
         ]));
         let state = evaluate(&generator, &input("demo", json!({}), &[]));
         assert!(!field(&state, "groupId").visible);
@@ -504,7 +504,7 @@ mod tests {
 
         let state = evaluate(
             &generator,
-            &input("demo", json!({"buildSystem": "maven"}), &[]),
+            &input("demo", json!({"buildSystem": "packaged"}), &[]),
         );
         assert_eq!(
             field(&state, "groupId").problem,
@@ -516,31 +516,34 @@ mod tests {
     fn rejects_unsafe_text_and_old_tools() {
         let generator = generator(json!([
             {"id": "groupId", "type": "text", "title": "Group", "pattern": "[a-z.]+"},
-            {"id": "jdk", "type": "tool", "title": "JDK", "tool": "java", "minimumVersion": "17"}
+            {"id": "compiler", "type": "tool", "title": "Compiler", "tool": "compiler", "minimumVersion": "17"}
         ]));
         let mut form = input("demo", json!({"groupId": "-Dx=y"}), &["groupId"]);
         form.tools
-            .insert("jdk".into(), vec![installation("/jdk", "11.0.2")]);
+            .insert("compiler".into(), vec![installation("/compiler", "11.0.2")]);
         let state = evaluate(&generator, &form);
         assert_eq!(
             field(&state, "groupId").problem,
             Some(FieldProblem::InvalidFormat)
         );
-        assert_eq!(field(&state, "jdk").problem, Some(FieldProblem::ToolTooOld));
+        assert_eq!(
+            field(&state, "compiler").problem,
+            Some(FieldProblem::ToolTooOld)
+        );
     }
 
-    /// A target release newer than the selected JDK cannot compile, so the
-    /// bound follows the JDK; before a JDK is chosen nothing is compared.
+    /// A target level newer than the selected compiler cannot compile, so the
+    /// bound follows the compiler; before one is chosen nothing is compared.
     #[test]
     fn maximum_version_follows_an_earlier_tool() {
         let generator = generator(json!([
-            {"id": "jdk", "type": "tool", "title": "JDK", "tool": "java", "minimumVersion": "17"},
-            {"id": "javaVersion", "type": "enum", "title": "Java", "maximumVersion": "${field.jdk.major}",
+            {"id": "compiler", "type": "tool", "title": "Compiler", "tool": "compiler", "minimumVersion": "17"},
+            {"id": "languageLevel", "type": "enum", "title": "Level", "maximumVersion": "${field.compiler.major}",
              "options": [{"value": "17", "title": "17"}, {"value": "21", "title": "21"}]}
         ]));
-        let mut form = input("demo", json!({"javaVersion": "21"}), &[]);
+        let mut form = input("demo", json!({"languageLevel": "21"}), &[]);
         assert_eq!(
-            field(&evaluate(&generator, &form), "javaVersion").problem,
+            field(&evaluate(&generator, &form), "languageLevel").problem,
             None
         );
         for (version, problem) in [
@@ -549,9 +552,9 @@ mod tests {
             ("25", None),
         ] {
             form.tools
-                .insert("jdk".into(), vec![installation("/jdk", version)]);
+                .insert("compiler".into(), vec![installation("/compiler", version)]);
             assert_eq!(
-                field(&evaluate(&generator, &form), "javaVersion").problem,
+                field(&evaluate(&generator, &form), "languageLevel").problem,
                 problem,
                 "{version}"
             );

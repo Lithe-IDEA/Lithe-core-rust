@@ -16,8 +16,8 @@
   "unrelated": {
     "version": 2,
     "toolchain": {
-      "java": {
-        "homePath": "/fixture/jdk"
+      "owner-field": {
+        "homePath": "/fixture/runtime"
       }
     },
     "configurations": []

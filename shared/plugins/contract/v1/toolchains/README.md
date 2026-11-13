@@ -10,8 +10,8 @@ runs the definition's version probe on executables Core returns from
 `candidates`, and shows the result. Any change to a watched input reloads the
 whole snapshot. Nothing is saved by these pages. A separate fresh-resolution
 adapter serves macOS Build and Provider Run; settings detections are never used
-as launch permits. Java and language-server consumers resolve their tools with
-their own adapters. Windows has no
+as launch permits. Language-server consumers resolve their tools with their
+own adapters. Windows has no
 toolchain adapter and does not advertise `toolDefinitions` or
 `toolchainProviders`, so Core refuses packages that require them there.
 Consumer migration, the native query lifecycle and cache, pin saving and

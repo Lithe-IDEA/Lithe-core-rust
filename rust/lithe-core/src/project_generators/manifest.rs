@@ -304,8 +304,8 @@ pub(crate) enum GeneratorStep {
         arguments: Vec<ConditionalValue>,
         #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
         environment: BTreeMap<String, String>,
-        /// The tool writes the project into this subdirectory (Maven's
-        /// archetype plugin uses the artifact ID); its contents become the
+        /// The tool writes the project into this subdirectory (a scaffolding
+        /// tool may name it after the project); its contents become the
         /// project root.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         collect: Option<String>,

@@ -27,7 +27,7 @@
 | `ui` | `ui` | [界面](ui.md) |
 | `buildSystems`（不含 `provider`） | `buildSystems`；`modelSharing` 与 `modelInputs` 还需要 `buildModelInputs`（桌面端未声明） | [声明式构建](build-systems.md) |
 | `buildSystems[].provider` | `buildProviders` | [构建提供者](build-providers.md) |
-| `buildSystems` 里的 `hostIntegration`（模型、测试结果、依赖来源） | `buildSystems`；只限官方插件，目前只有 `maven` | [声明式构建](build-systems.md) |
+| `buildSystems` 里的 `hostIntegration` | 保留字段：任何 ID 都返回 `plugin.integration.unsupported` | [声明式构建](build-systems.md) |
 | `vcsProviders` | `vcsProviders`（桌面端未声明） | [VCS](vcs.md) |
 | `backend` | `backend` | [插件后端](backend.md) |
 | `pluginFunctions` | `pluginFunctions`、`backend`；不授予权限 | [插件后端](backend.md) |
@@ -41,7 +41,7 @@
 
 `requires` 必须写，并且恰好列出清单用到的能力：漏列或多列都是 `plugin.manifest.invalid`。能力名不是契约定义的，或版本不是 `0`，是 `plugin.api.unsupported`，`field` 为 `requires.<能力名>`。
 
-`hostIntegration` 在两处是不同的声明。语言服务器的 `hostIntegration` 对所有插件开放，只读取声明插件自己包里的资源，不授予额外权限（见[语言](languages.md)）。构建系统的 `hostIntegration` 仍只限官方插件，目前只有 `maven`（见[声明式构建](build-systems.md)）。宿主没有实现的 ID 一律返回 `plugin.integration.unsupported`。
+语言服务器和构建系统都有 `hostIntegration` 字段，两处都是保留字段：Core 不实现任何宿主集成，声明任何 ID 都返回 `plugin.integration.unsupported`（见[语言](languages.md)和[声明式构建](build-systems.md)）。语言或构建工具需要的一切，都由插件自己的后端、提供者和声明给出。
 
 ### 能力与宿主
 
@@ -139,7 +139,7 @@ Every plugin package has a `plugin.json` at its root. It says who the plugin is,
 | `ui` | `ui` | [UI](ui.md) |
 | `buildSystems` (without `provider`) | `buildSystems`; `modelSharing` and `modelInputs` also need `buildModelInputs` (not declared by the desktop host) | [Declarative build systems](build-systems.md) |
 | `buildSystems[].provider` | `buildProviders` | [Build providers](build-providers.md) |
-| `hostIntegration` inside `buildSystems` (model, test-result, or dependency source) | `buildSystems`; official plugins only, and only `maven` exists | [Declarative build systems](build-systems.md) |
+| `hostIntegration` inside `buildSystems` | Reserved: every ID returns `plugin.integration.unsupported` | [Declarative build systems](build-systems.md) |
 | `vcsProviders` | `vcsProviders` (not declared by the desktop host) | [VCS](vcs.md) |
 | `backend` | `backend` | [Plugin backend](backend.md) |
 | `pluginFunctions` | `pluginFunctions`, `backend`; grants no permission | [Plugin backend](backend.md) |
@@ -153,7 +153,7 @@ Every plugin package has a `plugin.json` at its root. It says who the plugin is,
 
 `requires` is required and must list **exactly** the capabilities the manifest uses: a missing or unused one is `plugin.manifest.invalid`. A capability name the contract does not define, or a version other than `0`, is `plugin.api.unsupported` with `field` set to `requires.<capability>`.
 
-`hostIntegration` is two different declarations. A language server's `hostIntegration` is open to every plugin; it reads only resources inside the declaring plugin's own package and grants no extra permission (see [Languages](languages.md)). A build system's `hostIntegration` is still limited to official plugins, and only `maven` exists (see [Declarative build systems](build-systems.md)). An ID the host does not implement is always `plugin.integration.unsupported`.
+Language servers and build systems each have a `hostIntegration` field, and both are reserved: Core implements no host integration, and declaring any ID returns `plugin.integration.unsupported` (see [Languages](languages.md) and [Declarative build systems](build-systems.md)). Everything a language or build tool needs comes from the plugin's own backend, providers, and declarations.
 
 ### Capabilities and host
 

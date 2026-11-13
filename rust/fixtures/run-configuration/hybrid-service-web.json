@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "generated": {
+    "version": 2,
+    "configurations": [
+      {
+        "id": "build.service:backend",
+        "name": "backend",
+        "provider": "build.service",
+        "execution": "service",
+        "cwd": ".",
+        "toolchains": {
+          "runtime": "project-runtime",
+          "build": "project-build"
+        }
+      },
+      {
+        "id": "npm.script:web/dev",
+        "name": "dev",
+        "provider": "npm.script",
+        "execution": "service",
+        "command": "npm",
+        "args": [
+          "run",
+          "dev"
+        ],
+        "cwd": "web",
+        "toolchains": {
+          "runtime": "project-node"
+        }
+      }
+    ]
+  },
+  "requirements": {
+    "version": 1,
+    "toolchains": {
+      "project-runtime": {
+        "type": "runtime",
+        "minimumVersion": "21"
+      },
+      "project-build": {
+        "type": "build-tool"
+      },
+      "project-node": {
+        "type": "node",
+        "minimumVersion": "22"
+      }
+    }
+  },
+  "expected": {
+    "missingNodeDiagnosticConfigurationIds": [
+      "npm.script:web/dev"
+    ],
+    "unblockedConfigurationIds": [
+      "build.service:backend"
+    ]
+  }
+}

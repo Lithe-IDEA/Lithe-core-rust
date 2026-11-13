@@ -7,6 +7,7 @@ const MAX_DIRECTORIES: usize = 1024;
 const MAX_TOOLS_PER_DIRECTORY: usize = 64;
 const MAX_DIRECTORY_BYTES: usize = 2048;
 const MAX_PATH_BYTES: usize = 4096;
+const MAX_LEGACY_PROPERTIES: usize = 16;
 
 /// Resolves a stored pin without granting execution authority or modifying the document.
 /// Callers must independently require an active definition and validate native files.
@@ -143,10 +144,11 @@ pub(crate) fn validate(document: &Value) -> Validation<()> {
     for (id, value) in legacy {
         text(&Value::String(id.clone()), "document.toolchains", 192)?;
         let field = format!("document.toolchains.{id}");
-        // The legacy key set mirrors toolchain-local-v1.schema.json so documents written
-        // by earlier releases keep validating. Legacy paths retain their original
-        // meaning; validation must not migrate or interpret them.
-        let entry = object(value, &field, &["home", "executable", "javaHome"])?;
+        // Legacy entries are opaque string records so documents written by earlier
+        // releases keep validating whichever keys a tool used. Core neither names
+        // nor interprets those keys; validation only bounds their count and size.
+        let entry = object(value, &field, &[])?;
+        count(entry.len(), MAX_LEGACY_PROPERTIES, &field)?;
         for (property, value) in entry {
             text(value, &format!("{field}.{property}"), MAX_PATH_BYTES)?;
         }

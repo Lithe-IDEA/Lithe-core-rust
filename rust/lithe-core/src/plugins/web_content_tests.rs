@@ -382,8 +382,8 @@ fn build_methods_pass_to_a_host_that_serves_them() {
         page,
         2,
         "functions.list",
-        json!({ "instance": "maven:root" }),
+        json!({ "instance": "build:root" }),
     );
-    assert_eq!(with_instance["action"]["params"]["instance"], "maven:root");
+    assert_eq!(with_instance["action"]["params"]["instance"], "build:root");
     close_command(json!({ "page": page })).expect("close");
 }

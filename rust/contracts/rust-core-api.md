@@ -219,7 +219,6 @@ const char *lithe_core_version(void);
 char *lithe_core_execute_json(const char *request);
 char *lithe_core_execute_json_with_events(const char *request, void (*callback)(const char *, void *), void *context);
 int32_t lithe_core_git_askpass(const char *prompt);
-char *lithe_core_lsp_provider_catalog_json(const char *workspace_root);
 int32_t lithe_core_cancel(const char *operation_id);
 void lithe_core_free_string(char *value);
 void lithe_core_install_log_waker(void (*callback)(void *), void *context);
@@ -229,49 +228,10 @@ int32_t lithe_core_remove_log_waker(void *context);
 The macOS package uses the small C bridge in `macos/Sources/LitheRustCore/`. The
 canonical C declarations are in `rust/lithe-core/include/lithe_core.h`.
 Native clients can link the same `staticlib` or `cdylib`; Rust hosts call
-`lithe_core::execute_json` and `lithe_core::cancel_operation` directly. Hosts
-call `lithe_core::execution::plan_launch_command` (or the
-`execution.planLaunchCommand` JSON command) before spawning a Java process. The
-request fields are `executable` (required, non-empty launcher path), `arguments`
-(string array, excluding the executable), `javaFeatureVersion` (optional
-integer), `javaReleaseContents` (optional string array of host-read `release`
-file texts, nearest first), and `commandLineLimit` (optional byte budget; default
-30719, which is 32767 - 2048). An explicit `javaFeatureVersion` takes precedence
-over the contents. Core reads the first entry containing `JAVA_VERSION=`; an
-unrecognized value is unknown and does not fall back to a farther entry. The
-planner changes a launch only when the executable file name is `java`, `java.exe`,
-`javaw` or `javaw.exe`, the estimated command line exceeds the limit, the JDK
-feature version is known and at least 9, and a path-list option (`-cp`,
-`-classpath`, `--class-path`, `-p` or `--module-path`, in separate or `=` form)
-precedes the application target. Planning stops at the application target (main
-class, `-jar`, or `-m`/`--module`); program arguments stay verbatim. The response
-`data` is `{ arguments, argumentFile }`. `arguments` is the request list unchanged
-when no file is needed. Otherwise the element at `argumentFile.argumentIndex` is an
-empty placeholder that the host replaces with `@<argument file path>`, and
-`argumentFile` is `{ text, argumentIndex }`; it is `null` when the launch is
-unchanged. `lithe_core::execution::java_feature_version_from_release` reads the
-feature version from one release file text.
-Core owns the Unicode argument-file text and quoting. The Windows host encodes
-that text losslessly using the launcher's actual system code page, independently
-of the JDK feature version: JEP 400 does not make native launcher arguments UTF-8.
-An unrepresentable path is reported as an actionable failure, never substituted.
-The host also escapes backslash bytes introduced by multibyte encoding inside
-quoted values, since the native argument-file parser processes bytes.
-Every execution owns an exclusively created temporary file; partial writes and
-spawn failures clean it up, while successful launches retain it until that exact
-process exits. A replacement execution never shares its predecessor's file.
-The `plan_classpath_jar_launch` fallback for known JDK versions older than 9 is not
-yet provided: there is no Rust API or JSON command for it. Those launches stay
-direct, so an oversized Windows JDK 8 command line is not shortened yet. The macOS
-process argument limit (`ARG_MAX`) is far above the Windows cap, so a direct JDK 8
-launch already succeeds there.
+`lithe_core::execute_json` and `lithe_core::cancel_operation` directly.
 Strings returned by the core are UTF-8 JSON allocated by Rust. The caller must
 release response strings with `lithe_core_free_string`.
 
-Rust native adapters may call `execution::java_feature_version_from_release` to read the
-JDK feature version from bounded host-read `release` metadata, then reuse Core's
-runtime candidate ordering. Passive Build discovery never falls back to running
-Java when that metadata is missing or invalid; explicit tool execution owns probes.
 ### Localized action search
 
 `search.actions` accepts `{query, candidates: [{texts: [string]}]}` and returns
@@ -380,79 +340,6 @@ subsystem: `mcp.parseConfiguration`, `mcp.parseRegistry`, `mcp.featuredRegistry`
 `rust/fixtures/mcp` and `rust/contracts/mcp-registry-page.json`. The IDE-facing MCP
 server (`lithe-mcp` plus `rust/fixtures/ide-api/mcp-protocol.json`) is unaffected and
 stays in `lithe-ide-host`.
-### Maven test results
-
-`maven.testResults` accepts `{ "root": string, "output": string }` and parses
-the bounded text emitted by Maven Surefire or Failsafe after a JUnit 4/5 class
-or method run. `root` must be an existing workspace directory and `output` is
-limited to 500,000 characters. The response is:
-
-```json
-{
-  "testsRun": 4,
-  "failures": 1,
-  "errors": 1,
-  "skipped": 1,
-  "passed": 1,
-  "success": false,
-  "failureDetails": [
-    {
-      "name": "additionIsCorrect(com.example.CalculatorTest)",
-      "kind": "failure",
-      "message": "expected <4> but was <5>",
-      "path": "src/test/java/com/example/CalculatorTest.java",
-      "line": 42,
-      "column": null
-    }
-  ]
-}
-```
-
-`kind` is `failure` or `error`; `path` is a workspace-relative source path
-when a stack frame or failure footer can be resolved unambiguously. Relative
-source lookup requires a complete workspace index, prefers a unique full
-package-path suffix at a path boundary, and falls back to a unique filename
-only when no package-path candidate exists. Ambiguous matches or an incomplete
-scan (including the 10,000-directory limit) leave the location `null`.
-All locations use one-based lines with nullable columns. `passed` is derived from the summary and never
-negative. A final `Results` summary is preferred; when Maven only prints
-per-class summaries, the counts are aggregated. Failure details retain Maven's output order and are bounded to
-10,000 entries. A parser or size violation returns the standard
-`parse_failed` error.
-
-The request may also carry `reports: { module, sourcePath, classes,
-notBeforeMillis }` naming the run's workspace-relative Maven module directory
-(`null` or `.` for the root), the binary names of the selected test classes, and
-the run's start time in Unix milliseconds. When `module` is absent and
-`sourcePath` names a workspace-relative test file, the module is the nearest
-directory above that file holding a `pom.xml`. An empty or absent `classes`
-reads every report in the module written at or after `notBeforeMillis`. Core then reads the Surefire/Failsafe XML reports
-the run wrote and returns `testCases`, otherwise an empty list:
-
-```json
-{ "className": "com.example.CalculatorTest", "method": "additionIsCorrect",
-  "status": "failed", "message": "expected <4> but was <5>", "invocations": 1,
-  "durationMillis": 23 }
-```
-
-Optional `durationMillis` comes only from each XML testcase's `time` seconds attribute. Repeated/parameterized invocations sum their times in whole milliseconds; if any invocation has a missing, negative, non-finite, unrepresentable time or the sum overflows the host integer range, the field is omitted. A reported zero is valid. Hosts hide missing method durations and must not substitute a console/suite summary or another class's method time. `build.decodeTestResults` preserves the same duration in its canonical testcase result.
-
-Reports are searched in the module's configured Surefire/Failsafe
-`reportsDirectory` values plus `<build directory>/surefire-reports` and
-`failsafe-reports`. Only `TEST-<class>.xml` and nested `TEST-<class>$*.xml`
-files modified at or after `notBeforeMillis` are read, so an earlier run's
-reports never produce outcomes. `method` drops parameter lists and invocation
-indexes; invocations that report a display name instead of a method are
-omitted. `status` is `passed`, `failed`, `error`, or `skipped`; when a method
-has several invocations, the most severe wins (error, failed, passed, skipped)
-and `message` comes from the first invocation with that status. Results are
-ordered by `className`, then `method`. Core reads at most 512 reports of up to
-32 MiB each and returns at most 10,000 methods; malformed reports are skipped.
-A module outside the workspace or a class name that is not a Java binary name
-returns `invalid_request`. A class with no case means "no recorded outcome",
-never "passed". Platform stores must associate the response with the
-launch operation and discard it after cancellation, replacement, or workspace
-change.
 
 Workspace paths in responses are relative and use `/` separators. Line numbers
 are one-based. `git.status.repositoryRoot` may be an absolute path when the
@@ -534,7 +421,7 @@ the source as `originalPath`; platform mutations that act on the Git entry pass
 both paths back to Core.
 The core rejects absolute paths and `..`
 traversal for file commands. Native file dialogs, file watching, PTY/ConPTY,
-Java processes, and runtime discovery remain platform adapters.
+and runtime discovery remain platform adapters.
 
 `git.history.recentReferences` contains at most five existing local branches in
 most-recently-used order. The current branch is first. Core derives checkout
@@ -1319,7 +1206,8 @@ a filter (omit it to show every commit), `displayMode` is `compact` (default) or
 `expanded`, and `currentBranch` asks for the ancestry of that local branch. Hosts call
 it once per loaded window, never per commit, and recompute the whole window when a page
 is appended or the history refreshes; lanes depend on every loaded edge, and a head
-fragment's color ID is the Java `String.hashCode` of its principal reference name, so a
+fragment's color ID is the wrapping 32-bit hash `h = 31 * h + unit` over the UTF-16
+units of its principal reference name (the value IDEA's `GraphColorManagerImpl` uses), so a
 named branch keeps its color across pages. The response is `{ "version", "rows",
 "laneCount", "recommendedLaneCount", "hasMissingParents", "currentBranchHashes" }`.
 Each visible row carries `commitHash`, integer `lane` and `laneCount`, a signed
@@ -1714,9 +1602,8 @@ visibility. Names share index invalidation and reported file updates; changes
 inside unwatched generated directories require workspace/index refresh. No index
 files or resources are written to disk. macOS Search Everywhere requests pages of
 50 matches per source; legacy synchronous consumers retain their requested caps.
-Java type and method results still use the existing syntax index and include a
-one-based line, `symbolName`, and source line in `preview`; language-provider
-workspace-symbol integration and external-library search are not implied.
+Name search does not read language syntax: language-provider workspace-symbol
+integration and external-library search are not implied.
 The shared name/range examples are in `rust/fixtures/search/name-matching.json`.
 
 `workspace.replacePreview` accepts `root`, `query`, `replacement`, the same
@@ -1903,7 +1790,7 @@ The `debug.*` commands are the shared Debug Adapter Protocol boundary. Rust
 owns DAP framing, request sequences, response correlation, initialization and
 execution state, deterministic breakpoint sets, and normalized thread, stack,
 scope, variable, evaluation, output, stop, continue, and termination events.
-Platforms own adapter discovery, JDT LS activation, sockets or process pipes,
+Platforms own adapter discovery, sockets or process pipes,
 native process termination, persistence, and UI rendering.
 
 `debug.validateAdapterEndpoint` accepts exactly `{ host, port }`. `host` is a
@@ -2227,10 +2114,10 @@ native clients must not treat its `source.path` as a workspace file.
 
 Exception information is available only while
 paused and normalizes the exception type, description, break mode, optional
-stack trace, evaluation name, and nested exception details. The Java adapter
-currently supplies the type, description, and break mode but no expandable
-exception object reference, so native clients continue to inspect ordinary
-frame scopes for local state.
+stack trace, evaluation name, and nested exception details. An adapter that
+supplies the type, description, and break mode without an expandable exception
+object reference leaves native clients to inspect ordinary frame scopes for
+local state.
 Terminal operation events are exactly one of `operationCompleted` with a typed
 result or `operationFailed` with the adapter command and safe message. Other
 ordered events are `stateChanged`, `initialized`, `output`, `stopped`,
@@ -2253,7 +2140,7 @@ absent, Core derives DAP `terminateDebuggee` from the session's request kind:
 use `false`. A provided value applies to `launch` sessions only, so a user can
 keep a local debuggee running. An `attach` session never terminates the external
 process, even when `terminateDebuggee: true` is sent. This prevents a remote
-detach from killing a JVM the IDE does not own.
+detach from killing a process the IDE does not own.
 The compatibility cases are in
 `rust/fixtures/debug/disconnect-policy-v1.json`. The platform keeps the
 socket or process alive long enough to flush the frame, then closes it and
@@ -2310,21 +2197,14 @@ the Project view's natural file-name order. Severity is the LSP number;
 missing or out-of-range values are unknown (`0`) and rank last. Cases:
 `rust/fixtures/lsp/problems-query-v1.json`.
 
-The LSP provider catalog is returned by `lithe_core_lsp_provider_catalog_json`.
-Each provider descriptor may include `languageServerLaunch` with ordered
-`executableNames` and `arguments`; Swift adapters use this metadata when they
-need to discover a real language-server executable; the selected launch plan is
-then submitted to the Rust-owned runtime. Built-in descriptors are merged by provider ID with the optional
-`.lithe/lsp/language-providers.json` workspace document. See
-[`.agents/notes/implemented/architecture/2026-09-13-language-tooling-and-lsp-runtime-ownership.md`](https://github.com/1lck/Lithe-IDEA/blob/preview/.agents/notes/implemented/architecture/2026-09-13-language-tooling-and-lsp-runtime-ownership.md)
-for routing, discovery, lifecycle, and compatibility rules.
+Core ships no built-in language-provider catalog. Every language server comes
+from a plugin's `languageServers` declaration, which Core validates and plans.
 
 The `lsp.*Server`, `lsp.*Document`, `lsp.request`, `lsp.pollEvents`, and
 `lsp.waitEvents`
 commands are the semantic LSP runtime boundary. `lsp.startServer` accepts the
 provider ID, selected executable/arguments/environment, root URI, working
-directory, initialization options, optional runtime executable,
-`jdtlsLaunchResources`, cache directory, `workspaceFingerprint`, and the
+directory, initialization options, and the
 optional `pluginId` of the plugin that owns the process, its optional
 `workspaceConfiguration` (an object, plugin-owned sessions only), its
 optional `hostServices` (the launch plan's `backend.hostServices`;
@@ -2333,117 +2213,8 @@ its optional `hostOptions` (plugin-owned sessions only; `editor:{actionIcons,
 actionSourceBytes, providerTypes}` declares the icons, collector source bound and
 provider types the host implements, reported through `lithe/host/getCapabilities`
 to sessions granted the matching editor methods), plus
-initialize, post-initialize readiness, request, Java project build
-(`javaBuildTimeoutMilliseconds`), and shutdown deadlines.
-Java callers may also provide the versioned `mavenContext` accepted by
-`maven.launchPlan`. Core validates its reactor and recursively declared modules,
-publishes the user-level settings through
-`java.configuration.maven.userSettings` and the selected installation's
-`conf/settings.xml` through `java.configuration.maven.globalSettings`, and,
-after `ServiceReady`, sends one
-`java.project.updateSettings` command per Maven project with
-`org.eclipse.m2e.core.selectedProfiles`. Maven Java, test, and generated source
-roots are normalized to workspace-relative `java.project.sourcePaths` during
-the same configuration flow, so JDT LS receives the selected reactor's source
-model without platform-specific POM parsing. Both settings documents are passed as content-addressed copies inside the
-session's JDT LS state directory (`<data>/.lithe/maven/`). The user-level copy
-comes from `settingsPath`, else Maven's default `~/.m2/settings.xml`, else an
-empty document when only `localRepositoryPath` is set, and carries that local
-repository override. JDT LS detects settings changes by comparing paths, so a
-content change must always produce a new path. An unreadable document is passed
-by its original path with a session warning instead of failing startup.
-Copies remain readable until JDT workspace cache eviction or index rebuilding;
-notification delivery is not an acknowledgement that the server read them.
-
-Gradle callers may also provide `javaGradle = { wrapperPresent, offline?, userHome? }`, where
-`wrapperPresent` reports whether the root ships
-`gradle/wrapper/gradle-wrapper.properties`. When present, Core states
-`java.import.gradle.enabled` in `settings.java` and, if that descriptor exists,
-`java.import.gradle.wrapper.enabled`. Both leaves equal JDT LS's own defaults,
-so the section declares the import behavior Lithe relies on instead of changing
-it; Buildship itself decides which distribution to use, honoring the wrapper only
-when the project ships that descriptor. Settings that require reading the build
-script (`java.home`, `version`) are never guessed. `offline` and `userHome`
-are the user's own build options, as `build.languageImport` maps them from the
-plugin that declares the Gradle build system; Core sends
-`java.import.gradle.offline.enabled` and `java.import.gradle.user.home` only
-when they are set, and the session keeps them until it restarts. A workspace
-whose root declares no Gradle build file sends no `javaGradle` and therefore
-receives no `java.import` settings.
-
-`lsp.updateMavenConfiguration` accepts `{ sessionId, mavenContext,
-reloadProjects? }` for a running Java session started with a `mavenContext`,
-and returns `{ settingsChanged, projectsReloaded, profilesUpdating }`. When the
-settings copies differ from the ones JDT LS holds, Core sends
-`workspace/didChangeConfiguration` and JDT LS force-updates every Maven project
-itself. When they are unchanged and `reloadProjects` is `true`, Core sends
-`java/projectConfigurationsUpdate` for the reactor's project URIs, which
-re-resolves dependencies even though no `pom.xml` changed. Changed profiles
-restart the profile task once the session is ready. Before the `initialized`
-handshake, the new configuration replaces the one the pending settings
-notification sends. Explicit reloads received before `ServiceReady` are coalesced
-and sent once projects are ready, even when settings are unchanged. Response
-booleans describe actions sent immediately, not queued work. A newer profile
-selection is applied after the preceding batch terminates, including failed
-batches; timed-out requests must all drain before that follow-up can start.
-The same failed selection is not automatically retried.
-A stopped or failed session returns `invalidRequest`.
-Resolution problems are not part of the response; JDT LS reports them as
-`pom.xml` diagnostics.
-
-Maven profile application is a
-bounded background task: at most eight project commands are in flight, remaining
-projects are queued, and each project reports `running`, `succeeded`, or
-`failed` with optional error details. Project results use a redacted stable
-`projectUri` identifier; they never expose the user's absolute workspace path.
-The runtime event also carries the aggregate Maven task status (`running`,
-`succeeded`, `partiallySucceeded`, `failed`, `timedOut`, or `cancelled`) so hosts
-do not need to infer task completion from log text. A project failure or task timeout does not
-terminate an otherwise usable JDT LS session; the host receives a partial-failure
-event and may retry. The session reaches `ready` after JDT LS `ServiceReady`.
-Core only accepts retries for a ready Java session. A timeout sends `$/cancelRequest`
-but retains each in-flight slot until its terminal response arrives. Retry is
-rejected while the previous batch is still stopping; if JDT LS never responds,
-the user must restart the Java session. Late responses release those slots
-without changing the timed-out results.
-Hosts reset project results on the structured `mavenProfileTask: "running"`
-event and consume `mavenProfileProject` updates directly, scoped to the current
-session. Java import completion and Maven task completion use separate UI
-notifications so service readiness cannot overwrite a Maven failure.
-The session continues to expose profile progress independently. `initializeTimeoutMilliseconds`
-only bounds the standard LSP handshake. For a provider such as JDT LS that has
-a later readiness signal,
-the profile task records a deterministic digest of Maven settings, selected
-profiles, project URIs, and source paths; an unchanged successful digest skips
-reapplying the same settings, while an explicit retry invalidates that digest.
-Hosts may consume lifecycle events for the shared `serverConnected`,
-`projectImporting`, `profileApplying`, and `fullyReady` phases.
-`serviceReadyIdleTimeoutMilliseconds` retains its wire name but now sets the
-quiet-progress **warning** threshold (45 seconds by default). A quiet interval
-emits one warning with the last progress snapshot; changed progress rearms the
-warning, while duplicate progress does not. JDT progress is not a heartbeat:
-silence must not fail the session or terminate its process.
-`serviceReadyAbsoluteTimeoutMilliseconds` remains the sole post-initialize
-readiness deadline (10 minutes by default), regardless of progress activity. `jdtlsLaunchResources`, when present,
-contains `launcherJarPath`, `configurationDirectory`, `lombokAgentPath`, the
-legacy optional `javaDebugBundlePath`, and ordered
-`javaExtensionBundlePaths`. It is valid only for the Java provider and requires
-`runtimeExecutablePath`. Rust loads the legacy Debug bundle first when present,
-then appends the extension bundle paths with stable de-duplication. Rust
-then uses `runtimeExecutablePath` as the process executable and constructs the
-complete deterministic JDT LS JVM argument list. `configurationDirectory` names
-the packaged, read-only configuration; Rust never passes it to Equinox, which
-writes framework state into its `-configuration` directory. Rust copies the
-directory's `config.ini` into
-`cacheDirectory/jdtls-configuration/<config.ini SHA-256>/configuration`,
-rewrites a missing or damaged copy, and passes that directory instead. A
-`cacheDirectory` that resolves inside the JDT LS installation, including
-through a symbolic link, fails with `invalid_request` before anything is written;
-a missing `config.ini` fails with `process_start_failed`. Areas of other digests
-unused for the JDT cache retention period are removed after the area is
-prepared, and a removal failure is logged without failing the start. When the structured object is
-absent, the selected `executablePath` and legacy wrapper arguments remain the
-compatibility path. Rust owns the returned
+initialize, request, and shutdown deadlines.
+Rust owns the returned
 session's child process, stdin/stdout/stderr, framing buffer, JSON-RPC request
 IDs, document versions, pending deadlines, capabilities, diagnostics, and
 graceful/forced termination.
@@ -2455,115 +2226,6 @@ most one bounded disposal and refuses to launch another process while cleanup
 remains incomplete. The original startup error is preserved. Native owners
 using the in-process registration callback retain their registered identity
 even when startup returns an error and retry `lsp.destroyServer` themselves.
-
-JDT LS remains `initializing` until `language/status: ServiceReady`. During this
-phase Rust reduces changed `$/progress` notifications into throttled JSON log
-details containing the current phase, percentage, project, observed project
-count, artifact name, repository host, downloaded/total bytes, calculated
-throughput, elapsed/idle durations, and cache disposition. Progress parsing is
-observability-only and never substitutes for `ServiceReady`. Absolute readiness failures use `serviceReadyTimeout` at stage `serviceReady`
-and retain the final diagnostic snapshot in `underlyingMessage` with
-`timeoutKind: "absolute"`. Classification still describes observed silence or
-transfer activity; it does not prove a JVM deadlock. Quiet warnings preserve the
-initializing/preparation state. Explicit server errors and exits still fail
-immediately. Shared timing examples live in
-`rust/fixtures/lsp/jdt-readiness-v1.json`.
-
-Platform adapters own filesystem discovery and validate that packaged JDT LS
-contains the Equinox launcher, platform configuration directory, Lombok agent,
-Java Debug Server, and bundled Java. Java Test-capable hosts additionally
-validate their extension bundles and runner. They do not construct JVM commands.
-Packaged macOS and Windows plans always use structured direct launch, so runtime
-startup has no shell, PowerShell, or user-`PATH` dependency. Wrapper launch
-remains optional only for external or older plans.
-
-For JDT LS, platform adapters observe which root Maven/Gradle descriptors
-exist, names of direct Maven module directories, the Gradle wrapper's
-`distributionUrl` when the workspace has one, and the selected JDT LS version. They submit those raw observations to `java.jdtWorkspaceFingerprint`;
-Rust Core validates, sorts, de-duplicates, and constructs the sole portable
-fingerprint representation. Core then hashes the normalized workspace identity
-followed by a null separator and that opaque fingerprint to select
-`cacheDirectory/jdtls/<workspaceKey>`.
-Omitting the fingerprint preserves the legacy path-only key for older clients.
-Changing structure selects a new directory without deleting the old one, so a
-later switch back can reuse it. Editing a descriptor is not a structural change:
-JDT LS compares each POM and Gradle file's timestamp with the state it saved and
-updates only the changed projects on restart, and running sessions receive the
-edit through `lsp.workspaceFilesChanged`. Keying the directory on descriptor
-timestamps would discard the whole index after any touch of the file. The Gradle
-version is the exception: JDT LS does not check the wrapper descriptor, so the
-wrapper's `distributionUrl` takes part in the fingerprint and a version change
-selects a fresh directory.
-
-Core starts JDT LS with
-`-Djava.import.generatesMetadataFilesAtProjectRoot=false`, so the Eclipse
-project files JDT LS maintains (`.project`, `.classpath`, `.factorypath`, and
-`.settings/*.prefs`) live in that state directory instead of the user's
-modules. Before launch, Core removes such files that earlier versions left in a
-Maven or Gradle module directory when the enclosing Git repository does not
-track them; tracked files and workspaces outside Git are left alone because JDT
-LS keeps honoring files that already exist at a module root. Tracking is decided
-by the repository that owns each module, located through its `.git` entry, with
-one batched `git ls-files` query per repository; modules outside Git start no Git
-process. When any file is removed, Core also deletes the current state directory
-so the launch imports the modules afresh instead of reusing a model that points
-at the removed files, and records the removed workspace-relative paths in the
-session's `info` log event.
-
-`java.jdtWorkspaceFingerprint` accepts
-`{ buildFiles, directMavenModules, gradleWrapperDistribution?, jdtlsVersion }`.
-Each build-file observation contains only a workspace-relative `path`;
-`gradleWrapperDistribution`, when sent, must not be blank. It returns `{ workspaceFingerprint }`; platforms must not recreate
-or parse this opaque string. Compatibility cases are in
-`rust/fixtures/lsp/jdt-workspace-fingerprint-v1.json`.
-
-`lsp.jdtWorkspaceKey` accepts `{ workspaceRoot, workspaceFingerprint? }` and
-returns `{ workspaceKey }` through the same normalization and SHA-256 algorithm
-used by `lsp.startServer`. Platform cache-maintenance actions use it to remove
-only the current workspace/fingerprint directory; they do not clear sibling
-workspaces or older structural states.
-
-`java.runMarkers` accepts `{ mainMethods, testItems, testCases }`: the
-`methods` of one file's `javaMainMethods` answer, the `items` of its
-`javaTestItems` answer (empty when the platform cannot run tests for the file),
-and canonical build-provider report cases (`suite`, `case`, `status`). The older
-`className`/`method` field names remain accepted for Windows compatibility.
-It returns `{ markers }` ordered by
-zero-based `line`, then `kind` (`main`, `testClass`, `testMethod`). `endLine`
-is the last line of the declaration as reported upstream: the end of the body for
-test classes and methods, and the name line for `main`. Each marker
-has a `label` for menus (`App.main()`, `OrderTest`, `OrderTest.creates`), the
-launch target (`mainClass`/`projectName`, or `testClass`/`testMethod` and the
-Java Test `testItemId`), and `status`: `none`, `passed`, `failed` (failure or
-error), or `skipped`. Test cases match a method by class and method name, with
-nested-class `$` and `.` treated alike. A class is `failed` when any recorded
-method under it (including nested classes) failed and `passed` when at least
-one passed and none failed. Items without a source range, such as inherited
-test methods, get no marker. The command is pure and never reads the file
-system. `rust/fixtures/java/run-markers-v1.json` is the compatibility fixture.
-
-`java.workspacePolicy` accepts `workspacePaths` and `changedPaths` as
-workspace-relative paths. It starts Java tooling when a non-ignored `.java`
-source exists and the workspace shows evidence of being a Java project: a build
-descriptor (`pom.xml`, `build.gradle[.kts]`, `settings.gradle[.kts]`, a Maven or
-Gradle wrapper) no more than two directories below the root, or a `.java` source
-no more than two directories below the root for projects that have no build
-system. A Java sample or fixture checked into a repository of another ecosystem
-therefore does not activate Java tooling; hosts still start a language server on
-demand when the user opens a `.java` file. The command chooses one deterministic
-representative source and classifies changes as `ignored`, `source`,
-`buildConfiguration`, or `other`. The compatibility examples are in
-`rust/fixtures/lsp/java-workspace-policy-v1.json`.
-
-`java.jdtCacheRetention` accepts platform-observed cache directory metadata as
-`{ nowUnixSeconds, activeWorkspaceKey?, entries }`. Each entry contains a
-lowercase 64-character SHA-256 `workspaceKey` and
-`lastModifiedUnixSeconds`. Core ignores invalid candidate names, de-duplicates
-observations using the newest timestamp, never selects the active key, and
-returns deterministically sorted `expiredWorkspaceKeys` older than the fixed
-30-day retention period. Platform adapters own the last-used marker, directory
-enumeration, revalidation, deletion, and error logging; Core performs no cache
-filesystem I/O. See `rust/fixtures/lsp/jdt-cache-retention-v1.json`.
 
 `lsp.documentIdentity` accepts `{ workspaceRoot, input, platform }` with the same
 `posix | windows | auto` path syntax. It returns `{ document: { path, relativePath } | null }`.
@@ -2586,8 +2248,8 @@ separator, and percent-encodes reserved characters and UTF-8. Invalid paths
 return `invalid_request`. See `rust/fixtures/lsp/document-uri-v1.json`.
 
 The `rootUri` of `lsp.startServer` and the `uri` fields of `lsp.syncDocument`,
-`lsp.saveDocument`, `lsp.closeDocument`, `lsp.request`, `java.navigationMarkers`,
-`java.resolveNavigation`, and each `lsp.workspaceFilesChanged` change accept
+`lsp.saveDocument`, `lsp.closeDocument`, `lsp.request`, and each
+`lsp.workspaceFilesChanged` change accept
 either an existing URI string or `{ path, platform }`. The related diagnostic
 location URIs in `lsp.request` accept the same shape. Core converts path inputs
 inside the existing request; virtual URI strings and opaque server data are not
@@ -2625,8 +2287,8 @@ operation. The host flushes current editor text before the save, including
 edits made while the native write was in flight. Before launch, hosts retry
 save notifications for clean open buffers and propagate transport failures
 instead of treating disk persistence alone as launch readiness.
-This is distinct from `didChange`: JDT reloads its on-disk working copy on save,
-which makes a subsequent Java launch build observe saved dependency edits.
+This is distinct from `didChange`: a server that keeps on-disk working copies
+reloads them on save, so a later build observes the saved edits.
 Shared cases: `rust/fixtures/lsp/document-save-v1.json`.
 
 `lsp.workspaceFilesChanged` accepts a session ID and ordered file URI changes
@@ -2634,24 +2296,6 @@ whose `kind` is `created`, `changed`, or `deleted`. It emits one
 `workspace/didChangeWatchedFiles` notification. Open documents remain owned by
 versioned `lsp.syncDocument`; adapters must not duplicate those edits as watcher
 events.
-
-`java.navigationMarkers` accepts
-`{ sessionId, operationId?, uri, documentVersion? }` and completes with
-`{ documentVersion, markers }`. Rust combines JDT LS implementation CodeLens,
-`textDocument/implementation`, and `java/findLinks` results with parser-selected
-Java declaration candidates. Work is capped at 64 semantic tasks, individual
-task failures preserve other verified markers, stale document versions cancel
-the batch, and the latest completed version is cached per URI. Markers are
-sorted by line, UTF-16 column, and relation. A marker contains `direction`
-(`up` or `down`) and `relation` (`interface` or `inheritance`); zero-target
-declarations are omitted. The cross-platform examples are in
-`rust/fixtures/lsp/java-navigation-v1.json`.
-
-`java.resolveNavigation` accepts the marker position, direction, relation, and
-document version. Downward markers use `textDocument/implementation`; upward
-markers use JDT LS `java/findLinks` with `superImplementation`. Its terminal
-result is `{ documentVersion, locations }`, using the same normalized physical
-and virtual-location representation as ordinary navigation.
 
 `lsp.buildRequest` accepts `{ sessionId, operationId?, method, params,
 timeoutMilliseconds? }` and returns `{ operationId }`. `method` and `params`
@@ -2879,7 +2523,7 @@ implementation, rename, formatting, range formatting, document symbols, code act
 inlay hints, full-document semantic tokens, folding ranges, document links
 (`documentLinks`, result `{ links: [{ range, target, tooltip }] }`; `target` is null
 until a server supplies it, and entries without a range are dropped), workspace
-symbols (`workspaceSymbols`, see below), code lens, provider virtual documents, `javaEntrypoints`, `javaTestItems`, and `javaMainMethods`.
+symbols (`workspaceSymbols`, see below), code lens, and provider virtual documents.
 For code actions, `diagnostics` contains the original `LspClientDiagnostic`
 objects returned by Core: nullable integer `severity`, `tags`, and
 `relatedInformation` remain intact, and every range uses zero-based `line` /
@@ -2887,102 +2531,11 @@ objects returned by Core: nullable integer `severity`, `tags`, and
 not a diagnostic request model. Non-LSP markers may request actions with a range
 and an empty diagnostic context. The round-trip fixture is
 `rust/fixtures/lsp/diagnostic-code-actions-v1.json`.
-`javaEntrypoints` invokes Java Debug Server's
-`vscode.java.resolveMainClass` for the session workspace and returns schema
-version 1 with deterministic workspace-relative `{ sourcePath, mainClass,
-projectName? }` entries plus diagnostics for unusable upstream records.
-Discovery queries all entries in the owned JDT session, then filters source
-paths against the opened workspace and its resolved location. This includes
-plain folders represented by invisible projects in JDT's writable cache;
-unrelated workspace sources remain excluded. Discovery
-waits behind pending Maven profile updates and JDT project-configuration jobs,
-using the same configuration barrier as the following Java build. Up to 128
-waiting discovery operations are allowed per session. Their deadlines include
-configuration waiting and the eventual upstream query, bounded by the session's
-Java build timeout. Cancellation before dispatch completes that operation without
-writing a JSON-RPC discovery request or cancellation; shutdown/failure settles
-every waiter. A completed profile update must precede discovery of source roots
-introduced by that profile.
 
-`javaTestItems` requires a file URI, invokes Java Test's
-`vscode.java.test.findTestTypesAndMethods`, and returns schema version 1 with a
-typed class/method tree. Each item carries the upstream identity, label, fully
-qualified name, project, test kind/level, optional JDT handler and sort text,
-optional zero-based UTF-16 range, and children. A `null` upstream result means
-the file has no tests (Java Test leaves its root's children unset) and yields an
-empty item list; any other non-list top-level result is an
-`invalidServerResult`, never an empty semantic answer.
-`javaMainMethods` requires a file URI, invokes Java Debug Server's
-`vscode.java.resolveMainMethod`, and returns schema version 1 with
-`{ methods: [{ range, mainClass, projectName? }], diagnostics }`. `range` is the
-zero-based UTF-16 range of the method name, and methods are ordered by source
-position. `mainClass` matches the `javaEntrypoints` entry generated for the same
-file, so editors can launch the workspace configuration for that entry. A `null`
-upstream result means no launchable method; any other non-list result is an
-`invalidServerResult`. Core does not infer Java entry points or tests from
-source syntax.
-For the Java provider, an `executeCommand` whose command is
-`vscode.java.buildWorkspace` is coordinated by Core instead of being written
-immediately. Core writes it only when no earlier build is awaiting its JDT
-response, the Maven profile task is not `running`, and no JDT work-done
-progress job named `Update project …`, `Updating project configurations`,
-`Applying the selected build files…`, or `Updating workspace folders` is open;
-a job without progress for 120 seconds stops blocking. Identical queued build
-commands share one JDT request, while a running build is never shared. Each
-caller is bounded by `javaBuildTimeoutMilliseconds` from `lsp.startServer`
-(default 600000), measured from submission; its `requestTimeout` error has stage
-`javaBuild` and an `underlyingMessage` naming the reached phase
-(`building`, `waitingForPreviousBuild`, `waitingForMavenProfiles`, or
-`waitingForProjectConfiguration`). Cancellation or timeout sends
-`$/cancelRequest` only when no running or queued caller still needs a build,
-and the build keeps its slot until JDT answers. A successful build completes
-with the unchanged `{ value: 1 }` result. Other JDT `BuildWorkspaceStatus`
-values complete with stage `javaBuild` and code `javaBuildCompilationErrors`
-(`WITH_ERROR`), `javaBuildFailed` (`FAILED`), `javaBuildCancelled`
-(`CANCELLED`), or `invalidServerResult`. `javaBuildCompilationErrors` and
-`javaBuildFailed` additionally carry `javaBuildReport` with `markerScope`
-(`launchTarget` or `workspace`), `builderFailedEarlier`,
-`elapsedMilliseconds`, and `recovery` (`none` or `rebuildJavaIndex`). The marker
-scope is inferred from the dispatched command: `launchTarget` means the request
-named a project, not that Core observed Java Debug Server's final project
-selection. Elapsed time is evidence only and must not become a heuristic gate.
-The versioned examples are in
-`rust/fixtures/lsp/java-build-report-v1.json`.
-
-Hosts treat these two terminal build outcomes as evidence rather than an
-irrevocable launch veto. After resolving the usable runtime paths, they may let
-the user continue that same launch attempt without issuing another build. A
-cancelled, timed-out, rejected, or unrecognized build has no usable verdict and
-must be retried instead of overridden. Hosts present Core's message and report
-instead of inferring a cause. Core logs `Java project build is waiting` (with `reason`),
-`Java project build started`, and `Java project build finished` (with
-`outcome`, `errorCode`, `elapsedMilliseconds`, and `waiterCount`).
-Background build retries and deadline cancellations are written by a separate
-session-owned worker. The deadline monitor never writes to stdin. A background
-write that exceeds `requestTimeoutMilliseconds` fails the session with
-`transportFailed` at stage `outboundMaintenance` and terminates the server to
-release the stalled pipe; the Java build deadline still bounds queue and build time.
-`java.prepareLaunch` accepts `{ sessionId, operationId?, sourcePath, mainClass? }`.
-`sourcePath` is the absolute saved source path at the native boundary.
-Core owns one operation across JDT entry-point discovery, the existing serialized
-build coordinator, and classpath resolution. The source must be inside the session
-workspace; an optional configured class disambiguates multiple entries in that
-exact file (including JDT's module prefix). Core does not infer entry points or paths.
-Discovery and classpath each use the session request deadline; the build retains
-its independent queue-inclusive deadline. The host fallback deadline covers all
-three phases plus event-delivery grace.
-
-Only the final `requestCompleted` event is published to the host, with either
-`{ kind: "ready", target: { mainClass, projectName?, modulePaths, classPaths } }`
-or `{ kind: "buildFailed", target, failure: { code, message, report } }`.
-Only the two terminal build failures above can produce the latter.
-Cancellation, timeout, invalid replies and transport failures remain operation
-errors. Cancelling the operation cancels its current phase; a late build answer
-retains the existing coordinator semantics and never starts classpath resolution.
-Runtime path groups must contain nonblank strings, with at least one path overall.
-Hosts save documents before submitting and own the final launch decision, JDK
-discovery and native process. Run plan/toolchain selection remain in existing Core
-operations. See `rust/fixtures/lsp/java-launch-preparation-v1.json`.
+Deadline cancellations are written by a separate session-owned worker. The
+deadline monitor never writes to stdin. A background write that exceeds
+`requestTimeoutMilliseconds` fails the session with `transportFailed` at stage
+`outboundMaintenance` and terminates the server to release the stalled pipe.
 
 The `semanticTokens` operation uses the open document URI and normal version,
 timeout, and cancellation rules. Its result is
@@ -3087,138 +2640,22 @@ newLineCount, additions, deletions }`. `rows` are side-by-side
 `added`, each changed block listing its removals before its additions. See
 `rust/fixtures/diff/compare-texts-v1.json`.
 
-`maven.scan` accepts `{ "root": string, "paths"?: string[] }` and returns
-`null` when neither the root nor the supplied visible workspace-relative paths
-contain a readable `pom.xml`. Candidates are tried in shallowest-first order,
-with `/`-normalized lexical paths breaking ties, until one parses successfully;
-a malformed candidate does not hide a valid nested project. A project response
-contains its workspace `relativePath`,
-`groupId`, `artifactId`, `version`, `packaging`, recursive `modules`, `profiles`,
-and `hasWrapper`. The root project and every recursive module also contain a
-`sourceRoots` list. Each entry has a module-relative `/`-normalized `path` and
-a `kind` of `mainJava`, `mainResources`, `testJava`, `testResources`,
-`generatedMain`, or `generatedTest`. Standard Maven roots are returned before
-their directories exist; explicit `<build>` source/resource directories and
-`maven-compiler-plugin` generated-source directories or
-`build-helper-maven-plugin` source lists replace the corresponding defaults,
-whether configured directly on the plugin or within an execution.
-`${project.build.directory}` resolves from `<build><directory>` and defaults to
-`target` only when that element is absent; unresolved or invalid explicit
-values do not silently fall back.
-Absolute, unresolved-property, and parent-traversal paths are omitted so one
-module cannot claim another module's source root. Entries are de-duplicated and
-ordered by the documented kind order, then path. Aggregator-only `pom` modules
-have no default roots. Module paths are relative to the selected Maven root and
-use `/` separators. Malformed XML returns `parse_failed`. Source-root examples
-are in `rust/fixtures/maven/source-roots-v1.json`.
-
-`maven.launchPlan` accepts a workspace `root`, a versioned `context`, an
-optional reactor-relative `module`, and an ordered `goals` array whose first
-entry is a lifecycle or custom goal. Later entries may be ordinary Maven CLI
-arguments such as `-Dname=value` or `-q`. They remain separate process arguments
-and are never interpreted by a shell. Context version 1 contains the
-workspace-relative `reactorPath`,
-selected `profiles`, optional platform-local `settingsPath` and
-`localRepositoryPath`, `skipTests`, and optional Maven/JDK paths used only for
-the configuration fingerprint. The response contains the `project-maven`
-toolchain reference, an argument array, the workspace-relative reactor working
-directory, and a deterministic SHA-256 configuration fingerprint. Profiles are
-sorted and de-duplicated. Module plans from `maven.launchPlan` and Maven-backed
-Run and Debug plans use `-pl <module> -am`. Settings use `-s`; a local
-repository override uses `-Dmaven.repo.local=<path>`; skipped tests use
-`-DskipTests`. Explicit Run `cwd`, Profiles, and `extensions.maven.skipTests`
-values override the project context, including `skipTests: false`. The core
-never reads `settings.xml` and never copies its path into a portable project
-document. Maven itself continues to read `.mvn/maven.config`; the plan does not
-expand or duplicate that file's arguments. Fixtures are in
-`rust/fixtures/maven/launch-plan-v1.json`.
-
-`maven.dependencyPlan` accepts the same workspace `root`, versioned `context`,
-optional reactor-relative `module`, and a required absolute `outputFile`. It
-returns a launch plan for the fixed `maven-dependency-plugin:3.8.1:tree` goal
-that writes the verbose text tree to `outputFile` in UTF-8 with standard tree
-tokens, disabled color, and an English locale. Exactly one project runs because
-every project in the session would overwrite the same file: module queries use
-`-pl <module>` without `-am`, and reactor-root queries use `-N`. The read-only
-query does not build reactor dependencies. Platform adapters own the child
-process, apply a bounded timeout, and keep it independent from an ordinary Maven
-build session. They also own `outputFile`: each invocation receives a fresh
-path in a platform scratch directory, and the platform removes it after the
-result, cancellation, timeout, or failure. The process's console output is log
-text only and is never parsed as dependency data.
-
-`maven.dependencies` accepts `{ "modulePath": string, "outputFile": string }`
-after the plan's process exits successfully and returns the normalized module
-path plus a recursively nested `dependencies` array. Each node contains
-`modulePath`, `groupId`, `artifactId`, `version`, `type`, nullable `classifier`,
-`scope`, `resolution`, nullable `selectedVersion`, nullable
-`premanagedVersion` and `premanagedScope` (values before dependency
-management), nullable `originalScope` (declared scope before mediation widened
-it), nullable `ignoredScope` (a wider scope mediation did not apply), and
-`children`. Resolution is `resolved`, `omittedDuplicate`, or `omittedConflict`;
-`selectedVersion` is the winning version of an omitted conflict. Every level is
-sorted deterministically.
-
-The first line of the file must name the module and every later line must be a
-node with only the annotations the pinned plugin writes; any other content,
-invalid UTF-8, a line over 4 KiB, more than 10,000 nodes, 64 levels, or a file
-over the byte limit derived from those bounds returns `parse_failed` instead of
-a partial tree. A missing file returns `process_failed`. The compatibility
-fixture is `rust/fixtures/maven/dependency-tree-v2.json`.
-
-`maven.diagnostics` accepts `{ "root": string, "output": string }` and returns
-`{ "issues": [] }`. Diagnostic paths may be absolute or workspace-relative;
-the response preserves the path text, uses one-based line and column values,
-and normalizes severity to `error` or `warning`. Duplicate issue lines are
-removed deterministically.
-
-`runConfig.selectJava` uses the toolchain requirements of the workspace's latest
-`runConfig.generate` in this process; before any generation it derives them from
-the project's own declarations (`pom.xml`, `.java-version`, the Maven wrapper).
-Its request contains optional
-`root`, `candidates` (`id`, probed `version`, numeric source `priority`), and
-`fallbackId`. IDs are opaque machine-local identities, never persisted or opened
-by this operation. Lower priority wins; equal-priority candidates use descending
-numeric Java versions (including legacy `1.8`), then ascending ID.
-
-When `project-jdk.minimumVersion` exists, selection first filters using the same
-Java version comparison as run-configuration diagnostics. Among the compatible
-candidates, the one whose Java feature version equals the declared one wins, else
-the oldest newer feature version; source priority only breaks ties within a feature
-version. A Java 8 project therefore runs on an installed JDK 8 even when `JAVA_HOME`
-points at JDK 21, matching IDEA and OpenIDEA. The response is
-`{ id, warning }`: the compatible candidate, or the supplied usable fallback
-with an actionable warning if none qualifies. Missing requirements retain the
-platform's unconstrained choice; a malformed or unsupported `requirements`
-snapshot returns the parse/version error. Explicit configured paths bypass automatic
-selection. The operation never generates requirements or probes executables.
-The cross-platform examples are in
-`rust/fixtures/run-configuration/automatic-java-selection.json`.
-
-Windows `run_resolve_toolchains` includes an optional `warning` on resolved
-JDKs, including inherited Maven JDKs. This warning remains visible even when no
-run configuration exists to carry a scoped `toolchainVersionMismatch` diagnostic.
-
 `runConfig.projectToolchain` reads `{root,path,localDocument?,configurationId?}` and returns
-`{toolchain:{javaHomePath,mavenExecutablePath,mavenJavaHomePath,runtimeExecutablePaths}}`, even without
+`{toolchain:{runtimeExecutablePaths},toolPreferences?,definedTools?}`, even without
 generated Run configurations. `path` is the current Provider's normalized,
-workspace-relative project/reactor root (`.` for the workspace). The nearest
-`toolchain.pathOverrides` entry owns all three fields; its empty/missing fields
-inherit workspace defaults, not another ancestor override. Matching uses path
-segments, so `app` never owns `app2`. Malformed stored paths/documents fail
-without changing source bytes. The command does not discover, probe or run any
-tool, inspect project descriptors, or write files. `runtimeExecutablePaths`
-comes from the existing `.lithe/toolchains/local.json`; platforms resolve the selected
-paths through their existing toolchain adapters. Shared examples are in
-`rust/fixtures/run-configuration/project-toolchain-selection.json`.
-When `configurationId` is supplied, explicit Java/Maven paths from that current
-Run configuration override the canonical project/reactor selection. Core reuses
-the existing team/local configuration merge without projecting global defaults
-as explicit configuration choices. Empty configuration fields inherit the
-canonical selection; missing, disabled, mismatched-root or malformed choices fail
-instead of falling back. No generated layer is required for an explicitly saved
-Provider reference. Shared cases are in
-`rust/fixtures/run-configuration/configuration-toolchain-selection.json`.
+workspace-relative project root (`.` for the workspace). `runtimeExecutablePaths`
+maps each runtime ID in the existing `.lithe/toolchains/local.json` to its saved,
+non-empty `executable`; platforms resolve the selected paths through their
+existing toolchain adapters. `toolPreferences` echoes the local document-level
+`toolchain.preferences`. When `configurationId` is supplied, Core reuses the
+existing team/local configuration merge without projecting the global defaults
+as explicit configuration choices. The configuration must be enabled and, when
+it carries an `extensions.build` reference, belong to the provider instance
+rooted at `path`; a `build.provider` configuration then reports its active
+`extensions.build-run.tools` choices as `definedTools`. Missing, disabled,
+mismatched-root or malformed choices fail instead of falling back, and malformed
+stored paths or documents fail without changing source bytes. The command does
+not discover, probe or run any tool, inspect project descriptors, or write files.
 
 `runConfig.inspect` also returns the local document-level `toolchain`, including
 when no generated configuration exists (`status: "missing"`). Settings,
@@ -3227,14 +2664,14 @@ toolchain-only callers, and initial run-panel presentation may send
 project sources. Omission preserves full inspection. The Windows run panel
 publishes readable configurations first, then performs full inspection and
 reports freshness failures without discarding those configurations.
-The input fingerprint covers what generation reads: build and tool files and
-the sources of generated Java entries by content (`sha256:<hex>` in
-`generator.inputs`), and every other Java source by path only (`path`), so
-editing a class body is not a staleness. When the stored inputs no longer
+The input fingerprint covers what generation reads: the manifests the built-in
+detectors consume (package and lock files, Compose files, Procfiles, task-runner
+files and runtime version files) by content (`sha256:<hex>` in
+`generator.inputs`), plus the detector revision. When the stored inputs no longer
 reproduce the stored fingerprint, the document came from another generator
 revision and the diagnostic says so instead of listing modified files.
-Automatic run discovery, fingerprint traversal, Node manifest discovery and the
-Windows Java source list use Core's shared scan policy. Known caches/build outputs
+Automatic run discovery, fingerprint traversal and Node manifest discovery use
+Core's shared scan policy. Known caches/build outputs
 are pruned before descending; other hidden source directories remain visible and
 symlinks are not followed. Failure to read the workspace root is an error. An
 unreadable optional child or fingerprint input is recorded in
@@ -3243,109 +2680,48 @@ hashes beneath those unknown paths. Inspection returns `incompleteProjectScan`
 instead of claiming fingerprint freshness or inferred removals when either the
 current scan or saved baseline is incomplete. The persisted diagnostic also appears
 with `checkFingerprint: false`; a successful complete regeneration clears it.
-This does not replace declared build-system modules or JDT's entrypoint facts.
-The bounded Java source list stops opening further directories once its source
-limit is reached, retains only collected Java paths, and returns them sorted.
-Full fingerprint scans remain uncapped by this list limit and keep reporting
-unreadable inputs independently.
-
-`runConfig.inspect` also accepts optional schema-versioned `javaEntrypoints`
-from the current `lsp.request` result, independent of `checkFingerprint`. Core
-then compares JDT's `(sourcePath, mainClass)` pairs, with a `module/` prefix
-removed and nested checkouts excluded, against the generated Java entries and
-reports a difference as a `staleFingerprint` diagnostic. Platforms send it
-after a project load once the Java service has prepared the project, never
-start that service for this check, and skip it while a regeneration already
-waits for the service.
 Project environment saves use the existing local `runConfig.updateOptions`
 toolchain payload with an empty `configurationId`; service overrides are untouched.
 
 The `runConfig.*` commands implement the versioned project protocol described
 by the JSON Schemas in this directory. `runConfig.inspect` accepts `root` and
-never writes files. `runConfig.generate` accepts `root`, relative Java `paths`,
-relative `modulePaths`, optional schema-versioned `javaEntrypoints` from the
-current `lsp.request` result, and optional `projectOwnership`. The latter is a
-host projection of current enabled Provider projects: `{ path,
-name?, build?: { pluginID, buildSystemID, root, projectID }, minimumJavaVersion?, contentRoots: [{ path, kind }] }`, using workspace-relative
-paths and the model's `source`/`testSource`/generated-source roles. Core validates
-project/root containment, unique project paths, roles and bounds (2,000 projects,
-10,000 content roots). When supplied, including `[]`, these facts own Java
-project membership and source sets: `modulePaths` and ancestor POM inference
-do not supplement them. `build` is an exact current model identity, not a build
-semantic tag. Generated Java entries store it under `extensions.java.build`,
-with Java-owned `module` and `mainClass`; they contain no Maven extension or
-Maven tool binding. Its root stays independent of editable cwd and document
-layers cannot replace generated build ownership. An omitted snapshot retains the current
-Windows generator's legacy ownership path. A supplied ownership snapshot disables
-legacy Maven framework detection. Framework selection is not an ownership field;
-run discovery uses the independent generic snapshot described below.
-`minimumJavaVersion` is an optional normalized Java feature version (1–999),
-owned by the upstream compiler model, including before entrypoint discovery
-returns any sources. When the snapshot is supplied, Core uses
-the highest known project floor and never parses POM compiler properties; a
-platform Java version file can raise but cannot lower that floor. Missing means
-unknown, not permission to infer. Build-tool versions and wrapper paths are not
-ownership fields. With provider ownership Core emits no Maven requirement and
-never reads wrapper properties or scripts to supplement it. Installed tool
-definitions/providers own these choices. Native Java preparation routes by the
-exact enabled package, declaration, instance and project identity. Legacy
-consumers that omit provider ownership retain their old Maven launch path until
-they migrate; those fields are not accepted in the new ownership projection. See `fixtures/run-configuration/provider-project-ownership.json`.
-The generated document records optional `generator.providerFingerprint`, a
-SHA-256 identity of the validated projection, with projects and roots sorted.
-It covers project labels, ownership, source roles and requirement
-facts, but never environment values or native configuration secrets.
-`runConfig.inspect` accepts the same optional `projectOwnership` and emits
-`staleProviderModel` when current facts differ or a legacy generated document
-has no provider identity. `checkFingerprint: false` skips file hashing only;
-this model comparison remains active. Explicit `[]` represents disabled/missing
-providers, while omission preserves existing Windows callers. A return to the
-same semantic facts matches again; asynchronous host publication still needs
-its independent monotonic operation revision to reject ABA replies.
+optional `checkFingerprint`, `localDocument` and `providerRuns`, and never
+writes files. `runConfig.generate` accepts `root`, optional `providerRuns` and
+an optional `cacheDirectory`, and returns `{ generated, toolchainRequirements,
+entryCount }`.
 
 `runConfig.generate` and `runConfig.inspect` also accept optional `providerRuns`:
 a complete list of `{projectPath,name,reference}`. The native host matches current
 model targets against enabled public run declarations; `reference` has exactly the
-`extensions.build` selector shape below, with empty model `userArguments`. This
-snapshot is independent of Java entrypoints and language imports. Core validates
+`extensions.build` selector shape below, with empty model `userArguments`. Core validates
 at most 10,000 unique selectors, provider-root/project containment and bounded labels,
 then creates `build.provider` entries without interpreting target IDs, tool names,
 frameworks, commands or debug adapters. An explicit `[]` withdraws generated runs;
-omission preserves older callers. It also disables the legacy framework detector.
+omission preserves older callers.
 IDs hash plugin/build/root/run/project/target identity, so changed labels or execution
 kind retain user overrides. Current declarations still validate the execution kind
 before preparation. `generator.providerRunFingerprint` hashes the complete sorted
 snapshot; changed or missing metadata yields `staleProviderModel`, including when
 file fingerprinting is disabled. Withdrawn entries cannot be restored from cached
 configurations; unmatched overrides stay in their user-owned layer and are diagnosed.
-See `fixtures/run-configuration/provider-project-ownership.json`. macOS supplies this
+See `fixtures/run-configuration/build-provider-stable-identities.json`. macOS supplies this
 snapshot; Windows retains its existing generator until its Provider host is migrated.
 
-Java configurations with the same class and module name in independent reactors
-remain distinct; a common reactor retains its existing configuration IDs.
- When Java tooling is still preparing, omission
-retains the previous generated entrypoint facts instead of running a local
-scanner or replacing them with an empty list. Those previous facts come from
-this process's last generation, else from the optional `cacheDirectory` (an
-application cache root where generation records its result under
-`run-configurations/`), else read-only from a `.lithe/run/generated.json` that
-older versions wrote. It returns the generated configuration and toolchain
-requirement documents and keeps them in memory as the workspace's detected
-layer for `inspect`, `resolve`, and `selectJava`; nothing is written into the
-workspace. `inspect` returns `requiresGeneration: true` while this process has
+Generation keeps the generated configuration and toolchain requirement
+documents in memory as the workspace's detected layer for `inspect` and
+`resolve`; nothing is written into the workspace. With `cacheDirectory` (an
+application cache root outside the workspace) it also records the result under
+`run-configurations/`, so retained entries keep their IDs and the Run list is
+complete before providers answer again; failing to read or write that cache
+changes nothing else. The previous generation, used only to retain entries
+beneath unreadable paths, is this process's last generation, else the cached
+result, else read-only a `.lithe/run/generated.json` that older versions wrote.
+`inspect` returns `requiresGeneration: true` while this process has
 no detected layer. Hosts identify the workspace when this flag is true or the
 status is `missing`; a saved provider task can make `status` be `ready` before
-detection, and must not suppress discovery of the remaining entries. Without
-`projectOwnership`, legacy Maven root
-discovery checks `pom.xml` along each supplied path's ancestor chain, so a
-
-reactor nested below the opened workspace does not depend on the platform
-including build descriptors in `paths`. Maven ownership is resolved per Java
-entry: standalone sources keep the JDK launch path, while entries from
-independent nested reactors retain their own reactor working directory and
-module selector. Generated fingerprints include both project inputs and the
-detector revision; either changing marks the detected layer stale and requires
-regeneration.
+detection, and must not suppress discovery of the remaining entries. Generated
+fingerprints include both project inputs and the detector revision; either
+changing marks the detected layer stale and requires regeneration.
 
 `runConfig.decideTitleAction { action, trigger, currentFileChosen, settled, configuration? }`
 decides what a press on the title bar's Run or Debug button does. `action` is
@@ -3392,20 +2768,6 @@ states, the effective global `toolchain`, and the machine-local
 `localToolchains` document. Toolchain diagnostics carry the affected run
 configuration ID when a requirement is consumed by one or more configurations;
 requirements with no configuration consumer do not emit a blocking diagnostic.
-For detected Maven configurations, resolved `extensions.maven.reactorPath`
-contains the workspace-relative reactor from the generated layer, independently
-of an overridden effective `cwd`. Core derives this read-only ownership value
-when resolving existing generated documents as well; regeneration is not
-required. Overrides cannot move a configuration to another reactor. Current
-File and configurations without detected Maven ownership omit this field.
-Resolution checks that `extensions.maven.module` exists relative to this
-reactor, or relative to `root` when the field is absent, and never relative to
-an overridden `cwd`: setting a module's own directory as the working directory
-keeps the configuration available.
-Module menus first match reactor and module, then apply the default preference;
-they must not infer ownership from an overridden working directory. The shared
-`run-configuration/maven-module-ownership.json` fixture covers independent
-reactors, cwd overrides, and the ordinary Java main / Current File capabilities.
 
 Each configuration carries a `category` of `project` or `infrastructure`.
 Docker Compose detections are `infrastructure`: a Compose file in an application
@@ -3421,32 +2783,24 @@ selection filtering are pending there.
 
 Display names that repeat are qualified by Core, because hosts show the name
 alone: the first candidate that separates every entry in the group wins, trying
-the Maven module, then the working directory, then the source manifest. Three
+the working directory (when it is not the workspace root), then the source
+manifest. Three
 Compose files each declaring `compose up` become `compose up (script/docker)`
 and so on, while a name that occurs once is never decorated. Ids are unaffected.
-
-Java entry points are read from the Java syntax tree rather than matched as
-text, so a `static void main` or `@SpringBootApplication` inside a string
-literal or comment — common in test fixtures and documentation samples — does
-not become a run configuration. A declared `main` under `src/test` remains a
-valid entry and keeps the test classpath; see
-`rust/fixtures/execution/maven-java-main-source-sets-v1.json`.
 
 A process detector declares a runtime binding only when that command genuinely
 consumes the runtime. npm, pnpm, and Yarn scripts consume `project-node`; Bun
 scripts keep their independent `bun` command and do not acquire a Node
-requirement. Go, Python, Cargo, and Gradle remain command-based until every host
+requirement. Go, Python, and Cargo remain command-based until every host
 provides the corresponding configurable runtime registry, so their PATH-based
 launch behavior is not blocked by an unavailable platform selector.
 During resolution, Core also reconciles npm, pnpm, and Yarn commands from older
 v2 generated documents with the same `project-node` binding. This compatibility
 normalization is based on the effective command, does not mutate the stored
 document, and keeps legacy hybrid projects scoped without requiring regeneration.
-A document-level `toolchain`
-object in the local layer (e.g.
-`{ "java": { "homePath": ... }, "maven": { "executablePath": ..., "javaHomePath": ... } }`)
-provides defaults for every configuration's `extensions.java.*`. A non-empty
-per-configuration toolchain path overrides the corresponding project default.
+The document-level `toolchain` object in the local layer holds generic
+`preferences`; other fields there belong to whichever host or plugin wrote them,
+and Core preserves them unchanged.
 
 Provider applications can be explicitly saved with `runConfig.createUserConfiguration`
 using `{root,scope:"local",name,type:"buildProvider",build:{pluginID,buildSystemID,
@@ -3524,37 +2878,20 @@ before process launch, and an invalidated configuration or operation rejects lat
 
 `runConfig.updateOptions` and `runConfig.createUserConfiguration` are pure
 document transformations. They validate scope, paths, supported types, stable
-IDs, main classes, modules, and argument parsing, then return UTF-8 JSON in the
+IDs, provider run options, and argument parsing, then return UTF-8 JSON in the
 `document` field. The platform adapter selects the target project or local
 file and performs the atomic write. These commands never write files. An empty
 `workingDirectory` removes the layer's `cwd` override. A non-empty value must
 name an existing directory inside `root`, given relative to it or as an
 absolute path, and is stored project-relative. Values are literal paths; editor
 variables such as `${workspaceFolder}` are rejected rather than stored, because
-resolution disables and omits a configuration whose `cwd` does not exist. Optional
-`mavenSkipTests` writes `extensions.maven.skipTests`; omission removes the
-override so the project Maven context is inherited, while explicit `false`
-continues to run tests even when the project default skips them.
-For project-scoped option updates, selected toolchain paths must resolve inside
-`root` and are persisted with `/`-separated project-relative paths. Local-scoped
-updates may carry host absolute paths. `runConfig.updateOptions` and
-`runConfig.inspect` accept the same optional `localDocument` override.
-When `updateOptions` carries a `toolchain` object (`javaHomePath`,
-`mavenExecutablePath`, `mavenJavaHomePath`), it writes the document-level
-global toolchain into the local layer instead of patching a configuration;
-project scope rejects this payload because toolchain paths are machine-local.
-
-The project toolchain may also carry `pathOverrides`, a map of normalized
-workspace-relative subproject roots to `{ javaHomePath?, mavenExecutablePath?,
-mavenJavaHomePath? }`. The map has at most 256 entries; roots reject absolute,
-parent, dot, empty-segment, drive, backslash and control-character forms. Empty
-fields inherit project defaults. This map lives only in `.lithe/run/local.json`
-and is returned by inspection/resolution; hosts preserve it when saving a run
-configuration or project defaults. An absent map identifies a document predating
-subproject migration; a saved empty map is an explicit choice. Old platform
-preferences are copied and read back before cleanup, with already saved choices
-remaining authoritative. See `rust/fixtures/run-configuration/subproject-toolchains.json`.
-
+resolution disables and omits a configuration whose `cwd` does not exist.
+`runConfig.updateOptions` and `runConfig.inspect` accept the same optional
+`localDocument` override. When `updateOptions` carries a `toolchain` object
+(`{ runtimeExecutablePaths?, preferences? }`), it replaces only the
+document-level `toolchain.preferences` in the local layer instead of patching a
+configuration, preserving every other document-level toolchain field; project
+scope rejects this payload because toolchain choices are machine-local.
 
 `execution.resolveSearchPath` accepts already-split `existing` directories and
 `candidates` carrying `priority`, opaque `id`, and `path`; lower priority sorts
@@ -3570,8 +2907,8 @@ expansion or execution. Empty arguments remain explicit. The shared cases are in
 `rust/fixtures/run-configuration/argument-text.json`.
 
 `runConfig.saveEditorChanges` accepts the normal option-edit payload plus the
-required `toolchain` object. In addition to Java and Maven paths, that object
-may contain `runtimeExecutablePaths`, keyed by stable generic toolchain ID. It
+required `toolchain` object. That object may contain `preferences` and
+`runtimeExecutablePaths`, keyed by stable generic toolchain ID. It
 applies the global toolchain and configuration override edits together,
 returning `localDocument`, either a `projectDocument` string or `null`, and
 either a `toolchainDocument` string or `null`. The latter updates
@@ -3579,9 +2916,7 @@ either a `toolchainDocument` string or `null`. The latter updates
 an entry when its supplied executable path is empty. Local scope combines the
 run-option edits in the local run document. Project scope returns the local
 defaults and team options as separate fully prepared documents; the platform
-adapter writes all returned documents as one transaction with rollback. Empty
-per-configuration toolchain paths remove the
-corresponding override keys while preserving unrelated extension fields.
+adapter writes all returned documents as one transaction with rollback.
 Platform clients report the editor save as successful only after the written
 documents resolve again. Failures identify whether preparation, document
 writing, or post-save reload failed; a reload failure keeps the last usable UI
@@ -3597,177 +2932,20 @@ selected Node installation. They do not fall back to a PATH shim from another
 installation, and Windows executable extensions take precedence over extensionless
 shell scripts.
 
-Automatic Spring service generation requires both an applied Maven plugin and
-exactly one JDT-confirmed, Spring-classified non-test entry in the same module.
-An inherited plugin alone cannot promote a library to a runnable service.
-Nested-module entries do not promote their parent. Ambiguous, utility and test
-mains remain independently selectable Java entries. Module assignment consumes
-the confirmed source set even when the caller supplies no editor paths.
-Absent discovery may reuse previously confirmed entries; an explicit empty result
-removes automatic services. Existing service IDs and user-authored Maven-goal
-compatibility configurations retain their established meaning.
-
-`runConfig.createLaunchPlan` accepts `root`, `configurationId`, optional
-`currentFile` and `classPath`, optional `debugPort`, and optional
-`localDocument`. Maven-backed Run and Debug callers may also supply the same
-versioned `mavenContext` accepted by `maven.launchPlan`. Explicit profiles in
-the resolved Run Configuration replace the context profiles; otherwise the
-project profiles are inherited. Explicit `extensions.maven.skipTests` and
-`cwd` values also replace the context values. Core applies the shared settings,
-module, Skip Tests, and reactor-working-directory rules to the generated
-framework arguments, including `-am` for selected reactor modules. A
-project-owned `java.main` caller, or a `spring-boot.maven` caller whose generated
-configuration records a Java entry source, instead supplies `javaLaunch` with
-the exact JDT LS-selected `mainClass` plus structured `classPaths` and
-`modulePaths`. An optional `javaLaunch.buildPrepared: true` is a host receipt
-that the current build provider resource task completed before JDT launch
-resolution. Core then omits its legacy Maven resource pre-launch step and does
-not inspect POMs for that step. The host must recheck workspace/configuration
-generation and cancellation before handing off the launch; it cannot reuse a
-receipt from another operation. Missing/false retains compatibility for current
-Windows callers. See `fixtures/run-configuration/provider-prepared-java.json`. Core then produces a direct `project-jdk` launch; it never
-projects those Java entry points into a reactor-wide Maven launch goal. A Spring
-Boot configuration without a resolved Java entry source retains its Maven-goal
-compatibility path. It
-returns a toolchain
-reference, argument array, project-relative working directory, and structured
-environment references. It does not return a shell command or platform
-executable path. All project paths use `/`, reject absolute paths and `..`
-traversal, and remain relative to `root`.
-
-The plan may also carry three optional envelope fields. `preLaunchSteps` is an
-ordered array of `{ executable, arguments, classpath?, workingDirectory? }` steps
-the host runs to completion, in order, before the main process; a non-zero exit
-aborts the run and surfaces that step's diagnostics. Each step's `executable`
-reuses the plan's
-`{ toolchain }` shape plus an optional `tool` selector (`"javac"` resolves the
-sibling compiler in the toolchain's `bin` directory; absent means the default
-launcher). `classpath` is a structured array of project-relative or host-absolute
-entries the host joins with the platform path separator (`:` on POSIX, `;` on
-Windows) and prepends as `["-cp", joined]` to the relevant argument list; core
-never joins classpath entries because the separator is platform-specific.
-`modulepath` follows the same rule and is emitted as `--module-path` by the
-host. A JDT main identity in `module/name.Type` form is projected as
-`-m module/name.Type` for the direct Java launcher. Empty fields are omitted,
-so existing single-process Maven, Gradle, and Node
-plans are unchanged. A step shares the plan-level `environment` and, unless it
-declares its own project-relative `workingDirectory`, the plan-level
-`workingDirectory`. A step that declares one resolves its toolchain from that
-directory and runs there, so a resource step still finds the project wrapper
-next to its reactor POM when the application working directory is a user
-override.
-
-Direct Maven-project Java launches also carry a `project-maven` resource step:
-`resources:resources`, plus `resources:testResources` for test-source entrypoints.
-The step inherits Maven profiles, settings, repository and module/dependency
-selection. Its absolute `-f` POM argument anchors the generated reactor even when
-the application working directory is overridden, and its own `workingDirectory`
-names that reactor as the step's run directory and toolchain resolution root. A
-child POM not declared in
-that reactor is processed as its own Maven project, without `-pl`. Resource
-filtering and custom resource directories remain Maven-owned; no Java compilation
-or application launch goal is added. Hosts must finish these steps successfully
-before starting the JVM. Both hosts scope pre-launch execution to the
-window/session/execution and stop the owned process tree on Stop, window close or
-replacement. They apply the same ten-minute deadline with bounded pipe draining
-and cleanup, and a step that reaches its deadline fails the run with
-`Pre-launch step timed out after 600 seconds.`. macOS runs the steps before both
-the application launch and a Run-panel service session, and cancels a session's
-running step when that session stops, restarts, or is dropped by reconciliation.
-Independent DAP launches that do
-not consume this plan are not covered by this resource-step contract.
-
-A Maven-project `java.main` launch must first ask JDT LS/Java Debug
-Server to resolve the exact source target, build its owning project, and return
-the runtime classpath/module path. Missing project launch metadata is a launch
-error rather than permission to fall back to `mvn exec:java`; reactor-wide Exec
-would attempt the same main class in parent and dependency modules.
-
-A `java.main` configuration without a
-Maven toolchain launches through `project-jdk` and the configuration's Java
-source path only when that source has no Maven ancestor. An older configuration
-that omitted the Maven binding is rejected with an instruction to regenerate.
-Standalone Java (`java.main` without Maven, and `java.current-file`) compiles
-before running: core emits a `javac` pre-launch step writing `.class` files to
-`.lithe/run/classes/<configurationId>`, puts that directory on the run
-`classpath`, and launches by the qualified class name rather than the source
-file. This keeps one-click Run working on JDK 8, which lacks the JEP 330
-single-file source launcher (`java File.java`) that only exists on JDK 11+. The
-`java.current-file` main class is derived from the file's `package` and declared
-class; when the host supplies a project `classPath`, the compiled output leads
-the run classpath and the project classes feed the compile step.
-
-`java.codeVision` accepts a workspace root, a target Java path, and Java source
-paths. It returns declaration locations and usage counts; Git blame attribution
-is joined by the UI from the shared Git result. `java.className` accepts Java
-source text and a file simple name and returns the fully qualified runtime class
-name.
-
-`java.sourceDefinition` accepts `source`, `declarationName`, an optional
-`memberName`, an optional `declarationsOnly`, and an optional `reference`
-(`line`, `utf16Column`), returning zero-based `line` and UTF-16 `utf16Column` or
-`null` when no declaration is found. A member is looked up as a syntax-tree
-method, field, or enum-constant declaration that the `declarationName` type
-declares directly. With `reference`, the member is instead resolved from that
-position: the identifier must be a plain name or a `this.` access, the innermost
-type is searched first and then the enclosing ones, and the result is `null` when
-a type on the way may inherit the name or a local may shadow a field.
-Without `declarationsOnly`, text that merely resembles a declaration, such as a
-call, is accepted next, and then the `declarationName` type; with it, a missing
-member returns `null`.
-
-`java.structure` accepts Java `source` and optional `declarationSources`. It
-returns `foldRegions`, `inlayHints`, and `syntaxHighlights`.
-Fold and inlay line numbers are zero-based because these values are editor
-offsets; UTF-16 columns and hidden ranges match the native text editor coordinate
-system. Syntax highlights contain document-relative `utf16Start`,
-`utf16Length`, and a role from the shared editor syntax-theme contract. They
-are sorted and non-overlapping, so native renderers can apply semantic colors
-without maintaining another Java parser. The parser is platform-independent
-and does not start a Java process or contact JDT.
-
-`spring.index` accepts `root`, workspace-relative `paths`, optional trusted
-absolute `metadataRepositories` (and the legacy singular `metadataRepository`),
-optional `textOverrides` keyed by relative path, and
-`refreshDependencyMetadata`. The command reads Spring configuration
-metadata from workspace JSON files and dependency JARs, indexes application
-configuration documents and Java source, and returns deterministically ordered
-`properties`, `values`, `propertyReferences`, `diagnostics`, `beans`,
-`injections`, and `endpoints` collections. Locations use relative paths and
-one-based lines and columns.
-
-`properties` include type, documentation, default value, and an optional Java
-declaration. `values` include profile/override state and an optional declaration
-target. `propertyReferences` represent Java `@Value` uses. Bean resolution
-accounts for component names, `@Bean` aliases, interfaces, `@Qualifier`,
-`@Resource`, `@Primary`, field injection, and constructor injection. Endpoint
-entries expand multiple controller/method paths and retain the exact declared
-HTTP method set.
-
-Dependency metadata is cached in the Rust process. Project-open indexing sets
-`refreshDependencyMetadata` to `true`; debounced unsaved-buffer indexing leaves
-it `false`, so editing Java or configuration files does not repeatedly traverse
-and open the local dependency repository. The repository path is selected by
-the platform composition layer and is never persisted in shared results.
-
-`mybatis.index` accepts `root`, workspace-relative `paths`, and optional
-`textOverrides` keyed by relative path. It pairs Java mapper types with XML
-`<mapper namespace>` documents and returns only statements that have both a
-Java method and a matching XML `select`/`insert`/`update`/`delete` `id`.
-Results are deterministically ordered by namespace, statement id, XML path,
-and line. Locations use relative paths and one-based lines and columns.
-`javaLine`/`javaColumn` point at the method name; `javaEndColumn` is the
-exclusive UTF-16 column after that name. `javaEndLine` is the signature
-terminator. `xmlLine`/`xmlColumn`/`xmlEndColumn` bound the statement `id`
-value the same way. Hosts intercept go-to-definition only when the caret
-is inside those name ranges; return types and parameters keep LSP
-navigation. Java methods are collected from `tree-sitter-java` syntax
-nodes, so nested generics, split signatures, and commented-out methods
-are not mistaken for declarations. XML comments are ignored. Methods with
-a method body, including `default` methods, are omitted from the Java
-side of the index. Paths are indexed only when they are regular `.java`
-or mapper `.xml` files no larger than 2 MiB; `pom.xml` and other
-extensions are skipped before content is read.
+`runConfig.createLaunchPlan` accepts `root`, `configurationId` and optional
+`localDocument`. It resolves the configuration through the same layers and
+rejects a missing or disabled one. Core assembles only process-based plans: a
+configuration with a bare program-name `command` returns
+`executable: { command }`, which the host resolves on PATH; one that transfers
+executable ownership to a runtime toolchain (`toolchains.runtime`) returns
+`executable: { toolchain }`, which the host resolves from its toolchain
+registry. Any other configuration, including a `build.provider` reference, is
+`invalid_request`: ecosystem launch semantics stay with the plugin that
+declared the run. The plan also returns the string argument array, the
+project-relative `workingDirectory`, an empty `environment` reserved for
+toolchain-derived values, and the configuration's literal `env`. It does not
+return a shell command or platform executable path. All project paths use `/`,
+reject absolute paths and `..` traversal, and remain relative to `root`.
 
 `diagnostics.redactText` accepts `text` and returns `redacted` with
 credentials, tokens, and home-directory paths replaced by stable placeholders
@@ -4501,8 +3679,9 @@ entry?, runtimeArguments, arguments }` and returns `{ status: "ok", launch:
 params }`, where `params` are those of `lithe/host/run/start` as the backend sent
 them. It returns `{ status: "ok", start }` with `start` being `{ label,
 executable: { kind: "toolchain" | "packaged", value }, arguments,
-workingDirectory, environment, temporaryFiles: [{ path, contents }], debug?,
-rerun? }`. The tool must be listed in the manifest's `requiresTools`, and the
+workingDirectory, environment, temporaryFiles: [{ path, contents } | { path,
+base64 }], debug?, rerun? }`. A text file is written as UTF-8; a `base64` file
+holds bytes the host decodes and writes unchanged. The tool must be listed in the manifest's `requiresTools`, and the
 working directory must be a relative path of an existing directory inside
 `workspaceRoot`, which Core checks read-only the way it does for run preparation.
 `${temporaryFile:<name>}` in arguments and environment becomes a file path under
@@ -4575,12 +3754,12 @@ failure is terminal. There is no separate `configuredExecutable` result.
 See the plugin contract's **Shared executable candidates** section for ordering
 and strict selection.
 
-Host-managed runtime probes use `java -version` (including Java 8),
-`node --version`, and `go version`. Hosts execute the returned arguments and
-pass combined stdout and stderr as `build.checkToolVersion.request.output`:
-Java normally prints its version to stderr. Core normalizes legacy Java
-`1.8.0_…` output to major version 8 before comparing the declared minimum,
-and ignores `Picked up …` environment-option notices preceding the version.
+Host-managed version probes run the arguments of the tool definition's
+`version` declaration. Hosts execute them and pass combined stdout and stderr
+as `build.checkToolVersion.request.output`, because some tools print their
+version to stderr. The definition's `version.pattern` alone captures the
+version, including any tool-specific numbering such as a legacy `1.` prefix;
+Core never branches on a tool name.
 
 Paths in requests are workspace-relative with `/` unless named absolute.
 `root` is the instance root from detection. Selected entities are
@@ -4615,7 +3794,6 @@ and the directories are absolute host paths used only as substitution text.
 | `build.decodeDiagnostics` | `{ workspaceRoot, root, output }` | `diagnostics`: `[{ path, line, column?, severity, message }]`, deduplicated, inside the workspace only |
 | `build.decodeDependencies` | `{ workspaceRoot, root, project?, output?, outputFile?, result? }` | `dependencies`: `{ project, dependencies: [{ name, group?, version?, scope?, properties?, children }], truncated }` |
 | `build.syncFingerprint` | `{ workspaceRoot, root, projects, options? }` | `sync`: `{ fingerprint, watch }` |
-| `build.languageImport` | `{ workspaceRoot, root, options?, executablePath? }` | `languageImport`: `null` without a `languageImport` declaration; `{ kind: "maven", mavenContext: { version, reactorPath, profiles, settingsPath?, localRepositoryPath?, mavenExecutablePath? } }` for `lsp.startServer.mavenContext` and `lsp.updateMavenConfiguration`; or `{ kind: "gradle", javaGradle: { wrapperPresent, offline, userHome? } }` for `lsp.startServer.javaGradle`, where `wrapperPresent` reports `gradle/wrapper/gradle-wrapper.properties` under `root` |
 
 Invocation candidates also include `{ kind: "toolchain", toolchainID, root }`.
 Hosts resolve them through the same canonical project/subproject
@@ -4635,6 +3813,12 @@ file refuses a plan without it. Unlike the `plugins.declarative.*` commands,
 inside `workspaceRoot` (and the given `outputFile`); none of the commands
 writes anything or starts a process. `shared/plugins/contract/v1/fixtures/build-systems/build-plans.json`
 holds the golden plans and decoded outputs.
+
+A `junitXml` testcase's optional `durationMillis` comes only from its `time`
+seconds attribute, rounded to whole milliseconds. Repeated invocations of one case
+sum their times; when any invocation lacks a valid non-negative time, or the sum
+exceeds 2^53 - 1, the field is omitted. A reported zero is valid. Hosts hide a
+missing duration and never substitute a suite or console summary.
 
 ### VCS providers
 
@@ -4908,32 +4092,6 @@ than being inserted as literal source text. The initialize handshake advertises
 `labelDetails` so language servers attach typed class/namespace labels on
 incomplete items. Core forwards `labelDetails` and omits null `data` so
 `completionItem/resolve` can still produce import `use`/`import` edits.
-
-The shared JDT adapter sends `java.completion.guessMethodArguments: "off"`
-through initialization, configuration notifications and section queries on both
-platforms. JDT LS therefore leaves constructor and method argument lists empty
-while preserving the snippet cursor inside the parentheses. Other completion
-settings declared in the provider's initialization options are retained for the
-session in initialize, didChangeConfiguration, and parent/leaf section pulls
-(including favoriteStaticMembers and filteredTypes). This does not disable snippet
-support or strip parameter text from arbitrary completion items; the shared
-configuration fixture is `rust/fixtures/lsp/java-completion-v1.json`.
-
-### Java preparation snapshot
-
-Java `projectPreparation` runtime events carry a `result` object with `phase`
-(`starting`, `importing`, `configuring`, `building`, `ready`, `stopped`), `status`
-(`idle`, `loading`, `ready`, `failed`) and boolean `blocksRun`.
-`lsp.pollEvents` and `lsp.waitEvents` also return `projectPreparation` (the current
-snapshot or null) alongside `events`, so restored consumers need not replay the
-queue. Event session identity and sequence retain their existing semantics.
-
-The snapshot reuses the existing service-ready signal, profile-task results and
-configuration/build coordinator. Generic indexing never blocks Run. Profile
-failure is visible but does not globally block unrelated targets; callers still
-build the selected target before launching. A successful preparation does not
-promise compilation success. Shared examples live in
-`rust/fixtures/lsp/project-preparation-v1.json`.
 
 ### Workspace commit preconditions
 
@@ -5283,26 +4441,26 @@ application action. Closing the connection releases the callback. Windows delive
 window-scoped Tauri events rather than an ordered Channel; a missing notification
 must not block subsequent requests.
 
-### Java service hot replacement
+### Hot code replacement
 
-`debug.inspect` accepts the Java-provider extension `kind: "redefineClasses"`
-with a caller-owned `operationId`. Unlike the inspection kinds, this operation
-**mutates the running debuggee**; it requires a running or paused Java session,
-but no selected thread. Platforms save documents and complete a successful JDT
-`vscode.java.buildWorkspace` before submitting it. They must retain the original
-launch target and compare its runtime paths with JDT before compiling; changed
-paths require a restart instead of applying to a different output directory.
+`debug.inspect` accepts `kind: "redefineClasses"` with a caller-owned
+`operationId` only for a session whose adapter declares
+`features.hotCodeReplace` in its plugin declaration; any other session is
+`invalid_request`. Unlike the inspection kinds, this operation **mutates the
+running debuggee**; it requires a running or paused session, but no selected
+thread. Core sends the declared `request` command and relays the declared
+`event` messages to the Debug Console as progress. Building the changed code
+before submitting the operation belongs to the plugin that owns the language;
+Core never compiles, and never interprets the replaced units.
 
 The terminal result is `{ kind: "redefineClasses", changedClasses: [...] }`,
-sorted and deduplicated. Empty means no classes were replaced. Java Debug Server's
-`errorMessage` inside a successful DAP response becomes `operationFailed` with
-`adapterRejected`; the debug session remains usable. Malformed replacement
-results also fail only the operation. Replacement does not imply continue.
-The fixture is `rust/fixtures/debug/hot-code-replace-v1.json`.
+read from the declared `changedField`, sorted and deduplicated; without a
+declared field it is empty. A non-empty message in the declared `errorField` of
+a successful DAP response fails the operation; the debug session remains
+usable. Malformed replacement results also fail only the operation.
+Replacement does not imply continue. The fixture is
+`rust/fixtures/debug/hot-code-replace-v1.json`.
 
-Java debug launches append `-Dspring.devtools.restart.enabled=false` (also for
-Core-planned direct JDT JDWP launches) so DevTools cannot restart the classloader during
-HotSwap. Attach to independently launched JVMs does not change their options.
 The Windows host maps `redefineClasses` to this operation and `cancelOperation`
 to `debug.cancelOperation` with a `timedOut` reason for its bounded result wait.
 
@@ -5428,19 +4586,6 @@ presentation feature; views never call the C ABI. Windows can reuse validation
 when it later adds a native renderer; Core support does not make Windows
 advertise native plugin content.
 
-### Project JDK supplied to JDT LS
-
-`lsp.startServer.javaRuntimes` entries contain `homePath`, `version`, and optional
-`isDefault` (default `false`). Platforms use their existing project toolchain selection,
-including explicit JDK homes outside discovery roots. The server process JVM remains
-independent. Core registers one JDK per Java major; the first valid selected candidate
-wins its major and alone receives `default: true` in `java.configuration.runtimes`,
-both at initialization and in configuration responses. Empty homes and unparseable versions
-are ignored during projection; platform adapters validate explicit choices before launch.
-Legacy callers that omit `isDefault` retain their previous behavior.
-Fixture: `rust/fixtures/lsp/java-project-runtimes-v1.json`.
-
-
 ### Workspace indexing policy
 
 `workspace.configureIndexing` accepts `root`, `manualExcludedDirectories`,
@@ -5526,8 +4671,7 @@ in force. Hosts must display this state instead of treating it as empty rules.
 Tree listings deliberately remain available. Snapshot inventories, filename and
 content indexes, symbols and replacement preview candidates obey the policy.
 Generated filename search cannot bypass it. Language-server working-copy sync is
-blocked for excluded paths. Java additionally receives import exclusions; this does
-not promise resource-scan exclusion for imported or build-declared modules. Rust and Go receive native configuration overlays that preserve user settings;
+blocked for excluded paths. Rust and Go receive native configuration overlays that preserve user settings;
 other providers may continue background scanning and hosts must display that limitation.
 
 `workspace.snapshot.incompleteDirectories` is present when optional child directories
@@ -5624,8 +4768,8 @@ scope covers nothing and an empty prefix is `InvalidRequest`. It returns
 others stay in place, then the run's covered results follow. Incoming results
 outside the scope are discarded, and for a repeated id the later entry wins.
 Core compares strings only: hosts keep the result payloads, and the provider
-adapter builds the scope (for example turning Java nested classes `Outer$Inner`
-into the prefix `Outer$`). Cases: `rust/fixtures/build/test-outcome-merge-v1.json`.
+adapter builds the scope (for example turning a parent result `suite` into the
+prefix `suite/`). Cases: `rust/fixtures/build/test-outcome-merge-v1.json`.
 
 ### Variable and disassembly paging
 
@@ -5726,17 +4870,12 @@ does not transition session state. Codes have one meaning:
 
 | code | stage | meaning |
 | --- | --- | --- |
-| `mavenSettingsUnchanged` | `mavenSettings` | Maven settings could not be normalized and were forwarded unchanged |
-| `configurationCleanupFailed` | `configurationCleanup` | Unused language-server configuration areas could not be removed |
-| `mavenProfileStartFailed` | `mavenProfileStart` | The pending Maven profile update could not start |
+| `upstreamStderr` | `stderr` | The language server wrote to stderr |
+| `stderrReadFailed` | `stderr` | Reading the language server's stderr failed |
+| `shutdownTimeout` | `shutdown` | The shutdown deadline passed and Core forced termination |
+| `processCleanupFailed` | `cleanup` | The language-server process could not be cleaned up |
 
-The existing Core log sources additionally classify `upstreamStderr` (stderr
-observation), `stderrReadFailed` (stderr I/O), `navigationLimited` (batch cap),
-`navigationMarkerFailed` (marker verification), `workspaceImportStalled`
-(no import progress), `mavenProfileUpdateFailed` (project update failure),
-`shutdownTimeout` (forced termination after shutdown deadline), and
-`mavenProfileTimeout` (profile application deadline). Each code names exactly
-that observation; arbitrary upstream messages retain `upstreamDiagnostic`.
+Each code names exactly that observation.
 
 Hosts persist these controlled identities, never the raw detail, URL, output or argv.
 
@@ -5782,7 +4921,7 @@ of the validated catalog routing field. Hosts must use `fields` and `channel`
 from Core, never rebuild the route from `providerId` or `pluginId`.
 
 Log runtime events retain `type:"log"`, sequence, providerId, sessionId,
-level, message, detail, error, and Maven state fields. They add `channel`,
+level, message, detail and error. They add `channel`,
 `pluginId?`, `role`, `event` (catalog ID), `catalogLevel` (canonical uppercase v2 level), and `fields` (normalized scalar disk
 fields). `type` is the actual JSON discriminator; there is no `kind` wire key.
 Catalog metadata determines canonical v2 severity; the old `level` remains a v1
@@ -6097,22 +5236,6 @@ the failure again.
 ```json
 {"ts":"2026-11-03T08:00:01.123Z","level":"WARN","event":"vcs.git.command.failed","channel":"vcs/git","op":"op-7f3a","fields":{"command":"fetch","arguments":"fetch --prune origin","repository":"<HOME>/src/app","source":"user","duration_ms":311,"exit_code":128,"stderr":"fatal: could not read from remote repository."}}
 ```
-
-`agent.attachments.retentionPlan` decides which pasted Agent images the platform may
-delete; it reads and writes no files. The payload is `{nowMs, entries, acceptedReferences,
-ledgerPresent, caseInsensitive}`: `entries` lists the platform's pasted-image cache as `{path, modifiedMs,
-abandoned}` (`modifiedMs` is Unix milliseconds and may be omitted; `abandoned` marks a
-paste that failed or was discarded before any conversation accepted it),
-`acceptedReferences` is the platform ledger of paths a conversation accepted, and
-`caseInsensitive` (Windows) compares paths without case; separators are always normalized.
-`ledgerPresent` reports only whether the ledger file exists, never whether it is empty: when it
-is missing, every non-abandoned cached image counts as accepted (the cache predates the
-ledger) and is returned in `seed`, which the platform writes atomically (temporary file, then
-rename) before deleting anything. The result is `{delete, keep, seed}`, the first two lists of `{path, reason}` in entry order. Reasons:
-`referenced` (kept, even when flagged abandoned), `recent` (kept, unreferenced and at most
-seven days old or of unknown age), `abandoned` and `expired` (deleted). The cache and the
-ledger live in the platform cache directory, never in the app bundle or install directory.
-The fixture is `rust/fixtures/agent/attachment-retention-v1.json`.
 
 ### Atomic local toolchain pin editing
 

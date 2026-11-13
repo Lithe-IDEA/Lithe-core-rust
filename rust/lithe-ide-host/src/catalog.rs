@@ -98,12 +98,6 @@ fn schema(properties: Value, required: &[&str]) -> Value {
 pub fn tools() -> Vec<Value> {
     let definitions = vec![
         ("lithe_project_inspect", "Inspect the connected IDE project, readiness and available permissions.", "read", schema(json!({}), &[])),
-        ("lithe_environment_inspect", "Discover Java and Maven installations and inspect saved and effective project environment settings. Does not install tools.", "read", schema(json!({}), &[])),
-        ("lithe_environment_configure", "Update selected project-local Java/Maven defaults using the IDE settings workflow. Empty paths restore automatic selection. Other settings are preserved. Requires configure permission.", "configure", schema(json!({"javaHomePath":string(),"mavenExecutablePath":string(),"mavenJavaHomePath":string(),"settingsPath":string(),"localRepositoryPath":string()}), &[])),
-        ("lithe_maven_inspect", "Read Maven modules, available/selected profiles, skip-tests setting and reload state.", "read", schema(json!({}), &[])),
-        ("lithe_maven_configure", "Save Maven profiles and skip-tests settings through the existing IDE workflow. Requires configure permission.", "configure", schema(json!({"profiles":{"type":"array","items":string(),"maxItems":64},"skipTests":{"type":"boolean"}}), &[])),
-        ("lithe_maven_reload", "Reload the Maven project and synchronize the existing Java language service. May resolve dependencies and execute project tooling. Requires execute permission.", "execute", schema(json!({}), &[])),
-        ("lithe_maven_execute", "Windows Maven execution (macOS uses lithe_build_execute). Execute Maven goals through the IDE, using saved profiles and toolchains. Returns operationID for output/status/stop. May execute project code and access the network. Requires execute permission.", "execute", schema(json!({"goals":{"type":"array","items":string(),"minItems":1,"maxItems":32},"modulePath":string()}), &["goals"])),
         ("lithe_build_inspect", "List detected build plugin instances, current project/target/model task identities and declared tasks. No tooling is executed.", "read", schema(json!({}), &[])),
         ("lithe_build_reload", "Ask a detected build plugin to load or reload its project model. May execute project tooling and access the network. Inspect the model state before selecting projects. Requires execute permission.", "execute", schema(json!({"instanceID":string()}), &["instanceID"])),
         ("lithe_build_configure", "Set one declared build option using the same instance editor and persistent store as the IDE. Read option IDs, kinds and effective values from build inspect. Null resets that option. Invalid values are refused. Native files use the explicit native configuration save workflow. Requires configure permission.", "configure", schema(json!({"instanceID":string(),"optionID":string(),"value":option_value()}), &["instanceID","optionID","value"])),
@@ -185,39 +179,6 @@ fn validate_catalog(
         let spec = properties.get(key).ok_or_else(invalid)?;
         if !valid_value(spec, value) {
             return Err(invalid());
-        }
-    }
-    if let Some(profiles) = args.get("profiles").and_then(Value::as_array) {
-        if profiles.iter().any(|p| {
-            p.as_str()
-                .is_none_or(|s| s.trim().is_empty() || s.trim() != s || s.contains(','))
-        }) {
-            return Err(invalid());
-        }
-    }
-    if let Some(module) = args.get("modulePath").and_then(Value::as_str) {
-        if module.starts_with('/')
-            || module.contains(['\\', ':'])
-            || module.split('/').any(|s| s == "..")
-        {
-            return Err(invalid());
-        }
-    }
-    // A goal is one Maven token. Shell strings, flags and implicit filesystem overrides
-    // belong to the IDE's settings/configuration workflow, not this execution surface.
-    if let Some(goals) = args.get("goals").and_then(Value::as_array) {
-        if goals.iter().any(|g| {
-            g.as_str().is_none_or(|s| {
-                s.starts_with('-')
-                    || !s
-                        .chars()
-                        .all(|c| c.is_ascii_alphanumeric() || ":._-".contains(c))
-            })
-        }) {
-            return Err(failure(
-                "INVALID_ARGUMENTS",
-                "Use Maven goal names; configure profiles and paths through the settings tools",
-            ));
         }
     }
     Ok(())
@@ -345,8 +306,8 @@ mod tests {
         );
         assert_eq!(
             validate_exposed(
-                "lithe_maven_configure",
-                &json!({"profiles":["ci"]}),
+                "lithe_unknown_capability",
+                &json!({}),
                 &permissions,
                 &exposure
             )
@@ -355,7 +316,7 @@ mod tests {
         );
         assert!(validate_exposed(
             "lithe_build_execute",
-            &json!({"instanceID":"maven:.","taskID":"compile"}),
+            &json!({"instanceID":"example:.","taskID":"compile"}),
             &Permissions::default(),
             &exposure
         )
@@ -404,37 +365,10 @@ mod tests {
         }
     }
     #[test]
-    fn authorization_and_argument_validation_cannot_be_bypassed() {
-        assert!(validate(
-            "lithe_maven_execute",
-            &json!({"goals":["verify"]}),
-            &Permissions::default()
-        )
-        .is_err());
-        let permissions = Permissions {
-            execute: true,
-            configure: true,
-        };
-        for args in [
-            json!({"goals":["verify"],"modulePath":"../other"}),
-            json!({"goals":["verify;curl"]}),
-            json!({"goals":["-f"]}),
-            json!({"goals":["verify"],"confirmed":true}),
-        ] {
-            assert!(validate("lithe_maven_execute", &args, &permissions).is_err());
-        }
-        assert!(validate(
-            "lithe_maven_execute",
-            &json!({"goals":["clean","verify"],"modulePath":"module"}),
-            &permissions
-        )
-        .is_ok());
-    }
-    #[test]
     fn build_authorization_and_argument_validation_cannot_be_bypassed() {
         assert!(validate(
             "lithe_build_execute",
-            &json!({"instanceID":"maven@.","taskID":"verify"}),
+            &json!({"instanceID":"fixture@.","taskID":"verify"}),
             &Permissions::default()
         )
         .is_err());
@@ -443,14 +377,14 @@ mod tests {
             configure: true,
         };
         for args in [
-            json!({"instanceID":"maven@."}),
-            json!({"instanceID":"maven@.","taskID":"verify","command":"mvn"}),
-            json!({"instanceID":"maven@.","taskID":"verify","userArguments":["bad\u{0000}argument"]}),
-            json!({"instanceID":"maven@.","taskID":"verify","confirmed":true}),
+            json!({"instanceID":"fixture@."}),
+            json!({"instanceID":"fixture@.","taskID":"verify","command":"fixture-tool"}),
+            json!({"instanceID":"fixture@.","taskID":"verify","userArguments":["bad\u{0000}argument"]}),
+            json!({"instanceID":"fixture@.","taskID":"verify","confirmed":true}),
         ] {
             assert!(validate("lithe_build_execute", &args, &permissions).is_err());
         }
-        assert!(validate("lithe_build_execute", &json!({"instanceID":"maven@.","taskID":"custom","projectID":"api","userArguments":["clean","verify"]}), &permissions).is_ok());
+        assert!(validate("lithe_build_execute", &json!({"instanceID":"fixture@.","taskID":"custom","projectID":"api","userArguments":["clean","verify"]}), &permissions).is_ok());
     }
     #[test]
     fn build_options_require_configure_and_accept_only_bounded_declared_value_shapes() {

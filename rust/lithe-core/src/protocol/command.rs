@@ -374,8 +374,6 @@ pub enum CoreCommand {
     ExecutionResolveEnvironment,
     /// Resolves deterministic process search-path ordering (`execution.resolveSearchPath`).
     ExecutionResolveSearchPath,
-    /// Moves oversized Java path-list options into a JDK argument file (`execution.planLaunchCommand`).
-    ExecutionPlanLaunchCommand,
     /// Decides how each Lithe-owned process ends (`processLifecycle.resolve`).
     ProcessLifecycleResolve,
     /// Classifies a process snapshot into lifecycle items (`processLifecycle.inventory`).
@@ -999,7 +997,6 @@ impl CoreCommand {
             "diff.compareTexts" => Some(Self::DiffCompareTexts),
             "execution.resolveEnvironment" => Some(Self::ExecutionResolveEnvironment),
             "execution.resolveSearchPath" => Some(Self::ExecutionResolveSearchPath),
-            "execution.planLaunchCommand" => Some(Self::ExecutionPlanLaunchCommand),
             "processLifecycle.resolve" => Some(Self::ProcessLifecycleResolve),
             "processLifecycle.inventory" => Some(Self::ProcessLifecycleInventory),
             "processLifecycle.settle" => Some(Self::ProcessLifecycleSettle),

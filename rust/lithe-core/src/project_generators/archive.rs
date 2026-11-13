@@ -358,13 +358,13 @@ mod tests {
         let (directory, path) = archive(&[
             ("pom.xml", b"<project/>", None),
             ("mvnw", b"#!/bin/sh", Some(0o755)),
-            ("src/main/java/App.java", b"class App {}", None),
+            ("src/main/app/App.src", b"class App {}", None),
         ]);
         let destination = directory.path().join("project");
         fs::create_dir(&destination).unwrap();
         assert_eq!(extract(&path, &destination).unwrap(), 3);
         assert_eq!(
-            fs::read_to_string(destination.join("src/main/java/App.java")).unwrap(),
+            fs::read_to_string(destination.join("src/main/app/App.src")).unwrap(),
             "class App {}"
         );
         #[cfg(unix)]

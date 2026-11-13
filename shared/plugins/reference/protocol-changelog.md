@@ -125,8 +125,15 @@
 | API-35 | `functions/invoke` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | — | `keymapImport/listInputs` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | — | `keymapImport/readChunk` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
+| API-23 | `run/start`：`temporaryFiles` 增加 `{name, base64}` 字节文件 | 0 | 2026-11-13 | [#23](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/23) |
 
 ## 时间线（新的在上）
+
+### 2026-11-13
+
+| PR | 修改人 | API 编号 | 协议 / 能力 | 改了什么 |
+| --- | --- | --- | --- | --- |
+| [#23](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/23) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | API-23 | `pluginAPIVersion` 0 内的补充 | `run/start` 的 `temporaryFiles` 可写 `{name, base64}` 字节文件，宿主原样写入、不转码，供编码必须由插件决定的格式使用（例如按系统代码页读取的参数文件）；`hostIntegration` 明确为保留字段：Core 不实现任何宿主集成，任何 ID 都以 `plugin.integration.unsupported` 拒绝，清单 schema 去掉只含 `jdt`、`maven` 的枚举；项目生成器的 `${field.<id>.major}` 取版本的第一个数字段，不再把 `1.8.0_412` 特判成 `8`；契约去掉 Java、Maven、JDT 专属说明。 |
 
 ### 2026-11-11
 

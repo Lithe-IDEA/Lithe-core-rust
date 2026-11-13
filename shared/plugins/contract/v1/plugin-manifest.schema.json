@@ -1454,14 +1454,14 @@
           "enum": ["supported", "unsupported"]
         },
         "hostIntegration": {
-          "description": "A named host integration and the package resources it reads.",
+          "description": "Reserved. Core implements no host integration, so any ID is refused with plugin.integration.unsupported.",
           "type": "object",
           "additionalProperties": false,
           "required": ["id"],
           "properties": {
-            "id": { "enum": ["jdt"] },
+            "id": { "type": "string", "minLength": 1 },
             "capabilities": {
-              "description": "Process-backed features of the language that the host's own implementation provides through the integration.",
+              "description": "Process-backed features of the language a host integration would provide.",
               "type": "array",
               "uniqueItems": true,
               "items": { "enum": ["debug", "run", "testing"] }
@@ -2673,7 +2673,7 @@
                     "$ref": "#/$defs/buildVersionProbe"
                   }
                 },
-                "description": "java, node, and go use host version probes. They may select one toolchain candidate with executables, or take only id and minimumVersion. Other runtimes declare their executables and version probe."
+                "description": "node and go use host version probes. They may select one toolchain candidate with executables, or take only id and minimumVersion. Other runtimes declare their executables and version probe."
               }
             },
             "version": {
@@ -2685,10 +2685,9 @@
           }
         },
         "hostIntegration": {
-          "description": "Official plugins only; the host must provide the named integration.",
-          "enum": [
-            "maven"
-          ]
+          "description": "Reserved. Core implements no build-system host integration, so any name is refused with plugin.integration.unsupported.",
+          "type": "string",
+          "minLength": 1
         },
         "provider": {
           "$ref": "#/$defs/buildProvider"

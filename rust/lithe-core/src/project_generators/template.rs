@@ -1,8 +1,8 @@
 //! Variables of project generator templates.
 //!
 //! Strings in the manifest use the `${...}` syntax every plugin template
-//! uses. Template files in the package use `{{ ... }}` instead, because Maven
-//! POMs, Gradle scripts, and Spring properties already contain `${...}` that
+//! uses. Template files in the package use `{{ ... }}` instead, because build
+//! scripts and property files of many tools already contain `${...}` that
 //! must reach the project unchanged. In files, only `{{` followed by
 //! `project.` or `field.` is a variable; any other `{{` is copied as text.
 
@@ -31,7 +31,7 @@ pub(crate) enum Source {
 pub(crate) enum Modifier {
     /// Dots become `/`: a package name as a source directory.
     Path,
-    /// A valid Java-style package: lowercase, only letters, digits,
+    /// A dotted package identifier: lowercase, only letters, digits,
     /// underscores, and single dots, each segment starting with a letter or
     /// underscore. `com.example.my-app` becomes `com.example.myapp`.
     Package,
@@ -204,16 +204,17 @@ fn apply(modifier: Modifier, value: &str) -> String {
     }
 }
 
-/// `1.8.0_412` → `8`, `21.0.2` → `21`, `25` → `25`.
+/// The first numeric component: `21.0.2` → `21`, `25` → `25`.
+///
+/// Tool-specific numbering (such as a legacy `1.` prefix) is normalized by the
+/// tool definition's `version.pattern` capture before the version reaches a
+/// template, so this reader never interprets a tool's scheme.
 pub(crate) fn major_version(version: &str) -> String {
-    let mut numbers = version
+    version
         .split(|character: char| !character.is_ascii_digit())
-        .filter(|part| !part.is_empty());
-    match (numbers.next(), numbers.next()) {
-        (Some("1"), Some(minor)) => minor.to_string(),
-        (Some(major), _) => major.to_string(),
-        _ => String::new(),
-    }
+        .find(|part| !part.is_empty())
+        .unwrap_or_default()
+        .to_string()
 }
 
 fn package_name(value: &str) -> String {
@@ -259,18 +260,18 @@ mod tests {
             })
         );
         assert_eq!(
-            Variable::parse("field.jdk.major").map(|variable| variable.source),
-            Some(Source::ToolMajor("jdk".into()))
+            Variable::parse("field.compiler.major").map(|variable| variable.source),
+            Some(Source::ToolMajor("compiler".into()))
         );
         assert_eq!(
-            Variable::parse("field.jdk.version").map(|variable| variable.source),
-            Some(Source::ToolVersion("jdk".into()))
+            Variable::parse("field.compiler.version").map(|variable| variable.source),
+            Some(Source::ToolVersion("compiler".into()))
         );
         assert_eq!(
             Variable::parse("field.python.executable").map(|variable| variable.source),
             Some(Source::ToolExecutable("python".into()))
         );
-        assert!(Variable::parse("field.jdk.home").is_none());
+        assert!(Variable::parse("field.compiler.home").is_none());
         assert!(Variable::parse("project.path").is_none());
         assert!(Variable::parse("field.name|upper").is_none());
     }
@@ -310,8 +311,9 @@ mod tests {
     }
 
     #[test]
-    fn major_versions_follow_java_numbering() {
-        assert_eq!(major_version("1.8.0_412"), "8");
+    fn major_versions_take_the_first_numeric_component() {
+        assert_eq!(major_version("8.0_412"), "8");
+        assert_eq!(major_version("1.8.0"), "1");
         assert_eq!(major_version("25.0.3"), "25");
         assert_eq!(major_version(""), "");
     }

@@ -591,7 +591,7 @@ mod tests {
         let denied: Value = client
             .post(&connection.endpoint)
             .bearer_auth(&connection.token)
-            .json(&json!({"name":"lithe_build_execute","arguments":{"instanceID":"maven@.","taskID":"verify"}}))
+            .json(&json!({"name":"lithe_build_execute","arguments":{"instanceID":"fixture@.","taskID":"verify"}}))
             .send()
             .await
             .unwrap()
@@ -691,13 +691,14 @@ mod tests {
             "../../fixtures/ide-api/host-tool-exposure.json"
         ))
         .unwrap();
-        let (_fixture, broker, headers) = push_fixture_exposed(exposure["macos"].clone());
+        let mut advertised = exposure["macos"].clone();
+        advertised
+            .as_array_mut()
+            .unwrap()
+            .retain(|tool| tool["name"] != "lithe_run_list");
+        let (_fixture, broker, headers) = push_fixture_exposed(advertised);
         for (name, arguments, code) in [
-            (
-                "lithe_maven_execute",
-                json!({"goals":["verify"]}),
-                "NOT_SUPPORTED",
-            ),
+            ("lithe_run_list", json!({}), "NOT_SUPPORTED"),
             (
                 "lithe_build_configure",
                 json!({"instanceID":"example:.","optionID":"offline","value":true,"settingsPath":"/fixture/settings.xml"}),
@@ -757,13 +758,7 @@ mod tests {
             configure: true,
             execute: true,
         };
-        assert!(catalog::validate_served(
-            "lithe_maven_execute",
-            &json!({"goals":["verify"]}),
-            &permissions,
-            None
-        )
-        .is_ok());
+        assert!(catalog::validate_served("lithe_run_list", &json!({}), &permissions, None).is_ok());
     }
 
     async fn notification(rx: &mut tokio::sync::mpsc::UnboundedReceiver<String>) -> Option<String> {

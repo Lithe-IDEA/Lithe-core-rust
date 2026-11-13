@@ -24,41 +24,11 @@
     },
     "toolchain": {
       "type": "object",
-      "description": "Machine-local project toolchain defaults. Stored only in the local layer; non-empty per-configuration paths override matching defaults.",
+      "description": "Machine-local project toolchain state. Stored only in the local layer. Core reads and replaces only `preferences`; other fields belong to whichever host or plugin wrote them and are preserved unchanged.",
       "properties": {
-        "preferences": { "$ref": "toolchain-consumer-preferences-v1.schema.json" },
-        "java": {
-          "type": "object",
-          "properties": {
-            "homePath": { "type": "string" }
-          },
-          "additionalProperties": false
-        },
-        "maven": {
-          "type": "object",
-          "properties": {
-            "executablePath": { "type": "string" },
-            "javaHomePath": { "type": "string" }
-          },
-          "additionalProperties": false
-        },
-        "pathOverrides": {
-          "type": "object",
-          "description": "Machine-local subproject selections, keyed by normalized workspace-relative root. Empty fields inherit project defaults. Hosts preserve the map when saving individual run configurations.",
-          "maxProperties": 256,
-          "propertyNames": { "type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^(?!/)(?!.*//)(?!.*/$)(?!.*(?:^|/)(?:\\.|\\.\\.)(?:/|$))[^\\\\:\\x00-\\x1f\\x7f]+$" },
-          "additionalProperties": {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "javaHomePath": { "type": "string", "maxLength": 4096 },
-              "mavenExecutablePath": { "type": "string", "maxLength": 4096 },
-              "mavenJavaHomePath": { "type": "string", "maxLength": 4096 }
-            }
-          }
-        }
+        "preferences": { "$ref": "toolchain-consumer-preferences-v1.schema.json" }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "configurations": {
       "type": "array",
@@ -235,13 +205,6 @@
         "extensions": {
           "type": "object",
           "propertyNames": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
-          "properties": {
-            "java": { "type": "object", "properties": {
-              "build": { "$ref": "#/$defs/buildProjectReference" },
-              "module": { "type": "string" },
-              "mainClass": { "type": ["string", "null"] }
-            } }
-          },
           "additionalProperties": { "type": "object" }
         },
         "disabled": { "type": "boolean" },

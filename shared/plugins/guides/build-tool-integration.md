@@ -27,7 +27,6 @@ LSP 服务器负责语言分析，构建工具负责项目导入、编译、依�
 | 补全、跳转、诊断 | `languageServers` | 按 LSP 提供能力，不自动声明编译和测试 |
 | 运行文件或固定项目命令 | `executionProviders[].run` | 命令与 argv 模板，工作目录为工作区根；不提供通用目标选择或构建模型。桌面端不声明 `executionProviders` |
 | 运行整个工程、文件所在范围或指定测试 | `executionProviders[].test` | 测试项目标记、文件发现和命令规划；不是完整语义测试发现与结构化结果协议。桌面端不声明 `executionProviders` |
-| Java 项目的运行/测试/调试 | 任何插件都可以声明 `languageServers[].hostIntegration`，例如 `jdt` | 使用宿主实现的集成；集成只读插件自己包里的资源，交给同一插件启动的语言服务器，不额外授予权限；宿主未实现的集成 ID 返回 `plugin.integration.unsupported`，见[契约](../contract/v1/README.md#language-server-host-integrations)。桌面端的声明说明没有列出语言服务器宿主集成，使用前先在桌面端验证 |
 | 通用 Build 工具窗口、工程模型、任务、依赖与同步 | `buildSystems`；模型需要程序计算时再加 `buildProviders` | Core 校验并规划，桌面端声明并呈现这两个能力，呈现范围见开头的宿主支持 |
 
 当需求只是 `lua <当前文件>`、`go test ./...` 这类固定命令，契约提供执行提供者（`executionProviders`）。
@@ -187,17 +186,12 @@ Core 的计划接口本身不启动进程、不监视文件、不持久化选择
 只说明声明和规划正确，仍要在真实宿主里验收。
 不要把内部 dispatcher 命令写成社区插件可以调用的宿主脚本 API。
 
-`languageServers[].hostIntegration`（语言服务器侧）与构建系统 `model.source: "hostIntegration"`
-是不同接口，开放范围也不同：
-
-- 语言服务器侧对所有插件开放。任何插件都可以声明宿主已实现的集成 ID（契约里的例子是 `jdt`）；
-  集成只读取声明插件自己包里的资源，交给同一插件启动的服务器或辅助进程，不额外授予权限。
-  宿主未实现的 ID 返回 `plugin.integration.unsupported`，见
-  [契约](../contract/v1/README.md#language-server-host-integrations)。
-- 构建系统侧只限官方插件，目前只有 `maven`；官方命名空间以外的插件请求它同样得到
-  `plugin.integration.unsupported`，见[契约](../contract/v1/README.md#host-integrations)。
-  不要复制官方 ID 或修改 `vendor` 来绕过这个限制。
-  社区构建插件用 `static`、`command` 或 `provider` 模型。
+`languageServers[].hostIntegration` 与构建系统 `model.source: "hostIntegration"` 都是保留字段。
+Core 不实现任何宿主集成，也不按语言、服务器或构建工具的 ID 走特殊逻辑，所以任何 ID 都返回
+`plugin.integration.unsupported`，见[语言服务器侧](../contract/v1/README.md#language-server-host-integrations)
+与[构建系统侧](../contract/v1/README.md#host-integrations)的契约。语言的运行、测试与调试由插件自己的
+`executionProviders`、`buildSystems`、`buildProviders` 和后端提供；构建插件用 `static`、`command` 或
+`provider` 模型。
 
 两侧都不是作者自己命名就能新增的机制：集成 ID 必须是宿主已经实现的。
 
@@ -254,7 +248,6 @@ Before publishing, still confirm that the target host declares every capability 
 | Completion, navigation, diagnostics | `languageServers` | Features come from LSP; compile and test are not declared automatically |
 | Run a file or a fixed project command | `executionProviders[].run` | A command and argv template; the working directory is the workspace root; no general target selection or build model. The desktop does not declare `executionProviders` |
 | Run the whole project, a file's scope, or a named test | `executionProviders[].test` | Test-project markers, file discovery, and command planning; not a full semantic test-discovery or structured-results protocol. The desktop does not declare `executionProviders` |
-| Run, test, and debug Java projects | Any plugin may declare `languageServers[].hostIntegration`, for example `jdt` | Uses an integration the host implements; the integration reads only resources inside the plugin's own package and hands them to the language server that same plugin starts, and grants no extra permission; an integration ID the host does not implement returns `plugin.integration.unsupported`; see the [contract](../contract/v1/README.md#language-server-host-integrations). The desktop's declarations do not list any language-server host integration, so verify on the desktop before relying on one |
 | A general Build tool window, project model, tasks, dependencies, and sync | `buildSystems`, plus `buildProviders` when a program must compute the model | Core validates and plans; the desktop declares and presents both capabilities, to the extent described in the host support note at the top |
 
 When all you need is a fixed command such as `lua <current file>` or `go test ./...`, the contract offers
@@ -425,19 +418,13 @@ A fixture that produces the right command only shows that the declaration and pl
 you still have to accept it in a real host.
 Do not present internal dispatcher commands as a host scripting API that community plugins can call.
 
-`languageServers[].hostIntegration` (the language-server side) and the build-system
-`model.source: "hostIntegration"` are different interfaces, and they are open to different plugins:
-
-- The language-server side is open to every plugin. Any plugin may declare an integration ID the host
-  already implements (the contract's example is `jdt`); the integration reads only
-  resources inside the declaring plugin's own package and hands them to the server or helper process
-  that same plugin starts, and grants no extra permission. An ID the host does not implement returns
-  `plugin.integration.unsupported`; see the [contract](../contract/v1/README.md#language-server-host-integrations).
-- The build-system side is limited to official plugins, and currently has only `maven`; a plugin
-  outside the official namespace that asks for it also gets `plugin.integration.unsupported`;
-  see the [contract](../contract/v1/README.md#host-integrations).
-  Do not copy an official ID or change `vendor` to get around this limit.
-  Community build plugins use the `static`, `command`, or `provider` models.
+`languageServers[].hostIntegration` and the build-system `model.source: "hostIntegration"` are both
+reserved. Core implements no host integration and runs no special logic for a language, server, or
+build-tool ID, so every ID returns `plugin.integration.unsupported`; see the contract for the
+[language-server side](../contract/v1/README.md#language-server-host-integrations) and the
+[build-system side](../contract/v1/README.md#host-integrations). A language's run, test, and debug
+come from the plugin's own `executionProviders`, `buildSystems`, `buildProviders`, and backend; build
+plugins use the `static`, `command`, or `provider` models.
 
 Neither side lets an author add an integration by picking a name: the ID must be one the host already implements.
 

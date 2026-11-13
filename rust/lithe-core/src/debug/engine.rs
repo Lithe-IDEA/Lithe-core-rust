@@ -1013,7 +1013,7 @@ pub(crate) fn disconnect(request: DisconnectRequest) -> Result<DebugSessionUpdat
             "The debug session stopped before the child session could start.",
         )?;
         session.request_children_stop();
-        // An attach session does not own the remote JVM, so disconnect must
+        // An attach session does not own the remote process, so disconnect must
         // never terminate it. A launch session owns the local debuggee and
         // follows the user's explicit choice, defaulting to termination.
         let terminate_debuggee = match session.debug_request_kind {
@@ -3496,7 +3496,7 @@ mod tests {
             assert!(result.events.iter().any(|e| matches!(&e.body,
                 DebugEventBody::OperationCompleted { operation_id, result: DebugOperationResult::RedefineClasses { changed_classes } }
                 if operation_id == "apply" && changed_classes == &["example.Service".to_string()])));
-            // A success envelope with a JVM error must not tear down the debug transport.
+            // A success envelope with a runtime error must not tear down the debug transport.
             let rejected = inspect(
                 serde_json::from_value(json!({
                     "sessionId":id,"operationId":"rejected","kind":"redefineClasses"

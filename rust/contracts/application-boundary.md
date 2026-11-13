@@ -40,129 +40,10 @@ Core's stateless `search.actions` returns ordered candidate offsets; the host ke
 ownership of action availability, execution and module activation. See
 [the action search fixture](../fixtures/search/actions-v1.json).
 
-Global Agent instructions edit each upstream Agent's native user file, independently
-of the current project and provider. Opening settings is read-only. Codex uses
-`CODEX_HOME` (otherwise the user home `.codex`) and its first non-empty
-`AGENTS.override.md` / `AGENTS.md`; Claude uses `CLAUDE_CONFIG_DIR` (otherwise
-the user home `.claude`) and `CLAUDE.md`. The host resolves these locations;
-UI supplies no arbitrary read/write destination. Absolute native paths in snapshots
-are display and optimistic-write guards, not portable identifiers. A save checks
-the snapshot's path and revision, replaces the file atomically, and reads the
-effective source back. Failures retain the draft; reloading explicitly discards it
-only after a successful read. Drafts stay separate by Agent. Updated instructions
-load in a new native conversation; existing sessions are not rewritten or stopped.
-Project instructions retain the upstream Agent's precedence rules. See
-`fixtures/agent/agent-instructions-v1.json`.
-
-A user can also author one shared instruction text in platform-owned application
-support storage and opt each supported Agent into a delimited block in its native
-file. Synchronization preserves every byte outside that block. Turning a switch
-off removes only that block. Enabled, unknown and out-of-date states come from
-native snapshots, not a stored preference. Source saves and each target replacement
-are atomic individually, not a cross-file transaction: per-Agent conflicts remain
-visible and retryable while the saved shared draft and successful targets survive.
-No startup/background synchronization or extra prompt injection occurs. A malformed
-or duplicate marker is never repaired by overwriting it automatically. See
-`fixtures/agent/shared-instructions-v1.json`.
-
 Shared Monaco highlighting is owned by the current view/model pair. A queued
 callback for a closed or replaced model must finish without running against the
 new model or locking surviving documents. Primary, split and diff views share
 this lifecycle protection; actual symbol computation remains upstream-owned.
-
-Agent prompt completion may include Agent-reported token counters; their accounting
-scope belongs to the provider and is separate from context occupancy and subscription
-quota. Platforms may measure locally observed turns with a monotonic clock, including
-tools and permission waits, and freeze elapsed time at completion, failure or disconnect.
-Normal Agent turns and permission decisions have no total-duration deadline. Quiet
-activity notices are advisory and retain the busy turn; stop remains acknowledged
-with bounded process cleanup. Missing usage and unmeasured replayed history remain
-unknown. See the
-[Agent host contract](rust-core-api.md) and `fixtures/agent/acp-events-v1.json`.
-
-Agent history lists can expose matching summaries as pages arrive while the remaining scan stays loading. Partial results prove presence only; final snapshots reconcile removals, and later failures retain visible rows. History surfaces share connection-local recent snapshots and in-flight requests; manual refresh remains immediate. Workspace/Agent isolation, stale-token rejection and upstream history ownership apply to both partial and final results.
-
-History provider filtering defaults to all providers and uses only upstream-reported
-`modelProvider` identities. Choices span active and archived records; missing metadata
-has an explicit unknown choice. A provider selection composes with title/ID search,
-favorites and local removal, including archive results. It is transient presentation
-state, not a routing or account setting, and never narrows the upstream history scan
-or infers provenance from the active model. Bulk actions remain limited to visible
-eligible records. Empty filtered results do not establish that no history exists.
-
-An Agent that advertises steering can accept supplementary user input while its
-logical turn is active. Input delivery has a separate pending/received/failed
-outcome and does not replace turn ownership, permissions, timing, or Stop.
-Only an explicit unconsumed-input acknowledgement permits a normal continuation
-prompt; slash commands are explicitly left unconsumed and deferred to this owned
-prompt path, whose response also completes command-only input. Pending
-continuations remain cancellable while staged configuration is awaiting its
-acknowledgement, without cancelling the configuration itself. Unknown delivery
-is never retried automatically. Platform UI enables
-this behavior from the negotiated capability, not the Agent's display name.
-
-File context actions target a configured Agent and a root conversation within the
-captured workspace. The quick action names the current Agent; other destinations
-are grouped by Agent and identify existing sessions or a new conversation. Opening
-the menu uses cached session summaries and does not start background Agents.
-Attaching appends deduplicated native file references to that destination's draft,
-preserves its text, and never sends, steers or cancels a turn. Draft text and files
-remain isolated by Agent/session, including new-session creation and failed history
-loads. Stale projects, removed Agents and unavailable sessions must not redirect the
-attachment. Directories are not recursively expanded. References read saved disk
-contents; dirty editor buffers are retained and prompt the user to save before sending.
-
-Agent activity separates reported plans, native subagents and file edits. Ordinary
-tools are execution evidence, never inferred plan steps or child agents. Native
-children expose their upstream task, state and delivered output, scoped to their
-root conversation. Completion counts only explicit success; unknown outcomes
-remain disconnected. Child permissions use the owning root's existing controls.
-A platform enables this monitor only when it consumes negotiated child-session
-events; execution and history storage remain owned by the upstream Agent.
-
-The opened workspace, supplied by the product, defines the default meaning of
-"current project". A containing Git repository and inherited development rules
-do not replace that scope. The shared Host adds the same explicit workspace
-context to ordinary prompts and supplementary messages, including prompts after
-history restoration. File contents and applicable rules remain Agent-owned;
-explicit user requests can select a different scope. Native slash commands retain
-their original text and ordered attachments, including deferred supplementary
-commands; attachments do not cause workspace context to be appended. Host-added context is omitted from user-message replay
-presented by Lithe and from generated live/history-list titles, without rewriting
-upstream history or filtering model replies. Titles left empty by this filtering
-are missing values, so presentation retains its existing title fallbacks.
-
-The Host enables the native Codex checklist through process-local
-`tools.update_plan.enabled` configuration for both API and subscription launches.
-It does not edit CLI settings or switch collaboration mode. Plan creation and
-updates remain Agent-owned.
-
-Native child permissions preserve their requester separately from the root turn.
-An ended child or ancestor cancels only that subtree's pending permissions;
-presentation consumes the same lifecycle update to remove its prompts and refresh
-attention/timing. Root and sibling permissions and the root prompt stay active.
-
-Agent activity presentation uses the selected session's reported plan, native
-subagents and file diffs. Compact summaries may omit empty categories; ordinary
-tools do not create placeholder tasks or child sessions. File-summary line totals
-require complete reported counts for all included, completed changes; missing or
-overflowing counts remain unknown rather than becoming partial or estimated totals.
-Review acknowledgements are local to the exact reported version; later edits remain reviewable and start after the acknowledged prefix.
-The same open session retains its acknowledgements through disconnects and history
-reloads; closing its tab releases them. Replay must still match the exact version
-or prefix, so changed upstream evidence is never hidden by a stale acknowledgement.
-Reported excerpts and missing original content are not full-file snapshots.
-Native rollback is an explicit user action: preserve dirty editor buffers,
-reject paths outside the workspace and ambiguous or incomplete evidence, retain
-unrelated text, and use guarded native writes preserving encoding. Creation
-requires explicit evidence before recoverable removal. Reject replacement terminal
-symlinks instead of following them. Guard removal with the expected byte identity
-and the native save lock; verify the actual moved object, restore it on conflict
-without overwriting a recreated path, and report any manual recovery location.
-Unsupported adapters must reject removal rather than use unchecked Trash.
-Restoring a deletion
-requires the path to remain absent. Batch failures retain unprocessed changes.
-These presentation actions do not add Agent Host commands or persist chat history.
 
 | Feature | Shared input/output | Platform-owned implementation |
 | --- | --- | --- |
@@ -172,11 +53,9 @@ These presentation actions do not add Agent Host commands or persist chat histor
 | Git | workspace commit plans with optional immutable ChangeList path scopes, dependency ordering, guarded steps and partial-success retry, changes, commits, branches, diffs, reviewed history actions and recovery, worktree listing and safe management, worktree-aware PR publication context, validation, and mutation results | Git executable discovery, credentials, process environment, opening checkout paths, local ChangeList selection and preference persistence |
 | GitHub | remote parsing, trusted request plans, normalized branch comparisons and pull requests/reviews/comments, deterministic ordering, and stable errors | OAuth configuration, HTTPS, browser opening, and operating-system credential storage |
 | [AI commit messages](ai-commit.md) | provider configuration parsing, commit rules, bounded diff evidence, request plans, and response text | local configuration discovery, credentials, HTTP, cancellation, and draft UI |
-| Agent conversation (ACP) | supported-agent catalog, Node.js/npm detection, adapter install with the user's npm and numbers-only live download progress, CLI provenance and owner-preserving updates, per-agent API-key and model delivery over ACP stdio (Codex gateway authentication; Claude public session options), explicit Codex subscription authentication via the installed CLI, bounded official App Server quota reads with account checks, ACP v1 connection per workspace and agent, agent-owned session history (list/load), session config options, user-selected file references as ACP resource links, streamed tool evidence, permission decisions, acknowledged cancellation with bounded recovery, and process-tree lifecycle in the shared Rust host | provider and agent settings, API-key storage, credential-independent local default-model reading through AI configuration ports, data directory, workspace selection, module enablement, conversation UI and compact subscription quota presentation, workspace/Agent-scoped local history annotations (favorites, title overrides and recoverable hidden rows), and user-selected Markdown export destinations |
 | [IDE capability API / MCP](ide-api/v1.md) | canonical tool schemas, narrowing host selection, permission/argument validation, stable execution IDs, bounded output cursors and errors | implemented workflow inventory, explicit project authorization, live environment/Build/Run application actions, helper discovery and writable connection storage |
-| Runtime | Java/Maven requirements, normalized candidates, and effective toolchain references | JDK/Maven probing and executable paths |
+| Runtime | tool requirements, normalized candidates, and effective toolchain references | tool probing and executable paths |
 | Language tooling | provider catalog, local fallback results, complete LSP process/session runtime, capabilities, diagnostics, UTF-16 edits, and normalized feature results | executable/environment discovery and UI provider routing |
-| Java/Maven/Spring | deterministic Maven-root selection, project structure, modules and profiles, bounded dependency-tree normalization; compiler diagnostic parsing; Java source structure, symbols, code vision, run-configuration detection, Spring configuration/bean/endpoint indexing, and JDTLS/Java Debug adapter policy | JDK/Maven discovery, local dependency-repository selection, Java/Maven child processes, and sockets |
 | Run/Debug | versioned configuration documents, three-layer resolution, diagnostics, platform-neutral launch plans, DAP framing/state, reverse terminal requests, breakpoint relocation, stepping filters, threads, stacks, variables, and events | project and preference persistence, native edit reporting, adapter discovery, PTY/ConPTY debuggee launch, child processes, sockets, native termination, and UI |
 | Terminal | input bytes, output bytes, lifecycle; [shell selection semantics](terminal-profiles.md) | PTY/ConPTY, shell discovery, native profile preferences, and environment |
 | Workbench background | versioned source (`none`, bundled slot `01`–`10`, or `custom`) and opacity | UI, image rendering, bundled-resource packaging, local-image access permission and persistence |
@@ -218,11 +97,11 @@ marker. Existing Dev data is never merged or overwritten; subsequent launches do
 not fall back to Stable. Changing the channel alone does not switch profiles.
 Updater/channel suppression state, custom log destinations, browser caches,
 indexes, locks and runtime connections are excluded. macOS also copies its local
-AI secret file, Maven preferences and marketplace source configuration, along with
+AI secret file and marketplace source configuration, along with
 persisted database configuration/history/schedules and custom background image access
 records. These preference keys also count as existing Dev data. OS-vault
 credentials remain separate and may require signing in again. Windows snapshots
-only native settings/Maven JSON and closed WebView localStorage, before creating
+only native settings JSON and closed WebView localStorage, before creating
 any WebView; it never copies a live browser profile. A busy source or failed copy
 stops initialization with a retry message and no success marker. Published files
 and preferences resume from a staged snapshot after an interrupted commit. Stable
@@ -338,11 +217,11 @@ contract must preserve these invariants:
 - Native plugin factories receive a read-only host context. Host services use
   stable IDs and shared protocols; plugin code cannot import a platform
   composition root or the application executable.
-- AI Assistance, Agent Conversation, Terminal, Git, Search, Local History, Debug, and Java/Maven
-  execution are built-in lifecycle modules. They are not marketplace plugins.
-- Java language tooling remains part of the built-in product. Every other
-  language provider is represented by an independently configurable bundled
-  language-support plugin. On macOS, Go and PHP are community declarative
+- AI Assistance, Terminal, Git, Search, Local History, and Debug are built-in
+  lifecycle modules. They are not marketplace plugins.
+- Every language provider, build tool and ecosystem runner is represented by an
+  independently configurable language-support plugin; Core names none of them.
+  On macOS, Go and PHP are community declarative
   plugins from Lithe Store (`io.github.lithe-idea.go-support`,
   `io.github.lithe-idea.php-support`); the retired official IDs
   `dev.lithe.plugin.go-support` and `dev.lithe.plugin.php-support` keep their
@@ -427,64 +306,10 @@ exact launched root, never a process selected by name. Consumers must validate
 `operationID` before retaining it and invalidate it on stop, completion, reset, or
 replacement. Hosts without a local PID leave it absent. Test performance uses
 native CPU/RSS of that root and its descendants (including forked workers), with
-RSS explicitly labeled as resident memory rather than JVM heap. Debug keeps its
-existing exact-JVM JDK heap sampling; these are separate metric sources.
-
-Java workspace activation is a shared Core decision over visible relative
-paths. Any workspace containing a non-ignored `.java` source starts one JDT LS
-session asynchronously, even without Maven or Gradle metadata. That session is
-owned by the workspace and remains alive until the workspace closes or the user
-explicitly restarts it. `ready` means JDT LS has completed project import, not
-merely that the process answered `initialize`.
-
-JDT LS runs only on the Temurin JDK 21 bundled with Lithe. This runtime is
-independent of project Run/Debug JDK selection and has no user-configurable
-path. A missing or invalid bundle is a packaging failure. The application shows
-preparing, ready, failure, and timeout notifications; a navigation command while
-preparing ends after the notice and is never replayed later.
-
-macOS and Windows adapters discover the selected JDT LS installation's Equinox
-launcher JAR, platform configuration directory, Lombok agent, Java Debug
-Server, and bundled Java executable. Java Test-capable adapters additionally
-submit ordered extension bundles; Rust Core owns their ordering and
-de-duplication, the JVM flags, and direct `java`/`java.exe` startup with array
-arguments. The macOS TestNG runner remains a packaged native resource used only
-when a TestNG session starts. Packaged JDT LS therefore has no runtime dependency
-on shell wrappers, PowerShell, or the user's `PATH`. Legacy wrappers are an
-external-plan compatibility fallback and are not the packaged execution path.
-
-Java test discovery remains a language-service workflow rather than a UI or
-Debug Core parser. When the Tests tool window is opened or refreshed, the
-language facade offers every Java source to Core's typed `javaTestItems`
-operation; Core asks the Java Test extension for the class and method tree and
-platforms project stable fully qualified identifiers into the native list.
-Neither file names nor locally recognized annotations may prefilter this request,
-so inherited tests and custom composed annotations remain visible. Closing the tool window, changing workspace, or reloading the
-Java runtime cancels the owning discovery operation; late results cannot replace
-the current workspace's tree. Discovery does not create a Debug session, result
-socket, adapter connection, or target JVM.
-
-Starting one JUnit or TestNG file, class, or method creates a short-lived native
-loopback result listener on demand. JDT LS owns project/test metadata, Rust Core
-owns deterministic DAP launch argument projection, and the Debug module owns the
-adapter session. Repeated launch, stop, project close, runtime reload, and launch
-failure all cancel the active operation and release the listener. The selected
-Run configuration remains the source of project-scoped Java runtime selection;
-JDT LS remains authoritative for the test runner classpath, working directory,
-and test-specific VM and program arguments.
-
-Platforms observe JDT LS version and non-recursive build-file metadata, while
-Rust Core alone validates and reduces those observations to the opaque workspace
-fingerprint. macOS and Windows adapters must not duplicate its ordering,
-de-duplication, or serialization rules.
+RSS explicitly labeled as resident memory rather than a runtime's managed heap.
 
 Editor changes use versioned incremental document synchronization and do not
-restart the session or clear its index. Workspace watchers coalesce Maven and
-Gradle changes before one project refresh and publish normalized watched-file
-events. Platform adapters mark selected JDT LS caches as recently used, ask
-Rust Core which inactive caches exceed the 30-day retention period, and delete
-only those validated directories. **Java: Rebuild Index** remains the explicit
-recovery path for the current workspace key.
+restart the language-server session or clear its index.
 
 Language feature clients route through a provider interface rather than
 depending directly on an LSP session. Process-free providers remain available
@@ -536,23 +361,16 @@ neither a terminal nor a debuggee process exists until an adapter requests one.
 
 Debugger disconnect ownership is portable. A session started with `launch`
 owns its local debuggee and sends `terminateDebuggee: true` when stopping. A
-session started with `attach` does not own the remote JVM and sends
+session started with `attach` does not own the remote process and sends
 `terminateDebuggee: false`; closing the native transport must therefore detach
 without killing the remote process. A session stopped before launch or attach
 also uses the non-terminating policy.
 
-For JDT LS, the standard initialize handshake and project-import readiness use
-separate Core-owned deadlines. Project import fails only after 45 seconds
-without changed progress or the 10-minute absolute safety cap; platform clients
-must not impose a shorter readiness deadline. The terminal timeout code is
-`serviceReadyTimeout`, and its details preserve the last import, download, and
-cache snapshot for both products.
-
 ### Explicit debug adapter selection
 
 `DebugLaunchConfiguration.adapterProviderID` is optional host routing metadata.
-Plugin registrations use the existing Registry identity `pluginID/adapterID`;
-the host Java adapter retains `java`. The field is not a DAP argument, a process
+Plugin registrations use the existing Registry identity `pluginID/adapterID`.
+The field is not a DAP argument, a process
 command, or a plugin-private function call. An omitted identity uses the existing
 file selection. An explicit identity, including an empty or withdrawn one, must
 never fall back to another adapter matching the file.
@@ -581,8 +399,8 @@ executable permissions before binding target facts through `debug.adapters.start
 Build-tree Debug and saved-provider Run Debug save documents first and revalidate
 workspace, source, configuration, model and plugin identity before handoff. Debug
 owns the resulting session; stopping preparation or accepting late replies cannot
-start a session after invalidation. Java/JDT and cross-plugin preparation are not
-covered by this native increment.
+start a session after invalidation. Cross-plugin preparation is not covered by
+this native increment.
 
 ## Error Codes
 
@@ -653,8 +471,8 @@ replace those channels or swallow real source changes mixed with build output.
 Run configuration behavior is exposed through the `runConfig.*` commands.
 Platform clients coordinate inspection, generation, resolution, typed document
 edits, and launch planning, but must not implement a second JSON merger,
-toolchain matcher, ID generator, argument parser, or Java/Maven argument
-builder. Opening a project inspects existing files without writing; generation
+toolchain matcher, ID generator, or argument parser. Ecosystem-specific
+arguments are built by the plugin that declared the run. Opening a project inspects existing files without writing; generation
 is an explicit user action. Shared project overrides stay in
 `.lithe/run/configurations.json`. Machine-local overrides may live in
 `.lithe/run/local.json` or in a host-owned document supplied as
@@ -668,92 +486,6 @@ Runtime consumption is declared by the detector from the actual command rather
 than inferred from the provider namespace. An automatically discovered runtime
 path is session-effective: validation and launch share it, but persistence
 still requires an explicit user selection.
-
-Maven tool-window execution uses `maven.launchPlan`; platform views do not
-assemble Maven arguments. Portable profile and Skip Tests defaults conform to
-[`maven-portable-configuration-v1.schema.json`](maven-portable-configuration-v1.schema.json).
-The transient Core request conforms to
-[`maven-launch-context-v1.schema.json`](maven-launch-context-v1.schema.json).
-External `settings.xml`, local repository, Maven executable, and Maven JDK
-paths remain in a machine-local store. They may be supplied transiently to Core
-for planning and fingerprinting, but Core never opens `settings.xml` or
-serializes those paths into the portable project context.
-
-Expanding a module's Dependencies node starts an on-demand query using
-`maven.dependencyPlan`; Core owns the fixed plugin arguments and normalizes the
-captured text through `maven.dependencies`. Each platform owns a separate,
-bounded Maven process for this query so dependency loading cannot replace build
-output or stop an ordinary Maven task. Results are cached by module until the
-project or Maven configuration changes. The UI exposes loading, ready, failed,
-and cancelled states, rejects stale results, and links every dependency to the
-owning module's `pom.xml`. Dependency failure never blocks project loading or
-Java editing.
-
-The Java language-server startup consumes that same context. Core exposes the
-selected `settings.xml` to JDT LS as
-`java.configuration.maven.userSettings`, then applies the sorted Profile set
-to the reactor and every recursively declared Maven module after JDT LS
-reports `ServiceReady`. The Java session reaches `ready` at that verified
-signal; Profile updates then run as a bounded background task with at most
-eight in-flight projects. Each project reports its own result, and a rejected
-or timed-out update preserves the usable Java session while exposing a partial
-failure that the host can retry.
-
-Maven-backed framework, test, and module launch planning consumes the current
-project Maven context. A Run Configuration's explicit Profiles and toolchain
-paths take precedence; explicit `cwd` and `extensions.maven.skipTests` values
-also take precedence, including `skipTests: false`. Unset values inherit the
-project settings. The shared Core applies the final Maven argument order;
-tool-window, framework, test, and module launches add `-am` when reactor
-dependencies must be built.
-
-Project-owned Java Main and a Maven Spring Boot service with a resolved Java
-entry source use a different boundary: the Java language service selects the
-source target, Java Debug Server builds the owning project and resolves its
-runtime classpath/module path, Core projects those structured paths into a
-direct JDK launch, and the Run host starts that one JVM. Maven still defines the
-project model, but Run never sends either target through a reactor-wide Java
-launch goal. A user-authored or legacy Spring Boot service without a resolved Java entry source retains
-its Maven-goal compatibility path. Run and Debug share the Java preparation path
-so module selection, generated sources, test-source mains, and dependency paths
-do not drift.
-
-Both platforms use `java.prepareLaunch` for source-specific entry selection,
-the serialized JDT build, and runtime path resolution. One operation ID owns all
-three phases and their cancellation; a cancelled or timed-out attempt cannot
-advance on a late upstream reply. Hosts save dirty workspace documents before
-preparation and abort on any save failure. JDT remains the authority for project
-membership and paths; Core retains only the current attempt's intermediate
-results. Native adapters still own JDK discovery and process execution.
-
-An unsuccessful Java launch build is evidence, not an unconditional host veto.
-For `javaBuildCompilationErrors` and `javaBuildFailed`, the language boundary
-still resolves the target's runtime paths and returns them with Core's build
-report. Run and Debug pause the original attempt and offer Run Anyway, Always
-Continue for this workspace, and Cancel; a reported index rebuild recovery also
-offers Java: Rebuild Index. Continuing resumes the same attempt and never
-issues a second build. Cancellation, timeout, transport failure, and an unknown
-build status do not carry a code verdict and remain non-overridable. Build
-elapsed time is displayed as evidence only, never used as a trust threshold.
-Windows opens the Run tool window when a decision is required, including when
-Debug was initiated from the Maven tool window, so no launch waits on an
-unmounted prompt.
-
-Java test actions use the same Maven process lifecycle for a complete JUnit 4
-or JUnit 5 test class and for an individual method. The selector is validated
-before launch and is passed through `maven.launchPlan`; no platform assembles a
-shell command. Surefire/Failsafe text is normalized through `maven.testResults`
-into passed, failed, skipped, and total counts plus ordered failure details.
-When a stack frame resolves inside the workspace, the failure links to its
-one-based source line. The active test operation owns cancellation and stop;
-late output or parsed results cannot replace a newer run. The last valid class
-or method selection remains available for an explicit rerun, while cancellation
-clears only the active result.
-
-Maven module menus use Core's resolved `extensions.maven.reactorPath` and
-module identity before preferring a default Run configuration. An effective
-working-directory override is not project ownership. File-dependent entries
-such as Current File are not module launch candidates.
 
 On Windows, Debug cleanup owns a Run execution ID in addition to its reusable
 output slot. The host checks that ID atomically when stopping the process so a
@@ -771,25 +503,6 @@ restores the preview. SVG is rendered as image data, never inserted into the
 application DOM as executable markup. Rendering and resizable layout are owned
 by the platform. The behavior fixture is
 [`svg-preview-v1.json`](../fixtures/editor/svg-preview-v1.json).
-
-### Java project preparation presentation
-
-Core projects the existing Java session, Maven profile task, and JDT build gate
-into `projectPreparation` runtime events. Both products render this in their
-status bar and Run panel, with language service settings and diagnostic access.
-`starting`, `importing`, `configuring`, and `building` describe actual work;
-`ready` describes preparation completion, not successful compilation or a valid
-launch configuration. Ordinary indexing is not a run prerequisite.
-
-Preparation is scoped to the Java workspace session. Only JDT-backed launch
-paths honor `blocksRun`; other language and Maven-goal launchers keep their own
-prerequisites. Partial profile failures remain visible without blocking unrelated
-modules: the target build still validates its own readiness. Consumers reject old
-session updates and clear state on explicit stop/workspace replacement.
-Core's bounded preparation wait is the single launch gate; platform services and
-Run controls do not race it with a second snapshot check. Preparation remains
-visible while a click queues behind Core, and a stale visible `ready` state
-cannot disagree with a separate host-owned preparation veto.
 
 ### Optional PHP support
 
@@ -846,47 +559,6 @@ text. Register bundled contributions in `frontend/editor`, not in a separate
 platform-specific tokenizer. Text fixtures are shared under
 `rust/fixtures/editor/text-content-v1.json`.
 
-### Updating a running Java service
-
-Run/Debug presentation owns an explicit update action bound to an execution ID,
-not the latest Run configuration or focused editor. Platform workflows save the
-workspace, reuse the live JDT session to verify the original runtime paths, and
-compile with the existing Core build coordinator. Build failures cannot be
-bypassed for updates. Core owns Java Debug Server response normalization; hosts
-own deadlines, stale-result rejection, UI progress and explicit restart actions.
-
-Run offers compilation for executions whose launch classpath includes Spring
-Boot DevTools. Compilation completion does not establish restart or readiness;
-the UI directs users to service output, and respects a project-configured trigger
-file. Debug uses HotSwap with DevTools automatic restart disabled at JVM launch.
-Remote attach and non-JDT launches have no update action in this first version.
-No installed resources or new runtime caches are written: output remains in
-JDT-owned workspace build paths and the existing platform-owned JDT state.
-
-### Agent 响应状态展示
-
-- 状态与已观察到的 ACP 进度一致：准备会话、等待响应、收到推理、收到回复、本轮工具执行、等待授权、明确重试和正在停止。静默时长不能证明正在推理或重试，已回放的历史工具不属于当前轮次。
-- 固定 codex-acp 的 `session_info_update._meta.codex.error.willRetry == true` 和非空 `turnId` 是 macOS 重试显示的证据；该通知可能没有 `title`。共享样例 `codexRetry` 由官方 ACP SDK 往返验证，Host 继续透传元数据，不新增请求/事件种类或网络重试策略。
-- 状态隔离到会话，新进度清除重试显示，完成/失败/断连清理本轮状态，正在停止时不因迟到进度回退；不得显示未经脱敏的原始错误或从文本猜测重试次数。请求仍等待上游完成/取消确认，既有十分钟 prompt 上限和十秒取消上限不变。
-- 这次交付 macOS 展示；Windows 对话 UI 的消费与真实验收仍待完成。展示状态只在内存中，不写入 bundle、安装目录或上游历史。
-
-### Claude Desktop 机制卡片
-
-- Host 识别 Claude Desktop 注入的 MCP 工具（`ccd_*`、`visualize`、`terminal`、`Claude_Browser`、`computer-use`、`scheduled-tasks` 与按 UUID 命名的 claude.ai 连接器），为每个调用给出可读的英文 `title` 和 `kind`；不认识的 MCP 服务原样透传。
-- 有交互含义的调用在 `tool_call` / `tool_call_update` 的 `_meta.lithe.claudeDesktop` 附加卡片，字段 `card` 决定类型：`chapter {title, summary?}`、`nextStep {actions: [{label, message}] ≤4}`、`task {title, summary?, prompt?, state: proposed|withdrawn|started|handedOff}`、`pullRequest {action: bound|unbound|monitored|autoMerge, url, number?, autoFix?, enabled?}`、`directory {action: changed|requested, path}`、`widget {title, code ≤256 KiB 字符}`。文本字段截断到 16 KiB 字符；超限的 `widget.code` 置空。
-- `nextStep` 是 Host 另发的已完成调用，id 为原 `wrap_up` 调用 id 加 `#next`；任务撤回或启动的结果到达后，Host 以原卡片调用 id 补发整张卡片。后到的卡片整体替换先前的卡片；不带卡片的更新不清除卡片。
-- 客户端只在调用状态为 `completed` 时显示卡片；未知 `card` 类型、缺字段或非 http(s) 的 PR 链接退回普通工具行。卡片动作只填写输入框，不代替用户发送。可视化内容必须在禁止网络加载、非持久存储、禁止导航的隔离网页中渲染。
-- 共享样例 `rust/fixtures/agent/claude-desktop-cards-v1.json` 按调用顺序记录 Host 收到的更新（`updates`）和呈现给客户端的结果（`presented`），覆盖六种卡片、只换标题的行和原样透传；Host 测试逐例重放它，客户端按它解码卡片。
-
-
-Agent skill management groups files by Global/Project and retains their Agent
-provenance. Codex-reported capabilities and Claude's partial directory inventory
-are distinct; neither file presence nor a management-list row proves that the
-current conversation has used a skill. Explicit create/import operations write
-only to native user/project directories and preserve existing skills. Explicit toggles write native settings: Codex by discovered path via its official App Server API, Claude by name via skillOverrides in user or project-local settings. Claude states are configured visibility, not effective managed/session policy. Never persist a separate Lithe enabled flag, move packages to simulate disablement, or claim that a change revokes already loaded session content. File
-contents remain untrusted document data. Settings discovery and file management
-must not create conversations, send prompts, or interrupt existing Agent work.
-
 Build-provider application preparation and execution have separate owners. The
 workspace Build session validates a current target and prepares it; the native
 Run host owns the application process, output and stop. Explicit persistence
@@ -913,7 +585,6 @@ Automatic Provider run discovery uses the current public declaration/target pair
 independently of language imports. The host projects generic selectors and upstream
 labels; Core owns stable Run IDs, layering and snapshot freshness. Neither layer
 interprets framework IDs or reconstructs commands/toolchains from those selectors.
-The existing Java ownership projection remains separate during the remaining migration.
 
 Portable Provider user choices live in Run v2 `extensions.build-run`, separately
 from `extensions.build` selector identity. Hosts preserve exact runtime argument
@@ -927,12 +598,3 @@ the prefix does not confer authority. Core deduplicates only the generated count
 of the effective saved selector and validates it before use. Prepared team/local Run
 layers can be resolved without filesystem publication; native adapters own cancellation,
 source checks, metadata-preserving conditional writes, rollback and readback.
-
-### Project Java runtime and language-server runtime
-
-Platforms supply the selected project JDK with `javaRuntimes[].isDefault`, reusing
-Run's project configuration and requirement-aware selection. The JDT host JVM may
-remain the bundled supported JVM. Core projects the selected project home to JDT's
-`java.configuration.runtimes[].default`; it must not infer the project VM from the
-server executable. An invalid explicit selection must not mark an unrelated discovered candidate as the default;
-Windows reports the invalid setting before launch.

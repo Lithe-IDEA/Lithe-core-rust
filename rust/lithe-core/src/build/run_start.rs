@@ -57,11 +57,16 @@ struct StartParams {
     rerun: Option<Rerun>,
 }
 
+/// Exactly one of `contents` and `base64` carries the file. Text is written as UTF-8;
+/// bytes are written as given, for a format whose encoding the plugin must choose itself.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct TemporaryFile {
     name: String,
-    contents: String,
+    #[serde(default)]
+    contents: Option<String>,
+    #[serde(default)]
+    base64: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -158,7 +163,10 @@ fn decode_start(payload: &DecodeStartPayload, required_tools: &[String]) -> Vali
         "environment": environment,
         "temporaryFiles": files
             .iter()
-            .map(|file| json!({"path": file.path, "contents": file.contents}))
+            .map(|file| match &file.contents {
+                PlannedContents::Text(text) => json!({"path": file.path, "contents": text}),
+                PlannedContents::Bytes(base64) => json!({"path": file.path, "base64": base64}),
+            })
             .collect::<Vec<_>>(),
     });
     if let Some(debug) = &params.debug {
@@ -226,7 +234,13 @@ fn executable(process: &Map<String, Value>, required_tools: &[String]) -> Valida
 struct PlannedFile {
     name: String,
     path: String,
-    contents: String,
+    contents: PlannedContents,
+}
+
+/// What the host writes: UTF-8 text, or bytes as validated standard base64.
+enum PlannedContents {
+    Text(String),
+    Bytes(String),
 }
 
 fn temporary_files(
@@ -265,19 +279,48 @@ fn temporary_files(
                 "A temporary file name is unique, 1 to 64 letters, digits, '.', '_' or '-', and starts with a letter or digit.",
             ));
         }
-        if file.contents.len() > MAX_TEMPORARY_FILE_BYTES || file.contents.contains('\0') {
-            return Err(invalid(
-                &format!("temporaryFiles[{index}].contents"),
-                "A temporary file holds at most 4 MiB of text.",
-            ));
-        }
+        let contents = temporary_contents(file, index)?;
         planned.push(PlannedFile {
             name: file.name.clone(),
             path: format!("{directory}{}{}", std::path::MAIN_SEPARATOR, file.name),
-            contents: file.contents.clone(),
+            contents,
         });
     }
     Ok(planned)
+}
+
+/// Text without NUL or standard-base64 bytes, each at most 4 MiB once written.
+fn temporary_contents(file: &TemporaryFile, index: usize) -> Validation<PlannedContents> {
+    use base64::Engine as _;
+    match (&file.contents, &file.base64) {
+        (Some(text), None) => {
+            if text.len() > MAX_TEMPORARY_FILE_BYTES || text.contains('\0') {
+                return Err(invalid(
+                    &format!("temporaryFiles[{index}].contents"),
+                    "A temporary file holds at most 4 MiB of text.",
+                ));
+            }
+            Ok(PlannedContents::Text(text.clone()))
+        }
+        (None, Some(encoded)) => {
+            // Bound the encoded form first so an oversized string is never decoded.
+            let fits = encoded.len() <= MAX_TEMPORARY_FILE_BYTES.div_ceil(3) * 4
+                && base64::engine::general_purpose::STANDARD
+                    .decode(encoded)
+                    .is_ok_and(|bytes| bytes.len() <= MAX_TEMPORARY_FILE_BYTES);
+            if !fits {
+                return Err(invalid(
+                    &format!("temporaryFiles[{index}].base64"),
+                    "A temporary file holds at most 4 MiB of bytes in standard base64.",
+                ));
+            }
+            Ok(PlannedContents::Bytes(encoded.clone()))
+        }
+        _ => Err(invalid(
+            &format!("temporaryFiles[{index}]"),
+            "A temporary file has either text contents or base64 bytes.",
+        )),
+    }
 }
 
 fn valid_temporary_name(name: &str) -> bool {

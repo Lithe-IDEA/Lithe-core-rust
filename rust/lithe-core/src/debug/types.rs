@@ -216,7 +216,7 @@ pub struct DisconnectRequest {
     pub session_id: String,
     /// Optional user choice for a launch session's local debuggee. When absent, launch
     /// terminates it. An attach session never terminates the external process, even if
-    /// this is `true`, so a remote detach cannot kill a JVM the IDE does not own.
+    /// this is `true`, so a remote detach cannot kill a process the IDE does not own.
     #[serde(default)]
     pub terminate_debuggee: Option<bool>,
 }

@@ -6,16 +6,9 @@
       "arguments": {}
     },
     {
-      "name": "lithe_environment_configure",
-      "arguments": {
-        "javaHomePath": "",
-        "mavenExecutablePath": "mvnw"
-      }
-    },
-    {
       "name": "lithe_build_execute",
       "arguments": {
-        "instanceID": "maven@.",
+        "instanceID": "fixture@.",
         "taskID": "custom",
         "projectID": "services/api",
         "userArguments": [
@@ -43,39 +36,32 @@
     {
       "name": "lithe_build_reload",
       "arguments": {
-        "instanceID": "maven@."
-      }
-    },
-    {
-      "name": "lithe_maven_execute",
-      "arguments": {
-        "goals": [
-          "clean",
-          "verify"
-        ],
-        "modulePath": "services/api"
+        "instanceID": "fixture@."
       }
     }
   ],
   "rejected": [
     {
-      "name": "lithe_environment_configure",
+      "name": "lithe_build_configure",
       "arguments": {
+        "instanceID": "fixture@.",
+        "optionID": "token",
+        "value": "never-return-a-secret",
         "apiKey": "never-return-a-secret"
       }
     },
     {
       "name": "lithe_build_execute",
       "arguments": {
-        "instanceID": "maven@.",
+        "instanceID": "fixture@.",
         "taskID": "verify",
-        "command": "mvn"
+        "command": "fixture-tool"
       }
     },
     {
       "name": "lithe_build_execute",
       "arguments": {
-        "instanceID": "maven@.",
+        "instanceID": "fixture@.",
         "taskID": "verify",
         "userArguments": [
           42
@@ -92,23 +78,6 @@
       "name": "lithe_operation_stop",
       "arguments": {
         "sessionID": "ambiguous-output-slot"
-      }
-    },
-    {
-      "name": "lithe_maven_execute",
-      "arguments": {
-        "goals": [
-          "verify"
-        ],
-        "modulePath": "../outside"
-      }
-    },
-    {
-      "name": "lithe_maven_execute",
-      "arguments": {
-        "goals": [
-          "verify && echo unexpected"
-        ]
       }
     }
   ]

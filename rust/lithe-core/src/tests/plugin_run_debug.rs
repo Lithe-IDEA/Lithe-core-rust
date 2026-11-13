@@ -112,12 +112,16 @@ fn run_start_fixture_cases_decode_the_same_in_every_host() {
         .map(|directory| directory.as_str().unwrap())
         .collect();
     let workspace = Workspace::new("run-start-fixture", &directories);
+    // Every host supplies its temporary directory, so the temporary-file refusals of the
+    // fixture are reached instead of stopping at a missing directory.
+    let temporary = Workspace::new("run-start-fixture-files", &[]);
     let manifest = named_manifest(&fixture);
     for case in fixture["cases"].as_array().unwrap() {
         let name = case["name"].as_str().unwrap();
         let outcome = run_decode_start_command(json!({
             "manifest": manifest,
             "workspaceRoot": workspace.root(),
+            "temporaryDirectory": temporary.root(),
             "params": case["params"],
         }))
         .expect("payload is well formed");
@@ -231,6 +235,42 @@ fn temporary_files_refuse_what_the_host_could_not_write_safely() {
             "temporaryFiles[0].contents",
         ),
         (
+            "a file with both text and bytes",
+            tool_run(
+                json!([]),
+                json!({}),
+                json!([{ "name": "a", "contents": "", "base64": "" }]),
+            ),
+            Some(absolute.as_str()),
+            "temporaryFiles[0]",
+        ),
+        (
+            "a file with neither text nor bytes",
+            tool_run(json!([]), json!({}), json!([{ "name": "a" }])),
+            Some(absolute.as_str()),
+            "temporaryFiles[0]",
+        ),
+        (
+            "bytes that are not standard base64",
+            tool_run(
+                json!([]),
+                json!({}),
+                json!([{ "name": "a", "base64": "not base64!" }]),
+            ),
+            Some(absolute.as_str()),
+            "temporaryFiles[0].base64",
+        ),
+        (
+            "bytes beyond 4 MiB",
+            tool_run(
+                json!([]),
+                json!({}),
+                json!([{ "name": "a", "base64": "A".repeat((4 * 1024 * 1024 / 3 + 1) * 4) }]),
+            ),
+            Some(absolute.as_str()),
+            "temporaryFiles[0].base64",
+        ),
+        (
             "a reference to a file the start does not declare",
             tool_run(json!(["${temporaryFile:missing}"]), json!({}), json!([])),
             Some(absolute.as_str()),
@@ -261,6 +301,34 @@ fn temporary_files_refuse_what_the_host_could_not_write_safely() {
         let outcome = start_run(&workspace, params, directory);
         assert_rejected(&outcome, "plugin.run.invalidStart", field, name);
     }
+}
+
+/// Bytes pass through unchanged, so a plugin can write a file in the encoding its format
+/// requires; Core never transcodes them.
+#[test]
+fn temporary_file_bytes_reach_the_host_as_given() {
+    let workspace = Workspace::new("run-start-bytes", &[]);
+    let directory = temporary_root("run-start-bytes-directory")
+        .to_string_lossy()
+        .into_owned();
+    // 0x95 0x5C is a double-byte character whose trail byte is a backslash.
+    let outcome = start_run(
+        &workspace,
+        tool_run(
+            json!(["@${temporaryFile:args}"]),
+            json!({}),
+            json!([{ "name": "args", "base64": "lVwK" }]),
+        ),
+        Some(&directory),
+    );
+
+    assert_eq!(outcome["status"], "ok", "{outcome}");
+    let path = format!("{directory}{}args", std::path::MAIN_SEPARATOR);
+    assert_eq!(outcome["start"]["arguments"], json!([format!("@{path}")]));
+    assert_eq!(
+        outcome["start"]["temporaryFiles"],
+        json!([{ "path": path, "base64": "lVwK" }])
+    );
 }
 
 #[test]

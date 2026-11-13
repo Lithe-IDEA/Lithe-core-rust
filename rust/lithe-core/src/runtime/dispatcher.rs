@@ -1361,22 +1361,6 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                 ),
             }
         }
-        CoreCommand::ExecutionPlanLaunchCommand => {
-            match serde_json::from_value::<crate::execution::LaunchCommandRequest>(parsed.payload) {
-                Ok(request) => match crate::execution::plan_launch_command(&request) {
-                    Ok(plan) => CoreResponse::success(
-                        id,
-                        serde_json::to_value(plan).expect("launch plan encodes"),
-                    ),
-                    Err(error) => CoreResponse::failure(id, error),
-                },
-                Err(error) => CoreResponse::failure(
-                    id,
-                    CoreError::new(ErrorCode::InvalidRequest, "Invalid launch command request")
-                        .with_details(error.to_string()),
-                ),
-            }
-        }
         CoreCommand::ProcessLifecycleResolve => {
             match serde_json::from_value::<crate::process::lifecycle::LifecycleRequest>(
                 parsed.payload,

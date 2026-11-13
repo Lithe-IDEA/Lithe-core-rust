@@ -8289,9 +8289,9 @@ mod tests {
         }
     }
 
-    // Regression: JDT publishes diagnostics under the resolved path of a file
-    // the host opened through a symbolic link; matching the URIs textually
-    // dropped every Java error in such a workspace.
+    // Regression: a server publishes diagnostics under the resolved path of a
+    // file the host opened through a symbolic link; matching the URIs textually
+    // dropped every error in such a workspace.
     #[cfg(unix)]
     #[test]
     fn diagnostics_published_under_the_resolved_path_reach_the_linked_document() {
@@ -8977,7 +8977,7 @@ mod tests {
     fn a_negotiated_build_request_forwards_the_plan_and_returns_the_reply() {
         let mut harness = negotiated_build_provider();
         let params = json!({
-            "buildSystemID": "gradle",
+            "buildSystemID": "make",
             "root": "",
             "options": { "offline": true },
             "optionArguments": ["--offline"],
@@ -9608,7 +9608,7 @@ mod tests {
     // deadline, late reply, revocation, and compatibility with a backend that
     // only speaks the build protocol) is driven at a chosen moment.
 
-    const FUNCTION_PLUGIN: &str = "dev.lithe.fixture.maven";
+    const FUNCTION_PLUGIN: &str = "dev.lithe.fixture.build";
 
     /// A session owned by `FUNCTION_PLUGIN` whose backend answered
     /// `initialize` with `experimental`.
@@ -9782,7 +9782,7 @@ mod tests {
         // Another plugin's reference never reaches this process.
         let error = invoke(
             &harness,
-            "dev.lithe.fixture.gradle",
+            "dev.lithe.fixture.other-build",
             "snapshot.refresh",
             None,
         )
@@ -9846,7 +9846,7 @@ mod tests {
         harness.server.send(json!({
             "jsonrpc": "2.0",
             "id": request_id,
-            "error": { "code": -32000, "message": "Snapshot is locked.", "data": { "code": "maven.snapshotLocked" } }
+            "error": { "code": -32000, "message": "Snapshot is locked.", "data": { "code": "build.snapshotLocked" } }
         }));
         let error = harness
             .await_event(|event| event.operation_id.as_deref() == Some(operation.as_str()))
@@ -9857,7 +9857,7 @@ mod tests {
         assert_eq!(error.message, "Snapshot is locked.");
         assert_eq!(
             error.plugin_error_code.as_deref(),
-            Some("maven.snapshotLocked")
+            Some("build.snapshotLocked")
         );
     }
 

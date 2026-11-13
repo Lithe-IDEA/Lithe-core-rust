@@ -35,8 +35,6 @@ sha2 = "0.10"
 shell-words = "=1.1.1"
 toml = { version = "1.1.4", default-features = false, features = ["parse", "serde"] }
 toml_edit = "0.25"
-tree-sitter = "0.25"
-tree-sitter-java = "0.23"
 serde_yaml_ng = "0.10.0"
 similar = { version = "3.2", default-features = false, features = ["std"] }
 zip = { version = "2.4", default-features = false, features = ["deflate"] }
