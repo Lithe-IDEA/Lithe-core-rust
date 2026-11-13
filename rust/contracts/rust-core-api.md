@@ -153,11 +153,10 @@ See `rust/fixtures/keymap/binding-conflicts-v1.json`.
 double-Shift gesture as a pure transition: `event` is `{kind: "keyDown"}`, `{kind: "reset"}` or
 `{kind: "flags", shift, otherModifiers}`; `timestamp` is seconds on a clock the host keeps; `state` is opaque
 host-held memory (omit it for the idle state) that the host sends back with the next event. The rule lives in the
-pure crate `rust/lithe-core-rules` (no I/O, no clock) so it can run on a synchronous key path: macOS calls it
-through the C ABI, and the Windows frontend runs the same source compiled to wasm (`lithe_rules_alloc`,
-`lithe_rules_dealloc`, `lithe_rules_execute` over JSON envelopes), loaded asynchronously at startup. A malformed
-payload is `invalid_request`. Hosts only convert native events to this input and act on `triggered`; both are
-tested step by step against `rust/fixtures/keymap/modifier-gesture-v1.json`.
+pure crate `rust/crates/core-rules` (no I/O, no clock) so it can run on a synchronous key path; hosts call it
+through the C ABI. A malformed payload is `invalid_request`. Hosts only convert native events to this input and act
+on `triggered`; Core and the rules crate test the rule step by step against
+`rust/fixtures/keymap/modifier-gesture-v1.json`.
 
 `editor.workbenchState.reduce` accepts `{state?, action}` and returns `{state, removedGroupIds}`. `state` is
 `{groups, focusedGroup?}`; a group is `{id, members, selected?, mru?, pinned?, preview?}` (ordered members, the shown
@@ -178,8 +177,8 @@ returned as sent, so a host may send only the groups an action involves. `emptyG
 stale), and `focusedGroup` moves to the first remaining group when its group was removed. Actions that name an unknown
 group or an unknown move destination change nothing. `removedGroupIds` lists removed groups in their previous order so
 hosts prune their own layout tree; split directions, ratios, pixels and dragging never reach Core. A malformed payload is
-`invalid_request`. It lives in `rust/lithe-core-rules` and is called synchronously: macOS through the C ABI, Windows
-through the wasm build inside zustand `set()`, one call per user action. Both hosts run every case of
+`invalid_request`. It lives in `rust/crates/core-rules` and hosts call it synchronously through the C ABI, one call per
+user action. Core and the rules crate run every case of
 `rust/fixtures/editor/workbench-state-v1.json` through it.
 
 `workspace.classifyVisibility` accepts `{hiddenDirectoryNames?, hiddenFilePatterns?, entries: [{path, isDirectory?}]}`
@@ -192,8 +191,8 @@ Local History leave the path out; `watchedDespiteHiding` marks the hidden projec
 events must still be delivered, except the built-in noise below it such as `.lithe/run/local.json`. Hosts send all children
 of a directory in one call. `workspace.visibilityDefaults` takes `{}` and returns the built-in lists
 (`hiddenDirectoryNames`, `hiddenFilePatterns`, `builtInPatterns`, `configurationDirectory`, `configurationPattern`) so hosts
-display them without keeping a copy. Both live in `rust/lithe-core-rules` like `keymap.modifierGestureStep`, run in wasm on
-Windows, and are tested against `rust/fixtures/workspace/visibility-v1.json`.
+display them without keeping a copy. Both live in `rust/crates/core-rules` like `keymap.modifierGestureStep` and are tested
+against `rust/fixtures/workspace/visibility-v1.json`.
 
 ## Terminal link targets
 
@@ -226,8 +225,8 @@ int32_t lithe_core_remove_log_waker(void *context);
 ```
 
 The macOS package uses the small C bridge in `macos/Sources/LitheRustCore/`. The
-canonical C declarations are in `rust/lithe-core/include/lithe_core.h`.
-Native clients can link the same `staticlib` or `cdylib`; Rust hosts call
+canonical C declarations are in `rust/crates/core/include/lithe_core.h`.
+Native clients link the `staticlib`; Rust hosts call
 `lithe_core::execute_json` and `lithe_core::cancel_operation` directly.
 Strings returned by the core are UTF-8 JSON allocated by Rust. The caller must
 release response strings with `lithe_core_free_string`.
@@ -457,13 +456,6 @@ or removing a command fails until the table changes in the same commit.
 | `plugins.marketplace.validateIndex` | Validate a marketplace index and report each plugin's availability for one platform |
 | `plugins.marketplace.resolveSource` | Resolve a user-entered marketplace source to the index URL to fetch |
 | `plugins.marketplace.installReview` | List a package's permissions and programs, and those not yet approved |
-| `community.discourse.auth.begin` | Create an ephemeral RSA-OAEP authorization session and return the Discourse browser URL |
-| `community.discourse.auth.complete` | Decrypt, validate, and consume one Discourse user API key callback |
-| `community.discourse.topics` | List normalized latest or top topic summaries |
-| `community.discourse.topic` | Read one topic with ordered, sanitized post HTML |
-| `community.discourse.categories` | List normalized visible categories |
-| `community.discourse.search` | Search normalized topics and sanitized posts |
-| `community.discourse.auth.revoke` | Revoke the current Discourse user API key |
 | `workspace.snapshot` | Enumerate visible workspace nodes and relative file paths; `nestedWorktrees` lists linked worktrees checked out inside their own repository, which are left out of the tree, files, and search index; the built-in hidden names are skipped without being read, and include `node_modules`, Python virtual environments (`.venv`, `venv`), `__pycache__` and `*.pyc` files; `includeTree: false` returns only `files` and a childless `root`; `files` (and the tree, when included) keep the lowercase traversal order that bounded consumers such as Windows Quick Open rely on, not the natural display order of `workspace.listDirectories` |
 | `workspace.releaseIndexing` | Retire a policy and clear index/cache data at project close; accepts `root`, optional `ownerId`, and that owner's last observed `revision`, returns `released`; an old close must not retire a new generation |
 | `workspace.configureIndexing` | Install a process-local, canonical-root indexing policy before workspace consumers run; returns a monotonic revision, effective directory reasons and Git failure state; see `rust/fixtures/workspace/indexing-policy-v1.json` |
@@ -851,26 +843,6 @@ See `rust/fixtures/documents/save-batch-v1.json`.
 GitHub command shapes, authorization behavior, and supported pull-request
 operations are documented in [`github.md`](github.md). Rust Core performs no
 network or credential I/O for these commands.
-
-`community.discourse.auth.begin` accepts an HTTPS `origin`, stable `clientId`,
-user-visible `applicationName`, platform-owned `authRedirect`, and a non-empty
-array of supported `scopes`. It returns an opaque `flowId`, an
-`authorizationUrl` that requests RSA-OAEP padding, and an `expiresAt` Unix
-timestamp. The private key and nonce remain in Rust memory and expire after ten
-minutes. `community.discourse.auth.complete` accepts that `flowId` and the full
-`callbackUrl`; it consumes the flow, verifies the callback target, decrypts the
-payload, and checks the nonce before returning `userApiKey` and `apiVersion`.
-Platform hosts open the browser, receive their registered URL scheme, and store
-the returned credential in Keychain or Windows Credential Manager. They do not
-implement Discourse cryptography or callback validation.
-
-The authenticated community commands accept `origin`, `userApiKey`, and
-`clientId` plus their operation-specific fields. Rust owns HTTPS requests,
-authentication headers, a 30-second request timeout, a 5 MB response limit,
-Discourse JSON decoding, deterministic post ordering, and HTML sanitization.
-Platform clients never issue a parallel Discourse request or parse a second
-response shape. Credential vault reads and writes remain native adapters; the
-credential is passed to Core only for the duration of one command.
 
 `git.watchContext` accepts `{ "root": string }`. When `root` is not inside a
 Git repository, it returns `null`. Otherwise it returns
@@ -3712,7 +3684,7 @@ Windows consumes the original fields and may ignore this marker.
 ### AI configuration
 
 These commands, like every `ai.*` command, are implemented in the `lithe-ai` crate
-(`rust/lithe-ai`); `lithe-core` only routes them.
+(`rust/crates/ai`); `lithe-core` only routes them.
 
 `ai.configuration.sources` takes `{source, home, environment}` (`source` is
 `codex` or `claude`, `home` an absolute path, `environment` only the directory

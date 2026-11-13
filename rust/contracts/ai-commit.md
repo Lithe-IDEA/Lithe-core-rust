@@ -2,7 +2,7 @@
 
 Version: 1. Behavioral fixture: `rust/fixtures/ai/commit-generation-v1.json`.
 
-Every `ai.*` command is implemented in the `lithe-ai` crate (`rust/lithe-ai`), which
+Every `ai.*` command is implemented in the `lithe-ai` crate (`rust/crates/ai`), which
 `lithe-core` routes to and re-exports as `lithe_core::ai`.
 
 Windows consumes the typed Rust API in `lithe_core::ai`; macOS uses the same planner

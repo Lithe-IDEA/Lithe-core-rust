@@ -147,7 +147,7 @@
 | [`toolchains/toolchain-provider.plugin.json`](../../contract/v1/fixtures/toolchains/toolchain-provider.plugin.json) | 生产形态的版本管理器提供者（`mise`）：覆盖多个工具，监视项目版本文件（`.tool-versions` 用兼容读取器），后端是包内可执行文件 |
 | [`run/tool-reference-launch.plugin.json`](../../contract/v1/fixtures/run/tool-reference-launch.plugin.json) | 清单顶层 `requiresTools` 列出插件自己定义的 `interpreter`，语言服务器的 `runtime` 启动按这个工具定义 ID 引用运行时 |
 
-Core 的验收测试在主仓库的 [`toolchain_definitions.rs`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/lithe-core/src/tests/toolchain_definitions.rs) 和同目录的 `toolchain_pins.rs`、`toolchain_queries.rs`、`toolchain_resolution.rs`。这三个测试共用的固定值文档、查询往返和每个稳定失败码的错误回复内联在 [`toolchain_vectors.rs`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/lithe-core/src/tests/toolchain_vectors.rs) 里。
+Core 的验收测试在主仓库的 [`toolchain_definitions.rs`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/crates/core/src/tests/toolchain_definitions.rs) 和同目录的 `toolchain_pins.rs`、`toolchain_queries.rs`、`toolchain_resolution.rs`。这三个测试共用的固定值文档、查询往返和每个稳定失败码的错误回复内联在 [`toolchain_vectors.rs`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/crates/core/src/tests/toolchain_vectors.rs) 里。
 
 ### 相关指南
 
@@ -301,7 +301,7 @@ When a plugin starts a process by tool-definition ID (a launch plan with `launch
 | [`toolchains/toolchain-provider.plugin.json`](../../contract/v1/fixtures/toolchains/toolchain-provider.plugin.json) | A production-shaped version-manager provider (`mise`): several tools, watched project version files (`.tool-versions` through the compatible reader), with a packaged backend |
 | [`run/tool-reference-launch.plugin.json`](../../contract/v1/fixtures/run/tool-reference-launch.plugin.json) | `requiresTools` lists the plugin's own `interpreter` definition, and a language server's `runtime` launch references the runtime by that tool-definition ID |
 
-The Core acceptance tests are in [`toolchain_definitions.rs`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/lithe-core/src/tests/toolchain_definitions.rs), with `toolchain_pins.rs`, `toolchain_queries.rs`, and `toolchain_resolution.rs` beside it. The fixture documents, query round trips, and the error reply for each stable failure code shared by these tests are inlined in [`toolchain_vectors.rs`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/lithe-core/src/tests/toolchain_vectors.rs).
+The Core acceptance tests are in [`toolchain_definitions.rs`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/crates/core/src/tests/toolchain_definitions.rs), with `toolchain_pins.rs`, `toolchain_queries.rs`, and `toolchain_resolution.rs` beside it. The fixture documents, query round trips, and the error reply for each stable failure code shared by these tests are inlined in [`toolchain_vectors.rs`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/crates/core/src/tests/toolchain_vectors.rs).
 
 ### Related guides
 

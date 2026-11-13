@@ -37,8 +37,8 @@ This directory is the cross-platform source of truth:
 | `fixtures/marketplace/` | Marketplace index, availability, source URL, and install review golden cases |
 
 Validation and template expansion are implemented once in Rust Core
-(`rust/lithe-core/src/plugins/`, with build systems in
-`rust/lithe-core/src/build/`) and exposed through the
+(`rust/crates/core/src/plugins/`, with build systems in
+`rust/crates/core/src/build/`) and exposed through the
 `plugins.declarative.*` commands in [`rust/contracts/rust-core-api.md`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/contracts/rust-core-api.md). Hosts must not
 reimplement them.
 
@@ -2659,7 +2659,7 @@ same plugin, for example from that plugin's own window, and another plugin
 can call only an [exported function](#cross-plugin-calls).
 Functions complement the
 typed domain protocols; they never replace them. The protocol is implemented in
-Rust Core (`rust/lithe-core/src/lsp/interface/plugin_function.rs`,
+Rust Core (`rust/crates/core/src/lsp/interface/plugin_function.rs`,
 `function_relay.rs`).
 A host starts every build provider process as a session of the plugin that
 owns it and invokes its functions from that plugin's web pages (the

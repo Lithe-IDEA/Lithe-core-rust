@@ -39,7 +39,7 @@
 | `error` | `any Error` | 展开为 `<name>`、`<name>_code`、`<name>_domain`，字段名通常就是 `error`；消息脱敏并限长至 1 KiB，code 可以是整数或稳定 token |
 | `text` | `String` | 只用于无法结构化的上游诊断（stderr 行、LSP logMessage）和经 Core 集中格式化函数脱敏的外部进程 argv；脱敏、去除控制字符、限长至 1 KiB |
 
-源码、编辑缓冲区、文件内容、提交说明正文、环境变量值、进程的 stdout 与 stdin、凭据、终端历史和协议正文没有对应类型，不得塞进 `text`、`error`、token、路径字段或消息模板。外部进程的 argv 只经过 `rust/lithe-core/src/git/command_trace.rs` 的 `format_arguments`，stderr 只保留脱敏后的末尾几行（第五节）。迁移旧日志时拆开拼接消息，只保留结构化的时间、计数、受控结果词和错误类别。`text` 的理由不能写成“方便调试”。
+源码、编辑缓冲区、文件内容、提交说明正文、环境变量值、进程的 stdout 与 stdin、凭据、终端历史和协议正文没有对应类型，不得塞进 `text`、`error`、token、路径字段或消息模板。外部进程的 argv 只经过 `rust/crates/core/src/git/command_trace.rs` 的 `format_arguments`，stderr 只保留脱敏后的末尾几行（第五节）。迁移旧日志时拆开拼接消息，只保留结构化的时间、计数、受控结果词和错误类别。`text` 的理由不能写成“方便调试”。
 
 Swift 的事件值是**未经脱敏的内存输入**，不能自行序列化落盘。Core 先对 `error`、`text` 输入脱敏、删除控制字符、按 UTF-8 字符边界截断到 1024 字节，再由 `catalog::validate_fields(id, fields)` 校验磁盘键展开后的类型、必填、未知字段、长度和错误组件完整性；这一步校验形状，不代替隐私脱敏。macOS 的跨边界适配器连接 Core 的脱敏、格式化和写入路径，不得另写 Swift 格式化或隐私策略。
 
@@ -69,8 +69,8 @@ Swift 的事件值是**未经脱敏的内存输入**，不能自行序列化落�
 | `vcs.git.command.finished` / `.traced` / `.failed` | `vcs/git` | info / debug / warn | `command`、`arguments`、`source`，可选 `repository`、`remote`、`exit_code`、`stderr`，`duration`；finished 与 traced 可带 `cancelled`，failed 可带 `error` |
 
 - `app.action.performed` 由 `UserActionTrace` 在最外层用户入口记录，owner 为 `LitheModuleAPI`。`action` 是稳定的操作 id，`surface` 是 `UserActionSurface` 的取值。它的 op 绑定到 `UserActionContext.current`，桥接层据此给 Core 请求附上 `origin`。
-- Core 请求轨迹在 `rust/lithe-core/src/runtime/dispatcher.rs` 的请求分发处记录，实现在 `rust/lithe-core/src/diagnostics/request_trace.rs`。用户来源的成功或取消记 finished，后台或未知来源的成功或取消记 traced，失败记 failed。`request_trace::is_hot` 列出的按键、每帧、轮询和监听批次方法，以及全部 `diagnostics.*` 和 `core.ping`，不记录。
-- Git 进程轨迹在 `rust/lithe-core/src/git/command_trace.rs` 的执行点记录，本地与远程工作区都经过这里。可见命令指经 `execute_git` 执行、作为 invocation 返回给宿主并显示在 Git 控制台的命令；内部读取指 Core 经 `capture_git` 执行、自己解析输出的命令。来源为用户的可见命令，成功或取消记 finished；其余成功或取消记 traced，包括用户操作中的内部读取；失败记 failed。退出码表示“回答”的情形（`exit_is_answer`），以及来源不是用户的内部读取的非零退出，不算失败；后者由调用方判断含义，调用方返回错误时由请求轨迹记录失败。
+- Core 请求轨迹在 `rust/crates/core/src/runtime/dispatcher.rs` 的请求分发处记录，实现在 `rust/crates/core/src/diagnostics/request_trace.rs`。用户来源的成功或取消记 finished，后台或未知来源的成功或取消记 traced，失败记 failed。`request_trace::is_hot` 列出的按键、每帧、轮询和监听批次方法，以及全部 `diagnostics.*` 和 `core.ping`，不记录。
+- Git 进程轨迹在 `rust/crates/core/src/git/command_trace.rs` 的执行点记录，本地与远程工作区都经过这里。可见命令指经 `execute_git` 执行、作为 invocation 返回给宿主并显示在 Git 控制台的命令；内部读取指 Core 经 `capture_git` 执行、自己解析输出的命令。来源为用户的可见命令，成功或取消记 finished；其余成功或取消记 traced，包括用户操作中的内部读取；失败记 failed。退出码表示“回答”的情形（`exit_is_answer`），以及来源不是用户的内部读取的非零退出，不算失败；后者由调用方判断含义，调用方返回错误时由请求轨迹记录失败。
 - `arguments` 由 `format_arguments` 生成：提交说明值换成 `<message>`，`-c` 中凭据和个人身份键的值换成 `<redacted>`，URL 用户信息和共享脱敏规则覆盖的内容被改写，超过 1 KiB 时在末尾截断并以 `…` 标记。
 - `stderr` 只在失败或非零退出时出现：取进程最后 16 KiB 输出中最后 8 个非空行，逐行脱敏后用 ` | ` 连接，超过 1 KiB 时丢弃最早的内容并以 `…` 标记。
 - Core 轨迹的失败固定为 WARN，因为 Core 不知道宿主会重试、降级还是放弃。宿主提示的事实都在同一 op 的 Core 失败轨迹里时，提示用 `LogRecordReference(channel:event:op:)` 引用它，宿主不再记录；宿主只为降级、放弃、重试耗尽、残留等 Core 不掌握的事实记录自己的终态。
@@ -89,7 +89,7 @@ Swift 的事件值是**未经脱敏的内存输入**，不能自行序列化落�
 - stderr 读取器限制每行 4 KiB、每秒 200 行，之后再走 `text` 的 1 KiB 脱敏规范化。与 v1 相比唯一的兼容变化是从任意 trim 的读取块改为逐行文本：保留行内空格，移除 LF 和末尾 CR，并应用已声明的长度上限和限流。
 - 上游明确给出的严重度通过独立的目录事件保留：`window/logMessage` 和 `window/showMessage` 的 type 1/2/3/4 分别为 ERROR/WARN/INFO/DEBUG，未知类型为 DEBUG。未分类的 stderr 是 DEBUG 排障证据，流名称不表示警告；实际的进程或协议失败由 `*.session.failed` 记录 ERROR，正常关闭仍是生命周期状态。
 - 插件自身使用独立协商的 `litheLogging` 0 和 `lithe/log`，由 Core 把四种受控事实映射到插件目录事件，不能再用 stderr 或任意自由消息代替。协议字段、op、限额和 fixture 以 [插件契约](../../shared/plugins/contract/v1/README.md#structured-plugin-diagnostics) 为准。
-- 声明式贡献没有插件进程，不能发 `lithe/log`。实际执行它的一方通过 `diagnostics.recordPluginOperation` 代记每次尝试的一条终态，事件和通道与 SDK 插件相同：`plugins.operation.finished` 或 `plugins.operation.failed`，写入 `plugins/{plugin}/host`。平台层只上报观察到的阶段和耗时，级别和 `host.*` 失败类别只由 Core 按阶段决定；取消、停止和过期结果不记录。宿主当前代记下表四种贡献，唯一来源是 `rust/lithe-core/src/diagnostics/plugin_operations.rs` 的 `CONTRIBUTIONS`；输入、阶段到类别的对应和 -32064 见 [Rust Core API](../contracts/rust-core-api.md#engine-logging-v2-handoff-pr3)。
+- 声明式贡献没有插件进程，不能发 `lithe/log`。实际执行它的一方通过 `diagnostics.recordPluginOperation` 代记每次尝试的一条终态，事件和通道与 SDK 插件相同：`plugins.operation.finished` 或 `plugins.operation.failed`，写入 `plugins/{plugin}/host`。平台层只上报观察到的阶段和耗时，级别和 `host.*` 失败类别只由 Core 按阶段决定；取消、停止和过期结果不记录。宿主当前代记下表四种贡献，唯一来源是 `rust/crates/core/src/diagnostics/plugin_operations.rs` 的 `CONTRIBUTIONS`；输入、阶段到类别的对应和 -32064 见 [Rust Core API](../contracts/rust-core-api.md#engine-logging-v2-handoff-pr3)。
 
   | operation | 声明来源 | 记录方 | 可能的失败阶段 |
   | --- | --- | --- | --- |
@@ -108,9 +108,9 @@ Swift 的事件值是**未经脱敏的内存输入**，不能自行序列化落�
 
 ## 八、辅助 crate
 
-- `rust/lithe-git-host`、`rust/lithe-ide-host` 和 `rust/lithe-remote` 的客户端链接进 Core，各自通过 `failure_log` 模块交出失败事实，依赖方向保持不变。sink 未注入时只增加原子计数，不写 stderr。
+- `rust/crates/git-host`、`rust/crates/ide-host` 和 `rust/crates/remote` 的客户端链接进 Core，各自通过 `failure_log` 模块交出失败事实，依赖方向保持不变。sink 未注入时只增加原子计数，不写 stderr。
 - Core 的 `diagnostics/helper_failures` 是唯一的安装处。JSON dispatcher、独立 ACP FFI open、直接 IDE dispatcher 和 AskPass 入口在调用辅助 crate 前都经过它的 `Once`。sink 只转换标量字段，之后走相同的目录校验、脱敏和 256 条 Core 队列。这些事件的 owner 都是 `lithe-core`，错误只保留固定摘要和类别。
-- 辅助 crate 的收尾只记录丢失数据、能力或清理结果的意外错误。已断开的连接、已退出的进程，以及远程关闭或取消时的 Disconnected、Timeout，在类型化辅助函数里豁免；ACP Cancel 的 InternalError 无法区分正常断连与序列化失败，按预期缺失豁免。转发 accept 与 bridge 失败可能逐连接发生，目录 rate 为 12；`rust/lithe-remote/src/client/forward.rs` 在发送侧让每一族失败在进程内每 5 秒最多记录一条，并发转发连接也共用这个限制，正常断连不占日志配额。强制终止后进程仍未退出的最终超时保留 WARN。
+- 辅助 crate 的收尾只记录丢失数据、能力或清理结果的意外错误。已断开的连接、已退出的进程，以及远程关闭或取消时的 Disconnected、Timeout，在类型化辅助函数里豁免；ACP Cancel 的 InternalError 无法区分正常断连与序列化失败，按预期缺失豁免。转发 accept 与 bridge 失败可能逐连接发生，目录 rate 为 12；`rust/crates/remote/src/client/forward.rs` 在发送侧让每一族失败在进程内每 5 秒最多记录一条，并发转发连接也共用这个限制，正常断连不占日志配额。强制终止后进程仍未退出的最终超时保留 WARN。
 
 ## 九、目录遍历与清理事件
 
@@ -158,7 +158,7 @@ Rust 通过静态 `EVENTS`（按 ID 排序）和二分查找的 `event_by_id` �
 
 ## 十二、用法门禁
 
-`scripts/logging/verify-log-usage.mjs` 扫描 `macos/Sources`、`rust/lithe-core/src`、`rust/lithe-git-host/src`、`rust/lithe-ide-host/src` 和 `rust/lithe-remote/src`。排除 `rust/lithe-remote/src/server/`、`rust/lithe-remote/src/bin/` 和 `rust/lithe-ide-host/src/bin/`：它们在远端主机或独立进程中运行，stderr 由宿主进程处理，以后单独迁移。
+`scripts/logging/verify-log-usage.mjs` 扫描 `macos/Sources`、`rust/crates/core/src`、`rust/crates/git-host/src`、`rust/crates/ide-host/src` 和 `rust/crates/remote/src`。排除 `rust/crates/remote/src/server/`、`rust/crates/remote/src/bin/` 和 `rust/crates/ide-host/src/bin/`：它们在远端主机或独立进程中运行，stderr 由宿主进程处理，以后单独迁移。
 
 门禁只扫描生产代码：词法上遮蔽注释和字符串内容，排除 `Tests/`、`tests/`、`tests.rs`、文件名以 `_tests.rs` 结尾的 Rust 文件，以及明确标注 `#[cfg(test)]` 或 `#[cfg(all(test, …))]` 的项。它只检查列出的直接写法，不跨文件追踪别名或动态调用。规则分两类：
 

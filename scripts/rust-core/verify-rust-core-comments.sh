@@ -6,10 +6,14 @@ ROOT_DIR="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 # Keep this helper, Rustdoc and subsequent checks in one native build-state
 # directory. A desktop worktree supplies its own existing Cargo target.
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT_DIR/.artifacts/rust-core-checks}"
-# lithe-core-rules is part of Core and holds reusable editor/UI rules; lithe-ai holds the
-# ai.* commands.
-SOURCE_DIRS=("$ROOT_DIR/rust/lithe-core/src" "$ROOT_DIR/rust/lithe-core-rules/src" "$ROOT_DIR/rust/lithe-ai/src")
+# Every crate under rust/crates follows the same comment rules, so a new crate is
+# covered as soon as it joins the workspace.
 cd "$ROOT_DIR"
+crate_manifests=(rust/crates/*/Cargo.toml)
+SOURCE_DIRS=()
+for manifest in "${crate_manifests[@]}"; do
+    SOURCE_DIRS+=("$ROOT_DIR/${manifest%Cargo.toml}src")
+done
 
 rust_files=()
 production_files=()
@@ -106,12 +110,27 @@ fi
 # Let Rust understand visibility instead of treating pub items in private
 # modules as exported APIs. This covers public functions, types, variants, and
 # fields without requiring documentation for every internal helper.
-for manifest in rust/lithe-core/Cargo.toml rust/lithe-core-rules/Cargo.toml rust/lithe-ai/Cargo.toml; do
+#
+# Crates listed here still lack public documentation. They keep the link check
+# but skip missing_docs until the linked issue lands; remove an entry once its
+# crate passes, and never add a crate to make a new gap pass.
+missing_docs_pending=(
+    # https://github.com/1lck/Lithe-IDEA/issues/1863
+    rust/crates/remote/Cargo.toml
+)
+for manifest in "${crate_manifests[@]}"; do
+    lints=(-D rustdoc::broken_intra_doc_links)
+    pending=false
+    for entry in "${missing_docs_pending[@]}"; do
+        [[ "$entry" == "$manifest" ]] && pending=true
+    done
+    if [[ "$pending" == false ]]; then
+        lints+=(-D missing_docs)
+    fi
     cargo rustdoc --quiet \
         --manifest-path "$manifest" \
         --lib -- \
-        -D missing_docs \
-        -D rustdoc::broken_intra_doc_links
+        "${lints[@]}"
 done
 
 printf '%s\n' "Rust Core comment verification passed"

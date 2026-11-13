@@ -1,0 +1,62 @@
+[package]
+name = "lithe-core"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Cross-platform application core for Lithe"
+
+[lib]
+crate-type = ["rlib", "staticlib"]
+
+[features]
+# Builds the plugin SDK end-to-end tests in shared/plugins/sdk/e2e; run them
+# with `node shared/plugins/scripts/sdk-e2e.mjs`, which builds the samples.
+plugin-sdk-e2e = []
+
+[dependencies]
+lithe-ai = { path = "../ai" }
+lithe-core-rules = { path = "../core-rules" }
+lithe-git-host = { path = "../git-host" }
+lithe-ide-host = { path = "../ide-host" }
+lithe-remote = { path = "../remote", default-features = false, features = ["client"] }
+ammonia = "4.1.4"
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+encoding_rs = "0.8"
+comrak = { version = "0.54.0", default-features = false, features = ["shortcodes"] }
+rand = "0.8"
+regex = "1.11"
+quick-xml = "0.37"
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+sha2 = "0.10"
+toml = { version = "1.1.4", default-features = false, features = ["parse", "serde"] }
+serde_yaml_ng = "0.10.0"
+similar = { version = "3.2", default-features = false, features = ["std"] }
+zip = { version = "2.4", default-features = false, features = ["deflate"] }
+url = "2.5"
+unicode-normalization = "0.1"
+ignore = "=0.4.33"
+
+[target.'cfg(unix)'.dev-dependencies]
+lithe-remote = { path = "../remote", default-features = false, features = ["server"] }
+
+[[test]]
+name = "plugin_sdk_node"
+path = "../../../shared/plugins/sdk/e2e/plugin_sdk_node.rs"
+required-features = ["plugin-sdk-e2e"]
+
+[[test]]
+name = "plugin_sdk_java"
+path = "../../../shared/plugins/sdk/e2e/plugin_sdk_java.rs"
+required-features = ["plugin-sdk-e2e"]
+
+[[test]]
+name = "plugin_sdk_rust"
+path = "../../../shared/plugins/sdk/e2e/plugin_sdk_rust.rs"
+required-features = ["plugin-sdk-e2e"]
+
+[[test]]
+name = "plugin_sdk_build"
+path = "../../../shared/plugins/sdk/e2e/plugin_sdk_build.rs"
+required-features = ["plugin-sdk-e2e"]

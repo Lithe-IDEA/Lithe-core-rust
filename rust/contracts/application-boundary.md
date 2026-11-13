@@ -62,7 +62,6 @@ this lifecycle protection; actual symbol computation remains upstream-owned.
 | Local History | revision metadata, text content, restore result | persistence location and file operations |
 | Application logging | fixed module categories, versioned event context, recursive privacy rules, bounded timeline filters and frozen diagnostic preview manifests | background queues, native file rotation/retention, effective directory fallback, crash capture, session selection, viewing and user-selected export destinations |
 | Modules | stable IDs, manifests, enabled state, lifecycle snapshots, dependencies, capabilities, and contributions | native factories, processes, timers, PTY/ConPTY, watchers, connections, and UI rendering |
-| Community integrations | Discourse authorization sessions, RSA-OAEP callback verification, user API protocol models, and normalized community data | opening the system browser, receiving URL callbacks, and credential-vault persistence |
 | Updates | normalized release metadata, state names, validated `stable|autobuild` preference, explicit rolling consent, and stable error codes | update feeds, package verification, download, installation, restart, and native UI |
 
 ### Application update channels

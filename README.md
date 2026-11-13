@@ -4,7 +4,10 @@ Lithe 的跨平台应用内核，以及插件契约、插件开发资料和官�
 
 | 目录 | 内容 |
 | --- | --- |
-| [`rust/`](rust) | Rust Core 各 crate，以及 Core 自己的接口契约 `rust/contracts/`、测试数据 `rust/fixtures/` 和日志事件目录 `rust/logging/` |
+| [`rust/crates/`](rust/crates) | Rust Core 的 crate，每个子目录是一个 crate，目录名是包名去掉 `lithe-` 前缀 |
+| [`rust/contracts/`](rust/contracts) | Core 命令的接口契约和 schema |
+| [`rust/fixtures/`](rust/fixtures) | Core 命令的测试数据，Core 测试和桌面端测试共用 |
+| [`rust/logging/`](rust/logging) | 日志事件目录 |
 | [`shared/plugins/`](shared/plugins) | 插件契约 `contract/v1/`、开发指南 `guides/`、参考 `reference/`、官方 SDK `sdk/{node,java,rust}` 和它们的端到端测试 |
 | [`scripts/rust-core/`](scripts/rust-core) | Rust Core 注释规范检查（模块文档、英文注释、`unsafe` 安全说明、导出项 Rustdoc） |
 
@@ -19,8 +22,8 @@ node shared/plugins/scripts/verify-docs.mjs              # 契约 $id 与文档�
 node shared/plugins/scripts/sdk-e2e.mjs                  # 三个 SDK 对当前 Core 的端到端测试
 ```
 
-修改 `shared/plugins/contract/v1/`、`rust/lithe-core/src/plugins/capabilities.rs` 或
-`rust/lithe-core/src/lsp/interface/plugin_function.rs` 的 PR，要在同一个 PR 里更新
+修改 `shared/plugins/contract/v1/`、`rust/crates/core/src/plugins/capabilities.rs` 或
+`rust/crates/core/src/lsp/interface/plugin_function.rs` 的 PR，要在同一个 PR 里更新
 [协议更新记录](shared/plugins/reference/protocol-changelog.md)。
 
 ---
@@ -31,10 +34,13 @@ Lithe's cross-platform application core, and the single source of the plugin con
 
 | Directory | Contents |
 | --- | --- |
-| [`rust/`](rust) | The Rust Core crates, plus Core's own interface contracts `rust/contracts/`, test data `rust/fixtures/` and logging event catalog `rust/logging/` |
+| [`rust/crates/`](rust/crates) | The Rust Core crates; each directory is one crate, named after its package without the `lithe-` prefix |
+| [`rust/contracts/`](rust/contracts) | Interface contracts and schemas for Core commands |
+| [`rust/fixtures/`](rust/fixtures) | Test data for Core commands, shared by the Core and desktop tests |
+| [`rust/logging/`](rust/logging) | The logging event catalog |
 | [`shared/plugins/`](shared/plugins) | The plugin contract `contract/v1/`, guides `guides/`, reference `reference/`, the official SDKs `sdk/{node,java,rust}` and their end-to-end tests |
 | [`scripts/rust-core/`](scripts/rust-core) | The Rust Core comment rules check (module docs, English comments, `unsafe` safety sections, Rustdoc on exported items) |
 
 **Plugin authors** start at [`shared/plugins/README.md`](shared/plugins/README.md) and never need to clone the Lithe application repository.
 
-A pull request that changes `shared/plugins/contract/v1/`, `rust/lithe-core/src/plugins/capabilities.rs` or `rust/lithe-core/src/lsp/interface/plugin_function.rs` updates the [protocol changelog](shared/plugins/reference/protocol-changelog.md) in the same pull request.
+A pull request that changes `shared/plugins/contract/v1/`, `rust/crates/core/src/plugins/capabilities.rs` or `rust/crates/core/src/lsp/interface/plugin_function.rs` updates the [protocol changelog](shared/plugins/reference/protocol-changelog.md) in the same pull request.
