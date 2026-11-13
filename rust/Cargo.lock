@@ -896,6 +896,7 @@ dependencies = [
  "lithe-process",
  "lithe-protocol",
  "lithe-remote",
+ "lithe-request-context",
  "lithe-terminal",
  "lithe-text",
  "quick-xml",
@@ -1021,6 +1022,16 @@ dependencies = [
  "serde_json",
  "sha2",
  "trash",
+]
+
+[[package]]
+name = "lithe-request-context"
+version = "0.1.0"
+dependencies = [
+ "lithe-diagnostics",
+ "regex",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

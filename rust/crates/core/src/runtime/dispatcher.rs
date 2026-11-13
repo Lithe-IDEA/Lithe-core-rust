@@ -145,7 +145,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
         operation_id.clone(),
         parsed.timeout_milliseconds,
     );
-    crate::git::execution_events::request_started(operation_id.as_deref());
+    lithe_request_context::events::request_started(operation_id.as_deref());
     if let Err(error) = crate::protocol::cancellation::check() {
         return CoreResponse::failure(id, error);
     }

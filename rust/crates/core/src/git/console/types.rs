@@ -1,18 +1,7 @@
 //! Native console snapshots and deterministic, lossless disclosure ranges.
 use serde::{Deserialize, Serialize};
 
-/// Execution provenance is retained for diagnostics; display does not merge commands.
-#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub enum Source {
-    /// A user deliberately invoked the operation.
-    User,
-    /// An automatic refresh or watcher invoked the query.
-    Background,
-    /// Provenance was not supplied; preserve each execution independently.
-    #[default]
-    Unknown,
-}
+pub use lithe_request_context::Source;
 
 /// One retained line, in native event order. Stderr alone does not imply failure.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]

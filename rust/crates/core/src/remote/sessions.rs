@@ -8,13 +8,13 @@
 //! ends.
 
 use super::{classify, diagnostics, ssh_hop, ProbeStatus, ProbedHost, SshConnection};
-use crate::git::execution_events;
 use crate::protocol::{CoreError, ErrorCode};
 use lithe_git_host::ProcessTree;
 use lithe_remote::client::launch::{launch, launch_command, LaunchError, Launched};
 use lithe_remote::client::session::{ClientError, ConnectOptions};
 use lithe_remote::client::{Hop, RemoteSession, ServerArtifact, ServerTarget, TransportChain};
 use lithe_remote::protocol::methods;
+use lithe_request_context::events as execution_events;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::io::Read;

@@ -73,9 +73,9 @@ pub fn execute_json_with_events(
     request: &str,
     sink: std::sync::Arc<dyn Fn(&str) + Send + Sync>,
 ) -> String {
-    git::execution_events::with_sink(sink, || {
+    lithe_request_context::events::with_sink(sink, || {
         let response = execute_json(request);
-        git::execution_events::request_finished(&response);
+        lithe_request_context::events::request_finished(&response);
         response
     })
 }

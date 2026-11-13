@@ -6,12 +6,11 @@
 //! or gives up. A host notice backed by these facts links to this record; the host
 //! adds its own terminal event only for facts Core does not have.
 
-use crate::git::console::Source;
 use crate::protocol::{CoreRequest, CoreResponse, ErrorCode};
 use lithe_diagnostics::core_events;
 use lithe_diagnostics::record::LogLevel;
+use lithe_request_context::{trace, Source};
 use serde_json::{json, Value};
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::time::Instant;
 
@@ -26,23 +25,8 @@ const PATH_KEYS: [&str; 7] = [
     "path",
 ];
 
-/// Correlation inherited by Git process traces started inside the request.
-#[derive(Debug, Clone, Default)]
-pub(crate) struct Context {
-    /// Operation shared by the user action, its requests and their Git processes.
-    pub(crate) op: Option<String>,
-    /// Provenance resolved once from the request envelope.
-    pub(crate) source: Source,
-}
-
-thread_local! {
-    static CURRENT: RefCell<Context> = RefCell::new(Context::default());
-}
-
-/// Snapshot for traces that finish on another thread, such as streamed history.
-pub(crate) fn current() -> Context {
-    CURRENT.with(|current| current.borrow().clone())
-}
+pub(crate) use lithe_request_context::source_token;
+pub(crate) use lithe_request_context::trace::current;
 
 /// Active request trace; dropping it restores the enclosing request's context.
 pub(crate) struct Request {
@@ -55,7 +39,7 @@ pub(crate) struct Request {
     op: Option<String>,
     hot: bool,
     started: Instant,
-    previous: Context,
+    previous: trace::Context,
 }
 
 impl Request {
@@ -71,11 +55,9 @@ impl Request {
             .filter(|value| identity(value))
             .or_else(|| request.operation_id.clone().filter(|value| identity(value)))
             .or_else(|| request.id.clone().filter(|value| identity(value)));
-        let previous = CURRENT.with(|current| {
-            current.replace(Context {
-                op: op.clone(),
-                source,
-            })
+        let previous = trace::replace(trace::Context {
+            op: op.clone(),
+            source,
         });
         let hot = is_hot(&request.command);
         Self {
@@ -136,7 +118,7 @@ impl Request {
                 let code = serde_json::to_value(&error.code).expect("Core error codes encode");
                 fields.insert(
                     "error".into(),
-                    json!(crate::git::execution_events::redact(&error.message)),
+                    json!(lithe_request_context::events::redact(&error.message)),
                 );
                 fields.insert("error_code".into(), code);
                 fields.insert("error_domain".into(), json!("core"));
@@ -154,8 +136,7 @@ impl Request {
 
 impl Drop for Request {
     fn drop(&mut self) {
-        let previous = std::mem::take(&mut self.previous);
-        CURRENT.with(|current| current.replace(previous));
+        trace::replace(std::mem::take(&mut self.previous));
     }
 }
 
@@ -219,14 +200,6 @@ pub(crate) fn effective_source(origin: Option<Source>, git: Option<Source>) -> S
     match origin {
         Some(source) if source != Source::Unknown => source,
         _ => git.unwrap_or_default(),
-    }
-}
-
-pub(crate) fn source_token(source: Source) -> &'static str {
-    match source {
-        Source::User => "user",
-        Source::Background => "background",
-        Source::Unknown => "unknown",
     }
 }
 

@@ -5,10 +5,10 @@
 //! ordinary host requests cannot create an unobserved streaming resource.
 
 use super::sessions::{lookup, request_error};
-use crate::git::execution_events;
 use crate::protocol::{cancellation, CoreError, ErrorCode};
 use lithe_remote::client::session::{ClientError, Event, RemoteSession};
 use lithe_remote::protocol::methods;
+use lithe_request_context::events as execution_events;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::VecDeque;

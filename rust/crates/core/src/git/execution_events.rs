@@ -1,52 +1,25 @@
-//! Request-scoped Git diagnostics and bounded, incremental output decoding.
+//! Git process invocations on the request's event channel: the `started`,
+//! `output` and `finished` events of each traced child, with bounded,
+//! incremental output decoding.
 //!
-//! Events contain sanitized diagnostics, never command input or environment.
-//! Native process ownership belongs to the `lithe-git-host` adapter.
-//!
-//! Hosts keep a console journal of these events. The journal's record states
-//! and retention budget are part of this contract: `requestStarted` carries
-//! [`JOURNAL_RETENTION`], `finished` carries the record's final state, and
-//! `requestFinished` names the records that never confirmed an exit and
-//! whether a failure needs a record of its own. Hosts store, lock, and
-//! throttle; they do not derive states or redact again.
+//! The channel itself, its request boundary events and redaction live in
+//! `lithe_request_context::events`. Native process ownership belongs to the
+//! `lithe-git-host` adapter.
 
 use crate::protocol::CoreError;
+use lithe_request_context::events::{deliver, EventSink};
+pub(crate) use lithe_request_context::events::{emit, has_sink, redact};
 use serde::Serialize;
-use std::cell::{Cell, RefCell};
-use std::sync::{Arc, OnceLock};
+use std::cell::Cell;
 use std::time::Instant;
 
 const MAX_LINE_BYTES: usize = 16 * 1024;
 const MAX_DIAGNOSTIC_BYTES: usize = 512 * 1024;
 const MAX_OUTPUT_EVENTS: usize = 4096;
 
-/// Console journal retention shared by every host, in host string length units.
-#[derive(Clone, Copy, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct JournalRetention {
-    /// Records kept across all requests; the oldest are dropped first.
-    pub(crate) max_records: usize,
-    /// Output kept per record; earlier lines are dropped first.
-    pub(crate) max_record_output_characters: usize,
-    /// Output lines kept per record, including empty lines.
-    pub(crate) max_record_output_lines: usize,
-    /// Output kept across all records before the oldest record is dropped.
-    pub(crate) max_total_output_characters: usize,
-}
-
-/// One budget for both products, chosen for the lower resident memory.
-pub(crate) const JOURNAL_RETENTION: JournalRetention = JournalRetention {
-    max_records: 200,
-    max_record_output_characters: 32_768,
-    max_record_output_lines: 2_000,
-    max_total_output_characters: 1_048_576,
-};
-/// A serialized event consumer, invoked synchronously during its owning request.
-pub type EventSink = Arc<dyn Fn(&str) + Send + Sync>;
-
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-/// One ordered diagnostic event within a Core request.
+/// One ordered diagnostic event of a Git invocation.
 struct Event<'a> {
     operation_id: &'a str,
     #[serde(flatten)]
@@ -61,18 +34,6 @@ struct Event<'a> {
 )]
 /// Process start is evidence of a spawned child; failure may have no exit code.
 enum Kind<'a> {
-    RequestStarted {
-        retention: JournalRetention,
-    },
-    RequestFinished {
-        error: Option<serde_json::Value>,
-        /// Records of this request still running; hosts mark them `unconfirmed`.
-        unconfirmed_invocations: Vec<u64>,
-        /// No Git process of this request failed or is still running: none started, or
-        /// each one succeeded, such as the queries before a refusal. The failure is shown
-        /// as its own record instead of on an executed command.
-        failure_record: bool,
-    },
     Started {
         source: super::console::Source,
         executable: Option<String>,
@@ -104,127 +65,6 @@ enum Kind<'a> {
         /// `completed` with an exit code; `unconfirmed` when the exit was not observed.
         state: &'static str,
     },
-}
-
-/// Per-request identity and sequence shared by nested Git invocations.
-struct Context {
-    sink: EventSink,
-    operation_id: String,
-    next_invocation: u64,
-    /// Transfer summaries remain attached to the transfer despite subsequent inspection queries.
-    last_transfer: Option<u64>,
-    /// Processes of the current request that finished without succeeding.
-    failed_invocations: usize,
-    /// Started processes of the current request without a `finished` event.
-    open_invocations: std::collections::BTreeSet<u64>,
-}
-thread_local! { static CURRENT: RefCell<Option<Context>> = const { RefCell::new(None) }; }
-
-/// Restores the caller's observer after a nested request or callback returns.
-struct ObserverScope(Option<Context>);
-impl ObserverScope {
-    fn begin(context: Option<Context>) -> Self {
-        Self(CURRENT.with(|current| current.replace(context)))
-    }
-}
-impl Drop for ObserverScope {
-    fn drop(&mut self) {
-        CURRENT.with(|current| current.replace(self.0.take()));
-    }
-}
-
-/// Whether the current request has an incremental event consumer.
-pub(crate) fn has_sink() -> bool {
-    CURRENT.with(|current| current.borrow().is_some())
-}
-
-/// Installs a consumer only for the duration of this synchronous request.
-pub(crate) fn with_sink<T>(sink: EventSink, operation: impl FnOnce() -> T) -> T {
-    let _scope = ObserverScope::begin(Some(Context {
-        sink,
-        operation_id: String::new(),
-        next_invocation: 0,
-        last_transfer: None,
-        failed_invocations: 0,
-        open_invocations: Default::default(),
-    }));
-    operation()
-}
-
-fn deliver(sink: &EventSink, event: &str) {
-    // A host may synchronously call git.authRespond from this callback. That
-    // request must not inherit or overwrite the observed operation's identity.
-    let _scope = ObserverScope::begin(None);
-    sink(event);
-}
-
-/// Called after cancellation registration so immediate cancellation cannot race startup.
-pub(crate) fn request_started(operation_id: Option<&str>) {
-    let context = CURRENT.with(|current| {
-        let mut current = current.borrow_mut();
-        let context = current.as_mut()?;
-        context.operation_id = operation_id.unwrap_or_default().to_string();
-        context.failed_invocations = 0;
-        context.open_invocations.clear();
-        Some((context.sink.clone(), context.operation_id.clone()))
-    });
-    if let Some((sink, operation_id)) = context {
-        send(
-            &sink,
-            &operation_id,
-            Kind::RequestStarted {
-                retention: JOURNAL_RETENTION,
-            },
-        );
-    }
-}
-
-/// A final event shares the same ordered channel, including preflight failures.
-pub(crate) fn request_finished(response: &str) {
-    let context = CURRENT.with(|current| {
-        current.borrow_mut().as_mut().map(|context| {
-            (
-                context.sink.clone(),
-                context.operation_id.clone(),
-                context.failed_invocations,
-                std::mem::take(&mut context.open_invocations),
-            )
-        })
-    });
-    let Some((sink, operation_id, failed, open)) = context else {
-        return;
-    };
-    let value: serde_json::Value = serde_json::from_str(response).unwrap_or_default();
-    let raw_error = value
-        .get("error")
-        .filter(|value| !value.is_null())
-        .or_else(|| {
-            value
-                .pointer("/data/operationError")
-                .filter(|value| !value.is_null())
-        });
-    let error = raw_error.map(|error| serde_json::json!({
-        "code": error.get("code"),
-        "message": redact(error.get("message").and_then(|value| value.as_str()).unwrap_or("Git operation failed")),
-        "details": error.get("details").and_then(|value| value.as_str()).map(redact),
-    }));
-    let error = error.or_else(|| value.pointer("/data/exitCode").and_then(|value| value.as_i64()).filter(|code| *code != 0).map(|code| serde_json::json!({ "code": "process_failed", "message": format!("Git exited with code {code}") })));
-    // A request cancelled without a failed command was superseded; it has nothing
-    // to report. Any other failure that no command reported needs its own record.
-    let failure_record = failed == 0
-        && open.is_empty()
-        && error
-            .as_ref()
-            .is_some_and(|error| error["code"] != "cancelled");
-    send(
-        &sink,
-        &operation_id,
-        Kind::RequestFinished {
-            error,
-            unconfirmed_invocations: open.into_iter().collect(),
-            failure_record,
-        },
-    );
 }
 
 /// A traced invocation. The byte decoders are independent for stdout/stderr.
@@ -268,25 +108,20 @@ impl Invocation {
             })
     }
     pub(super) fn current() -> Option<Self> {
-        CURRENT.with(|current| {
-            let mut current = current.borrow_mut();
-            let context = current.as_mut()?;
-            context.next_invocation += 1;
-            Some(Self {
-                sink: context.sink.clone(),
-                operation_id: context.operation_id.clone(),
-                id: context.next_invocation,
-                clock: Instant::now(),
-                output_bytes: 0,
-                output_events: 0,
-                omitted: false,
-                stdout: LineDecoder::default(),
-                stderr: LineDecoder::default(),
-                pending_progress: None,
-                redact_configuration: Cell::new(false),
-                configuration_marker_sent: false,
-                query: false,
-            })
+        lithe_request_context::events::next_invocation().map(|channel| Self {
+            sink: channel.sink,
+            operation_id: channel.operation_id,
+            id: channel.id,
+            clock: Instant::now(),
+            output_bytes: 0,
+            output_events: 0,
+            omitted: false,
+            stdout: LineDecoder::default(),
+            stderr: LineDecoder::default(),
+            pending_progress: None,
+            redact_configuration: Cell::new(false),
+            configuration_marker_sent: false,
+            query: false,
         })
     }
     pub(super) fn started(&self, root: &str, arguments: &[String]) {
@@ -327,23 +162,13 @@ impl Invocation {
                             || key.ends_with(".pushRemote")))
             });
         self.redact_configuration.set(config && !safe_config);
-        if super::execution_policy::command_index(arguments).is_some_and(|index| {
+        let transfer = super::execution_policy::command_index(arguments).is_some_and(|index| {
             matches!(
                 arguments[index].as_str(),
                 "fetch" | "push" | "pull" | "clone"
             )
-        }) {
-            CURRENT.with(|current| {
-                if let Some(context) = current.borrow_mut().as_mut() {
-                    context.last_transfer = Some(self.id);
-                }
-            });
-        }
-        CURRENT.with(|current| {
-            if let Some(context) = current.borrow_mut().as_mut() {
-                context.open_invocations.insert(self.id);
-            }
         });
+        lithe_request_context::events::invocation_started(self.id, transfer);
         let arguments = arguments
             .iter()
             .map(|argument| redact(argument))
@@ -491,12 +316,7 @@ impl Invocation {
             details: error.details.as_ref().map(|value| redact(value)),
         });
         let failed = error.is_some() || !(exit_code == Some(0) || expected_exit);
-        CURRENT.with(|current| {
-            if let Some(context) = current.borrow_mut().as_mut() {
-                context.open_invocations.remove(&self.id);
-                context.failed_invocations += usize::from(failed);
-            }
-        });
+        lithe_request_context::events::invocation_finished(self.id, failed);
         send(
             &self.sink,
             &self.operation_id,
@@ -584,53 +404,6 @@ fn send(sink: &EventSink, operation_id: &str, kind: Kind<'_>) {
     }
 }
 
-/// Sends structured native diagnostics on the same ordered request channel.
-pub(crate) fn emit(mut value: serde_json::Value) {
-    let context = CURRENT.with(|current| {
-        current.borrow().as_ref().map(|context| {
-            (
-                context.sink.clone(),
-                context.operation_id.clone(),
-                context.last_transfer,
-            )
-        })
-    });
-    if let Some((sink, operation_id, transfer)) = context {
-        if value["type"] == "remoteResult" {
-            value["invocationId"] = transfer.into();
-        }
-        // Structured results can carry native error text; it is redacted here
-        // like every other event so hosts never redact a second time.
-        if let Some(error) = value
-            .get_mut("error")
-            .and_then(|error| error.as_object_mut())
-        {
-            for key in ["message", "details"] {
-                if let Some(text) = error.get(key).and_then(|text| text.as_str()) {
-                    let redacted = redact(text);
-                    error.insert(key.into(), redacted.into());
-                }
-            }
-        }
-        value["operationId"] = operation_id.into();
-        deliver(&sink, &value.to_string());
-    }
-}
-
-/// Redacts complete records, including credentials split across native chunks.
-pub(crate) fn redact(text: &str) -> String {
-    static URL_AUTH: OnceLock<regex::Regex> = OnceLock::new();
-    let pattern = URL_AUTH.get_or_init(|| {
-        regex::Regex::new(r"(?i)(https?|ssh)://[^\s/@]+(?::[^\s/@]*)?@")
-            .expect("valid URL redaction")
-    });
-    let text = pattern.replace_all(text, "$1://redacted@").into_owned();
-    lithe_diagnostics::redaction::redact_text(lithe_diagnostics::redaction::RedactTextRequest {
-        text,
-    })
-    .redacted
-}
-
 #[derive(Default)]
 /// Complete-line decoding avoids exposing a secret before its delimiter arrives.
 /// Overlong lines are discarded in full rather than publishing a secret prefix.
@@ -682,6 +455,8 @@ impl LineDecoder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lithe_request_context::events::{request_finished, request_started, with_sink};
+    use std::sync::Arc;
 
     /// A query's nonzero exit that answers it is expected; the same exit of a visible
     /// command, or an exit Git means as failure, is not.
@@ -709,83 +484,6 @@ mod tests {
         decoder.push(b"? first.txt\0? second", &mut |text, _, _| lines.push(text));
         decoder.flush(&mut |text, _, _| lines.push(text));
         assert_eq!(lines, ["? first.txt", "? second"]);
-    }
-
-    #[test]
-    fn callback_auth_reply_preserves_outer_events_and_cancellation() {
-        let events = Arc::new(std::sync::Mutex::new(Vec::<serde_json::Value>::new()));
-        let captured = events.clone();
-        let response = crate::execute_json_with_events(
-            r#"{"id":"callback-cancellation","command":"core.ping","timeoutMilliseconds":1000}"#,
-            Arc::new(move |event| {
-                let event: serde_json::Value = serde_json::from_str(event).unwrap();
-                captured.lock().unwrap().push(event.clone());
-                if event["type"] == "requestStarted"
-                    && event["operationId"] == "callback-cancellation"
-                {
-                    // Like the C AskPass host, synchronously reply through Core
-                    // before requesting cancellation of the observed operation.
-                    let reply: serde_json::Value = serde_json::from_str(&crate::execute_json(
-                        r#"{"id":"callback-auth-reply","command":"git.authRespond","payload":{"requestId":"expired-fixture","answer":null}}"#,
-                    )).unwrap();
-                    assert_eq!(reply["ok"], true);
-                    assert_eq!(reply["data"]["accepted"], false);
-                    assert!(crate::cancel_operation("callback-cancellation"));
-                }
-            }),
-        );
-        let response: serde_json::Value = serde_json::from_str(&response).unwrap();
-        assert_eq!(response["error"]["code"], "cancelled", "{response}");
-        let events = events.lock().unwrap();
-        assert_eq!(events.len(), 2, "{events:?}");
-        assert_eq!(events[0]["type"], "requestStarted");
-        assert_eq!(events[1]["type"], "requestFinished");
-        assert!(events
-            .iter()
-            .all(|event| event["operationId"] == "callback-cancellation"));
-        assert!(!crate::cancel_operation("callback-cancellation"));
-    }
-
-    #[test]
-    fn callback_can_observe_a_nested_request_without_mixing_channels() {
-        let outer = Arc::new(std::sync::Mutex::new(Vec::<serde_json::Value>::new()));
-        let inner = Arc::new(std::sync::Mutex::new(Vec::<serde_json::Value>::new()));
-        let outer_capture = outer.clone();
-        let inner_capture = inner.clone();
-        let response = crate::execute_json_with_events(
-            r#"{"id":"outer-observer","command":"core.ping"}"#,
-            Arc::new(move |event| {
-                let event: serde_json::Value = serde_json::from_str(event).unwrap();
-                outer_capture.lock().unwrap().push(event.clone());
-                if event["type"] == "requestStarted" {
-                    let captured = inner_capture.clone();
-                    let response = crate::execute_json_with_events(
-                        r#"{"id":"inner-observer","command":"core.ping"}"#,
-                        Arc::new(move |event| {
-                            captured
-                                .lock()
-                                .unwrap()
-                                .push(serde_json::from_str(event).unwrap())
-                        }),
-                    );
-                    assert_eq!(
-                        serde_json::from_str::<serde_json::Value>(&response).unwrap()["ok"],
-                        true
-                    );
-                }
-            }),
-        );
-        assert_eq!(
-            serde_json::from_str::<serde_json::Value>(&response).unwrap()["ok"],
-            true
-        );
-        for (events, id) in [(outer, "outer-observer"), (inner, "inner-observer")] {
-            let events = events.lock().unwrap();
-            assert_eq!(events.len(), 2);
-            assert_eq!(events[0]["type"], "requestStarted");
-            assert_eq!(events[1]["type"], "requestFinished");
-            assert!(events.iter().all(|event| event["operationId"] == id));
-        }
     }
 
     #[test]

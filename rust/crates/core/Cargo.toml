@@ -25,6 +25,7 @@ lithe-ide-host = { path = "../ide-host" }
 lithe-network = { path = "../network" }
 lithe-process = { path = "../process" }
 lithe-protocol = { path = "../protocol" }
+lithe-request-context = { path = "../request-context" }
 lithe-terminal = { path = "../terminal" }
 lithe-text = { path = "../text" }
 lithe-remote = { path = "../remote", default-features = false, features = ["client"] }

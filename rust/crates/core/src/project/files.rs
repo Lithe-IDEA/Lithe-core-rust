@@ -956,7 +956,7 @@ fn emit_search_results(
     now: std::time::Instant,
     force: bool,
 ) {
-    if !crate::git::execution_events::has_sink()
+    if !lithe_request_context::events::has_sink()
         || buckets.iter().all(|(bucket, _)| bucket.is_empty())
         || (!force
             && last_flush.is_some_and(|last| {
@@ -976,7 +976,7 @@ fn emit_search_results(
         );
     }
     *last_flush = Some(now);
-    crate::git::execution_events::emit(serde_json::json!({
+    lithe_request_context::events::emit(serde_json::json!({
         "type": "searchResults", "results": SearchResponse { matches }
     }));
 }
@@ -2323,7 +2323,7 @@ mod event_filter_tests {
         use std::time::{Duration, Instant};
         let events = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
         let received = events.clone();
-        crate::git::execution_events::with_sink(
+        lithe_request_context::events::with_sink(
             Arc::new(move |raw| {
                 received
                     .lock()

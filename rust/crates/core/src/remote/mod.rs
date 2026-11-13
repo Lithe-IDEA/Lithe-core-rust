@@ -9,10 +9,10 @@
 //!
 //! Note: .agents/notes/implemented/feature/2026-10-24-remote-ssh-connections.md
 
-use crate::git::execution_events;
 use crate::protocol::{CoreError, ErrorCode};
 use lithe_remote::client::bootstrap::{parse_probe, probe_command};
 use lithe_remote::client::{Hop, SshHop, TransportChain};
+use lithe_request_context::events as execution_events;
 use serde::{Deserialize, Serialize};
 use std::process::{Command, ExitStatus};
 use std::time::{Duration, Instant};
