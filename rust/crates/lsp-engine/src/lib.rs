@@ -2710,11 +2710,8 @@ impl RuntimeSession {
                 self,
                 "requestCancelled",
                 "request",
-                Some(&pending.method),
-                pending.document_uri.as_deref(),
                 "Language-server request was cancelled.",
-                None,
-                None,
+                FailureContext::request(&pending.method, pending.document_uri.as_deref()),
             );
             push_request_event(
                 self,
@@ -3171,11 +3168,8 @@ impl RuntimeSession {
                                             self,
                                             code,
                                             "request",
-                                            Some(&pending.method),
-                                            None,
                                             &message,
-                                            None,
-                                            None,
+                                            FailureContext::request(&pending.method, None),
                                         )),
                                     ),
                                 };
@@ -3206,11 +3200,8 @@ impl RuntimeSession {
                                             self,
                                             failure.code,
                                             "request",
-                                            Some(&pending.method),
-                                            None,
                                             &failure.message,
-                                            None,
-                                            None,
+                                            FailureContext::request(&pending.method, None),
                                         )),
                                     ),
                                 };
@@ -3241,11 +3232,8 @@ impl RuntimeSession {
                                         self,
                                         "plugin.keymapImport.replyTooLarge",
                                         "request",
-                                        Some(&pending.method),
-                                        None,
                                         "The shortcut import provider reply is too large.",
-                                        None,
-                                        None,
+                                        FailureContext::request(&pending.method, None),
                                     )),
                                 )
                             } else {
@@ -3300,11 +3288,12 @@ impl RuntimeSession {
                                         self,
                                         "serverError",
                                         "request",
-                                        Some(&pending.method),
-                                        pending.document_uri.as_deref(),
                                         "Language server returned an error.",
-                                        Some(detail),
-                                        None,
+                                        FailureContext::request(
+                                            &pending.method,
+                                            pending.document_uri.as_deref(),
+                                        )
+                                        .with_underlying(Some(detail)),
                                     )
                                 });
                             let result = event.and_then(|event| event.result.clone());
@@ -3681,11 +3670,12 @@ impl RuntimeSession {
                         self,
                         "requestTimeout",
                         "request",
-                        Some(&pending.method),
-                        pending.document_uri.as_deref(),
                         "Language-server request timed out.",
-                        Some(&format!("elapsedMilliseconds={}", elapsed.as_millis())),
-                        None,
+                        FailureContext::request(&pending.method, pending.document_uri.as_deref())
+                            .with_underlying(Some(&format!(
+                                "elapsedMilliseconds={}",
+                                elapsed.as_millis()
+                            ))),
                     );
                     push_request_event(
                         self,
@@ -3709,11 +3699,8 @@ impl RuntimeSession {
                     self,
                     "requestTimeout",
                     "request",
-                    Some(&waiter.method),
-                    None,
                     "Language-server request timed out waiting for the server to become ready.",
-                    None,
-                    None,
+                    FailureContext::request(&waiter.method, None),
                 );
                 push_request_event(
                     self,
@@ -3731,15 +3718,22 @@ impl RuntimeSession {
             {
                 state.shutdown_deadline = None;
                 shutdown_timeout = true;
-                push_issue_log_event(
+                let message = "Language-server shutdown timed out; forcing termination";
+                let error = runtime_error(
+                    self,
+                    "shutdownTimeout",
+                    "shutdown",
+                    message,
+                    FailureContext::default(),
+                );
+                push_classified_log_event(
                     self,
                     &mut state,
                     "warning",
-                    "shutdown",
-                    "shutdownTimeout",
                     EngineLog::ShutdownTimedOut,
-                    "Language-server shutdown timed out; forcing termination",
+                    message,
                     None,
+                    Some(error),
                 );
             }
         }
@@ -3802,11 +3796,8 @@ impl RuntimeSession {
                         self,
                         "serverExited",
                         "process",
-                        None,
-                        None,
                         "Language-server process exited.",
-                        None,
-                        exit_code,
+                        FailureContext::default().with_exit_code(exit_code),
                     )
                 });
                 fail_feature_requests(
@@ -3855,11 +3846,10 @@ impl RuntimeSession {
                     self,
                     code,
                     stage,
-                    Some(&pending.method),
-                    pending.document_uri.as_deref(),
                     message,
-                    underlying.as_deref(),
-                    exit_code,
+                    FailureContext::request(&pending.method, pending.document_uri.as_deref())
+                        .with_underlying(underlying.as_deref())
+                        .with_exit_code(exit_code),
                 );
                 push_request_event(
                     self,
@@ -3894,11 +3884,10 @@ impl RuntimeSession {
                 self,
                 code,
                 stage,
-                None,
-                None,
                 message,
-                underlying.as_deref(),
-                exit_code,
+                FailureContext::default()
+                    .with_underlying(underlying.as_deref())
+                    .with_exit_code(exit_code),
             );
             transition_locked(self, &mut state, LspLifecycleState::Failed, Some(error));
             state.terminal_event_emitted = true;
@@ -3962,8 +3951,15 @@ impl RuntimeSession {
         detail: Option<String>,
     ) {
         if let Ok(mut state) = self.lock_state() {
-            push_issue_log_event(
-                self, &mut state, level, stage, code, identity, message, detail,
+            let error = runtime_error(self, code, stage, message, FailureContext::default());
+            push_classified_log_event(
+                self,
+                &mut state,
+                level,
+                identity,
+                message,
+                detail,
+                Some(error),
             );
         }
     }
@@ -4020,11 +4016,8 @@ impl RuntimeSession {
                     self,
                     "processCleanupFailed",
                     "cleanup",
-                    None,
-                    None,
                     "Engine process cleanup failed",
-                    None,
-                    None,
+                    FailureContext::default(),
                 );
                 let input = EngineLog::ProcessCleanupFailed.with_fields(json!({}));
                 let (id, mut fields) =
@@ -5056,11 +5049,8 @@ fn function_runtime_error(
         session,
         failure.code,
         "request",
-        Some(lithe_plugin_rpc::INVOKE_METHOD),
-        None,
         &failure.message,
-        None,
-        None,
+        FailureContext::request(lithe_plugin_rpc::INVOKE_METHOD, None),
     );
     error.plugin_error_code = failure.plugin_error_code;
     error
@@ -5169,11 +5159,8 @@ fn release_held_plugin_server_request(
                 session,
                 "transportFailed",
                 "request",
-                Some(&held.method),
-                None,
                 "Could not encode the language-server request.",
-                Some(&error.message),
-                None,
+                FailureContext::request(&held.method, None).with_underlying(Some(&error.message)),
             );
             push_request_event(
                 session,
@@ -5205,11 +5192,8 @@ fn cancel_unsent_plugin_server_request(
         session,
         "requestCancelled",
         "request",
-        Some(&method),
-        None,
         "Language-server request was cancelled.",
-        None,
-        None,
+        FailureContext::request(&method, None),
     );
     push_request_event(session, state, operation_id, &method, None, Some(error));
 }
@@ -5229,11 +5213,8 @@ fn plugin_server_answer(
             session,
             code,
             "request",
-            Some(method),
-            None,
             message,
-            None,
-            None,
+            FailureContext::request(method, None),
         )
     };
     if let Some(upstream) = reply.get("error") {
@@ -5292,11 +5273,9 @@ fn cancel_stale_document_requests_locked(
                 session,
                 "staleDocumentVersion",
                 "request",
-                Some(&pending.method),
-                Some(uri),
                 "The document changed before the language-server result arrived.",
-                Some("A newer document version superseded this request."),
-                None,
+                FailureContext::request(&pending.method, Some(uri))
+                    .with_underlying(Some("A newer document version superseded this request.")),
             );
             push_request_event(
                 session,
@@ -5560,29 +5539,6 @@ fn push_log_event(
     push_classified_log_event(session, state, level, identity, message, detail, None);
 }
 
-#[allow(clippy::too_many_arguments)]
-fn push_issue_log_event(
-    session: &RuntimeSession,
-    state: &mut SessionState,
-    level: &str,
-    stage: &str,
-    code: &str,
-    identity: impl Into<EngineLogInput>,
-    message: &str,
-    detail: Option<String>,
-) {
-    let error = runtime_error(session, code, stage, None, None, message, None, None);
-    push_classified_log_event(
-        session,
-        state,
-        level,
-        identity,
-        message,
-        detail,
-        Some(error),
-    );
-}
-
 fn push_classified_log_event(
     session: &RuntimeSession,
     state: &mut SessionState,
@@ -5636,27 +5592,57 @@ fn take_sequence(state: &mut SessionState) -> u64 {
     sequence
 }
 
-#[allow(clippy::too_many_arguments)]
+/// What a runtime failure concerns beyond its code, stage and message. The
+/// default is a failure of the session itself, outside any request.
+#[derive(Clone, Copy, Default)]
+struct FailureContext<'a> {
+    method: Option<&'a str>,
+    document_uri: Option<&'a str>,
+    underlying: Option<&'a str>,
+    process_exit_code: Option<i32>,
+}
+
+impl<'a> FailureContext<'a> {
+    /// A failure of one request, and of the document it names, if any.
+    fn request(method: &'a str, document_uri: Option<&'a str>) -> Self {
+        Self {
+            method: Some(method),
+            document_uri,
+            ..Self::default()
+        }
+    }
+
+    /// The lower-level message behind the failure.
+    fn with_underlying(self, underlying: Option<&'a str>) -> Self {
+        Self { underlying, ..self }
+    }
+
+    /// The exit code of the process whose end caused the failure.
+    fn with_exit_code(self, process_exit_code: Option<i32>) -> Self {
+        Self {
+            process_exit_code,
+            ..self
+        }
+    }
+}
+
 fn runtime_error(
     session: &RuntimeSession,
     code: &str,
     stage: &str,
-    method: Option<&str>,
-    document_uri: Option<&str>,
     message: &str,
-    underlying: Option<&str>,
-    process_exit_code: Option<i32>,
+    context: FailureContext<'_>,
 ) -> LspRuntimeError {
     LspRuntimeError {
         code: code.to_string(),
         provider_id: session.provider_id.clone(),
         session_id: session.id.clone(),
         stage: stage.to_string(),
-        method: method.map(ToString::to_string),
-        document_uri: document_uri.map(ToString::to_string),
+        method: context.method.map(ToString::to_string),
+        document_uri: context.document_uri.map(ToString::to_string),
         message: message.to_string(),
-        underlying_message: underlying.map(ToString::to_string),
-        process_exit_code,
+        underlying_message: context.underlying.map(ToString::to_string),
+        process_exit_code: context.process_exit_code,
         plugin_error_code: None,
         details: None,
     }
@@ -5692,11 +5678,9 @@ fn fail_feature_requests(
                 session,
                 code,
                 stage,
-                Some(&pending.method),
-                pending.document_uri.as_deref(),
                 message,
-                None,
-                exit_code,
+                FailureContext::request(&pending.method, pending.document_uri.as_deref())
+                    .with_exit_code(exit_code),
             );
             push_request_event(
                 session,
@@ -5719,11 +5703,8 @@ fn fail_feature_requests(
             session,
             code,
             stage,
-            Some(&waiter.method),
-            None,
             message,
-            None,
-            exit_code,
+            FailureContext::request(&waiter.method, None).with_exit_code(exit_code),
         );
         push_request_event(
             session,

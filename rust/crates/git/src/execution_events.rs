@@ -198,12 +198,25 @@ impl Invocation {
             },
         );
     }
+    fn output_target(&mut self) -> OutputTarget<'_> {
+        OutputTarget {
+            sink: &self.sink,
+            operation_id: &self.operation_id,
+            invocation_id: self.id,
+            pending: &mut self.pending_progress,
+        }
+    }
     pub(super) fn output(&mut self, stream: lithe_git_host::Stream, bytes: &[u8]) {
         if self.redact_configuration.get() && matches!(stream, lithe_git_host::Stream::Stdout) {
             if !bytes.is_empty() && !self.configuration_marker_sent {
                 self.configuration_marker_sent = true;
-                emit_output(&self.sink, &self.operation_id, self.id, &mut self.pending_progress,
-                    "stdout", "[Git configuration values redacted; inspect Git settings for supported values]".into(), false, false);
+                self.output_target().emit(
+                    "stdout",
+                    "[Git configuration values redacted; inspect Git settings for supported values]"
+                        .into(),
+                    false,
+                    false,
+                );
             }
             return;
         }
@@ -215,11 +228,7 @@ impl Invocation {
             self.omitted = true;
             self.stdout = LineDecoder::default();
             self.stderr = LineDecoder::default();
-            emit_output(
-                &self.sink,
-                &self.operation_id,
-                self.id,
-                &mut self.pending_progress,
+            self.output_target().emit(
                 "stderr",
                 "[Further Git output omitted: diagnostic limit]".into(),
                 false,
@@ -231,12 +240,14 @@ impl Invocation {
             lithe_git_host::Stream::Stdout => (&mut self.stdout, "stdout"),
             lithe_git_host::Stream::Stderr => (&mut self.stderr, "stderr"),
         };
-        let sink = &self.sink;
-        let operation_id = &self.operation_id;
-        let id = self.id;
+        let mut target = OutputTarget {
+            sink: &self.sink,
+            operation_id: &self.operation_id,
+            invocation_id: self.id,
+            pending: &mut self.pending_progress,
+        };
         let output_events = &mut self.output_events;
         let omitted = &mut self.omitted;
-        let pending_progress = &mut self.pending_progress;
         decoder.push(bytes, &mut |text, progress, truncated| {
             if *omitted {
                 return;
@@ -244,11 +255,7 @@ impl Invocation {
             *output_events += 1;
             if *output_events > MAX_OUTPUT_EVENTS {
                 *omitted = true;
-                emit_output(
-                    sink,
-                    operation_id,
-                    id,
-                    pending_progress,
+                target.emit(
                     name,
                     "[Further Git output omitted: diagnostic limit]".into(),
                     false,
@@ -256,16 +263,7 @@ impl Invocation {
                 );
                 return;
             }
-            emit_output(
-                sink,
-                operation_id,
-                id,
-                pending_progress,
-                name,
-                text,
-                progress,
-                truncated,
-            );
+            target.emit(name, text, progress, truncated);
         });
     }
     #[cfg(test)]
@@ -282,18 +280,15 @@ impl Invocation {
             self.stdout = LineDecoder::default();
             self.stderr = LineDecoder::default();
         }
+        let mut target = OutputTarget {
+            sink: &self.sink,
+            operation_id: &self.operation_id,
+            invocation_id: self.id,
+            pending: &mut self.pending_progress,
+        };
         for (name, decoder) in [("stdout", &mut self.stdout), ("stderr", &mut self.stderr)] {
             decoder.flush(&mut |text, progress, truncated| {
-                emit_output(
-                    &self.sink,
-                    &self.operation_id,
-                    self.id,
-                    &mut self.pending_progress,
-                    name,
-                    text,
-                    progress,
-                    truncated,
-                )
+                target.emit(name, text, progress, truncated)
             });
         }
         if let Some(pending) = self.pending_progress.take() {
@@ -343,55 +338,56 @@ struct PendingProgress {
     text: String,
     stage: String,
 }
-#[allow(clippy::too_many_arguments)]
-fn emit_output(
-    sink: &EventSink,
-    operation_id: &str,
-    id: u64,
-    pending: &mut Option<PendingProgress>,
-    stream: &'static str,
-    text: String,
-    progress: bool,
-    truncated: bool,
-) {
-    let stage = super::progress::parse(&text)
-        .map(|p| p.stage.to_string())
-        .or_else(|| text.split_once(':').map(|(prefix, _)| prefix.to_string()))
-        .unwrap_or_default();
-    if let Some(previous) = pending.take() {
-        let changed_stage = previous.stage != stage || previous.stream != stream;
-        if (changed_stage || (!progress && stage.is_empty())) && previous.text != text {
-            send(
-                sink,
-                operation_id,
-                Kind::Output {
-                    invocation_id: id,
-                    stream: previous.stream,
-                    text: previous.text,
-                    progress: false,
-                    truncated: false,
-                },
-            );
+/// Where one invocation's output goes: the operation's event sink, and the
+/// progress line still waiting for its final form.
+struct OutputTarget<'a> {
+    sink: &'a EventSink,
+    operation_id: &'a str,
+    invocation_id: u64,
+    pending: &'a mut Option<PendingProgress>,
+}
+
+impl OutputTarget<'_> {
+    fn emit(&mut self, stream: &'static str, text: String, progress: bool, truncated: bool) {
+        let stage = super::progress::parse(&text)
+            .map(|p| p.stage.to_string())
+            .or_else(|| text.split_once(':').map(|(prefix, _)| prefix.to_string()))
+            .unwrap_or_default();
+        if let Some(previous) = self.pending.take() {
+            let changed_stage = previous.stage != stage || previous.stream != stream;
+            if (changed_stage || (!progress && stage.is_empty())) && previous.text != text {
+                send(
+                    self.sink,
+                    self.operation_id,
+                    Kind::Output {
+                        invocation_id: self.invocation_id,
+                        stream: previous.stream,
+                        text: previous.text,
+                        progress: false,
+                        truncated: false,
+                    },
+                );
+            }
         }
+        if progress && !truncated {
+            *self.pending = Some(PendingProgress {
+                stream,
+                text: text.clone(),
+                stage,
+            });
+        }
+        send(
+            self.sink,
+            self.operation_id,
+            Kind::Output {
+                invocation_id: self.invocation_id,
+                stream,
+                text,
+                progress,
+                truncated,
+            },
+        );
     }
-    if progress && !truncated {
-        *pending = Some(PendingProgress {
-            stream,
-            text: text.clone(),
-            stage,
-        });
-    }
-    send(
-        sink,
-        operation_id,
-        Kind::Output {
-            invocation_id: id,
-            stream,
-            text,
-            progress,
-            truncated,
-        },
-    );
 }
 
 fn send(sink: &EventSink, operation_id: &str, kind: Kind<'_>) {

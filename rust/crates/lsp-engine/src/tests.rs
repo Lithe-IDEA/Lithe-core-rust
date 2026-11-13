@@ -572,11 +572,8 @@ fn lifecycle_catalog_identity_preserves_v1_event_without_extra_log() {
             &session,
             "processCleanupFailed",
             "cleanup",
-            None,
-            None,
             "Engine process cleanup failed",
-            None,
-            None,
+            FailureContext::default(),
         );
         let (id, fields) =
             EngineLog::ProcessCleanupFailed.fact(&session.log_identity, &Value::Null, Some(&error));
