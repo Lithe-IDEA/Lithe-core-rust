@@ -9,9 +9,9 @@ use super::manifest::{built_in_git_markers, VcsProviderDeclaration, BUILT_IN_GIT
 use super::model::{is_root_relative, Capabilities};
 use super::requests::{self, Operation};
 use super::roots::{self, Mapping, MarkerSet};
-use crate::plugins::declarative::validate_manifest_value;
-use crate::protocol::{CoreError, ErrorCode};
-use lithe_plugin_model::{decode_payload, is_official_namespace, outcome};
+use super::VcsManifest;
+use lithe_plugin_model::{decode_payload, is_official_namespace, outcome, Validation};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -61,7 +61,13 @@ fn precedes(candidate: &Owner<'_>, current: &Owner<'_>) -> bool {
 /// `vcs.detectRoots`: registered providers, the roots of every VCS with a
 /// provider (and of the built-in Git), ambiguous directories, and which
 /// mappings applied.
-pub(crate) fn vcs_detect_roots_command(payload: Value) -> Result<Value, CoreError> {
+///
+/// `validate_manifest` is the plugin host's manifest validation; manifests it
+/// rejects are reported in `rejected` instead of contributing providers.
+pub fn vcs_detect_roots_command<M: VcsManifest>(
+    payload: Value,
+    validate_manifest: fn(Value) -> Validation<M>,
+) -> Result<Value, CoreError> {
     let request: DetectRootsRequest = decode_payload(payload, "vcs.detectRoots")?;
     let workspace = PathBuf::from(&request.workspace_root);
     if !workspace.is_absolute() || request.workspace_root.contains('\0') {
@@ -77,7 +83,7 @@ pub(crate) fn vcs_detect_roots_command(payload: Value) -> Result<Value, CoreErro
     let mut rejected = Vec::new();
     let mut manifests = Vec::new();
     for (index, plugin) in request.plugins.into_iter().enumerate() {
-        match validate_manifest_value(plugin.manifest) {
+        match validate_manifest(plugin.manifest) {
             Ok(manifest) => manifests.push(manifest),
             Err(error) => rejected.push(json!({ "index": index, "error": error })),
         }
@@ -188,7 +194,7 @@ struct OwnerOfRequest {
 
 /// `vcs.ownerOf`: the root that owns each path under the rule of
 /// `vcs.detectRoots`, so every host assigns files the same way.
-pub(crate) fn vcs_owner_of_command(payload: Value) -> Result<Value, CoreError> {
+pub fn vcs_owner_of_command(payload: Value) -> Result<Value, CoreError> {
     let request: OwnerOfRequest = decode_payload(payload, "vcs.ownerOf")?;
     if request.paths.len() > MAX_OWNER_PATHS {
         return Err(CoreError::new(
@@ -244,7 +250,7 @@ struct DecodeReplyRequest {
 
 /// `vcs.decodeReply`: a provider's reply as the normalized result, or
 /// `plugin.vcs.invalidOutput`.
-pub(crate) fn vcs_decode_reply_command(payload: Value) -> Result<Value, CoreError> {
+pub fn vcs_decode_reply_command(payload: Value) -> Result<Value, CoreError> {
     let request: DecodeReplyRequest = decode_payload(payload, "vcs.decodeReply")?;
     let operation = Operation::parse(&request.operation).ok_or_else(|| {
         CoreError::new(ErrorCode::InvalidRequest, "Unknown VCS operation")

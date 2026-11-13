@@ -145,7 +145,7 @@ pub struct DeclarativePluginManifest {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     build_systems: Vec<crate::build::BuildSystemDeclaration>,
     /// Version control systems the plugin implements. The shape and its
-    /// validation live in `crate::vcs`.
+    /// validation live in `lithe_vcs`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     vcs_providers: Vec<crate::vcs::VcsProviderDeclaration>,
     /// Debug adapters the plugin implements. The shape and its validation
@@ -503,6 +503,16 @@ impl TemplateContext {
 
 fn parse_template(value: &str) -> Option<Vec<TemplatePart<TemplateVariable>>> {
     parse_template_with(value, TemplateVariable::parse)
+}
+
+impl crate::vcs::VcsManifest for DeclarativePluginManifest {
+    fn id(&self) -> &str {
+        &self.id
+    }
+
+    fn vcs_providers(&self) -> &[crate::vcs::VcsProviderDeclaration] {
+        &self.vcs_providers
+    }
 }
 
 /// Validates a raw manifest value and returns its normalized form as JSON, the
@@ -1412,11 +1422,6 @@ impl DeclarativePluginManifest {
     /// Validated debug adapters, in declaration order.
     pub(crate) fn debug_adapters(&self) -> &[crate::debug::adapters::DebugAdapterDeclaration] {
         &self.debug_adapters
-    }
-
-    /// Validated VCS providers, sorted by VCS ID.
-    pub(crate) fn vcs_providers(&self) -> &[crate::vcs::VcsProviderDeclaration] {
-        &self.vcs_providers
     }
 
     /// Host services the plugin's backend may request, sorted; empty without

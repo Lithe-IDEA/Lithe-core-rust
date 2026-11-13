@@ -20,7 +20,7 @@ use std::collections::BTreeSet;
 /// The built-in VCS ID. Git is not part of the unified layer yet, but Core
 /// recognizes its roots so a nested working copy is assigned correctly, and
 /// no plugin may claim the ID.
-pub(crate) const BUILT_IN_GIT: &str = "git";
+pub const BUILT_IN_GIT: &str = "git";
 
 /// Most providers one plugin may declare.
 const MAX_PROVIDERS: usize = 8;
@@ -36,10 +36,10 @@ const MAX_DISPLAY_NAME: usize = 64;
 /// One VCS a plugin implements.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct VcsProviderDeclaration {
+pub struct VcsProviderDeclaration {
     /// Stable lowercase VCS ID (`svn`, `hg`); the provider must answer the
     /// same ID in `initialize`.
-    pub(crate) id: String,
+    pub id: String,
     pub(crate) display_name: String,
     pub(crate) detection: VcsDetection,
     /// Root-relative files or directories whose change means the status may
@@ -50,8 +50,9 @@ pub(crate) struct VcsProviderDeclaration {
     /// with every request. Absent for a provider that needs no client.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) tool: Option<VcsTool>,
+    /// The provider process and the launch fields every plugin server shares.
     #[serde(flatten)]
-    pub(crate) process: ServerProcess,
+    pub process: ServerProcess,
     /// Whether operations may contact a server; shown in the install review.
     pub(crate) may_use_network: bool,
 }
@@ -94,7 +95,7 @@ pub(crate) struct VcsTool {
 
 /// The markers Core uses for the built-in Git support: a `.git` directory,
 /// or the `.git` file of a linked worktree or submodule.
-pub(crate) fn built_in_git_markers() -> Vec<VcsMarker> {
+pub fn built_in_git_markers() -> Vec<VcsMarker> {
     vec![
         VcsMarker {
             name: ".git".to_string(),
@@ -116,14 +117,15 @@ fn is_marker_name(value: &str) -> bool {
 }
 
 /// What the declaration context needs from the manifest.
-pub(crate) struct DeclarationContext<'a> {
-    pub(crate) declared_settings: &'a DeclaredSettings,
+pub struct DeclarationContext<'a> {
+    /// The manifest's validated settings, which launch templates may reference.
+    pub declared_settings: &'a DeclaredSettings,
     /// Whether tool names are host runtimes or tool-definition IDs.
-    pub(crate) runtime_tools: lithe_plugin_model::process::RuntimeTools<'a>,
+    pub runtime_tools: lithe_plugin_model::process::RuntimeTools<'a>,
 }
 
 /// Validates every declaration and sorts them by ID.
-pub(crate) fn validate_declarations(
+pub fn validate_declarations(
     providers: &mut [VcsProviderDeclaration],
     context: &DeclarationContext<'_>,
 ) -> Validation<()> {
@@ -247,7 +249,7 @@ impl VcsProviderDeclaration {
 
     /// Display data and requirements a host keeps for a provider; the
     /// process launch is planned separately.
-    pub(crate) fn descriptor(&self, plugin_id: &str) -> Value {
+    pub fn descriptor(&self, plugin_id: &str) -> Value {
         json!({
             "vcs": self.id,
             "displayName": self.display_name,
@@ -262,14 +264,14 @@ impl VcsProviderDeclaration {
 
 /// Activation event the host raises before starting a VCS provider, once a
 /// root of its VCS was detected.
-pub(crate) fn activation_event(provider: &VcsProviderDeclaration) -> String {
+pub fn activation_event(provider: &VcsProviderDeclaration) -> String {
     format!("onVcsRoot:{}", provider.id)
 }
 
 /// Install-review entries: the provider process with the runtimes it needs.
 /// The tool is part of the provider entry, so pointing it at another client
 /// is a new program the user must approve.
-pub(crate) fn programs(provider: &VcsProviderDeclaration) -> Vec<Value> {
+pub fn programs(provider: &VcsProviderDeclaration) -> Vec<Value> {
     let mut program = provider.process.program(ServerRole::VcsProvider);
     program["vcs"] = json!(provider.id);
     // `tool` already names a runtime launch's runtime.

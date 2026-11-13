@@ -1,6 +1,6 @@
 // Wire constants and validation shared with Lithe's Rust Core
 // (rust/crates/core/src/lsp/interface/plugin_function.rs and
-// rust/crates/core/src/vcs/ in the Lithe repository). The SDK checks the
+// rust/crates/vcs/ in the Lithe repository). The SDK checks the
 // same rules locally so a plugin author sees a mistake when registering a
 // handler instead of as a refused session at runtime.
 

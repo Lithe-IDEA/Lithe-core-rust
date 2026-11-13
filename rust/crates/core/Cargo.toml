@@ -31,6 +31,7 @@ lithe-request-context = { path = "../request-context" }
 lithe-terminal = { path = "../terminal" }
 lithe-text = { path = "../text" }
 lithe-toolchain = { path = "../toolchain" }
+lithe-vcs = { path = "../vcs" }
 lithe-workspace = { path = "../workspace" }
 lithe-remote = { path = "../remote", default-features = false, features = ["client"] }
 ammonia = "4.1.4"

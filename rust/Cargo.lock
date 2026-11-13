@@ -902,6 +902,7 @@ dependencies = [
  "lithe-terminal",
  "lithe-text",
  "lithe-toolchain",
+ "lithe-vcs",
  "lithe-workspace",
  "quick-xml",
  "rand",
@@ -1095,6 +1096,16 @@ dependencies = [
  "lithe-plugin-model",
  "lithe-protocol",
  "regex",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-vcs"
+version = "0.1.0"
+dependencies = [
+ "lithe-plugin-model",
+ "lithe-protocol",
  "serde",
  "serde_json",
 ]

@@ -21,9 +21,18 @@ mod model;
 mod requests;
 mod roots;
 
-pub(crate) use commands::*;
-pub(crate) use manifest::{
+pub use commands::{vcs_decode_reply_command, vcs_detect_roots_command, vcs_owner_of_command};
+pub use manifest::{
     activation_event, programs, validate_declarations, DeclarationContext, VcsProviderDeclaration,
 };
-pub(crate) use model::{is_vcs_id, negotiated_capabilities, Capabilities};
-pub(crate) use requests::{is_vcs_method, plan, Operation};
+pub use model::{is_vcs_id, negotiated_capabilities, Capabilities};
+pub use requests::{is_vcs_method, plan, Operation, PlannedRequest};
+
+/// What `vcs.detectRoots` reads from one plugin manifest that the plugin host
+/// validated; the host's manifest type implements it.
+pub trait VcsManifest {
+    /// The plugin ID.
+    fn id(&self) -> &str;
+    /// The manifest's validated `vcsProviders`, sorted by VCS ID.
+    fn vcs_providers(&self) -> &[VcsProviderDeclaration];
+}

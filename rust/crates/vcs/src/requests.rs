@@ -9,8 +9,8 @@
 //! the VCS client with them.
 
 use super::model::{self, Capabilities, MAX_HISTORY_PAGE, MAX_MESSAGE_BYTES};
-use crate::protocol::{CoreError, ErrorCode};
 use lithe_plugin_model::Validation;
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -24,17 +24,28 @@ const DEFAULT_HISTORY_LIMIT: usize = 100;
 
 /// One operation of protocol version 1.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Operation {
+pub enum Operation {
+    /// `lithe/vcs/status`: file status of the working copy.
     Status,
+    /// `lithe/vcs/baseContent`: a file's content at the base revision.
     BaseContent,
+    /// `lithe/vcs/history`: one page of the root's history.
     History,
+    /// `lithe/vcs/fileHistory`: one page of a file's history.
     FileHistory,
+    /// `lithe/vcs/annotate`: the revision that last changed each line.
     Annotate,
+    /// `lithe/vcs/checkin`: records changes with a message.
     Checkin,
+    /// `lithe/vcs/rollback`: discards local changes to the named paths.
     Rollback,
+    /// `lithe/vcs/update`: updates the working copy to the latest or a named revision.
     Update,
+    /// `lithe/vcs/fileOperation`: adds, removes or moves files.
     FileOperation,
+    /// `lithe/vcs/resolve`: marks the named conflicted paths resolved.
     Resolve,
+    /// `lithe/vcs/cleanup`: recovers the working copy after an interrupted operation.
     Cleanup,
 }
 
@@ -56,7 +67,7 @@ pub(crate) const OPERATIONS: [Operation; 11] = [
 impl Operation {
     /// Parses the operation name a host sends, which is also the last
     /// segment of its method.
-    pub(crate) fn parse(name: &str) -> Option<Self> {
+    pub fn parse(name: &str) -> Option<Self> {
         OPERATIONS
             .into_iter()
             .find(|operation| operation.name() == name)
@@ -107,7 +118,7 @@ impl Operation {
 
 /// Whether `method` belongs to the protocol; its replies are wrapped like
 /// command results so no LSP normalizer reinterprets them.
-pub(crate) fn is_vcs_method(method: &str) -> bool {
+pub fn is_vcs_method(method: &str) -> bool {
     OPERATIONS
         .into_iter()
         .any(|operation| operation.method() == method)
@@ -308,15 +319,17 @@ fn operation_params(operation: Operation, value: Value) -> Result<Value, CoreErr
 
 /// A request ready to be written to a provider session.
 #[derive(Debug)]
-pub(crate) struct PlannedRequest {
-    pub(crate) method: &'static str,
-    pub(crate) params: Value,
+pub struct PlannedRequest {
+    /// The provider method, `lithe/vcs/<operation>`.
+    pub method: &'static str,
+    /// The checked parameters, including the root and client tool.
+    pub params: Value,
 }
 
 /// Plans one request. `root` is the native path of the working-copy root and
 /// `tool` the client executable the host resolved for the provider; both are
 /// sent with every request so the provider never searches for either.
-pub(crate) fn plan(
+pub fn plan(
     operation: Operation,
     root: &str,
     tool: Option<&str>,

@@ -647,9 +647,12 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             "Invalid test outcome merge request",
             crate::build::merge_test_outcomes,
         ),
-        CoreCommand::VcsDetectRoots => {
-            plugin_response(id, parsed.payload, crate::vcs::vcs_detect_roots_command)
-        }
+        CoreCommand::VcsDetectRoots => plugin_response(id, parsed.payload, |payload| {
+            crate::vcs::vcs_detect_roots_command(
+                payload,
+                crate::plugins::declarative::validate_manifest_value,
+            )
+        }),
         CoreCommand::VcsOwnerOf => {
             plugin_response(id, parsed.payload, crate::vcs::vcs_owner_of_command)
         }

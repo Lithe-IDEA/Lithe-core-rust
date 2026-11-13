@@ -11,7 +11,7 @@ mod protocol;
 mod runtime;
 /// Shared toolchain policy, independent of plugin transport and native discovery.
 pub use lithe_toolchain as toolchain;
-mod vcs;
+use lithe_vcs as vcs;
 
 pub use protocol::{
     CoreCommand, CoreError, CoreEvent, CoreRequest, CoreResponse, ErrorCode, ResponseData,

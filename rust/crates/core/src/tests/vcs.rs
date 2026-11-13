@@ -4,7 +4,9 @@
 //! the Subversion provider manifest fixture.
 
 use super::support::temporary_root;
-use crate::plugins::declarative::{language_server_launch_plan_command, validate_command};
+use crate::plugins::declarative::{
+    language_server_launch_plan_command, validate_command, validate_manifest_value,
+};
 use crate::plugins::marketplace::install_review_command;
 use crate::protocol::ErrorCode;
 use crate::vcs::{
@@ -215,11 +217,14 @@ fn root_detection_matches_the_contract_cases() {
             }
         }
         let workspace = sandbox.directory(case["workspace"].as_str().unwrap_or(""));
-        let outcome = vcs_detect_roots_command(json!({
-            "workspaceRoot": workspace.to_string_lossy(),
-            "plugins": [{ "manifest": svn_provider() }],
-            "mappings": case.get("mappings").cloned().unwrap_or(json!([])),
-        }))
+        let outcome = vcs_detect_roots_command(
+            json!({
+                "workspaceRoot": workspace.to_string_lossy(),
+                "plugins": [{ "manifest": svn_provider() }],
+                "mappings": case.get("mappings").cloned().unwrap_or(json!([])),
+            }),
+            validate_manifest_value,
+        )
         .unwrap();
         assert_eq!(outcome["status"], "ok", "{name}: {outcome}");
         let detection = &outcome["detection"];
@@ -296,13 +301,16 @@ fn detection_lists_providers_and_reports_conflicts_and_rejections() {
         vec![community.clone(), broken.clone(), svn_provider()],
         vec![svn_provider(), broken.clone(), community.clone()],
     ] {
-        let outcome = vcs_detect_roots_command(json!({
-            "workspaceRoot": sandbox.0.to_string_lossy(),
-            "plugins": plugins
-                .into_iter()
-                .map(|manifest| json!({ "manifest": manifest }))
-                .collect::<Vec<_>>(),
-        }))
+        let outcome = vcs_detect_roots_command(
+            json!({
+                "workspaceRoot": sandbox.0.to_string_lossy(),
+                "plugins": plugins
+                    .into_iter()
+                    .map(|manifest| json!({ "manifest": manifest }))
+                    .collect::<Vec<_>>(),
+            }),
+            validate_manifest_value,
+        )
         .unwrap();
         let detection = &outcome["detection"];
         let providers = detection["providers"].as_array().unwrap();
@@ -330,8 +338,11 @@ fn detection_lists_providers_and_reports_conflicts_and_rejections() {
         assert_eq!(rejected[0]["index"], 1);
     }
 
-    let error = vcs_detect_roots_command(json!({ "workspaceRoot": "relative/path" }))
-        .expect_err("a relative workspace is a malformed call");
+    let error = vcs_detect_roots_command(
+        json!({ "workspaceRoot": "relative/path" }),
+        validate_manifest_value,
+    )
+    .expect_err("a relative workspace is a malformed call");
     assert!(matches!(error.code, ErrorCode::InvalidRequest), "{error:?}");
 }
 

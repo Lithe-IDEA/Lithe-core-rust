@@ -95,7 +95,7 @@ const STAGING: &[&str] = &["partial", "staged", "unstaged"];
 const REVISION_KINDS: &[&str] = &["hash", "number", "opaque"];
 
 /// Capabilities a provider negotiated, by ID, with their versions.
-pub(crate) type Capabilities = BTreeMap<String, u64>;
+pub type Capabilities = BTreeMap<String, u64>;
 
 fn invalid_output(message: impl Into<String>) -> PluginRejection {
     PluginRejection::new(INVALID_OUTPUT, message)
@@ -110,7 +110,7 @@ pub(crate) fn is_capability(id: &str) -> bool {
 /// understands, or `None` when a required one is missing or the value is
 /// not an object. Unknown IDs and versions are dropped: a newer provider may
 /// offer more, and the host then hides only what Core cannot validate.
-pub(crate) fn negotiated_capabilities(value: &Value) -> Option<Capabilities> {
+pub fn negotiated_capabilities(value: &Value) -> Option<Capabilities> {
     let offered = value.as_object()?;
     let capabilities: Capabilities = offered
         .iter()
@@ -126,7 +126,7 @@ pub(crate) fn negotiated_capabilities(value: &Value) -> Option<Capabilities> {
 
 /// Whether a stable VCS ID is well formed: a lowercase letter, then up to
 /// 31 lowercase letters, digits, or hyphens (`git`, `svn`, `hg`).
-pub(crate) fn is_vcs_id(value: &str) -> bool {
+pub fn is_vcs_id(value: &str) -> bool {
     let mut characters = value.chars();
     characters
         .next()
