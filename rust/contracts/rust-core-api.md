@@ -2114,6 +2114,16 @@ deduplicates by reference and offset, keeps the set in the session, and sends DA
 session and never persist or replay it: an address is only valid for one run of
 one process.
 
+`debug.setBreakpointsMuted { sessionId, muted }` mutes or unmutes every
+breakpoint stored for one session and returns the session update. While muted,
+Core keeps the stored source, exception, function, instruction and data sets and
+keeps accepting replacements, but sends each kind empty, so the adapter stops on
+none of them. Toggling resends, after `initialized`, only the kinds that hold an
+enabled entry (source paths one by one); repeating the current state sends
+nothing. A child session starts muted when its parent is. Clients call it for
+every session, including one they start while muted, right after
+`debug.createSession` and before its first breakpoint set.
+
 `debug.execute` accepts an optional `granularity` of `statement`, `line`, or
 `instruction` on `next`, `stepIn`, `stepOut`, and `stepBack`. Core forwards it as
 the DAP `granularity` argument only when the adapter advertised
@@ -3336,6 +3346,23 @@ independent nested reactors retain their own reactor working directory and
 module selector. Generated fingerprints include both project inputs and the
 detector revision; either changing marks the detected layer stale and requires
 regeneration.
+
+`runConfig.decideTitleAction { action, trigger, currentFileChosen, settled, configuration? }`
+decides what a press on the title bar's Run or Debug button does. `action` is
+`run` or `debug`; `trigger` is `press`, or `settled` when the host asks again for
+a press it kept. `settled` says the configurations are read (detection answered,
+no model is loading and the configurations were resolved since). `configuration`
+describes the configuration the title bar shows, absent when the project has
+none: `{ kind: "unsupported" }` (it does not start through a build provider),
+`{ kind: "instanceMissing" }`, `{ kind: "modelNotLoaded", failed }` or
+`{ kind: "modelLoaded", debuggable }` (its run declares a debug adapter). It
+returns `{ kind }`: `currentFile`, `wait` (keep the press until the
+configurations are read), `loadModel` (load the instance's model and keep the
+press), `unsupported`, `targetMissing`, `modelFailed`, `run`, `debug` or
+`notDebuggable`. A model whose last load failed is loaded again only on a press,
+so a settled answer that failed again ends with `modelFailed` instead of looping.
+Hosts own the loads, the kept press and the notices.
+Cases: `rust/fixtures/run-configuration/title-action-v1.json`.
 
 `runConfig.selectContextConfiguration` accepts a provider-supplied `sourcePath`
 and opaque `symbol`, a `preferredId`, platform path-comparison policy, and an
@@ -5634,6 +5661,26 @@ disassembles ends the direction (`exhausted`), otherwise the refused window's
 message is returned. Transport failures are never treated as a boundary.
 Addresses are never parsed or offset by Core or hosts. Hosts keep the viewport,
 scroll anchor and rendering. Cases: `rust/fixtures/debug/disassembly-paging-v1.json`.
+
+### Memory window
+
+`debug.planMemoryWindow { address }` places the memory view's bounded `readMemory`
+window at the address the user typed or the selected frame's instruction pointer.
+It returns `{ address, request }`, where `request` is the exact DAP `readMemory`
+arguments `{ memoryReference, offset, count }` and `address` is what the address
+field shows. An address written as a number (`0x` hexadecimal or decimal, as DAP
+writes a `readMemory` reply's `address`) is shown in lowercase `0x` hexadecimal and
+read from the 64-byte boundary at or below it, so its byte sits in its row for every
+bytes-per-row choice (8, 16, 32 and 64). Any other reference is opaque: it is
+trimmed, read from offset 0 and never parsed. Empty, multi-line or overlong
+addresses are rejected. `debug.locateMemoryWindow { window, start?, length }`
+takes the window unchanged with the reply's `address` and returned byte count and
+returns `{ base?, mark? }`: `base` is the first returned byte's address in lowercase
+`0x` hexadecimal (rows are labelled with their offset added to it, or with their
+offset in the window when it is absent) and `mark` is the index of the byte at the
+address read, absent when the reply does not hold it. A window that does not match
+its address is rejected. Addresses cross the protocol as strings. Hosts own the
+transport, rows, radix and scrolling. Cases: `rust/fixtures/debug/memory-window-v1.json`.
 
 ### Windows source-breakpoint relocation
 

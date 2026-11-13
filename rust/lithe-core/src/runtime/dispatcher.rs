@@ -1609,6 +1609,24 @@ fn execute_parsed(mut parsed: CoreRequest) -> CoreResponse {
             "Invalid debug disassembly page reduction request",
             crate::debug::reduce_disassembly_page,
         ),
+        CoreCommand::DebugPlanMemoryWindow => reducer_response(
+            id,
+            parsed.payload,
+            "Invalid debug memory window request",
+            crate::debug::plan_memory_window,
+        ),
+        CoreCommand::DebugLocateMemoryWindow => reducer_response(
+            id,
+            parsed.payload,
+            "Invalid debug memory window location request",
+            crate::debug::locate_memory_window,
+        ),
+        CoreCommand::DebugSetBreakpointsMuted => reducer_response(
+            id,
+            parsed.payload,
+            "Invalid debug set-breakpoints-muted request",
+            crate::debug::set_breakpoints_muted,
+        ),
         CoreCommand::DebugRelocateBreakpoints => {
             match serde_json::from_value::<crate::debug::RelocateBreakpointsRequest>(parsed.payload)
                 .map_err(|error| {
@@ -2547,6 +2565,20 @@ fn execute_parsed(mut parsed: CoreRequest) -> CoreResponse {
             {
                 Ok(data) => CoreResponse::success(id, data),
                 Err(error) => CoreResponse::failure(id, error),
+            }
+        }
+        CoreCommand::RunConfigDecideTitleAction => {
+            match serde_json::from_value::<crate::execution::TitleActionRequest>(parsed.payload) {
+                Ok(request) => CoreResponse::success(
+                    id,
+                    serde_json::to_value(crate::execution::decide_title_action(request))
+                        .expect("Title action decisions always encode"),
+                ),
+                Err(error) => CoreResponse::failure(
+                    id,
+                    CoreError::new(ErrorCode::InvalidRequest, "Invalid title action request")
+                        .with_details(error.to_string()),
+                ),
             }
         }
         CoreCommand::RunConfigSelectContextConfiguration => {
