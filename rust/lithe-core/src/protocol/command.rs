@@ -435,6 +435,12 @@ pub enum CoreCommand {
     DebugDataBreakpointInfo,
     /// Replaces data breakpoints for one debug session (`debug.setDataBreakpoints`).
     DebugSetDataBreakpoints,
+    /// Mutes or unmutes every breakpoint of one debug session (`debug.setBreakpointsMuted`).
+    DebugSetBreakpointsMuted,
+    /// Places the memory view's readMemory window at an address (`debug.planMemoryWindow`).
+    DebugPlanMemoryWindow,
+    /// Finds the byte read at in one readMemory reply (`debug.locateMemoryWindow`).
+    DebugLocateMemoryWindow,
     /// Replaces one visible variable value (`debug.setVariable`).
     DebugSetVariable,
     /// Cancels or times out one pending debug operation (`debug.cancelOperation`).
@@ -561,6 +567,8 @@ pub enum CoreCommand {
     RunConfigResolve,
     /// Selects a configuration for a provider-supplied context identity.
     RunConfigSelectContextConfiguration,
+    /// Decides what a press on the title bar's Run or Debug button does (`runConfig.decideTitleAction`).
+    RunConfigDecideTitleAction,
     /// Persists editable run options (`runConfig.updateOptions`).
     RunConfigUpdateOptions,
     /// Replaces generic local tool preferences while preserving existing Run data.
@@ -1009,6 +1017,9 @@ impl CoreCommand {
             "debug.setInstructionBreakpoints" => Some(Self::DebugSetInstructionBreakpoints),
             "debug.dataBreakpointInfo" => Some(Self::DebugDataBreakpointInfo),
             "debug.setDataBreakpoints" => Some(Self::DebugSetDataBreakpoints),
+            "debug.setBreakpointsMuted" => Some(Self::DebugSetBreakpointsMuted),
+            "debug.planMemoryWindow" => Some(Self::DebugPlanMemoryWindow),
+            "debug.locateMemoryWindow" => Some(Self::DebugLocateMemoryWindow),
             "debug.setVariable" => Some(Self::DebugSetVariable),
             "debug.cancelOperation" => Some(Self::DebugCancelOperation),
             "debug.execute" => Some(Self::DebugExecute),
@@ -1069,6 +1080,7 @@ impl CoreCommand {
             "runConfig.selectContextConfiguration" => {
                 Some(Self::RunConfigSelectContextConfiguration)
             }
+            "runConfig.decideTitleAction" => Some(Self::RunConfigDecideTitleAction),
             "runConfig.updateOptions" => Some(Self::RunConfigUpdateOptions),
             "runConfig.updateToolPreferences" => Some(Self::RunConfigUpdateToolPreferences),
             "runConfig.saveEditorChanges" => Some(Self::RunConfigSaveEditorChanges),
@@ -1290,6 +1302,9 @@ mod tests {
             "debug.setInstructionBreakpoints",
             "debug.dataBreakpointInfo",
             "debug.setDataBreakpoints",
+            "debug.setBreakpointsMuted",
+            "debug.planMemoryWindow",
+            "debug.locateMemoryWindow",
             "debug.setVariable",
             "debug.cancelOperation",
             "debug.execute",

@@ -452,6 +452,14 @@ pub struct SetDataBreakpointsRequest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Mutes or unmutes every breakpoint stored for one session.
+pub struct SetBreakpointsMutedRequest {
+    pub session_id: String,
+    pub muted: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 /// Replaces one visible variable value in its adapter-owned parent container.
 pub struct SetVariableRequest {

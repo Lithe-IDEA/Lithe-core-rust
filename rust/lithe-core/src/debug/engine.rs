@@ -50,6 +50,9 @@ struct DebugSession {
     function_breakpoints: Vec<FunctionBreakpoint>,
     instruction_breakpoints: Vec<InstructionBreakpoint>,
     data_breakpoints: Vec<DataBreakpoint>,
+    /// Muted breakpoints stay stored but every kind is sent empty, so the adapter stops on
+    /// none of them; a child starts muted when its parent is.
+    breakpoints_muted: bool,
     supports_run_in_terminal_request: bool,
     pending_run_in_terminal_requests: BTreeMap<String, i64>,
     supports_start_debugging_request: bool,
@@ -137,6 +140,7 @@ pub(crate) fn create_session(
             "A debug session with this sessionId already exists.",
         ));
     }
+    let mut breakpoints_muted = false;
     if let Some(parent_id) = &request.parent_session_id {
         validate_identifier(parent_id, "parentSessionId")?;
         let parent = sessions
@@ -150,6 +154,7 @@ pub(crate) fn create_session(
                 "A child debug session needs a running parent session.",
             ));
         }
+        breakpoints_muted = parent.breakpoints_muted;
     }
     let mut session = DebugSession {
         id: request.session_id.clone(),
@@ -176,6 +181,7 @@ pub(crate) fn create_session(
         function_breakpoints: Vec::new(),
         instruction_breakpoints: Vec::new(),
         data_breakpoints: Vec::new(),
+        breakpoints_muted,
         supports_run_in_terminal_request: request.supports_run_in_terminal_request,
         pending_run_in_terminal_requests: BTreeMap::new(),
         supports_start_debugging_request: request.supports_start_debugging_request,
@@ -523,6 +529,26 @@ pub(crate) fn set_data_breakpoints(
         session.data_breakpoints = request.breakpoints;
         if session.did_receive_initialized && session.capabilities.supports_data_breakpoints {
             session.send_data_breakpoints()?;
+        }
+        Ok(session.take_update())
+    })
+}
+
+/// Mutes or unmutes every breakpoint of one session (`debug.setBreakpointsMuted`).
+///
+/// Muting keeps the stored source, exception, function, instruction and data breakpoints
+/// and sends each set empty; unmuting sends them as stored again. Only a set holding an
+/// enabled breakpoint is resent, since muting does not change what any other set sends.
+/// Before DAP initialization the state is only stored and applies to the first sets sent.
+pub(crate) fn set_breakpoints_muted(
+    request: SetBreakpointsMutedRequest,
+) -> Result<DebugSessionUpdate, CoreError> {
+    with_session(&request.session_id, |session| {
+        if session.breakpoints_muted != request.muted {
+            session.breakpoints_muted = request.muted;
+            if session.did_receive_initialized {
+                session.resend_enabled_breakpoints()?;
+            }
         }
         Ok(session.take_update())
     })
@@ -1073,6 +1099,57 @@ impl DebugSession {
         )
     }
 
+    /// Whether a stored breakpoint with this enabled state goes to the adapter.
+    fn sends(&self, enabled: bool) -> bool {
+        enabled && !self.breakpoints_muted
+    }
+
+    /// Sends again every set holding an enabled breakpoint, after muting changed what
+    /// those sets send. An adapter is never sent a kind it did not declare.
+    fn resend_enabled_breakpoints(&mut self) -> Result<(), CoreError> {
+        if self
+            .exception_breakpoints
+            .iter()
+            .any(|breakpoint| breakpoint.enabled)
+        {
+            self.send_exception_breakpoints()?;
+        }
+        if self.capabilities.supports_function_breakpoints
+            && self
+                .function_breakpoints
+                .iter()
+                .any(|breakpoint| breakpoint.enabled)
+        {
+            self.send_function_breakpoints()?;
+        }
+        if self.capabilities.supports_instruction_breakpoints
+            && self
+                .instruction_breakpoints
+                .iter()
+                .any(|breakpoint| breakpoint.enabled)
+        {
+            self.send_instruction_breakpoints()?;
+        }
+        if self.capabilities.supports_data_breakpoints
+            && self
+                .data_breakpoints
+                .iter()
+                .any(|breakpoint| breakpoint.enabled)
+        {
+            self.send_data_breakpoints()?;
+        }
+        let sources: Vec<String> = self
+            .breakpoints
+            .iter()
+            .filter(|(_, points)| points.iter().any(|breakpoint| breakpoint.enabled))
+            .map(|(path, _)| path.clone())
+            .collect();
+        for source in sources {
+            self.send_breakpoints(&source)?;
+        }
+        Ok(())
+    }
+
     fn send_breakpoints(&mut self, source_path: &str) -> Result<(), CoreError> {
         let generation = self
             .breakpoint_generations
@@ -1087,7 +1164,7 @@ impl DebugSession {
             .unwrap_or_default();
         let active: Vec<SourceBreakpoint> = requested
             .iter()
-            .filter(|breakpoint| breakpoint.enabled)
+            .filter(|breakpoint| self.sends(breakpoint.enabled))
             .cloned()
             .collect();
         let breakpoints: Vec<Value> = active
@@ -1129,7 +1206,7 @@ impl DebugSession {
         let active: Vec<&ExceptionBreakpoint> = self
             .exception_breakpoints
             .iter()
-            .filter(|breakpoint| breakpoint.enabled)
+            .filter(|breakpoint| self.sends(breakpoint.enabled))
             .collect();
         let filters: Vec<&str> = active
             .iter()
@@ -1166,7 +1243,7 @@ impl DebugSession {
         let requested: Vec<FunctionBreakpoint> = self
             .function_breakpoints
             .iter()
-            .filter(|breakpoint| breakpoint.enabled)
+            .filter(|breakpoint| self.sends(breakpoint.enabled))
             .cloned()
             .collect();
         let breakpoints: Vec<Value> = requested
@@ -1194,7 +1271,7 @@ impl DebugSession {
         let requested: Vec<InstructionBreakpoint> = self
             .instruction_breakpoints
             .iter()
-            .filter(|breakpoint| breakpoint.enabled)
+            .filter(|breakpoint| self.sends(breakpoint.enabled))
             .cloned()
             .collect();
         let breakpoints: Vec<Value> = requested
@@ -1226,7 +1303,7 @@ impl DebugSession {
         let requested: Vec<DataBreakpoint> = self
             .data_breakpoints
             .iter()
-            .filter(|breakpoint| breakpoint.enabled)
+            .filter(|breakpoint| self.sends(breakpoint.enabled))
             .cloned()
             .collect();
         let breakpoints: Vec<Value> = requested
@@ -7082,5 +7159,181 @@ mod tests {
             error.details.as_deref(),
             Some("features.hotCodeReplace.request")
         );
+    }
+
+    fn sent(update: &DebugSessionUpdate) -> Vec<(String, Value)> {
+        update
+            .outbound_frames
+            .iter()
+            .map(|frame| {
+                let message = decode_frame(frame);
+                (
+                    message["command"].as_str().unwrap_or_default().to_string(),
+                    message["arguments"].clone(),
+                )
+            })
+            .collect()
+    }
+
+    // Muting sends every kind of stored breakpoint empty, the adapter's default exception
+    // filters included, and unmuting sends them as stored; a child starts muted.
+    #[test]
+    fn muting_empties_every_breakpoint_kind_and_children_inherit_it() {
+        let parent = "debug-mute-parent";
+        let child = "debug-mute-child";
+        struct Cleanup;
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                for session_id in ["debug-mute-child", "debug-mute-parent"] {
+                    // log-exempt: Expected absence if the test already disposed this process-free session.
+                    let _ = destroy_session(SessionRequest {
+                        session_id: session_id.into(),
+                    });
+                }
+            }
+        }
+        let _cleanup = Cleanup;
+        let capabilities = json!({
+            "supportsFunctionBreakpoints": true,
+            "supportsInstructionBreakpoints": true,
+            "supportsDataBreakpoints": true,
+            "exceptionBreakpointFilters": [{
+                "filter": "uncaught",
+                "label": "Uncaught Exceptions",
+                "default": true
+            }]
+        });
+        create_session(child_request(parent, None)).unwrap();
+        receive_messages(
+            parent,
+            vec![response_message(1, "initialize", capabilities.clone())],
+        );
+        let line = |line: i64, enabled: bool| SourceBreakpoint {
+            line,
+            column: None,
+            enabled,
+            condition: None,
+            hit_condition: None,
+            log_message: None,
+        };
+        set_breakpoints(SetBreakpointsRequest {
+            session_id: parent.into(),
+            source_path: "/workspace/main.c".into(),
+            breakpoints: vec![line(4, true), line(9, false)],
+        })
+        .unwrap();
+        set_breakpoints(SetBreakpointsRequest {
+            session_id: parent.into(),
+            source_path: "/workspace/off.c".into(),
+            breakpoints: vec![line(2, false)],
+        })
+        .unwrap();
+        set_function_breakpoints(SetFunctionBreakpointsRequest {
+            session_id: parent.into(),
+            breakpoints: vec![FunctionBreakpoint {
+                name: "main".into(),
+                enabled: true,
+                condition: None,
+                hit_condition: None,
+            }],
+        })
+        .unwrap();
+        set_instruction_breakpoints(SetInstructionBreakpointsRequest {
+            session_id: parent.into(),
+            breakpoints: vec![InstructionBreakpoint {
+                instruction_reference: "0x1000".into(),
+                offset: None,
+                enabled: true,
+                condition: None,
+                hit_condition: None,
+            }],
+        })
+        .unwrap();
+        let configured = receive_messages(
+            parent,
+            vec![json!({"seq": 102, "type": "event", "event": "initialized"})],
+        );
+        assert_eq!(sent(&configured)[0].1["filters"], json!(["uncaught"]));
+
+        let muted = set_breakpoints_muted(SetBreakpointsMutedRequest {
+            session_id: parent.into(),
+            muted: true,
+        })
+        .unwrap();
+        // The data set and the file holding only a disabled line send the same either way.
+        assert_eq!(
+            sent(&muted),
+            vec![
+                ("setExceptionBreakpoints".into(), json!({"filters": []})),
+                ("setFunctionBreakpoints".into(), json!({"breakpoints": []})),
+                (
+                    "setInstructionBreakpoints".into(),
+                    json!({"breakpoints": []})
+                ),
+                (
+                    "setBreakpoints".into(),
+                    json!({
+                        "source": {"name": "main.c", "path": "/workspace/main.c"},
+                        "breakpoints": [],
+                        "sourceModified": false
+                    })
+                ),
+            ]
+        );
+        let again = set_breakpoints_muted(SetBreakpointsMutedRequest {
+            session_id: parent.into(),
+            muted: true,
+        })
+        .unwrap();
+        assert!(again.outbound_frames.is_empty());
+        // A set replaced while muted is stored and sent empty.
+        let replaced = set_function_breakpoints(SetFunctionBreakpointsRequest {
+            session_id: parent.into(),
+            breakpoints: vec![FunctionBreakpoint {
+                name: "worker".into(),
+                enabled: true,
+                condition: None,
+                hit_condition: None,
+            }],
+        })
+        .unwrap();
+        assert_eq!(sent(&replaced)[0].1, json!({"breakpoints": []}));
+
+        create_session(child_request(child, Some(parent))).unwrap();
+        receive_messages(child, vec![response_message(1, "initialize", capabilities)]);
+        set_breakpoints(SetBreakpointsRequest {
+            session_id: child.into(),
+            source_path: "/workspace/main.c".into(),
+            breakpoints: vec![line(4, true)],
+        })
+        .unwrap();
+        let child_configured = receive_messages(
+            child,
+            vec![json!({"seq": 102, "type": "event", "event": "initialized"})],
+        );
+        let child_sent = sent(&child_configured);
+        assert_eq!(
+            child_sent[0],
+            ("setExceptionBreakpoints".into(), json!({"filters": []}))
+        );
+        assert!(child_sent
+            .iter()
+            .filter(|(command, _)| command == "setBreakpoints")
+            .all(|(_, arguments)| arguments["breakpoints"] == json!([])));
+
+        let unmuted = set_breakpoints_muted(SetBreakpointsMutedRequest {
+            session_id: parent.into(),
+            muted: false,
+        })
+        .unwrap();
+        let unmuted = sent(&unmuted);
+        assert_eq!(unmuted[0].1["filters"], json!(["uncaught"]));
+        assert_eq!(unmuted[1].1["breakpoints"][0]["name"], "worker");
+        assert_eq!(
+            unmuted[2].1["breakpoints"][0]["instructionReference"],
+            "0x1000"
+        );
+        assert_eq!(unmuted[3].1["breakpoints"], json!([{"line": 4}]));
+        assert_eq!(unmuted.len(), 4);
     }
 }
