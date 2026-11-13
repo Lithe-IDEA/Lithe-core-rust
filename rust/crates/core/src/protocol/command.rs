@@ -57,201 +57,25 @@ pub enum CoreCommand {
     Ping,
     /// Matches host-localized action text without workspace I/O (`search.actions`).
     SearchActions,
-    /// Budgets diff prefixes before crossing the native boundary (`ai.commitInputBudget`).
-    AiCommitInputBudget,
-    /// Plans a credential-free commit message request (`ai.planCommit`).
-    AiPlanCommit,
-    /// Decodes a provider commit message response (`ai.decodeCommitMessage`).
-    AiDecodeCommitMessage,
-    /// Names the native files of one AI CLI configuration source (`ai.configuration.sources`).
-    AiConfigurationSources,
-    /// Parses AI CLI configuration into credential-free metadata (`ai.configuration.parse`).
-    AiConfigurationParse,
-    /// Plans a credential-free pull request description request (`ai.pullRequest.plan`).
-    AiPullRequestPlan,
-    /// Decodes a strict pull request title and description (`ai.pullRequest.decode`).
-    AiPullRequestDecode,
-    /// Plans a credential-free inline edit request (`ai.inlineEdit.plan`).
-    AiInlineEditPlan,
-    /// Decodes the replacement text of an inline edit response (`ai.inlineEdit.decode`).
-    AiInlineEditDecode,
-    /// Validates and normalizes a declarative plugin manifest (`plugins.declarative.validate`).
-    PluginsDeclarativeValidate,
-    /// Validates native plugin UI data with declaration identity and node budgets.
-    PluginsNativeUIValidateData,
-    /// Registers a plugin page for a web tool window (`plugins.web.open`).
-    PluginsWebOpen,
-    /// Forgets a plugin page and lists its calls to cancel (`plugins.web.close`).
-    PluginsWebClose,
-    /// Decides how a plugin page request is served (`plugins.web.resource`).
-    PluginsWebResource,
-    /// Prepends the policy and bridge to a page document (`plugins.web.document`).
-    PluginsWebDocument,
-    /// Checks one bridge message of a plugin page (`plugins.web.request`).
-    PluginsWebRequest,
-    /// Frames the host's answer to a bridge action (`plugins.web.reply`).
-    PluginsWebReply,
-    /// Frames an event for a plugin page (`plugins.web.event`).
-    PluginsWebEvent,
-    /// Describes the Core-owned backend host-method catalog.
-    PluginsHostApiDescribe,
-    /// Rechecks a backend host request against Core's grant rules.
-    PluginsHostApiAuthorize,
-    /// Expands a declarative plugin's run template (`plugins.declarative.runPlan`).
-    PluginsDeclarativeRunPlan,
-    /// Lists a declarative plugin's workspace and file tests (`plugins.declarative.discoverTests`).
-    PluginsDeclarativeDiscoverTests,
-    /// Expands a declarative plugin's test template (`plugins.declarative.testPlan`).
-    PluginsDeclarativeTestPlan,
-    /// Expands a declarative plugin's language-server launch (`plugins.declarative.languageServerLaunchPlan`).
-    PluginsDeclarativeLanguageServerLaunchPlan,
-    /// Checks a plugin backend's language-server launch answer (`plugins.languageServers.decodeLaunch`).
-    PluginsLanguageServersDecodeLaunch,
-    /// Picks the stored language-server state the host may delete (`plugins.languageServers.stateRetention`).
-    PluginsLanguageServersStateRetention,
-    /// Checks a plugin content provider's answer (`plugins.contentProviders.decode`).
-    PluginsContentProvidersDecode,
-    /// Checks a debug start and returns the adapter's DAP arguments (`debug.adapters.startArguments`).
-    DebugAdaptersStartArguments,
-    /// Validates an IDE-to-DAP TCP endpoint, not an attach target.
-    DebugValidateAdapterEndpoint,
-    /// Says where to look for the program a launch debugs (`debug.adapters.executablePlan`).
-    DebugAdaptersExecutablePlan,
-    /// Returns the default byte-stream deadlines and queue budgets (`debug.transport.policy`).
-    DebugTransportPolicy,
-    /// Applies one platform event to a byte-stream lifecycle and returns the effects to run
-    /// (`debug.transport.handle`).
-    DebugTransportHandle,
-    /// Forgets the lifecycle of a stopped byte stream (`debug.transport.release`).
-    DebugTransportRelease,
-    /// Merges a plugin's stored setting layers into effective values (`plugins.declarative.resolveSettings`).
-    PluginsDeclarativeResolveSettings,
-    /// Projects stored documents into plugin setting rows and launch layers.
-    PluginsDeclarativeSettingsState,
-    /// Projects enabled plugin settings pages from installed manifests.
-    PluginsSettingsCatalog,
-    /// Projects searched settings navigation without platform policy.
-    PluginsSettingsNavigation,
-    /// Routes committed preference effects using native ownership facts.
-    PluginsSettingsDelivery,
-    /// Resolves an installed settings action and its native confirmation requirement.
-    PluginsDeclarativeSettingsActionPlan,
-    /// Selects numeric installed versions and reports malformed native facts.
-    PluginsInstalledSelect,
-    /// Validates an atomic plugin settings edit and preserves unrelated values.
-    PluginsDeclarativeEditSettings,
-    /// Expands a language server's `workspaceConfiguration` (`plugins.declarative.workspaceConfiguration`).
-    PluginsDeclarativeWorkspaceConfiguration,
-    /// Validates a language's grammar file (`plugins.declarative.decodeGrammar`).
-    PluginsDeclarativeDecodeGrammar,
-    /// Validates independent editor action registration or results.
-    PluginsEditorActionsDecode,
-    /// Validates editor provider registrations and provider results.
-    PluginsEditorProvidersDecode,
-    /// Validates a normalized shortcut import against the host's action catalog.
-    KeymapDecodeImport,
-    /// Plans the selected provider's declared shortcut source inputs.
-    KeymapPlanImportSources,
-    /// Plans conflicts and default-key displacement for a shortcut import.
-    KeymapPlanImportBindings,
-    /// Decides whether a combined debug shortcut starts, continues or does nothing.
-    DebugStartOrContinue,
-    /// Registers plugin-owned tools with verified package provenance.
-    ToolchainsRegistry,
-    /// Validates provider answers using native evidence supplied by the host.
-    ToolchainsDecodeReply,
-    /// Builds the error reply for a provider query that timed out or found no backend.
-    ToolchainsFailureReply,
-    /// Resolves the nearest machine-local directory pin.
-    ToolchainsResolvePins,
-    /// Edits a bounded batch of machine-local directory pins without native writes.
-    ToolchainsEditPins,
-    /// Plans native workspace pin source paths and byte budgets.
-    ToolchainsPinStoragePlan,
-    /// Parses a complete native pin document or its absent-source default.
-    ToolchainsDecodePinDocument,
-    /// Plans complete pin and ignore source edits without native writes.
-    ToolchainsEditPinSources,
-    /// Resolves consumer defaults while keeping workspace inheritance symbolic.
-    ToolchainsResolveConsumerPreferences,
-    /// Edits one machine-local consumer preference and returns its effective input.
-    ToolchainsEditConsumerPreferences,
-    /// Resolves the four toolchain layers from a captured value snapshot.
-    ToolchainsResolve,
-    /// Checks a plugin-defined version probe without per-tool parsing.
-    ToolchainsCheckVersion,
-    /// Plans system scans solely from enabled tool definitions.
-    ToolchainsDiscoveryPlan,
-    /// Lists checked installations and the automatic choice for one tool.
-    ToolchainsCandidates,
-    /// Expands a tool definition's launch template for a selected executable.
-    ToolchainsInstantiateLaunch,
+    /// AI commit, pull request and inline edit planning run by `lithe-ai` (`ai.*`).
+    Ai(AiCommand),
+    /// Plugin manifests, native UI and web content, plugin settings, installed
+    /// plugins and the marketplace (`plugins.*`).
+    Plugins(PluginsCommand),
+    /// Debug adapters, transports, sessions, breakpoints and inspection (`debug.*`).
+    Debug(DebugCommand),
+    /// Keymap import, contexts, conflicts and schemes (`keymap.*`).
+    Keymap(KeymapCommand),
+    /// Toolchain registry, pins, consumer preferences, discovery and launch instantiation (`toolchains.*`).
+    Toolchains(ToolchainsCommand),
     /// Validates a plugin backend's Run start request (`run.decodeStart`).
     RunDecodeStart,
-    /// Validates a plugin backend's debug start request (`debug.decodeBackendConfiguration`).
-    DebugDecodeBackendConfiguration,
     /// Finds the output links plugin matchers declare in console lines (`outputLinks.match`).
     OutputLinksMatch,
     /// Checks a plugin function's answer to an output link (`outputLinks.decodeResolution`).
     OutputLinksDecodeResolution,
-    /// Finds the build-system instances of a workspace (`build.detect`).
-    BuildDetect,
-    /// Validates a native team's persisted Build options (`build.projectOptions`).
-    BuildProjectOptions,
-    /// Merges checked team and machine-local Build preferences without I/O.
-    BuildResolveStoredOptions,
-    /// Edits one declared option in a machine-local Build document without I/O.
-    BuildEditStoredOption,
-    /// Lists a build system's executable candidates and version probes (`build.invocationPlan`).
-    BuildInvocationPlan,
-    /// Compares a build tool's or runtime's version output with its minimum (`build.checkToolVersion`).
-    BuildCheckToolVersion,
-    /// Resolves stored build options against the declaration (`build.resolveOptions`).
-    BuildResolveOptions,
-    /// Expands the command that prints a build model (`build.modelPlan`).
-    BuildModelPlan,
-    /// Expands one build task into an argv plan (`build.taskPlan`).
-    BuildTaskPlan,
-    /// Expands a build test run and its result location (`build.testPlan`).
-    BuildTestPlan,
-    /// Plans typed provider run preparation (`build.prepareRunPlan`).
-    BuildPrepareRunPlan,
-    /// Plans source-backed configuration reads (`build.configurationPlan`).
-    BuildConfigurationPlan,
-    /// Validates non-sensitive native facts (`build.decodeConfiguration`).
-    BuildDecodeConfiguration,
-    /// Plans provider-owned native configuration editing (`build.configurationEditPlan`).
-    BuildConfigurationEditPlan,
-    /// Validates a public edit receipt (`build.decodeConfigurationEdit`).
-    BuildDecodeConfigurationEdit,
-    /// Resolves optional public build inputs (`build.resolveModelInputs`).
-    BuildResolveModelInputs,
-    /// Plans native debug preparation (`build.prepareDebugPlan`).
-    BuildPrepareDebugPlan,
-    /// Validates native debug target facts (`build.decodeDebugPreparation`).
-    BuildDecodeDebugPreparation,
-    /// Validates prepared launch data (`build.decodeRunPreparation`).
-    BuildDecodeRunPreparation,
-    /// Plans provider-owned test discovery (`build.testDiscoveryPlan`).
-    BuildTestDiscoveryPlan,
-    /// Validates provider-owned test selectors (`build.decodeTestDiscovery`).
-    BuildDecodeTestDiscovery,
-    /// Expands the command that prints a project's dependencies (`build.dependencyPlan`).
-    BuildDependencyPlan,
-    /// Normalizes a build model and derives its run entries (`build.decodeModel`).
-    BuildDecodeModel,
-    /// Normalizes build test results (`build.decodeTestResults`).
-    BuildDecodeTestResults,
-    /// Normalizes build diagnostics from process output (`build.decodeDiagnostics`).
-    BuildDecodeDiagnostics,
-    /// Normalizes a project's dependency tree (`build.decodeDependencies`).
-    BuildDecodeDependencies,
-    /// Digests the files a build model depends on (`build.syncFingerprint`).
-    BuildSyncFingerprint,
-    /// Reduces a test run's termination and decoded summary to one verdict (`build.resolveTestRunOutcome`).
-    BuildResolveTestRunOutcome,
-    /// Merges a run's test results into the stored history inside the host-stated scope (`build.mergeTestOutcomes`).
-    BuildMergeTestOutcomes,
+    /// Build detection, options, plans and decoded tool output (`build.*`).
+    Build(BuildCommand),
     /// Detects VCS roots and registered providers of a workspace (`vcs.detectRoots`).
     VcsDetectRoots,
     /// Assigns workspace paths to detected VCS roots (`vcs.ownerOf`).
@@ -268,56 +92,8 @@ pub enum CoreCommand {
     ProjectCheckName,
     /// Extracts a downloaded archive inside a bounded staging directory (`project.extractArchive`).
     ProjectExtractArchive,
-    /// Validates and filters a marketplace index (`plugins.marketplace.validateIndex`).
-    PluginsMarketplaceValidateIndex,
-    /// Resolves a user-entered marketplace source URL (`plugins.marketplace.resolveSource`).
-    PluginsMarketplaceResolveSource,
-    /// Lists a package's permissions and programs before installation (`plugins.marketplace.installReview`).
-    PluginsMarketplaceInstallReview,
-    /// Builds the visible project tree (`workspace.snapshot`).
-    WorkspaceSnapshot,
-    /// Configure workspace indexing independently of tree visibility.
-    WorkspaceConfigureIndexing,
-    /// Refreshes external indexing facts while retaining the owner's lease.
-    WorkspaceRefreshIndexing,
-    /// Releases an indexing generation when its project closes.
-    WorkspaceReleaseIndexing,
-    /// Lists the visible children of project directories (`workspace.listDirectories`).
-    WorkspaceListDirectories,
-    /// Orders natively enumerated directory siblings (`workspace.orderEntries`).
-    WorkspaceOrderEntries,
-    /// Ranks host-supplied candidate names with the shared matcher (`workspace.rankNames`).
-    WorkspaceRankNames,
-    /// Plans the name of a duplicated project item (`workspace.planDuplicate`).
-    WorkspacePlanDuplicate,
-    /// Plans the destination names of pasted project items (`workspace.planPaste`).
-    WorkspacePlanPaste,
-    /// Applies a directory role, exclusion or cancel action (`workspace.reduceDirectoryAction`).
-    WorkspaceReduceDirectoryAction,
-    /// Migrates directory rules after a move or delete (`workspace.relocateDirectoryRules`).
-    WorkspaceRelocateDirectoryRules,
-    /// Filter ordinary workspace-relative event paths using shared defaults.
-    WorkspaceFilterChanges,
-    /// Finds Git repositories that belong to an opened workspace (`workspace.repositories`).
-    WorkspaceRepositories,
-    /// Applies one action to the recent project list (`workspace.recentProjects.reduce`).
-    WorkspaceRecentProjectsReduce,
-    /// Builds or reuses the workspace search index (`workspace.searchIndex.warm`).
-    WorkspaceSearchIndexWarm,
-    /// Applies changed paths to the search index (`workspace.searchIndex.update`).
-    WorkspaceSearchIndexUpdate,
-    /// Drops a workspace's cached search index (`workspace.searchIndex.invalidate`).
-    WorkspaceSearchIndexInvalidate,
-    /// Searches visible file paths and contents (`workspace.search`).
-    WorkspaceSearch,
-    /// Searches file paths, contents, and symbols (`workspace.searchEverywhere`).
-    WorkspaceSearchEverywhere,
-    /// Previews replacements without writing files (`workspace.replacePreview`).
-    WorkspaceReplacePreview,
-    /// Computes replacement on a supplied snapshot without writing (`workspace.replaceText`).
-    WorkspaceReplaceText,
-    /// Searches provider-owned text snapshots in one request (`workspace.searchTextBatch`).
-    WorkspaceSearchTextBatch,
+    /// Workspace snapshots, indexing, directory actions, repositories and search (`workspace.*`).
+    Workspace(WorkspaceCommand),
     /// Reads one workspace-relative UTF-8 file (`file.read`).
     FileRead,
     /// Replaces one workspace-relative UTF-8 file (`file.write`).
@@ -334,26 +110,8 @@ pub enum CoreCommand {
     DocumentPlanSaveBatch,
     /// Reduces save batch member outcomes and live documents (`document.reduceSaveBatch`).
     DocumentReduceSaveBatch,
-    /// Records one local-history snapshot (`history.record`).
-    HistoryRecord,
-    /// Lists retained local-history metadata (`history.entries`).
-    HistoryEntries,
-    /// Reads the contents of one history snapshot (`history.content`).
-    HistoryContent,
-    /// Moves history after a workspace path relocation (`history.relocate`).
-    HistoryRelocate,
-    /// Plans which snapshots an editing event records (`history.planEvent`).
-    HistoryPlanEvent,
-    /// Changes the optional label of a history snapshot (`history.rename`).
-    HistoryRename,
-    /// Deletes one history snapshot (`history.delete`).
-    HistoryDelete,
-    /// Validates local-history ignore rules against a sample path (`history.ignorePreview`).
-    HistoryIgnorePreview,
-    /// Reports one project's history storage size (`history.usage`).
-    HistoryUsage,
-    /// Deletes every snapshot of one project (`history.clear`).
-    HistoryClear,
+    /// Local file history (`history.*`).
+    History(HistoryCommand),
     /// Compares two host-supplied texts line by line (`diff.compareTexts`).
     DiffCompareTexts,
     /// Resolve environment precedence after platform tool discovery.
@@ -368,395 +126,24 @@ pub enum CoreCommand {
     ProcessLifecycleSettle,
     /// Renders and sanitizes shared Markdown (`markdown.render`).
     MarkdownRender,
-    /// Compiles a bounded boolean shortcut context (`keymap.parseContext`).
-    KeymapParseContext,
-    /// Evaluates a precompiled shortcut context (`keymap.evaluateContext`).
-    KeymapEvaluateContext,
-    /// Finds conflicts among the final layered shortcut bindings (`keymap.analyzeConflicts`).
-    KeymapAnalyzeConflicts,
-    /// Advances the double-Shift gesture recognizer by one event (`keymap.modifierGestureStep`).
-    /// The rule itself lives in `lithe-core-rules` so the Windows frontend can run it synchronously.
-    KeymapModifierGestureStep,
-    /// Applies one editor-group state transition: open, close, move, pin, preview, merge or normalize
-    /// (`editor.workbenchState.reduce`). The rule lives in `lithe-core-rules` so the Windows frontend
-    /// can run it synchronously inside store updates.
-    EditorWorkbenchStateReduce,
-    /// Classifies a batch of workspace-relative paths as hidden or visible (`workspace.classifyVisibility`).
-    /// The rule lives in `lithe-core-rules` so the Windows frontend can run it synchronously.
-    WorkspaceClassifyVisibility,
-    /// Returns the built-in hidden-path lists (`workspace.visibilityDefaults`), also from `lithe-core-rules`.
-    WorkspaceVisibilityDefaults,
+    /// Editor reducers: workbench state, text edits, find, navigation and preferences (`editor.*`).
+    Editor(EditorCommand),
     /// Applies one transition to the rearrangeable workbench chrome: stripe, title bar and status bar
     /// button placement and open tool panels (`workbench.chromeLayout.reduce`), from `lithe-core-rules`.
     WorkbenchChromeLayoutReduce,
     /// Resolves terminal link candidates into file or external targets (`terminal.parseLinkTarget`).
     TerminalParseLinkTarget,
-    /// Creates one transport-neutral Debug Adapter Protocol session (`debug.createSession`).
-    DebugCreateSession,
-    /// Queues a launch or attach request for a debug session (`debug.launch`).
-    DebugLaunch,
-    /// Returns or normalizes portable stepping filters (`debug.steppingFilters`).
-    DebugSteppingFilters,
-    /// Moves source breakpoints across one UTF-16 editor mutation (`debug.relocateBreakpoints`).
-    DebugRelocateBreakpoints,
-    /// Plans the first page of one variable container (`debug.planVariablePage`).
-    DebugPlanVariablePage,
-    /// Merges one variable page into its paging cursor (`debug.reduceVariablePage`).
-    DebugReduceVariablePage,
-    /// Plans the first request of one disassembly fetch (`debug.planDisassemblyWindow`).
-    DebugPlanDisassemblyWindow,
-    /// Reduces one disassembly reply to the next bounded step (`debug.reduceDisassemblyPage`).
-    DebugReduceDisassemblyPage,
-    /// Replaces breakpoints for one source file (`debug.setBreakpoints`).
-    DebugSetBreakpoints,
-    /// Replaces exception filters for one debug session (`debug.setExceptionBreakpoints`).
-    DebugSetExceptionBreakpoints,
-    /// Replaces named function breakpoints for one debug session (`debug.setFunctionBreakpoints`).
-    DebugSetFunctionBreakpoints,
-    /// Replaces instruction (address) breakpoints for one debug session (`debug.setInstructionBreakpoints`).
-    DebugSetInstructionBreakpoints,
-    /// Resolves one adapter-owned data breakpoint identity (`debug.dataBreakpointInfo`).
-    DebugDataBreakpointInfo,
-    /// Replaces data breakpoints for one debug session (`debug.setDataBreakpoints`).
-    DebugSetDataBreakpoints,
-    /// Mutes or unmutes every breakpoint of one debug session (`debug.setBreakpointsMuted`).
-    DebugSetBreakpointsMuted,
-    /// Places the memory view's readMemory window at an address (`debug.planMemoryWindow`).
-    DebugPlanMemoryWindow,
-    /// Finds the byte read at in one readMemory reply (`debug.locateMemoryWindow`).
-    DebugLocateMemoryWindow,
-    /// Replaces one visible variable value (`debug.setVariable`).
-    DebugSetVariable,
-    /// Cancels or times out one pending debug operation (`debug.cancelOperation`).
-    DebugCancelOperation,
-    /// Queues continue, pause, or stepping control (`debug.execute`).
-    DebugExecute,
-    /// Queues one normalized debugger inspection request (`debug.inspect`).
-    DebugInspect,
-    /// Reduces bytes received from a platform-owned DAP transport (`debug.receive`).
-    DebugReceive,
-    /// Completes one adapter-requested terminal launch (`debug.runInTerminalResponse`).
-    DebugRunInTerminalResponse,
-    /// Completes one adapter-requested child session start (`debug.startDebuggingResponse`).
-    DebugStartDebuggingResponse,
-    /// Begins the DAP disconnect handshake (`debug.disconnect`).
-    DebugDisconnect,
-    /// Removes all state for a debug session (`debug.destroySession`).
-    DebugDestroySession,
-    /// Applies validated UTF-16 LSP text edits (`lsp.applyTextEdits`).
-    LspApplyTextEdits,
-    /// Validates workspace-edit targets and orders their commit
-    /// (`lsp.planWorkspaceEdit`).
-    LspPlanWorkspaceEdit,
-    /// Resolves a diagnostic identity inside its workspace (`lsp.documentIdentity`).
-    LspDocumentIdentity,
-    /// Decides whether a language-server jump target opens, opens read-only
-    /// or is refused (`lsp.classifyNavigationTarget`).
-    LspClassifyNavigationTarget,
-    /// Decides whether a go-to-declaration gesture opens the declaration or
-    /// shows its usages (`lsp.declarationOrUsages`).
-    LspDeclarationOrUsages,
-    /// Applies a deterministic line-level editing transform
-    /// (`editor.lineEdit`).
-    EditorLineEdit,
-    /// Finds text or plans bounded replacements in a borrowed document (`editor.find`).
-    EditorFind,
-    /// Resolves persisted editor presentation preferences (`editor.preferences.resolve`).
-    EditorPreferencesResolve,
-    /// Reduces and queries bounded recent-file history (`editor.recent.reduce`).
-    EditorRecentReduce,
-    /// Decides how a native checkpoint should recover (`editor.recovery.decide`).
-    EditorRecoveryDecide,
-    /// Reduces named shortcut schemes (`keymap.schemes.reduce`).
-    KeymapSchemesReduce,
-    /// Validates and orders a plugin document edit batch
-    /// (`editor.planTextEdits`).
-    EditorPlanTextEdits,
-    /// Parses a line or line:column navigation input (`editor.parseNavigationInput`).
-    EditorParseNavigationInput,
-    /// Reduces one bounded back/forward navigation history event
-    /// (`editor.navigationHistory.reduce`).
-    EditorNavigationHistoryReduce,
-    /// Resolves the line comment token for a file extension
-    /// (`editor.lineCommentToken`).
-    EditorLineCommentToken,
+    /// Language server sessions, documents, edits, requests and events (`lsp.*`).
+    Lsp(LspCommand),
     /// Normalizes the stored proxy settings into the policy a network stack
     /// must apply (`network.proxyPolicy`).
     NetworkProxyPolicy,
-    /// Reduces an LSP snippet to insertion text (`lsp.plainSnippet`).
-    LspPlainSnippet,
-    /// Provides same-document fallback completions (`lsp.builtinCompletions`).
-    LspBuiltinCompletions,
-    /// Provides a same-document fallback hover (`lsp.builtinHover`).
-    LspBuiltinHover,
-    /// Provides same-document fallback navigation (`lsp.builtinNavigation`).
-    LspBuiltinNavigation,
-    /// Merges completion lists from prioritized providers (`lsp.mergeCompletions`).
-    LspMergeCompletions,
-    /// Decides whether a language server may start automatically (`lsp.activationPolicy`).
-    LspActivationPolicy,
-    /// Filters, orders, and groups Problems tool-window diagnostics (`lsp.problems.query`).
-    LspProblemsQuery,
-    /// Starts and initializes a managed language server (`lsp.startServer`).
-    LspStartServer,
-    /// Gracefully shuts down a managed server (`lsp.stopServer`).
-    LspStopServer,
-    /// Replaces the plugin settings a plugin-provided server reads
-    /// (`lsp.updateWorkspaceConfiguration`).
-    LspUpdateWorkspaceConfiguration,
-    /// Converts an absolute path to a file URI (`lsp.documentUri`).
-    LspDocumentUri,
-    /// Opens or updates a synchronized document (`lsp.syncDocument`).
-    LspSyncDocument,
-    /// Reports a successful native document save (`lsp.saveDocument`).
-    LspSaveDocument,
-    /// Publishes external workspace file changes (`lsp.workspaceFilesChanged`).
-    LspWorkspaceFilesChanged,
-    /// Closes a synchronized document (`lsp.closeDocument`).
-    LspCloseDocument,
-    /// Queues one semantic server request (`lsp.request`).
-    LspRequest,
-    /// Queues one build-provider request (`lsp.buildRequest`).
-    LspBuildRequest,
-    /// Queues one VCS-provider request (`lsp.vcsRequest`).
-    LspVcsRequest,
-    /// Queues one toolchain-provider query (`lsp.toolchainRequest`).
-    LspToolchainRequest,
-    /// Queues a shortcut import against a negotiated provider.
-    LspKeymapImportRequest,
-    /// Invokes one plugin function (`lsp.functionRequest`).
-    LspFunctionRequest,
-    /// Selects a registered function provider strictly inside one workspace.
-    LspFunctionProvider,
-    /// Replaces the plugins and workspace contexts the cross-plugin function
-    /// relay checks calls against (`lsp.configureFunctionRelay`).
-    LspConfigureFunctionRelay,
-    /// Answers a plugin backend's host-service request (`lsp.hostResponse`).
-    LspHostResponse,
-    /// Sends a plugin backend one host notification (`lsp.hostNotify`).
-    LspHostNotify,
-    /// Sends a plugin-owned language server one request of its backend (`lsp.pluginServerRequest`).
-    LspPluginServerRequest,
-    /// Sends a plugin-owned language server one notification of its backend (`lsp.pluginServerNotify`).
-    LspPluginServerNotify,
-    /// Cancels one pending semantic request (`lsp.cancelOperation`).
-    LspCancelOperation,
-    /// Drains queued session events (`lsp.pollEvents`).
-    LspPollEvents,
-    /// Waits for queued session events (`lsp.waitEvents`).
-    LspWaitEvents,
-    /// Toggles upstream verbose trace for one session (`lsp.setDetailedDiagnostics`).
-    LspSetDetailedDiagnostics,
-    /// Stops and removes a server session (`lsp.destroyServer`).
-    LspDestroyServer,
-    /// Validates layered run-configuration documents (`runConfig.inspect`).
-    RunConfigInspect,
-    /// Reads effective saved tool paths for one Provider root (`runConfig.projectToolchain`).
-    RunConfigProjectToolchain,
-    /// Regenerates detected run configurations (`runConfig.generate`).
-    RunConfigGenerate,
-    /// Formats argument vectors as reversible editor text (`runConfig.argumentText`).
-    RunConfigArgumentText,
-    /// Merges configuration layers and toolchains (`runConfig.resolve`).
-    RunConfigResolve,
-    /// Selects a configuration for a provider-supplied context identity.
-    RunConfigSelectContextConfiguration,
-    /// Decides what a press on the title bar's Run or Debug button does (`runConfig.decideTitleAction`).
-    RunConfigDecideTitleAction,
-    /// Persists editable run options (`runConfig.updateOptions`).
-    RunConfigUpdateOptions,
-    /// Replaces generic local tool preferences while preserving existing Run data.
-    RunConfigUpdateToolPreferences,
-    /// Prepares one complete run-configuration editor save (`runConfig.saveEditorChanges`).
-    RunConfigSaveEditorChanges,
-    /// Adds a user-authored run configuration (`runConfig.createUserConfiguration`).
-    RunConfigCreateUserConfiguration,
-    /// Produces the process plan for one configuration (`runConfig.createLaunchPlan`).
-    RunConfigCreateLaunchPlan,
-    /// Resolves user choices for a provider-owned launch (`runConfig.providerLaunchInputs`).
-    RunConfigProviderLaunchInputs,
-    /// Reads normalized repository and working-tree state (`git.status`).
-    GitStatus,
-    /// Lists one level of a summarized untracked directory (`git.untrackedDirectory`).
-    GitUntrackedDirectory,
-    /// Reads HEAD and index preconditions for workspace commits (`git.commitState`).
-    GitCommitState,
-    /// Builds a reviewed multi-repository plan (`git.workspaceCommitPrepare`).
-    GitWorkspaceCommitPrepare,
-    /// Executes one guarded workspace commit/push (`git.workspaceCommitStep`).
-    GitWorkspaceCommitStep,
-    /// Classifies a bounded page of Git watcher paths (`git.classifyMetadataChanges`).
-    GitClassifyMetadataChanges,
-    /// Resolves paths a Git-aware watcher must observe (`git.watchContext`).
-    GitWatchContext,
-    /// Lists worktrees registered for the repository (`git.worktrees`).
-    GitWorktrees,
-    /// Describes the checked-out branch or detached worktree for PR creation (`git.pullRequestContext`).
-    GitPullRequestContext,
-    /// Executes a caller-supplied argument vector without a shell (`git.command`).
-    GitCommand,
-    /// Resolves the containing repository root without acquiring a write lease (`git.repositoryRoot`).
-    GitRepositoryRoot,
-    /// Resolves a file to its owning Git checkout (`git.resolveFileContext`).
-    GitResolveFileContext,
-    /// Plans workspace status publication across successful and failed roots (`git.workspaceStatusMerge`).
-    GitWorkspaceStatusMerge,
-    /// Performs one supported Git mutation (`git.write`).
-    GitWrite,
-    /// Plans whole-file rollback from Git change identities (`git.rollbackPlan`).
-    GitRollbackPlan,
-    /// Rechecks Git identities and plans rollback (`git.rollbackPrepare`).
-    GitRollbackPrepare,
-    /// Prepares the real index for an explicit selected-file commit.
-    GitPrepareCommitSelection,
-    /// Reconciles missing selected additions after deletion.
-    GitReconcileDeletedSelection,
-    /// Reduces local ChangeList metadata and projects membership and commit scope.
-    GitChangelists,
-    /// Captures or applies one guarded Shelf layer (`git.shelf`).
-    GitShelf,
-    /// Captures and validates AI commit evidence (`git.commitMessageContext`).
-    GitCommitMessageContext,
-    /// Projects retained Git console records without executing Git (`git.consolePresentation`).
-    GitConsolePresentation,
-    /// Reads an optional remote URL without a visible command (`git.remoteUrl`).
-    GitRemoteUrl,
-    /// Plans Fetch arguments without launching Git or changing configuration (`git.fetchPlan`).
-    GitFetchPlan,
-    /// Resolves the executable Git will run without requiring a repository (`git.executable`).
-    GitExecutable,
-    /// Inspects Git configuration and its sources (`git.executionInspect`).
-    GitExecutionInspect,
-    /// Saves one explicitly selected configuration field (`git.executionConfigure`).
-    GitExecutionConfigure,
-    /// Answers a currently owned authentication prompt (`git.authRespond`).
-    GitAuthRespond,
-    /// Checks that an SSH connection reaches a supported host (`remote.probe`).
-    RemoteProbe,
-    /// Answers a prompt relayed by a running `remote.probe` (`remote.authRespond`).
-    RemoteAuthRespond,
-    /// Opens a remote connection, installing the server when needed (`remote.connect`).
-    RemoteConnect,
-    /// Lists a directory over an open remote connection (`remote.readDir`).
-    RemoteReadDir,
-    /// Closes a remote connection (`remote.disconnect`).
-    RemoteDisconnect,
-    /// Closes every open remote connection at application exit (`remote.closeAll`).
-    RemoteCloseAll,
-    /// Reads a file over an open remote connection (`remote.readFile`).
-    RemoteReadFile,
-    /// Saves a file over an open remote connection (`remote.writeFile`).
-    RemoteWriteFile,
-    /// Performs a non-streaming operation on an existing workspace host.
-    RemoteHostRequest,
-    /// Owns a remote process and relays output until it exits or is cancelled.
-    RemoteRunProcess,
-    /// Captures a short remote process with explicit time and output budgets.
-    RemoteCaptureProcess,
-    /// Owns a remote PTY and relays output until it exits or is cancelled.
-    RemoteRunTerminal,
-    /// Owns a host watch and relays changes until cancellation or root removal.
-    RemoteRunWatch,
-    /// Streams a native source into integrity-checked host file staging.
-    RemoteUploadFile,
-    /// Returns cached handshake capabilities of one connection.
-    RemoteHostInfo,
-    /// Inspects repository initialization and scoped commit identity.
-    GitRepositorySetup,
-    /// Initializes an existing folder outside any repository.
-    GitInitialize,
-    /// Writes or clears one explicitly scoped commit identity field.
-    GitConfigureIdentity,
-    /// Reviews a local history mutation and its immutable checkout snapshot (`git.historyRewritePreview`).
-    GitHistoryRewritePreview,
-    /// Lists configured fetch remotes.
-    GitRemotes,
-    /// Lists tags with object and target identities.
-    GitTags,
-    /// Parses a bounded HEAD snapshot without filesystem access.
-    GitParseCheckoutMetadata,
-    /// Parses a bounded gitdir pointer without filesystem access.
-    GitParseGitdirPointer,
-    /// Resolves action eligibility against the actual checkout history.
-    GitHistoryActionCapabilities,
-    /// Preview a linear local range after an unchanged base commit.
-    GitRebasePreview,
-    /// Start a reviewed native interactive rebase with a durable session.
-    GitRebaseStart,
-    /// Read the current checkout's last owned interactive rebase session.
-    GitRebaseSession,
-    /// Continue, skip, or abort an identified native rebase session.
-    GitRebaseControl,
-    /// Exports a lossless UTF-8 exchange patch (`git.patchExport`).
-    GitPatchExport,
-    /// Reviews a patch with a forward applicability check (`git.patchPreview`).
-    GitPatchPreview,
-    /// Applies a patch tied to its reviewed snapshot (`git.patchApply`).
-    GitPatchApply,
-    /// Builds a structured Git diff (`git.diff`).
-    GitDiff,
-    /// Parses a saved patch into validated per-file documents (`git.parsePatch`).
-    GitParsePatch,
-    /// Applies a patch to the index or working tree (`git.apply`).
-    GitApply,
-    /// Plans commit-review blocks and their Core-owned patches (`git.planDiffBlocks`).
-    GitPlanDiffBlocks,
-    /// Includes, excludes or rolls back one planned block (`git.applyDiffBlock`).
-    GitApplyDiffBlock,
-    /// Stages one editor gutter change with its original bytes (`git.stageGutterChange`).
-    GitStageGutterChange,
-    /// Lists references and bounded commit history (`git.history`).
-    GitHistory,
-    /// Filters commit dates against explicit absolute bounds (`git.historyQuery`).
-    GitHistoryQuery,
-    /// Lists Git references without repeating commit history (`git.references`).
-    GitReferences,
-    /// Returns one cursor-based commit page (`git.historyPage`).
-    GitHistoryPage,
-    /// Releases an incremental history cursor (`git.historyCursorClose`).
-    GitHistoryCursorClose,
-    /// Locates one commit while appending bounded history pages (`git.historyLocate`).
-    GitHistoryLocate,
-    /// Cleans and validates a new branch name in loaded references (`git.branchNamePreview`).
-    GitBranchNamePreview,
-    /// Assigns palette slots to a page of ordered repository identities.
-    GitRepositoryColorAssignments,
-    /// Plans a branch Update or Pull from collected facts (`git.updatePlan`).
-    GitUpdatePlan,
-    /// Plans history refresh windows, page merges, and selection retention (`git.historyWindow`).
-    GitHistoryWindow,
-    /// Projects the commit graph's lanes, colors, routes, and labels (`git.graphProjection`).
-    GitGraphProjection,
-    /// Drops targets already covered by a selected untracked summary (`git.normalizeChangeTargets`).
-    GitNormalizeChangeTargets,
-    /// Validates an interactive rebase draft and derives its messages (`git.rebasePlanPreview`).
-    GitRebasePlanPreview,
-    /// Groups one kind of loaded references into an ordered tree (`git.referenceTree`).
-    GitReferenceTree,
-    /// Resolves the destination and commits for a branch push (`git.pushPreview`).
-    GitPushPreview,
-    /// Resolves metadata for one commit (`git.commit`).
-    GitCommit,
-    /// Lists paths changed by one commit (`git.commitFiles`).
-    GitCommitFiles,
-    /// Compares a reference with the current checkout (`git.comparison`).
-    GitComparison,
-    /// Lists repository stashes (`git.stashes`).
-    GitStashes,
-    /// Finds edits that would block checkout (`git.checkoutPreflight`).
-    GitCheckoutPreflight,
-    /// Reports whether the tracked branch can fast-forward (`git.pullPreflight`).
-    GitPullPreflight,
-    /// Finds state that blocks merge, rebase, cherry-pick, or revert (`git.integrationPreflight`).
-    GitIntegrationPreflight,
-    /// Finds staged files containing conflict markers (`git.conflictMarkers`).
-    GitConflictMarkers,
-    /// Inspects an interrupted sequential Git operation (`git.operationState`).
-    GitOperationState,
-    /// Returns normalized line attribution (`git.blame`).
-    GitBlame,
-    /// Traces which commits touched a snapshot line range (`git.lineHistory`).
-    GitLineHistory,
+    /// Run configurations and their launch plans (`runConfig.*`).
+    RunConfig(RunConfigCommand),
+    /// Git status, writes, history, rebase, patches, diffs, references and pull requests (`git.*`).
+    Git(GitCommand),
+    /// Remote hosts: probing, authentication, connections, files and processes (`remote.*`).
+    Remote(RemoteCommand),
     /// Parses a GitHub repository identity from a Git remote URL (`github.parseRemote`).
     GitHubParseRemote,
     /// Builds a platform-executable GitHub HTTP request (`github.requestPlan`).
@@ -767,42 +154,755 @@ pub enum CoreCommand {
     GitHubDeviceAuthorizationTransition,
     /// Plans a safe local branch for a GitHub pull request.
     GitHubPullRequestCheckoutPlan,
+    /// Log events and queries, log filters and retention, redaction and diagnostic
+    /// bundles (`diagnostics.*`).
+    Diagnostics(DiagnosticsCommand),
+}
+
+#[derive(Debug, Clone)]
+/// The `ai.*` commands; their names live in [`CoreCommand::parse`].
+pub enum AiCommand {
+    /// Budgets diff prefixes before crossing the native boundary (`ai.commitInputBudget`).
+    CommitInputBudget,
+    /// Plans a credential-free commit message request (`ai.planCommit`).
+    PlanCommit,
+    /// Decodes a provider commit message response (`ai.decodeCommitMessage`).
+    DecodeCommitMessage,
+    /// Names the native files of one AI CLI configuration source (`ai.configuration.sources`).
+    ConfigurationSources,
+    /// Parses AI CLI configuration into credential-free metadata (`ai.configuration.parse`).
+    ConfigurationParse,
+    /// Plans a credential-free pull request description request (`ai.pullRequest.plan`).
+    PullRequestPlan,
+    /// Decodes a strict pull request title and description (`ai.pullRequest.decode`).
+    PullRequestDecode,
+    /// Plans a credential-free inline edit request (`ai.inlineEdit.plan`).
+    InlineEditPlan,
+    /// Decodes the replacement text of an inline edit response (`ai.inlineEdit.decode`).
+    InlineEditDecode,
+}
+
+#[derive(Debug, Clone)]
+/// The `plugins.*` commands; their names live in [`CoreCommand::parse`].
+pub enum PluginsCommand {
+    /// Validates and normalizes a declarative plugin manifest (`plugins.declarative.validate`).
+    DeclarativeValidate,
+    /// Validates native plugin UI data with declaration identity and node budgets.
+    NativeUIValidateData,
+    /// Registers a plugin page for a web tool window (`plugins.web.open`).
+    WebOpen,
+    /// Forgets a plugin page and lists its calls to cancel (`plugins.web.close`).
+    WebClose,
+    /// Decides how a plugin page request is served (`plugins.web.resource`).
+    WebResource,
+    /// Prepends the policy and bridge to a page document (`plugins.web.document`).
+    WebDocument,
+    /// Checks one bridge message of a plugin page (`plugins.web.request`).
+    WebRequest,
+    /// Frames the host's answer to a bridge action (`plugins.web.reply`).
+    WebReply,
+    /// Frames an event for a plugin page (`plugins.web.event`).
+    WebEvent,
+    /// Describes the Core-owned backend host-method catalog.
+    HostApiDescribe,
+    /// Rechecks a backend host request against Core's grant rules.
+    HostApiAuthorize,
+    /// Expands a declarative plugin's run template (`plugins.declarative.runPlan`).
+    DeclarativeRunPlan,
+    /// Lists a declarative plugin's workspace and file tests (`plugins.declarative.discoverTests`).
+    DeclarativeDiscoverTests,
+    /// Expands a declarative plugin's test template (`plugins.declarative.testPlan`).
+    DeclarativeTestPlan,
+    /// Expands a declarative plugin's language-server launch (`plugins.declarative.languageServerLaunchPlan`).
+    DeclarativeLanguageServerLaunchPlan,
+    /// Checks a plugin backend's language-server launch answer (`plugins.languageServers.decodeLaunch`).
+    LanguageServersDecodeLaunch,
+    /// Picks the stored language-server state the host may delete (`plugins.languageServers.stateRetention`).
+    LanguageServersStateRetention,
+    /// Checks a plugin content provider's answer (`plugins.contentProviders.decode`).
+    ContentProvidersDecode,
+    /// Merges a plugin's stored setting layers into effective values (`plugins.declarative.resolveSettings`).
+    DeclarativeResolveSettings,
+    /// Projects stored documents into plugin setting rows and launch layers.
+    DeclarativeSettingsState,
+    /// Projects enabled plugin settings pages from installed manifests.
+    SettingsCatalog,
+    /// Projects searched settings navigation without platform policy.
+    SettingsNavigation,
+    /// Routes committed preference effects using native ownership facts.
+    SettingsDelivery,
+    /// Resolves an installed settings action and its native confirmation requirement.
+    DeclarativeSettingsActionPlan,
+    /// Selects numeric installed versions and reports malformed native facts.
+    InstalledSelect,
+    /// Validates an atomic plugin settings edit and preserves unrelated values.
+    DeclarativeEditSettings,
+    /// Expands a language server's `workspaceConfiguration` (`plugins.declarative.workspaceConfiguration`).
+    DeclarativeWorkspaceConfiguration,
+    /// Validates a language's grammar file (`plugins.declarative.decodeGrammar`).
+    DeclarativeDecodeGrammar,
+    /// Validates independent editor action registration or results.
+    EditorActionsDecode,
+    /// Validates editor provider registrations and provider results.
+    EditorProvidersDecode,
+    /// Validates and filters a marketplace index (`plugins.marketplace.validateIndex`).
+    MarketplaceValidateIndex,
+    /// Resolves a user-entered marketplace source URL (`plugins.marketplace.resolveSource`).
+    MarketplaceResolveSource,
+    /// Lists a package's permissions and programs before installation (`plugins.marketplace.installReview`).
+    MarketplaceInstallReview,
+}
+
+#[derive(Debug, Clone)]
+/// The `debug.*` commands; their names live in [`CoreCommand::parse`].
+pub enum DebugCommand {
+    /// Checks a debug start and returns the adapter's DAP arguments (`debug.adapters.startArguments`).
+    AdaptersStartArguments,
+    /// Validates an IDE-to-DAP TCP endpoint, not an attach target.
+    ValidateAdapterEndpoint,
+    /// Says where to look for the program a launch debugs (`debug.adapters.executablePlan`).
+    AdaptersExecutablePlan,
+    /// Returns the default byte-stream deadlines and queue budgets (`debug.transport.policy`).
+    TransportPolicy,
+    /// Applies one platform event to a byte-stream lifecycle and returns the effects to run
+    /// (`debug.transport.handle`).
+    TransportHandle,
+    /// Forgets the lifecycle of a stopped byte stream (`debug.transport.release`).
+    TransportRelease,
+    /// Decides whether a combined debug shortcut starts, continues or does nothing.
+    StartOrContinue,
+    /// Validates a plugin backend's debug start request (`debug.decodeBackendConfiguration`).
+    DecodeBackendConfiguration,
+    /// Creates one transport-neutral Debug Adapter Protocol session (`debug.createSession`).
+    CreateSession,
+    /// Queues a launch or attach request for a debug session (`debug.launch`).
+    Launch,
+    /// Returns or normalizes portable stepping filters (`debug.steppingFilters`).
+    SteppingFilters,
+    /// Moves source breakpoints across one UTF-16 editor mutation (`debug.relocateBreakpoints`).
+    RelocateBreakpoints,
+    /// Plans the first page of one variable container (`debug.planVariablePage`).
+    PlanVariablePage,
+    /// Merges one variable page into its paging cursor (`debug.reduceVariablePage`).
+    ReduceVariablePage,
+    /// Plans the first request of one disassembly fetch (`debug.planDisassemblyWindow`).
+    PlanDisassemblyWindow,
+    /// Reduces one disassembly reply to the next bounded step (`debug.reduceDisassemblyPage`).
+    ReduceDisassemblyPage,
+    /// Replaces breakpoints for one source file (`debug.setBreakpoints`).
+    SetBreakpoints,
+    /// Replaces exception filters for one debug session (`debug.setExceptionBreakpoints`).
+    SetExceptionBreakpoints,
+    /// Replaces named function breakpoints for one debug session (`debug.setFunctionBreakpoints`).
+    SetFunctionBreakpoints,
+    /// Replaces instruction (address) breakpoints for one debug session (`debug.setInstructionBreakpoints`).
+    SetInstructionBreakpoints,
+    /// Resolves one adapter-owned data breakpoint identity (`debug.dataBreakpointInfo`).
+    DataBreakpointInfo,
+    /// Replaces data breakpoints for one debug session (`debug.setDataBreakpoints`).
+    SetDataBreakpoints,
+    /// Mutes or unmutes every breakpoint of one debug session (`debug.setBreakpointsMuted`).
+    SetBreakpointsMuted,
+    /// Places the memory view's readMemory window at an address (`debug.planMemoryWindow`).
+    PlanMemoryWindow,
+    /// Finds the byte read at in one readMemory reply (`debug.locateMemoryWindow`).
+    LocateMemoryWindow,
+    /// Replaces one visible variable value (`debug.setVariable`).
+    SetVariable,
+    /// Cancels or times out one pending debug operation (`debug.cancelOperation`).
+    CancelOperation,
+    /// Queues continue, pause, or stepping control (`debug.execute`).
+    Execute,
+    /// Queues one normalized debugger inspection request (`debug.inspect`).
+    Inspect,
+    /// Reduces bytes received from a platform-owned DAP transport (`debug.receive`).
+    Receive,
+    /// Completes one adapter-requested terminal launch (`debug.runInTerminalResponse`).
+    RunInTerminalResponse,
+    /// Completes one adapter-requested child session start (`debug.startDebuggingResponse`).
+    StartDebuggingResponse,
+    /// Begins the DAP disconnect handshake (`debug.disconnect`).
+    Disconnect,
+    /// Removes all state for a debug session (`debug.destroySession`).
+    DestroySession,
+}
+
+#[derive(Debug, Clone)]
+/// The `keymap.*` commands; their names live in [`CoreCommand::parse`].
+pub enum KeymapCommand {
+    /// Validates a normalized shortcut import against the host's action catalog.
+    DecodeImport,
+    /// Plans the selected provider's declared shortcut source inputs.
+    PlanImportSources,
+    /// Plans conflicts and default-key displacement for a shortcut import.
+    PlanImportBindings,
+    /// Compiles a bounded boolean shortcut context (`keymap.parseContext`).
+    ParseContext,
+    /// Evaluates a precompiled shortcut context (`keymap.evaluateContext`).
+    EvaluateContext,
+    /// Finds conflicts among the final layered shortcut bindings (`keymap.analyzeConflicts`).
+    AnalyzeConflicts,
+    /// Advances the double-Shift gesture recognizer by one event (`keymap.modifierGestureStep`).
+    /// The rule itself lives in `lithe-core-rules` so the Windows frontend can run it synchronously.
+    ModifierGestureStep,
+    /// Reduces named shortcut schemes (`keymap.schemes.reduce`).
+    SchemesReduce,
+}
+
+#[derive(Debug, Clone)]
+/// The `toolchains.*` commands; their names live in [`CoreCommand::parse`].
+pub enum ToolchainsCommand {
+    /// Registers plugin-owned tools with verified package provenance.
+    Registry,
+    /// Validates provider answers using native evidence supplied by the host.
+    DecodeReply,
+    /// Builds the error reply for a provider query that timed out or found no backend.
+    FailureReply,
+    /// Resolves the nearest machine-local directory pin.
+    ResolvePins,
+    /// Edits a bounded batch of machine-local directory pins without native writes.
+    EditPins,
+    /// Plans native workspace pin source paths and byte budgets.
+    PinStoragePlan,
+    /// Parses a complete native pin document or its absent-source default.
+    DecodePinDocument,
+    /// Plans complete pin and ignore source edits without native writes.
+    EditPinSources,
+    /// Resolves consumer defaults while keeping workspace inheritance symbolic.
+    ResolveConsumerPreferences,
+    /// Edits one machine-local consumer preference and returns its effective input.
+    EditConsumerPreferences,
+    /// Resolves the four toolchain layers from a captured value snapshot.
+    Resolve,
+    /// Checks a plugin-defined version probe without per-tool parsing.
+    CheckVersion,
+    /// Plans system scans solely from enabled tool definitions.
+    DiscoveryPlan,
+    /// Lists checked installations and the automatic choice for one tool.
+    Candidates,
+    /// Expands a tool definition's launch template for a selected executable.
+    InstantiateLaunch,
+}
+
+#[derive(Debug, Clone)]
+/// The `build.*` commands; their names live in [`CoreCommand::parse`].
+pub enum BuildCommand {
+    /// Finds the build-system instances of a workspace (`build.detect`).
+    Detect,
+    /// Validates a native team's persisted Build options (`build.projectOptions`).
+    ProjectOptions,
+    /// Merges checked team and machine-local Build preferences without I/O.
+    ResolveStoredOptions,
+    /// Edits one declared option in a machine-local Build document without I/O.
+    EditStoredOption,
+    /// Lists a build system's executable candidates and version probes (`build.invocationPlan`).
+    InvocationPlan,
+    /// Compares a build tool's or runtime's version output with its minimum (`build.checkToolVersion`).
+    CheckToolVersion,
+    /// Resolves stored build options against the declaration (`build.resolveOptions`).
+    ResolveOptions,
+    /// Expands the command that prints a build model (`build.modelPlan`).
+    ModelPlan,
+    /// Expands one build task into an argv plan (`build.taskPlan`).
+    TaskPlan,
+    /// Expands a build test run and its result location (`build.testPlan`).
+    TestPlan,
+    /// Plans typed provider run preparation (`build.prepareRunPlan`).
+    PrepareRunPlan,
+    /// Plans source-backed configuration reads (`build.configurationPlan`).
+    ConfigurationPlan,
+    /// Validates non-sensitive native facts (`build.decodeConfiguration`).
+    DecodeConfiguration,
+    /// Plans provider-owned native configuration editing (`build.configurationEditPlan`).
+    ConfigurationEditPlan,
+    /// Validates a public edit receipt (`build.decodeConfigurationEdit`).
+    DecodeConfigurationEdit,
+    /// Resolves optional public build inputs (`build.resolveModelInputs`).
+    ResolveModelInputs,
+    /// Plans native debug preparation (`build.prepareDebugPlan`).
+    PrepareDebugPlan,
+    /// Validates native debug target facts (`build.decodeDebugPreparation`).
+    DecodeDebugPreparation,
+    /// Validates prepared launch data (`build.decodeRunPreparation`).
+    DecodeRunPreparation,
+    /// Plans provider-owned test discovery (`build.testDiscoveryPlan`).
+    TestDiscoveryPlan,
+    /// Validates provider-owned test selectors (`build.decodeTestDiscovery`).
+    DecodeTestDiscovery,
+    /// Expands the command that prints a project's dependencies (`build.dependencyPlan`).
+    DependencyPlan,
+    /// Normalizes a build model and derives its run entries (`build.decodeModel`).
+    DecodeModel,
+    /// Normalizes build test results (`build.decodeTestResults`).
+    DecodeTestResults,
+    /// Normalizes build diagnostics from process output (`build.decodeDiagnostics`).
+    DecodeDiagnostics,
+    /// Normalizes a project's dependency tree (`build.decodeDependencies`).
+    DecodeDependencies,
+    /// Digests the files a build model depends on (`build.syncFingerprint`).
+    SyncFingerprint,
+    /// Reduces a test run's termination and decoded summary to one verdict (`build.resolveTestRunOutcome`).
+    ResolveTestRunOutcome,
+    /// Merges a run's test results into the stored history inside the host-stated scope (`build.mergeTestOutcomes`).
+    MergeTestOutcomes,
+}
+
+#[derive(Debug, Clone)]
+/// The `workspace.*` commands; their names live in [`CoreCommand::parse`].
+pub enum WorkspaceCommand {
+    /// Builds the visible project tree (`workspace.snapshot`).
+    Snapshot,
+    /// Configure workspace indexing independently of tree visibility.
+    ConfigureIndexing,
+    /// Refreshes external indexing facts while retaining the owner's lease.
+    RefreshIndexing,
+    /// Releases an indexing generation when its project closes.
+    ReleaseIndexing,
+    /// Lists the visible children of project directories (`workspace.listDirectories`).
+    ListDirectories,
+    /// Orders natively enumerated directory siblings (`workspace.orderEntries`).
+    OrderEntries,
+    /// Ranks host-supplied candidate names with the shared matcher (`workspace.rankNames`).
+    RankNames,
+    /// Plans the name of a duplicated project item (`workspace.planDuplicate`).
+    PlanDuplicate,
+    /// Plans the destination names of pasted project items (`workspace.planPaste`).
+    PlanPaste,
+    /// Applies a directory role, exclusion or cancel action (`workspace.reduceDirectoryAction`).
+    ReduceDirectoryAction,
+    /// Migrates directory rules after a move or delete (`workspace.relocateDirectoryRules`).
+    RelocateDirectoryRules,
+    /// Filter ordinary workspace-relative event paths using shared defaults.
+    FilterChanges,
+    /// Finds Git repositories that belong to an opened workspace (`workspace.repositories`).
+    Repositories,
+    /// Applies one action to the recent project list (`workspace.recentProjects.reduce`).
+    RecentProjectsReduce,
+    /// Builds or reuses the workspace search index (`workspace.searchIndex.warm`).
+    SearchIndexWarm,
+    /// Applies changed paths to the search index (`workspace.searchIndex.update`).
+    SearchIndexUpdate,
+    /// Drops a workspace's cached search index (`workspace.searchIndex.invalidate`).
+    SearchIndexInvalidate,
+    /// Searches visible file paths and contents (`workspace.search`).
+    Search,
+    /// Searches file paths, contents, and symbols (`workspace.searchEverywhere`).
+    SearchEverywhere,
+    /// Previews replacements without writing files (`workspace.replacePreview`).
+    ReplacePreview,
+    /// Computes replacement on a supplied snapshot without writing (`workspace.replaceText`).
+    ReplaceText,
+    /// Searches provider-owned text snapshots in one request (`workspace.searchTextBatch`).
+    SearchTextBatch,
+    /// Classifies a batch of workspace-relative paths as hidden or visible (`workspace.classifyVisibility`).
+    /// The rule lives in `lithe-core-rules` so the Windows frontend can run it synchronously.
+    ClassifyVisibility,
+    /// Returns the built-in hidden-path lists (`workspace.visibilityDefaults`), also from `lithe-core-rules`.
+    VisibilityDefaults,
+}
+
+#[derive(Debug, Clone)]
+/// The `history.*` commands; their names live in [`CoreCommand::parse`].
+pub enum HistoryCommand {
+    /// Records one local-history snapshot (`history.record`).
+    Record,
+    /// Lists retained local-history metadata (`history.entries`).
+    Entries,
+    /// Reads the contents of one history snapshot (`history.content`).
+    Content,
+    /// Moves history after a workspace path relocation (`history.relocate`).
+    Relocate,
+    /// Plans which snapshots an editing event records (`history.planEvent`).
+    PlanEvent,
+    /// Changes the optional label of a history snapshot (`history.rename`).
+    Rename,
+    /// Deletes one history snapshot (`history.delete`).
+    Delete,
+    /// Validates local-history ignore rules against a sample path (`history.ignorePreview`).
+    IgnorePreview,
+    /// Reports one project's history storage size (`history.usage`).
+    Usage,
+    /// Deletes every snapshot of one project (`history.clear`).
+    Clear,
+}
+
+#[derive(Debug, Clone)]
+/// The `editor.*` commands; their names live in [`CoreCommand::parse`].
+pub enum EditorCommand {
+    /// Applies one editor-group state transition: open, close, move, pin, preview, merge or normalize
+    /// (`editor.workbenchState.reduce`). The rule lives in `lithe-core-rules` so the Windows frontend
+    /// can run it synchronously inside store updates.
+    WorkbenchStateReduce,
+    /// Applies a deterministic line-level editing transform
+    /// (`editor.lineEdit`).
+    LineEdit,
+    /// Finds text or plans bounded replacements in a borrowed document (`editor.find`).
+    Find,
+    /// Resolves persisted editor presentation preferences (`editor.preferences.resolve`).
+    PreferencesResolve,
+    /// Reduces and queries bounded recent-file history (`editor.recent.reduce`).
+    RecentReduce,
+    /// Decides how a native checkpoint should recover (`editor.recovery.decide`).
+    RecoveryDecide,
+    /// Validates and orders a plugin document edit batch
+    /// (`editor.planTextEdits`).
+    PlanTextEdits,
+    /// Parses a line or line:column navigation input (`editor.parseNavigationInput`).
+    ParseNavigationInput,
+    /// Reduces one bounded back/forward navigation history event
+    /// (`editor.navigationHistory.reduce`).
+    NavigationHistoryReduce,
+    /// Resolves the line comment token for a file extension
+    /// (`editor.lineCommentToken`).
+    LineCommentToken,
+}
+
+#[derive(Debug, Clone)]
+/// The `lsp.*` commands; their names live in [`CoreCommand::parse`].
+pub enum LspCommand {
+    /// Applies validated UTF-16 LSP text edits (`lsp.applyTextEdits`).
+    ApplyTextEdits,
+    /// Validates workspace-edit targets and orders their commit
+    /// (`lsp.planWorkspaceEdit`).
+    PlanWorkspaceEdit,
+    /// Resolves a diagnostic identity inside its workspace (`lsp.documentIdentity`).
+    DocumentIdentity,
+    /// Decides whether a language-server jump target opens, opens read-only
+    /// or is refused (`lsp.classifyNavigationTarget`).
+    ClassifyNavigationTarget,
+    /// Decides whether a go-to-declaration gesture opens the declaration or
+    /// shows its usages (`lsp.declarationOrUsages`).
+    DeclarationOrUsages,
+    /// Reduces an LSP snippet to insertion text (`lsp.plainSnippet`).
+    PlainSnippet,
+    /// Provides same-document fallback completions (`lsp.builtinCompletions`).
+    BuiltinCompletions,
+    /// Provides a same-document fallback hover (`lsp.builtinHover`).
+    BuiltinHover,
+    /// Provides same-document fallback navigation (`lsp.builtinNavigation`).
+    BuiltinNavigation,
+    /// Merges completion lists from prioritized providers (`lsp.mergeCompletions`).
+    MergeCompletions,
+    /// Decides whether a language server may start automatically (`lsp.activationPolicy`).
+    ActivationPolicy,
+    /// Filters, orders, and groups Problems tool-window diagnostics (`lsp.problems.query`).
+    ProblemsQuery,
+    /// Starts and initializes a managed language server (`lsp.startServer`).
+    StartServer,
+    /// Gracefully shuts down a managed server (`lsp.stopServer`).
+    StopServer,
+    /// Replaces the plugin settings a plugin-provided server reads
+    /// (`lsp.updateWorkspaceConfiguration`).
+    UpdateWorkspaceConfiguration,
+    /// Converts an absolute path to a file URI (`lsp.documentUri`).
+    DocumentUri,
+    /// Opens or updates a synchronized document (`lsp.syncDocument`).
+    SyncDocument,
+    /// Reports a successful native document save (`lsp.saveDocument`).
+    SaveDocument,
+    /// Publishes external workspace file changes (`lsp.workspaceFilesChanged`).
+    WorkspaceFilesChanged,
+    /// Closes a synchronized document (`lsp.closeDocument`).
+    CloseDocument,
+    /// Queues one semantic server request (`lsp.request`).
+    Request,
+    /// Queues one build-provider request (`lsp.buildRequest`).
+    BuildRequest,
+    /// Queues one VCS-provider request (`lsp.vcsRequest`).
+    VcsRequest,
+    /// Queues one toolchain-provider query (`lsp.toolchainRequest`).
+    ToolchainRequest,
+    /// Queues a shortcut import against a negotiated provider.
+    KeymapImportRequest,
+    /// Invokes one plugin function (`lsp.functionRequest`).
+    FunctionRequest,
+    /// Selects a registered function provider strictly inside one workspace.
+    FunctionProvider,
+    /// Replaces the plugins and workspace contexts the cross-plugin function
+    /// relay checks calls against (`lsp.configureFunctionRelay`).
+    ConfigureFunctionRelay,
+    /// Answers a plugin backend's host-service request (`lsp.hostResponse`).
+    HostResponse,
+    /// Sends a plugin backend one host notification (`lsp.hostNotify`).
+    HostNotify,
+    /// Sends a plugin-owned language server one request of its backend (`lsp.pluginServerRequest`).
+    PluginServerRequest,
+    /// Sends a plugin-owned language server one notification of its backend (`lsp.pluginServerNotify`).
+    PluginServerNotify,
+    /// Cancels one pending semantic request (`lsp.cancelOperation`).
+    CancelOperation,
+    /// Drains queued session events (`lsp.pollEvents`).
+    PollEvents,
+    /// Waits for queued session events (`lsp.waitEvents`).
+    WaitEvents,
+    /// Toggles upstream verbose trace for one session (`lsp.setDetailedDiagnostics`).
+    SetDetailedDiagnostics,
+    /// Stops and removes a server session (`lsp.destroyServer`).
+    DestroyServer,
+}
+
+#[derive(Debug, Clone)]
+/// The `runConfig.*` commands; their names live in [`CoreCommand::parse`].
+pub enum RunConfigCommand {
+    /// Validates layered run-configuration documents (`runConfig.inspect`).
+    Inspect,
+    /// Reads effective saved tool paths for one Provider root (`runConfig.projectToolchain`).
+    ProjectToolchain,
+    /// Regenerates detected run configurations (`runConfig.generate`).
+    Generate,
+    /// Formats argument vectors as reversible editor text (`runConfig.argumentText`).
+    ArgumentText,
+    /// Merges configuration layers and toolchains (`runConfig.resolve`).
+    Resolve,
+    /// Selects a configuration for a provider-supplied context identity.
+    SelectContextConfiguration,
+    /// Decides what a press on the title bar's Run or Debug button does (`runConfig.decideTitleAction`).
+    DecideTitleAction,
+    /// Persists editable run options (`runConfig.updateOptions`).
+    UpdateOptions,
+    /// Replaces generic local tool preferences while preserving existing Run data.
+    UpdateToolPreferences,
+    /// Prepares one complete run-configuration editor save (`runConfig.saveEditorChanges`).
+    SaveEditorChanges,
+    /// Adds a user-authored run configuration (`runConfig.createUserConfiguration`).
+    CreateUserConfiguration,
+    /// Produces the process plan for one configuration (`runConfig.createLaunchPlan`).
+    CreateLaunchPlan,
+    /// Resolves user choices for a provider-owned launch (`runConfig.providerLaunchInputs`).
+    ProviderLaunchInputs,
+}
+
+#[derive(Debug, Clone)]
+/// The `git.*` commands; their names live in [`CoreCommand::parse`].
+pub enum GitCommand {
+    /// Reads normalized repository and working-tree state (`git.status`).
+    Status,
+    /// Lists one level of a summarized untracked directory (`git.untrackedDirectory`).
+    UntrackedDirectory,
+    /// Reads HEAD and index preconditions for workspace commits (`git.commitState`).
+    CommitState,
+    /// Builds a reviewed multi-repository plan (`git.workspaceCommitPrepare`).
+    WorkspaceCommitPrepare,
+    /// Executes one guarded workspace commit/push (`git.workspaceCommitStep`).
+    WorkspaceCommitStep,
+    /// Classifies a bounded page of Git watcher paths (`git.classifyMetadataChanges`).
+    ClassifyMetadataChanges,
+    /// Resolves paths a Git-aware watcher must observe (`git.watchContext`).
+    WatchContext,
+    /// Lists worktrees registered for the repository (`git.worktrees`).
+    Worktrees,
+    /// Describes the checked-out branch or detached worktree for PR creation (`git.pullRequestContext`).
+    PullRequestContext,
+    /// Executes a caller-supplied argument vector without a shell (`git.command`).
+    Command,
+    /// Resolves the containing repository root without acquiring a write lease (`git.repositoryRoot`).
+    RepositoryRoot,
+    /// Resolves a file to its owning Git checkout (`git.resolveFileContext`).
+    ResolveFileContext,
+    /// Plans workspace status publication across successful and failed roots (`git.workspaceStatusMerge`).
+    WorkspaceStatusMerge,
+    /// Performs one supported Git mutation (`git.write`).
+    Write,
+    /// Plans whole-file rollback from Git change identities (`git.rollbackPlan`).
+    RollbackPlan,
+    /// Rechecks Git identities and plans rollback (`git.rollbackPrepare`).
+    RollbackPrepare,
+    /// Prepares the real index for an explicit selected-file commit.
+    PrepareCommitSelection,
+    /// Reconciles missing selected additions after deletion.
+    ReconcileDeletedSelection,
+    /// Reduces local ChangeList metadata and projects membership and commit scope.
+    Changelists,
+    /// Captures or applies one guarded Shelf layer (`git.shelf`).
+    Shelf,
+    /// Captures and validates AI commit evidence (`git.commitMessageContext`).
+    CommitMessageContext,
+    /// Projects retained Git console records without executing Git (`git.consolePresentation`).
+    ConsolePresentation,
+    /// Reads an optional remote URL without a visible command (`git.remoteUrl`).
+    RemoteUrl,
+    /// Plans Fetch arguments without launching Git or changing configuration (`git.fetchPlan`).
+    FetchPlan,
+    /// Resolves the executable Git will run without requiring a repository (`git.executable`).
+    Executable,
+    /// Inspects Git configuration and its sources (`git.executionInspect`).
+    ExecutionInspect,
+    /// Saves one explicitly selected configuration field (`git.executionConfigure`).
+    ExecutionConfigure,
+    /// Answers a currently owned authentication prompt (`git.authRespond`).
+    AuthRespond,
+    /// Inspects repository initialization and scoped commit identity.
+    RepositorySetup,
+    /// Initializes an existing folder outside any repository.
+    Initialize,
+    /// Writes or clears one explicitly scoped commit identity field.
+    ConfigureIdentity,
+    /// Reviews a local history mutation and its immutable checkout snapshot (`git.historyRewritePreview`).
+    HistoryRewritePreview,
+    /// Lists configured fetch remotes.
+    Remotes,
+    /// Lists tags with object and target identities.
+    Tags,
+    /// Parses a bounded HEAD snapshot without filesystem access.
+    ParseCheckoutMetadata,
+    /// Parses a bounded gitdir pointer without filesystem access.
+    ParseGitdirPointer,
+    /// Resolves action eligibility against the actual checkout history.
+    HistoryActionCapabilities,
+    /// Preview a linear local range after an unchanged base commit.
+    RebasePreview,
+    /// Start a reviewed native interactive rebase with a durable session.
+    RebaseStart,
+    /// Read the current checkout's last owned interactive rebase session.
+    RebaseSession,
+    /// Continue, skip, or abort an identified native rebase session.
+    RebaseControl,
+    /// Exports a lossless UTF-8 exchange patch (`git.patchExport`).
+    PatchExport,
+    /// Reviews a patch with a forward applicability check (`git.patchPreview`).
+    PatchPreview,
+    /// Applies a patch tied to its reviewed snapshot (`git.patchApply`).
+    PatchApply,
+    /// Builds a structured Git diff (`git.diff`).
+    Diff,
+    /// Parses a saved patch into validated per-file documents (`git.parsePatch`).
+    ParsePatch,
+    /// Applies a patch to the index or working tree (`git.apply`).
+    Apply,
+    /// Plans commit-review blocks and their Core-owned patches (`git.planDiffBlocks`).
+    PlanDiffBlocks,
+    /// Includes, excludes or rolls back one planned block (`git.applyDiffBlock`).
+    ApplyDiffBlock,
+    /// Stages one editor gutter change with its original bytes (`git.stageGutterChange`).
+    StageGutterChange,
+    /// Lists references and bounded commit history (`git.history`).
+    History,
+    /// Filters commit dates against explicit absolute bounds (`git.historyQuery`).
+    HistoryQuery,
+    /// Lists Git references without repeating commit history (`git.references`).
+    References,
+    /// Returns one cursor-based commit page (`git.historyPage`).
+    HistoryPage,
+    /// Releases an incremental history cursor (`git.historyCursorClose`).
+    HistoryCursorClose,
+    /// Locates one commit while appending bounded history pages (`git.historyLocate`).
+    HistoryLocate,
+    /// Cleans and validates a new branch name in loaded references (`git.branchNamePreview`).
+    BranchNamePreview,
+    /// Assigns palette slots to a page of ordered repository identities.
+    RepositoryColorAssignments,
+    /// Plans a branch Update or Pull from collected facts (`git.updatePlan`).
+    UpdatePlan,
+    /// Plans history refresh windows, page merges, and selection retention (`git.historyWindow`).
+    HistoryWindow,
+    /// Projects the commit graph's lanes, colors, routes, and labels (`git.graphProjection`).
+    GraphProjection,
+    /// Drops targets already covered by a selected untracked summary (`git.normalizeChangeTargets`).
+    NormalizeChangeTargets,
+    /// Validates an interactive rebase draft and derives its messages (`git.rebasePlanPreview`).
+    RebasePlanPreview,
+    /// Groups one kind of loaded references into an ordered tree (`git.referenceTree`).
+    ReferenceTree,
+    /// Resolves the destination and commits for a branch push (`git.pushPreview`).
+    PushPreview,
+    /// Resolves metadata for one commit (`git.commit`).
+    Commit,
+    /// Lists paths changed by one commit (`git.commitFiles`).
+    CommitFiles,
+    /// Compares a reference with the current checkout (`git.comparison`).
+    Comparison,
+    /// Lists repository stashes (`git.stashes`).
+    Stashes,
+    /// Finds edits that would block checkout (`git.checkoutPreflight`).
+    CheckoutPreflight,
+    /// Reports whether the tracked branch can fast-forward (`git.pullPreflight`).
+    PullPreflight,
+    /// Finds state that blocks merge, rebase, cherry-pick, or revert (`git.integrationPreflight`).
+    IntegrationPreflight,
+    /// Finds staged files containing conflict markers (`git.conflictMarkers`).
+    ConflictMarkers,
+    /// Inspects an interrupted sequential Git operation (`git.operationState`).
+    OperationState,
+    /// Returns normalized line attribution (`git.blame`).
+    Blame,
+    /// Traces which commits touched a snapshot line range (`git.lineHistory`).
+    LineHistory,
     /// Previews a non-destructive GitHub pull-request checkout.
-    GitPullRequestCheckoutPreview,
+    PullRequestCheckoutPreview,
     /// Fetches and creates the reviewed pull-request branch without resetting refs.
-    GitPullRequestCheckout,
+    PullRequestCheckout,
+}
+
+#[derive(Debug, Clone)]
+/// The `remote.*` commands; their names live in [`CoreCommand::parse`].
+pub enum RemoteCommand {
+    /// Checks that an SSH connection reaches a supported host (`remote.probe`).
+    Probe,
+    /// Answers a prompt relayed by a running `remote.probe` (`remote.authRespond`).
+    AuthRespond,
+    /// Opens a remote connection, installing the server when needed (`remote.connect`).
+    Connect,
+    /// Lists a directory over an open remote connection (`remote.readDir`).
+    ReadDir,
+    /// Closes a remote connection (`remote.disconnect`).
+    Disconnect,
+    /// Closes every open remote connection at application exit (`remote.closeAll`).
+    CloseAll,
+    /// Reads a file over an open remote connection (`remote.readFile`).
+    ReadFile,
+    /// Saves a file over an open remote connection (`remote.writeFile`).
+    WriteFile,
+    /// Performs a non-streaming operation on an existing workspace host.
+    HostRequest,
+    /// Owns a remote process and relays output until it exits or is cancelled.
+    RunProcess,
+    /// Captures a short remote process with explicit time and output budgets.
+    CaptureProcess,
+    /// Owns a remote PTY and relays output until it exits or is cancelled.
+    RunTerminal,
+    /// Owns a host watch and relays changes until cancellation or root removal.
+    RunWatch,
+    /// Streams a native source into integrity-checked host file staging.
+    UploadFile,
+    /// Returns cached handshake capabilities of one connection.
+    HostInfo,
+}
+
+#[derive(Debug, Clone)]
+/// The `diagnostics.*` commands; their names live in [`CoreCommand::parse`].
+pub enum DiagnosticsCommand {
     /// Redacts credentials, tokens, and home-directory paths from diagnostic text (`diagnostics.redactText`).
-    DiagnosticsRedactText,
+    RedactText,
     /// Normalizes a bounded, redacted application log event (`diagnostics.prepareLogEvent`).
-    DiagnosticsPrepareLogEvent,
+    PrepareLogEvent,
     /// Filters and merges bounded host-collected log tails (`diagnostics.queryLogs`).
-    DiagnosticsQueryLogs,
+    QueryLogs,
     /// Encodes structured log events independently in one batch (`diagnostics.encodeLogBatch`).
-    DiagnosticsEncodeLogBatch,
+    EncodeLogBatch,
     /// Drains bounded process-owned Core log facts (`diagnostics.drainCoreEvents`).
-    DiagnosticsDrainCoreEvents,
+    DrainCoreEvents,
     /// Selects which DEBUG Core facts the host will write (`diagnostics.configureCoreEvents`).
-    DiagnosticsConfigureCoreEvents,
+    ConfigureCoreEvents,
     /// Records host-observed declarative contribution outcomes (`diagnostics.recordPluginOperation`).
-    DiagnosticsRecordPluginOperation,
+    RecordPluginOperation,
     /// Merges structured and legacy log evidence (`diagnostics.queryLogsV2`).
-    DiagnosticsQueryLogsV2,
+    QueryLogsV2,
     /// Parses filter terms and UTF-16 diagnostics (`diagnostics.parseLogFilter`).
-    DiagnosticsParseLogFilter,
+    ParseLogFilter,
     /// Composes a context-menu predicate (`diagnostics.composeLogFilter`).
-    DiagnosticsComposeLogFilter,
+    ComposeLogFilter,
     /// Formats canonical redacted evidence (`diagnostics.formatLogRecords`).
-    DiagnosticsFormatLogRecords,
+    FormatLogRecords,
     /// Plans bounded native tail reads (`diagnostics.planLogCollection`).
-    DiagnosticsPlanLogCollection,
+    PlanLogCollection,
     /// Plans log cleanup without filesystem access (`diagnostics.planLogRetention`).
-    DiagnosticsPlanLogRetention,
+    PlanLogRetention,
     /// Validates a logical channel and resolves its session-relative path (`diagnostics.resolveLogChannel`).
-    DiagnosticsResolveLogChannel,
+    ResolveLogChannel,
     /// Resolves the engine routing identity without starting a session (`diagnostics.resolveEngineLogSubject`).
-    DiagnosticsResolveEngineLogSubject,
+    ResolveEngineLogSubject,
     /// Shapes a deterministic diagnostic bundle manifest from host-gathered facts (`diagnostics.buildManifest`).
-    DiagnosticsBuildManifest,
+    BuildManifest,
 }
 
 impl CoreCommand {
@@ -812,115 +912,163 @@ impl CoreCommand {
         match value {
             "core.ping" => Some(Self::Ping),
             "ideHost.control" => Some(Self::IdeHostControl),
-            "ai.commitInputBudget" => Some(Self::AiCommitInputBudget),
-            "ai.planCommit" => Some(Self::AiPlanCommit),
-            "ai.decodeCommitMessage" => Some(Self::AiDecodeCommitMessage),
-            "ai.configuration.sources" => Some(Self::AiConfigurationSources),
-            "ai.configuration.parse" => Some(Self::AiConfigurationParse),
-            "ai.pullRequest.plan" => Some(Self::AiPullRequestPlan),
-            "ai.pullRequest.decode" => Some(Self::AiPullRequestDecode),
-            "ai.inlineEdit.plan" => Some(Self::AiInlineEditPlan),
-            "ai.inlineEdit.decode" => Some(Self::AiInlineEditDecode),
-            "plugins.declarative.validate" => Some(Self::PluginsDeclarativeValidate),
-            "plugins.nativeUI.validateData" => Some(Self::PluginsNativeUIValidateData),
-            "plugins.web.open" => Some(Self::PluginsWebOpen),
-            "plugins.web.close" => Some(Self::PluginsWebClose),
-            "plugins.web.resource" => Some(Self::PluginsWebResource),
-            "plugins.web.document" => Some(Self::PluginsWebDocument),
-            "plugins.web.request" => Some(Self::PluginsWebRequest),
-            "plugins.web.reply" => Some(Self::PluginsWebReply),
-            "plugins.web.event" => Some(Self::PluginsWebEvent),
-            "plugins.declarative.runPlan" => Some(Self::PluginsDeclarativeRunPlan),
-            "plugins.declarative.discoverTests" => Some(Self::PluginsDeclarativeDiscoverTests),
-            "plugins.declarative.testPlan" => Some(Self::PluginsDeclarativeTestPlan),
-            "plugins.declarative.languageServerLaunchPlan" => {
-                Some(Self::PluginsDeclarativeLanguageServerLaunchPlan)
+            "ai.commitInputBudget" => Some(Self::Ai(AiCommand::CommitInputBudget)),
+            "ai.planCommit" => Some(Self::Ai(AiCommand::PlanCommit)),
+            "ai.decodeCommitMessage" => Some(Self::Ai(AiCommand::DecodeCommitMessage)),
+            "ai.configuration.sources" => Some(Self::Ai(AiCommand::ConfigurationSources)),
+            "ai.configuration.parse" => Some(Self::Ai(AiCommand::ConfigurationParse)),
+            "ai.pullRequest.plan" => Some(Self::Ai(AiCommand::PullRequestPlan)),
+            "ai.pullRequest.decode" => Some(Self::Ai(AiCommand::PullRequestDecode)),
+            "ai.inlineEdit.plan" => Some(Self::Ai(AiCommand::InlineEditPlan)),
+            "ai.inlineEdit.decode" => Some(Self::Ai(AiCommand::InlineEditDecode)),
+            "plugins.declarative.validate" => {
+                Some(Self::Plugins(PluginsCommand::DeclarativeValidate))
             }
+            "plugins.nativeUI.validateData" => {
+                Some(Self::Plugins(PluginsCommand::NativeUIValidateData))
+            }
+            "plugins.web.open" => Some(Self::Plugins(PluginsCommand::WebOpen)),
+            "plugins.web.close" => Some(Self::Plugins(PluginsCommand::WebClose)),
+            "plugins.web.resource" => Some(Self::Plugins(PluginsCommand::WebResource)),
+            "plugins.web.document" => Some(Self::Plugins(PluginsCommand::WebDocument)),
+            "plugins.web.request" => Some(Self::Plugins(PluginsCommand::WebRequest)),
+            "plugins.web.reply" => Some(Self::Plugins(PluginsCommand::WebReply)),
+            "plugins.web.event" => Some(Self::Plugins(PluginsCommand::WebEvent)),
+            "plugins.declarative.runPlan" => {
+                Some(Self::Plugins(PluginsCommand::DeclarativeRunPlan))
+            }
+            "plugins.declarative.discoverTests" => {
+                Some(Self::Plugins(PluginsCommand::DeclarativeDiscoverTests))
+            }
+            "plugins.declarative.testPlan" => {
+                Some(Self::Plugins(PluginsCommand::DeclarativeTestPlan))
+            }
+            "plugins.declarative.languageServerLaunchPlan" => Some(Self::Plugins(
+                PluginsCommand::DeclarativeLanguageServerLaunchPlan,
+            )),
             "plugins.languageServers.decodeLaunch" => {
-                Some(Self::PluginsLanguageServersDecodeLaunch)
+                Some(Self::Plugins(PluginsCommand::LanguageServersDecodeLaunch))
             }
             "plugins.languageServers.stateRetention" => {
-                Some(Self::PluginsLanguageServersStateRetention)
+                Some(Self::Plugins(PluginsCommand::LanguageServersStateRetention))
             }
-            "plugins.contentProviders.decode" => Some(Self::PluginsContentProvidersDecode),
-            "debug.adapters.startArguments" => Some(Self::DebugAdaptersStartArguments),
-            "debug.validateAdapterEndpoint" => Some(Self::DebugValidateAdapterEndpoint),
-            "debug.adapters.executablePlan" => Some(Self::DebugAdaptersExecutablePlan),
-            "debug.transport.policy" => Some(Self::DebugTransportPolicy),
-            "debug.transport.handle" => Some(Self::DebugTransportHandle),
-            "debug.transport.release" => Some(Self::DebugTransportRelease),
-            "plugins.declarative.resolveSettings" => Some(Self::PluginsDeclarativeResolveSettings),
-            "plugins.settings.catalog" => Some(Self::PluginsSettingsCatalog),
-            "plugins.settings.navigation" => Some(Self::PluginsSettingsNavigation),
-            "plugins.settings.delivery" => Some(Self::PluginsSettingsDelivery),
-            "plugins.declarative.settingsState" => Some(Self::PluginsDeclarativeSettingsState),
+            "plugins.contentProviders.decode" => {
+                Some(Self::Plugins(PluginsCommand::ContentProvidersDecode))
+            }
+            "debug.adapters.startArguments" => {
+                Some(Self::Debug(DebugCommand::AdaptersStartArguments))
+            }
+            "debug.validateAdapterEndpoint" => {
+                Some(Self::Debug(DebugCommand::ValidateAdapterEndpoint))
+            }
+            "debug.adapters.executablePlan" => {
+                Some(Self::Debug(DebugCommand::AdaptersExecutablePlan))
+            }
+            "debug.transport.policy" => Some(Self::Debug(DebugCommand::TransportPolicy)),
+            "debug.transport.handle" => Some(Self::Debug(DebugCommand::TransportHandle)),
+            "debug.transport.release" => Some(Self::Debug(DebugCommand::TransportRelease)),
+            "plugins.declarative.resolveSettings" => {
+                Some(Self::Plugins(PluginsCommand::DeclarativeResolveSettings))
+            }
+            "plugins.settings.catalog" => Some(Self::Plugins(PluginsCommand::SettingsCatalog)),
+            "plugins.settings.navigation" => {
+                Some(Self::Plugins(PluginsCommand::SettingsNavigation))
+            }
+            "plugins.settings.delivery" => Some(Self::Plugins(PluginsCommand::SettingsDelivery)),
+            "plugins.declarative.settingsState" => {
+                Some(Self::Plugins(PluginsCommand::DeclarativeSettingsState))
+            }
             "plugins.declarative.settingsActionPlan" => {
-                Some(Self::PluginsDeclarativeSettingsActionPlan)
+                Some(Self::Plugins(PluginsCommand::DeclarativeSettingsActionPlan))
             }
-            "plugins.installed.select" => Some(Self::PluginsInstalledSelect),
-            "plugins.declarative.editSettings" => Some(Self::PluginsDeclarativeEditSettings),
-            "plugins.declarative.workspaceConfiguration" => {
-                Some(Self::PluginsDeclarativeWorkspaceConfiguration)
+            "plugins.installed.select" => Some(Self::Plugins(PluginsCommand::InstalledSelect)),
+            "plugins.declarative.editSettings" => {
+                Some(Self::Plugins(PluginsCommand::DeclarativeEditSettings))
             }
-            "plugins.declarative.decodeGrammar" => Some(Self::PluginsDeclarativeDecodeGrammar),
-            "plugins.editorActions.decode" => Some(Self::PluginsEditorActionsDecode),
-            "plugins.hostApi.describe" => Some(Self::PluginsHostApiDescribe),
-            "plugins.hostApi.authorize" => Some(Self::PluginsHostApiAuthorize),
-            "plugins.editorProviders.decode" => Some(Self::PluginsEditorProvidersDecode),
-            "keymap.decodeImport" => Some(Self::KeymapDecodeImport),
-            "keymap.planImportSources" => Some(Self::KeymapPlanImportSources),
-            "keymap.planImportBindings" => Some(Self::KeymapPlanImportBindings),
-            "debug.startOrContinue" => Some(Self::DebugStartOrContinue),
-            "toolchains.registry" => Some(Self::ToolchainsRegistry),
-            "toolchains.decodeReply" => Some(Self::ToolchainsDecodeReply),
-            "toolchains.failureReply" => Some(Self::ToolchainsFailureReply),
-            "toolchains.resolvePins" => Some(Self::ToolchainsResolvePins),
-            "toolchains.editPins" => Some(Self::ToolchainsEditPins),
-            "toolchains.pinStoragePlan" => Some(Self::ToolchainsPinStoragePlan),
-            "toolchains.decodePinDocument" => Some(Self::ToolchainsDecodePinDocument),
-            "toolchains.editPinSources" => Some(Self::ToolchainsEditPinSources),
-            "toolchains.resolveConsumerPreferences" => {
-                Some(Self::ToolchainsResolveConsumerPreferences)
+            "plugins.declarative.workspaceConfiguration" => Some(Self::Plugins(
+                PluginsCommand::DeclarativeWorkspaceConfiguration,
+            )),
+            "plugins.declarative.decodeGrammar" => {
+                Some(Self::Plugins(PluginsCommand::DeclarativeDecodeGrammar))
             }
-            "toolchains.editConsumerPreferences" => Some(Self::ToolchainsEditConsumerPreferences),
-            "toolchains.resolve" => Some(Self::ToolchainsResolve),
-            "toolchains.checkVersion" => Some(Self::ToolchainsCheckVersion),
-            "toolchains.discoveryPlan" => Some(Self::ToolchainsDiscoveryPlan),
-            "toolchains.candidates" => Some(Self::ToolchainsCandidates),
-            "toolchains.instantiateLaunch" => Some(Self::ToolchainsInstantiateLaunch),
+            "plugins.editorActions.decode" => {
+                Some(Self::Plugins(PluginsCommand::EditorActionsDecode))
+            }
+            "plugins.hostApi.describe" => Some(Self::Plugins(PluginsCommand::HostApiDescribe)),
+            "plugins.hostApi.authorize" => Some(Self::Plugins(PluginsCommand::HostApiAuthorize)),
+            "plugins.editorProviders.decode" => {
+                Some(Self::Plugins(PluginsCommand::EditorProvidersDecode))
+            }
+            "keymap.decodeImport" => Some(Self::Keymap(KeymapCommand::DecodeImport)),
+            "keymap.planImportSources" => Some(Self::Keymap(KeymapCommand::PlanImportSources)),
+            "keymap.planImportBindings" => Some(Self::Keymap(KeymapCommand::PlanImportBindings)),
+            "debug.startOrContinue" => Some(Self::Debug(DebugCommand::StartOrContinue)),
+            "toolchains.registry" => Some(Self::Toolchains(ToolchainsCommand::Registry)),
+            "toolchains.decodeReply" => Some(Self::Toolchains(ToolchainsCommand::DecodeReply)),
+            "toolchains.failureReply" => Some(Self::Toolchains(ToolchainsCommand::FailureReply)),
+            "toolchains.resolvePins" => Some(Self::Toolchains(ToolchainsCommand::ResolvePins)),
+            "toolchains.editPins" => Some(Self::Toolchains(ToolchainsCommand::EditPins)),
+            "toolchains.pinStoragePlan" => {
+                Some(Self::Toolchains(ToolchainsCommand::PinStoragePlan))
+            }
+            "toolchains.decodePinDocument" => {
+                Some(Self::Toolchains(ToolchainsCommand::DecodePinDocument))
+            }
+            "toolchains.editPinSources" => {
+                Some(Self::Toolchains(ToolchainsCommand::EditPinSources))
+            }
+            "toolchains.resolveConsumerPreferences" => Some(Self::Toolchains(
+                ToolchainsCommand::ResolveConsumerPreferences,
+            )),
+            "toolchains.editConsumerPreferences" => {
+                Some(Self::Toolchains(ToolchainsCommand::EditConsumerPreferences))
+            }
+            "toolchains.resolve" => Some(Self::Toolchains(ToolchainsCommand::Resolve)),
+            "toolchains.checkVersion" => Some(Self::Toolchains(ToolchainsCommand::CheckVersion)),
+            "toolchains.discoveryPlan" => Some(Self::Toolchains(ToolchainsCommand::DiscoveryPlan)),
+            "toolchains.candidates" => Some(Self::Toolchains(ToolchainsCommand::Candidates)),
+            "toolchains.instantiateLaunch" => {
+                Some(Self::Toolchains(ToolchainsCommand::InstantiateLaunch))
+            }
             "run.decodeStart" => Some(Self::RunDecodeStart),
-            "debug.decodeBackendConfiguration" => Some(Self::DebugDecodeBackendConfiguration),
+            "debug.decodeBackendConfiguration" => {
+                Some(Self::Debug(DebugCommand::DecodeBackendConfiguration))
+            }
             "outputLinks.match" => Some(Self::OutputLinksMatch),
             "outputLinks.decodeResolution" => Some(Self::OutputLinksDecodeResolution),
-            "build.detect" => Some(Self::BuildDetect),
-            "build.projectOptions" => Some(Self::BuildProjectOptions),
-            "build.resolveStoredOptions" => Some(Self::BuildResolveStoredOptions),
-            "build.editStoredOption" => Some(Self::BuildEditStoredOption),
-            "build.invocationPlan" => Some(Self::BuildInvocationPlan),
-            "build.checkToolVersion" => Some(Self::BuildCheckToolVersion),
-            "build.resolveOptions" => Some(Self::BuildResolveOptions),
-            "build.modelPlan" => Some(Self::BuildModelPlan),
-            "build.taskPlan" => Some(Self::BuildTaskPlan),
-            "build.testPlan" => Some(Self::BuildTestPlan),
-            "build.prepareDebugPlan" => Some(Self::BuildPrepareDebugPlan),
-            "build.decodeDebugPreparation" => Some(Self::BuildDecodeDebugPreparation),
-            "build.resolveModelInputs" => Some(Self::BuildResolveModelInputs),
-            "build.configurationPlan" => Some(Self::BuildConfigurationPlan),
-            "build.configurationEditPlan" => Some(Self::BuildConfigurationEditPlan),
-            "build.decodeConfigurationEdit" => Some(Self::BuildDecodeConfigurationEdit),
-            "build.decodeConfiguration" => Some(Self::BuildDecodeConfiguration),
-            "build.prepareRunPlan" => Some(Self::BuildPrepareRunPlan),
-            "build.decodeRunPreparation" => Some(Self::BuildDecodeRunPreparation),
-            "build.testDiscoveryPlan" => Some(Self::BuildTestDiscoveryPlan),
-            "build.decodeTestDiscovery" => Some(Self::BuildDecodeTestDiscovery),
-            "build.dependencyPlan" => Some(Self::BuildDependencyPlan),
-            "build.decodeModel" => Some(Self::BuildDecodeModel),
-            "build.decodeTestResults" => Some(Self::BuildDecodeTestResults),
-            "build.decodeDiagnostics" => Some(Self::BuildDecodeDiagnostics),
-            "build.decodeDependencies" => Some(Self::BuildDecodeDependencies),
-            "build.syncFingerprint" => Some(Self::BuildSyncFingerprint),
-            "build.resolveTestRunOutcome" => Some(Self::BuildResolveTestRunOutcome),
-            "build.mergeTestOutcomes" => Some(Self::BuildMergeTestOutcomes),
+            "build.detect" => Some(Self::Build(BuildCommand::Detect)),
+            "build.projectOptions" => Some(Self::Build(BuildCommand::ProjectOptions)),
+            "build.resolveStoredOptions" => Some(Self::Build(BuildCommand::ResolveStoredOptions)),
+            "build.editStoredOption" => Some(Self::Build(BuildCommand::EditStoredOption)),
+            "build.invocationPlan" => Some(Self::Build(BuildCommand::InvocationPlan)),
+            "build.checkToolVersion" => Some(Self::Build(BuildCommand::CheckToolVersion)),
+            "build.resolveOptions" => Some(Self::Build(BuildCommand::ResolveOptions)),
+            "build.modelPlan" => Some(Self::Build(BuildCommand::ModelPlan)),
+            "build.taskPlan" => Some(Self::Build(BuildCommand::TaskPlan)),
+            "build.testPlan" => Some(Self::Build(BuildCommand::TestPlan)),
+            "build.prepareDebugPlan" => Some(Self::Build(BuildCommand::PrepareDebugPlan)),
+            "build.decodeDebugPreparation" => {
+                Some(Self::Build(BuildCommand::DecodeDebugPreparation))
+            }
+            "build.resolveModelInputs" => Some(Self::Build(BuildCommand::ResolveModelInputs)),
+            "build.configurationPlan" => Some(Self::Build(BuildCommand::ConfigurationPlan)),
+            "build.configurationEditPlan" => Some(Self::Build(BuildCommand::ConfigurationEditPlan)),
+            "build.decodeConfigurationEdit" => {
+                Some(Self::Build(BuildCommand::DecodeConfigurationEdit))
+            }
+            "build.decodeConfiguration" => Some(Self::Build(BuildCommand::DecodeConfiguration)),
+            "build.prepareRunPlan" => Some(Self::Build(BuildCommand::PrepareRunPlan)),
+            "build.decodeRunPreparation" => Some(Self::Build(BuildCommand::DecodeRunPreparation)),
+            "build.testDiscoveryPlan" => Some(Self::Build(BuildCommand::TestDiscoveryPlan)),
+            "build.decodeTestDiscovery" => Some(Self::Build(BuildCommand::DecodeTestDiscovery)),
+            "build.dependencyPlan" => Some(Self::Build(BuildCommand::DependencyPlan)),
+            "build.decodeModel" => Some(Self::Build(BuildCommand::DecodeModel)),
+            "build.decodeTestResults" => Some(Self::Build(BuildCommand::DecodeTestResults)),
+            "build.decodeDiagnostics" => Some(Self::Build(BuildCommand::DecodeDiagnostics)),
+            "build.decodeDependencies" => Some(Self::Build(BuildCommand::DecodeDependencies)),
+            "build.syncFingerprint" => Some(Self::Build(BuildCommand::SyncFingerprint)),
+            "build.resolveTestRunOutcome" => Some(Self::Build(BuildCommand::ResolveTestRunOutcome)),
+            "build.mergeTestOutcomes" => Some(Self::Build(BuildCommand::MergeTestOutcomes)),
             "vcs.detectRoots" => Some(Self::VcsDetectRoots),
             "vcs.ownerOf" => Some(Self::VcsOwnerOf),
             "vcs.decodeReply" => Some(Self::VcsDecodeReply),
@@ -929,32 +1077,54 @@ impl CoreCommand {
             "project.generationPlan" => Some(Self::ProjectGenerationPlan),
             "project.checkName" => Some(Self::ProjectCheckName),
             "project.extractArchive" => Some(Self::ProjectExtractArchive),
-            "plugins.marketplace.validateIndex" => Some(Self::PluginsMarketplaceValidateIndex),
-            "plugins.marketplace.resolveSource" => Some(Self::PluginsMarketplaceResolveSource),
-            "plugins.marketplace.installReview" => Some(Self::PluginsMarketplaceInstallReview),
-            "workspace.snapshot" => Some(Self::WorkspaceSnapshot),
-            "workspace.releaseIndexing" => Some(Self::WorkspaceReleaseIndexing),
-            "workspace.configureIndexing" => Some(Self::WorkspaceConfigureIndexing),
-            "workspace.refreshIndexing" => Some(Self::WorkspaceRefreshIndexing),
-            "workspace.filterChanges" => Some(Self::WorkspaceFilterChanges),
-            "workspace.listDirectories" => Some(Self::WorkspaceListDirectories),
-            "workspace.orderEntries" => Some(Self::WorkspaceOrderEntries),
-            "workspace.rankNames" => Some(Self::WorkspaceRankNames),
-            "workspace.planDuplicate" => Some(Self::WorkspacePlanDuplicate),
-            "workspace.planPaste" => Some(Self::WorkspacePlanPaste),
-            "workspace.reduceDirectoryAction" => Some(Self::WorkspaceReduceDirectoryAction),
-            "workspace.relocateDirectoryRules" => Some(Self::WorkspaceRelocateDirectoryRules),
-            "workspace.repositories" => Some(Self::WorkspaceRepositories),
-            "workspace.recentProjects.reduce" => Some(Self::WorkspaceRecentProjectsReduce),
-            "workspace.searchIndex.warm" => Some(Self::WorkspaceSearchIndexWarm),
-            "workspace.searchIndex.update" => Some(Self::WorkspaceSearchIndexUpdate),
-            "workspace.searchIndex.invalidate" => Some(Self::WorkspaceSearchIndexInvalidate),
+            "plugins.marketplace.validateIndex" => {
+                Some(Self::Plugins(PluginsCommand::MarketplaceValidateIndex))
+            }
+            "plugins.marketplace.resolveSource" => {
+                Some(Self::Plugins(PluginsCommand::MarketplaceResolveSource))
+            }
+            "plugins.marketplace.installReview" => {
+                Some(Self::Plugins(PluginsCommand::MarketplaceInstallReview))
+            }
+            "workspace.snapshot" => Some(Self::Workspace(WorkspaceCommand::Snapshot)),
+            "workspace.releaseIndexing" => Some(Self::Workspace(WorkspaceCommand::ReleaseIndexing)),
+            "workspace.configureIndexing" => {
+                Some(Self::Workspace(WorkspaceCommand::ConfigureIndexing))
+            }
+            "workspace.refreshIndexing" => Some(Self::Workspace(WorkspaceCommand::RefreshIndexing)),
+            "workspace.filterChanges" => Some(Self::Workspace(WorkspaceCommand::FilterChanges)),
+            "workspace.listDirectories" => Some(Self::Workspace(WorkspaceCommand::ListDirectories)),
+            "workspace.orderEntries" => Some(Self::Workspace(WorkspaceCommand::OrderEntries)),
+            "workspace.rankNames" => Some(Self::Workspace(WorkspaceCommand::RankNames)),
+            "workspace.planDuplicate" => Some(Self::Workspace(WorkspaceCommand::PlanDuplicate)),
+            "workspace.planPaste" => Some(Self::Workspace(WorkspaceCommand::PlanPaste)),
+            "workspace.reduceDirectoryAction" => {
+                Some(Self::Workspace(WorkspaceCommand::ReduceDirectoryAction))
+            }
+            "workspace.relocateDirectoryRules" => {
+                Some(Self::Workspace(WorkspaceCommand::RelocateDirectoryRules))
+            }
+            "workspace.repositories" => Some(Self::Workspace(WorkspaceCommand::Repositories)),
+            "workspace.recentProjects.reduce" => {
+                Some(Self::Workspace(WorkspaceCommand::RecentProjectsReduce))
+            }
+            "workspace.searchIndex.warm" => {
+                Some(Self::Workspace(WorkspaceCommand::SearchIndexWarm))
+            }
+            "workspace.searchIndex.update" => {
+                Some(Self::Workspace(WorkspaceCommand::SearchIndexUpdate))
+            }
+            "workspace.searchIndex.invalidate" => {
+                Some(Self::Workspace(WorkspaceCommand::SearchIndexInvalidate))
+            }
             "search.actions" => Some(Self::SearchActions),
-            "workspace.search" => Some(Self::WorkspaceSearch),
-            "workspace.searchEverywhere" => Some(Self::WorkspaceSearchEverywhere),
-            "workspace.replacePreview" => Some(Self::WorkspaceReplacePreview),
-            "workspace.replaceText" => Some(Self::WorkspaceReplaceText),
-            "workspace.searchTextBatch" => Some(Self::WorkspaceSearchTextBatch),
+            "workspace.search" => Some(Self::Workspace(WorkspaceCommand::Search)),
+            "workspace.searchEverywhere" => {
+                Some(Self::Workspace(WorkspaceCommand::SearchEverywhere))
+            }
+            "workspace.replacePreview" => Some(Self::Workspace(WorkspaceCommand::ReplacePreview)),
+            "workspace.replaceText" => Some(Self::Workspace(WorkspaceCommand::ReplaceText)),
+            "workspace.searchTextBatch" => Some(Self::Workspace(WorkspaceCommand::SearchTextBatch)),
             "file.read" => Some(Self::FileRead),
             "file.write" => Some(Self::FileWrite),
             "text.decode" => Some(Self::TextDecode),
@@ -963,16 +1133,16 @@ impl CoreCommand {
             "document.classifyText" => Some(Self::DocumentClassifyText),
             "document.planSaveBatch" => Some(Self::DocumentPlanSaveBatch),
             "document.reduceSaveBatch" => Some(Self::DocumentReduceSaveBatch),
-            "history.record" => Some(Self::HistoryRecord),
-            "history.entries" => Some(Self::HistoryEntries),
-            "history.content" => Some(Self::HistoryContent),
-            "history.relocate" => Some(Self::HistoryRelocate),
-            "history.planEvent" => Some(Self::HistoryPlanEvent),
-            "history.rename" => Some(Self::HistoryRename),
-            "history.delete" => Some(Self::HistoryDelete),
-            "history.ignorePreview" => Some(Self::HistoryIgnorePreview),
-            "history.usage" => Some(Self::HistoryUsage),
-            "history.clear" => Some(Self::HistoryClear),
+            "history.record" => Some(Self::History(HistoryCommand::Record)),
+            "history.entries" => Some(Self::History(HistoryCommand::Entries)),
+            "history.content" => Some(Self::History(HistoryCommand::Content)),
+            "history.relocate" => Some(Self::History(HistoryCommand::Relocate)),
+            "history.planEvent" => Some(Self::History(HistoryCommand::PlanEvent)),
+            "history.rename" => Some(Self::History(HistoryCommand::Rename)),
+            "history.delete" => Some(Self::History(HistoryCommand::Delete)),
+            "history.ignorePreview" => Some(Self::History(HistoryCommand::IgnorePreview)),
+            "history.usage" => Some(Self::History(HistoryCommand::Usage)),
+            "history.clear" => Some(Self::History(HistoryCommand::Clear)),
             "diff.compareTexts" => Some(Self::DiffCompareTexts),
             "execution.resolveEnvironment" => Some(Self::ExecutionResolveEnvironment),
             "execution.resolveSearchPath" => Some(Self::ExecutionResolveSearchPath),
@@ -980,195 +1150,235 @@ impl CoreCommand {
             "processLifecycle.inventory" => Some(Self::ProcessLifecycleInventory),
             "processLifecycle.settle" => Some(Self::ProcessLifecycleSettle),
             "markdown.render" => Some(Self::MarkdownRender),
-            "keymap.parseContext" => Some(Self::KeymapParseContext),
-            "keymap.evaluateContext" => Some(Self::KeymapEvaluateContext),
-            "keymap.analyzeConflicts" => Some(Self::KeymapAnalyzeConflicts),
-            "keymap.modifierGestureStep" => Some(Self::KeymapModifierGestureStep),
-            "editor.workbenchState.reduce" => Some(Self::EditorWorkbenchStateReduce),
-            "workspace.classifyVisibility" => Some(Self::WorkspaceClassifyVisibility),
-            "workspace.visibilityDefaults" => Some(Self::WorkspaceVisibilityDefaults),
+            "keymap.parseContext" => Some(Self::Keymap(KeymapCommand::ParseContext)),
+            "keymap.evaluateContext" => Some(Self::Keymap(KeymapCommand::EvaluateContext)),
+            "keymap.analyzeConflicts" => Some(Self::Keymap(KeymapCommand::AnalyzeConflicts)),
+            "keymap.modifierGestureStep" => Some(Self::Keymap(KeymapCommand::ModifierGestureStep)),
+            "editor.workbenchState.reduce" => {
+                Some(Self::Editor(EditorCommand::WorkbenchStateReduce))
+            }
+            "workspace.classifyVisibility" => {
+                Some(Self::Workspace(WorkspaceCommand::ClassifyVisibility))
+            }
+            "workspace.visibilityDefaults" => {
+                Some(Self::Workspace(WorkspaceCommand::VisibilityDefaults))
+            }
             "workbench.chromeLayout.reduce" => Some(Self::WorkbenchChromeLayoutReduce),
             "terminal.parseLinkTarget" => Some(Self::TerminalParseLinkTarget),
-            "debug.createSession" => Some(Self::DebugCreateSession),
-            "debug.launch" => Some(Self::DebugLaunch),
-            "debug.steppingFilters" => Some(Self::DebugSteppingFilters),
-            "debug.relocateBreakpoints" => Some(Self::DebugRelocateBreakpoints),
-            "debug.planVariablePage" => Some(Self::DebugPlanVariablePage),
-            "debug.reduceVariablePage" => Some(Self::DebugReduceVariablePage),
-            "debug.planDisassemblyWindow" => Some(Self::DebugPlanDisassemblyWindow),
-            "debug.reduceDisassemblyPage" => Some(Self::DebugReduceDisassemblyPage),
-            "debug.setBreakpoints" => Some(Self::DebugSetBreakpoints),
-            "debug.setExceptionBreakpoints" => Some(Self::DebugSetExceptionBreakpoints),
-            "debug.setFunctionBreakpoints" => Some(Self::DebugSetFunctionBreakpoints),
-            "debug.setInstructionBreakpoints" => Some(Self::DebugSetInstructionBreakpoints),
-            "debug.dataBreakpointInfo" => Some(Self::DebugDataBreakpointInfo),
-            "debug.setDataBreakpoints" => Some(Self::DebugSetDataBreakpoints),
-            "debug.setBreakpointsMuted" => Some(Self::DebugSetBreakpointsMuted),
-            "debug.planMemoryWindow" => Some(Self::DebugPlanMemoryWindow),
-            "debug.locateMemoryWindow" => Some(Self::DebugLocateMemoryWindow),
-            "debug.setVariable" => Some(Self::DebugSetVariable),
-            "debug.cancelOperation" => Some(Self::DebugCancelOperation),
-            "debug.execute" => Some(Self::DebugExecute),
-            "debug.inspect" => Some(Self::DebugInspect),
-            "debug.receive" => Some(Self::DebugReceive),
-            "debug.runInTerminalResponse" => Some(Self::DebugRunInTerminalResponse),
-            "debug.startDebuggingResponse" => Some(Self::DebugStartDebuggingResponse),
-            "debug.disconnect" => Some(Self::DebugDisconnect),
-            "debug.destroySession" => Some(Self::DebugDestroySession),
-            "lsp.applyTextEdits" => Some(Self::LspApplyTextEdits),
-            "lsp.planWorkspaceEdit" => Some(Self::LspPlanWorkspaceEdit),
-            "lsp.documentIdentity" => Some(Self::LspDocumentIdentity),
-            "lsp.classifyNavigationTarget" => Some(Self::LspClassifyNavigationTarget),
-            "lsp.declarationOrUsages" => Some(Self::LspDeclarationOrUsages),
-            "editor.lineEdit" => Some(Self::EditorLineEdit),
-            "editor.find" => Some(Self::EditorFind),
-            "editor.preferences.resolve" => Some(Self::EditorPreferencesResolve),
-            "editor.recent.reduce" => Some(Self::EditorRecentReduce),
-            "editor.recovery.decide" => Some(Self::EditorRecoveryDecide),
-            "keymap.schemes.reduce" => Some(Self::KeymapSchemesReduce),
-            "editor.planTextEdits" => Some(Self::EditorPlanTextEdits),
-            "editor.parseNavigationInput" => Some(Self::EditorParseNavigationInput),
-            "editor.navigationHistory.reduce" => Some(Self::EditorNavigationHistoryReduce),
-            "editor.lineCommentToken" => Some(Self::EditorLineCommentToken),
-            "network.proxyPolicy" => Some(Self::NetworkProxyPolicy),
-            "lsp.plainSnippet" => Some(Self::LspPlainSnippet),
-            "lsp.builtinCompletions" => Some(Self::LspBuiltinCompletions),
-            "lsp.builtinHover" => Some(Self::LspBuiltinHover),
-            "lsp.builtinNavigation" => Some(Self::LspBuiltinNavigation),
-            "lsp.mergeCompletions" => Some(Self::LspMergeCompletions),
-            "lsp.activationPolicy" => Some(Self::LspActivationPolicy),
-            "lsp.problems.query" => Some(Self::LspProblemsQuery),
-            "lsp.startServer" => Some(Self::LspStartServer),
-            "lsp.stopServer" => Some(Self::LspStopServer),
-            "lsp.updateWorkspaceConfiguration" => Some(Self::LspUpdateWorkspaceConfiguration),
-            "lsp.documentUri" => Some(Self::LspDocumentUri),
-            "lsp.syncDocument" => Some(Self::LspSyncDocument),
-            "lsp.saveDocument" => Some(Self::LspSaveDocument),
-            "lsp.workspaceFilesChanged" => Some(Self::LspWorkspaceFilesChanged),
-            "lsp.closeDocument" => Some(Self::LspCloseDocument),
-            "lsp.request" => Some(Self::LspRequest),
-            "lsp.buildRequest" => Some(Self::LspBuildRequest),
-            "lsp.vcsRequest" => Some(Self::LspVcsRequest),
-            "lsp.toolchainRequest" => Some(Self::LspToolchainRequest),
-            "lsp.keymapImportRequest" => Some(Self::LspKeymapImportRequest),
-            "lsp.functionRequest" => Some(Self::LspFunctionRequest),
-            "lsp.functionProvider" => Some(Self::LspFunctionProvider),
-            "lsp.configureFunctionRelay" => Some(Self::LspConfigureFunctionRelay),
-            "lsp.hostResponse" => Some(Self::LspHostResponse),
-            "lsp.hostNotify" => Some(Self::LspHostNotify),
-            "lsp.pluginServerRequest" => Some(Self::LspPluginServerRequest),
-            "lsp.pluginServerNotify" => Some(Self::LspPluginServerNotify),
-            "lsp.cancelOperation" => Some(Self::LspCancelOperation),
-            "lsp.pollEvents" => Some(Self::LspPollEvents),
-            "lsp.setDetailedDiagnostics" => Some(Self::LspSetDetailedDiagnostics),
-            "lsp.waitEvents" => Some(Self::LspWaitEvents),
-            "lsp.destroyServer" => Some(Self::LspDestroyServer),
-            "runConfig.inspect" => Some(Self::RunConfigInspect),
-            "runConfig.projectToolchain" => Some(Self::RunConfigProjectToolchain),
-            "runConfig.generate" => Some(Self::RunConfigGenerate),
-            "runConfig.argumentText" => Some(Self::RunConfigArgumentText),
-            "runConfig.resolve" => Some(Self::RunConfigResolve),
-            "runConfig.selectContextConfiguration" => {
-                Some(Self::RunConfigSelectContextConfiguration)
+            "debug.createSession" => Some(Self::Debug(DebugCommand::CreateSession)),
+            "debug.launch" => Some(Self::Debug(DebugCommand::Launch)),
+            "debug.steppingFilters" => Some(Self::Debug(DebugCommand::SteppingFilters)),
+            "debug.relocateBreakpoints" => Some(Self::Debug(DebugCommand::RelocateBreakpoints)),
+            "debug.planVariablePage" => Some(Self::Debug(DebugCommand::PlanVariablePage)),
+            "debug.reduceVariablePage" => Some(Self::Debug(DebugCommand::ReduceVariablePage)),
+            "debug.planDisassemblyWindow" => Some(Self::Debug(DebugCommand::PlanDisassemblyWindow)),
+            "debug.reduceDisassemblyPage" => Some(Self::Debug(DebugCommand::ReduceDisassemblyPage)),
+            "debug.setBreakpoints" => Some(Self::Debug(DebugCommand::SetBreakpoints)),
+            "debug.setExceptionBreakpoints" => {
+                Some(Self::Debug(DebugCommand::SetExceptionBreakpoints))
             }
-            "runConfig.decideTitleAction" => Some(Self::RunConfigDecideTitleAction),
-            "runConfig.updateOptions" => Some(Self::RunConfigUpdateOptions),
-            "runConfig.updateToolPreferences" => Some(Self::RunConfigUpdateToolPreferences),
-            "runConfig.saveEditorChanges" => Some(Self::RunConfigSaveEditorChanges),
-            "runConfig.createUserConfiguration" => Some(Self::RunConfigCreateUserConfiguration),
-            "runConfig.createLaunchPlan" => Some(Self::RunConfigCreateLaunchPlan),
-            "runConfig.providerLaunchInputs" => Some(Self::RunConfigProviderLaunchInputs),
-            "git.status" => Some(Self::GitStatus),
-            "git.untrackedDirectory" => Some(Self::GitUntrackedDirectory),
-            "git.commitState" => Some(Self::GitCommitState),
-            "git.workspaceCommitPrepare" => Some(Self::GitWorkspaceCommitPrepare),
-            "git.workspaceCommitStep" => Some(Self::GitWorkspaceCommitStep),
-            "git.classifyMetadataChanges" => Some(Self::GitClassifyMetadataChanges),
-            "git.watchContext" => Some(Self::GitWatchContext),
-            "git.worktrees" => Some(Self::GitWorktrees),
-            "git.pullRequestContext" => Some(Self::GitPullRequestContext),
-            "git.command" => Some(Self::GitCommand),
-            "git.repositoryRoot" => Some(Self::GitRepositoryRoot),
-            "git.resolveFileContext" => Some(Self::GitResolveFileContext),
-            "git.workspaceStatusMerge" => Some(Self::GitWorkspaceStatusMerge),
-            "git.write" => Some(Self::GitWrite),
-            "git.rollbackPlan" => Some(Self::GitRollbackPlan),
-            "git.rollbackPrepare" => Some(Self::GitRollbackPrepare),
-            "git.prepareCommitSelection" => Some(Self::GitPrepareCommitSelection),
-            "git.reconcileDeletedSelection" => Some(Self::GitReconcileDeletedSelection),
-            "git.changelists" => Some(Self::GitChangelists),
-            "git.shelf" => Some(Self::GitShelf),
-            "git.commitMessageContext" => Some(Self::GitCommitMessageContext),
-            "git.consolePresentation" => Some(Self::GitConsolePresentation),
-            "git.remoteUrl" => Some(Self::GitRemoteUrl),
-            "git.fetchPlan" => Some(Self::GitFetchPlan),
-            "git.executable" => Some(Self::GitExecutable),
-            "git.executionInspect" => Some(Self::GitExecutionInspect),
-            "git.executionConfigure" => Some(Self::GitExecutionConfigure),
-            "git.authRespond" => Some(Self::GitAuthRespond),
-            "remote.probe" => Some(Self::RemoteProbe),
-            "remote.authRespond" => Some(Self::RemoteAuthRespond),
-            "remote.connect" => Some(Self::RemoteConnect),
-            "remote.readDir" => Some(Self::RemoteReadDir),
-            "remote.disconnect" => Some(Self::RemoteDisconnect),
-            "remote.closeAll" => Some(Self::RemoteCloseAll),
-            "remote.readFile" => Some(Self::RemoteReadFile),
-            "remote.writeFile" => Some(Self::RemoteWriteFile),
-            "remote.hostRequest" => Some(Self::RemoteHostRequest),
-            "remote.runProcess" => Some(Self::RemoteRunProcess),
-            "remote.captureProcess" => Some(Self::RemoteCaptureProcess),
-            "remote.runTerminal" => Some(Self::RemoteRunTerminal),
-            "remote.runWatch" => Some(Self::RemoteRunWatch),
-            "remote.uploadFile" => Some(Self::RemoteUploadFile),
-            "remote.hostInfo" => Some(Self::RemoteHostInfo),
-            "git.historyRewritePreview" => Some(Self::GitHistoryRewritePreview),
-            "git.remotes" => Some(Self::GitRemotes),
-            "git.tags" => Some(Self::GitTags),
-            "git.parseCheckoutMetadata" => Some(Self::GitParseCheckoutMetadata),
-            "git.parseGitdirPointer" => Some(Self::GitParseGitdirPointer),
-            "git.historyActionCapabilities" => Some(Self::GitHistoryActionCapabilities),
-            "git.rebasePreview" => Some(Self::GitRebasePreview),
-            "git.repositorySetup" => Some(Self::GitRepositorySetup),
-            "git.initialize" => Some(Self::GitInitialize),
-            "git.configureIdentity" => Some(Self::GitConfigureIdentity),
-            "git.rebaseStart" => Some(Self::GitRebaseStart),
-            "git.rebaseSession" => Some(Self::GitRebaseSession),
-            "git.rebaseControl" => Some(Self::GitRebaseControl),
-            "git.patchExport" => Some(Self::GitPatchExport),
-            "git.patchPreview" => Some(Self::GitPatchPreview),
-            "git.patchApply" => Some(Self::GitPatchApply),
-            "git.diff" => Some(Self::GitDiff),
-            "git.parsePatch" => Some(Self::GitParsePatch),
-            "git.apply" => Some(Self::GitApply),
-            "git.planDiffBlocks" => Some(Self::GitPlanDiffBlocks),
-            "git.applyDiffBlock" => Some(Self::GitApplyDiffBlock),
-            "git.stageGutterChange" => Some(Self::GitStageGutterChange),
-            "git.history" => Some(Self::GitHistory),
-            "git.historyQuery" => Some(Self::GitHistoryQuery),
-            "git.references" => Some(Self::GitReferences),
-            "git.historyPage" => Some(Self::GitHistoryPage),
-            "git.historyCursorClose" => Some(Self::GitHistoryCursorClose),
-            "git.historyLocate" => Some(Self::GitHistoryLocate),
-            "git.branchNamePreview" => Some(Self::GitBranchNamePreview),
-            "git.repositoryColorAssignments" => Some(Self::GitRepositoryColorAssignments),
-            "git.updatePlan" => Some(Self::GitUpdatePlan),
-            "git.historyWindow" => Some(Self::GitHistoryWindow),
-            "git.graphProjection" => Some(Self::GitGraphProjection),
-            "git.normalizeChangeTargets" => Some(Self::GitNormalizeChangeTargets),
-            "git.rebasePlanPreview" => Some(Self::GitRebasePlanPreview),
-            "git.referenceTree" => Some(Self::GitReferenceTree),
-            "git.pushPreview" => Some(Self::GitPushPreview),
-            "git.commit" => Some(Self::GitCommit),
-            "git.commitFiles" => Some(Self::GitCommitFiles),
-            "git.comparison" => Some(Self::GitComparison),
-            "git.stashes" => Some(Self::GitStashes),
-            "git.checkoutPreflight" => Some(Self::GitCheckoutPreflight),
-            "git.pullPreflight" => Some(Self::GitPullPreflight),
-            "git.integrationPreflight" => Some(Self::GitIntegrationPreflight),
-            "git.conflictMarkers" => Some(Self::GitConflictMarkers),
-            "git.operationState" => Some(Self::GitOperationState),
-            "git.blame" => Some(Self::GitBlame),
-            "git.lineHistory" => Some(Self::GitLineHistory),
+            "debug.setFunctionBreakpoints" => {
+                Some(Self::Debug(DebugCommand::SetFunctionBreakpoints))
+            }
+            "debug.setInstructionBreakpoints" => {
+                Some(Self::Debug(DebugCommand::SetInstructionBreakpoints))
+            }
+            "debug.dataBreakpointInfo" => Some(Self::Debug(DebugCommand::DataBreakpointInfo)),
+            "debug.setDataBreakpoints" => Some(Self::Debug(DebugCommand::SetDataBreakpoints)),
+            "debug.setBreakpointsMuted" => Some(Self::Debug(DebugCommand::SetBreakpointsMuted)),
+            "debug.planMemoryWindow" => Some(Self::Debug(DebugCommand::PlanMemoryWindow)),
+            "debug.locateMemoryWindow" => Some(Self::Debug(DebugCommand::LocateMemoryWindow)),
+            "debug.setVariable" => Some(Self::Debug(DebugCommand::SetVariable)),
+            "debug.cancelOperation" => Some(Self::Debug(DebugCommand::CancelOperation)),
+            "debug.execute" => Some(Self::Debug(DebugCommand::Execute)),
+            "debug.inspect" => Some(Self::Debug(DebugCommand::Inspect)),
+            "debug.receive" => Some(Self::Debug(DebugCommand::Receive)),
+            "debug.runInTerminalResponse" => Some(Self::Debug(DebugCommand::RunInTerminalResponse)),
+            "debug.startDebuggingResponse" => {
+                Some(Self::Debug(DebugCommand::StartDebuggingResponse))
+            }
+            "debug.disconnect" => Some(Self::Debug(DebugCommand::Disconnect)),
+            "debug.destroySession" => Some(Self::Debug(DebugCommand::DestroySession)),
+            "lsp.applyTextEdits" => Some(Self::Lsp(LspCommand::ApplyTextEdits)),
+            "lsp.planWorkspaceEdit" => Some(Self::Lsp(LspCommand::PlanWorkspaceEdit)),
+            "lsp.documentIdentity" => Some(Self::Lsp(LspCommand::DocumentIdentity)),
+            "lsp.classifyNavigationTarget" => Some(Self::Lsp(LspCommand::ClassifyNavigationTarget)),
+            "lsp.declarationOrUsages" => Some(Self::Lsp(LspCommand::DeclarationOrUsages)),
+            "editor.lineEdit" => Some(Self::Editor(EditorCommand::LineEdit)),
+            "editor.find" => Some(Self::Editor(EditorCommand::Find)),
+            "editor.preferences.resolve" => Some(Self::Editor(EditorCommand::PreferencesResolve)),
+            "editor.recent.reduce" => Some(Self::Editor(EditorCommand::RecentReduce)),
+            "editor.recovery.decide" => Some(Self::Editor(EditorCommand::RecoveryDecide)),
+            "keymap.schemes.reduce" => Some(Self::Keymap(KeymapCommand::SchemesReduce)),
+            "editor.planTextEdits" => Some(Self::Editor(EditorCommand::PlanTextEdits)),
+            "editor.parseNavigationInput" => {
+                Some(Self::Editor(EditorCommand::ParseNavigationInput))
+            }
+            "editor.navigationHistory.reduce" => {
+                Some(Self::Editor(EditorCommand::NavigationHistoryReduce))
+            }
+            "editor.lineCommentToken" => Some(Self::Editor(EditorCommand::LineCommentToken)),
+            "network.proxyPolicy" => Some(Self::NetworkProxyPolicy),
+            "lsp.plainSnippet" => Some(Self::Lsp(LspCommand::PlainSnippet)),
+            "lsp.builtinCompletions" => Some(Self::Lsp(LspCommand::BuiltinCompletions)),
+            "lsp.builtinHover" => Some(Self::Lsp(LspCommand::BuiltinHover)),
+            "lsp.builtinNavigation" => Some(Self::Lsp(LspCommand::BuiltinNavigation)),
+            "lsp.mergeCompletions" => Some(Self::Lsp(LspCommand::MergeCompletions)),
+            "lsp.activationPolicy" => Some(Self::Lsp(LspCommand::ActivationPolicy)),
+            "lsp.problems.query" => Some(Self::Lsp(LspCommand::ProblemsQuery)),
+            "lsp.startServer" => Some(Self::Lsp(LspCommand::StartServer)),
+            "lsp.stopServer" => Some(Self::Lsp(LspCommand::StopServer)),
+            "lsp.updateWorkspaceConfiguration" => {
+                Some(Self::Lsp(LspCommand::UpdateWorkspaceConfiguration))
+            }
+            "lsp.documentUri" => Some(Self::Lsp(LspCommand::DocumentUri)),
+            "lsp.syncDocument" => Some(Self::Lsp(LspCommand::SyncDocument)),
+            "lsp.saveDocument" => Some(Self::Lsp(LspCommand::SaveDocument)),
+            "lsp.workspaceFilesChanged" => Some(Self::Lsp(LspCommand::WorkspaceFilesChanged)),
+            "lsp.closeDocument" => Some(Self::Lsp(LspCommand::CloseDocument)),
+            "lsp.request" => Some(Self::Lsp(LspCommand::Request)),
+            "lsp.buildRequest" => Some(Self::Lsp(LspCommand::BuildRequest)),
+            "lsp.vcsRequest" => Some(Self::Lsp(LspCommand::VcsRequest)),
+            "lsp.toolchainRequest" => Some(Self::Lsp(LspCommand::ToolchainRequest)),
+            "lsp.keymapImportRequest" => Some(Self::Lsp(LspCommand::KeymapImportRequest)),
+            "lsp.functionRequest" => Some(Self::Lsp(LspCommand::FunctionRequest)),
+            "lsp.functionProvider" => Some(Self::Lsp(LspCommand::FunctionProvider)),
+            "lsp.configureFunctionRelay" => Some(Self::Lsp(LspCommand::ConfigureFunctionRelay)),
+            "lsp.hostResponse" => Some(Self::Lsp(LspCommand::HostResponse)),
+            "lsp.hostNotify" => Some(Self::Lsp(LspCommand::HostNotify)),
+            "lsp.pluginServerRequest" => Some(Self::Lsp(LspCommand::PluginServerRequest)),
+            "lsp.pluginServerNotify" => Some(Self::Lsp(LspCommand::PluginServerNotify)),
+            "lsp.cancelOperation" => Some(Self::Lsp(LspCommand::CancelOperation)),
+            "lsp.pollEvents" => Some(Self::Lsp(LspCommand::PollEvents)),
+            "lsp.setDetailedDiagnostics" => Some(Self::Lsp(LspCommand::SetDetailedDiagnostics)),
+            "lsp.waitEvents" => Some(Self::Lsp(LspCommand::WaitEvents)),
+            "lsp.destroyServer" => Some(Self::Lsp(LspCommand::DestroyServer)),
+            "runConfig.inspect" => Some(Self::RunConfig(RunConfigCommand::Inspect)),
+            "runConfig.projectToolchain" => {
+                Some(Self::RunConfig(RunConfigCommand::ProjectToolchain))
+            }
+            "runConfig.generate" => Some(Self::RunConfig(RunConfigCommand::Generate)),
+            "runConfig.argumentText" => Some(Self::RunConfig(RunConfigCommand::ArgumentText)),
+            "runConfig.resolve" => Some(Self::RunConfig(RunConfigCommand::Resolve)),
+            "runConfig.selectContextConfiguration" => Some(Self::RunConfig(
+                RunConfigCommand::SelectContextConfiguration,
+            )),
+            "runConfig.decideTitleAction" => {
+                Some(Self::RunConfig(RunConfigCommand::DecideTitleAction))
+            }
+            "runConfig.updateOptions" => Some(Self::RunConfig(RunConfigCommand::UpdateOptions)),
+            "runConfig.updateToolPreferences" => {
+                Some(Self::RunConfig(RunConfigCommand::UpdateToolPreferences))
+            }
+            "runConfig.saveEditorChanges" => {
+                Some(Self::RunConfig(RunConfigCommand::SaveEditorChanges))
+            }
+            "runConfig.createUserConfiguration" => {
+                Some(Self::RunConfig(RunConfigCommand::CreateUserConfiguration))
+            }
+            "runConfig.createLaunchPlan" => {
+                Some(Self::RunConfig(RunConfigCommand::CreateLaunchPlan))
+            }
+            "runConfig.providerLaunchInputs" => {
+                Some(Self::RunConfig(RunConfigCommand::ProviderLaunchInputs))
+            }
+            "git.status" => Some(Self::Git(GitCommand::Status)),
+            "git.untrackedDirectory" => Some(Self::Git(GitCommand::UntrackedDirectory)),
+            "git.commitState" => Some(Self::Git(GitCommand::CommitState)),
+            "git.workspaceCommitPrepare" => Some(Self::Git(GitCommand::WorkspaceCommitPrepare)),
+            "git.workspaceCommitStep" => Some(Self::Git(GitCommand::WorkspaceCommitStep)),
+            "git.classifyMetadataChanges" => Some(Self::Git(GitCommand::ClassifyMetadataChanges)),
+            "git.watchContext" => Some(Self::Git(GitCommand::WatchContext)),
+            "git.worktrees" => Some(Self::Git(GitCommand::Worktrees)),
+            "git.pullRequestContext" => Some(Self::Git(GitCommand::PullRequestContext)),
+            "git.command" => Some(Self::Git(GitCommand::Command)),
+            "git.repositoryRoot" => Some(Self::Git(GitCommand::RepositoryRoot)),
+            "git.resolveFileContext" => Some(Self::Git(GitCommand::ResolveFileContext)),
+            "git.workspaceStatusMerge" => Some(Self::Git(GitCommand::WorkspaceStatusMerge)),
+            "git.write" => Some(Self::Git(GitCommand::Write)),
+            "git.rollbackPlan" => Some(Self::Git(GitCommand::RollbackPlan)),
+            "git.rollbackPrepare" => Some(Self::Git(GitCommand::RollbackPrepare)),
+            "git.prepareCommitSelection" => Some(Self::Git(GitCommand::PrepareCommitSelection)),
+            "git.reconcileDeletedSelection" => {
+                Some(Self::Git(GitCommand::ReconcileDeletedSelection))
+            }
+            "git.changelists" => Some(Self::Git(GitCommand::Changelists)),
+            "git.shelf" => Some(Self::Git(GitCommand::Shelf)),
+            "git.commitMessageContext" => Some(Self::Git(GitCommand::CommitMessageContext)),
+            "git.consolePresentation" => Some(Self::Git(GitCommand::ConsolePresentation)),
+            "git.remoteUrl" => Some(Self::Git(GitCommand::RemoteUrl)),
+            "git.fetchPlan" => Some(Self::Git(GitCommand::FetchPlan)),
+            "git.executable" => Some(Self::Git(GitCommand::Executable)),
+            "git.executionInspect" => Some(Self::Git(GitCommand::ExecutionInspect)),
+            "git.executionConfigure" => Some(Self::Git(GitCommand::ExecutionConfigure)),
+            "git.authRespond" => Some(Self::Git(GitCommand::AuthRespond)),
+            "remote.probe" => Some(Self::Remote(RemoteCommand::Probe)),
+            "remote.authRespond" => Some(Self::Remote(RemoteCommand::AuthRespond)),
+            "remote.connect" => Some(Self::Remote(RemoteCommand::Connect)),
+            "remote.readDir" => Some(Self::Remote(RemoteCommand::ReadDir)),
+            "remote.disconnect" => Some(Self::Remote(RemoteCommand::Disconnect)),
+            "remote.closeAll" => Some(Self::Remote(RemoteCommand::CloseAll)),
+            "remote.readFile" => Some(Self::Remote(RemoteCommand::ReadFile)),
+            "remote.writeFile" => Some(Self::Remote(RemoteCommand::WriteFile)),
+            "remote.hostRequest" => Some(Self::Remote(RemoteCommand::HostRequest)),
+            "remote.runProcess" => Some(Self::Remote(RemoteCommand::RunProcess)),
+            "remote.captureProcess" => Some(Self::Remote(RemoteCommand::CaptureProcess)),
+            "remote.runTerminal" => Some(Self::Remote(RemoteCommand::RunTerminal)),
+            "remote.runWatch" => Some(Self::Remote(RemoteCommand::RunWatch)),
+            "remote.uploadFile" => Some(Self::Remote(RemoteCommand::UploadFile)),
+            "remote.hostInfo" => Some(Self::Remote(RemoteCommand::HostInfo)),
+            "git.historyRewritePreview" => Some(Self::Git(GitCommand::HistoryRewritePreview)),
+            "git.remotes" => Some(Self::Git(GitCommand::Remotes)),
+            "git.tags" => Some(Self::Git(GitCommand::Tags)),
+            "git.parseCheckoutMetadata" => Some(Self::Git(GitCommand::ParseCheckoutMetadata)),
+            "git.parseGitdirPointer" => Some(Self::Git(GitCommand::ParseGitdirPointer)),
+            "git.historyActionCapabilities" => {
+                Some(Self::Git(GitCommand::HistoryActionCapabilities))
+            }
+            "git.rebasePreview" => Some(Self::Git(GitCommand::RebasePreview)),
+            "git.repositorySetup" => Some(Self::Git(GitCommand::RepositorySetup)),
+            "git.initialize" => Some(Self::Git(GitCommand::Initialize)),
+            "git.configureIdentity" => Some(Self::Git(GitCommand::ConfigureIdentity)),
+            "git.rebaseStart" => Some(Self::Git(GitCommand::RebaseStart)),
+            "git.rebaseSession" => Some(Self::Git(GitCommand::RebaseSession)),
+            "git.rebaseControl" => Some(Self::Git(GitCommand::RebaseControl)),
+            "git.patchExport" => Some(Self::Git(GitCommand::PatchExport)),
+            "git.patchPreview" => Some(Self::Git(GitCommand::PatchPreview)),
+            "git.patchApply" => Some(Self::Git(GitCommand::PatchApply)),
+            "git.diff" => Some(Self::Git(GitCommand::Diff)),
+            "git.parsePatch" => Some(Self::Git(GitCommand::ParsePatch)),
+            "git.apply" => Some(Self::Git(GitCommand::Apply)),
+            "git.planDiffBlocks" => Some(Self::Git(GitCommand::PlanDiffBlocks)),
+            "git.applyDiffBlock" => Some(Self::Git(GitCommand::ApplyDiffBlock)),
+            "git.stageGutterChange" => Some(Self::Git(GitCommand::StageGutterChange)),
+            "git.history" => Some(Self::Git(GitCommand::History)),
+            "git.historyQuery" => Some(Self::Git(GitCommand::HistoryQuery)),
+            "git.references" => Some(Self::Git(GitCommand::References)),
+            "git.historyPage" => Some(Self::Git(GitCommand::HistoryPage)),
+            "git.historyCursorClose" => Some(Self::Git(GitCommand::HistoryCursorClose)),
+            "git.historyLocate" => Some(Self::Git(GitCommand::HistoryLocate)),
+            "git.branchNamePreview" => Some(Self::Git(GitCommand::BranchNamePreview)),
+            "git.repositoryColorAssignments" => {
+                Some(Self::Git(GitCommand::RepositoryColorAssignments))
+            }
+            "git.updatePlan" => Some(Self::Git(GitCommand::UpdatePlan)),
+            "git.historyWindow" => Some(Self::Git(GitCommand::HistoryWindow)),
+            "git.graphProjection" => Some(Self::Git(GitCommand::GraphProjection)),
+            "git.normalizeChangeTargets" => Some(Self::Git(GitCommand::NormalizeChangeTargets)),
+            "git.rebasePlanPreview" => Some(Self::Git(GitCommand::RebasePlanPreview)),
+            "git.referenceTree" => Some(Self::Git(GitCommand::ReferenceTree)),
+            "git.pushPreview" => Some(Self::Git(GitCommand::PushPreview)),
+            "git.commit" => Some(Self::Git(GitCommand::Commit)),
+            "git.commitFiles" => Some(Self::Git(GitCommand::CommitFiles)),
+            "git.comparison" => Some(Self::Git(GitCommand::Comparison)),
+            "git.stashes" => Some(Self::Git(GitCommand::Stashes)),
+            "git.checkoutPreflight" => Some(Self::Git(GitCommand::CheckoutPreflight)),
+            "git.pullPreflight" => Some(Self::Git(GitCommand::PullPreflight)),
+            "git.integrationPreflight" => Some(Self::Git(GitCommand::IntegrationPreflight)),
+            "git.conflictMarkers" => Some(Self::Git(GitCommand::ConflictMarkers)),
+            "git.operationState" => Some(Self::Git(GitCommand::OperationState)),
+            "git.blame" => Some(Self::Git(GitCommand::Blame)),
+            "git.lineHistory" => Some(Self::Git(GitCommand::LineHistory)),
             "github.parseRemote" => Some(Self::GitHubParseRemote),
             "github.requestPlan" => Some(Self::GitHubRequestPlan),
             "github.normalizeResponse" => Some(Self::GitHubNormalizeResponse),
@@ -1176,24 +1386,52 @@ impl CoreCommand {
                 Some(Self::GitHubDeviceAuthorizationTransition)
             }
             "github.pullRequestCheckoutPlan" => Some(Self::GitHubPullRequestCheckoutPlan),
-            "git.pullRequestCheckoutPreview" => Some(Self::GitPullRequestCheckoutPreview),
-            "git.pullRequestCheckout" => Some(Self::GitPullRequestCheckout),
-            "diagnostics.redactText" => Some(Self::DiagnosticsRedactText),
-            "diagnostics.prepareLogEvent" => Some(Self::DiagnosticsPrepareLogEvent),
-            "diagnostics.queryLogs" => Some(Self::DiagnosticsQueryLogs),
-            "diagnostics.recordPluginOperation" => Some(Self::DiagnosticsRecordPluginOperation),
-            "diagnostics.drainCoreEvents" => Some(Self::DiagnosticsDrainCoreEvents),
-            "diagnostics.configureCoreEvents" => Some(Self::DiagnosticsConfigureCoreEvents),
-            "diagnostics.encodeLogBatch" => Some(Self::DiagnosticsEncodeLogBatch),
-            "diagnostics.parseLogFilter" => Some(Self::DiagnosticsParseLogFilter),
-            "diagnostics.composeLogFilter" => Some(Self::DiagnosticsComposeLogFilter),
-            "diagnostics.formatLogRecords" => Some(Self::DiagnosticsFormatLogRecords),
-            "diagnostics.queryLogsV2" => Some(Self::DiagnosticsQueryLogsV2),
-            "diagnostics.planLogCollection" => Some(Self::DiagnosticsPlanLogCollection),
-            "diagnostics.planLogRetention" => Some(Self::DiagnosticsPlanLogRetention),
-            "diagnostics.resolveLogChannel" => Some(Self::DiagnosticsResolveLogChannel),
-            "diagnostics.resolveEngineLogSubject" => Some(Self::DiagnosticsResolveEngineLogSubject),
-            "diagnostics.buildManifest" => Some(Self::DiagnosticsBuildManifest),
+            "git.pullRequestCheckoutPreview" => {
+                Some(Self::Git(GitCommand::PullRequestCheckoutPreview))
+            }
+            "git.pullRequestCheckout" => Some(Self::Git(GitCommand::PullRequestCheckout)),
+            "diagnostics.redactText" => Some(Self::Diagnostics(DiagnosticsCommand::RedactText)),
+            "diagnostics.prepareLogEvent" => {
+                Some(Self::Diagnostics(DiagnosticsCommand::PrepareLogEvent))
+            }
+            "diagnostics.queryLogs" => Some(Self::Diagnostics(DiagnosticsCommand::QueryLogs)),
+            "diagnostics.recordPluginOperation" => {
+                Some(Self::Diagnostics(DiagnosticsCommand::RecordPluginOperation))
+            }
+            "diagnostics.drainCoreEvents" => {
+                Some(Self::Diagnostics(DiagnosticsCommand::DrainCoreEvents))
+            }
+            "diagnostics.configureCoreEvents" => {
+                Some(Self::Diagnostics(DiagnosticsCommand::ConfigureCoreEvents))
+            }
+            "diagnostics.encodeLogBatch" => {
+                Some(Self::Diagnostics(DiagnosticsCommand::EncodeLogBatch))
+            }
+            "diagnostics.parseLogFilter" => {
+                Some(Self::Diagnostics(DiagnosticsCommand::ParseLogFilter))
+            }
+            "diagnostics.composeLogFilter" => {
+                Some(Self::Diagnostics(DiagnosticsCommand::ComposeLogFilter))
+            }
+            "diagnostics.formatLogRecords" => {
+                Some(Self::Diagnostics(DiagnosticsCommand::FormatLogRecords))
+            }
+            "diagnostics.queryLogsV2" => Some(Self::Diagnostics(DiagnosticsCommand::QueryLogsV2)),
+            "diagnostics.planLogCollection" => {
+                Some(Self::Diagnostics(DiagnosticsCommand::PlanLogCollection))
+            }
+            "diagnostics.planLogRetention" => {
+                Some(Self::Diagnostics(DiagnosticsCommand::PlanLogRetention))
+            }
+            "diagnostics.resolveLogChannel" => {
+                Some(Self::Diagnostics(DiagnosticsCommand::ResolveLogChannel))
+            }
+            "diagnostics.resolveEngineLogSubject" => Some(Self::Diagnostics(
+                DiagnosticsCommand::ResolveEngineLogSubject,
+            )),
+            "diagnostics.buildManifest" => {
+                Some(Self::Diagnostics(DiagnosticsCommand::BuildManifest))
+            }
             _ => None,
         }
     }
@@ -1201,7 +1439,7 @@ impl CoreCommand {
 
 #[cfg(test)]
 mod tests {
-    use super::CoreCommand;
+    use super::{CoreCommand, GitCommand, WorkspaceCommand};
     use std::collections::BTreeSet;
     use std::path::Path;
 
@@ -1387,7 +1625,7 @@ mod tests {
     fn parses_git_push_preview_command() {
         assert!(matches!(
             CoreCommand::parse("git.pushPreview"),
-            Some(CoreCommand::GitPushPreview)
+            Some(CoreCommand::Git(GitCommand::PushPreview))
         ));
     }
 
@@ -1395,7 +1633,7 @@ mod tests {
     fn parses_workspace_repositories_command() {
         assert!(matches!(
             CoreCommand::parse("workspace.repositories"),
-            Some(CoreCommand::WorkspaceRepositories)
+            Some(CoreCommand::Workspace(WorkspaceCommand::Repositories))
         ));
     }
 
@@ -1403,7 +1641,7 @@ mod tests {
     fn parses_git_repository_root_command() {
         assert!(matches!(
             CoreCommand::parse("git.repositoryRoot"),
-            Some(CoreCommand::GitRepositoryRoot)
+            Some(CoreCommand::Git(GitCommand::RepositoryRoot))
         ));
     }
 }
