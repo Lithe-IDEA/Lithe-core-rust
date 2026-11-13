@@ -26,7 +26,6 @@ const PATH_KEYS: [&str; 7] = [
 ];
 
 pub(crate) use lithe_request_context::source_token;
-pub(crate) use lithe_request_context::trace::current;
 
 /// Active request trace; dropping it restores the enclosing request's context.
 pub(crate) struct Request {
@@ -235,6 +234,7 @@ pub(crate) fn identity(value: &str) -> bool {
 mod tests {
     use super::*;
     use lithe_diagnostics::core_events::capture;
+    use lithe_request_context::trace::current;
 
     fn request(value: Value) -> CoreRequest {
         serde_json::from_value(value).unwrap()

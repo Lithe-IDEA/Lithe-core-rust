@@ -889,6 +889,7 @@ dependencies = [
  "lithe-diagnostics",
  "lithe-diff",
  "lithe-editor",
+ "lithe-git",
  "lithe-git-host",
  "lithe-github",
  "lithe-ide-host",
@@ -952,6 +953,28 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "lithe-git"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "lithe-ai",
+ "lithe-core-rules",
+ "lithe-diagnostics",
+ "lithe-diff",
+ "lithe-git-host",
+ "lithe-github",
+ "lithe-protocol",
+ "lithe-remote",
+ "lithe-request-context",
+ "lithe-workspace",
+ "rand",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

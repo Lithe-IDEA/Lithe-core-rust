@@ -39,7 +39,7 @@
 | `error` | `any Error` | 展开为 `<name>`、`<name>_code`、`<name>_domain`，字段名通常就是 `error`；消息脱敏并限长至 1 KiB，code 可以是整数或稳定 token |
 | `text` | `String` | 只用于无法结构化的上游诊断（stderr 行、LSP logMessage）和经 Core 集中格式化函数脱敏的外部进程 argv；脱敏、去除控制字符、限长至 1 KiB |
 
-源码、编辑缓冲区、文件内容、提交说明正文、环境变量值、进程的 stdout 与 stdin、凭据、终端历史和协议正文没有对应类型，不得塞进 `text`、`error`、token、路径字段或消息模板。外部进程的 argv 只经过 `rust/crates/core/src/git/command_trace.rs` 的 `format_arguments`，stderr 只保留脱敏后的末尾几行（第五节）。迁移旧日志时拆开拼接消息，只保留结构化的时间、计数、受控结果词和错误类别。`text` 的理由不能写成“方便调试”。
+源码、编辑缓冲区、文件内容、提交说明正文、环境变量值、进程的 stdout 与 stdin、凭据、终端历史和协议正文没有对应类型，不得塞进 `text`、`error`、token、路径字段或消息模板。外部进程的 argv 只经过 `rust/crates/git/src/command_trace.rs` 的 `format_arguments`，stderr 只保留脱敏后的末尾几行（第五节）。迁移旧日志时拆开拼接消息，只保留结构化的时间、计数、受控结果词和错误类别。`text` 的理由不能写成“方便调试”。
 
 Swift 的事件值是**未经脱敏的内存输入**，不能自行序列化落盘。Core 先对 `error`、`text` 输入脱敏、删除控制字符、按 UTF-8 字符边界截断到 1024 字节，再由 `catalog::validate_fields(id, fields)` 校验磁盘键展开后的类型、必填、未知字段、长度和错误组件完整性；这一步校验形状，不代替隐私脱敏。macOS 的跨边界适配器连接 Core 的脱敏、格式化和写入路径，不得另写 Swift 格式化或隐私策略。
 
@@ -70,7 +70,7 @@ Swift 的事件值是**未经脱敏的内存输入**，不能自行序列化落�
 
 - `app.action.performed` 由 `UserActionTrace` 在最外层用户入口记录，owner 为 `LitheModuleAPI`。`action` 是稳定的操作 id，`surface` 是 `UserActionSurface` 的取值。它的 op 绑定到 `UserActionContext.current`，桥接层据此给 Core 请求附上 `origin`。
 - Core 请求轨迹在 `rust/crates/core/src/runtime/dispatcher.rs` 的请求分发处记录，实现在 `rust/crates/core/src/runtime/request_trace.rs`。用户来源的成功或取消记 finished，后台或未知来源的成功或取消记 traced，失败记 failed。`request_trace::is_hot` 列出的按键、每帧、轮询和监听批次方法，以及全部 `diagnostics.*` 和 `core.ping`，不记录。
-- Git 进程轨迹在 `rust/crates/core/src/git/command_trace.rs` 的执行点记录，本地与远程工作区都经过这里。可见命令指经 `execute_git` 执行、作为 invocation 返回给宿主并显示在 Git 控制台的命令；内部读取指 Core 经 `capture_git` 执行、自己解析输出的命令。来源为用户的可见命令，成功或取消记 finished；其余成功或取消记 traced，包括用户操作中的内部读取；失败记 failed。退出码表示“回答”的情形（`exit_is_answer`），以及来源不是用户的内部读取的非零退出，不算失败；后者由调用方判断含义，调用方返回错误时由请求轨迹记录失败。
+- Git 进程轨迹在 `rust/crates/git/src/command_trace.rs` 的执行点记录，本地与远程工作区都经过这里。可见命令指经 `execute_git` 执行、作为 invocation 返回给宿主并显示在 Git 控制台的命令；内部读取指 Core 经 `capture_git` 执行、自己解析输出的命令。来源为用户的可见命令，成功或取消记 finished；其余成功或取消记 traced，包括用户操作中的内部读取；失败记 failed。退出码表示“回答”的情形（`exit_is_answer`），以及来源不是用户的内部读取的非零退出，不算失败；后者由调用方判断含义，调用方返回错误时由请求轨迹记录失败。
 - `arguments` 由 `format_arguments` 生成：提交说明值换成 `<message>`，`-c` 中凭据和个人身份键的值换成 `<redacted>`，URL 用户信息和共享脱敏规则覆盖的内容被改写，超过 1 KiB 时在末尾截断并以 `…` 标记。
 - `stderr` 只在失败或非零退出时出现：取进程最后 16 KiB 输出中最后 8 个非空行，逐行脱敏后用 ` | ` 连接，超过 1 KiB 时丢弃最早的内容并以 `…` 标记。
 - Core 轨迹的失败固定为 WARN，因为 Core 不知道宿主会重试、降级还是放弃。宿主提示的事实都在同一 op 的 Core 失败轨迹里时，提示用 `LogRecordReference(channel:event:op:)` 引用它，宿主不再记录；宿主只为降级、放弃、重试耗尽、残留等 Core 不掌握的事实记录自己的终态。

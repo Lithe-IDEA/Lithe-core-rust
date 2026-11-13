@@ -60,7 +60,7 @@ fn discover(root: &Path) -> Vec<String> {
 }
 
 fn canonical(root: &Path) -> String {
-    crate::git::simplified_canonical_path(root.canonicalize().unwrap())
+    lithe_git::simplified_canonical_path(root.canonicalize().unwrap())
         .unwrap()
         .to_string_lossy()
         .replace('\\', "/")

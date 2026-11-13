@@ -3,7 +3,6 @@
 mod build;
 mod debug;
 pub mod execution;
-mod git;
 mod lsp;
 pub mod plugins;
 mod project;
@@ -89,7 +88,7 @@ pub fn git_askpass_main(prompt: &str) -> i32 {
 pub use project::is_workspace_event_relevant;
 
 /// Shared, IO-free classification for coalesced native Git watcher events.
-pub use git::{
+pub use lithe_git::{
     classify_git_metadata_change, GitMetadataChangeKind, GitMetadataEventClassification,
     GitMetadataWatchContext,
 };

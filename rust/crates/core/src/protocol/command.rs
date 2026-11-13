@@ -18,7 +18,7 @@ pub struct CoreRequest {
     pub timeout_milliseconds: Option<u64>,
     /// Host-owned Git preferences, scoped to this request only.
     #[serde(default)]
-    pub git_execution: Option<crate::git::execution_policy::GitExecutionOptions>,
+    pub git_execution: Option<lithe_git::execution_policy::GitExecutionOptions>,
     /// Remote host selected by the native workspace registry; absent for local workspaces.
     #[serde(default)]
     pub(crate) remote_workspace: Option<lithe_workspace::Workspace>,
@@ -38,7 +38,7 @@ pub struct CoreRequest {
 /// so a malformed diagnostics hint can never fail the operation it describes.
 pub struct RequestOrigin {
     /// Whether a user action or an automatic refresh caused the request.
-    pub source: Option<crate::git::console::Source>,
+    pub source: Option<lithe_git::console::Source>,
     /// Stable identifier of the UI action that caused the request.
     pub trigger: Option<String>,
     /// Correlation identifier shared by the action and every request it caused.

@@ -674,7 +674,7 @@ impl IndexingContext {
             .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
             .filter_map(|entry| entry.file_name().into_string().ok())
             .collect::<Vec<_>>();
-        let ignored = crate::git::ignored_paths(parent, &candidates)?;
+        let ignored = lithe_git::ignored_paths(parent, &candidates)?;
         let mut decisions = HashMap::new();
         if let Some(ignored) = ignored {
             // The index is authoritative for tracked descendants; check-ignore on a directory
@@ -684,7 +684,7 @@ impl IndexingContext {
                     // A nested repository owns its ignore rules and tracked content.
                     false
                 } else if ignored.contains(&name) {
-                    let response = crate::git::execute_git_readonly(
+                    let response = lithe_git::execute_git_readonly(
                         &parent.to_string_lossy(),
                         &[
                             "--literal-pathspecs".into(),
@@ -987,7 +987,7 @@ mod tests {
             .files
         }
         fn git(&self, args: &[&str]) {
-            let response = crate::git::execute_git_readonly(
+            let response = lithe_git::execute_git_readonly(
                 &self.0.to_string_lossy(),
                 &args.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
                 None,

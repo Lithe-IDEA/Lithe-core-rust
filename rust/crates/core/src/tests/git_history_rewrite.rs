@@ -924,7 +924,7 @@ fn native_rebase_rejects_escaped_manifest_overflow_before_replacing_session() {
 
 #[test]
 fn native_rebase_large_escaped_manifest_remains_readable_through_abort() {
-    use crate::git::{
+    use lithe_git::{
         rebase_control, rebase_session, rebase_start, GitRebaseControlRequest,
         GitRebaseSessionRequest, GitRebaseStartRequest,
     };

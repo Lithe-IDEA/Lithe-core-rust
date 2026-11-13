@@ -19,6 +19,7 @@ lithe-core-rules = { path = "../core-rules" }
 lithe-diagnostics = { path = "../diagnostics" }
 lithe-diff = { path = "../diff" }
 lithe-editor = { path = "../editor" }
+lithe-git = { path = "../git" }
 lithe-git-host = { path = "../git-host" }
 lithe-github = { path = "../github" }
 lithe-ide-host = { path = "../ide-host" }
@@ -49,6 +50,7 @@ ignore = "=0.4.33"
 
 [dev-dependencies]
 lithe-diagnostics = { path = "../diagnostics", features = ["test-support"] }
+lithe-git = { path = "../git", features = ["test-support"] }
 lithe-workspace = { path = "../workspace", features = ["test-support"] }
 
 [target.'cfg(unix)'.dev-dependencies]

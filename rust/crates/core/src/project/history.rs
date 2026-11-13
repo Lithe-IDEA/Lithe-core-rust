@@ -641,10 +641,8 @@ pub fn ignore_preview(
             );
             // A missing workspace only loses the Git line, not the rule preview.
             let git_ignored = match request.workspace_root.as_deref().map(existing_root) {
-                Some(Ok(root)) => {
-                    crate::git::ignored_paths(&root, std::slice::from_ref(&relative))?
-                        .map(|ignored| ignored.contains(&relative))
-                }
+                Some(Ok(root)) => lithe_git::ignored_paths(&root, std::slice::from_ref(&relative))?
+                    .map(|ignored| ignored.contains(&relative)),
                 _ => None,
             };
             (matched, git_ignored)

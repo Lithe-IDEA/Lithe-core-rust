@@ -92,7 +92,7 @@ fn search_everywhere_uses_git_ignore_rules_for_filename_foreground() {
     let _cleanup = Cleanup(root.clone());
     fs::create_dir_all(root.join(".build")).unwrap();
     let git = |arguments: &[&str]| {
-        let response = crate::git::execute_git(
+        let response = lithe_git::execute_git(
             root.to_str().unwrap(),
             &arguments
                 .iter()

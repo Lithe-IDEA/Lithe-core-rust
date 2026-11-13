@@ -1,18 +1,5 @@
 //! Validation and routing from versioned command names to their owning domains.
 
-use crate::git::{
-    self, GitApplyRequest, GitBlameRequest, GitBranchNamePreviewRequest,
-    GitCheckoutPreflightRequest, GitCommandRequest, GitCommitFilesRequest, GitCommitRequest,
-    GitComparisonRequest, GitConflictMarkerRequest, GitDiffRequest, GitHistoryCursorCloseRequest,
-    GitHistoryLocateRequest, GitHistoryPageRequest, GitHistoryRequest,
-    GitHistoryRewritePreviewRequest, GitIntegrationPreflightRequest, GitLineHistoryRequest,
-    GitOperationStateRequest, GitPullPreflightRequest, GitPullRequestContextRequest,
-    GitPushPreviewRequest, GitRebaseControlRequest, GitRebasePreviewRequest,
-    GitRebaseSessionRequest, GitRebaseStartRequest, GitReferencesRequest, GitRepositoryRootRequest,
-    GitStashesRequest, GitStatusRequest, GitUntrackedDirectoryRequest, GitWatchContextRequest,
-    GitWorktreesRequest, GitWriteRequest, PatchApplyRequest, PatchExportRequest,
-    PatchPreviewRequest, WorkspaceRepositoriesRequest,
-};
 use crate::project::MarkdownRenderRequest;
 use crate::project::{
     self, DirectoryListingRequest, DocumentLifecycleRequest, FileReadRequest, FileWriteRequest,
@@ -28,6 +15,19 @@ use crate::protocol::CoreResponse;
 use crate::protocol::{CoreCommand, CoreRequest};
 use crate::protocol::{CoreError, ErrorCode};
 use lithe_diagnostics::{manifest::BuildManifestRequest, redaction::RedactTextRequest};
+use lithe_git::{
+    self as git, GitApplyRequest, GitBlameRequest, GitBranchNamePreviewRequest,
+    GitCheckoutPreflightRequest, GitCommandRequest, GitCommitFilesRequest, GitCommitRequest,
+    GitComparisonRequest, GitConflictMarkerRequest, GitDiffRequest, GitHistoryCursorCloseRequest,
+    GitHistoryLocateRequest, GitHistoryPageRequest, GitHistoryRequest,
+    GitHistoryRewritePreviewRequest, GitIntegrationPreflightRequest, GitLineHistoryRequest,
+    GitOperationStateRequest, GitPullPreflightRequest, GitPullRequestContextRequest,
+    GitPushPreviewRequest, GitRebaseControlRequest, GitRebasePreviewRequest,
+    GitRebaseSessionRequest, GitRebaseStartRequest, GitReferencesRequest, GitRepositoryRootRequest,
+    GitStashesRequest, GitStatusRequest, GitUntrackedDirectoryRequest, GitWatchContextRequest,
+    GitWorktreesRequest, GitWriteRequest, PatchApplyRequest, PatchExportRequest,
+    PatchPreviewRequest, WorkspaceRepositoriesRequest,
+};
 use lithe_github::{NormalizeResponseRequest, ParseRemoteRequest, RequestPlanRequest};
 use serde_json::json;
 
@@ -162,7 +162,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
         Ok(scope) => scope,
         Err(error) => return CoreResponse::failure(id, error),
     };
-    let _git_policy = match crate::git::execution_policy::Scope::begin(parsed.git_execution) {
+    let _git_policy = match lithe_git::execution_policy::Scope::begin(parsed.git_execution) {
         Ok(scope) => scope,
         Err(error) => return CoreResponse::failure(id, error),
     };
@@ -2900,63 +2900,63 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
         CoreCommand::GitHistoryActionCapabilities => plugin_response(
             id,
             parsed.payload,
-            crate::git::history_action_capabilities_command,
+            lithe_git::history_action_capabilities_command,
         ),
         CoreCommand::GitRepositoryColorAssignments => plugin_response(
             id,
             parsed.payload,
-            crate::git::repository_color_assignments_command,
+            lithe_git::repository_color_assignments_command,
         ),
         CoreCommand::GitUpdatePlan => {
-            plugin_response(id, parsed.payload, crate::git::update_plan_command)
+            plugin_response(id, parsed.payload, lithe_git::update_plan_command)
         }
         CoreCommand::GitHistoryWindow => {
-            plugin_response(id, parsed.payload, crate::git::history_window_command)
+            plugin_response(id, parsed.payload, lithe_git::history_window_command)
         }
         CoreCommand::GitGraphProjection => {
-            plugin_response(id, parsed.payload, crate::git::graph_projection_command)
+            plugin_response(id, parsed.payload, lithe_git::graph_projection_command)
         }
         CoreCommand::GitNormalizeChangeTargets => plugin_response(
             id,
             parsed.payload,
-            crate::git::normalize_change_targets_command,
+            lithe_git::normalize_change_targets_command,
         ),
         CoreCommand::GitRebasePlanPreview => {
-            plugin_response(id, parsed.payload, crate::git::rebase_plan_preview_command)
+            plugin_response(id, parsed.payload, lithe_git::rebase_plan_preview_command)
         }
         CoreCommand::GitReferenceTree => {
-            plugin_response(id, parsed.payload, crate::git::reference_tree_command)
+            plugin_response(id, parsed.payload, lithe_git::reference_tree_command)
         }
         CoreCommand::GitPrepareCommitSelection => plugin_response(
             id,
             parsed.payload,
-            crate::git::prepare_commit_selection_command,
+            lithe_git::prepare_commit_selection_command,
         ),
-        CoreCommand::GitShelf => plugin_response(id, parsed.payload, crate::git::shelf_command),
+        CoreCommand::GitShelf => plugin_response(id, parsed.payload, lithe_git::shelf_command),
         CoreCommand::GitCommitMessageContext => plugin_response(
             id,
             parsed.payload,
-            crate::git::commit_message_context_command,
+            lithe_git::commit_message_context_command,
         ),
         CoreCommand::GitChangelists => {
-            plugin_response(id, parsed.payload, crate::git::changelists_command)
+            plugin_response(id, parsed.payload, lithe_git::changelists_command)
         }
         CoreCommand::GitReconcileDeletedSelection => plugin_response(
             id,
             parsed.payload,
-            crate::git::reconcile_deleted_selection_command,
+            lithe_git::reconcile_deleted_selection_command,
         ),
         CoreCommand::GitRollbackPrepare => {
-            plugin_response(id, parsed.payload, crate::git::rollback_prepare_command)
+            plugin_response(id, parsed.payload, lithe_git::rollback_prepare_command)
         }
         CoreCommand::GitParsePatch => {
-            plugin_response(id, parsed.payload, crate::git::parse_patch_command)
+            plugin_response(id, parsed.payload, lithe_git::parse_patch_command)
         }
         CoreCommand::GitHistoryQuery => {
-            plugin_response(id, parsed.payload, crate::git::history_query_command)
+            plugin_response(id, parsed.payload, lithe_git::history_query_command)
         }
         CoreCommand::GitRollbackPlan => {
-            plugin_response(id, parsed.payload, crate::git::rollback_plan_command)
+            plugin_response(id, parsed.payload, lithe_git::rollback_plan_command)
         }
         CoreCommand::GitWrite => {
             match serde_json::from_value::<GitWriteRequest>(parsed.payload)
@@ -3237,13 +3237,13 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             Err(error) => CoreResponse::failure(id, error),
         },
         CoreCommand::GitPlanDiffBlocks => {
-            plugin_response(id, parsed.payload, crate::git::plan_diff_blocks_command)
+            plugin_response(id, parsed.payload, lithe_git::plan_diff_blocks_command)
         }
         CoreCommand::GitApplyDiffBlock => {
-            plugin_response(id, parsed.payload, crate::git::apply_diff_block_command)
+            plugin_response(id, parsed.payload, lithe_git::apply_diff_block_command)
         }
         CoreCommand::GitStageGutterChange => {
-            plugin_response(id, parsed.payload, crate::git::stage_gutter_change_command)
+            plugin_response(id, parsed.payload, lithe_git::stage_gutter_change_command)
         }
         CoreCommand::GitApply => match serde_json::from_value::<GitApplyRequest>(parsed.payload)
             .map_err(|error| {

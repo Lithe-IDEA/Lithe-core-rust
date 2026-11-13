@@ -922,7 +922,7 @@ pub(crate) fn search_everywhere_with_page(
     drop(index);
     // Ask Git once for the bounded result set, not once per row or indexed file.
     let paths: Vec<String> = matches.iter().map(|item| item.path.clone()).collect();
-    if let Some(ignored) = crate::git::ignored_paths(&root, &paths)? {
+    if let Some(ignored) = lithe_git::ignored_paths(&root, &paths)? {
         for item in &mut matches {
             item.is_ignored = Some(ignored.contains(&item.path));
         }

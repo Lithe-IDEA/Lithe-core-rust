@@ -2,7 +2,7 @@
 
 use super::support::temporary_root;
 use crate::execute_json;
-use crate::git::diff_blocks_fixture as fixture_support;
+use lithe_git::test_support::diff_blocks as fixture_support;
 use serde_json::{json, Value};
 use std::fs;
 use std::path::PathBuf;

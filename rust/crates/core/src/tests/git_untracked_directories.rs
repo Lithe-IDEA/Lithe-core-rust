@@ -1,6 +1,6 @@
 use super::support::temporary_root;
 use crate::execute_json;
-use crate::git::UNTRACKED_DIRECTORY_SUMMARY_THRESHOLD;
+use lithe_git::test_support::UNTRACKED_DIRECTORY_SUMMARY_THRESHOLD;
 use serde_json::{json, Value};
 use std::{
     fs,

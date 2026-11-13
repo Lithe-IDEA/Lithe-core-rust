@@ -7536,7 +7536,7 @@ mod tests {
         std::fs::create_dir_all(root.join("ignored")).unwrap();
         std::fs::write(root.join("ignored/hidden.txt"), "hidden").unwrap();
         std::fs::write(root.join(".gitignore"), "ignored/\n").unwrap();
-        let git = crate::git::execute_git_readonly(
+        let git = lithe_git::execute_git_readonly(
             &root.to_string_lossy(),
             &["init".into(), "--quiet".into()],
             None,

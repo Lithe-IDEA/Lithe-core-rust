@@ -10,6 +10,7 @@ mod event;
 pub use command::*;
 pub use contracts::*;
 pub use event::*;
+pub use lithe_git::contracts::*;
 pub(crate) use lithe_protocol::{cancellation, json_document};
 pub use lithe_protocol::{invalid_relative_path, CoreError, CoreResponse, ErrorCode, ResponseData};
 

@@ -266,7 +266,7 @@ fn git_status_returns_contract_shape() {
 // Discovery reports canonical roots in plain native form: on Windows the
 // verbatim `\\?\` prefix from canonicalization must not leak to consumers.
 fn reported_repository_path(path: &Path) -> String {
-    crate::git::simplified_canonical_path(
+    lithe_git::simplified_canonical_path(
         path.canonicalize()
             .expect("discovered repository should exist"),
     )
@@ -1834,7 +1834,7 @@ fn git_worktrees_lists_primary_linked_and_locked_metadata() {
     assert_eq!(worktrees[0]["isCurrent"], true);
     assert_eq!(
         worktrees[1]["path"],
-        crate::git::simplified_canonical_path(
+        lithe_git::simplified_canonical_path(
             destination
                 .canonicalize()
                 .expect("linked worktree should canonicalize")
