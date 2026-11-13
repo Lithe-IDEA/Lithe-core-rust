@@ -112,12 +112,16 @@ fn run_start_fixture_cases_decode_the_same_in_every_host() {
         .map(|directory| directory.as_str().unwrap())
         .collect();
     let workspace = Workspace::new("run-start-fixture", &directories);
+    // Every host supplies its temporary directory, so the temporary-file refusals of the
+    // fixture are reached instead of stopping at a missing directory.
+    let temporary = Workspace::new("run-start-fixture-files", &[]);
     let manifest = named_manifest(&fixture);
     for case in fixture["cases"].as_array().unwrap() {
         let name = case["name"].as_str().unwrap();
         let outcome = run_decode_start_command(json!({
             "manifest": manifest,
             "workspaceRoot": workspace.root(),
+            "temporaryDirectory": temporary.root(),
             "params": case["params"],
         }))
         .expect("payload is well formed");

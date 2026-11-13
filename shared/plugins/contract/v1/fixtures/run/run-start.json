@@ -1,5 +1,5 @@
 {
-  "description": "Parameters of lithe/host/run/start and what run.decodeStart returns. The host passes the plugin's manifest (`manifest`, a file in this directory), a workspace root that holds the directories in `workspaceDirectories`, and the request's `params`. `start` is the normalized start; `error` is the rejection every host reports. Cases with temporary files depend on the host's temporary directory and are covered by Core's own tests.",
+  "description": "Parameters of lithe/host/run/start and what run.decodeStart returns. The host passes the plugin's manifest (`manifest`, a file in this directory), a workspace root that holds the directories in `workspaceDirectories`, and the request's `params`. `start` is the normalized start; `error` is the rejection every host reports. The host supplies an absolute temporary directory (`temporaryDirectory`) with every case. Accepted starts with temporary files return paths inside that directory, so only their refusals are listed here; the accepted ones are covered by Core's own tests.",
   "manifest": "tool-reference-launch.plugin.json",
   "workspaceDirectories": ["app", "app/tools"],
   "cases": [
@@ -265,6 +265,48 @@
         ]
       },
       "error": { "code": "plugin.run.invalidStart", "field": "temporaryFiles" }
+    },
+    {
+      "name": "a temporary file with both text and bytes",
+      "params": {
+        "label": "Run",
+        "process": {
+          "executable": { "kind": "tool", "tool": "interpreter" },
+          "arguments": [],
+          "workingDirectory": ".",
+          "environment": {}
+        },
+        "temporaryFiles": [{ "name": "args", "contents": "", "base64": "" }]
+      },
+      "error": { "code": "plugin.run.invalidStart", "field": "temporaryFiles[0]" }
+    },
+    {
+      "name": "a temporary file with neither text nor bytes",
+      "params": {
+        "label": "Run",
+        "process": {
+          "executable": { "kind": "tool", "tool": "interpreter" },
+          "arguments": [],
+          "workingDirectory": ".",
+          "environment": {}
+        },
+        "temporaryFiles": [{ "name": "args" }]
+      },
+      "error": { "code": "plugin.run.invalidStart", "field": "temporaryFiles[0]" }
+    },
+    {
+      "name": "temporary file bytes that are not standard base64",
+      "params": {
+        "label": "Run",
+        "process": {
+          "executable": { "kind": "tool", "tool": "interpreter" },
+          "arguments": [],
+          "workingDirectory": ".",
+          "environment": {}
+        },
+        "temporaryFiles": [{ "name": "args", "base64": "not base64!" }]
+      },
+      "error": { "code": "plugin.run.invalidStart", "field": "temporaryFiles[0].base64" }
     },
     {
       "name": "an unknown start parameter",
