@@ -1,6 +1,7 @@
 //! Bounded context parsing and Core-owned truth tables for synchronous key dispatch.
 
 mod bindings;
+pub(crate) mod schemes;
 
 pub use bindings::{analyze_conflicts, AnalyzeConflictsRequest};
 

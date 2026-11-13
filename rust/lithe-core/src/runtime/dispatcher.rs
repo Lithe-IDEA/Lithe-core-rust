@@ -37,8 +37,13 @@ use crate::protocol::{CoreError, ErrorCode};
 use serde_json::json;
 
 pub fn execute_json(request: &str) -> String {
+    execute_document_json(request, None)
+}
+
+/// Borrows an immutable document for one request; no text is retained after dispatch.
+pub(crate) fn execute_document_json(request: &str, document: Option<&str>) -> String {
     crate::diagnostics::helper_failures::install();
-    let response = execute(request);
+    let response = execute(request, document);
     serde_json::to_string(&response).unwrap_or_else(|_| {
         serde_json::to_string(&CoreResponse::failure(
             None,
@@ -123,7 +128,7 @@ fn log_v2_result<T: serde::Serialize>(
     }
 }
 
-fn execute(request: &str) -> CoreResponse {
+fn execute(request: &str, document: Option<&str>) -> CoreResponse {
     let parsed: CoreRequest = match serde_json::from_str(request) {
         Ok(request) => request,
         Err(error) => {
@@ -136,12 +141,12 @@ fn execute(request: &str) -> CoreResponse {
     };
     // The trace spans every scope below and records once, after the final response.
     let trace = crate::diagnostics::request_trace::Request::begin(&parsed);
-    let response = execute_parsed(parsed);
+    let response = execute_parsed(parsed, document);
     trace.finish(&response);
     response
 }
 
-fn execute_parsed(mut parsed: CoreRequest) -> CoreResponse {
+fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreResponse {
     let id = parsed.id.clone();
     let response_id = id.clone();
     let operation_id = parsed.operation_id.clone().or_else(|| id.clone());
@@ -1957,6 +1962,24 @@ fn execute_parsed(mut parsed: CoreRequest) -> CoreResponse {
             parsed.payload,
             crate::lsp::declaration_or_usages::decide_command,
         ),
+        CoreCommand::EditorFind => match crate::editor::find::command(parsed.payload, document) {
+            Ok(data) => CoreResponse::success(id, data),
+            Err(error) => CoreResponse::failure(id, error),
+        },
+        CoreCommand::EditorPreferencesResolve => plugin_response(
+            id,
+            parsed.payload,
+            crate::editor::preferences::resolve_command,
+        ),
+        CoreCommand::EditorRecentReduce => {
+            plugin_response(id, parsed.payload, crate::editor::recent::reduce_command)
+        }
+        CoreCommand::EditorRecoveryDecide => {
+            plugin_response(id, parsed.payload, crate::editor::recovery::decide_command)
+        }
+        CoreCommand::KeymapSchemesReduce => {
+            plugin_response(id, parsed.payload, crate::keymap::schemes::reduce_command)
+        }
         CoreCommand::EditorPlanTextEdits => plugin_response(
             id,
             parsed.payload,

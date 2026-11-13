@@ -475,6 +475,16 @@ pub enum CoreCommand {
     /// Applies a deterministic line-level editing transform
     /// (`editor.lineEdit`).
     EditorLineEdit,
+    /// Finds text or plans bounded replacements in a borrowed document (`editor.find`).
+    EditorFind,
+    /// Resolves persisted editor presentation preferences (`editor.preferences.resolve`).
+    EditorPreferencesResolve,
+    /// Reduces and queries bounded recent-file history (`editor.recent.reduce`).
+    EditorRecentReduce,
+    /// Decides how a native checkpoint should recover (`editor.recovery.decide`).
+    EditorRecoveryDecide,
+    /// Reduces named shortcut schemes (`keymap.schemes.reduce`).
+    KeymapSchemesReduce,
     /// Validates and orders a plugin document edit batch
     /// (`editor.planTextEdits`).
     EditorPlanTextEdits,
@@ -1035,6 +1045,11 @@ impl CoreCommand {
             "lsp.classifyNavigationTarget" => Some(Self::LspClassifyNavigationTarget),
             "lsp.declarationOrUsages" => Some(Self::LspDeclarationOrUsages),
             "editor.lineEdit" => Some(Self::EditorLineEdit),
+            "editor.find" => Some(Self::EditorFind),
+            "editor.preferences.resolve" => Some(Self::EditorPreferencesResolve),
+            "editor.recent.reduce" => Some(Self::EditorRecentReduce),
+            "editor.recovery.decide" => Some(Self::EditorRecoveryDecide),
+            "keymap.schemes.reduce" => Some(Self::KeymapSchemesReduce),
             "editor.planTextEdits" => Some(Self::EditorPlanTextEdits),
             "editor.parseNavigationInput" => Some(Self::EditorParseNavigationInput),
             "editor.navigationHistory.reduce" => Some(Self::EditorNavigationHistoryReduce),

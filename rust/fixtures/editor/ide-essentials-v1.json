@@ -1,0 +1,182 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "unicode-original-byte-offsets",
+      "command": "editor.find",
+      "document": "😀 αβ αβ",
+      "payload": {
+        "query": "αβ"
+      },
+      "expected": {
+        "matches": [
+          {
+            "start": 5,
+            "end": 9
+          },
+          {
+            "start": 10,
+            "end": 14
+          }
+        ],
+        "edits": [],
+        "selected": 0,
+        "truncated": false
+      }
+    },
+    {
+      "name": "regex-capture-expansion",
+      "command": "editor.find",
+      "document": "one two",
+      "payload": {
+        "query": "(one)",
+        "regex": true,
+        "replacement": "${1}!"
+      },
+      "expected": {
+        "matches": [
+          {
+            "start": 0,
+            "end": 3
+          }
+        ],
+        "edits": [
+          {
+            "start": 0,
+            "end": 3,
+            "text": "one!"
+          }
+        ],
+        "selected": 0,
+        "truncated": false
+      }
+    },
+    {
+      "name": "preferences-defaults",
+      "command": "editor.preferences.resolve",
+      "payload": {},
+      "expected": {
+        "lineNumbers": true,
+        "whitespace": false,
+        "cursorStyle": "line",
+        "cursorBlink": true,
+        "autoSaveDelayMilliseconds": 1500,
+        "minimumAutoSaveDelayMilliseconds": 250,
+        "maximumAutoSaveDelayMilliseconds": 60000
+      }
+    },
+    {
+      "name": "changed-disk-keeps-conflict",
+      "command": "editor.recovery.decide",
+      "payload": {
+        "baseHash": "old",
+        "diskHash": "new",
+        "bytes": 20
+      },
+      "expected": {
+        "action": "restoreConflict",
+        "maxDocumentBytes": 67108864,
+        "maxStorageBytes": 268435456,
+        "maxDocuments": 64
+      }
+    },
+    {
+      "name": "recent-edit-records-position",
+      "command": "editor.recent.reduce",
+      "payload": {
+        "event": {
+          "kind": "edited",
+          "path": "src/a.txt",
+          "name": "a.txt",
+          "line": 2,
+          "column": 3
+        }
+      },
+      "expected": {
+        "entries": [
+          {
+            "path": "src/a.txt",
+            "name": "a.txt",
+            "line": 2,
+            "column": 3,
+            "opened": 1,
+            "edited": 1
+          }
+        ],
+        "results": [
+          {
+            "path": "src/a.txt",
+            "name": "a.txt",
+            "line": 2,
+            "column": 3,
+            "opened": 1,
+            "edited": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "migrate-empty-keymap",
+      "command": "keymap.schemes.reduce",
+      "payload": {
+        "state": {}
+      },
+      "expected": {
+        "state": {
+          "active": "default",
+          "schemes": [
+            {
+              "id": "default",
+              "name": "",
+              "bindings": {}
+            }
+          ]
+        },
+        "bindings": {}
+      }
+    },
+    {
+      "name": "selection-shrinks-with-replacement",
+      "command": "editor.find",
+      "document": "x alpha alpha y",
+      "payload": {
+        "query": "alpha",
+        "range": {
+          "start": 2,
+          "end": 13
+        },
+        "replacement": "a"
+      },
+      "expected": {
+        "matches": [
+          {
+            "start": 2,
+            "end": 7
+          },
+          {
+            "start": 8,
+            "end": 13
+          }
+        ],
+        "edits": [
+          {
+            "start": 2,
+            "end": 7,
+            "text": "a"
+          },
+          {
+            "start": 8,
+            "end": 13,
+            "text": "a"
+          }
+        ],
+        "selected": 0,
+        "truncated": false,
+        "range": {
+          "start": 2,
+          "end": 5
+        }
+      }
+    }
+  ]
+}
