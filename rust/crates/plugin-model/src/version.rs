@@ -49,3 +49,28 @@ pub fn reported_version(output: &str) -> Option<Vec<u64>> {
         .map(|part| part.parse().ok())
         .collect()
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+/// Strict three-component semantic version used for compatibility comparisons.
+pub struct PluginVersion {
+    /// Breaking-change component.
+    pub major: u32,
+    /// Backward-compatible feature component.
+    pub minor: u32,
+    /// Backward-compatible fix component.
+    pub patch: u32,
+}
+
+impl PluginVersion {
+    /// Parses exactly `major.minor.patch`; prerelease tags and missing parts are
+    /// rejected because the manifest contract does not define their ordering.
+    pub fn parse(value: &str) -> Option<Self> {
+        let mut parts = value.split('.');
+        let version = Self {
+            major: parts.next()?.parse().ok()?,
+            minor: parts.next()?.parse().ok()?,
+            patch: parts.next()?.parse().ok()?,
+        };
+        parts.next().is_none().then_some(version)
+    }
+}

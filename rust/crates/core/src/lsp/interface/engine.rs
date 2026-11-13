@@ -15,10 +15,6 @@ use super::{
     ClientShutdownRequest, LspClientDiagnostic, LspClientDocument, LspClientState,
     LspDocumentContentChange, LspPosition, LspRange,
 };
-use crate::plugins::language_server_sessions::{
-    RemoteSupport, DEFAULT_REQUEST_TIMEOUT_MILLISECONDS, DID_CHANGE_CONFIGURATION,
-    MAX_REQUEST_TIMEOUT_MILLISECONDS,
-};
 use crate::protocol::{CoreError, ErrorCode};
 use lithe_diagnostics::plugin_operations::{
     self as plugin_operations, Attempt, AttemptHandoff, AttemptSlot, Stage as AttemptStage,
@@ -29,6 +25,10 @@ use lithe_lsp_transport::framing::{
 };
 use lithe_lsp_transport::process::{
     LspProcessHandle, LspProcessLauncher, LspProcessSpec, SystemProcessLauncher,
+};
+use lithe_plugin_language_servers::{
+    RemoteSupport, DEFAULT_REQUEST_TIMEOUT_MILLISECONDS, DID_CHANGE_CONFIGURATION,
+    MAX_REQUEST_TIMEOUT_MILLISECONDS,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -10736,7 +10736,7 @@ mod tests {
     /// methods they belong to, and only when those methods are granted.
     #[test]
     fn capability_discovery_reports_granted_editor_options() {
-        use crate::plugins::editor_actions::{EditorHostOptions, REGISTER_PROVIDERS};
+        use lithe_plugin_editor::actions::{EditorHostOptions, REGISTER_PROVIDERS};
         let mut harness = Harness::start(|request| {
             request.plugin_id = Some(FUNCTION_PLUGIN.to_string());
             request.host_services = vec![REGISTER_PROVIDERS.to_string()];
@@ -10773,7 +10773,7 @@ mod tests {
     /// enforce.
     #[test]
     fn start_contract_rejects_unenforceable_host_options() {
-        use crate::plugins::editor_actions::EditorHostOptions;
+        use lithe_plugin_editor::actions::EditorHostOptions;
         let server = ScriptedServer::new();
         let mut request = start_request(&server);
         let options = EditorHostOptions {

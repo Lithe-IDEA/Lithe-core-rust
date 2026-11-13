@@ -1,0 +1,12 @@
+[package]
+name = "lithe-plugin-native-ui"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Versioned native plugin presentation: bounded view data, stable identities and named actions"
+
+[dependencies]
+lithe-plugin-model = { path = "../plugin-model" }
+lithe-protocol = { path = "../protocol" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }

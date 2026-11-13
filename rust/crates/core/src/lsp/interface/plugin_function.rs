@@ -19,8 +19,8 @@
 //! (`shared/plugins/contract/v1/README.md`, "Plugin functions").
 
 use crate::plugins::capabilities::{versions as capability_versions, BACKEND};
-use crate::plugins::language_server_sessions::{self, is_protocol_name};
 use crate::protocol::{CoreError, ErrorCode};
+use lithe_plugin_language_servers::{self, is_protocol_name};
 use lithe_plugin_model::{is_function_id, MAX_FUNCTION_ID_BYTES};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -1522,7 +1522,7 @@ fn check_language_server_params(
     if rule == HostParams::LanguageServerRequest
         && params.get("timeoutMilliseconds").is_some_and(|value| {
             !value.as_u64().is_some_and(|milliseconds| {
-                (1..=language_server_sessions::MAX_REQUEST_TIMEOUT_MILLISECONDS)
+                (1..=lithe_plugin_language_servers::MAX_REQUEST_TIMEOUT_MILLISECONDS)
                     .contains(&milliseconds)
             })
         })

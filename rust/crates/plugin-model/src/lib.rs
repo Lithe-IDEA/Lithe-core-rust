@@ -16,6 +16,7 @@
 pub mod capabilities;
 pub mod executables;
 mod icon;
+pub mod installed;
 mod manifest;
 mod names;
 pub mod process;
@@ -35,4 +36,4 @@ pub use rejection::{
     decode_payload, invalid, invalid_template, outcome, PluginRejection, Validation,
 };
 pub use template::{parse_template_with, regex_literal, TemplatePart};
-pub use version::{reported_version, validate_minimum_version, version_components};
+pub use version::{reported_version, validate_minimum_version, version_components, PluginVersion};

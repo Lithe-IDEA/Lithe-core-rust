@@ -5,8 +5,8 @@
 //! console lines, and turns a match into a workspace location, or into the
 //! groups a plugin backend resolves. A host only shows links and opens them.
 
-use crate::protocol::{CoreError, ErrorCode};
 use lithe_plugin_model::{invalid, Validation};
+use lithe_protocol::{CoreError, ErrorCode};
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -41,7 +41,7 @@ const LOCATION_GROUPS: &[&str] = &["path", "line", "column"];
 /// One declared matcher.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct OutputLinkMatcher {
+pub struct OutputLinkMatcher {
     /// Plugin-local ID.
     pub(crate) id: String,
     /// A Rust `regex` pattern matched against one console line.
@@ -70,7 +70,7 @@ pub(crate) struct OutputLinkResolve {
 
 /// Checks every declaration and sorts them by ID. `has_backend_functions`
 /// says whether the plugin has a `backend` process to call `resolve` on.
-pub(crate) fn validate_declarations(
+pub fn validate_declarations(
     matchers: &mut [OutputLinkMatcher],
     has_backend_functions: bool,
 ) -> Validation<()> {
@@ -214,7 +214,7 @@ fn request_error(message: &str) -> CoreError {
 /// plugin and matcher, and either `location` with `paths` the host opens the
 /// first existing one of, or `resolve` with the groups the backend function
 /// receives. Matches overlapping an earlier link on the line are skipped.
-pub(crate) fn match_lines(payload: Value) -> Result<Value, CoreError> {
+pub fn match_lines(payload: Value) -> Result<Value, CoreError> {
     let request: MatchRequest = serde_json::from_value(payload).map_err(|error| {
         request_error("Invalid output link match request.").with_details(error.to_string())
     })?;
@@ -351,18 +351,18 @@ fn location(
     let absolute = text.starts_with('/') || (windows && text.as_bytes().get(1) == Some(&b':'));
     let mut paths = Vec::new();
     if absolute {
-        let path = crate::toolchain::paths::normalize(&text, platform, true)?;
+        let path = lithe_toolchain::paths::normalize(&text, platform, true)?;
         if roots
             .iter()
-            .any(|root| crate::toolchain::paths::within(&path, root, platform, case_sensitive))
+            .any(|root| lithe_toolchain::paths::within(&path, root, platform, case_sensitive))
         {
             paths.push(path);
         }
     } else {
         let relative = text.strip_prefix("./").unwrap_or(&text);
         for root in roots {
-            if let Some(path) = crate::toolchain::paths::join(root, relative, platform) {
-                if crate::toolchain::paths::within(&path, root, platform, case_sensitive) {
+            if let Some(path) = lithe_toolchain::paths::join(root, relative, platform) {
+                if lithe_toolchain::paths::within(&path, root, platform, case_sensitive) {
                     paths.push(path);
                 }
             }
@@ -391,7 +391,7 @@ struct ResolutionRequest {
 /// `outputLinks.decodeResolution`: checks a `resolve` function's reply,
 /// `{uri, range?}` or `null`, and returns the 1-based location to open, or
 /// `null` when the backend found nothing. Only `file:` URIs open.
-pub(crate) fn decode_resolution(payload: Value) -> Result<Value, CoreError> {
+pub fn decode_resolution(payload: Value) -> Result<Value, CoreError> {
     let request: ResolutionRequest = serde_json::from_value(payload).map_err(|error| {
         request_error("Invalid output link resolution.").with_details(error.to_string())
     })?;

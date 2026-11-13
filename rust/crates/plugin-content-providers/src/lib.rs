@@ -5,8 +5,8 @@
 //! to and shows the answer read-only. Core checks that answer, so every host
 //! opens the same text under the same limit and refuses the same shapes.
 
-use crate::protocol::{CoreError, ErrorCode};
 use lithe_plugin_model::decode_payload;
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
 

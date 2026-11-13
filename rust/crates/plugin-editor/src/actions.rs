@@ -4,12 +4,12 @@
 //! their business facts; hosts own document versions, session leases, icon
 //! resources and clicks. Collected actions are checked against the icons and
 //! source bound the host declared in
-//! [`EditorHostOptions`](crate::plugins::editor_actions::EditorHostOptions); an
+//! [`EditorHostOptions`]; an
 //! action may carry alternatives, and a clicked action may return a reveal
 //! result.
 
-use crate::protocol::{CoreError, ErrorCode};
 use lithe_plugin_model::is_function_id;
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
@@ -23,7 +23,9 @@ const MAX_ALTERNATIVES: usize = 4;
 const MAX_REVEAL_LOCATIONS: usize = 100;
 const MAX_URI_BYTES: usize = 4096;
 const REGISTER_ACTIONS: &str = "lithe/host/editor/registerActions";
-pub(crate) const REGISTER_PROVIDERS: &str = "lithe/host/editor/registerProviders";
+/// Host method that registers editor providers, reported among the granted
+/// host methods.
+pub const REGISTER_PROVIDERS: &str = "lithe/host/editor/registerProviders";
 
 /// Editor presentation a host declares at `lsp.startServer.hostOptions.editor`.
 /// Core reports it to sessions granted the matching editor methods through
@@ -38,7 +40,7 @@ pub struct EditorHostOptions {
     /// Largest document, in UTF-8 bytes, the host collects actions for.
     pub action_source_bytes: usize,
     /// Provider types `lithe/host/editor/registerProviders` accepts on this
-    /// host; a subset of [`super::editor_providers::PROVIDER_TYPES`].
+    /// host; a subset of [`crate::providers::PROVIDER_TYPES`].
     #[serde(default)]
     pub provider_types: Vec<String>,
 }
@@ -63,7 +65,7 @@ impl EditorHostOptions {
             || !self
                 .provider_types
                 .iter()
-                .all(|kind| super::editor_providers::PROVIDER_TYPES.contains(&kind.as_str()))
+                .all(|kind| crate::providers::PROVIDER_TYPES.contains(&kind.as_str()))
         {
             return Err(invalid("Unknown editor provider type in host options."));
         }
@@ -73,7 +75,7 @@ impl EditorHostOptions {
     /// Adds `services.editor.options` and `limits.editorActionSourceBytes`
     /// to a `getCapabilities` answer, each only when the session is granted
     /// the editor method it describes.
-    pub(crate) fn report(&self, answer: &mut Value, granted: &BTreeSet<String>) {
+    pub fn report(&self, answer: &mut Value, granted: &BTreeSet<String>) {
         let actions = granted.contains(REGISTER_ACTIONS);
         let providers = granted.contains(REGISTER_PROVIDERS) && !self.provider_types.is_empty();
         if !actions && !providers {

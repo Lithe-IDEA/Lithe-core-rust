@@ -89,7 +89,7 @@ pub enum LspTextDocumentSyncKind {
 pub struct HostOptions {
     /// Icons, source bound and provider types of the editor service.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub editor: Option<crate::plugins::editor_actions::EditorHostOptions>,
+    pub editor: Option<lithe_plugin_editor::actions::EditorHostOptions>,
 }
 
 impl HostOptions {

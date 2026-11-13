@@ -30,7 +30,13 @@ lithe-ide-host = { path = "../ide-host" }
 lithe-lsp-policy = { path = "../lsp-policy" }
 lithe-lsp-transport = { path = "../lsp-transport" }
 lithe-network = { path = "../network" }
+lithe-plugin-content-providers = { path = "../plugin-content-providers" }
+lithe-plugin-editor = { path = "../plugin-editor" }
+lithe-plugin-grammar = { path = "../plugin-grammar" }
+lithe-plugin-language-servers = { path = "../plugin-language-servers" }
 lithe-plugin-model = { path = "../plugin-model" }
+lithe-plugin-native-ui = { path = "../plugin-native-ui" }
+lithe-plugin-output-links = { path = "../plugin-output-links" }
 lithe-process = { path = "../process" }
 lithe-project = { path = "../project" }
 lithe-project-generators = { path = "../project-generators" }

@@ -218,7 +218,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
         CoreCommand::PluginsNativeUIValidateData => plugin_response(
             id,
             parsed.payload,
-            crate::plugins::native_ui::validate_data_command,
+            lithe_plugin_native_ui::validate_data_command,
         ),
         CoreCommand::PluginsWebOpen => plugin_response(
             id,
@@ -288,12 +288,12 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
         CoreCommand::PluginsLanguageServersStateRetention => plugin_response(
             id,
             parsed.payload,
-            crate::plugins::language_server_sessions::state_retention_command,
+            lithe_plugin_language_servers::state_retention_command,
         ),
         CoreCommand::PluginsContentProvidersDecode => plugin_response(
             id,
             parsed.payload,
-            crate::plugins::content_providers::decode_content_command,
+            lithe_plugin_content_providers::decode_content_command,
         ),
         CoreCommand::DebugValidateAdapterEndpoint => {
             match crate::debug::validate_adapter_endpoint(parsed.payload) {
@@ -335,7 +335,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
         CoreCommand::PluginsInstalledSelect => plugin_response(
             id,
             parsed.payload,
-            crate::plugins::installed::select_command,
+            lithe_plugin_model::installed::select_command,
         ),
         CoreCommand::PluginsSettingsCatalog => plugin_response(
             id,
@@ -380,7 +380,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
         CoreCommand::PluginsEditorActionsDecode => plugin_response(
             id,
             parsed.payload,
-            crate::plugins::editor_actions::decode_command,
+            lithe_plugin_editor::actions::decode_command,
         ),
         CoreCommand::PluginsHostApiDescribe => plugin_response(
             id,
@@ -395,7 +395,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
         CoreCommand::PluginsEditorProvidersDecode => plugin_response(
             id,
             parsed.payload,
-            crate::plugins::editor_providers::decode_command,
+            lithe_plugin_editor::providers::decode_command,
         ),
         CoreCommand::KeymapDecodeImport => plugin_response(
             id,
@@ -506,15 +506,13 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             parsed.payload,
             crate::debug::decode_backend_configuration_command::<Manifest>,
         ),
-        CoreCommand::OutputLinksMatch => plugin_response(
-            id,
-            parsed.payload,
-            crate::plugins::output_links::match_lines,
-        ),
+        CoreCommand::OutputLinksMatch => {
+            plugin_response(id, parsed.payload, lithe_plugin_output_links::match_lines)
+        }
         CoreCommand::OutputLinksDecodeResolution => plugin_response(
             id,
             parsed.payload,
-            crate::plugins::output_links::decode_resolution,
+            lithe_plugin_output_links::decode_resolution,
         ),
         CoreCommand::BuildDetect => plugin_response(
             id,

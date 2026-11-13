@@ -49,7 +49,7 @@ const MAX_DELIMITER_BYTES: usize = 16;
 /// Engine that runs a grammar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) enum GrammarKind {
+pub enum GrammarKind {
     /// A TextMate grammar as JSON, the `.tmLanguage.json` files of VS Code.
     Textmate,
 }
@@ -57,8 +57,9 @@ pub(crate) enum GrammarKind {
 /// `languages[].grammar`: the engine and the package file it reads.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct GrammarDeclaration {
-    pub(crate) kind: GrammarKind,
+pub struct GrammarDeclaration {
+    /// Engine that runs the grammar file.
+    pub kind: GrammarKind,
     /// Package-relative grammar file, e.g. `syntaxes/http.tmLanguage.json`.
     pub(crate) path: String,
 }
@@ -66,7 +67,7 @@ pub(crate) struct GrammarDeclaration {
 /// `languages[].configuration`: comment and bracket behavior of the editor.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct LanguageConfiguration {
+pub struct LanguageConfiguration {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     line_comment: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -78,7 +79,9 @@ pub(crate) struct LanguageConfiguration {
 }
 
 impl GrammarDeclaration {
-    pub(crate) fn validate(&self, field: &str) -> Validation<()> {
+    /// Rejects a grammar path that leaves the plugin package; `field` names
+    /// the declaration in the error.
+    pub fn validate(&self, field: &str) -> Validation<()> {
         if !is_safe_relative_path(&self.path) || self.path.contains(':') {
             return Err(invalid(
                 format!("{field}.path"),
@@ -90,7 +93,9 @@ impl GrammarDeclaration {
 }
 
 impl LanguageConfiguration {
-    pub(crate) fn validate(&self, field: &str) -> Validation<()> {
+    /// Rejects empty, overlong or control-character delimiters and too many
+    /// bracket pairs; `field` names the declaration in the error.
+    pub fn validate(&self, field: &str) -> Validation<()> {
         let delimiter = |value: &str| {
             !value.is_empty()
                 && value.len() <= MAX_DELIMITER_BYTES
@@ -141,7 +146,7 @@ fn grammar_error(field: impl Into<String>, message: impl Into<String>) -> Plugin
 
 /// Validates the text of a TextMate grammar file and returns its `scopeName`.
 /// Hosts register the original text, which the editor's engine parses itself.
-pub(crate) fn decode_textmate(text: &str) -> Validation<String> {
+pub fn decode_textmate(text: &str) -> Validation<String> {
     if text.len() > MAX_GRAMMAR_BYTES {
         return Err(grammar_error(
             "grammar",

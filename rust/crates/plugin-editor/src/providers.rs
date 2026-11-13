@@ -8,9 +8,9 @@
 //! never interprets selectors, function names or result payloads beyond
 //! their shape, so no tool or language has a branch here.
 
-use super::editor_actions::{normalize_names, uri, Location, LspPosition, LspRange};
-use crate::protocol::{CoreError, ErrorCode};
+use crate::actions::{normalize_names, uri, Location, LspPosition, LspRange};
 use lithe_plugin_model::is_function_id;
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::BTreeSet;

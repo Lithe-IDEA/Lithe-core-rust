@@ -915,7 +915,13 @@ dependencies = [
  "lithe-lsp-policy",
  "lithe-lsp-transport",
  "lithe-network",
+ "lithe-plugin-content-providers",
+ "lithe-plugin-editor",
+ "lithe-plugin-grammar",
+ "lithe-plugin-language-servers",
  "lithe-plugin-model",
+ "lithe-plugin-native-ui",
+ "lithe-plugin-output-links",
  "lithe-process",
  "lithe-project",
  "lithe-project-generators",
@@ -1107,10 +1113,72 @@ dependencies = [
 ]
 
 [[package]]
+name = "lithe-plugin-content-providers"
+version = "0.1.0"
+dependencies = [
+ "lithe-plugin-model",
+ "lithe-protocol",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-plugin-editor"
+version = "0.1.0"
+dependencies = [
+ "lithe-plugin-model",
+ "lithe-protocol",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-plugin-grammar"
+version = "0.1.0"
+dependencies = [
+ "lithe-plugin-model",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-plugin-language-servers"
+version = "0.1.0"
+dependencies = [
+ "lithe-plugin-model",
+ "lithe-protocol",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "lithe-plugin-model"
 version = "0.1.0"
 dependencies = [
  "lithe-protocol",
+ "regex",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-plugin-native-ui"
+version = "0.1.0"
+dependencies = [
+ "lithe-plugin-model",
+ "lithe-protocol",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-plugin-output-links"
+version = "0.1.0"
+dependencies = [
+ "lithe-document-uri",
+ "lithe-plugin-model",
+ "lithe-protocol",
+ "lithe-toolchain",
  "regex",
  "serde",
  "serde_json",

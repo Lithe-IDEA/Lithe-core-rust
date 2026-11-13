@@ -12,7 +12,6 @@
 //! payload is a Core `invalid_request` failure.
 
 use super::capabilities::{self, HostCapabilities, Requires};
-use super::language_server_sessions;
 use crate::protocol::{CoreError, ErrorCode};
 use lithe_plugin_model::process::{
     collect_setting_references, is_packaged_runtime_path, validate_launch_value,
@@ -173,9 +172,9 @@ pub struct DeclarativePluginManifest {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     requires_tools: Vec<String>,
     /// Patterns that turn console output into links; see
-    /// `super::output_links`.
+    /// `lithe_plugin_output_links`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    output_link_matchers: Vec<super::output_links::OutputLinkMatcher>,
+    output_link_matchers: Vec<lithe_plugin_output_links::OutputLinkMatcher>,
     /// Functions this plugin exports to other plugins and the exported
     /// functions it calls; see `super::plugin_functions`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -215,7 +214,7 @@ struct UIToolWindow {
     web: Option<UIWebContent>,
     /// Host-rendered tree/list content.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    native: Option<super::native_ui::NativeUI>,
+    native: Option<lithe_plugin_native_ui::NativeUI>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     icon: Option<UIIcon>,
 }
@@ -309,12 +308,12 @@ struct LanguageDeclaration {
     project_file_names: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     dependencies: Option<DependencyDeclaration>,
-    /// Syntax highlighting from a package file; see `super::grammar`.
+    /// Syntax highlighting from a package file; see `lithe_plugin_grammar`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    grammar: Option<super::grammar::GrammarDeclaration>,
+    grammar: Option<lithe_plugin_grammar::GrammarDeclaration>,
     /// Comment and bracket behavior of the editor.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    configuration: Option<super::grammar::LanguageConfiguration>,
+    configuration: Option<lithe_plugin_grammar::LanguageConfiguration>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -352,7 +351,7 @@ struct LanguageServerDeclaration {
     /// Fields that govern what the plugin backend may send to its own server
     /// and how the host keeps the server's state.
     #[serde(flatten)]
-    session: language_server_sessions::SessionDeclaration,
+    session: lithe_plugin_language_servers::SessionDeclaration,
 }
 
 /// A named piece of host code and the package resources it reads. The plugin
@@ -731,7 +730,7 @@ impl DeclarativePluginManifest {
         let declared_settings = self.validate_settings()?;
         let required_tools = self.validate_required_tools()?;
         let runtime_tools = RuntimeTools::new(&required_tools);
-        super::output_links::validate_declarations(
+        lithe_plugin_output_links::validate_declarations(
             &mut self.output_link_matchers,
             self.backend.is_some(),
         )?;
@@ -2319,7 +2318,7 @@ impl LanguageServerLaunchPlanRequest {
     /// Each is required, because the answer may name paths in any of them.
     fn backend_launch_directories(
         &self,
-    ) -> Validation<language_server_sessions::LaunchDirectories<'_>> {
+    ) -> Validation<lithe_plugin_language_servers::LaunchDirectories<'_>> {
         fn required<'a>(value: Option<&'a String>, name: &str) -> Validation<&'a str> {
             match value {
                 Some(directory) => launch_directory(directory, name),
@@ -2329,7 +2328,7 @@ impl LanguageServerLaunchPlanRequest {
                 )),
             }
         }
-        Ok(language_server_sessions::LaunchDirectories {
+        Ok(lithe_plugin_language_servers::LaunchDirectories {
             state: launch_directory(&self.state_directory, "stateDirectory")?,
             workspace_state: required(
                 self.workspace_state_directory.as_ref(),
@@ -2436,7 +2435,7 @@ fn backend_resolved_launch_plan(
             "timeoutMilliseconds": timeout_milliseconds
                 .unwrap_or(lithe_plugin_model::process::RESOLVE_TIMEOUT_MILLISECONDS),
         },
-        "resolveParams": language_server_sessions::resolve_params(
+        "resolveParams": lithe_plugin_language_servers::resolve_params(
             server_id,
             &request.architecture,
             &directories,
@@ -2501,8 +2500,11 @@ pub fn decode_language_server_launch_command(payload: Value) -> Result<Value, Co
                 .iter()
                 .filter_map(|definition| definition["id"].as_str())
                 .collect();
-            let (mut plan, gates) =
-                language_server_sessions::decode_answer(payload.result, &directories, &tool_ids)?;
+            let (mut plan, gates) = lithe_plugin_language_servers::decode_answer(
+                payload.result,
+                &directories,
+                &tool_ids,
+            )?;
             let settings = manifest.effective_settings(payload.request.layers());
             if !settings.is_empty() {
                 plan["settings"] = json!(settings);
@@ -3666,8 +3668,8 @@ pub fn decode_grammar_command(payload: Value) -> Result<Value, CoreError> {
                 .map(|grammar| match grammar.kind {
                     // The editor's engine parses the original text; Core only
                     // proves that it can and names the scope it registers.
-                    super::grammar::GrammarKind::Textmate => {
-                        super::grammar::decode_textmate(&payload.grammar).map(|scope_name| {
+                    lithe_plugin_grammar::GrammarKind::Textmate => {
+                        lithe_plugin_grammar::decode_textmate(&payload.grammar).map(|scope_name| {
                             json!({
                                 "kind": grammar.kind,
                                 "scopeName": scope_name,

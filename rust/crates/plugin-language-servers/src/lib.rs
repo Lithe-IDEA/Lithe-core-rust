@@ -13,18 +13,20 @@
 //! state directories to prune. The host calls the function, creates the
 //! directories, and starts the process; it never interprets the answer.
 
-use crate::protocol::{CoreError, ErrorCode};
 use lithe_plugin_model::{
     decode_payload, invalid, is_safe_relative_path, PluginRejection, Validation,
 };
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// How long a forwarded request may take when the backend names no timeout,
-/// and the longest timeout it may name, in milliseconds.
-pub(crate) const DEFAULT_REQUEST_TIMEOUT_MILLISECONDS: u64 = 60_000;
-pub(crate) const MAX_REQUEST_TIMEOUT_MILLISECONDS: u64 = 300_000;
+/// in milliseconds.
+pub const DEFAULT_REQUEST_TIMEOUT_MILLISECONDS: u64 = 60_000;
+/// The longest timeout a backend may name for a forwarded request, in
+/// milliseconds.
+pub const MAX_REQUEST_TIMEOUT_MILLISECONDS: u64 = 300_000;
 
 /// Most request or notification methods one server may expose to its
 /// backend. Bounded so the policy stays a short list the engine scans.
@@ -52,10 +54,10 @@ const MAX_GATE_MATCH_BYTES: usize = 4 * 1024;
 const MAX_WRITABLE_PATHS: usize = 32;
 
 /// The request that carries server commands.
-pub(crate) const EXECUTE_COMMAND: &str = "workspace/executeCommand";
+pub const EXECUTE_COMMAND: &str = "workspace/executeCommand";
 /// The notification that replaces the server's settings. A backend may
 /// always send it, because only the backend knows the server's settings.
-pub(crate) const DID_CHANGE_CONFIGURATION: &str = "workspace/didChangeConfiguration";
+pub const DID_CHANGE_CONFIGURATION: &str = "workspace/didChangeConfiguration";
 
 /// Methods the host sends itself to keep the session and the open documents
 /// consistent. A backend sending one of them would desynchronize the host's
@@ -85,7 +87,7 @@ pub(crate) fn is_host_owned_method(method: &str) -> bool {
 /// drive declares none of them.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct SessionDeclaration {
+pub struct SessionDeclaration {
     /// Requests and notifications the backend may send to the server.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     request_methods: Option<Vec<String>>,
@@ -148,15 +150,17 @@ impl Retention {
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum RemoteSupport {
+    /// The server runs next to a remote workspace like a local one.
     #[default]
     Supported,
+    /// The server only runs for local workspaces.
     Unsupported,
 }
 
 impl SessionDeclaration {
     /// Whether the backend may talk to the server, which needs the
     /// `languageServer.request` permission.
-    pub(crate) fn exposes_server(&self) -> bool {
+    pub fn exposes_server(&self) -> bool {
         self.request_methods.as_ref().is_some_and(|m| !m.is_empty())
             || self
                 .forward_notifications
@@ -165,7 +169,7 @@ impl SessionDeclaration {
     }
 
     /// Checks the session fields of the server at `field`.
-    pub(crate) fn validate(&self, field: &str) -> Validation<()> {
+    pub fn validate(&self, field: &str) -> Validation<()> {
         let methods = unique_names(
             self.request_methods.as_deref(),
             &format!("{field}.requestMethods"),
@@ -227,7 +231,7 @@ impl SessionDeclaration {
     /// The session policy the LSP engine enforces for this server, in the
     /// shape `lsp.startServer` accepts as `sessionPolicy`. Lists are sorted
     /// so equal declarations give equal policies.
-    pub(crate) fn policy(&self, server_id: &str) -> Value {
+    pub fn policy(&self, server_id: &str) -> Value {
         let sorted = |values: &Option<Vec<String>>| {
             values
                 .iter()
@@ -281,7 +285,7 @@ fn unique_names<'a>(
 }
 
 /// A method or command name: short text without whitespace or controls.
-pub(crate) fn is_protocol_name(value: &str) -> bool {
+pub fn is_protocol_name(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= MAX_NAME_BYTES
         && !value
@@ -291,11 +295,15 @@ pub(crate) fn is_protocol_name(value: &str) -> bool {
 
 /// Writable host directories of one start, each already trimmed of a
 /// trailing separator. Every path a launch answer may write lies in one.
-pub(crate) struct LaunchDirectories<'a> {
-    pub(crate) state: &'a str,
-    pub(crate) workspace_state: &'a str,
-    pub(crate) log: &'a str,
-    pub(crate) temporary: &'a str,
+pub struct LaunchDirectories<'a> {
+    /// `stateDirectory`: kept for the plugin's server until uninstall.
+    pub state: &'a str,
+    /// `workspaceStateDirectory`: the server's state of this workspace.
+    pub workspace_state: &'a str,
+    /// `logDirectory`: this session's log storage of the plugin.
+    pub log: &'a str,
+    /// `temporaryDirectory`: scratch space of this start.
+    pub temporary: &'a str,
 }
 
 impl LaunchDirectories<'_> {
@@ -328,7 +336,7 @@ fn is_within(path: &str, directory: &str) -> bool {
 /// Params of the launch function, apart from `context` and `tools`, which
 /// the host attaches: the server, the machine, the writable directories,
 /// and the plugin's effective settings.
-pub(crate) fn resolve_params(
+pub fn resolve_params(
     server_id: &str,
     architecture: &str,
     directories: &LaunchDirectories<'_>,
@@ -378,11 +386,14 @@ enum AnsweredExecutable {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Gate {
-    pub(crate) id: String,
+    /// Name of the gate, unique within one session declaration.
+    pub id: String,
     until: GateCondition,
-    pub(crate) method: String,
+    /// Server notification that opens the gate.
+    pub method: String,
+    /// Fields the notification parameters must contain, compared by value.
     #[serde(rename = "match")]
-    pub(crate) pattern: Map<String, Value>,
+    pub pattern: Map<String, Value>,
 }
 
 /// What opens a gate. Only a server notification does today.
@@ -403,7 +414,7 @@ fn serialized_bytes(value: &Value) -> usize {
 /// Decodes and bounds a launch answer. The result is the start plan the
 /// host runs, in the shape of a declarative launch plan, plus the gates
 /// that join the session policy.
-pub(crate) fn decode_answer(
+pub fn decode_answer(
     answer: Value,
     directories: &LaunchDirectories<'_>,
     tool_ids: &BTreeSet<&str>,
@@ -517,7 +528,7 @@ pub(crate) fn decode_answer(
 /// Whether a notification's params satisfy a gate's match object: every
 /// member of the pattern is present with an equal value, and nested
 /// objects match the same way.
-pub(crate) fn matches_pattern(params: &Value, pattern: &Map<String, Value>) -> bool {
+pub fn matches_pattern(params: &Value, pattern: &Map<String, Value>) -> bool {
     let Some(params) = params.as_object() else {
         return pattern.is_empty();
     };

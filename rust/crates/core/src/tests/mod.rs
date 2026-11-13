@@ -33,6 +33,7 @@ mod git_workspace_commit;
 mod git_workspace_status;
 mod github;
 mod history_events;
+mod installed_versions;
 mod language_server_sessions;
 mod lsp_policy;
 mod marketplace_plugins;

@@ -3,8 +3,8 @@
 //! Core reuses its existing compatibility version comparator. The host keeps
 //! paths and maps the returned indices back to the native records it supplied.
 
-use super::PluginVersion;
-use crate::protocol::{CoreError, ErrorCode};
+use crate::version::PluginVersion;
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -56,7 +56,7 @@ pub fn select_command(payload: Value) -> Result<Value, CoreError> {
             rejected.push(json!({"index":index,"code":"plugin.installed.invalidIdentity"}));
             continue;
         }
-        let Some(version) = lithe_plugin_model::is_semantic_version(&entry.version)
+        let Some(version) = crate::is_semantic_version(&entry.version)
             .then(|| PluginVersion::parse(&entry.version))
             .flatten()
         else {
@@ -80,36 +80,4 @@ pub fn select_command(payload: Value) -> Result<Value, CoreError> {
         .map(|(index, _, _)| index)
         .collect();
     Ok(json!({"selected":selected,"rejected":rejected,"maximumEntries":MAX_INSTALLED_ENTRIES}))
-}
-
-#[cfg(test)]
-mod tests {
-    use serde_json::{json, Value};
-
-    #[test]
-    fn shared_installed_version_fixture_uses_the_existing_numeric_comparator() {
-        let fixture: Value = serde_json::from_str(include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../fixtures/plugins/installed-versions.json"
-        )))
-        .unwrap();
-        for case in fixture["cases"].as_array().unwrap() {
-            let response: Value = serde_json::from_str(&crate::execute_json(&json!({
-                "command":"plugins.installed.select", "payload":{
-                    "entries":case["entries"], "includeDisabled":case["includeDisabled"].as_bool().unwrap_or(false)
-                }
-            }).to_string())).unwrap();
-            assert_eq!(response["ok"], true, "case {}: {response}", case["name"]);
-            assert_eq!(
-                response["data"]["selected"], case["selected"],
-                "case {}",
-                case["name"]
-            );
-            assert_eq!(
-                response["data"]["rejected"], case["rejected"],
-                "case {}",
-                case["name"]
-            );
-        }
-    }
 }

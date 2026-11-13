@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 /// A host-rendered tree, list or form; styling is deliberately absent from the contract.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct NativeUI {
+pub struct NativeUI {
     schema_version: u32,
     id: String,
     kind: Kind,
@@ -19,8 +19,9 @@ pub(super) struct NativeUI {
     buttons: Vec<FormButton>,
     #[serde(skip_serializing_if = "Option::is_none")]
     layout: Option<GridLayout>,
+    /// Plugin function that supplies the rows, when the host fetches them.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(super) source: Option<Source>,
+    pub source: Option<Source>,
     actions: Vec<Action>,
     toolbar: Vec<String>,
     context_menu: Vec<String>,
@@ -142,9 +143,10 @@ struct FormButton {
 /// Existing plugin function that returns `{ nodes }` for a detected build instance.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct Source {
+pub struct Source {
+    /// Build system whose detected instances the function serves.
     #[serde(rename = "buildSystemID")]
-    pub(super) build_system_id: String,
+    pub build_system_id: String,
     function: String,
 }
 
@@ -183,7 +185,8 @@ fn valid_info(value: Option<&str>) -> bool {
 }
 
 impl NativeUI {
-    pub(super) fn validate(&self) -> Result<(), &'static str> {
+    /// Checks the bounds and cross-references the contract promises the host.
+    pub fn validate(&self) -> Result<(), &'static str> {
         if self.schema_version != 0 || !identifier(&self.id) || self.actions.len() > 64 {
             return Err("Native UI requires schemaVersion 0, a stable ID and at most 64 actions.");
         }
@@ -388,9 +391,9 @@ impl NativeUI {
 
 /// Validates a refreshed node set with the same identity and budget rules as
 /// the initial declaration. Platform renderers never maintain a second validator.
-pub(crate) fn validate_data_command(
+pub fn validate_data_command(
     payload: serde_json::Value,
-) -> Result<serde_json::Value, crate::protocol::CoreError> {
+) -> Result<serde_json::Value, lithe_protocol::CoreError> {
     use serde_json::{json, Value};
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
@@ -404,10 +407,7 @@ pub(crate) fn validate_data_command(
         nodes: Vec<Node>,
     }
     let mut payload: Payload = serde_json::from_value(payload).map_err(|error| {
-        crate::protocol::CoreError::new(
-            crate::protocol::ErrorCode::InvalidRequest,
-            error.to_string(),
-        )
+        lithe_protocol::CoreError::new(lithe_protocol::ErrorCode::InvalidRequest, error.to_string())
     })?;
     let validate = || -> Result<Value, String> {
         if serde_json::to_vec(&payload.data)

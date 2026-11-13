@@ -1,0 +1,12 @@
+[package]
+name = "lithe-plugin-editor"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Editor contributions of plugins: host-rendered editor actions and the language-feature providers a backend registers"
+
+[dependencies]
+lithe-plugin-model = { path = "../plugin-model" }
+lithe-protocol = { path = "../protocol" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }

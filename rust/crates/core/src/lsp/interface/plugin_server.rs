@@ -15,11 +15,11 @@
 //! failing the session therefore only pick the operations to complete.
 
 use super::plugin_function::{codes, MAX_HOST_NOTIFICATION_BYTES};
-use crate::plugins::language_server_sessions::{
+use crate::protocol::{CoreError, ErrorCode};
+use lithe_plugin_language_servers::{
     is_protocol_name, matches_pattern, Gate, RemoteSupport, DID_CHANGE_CONFIGURATION,
     EXECUTE_COMMAND,
 };
-use crate::protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
