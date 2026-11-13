@@ -486,6 +486,37 @@ fn every_rules_crate_command_is_routed_by_core() {
 }
 
 #[test]
+fn every_ai_crate_command_is_routed_by_core() {
+    for command in lithe_ai::COMMANDS {
+        assert!(
+            crate::protocol::CoreCommand::parse(command).is_some(),
+            "{command} is owned by lithe-ai but not registered in CoreCommand"
+        );
+        // A null payload reaches the command's own validation, so the failure comes from
+        // lithe-ai with its category intact instead of Core's unsupported-command error.
+        let response: Value = serde_json::from_str(&execute_json(
+            &serde_json::json!({"id": "ai", "command": command, "payload": null}).to_string(),
+        ))
+        .unwrap();
+        assert_eq!(response["ok"], false, "{command}: {response}");
+        assert_eq!(
+            response["error"]["code"], "invalid_request",
+            "{command}: {response}"
+        );
+    }
+    let budgets: Value = serde_json::from_str(&execute_json(
+        &serde_json::json!({
+            "id": "ai", "command": "ai.commitInputBudget",
+            "payload": {"maximumDiffCharacters": 8000, "fileLengths": [20]}
+        })
+        .to_string(),
+    ))
+    .unwrap();
+    assert_eq!(budgets["ok"], true, "{budgets}");
+    assert_eq!(budgets["data"]["files"][0]["characters"], 20);
+}
+
+#[test]
 fn terminal_link_fixtures_cross_the_json_boundary() {
     let fixture: Value = serde_json::from_str(include_str!(
         "../../../fixtures/terminal/link-target-v1.json"

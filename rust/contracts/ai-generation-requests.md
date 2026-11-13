@@ -3,6 +3,8 @@
 Version: 1. Behavioral fixtures: `rust/fixtures/ai/pull-request-description-v1.json`
 and `rust/fixtures/ai/inline-edit-v1.json`.
 
+Both are implemented in the `lithe-ai` crate (`rust/lithe-ai`), like every `ai.*` command.
+
 Both features reuse the credential-free provider request model of
 [AI commit generation](ai-commit.md): Core validates the endpoint, appends the
 protocol path exactly once, encodes a non-streaming body, and extracts text from

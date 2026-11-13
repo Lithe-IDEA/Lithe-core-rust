@@ -99,11 +99,11 @@ fn selected_repositories(mut repositories: Vec<Repository>) -> Result<Vec<Reposi
             {
                 return Err(invalid("AI_COMMIT_INVALID_OPTIONS"));
             }
-            if crate::ai::is_sensitive_commit_path(&file.path)
+            if lithe_ai::is_sensitive_commit_path(&file.path)
                 || file
                     .original_path
                     .as_deref()
-                    .is_some_and(crate::ai::is_sensitive_commit_path)
+                    .is_some_and(lithe_ai::is_sensitive_commit_path)
             {
                 return Err(invalid("AI_COMMIT_SENSITIVE_FILE"));
             }
@@ -261,11 +261,11 @@ fn collect(mode: Mode, repositories: &[Repository]) -> Result<(Vec<Evidence>, St
             }
         }
         for (file, patch) in sections {
-            if crate::ai::is_sensitive_commit_path(&file.path)
+            if lithe_ai::is_sensitive_commit_path(&file.path)
                 || file
                     .original_path
                     .as_deref()
-                    .is_some_and(crate::ai::is_sensitive_commit_path)
+                    .is_some_and(lithe_ai::is_sensitive_commit_path)
             {
                 return Err(invalid("AI_COMMIT_SENSITIVE_FILE"));
             }
@@ -357,7 +357,7 @@ pub(crate) fn commit_message_context_command(value: Value) -> Result<Value, Core
         .iter()
         .map(|file| file.diff.chars().count())
         .collect::<Vec<_>>();
-    let budgets = crate::ai::commit_input_budget(
+    let budgets = lithe_ai::commit_input_budget(
         request
             .maximum_diff_characters
             .ok_or_else(|| invalid("AI_COMMIT_INVALID_OPTIONS"))?,

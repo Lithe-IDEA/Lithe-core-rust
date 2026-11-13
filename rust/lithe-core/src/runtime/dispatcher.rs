@@ -67,6 +67,14 @@ fn plugin_response(
     }
 }
 
+/// Runs one `ai.*` command in `lithe-ai`.
+fn ai_response(id: Option<String>, command: &str, payload: serde_json::Value) -> CoreResponse {
+    match lithe_ai::execute(command, payload) {
+        Ok(data) => CoreResponse::success(id, data),
+        Err(error) => CoreResponse::failure(id, error.into()),
+    }
+}
+
 fn agent_response<T: serde::de::DeserializeOwned>(
     id: Option<String>,
     payload: serde_json::Value,
@@ -197,33 +205,23 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                 "coreVersion": env!("CARGO_PKG_VERSION")
             }),
         ),
-        CoreCommand::AiCommitInputBudget => {
-            plugin_response(id, parsed.payload, crate::ai::commit_input_budget_command)
-        }
-        CoreCommand::AiPlanCommit => {
-            plugin_response(id, parsed.payload, crate::ai::plan_commit_command)
-        }
+        CoreCommand::AiCommitInputBudget => ai_response(id, "ai.commitInputBudget", parsed.payload),
+        CoreCommand::AiPlanCommit => ai_response(id, "ai.planCommit", parsed.payload),
         CoreCommand::AiDecodeCommitMessage => {
-            plugin_response(id, parsed.payload, crate::ai::decode_commit_command)
+            ai_response(id, "ai.decodeCommitMessage", parsed.payload)
         }
         CoreCommand::AiConfigurationSources => {
-            plugin_response(id, parsed.payload, crate::ai::configuration_sources_command)
+            ai_response(id, "ai.configuration.sources", parsed.payload)
         }
         CoreCommand::AiConfigurationParse => {
-            plugin_response(id, parsed.payload, crate::ai::parse_configuration_command)
+            ai_response(id, "ai.configuration.parse", parsed.payload)
         }
-        CoreCommand::AiPullRequestPlan => {
-            plugin_response(id, parsed.payload, crate::ai::plan_pull_request_command)
-        }
+        CoreCommand::AiPullRequestPlan => ai_response(id, "ai.pullRequest.plan", parsed.payload),
         CoreCommand::AiPullRequestDecode => {
-            plugin_response(id, parsed.payload, crate::ai::decode_pull_request_command)
+            ai_response(id, "ai.pullRequest.decode", parsed.payload)
         }
-        CoreCommand::AiInlineEditPlan => {
-            plugin_response(id, parsed.payload, crate::ai::plan_inline_edit_command)
-        }
-        CoreCommand::AiInlineEditDecode => {
-            plugin_response(id, parsed.payload, crate::ai::decode_inline_edit_command)
-        }
+        CoreCommand::AiInlineEditPlan => ai_response(id, "ai.inlineEdit.plan", parsed.payload),
+        CoreCommand::AiInlineEditDecode => ai_response(id, "ai.inlineEdit.decode", parsed.payload),
         CoreCommand::PluginsNativeUIValidateData => plugin_response(
             id,
             parsed.payload,

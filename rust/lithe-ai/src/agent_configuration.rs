@@ -9,7 +9,7 @@ use super::configuration::{
     self, codex_model, configuration_sources, ConfigurationFiles, DetectedConfiguration,
     INVALID_AUTHENTICATION, INVALID_CONFIG,
 };
-use crate::protocol::{CoreError, ErrorCode};
+use crate::{AiError, AiErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -24,11 +24,11 @@ const MAXIMUM_ENVIRONMENT_VALUE_BYTES: usize = 32 * 1024;
 const TOO_LARGE: &str = "AI_CONFIGURATION_TOO_LARGE";
 
 /// Fixed messages only: parser diagnostics may quote a pasted credential.
-fn invalid(code: &'static str) -> CoreError {
-    CoreError::new(ErrorCode::InvalidRequest, code)
+fn invalid(code: &'static str) -> AiError {
+    AiError::new(AiErrorCode::InvalidRequest, code)
 }
 
-fn bounded_environment(environment: &BTreeMap<String, String>) -> Result<(), CoreError> {
+fn bounded_environment(environment: &BTreeMap<String, String>) -> Result<(), AiError> {
     if environment.len() > MAXIMUM_ENVIRONMENT_ENTRIES
         || environment
             .iter()
@@ -40,7 +40,7 @@ fn bounded_environment(environment: &BTreeMap<String, String>) -> Result<(), Cor
 }
 
 /// Implements `ai.configuration.sources`: the native files of one source.
-pub fn configuration_sources_command(payload: Value) -> Result<Value, CoreError> {
+pub fn configuration_sources_command(payload: Value) -> Result<Value, AiError> {
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase", deny_unknown_fields)]
     struct Request {
@@ -68,7 +68,7 @@ pub fn configuration_sources_command(payload: Value) -> Result<Value, CoreError>
 /// with `issue` when the configuration parses but is not a usable provider.
 /// Draft mode (`allowIncomplete`) parses editor text only: it ignores the
 /// environment and keeps missing endpoint and model fields empty.
-pub fn parse_configuration_command(payload: Value) -> Result<Value, CoreError> {
+pub fn parse_configuration_command(payload: Value) -> Result<Value, AiError> {
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase", deny_unknown_fields)]
     struct Request {

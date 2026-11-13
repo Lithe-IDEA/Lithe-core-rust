@@ -5,10 +5,7 @@ use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
 fn configuration_fixture() -> Value {
-    serde_json::from_str(include_str!(
-        "../../../fixtures/ai/cli-configuration-v1.json"
-    ))
-    .unwrap()
+    serde_json::from_str(include_str!("../../fixtures/ai/cli-configuration-v1.json")).unwrap()
 }
 
 fn execute(command: &str, payload: &Value) -> Value {
@@ -195,10 +192,8 @@ fn configuration_parse_errors_are_stable_codes_without_input() {
 }
 
 fn fixture() -> (Provider, CommitOptions, Vec<CommitFile>, Value) {
-    let value: Value = serde_json::from_str(include_str!(
-        "../../../fixtures/ai/commit-generation-v1.json"
-    ))
-    .unwrap();
+    let value: Value =
+        serde_json::from_str(include_str!("../../fixtures/ai/commit-generation-v1.json")).unwrap();
     (
         serde_json::from_value(value["provider"].clone()).unwrap(),
         serde_json::from_value(value["options"].clone()).unwrap(),
@@ -617,7 +612,8 @@ fn bounded_commit_evidence_preserves_truncation_and_rejects_missing_prefixes() {
         diff: "界".repeat(8_000),
         original_characters: None,
     };
-    let plan = plan_commit_bounded(&provider, &options, &[file.clone()], &[12_000]).unwrap();
+    let plan =
+        plan_commit_bounded(&provider, &options, std::slice::from_ref(&file), &[12_000]).unwrap();
     assert!(plan.body.to_string().contains("Diff truncated"));
     let mut typed_file = file.clone();
     typed_file.original_characters = Some(12_000);

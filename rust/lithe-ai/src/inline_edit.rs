@@ -9,7 +9,7 @@ use super::provider_request::{
     encode_body, endpoint_url, response_text, strip_fence, ChatTokenField, EndpointError,
     PromptRequest, ResponseError, WireProtocol,
 };
-use crate::protocol::{CoreError, ErrorCode};
+use crate::{AiError, AiErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -106,13 +106,13 @@ struct DecodeRequest {
     response: Value,
 }
 
-fn failure(code: &'static str) -> CoreError {
+fn failure(code: &'static str) -> AiError {
     // Codes only: edit text and provider responses never enter diagnostics.
-    CoreError::new(ErrorCode::InvalidRequest, code)
+    AiError::new(AiErrorCode::InvalidRequest, code)
 }
 
 /// `ai.inlineEdit.plan`: returns the URL, body, and credential placement for one edit request.
-pub(crate) fn plan_command(payload: Value) -> Result<Value, CoreError> {
+pub(crate) fn plan_command(payload: Value) -> Result<Value, AiError> {
     let request: PlanRequest =
         serde_json::from_value(payload).map_err(|_| failure("AI_INLINE_EDIT_INVALID_REQUEST"))?;
     plan(request).map_err(failure)
@@ -257,7 +257,7 @@ fn tail(text: &str, characters: usize) -> &str {
 ///
 /// An empty replacement is a valid result the caller reports itself; a
 /// generation cut off by the output limit is rejected so partial code is never applied.
-pub(crate) fn decode_command(payload: Value) -> Result<Value, CoreError> {
+pub(crate) fn decode_command(payload: Value) -> Result<Value, AiError> {
     let request: DecodeRequest =
         serde_json::from_value(payload).map_err(|_| failure("AI_INLINE_EDIT_INVALID_REQUEST"))?;
     let protocol = WireProtocol::parse(&request.wire_protocol)
