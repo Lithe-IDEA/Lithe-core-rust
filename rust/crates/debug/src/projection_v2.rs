@@ -5,7 +5,7 @@
 //! beside it, built here from the raw adapter body so no v1 narrowing leaks into v2.
 
 #[cfg(test)]
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -512,7 +512,7 @@ mod tests {
 
     fn examples() -> Value {
         serde_json::from_str(include_str!(
-            "../../../../fixtures/debug/projection-v2-examples.json"
+            "../../../fixtures/debug/projection-v2-examples.json"
         ))
         .unwrap()
     }

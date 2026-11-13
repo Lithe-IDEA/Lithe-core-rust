@@ -6,9 +6,9 @@
 //! and the session are the generic debug engine's job; nothing here is specific to a language.
 
 use super::adapters::DebugRequest;
-use crate::plugins::declarative::{validate_manifest_value, DeclarativePluginManifest};
-use crate::protocol::CoreError;
+use crate::DebugManifest;
 use lithe_plugin_model::{decode_payload, is_identifier, outcome, PluginRejection, Validation};
+use lithe_protocol::CoreError;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
@@ -46,16 +46,22 @@ fn invalid(field: &str, message: impl Into<String>) -> PluginRejection {
 
 /// `debug.decodeBackendConfiguration`: the qualified adapter, request, label and checked
 /// arguments of one backend-initiated debug start.
-pub(crate) fn decode_backend_configuration_command(payload: Value) -> Result<Value, CoreError> {
+///
+/// The plugin host owns the manifest schema and supplies `validate_manifest`, so a
+/// start is checked against the same declaration the plugin installed with.
+pub fn decode_backend_configuration_command<M: DebugManifest>(
+    payload: Value,
+    validate_manifest: fn(Value) -> Validation<M>,
+) -> Result<Value, CoreError> {
     let payload: DecodePayload = decode_payload(payload, "debug.decodeBackendConfiguration")?;
     Ok(outcome(
-        validate_manifest_value(payload.manifest)
+        validate_manifest(payload.manifest)
             .and_then(|manifest| decode(&manifest, payload.params))
             .map(|start| ("start", start)),
     ))
 }
 
-fn decode(manifest: &DeclarativePluginManifest, params: Value) -> Validation<Value> {
+fn decode(manifest: &impl DebugManifest, params: Value) -> Validation<Value> {
     let params: StartParams = serde_json::from_value(params)
         .map_err(|_| invalid("params", "The debug start parameters are malformed."))?;
     let label = &params.label;
@@ -120,7 +126,7 @@ pub(crate) fn reject_host_keys(configuration: &Map<String, Value>) -> Validation
 }
 
 /// The plugin-local adapter ID of `adapter`, which is either local or qualified by this plugin.
-fn own_adapter<'a>(manifest: &DeclarativePluginManifest, adapter: &'a str) -> Validation<&'a str> {
+fn own_adapter<'a>(manifest: &impl DebugManifest, adapter: &'a str) -> Validation<&'a str> {
     let local = match adapter.split_once('/') {
         Some((plugin, _)) if plugin != manifest.id() => {
             return Err(PluginRejection::at(

@@ -3,11 +3,11 @@
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 
 /// Checks a user-selected DAP endpoint without DNS, sockets or implied consent.
 /// Unknown names are remote even if they later resolve to a loopback address.
-pub(crate) fn validate_adapter_endpoint(payload: Value) -> Result<Value, CoreError> {
+pub fn validate_adapter_endpoint(payload: Value) -> Result<Value, CoreError> {
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
     struct Endpoint {

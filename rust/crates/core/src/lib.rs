@@ -1,7 +1,7 @@
 //! Deterministic application services shared by the macOS and Windows hosts.
 
 mod build;
-mod debug;
+use lithe_debug as debug;
 /// Run configurations and launch environments, kept in their own crate.
 pub use lithe_execution as execution;
 mod lsp;

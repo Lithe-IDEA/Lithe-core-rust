@@ -14,7 +14,7 @@ use std::sync::{Mutex, OnceLock};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 
 /// Endpoint discovery, such as a cold language-server start.
 const DEFAULT_DISCOVERY_MILLISECONDS: u64 = 10_000;
@@ -724,7 +724,7 @@ fn validate_transport_id(transport_id: &str) -> Result<(), CoreError> {
 
 /// Returns the default deadlines and budgets, and the session `initialize`
 /// deadline that must outlast a connect, without creating any state.
-pub(crate) fn transport_policy(_payload: Value) -> Result<Value, CoreError> {
+pub fn transport_policy(_payload: Value) -> Result<Value, CoreError> {
     let limits = TransportLimits::default();
     Ok(json!({
         "limits": limits,
@@ -734,7 +734,7 @@ pub(crate) fn transport_policy(_payload: Value) -> Result<Value, CoreError> {
 
 /// Applies one event to a transport's lifecycle and returns the effects to run.
 /// Only `start` creates a transport; a late callback for a released one is stale.
-pub(crate) fn handle_transport_event(payload: Value) -> Result<Value, CoreError> {
+pub fn handle_transport_event(payload: Value) -> Result<Value, CoreError> {
     let request: TransportEventRequest = parse(payload)?;
     validate_transport_id(&request.transport_id)?;
     let mut transports = transports_lock()?;
@@ -761,7 +761,7 @@ pub(crate) fn handle_transport_event(payload: Value) -> Result<Value, CoreError>
 }
 
 /// Forgets a transport once the host has stopped it and dropped its handles.
-pub(crate) fn release_transport(payload: Value) -> Result<Value, CoreError> {
+pub fn release_transport(payload: Value) -> Result<Value, CoreError> {
     let request: TransportRequest = parse(payload)?;
     validate_transport_id(&request.transport_id)?;
     let released = transports_lock()?.remove(&request.transport_id).is_some();

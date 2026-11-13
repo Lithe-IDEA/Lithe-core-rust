@@ -16,10 +16,11 @@ plugin-sdk-e2e = []
 [dependencies]
 lithe-ai = { path = "../ai" }
 lithe-core-rules = { path = "../core-rules" }
+lithe-debug = { path = "../debug" }
 lithe-diagnostics = { path = "../diagnostics" }
-lithe-execution = { path = "../execution" }
 lithe-diff = { path = "../diff" }
 lithe-editor = { path = "../editor" }
+lithe-execution = { path = "../execution" }
 lithe-git = { path = "../git" }
 lithe-git-host = { path = "../git-host" }
 lithe-github = { path = "../github" }

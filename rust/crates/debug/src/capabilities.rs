@@ -5,7 +5,7 @@
 //! read the resulting snapshot instead of inspecting adapter or plugin names.
 
 use super::projection_v2::{is_capability_name, CapabilityState};
-use crate::protocol::CoreError;
+use lithe_protocol::CoreError;
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 

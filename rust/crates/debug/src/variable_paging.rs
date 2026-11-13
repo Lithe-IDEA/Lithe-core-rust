@@ -10,7 +10,7 @@
 //! The state crosses the boundary as JSON on every page. It holds only cursors
 //! and page fingerprints, never variable values beyond the page being reduced.
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -57,7 +57,7 @@ pub(crate) struct VariablePageRequest {
 /// Paging cursor of one variable container, owned by Core and echoed by the host.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct VariablePageState {
+pub struct VariablePageState {
     pub(crate) variables_reference: i64,
     pub(crate) page_size: u32,
     pub(crate) segments: Vec<VariablePageSegment>,
@@ -72,7 +72,7 @@ pub(crate) struct VariablePageState {
 /// Input of `debug.planVariablePage`.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct PlanVariablePageRequest {
+pub struct PlanVariablePageRequest {
     pub(crate) variables_reference: i64,
     #[serde(default)]
     pub(crate) named_variables: i64,
@@ -99,7 +99,7 @@ pub(crate) struct VariablePageItem {
 /// Input of `debug.reduceVariablePage`.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct ReduceVariablePageRequest {
+pub struct ReduceVariablePageRequest {
     pub(crate) state: VariablePageState,
     /// The request this page answers; a reply to an older cursor is ignored.
     pub(crate) requested: VariablePageRequest,
@@ -111,7 +111,7 @@ pub(crate) struct ReduceVariablePageRequest {
 /// Output of `debug.reduceVariablePage`.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ReduceVariablePageResult {
+pub struct ReduceVariablePageResult {
     /// False when the host must drop the page: it answers an older cursor or
     /// repeats a page already shown.
     pub(crate) accept: bool,
@@ -123,7 +123,7 @@ pub(crate) struct ReduceVariablePageResult {
 /// Named children page before indexed ones. Negative counts mean "unknown" in
 /// practice and are treated as zero; with neither count the container pages
 /// unfiltered until a short or empty page.
-pub(crate) fn plan_variable_page(
+pub fn plan_variable_page(
     request: PlanVariablePageRequest,
 ) -> Result<VariablePageState, CoreError> {
     validate_page_size(request.page_size)?;
@@ -168,7 +168,7 @@ pub(crate) fn plan_variable_page(
 /// A container stops paging when the adapter returns more than was asked for,
 /// repeats a page, returns only children the host already shows, reaches the
 /// reported count, or (without a count) returns a short or empty page.
-pub(crate) fn reduce_variable_page(
+pub fn reduce_variable_page(
     request: ReduceVariablePageRequest,
 ) -> Result<ReduceVariablePageResult, CoreError> {
     let ReduceVariablePageRequest {
@@ -288,7 +288,7 @@ mod tests {
 
     fn fixture() -> Value {
         serde_json::from_str(include_str!(
-            "../../../../fixtures/debug/variable-page-plan-v1.json"
+            "../../../fixtures/debug/variable-page-plan-v1.json"
         ))
         .unwrap()
     }

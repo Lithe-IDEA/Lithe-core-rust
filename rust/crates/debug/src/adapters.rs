@@ -137,24 +137,26 @@ const DAP_CAPABILITIES: &[&str] = &[
 /// One debug adapter a plugin implements.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct DebugAdapterDeclaration {
+pub struct DebugAdapterDeclaration {
     /// Plugin-local ID. The Registry identity is qualified by the plugin ID.
-    pub(crate) id: String,
+    pub id: String,
     pub(crate) display_name: String,
     /// DAP `initialize.adapterID`; the local ID when absent.
     #[serde(default, rename = "adapterID", skip_serializing_if = "Option::is_none")]
     pub(crate) adapter_id: Option<String>,
     /// Requests the adapter serves; `launch` only when absent.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) requests: Vec<DebugRequest>,
+    pub requests: Vec<DebugRequest>,
     /// Automatic matching; absent means explicit selection only.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) selectors: Vec<DebugSelector>,
+    pub selectors: Vec<DebugSelector>,
     /// Imported `launch.json` `type` values this adapter answers to.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) configuration_types: Vec<String>,
+    /// DAP argument defaults and target bindings per request; absent, a start
+    /// begins from empty arguments.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) configurations: Option<DebugConfigurations>,
+    pub configurations: Option<DebugConfigurations>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) capabilities: Option<DebugCapabilities>,
     /// What the Debug Console offers while typing a debugger command.
@@ -166,7 +168,8 @@ pub(crate) struct DebugAdapterDeclaration {
     /// Values the adapter starts with when the user set none; `debugAdapters` 3.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) defaults: Option<DebugAdapterDefaults>,
-    pub(crate) launch: DebugLaunch,
+    /// How the host starts and reaches the adapter.
+    pub launch: DebugLaunch,
 }
 
 /// Debugger commands the adapter's console understands. Adapters that answer
@@ -196,28 +199,34 @@ pub(crate) struct DebugConsoleCommand {
     pub(crate) description: Option<String>,
 }
 
+/// The DAP request that starts a session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) enum DebugRequest {
+pub enum DebugRequest {
+    /// The adapter starts the program it debugs.
     Launch,
+    /// The adapter connects to a program that is already running.
     Attach,
 }
 
 /// Optional automatic matching: OR between selectors, AND between fields.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct DebugSelector {
+pub struct DebugSelector {
+    /// Target kinds that select this adapter, matched exactly.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) target_kinds: Vec<String>,
+    pub target_kinds: Vec<String>,
     #[serde(default, rename = "languageIDs", skip_serializing_if = "Vec::is_empty")]
     pub(crate) language_ids: Vec<String>,
 }
 
+/// Argument defaults and bindings for each request the adapter serves.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct DebugConfigurations {
+pub struct DebugConfigurations {
+    /// Defaults for a `launch` request.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) launch: Option<DebugConfiguration>,
+    pub launch: Option<DebugConfiguration>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) attach: Option<DebugConfiguration>,
 }
@@ -225,21 +234,21 @@ pub(crate) struct DebugConfigurations {
 /// Defaults for the DAP arguments of one request.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct DebugConfiguration {
+pub struct DebugConfiguration {
     /// Adapter-owned default DAP arguments, ordinary JSON data.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) arguments: Option<Map<String, Value>>,
+    pub arguments: Option<Map<String, Value>>,
     /// Packaged JSON schema of the final merged arguments.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) parameters_schema: Option<String>,
     /// Which target fact fills which missing DAP argument.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) target_bindings: Option<DebugTargetBindings>,
+    pub target_bindings: Option<DebugTargetBindings>,
     /// Where the program to debug comes from when the target is a source
     /// file. Launch only, and exactly when `program` binds to
     /// `target.executable`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) executable: Option<DebugExecutable>,
+    pub executable: Option<DebugExecutable>,
 }
 
 /// How a host finds the program a source file builds into. The user's own
@@ -247,9 +256,9 @@ pub(crate) struct DebugConfiguration {
 /// looks for when the user chose nothing, so the setting can show it.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct DebugExecutable {
+pub struct DebugExecutable {
     /// ID of a `file` setting of the same plugin.
-    pub(crate) setting: String,
+    pub setting: String,
     /// Paths to try in order. Each starts with `${workspaceFolder}/` or
     /// `${fileDirectory}/` and may use `${fileBasenameNoExtension}`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -260,17 +269,22 @@ pub(crate) struct DebugExecutable {
 /// exactly one legal source, so a binding is a fact, not an expression.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct DebugTargetBindings {
+pub struct DebugTargetBindings {
+    /// Source of the `args` argument: only `target.arguments`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) args: Option<String>,
+    pub args: Option<String>,
+    /// Source of the `env` argument: only `target.environment`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) env: Option<String>,
+    pub env: Option<String>,
+    /// Source of the `program` argument: `target.path` or `target.executable`. Launch only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) program: Option<String>,
+    pub program: Option<String>,
+    /// Source of the `processId` argument: only `target.processID`. Attach only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) process_id: Option<String>,
+    pub process_id: Option<String>,
+    /// Source of the `cwd` argument: only `target.workingDirectory`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) cwd: Option<String>,
+    pub cwd: Option<String>,
     /// Where a remote `host:port` goes. Attach only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) connection: Option<DebugConnectionBinding>,
@@ -498,16 +512,16 @@ pub(crate) struct DebugCapabilities {
 /// How the adapter process is started and reached.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct DebugLaunch {
+pub struct DebugLaunch {
     /// Absent exactly for `tcpLanguageServer`, whose adapter lives inside a
     /// language server the plugin already declares and has no process of its
     /// own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) process: Option<DebugProcess>,
+    pub process: Option<DebugProcess>,
     pub(crate) transport: DebugTransport,
     /// Required by, and only allowed for, the TCP transports.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) endpoint: Option<DebugEndpoint>,
+    pub endpoint: Option<DebugEndpoint>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -525,14 +539,14 @@ pub(crate) enum DebugTransport {
 /// absent, which `validate` checks.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct DebugEndpoint {
+pub struct DebugEndpoint {
     /// `tcpLanguageServer`: language ID of a language server of this plugin.
     #[serde(
         default,
         rename = "languageID",
         skip_serializing_if = "Option::is_none"
     )]
-    pub(crate) language_id: Option<String>,
+    pub language_id: Option<String>,
     /// `tcpLanguageServer`: the `workspace/executeCommand` command that starts
     /// the adapter and answers with its loopback port.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -555,8 +569,10 @@ pub(crate) struct DebugEndpoint {
 /// or the runtime Run selected for the target.
 #[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
-pub(crate) enum DebugProcess {
+pub enum DebugProcess {
+    /// One of the plugin's own server processes.
     Server(ServerProcess),
+    /// The runtime the selected Run uses for the target.
     SelectedRuntime(SelectedRuntimeProcess),
 }
 
@@ -564,7 +580,7 @@ pub(crate) enum DebugProcess {
 /// runtime the plugin names a version of.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct SelectedRuntimeProcess {
+pub struct SelectedRuntimeProcess {
     launch: SelectedRuntimeLaunch,
     #[serde(default)]
     arguments: Vec<String>,
@@ -652,16 +668,18 @@ impl DebugProcess {
 }
 
 /// What validation needs from the manifest around the declarations.
-pub(crate) struct DeclarationContext<'a> {
-    pub(crate) declared_settings: &'a DeclaredSettings,
+pub struct DeclarationContext<'a> {
+    /// Settings the manifest declares, which process arguments and the executable
+    /// lookup may reference.
+    pub declared_settings: &'a DeclaredSettings,
     /// Language IDs of the plugin's `languageServers[]`.
-    pub(crate) language_servers: &'a BTreeSet<String>,
+    pub language_servers: &'a BTreeSet<String>,
     /// Whether tool names are host runtimes or tool-definition IDs.
-    pub(crate) runtime_tools: lithe_plugin_model::process::RuntimeTools<'a>,
+    pub runtime_tools: lithe_plugin_model::process::RuntimeTools<'a>,
 }
 
 /// Validates every declaration and sorts them by ID.
-pub(crate) fn validate_declarations(
+pub fn validate_declarations(
     adapters: &mut [DebugAdapterDeclaration],
     context: &DeclarationContext<'_>,
 ) -> Validation<()> {
@@ -702,7 +720,7 @@ pub(crate) fn uses_selected_runtime(adapters: &[DebugAdapterDeclaration]) -> boo
 }
 
 /// Whether any adapter serves `attach`, which needs its own permission.
-pub(crate) fn serves_attach(adapters: &[DebugAdapterDeclaration]) -> bool {
+pub fn serves_attach(adapters: &[DebugAdapterDeclaration]) -> bool {
     adapters
         .iter()
         .any(|adapter| adapter.requests.contains(&DebugRequest::Attach))
@@ -1018,7 +1036,7 @@ impl DebugExecutable {
     /// The candidates a host can look for with what it knows now, in order.
     /// One that needs the source file is skipped when there is none, which is
     /// how the settings page asks without a file open.
-    pub(crate) fn expanded_candidates(
+    pub fn expanded_candidates(
         &self,
         workspace: Option<&str>,
         target_path: Option<&str>,
@@ -1281,7 +1299,7 @@ impl DebugEndpoint {
 }
 
 /// Event that activates the plugin when a debug session needs the adapter.
-pub(crate) fn activation_event(adapter: &DebugAdapterDeclaration) -> String {
+pub fn activation_event(adapter: &DebugAdapterDeclaration) -> String {
     format!("onDebug:{}", adapter.id)
 }
 
@@ -1289,7 +1307,7 @@ pub(crate) fn activation_event(adapter: &DebugAdapterDeclaration) -> String {
 /// Pointing an adapter at another executable or transport is a new program
 /// the user must approve. A selected-runtime adapter adds no runtime entry:
 /// the runtime is the one the user already chose for Run.
-pub(crate) fn programs(adapter: &DebugAdapterDeclaration) -> Vec<Value> {
+pub fn programs(adapter: &DebugAdapterDeclaration) -> Vec<Value> {
     let mut program = match &adapter.launch.process {
         Some(DebugProcess::Server(process)) => process.program(ServerRole::DebugAdapter),
         Some(DebugProcess::SelectedRuntime(process)) => json!({
@@ -1319,7 +1337,7 @@ pub(crate) fn programs(adapter: &DebugAdapterDeclaration) -> Vec<Value> {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(not(test), allow(dead_code))]
-pub(crate) struct PackageResource {
+pub struct PackageResource {
     pub(crate) path: String,
     pub(crate) kind: PackageResourceKind,
     /// Link target of a symlink, as stored in the package.
@@ -1341,7 +1359,7 @@ pub(crate) enum PackageResourceKind {
 /// inside the package. Only the installer can see the files, so this is
 /// separate from the manifest checks.
 #[cfg_attr(not(test), allow(dead_code))]
-pub(crate) fn check_package_resources(
+pub fn check_package_resources(
     adapters: &[DebugAdapterDeclaration],
     resources: &[PackageResource],
 ) -> Validation<()> {
@@ -1456,7 +1474,7 @@ fn resolve_link(link: &str, target: Option<&str>) -> Option<String> {
 /// Facts of one debug start that the manifest cannot know.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct StartFacts {
+pub struct StartFacts {
     pub(crate) registration: Generation,
     #[serde(default)]
     pub(crate) runtime_selection: Option<Generation>,
@@ -1519,7 +1537,7 @@ pub(crate) struct PathMapping {
 /// What a start asks of the adapter: the request and the facts around it.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct StartRequest {
+pub struct StartRequest {
     pub(crate) request: DebugRequest,
     pub(crate) facts: StartFacts,
     /// A plugin backend's own DAP arguments from `lithe/host/debug/start`, as
@@ -1532,7 +1550,7 @@ pub(crate) struct StartRequest {
 /// The remote endpoint a start connects to, as the adapter will receive it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct StartConnection {
+pub struct StartConnection {
     pub(crate) host: String,
     pub(crate) port: u16,
     /// False only when `host` is `localhost` or a loopback IP literal. A name
@@ -1544,15 +1562,17 @@ pub(crate) struct StartConnection {
 /// What a start gives the host: the DAP arguments and, for a connection
 /// target, the endpoint they carry.
 #[derive(Debug, Clone)]
-pub(crate) struct StartArguments {
-    pub(crate) arguments: Map<String, Value>,
-    pub(crate) connection: Option<StartConnection>,
+pub struct StartArguments {
+    /// DAP arguments to send unchanged with the request.
+    pub arguments: Map<String, Value>,
+    /// The remote endpoint, present only for a connection target.
+    pub connection: Option<StartConnection>,
 }
 
 /// The default DAP arguments of a request with each binding filling its
 /// argument from the target, unless the defaults already set it, and then a
 /// backend's configuration replacing any argument it names.
-pub(crate) fn start_arguments(
+pub fn start_arguments(
     adapter: &DebugAdapterDeclaration,
     start: &StartRequest,
 ) -> Validation<StartArguments> {
@@ -1891,7 +1911,7 @@ fn check_path_mappings(
 impl DebugAdapterDeclaration {
     /// What the host needs besides the process: how to reach the adapter and
     /// what to show. The process itself is the launch plan's own part.
-    pub(crate) fn plan_descriptor(&self, plugin_id: &str) -> Value {
+    pub fn plan_descriptor(&self, plugin_id: &str) -> Value {
         let mut descriptor = json!({
             "id": self.id,
             "providerID": format!("{plugin_id}/{}", self.id),
@@ -1925,7 +1945,7 @@ impl DebugAdapterDeclaration {
 
 /// Checks one debug start against the registration, the selected runtime and
 /// the target facts the request's bindings read.
-pub(crate) fn plan(
+pub fn plan(
     adapter: &DebugAdapterDeclaration,
     request: DebugRequest,
     facts: &StartFacts,

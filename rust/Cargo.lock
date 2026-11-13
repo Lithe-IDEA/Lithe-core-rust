@@ -886,6 +886,7 @@ dependencies = [
  "ignore",
  "lithe-ai",
  "lithe-core-rules",
+ "lithe-debug",
  "lithe-diagnostics",
  "lithe-diff",
  "lithe-editor",
@@ -923,6 +924,19 @@ dependencies = [
  "serde",
  "serde_json",
  "unicode-normalization",
+]
+
+[[package]]
+name = "lithe-debug"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "lithe-diagnostics",
+ "lithe-plugin-model",
+ "lithe-protocol",
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

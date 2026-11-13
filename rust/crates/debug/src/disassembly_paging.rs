@@ -15,7 +15,7 @@
 //! the same address and never does arithmetic on them or guesses an
 //! instruction length.
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
@@ -64,7 +64,7 @@ pub(crate) struct DisassembleRequestArguments {
 /// The cursor of one fetch, owned by Core and echoed by the host with each reply.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct DisassemblyFetch {
+pub struct DisassemblyFetch {
     pub(crate) direction: DisassemblyDirection,
     /// The instruction pointer (`around`) or the listed edge (`before`, `after`).
     pub(crate) reference: String,
@@ -83,7 +83,7 @@ pub(crate) struct DisassemblyFetch {
 /// Input of `debug.planDisassemblyWindow`.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct PlanDisassemblyWindowRequest {
+pub struct PlanDisassemblyWindowRequest {
     pub(crate) direction: DisassemblyDirection,
     pub(crate) reference: String,
     pub(crate) count: u32,
@@ -123,7 +123,7 @@ pub(crate) enum DisassemblyReply {
 /// Input of `debug.reduceDisassemblyPage`.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct ReduceDisassemblyPageRequest {
+pub struct ReduceDisassemblyPageRequest {
     pub(crate) fetch: DisassemblyFetch,
     pub(crate) reply: DisassemblyReply,
     /// Addresses already listed on the side being extended; the page drops them.
@@ -138,7 +138,7 @@ pub(crate) struct ReduceDisassemblyPageRequest {
     rename_all = "camelCase",
     rename_all_fields = "camelCase"
 )]
-pub(crate) enum DisassemblyStep {
+pub enum DisassemblyStep {
     /// Send `fetch.request` next and reduce its reply with this fetch.
     Request { fetch: DisassemblyFetch },
     /// The fetch finished. `keep` indexes the reply's instructions to list, in
@@ -149,7 +149,7 @@ pub(crate) enum DisassemblyStep {
 }
 
 /// Plans the first request of a fetch.
-pub(crate) fn plan_disassembly_window(
+pub fn plan_disassembly_window(
     request: PlanDisassemblyWindowRequest,
 ) -> Result<DisassemblyFetch, CoreError> {
     validate_address(&request.reference)?;
@@ -180,7 +180,7 @@ pub(crate) fn plan_disassembly_window(
 }
 
 /// Reduces one adapter reply to the next step of the fetch.
-pub(crate) fn reduce_disassembly_page(
+pub fn reduce_disassembly_page(
     request: ReduceDisassemblyPageRequest,
 ) -> Result<DisassemblyStep, CoreError> {
     let ReduceDisassemblyPageRequest {
@@ -376,7 +376,7 @@ mod tests {
 
     fn fixture() -> Value {
         serde_json::from_str(include_str!(
-            "../../../../fixtures/debug/disassembly-paging-v1.json"
+            "../../../fixtures/debug/disassembly-paging-v1.json"
         ))
         .unwrap()
     }

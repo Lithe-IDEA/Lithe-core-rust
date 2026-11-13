@@ -515,6 +515,16 @@ impl crate::vcs::VcsManifest for DeclarativePluginManifest {
     }
 }
 
+impl crate::debug::DebugManifest for DeclarativePluginManifest {
+    fn id(&self) -> &str {
+        &self.id
+    }
+
+    fn debug_adapters(&self) -> &[crate::debug::adapters::DebugAdapterDeclaration] {
+        &self.debug_adapters
+    }
+}
+
 /// Validates a raw manifest value and returns its normalized form as JSON, the
 /// shape [`crate::toolchain::ManifestValidator`] gives toolchain policy.
 pub fn validated_manifest_json(value: Value) -> Validation<Value> {
@@ -1417,11 +1427,6 @@ impl DeclarativePluginManifest {
     /// Validated build systems, sorted by ID.
     pub(crate) fn build_systems(&self) -> &[crate::build::BuildSystemDeclaration] {
         &self.build_systems
-    }
-
-    /// Validated debug adapters, in declaration order.
-    pub(crate) fn debug_adapters(&self) -> &[crate::debug::adapters::DebugAdapterDeclaration] {
-        &self.debug_adapters
     }
 
     /// Host services the plugin's backend may request, sorted; empty without

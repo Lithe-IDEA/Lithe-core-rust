@@ -14,7 +14,7 @@
 //! Addresses cross the protocol as strings, never JSON numbers, because a
 //! 64-bit address can exceed the JavaScript safe integer range.
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 
 /// Bytes one memory window reads.
@@ -28,7 +28,7 @@ const MAX_ADDRESS_CHARS: usize = 256;
 /// Where the memory view reads.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct PlanMemoryWindowRequest {
+pub struct PlanMemoryWindowRequest {
     /// The address the user typed, or the selected frame's instruction pointer reference.
     pub(crate) address: String,
 }
@@ -36,7 +36,7 @@ pub(crate) struct PlanMemoryWindowRequest {
 /// One readMemory window, echoed by the host with the adapter's reply.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct MemoryWindow {
+pub struct MemoryWindow {
     /// The address read at as the address field shows it: a number in lowercase
     /// `0x` hexadecimal, any other reference trimmed and otherwise as given.
     pub(crate) address: String,
@@ -57,7 +57,7 @@ pub(crate) struct ReadMemoryArguments {
 /// The adapter's reply to one window's `readMemory` request.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct LocateMemoryWindowRequest {
+pub struct LocateMemoryWindowRequest {
     pub(crate) window: MemoryWindow,
     /// The reply's `address`, where the returned bytes start; absent when the adapter gave none.
     #[serde(default)]
@@ -69,7 +69,7 @@ pub(crate) struct LocateMemoryWindowRequest {
 /// Where the returned bytes sit.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct MemoryWindowLocation {
+pub struct MemoryWindowLocation {
     /// The first returned byte's address in lowercase `0x` hexadecimal; hosts label each row
     /// with its offset added to it. Absent when neither the reply nor the window gives a
     /// number, and rows are labelled with their offset in the window.
@@ -81,9 +81,7 @@ pub(crate) struct MemoryWindowLocation {
 }
 
 /// Places one window at an address.
-pub(crate) fn plan_memory_window(
-    request: PlanMemoryWindowRequest,
-) -> Result<MemoryWindow, CoreError> {
+pub fn plan_memory_window(request: PlanMemoryWindowRequest) -> Result<MemoryWindow, CoreError> {
     let address = request.address.trim();
     if address.is_empty()
         || address.chars().count() > MAX_ADDRESS_CHARS
@@ -118,7 +116,7 @@ pub(crate) fn plan_memory_window(
 }
 
 /// Finds where the bytes of one reply start and which of them is at the address read.
-pub(crate) fn locate_memory_window(
+pub fn locate_memory_window(
     request: LocateMemoryWindowRequest,
 ) -> Result<MemoryWindowLocation, CoreError> {
     let LocateMemoryWindowRequest {
@@ -178,7 +176,7 @@ mod tests {
 
     fn fixture() -> Value {
         serde_json::from_str(include_str!(
-            "../../../../fixtures/debug/memory-window-v1.json"
+            "../../../fixtures/debug/memory-window-v1.json"
         ))
         .unwrap()
     }

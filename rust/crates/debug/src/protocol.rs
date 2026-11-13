@@ -1,6 +1,6 @@
 //! Bounded DAP framing and JSON message helpers independent of native transport.
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde_json::Value;
 
 const MAX_HEADER_BYTES: usize = 64 * 1024;

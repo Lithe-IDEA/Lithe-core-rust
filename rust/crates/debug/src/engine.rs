@@ -8,10 +8,10 @@ use super::projection_v2::{
 };
 use super::protocol::{frame_message, parse_messages};
 use super::types::*;
-use crate::protocol::{CoreError, ErrorCode};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
 use lithe_diagnostics::channel::identity_segment;
+use lithe_protocol::{CoreError, ErrorCode};
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Mutex, OnceLock};
@@ -122,9 +122,7 @@ enum PendingRequest {
 }
 
 /// Creates a session and returns the framed DAP `initialize` request to send.
-pub(crate) fn create_session(
-    request: CreateSessionRequest,
-) -> Result<DebugSessionUpdate, CoreError> {
+pub fn create_session(request: CreateSessionRequest) -> Result<DebugSessionUpdate, CoreError> {
     validate_identifier(&request.session_id, "sessionId")?;
     validate_identifier(&request.adapter_id, "adapterId")?;
     validate_path(&request.root_path, "rootPath")?;
@@ -243,7 +241,7 @@ pub(crate) fn create_session(
 }
 
 /// Queues launch or attach now, or stores it until initialize completes.
-pub(crate) fn launch(request: LaunchRequest) -> Result<DebugSessionUpdate, CoreError> {
+pub fn launch(request: LaunchRequest) -> Result<DebugSessionUpdate, CoreError> {
     validate_identifier(&request.operation_id, "operationId")?;
     with_session(&request.session_id, |session| {
         match session.state {
@@ -264,7 +262,7 @@ pub(crate) fn launch(request: LaunchRequest) -> Result<DebugSessionUpdate, CoreE
 }
 
 /// Returns deterministic adapter defaults or a normalized native-client override.
-pub(crate) fn stepping_filters(
+pub fn stepping_filters(
     request: DebugSteppingFiltersRequest,
 ) -> Result<DebugSteppingFilters, CoreError> {
     validate_identifier(&request.adapter_id, "adapterId")?;
@@ -276,7 +274,7 @@ pub(crate) fn stepping_filters(
 }
 
 /// Stores a deterministic breakpoint set and sends it after DAP initialization.
-pub(crate) fn set_breakpoints(
+pub fn set_breakpoints(
     mut request: SetBreakpointsRequest,
 ) -> Result<DebugSessionUpdate, CoreError> {
     validate_path(&request.source_path, "sourcePath")?;
@@ -313,7 +311,7 @@ pub(crate) fn set_breakpoints(
 }
 
 /// Stores deterministic exception filters and sends them after DAP initialization.
-pub(crate) fn set_exception_breakpoints(
+pub fn set_exception_breakpoints(
     mut request: SetExceptionBreakpointsRequest,
 ) -> Result<DebugSessionUpdate, CoreError> {
     for breakpoint in &mut request.breakpoints {
@@ -350,7 +348,7 @@ pub(crate) fn set_exception_breakpoints(
 }
 
 /// Stores deterministic function breakpoints and sends them when supported.
-pub(crate) fn set_function_breakpoints(
+pub fn set_function_breakpoints(
     mut request: SetFunctionBreakpointsRequest,
 ) -> Result<DebugSessionUpdate, CoreError> {
     for breakpoint in &mut request.breakpoints {
@@ -400,7 +398,7 @@ const MAXIMUM_DISASSEMBLE_INSTRUCTIONS: i64 = 1_000;
 ///
 /// References are opaque address strings: they are only trimmed and bounded, never parsed,
 /// so a 64-bit address survives untouched and no CPU-specific logic enters the Core.
-pub(crate) fn set_instruction_breakpoints(
+pub fn set_instruction_breakpoints(
     mut request: SetInstructionBreakpointsRequest,
 ) -> Result<DebugSessionUpdate, CoreError> {
     for breakpoint in &mut request.breakpoints {
@@ -439,7 +437,7 @@ pub(crate) fn set_instruction_breakpoints(
 }
 
 /// Resolves one adapter-owned data breakpoint identity for the selected variable.
-pub(crate) fn data_breakpoint_info(
+pub fn data_breakpoint_info(
     mut request: DataBreakpointInfoRequest,
 ) -> Result<DebugSessionUpdate, CoreError> {
     validate_identifier(&request.operation_id, "operationId")?;
@@ -491,7 +489,7 @@ pub(crate) fn data_breakpoint_info(
 }
 
 /// Stores deterministic adapter-resolved data breakpoints and sends them when supported.
-pub(crate) fn set_data_breakpoints(
+pub fn set_data_breakpoints(
     mut request: SetDataBreakpointsRequest,
 ) -> Result<DebugSessionUpdate, CoreError> {
     for breakpoint in &mut request.breakpoints {
@@ -540,7 +538,7 @@ pub(crate) fn set_data_breakpoints(
 /// and sends each set empty; unmuting sends them as stored again. Only a set holding an
 /// enabled breakpoint is resent, since muting does not change what any other set sends.
 /// Before DAP initialization the state is only stored and applies to the first sets sent.
-pub(crate) fn set_breakpoints_muted(
+pub fn set_breakpoints_muted(
     request: SetBreakpointsMutedRequest,
 ) -> Result<DebugSessionUpdate, CoreError> {
     with_session(&request.session_id, |session| {
@@ -555,9 +553,7 @@ pub(crate) fn set_breakpoints_muted(
 }
 
 /// Queues one capability-gated variable mutation while execution is paused.
-pub(crate) fn set_variable(
-    mut request: SetVariableRequest,
-) -> Result<DebugSessionUpdate, CoreError> {
+pub fn set_variable(mut request: SetVariableRequest) -> Result<DebugSessionUpdate, CoreError> {
     validate_identifier(&request.operation_id, "operationId")?;
     if request.variables_reference < 1 {
         return Err(invalid_request(
@@ -598,9 +594,7 @@ pub(crate) fn set_variable(
 }
 
 /// Ends one caller-owned operation and ignores any later adapter response.
-pub(crate) fn cancel_operation(
-    request: CancelOperationRequest,
-) -> Result<DebugSessionUpdate, CoreError> {
+pub fn cancel_operation(request: CancelOperationRequest) -> Result<DebugSessionUpdate, CoreError> {
     validate_identifier(&request.operation_id, "operationId")?;
     with_session(&request.session_id, |session| {
         let pending_sequence = session
@@ -645,7 +639,7 @@ pub(crate) fn cancel_operation(
 }
 
 /// Queues one continue, pause, or stepping request.
-pub(crate) fn execute(request: ExecuteRequest) -> Result<DebugSessionUpdate, CoreError> {
+pub fn execute(request: ExecuteRequest) -> Result<DebugSessionUpdate, CoreError> {
     validate_identifier(&request.operation_id, "operationId")?;
     with_session(&request.session_id, |session| {
         if !matches!(
@@ -803,7 +797,7 @@ pub(crate) fn execute(request: ExecuteRequest) -> Result<DebugSessionUpdate, Cor
 }
 
 /// Queues one typed thread, stack, scope, variable, or evaluation request.
-pub(crate) fn inspect(request: InspectRequest) -> Result<DebugSessionUpdate, CoreError> {
+pub fn inspect(request: InspectRequest) -> Result<DebugSessionUpdate, CoreError> {
     validate_identifier(&request.operation_id, "operationId")?;
     let arguments = inspect_arguments(&request)?;
     with_session(&request.session_id, |session| {
@@ -898,7 +892,7 @@ pub(crate) fn inspect(request: InspectRequest) -> Result<DebugSessionUpdate, Cor
 }
 
 /// Reduces one transport byte chunk and returns ordered writes and events.
-pub(crate) fn receive(request: ReceiveRequest) -> Result<DebugSessionUpdate, CoreError> {
+pub fn receive(request: ReceiveRequest) -> Result<DebugSessionUpdate, CoreError> {
     let bytes = BASE64.decode(request.data_base64).map_err(|error| {
         invalid_request("Debug transport dataBase64 was invalid.").with_details(error.to_string())
     })?;
@@ -923,7 +917,7 @@ pub(crate) fn receive(request: ReceiveRequest) -> Result<DebugSessionUpdate, Cor
 }
 
 /// Completes one adapter-originated terminal launch and emits its DAP response.
-pub(crate) fn run_in_terminal_response(
+pub fn run_in_terminal_response(
     request: DebugRunInTerminalResponseRequest,
 ) -> Result<DebugSessionUpdate, CoreError> {
     validate_identifier(&request.request_id, "requestId")?;
@@ -973,7 +967,7 @@ pub(crate) fn run_in_terminal_response(
 }
 
 /// Completes one adapter-originated child session start and emits its DAP response.
-pub(crate) fn start_debugging_response(
+pub fn start_debugging_response(
     request: DebugStartDebuggingResponseRequest,
 ) -> Result<DebugSessionUpdate, CoreError> {
     validate_identifier(&request.request_id, "requestId")?;
@@ -998,7 +992,7 @@ pub(crate) fn start_debugging_response(
 }
 
 /// Begins a graceful DAP disconnect while the host keeps transport ownership.
-pub(crate) fn disconnect(request: DisconnectRequest) -> Result<DebugSessionUpdate, CoreError> {
+pub fn disconnect(request: DisconnectRequest) -> Result<DebugSessionUpdate, CoreError> {
     with_session(&request.session_id, |session| {
         if matches!(
             session.state,
@@ -1035,7 +1029,7 @@ pub(crate) fn disconnect(request: DisconnectRequest) -> Result<DebugSessionUpdat
 /// A child never outlives its parent, so destroying a parent also removes every
 /// descendant (leaves first). The host owns the transports and must close the transport of
 /// each returned ID; the list is empty for a session without children.
-pub(crate) fn destroy_session(request: SessionRequest) -> Result<Vec<String>, CoreError> {
+pub fn destroy_session(request: SessionRequest) -> Result<Vec<String>, CoreError> {
     let mut sessions = sessions_lock()?;
     let Some(mut removed) = sessions.remove(&request.session_id) else {
         return Err(session_not_found(&request.session_id));
@@ -3202,7 +3196,7 @@ fn session_not_found(session_id: &str) -> CoreError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::debug::projection_v2::{Projection, SessionProjection, Source};
+    use crate::projection_v2::{Projection, SessionProjection, Source};
 
     fn request_message(sequence: i64, command: &str, arguments: Value) -> Value {
         json!({
@@ -3249,7 +3243,7 @@ mod tests {
     #[test]
     fn delayed_launch_response_preserves_a_newer_stopped_or_terminal_event() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../fixtures/debug/launch-event-order.json"
+            "../../../fixtures/debug/launch-event-order.json"
         ))
         .unwrap();
         for case in fixture["cases"].as_array().unwrap() {

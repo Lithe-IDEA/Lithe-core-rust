@@ -497,11 +497,14 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
         CoreCommand::RunDecodeStart => {
             plugin_response(id, parsed.payload, crate::build::run_decode_start_command)
         }
-        CoreCommand::DebugDecodeBackendConfiguration => plugin_response(
-            id,
-            parsed.payload,
-            crate::debug::decode_backend_configuration_command,
-        ),
+        CoreCommand::DebugDecodeBackendConfiguration => {
+            plugin_response(id, parsed.payload, |payload| {
+                crate::debug::decode_backend_configuration_command(
+                    payload,
+                    crate::plugins::declarative::validate_manifest_value,
+                )
+            })
+        }
         CoreCommand::OutputLinksMatch => plugin_response(
             id,
             parsed.payload,

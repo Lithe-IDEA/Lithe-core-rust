@@ -5,20 +5,20 @@ use std::sync::{Mutex, OnceLock};
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 
-use super::SourceBreakpoint;
+use super::types::SourceBreakpoint;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 /// One native-editor replacement expressed in document-relative UTF-16 offsets.
 pub struct DebugSourceEdit {
     /// Inclusive start offset in the source text before the edit.
-    pub start_utf16_offset: usize,
+    pub(crate) start_utf16_offset: usize,
     /// Exclusive end offset in the source text before the edit.
-    pub end_utf16_offset: usize,
+    pub(crate) end_utf16_offset: usize,
     /// Text inserted in place of the edited range.
-    pub replacement: String,
+    pub(crate) replacement: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -27,28 +27,28 @@ pub struct DebugSourceEdit {
 pub struct RelocateBreakpointsRequest {
     /// Complete source text before the mutation.
     #[serde(default)]
-    pub source: String,
+    pub(crate) source: String,
     #[serde(default)]
-    pub edit: Option<DebugSourceEdit>,
+    pub(crate) edit: Option<DebugSourceEdit>,
     /// Original-source edits, validated and applied together before projecting lines.
     #[serde(default)]
-    pub edits: Vec<DebugSourceEdit>,
+    pub(crate) edits: Vec<DebugSourceEdit>,
     /// Further editor mutations, each expressed relative to the previous mutation's result.
     #[serde(default)]
-    pub edit_batches: Vec<Vec<DebugSourceEdit>>,
+    pub(crate) edit_batches: Vec<Vec<DebugSourceEdit>>,
     /// Optional ephemeral snapshot identity; version one supplies the complete source.
     #[serde(default)]
-    pub document: Option<DebugSourceDocument>,
+    pub(crate) document: Option<DebugSourceDocument>,
     #[serde(default)]
-    pub breakpoints: Vec<SourceBreakpoint>,
+    pub(crate) breakpoints: Vec<SourceBreakpoint>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 /// Versioned, process-local source snapshot, isolated from installed resources.
 pub struct DebugSourceDocument {
-    pub id: String,
-    pub version: u64,
+    pub(crate) id: String,
+    pub(crate) version: u64,
 }
 
 struct SourceSnapshot {
@@ -70,9 +70,9 @@ static SNAPSHOTS: OnceLock<Mutex<SnapshotCache>> = OnceLock::new();
 /// Stable breakpoint set after applying one source edit.
 pub struct RelocateBreakpointsResult {
     /// Relocated, deduplicated breakpoints in deterministic position order.
-    pub breakpoints: Vec<SourceBreakpoint>,
+    pub(crate) breakpoints: Vec<SourceBreakpoint>,
     /// Input index of each surviving breakpoint, aligned with `breakpoints`.
-    pub original_indices: Vec<usize>,
+    pub(crate) original_indices: Vec<usize>,
 }
 
 /// Moves breakpoint anchors with inserted or removed source text.

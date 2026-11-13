@@ -1,11 +1,11 @@
 //! Portable decision for a combined start-or-continue debugger command.
 
-use crate::protocol::{CoreError, ErrorCode};
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
 /// Chooses one action without restarting a running session or overlapping a request.
-pub(crate) fn start_or_continue(payload: Value) -> Result<Value, CoreError> {
+pub fn start_or_continue(payload: Value) -> Result<Value, CoreError> {
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase", deny_unknown_fields)]
     struct Request {

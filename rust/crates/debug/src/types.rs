@@ -22,25 +22,25 @@ pub enum DebugSessionState {
 #[serde(rename_all = "camelCase")]
 /// Creates a protocol session without opening a socket or starting a process.
 pub struct CreateSessionRequest {
-    pub session_id: String,
-    pub adapter_id: String,
-    pub root_path: String,
+    pub(crate) session_id: String,
+    pub(crate) adapter_id: String,
+    pub(crate) root_path: String,
     /// Whether the native host can launch adapter-requested processes in a terminal.
     #[serde(default)]
-    pub supports_run_in_terminal_request: bool,
+    pub(crate) supports_run_in_terminal_request: bool,
     /// Whether the native host can open a child debug session for an adapter
     /// `startDebugging` reverse request (for example Node worker or child processes).
     #[serde(default)]
-    pub supports_start_debugging_request: bool,
+    pub(crate) supports_start_debugging_request: bool,
     /// Standard DAP capabilities a plugin declared it disables (`capabilities.disabled`).
     #[serde(default)]
-    pub disabled_capabilities: Vec<String>,
+    pub(crate) disabled_capabilities: Vec<String>,
     /// The session whose adapter asked for this one through `startDebugging`.
     #[serde(default)]
-    pub parent_session_id: Option<String>,
+    pub(crate) parent_session_id: Option<String>,
     /// What the plugin declared for its adapter, passed through by the host.
     #[serde(flatten)]
-    pub declared: DeclaredAdapterBehavior,
+    pub(crate) declared: DeclaredAdapterBehavior,
 }
 
 /// The `features` and `defaults` of a `debugAdapters` declaration. The
@@ -49,9 +49,9 @@ pub struct CreateSessionRequest {
 #[serde(rename_all = "camelCase")]
 pub struct DeclaredAdapterBehavior {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub features: Option<DebugAdapterFeatures>,
+    pub(crate) features: Option<DebugAdapterFeatures>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub defaults: Option<DebugAdapterDefaults>,
+    pub(crate) defaults: Option<DebugAdapterDefaults>,
 }
 
 /// Adapter-specific DAP extensions the adapter declares it implements.
@@ -59,9 +59,9 @@ pub struct DeclaredAdapterBehavior {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DebugAdapterFeatures {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub hot_code_replace: Option<HotCodeReplaceFeature>,
+    pub(crate) hot_code_replace: Option<HotCodeReplaceFeature>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub step_filters: Option<StepFiltersFeature>,
+    pub(crate) step_filters: Option<StepFiltersFeature>,
 }
 
 /// A custom request that applies changed code to the running debuggee.
@@ -69,18 +69,18 @@ pub struct DebugAdapterFeatures {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HotCodeReplaceFeature {
     /// DAP command the engine sends for a `redefineClasses` inspection.
-    pub request: String,
+    pub(crate) request: String,
     /// DAP event whose `message` the Debug Console shows as progress.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub event: Option<String>,
+    pub(crate) event: Option<String>,
     /// Response body field listing the replaced units; none are reported
     /// when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub changed_field: Option<String>,
+    pub(crate) changed_field: Option<String>,
     /// Response body field with a failure message the adapter reports in a
     /// successful response.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub error_field: Option<String>,
+    pub(crate) error_field: Option<String>,
 }
 
 /// The launch argument through which the adapter receives stepping filters,
@@ -88,7 +88,7 @@ pub struct HotCodeReplaceFeature {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StepFiltersFeature {
-    pub argument: String,
+    pub(crate) argument: String,
 }
 
 /// Values the adapter starts with when the user configured none.
@@ -96,7 +96,7 @@ pub struct StepFiltersFeature {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DebugAdapterDefaults {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub step_filters: Option<DeclaredStepFilters>,
+    pub(crate) step_filters: Option<DeclaredStepFilters>,
 }
 
 /// Declared default stepping filters; the same fields as
@@ -105,15 +105,15 @@ pub struct DebugAdapterDefaults {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DeclaredStepFilters {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub class_name_filters: Vec<String>,
+    pub(crate) class_name_filters: Vec<String>,
     #[serde(default)]
-    pub skip_synthetics: bool,
+    pub(crate) skip_synthetics: bool,
     #[serde(default)]
-    pub skip_static_initializers: bool,
+    pub(crate) skip_static_initializers: bool,
     #[serde(default)]
-    pub skip_constructors: bool,
+    pub(crate) skip_constructors: bool,
     #[serde(default)]
-    pub hide_filtered_stack_frames: bool,
+    pub(crate) hide_filtered_stack_frames: bool,
 }
 
 /// Longest DAP command, event, field, or argument name an adapter declares.
@@ -206,19 +206,19 @@ impl From<&DeclaredStepFilters> for DebugSteppingFilters {
 #[serde(rename_all = "camelCase")]
 /// Identifies one existing debug session.
 pub struct SessionRequest {
-    pub session_id: String,
+    pub(crate) session_id: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 /// Identifies one session for `debug.disconnect` and carries the user's debuggee policy.
 pub struct DisconnectRequest {
-    pub session_id: String,
+    pub(crate) session_id: String,
     /// Optional user choice for a launch session's local debuggee. When absent, launch
     /// terminates it. An attach session never terminates the external process, even if
     /// this is `true`, so a remote detach cannot kill a process the IDE does not own.
     #[serde(default)]
-    pub terminate_debuggee: Option<bool>,
+    pub(crate) terminate_debuggee: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
@@ -242,13 +242,13 @@ impl DebugRequestKind {
 #[serde(rename_all = "camelCase")]
 /// Provider-specific launch arguments wrapped in a language-neutral contract.
 pub struct DebugLaunchConfiguration {
-    pub name: String,
-    pub request: DebugRequestKind,
+    pub(crate) name: String,
+    pub(crate) request: DebugRequestKind,
     #[serde(default)]
-    pub arguments: serde_json::Map<String, Value>,
+    pub(crate) arguments: serde_json::Map<String, Value>,
     /// Optional portable stepping policy projected into adapter-specific launch arguments.
     #[serde(default)]
-    pub stepping_filters: Option<DebugSteppingFilters>,
+    pub(crate) stepping_filters: Option<DebugSteppingFilters>,
 }
 
 #[derive(Debug, Clone, Deserialize, Eq, PartialEq, Serialize)]
@@ -257,19 +257,19 @@ pub struct DebugLaunchConfiguration {
 pub struct DebugSteppingFilters {
     /// Adapter-neutral class-name patterns; `$Libraries` matches frames outside the workspace.
     #[serde(default)]
-    pub class_name_filters: Vec<String>,
+    pub(crate) class_name_filters: Vec<String>,
     /// Whether compiler-generated methods should be skipped.
     #[serde(default)]
-    pub skip_synthetics: bool,
+    pub(crate) skip_synthetics: bool,
     /// Whether class static initializers should be skipped.
     #[serde(default)]
-    pub skip_static_initializers: bool,
+    pub(crate) skip_static_initializers: bool,
     /// Whether constructors should be skipped.
     #[serde(default)]
-    pub skip_constructors: bool,
+    pub(crate) skip_constructors: bool,
     /// Whether native clients should collapse stack frames matched by the class filters.
     #[serde(default)]
-    pub hide_filtered_stack_frames: bool,
+    pub(crate) hide_filtered_stack_frames: bool,
 }
 
 impl DebugSteppingFilters {
@@ -296,36 +296,36 @@ impl Default for DebugSteppingFilters {
 /// Returns an adapter's defaults or normalizes a native client's stepping policy.
 pub struct DebugSteppingFiltersRequest {
     /// Stable adapter identifier, such as `lldb`.
-    pub adapter_id: String,
+    pub(crate) adapter_id: String,
     /// Optional client override; omission requests the adapter defaults.
     #[serde(default)]
-    pub filters: Option<DebugSteppingFilters>,
+    pub(crate) filters: Option<DebugSteppingFilters>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 /// Queues launch or attach, waiting for initialization when necessary.
 pub struct LaunchRequest {
-    pub session_id: String,
-    pub operation_id: String,
-    pub configuration: DebugLaunchConfiguration,
+    pub(crate) session_id: String,
+    pub(crate) operation_id: String,
+    pub(crate) configuration: DebugLaunchConfiguration,
 }
 
 #[derive(Debug, Clone, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// One requested source breakpoint using one-based DAP coordinates.
 pub struct SourceBreakpoint {
-    pub line: i64,
+    pub(crate) line: i64,
     #[serde(default)]
-    pub column: Option<i64>,
+    pub(crate) column: Option<i64>,
     #[serde(default = "default_true")]
-    pub enabled: bool,
+    pub(crate) enabled: bool,
     #[serde(default)]
-    pub condition: Option<String>,
+    pub(crate) condition: Option<String>,
     #[serde(default)]
-    pub hit_condition: Option<String>,
+    pub(crate) hit_condition: Option<String>,
     #[serde(default)]
-    pub log_message: Option<String>,
+    pub(crate) log_message: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -336,52 +336,52 @@ fn default_true() -> bool {
 #[serde(rename_all = "camelCase")]
 /// Replaces the complete breakpoint set for one absolute source path.
 pub struct SetBreakpointsRequest {
-    pub session_id: String,
-    pub source_path: String,
+    pub(crate) session_id: String,
+    pub(crate) source_path: String,
     #[serde(default)]
-    pub breakpoints: Vec<SourceBreakpoint>,
+    pub(crate) breakpoints: Vec<SourceBreakpoint>,
 }
 
 #[derive(Debug, Clone, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 /// One adapter-defined exception filter and its optional exception condition.
 pub struct ExceptionBreakpoint {
-    pub filter: String,
+    pub(crate) filter: String,
     #[serde(default = "default_true")]
-    pub enabled: bool,
+    pub(crate) enabled: bool,
     #[serde(default)]
-    pub condition: Option<String>,
+    pub(crate) condition: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 /// Replaces the complete exception breakpoint selection for one session.
 pub struct SetExceptionBreakpointsRequest {
-    pub session_id: String,
+    pub(crate) session_id: String,
     #[serde(default)]
-    pub breakpoints: Vec<ExceptionBreakpoint>,
+    pub(crate) breakpoints: Vec<ExceptionBreakpoint>,
 }
 
 #[derive(Debug, Clone, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 /// One named function or method breakpoint understood by the active adapter.
 pub struct FunctionBreakpoint {
-    pub name: String,
+    pub(crate) name: String,
     #[serde(default = "default_true")]
-    pub enabled: bool,
+    pub(crate) enabled: bool,
     #[serde(default)]
-    pub condition: Option<String>,
+    pub(crate) condition: Option<String>,
     #[serde(default)]
-    pub hit_condition: Option<String>,
+    pub(crate) hit_condition: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 /// Replaces the complete function breakpoint set for one session.
 pub struct SetFunctionBreakpointsRequest {
-    pub session_id: String,
+    pub(crate) session_id: String,
     #[serde(default)]
-    pub breakpoints: Vec<FunctionBreakpoint>,
+    pub(crate) breakpoints: Vec<FunctionBreakpoint>,
 }
 
 #[derive(Debug, Clone, Deserialize, Eq, PartialEq)]
@@ -391,83 +391,83 @@ pub struct SetFunctionBreakpointsRequest {
 /// The reference is the opaque address string the adapter reported (a 64-bit address can
 /// exceed the JavaScript safe integer range), so the Core never parses or adds to it.
 pub struct InstructionBreakpoint {
-    pub instruction_reference: String,
+    pub(crate) instruction_reference: String,
     /// Byte offset from the reference, for adapters that resolve symbol-relative locations.
     #[serde(default)]
-    pub offset: Option<i64>,
+    pub(crate) offset: Option<i64>,
     #[serde(default = "default_true")]
-    pub enabled: bool,
+    pub(crate) enabled: bool,
     #[serde(default)]
-    pub condition: Option<String>,
+    pub(crate) condition: Option<String>,
     #[serde(default)]
-    pub hit_condition: Option<String>,
+    pub(crate) hit_condition: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 /// Replaces the complete instruction breakpoint set for one session.
 pub struct SetInstructionBreakpointsRequest {
-    pub session_id: String,
+    pub(crate) session_id: String,
     #[serde(default)]
-    pub breakpoints: Vec<InstructionBreakpoint>,
+    pub(crate) breakpoints: Vec<InstructionBreakpoint>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 /// Resolves an adapter-owned data identifier for one visible variable or expression.
 pub struct DataBreakpointInfoRequest {
-    pub session_id: String,
-    pub operation_id: String,
-    pub name: String,
+    pub(crate) session_id: String,
+    pub(crate) operation_id: String,
+    pub(crate) name: String,
     #[serde(default)]
-    pub variables_reference: Option<i64>,
+    pub(crate) variables_reference: Option<i64>,
     #[serde(default)]
-    pub frame_id: Option<i64>,
+    pub(crate) frame_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 /// One adapter-resolved field or data breakpoint.
 pub struct DataBreakpoint {
-    pub data_id: String,
+    pub(crate) data_id: String,
     #[serde(default)]
-    pub label: Option<String>,
+    pub(crate) label: Option<String>,
     #[serde(default = "default_true")]
-    pub enabled: bool,
+    pub(crate) enabled: bool,
     #[serde(default)]
-    pub access_type: Option<String>,
+    pub(crate) access_type: Option<String>,
     #[serde(default)]
-    pub condition: Option<String>,
+    pub(crate) condition: Option<String>,
     #[serde(default)]
-    pub hit_condition: Option<String>,
+    pub(crate) hit_condition: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 /// Replaces the complete adapter-resolved data breakpoint set for one session.
 pub struct SetDataBreakpointsRequest {
-    pub session_id: String,
+    pub(crate) session_id: String,
     #[serde(default)]
-    pub breakpoints: Vec<DataBreakpoint>,
+    pub(crate) breakpoints: Vec<DataBreakpoint>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 /// Mutes or unmutes every breakpoint stored for one session.
 pub struct SetBreakpointsMutedRequest {
-    pub session_id: String,
-    pub muted: bool,
+    pub(crate) session_id: String,
+    pub(crate) muted: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 /// Replaces one visible variable value in its adapter-owned parent container.
 pub struct SetVariableRequest {
-    pub session_id: String,
-    pub operation_id: String,
-    pub variables_reference: i64,
-    pub name: String,
-    pub value: String,
+    pub(crate) session_id: String,
+    pub(crate) operation_id: String,
+    pub(crate) variables_reference: i64,
+    pub(crate) name: String,
+    pub(crate) value: String,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq)]
@@ -482,9 +482,9 @@ pub enum DebugCancellationReason {
 #[serde(rename_all = "camelCase")]
 /// Ends one pending operation and optionally forwards DAP cancellation.
 pub struct CancelOperationRequest {
-    pub session_id: String,
-    pub operation_id: String,
-    pub reason: DebugCancellationReason,
+    pub(crate) session_id: String,
+    pub(crate) operation_id: String,
+    pub(crate) reason: DebugCancellationReason,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq)]
@@ -522,18 +522,18 @@ impl DebugExecutionCommand {
 #[serde(rename_all = "camelCase")]
 /// Queues a control request and correlates its eventual result to an operation.
 pub struct ExecuteRequest {
-    pub session_id: String,
-    pub operation_id: String,
-    pub command: DebugExecutionCommand,
+    pub(crate) session_id: String,
+    pub(crate) operation_id: String,
+    pub(crate) command: DebugExecutionCommand,
     #[serde(default)]
-    pub thread_id: Option<i64>,
+    pub(crate) thread_id: Option<i64>,
     #[serde(default)]
-    pub target_id: Option<i64>,
+    pub(crate) target_id: Option<i64>,
     #[serde(default)]
-    pub single_thread: bool,
+    pub(crate) single_thread: bool,
     /// Step size for `next`, `stepIn`, `stepOut` and `stepBack`; the adapter default when absent.
     #[serde(default)]
-    pub granularity: Option<DebugSteppingGranularity>,
+    pub(crate) granularity: Option<DebugSteppingGranularity>,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq)]
@@ -617,57 +617,57 @@ impl DebugVariableFilter {
 #[serde(rename_all = "camelCase")]
 /// Parameters for one thread, frame, variable, or expression inspection.
 pub struct InspectRequest {
-    pub session_id: String,
-    pub operation_id: String,
-    pub kind: DebugInspectKind,
+    pub(crate) session_id: String,
+    pub(crate) operation_id: String,
+    pub(crate) kind: DebugInspectKind,
     #[serde(default)]
-    pub thread_id: Option<i64>,
+    pub(crate) thread_id: Option<i64>,
     #[serde(default)]
-    pub frame_id: Option<i64>,
+    pub(crate) frame_id: Option<i64>,
     #[serde(default)]
-    pub variables_reference: Option<i64>,
+    pub(crate) variables_reference: Option<i64>,
     #[serde(default)]
-    pub variable_filter: Option<DebugVariableFilter>,
+    pub(crate) variable_filter: Option<DebugVariableFilter>,
     /// Zero-based child offset for a paged variables request.
     #[serde(default)]
-    pub start: Option<i64>,
+    pub(crate) start: Option<i64>,
     /// Maximum child count for a paged variables request.
     #[serde(default)]
-    pub count: Option<i64>,
+    pub(crate) count: Option<i64>,
     #[serde(default)]
-    pub expression: Option<String>,
+    pub(crate) expression: Option<String>,
     /// DAP evaluate context: `watch` (default), `hover`, `repl`, `clipboard` or `variables`.
     #[serde(default)]
-    pub context: Option<String>,
+    pub(crate) context: Option<String>,
     #[serde(default)]
-    pub source_path: Option<String>,
+    pub(crate) source_path: Option<String>,
     #[serde(default)]
-    pub line: Option<i64>,
+    pub(crate) line: Option<i64>,
     #[serde(default)]
-    pub column: Option<i64>,
+    pub(crate) column: Option<i64>,
     /// Opaque address or memory reference for `disassemble` and `readMemory`.
     #[serde(default)]
-    pub memory_reference: Option<String>,
+    pub(crate) memory_reference: Option<String>,
     /// Byte offset from `memoryReference` (may be negative for `disassemble`).
     #[serde(default)]
-    pub offset: Option<i64>,
+    pub(crate) offset: Option<i64>,
     /// Instruction offset from the resolved start; negative asks for instructions before it.
     #[serde(default)]
-    pub instruction_offset: Option<i64>,
+    pub(crate) instruction_offset: Option<i64>,
     /// Number of instructions `disassemble` returns.
     #[serde(default)]
-    pub instruction_count: Option<i64>,
+    pub(crate) instruction_count: Option<i64>,
     /// `disassemble` asks the adapter to resolve symbol names; defaults to true.
     #[serde(default)]
-    pub resolve_symbols: Option<bool>,
+    pub(crate) resolve_symbols: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 /// Base64-encoded bytes received from a platform-owned DAP transport.
 pub struct ReceiveRequest {
-    pub session_id: String,
-    pub data_base64: String,
+    pub(crate) session_id: String,
+    pub(crate) data_base64: String,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
@@ -682,23 +682,23 @@ pub enum DebugRunInTerminalKind {
 #[serde(rename_all = "camelCase")]
 /// One deterministic environment mutation requested for a debuggee process.
 pub struct DebugRunInTerminalEnvironmentVariable {
-    pub name: String,
+    pub(crate) name: String,
     /// A missing value removes the inherited variable from the child environment.
-    pub value: Option<String>,
+    pub(crate) value: Option<String>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// Normalized platform request for launching a debuggee inside a terminal.
 pub struct DebugRunInTerminalRequest {
-    pub kind: DebugRunInTerminalKind,
-    pub title: Option<String>,
-    pub cwd: String,
+    pub(crate) kind: DebugRunInTerminalKind,
+    pub(crate) title: Option<String>,
+    pub(crate) cwd: String,
     /// The executable is the first item; remaining items are passed without a shell.
-    pub args: Vec<String>,
-    pub environment: Vec<DebugRunInTerminalEnvironmentVariable>,
+    pub(crate) args: Vec<String>,
+    pub(crate) environment: Vec<DebugRunInTerminalEnvironmentVariable>,
     /// True only when the adapter intentionally supplied shell-language arguments.
-    pub args_can_be_interpreted_by_shell: bool,
+    pub(crate) args_can_be_interpreted_by_shell: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -706,97 +706,97 @@ pub struct DebugRunInTerminalRequest {
 /// Normalized adapter request to start a child debug session.
 pub struct DebugStartDebuggingRequest {
     /// Whether the child session launches or attaches to its debuggee.
-    pub request: DebugRequestKind,
+    pub(crate) request: DebugRequestKind,
     /// Adapter-provided child configuration with the `request` key removed.
     /// It is passed through verbatim so adapter-specific fields survive.
-    pub configuration: serde_json::Map<String, serde_json::Value>,
+    pub(crate) configuration: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 /// Completes one pending `startDebugging` reverse request from the native host.
 pub struct DebugStartDebuggingResponseRequest {
-    pub session_id: String,
-    pub request_id: String,
-    pub success: bool,
+    pub(crate) session_id: String,
+    pub(crate) request_id: String,
+    pub(crate) success: bool,
     #[serde(default)]
-    pub message: Option<String>,
+    pub(crate) message: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 /// Completes one pending `runInTerminal' reverse request from the native host.
 pub struct DebugRunInTerminalResponseRequest {
-    pub session_id: String,
-    pub request_id: String,
-    pub success: bool,
+    pub(crate) session_id: String,
+    pub(crate) request_id: String,
+    pub(crate) success: bool,
     #[serde(default)]
-    pub process_id: Option<i64>,
+    pub(crate) process_id: Option<i64>,
     #[serde(default)]
-    pub shell_process_id: Option<i64>,
+    pub(crate) shell_process_id: Option<i64>,
     #[serde(default)]
-    pub message: Option<String>,
+    pub(crate) message: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// Effects produced by one deterministic session reduction.
 pub struct DebugSessionUpdate {
-    pub session_id: String,
-    pub state: DebugSessionState,
+    pub(crate) session_id: String,
+    pub(crate) state: DebugSessionState,
     /// Complete framed byte sequences, base64 encoded in send order.
-    pub outbound_frames: Vec<String>,
-    pub events: Vec<DebugEvent>,
+    pub(crate) outbound_frames: Vec<String>,
+    pub(crate) events: Vec<DebugEvent>,
 }
 
 #[derive(Debug, Clone, Default, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// Adapter abilities negotiated by the DAP initialize response.
 pub struct DebugCapabilities {
-    pub supports_configuration_done: bool,
-    pub supports_conditional_breakpoints: bool,
-    pub supports_hit_conditional_breakpoints: bool,
-    pub supports_log_points: bool,
-    pub supports_function_breakpoints: bool,
-    pub supports_data_breakpoints: bool,
-    pub supports_exception_options: bool,
-    pub supports_exception_filter_options: bool,
-    pub supports_set_variable: bool,
-    pub supports_cancel_request: bool,
-    pub supports_single_thread_execution_requests: bool,
-    pub supports_restart_request: bool,
-    pub supports_terminate_request: bool,
-    pub supports_step_back: bool,
-    pub supports_exception_info_request: bool,
-    pub supports_step_in_targets_request: bool,
-    pub supports_goto_targets_request: bool,
-    pub supports_completions_request: bool,
-    pub supports_disassemble_request: bool,
-    pub supports_stepping_granularity: bool,
-    pub supports_instruction_breakpoints: bool,
-    pub supports_read_memory_request: bool,
-    pub exception_breakpoint_filters: Vec<DebugExceptionBreakpointFilter>,
+    pub(crate) supports_configuration_done: bool,
+    pub(crate) supports_conditional_breakpoints: bool,
+    pub(crate) supports_hit_conditional_breakpoints: bool,
+    pub(crate) supports_log_points: bool,
+    pub(crate) supports_function_breakpoints: bool,
+    pub(crate) supports_data_breakpoints: bool,
+    pub(crate) supports_exception_options: bool,
+    pub(crate) supports_exception_filter_options: bool,
+    pub(crate) supports_set_variable: bool,
+    pub(crate) supports_cancel_request: bool,
+    pub(crate) supports_single_thread_execution_requests: bool,
+    pub(crate) supports_restart_request: bool,
+    pub(crate) supports_terminate_request: bool,
+    pub(crate) supports_step_back: bool,
+    pub(crate) supports_exception_info_request: bool,
+    pub(crate) supports_step_in_targets_request: bool,
+    pub(crate) supports_goto_targets_request: bool,
+    pub(crate) supports_completions_request: bool,
+    pub(crate) supports_disassemble_request: bool,
+    pub(crate) supports_stepping_granularity: bool,
+    pub(crate) supports_instruction_breakpoints: bool,
+    pub(crate) supports_read_memory_request: bool,
+    pub(crate) exception_breakpoint_filters: Vec<DebugExceptionBreakpointFilter>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// One adapter-defined exception category presented by native clients.
 pub struct DebugExceptionBreakpointFilter {
-    pub filter: String,
-    pub label: String,
-    pub description: Option<String>,
-    pub default: bool,
-    pub supports_condition: bool,
-    pub condition_description: Option<String>,
+    pub(crate) filter: String,
+    pub(crate) label: String,
+    pub(crate) description: Option<String>,
+    pub(crate) default: bool,
+    pub(crate) supports_condition: bool,
+    pub(crate) condition_description: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// Ordered event projected to platform feature models.
 pub struct DebugEvent {
-    pub sequence: u64,
+    pub(crate) sequence: u64,
     #[serde(flatten)]
-    pub body: DebugEventBody,
+    pub(crate) body: DebugEventBody,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -941,13 +941,13 @@ pub enum DebugOperationResult {
 /// One machine instruction. `address` and `instruction_bytes` stay adapter-formatted
 /// strings, so 64-bit addresses are never rounded by a JSON number.
 pub struct DebugDisassembledInstruction {
-    pub address: String,
-    pub instruction_bytes: Option<String>,
-    pub instruction: String,
+    pub(crate) address: String,
+    pub(crate) instruction_bytes: Option<String>,
+    pub(crate) instruction: String,
     /// Symbol the instruction belongs to, reported only on the first instruction of it.
-    pub symbol: Option<String>,
-    pub source_path: Option<String>,
-    pub line: Option<i64>,
+    pub(crate) symbol: Option<String>,
+    pub(crate) source_path: Option<String>,
+    pub(crate) line: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -955,142 +955,142 @@ pub struct DebugDisassembledInstruction {
 /// One Debug Console proposal. `start`/`length` select the typed text the
 /// proposal replaces, in UTF-16 units from 0; absent means the word at the caret.
 pub struct DebugCompletionItem {
-    pub label: String,
+    pub(crate) label: String,
     /// Text inserted in place of the replaced range; the label when the adapter sends none.
-    pub text: String,
-    pub detail: Option<String>,
+    pub(crate) text: String,
+    pub(crate) detail: Option<String>,
     /// The adapter's DAP `CompletionItemType` (`method`, `variable`, ...).
-    pub kind: Option<String>,
-    pub start: Option<i64>,
-    pub length: Option<i64>,
+    pub(crate) kind: Option<String>,
+    pub(crate) start: Option<i64>,
+    pub(crate) length: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// One adapter-selected call expression eligible for targeted step-in.
 pub struct DebugStepInTarget {
-    pub id: i64,
-    pub label: String,
-    pub line: Option<i64>,
-    pub column: Option<i64>,
-    pub end_line: Option<i64>,
-    pub end_column: Option<i64>,
+    pub(crate) id: i64,
+    pub(crate) label: String,
+    pub(crate) line: Option<i64>,
+    pub(crate) column: Option<i64>,
+    pub(crate) end_line: Option<i64>,
+    pub(crate) end_column: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// One executable location returned for a run-to-cursor request.
 pub struct DebugGotoTarget {
-    pub id: i64,
-    pub label: String,
-    pub line: i64,
-    pub column: Option<i64>,
-    pub end_line: Option<i64>,
-    pub end_column: Option<i64>,
-    pub instruction_pointer_reference: Option<String>,
+    pub(crate) id: i64,
+    pub(crate) label: String,
+    pub(crate) line: i64,
+    pub(crate) column: Option<i64>,
+    pub(crate) end_line: Option<i64>,
+    pub(crate) end_column: Option<i64>,
+    pub(crate) instruction_pointer_reference: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// Adapter-verified breakpoint and its optional resolved source location.
 pub struct DebugBreakpoint {
-    pub id: i64,
-    pub verified: bool,
-    pub message: Option<String>,
+    pub(crate) id: i64,
+    pub(crate) verified: bool,
+    pub(crate) message: Option<String>,
     /// Requested function name for a function-breakpoint verification result.
-    pub function_name: Option<String>,
+    pub(crate) function_name: Option<String>,
     /// Adapter-owned identity for a data-breakpoint verification result.
-    pub data_id: Option<String>,
+    pub(crate) data_id: Option<String>,
     /// Requested address of an instruction-breakpoint verification result.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub instruction_reference: Option<String>,
-    pub source_path: Option<String>,
+    pub(crate) instruction_reference: Option<String>,
+    pub(crate) source_path: Option<String>,
     /// Original client line, retained when an adapter resolves a different location.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub requested_line: Option<i64>,
-    pub line: Option<i64>,
-    pub column: Option<i64>,
+    pub(crate) requested_line: Option<i64>,
+    pub(crate) line: Option<i64>,
+    pub(crate) column: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// One debuggee thread.
 pub struct DebugThread {
-    pub id: i64,
-    pub name: String,
+    pub(crate) id: i64,
+    pub(crate) name: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// One stack frame using one-based DAP source coordinates.
 pub struct DebugStackFrame {
-    pub id: i64,
-    pub name: String,
-    pub source_path: Option<String>,
+    pub(crate) id: i64,
+    pub(crate) name: String,
+    pub(crate) source_path: Option<String>,
     /// The adapter's `sourceReference` when it serves this frame's source itself, such as
     /// the disassembly of a function without debug info. `source_path` then names no file
     /// on disk, even when it looks like an absolute path.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub source_reference: Option<i64>,
+    pub(crate) source_reference: Option<i64>,
     /// Opaque address of the frame's current instruction. A frame without debug info has no
     /// file, so this is what the disassembly view anchors on; `line` is 0 for such a frame.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub instruction_pointer_reference: Option<String>,
-    pub line: i64,
-    pub column: i64,
+    pub(crate) instruction_pointer_reference: Option<String>,
+    pub(crate) line: i64,
+    pub(crate) column: i64,
     /// True when the active portable stepping policy matches this frame.
-    pub is_filtered: bool,
+    pub(crate) is_filtered: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// One variable scope associated with a selected stack frame.
 pub struct DebugScope {
-    pub name: String,
-    pub variables_reference: i64,
-    pub expensive: bool,
+    pub(crate) name: String,
+    pub(crate) variables_reference: i64,
+    pub(crate) expensive: bool,
     /// Adapter-reported count of named children, or zero when unavailable.
-    pub named_variables: i64,
+    pub(crate) named_variables: i64,
     /// Adapter-reported count of indexed children, or zero when unavailable.
-    pub indexed_variables: i64,
+    pub(crate) indexed_variables: i64,
     /// DAP `presentationHint` (`arguments`, `locals`, `registers`), or none.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub presentation_hint: Option<String>,
+    pub(crate) presentation_hint: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// A debugger variable or evaluated expression result.
 pub struct DebugVariable {
-    pub name: String,
-    pub value: String,
+    pub(crate) name: String,
+    pub(crate) value: String,
     pub r#type: Option<String>,
-    pub evaluate_name: Option<String>,
-    pub variables_reference: i64,
+    pub(crate) evaluate_name: Option<String>,
+    pub(crate) variables_reference: i64,
     /// Adapter-reported count of named children, or zero when unavailable.
-    pub named_variables: i64,
+    pub(crate) named_variables: i64,
     /// Adapter-reported count of indexed children, or zero when unavailable.
-    pub indexed_variables: i64,
+    pub(crate) indexed_variables: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// Exception metadata returned for the thread that caused an exception pause.
 pub struct DebugExceptionInfo {
-    pub exception_id: String,
-    pub description: Option<String>,
-    pub break_mode: String,
-    pub details: Option<DebugExceptionDetails>,
+    pub(crate) exception_id: String,
+    pub(crate) description: Option<String>,
+    pub(crate) break_mode: String,
+    pub(crate) details: Option<DebugExceptionDetails>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// Optional adapter-provided exception detail tree.
 pub struct DebugExceptionDetails {
-    pub message: Option<String>,
-    pub type_name: Option<String>,
-    pub full_type_name: Option<String>,
-    pub evaluate_name: Option<String>,
-    pub stack_trace: Option<String>,
-    pub inner_exceptions: Vec<DebugExceptionDetails>,
+    pub(crate) message: Option<String>,
+    pub(crate) type_name: Option<String>,
+    pub(crate) full_type_name: Option<String>,
+    pub(crate) evaluate_name: Option<String>,
+    pub(crate) stack_trace: Option<String>,
+    pub(crate) inner_exceptions: Vec<DebugExceptionDetails>,
 }
