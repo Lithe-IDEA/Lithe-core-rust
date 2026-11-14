@@ -4,7 +4,8 @@ use crate::build::{
     build_configuration_edit_plan_command, build_configuration_plan_command,
     build_decode_configuration_command, build_decode_configuration_edit_command,
 };
-use crate::plugins::declarative::validate_command;
+use lithe_plugin_manifest::validate_command;
+use lithe_plugin_manifest::DeclarativePluginManifest as Manifest;
 use serde_json::{json, Value};
 
 fn manifest() -> Value {
@@ -49,7 +50,7 @@ fn native_configuration_needs_a_provider_host_and_preserves_option_arguments() {
         "/fixture/mvn"
     };
     let plan = call(
-        build_configuration_plan_command,
+        build_configuration_plan_command::<Manifest>,
         json!({"root":".","options":{"offline":true},"tool":{"executable":executable}}),
     );
     assert_eq!(plan["status"], "ok", "{plan}");
@@ -63,7 +64,7 @@ fn native_configuration_needs_a_provider_host_and_preserves_option_arguments() {
     );
     assert_eq!(
         call(
-            build_configuration_plan_command,
+            build_configuration_plan_command::<Manifest>,
             json!({"root":".","tool":{"executable":"relative/mvn"}})
         )["status"],
         "rejected"
@@ -79,7 +80,7 @@ fn native_configuration_needs_a_provider_host_and_preserves_option_arguments() {
 fn native_configuration_rejects_sensitive_duplicate_and_unsafe_sources() {
     assert_eq!(
         call(
-            build_decode_configuration_command,
+            build_decode_configuration_command::<Manifest>,
             json!({"result":snapshot()})
         )["status"],
         "ok"
@@ -109,7 +110,10 @@ fn native_configuration_rejects_sensitive_duplicate_and_unsafe_sources() {
             _ => unreachable!(),
         }
         assert_eq!(
-            call(build_decode_configuration_command, json!({"result":value}))["status"],
+            call(
+                build_decode_configuration_command::<Manifest>,
+                json!({"result":value})
+            )["status"],
             "rejected",
             "{variant}"
         );
@@ -125,12 +129,18 @@ fn native_configuration_allows_exact_read_only_aliases_but_no_editable_alias() {
     second["scope"] = json!("installation");
     value["sources"].as_array_mut().unwrap().push(second);
     assert_eq!(
-        call(build_decode_configuration_command, json!({"result":value}))["status"],
+        call(
+            build_decode_configuration_command::<Manifest>,
+            json!({"result":value})
+        )["status"],
         "ok"
     );
     value["sources"][0]["writable"] = json!(true);
     assert_eq!(
-        call(build_decode_configuration_command, json!({"result":value}))["status"],
+        call(
+            build_decode_configuration_command::<Manifest>,
+            json!({"result":value})
+        )["status"],
         "rejected"
     );
 }
@@ -141,7 +151,7 @@ fn native_editing_passes_opaque_fields_and_private_staging_without_document_byte
     request["snapshot"]["sources"][0]["uri"] = json!("file:///fixture/config.json");
     request["snapshot"]["sources"][0]["fields"][0]["id"] = json!("cacheLocation");
     request["edits"]["values"] = json!({"cacheLocation":"/new"});
-    let result = call(build_configuration_edit_plan_command, request);
+    let result = call(build_configuration_edit_plan_command::<Manifest>, request);
     assert_eq!(result["status"], "ok", "{result}");
     assert_eq!(
         result["plan"]["provider"]["method"],
@@ -194,7 +204,7 @@ fn native_editing_rejects_stale_unknown_read_only_and_escaping_requests() {
             _ => unreachable!(),
         }
         assert_eq!(
-            call(build_configuration_edit_plan_command, request)["status"],
+            call(build_configuration_edit_plan_command::<Manifest>, request)["status"],
             "rejected",
             "{variant}"
         );
@@ -208,7 +218,7 @@ fn native_edit_receipt_is_bound_to_confirmed_source_and_contains_no_document() {
     let payload = |result: Value| json!({"snapshot":request["snapshot"],"edits":request["edits"],"result":result});
     assert_eq!(
         call(
-            build_decode_configuration_edit_command,
+            build_decode_configuration_edit_command::<Manifest>,
             payload(receipt.clone())
         )["status"],
         "ok"
@@ -223,13 +233,19 @@ fn native_edit_receipt_is_bound_to_confirmed_source_and_contains_no_document() {
         let mut invalid = receipt.clone();
         invalid[field] = value;
         assert_eq!(
-            call(build_decode_configuration_edit_command, payload(invalid))["status"],
+            call(
+                build_decode_configuration_edit_command::<Manifest>,
+                payload(invalid)
+            )["status"],
             "rejected"
         );
     }
     let unchanged = json!({"format":"litheConfigurationEdit","version":0,"sourceID":"user","revision":request["edits"]["revision"],"changed":false});
     assert_eq!(
-        call(build_decode_configuration_edit_command, payload(unchanged))["status"],
+        call(
+            build_decode_configuration_edit_command::<Manifest>,
+            payload(unchanged)
+        )["status"],
         "ok"
     );
 }

@@ -10,7 +10,7 @@
       "evidence": [
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/engine.rs",
+          "path": "rust/crates/debug/src/engine/tests.rs",
           "test": "initialize_launch_breakpoints_and_inspection_are_reduced_in_order"
         },
         {
@@ -39,7 +39,7 @@
       "evidence": [
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/engine.rs",
+          "path": "rust/crates/debug/src/engine/tests.rs",
           "test": "initialize_launch_breakpoints_and_inspection_are_reduced_in_order"
         },
         {
@@ -62,7 +62,7 @@
       "evidence": [
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/engine.rs",
+          "path": "rust/crates/debug/src/engine/tests.rs",
           "test": "source_breakpoint_binding_preserves_requested_identity_and_rejects_stale_replies",
           "fixture": "rust/fixtures/debug/breakpoint-binding-v1.json"
         },
@@ -92,13 +92,13 @@
       "evidence": [
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/engine.rs",
+          "path": "rust/crates/debug/src/engine/tests.rs",
           "test": "variable_paging_is_forwarded_and_normalized_from_shared_fixture",
           "fixture": "rust/fixtures/debug/variable-paging-v1.json"
         },
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/engine.rs",
+          "path": "rust/crates/debug/src/engine/tests.rs",
           "test": "variable_paging_arguments_reject_invalid_combinations"
         },
         {
@@ -131,7 +131,7 @@
       "evidence": [
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/engine.rs",
+          "path": "rust/crates/debug/src/engine/tests.rs",
           "test": "disconnect_policy_matches_shared_fixture",
           "fixture": "rust/fixtures/debug/disconnect-policy-v1.json"
         },
@@ -160,18 +160,18 @@
       "evidence": [
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/engine.rs",
+          "path": "rust/crates/debug/src/engine/tests.rs",
           "test": "run_in_terminal_request_is_normalized_completed_and_stale_safe",
           "fixture": "rust/fixtures/debug/run-in-terminal-v1.json"
         },
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/engine.rs",
+          "path": "rust/crates/debug/src/engine/tests.rs",
           "test": "malformed_run_in_terminal_request_gets_an_explicit_failure_response"
         },
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/engine.rs",
+          "path": "rust/crates/debug/src/engine/tests.rs",
           "test": "unknown_server_request_gets_an_explicit_failure_response"
         },
         {
@@ -194,18 +194,18 @@
       "evidence": [
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/engine.rs",
+          "path": "rust/crates/debug/src/engine/tests.rs",
           "test": "start_debugging_request_is_normalized_completed_and_stale_safe",
           "fixture": "rust/fixtures/debug/start-debugging-v1.json"
         },
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/engine.rs",
+          "path": "rust/crates/debug/src/engine/tests.rs",
           "test": "start_debugging_failure_and_unsupported_hosts_answer_the_adapter"
         },
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/engine.rs",
+          "path": "rust/crates/debug/src/engine/tests.rs",
           "test": "disconnect_fails_a_pending_start_debugging_request"
         },
         {
@@ -215,12 +215,12 @@
         },
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/engine.rs",
+          "path": "rust/crates/debug/src/engine/tests.rs",
           "test": "child_sessions_stop_with_the_parent_and_leave_the_tree_when_destroyed"
         },
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/engine.rs",
+          "path": "rust/crates/debug/src/engine/tests.rs",
           "test": "destroying_a_parent_destroys_its_whole_child_tree"
         },
         {
@@ -240,7 +240,7 @@
       "evidence": [
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/engine.rs",
+          "path": "rust/crates/debug/src/engine/tests.rs",
           "test": "node_source_mapped_locations_pass_through_unchanged",
           "fixture": "rust/fixtures/debug/node-source-map-v1.json"
         }
@@ -253,18 +253,18 @@
       "evidence": [
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/engine.rs",
+          "path": "rust/crates/debug/src/engine/tests.rs",
           "test": "hot_replace_normalizes_success_empty_and_error_bodies",
           "fixture": "rust/fixtures/debug/hot-code-replace-v1.json"
         },
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/engine.rs",
+          "path": "rust/crates/debug/src/engine/tests.rs",
           "test": "hot_replace_requires_the_declaration_and_preserves_paused_state"
         },
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/engine.rs",
+          "path": "rust/crates/debug/src/engine/tests.rs",
           "test": "declared_hot_code_replace_sends_the_declared_request_and_reads_its_fields"
         },
         {
@@ -293,7 +293,7 @@
         },
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/engine.rs",
+          "path": "rust/crates/debug/src/engine/tests.rs",
           "test": "stepping_filters_are_normalized_projected_and_mark_stack_frames"
         }
       ],
@@ -306,12 +306,12 @@
       "evidence": [
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/engine.rs",
+          "path": "rust/crates/debug/src/engine/tests.rs",
           "test": "cancelled_operation_forwards_dap_cancel_and_ignores_late_response"
         },
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/engine.rs",
+          "path": "rust/crates/debug/src/engine/tests.rs",
           "test": "stale_reference_fixture_matches_core_behavior",
           "fixture": "rust/fixtures/debug/stale-reference-v1.json"
         },
@@ -340,7 +340,7 @@
       "evidence": [
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/engine.rs",
+          "path": "rust/crates/debug/src/engine/tests.rs",
           "test": "initialize_launch_breakpoints_and_inspection_are_reduced_in_order"
         },
         {
@@ -373,27 +373,27 @@
       "evidence": [
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/engine.rs",
+          "path": "rust/crates/debug/src/engine/tests.rs",
           "test": "data_breakpoint_identity_and_verification_are_correlated"
         },
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/engine.rs",
+          "path": "rust/crates/debug/src/engine/tests.rs",
           "test": "variable_mutation_is_capability_gated_and_correlated"
         },
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/engine.rs",
+          "path": "rust/crates/debug/src/engine/tests.rs",
           "test": "advanced_execution_controls_are_capability_gated_and_correlated"
         },
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/engine.rs",
+          "path": "rust/crates/debug/src/engine/tests.rs",
           "test": "smart_step_and_goto_targets_are_normalized_before_targeted_execution"
         },
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/engine.rs",
+          "path": "rust/crates/debug/src/engine/tests.rs",
           "test": "exception_information_is_capability_gated_and_normalized",
           "fixture": "rust/fixtures/debug/exception-info-v1.json"
         },
@@ -417,7 +417,7 @@
       "evidence": [
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/endpoint.rs",
+          "path": "rust/crates/debug/src/endpoint.rs",
           "test": "dap_endpoint_contract_fixtures_match_validation_and_consent_classification",
           "fixture": "rust/fixtures/debug/adapter-endpoints-v1.json"
         },
@@ -441,7 +441,7 @@
       "evidence": [
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/transport_lifecycle.rs",
+          "path": "rust/crates/debug/src/transport_lifecycle.rs",
           "test": "lifecycle_fixture_scenarios_match_expected_steps",
           "fixture": "rust/fixtures/debug/transport-lifecycle-v1.json"
         },
@@ -489,7 +489,7 @@
       "evidence": [
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/variable_paging.rs",
+          "path": "rust/crates/debug/src/variable_paging.rs",
           "test": "variable_page_plan_matches_the_shared_fixture",
           "fixture": "rust/fixtures/debug/variable-page-plan-v1.json"
         }
@@ -503,7 +503,7 @@
       "evidence": [
         {
           "platform": "rust",
-          "path": "rust/crates/core/src/debug/disassembly_paging.rs",
+          "path": "rust/crates/debug/src/disassembly_paging.rs",
           "test": "disassembly_paging_matches_the_shared_fixture",
           "fixture": "rust/fixtures/debug/disassembly-paging-v1.json"
         }

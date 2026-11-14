@@ -110,27 +110,12 @@ fi
 # Let Rust understand visibility instead of treating pub items in private
 # modules as exported APIs. This covers public functions, types, variants, and
 # fields without requiring documentation for every internal helper.
-#
-# Crates listed here still lack public documentation. They keep the link check
-# but skip missing_docs until the linked issue lands; remove an entry once its
-# crate passes, and never add a crate to make a new gap pass.
-missing_docs_pending=(
-    # https://github.com/1lck/Lithe-IDEA/issues/1863
-    rust/crates/remote/Cargo.toml
-)
 for manifest in "${crate_manifests[@]}"; do
-    lints=(-D rustdoc::broken_intra_doc_links)
-    pending=false
-    for entry in "${missing_docs_pending[@]}"; do
-        [[ "$entry" == "$manifest" ]] && pending=true
-    done
-    if [[ "$pending" == false ]]; then
-        lints+=(-D missing_docs)
-    fi
     cargo rustdoc --quiet \
         --manifest-path "$manifest" \
         --lib -- \
-        "${lints[@]}"
+        -D rustdoc::broken_intra_doc_links \
+        -D missing_docs
 done
 
 printf '%s\n' "Rust Core comment verification passed"

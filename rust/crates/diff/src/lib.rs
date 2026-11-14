@@ -348,13 +348,16 @@ fn inline_tokens(text: &str) -> Vec<&str> {
     tokens
 }
 
+/// Half-open `[start, end)` UTF-16 column ranges of one line.
+pub type ColumnRanges = Vec<[usize; 2]>;
+
 /// The stretches in which two paired lines differ, compared word by word: for
 /// each side, half-open `[start, end)` UTF-16 column ranges, ascending and
 /// not touching. A deletion or insertion on one side has no range on the other.
 /// Lines that are equal give two empty lists; lines over `MAX_INLINE_CHARS`
 /// give `None`, and so do lines with nothing in common, which read better as a
 /// whole changed line than as one range covering it.
-pub fn inline_changes(left: &str, right: &str) -> Option<(Vec<[usize; 2]>, Vec<[usize; 2]>)> {
+pub fn inline_changes(left: &str, right: &str) -> Option<(ColumnRanges, ColumnRanges)> {
     if left.chars().count() > MAX_INLINE_CHARS || right.chars().count() > MAX_INLINE_CHARS {
         return None;
     }
@@ -425,7 +428,7 @@ pub fn inline_changes(left: &str, right: &str) -> Option<(Vec<[usize; 2]>, Vec<[
             }
         }
     }
-    if !shared && !(old.is_empty() && new.is_empty()) {
+    if !(shared || old.is_empty() && new.is_empty()) {
         return None;
     }
     Some((left_ranges, right_ranges))

@@ -1,0 +1,31 @@
+[package]
+name = "lithe-lsp-engine"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Stateful language-server sessions: child processes, request deadlines, event queues, plugin-server calls and the cross-plugin function relay"
+
+[dependencies]
+lithe-diagnostics = { path = "../diagnostics" }
+lithe-document-uri = { path = "../document-uri" }
+lithe-lsp-client = { path = "../lsp-client" }
+lithe-lsp-transport = { path = "../lsp-transport" }
+lithe-plugin-function-relay = { path = "../plugin-function-relay" }
+lithe-plugin-language-servers = { path = "../plugin-language-servers" }
+lithe-plugin-rpc = { path = "../plugin-rpc" }
+lithe-plugin-server-policy = { path = "../plugin-server-policy" }
+lithe-project = { path = "../project" }
+lithe-protocol = { path = "../protocol" }
+lithe-text = { path = "../text" }
+lithe-vcs = { path = "../vcs" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+url = "2.5"
+lithe-workspace = { path = "../workspace" }
+
+[dev-dependencies]
+lithe-diagnostics = { path = "../diagnostics", features = ["test-support"] }
+lithe-git = { path = "../git" }
+lithe-plugin-editor = { path = "../plugin-editor" }
+lithe-lsp-transport = { path = "../lsp-transport", features = ["test-support"] }
+lithe-project = { path = "../project", features = ["test-support"] }

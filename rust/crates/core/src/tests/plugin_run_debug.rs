@@ -7,9 +7,11 @@
 use super::support::temporary_root;
 use crate::build::run_decode_start_command;
 use crate::debug::decode_backend_configuration_command;
-use crate::plugins::declarative::{language_server_launch_plan_command, validate_manifest_value};
-use crate::plugins::output_links::{decode_resolution, match_lines};
 use crate::toolchain::instantiate_launch_command;
+use lithe_plugin_manifest::validated_manifest_json;
+use lithe_plugin_manifest::DeclarativePluginManifest as Manifest;
+use lithe_plugin_manifest::{language_server_launch_plan_command, validate_manifest_value};
+use lithe_plugin_output_links::{decode_resolution, match_lines};
 use serde_json::{json, Value};
 use std::fs;
 use std::path::PathBuf;
@@ -85,7 +87,7 @@ fn start_run(workspace: &Workspace, params: Value, temporary_directory: Option<&
     if let Some(directory) = temporary_directory {
         payload["temporaryDirectory"] = json!(directory);
     }
-    run_decode_start_command(payload).expect("payload is well formed")
+    run_decode_start_command::<Manifest>(payload).expect("payload is well formed")
 }
 
 /// A start of the fixture's required tool with room to vary the rest.
@@ -118,7 +120,7 @@ fn run_start_fixture_cases_decode_the_same_in_every_host() {
     let manifest = named_manifest(&fixture);
     for case in fixture["cases"].as_array().unwrap() {
         let name = case["name"].as_str().unwrap();
-        let outcome = run_decode_start_command(json!({
+        let outcome = run_decode_start_command::<Manifest>(json!({
             "manifest": manifest,
             "workspaceRoot": workspace.root(),
             "temporaryDirectory": temporary.root(),
@@ -361,7 +363,7 @@ fn debug_start_fixture_cases_decode_the_same_in_every_host() {
     let manifest = named_manifest(&fixture);
     for case in fixture["cases"].as_array().unwrap() {
         let name = case["name"].as_str().unwrap();
-        let outcome = decode_backend_configuration_command(json!({
+        let outcome = decode_backend_configuration_command::<Manifest>(json!({
             "manifest": manifest,
             "params": case["params"],
         }))
@@ -384,7 +386,7 @@ fn debug_start_fixture_cases_decode_the_same_in_every_host() {
 #[test]
 fn debug_start_configuration_is_limited_to_256_kib() {
     let start = |filler: usize| {
-        decode_backend_configuration_command(json!({
+        decode_backend_configuration_command::<Manifest>(json!({
             "manifest": parse(DEBUG_FEATURES_MANIFEST),
             "params": {
                 "label": "Debug",
@@ -458,7 +460,7 @@ fn instantiate(tool_definition: Value, parts: Value) -> Value {
     for (key, value) in parts.as_object().unwrap() {
         input[key] = value.clone();
     }
-    instantiate_launch_command(input).expect("input is well formed")
+    instantiate_launch_command(input, validated_manifest_json).expect("input is well formed")
 }
 
 #[test]
@@ -514,13 +516,16 @@ fn a_launch_the_definition_cannot_express_is_a_mismatch() {
 
 #[test]
 fn launching_a_tool_nobody_defined_is_refused() {
-    let outcome = instantiate_launch_command(json!({
-        "registry": { "plugins": [{
-            "manifest": parse(TOOL_REFERENCE_MANIFEST),
-        }] },
-        "tool": "missing-tool",
-        "executable": "/opt/missing/bin/tool",
-    }))
+    let outcome = instantiate_launch_command(
+        json!({
+            "registry": { "plugins": [{
+                "manifest": parse(TOOL_REFERENCE_MANIFEST),
+            }] },
+            "tool": "missing-tool",
+            "executable": "/opt/missing/bin/tool",
+        }),
+        validated_manifest_json,
+    )
     .expect("input is well formed");
 
     assert_rejected(

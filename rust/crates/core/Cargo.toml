@@ -15,32 +15,57 @@ plugin-sdk-e2e = []
 
 [dependencies]
 lithe-ai = { path = "../ai" }
+lithe-build = { path = "../build" }
 lithe-core-rules = { path = "../core-rules" }
+lithe-debug = { path = "../debug" }
+lithe-diagnostics = { path = "../diagnostics" }
 lithe-diff = { path = "../diff" }
+lithe-document-uri = { path = "../document-uri" }
+lithe-editor = { path = "../editor" }
+lithe-execution = { path = "../execution" }
+lithe-git = { path = "../git" }
 lithe-git-host = { path = "../git-host" }
 lithe-github = { path = "../github" }
 lithe-ide-host = { path = "../ide-host" }
+lithe-lsp-engine = { path = "../lsp-engine" }
+lithe-lsp-policy = { path = "../lsp-policy" }
 lithe-network = { path = "../network" }
+lithe-plugin-content-providers = { path = "../plugin-content-providers" }
+lithe-plugin-editor = { path = "../plugin-editor" }
+lithe-plugin-function-relay = { path = "../plugin-function-relay" }
+lithe-plugin-keymap-import = { path = "../plugin-keymap-import" }
+lithe-plugin-language-servers = { path = "../plugin-language-servers" }
+lithe-plugin-manifest = { path = "../plugin-manifest" }
+lithe-plugin-marketplace = { path = "../plugin-marketplace" }
+lithe-plugin-model = { path = "../plugin-model" }
+lithe-plugin-native-ui = { path = "../plugin-native-ui" }
+lithe-plugin-output-links = { path = "../plugin-output-links" }
+lithe-plugin-rpc = { path = "../plugin-rpc" }
+lithe-plugin-web-content = { path = "../plugin-web-content" }
 lithe-process = { path = "../process" }
+lithe-project = { path = "../project" }
+lithe-project-generators = { path = "../project-generators" }
 lithe-protocol = { path = "../protocol" }
+lithe-request-context = { path = "../request-context" }
 lithe-terminal = { path = "../terminal" }
+lithe-text = { path = "../text" }
+lithe-toolchain = { path = "../toolchain" }
+lithe-vcs = { path = "../vcs" }
+lithe-workspace = { path = "../workspace" }
 lithe-remote = { path = "../remote", default-features = false, features = ["client"] }
-ammonia = "4.1.4"
-base64 = "0.22"
-chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
-encoding_rs = "0.8"
-comrak = { version = "0.54.0", default-features = false, features = ["shortcodes"] }
-rand = "0.8"
-regex = "1.11"
-quick-xml = "0.37"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
-sha2 = "0.10"
-toml = { version = "1.1.4", default-features = false, features = ["parse", "serde"] }
-serde_yaml_ng = "0.10.0"
-zip = { version = "2.4", default-features = false, features = ["deflate"] }
 url = "2.5"
-ignore = "=0.4.33"
+
+[dev-dependencies]
+base64 = "0.22"
+lithe-diagnostics = { path = "../diagnostics", features = ["test-support"] }
+lithe-execution = { path = "../execution", features = ["test-support"] }
+lithe-git = { path = "../git", features = ["test-support"] }
+lithe-lsp-transport = { path = "../lsp-transport", features = ["test-support"] }
+lithe-project = { path = "../project", features = ["test-support"] }
+lithe-workspace = { path = "../workspace", features = ["test-support"] }
+sha2 = "0.10"
 
 [target.'cfg(unix)'.dev-dependencies]
 lithe-remote = { path = "../remote", default-features = false, features = ["server"] }

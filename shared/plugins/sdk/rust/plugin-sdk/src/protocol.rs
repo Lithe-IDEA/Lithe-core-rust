@@ -1,5 +1,5 @@
 //! Wire constants and validation shared with Lithe's Rust Core
-//! (`rust/crates/core/src/lsp/interface/plugin_function.rs` in the Lithe
+//! (`rust/crates/plugin-rpc/src/` in the Lithe
 //! repository). The SDK checks the same rules locally so a plugin author sees
 //! a mistake when declaring a function instead of as a refused session.
 

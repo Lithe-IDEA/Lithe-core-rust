@@ -1,0 +1,19 @@
+[package]
+name = "lithe-diagnostics"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Structured log catalog, channels, records, queries and the bounded Core event queue"
+
+[features]
+# Exposes the per-thread event capture and the declarative-operation record to
+# other crates' tests. Only dev-dependencies enable it.
+test-support = []
+
+[dependencies]
+lithe-protocol = { path = "../protocol" }
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+regex = "1.11"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+sha2 = "0.10"

@@ -1,9 +1,10 @@
-use crate::plugins::declarative::validate_command;
-use crate::plugins::marketplace::install_review_command;
 use crate::project_generators::{
     project_check_name_command, project_generation_plan_command, project_generator_catalog_command,
     project_generator_form_command,
 };
+use lithe_plugin_manifest::validate_command;
+use lithe_plugin_manifest::DeclarativePluginManifest as Manifest;
+use lithe_plugin_marketplace::install_review_command;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 
@@ -95,12 +96,12 @@ fn golden_project_plans_match() {
         let name = case["name"].as_str().unwrap();
         let manifest = case_manifest(case);
         let actual = match case["operation"].as_str().unwrap() {
-            "generatorForm" => project_generator_form_command(json!({
+            "generatorForm" => project_generator_form_command::<Manifest>(json!({
                 "manifest": manifest,
                 "generatorID": case["generatorID"],
                 "form": case["form"],
             })),
-            "generationPlan" => project_generation_plan_command(json!({
+            "generationPlan" => project_generation_plan_command::<Manifest>(json!({
                 "manifest": manifest,
                 "generatorID": case["generatorID"],
                 "packagePath": fixtures_path(),
@@ -124,7 +125,7 @@ fn catalog_lists_generators_with_requirement_providers() {
     let mut build = json(BUILD_FIXTURE);
     build["buildSystems"][0]["id"] = json!("maven");
     build["activationEvents"] = json!(["onBuildSystem:maven"]);
-    let result = project_generator_catalog_command(json!({
+    let result = project_generator_catalog_command::<Manifest>(json!({
         "plugins": [
             {"manifest": json(FIXTURE), "enabled": true},
             {"manifest": build, "enabled": false},
@@ -161,7 +162,7 @@ fn catalog_lists_generators_with_requirement_providers() {
 
 #[test]
 fn catalog_skips_plugins_the_host_cannot_run() {
-    let result = project_generator_catalog_command(json!({
+    let result = project_generator_catalog_command::<Manifest>(json!({
         "plugins": [{"manifest": json(FIXTURE), "enabled": true}],
         "hostCapabilities": {"languages": [0]},
     }))
@@ -193,7 +194,7 @@ fn catalog_names_the_plugins_that_define_each_tool() {
     let mut generators = json(TOOL_FIELD_FIXTURE);
     // Point the first field at the tool the definition fixture declares.
     generators["projectGenerators"][0]["fields"][0]["tool"] = json!(tool);
-    let result = project_generator_catalog_command(json!({
+    let result = project_generator_catalog_command::<Manifest>(json!({
         "plugins": [
             {"manifest": generators, "enabled": true},
             {"manifest": json(TOOL_DEFINITION_FIXTURE), "enabled": false},
@@ -227,7 +228,7 @@ fn catalog_names_the_plugins_that_define_each_tool() {
     ] {
         let mut generators = json(TOOL_FIELD_FIXTURE);
         generators["projectGenerators"][0]["fields"][0]["tool"] = json!(tool);
-        let qualified = project_generator_catalog_command(json!({
+        let qualified = project_generator_catalog_command::<Manifest>(json!({
             "plugins": [
                 {"manifest": generators, "enabled": true},
                 {"manifest": json(TOOL_DEFINITION_FIXTURE), "enabled": true},
@@ -244,7 +245,7 @@ fn catalog_names_the_plugins_that_define_each_tool() {
     }
     // A generator without tool fields lists no tools, and a tool nobody
     // defines has no provider.
-    let plain = project_generator_catalog_command(json!({
+    let plain = project_generator_catalog_command::<Manifest>(json!({
         "plugins": [{"manifest": json(FIXTURE), "enabled": true}],
         "hostCapabilities": host(),
     }))
@@ -268,7 +269,7 @@ fn catalog_names_the_plugins_that_define_each_tool() {
 /// the plan: the plan is built from the newest listed installation instead.
 #[test]
 fn a_plan_never_uses_an_installation_the_host_did_not_list() {
-    let plan = project_generation_plan_command(json!({
+    let plan = project_generation_plan_command::<Manifest>(json!({
         "manifest": json(TOOL_FIELD_FIXTURE),
         "generatorID": "python-app",
         "packagePath": fixtures_path(),

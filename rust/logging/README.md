@@ -39,7 +39,7 @@
 | `error` | `any Error` | 展开为 `<name>`、`<name>_code`、`<name>_domain`，字段名通常就是 `error`；消息脱敏并限长至 1 KiB，code 可以是整数或稳定 token |
 | `text` | `String` | 只用于无法结构化的上游诊断（stderr 行、LSP logMessage）和经 Core 集中格式化函数脱敏的外部进程 argv；脱敏、去除控制字符、限长至 1 KiB |
 
-源码、编辑缓冲区、文件内容、提交说明正文、环境变量值、进程的 stdout 与 stdin、凭据、终端历史和协议正文没有对应类型，不得塞进 `text`、`error`、token、路径字段或消息模板。外部进程的 argv 只经过 `rust/crates/core/src/git/command_trace.rs` 的 `format_arguments`，stderr 只保留脱敏后的末尾几行（第五节）。迁移旧日志时拆开拼接消息，只保留结构化的时间、计数、受控结果词和错误类别。`text` 的理由不能写成“方便调试”。
+源码、编辑缓冲区、文件内容、提交说明正文、环境变量值、进程的 stdout 与 stdin、凭据、终端历史和协议正文没有对应类型，不得塞进 `text`、`error`、token、路径字段或消息模板。外部进程的 argv 只经过 `rust/crates/git/src/command_trace.rs` 的 `format_arguments`，stderr 只保留脱敏后的末尾几行（第五节）。迁移旧日志时拆开拼接消息，只保留结构化的时间、计数、受控结果词和错误类别。`text` 的理由不能写成“方便调试”。
 
 Swift 的事件值是**未经脱敏的内存输入**，不能自行序列化落盘。Core 先对 `error`、`text` 输入脱敏、删除控制字符、按 UTF-8 字符边界截断到 1024 字节，再由 `catalog::validate_fields(id, fields)` 校验磁盘键展开后的类型、必填、未知字段、长度和错误组件完整性；这一步校验形状，不代替隐私脱敏。macOS 的跨边界适配器连接 Core 的脱敏、格式化和写入路径，不得另写 Swift 格式化或隐私策略。
 
@@ -69,15 +69,15 @@ Swift 的事件值是**未经脱敏的内存输入**，不能自行序列化落�
 | `vcs.git.command.finished` / `.traced` / `.failed` | `vcs/git` | info / debug / warn | `command`、`arguments`、`source`，可选 `repository`、`remote`、`exit_code`、`stderr`，`duration`；finished 与 traced 可带 `cancelled`，failed 可带 `error` |
 
 - `app.action.performed` 由 `UserActionTrace` 在最外层用户入口记录，owner 为 `LitheModuleAPI`。`action` 是稳定的操作 id，`surface` 是 `UserActionSurface` 的取值。它的 op 绑定到 `UserActionContext.current`，桥接层据此给 Core 请求附上 `origin`。
-- Core 请求轨迹在 `rust/crates/core/src/runtime/dispatcher.rs` 的请求分发处记录，实现在 `rust/crates/core/src/diagnostics/request_trace.rs`。用户来源的成功或取消记 finished，后台或未知来源的成功或取消记 traced，失败记 failed。`request_trace::is_hot` 列出的按键、每帧、轮询和监听批次方法，以及全部 `diagnostics.*` 和 `core.ping`，不记录。
-- Git 进程轨迹在 `rust/crates/core/src/git/command_trace.rs` 的执行点记录，本地与远程工作区都经过这里。可见命令指经 `execute_git` 执行、作为 invocation 返回给宿主并显示在 Git 控制台的命令；内部读取指 Core 经 `capture_git` 执行、自己解析输出的命令。来源为用户的可见命令，成功或取消记 finished；其余成功或取消记 traced，包括用户操作中的内部读取；失败记 failed。退出码表示“回答”的情形（`exit_is_answer`），以及来源不是用户的内部读取的非零退出，不算失败；后者由调用方判断含义，调用方返回错误时由请求轨迹记录失败。
+- Core 请求轨迹在 `rust/crates/core/src/runtime/dispatcher.rs` 的请求分发处记录，实现在 `rust/crates/core/src/runtime/request_trace.rs`。用户来源的成功或取消记 finished，后台或未知来源的成功或取消记 traced，失败记 failed。`request_trace::is_hot` 列出的按键、每帧、轮询和监听批次方法，以及全部 `diagnostics.*` 和 `core.ping`，不记录。
+- Git 进程轨迹在 `rust/crates/git/src/command_trace.rs` 的执行点记录，本地与远程工作区都经过这里。可见命令指经 `execute_git` 执行、作为 invocation 返回给宿主并显示在 Git 控制台的命令；内部读取指 Core 经 `capture_git` 执行、自己解析输出的命令。来源为用户的可见命令，成功或取消记 finished；其余成功或取消记 traced，包括用户操作中的内部读取；失败记 failed。退出码表示“回答”的情形（`exit_is_answer`），以及来源不是用户的内部读取的非零退出，不算失败；后者由调用方判断含义，调用方返回错误时由请求轨迹记录失败。
 - `arguments` 由 `format_arguments` 生成：提交说明值换成 `<message>`，`-c` 中凭据和个人身份键的值换成 `<redacted>`，URL 用户信息和共享脱敏规则覆盖的内容被改写，超过 1 KiB 时在末尾截断并以 `…` 标记。
 - `stderr` 只在失败或非零退出时出现：取进程最后 16 KiB 输出中最后 8 个非空行，逐行脱敏后用 ` | ` 连接，超过 1 KiB 时丢弃最早的内容并以 `…` 标记。
 - Core 轨迹的失败固定为 WARN，因为 Core 不知道宿主会重试、降级还是放弃。宿主提示的事实都在同一 op 的 Core 失败轨迹里时，提示用 `LogRecordReference(channel:event:op:)` 引用它，宿主不再记录；宿主只为降级、放弃、重试耗尽、残留等 Core 不掌握的事实记录自己的终态。
 
 ## 六、Core 事件队列与宿主写入
 
-- Rust 侧没有请求事件流可用的事实（执行轨迹、析构、后台清理、辅助 crate 失败）进入 `diagnostics::core_events` 的进程级有界队列，最多 256 条。`record` 校验 owner、规范化并脱敏字段后入队，不做文件 I/O。队列满时新事实只计入丢弃数；同一批次里事件、通道、字段和 op 都相同的事实只保留一条，其余计入丢弃数。
+- Rust 侧没有请求事件流可用的事实（执行轨迹、析构、后台清理、辅助 crate 失败）进入 `lithe-diagnostics`（`rust/crates/diagnostics`）`core_events` 的进程级有界队列，最多 256 条。`record` 校验 owner、规范化并脱敏字段后入队，不做文件 I/O。队列满时新事实只计入丢弃数；同一批次里事件、通道、字段和 op 都相同的事实只保留一条，其余计入丢弃数。
 - DEBUG 事实在入队前过滤：宿主通过 `diagnostics.configureCoreEvents { debug, roots }` 告诉 Core 详细诊断是否开启、开启哪些通道根，`roots` 省略表示全部根，默认关闭。未开启的 DEBUG 事实直接返回成功，不入队、不计入丢弃数。构造字段前先调用 `core_events::accepts(level, root)`，被拒绝的事实只花一次分支判断。
 - `MacLogStore` 在详细诊断状态变化时调用 `configureCoreEvents`，只在开关或通道根集合变化时发送；调用失败时记录一次 `app.logging.diagnostics_failed`。
 - 写入器在每次写入批次、flush 和退出时排空一次。没有其他宿主活动时，由 Core 的唤醒回调安排排空：drain 之后的第一条事实或第一次丢弃计数触发一次回调，同一个 drain 周期内的后续变化合并。只有组合根创建的应用写入器调用 `MacLogStore.observeCoreFacts()` 安装回调，回调复用宿主事件已有的 100 毫秒单次排空调度；`finishSession` 先移除回调，再做最后一次排空。回调不得重入 Core。不得为 Core 队列增加空闲轮询或独立写入器。
@@ -89,7 +89,7 @@ Swift 的事件值是**未经脱敏的内存输入**，不能自行序列化落�
 - stderr 读取器限制每行 4 KiB、每秒 200 行，之后再走 `text` 的 1 KiB 脱敏规范化。与 v1 相比唯一的兼容变化是从任意 trim 的读取块改为逐行文本：保留行内空格，移除 LF 和末尾 CR，并应用已声明的长度上限和限流。
 - 上游明确给出的严重度通过独立的目录事件保留：`window/logMessage` 和 `window/showMessage` 的 type 1/2/3/4 分别为 ERROR/WARN/INFO/DEBUG，未知类型为 DEBUG。未分类的 stderr 是 DEBUG 排障证据，流名称不表示警告；实际的进程或协议失败由 `*.session.failed` 记录 ERROR，正常关闭仍是生命周期状态。
 - 插件自身使用独立协商的 `litheLogging` 0 和 `lithe/log`，由 Core 把四种受控事实映射到插件目录事件，不能再用 stderr 或任意自由消息代替。协议字段、op、限额和 fixture 以 [插件契约](../../shared/plugins/contract/v1/README.md#structured-plugin-diagnostics) 为准。
-- 声明式贡献没有插件进程，不能发 `lithe/log`。实际执行它的一方通过 `diagnostics.recordPluginOperation` 代记每次尝试的一条终态，事件和通道与 SDK 插件相同：`plugins.operation.finished` 或 `plugins.operation.failed`，写入 `plugins/{plugin}/host`。平台层只上报观察到的阶段和耗时，级别和 `host.*` 失败类别只由 Core 按阶段决定；取消、停止和过期结果不记录。宿主当前代记下表四种贡献，唯一来源是 `rust/crates/core/src/diagnostics/plugin_operations.rs` 的 `CONTRIBUTIONS`；输入、阶段到类别的对应和 -32064 见 [Rust Core API](../contracts/rust-core-api.md#engine-logging-v2-handoff-pr3)。
+- 声明式贡献没有插件进程，不能发 `lithe/log`。实际执行它的一方通过 `diagnostics.recordPluginOperation` 代记每次尝试的一条终态，事件和通道与 SDK 插件相同：`plugins.operation.finished` 或 `plugins.operation.failed`，写入 `plugins/{plugin}/host`。平台层只上报观察到的阶段和耗时，级别和 `host.*` 失败类别只由 Core 按阶段决定；取消、停止和过期结果不记录。宿主当前代记下表四种贡献，唯一来源是 `rust/crates/diagnostics/src/plugin_operations.rs` 的 `CONTRIBUTIONS`；输入、阶段到类别的对应和 -32064 见 [Rust Core API](../contracts/rust-core-api.md#engine-logging-v2-handoff-pr3)。
 
   | operation | 声明来源 | 记录方 | 可能的失败阶段 |
   | --- | --- | --- | --- |
@@ -109,7 +109,7 @@ Swift 的事件值是**未经脱敏的内存输入**，不能自行序列化落�
 ## 八、辅助 crate
 
 - `rust/crates/git-host`、`rust/crates/ide-host` 和 `rust/crates/remote` 的客户端链接进 Core，各自通过 `failure_log` 模块交出失败事实，依赖方向保持不变。sink 未注入时只增加原子计数，不写 stderr。
-- Core 的 `diagnostics/helper_failures` 是唯一的安装处。JSON dispatcher、独立 ACP FFI open、直接 IDE dispatcher 和 AskPass 入口在调用辅助 crate 前都经过它的 `Once`。sink 只转换标量字段，之后走相同的目录校验、脱敏和 256 条 Core 队列。这些事件的 owner 都是 `lithe-core`，错误只保留固定摘要和类别。
+- Core 的 `rust/crates/core/src/runtime/helper_failures.rs` 是唯一的安装处。JSON dispatcher、独立 ACP FFI open、直接 IDE dispatcher 和 AskPass 入口在调用辅助 crate 前都经过它的 `Once`。sink 只转换标量字段，之后走相同的目录校验、脱敏和 256 条 Core 队列。这些事件的 owner 都是 `lithe-core`，错误只保留固定摘要和类别。
 - 辅助 crate 的收尾只记录丢失数据、能力或清理结果的意外错误。已断开的连接、已退出的进程，以及远程关闭或取消时的 Disconnected、Timeout，在类型化辅助函数里豁免；ACP Cancel 的 InternalError 无法区分正常断连与序列化失败，按预期缺失豁免。转发 accept 与 bridge 失败可能逐连接发生，目录 rate 为 12；`rust/crates/remote/src/client/forward.rs` 在发送侧让每一族失败在进程内每 5 秒最多记录一条，并发转发连接也共用这个限制，正常断连不占日志配额。强制终止后进程仍未退出的最终超时保留 WARN。
 
 ## 九、目录遍历与清理事件

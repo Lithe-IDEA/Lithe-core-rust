@@ -1,0 +1,15 @@
+[package]
+name = "lithe-plugin-output-links"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Output link matchers plugins declare, console-line matching and resolution to workspace locations"
+
+[dependencies]
+lithe-document-uri = { path = "../document-uri" }
+lithe-plugin-model = { path = "../plugin-model" }
+lithe-protocol = { path = "../protocol" }
+lithe-toolchain = { path = "../toolchain" }
+regex = "1.11"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }

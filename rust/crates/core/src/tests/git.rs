@@ -266,7 +266,7 @@ fn git_status_returns_contract_shape() {
 // Discovery reports canonical roots in plain native form: on Windows the
 // verbatim `\\?\` prefix from canonicalization must not leak to consumers.
 fn reported_repository_path(path: &Path) -> String {
-    crate::git::simplified_canonical_path(
+    lithe_git::simplified_canonical_path(
         path.canonicalize()
             .expect("discovered repository should exist"),
     )
@@ -1834,7 +1834,7 @@ fn git_worktrees_lists_primary_linked_and_locked_metadata() {
     assert_eq!(worktrees[0]["isCurrent"], true);
     assert_eq!(
         worktrees[1]["path"],
-        crate::git::simplified_canonical_path(
+        lithe_git::simplified_canonical_path(
             destination
                 .canonicalize()
                 .expect("linked worktree should canonicalize")
@@ -5865,7 +5865,7 @@ charlie
     // cannot silently degrade to plain LF content.
     let crlf_snapshot = String::from("alpha\r\nbravo-two\r\ncharlie\r\n");
     assert!(
-        crlf_snapshot.as_bytes().iter().any(|byte| *byte == b'\r'),
+        crlf_snapshot.as_bytes().contains(&b'\r'),
         "fixture must carry real carriage returns"
     );
     let response = line_history_query(&root, "doc.txt", &crlf_snapshot, 2, 2);

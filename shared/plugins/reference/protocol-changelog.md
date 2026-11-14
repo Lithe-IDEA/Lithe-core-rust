@@ -2,7 +2,7 @@
 
 本页记录插件协议和 API 的每次修改：哪天、哪个 PR、谁改的、改了什么。只有中文。
 
-- **收录范围**：Lithe-core-rust 仓库 `main` 分支上的 PR，只要它修改了下面三处中的任意一处：插件契约 `shared/plugins/contract/v1/`、Core 能力表 [`capabilities.rs`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/crates/core/src/plugins/capabilities.rs)、插件函数协议 [`plugin_function.rs`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/crates/core/src/lsp/interface/plugin_function.rs)。三处都没改的 PR 不收录。
+- **收录范围**：Lithe-core-rust 仓库 `main` 分支上的 PR，只要它修改了下面三处中的任意一处：插件契约 `shared/plugins/contract/v1/`、Core 能力表 [`capabilities.rs`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/crates/plugin-model/src/capabilities.rs)、插件函数协议 [`plugin-rpc/src/`](https://github.com/Lithe-IDEA/Lithe-core-rust/tree/main/rust/crates/plugin-rpc/src)。三处都没改的 PR 不收录。
 - **日期**：PR 合入 `main` 的日期。
 - **修改人**：PR 的作者（GitHub 账号）。
 - **每一版的内容和宿主现状**：见[能力与协议版本对照](capabilities-and-versions.md)。字段和行为以 [`contract/v1/README.md`](../contract/v1/README.md) 为准。
@@ -129,6 +129,12 @@
 
 ## 时间线（新的在上）
 
+### 2026-11-14
+
+| PR | 修改人 | API 编号 | 协议 / 能力 | 改了什么 |
+| --- | --- | --- | --- | --- |
+| [#28](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/28) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | — | `pluginAPIVersion` 0 内的说明修正 | 清单 schema 删除构建系统 `model`、`test.results`、`dependencies` 里不可达的 `source: "hostIntegration"` 分支，以及语言服务器 `hostIntegration` 下的 `capabilities`、`resources`。`hostIntegration` 字段仍是保留字段：构建系统和语言服务器写了任何值，都以 `plugin.integration.unsupported` 拒绝，字段路径不变；`model`、`test.results`、`dependencies` 写 `source: "hostIntegration"` 时按未知来源以 `plugin.manifest.invalid` 拒绝（原先同时写了 `hostIntegration` 名字时报 `plugin.integration.unsupported`）。README 与指南同步删掉这些来源和“社区插件”说法。能力表移到 `rust/crates/plugin-model/src/capabilities.rs`，插件函数协议移到 `rust/crates/plugin-rpc/src/`，跨插件调用规则移到 `rust/crates/plugin-function-relay/`，内容不变。 |
+
 ### 2026-11-13
 
 | PR | 修改人 | API 编号 | 协议 / 能力 | 改了什么 |
@@ -143,7 +149,7 @@
 
 ## 维护
 
-修改 `shared/plugins/contract/v1/`、`rust/crates/core/src/plugins/capabilities.rs` 或 `rust/crates/core/src/lsp/interface/plugin_function.rs` 的 Core PR，在**同一个 PR** 里更新本页：
+修改 `shared/plugins/contract/v1/`、`rust/crates/plugin-model/src/capabilities.rs` 或 `rust/crates/plugin-rpc/src/` 的 Core PR，在**同一个 PR** 里更新本页：
 
 1. 把这个 PR 补到时间线最上面（按合入日期分组）：PR、修改人、API 编号、协议 / 能力、改了什么。新增的版本号要加粗，并写进“按协议查首次出现”里对应的表：例如给 `buildProviders` 加版本 `1`，就在能力表里为它加一行，并在进程协议表里同步 `litheBuild`。一个 PR 只给一个能力加一个版本。
 2. “API 编号”填这个 PR 涉及的全部 API-01–44 编号，取自 PR 描述里的“原计划编号”。PR 没写时按 [API 实施计划](https://github.com/1lck/Lithe-IDEA/blob/preview/docs/development/macos-plugin-api-plan.md) 判断，不要自编新号；不属于任何编号的写 —。

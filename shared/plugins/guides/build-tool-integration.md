@@ -186,14 +186,12 @@ Core 的计划接口本身不启动进程、不监视文件、不持久化选择
 只说明声明和规划正确，仍要在真实宿主里验收。
 不要把内部 dispatcher 命令写成社区插件可以调用的宿主脚本 API。
 
-`languageServers[].hostIntegration` 与构建系统 `model.source: "hostIntegration"` 都是保留字段。
+`languageServers[].hostIntegration` 与 `buildSystems[].hostIntegration` 都是保留字段。
 Core 不实现任何宿主集成，也不按语言、服务器或构建工具的 ID 走特殊逻辑，所以任何 ID 都返回
 `plugin.integration.unsupported`，见[语言服务器侧](../contract/v1/README.md#language-server-host-integrations)
 与[构建系统侧](../contract/v1/README.md#host-integrations)的契约。语言的运行、测试与调试由插件自己的
 `executionProviders`、`buildSystems`、`buildProviders` 和后端提供；构建插件用 `static`、`command` 或
 `provider` 模型。
-
-两侧都不是作者自己命名就能新增的机制：集成 ID 必须是宿主已经实现的。
 
 ### 6. 验证完整工作流
 
@@ -418,15 +416,13 @@ A fixture that produces the right command only shows that the declaration and pl
 you still have to accept it in a real host.
 Do not present internal dispatcher commands as a host scripting API that community plugins can call.
 
-`languageServers[].hostIntegration` and the build-system `model.source: "hostIntegration"` are both
+`languageServers[].hostIntegration` and `buildSystems[].hostIntegration` are both
 reserved. Core implements no host integration and runs no special logic for a language, server, or
 build-tool ID, so every ID returns `plugin.integration.unsupported`; see the contract for the
 [language-server side](../contract/v1/README.md#language-server-host-integrations) and the
 [build-system side](../contract/v1/README.md#host-integrations). A language's run, test, and debug
 come from the plugin's own `executionProviders`, `buildSystems`, `buildProviders`, and backend; build
 plugins use the `static`, `command`, or `provider` models.
-
-Neither side lets an author add an integration by picking a name: the ID must be one the host already implements.
 
 ### 6. Verify the complete workflow
 

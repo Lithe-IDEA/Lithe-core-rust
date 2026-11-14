@@ -875,36 +875,74 @@ dependencies = [
 ]
 
 [[package]]
-name = "lithe-core"
+name = "lithe-build"
 version = "0.1.0"
 dependencies = [
- "ammonia",
  "base64",
- "chrono",
- "comrak",
- "encoding_rs",
- "ignore",
- "lithe-ai",
- "lithe-core-rules",
- "lithe-diff",
- "lithe-git-host",
- "lithe-github",
- "lithe-ide-host",
- "lithe-network",
- "lithe-process",
+ "lithe-debug",
+ "lithe-execution",
+ "lithe-plugin-model",
  "lithe-protocol",
  "lithe-remote",
- "lithe-terminal",
+ "lithe-workspace",
  "quick-xml",
- "rand",
  "regex",
  "serde",
  "serde_json",
- "serde_yaml_ng",
  "sha2",
  "toml",
  "url",
- "zip",
+]
+
+[[package]]
+name = "lithe-core"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "lithe-ai",
+ "lithe-build",
+ "lithe-core-rules",
+ "lithe-debug",
+ "lithe-diagnostics",
+ "lithe-diff",
+ "lithe-document-uri",
+ "lithe-editor",
+ "lithe-execution",
+ "lithe-git",
+ "lithe-git-host",
+ "lithe-github",
+ "lithe-ide-host",
+ "lithe-lsp-engine",
+ "lithe-lsp-policy",
+ "lithe-lsp-transport",
+ "lithe-network",
+ "lithe-plugin-content-providers",
+ "lithe-plugin-editor",
+ "lithe-plugin-function-relay",
+ "lithe-plugin-keymap-import",
+ "lithe-plugin-language-servers",
+ "lithe-plugin-manifest",
+ "lithe-plugin-marketplace",
+ "lithe-plugin-model",
+ "lithe-plugin-native-ui",
+ "lithe-plugin-output-links",
+ "lithe-plugin-rpc",
+ "lithe-plugin-web-content",
+ "lithe-process",
+ "lithe-project",
+ "lithe-project-generators",
+ "lithe-protocol",
+ "lithe-remote",
+ "lithe-request-context",
+ "lithe-terminal",
+ "lithe-text",
+ "lithe-toolchain",
+ "lithe-vcs",
+ "lithe-workspace",
+ "serde",
+ "serde_json",
+ "sha2",
+ "url",
 ]
 
 [[package]]
@@ -917,6 +955,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "lithe-debug"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "lithe-diagnostics",
+ "lithe-plugin-model",
+ "lithe-protocol",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "lithe-diagnostics"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "lithe-protocol",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "lithe-diff"
 version = "0.1.0"
 dependencies = [
@@ -924,6 +987,66 @@ dependencies = [
  "serde",
  "serde_json",
  "similar",
+]
+
+[[package]]
+name = "lithe-document-uri"
+version = "0.1.0"
+dependencies = [
+ "lithe-protocol",
+ "serde",
+ "serde_json",
+ "url",
+]
+
+[[package]]
+name = "lithe-editor"
+version = "0.1.0"
+dependencies = [
+ "lithe-protocol",
+ "lithe-text",
+ "regex",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-execution"
+version = "0.1.0"
+dependencies = [
+ "lithe-diagnostics",
+ "lithe-plugin-model",
+ "lithe-protocol",
+ "lithe-toolchain",
+ "lithe-workspace",
+ "regex",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng",
+ "sha2",
+ "toml",
+]
+
+[[package]]
+name = "lithe-git"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "lithe-ai",
+ "lithe-core-rules",
+ "lithe-diagnostics",
+ "lithe-diff",
+ "lithe-git-host",
+ "lithe-github",
+ "lithe-protocol",
+ "lithe-remote",
+ "lithe-request-context",
+ "lithe-workspace",
+ "rand",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]
@@ -962,9 +1085,256 @@ dependencies = [
 ]
 
 [[package]]
+name = "lithe-lsp-client"
+version = "0.1.0"
+dependencies = [
+ "lithe-diagnostics",
+ "lithe-document-uri",
+ "lithe-plugin-editor",
+ "lithe-plugin-keymap-import",
+ "lithe-plugin-model",
+ "lithe-plugin-rpc",
+ "lithe-protocol",
+ "lithe-text",
+ "lithe-vcs",
+ "serde",
+ "serde_json",
+ "url",
+]
+
+[[package]]
+name = "lithe-lsp-engine"
+version = "0.1.0"
+dependencies = [
+ "lithe-diagnostics",
+ "lithe-document-uri",
+ "lithe-git",
+ "lithe-lsp-client",
+ "lithe-lsp-transport",
+ "lithe-plugin-editor",
+ "lithe-plugin-function-relay",
+ "lithe-plugin-language-servers",
+ "lithe-plugin-rpc",
+ "lithe-plugin-server-policy",
+ "lithe-project",
+ "lithe-protocol",
+ "lithe-text",
+ "lithe-vcs",
+ "lithe-workspace",
+ "serde",
+ "serde_json",
+ "url",
+]
+
+[[package]]
+name = "lithe-lsp-policy"
+version = "0.1.0"
+dependencies = [
+ "lithe-core-rules",
+ "lithe-document-uri",
+ "lithe-protocol",
+ "serde",
+ "serde_json",
+ "url",
+]
+
+[[package]]
+name = "lithe-lsp-transport"
+version = "0.1.0"
+dependencies = [
+ "lithe-diagnostics",
+ "lithe-git-host",
+ "lithe-protocol",
+ "lithe-remote",
+ "lithe-workspace",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "lithe-network"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-plugin-backend"
+version = "0.1.0"
+dependencies = [
+ "lithe-plugin-model",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-plugin-content-providers"
+version = "0.1.0"
+dependencies = [
+ "lithe-plugin-model",
+ "lithe-protocol",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-plugin-editor"
+version = "0.1.0"
+dependencies = [
+ "lithe-plugin-model",
+ "lithe-protocol",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-plugin-function-relay"
+version = "0.1.0"
+dependencies = [
+ "lithe-plugin-functions",
+ "lithe-plugin-model",
+ "lithe-plugin-rpc",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-plugin-functions"
+version = "0.1.0"
+dependencies = [
+ "lithe-plugin-model",
+ "serde",
+]
+
+[[package]]
+name = "lithe-plugin-grammar"
+version = "0.1.0"
+dependencies = [
+ "lithe-plugin-model",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-plugin-keymap-import"
+version = "0.1.0"
+dependencies = [
+ "lithe-plugin-model",
+ "lithe-protocol",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-plugin-language-servers"
+version = "0.1.0"
+dependencies = [
+ "lithe-plugin-model",
+ "lithe-protocol",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-plugin-manifest"
+version = "0.1.0"
+dependencies = [
+ "lithe-build",
+ "lithe-debug",
+ "lithe-plugin-backend",
+ "lithe-plugin-functions",
+ "lithe-plugin-grammar",
+ "lithe-plugin-keymap-import",
+ "lithe-plugin-language-servers",
+ "lithe-plugin-model",
+ "lithe-plugin-native-ui",
+ "lithe-plugin-output-links",
+ "lithe-plugin-rpc",
+ "lithe-project-generators",
+ "lithe-protocol",
+ "lithe-toolchain",
+ "lithe-vcs",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-plugin-marketplace"
+version = "0.1.0"
+dependencies = [
+ "lithe-plugin-manifest",
+ "lithe-plugin-model",
+ "lithe-protocol",
+ "serde",
+ "serde_json",
+ "url",
+]
+
+[[package]]
+name = "lithe-plugin-model"
+version = "0.1.0"
+dependencies = [
+ "lithe-protocol",
+ "regex",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-plugin-native-ui"
+version = "0.1.0"
+dependencies = [
+ "lithe-plugin-model",
+ "lithe-protocol",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-plugin-output-links"
+version = "0.1.0"
+dependencies = [
+ "lithe-document-uri",
+ "lithe-plugin-model",
+ "lithe-protocol",
+ "lithe-toolchain",
+ "regex",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-plugin-rpc"
+version = "0.1.0"
+dependencies = [
+ "lithe-plugin-keymap-import",
+ "lithe-plugin-language-servers",
+ "lithe-plugin-model",
+ "lithe-protocol",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-plugin-server-policy"
+version = "0.1.0"
+dependencies = [
+ "lithe-document-uri",
+ "lithe-plugin-language-servers",
+ "lithe-plugin-rpc",
+ "lithe-protocol",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-plugin-web-content"
+version = "0.1.0"
+dependencies = [
+ "lithe-plugin-manifest",
+ "lithe-plugin-model",
+ "lithe-protocol",
  "serde",
  "serde_json",
 ]
@@ -975,6 +1345,41 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "lithe-project"
+version = "0.1.0"
+dependencies = [
+ "ammonia",
+ "base64",
+ "comrak",
+ "encoding_rs",
+ "lithe-core-rules",
+ "lithe-diagnostics",
+ "lithe-git",
+ "lithe-protocol",
+ "lithe-request-context",
+ "lithe-workspace",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "url",
+]
+
+[[package]]
+name = "lithe-project-generators"
+version = "0.1.0"
+dependencies = [
+ "lithe-plugin-model",
+ "lithe-protocol",
+ "rand",
+ "regex",
+ "serde",
+ "serde_json",
+ "url",
+ "zip",
 ]
 
 [[package]]
@@ -998,11 +1403,67 @@ dependencies = [
 ]
 
 [[package]]
+name = "lithe-request-context"
+version = "0.1.0"
+dependencies = [
+ "lithe-diagnostics",
+ "regex",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "lithe-terminal"
 version = "0.1.0"
 dependencies = [
  "lithe-protocol",
  "serde",
+]
+
+[[package]]
+name = "lithe-text"
+version = "0.1.0"
+dependencies = [
+ "lithe-protocol",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-toolchain"
+version = "0.1.0"
+dependencies = [
+ "ignore",
+ "lithe-plugin-model",
+ "lithe-protocol",
+ "regex",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-vcs"
+version = "0.1.0"
+dependencies = [
+ "lithe-plugin-model",
+ "lithe-protocol",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-workspace"
+version = "0.1.0"
+dependencies = [
+ "lithe-diagnostics",
+ "lithe-git-host",
+ "lithe-protocol",
+ "lithe-remote",
+ "lithe-request-context",
+ "rand",
+ "serde",
+ "serde_json",
+ "url",
 ]
 
 [[package]]

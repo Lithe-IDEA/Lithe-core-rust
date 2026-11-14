@@ -12,6 +12,7 @@ pub mod action_search;
 mod dispatch;
 pub mod editor;
 mod error;
+pub mod file_names;
 pub mod keymap;
 pub mod visibility;
 pub mod workbench;

@@ -20,7 +20,7 @@
 | --- | --- | --- |
 | `languages` | `languages` | [语言](languages.md) |
 | `languageServers` | `languageServers`；`launch.kind` 为 `backend` 时还需要 `backend` | [语言](languages.md) |
-| `languageServers[].hostIntegration` | `languageServers`；所有插件都可以声明 | [语言](languages.md) |
+| `languageServers[].hostIntegration` | 保留字段：任何 ID 都返回 `plugin.integration.unsupported` | [语言](languages.md) |
 | `executionProviders` | `executionProviders`（桌面端未声明） | [语言](languages.md) |
 | `outputLinkMatchers` | `outputLinkMatchers`；匹配器带 `resolve` 时还需要 `backend` | [语言](languages.md) |
 | `settings`、`settingActions` | `settings` | [设置](settings.md) |
@@ -132,7 +132,7 @@ Every plugin package has a `plugin.json` at its root. It says who the plugin is,
 | --- | --- | --- |
 | `languages` | `languages` | [Languages](languages.md) |
 | `languageServers` | `languageServers`; plus `backend` when `launch.kind` is `backend` | [Languages](languages.md) |
-| `languageServers[].hostIntegration` | `languageServers`; any plugin may declare one | [Languages](languages.md) |
+| `languageServers[].hostIntegration` | Reserved: every ID returns `plugin.integration.unsupported` | [Languages](languages.md) |
 | `executionProviders` | `executionProviders` (not declared by the desktop host) | [Languages](languages.md) |
 | `outputLinkMatchers` | `outputLinkMatchers`; plus `backend` when a matcher has `resolve` | [Languages](languages.md) |
 | `settings`, `settingActions` | `settings` | [Settings](settings.md) |

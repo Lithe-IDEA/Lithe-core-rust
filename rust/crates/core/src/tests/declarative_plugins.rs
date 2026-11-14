@@ -1,4 +1,4 @@
-use crate::plugins::declarative::{
+use lithe_plugin_manifest::{
     discover_tests_command, language_server_launch_plan_command, resolve_settings_command,
     run_plan_command, test_plan_command, validate_command, workspace_configuration_command,
 };
@@ -162,9 +162,9 @@ fn bundled_publisher_trust_requires_an_explicit_host_capability() {
         bad["vendor"][field] = json!(value);
         assert_eq!(validate(bad)["status"], "rejected", "{field}: {value}");
     }
-    let mut community = manifest.clone();
-    community["id"] = json!("io.example.fixture");
-    assert_eq!(validate(community)["status"], "rejected");
+    let mut unofficial = manifest.clone();
+    unofficial["id"] = json!("io.example.fixture");
+    assert_eq!(validate(unofficial)["status"], "rejected");
     let mut missing = manifest.clone();
     missing["requires"]
         .as_object_mut()
@@ -484,7 +484,7 @@ fn build_providers_require_their_own_host_capability() {
 /// through its initialization options.
 #[test]
 fn runtime_launch_and_initialization_options_are_reviewed_programs() {
-    let outcome = crate::plugins::marketplace::install_review_command(json!({
+    let outcome = lithe_plugin_marketplace::install_review_command(json!({
         "manifest": fixture("publisher-bundled.plugin.json"),
     }))
     .expect("payload is well formed");
@@ -499,7 +499,7 @@ fn runtime_launch_and_initialization_options_are_reviewed_programs() {
     assert_eq!(server["packagedRuntime"], "runtime/${arch}/bin/java");
     assert!(programs.iter().all(|program| program["kind"] != "runtime"));
 
-    let outcome = crate::plugins::marketplace::install_review_command(json!({
+    let outcome = lithe_plugin_marketplace::install_review_command(json!({
         "manifest": fixture("node-runtime.plugin.json"),
     }))
     .expect("payload is well formed");
@@ -681,7 +681,7 @@ fn plugin_backend_is_planned_without_a_workspace_and_names_its_host_services() {
     }))
     .is_err());
 
-    let review = crate::plugins::marketplace::install_review_command(json!({
+    let review = lithe_plugin_marketplace::install_review_command(json!({
         "manifest": fixture("backend.plugin.json"),
     }))
     .expect("payload is well formed");
@@ -1349,7 +1349,7 @@ fn debug_adapter_console_commands_are_sorted_for_the_host() {
 }
 
 fn debug_start(request: &str, target: Value) -> Value {
-    crate::plugins::declarative::debug_start_arguments_command(json!({
+    lithe_plugin_manifest::debug_start_arguments_command(json!({
         "manifest": fixture("debug-adapter.plugin.json"),
         "adapterID": "example",
         "request": request,
@@ -1507,7 +1507,7 @@ fn debug_adapter_inside_a_backend_launched_language_server_plans_without_scratch
 
 #[test]
 fn debug_adapter_inside_the_language_server_is_a_reviewed_program() {
-    let review = crate::plugins::marketplace::install_review_command(json!({
+    let review = lithe_plugin_marketplace::install_review_command(json!({
         "manifest": fixture("debug-adapter-language-server.plugin.json"),
     }))
     .expect("payload is well formed");
@@ -1627,7 +1627,7 @@ fn debug_start_arguments_fill_bindings_without_overriding_defaults() {
 }
 
 fn remote_start_with(manifest: Value, adapter: &str, request: &str, target: Value) -> Value {
-    crate::plugins::declarative::debug_start_arguments_command(json!({
+    lithe_plugin_manifest::debug_start_arguments_command(json!({
         "manifest": manifest,
         "adapterID": adapter,
         "request": request,
@@ -1984,7 +1984,7 @@ fn debug_adapter_launch_plan_says_which_adapters_attach_to_a_remote_endpoint() {
 }
 
 fn debug_start_native(target: Value) -> Value {
-    crate::plugins::declarative::debug_start_arguments_command(json!({
+    lithe_plugin_manifest::debug_start_arguments_command(json!({
         "manifest": fixture("debug-adapter.plugin.json"),
         "adapterID": "native",
         "request": "launch",
@@ -2004,8 +2004,7 @@ fn debug_executable_plan(adapter: &str, extra: Value) -> Value {
     for (key, value) in extra.as_object().unwrap() {
         payload[key] = value.clone();
     }
-    crate::plugins::declarative::debug_executable_plan_command(payload)
-        .expect("payload is well formed")
+    lithe_plugin_manifest::debug_executable_plan_command(payload).expect("payload is well formed")
 }
 
 #[test]
@@ -2122,7 +2121,7 @@ fn debug_executable_plan_is_empty_for_an_adapter_without_a_lookup() {
 #[test]
 fn debug_start_arguments_put_a_backend_configuration_on_top() {
     let start = |configuration: Value| {
-        crate::plugins::declarative::debug_start_arguments_command(json!({
+        lithe_plugin_manifest::debug_start_arguments_command(json!({
             "manifest": fixture("debug-adapter.plugin.json"),
             "adapterID": "example",
             "request": "launch",
@@ -2154,7 +2153,7 @@ fn debug_start_arguments_put_a_backend_configuration_on_top() {
 fn debug_start_arguments_refuse_stale_registrations_and_missing_target_facts() {
     let missing = debug_start("launch", json!({ "kind": "file" }));
     assert_eq!(missing["error"]["code"], "debug.target.invalid");
-    let stale = crate::plugins::declarative::debug_start_arguments_command(json!({
+    let stale = lithe_plugin_manifest::debug_start_arguments_command(json!({
         "manifest": fixture("debug-adapter.plugin.json"),
         "adapterID": "example",
         "request": "launch",

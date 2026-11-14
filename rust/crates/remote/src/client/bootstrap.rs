@@ -61,6 +61,7 @@ const INSTALL_SCRIPT: &str = "umask 077 && mkdir -p \"$1\" && cat > \"$1/.upload
 /// Runs the binary passed as `$0` with `--identity`.
 const IDENTITY_SCRIPT: &str = "exec \"$0\" --identity";
 
+/// File name of the server executable inside its install directory.
 pub const SERVER_EXECUTABLE: &str = "lithe-remote-server";
 
 /// Hex digits of the SHA-256 used in the install directory name. Sixteen
@@ -71,9 +72,13 @@ pub(crate) const INSTALL_HASH_PREFIX: usize = 16;
 /// Server build target selected from the remote's `uname` output.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum ServerTarget {
+    /// Linux on x86_64.
     LinuxX86_64,
+    /// Linux on AArch64.
     LinuxAarch64,
+    /// macOS on Intel.
     MacosX86_64,
+    /// macOS on Apple silicon.
     MacosAarch64,
 }
 
@@ -108,9 +113,13 @@ impl ServerTarget {
 /// A server binary available on the local machine.
 #[derive(Clone, Debug)]
 pub struct ServerArtifact {
+    /// Platform the binary runs on.
     pub target: ServerTarget,
+    /// Location of the binary on the local machine.
     pub path: PathBuf,
+    /// Server version, the first part of the install directory name.
     pub version: String,
+    /// Lowercase hex SHA-256 of the binary; the installed server must report it.
     pub sha256: String,
 }
 
@@ -149,7 +158,9 @@ pub enum InstallLocation {
 /// Result of probing the end of a chain.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HostProbe {
+    /// Platform at the end of the chain.
     pub target: ServerTarget,
+    /// `$HOME` when it is an absolute path.
     pub home: Option<String>,
 }
 
@@ -158,6 +169,7 @@ pub struct HostProbe {
 pub struct InstalledServer {
     /// Absolute path of the executable on the remote.
     pub path: String,
+    /// Platform the installed binary runs on.
     pub target: ServerTarget,
     /// Whether this call uploaded it.
     pub uploaded: bool,
@@ -177,30 +189,40 @@ impl InstalledServer {
     }
 }
 
+/// Why probing or installing the server failed.
 #[derive(Debug)]
 pub enum BootstrapError {
+    /// The transport chain could not be turned into a command line.
     Transport(TransportError),
     /// A local command could not run or exceeded its deadline.
     Command(io::Error),
     /// The chain did not reach a POSIX shell. `stderr` usually explains why,
     /// for example an SSH authentication failure.
     ProbeFailed {
+        /// Standard error of the probe command.
         stderr: String,
     },
+    /// The remote's `uname` names a platform with no server build.
     UnsupportedPlatform {
+        /// `uname -s` of the remote.
         system: String,
+        /// `uname -m` of the remote.
         machine: String,
     },
     /// This client ships no server for the remote's platform.
     NoArtifact(ServerTarget),
     /// The remote reported no home directory and no explicit location was set.
     NoInstallLocation,
+    /// The upload or the rename into place failed.
     InstallFailed {
+        /// Standard error of the install command.
         stderr: String,
     },
     /// The installed binary did not report the uploaded artifact's identity.
     VerificationFailed {
+        /// SHA-256 of the uploaded artifact.
         expected: String,
+        /// SHA-256 the binary reported, or `None` when it reported none.
         found: Option<String>,
     },
 }
@@ -247,7 +269,9 @@ impl From<TransportError> for BootstrapError {
 
 /// Probes the end of a chain and installs the server there.
 pub struct Bootstrapper {
+    /// Chain that reaches the remote.
     pub chain: TransportChain,
+    /// Directory the server is installed under.
     pub location: InstallLocation,
     /// Deadline for each probe or identity command.
     pub command_timeout: Duration,
@@ -256,6 +280,8 @@ pub struct Bootstrapper {
 }
 
 impl Bootstrapper {
+    /// Targets `$HOME/.lithe-server`, with a 30 s deadline per command and 300 s
+    /// for the upload.
     pub fn new(chain: TransportChain) -> Self {
         Self {
             chain,
@@ -265,6 +291,7 @@ impl Bootstrapper {
         }
     }
 
+    /// Reports the platform and home directory at the end of the chain.
     pub fn probe(&self) -> Result<HostProbe, BootstrapError> {
         let argv = probe_command();
         let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
@@ -385,6 +412,7 @@ pub struct ProbeReport {
     pub machine: String,
     /// `$HOME` when it is an absolute path.
     pub home: Option<String>,
+    /// Host facts for display.
     pub details: HostDetails,
 }
 
@@ -398,11 +426,15 @@ pub struct HostDetails {
     pub operating_system: Option<String>,
     /// `uname -r`.
     pub kernel: Option<String>,
+    /// Online processors, from `getconf _NPROCESSORS_ONLN`.
     pub cpu_count: Option<u32>,
+    /// Physical memory in bytes.
     pub memory_bytes: Option<u64>,
     /// Size of the file system holding the home directory.
     pub disk_total_bytes: Option<u64>,
+    /// Free bytes on that file system available to the user.
     pub disk_available_bytes: Option<u64>,
+    /// Whole seconds since boot.
     pub uptime_seconds: Option<u64>,
 }
 

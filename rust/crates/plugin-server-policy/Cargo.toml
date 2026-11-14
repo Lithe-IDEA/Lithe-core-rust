@@ -1,0 +1,14 @@
+[package]
+name = "lithe-plugin-server-policy"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Session policy of a plugin-owned language server: admission, gates, joined commands and operation ownership"
+
+[dependencies]
+lithe-document-uri = { path = "../document-uri" }
+lithe-plugin-language-servers = { path = "../plugin-language-servers" }
+lithe-plugin-rpc = { path = "../plugin-rpc" }
+lithe-protocol = { path = "../protocol" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }

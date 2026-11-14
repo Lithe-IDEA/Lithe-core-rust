@@ -4,13 +4,14 @@
 //! the Subversion provider manifest fixture.
 
 use super::support::temporary_root;
-use crate::plugins::declarative::{language_server_launch_plan_command, validate_command};
-use crate::plugins::marketplace::install_review_command;
 use crate::protocol::ErrorCode;
 use crate::vcs::{
     negotiated_capabilities, vcs_decode_reply_command, vcs_detect_roots_command,
     vcs_owner_of_command,
 };
+use lithe_plugin_manifest::DeclarativePluginManifest as Manifest;
+use lithe_plugin_manifest::{language_server_launch_plan_command, validate_command};
+use lithe_plugin_marketplace::install_review_command;
 use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -215,7 +216,7 @@ fn root_detection_matches_the_contract_cases() {
             }
         }
         let workspace = sandbox.directory(case["workspace"].as_str().unwrap_or(""));
-        let outcome = vcs_detect_roots_command(json!({
+        let outcome = vcs_detect_roots_command::<Manifest>(json!({
             "workspaceRoot": workspace.to_string_lossy(),
             "plugins": [{ "manifest": svn_provider() }],
             "mappings": case.get("mappings").cloned().unwrap_or(json!([])),
@@ -288,15 +289,15 @@ fn detection_lists_providers_and_reports_conflicts_and_rejections() {
     let sandbox = Sandbox::new("vcs-providers");
     // `com.` sorts before `dev.`, so only the namespace rule lets the
     // official fixture win.
-    let mut community = svn_provider();
-    community["id"] = json!("com.example.svn");
+    let mut unofficial = svn_provider();
+    unofficial["id"] = json!("com.example.svn");
     let mut broken = svn_provider();
     broken["vcsProviders"][0]["id"] = json!("SVN");
     for plugins in [
-        vec![community.clone(), broken.clone(), svn_provider()],
-        vec![svn_provider(), broken.clone(), community.clone()],
+        vec![unofficial.clone(), broken.clone(), svn_provider()],
+        vec![svn_provider(), broken.clone(), unofficial.clone()],
     ] {
-        let outcome = vcs_detect_roots_command(json!({
+        let outcome = vcs_detect_roots_command::<Manifest>(json!({
             "workspaceRoot": sandbox.0.to_string_lossy(),
             "plugins": plugins
                 .into_iter()
@@ -330,7 +331,7 @@ fn detection_lists_providers_and_reports_conflicts_and_rejections() {
         assert_eq!(rejected[0]["index"], 1);
     }
 
-    let error = vcs_detect_roots_command(json!({ "workspaceRoot": "relative/path" }))
+    let error = vcs_detect_roots_command::<Manifest>(json!({ "workspaceRoot": "relative/path" }))
         .expect_err("a relative workspace is a malformed call");
     assert!(matches!(error.code, ErrorCode::InvalidRequest), "{error:?}");
 }

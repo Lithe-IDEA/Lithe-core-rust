@@ -1,4 +1,4 @@
-use crate::plugins::marketplace::{
+use lithe_plugin_marketplace::{
     install_review_command, resolve_source_command, validate_index_command,
 };
 use serde_json::{json, Value};

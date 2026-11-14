@@ -1,0 +1,29 @@
+[package]
+name = "lithe-git"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Git inspection, mutation and history for Lithe Core, behind the shared command contract"
+
+[features]
+# Lets lithe-core's git.* integration tests reach the diff block fixture entry points and the
+# untracked directory summary threshold they compare against.
+test-support = []
+
+[dependencies]
+lithe-ai = { path = "../ai" }
+lithe-core-rules = { path = "../core-rules" }
+lithe-diagnostics = { path = "../diagnostics" }
+lithe-diff = { path = "../diff" }
+lithe-git-host = { path = "../git-host" }
+lithe-github = { path = "../github" }
+lithe-protocol = { path = "../protocol" }
+lithe-remote = { path = "../remote", default-features = false, features = ["client"] }
+lithe-request-context = { path = "../request-context" }
+lithe-workspace = { path = "../workspace" }
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+rand = "0.8"
+regex = "1.11"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+sha2 = "0.10"

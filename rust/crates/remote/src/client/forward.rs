@@ -24,6 +24,8 @@ const ACCEPT_FAILURE_BACKOFF: Duration = Duration::from_millis(200);
 /// local side has gone away. Data ends the wait immediately.
 const IDLE_CHECK: Duration = Duration::from_secs(1);
 
+/// A running local port forward. Dropping it stops accepting connections;
+/// connections already accepted run until either side closes.
 pub struct PortForward {
     local_address: SocketAddr,
     stopping: Arc<AtomicBool>,
@@ -92,6 +94,7 @@ impl PortForward {
         })
     }
 
+    /// Address the forward listens on, with the port the system chose for port 0.
     pub fn local_address(&self) -> SocketAddr {
         self.local_address
     }

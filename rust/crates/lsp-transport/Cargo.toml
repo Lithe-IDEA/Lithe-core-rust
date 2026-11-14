@@ -1,0 +1,21 @@
+[package]
+name = "lithe-lsp-transport"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Language-server process boundary: local and remote stdio launchers, LSP Content-Length framing and a scripted server for engine tests"
+
+[features]
+# Exposes the scripted language server that lithe-core's engine tests drive.
+test-support = []
+
+[dependencies]
+lithe-diagnostics = { path = "../diagnostics" }
+lithe-protocol = { path = "../protocol" }
+lithe-remote = { path = "../remote", default-features = false, features = ["client"] }
+lithe-workspace = { path = "../workspace" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+
+[target.'cfg(windows)'.dependencies]
+lithe-git-host = { path = "../git-host" }

@@ -1,5 +1,5 @@
-use crate::plugins::declarative::{validate_command, validate_manifest_value};
 use crate::toolchain::definitions::{registry, validate_declarations};
+use lithe_plugin_manifest::{validate_command, validate_manifest_value, validated_manifest_json};
 use serde_json::{json, Value};
 
 fn definition(id: &str) -> Value {
@@ -34,7 +34,11 @@ fn tool_definitions_are_complete_contributions_without_languages_or_backend() {
         definition("dev.lithe.fixture.compiler:compiler"),
     );
     assert!(validate_manifest_value(plugin.clone()).is_ok());
-    let result = registry(&json!({"plugins":[{"manifest":plugin}]})).unwrap();
+    let result = registry(
+        &json!({"plugins":[{"manifest":plugin}]}),
+        validated_manifest_json,
+    )
+    .unwrap();
     assert_eq!(
         result["definitions"][0]["definition"]["id"],
         "dev.lithe.fixture.compiler:compiler"
@@ -56,12 +60,16 @@ fn tool_definitions_second_tool_needs_only_plugin_data() {
     }
 }
 
-/// Every plugin is a community plugin, so a short ID needs no host-attested origin.
+/// No plugin needs a host-attested origin for a short ID.
 #[test]
 fn registry_accepts_short_ids_from_any_enabled_plugin() {
     let plugin = manifest("dev.lithe.fixture.compiler", definition("compiler"));
     assert!(validate_manifest_value(plugin.clone()).is_ok());
-    let result = registry(&json!({"plugins":[{"manifest":plugin}]})).unwrap();
+    let result = registry(
+        &json!({"plugins":[{"manifest":plugin}]}),
+        validated_manifest_json,
+    )
+    .unwrap();
     assert_eq!(result["definitions"][0]["definition"]["id"], "compiler");
     assert_eq!(
         result["definitions"][0]["pluginID"],
@@ -69,7 +77,11 @@ fn registry_accepts_short_ids_from_any_enabled_plugin() {
     );
     assert_eq!(result["conflicts"], json!([]));
     // The retired host-supplied origin flag is an unknown field, not silently ignored.
-    assert!(registry(&json!({"plugins":[{"manifest":plugin,"verifiedOfficial":true}]})).is_err());
+    assert!(registry(
+        &json!({"plugins":[{"manifest":plugin,"verifiedOfficial":true}]}),
+        validated_manifest_json
+    )
+    .is_err());
 }
 
 /// Install order and plugin ID must not pick an owner, so a contested ID has none.
@@ -86,7 +98,7 @@ fn registry_leaves_a_contested_tool_id_unowned_and_registers_the_rest() {
         json!([{"manifest":first},{"manifest":second},{"manifest":third}]),
         json!([{"manifest":third},{"manifest":second},{"manifest":first}]),
     ] {
-        let result = registry(&json!({"plugins":plugins})).unwrap();
+        let result = registry(&json!({"plugins":plugins}), validated_manifest_json).unwrap();
         let ids: Vec<_> = result["definitions"]
             .as_array()
             .unwrap()
@@ -118,7 +130,7 @@ fn registry_keeps_providers_that_name_a_contested_tool() {
         "toolchainProviders":[{"id":"installs","displayName":"Installs","tools":["compiler"]}],
         "backend":{"launch":{"kind":"packaged","path":"bin/provider"}}});
     let plugins = json!([{"manifest":first},{"manifest":second},{"manifest":provider}]);
-    let result = registry(&json!({"plugins":plugins})).unwrap();
+    let result = registry(&json!({"plugins":plugins}), validated_manifest_json).unwrap();
     assert_eq!(result["definitions"], json!([]));
     assert_eq!(
         result["providers"][0]["pluginID"],
@@ -132,7 +144,11 @@ fn registry_keeps_providers_that_name_a_contested_tool() {
 fn registry_rejects_duplicate_plugin_ids() {
     let first = manifest("dev.lithe.fixture.compiler", definition("compiler"));
     let second = manifest("dev.lithe.fixture.compiler", definition("renderer"));
-    assert!(registry(&json!({"plugins":[{"manifest":first},{"manifest":second}]})).is_err());
+    assert!(registry(
+        &json!({"plugins":[{"manifest":first},{"manifest":second}]}),
+        validated_manifest_json
+    )
+    .is_err());
 }
 
 #[test]
@@ -201,7 +217,11 @@ fn definitions_reuse_shared_candidate_graph_ordering() {
         json!({"id":"alternative","kind":"command","command":"compiler-alt","insertAfter":"shell"}),
     );
     let plugin = manifest("dev.lithe.fixture.compiler", value);
-    let result = registry(&json!({"plugins":[{"manifest":plugin}]})).unwrap();
+    let result = registry(
+        &json!({"plugins":[{"manifest":plugin}]}),
+        validated_manifest_json,
+    )
+    .unwrap();
     assert_eq!(
         result["definitions"][0]["definition"]["executables"][4]["id"],
         "shell"
@@ -268,7 +288,11 @@ fn a_definition_plugin_may_provide_installations_of_its_own_tool() {
         json!([{"id":"installs","displayName":"Installs","tools":[format!("{id}:compiler")]}]);
     plugin["backend"] = json!({"launch":{"kind":"packaged","path":"bin/provider"}});
     assert!(validate_manifest_value(plugin.clone()).is_ok());
-    let result = registry(&json!({"plugins":[{"manifest":plugin}]})).unwrap();
+    let result = registry(
+        &json!({"plugins":[{"manifest":plugin}]}),
+        validated_manifest_json,
+    )
+    .unwrap();
     assert_eq!(result["definitions"][0]["pluginID"], id);
     assert_eq!(result["providers"][0]["pluginID"], id);
 }

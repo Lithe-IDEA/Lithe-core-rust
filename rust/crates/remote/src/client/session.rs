@@ -59,7 +59,9 @@ const EXIT_POLL_INTERVAL: Duration = Duration::from_millis(20);
 /// Server-initiated notification.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Event {
+    /// Event name, `<family>.<name>`.
     pub event: String,
+    /// Event parameters, including the `<family>Id` of the resource.
     pub params: Value,
     /// Position in the session's event stream.
     pub seq: Option<u64>,
@@ -81,16 +83,19 @@ impl Event {
     }
 }
 
+/// Failure of a session request or of establishing the session.
 #[derive(Debug)]
 pub enum ClientError {
     /// The server answered with an error.
     Remote(RemoteError),
+    /// The transport chain could not build a command line.
     Transport(TransportError),
     /// The transport command could not be started.
     Spawn(io::Error),
     /// The stream ended or broke. `diagnostics` holds the transport's last
     /// standard-error output, which names SSH or container failures.
     Disconnected {
+        /// Last standard-error output of the transport, up to 8 KiB.
         diagnostics: String,
     },
     /// No response arrived in time. A late response is discarded.
@@ -119,6 +124,38 @@ impl fmt::Display for ClientError {
 
 impl std::error::Error for ClientError {}
 
+impl ClientError {
+    /// Stable transport or protocol category for logs. It never copies a peer
+    /// message, address or diagnostics text.
+    pub fn failure_category(&self) -> String {
+        match self {
+            Self::Timeout => "timeout".into(),
+            Self::Disconnected { .. } => "closed".into(),
+            Self::Transport(_) => "transport".into(),
+            Self::Spawn(_) => "spawn".into(),
+            Self::Protocol(_) => "protocol".into(),
+            Self::Remote(error) => format!(
+                "remote_{}",
+                serde_json::to_value(error.code)
+                    .expect("protocol code encodes")
+                    .as_str()
+                    .expect("protocol code is a token")
+                    .to_ascii_lowercase()
+            ),
+        }
+    }
+
+    /// True when a cleanup request found nothing to clean. The server prunes
+    /// exited processes, stopped watches and closed terminals, so
+    /// `UnknownResource` is the expected missing case, not a cleanup failure.
+    pub fn is_resource_already_gone(&self) -> bool {
+        matches!(
+            self,
+            Self::Remote(remote) if remote.code == crate::protocol::ErrorCode::UnknownResource
+        )
+    }
+}
+
 type Reply = Result<Value, ClientError>;
 
 #[derive(Default)]
@@ -133,11 +170,13 @@ type Routes = Mutex<HashMap<(String, u64), SyncSender<Event>>>;
 /// Options for establishing a session.
 #[derive(Clone, Debug)]
 pub struct ConnectOptions {
+    /// Client identification sent in `server.hello` for server diagnostics.
     pub client_name: String,
     /// Bounds transport start-up, the preamble and `server.hello` together.
     pub handshake_timeout: Duration,
     /// How long a persistent session keeps running without a client.
     pub idle_timeout: Option<Duration>,
+    /// When event delivery starts.
     pub resume: ResumeMode,
 }
 
@@ -146,7 +185,10 @@ pub struct ConnectOptions {
 pub enum ResumeMode {
     /// Right after `server.hello`, with every kept event after the given
     /// sequence number (`None`: every kept event). Suits new sessions.
-    Immediately { after_seq: Option<u64> },
+    Immediately {
+        /// Last sequence number the client already received.
+        after_seq: Option<u64>,
+    },
     /// Only when the caller calls [`RemoteSession::resume`]. A reconnecting
     /// client first reads `server.state` and subscribes to the resources it
     /// reattaches to, so their missed events reach those subscriptions.
@@ -266,6 +308,8 @@ impl Outgoing {
     }
 }
 
+/// A connected remote server: typed requests, resource subscriptions and the
+/// general event channel over one transport stream.
 pub struct RemoteSession {
     outgoing: Arc<Outgoing>,
     pending: Arc<Mutex<Pending>>,
@@ -499,6 +543,8 @@ impl RemoteSession {
         receiver
     }
 
+    /// Ends the subscription of one resource; its later events go to the general
+    /// event channel.
     pub fn unsubscribe(&self, family: &str, id: u64) {
         lock(&self.routes).remove(&(family.to_owned(), id));
     }
@@ -794,6 +840,36 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn failure_categories_never_contain_peer_details() {
+        use crate::protocol::ErrorCode;
+        for (error, expected) in [
+            (ClientError::Timeout, "timeout"),
+            (
+                ClientError::Disconnected {
+                    diagnostics: "/private/address".into(),
+                },
+                "closed",
+            ),
+            (ClientError::Protocol("private payload".into()), "protocol"),
+            (
+                ClientError::Remote(RemoteError::new(
+                    ErrorCode::PermissionDenied,
+                    "private scratch",
+                )),
+                "remote_permission_denied",
+            ),
+        ] {
+            assert_eq!(error.failure_category(), expected);
+            assert!(!error.is_resource_already_gone());
+        }
+        assert!(ClientError::Remote(RemoteError::new(
+            ErrorCode::UnknownResource,
+            "process 7 is not active"
+        ))
+        .is_resource_already_gone());
+    }
 
     fn waiter(outgoing: Arc<Outgoing>, payload: Vec<u8>) -> (PendingRequest, SyncSender<Reply>) {
         let (sender, reply) = mpsc::sync_channel(1);

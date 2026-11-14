@@ -33,7 +33,10 @@ pub enum FrameError {
     /// More than the allowed number of bytes arrived before the preamble.
     /// The captured bytes usually explain the failure, for example
     /// `lithe-remote-server: not found`.
-    PreambleNotFound { noise: Vec<u8> },
+    PreambleNotFound {
+        /// Every byte that arrived before the reader gave up.
+        noise: Vec<u8>,
+    },
 }
 
 impl fmt::Display for FrameError {

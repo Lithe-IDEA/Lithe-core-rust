@@ -13,23 +13,31 @@ use std::fmt;
 pub enum Message {
     /// Client-to-server call. `id` is unique per connection.
     Request {
+        /// Client-chosen id that the response repeats.
         id: u64,
+        /// Method name, such as `fs.stat`.
         method: String,
+        /// Method parameters; `null` for methods without any.
         #[serde(default)]
         params: Value,
     },
     /// Server reply to the request with the same `id`. Exactly one of
     /// `result` and `error` is present.
     Response {
+        /// Id of the request this response answers.
         id: u64,
+        /// Method result on success.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         result: Option<Value>,
+        /// Failure on error.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         error: Option<RemoteError>,
     },
     /// Server-initiated notification.
     Event {
+        /// Event name, `<family>.<name>`, such as `process.exit`.
         event: String,
+        /// Event parameters, including the `<family>Id` of the resource.
         #[serde(default)]
         params: Value,
         /// Position in the session's event stream, increasing by one per
@@ -75,10 +83,15 @@ pub enum ErrorCode {
     UnknownMethod,
     /// A path argument was not an absolute remote path.
     InvalidPath,
+    /// The path does not exist.
     NotFound,
+    /// The host denied access to the path or operation.
     PermissionDenied,
+    /// The destination exists and the request did not allow replacing it.
     AlreadyExists,
+    /// A directory operation reached a path that is not a directory.
     NotADirectory,
+    /// A file operation reached a directory.
     IsADirectory,
     /// A directory removal without `recursive` found entries.
     DirectoryNotEmpty,
@@ -111,7 +124,9 @@ pub enum ErrorCode {
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteError {
+    /// Stable failure category that clients branch on.
     pub code: ErrorCode,
+    /// Explanation for people; it may change between releases.
     pub message: String,
     /// Host-specific diagnostics, such as the OS error number.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -119,6 +134,7 @@ pub struct RemoteError {
 }
 
 impl RemoteError {
+    /// Builds an error without details.
     pub fn new(code: ErrorCode, message: impl Into<String>) -> Self {
         Self {
             code,
@@ -127,6 +143,7 @@ impl RemoteError {
         }
     }
 
+    /// Attaches host-specific diagnostics.
     pub fn with_details(mut self, details: Value) -> Self {
         self.details = Some(details);
         self

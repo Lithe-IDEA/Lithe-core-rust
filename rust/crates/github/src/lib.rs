@@ -868,7 +868,7 @@ fn normalize_pull_request_list(value: Value) -> Result<Value, CoreError> {
         .iter()
         .map(normalize_pull_request)
         .collect::<Result<Vec<_>, _>>()?;
-    requests.sort_by(|left, right| right.number.cmp(&left.number));
+    requests.sort_by_key(|request| std::cmp::Reverse(request.number));
     Ok(serde_json::to_value(requests).expect("pull request list encodes"))
 }
 

@@ -62,11 +62,13 @@ pub fn launch_command(root: Option<&str>, server_arguments: &[&str]) -> Vec<Stri
 /// What happened before the server took over the stream.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Launched {
+    /// Platform the remote shell reported.
     pub report: ProbeReport,
     /// Whether this launch uploaded the binary.
     pub uploaded: bool,
 }
 
+/// Why [`launch`] could not start the server.
 #[derive(Debug)]
 pub enum LaunchError {
     /// The stream ended before the shell reported its platform, usually
@@ -76,6 +78,7 @@ pub enum LaunchError {
     NoArtifact(Box<ProbeReport>),
     /// The shell answered something other than this script's protocol.
     Protocol(String),
+    /// The connection's stream failed.
     Io(io::Error),
 }
 

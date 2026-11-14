@@ -2,10 +2,8 @@
 
 Run `scripts/rust-core/verify-rust-core-comments.sh` from any directory. It checks
 module documentation, English comments, unsafe API safety sections, exported
-Rustdoc, and intra-doc links in every crate under `rust/crates/`. A crate in the
-script's `missing_docs_pending` list keeps every check except `missing_docs`; each
-entry names the issue that adds the missing documentation and is removed when
-that crate passes.
+Rustdoc, and intra-doc links in every crate under `rust/crates/`. Every crate
+must pass `missing_docs`; there is no exemption list.
 
 The small `comment-lexer` helper uses pinned `rustc_lexer` tokens to distinguish
 comments from ordinary, raw, and byte string literals. It does not parse source

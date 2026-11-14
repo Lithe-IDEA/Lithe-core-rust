@@ -1,25 +1,18 @@
 //! Deterministic application services shared by the macOS and Windows hosts.
 
-mod build;
-mod debug;
-pub mod diagnostics;
-mod editor;
-pub mod execution;
-mod git;
-mod lsp;
-pub mod plugins;
-mod project;
-mod project_generators;
+use lithe_build as build;
+use lithe_debug as debug;
+/// Run configurations and launch environments, kept in their own crate.
+pub use lithe_execution as execution;
+use lithe_project as project;
+use lithe_project_generators as project_generators;
 mod protocol;
-mod remote;
 mod runtime;
 /// Shared toolchain policy, independent of plugin transport and native discovery.
-pub mod toolchain;
-mod vcs;
+pub use lithe_toolchain as toolchain;
+use lithe_vcs as vcs;
 
-pub use protocol::{
-    CoreCommand, CoreError, CoreEvent, CoreRequest, CoreResponse, ErrorCode, ResponseData,
-};
+pub use protocol::{CoreCommand, CoreError, CoreRequest, CoreResponse, ErrorCode, ResponseData};
 
 /// The `ai.*` commands, kept in their own crate (`rust/crates/ai`); re-exported so the former
 /// `lithe_core::ai` paths keep resolving.
@@ -43,12 +36,12 @@ pub fn start_lsp_owned(
     mut payload: serde_json::Value,
     registered: impl FnOnce(&str),
 ) -> Result<serde_json::Value, CoreError> {
-    lsp::resolve_request_paths("lsp.startServer", &mut payload)?;
+    lithe_document_uri::resolve_request_paths("lsp.startServer", &mut payload)?;
     let request = serde_json::from_value(payload).map_err(|error| {
         CoreError::new(ErrorCode::InvalidRequest, "Invalid language-server launch.")
             .with_details(error.to_string())
     })?;
-    let response = lsp::interface::start_server_owned(request, registered)?;
+    let response = lithe_lsp_engine::start_server_owned(request, registered)?;
     serde_json::to_value(response).map_err(|error| {
         CoreError::new(
             ErrorCode::Unknown,
@@ -60,8 +53,7 @@ pub fn start_lsp_owned(
 
 /// Requests cooperative cancellation of an active operation.
 ///
-/// Native Rust hosts use this entry point while the Swift and C++ clients keep
-/// using the stable `lithe_core_cancel` C ABI.
+/// Rust callers use this entry point; C ABI hosts call `lithe_core_cancel`.
 pub fn cancel_operation(operation_id: &str) -> bool {
     protocol::cancellation::cancel(operation_id)
 }
@@ -75,16 +67,16 @@ pub fn execute_json_with_events(
     request: &str,
     sink: std::sync::Arc<dyn Fn(&str) + Send + Sync>,
 ) -> String {
-    git::execution_events::with_sink(sink, || {
+    lithe_request_context::events::with_sink(sink, || {
         let response = execute_json(request);
-        git::execution_events::request_finished(&response);
+        lithe_request_context::events::request_finished(&response);
         response
     })
 }
 
 /// Runs the native AskPass helper before either host initializes its user interface.
 pub fn git_askpass_main(prompt: &str) -> i32 {
-    crate::diagnostics::helper_failures::install();
+    crate::runtime::helper_failures::install();
     lithe_git_host::authentication::helper_main(prompt)
 }
 
@@ -92,7 +84,7 @@ pub fn git_askpass_main(prompt: &str) -> i32 {
 pub use project::is_workspace_event_relevant;
 
 /// Shared, IO-free classification for coalesced native Git watcher events.
-pub use git::{
+pub use lithe_git::{
     classify_git_metadata_change, GitMetadataChangeKind, GitMetadataEventClassification,
     GitMetadataWatchContext,
 };
@@ -105,6 +97,6 @@ pub fn attach_ide_request_dispatcher(
     owner: &str,
     dispatcher: std::sync::Arc<dyn Fn(String) -> Result<(), String> + Send + Sync>,
 ) -> Result<(), String> {
-    crate::diagnostics::helper_failures::install();
+    crate::runtime::helper_failures::install();
     lithe_ide_host::attach_dispatcher(host_id, owner, dispatcher)
 }

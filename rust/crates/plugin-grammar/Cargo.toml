@@ -1,0 +1,11 @@
+[package]
+name = "lithe-plugin-grammar"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Declarative syntax highlighting of plugin languages: grammar declarations and the TextMate grammar decoder"
+
+[dependencies]
+lithe-plugin-model = { path = "../plugin-model" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }

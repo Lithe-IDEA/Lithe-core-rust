@@ -1,7 +1,7 @@
 use super::support::temporary_root;
-use crate::diagnostics::core_events::{capture, CoreEvent};
-use crate::diagnostics::record::LogLevel;
 use crate::execute_json;
+use lithe_diagnostics::core_events::{capture, CoreEvent};
+use lithe_diagnostics::record::LogLevel;
 use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};

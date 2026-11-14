@@ -1,0 +1,12 @@
+[package]
+name = "lithe-plugin-keymap-import"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Shortcut import providers plugins declare: declarations, source plans and validation of normalized provider replies"
+
+[dependencies]
+lithe-plugin-model = { path = "../plugin-model" }
+lithe-protocol = { path = "../protocol" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }

@@ -4,10 +4,10 @@
 //! `shared/plugins/contract/v1/fixtures/` so the plugin documentation
 //! repository and other hosts run the same cases.
 
-use crate::plugins::declarative::{
+use lithe_plugin_manifest::{
     decode_language_server_launch_command, language_server_launch_plan_command, validate_command,
 };
-use crate::plugins::marketplace::install_review_command;
+use lithe_plugin_marketplace::install_review_command;
 use serde_json::{json, Value};
 
 macro_rules! contract_file {

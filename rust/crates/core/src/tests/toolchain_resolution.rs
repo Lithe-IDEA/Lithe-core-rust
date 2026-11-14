@@ -7,6 +7,7 @@ use crate::toolchain::{
     candidates_command, check_version_command, discovery_plan_command, failure_reply_command,
     resolve_command,
 };
+use lithe_plugin_manifest::validated_manifest_json;
 use serde_json::{json, Value};
 
 const OLD: &str = "/opt/lithe-fixtures/installs/java/17.0.12";
@@ -57,7 +58,7 @@ fn installation(input: &mut Value, home: &str, version: &str) {
 
 /// Resolves through the exported command envelope, preserving rejection diagnostics.
 fn resolve(input: &Value) -> Value {
-    let result = resolve_command(input.clone()).unwrap();
+    let result = resolve_command(input.clone(), validated_manifest_json).unwrap();
     assert_eq!(result["status"], "ok", "{result}");
     result["resolution"].clone()
 }
@@ -93,7 +94,8 @@ fn consumer_fixed_executable_preserves_its_argv_identity_and_has_no_invented_hom
         .as_array_mut()
         .unwrap()
         .push(fact(executable, "file", true));
-    let candidates = candidates_command(value_for_candidates(&value)).unwrap();
+    let candidates =
+        candidates_command(value_for_candidates(&value), validated_manifest_json).unwrap();
     assert_eq!(candidates["status"], "ok", "{candidates}");
     assert!(candidates["candidates"]["skipped"]
         .as_array()
@@ -157,7 +159,8 @@ fn consumer_fixed_project_files_require_the_current_action_before_any_version_pr
         value["filesystem"].as_array_mut().unwrap().push(
             json!({"path":executable,"canonicalPath":inside,"kind":"file","executable":true}),
         );
-        let candidates = candidates_command(value_for_candidates(&value)).unwrap();
+        let candidates =
+            candidates_command(value_for_candidates(&value), validated_manifest_json).unwrap();
         assert_eq!(candidates["status"], "ok", "{candidates}");
         assert!(!candidates["candidates"]["skipped"]
             .as_array()
@@ -189,12 +192,13 @@ fn consumer_fixed_choices_reject_ambiguous_relative_and_authority_smuggling_fiel
         let mut value = input();
         value["fixed"] = fixed.clone();
         assert_eq!(
-            resolve_command(value.clone()).unwrap()["status"],
+            resolve_command(value.clone(), validated_manifest_json).unwrap()["status"],
             "rejected",
             "{fixed}"
         );
         assert_eq!(
-            candidates_command(value_for_candidates(&value)).unwrap()["status"],
+            candidates_command(value_for_candidates(&value), validated_manifest_json).unwrap()
+                ["status"],
             "rejected",
             "{fixed}"
         );
@@ -349,7 +353,7 @@ fn toolchain_resolution_provider_reply_goes_through_real_decoder() {
         "dev.lithe.fixture.mise:mise"
     );
     value["queries"][0]["response"]["result"]["operationID"] = json!("expired-query");
-    let rejected = resolve_command(value).unwrap();
+    let rejected = resolve_command(value, validated_manifest_json).unwrap();
     assert_eq!(rejected["status"], "rejected");
     assert_eq!(
         rejected["error"]["code"],
@@ -368,12 +372,12 @@ fn toolchain_resolution_query_cannot_replace_outer_generation_or_context_policy(
     ));
     value["queries"] = json!([query(&value)]);
     value["generation"] = json!(2);
-    let rejected = resolve_command(value.clone()).unwrap();
+    let rejected = resolve_command(value.clone(), validated_manifest_json).unwrap();
     assert_eq!(rejected["status"], "rejected");
     assert_eq!(rejected["error"]["code"], "plugin.toolchain.invalidParams");
     value["generation"] = json!(1);
     value["context"]["contextID"] = json!("replacement-context");
-    let rejected = resolve_command(value).unwrap();
+    let rejected = resolve_command(value, validated_manifest_json).unwrap();
     assert_eq!(rejected["status"], "rejected");
     assert_eq!(rejected["error"]["code"], "plugin.toolchain.invalidParams");
 }
@@ -492,7 +496,7 @@ fn toolchain_resolution_equal_versions_are_ambiguous_and_manual_facts_not_automa
 #[test]
 fn toolchain_resolution_version_capture_is_definition_driven_for_java8_and_custom_tool() {
     let value = input();
-    let checked=check_version_command(json!({"registry":value["registry"],"tool":"java","output":"java version \"1.8.0_422\"","minimumVersion":"8"})).unwrap();
+    let checked=check_version_command(json!({"registry":value["registry"],"tool":"java","output":"java version \"1.8.0_422\"","minimumVersion":"8"}), validated_manifest_json).unwrap();
     assert_eq!(checked["status"], "ok", "{checked}");
     assert_eq!(checked["version"]["version"], "8.0");
     assert_eq!(checked["version"]["satisfied"], true);
@@ -501,7 +505,7 @@ fn toolchain_resolution_version_capture_is_definition_driven_for_java8_and_custo
     let definition = &mut registry["plugins"][0]["manifest"]["toolDefinitions"][0];
     definition["id"] = json!("dev.lithe.fixture.java-support:renderer");
     definition["version"]["pattern"] = json!("release=([0-9]+(?:\\.[0-9]+)*)");
-    let checked=check_version_command(json!({"registry":registry,"tool":"dev.lithe.fixture.java-support:renderer","output":"render release=10.2","minimumVersion":"9.99"})).unwrap();
+    let checked=check_version_command(json!({"registry":registry,"tool":"dev.lithe.fixture.java-support:renderer","output":"render release=10.2","minimumVersion":"9.99"}), validated_manifest_json).unwrap();
     assert_eq!(checked["status"], "ok", "{checked}");
     assert_eq!(checked["version"]["version"], "10.2");
     assert_eq!(checked["version"]["satisfied"], true);
@@ -512,8 +516,11 @@ fn toolchain_resolution_discovery_comes_only_from_enabled_definition_data() {
     let mut value = input();
     let scans = json!([{"root":{"kind":"home"},"pattern":"runtimes/*.fixture","platforms":["macos"]},{"root":{"kind":"home"},"pattern":"other/*.fixture","platforms":["windows"]}]);
     value["registry"]["plugins"][0]["manifest"]["toolDefinitions"][0]["discovery"] = scans.clone();
-    let result =
-        discovery_plan_command(json!({"registry":value["registry"],"platform":"macos"})).unwrap();
+    let result = discovery_plan_command(
+        json!({"registry":value["registry"],"platform":"macos"}),
+        validated_manifest_json,
+    )
+    .unwrap();
     assert_eq!(result["status"], "ok", "{result}");
     assert_eq!(result["plan"]["tools"][0]["scans"], json!([scans[0]]));
     assert_eq!(
@@ -524,24 +531,32 @@ fn toolchain_resolution_discovery_comes_only_from_enabled_definition_data() {
         .as_array_mut()
         .unwrap()
         .remove(0);
-    let result =
-        discovery_plan_command(json!({"registry":value["registry"],"platform":"macos"})).unwrap();
+    let result = discovery_plan_command(
+        json!({"registry":value["registry"],"platform":"macos"}),
+        validated_manifest_json,
+    )
+    .unwrap();
     assert_eq!(result["plan"]["tools"], json!([]));
 }
 
 #[test]
 fn toolchain_discovery_plan_carries_path_entries_and_platform_home_variables() {
-    let result =
-        discovery_plan_command(json!({"registry":input()["registry"],"platform":"macos"})).unwrap();
+    let result = discovery_plan_command(
+        json!({"registry":input()["registry"],"platform":"macos"}),
+        validated_manifest_json,
+    )
+    .unwrap();
     let tool = &result["plan"]["tools"][0];
     assert_eq!(tool["pathPrepend"], json!(["${home}/bin"]));
     assert_eq!(
         tool["environment"],
         json!([{"variable":"JAVA_HOME","path":"bin/java"}])
     );
-    let result =
-        discovery_plan_command(json!({"registry":input()["registry"],"platform":"windows"}))
-            .unwrap();
+    let result = discovery_plan_command(
+        json!({"registry":input()["registry"],"platform":"windows"}),
+        validated_manifest_json,
+    )
+    .unwrap();
     assert_eq!(
         result["plan"]["tools"][0]["environment"],
         json!([{"variable":"JAVA_HOME","path":"bin/java.exe"}])
@@ -569,7 +584,7 @@ fn listing(input: &Value) -> Value {
 }
 
 fn candidates(input: &Value) -> Value {
-    let result = candidates_command(listing(input)).unwrap();
+    let result = candidates_command(listing(input), validated_manifest_json).unwrap();
     assert_eq!(result["status"], "ok", "{result}");
     result["candidates"].clone()
 }
@@ -661,7 +676,7 @@ fn toolchain_candidates_refuse_a_provider_outside_the_registry() {
     self_provided(&mut value);
     for provider in ["dev.example.other:installs", "installs", "host:system"] {
         value["providerInstallations"] = json!([{"tool":"java","home":HOME,"provider":provider}]);
-        let result = candidates_command(listing(&value)).unwrap();
+        let result = candidates_command(listing(&value), validated_manifest_json).unwrap();
         assert_eq!(result["status"], "rejected", "{provider}");
     }
 }
@@ -678,10 +693,16 @@ fn toolchain_candidates_report_equal_versions_as_a_conflict() {
     assert_eq!(listed["installations"].as_array().unwrap().len(), 2);
     let mut unknown = listing(&value);
     unknown["tool"] = json!("dev.lithe.fixture.java-support:missing");
-    assert_eq!(candidates_command(unknown).unwrap()["status"], "rejected");
+    assert_eq!(
+        candidates_command(unknown, validated_manifest_json).unwrap()["status"],
+        "rejected"
+    );
     let mut directory = listing(&value);
     directory["directory"] = json!(".");
-    assert_eq!(candidates_command(directory).unwrap()["status"], "rejected");
+    assert_eq!(
+        candidates_command(directory, validated_manifest_json).unwrap()["status"],
+        "rejected"
+    );
 }
 
 /// Turns the definition plugin into its own installation-only provider, without scans.
@@ -748,8 +769,11 @@ fn toolchain_resolution_definition_plugin_can_be_its_own_installation_provider()
     let mut value = input();
     self_provided(&mut value);
     installation(&mut value, HOME, "21.0.4");
-    let plan =
-        discovery_plan_command(json!({"registry":value["registry"],"platform":"macos"})).unwrap();
+    let plan = discovery_plan_command(
+        json!({"registry":value["registry"],"platform":"macos"}),
+        validated_manifest_json,
+    )
+    .unwrap();
     assert_eq!(plan["plan"]["tools"][0]["scans"], json!([]));
     assert_eq!(
         plan["plan"]["tools"][0]["providers"],
@@ -772,7 +796,7 @@ fn toolchain_resolution_definition_plugin_can_be_its_own_installation_provider()
     value["queries"][0]["filesystem"] = value["filesystem"].clone();
     value["queries"][0]["response"]["result"]["statements"] =
         query(&value)["response"]["result"]["statements"].clone();
-    let rejected = resolve_command(value).unwrap();
+    let rejected = resolve_command(value, validated_manifest_json).unwrap();
     assert_eq!(rejected["status"], "rejected");
     assert_eq!(rejected["error"]["code"], "plugin.toolchain.invalidReply");
     assert_eq!(
@@ -844,7 +868,10 @@ fn toolchain_resolution_linked_provider_home_resolves_against_the_same_snapshot(
         .unwrap()
         .push(fact(HOME, "file", false));
     value["queries"][0]["filesystem"] = value["filesystem"].clone();
-    assert_eq!(resolve_command(value).unwrap()["status"], "rejected");
+    assert_eq!(
+        resolve_command(value, validated_manifest_json).unwrap()["status"],
+        "rejected"
+    );
 }
 
 #[test]
@@ -904,12 +931,15 @@ fn toolchain_resolution_contested_tool_id_is_unowned_for_every_consumer() {
         .as_array_mut()
         .unwrap()
         .push(json!({"manifest":rival}));
-    let plan =
-        discovery_plan_command(json!({"registry":value["registry"],"platform":"macos"})).unwrap();
+    let plan = discovery_plan_command(
+        json!({"registry":value["registry"],"platform":"macos"}),
+        validated_manifest_json,
+    )
+    .unwrap();
     assert_eq!(plan["status"], "ok", "{plan}");
     assert_eq!(plan["plan"]["tools"], json!([]));
     let request = json!({"registry":value["registry"],"tool":tool,"output":"21.0.4"});
-    let checked = check_version_command(request).unwrap();
+    let checked = check_version_command(request, validated_manifest_json).unwrap();
     assert_eq!(checked["status"], "rejected", "{checked}");
     let result = resolve(&value);
     assert_eq!(result["outcome"]["kind"], "skip");
@@ -1027,4 +1057,20 @@ fn toolchain_resolution_project_environment_home_cannot_symlink_out_of_workspace
         .unwrap()
         .iter()
         .any(|row| row["reason"]["code"] == "unsafePath"));
+}
+
+#[test]
+fn consumer_preferences_json_dispatcher_preserves_the_value_boundary() {
+    let payload = json!({"document":{"version":1,"workspace":{"tools":{"dev.example.runtime:sdk":{"home":"/fixture/sdk-one"}},
+        "consumers":{"dev.example.build/engine":{"dev.example.runtime:sdk":{"inherit":"workspace"}}}},
+        "directories":{"nested":{"tools":{"dev.example.runtime:sdk":{"home":"/fixture/directory-sdk"}}}}},
+        "tool":"dev.example.runtime:sdk","directory":"nested/child","consumer":"dev.example.build/engine"});
+    let response: Value = serde_json::from_str(&crate::execute_json(&json!({
+        "id":"consumer-preferences","command":"toolchains.resolveConsumerPreferences","payload":payload
+    }).to_string())).unwrap();
+    assert_eq!(response["ok"], true, "{response}");
+    assert_eq!(
+        response["data"]["preferences"]["fixed"],
+        json!({"home":"/fixture/sdk-one"})
+    );
 }

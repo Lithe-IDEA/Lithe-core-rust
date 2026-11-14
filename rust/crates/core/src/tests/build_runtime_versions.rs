@@ -2,6 +2,7 @@
 //! definition with the same ID, which checks the version itself.
 
 use crate::build::{build_check_tool_version_command, build_invocation_plan_command};
+use lithe_plugin_manifest::DeclarativePluginManifest as Manifest;
 use serde_json::{json, Value};
 
 fn manifest() -> Value {
@@ -13,7 +14,7 @@ fn manifest() -> Value {
 }
 
 fn plan(manifest: Value, platform: &str) -> Value {
-    build_invocation_plan_command(json!({
+    build_invocation_plan_command::<Manifest>(json!({
         "manifest": manifest,
         "buildSystemID": "cargo",
         "request": { "root": ".", "platform": platform }
@@ -22,7 +23,7 @@ fn plan(manifest: Value, platform: &str) -> Value {
 }
 
 fn check(manifest: Value, runtime: &str, output: &str) -> Value {
-    build_check_tool_version_command(json!({
+    build_check_tool_version_command::<Manifest>(json!({
         "manifest": manifest,
         "buildSystemID": "cargo",
         "request": { "runtime": runtime, "output": output }

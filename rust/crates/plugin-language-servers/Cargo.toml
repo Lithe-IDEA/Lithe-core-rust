@@ -1,0 +1,12 @@
+[package]
+name = "lithe-plugin-language-servers"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Plugin-owned language server sessions: declared requests, notifications, commands, state retention and launch resolution"
+
+[dependencies]
+lithe-plugin-model = { path = "../plugin-model" }
+lithe-protocol = { path = "../protocol" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }

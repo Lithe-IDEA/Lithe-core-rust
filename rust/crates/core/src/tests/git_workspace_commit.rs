@@ -333,7 +333,7 @@ fn git_workspace_commit_state_matches_the_shared_fixture() {
         "../../../../fixtures/git/workspace-commit-v1.json"
     ))
     .unwrap();
-    let state: crate::git::GitCommitState =
+    let state: lithe_git::GitCommitState =
         serde_json::from_value(fixture["commitState"].clone()).unwrap();
     assert_eq!(serde_json::to_value(state).unwrap(), fixture["commitState"]);
 }

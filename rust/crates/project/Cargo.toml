@@ -1,0 +1,27 @@
+[package]
+name = "lithe-project"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Project services for Lithe: workspace files, indexing policy, search, local history and document rendering"
+
+[features]
+# Lets lithe-core's tests trace which directories a workspace scan enumerates.
+test-support = []
+
+[dependencies]
+ammonia = "4.1.4"
+base64 = "0.22"
+comrak = { version = "0.54.0", default-features = false, features = ["shortcodes"] }
+encoding_rs = "0.8"
+lithe-core-rules = { path = "../core-rules" }
+lithe-diagnostics = { path = "../diagnostics" }
+lithe-git = { path = "../git" }
+lithe-protocol = { path = "../protocol" }
+lithe-request-context = { path = "../request-context" }
+lithe-workspace = { path = "../workspace" }
+regex = "1.11"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+sha2 = "0.10"
+url = "2.5"
