@@ -22,6 +22,7 @@ lithe-diagnostics = { path = "../diagnostics" }
 lithe-diff = { path = "../diff" }
 lithe-document-uri = { path = "../document-uri" }
 lithe-editor = { path = "../editor" }
+lithe-editor-layout = { path = "../editor-layout" }
 lithe-execution = { path = "../execution" }
 lithe-git = { path = "../git" }
 lithe-git-host = { path = "../git-host" }
@@ -36,6 +37,7 @@ lithe-plugin-function-relay = { path = "../plugin-function-relay" }
 lithe-plugin-keymap-import = { path = "../plugin-keymap-import" }
 lithe-plugin-language-servers = { path = "../plugin-language-servers" }
 lithe-plugin-manifest = { path = "../plugin-manifest" }
+lithe-plugin-lifecycle = { path = "../plugin-lifecycle" }
 lithe-plugin-marketplace = { path = "../plugin-marketplace" }
 lithe-plugin-model = { path = "../plugin-model" }
 lithe-plugin-native-ui = { path = "../plugin-native-ui" }
@@ -45,7 +47,9 @@ lithe-plugin-web-content = { path = "../plugin-web-content" }
 lithe-process = { path = "../process" }
 lithe-project = { path = "../project" }
 lithe-project-generators = { path = "../project-generators" }
+lithe-project-tree = { path = "../project-tree" }
 lithe-protocol = { path = "../protocol" }
+lithe-row-selection = { path = "../row-selection" }
 lithe-request-context = { path = "../request-context" }
 lithe-terminal = { path = "../terminal" }
 lithe-text = { path = "../text" }

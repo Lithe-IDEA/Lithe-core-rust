@@ -1,0 +1,612 @@
+{
+  "description": "workspace.rowSelection.reduce: one click on rows that show workspace paths, such as the project tree and the changes of a change list. A plain click (choose) selects and drops the marks and the anchor; Cmd or Ctrl (toggle) marks or unmarks and sets the anchor; Shift (extend) marks from the anchor, else the selected row, to the clicked row and keeps other marks; clear ends a batch. The empty path is the workspace root and is never marked. targets is what a batch acts on: the marks without those inside a marked folder. Hosts keep focus, painting and the batch itself.",
+  "cases": [
+    {
+      "name": "a plain click selects its row and drops the marks and the anchor",
+      "request": {
+        "rows": [
+          "",
+          "a",
+          "a/x",
+          "b",
+          "c"
+        ],
+        "action": {
+          "kind": "choose",
+          "path": "c"
+        },
+        "selection": {
+          "selected": "a",
+          "marked": [
+            "b",
+            "c"
+          ],
+          "anchor": "b"
+        }
+      },
+      "response": {
+        "selection": {
+          "selected": "c",
+          "marked": []
+        },
+        "targets": []
+      }
+    },
+    {
+      "name": "a plain click on the root selects it",
+      "request": {
+        "rows": [
+          "",
+          "a",
+          "a/x",
+          "b",
+          "c"
+        ],
+        "action": {
+          "kind": "choose",
+          "path": ""
+        },
+        "selection": {
+          "selected": "a",
+          "marked": [
+            "b"
+          ]
+        }
+      },
+      "response": {
+        "selection": {
+          "selected": "",
+          "marked": []
+        },
+        "targets": []
+      }
+    },
+    {
+      "name": "a Cmd or Ctrl click marks its row and makes it the anchor",
+      "request": {
+        "rows": [
+          "",
+          "a",
+          "a/x",
+          "b",
+          "c"
+        ],
+        "action": {
+          "kind": "toggle",
+          "path": "b"
+        },
+        "selection": {
+          "selected": "a"
+        }
+      },
+      "response": {
+        "selection": {
+          "selected": "b",
+          "marked": [
+            "b"
+          ],
+          "anchor": "b"
+        },
+        "targets": [
+          "b"
+        ]
+      }
+    },
+    {
+      "name": "a Cmd or Ctrl click on a marked row unmarks it",
+      "request": {
+        "rows": [
+          "",
+          "a",
+          "a/x",
+          "b",
+          "c"
+        ],
+        "action": {
+          "kind": "toggle",
+          "path": "b"
+        },
+        "selection": {
+          "selected": "b",
+          "marked": [
+            "a",
+            "b"
+          ],
+          "anchor": "a"
+        }
+      },
+      "response": {
+        "selection": {
+          "selected": "b",
+          "marked": [
+            "a"
+          ],
+          "anchor": "b"
+        },
+        "targets": [
+          "a"
+        ]
+      }
+    },
+    {
+      "name": "a Shift click marks from the anchor and keeps the other marks",
+      "request": {
+        "rows": [
+          "",
+          "a",
+          "a/x",
+          "b",
+          "c"
+        ],
+        "action": {
+          "kind": "extend",
+          "path": "b"
+        },
+        "selection": {
+          "selected": "a",
+          "marked": [
+            "c"
+          ],
+          "anchor": "a/x"
+        }
+      },
+      "response": {
+        "selection": {
+          "selected": "b",
+          "marked": [
+            "a/x",
+            "b",
+            "c"
+          ],
+          "anchor": "a/x"
+        },
+        "targets": [
+          "a/x",
+          "b",
+          "c"
+        ]
+      }
+    },
+    {
+      "name": "a Shift click without an anchor marks from the selected row, and a marked folder stands for its contents",
+      "request": {
+        "rows": [
+          "",
+          "a",
+          "a/x",
+          "b",
+          "c"
+        ],
+        "action": {
+          "kind": "extend",
+          "path": "a"
+        },
+        "selection": {
+          "selected": "b"
+        }
+      },
+      "response": {
+        "selection": {
+          "selected": "a",
+          "marked": [
+            "a",
+            "a/x",
+            "b"
+          ]
+        },
+        "targets": [
+          "a",
+          "b"
+        ]
+      }
+    },
+    {
+      "name": "a Shift click with neither an anchor nor a selected row marks the clicked row",
+      "request": {
+        "rows": [
+          "",
+          "a",
+          "a/x",
+          "b",
+          "c"
+        ],
+        "action": {
+          "kind": "extend",
+          "path": "b"
+        }
+      },
+      "response": {
+        "selection": {
+          "selected": "b",
+          "marked": [
+            "b"
+          ]
+        },
+        "targets": [
+          "b"
+        ]
+      }
+    },
+    {
+      "name": "a Shift click whose anchor is hidden extends from the selected row and keeps the anchor",
+      "request": {
+        "rows": [
+          "",
+          "a",
+          "b",
+          "c"
+        ],
+        "action": {
+          "kind": "extend",
+          "path": "b"
+        },
+        "selection": {
+          "selected": "c",
+          "anchor": "a/x"
+        }
+      },
+      "response": {
+        "selection": {
+          "selected": "b",
+          "marked": [
+            "b",
+            "c"
+          ],
+          "anchor": "a/x"
+        },
+        "targets": [
+          "b",
+          "c"
+        ]
+      }
+    },
+    {
+      "name": "a range that covers the root never marks it",
+      "request": {
+        "rows": [
+          "",
+          "a",
+          "a/x",
+          "b",
+          "c"
+        ],
+        "action": {
+          "kind": "extend",
+          "path": "a"
+        },
+        "selection": {
+          "selected": ""
+        }
+      },
+      "response": {
+        "selection": {
+          "selected": "a",
+          "marked": [
+            "a"
+          ]
+        },
+        "targets": [
+          "a"
+        ]
+      }
+    },
+    {
+      "name": "a Cmd or Ctrl click on the root changes nothing",
+      "request": {
+        "rows": [
+          "",
+          "a",
+          "a/x",
+          "b",
+          "c"
+        ],
+        "action": {
+          "kind": "toggle",
+          "path": ""
+        },
+        "selection": {
+          "selected": "a",
+          "marked": [
+            "b"
+          ],
+          "anchor": "b"
+        }
+      },
+      "response": {
+        "selection": {
+          "selected": "a",
+          "marked": [
+            "b"
+          ],
+          "anchor": "b"
+        },
+        "targets": [
+          "b"
+        ]
+      }
+    },
+    {
+      "name": "a Shift click on the root changes nothing",
+      "request": {
+        "rows": [
+          "",
+          "a",
+          "a/x",
+          "b",
+          "c"
+        ],
+        "action": {
+          "kind": "extend",
+          "path": ""
+        },
+        "selection": {
+          "selected": "a",
+          "marked": [
+            "b"
+          ],
+          "anchor": "b"
+        }
+      },
+      "response": {
+        "selection": {
+          "selected": "a",
+          "marked": [
+            "b"
+          ],
+          "anchor": "b"
+        },
+        "targets": [
+          "b"
+        ]
+      }
+    },
+    {
+      "name": "marks of rows that do not show stay",
+      "request": {
+        "rows": [
+          "",
+          "a",
+          "b"
+        ],
+        "action": {
+          "kind": "toggle",
+          "path": "b"
+        },
+        "selection": {
+          "selected": "a",
+          "marked": [
+            "a/x"
+          ]
+        }
+      },
+      "response": {
+        "selection": {
+          "selected": "b",
+          "marked": [
+            "a/x",
+            "b"
+          ],
+          "anchor": "b"
+        },
+        "targets": [
+          "a/x",
+          "b"
+        ]
+      }
+    },
+    {
+      "name": "clear drops the marks and the anchor and keeps the selected row",
+      "request": {
+        "rows": [
+          "",
+          "a",
+          "a/x",
+          "b",
+          "c"
+        ],
+        "action": {
+          "kind": "clear"
+        },
+        "selection": {
+          "selected": "b",
+          "marked": [
+            "a",
+            "b"
+          ],
+          "anchor": "a"
+        }
+      },
+      "response": {
+        "selection": {
+          "selected": "b",
+          "marked": []
+        },
+        "targets": []
+      }
+    },
+    {
+      "name": "a plain click on a row that went away is stale",
+      "request": {
+        "rows": [
+          "",
+          "a",
+          "a/x",
+          "b",
+          "c"
+        ],
+        "action": {
+          "kind": "choose",
+          "path": "gone"
+        },
+        "selection": {
+          "selected": "a",
+          "marked": [
+            "b"
+          ],
+          "anchor": "b"
+        }
+      },
+      "response": {
+        "selection": {
+          "selected": "a",
+          "marked": [
+            "b"
+          ],
+          "anchor": "b"
+        },
+        "targets": [
+          "b"
+        ],
+        "rejection": "workspace.rowSelection.stale"
+      }
+    },
+    {
+      "name": "a Cmd or Ctrl click on a row that went away is stale",
+      "request": {
+        "rows": [
+          "",
+          "a",
+          "a/x",
+          "b",
+          "c"
+        ],
+        "action": {
+          "kind": "toggle",
+          "path": "gone"
+        },
+        "selection": {
+          "selected": "a"
+        }
+      },
+      "response": {
+        "selection": {
+          "selected": "a",
+          "marked": []
+        },
+        "targets": [],
+        "rejection": "workspace.rowSelection.stale"
+      }
+    },
+    {
+      "name": "a Shift click on a row that went away is stale",
+      "request": {
+        "rows": [
+          "",
+          "a",
+          "a/x",
+          "b",
+          "c"
+        ],
+        "action": {
+          "kind": "extend",
+          "path": "gone"
+        },
+        "selection": {
+          "selected": "a"
+        }
+      },
+      "response": {
+        "selection": {
+          "selected": "a",
+          "marked": []
+        },
+        "targets": [],
+        "rejection": "workspace.rowSelection.stale"
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "the root cannot be marked",
+      "request": {
+        "rows": [
+          "",
+          "a",
+          "a/x",
+          "b",
+          "c"
+        ],
+        "selection": {
+          "marked": [
+            ""
+          ]
+        },
+        "action": {
+          "kind": "clear"
+        }
+      }
+    },
+    {
+      "name": "the root cannot be the anchor",
+      "request": {
+        "rows": [
+          "",
+          "a",
+          "a/x",
+          "b",
+          "c"
+        ],
+        "selection": {
+          "anchor": ""
+        },
+        "action": {
+          "kind": "clear"
+        }
+      }
+    },
+    {
+      "name": "an unknown action",
+      "request": {
+        "rows": [
+          "",
+          "a",
+          "a/x",
+          "b",
+          "c"
+        ],
+        "action": {
+          "kind": "selectAll"
+        }
+      }
+    },
+    {
+      "name": "an action without its path",
+      "request": {
+        "rows": [
+          "",
+          "a",
+          "a/x",
+          "b",
+          "c"
+        ],
+        "action": {
+          "kind": "toggle"
+        }
+      }
+    },
+    {
+      "name": "an unknown field",
+      "request": {
+        "rows": [
+          "",
+          "a",
+          "a/x",
+          "b",
+          "c"
+        ],
+        "action": {
+          "kind": "clear"
+        },
+        "focus": "a"
+      }
+    },
+    {
+      "name": "no rows",
+      "request": {
+        "action": {
+          "kind": "clear"
+        }
+      }
+    }
+  ]
+}

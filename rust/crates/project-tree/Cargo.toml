@@ -1,0 +1,12 @@
+[package]
+name = "lithe-project-tree"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "The rows the project tree shows from the nodes a host listed, with its selection kept in step"
+
+[dependencies]
+lithe-protocol = { path = "../protocol" }
+lithe-row-selection = { path = "../row-selection" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

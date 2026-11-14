@@ -1,0 +1,173 @@
+{
+  "description": "plugins.installed.lifecycle: installed plugins' enablement and the ordered steps of a lifecycle action. Hosts carry the steps out on the action's plugin.",
+  "cases": [
+    {
+      "name": "a plugin without a choice is disabled, per plugin not per version",
+      "request": {
+        "installed": [
+          { "pluginID": "other", "version": "2.0.0" },
+          { "pluginID": "example", "version": "1.1.0" },
+          { "pluginID": "example", "version": "1.0.0" }
+        ],
+        "choices": [
+          { "pluginID": "example", "enabled": true },
+          { "pluginID": "absent", "enabled": true }
+        ]
+      },
+      "response": {
+        "plugins": [
+          { "pluginID": "example", "enabled": true },
+          { "pluginID": "other", "enabled": false }
+        ],
+        "changed": false,
+        "steps": []
+      }
+    },
+    {
+      "name": "confirming an installation enables a plugin without a choice",
+      "request": {
+        "installed": [{ "pluginID": "fresh", "version": "1.0.0" }],
+        "action": { "kind": "confirmInstall", "pluginID": "fresh" }
+      },
+      "response": {
+        "plugins": [{ "pluginID": "fresh", "enabled": true }],
+        "changed": true,
+        "steps": [{ "kind": "recordChoice", "enabled": true }]
+      }
+    },
+    {
+      "name": "confirming an update keeps a plugin the user disabled disabled",
+      "request": {
+        "installed": [
+          { "pluginID": "disabled", "version": "1.0.0" },
+          { "pluginID": "disabled", "version": "1.1.0" }
+        ],
+        "choices": [{ "pluginID": "disabled", "enabled": false }],
+        "action": { "kind": "confirmInstall", "pluginID": "disabled" }
+      },
+      "response": {
+        "plugins": [{ "pluginID": "disabled", "enabled": false }],
+        "changed": false,
+        "steps": []
+      }
+    },
+    {
+      "name": "enabling records the choice",
+      "request": {
+        "installed": [{ "pluginID": "example", "version": "1.0.0" }],
+        "choices": [{ "pluginID": "example", "enabled": false }],
+        "action": { "kind": "enable", "pluginID": "example" }
+      },
+      "response": {
+        "plugins": [{ "pluginID": "example", "enabled": true }],
+        "changed": true,
+        "steps": [{ "kind": "recordChoice", "enabled": true }]
+      }
+    },
+    {
+      "name": "enabling an enabled plugin has nothing to do",
+      "request": {
+        "installed": [{ "pluginID": "example", "version": "1.0.0" }],
+        "choices": [{ "pluginID": "example", "enabled": true }],
+        "action": { "kind": "enable", "pluginID": "example" }
+      },
+      "response": {
+        "plugins": [{ "pluginID": "example", "enabled": true }],
+        "changed": false,
+        "steps": []
+      }
+    },
+    {
+      "name": "disabling records the choice before it stops the programs",
+      "request": {
+        "installed": [{ "pluginID": "example", "version": "1.0.0" }],
+        "choices": [{ "pluginID": "example", "enabled": true }],
+        "action": { "kind": "disable", "pluginID": "example" }
+      },
+      "response": {
+        "plugins": [{ "pluginID": "example", "enabled": false }],
+        "changed": true,
+        "steps": [
+          { "kind": "recordChoice", "enabled": false },
+          { "kind": "stopPrograms" }
+        ]
+      }
+    },
+    {
+      "name": "disabling a disabled plugin still stops its programs",
+      "request": {
+        "installed": [{ "pluginID": "example", "version": "1.0.0" }],
+        "choices": [{ "pluginID": "example", "enabled": false }],
+        "action": { "kind": "disable", "pluginID": "example" }
+      },
+      "response": {
+        "plugins": [{ "pluginID": "example", "enabled": false }],
+        "changed": false,
+        "steps": [{ "kind": "stopPrograms" }]
+      }
+    },
+    {
+      "name": "uninstalling stops the programs, removes every version, forgets the choice and removes the state",
+      "request": {
+        "installed": [
+          { "pluginID": "example", "version": "1.1.0" },
+          { "pluginID": "other", "version": "1.0.0" },
+          { "pluginID": "example", "version": "1.0.0" }
+        ],
+        "choices": [
+          { "pluginID": "example", "enabled": false },
+          { "pluginID": "other", "enabled": true }
+        ],
+        "action": { "kind": "uninstall", "pluginID": "example" }
+      },
+      "response": {
+        "plugins": [{ "pluginID": "other", "enabled": true }],
+        "changed": true,
+        "steps": [
+          { "kind": "stopPrograms" },
+          { "kind": "removeVersion", "version": "1.0.0" },
+          { "kind": "removeVersion", "version": "1.1.0" },
+          { "kind": "forgetChoice" },
+          { "kind": "removeState" }
+        ]
+      }
+    },
+    {
+      "name": "uninstalling a plugin without a choice has no choice to forget",
+      "request": {
+        "installed": [{ "pluginID": "example", "version": "1.0.0" }],
+        "action": { "kind": "uninstall", "pluginID": "example" }
+      },
+      "response": {
+        "plugins": [],
+        "changed": false,
+        "steps": [
+          { "kind": "stopPrograms" },
+          { "kind": "removeVersion", "version": "1.0.0" },
+          { "kind": "removeState" }
+        ]
+      }
+    },
+    {
+      "name": "an action on a plugin that is not installed is rejected",
+      "request": {
+        "installed": [{ "pluginID": "example", "version": "1.0.0" }],
+        "choices": [{ "pluginID": "absent", "enabled": false }],
+        "action": { "kind": "enable", "pluginID": "absent" }
+      },
+      "response": {
+        "plugins": [{ "pluginID": "example", "enabled": false }],
+        "changed": false,
+        "steps": [],
+        "rejection": "plugin.lifecycle.notInstalled"
+      }
+    }
+  ],
+  "invalid": [
+    { "name": "an empty action plugin ID", "request": { "installed": [], "action": { "kind": "enable", "pluginID": "" } } },
+    { "name": "an empty installed version", "request": { "installed": [{ "pluginID": "example", "version": "" }] } },
+    { "name": "a repeated installed version", "request": { "installed": [{ "pluginID": "example", "version": "1.0.0" }, { "pluginID": "example", "version": "1.0.0" }] } },
+    { "name": "two choices for one plugin", "request": { "installed": [], "choices": [{ "pluginID": "example", "enabled": true }, { "pluginID": "example", "enabled": false }] } },
+    { "name": "an unknown action", "request": { "installed": [], "action": { "kind": "reinstall", "pluginID": "example" } } }
+  ]
+}

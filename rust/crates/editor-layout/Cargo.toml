@@ -1,0 +1,12 @@
+[package]
+name = "lithe-editor-layout"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "How the editor area is split among its tab groups: opening a tab, dropping a dragged tab and which places accept it"
+
+[dependencies]
+lithe-core-rules = { path = "../core-rules" }
+lithe-protocol = { path = "../protocol" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

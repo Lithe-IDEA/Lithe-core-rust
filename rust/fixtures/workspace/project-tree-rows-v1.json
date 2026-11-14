@@ -1,0 +1,558 @@
+{
+  "description": "workspace.projectTree.rows: the rows of the project tree from the nodes the host loaded, in preorder with their depth and whether each folder is open, and the selection kept on a row that shows. rows are positions in nodes; topRow is the row of the node named by top while it shows. Hosts list folders, keep focus, scrolling and painting, and ask once per change of shape, never per paint.",
+  "cases": [
+    {
+      "name": "a row shows when every folder above it is open",
+      "request": {
+        "nodes": [
+          {
+            "path": "",
+            "depth": 0,
+            "open": true
+          },
+          {
+            "path": "a",
+            "depth": 1,
+            "open": true
+          },
+          {
+            "path": "a/x",
+            "depth": 2
+          },
+          {
+            "path": "a/y",
+            "depth": 2,
+            "open": true
+          },
+          {
+            "path": "a/y/z",
+            "depth": 3
+          },
+          {
+            "path": "b",
+            "depth": 1
+          },
+          {
+            "path": "b/q",
+            "depth": 2
+          },
+          {
+            "path": "c",
+            "depth": 1
+          }
+        ],
+        "selection": {
+          "selected": "a/x"
+        },
+        "top": "a/y"
+      },
+      "response": {
+        "rows": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          7
+        ],
+        "selection": {
+          "selected": "a/x",
+          "marked": []
+        },
+        "selectionMoved": false,
+        "topRow": 3,
+        "targets": []
+      }
+    },
+    {
+      "name": "closing a folder hides its rows, moves the selection to it and keeps the marks inside",
+      "request": {
+        "nodes": [
+          {
+            "path": "",
+            "depth": 0,
+            "open": true
+          },
+          {
+            "path": "a",
+            "depth": 1
+          },
+          {
+            "path": "a/x",
+            "depth": 2
+          },
+          {
+            "path": "a/y",
+            "depth": 2,
+            "open": true
+          },
+          {
+            "path": "a/y/z",
+            "depth": 3
+          },
+          {
+            "path": "b",
+            "depth": 1
+          },
+          {
+            "path": "b/q",
+            "depth": 2
+          },
+          {
+            "path": "c",
+            "depth": 1
+          }
+        ],
+        "selection": {
+          "selected": "a/y/z",
+          "marked": [
+            "a/x"
+          ],
+          "anchor": "a/x"
+        },
+        "top": "a/y"
+      },
+      "response": {
+        "rows": [
+          0,
+          1,
+          5,
+          7
+        ],
+        "selection": {
+          "selected": "a",
+          "marked": [
+            "a/x"
+          ],
+          "anchor": "a/x"
+        },
+        "selectionMoved": true,
+        "topRow": null,
+        "targets": [
+          "a/x"
+        ]
+      }
+    },
+    {
+      "name": "a selected node that went away gives the selection to the nearest loaded folder, and marks and an anchor that went away are dropped",
+      "request": {
+        "nodes": [
+          {
+            "path": "",
+            "depth": 0,
+            "open": true
+          },
+          {
+            "path": "a",
+            "depth": 1,
+            "open": true
+          },
+          {
+            "path": "a/x",
+            "depth": 2
+          }
+        ],
+        "selection": {
+          "selected": "a/y/z",
+          "marked": [
+            "a/x",
+            "a/y",
+            "b"
+          ],
+          "anchor": "b"
+        }
+      },
+      "response": {
+        "rows": [
+          0,
+          1,
+          2
+        ],
+        "selection": {
+          "selected": "a",
+          "marked": [
+            "a/x"
+          ]
+        },
+        "selectionMoved": true,
+        "topRow": null,
+        "targets": [
+          "a/x"
+        ]
+      }
+    },
+    {
+      "name": "a top-level node that went away gives the selection to the root",
+      "request": {
+        "nodes": [
+          {
+            "path": "",
+            "depth": 0,
+            "open": true
+          },
+          {
+            "path": "c",
+            "depth": 1
+          }
+        ],
+        "selection": {
+          "selected": "b"
+        },
+        "top": "c"
+      },
+      "response": {
+        "rows": [
+          0,
+          1
+        ],
+        "selection": {
+          "selected": "",
+          "marked": []
+        },
+        "selectionMoved": true,
+        "topRow": 1,
+        "targets": []
+      }
+    },
+    {
+      "name": "the root shows while it is closed",
+      "request": {
+        "nodes": [
+          {
+            "path": "",
+            "depth": 0
+          },
+          {
+            "path": "a",
+            "depth": 1
+          }
+        ],
+        "selection": {
+          "selected": "a"
+        }
+      },
+      "response": {
+        "rows": [
+          0
+        ],
+        "selection": {
+          "selected": "",
+          "marked": []
+        },
+        "selectionMoved": true,
+        "topRow": null,
+        "targets": []
+      }
+    },
+    {
+      "name": "no selection stays no selection",
+      "request": {
+        "nodes": [
+          {
+            "path": "",
+            "depth": 0,
+            "open": true
+          },
+          {
+            "path": "a",
+            "depth": 1
+          }
+        ]
+      },
+      "response": {
+        "rows": [
+          0,
+          1
+        ],
+        "selection": {
+          "selected": null,
+          "marked": []
+        },
+        "selectionMoved": false,
+        "topRow": null,
+        "targets": []
+      }
+    },
+    {
+      "name": "an open folder listed empty shows alone",
+      "request": {
+        "nodes": [
+          {
+            "path": "",
+            "depth": 0,
+            "open": true
+          },
+          {
+            "path": "a",
+            "depth": 1,
+            "open": true
+          },
+          {
+            "path": "b",
+            "depth": 1
+          }
+        ],
+        "selection": {
+          "selected": "a"
+        }
+      },
+      "response": {
+        "rows": [
+          0,
+          1,
+          2
+        ],
+        "selection": {
+          "selected": "a",
+          "marked": []
+        },
+        "selectionMoved": false,
+        "topRow": null,
+        "targets": []
+      }
+    },
+    {
+      "name": "an entry inserted above keeps the top row by path",
+      "request": {
+        "nodes": [
+          {
+            "path": "",
+            "depth": 0,
+            "open": true
+          },
+          {
+            "path": "a",
+            "depth": 1
+          },
+          {
+            "path": "new",
+            "depth": 1
+          },
+          {
+            "path": "z",
+            "depth": 1
+          }
+        ],
+        "selection": {
+          "selected": "z"
+        },
+        "top": "z"
+      },
+      "response": {
+        "rows": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "selection": {
+          "selected": "z",
+          "marked": []
+        },
+        "selectionMoved": false,
+        "topRow": 3,
+        "targets": []
+      }
+    },
+    {
+      "name": "a top that went away has no row",
+      "request": {
+        "nodes": [
+          {
+            "path": "",
+            "depth": 0,
+            "open": true
+          },
+          {
+            "path": "a",
+            "depth": 1
+          }
+        ],
+        "top": "gone"
+      },
+      "response": {
+        "rows": [
+          0,
+          1
+        ],
+        "selection": {
+          "selected": null,
+          "marked": []
+        },
+        "selectionMoved": false,
+        "topRow": null,
+        "targets": []
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "no nodes",
+      "request": {
+        "nodes": []
+      }
+    },
+    {
+      "name": "the first node is not the root",
+      "request": {
+        "nodes": [
+          {
+            "path": "a",
+            "depth": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "the root is not at depth 0",
+      "request": {
+        "nodes": [
+          {
+            "path": "",
+            "depth": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "a node skips a depth",
+      "request": {
+        "nodes": [
+          {
+            "path": "",
+            "depth": 0,
+            "open": true
+          },
+          {
+            "path": "a",
+            "depth": 1,
+            "open": true
+          },
+          {
+            "path": "a/b/c",
+            "depth": 3
+          }
+        ]
+      }
+    },
+    {
+      "name": "a node outside the folder above it",
+      "request": {
+        "nodes": [
+          {
+            "path": "",
+            "depth": 0,
+            "open": true
+          },
+          {
+            "path": "a",
+            "depth": 1,
+            "open": true
+          },
+          {
+            "path": "b/c",
+            "depth": 2
+          }
+        ]
+      }
+    },
+    {
+      "name": "a node more than one name below its folder",
+      "request": {
+        "nodes": [
+          {
+            "path": "",
+            "depth": 0,
+            "open": true
+          },
+          {
+            "path": "a/b",
+            "depth": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "a second root",
+      "request": {
+        "nodes": [
+          {
+            "path": "",
+            "depth": 0,
+            "open": true
+          },
+          {
+            "path": "",
+            "depth": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "a second node at depth 0",
+      "request": {
+        "nodes": [
+          {
+            "path": "",
+            "depth": 0,
+            "open": true
+          },
+          {
+            "path": "a",
+            "depth": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "a path listed twice",
+      "request": {
+        "nodes": [
+          {
+            "path": "",
+            "depth": 0,
+            "open": true
+          },
+          {
+            "path": "a",
+            "depth": 1
+          },
+          {
+            "path": "a",
+            "depth": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "a marked root",
+      "request": {
+        "nodes": [
+          {
+            "path": "",
+            "depth": 0,
+            "open": true
+          }
+        ],
+        "selection": {
+          "marked": [
+            ""
+          ]
+        }
+      }
+    },
+    {
+      "name": "an unknown node field",
+      "request": {
+        "nodes": [
+          {
+            "path": "",
+            "depth": 0,
+            "kind": "folder"
+          }
+        ]
+      }
+    }
+  ]
+}

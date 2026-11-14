@@ -435,6 +435,12 @@ pub(super) fn dispatch(command: GitCommand, id: Option<String>, payload: Value) 
         GitCommand::ReferenceTree => {
             plugin_response(id, payload, lithe_git::reference_tree_command)
         }
+        GitCommand::ChangedFileGroups => {
+            plugin_response(id, payload, lithe_git::changed_file_groups_command)
+        }
+        GitCommand::WorktreeCreationPreview => {
+            plugin_response(id, payload, lithe_git::worktree_creation_preview_command)
+        }
         GitCommand::PrepareCommitSelection => {
             plugin_response(id, payload, lithe_git::prepare_commit_selection_command)
         }
