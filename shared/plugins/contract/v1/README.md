@@ -299,6 +299,13 @@ activation event, and a plugin may consist of grammars alone.
 | `hostIntegration` | Reserved. Core implements no host integration, so any ID is refused; see [Language server host integrations](#language-server-host-integrations). |
 | `requestMethods`, `commands`, `serializedCommands`, `forwardNotifications`, `state`, `remote` | What the plugin backend may ask of the running server and how the host keeps its state; see [Plugin-owned sessions](#plugin-owned-sessions). |
 
+One enabled plugin serves a language. Enabling a plugin, or confirming the
+installation of an enabled one, turns off every other enabled plugin whose newest
+installed version declares a language server for one of the same languages; the
+host tells the user which plugin it turned off and why. Two plugins can serve the
+same language as alternatives, for example a lightweight navigation server and a
+complete one, but never at the same time, so neither has to know the other.
+
 The host owns the language-server process lifecycle, the LSP session, and
 stopping the process when the provider is disabled. A build provider with its own
 process is the same kind of process: it declares `launch`, `arguments`,

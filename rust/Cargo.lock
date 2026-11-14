@@ -1255,6 +1255,7 @@ dependencies = [
 name = "lithe-plugin-lifecycle"
 version = "0.1.0"
 dependencies = [
+ "lithe-plugin-model",
  "lithe-protocol",
  "serde",
  "serde_json",

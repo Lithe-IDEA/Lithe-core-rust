@@ -6,6 +6,7 @@ license = "Apache-2.0"
 description = "Enablement of installed Lithe plugins and the ordered steps of confirming an install, enabling, disabling and uninstalling one"
 
 [dependencies]
+lithe-plugin-model = { path = "../plugin-model" }
 lithe-protocol = { path = "../protocol" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

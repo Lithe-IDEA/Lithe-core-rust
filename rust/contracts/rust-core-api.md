@@ -4214,17 +4214,23 @@ successfully started session merely because other plugins failed discovery.
 This is metadata selection, not manifest validation, approval or admission.
 Shared cases are in `rust/fixtures/plugins/installed-versions.json`.
 
-`plugins.installed.lifecycle` accepts `{ installed: [{ pluginID, version }],
-choices?: [{ pluginID, enabled }], action?: { kind, pluginID } }`, with at most
-4096 installed versions and 4096 choices. `installed` lists every installed
-version and `choices` every enablement choice the user made; an empty ID or
-version, a repeated version or a second choice for one plugin is
-`invalid_request`. `kind` is `confirmInstall`, `enable`, `disable` or
+`plugins.installed.lifecycle` accepts `{ installed: [{ pluginID, version,
+languageServers? }], choices?: [{ pluginID, enabled }], action?: { kind,
+pluginID } }`, with at most 4096 installed versions and 4096 choices.
+`installed` lists every installed version and `choices` every enablement choice
+the user made; an empty ID or version, a repeated version or a second choice for
+one plugin is `invalid_request`. `languageServers` is the `languageID` of every
+language server the version's manifest declares, at most 256 non-empty IDs of at
+most 256 bytes, none listed twice, or `invalid_request`. `kind` is `confirmInstall`, `enable`, `disable` or
 `uninstall`. It returns `{ plugins: [{ pluginID, enabled }], changed, steps,
 rejection? }`. `plugins` lists every installed plugin once, ordered by ID, with
 its enablement once the steps ran; an uninstalled plugin is left out.
 Enablement is per plugin, not per version, and a plugin without a choice is
-disabled. A choice for a plugin that is not installed is kept for a later
+disabled. One enabled plugin serves a language: a plugin whose choice enables it
+is still reported disabled when a plugin before it by ID is enabled and serves
+one of its languages. A plugin serves the languages of its newest installed
+version, compared as `major.minor.patch`; a version that is not one ranks below
+every one that is. A choice for a plugin that is not installed is kept for a later
 installation. `changed` says the steps change the choice for the action's
 plugin. An action on a plugin with no installed version returns
 `rejection: "plugin.lifecycle.notInstalled"`, no steps and the unchanged
@@ -4237,11 +4243,19 @@ backend and returns once they ended or gave up, `{ kind: "removeVersion",
 version }` removes one installed version and then forgets that version's
 approval record (the record stays when the removal failed), and
 `{ kind: "removeState" }` removes the state directory the plugin's programs
-wrote. A failed step does not stop the steps after it; the host reports every
+wrote. `{ kind: "displacePlugin", pluginID, languageIDs }` is the one step on
+another plugin: the host records the choice `enabled: false` for `pluginID`, then
+stops its programs, and tells the user it turned that plugin off because the
+action's plugin serves `languageIDs` too. A failed step does not stop the steps after it; the host reports every
 failure. `confirmInstall` records `enabled: true` only when the plugin has no
 choice, so a plugin disabled before an update stays disabled. `enable` records
 `true` unless already chosen. `disable` records `false` unless already chosen
 and then stops the programs, so nothing starts the plugin again while it stops.
+An `enable` or `confirmInstall` that leaves the plugin enabled ends with one
+`displacePlugin` for every other plugin, in ID order, whose choice enables it
+and which serves one of the same languages, naming the shared languages; this is
+what settles two plugins that choices made before the rule both enable. A
+`disable` displaces nothing, so the other plugin's choice can take over.
 `uninstall` stops the programs, removes every installed version in version text
 order, forgets the choice if there is one and removes the state, so a later
 installation starts as a first one. Shared cases are in

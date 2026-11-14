@@ -23,6 +23,8 @@
 - 不声明 `executionProviders`：`requires` 里有它的插件不会被提供安装。因此本文的示例只含语言服务器。
 - 安装：从插件市场（含自行添加的 HTTPS 索引源）或从磁盘选择 zip，两条路径都先显示安装审查，由用户确认；
   安装、启用、停用和卸载立即生效，不需要重启 Lithe。
+- 同一语言只由一个已启用的插件提供语言服务器：启用或安装你的插件时，另一个也为该语言声明了语言服务器的已启用插件会被停用，
+  宿主会告诉用户停用了哪个插件。可以给同一语言做轻量版和完整版两个插件，但用户同一时间只会用其中一个。
 - 各能力的支持情况见[版本对照](../reference/capabilities-and-versions.md)。Lua 模板目前只提供 macOS arm64、x64 两个包。
 
 ### 1. 先确定插件与宿主各自负责什么
@@ -501,6 +503,9 @@ What the desktop does that matters here:
 - It does not declare `executionProviders`: a plugin whose `requires` lists it is not offered for installation. The examples on this page therefore contain only the language server.
 - Installation: from the plugin marketplace (including HTTPS index sources you add yourself) or from a zip on disk; both paths show an install review for the user to confirm.
   Install, enable, disable, and uninstall take effect immediately, with no Lithe restart.
+- One enabled plugin serves a language: enabling or installing your plugin turns off any other enabled plugin that
+  declares a language server for the same language, and the host tells the user which plugin it turned off. You can ship a
+  lightweight and a complete plugin for one language, but a user runs only one of them at a time.
 - For what each capability supports, see the [version tables](../reference/capabilities-and-versions.md). The Lua template ships only macOS arm64 and x64 packages.
 
 ### 1. Decide what the plugin owns and what the host owns

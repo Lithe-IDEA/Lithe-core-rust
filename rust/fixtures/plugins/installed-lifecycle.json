@@ -1,5 +1,5 @@
 {
-  "description": "plugins.installed.lifecycle: installed plugins' enablement and the ordered steps of a lifecycle action. Hosts carry the steps out on the action's plugin.",
+  "description": "plugins.installed.lifecycle: installed plugins' enablement and the ordered steps of a lifecycle action. Hosts carry the steps out on the action's plugin, except displacePlugin, which names the plugin it turns off. One enabled plugin serves a language: enabling or confirming the installation of a plugin turns off every other enabled plugin whose newest version serves one of the same languages.",
   "cases": [
     {
       "name": "a plugin without a choice is disabled, per plugin not per version",
@@ -149,6 +149,313 @@
       }
     },
     {
+      "name": "enabling a plugin turns off every other enabled plugin that serves one of its languages",
+      "request": {
+        "installed": [
+          {
+            "pluginID": "complete",
+            "version": "1.2.0",
+            "languageServers": ["java", "jsp"]
+          },
+          {
+            "pluginID": "lightweight",
+            "version": "0.0.2",
+            "languageServers": ["java"]
+          },
+          {
+            "pluginID": "templates",
+            "version": "1.0.0",
+            "languageServers": ["jsp", "html"]
+          },
+          {
+            "pluginID": "unrelated",
+            "version": "0.1.3",
+            "languageServers": ["go"]
+          },
+          { "pluginID": "plain", "version": "1.0.0" }
+        ],
+        "choices": [
+          { "pluginID": "complete", "enabled": false },
+          { "pluginID": "lightweight", "enabled": true },
+          { "pluginID": "templates", "enabled": true },
+          { "pluginID": "unrelated", "enabled": true },
+          { "pluginID": "plain", "enabled": true }
+        ],
+        "action": { "kind": "enable", "pluginID": "complete" }
+      },
+      "response": {
+        "plugins": [
+          { "pluginID": "complete", "enabled": true },
+          { "pluginID": "lightweight", "enabled": false },
+          { "pluginID": "plain", "enabled": true },
+          { "pluginID": "templates", "enabled": false },
+          { "pluginID": "unrelated", "enabled": true }
+        ],
+        "changed": true,
+        "steps": [
+          { "kind": "recordChoice", "enabled": true },
+          {
+            "kind": "displacePlugin",
+            "pluginID": "lightweight",
+            "languageIDs": ["java"]
+          },
+          {
+            "kind": "displacePlugin",
+            "pluginID": "templates",
+            "languageIDs": ["jsp"]
+          }
+        ]
+      }
+    },
+    {
+      "name": "confirming an installation turns off an enabled plugin serving the same language",
+      "request": {
+        "installed": [
+          {
+            "pluginID": "lightweight",
+            "version": "0.0.2",
+            "languageServers": ["java"]
+          },
+          {
+            "pluginID": "complete",
+            "version": "1.2.0",
+            "languageServers": ["java"]
+          }
+        ],
+        "choices": [{ "pluginID": "lightweight", "enabled": true }],
+        "action": { "kind": "confirmInstall", "pluginID": "complete" }
+      },
+      "response": {
+        "plugins": [
+          { "pluginID": "complete", "enabled": true },
+          { "pluginID": "lightweight", "enabled": false }
+        ],
+        "changed": true,
+        "steps": [
+          { "kind": "recordChoice", "enabled": true },
+          {
+            "kind": "displacePlugin",
+            "pluginID": "lightweight",
+            "languageIDs": ["java"]
+          }
+        ]
+      }
+    },
+    {
+      "name": "confirming an update of an enabled plugin turns off a rival it now shares a language with",
+      "request": {
+        "installed": [
+          { "pluginID": "complete", "version": "1.0.0" },
+          {
+            "pluginID": "complete",
+            "version": "1.1.0",
+            "languageServers": ["java"]
+          },
+          {
+            "pluginID": "lightweight",
+            "version": "0.0.2",
+            "languageServers": ["java"]
+          }
+        ],
+        "choices": [
+          { "pluginID": "complete", "enabled": true },
+          { "pluginID": "lightweight", "enabled": true }
+        ],
+        "action": { "kind": "confirmInstall", "pluginID": "complete" }
+      },
+      "response": {
+        "plugins": [
+          { "pluginID": "complete", "enabled": true },
+          { "pluginID": "lightweight", "enabled": false }
+        ],
+        "changed": false,
+        "steps": [
+          {
+            "kind": "displacePlugin",
+            "pluginID": "lightweight",
+            "languageIDs": ["java"]
+          }
+        ]
+      }
+    },
+    {
+      "name": "confirming an update of a disabled plugin turns nothing off",
+      "request": {
+        "installed": [
+          {
+            "pluginID": "complete",
+            "version": "1.2.0",
+            "languageServers": ["java"]
+          },
+          {
+            "pluginID": "lightweight",
+            "version": "0.0.2",
+            "languageServers": ["java"]
+          }
+        ],
+        "choices": [
+          { "pluginID": "complete", "enabled": false },
+          { "pluginID": "lightweight", "enabled": true }
+        ],
+        "action": { "kind": "confirmInstall", "pluginID": "complete" }
+      },
+      "response": {
+        "plugins": [
+          { "pluginID": "complete", "enabled": false },
+          { "pluginID": "lightweight", "enabled": true }
+        ],
+        "changed": false,
+        "steps": []
+      }
+    },
+    {
+      "name": "only the newest installed version's language servers count",
+      "request": {
+        "installed": [
+          {
+            "pluginID": "complete",
+            "version": "1.2.0",
+            "languageServers": ["java"]
+          },
+          {
+            "pluginID": "lightweight",
+            "version": "0.0.1",
+            "languageServers": ["java"]
+          },
+          {
+            "pluginID": "lightweight",
+            "version": "0.0.10",
+            "languageServers": []
+          },
+          {
+            "pluginID": "unversioned",
+            "version": "next",
+            "languageServers": ["java"]
+          },
+          { "pluginID": "unversioned", "version": "0.0.1" }
+        ],
+        "choices": [
+          { "pluginID": "lightweight", "enabled": true },
+          { "pluginID": "unversioned", "enabled": true }
+        ],
+        "action": { "kind": "enable", "pluginID": "complete" }
+      },
+      "response": {
+        "plugins": [
+          { "pluginID": "complete", "enabled": true },
+          { "pluginID": "lightweight", "enabled": true },
+          { "pluginID": "unversioned", "enabled": true }
+        ],
+        "changed": true,
+        "steps": [{ "kind": "recordChoice", "enabled": true }]
+      }
+    },
+    {
+      "name": "choices made before the rule enable only the first plugin by ID that serves a language",
+      "request": {
+        "installed": [
+          {
+            "pluginID": "complete",
+            "version": "1.2.0",
+            "languageServers": ["java"]
+          },
+          {
+            "pluginID": "lightweight",
+            "version": "0.0.2",
+            "languageServers": ["java"]
+          },
+          {
+            "pluginID": "unrelated",
+            "version": "0.1.3",
+            "languageServers": ["go"]
+          }
+        ],
+        "choices": [
+          { "pluginID": "complete", "enabled": true },
+          { "pluginID": "lightweight", "enabled": true },
+          { "pluginID": "unrelated", "enabled": true }
+        ]
+      },
+      "response": {
+        "plugins": [
+          { "pluginID": "complete", "enabled": true },
+          { "pluginID": "lightweight", "enabled": false },
+          { "pluginID": "unrelated", "enabled": true }
+        ],
+        "changed": false,
+        "steps": []
+      }
+    },
+    {
+      "name": "enabling the plugin the earlier choices left off turns the other off",
+      "request": {
+        "installed": [
+          {
+            "pluginID": "complete",
+            "version": "1.2.0",
+            "languageServers": ["java"]
+          },
+          {
+            "pluginID": "lightweight",
+            "version": "0.0.2",
+            "languageServers": ["java"]
+          }
+        ],
+        "choices": [
+          { "pluginID": "complete", "enabled": true },
+          { "pluginID": "lightweight", "enabled": true }
+        ],
+        "action": { "kind": "enable", "pluginID": "lightweight" }
+      },
+      "response": {
+        "plugins": [
+          { "pluginID": "complete", "enabled": false },
+          { "pluginID": "lightweight", "enabled": true }
+        ],
+        "changed": false,
+        "steps": [
+          {
+            "kind": "displacePlugin",
+            "pluginID": "complete",
+            "languageIDs": ["java"]
+          }
+        ]
+      }
+    },
+    {
+      "name": "disabling the plugin that serves a language leaves the other's choice to take over",
+      "request": {
+        "installed": [
+          {
+            "pluginID": "complete",
+            "version": "1.2.0",
+            "languageServers": ["java"]
+          },
+          {
+            "pluginID": "lightweight",
+            "version": "0.0.2",
+            "languageServers": ["java"]
+          }
+        ],
+        "choices": [
+          { "pluginID": "complete", "enabled": true },
+          { "pluginID": "lightweight", "enabled": true }
+        ],
+        "action": { "kind": "disable", "pluginID": "complete" }
+      },
+      "response": {
+        "plugins": [
+          { "pluginID": "complete", "enabled": false },
+          { "pluginID": "lightweight", "enabled": true }
+        ],
+        "changed": true,
+        "steps": [
+          { "kind": "recordChoice", "enabled": false },
+          { "kind": "stopPrograms" }
+        ]
+      }
+    },
+    {
       "name": "an action on a plugin that is not installed is rejected",
       "request": {
         "installed": [{ "pluginID": "example", "version": "1.0.0" }],
@@ -168,6 +475,8 @@
     { "name": "an empty installed version", "request": { "installed": [{ "pluginID": "example", "version": "" }] } },
     { "name": "a repeated installed version", "request": { "installed": [{ "pluginID": "example", "version": "1.0.0" }, { "pluginID": "example", "version": "1.0.0" }] } },
     { "name": "two choices for one plugin", "request": { "installed": [], "choices": [{ "pluginID": "example", "enabled": true }, { "pluginID": "example", "enabled": false }] } },
-    { "name": "an unknown action", "request": { "installed": [], "action": { "kind": "reinstall", "pluginID": "example" } } }
+    { "name": "an unknown action", "request": { "installed": [], "action": { "kind": "reinstall", "pluginID": "example" } } },
+    { "name": "an empty language server ID", "request": { "installed": [{ "pluginID": "example", "version": "1.0.0", "languageServers": [""] }] } },
+    { "name": "a language served twice by one version", "request": { "installed": [{ "pluginID": "example", "version": "1.0.0", "languageServers": ["java", "java"] }] } }
   ]
 }
