@@ -4,7 +4,8 @@
 //! edges (six zones, one for each tool window anchor of the IDEA new UI: Left Top, Left Bottom and
 //! Bottom Left on the left stripe, Right Top, Right Bottom and Bottom Right on the right one), the
 //! trailing end of the title bar and the trailing end of the status bar. Every host persists the
-//! same fact: the zone of each button, the order inside each zone, and which tool panels are open.
+//! same fact: the zone of each button, the order inside each zone, which stripe buttons the user
+//! hid, and which tool panels are open.
 //! This module owns that fact and every transition of it. The host keeps only what exists while a
 //! gesture runs (pointer, drag ghost, insertion marker) and sends one [`Action`] when the gesture
 //! ends.
@@ -23,6 +24,12 @@
 //! out: `LeftBottom` is the lower group of the stripe whose panel opens in the lower half of the
 //! left column, while `BottomLeft` is the group packed at the stripe's bottom whose panel opens in
 //! the left half of the bottom area, and likewise `RightBottom` and `BottomRight` on the right.
+//!
+//! A user may hide a tool stripe button, as IDEA's Hide Entry does. A hidden item keeps its zone
+//! and its place in the zone order, so showing it again puts the button back where it was. Hiding
+//! closes the item's panel; a host may still open the panel of a hidden item, from a shortcut or a
+//! command, and the item stays hidden. Where the host lists hidden items for the user to restore
+//! is presentation. Title bar and status bar items cannot be hidden.
 
 use crate::{RuleError, RuleErrorCode};
 use serde::{Deserialize, Serialize};
@@ -148,7 +155,8 @@ pub struct Placement {
 /// The persisted chrome layout.
 ///
 /// A state returned by the reducer lists every catalog item exactly once, zone by zone in
-/// [`Zone`] order, and `open` names at most one panel item per zone, also in zone order.
+/// [`Zone`] order, `open` names at most one panel item per zone, also in zone order, and `hidden`
+/// names tool stripe items only, in the order of `placements`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct State {
@@ -158,6 +166,10 @@ pub struct State {
     /// Panel items whose panel is shown.
     #[serde(default)]
     pub open: Vec<String>,
+    /// Tool stripe items whose button the user hid. They keep their placement; a state saved
+    /// before hiding existed has none.
+    #[serde(default)]
+    pub hidden: Vec<String>,
 }
 
 /// One state transition requested by a host.
@@ -196,6 +208,14 @@ pub enum Action {
         id: String,
         /// Desired state.
         open: bool,
+    },
+    /// Hides or shows the button of the tool stripe item `id`. Hiding also closes its panel;
+    /// showing leaves the panel as it is.
+    SetHidden {
+        /// Tool stripe item.
+        id: String,
+        /// Desired state.
+        hidden: bool,
     },
 }
 
@@ -241,7 +261,8 @@ pub fn reduce_json(payload: Value) -> Result<Value, RuleError> {
 ///
 /// Fails with `invalid_request` when the catalog is malformed (empty or repeated identifiers, a
 /// panel outside the stripes, a default-open item that is not a panel), or when the action names
-/// an unknown item, moves an item to another surface, or opens an item that is not a panel.
+/// an unknown item, moves an item to another surface, opens an item that is not a panel, or hides
+/// an item that is not on a tool stripe.
 pub fn reduce(
     catalog: &[CatalogItem],
     state: State,
@@ -267,6 +288,10 @@ pub fn reduce(
         Action::SetOpen { id, open } => {
             let item = lookup(&index, &id)?;
             layout.set_open(catalog, item, open)?;
+        }
+        Action::SetHidden { id, hidden } => {
+            let item = lookup(&index, &id)?;
+            layout.set_hidden(catalog, item, hidden)?;
         }
     }
     let next = layout.into_state(catalog);
@@ -310,11 +335,13 @@ fn lookup(index: &HashMap<&str, usize>, id: &str) -> Result<usize, RuleError> {
         .ok_or_else(|| invalid("Unknown chrome item").with_details(id.to_string()))
 }
 
-/// Working form of [`State`]: catalog positions per zone and the open panel of each zone.
+/// Working form of [`State`]: catalog positions per zone, the open panel of each zone, and
+/// which items are hidden, indexed by catalog position.
 struct Layout {
     zones: [Vec<usize>; ZONE_COUNT],
     open: [Option<usize>; ZONE_COUNT],
     zone_of: Vec<Zone>,
+    hidden: Vec<bool>,
 }
 
 impl Layout {
@@ -323,6 +350,7 @@ impl Layout {
             zones: Default::default(),
             open: [None; ZONE_COUNT],
             zone_of: catalog.iter().map(|item| item.default_zone).collect(),
+            hidden: vec![false; catalog.len()],
         }
     }
 
@@ -341,7 +369,8 @@ impl Layout {
     }
 
     /// Keeps the first valid placement of every known item, then appends unplaced items to their
-    /// default zone in catalog order, then keeps the first listed open panel of every zone.
+    /// default zone in catalog order, then keeps the first listed open panel of every zone, then
+    /// hides the known tool stripe items `hidden` names.
     fn repaired(catalog: &[CatalogItem], index: &HashMap<&str, usize>, state: &State) -> Self {
         let mut layout = Self::empty(catalog);
         let mut placed = vec![false; catalog.len()];
@@ -368,6 +397,11 @@ impl Layout {
             let slot = &mut layout.open[layout.zone_of[item].rank()];
             if catalog[item].panel && slot.is_none() {
                 *slot = Some(item);
+            }
+        }
+        for id in &state.hidden {
+            if let Some(&item) = index.get(id.as_str()) {
+                layout.hidden[item] = hideable(&catalog[item]);
             }
         }
         layout
@@ -427,14 +461,37 @@ impl Layout {
         Ok(())
     }
 
+    /// Hides or shows the button of `item`. Hiding closes its panel, because an open panel whose
+    /// button disappears would leave nothing on the stripe to close it with.
+    fn set_hidden(
+        &mut self,
+        catalog: &[CatalogItem],
+        item: usize,
+        hidden: bool,
+    ) -> Result<(), RuleError> {
+        if !hideable(&catalog[item]) {
+            return Err(invalid("Only tool stripe items can be hidden")
+                .with_details(catalog[item].id.clone()));
+        }
+        self.hidden[item] = hidden;
+        if hidden && self.is_open(item) {
+            self.open[self.zone_of[item].rank()] = None;
+        }
+        Ok(())
+    }
+
     fn into_state(self, catalog: &[CatalogItem]) -> State {
         let mut placements = Vec::with_capacity(catalog.len());
+        let mut hidden = Vec::new();
         for zone in ZONES {
             for &item in &self.zones[zone.rank()] {
                 placements.push(Placement {
                     id: catalog[item].id.clone(),
                     zone,
                 });
+                if self.hidden[item] {
+                    hidden.push(catalog[item].id.clone());
+                }
             }
         }
         let open = self
@@ -443,8 +500,18 @@ impl Layout {
             .flatten()
             .map(|&item| catalog[item].id.clone())
             .collect();
-        State { placements, open }
+        State {
+            placements,
+            open,
+            hidden,
+        }
     }
+}
+
+/// Only tool stripe buttons can be hidden: the title bar and status bar have no place that
+/// lists hidden items.
+fn hideable(item: &CatalogItem) -> bool {
+    item.default_zone.surface() == Surface::ToolStripe
 }
 
 #[cfg(test)]
@@ -596,6 +663,7 @@ mod tests {
                 "terminal".into(),
                 "notifications".into(),
             ],
+            hidden: Vec::new(),
         };
         let reduction = reduce(&catalog(), saved, Action::Normalize).unwrap();
         let state = reduction.state;
@@ -711,6 +779,97 @@ mod tests {
         ] {
             assert!(reduce(&catalog(), defaults(), action).is_err());
         }
+    }
+
+    fn hidden(state: State, id: &str, hidden: bool) -> State {
+        let action = Action::SetHidden {
+            id: id.into(),
+            hidden,
+        };
+        reduce(&catalog(), state, action).unwrap().state
+    }
+
+    #[test]
+    fn hiding_a_button_closes_its_panel_and_keeps_its_place() {
+        let state = hidden(defaults(), "project", true);
+        assert_eq!(state.hidden, ["project"]);
+        assert_eq!(state.open, ["git"]);
+        assert_eq!(ids(&state, Zone::LeftTop), ["project", "commit"]);
+        // Showing it again puts the button back in front of commit and leaves the panel closed.
+        let state = hidden(state, "project", false);
+        assert_eq!(state, toggled(defaults(), "project"));
+    }
+
+    #[test]
+    fn a_hidden_item_keeps_its_hidden_state_while_its_panel_opens_and_it_moves() {
+        let state = hidden(defaults(), "commit", true);
+        // A shortcut or a command may still open the panel of a hidden item.
+        let state = toggled(state, "commit");
+        assert_eq!(state.open, ["commit", "git"]);
+        assert_eq!(state.hidden, ["commit"]);
+        let state = moved(state, "commit", Zone::RightBottom, None);
+        assert_eq!(ids(&state, Zone::RightBottom), ["commit"]);
+        assert_eq!(state.open, ["git", "commit"]);
+        assert_eq!(state.hidden, ["commit"]);
+        // Hiding an item that is already hidden still closes its panel.
+        let state = hidden(state, "commit", true);
+        assert_eq!(state.open, ["git"]);
+    }
+
+    #[test]
+    fn hidden_items_are_listed_in_placement_order_and_reset_shows_them() {
+        let state = hidden(defaults(), "update", true);
+        let state = hidden(state, "terminal", true);
+        let state = hidden(state, "commit", true);
+        assert_eq!(state.hidden, ["commit", "terminal", "update"]);
+        let again = reduce(&catalog(), state.clone(), Action::Normalize).unwrap();
+        assert!(!again.changed);
+        let reset = reduce(&catalog(), state, Action::Reset).unwrap().state;
+        assert!(reset.hidden.is_empty());
+    }
+
+    #[test]
+    fn normalize_drops_unknown_repeated_and_foreign_hidden_ids() {
+        let saved = State {
+            hidden: vec![
+                "gone".into(),
+                "terminal".into(),
+                "run".into(),
+                "caret".into(),
+                "terminal".into(),
+                "project".into(),
+            ],
+            ..defaults()
+        };
+        let reduction = reduce(&catalog(), saved, Action::Normalize).unwrap();
+        assert!(reduction.changed);
+        assert_eq!(reduction.state.hidden, ["project", "terminal"]);
+        // A saved hidden panel that is open stays open: only hiding it closes it.
+        assert_eq!(reduction.state.open, ["project", "git"]);
+    }
+
+    #[test]
+    fn only_tool_stripe_items_can_be_hidden() {
+        for id in ["run", "caret", "missing"] {
+            let action = Action::SetHidden {
+                id: id.into(),
+                hidden: true,
+            };
+            let error = reduce(&catalog(), defaults(), action).unwrap_err();
+            assert_eq!(error.code, RuleErrorCode::InvalidRequest, "{id}");
+        }
+    }
+
+    #[test]
+    fn a_state_saved_before_hiding_existed_decodes_and_answers_hidden() {
+        let request = serde_json::json!({
+            "catalog": [{"id": "project", "defaultZone": "leftTop", "panel": true}],
+            "state": {"placements": [{"id": "project", "zone": "leftTop"}], "open": []},
+            "action": {"kind": "setHidden", "id": "project", "hidden": true},
+        });
+        let answer = reduce_json(request).unwrap();
+        assert_eq!(answer["state"]["hidden"], serde_json::json!(["project"]));
+        assert_eq!(answer["changed"], true);
     }
 
     #[test]
