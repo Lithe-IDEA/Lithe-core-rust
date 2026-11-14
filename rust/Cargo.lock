@@ -1463,6 +1463,7 @@ version = "0.1.0"
 dependencies = [
  "lithe-protocol",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -146,6 +146,9 @@ pub enum CoreCommand {
     WorkbenchChromeLayoutReduce,
     /// Resolves terminal link candidates into file or external targets (`terminal.parseLinkTarget`).
     TerminalParseLinkTarget,
+    /// Decodes one chunk of console output with ANSI escapes into plain lines and styled ranges
+    /// (`outputStyle.decode`), from `lithe-terminal`.
+    OutputStyleDecode,
     /// Language server sessions, documents, edits, requests and events (`lsp.*`).
     Lsp(LspCommand),
     /// Normalizes the stored proxy settings into the policy a network stack
@@ -1220,6 +1223,7 @@ impl CoreCommand {
             }
             "workbench.chromeLayout.reduce" => Some(Self::WorkbenchChromeLayoutReduce),
             "terminal.parseLinkTarget" => Some(Self::TerminalParseLinkTarget),
+            "outputStyle.decode" => Some(Self::OutputStyleDecode),
             "debug.createSession" => Some(Self::Debug(DebugCommand::CreateSession)),
             "debug.launch" => Some(Self::Debug(DebugCommand::Launch)),
             "debug.steppingFilters" => Some(Self::Debug(DebugCommand::SteppingFilters)),
@@ -1677,6 +1681,7 @@ mod tests {
             "debug.decodeBackendConfiguration",
             "outputLinks.match",
             "outputLinks.decodeResolution",
+            "outputStyle.decode",
         ] {
             assert!(CoreCommand::parse(command).is_some(), "missing {command}");
         }
