@@ -16,6 +16,7 @@ pub mod files;
 mod history;
 pub mod indexing;
 mod markdown;
+mod markdown_reference;
 mod name_matching;
 pub mod name_ranking;
 pub mod recent_projects;
@@ -26,6 +27,7 @@ pub use document_lifecycle::*;
 pub use files::*;
 pub use history::*;
 pub use markdown::*;
+pub use markdown_reference::*;
 pub use search_paging::{search_page, SearchPageRequest};
 
 #[cfg(test)]
