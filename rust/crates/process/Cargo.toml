@@ -3,7 +3,7 @@ name = "lithe-process"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
-description = "Child-process lifecycle and inventory decisions shared by every Lithe host"
+description = "Child-process lifecycle, inventory and memory attribution decisions shared by every Lithe host"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

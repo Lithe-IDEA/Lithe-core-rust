@@ -195,6 +195,8 @@ pub(crate) fn is_hot(method: &str) -> bool {
             method,
             "workspace.filterChanges" | "lsp.workspaceFilesChanged" | "git.classifyMetadataChanges"
         )
+        // The status bar sums the instance's memory every few seconds while it is shown.
+        || method == "processMemory.summarize"
 }
 
 /// Explicit host provenance wins; Git provenance covers hosts that send only that.
@@ -270,6 +272,7 @@ mod tests {
             "workspace.classifyVisibility",
             "git.classifyMetadataChanges",
             "debug.transport.handle",
+            "processMemory.summarize",
         ] {
             assert!(is_hot(method), "{method}");
         }

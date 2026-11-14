@@ -550,6 +550,7 @@ or removing a command fails until the table changes in the same commit.
 | `processLifecycle.resolve` | Decide how each process or resource of one Lithe instance ends |
 | `processLifecycle.inventory` | Group a process snapshot of one Lithe instance into terminals, Agent tasks and background services |
 | `processLifecycle.settle` | Turn confirmation answers into what ends, what is kept and the updated settings |
+| `processMemory.summarize` | Sum a process table's memory by part of one Lithe instance: the host, language servers, plugin services, system helpers and other child processes |
 | `markdown.render` | Renders and sanitizes shared Markdown |
 | `markdown.outline` | Outlines the headings of shared Markdown as a document-symbol tree |
 | `markdown.resolveReference` | Decides what a link or an image of a rendered Markdown document points at |
@@ -5078,6 +5079,45 @@ scope-token ownership. Fixtures live in
   to `settings.rememberedChoices`.
 
 Fixtures live in `rust/fixtures/process-lifecycle/settle-v1.json`.
+
+`processMemory.summarize` accepts `{ hostProcessId, processes, roles, entryLimit }`
+and attributes every process the host could read to one part of the instance,
+so every host shows the same numbers for the same table. Each process row is
+`{ processId, parentProcessId, responsibleProcessId?, startTime?, name, bytes }`.
+`bytes` is the memory the host charges to the process; every row of one request
+uses the same measure. `responsibleProcessId` is the process the operating system
+holds responsible, which macOS reports for XPC services. `startTime` is in
+microseconds since 1970; a reported parent that started after its child is a
+reused process ID and is not followed. `roles` are
+`{ processId, kind: "languageServer" | "pluginService", name }` for the processes
+the host started for that role; a role naming the host is ignored, and the first
+role listed for a process ID is used. `entryLimit` defaults to 20 and is capped
+at 200.
+
+Every process counts at most once:
+
+- The host is the `host` part.
+- A process whose parent chain reaches a role process before the host belongs to
+  that role's part. A language server a plugin service started is therefore
+  counted as a language server, with the processes below it.
+- A process whose parent chain reaches the host first is a `childProcess`,
+  grouped under the host's direct child it descends from.
+- A process outside the host's tree whose `responsibleProcessId` is the host,
+  such as a WebKit process of a web view, is a `systemHelper`, grouped under the
+  topmost such process. When the host was started from a terminal, macOS holds
+  the terminal responsible, so these helpers are not the host's.
+- Other processes are left out. The processes of a cycle of parent links are
+  decided as if none of them had a parent.
+
+It returns `{ totalBytes, categories, entries, omitted }`. `categories` lists
+`host`, `languageServer`, `pluginService`, `systemHelper` and `childProcess` in
+that order, each `{ kind, bytes, processCount }`, empty ones included. `entries`
+are the groups other than the host, `{ kind, name, processId, bytes,
+processCount }`, largest first, with ties ordered by part, name and process ID.
+`name` is the role name, else the process name, shortened to 80 characters.
+`omitted` is `{ count, bytes }` of the groups past the limit. A table without the
+host or with a repeated process ID is `invalid_request`. Fixtures live in
+`rust/fixtures/process-lifecycle/memory-summary-v1.json`.
 
 ## Local IDE capability broker
 

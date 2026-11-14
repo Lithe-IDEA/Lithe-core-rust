@@ -1,0 +1,845 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "name": "every part of an instance the system started",
+      "request": {
+        "hostProcessId": 100,
+        "processes": [
+          {
+            "processId": 0,
+            "parentProcessId": 0,
+            "responsibleProcessId": 0,
+            "name": "kernel_task",
+            "bytes": 1000
+          },
+          {
+            "processId": 1,
+            "parentProcessId": 0,
+            "responsibleProcessId": 1,
+            "name": "launchd",
+            "bytes": 20
+          },
+          {
+            "processId": 100,
+            "parentProcessId": 1,
+            "responsibleProcessId": 100,
+            "name": "Lithe",
+            "bytes": 300
+          },
+          {
+            "processId": 200,
+            "parentProcessId": 100,
+            "responsibleProcessId": 100,
+            "name": "alpha-ls",
+            "bytes": 80
+          },
+          {
+            "processId": 201,
+            "parentProcessId": 200,
+            "responsibleProcessId": 100,
+            "name": "alpha-ls-worker",
+            "bytes": 10
+          },
+          {
+            "processId": 300,
+            "parentProcessId": 100,
+            "responsibleProcessId": 100,
+            "name": "beta-service",
+            "bytes": 50
+          },
+          {
+            "processId": 310,
+            "parentProcessId": 300,
+            "responsibleProcessId": 100,
+            "name": "beta-ls",
+            "bytes": 40
+          },
+          {
+            "processId": 311,
+            "parentProcessId": 310,
+            "responsibleProcessId": 100,
+            "name": "beta-ls-worker",
+            "bytes": 5
+          },
+          {
+            "processId": 320,
+            "parentProcessId": 300,
+            "responsibleProcessId": 100,
+            "name": "beta-helper",
+            "bytes": 7
+          },
+          {
+            "processId": 400,
+            "parentProcessId": 100,
+            "responsibleProcessId": 100,
+            "name": "zsh",
+            "bytes": 6
+          },
+          {
+            "processId": 401,
+            "parentProcessId": 400,
+            "responsibleProcessId": 100,
+            "name": "git",
+            "bytes": 4
+          },
+          {
+            "processId": 500,
+            "parentProcessId": 1,
+            "responsibleProcessId": 100,
+            "name": "com.apple.WebKit.WebContent",
+            "bytes": 60
+          },
+          {
+            "processId": 501,
+            "parentProcessId": 1,
+            "responsibleProcessId": 100,
+            "name": "com.apple.WebKit.GPU",
+            "bytes": 25
+          },
+          {
+            "processId": 600,
+            "parentProcessId": 1,
+            "responsibleProcessId": 600,
+            "name": "Finder",
+            "bytes": 90
+          }
+        ],
+        "roles": [
+          {
+            "processId": 200,
+            "kind": "languageServer",
+            "name": "Alpha Language"
+          },
+          {
+            "processId": 300,
+            "kind": "pluginService",
+            "name": "Beta Service"
+          },
+          {
+            "processId": 310,
+            "kind": "languageServer",
+            "name": "Beta Language"
+          }
+        ]
+      },
+      "expected": {
+        "totalBytes": 587,
+        "categories": [
+          {
+            "kind": "host",
+            "bytes": 300,
+            "processCount": 1
+          },
+          {
+            "kind": "languageServer",
+            "bytes": 135,
+            "processCount": 4
+          },
+          {
+            "kind": "pluginService",
+            "bytes": 57,
+            "processCount": 2
+          },
+          {
+            "kind": "systemHelper",
+            "bytes": 85,
+            "processCount": 2
+          },
+          {
+            "kind": "childProcess",
+            "bytes": 10,
+            "processCount": 2
+          }
+        ],
+        "entries": [
+          {
+            "kind": "languageServer",
+            "name": "Alpha Language",
+            "processId": 200,
+            "bytes": 90,
+            "processCount": 2
+          },
+          {
+            "kind": "systemHelper",
+            "name": "com.apple.WebKit.WebContent",
+            "processId": 500,
+            "bytes": 60,
+            "processCount": 1
+          },
+          {
+            "kind": "pluginService",
+            "name": "Beta Service",
+            "processId": 300,
+            "bytes": 57,
+            "processCount": 2
+          },
+          {
+            "kind": "languageServer",
+            "name": "Beta Language",
+            "processId": 310,
+            "bytes": 45,
+            "processCount": 2
+          },
+          {
+            "kind": "systemHelper",
+            "name": "com.apple.WebKit.GPU",
+            "processId": 501,
+            "bytes": 25,
+            "processCount": 1
+          },
+          {
+            "kind": "childProcess",
+            "name": "zsh",
+            "processId": 400,
+            "bytes": 10,
+            "processCount": 2
+          }
+        ],
+        "omitted": {
+          "count": 0,
+          "bytes": 0
+        }
+      }
+    },
+    {
+      "name": "a host started from a terminal is not responsible for its helpers",
+      "request": {
+        "hostProcessId": 100,
+        "processes": [
+          {
+            "processId": 1,
+            "parentProcessId": 0,
+            "responsibleProcessId": 1,
+            "name": "launchd",
+            "bytes": 20
+          },
+          {
+            "processId": 40,
+            "parentProcessId": 1,
+            "responsibleProcessId": 40,
+            "name": "Terminal",
+            "bytes": 100
+          },
+          {
+            "processId": 50,
+            "parentProcessId": 40,
+            "responsibleProcessId": 40,
+            "name": "zsh",
+            "bytes": 5
+          },
+          {
+            "processId": 100,
+            "parentProcessId": 50,
+            "responsibleProcessId": 40,
+            "name": "Lithe",
+            "bytes": 200
+          },
+          {
+            "processId": 101,
+            "parentProcessId": 100,
+            "responsibleProcessId": 40,
+            "name": "tool",
+            "bytes": 30
+          },
+          {
+            "processId": 500,
+            "parentProcessId": 1,
+            "responsibleProcessId": 40,
+            "name": "com.apple.WebKit.WebContent",
+            "bytes": 70
+          }
+        ]
+      },
+      "expected": {
+        "totalBytes": 230,
+        "categories": [
+          {
+            "kind": "host",
+            "bytes": 200,
+            "processCount": 1
+          },
+          {
+            "kind": "languageServer",
+            "bytes": 0,
+            "processCount": 0
+          },
+          {
+            "kind": "pluginService",
+            "bytes": 0,
+            "processCount": 0
+          },
+          {
+            "kind": "systemHelper",
+            "bytes": 0,
+            "processCount": 0
+          },
+          {
+            "kind": "childProcess",
+            "bytes": 30,
+            "processCount": 1
+          }
+        ],
+        "entries": [
+          {
+            "kind": "childProcess",
+            "name": "tool",
+            "processId": 101,
+            "bytes": 30,
+            "processCount": 1
+          }
+        ],
+        "omitted": {
+          "count": 0,
+          "bytes": 0
+        }
+      }
+    },
+    {
+      "name": "a parent that started after its child is a reused process ID",
+      "request": {
+        "hostProcessId": 100,
+        "processes": [
+          {
+            "processId": 1,
+            "parentProcessId": 0,
+            "startTime": 0,
+            "name": "init",
+            "bytes": 20
+          },
+          {
+            "processId": 100,
+            "parentProcessId": 1,
+            "startTime": 1000,
+            "name": "Lithe",
+            "bytes": 50
+          },
+          {
+            "processId": 700,
+            "parentProcessId": 100,
+            "startTime": 500,
+            "name": "p700",
+            "bytes": 40
+          },
+          {
+            "processId": 701,
+            "parentProcessId": 100,
+            "startTime": 2000,
+            "name": "p701",
+            "bytes": 8
+          },
+          {
+            "processId": 702,
+            "parentProcessId": 100,
+            "startTime": 1000,
+            "name": "p702",
+            "bytes": 2
+          },
+          {
+            "processId": 703,
+            "parentProcessId": 701,
+            "name": "p703",
+            "bytes": 1
+          }
+        ]
+      },
+      "expected": {
+        "totalBytes": 61,
+        "categories": [
+          {
+            "kind": "host",
+            "bytes": 50,
+            "processCount": 1
+          },
+          {
+            "kind": "languageServer",
+            "bytes": 0,
+            "processCount": 0
+          },
+          {
+            "kind": "pluginService",
+            "bytes": 0,
+            "processCount": 0
+          },
+          {
+            "kind": "systemHelper",
+            "bytes": 0,
+            "processCount": 0
+          },
+          {
+            "kind": "childProcess",
+            "bytes": 11,
+            "processCount": 3
+          }
+        ],
+        "entries": [
+          {
+            "kind": "childProcess",
+            "name": "p701",
+            "processId": 701,
+            "bytes": 9,
+            "processCount": 2
+          },
+          {
+            "kind": "childProcess",
+            "name": "p702",
+            "processId": 702,
+            "bytes": 2,
+            "processCount": 1
+          }
+        ],
+        "omitted": {
+          "count": 0,
+          "bytes": 0
+        }
+      }
+    },
+    {
+      "name": "a cycle of parent links is decided as if it had no parent",
+      "request": {
+        "hostProcessId": 100,
+        "processes": [
+          {
+            "processId": 100,
+            "parentProcessId": 1,
+            "responsibleProcessId": 100,
+            "name": "Lithe",
+            "bytes": 10
+          },
+          {
+            "processId": 800,
+            "parentProcessId": 801,
+            "responsibleProcessId": 100,
+            "name": "p800",
+            "bytes": 3
+          },
+          {
+            "processId": 801,
+            "parentProcessId": 800,
+            "name": "p801",
+            "bytes": 4
+          },
+          {
+            "processId": 802,
+            "parentProcessId": 801,
+            "name": "p802",
+            "bytes": 5
+          },
+          {
+            "processId": 803,
+            "parentProcessId": 800,
+            "name": "p803",
+            "bytes": 6
+          }
+        ]
+      },
+      "expected": {
+        "totalBytes": 19,
+        "categories": [
+          {
+            "kind": "host",
+            "bytes": 10,
+            "processCount": 1
+          },
+          {
+            "kind": "languageServer",
+            "bytes": 0,
+            "processCount": 0
+          },
+          {
+            "kind": "pluginService",
+            "bytes": 0,
+            "processCount": 0
+          },
+          {
+            "kind": "systemHelper",
+            "bytes": 9,
+            "processCount": 2
+          },
+          {
+            "kind": "childProcess",
+            "bytes": 0,
+            "processCount": 0
+          }
+        ],
+        "entries": [
+          {
+            "kind": "systemHelper",
+            "name": "p800",
+            "processId": 800,
+            "bytes": 9,
+            "processCount": 2
+          }
+        ],
+        "omitted": {
+          "count": 0,
+          "bytes": 0
+        }
+      }
+    },
+    {
+      "name": "roles naming the host, a repeated process or a gone process",
+      "request": {
+        "hostProcessId": 100,
+        "processes": [
+          {
+            "processId": 100,
+            "parentProcessId": 1,
+            "name": "Lithe",
+            "bytes": 50
+          },
+          {
+            "processId": 200,
+            "parentProcessId": 100,
+            "name": "gamma-service",
+            "bytes": 20
+          },
+          {
+            "processId": 300,
+            "parentProcessId": 100,
+            "name": "delta-ls",
+            "bytes": 30
+          }
+        ],
+        "roles": [
+          {
+            "processId": 100,
+            "kind": "languageServer",
+            "name": "Host"
+          },
+          {
+            "processId": 200,
+            "kind": "pluginService",
+            "name": "First"
+          },
+          {
+            "processId": 200,
+            "kind": "languageServer",
+            "name": "Second"
+          },
+          {
+            "processId": 999,
+            "kind": "languageServer",
+            "name": "Gone"
+          },
+          {
+            "processId": 300,
+            "kind": "languageServer",
+            "name": ""
+          }
+        ]
+      },
+      "expected": {
+        "totalBytes": 100,
+        "categories": [
+          {
+            "kind": "host",
+            "bytes": 50,
+            "processCount": 1
+          },
+          {
+            "kind": "languageServer",
+            "bytes": 30,
+            "processCount": 1
+          },
+          {
+            "kind": "pluginService",
+            "bytes": 20,
+            "processCount": 1
+          },
+          {
+            "kind": "systemHelper",
+            "bytes": 0,
+            "processCount": 0
+          },
+          {
+            "kind": "childProcess",
+            "bytes": 0,
+            "processCount": 0
+          }
+        ],
+        "entries": [
+          {
+            "kind": "languageServer",
+            "name": "delta-ls",
+            "processId": 300,
+            "bytes": 30,
+            "processCount": 1
+          },
+          {
+            "kind": "pluginService",
+            "name": "First",
+            "processId": 200,
+            "bytes": 20,
+            "processCount": 1
+          }
+        ],
+        "omitted": {
+          "count": 0,
+          "bytes": 0
+        }
+      }
+    },
+    {
+      "name": "entries past the limit are summed, ties go by part, name and process ID",
+      "request": {
+        "hostProcessId": 100,
+        "processes": [
+          {
+            "processId": 100,
+            "parentProcessId": 1,
+            "name": "Lithe",
+            "bytes": 1
+          },
+          {
+            "processId": 201,
+            "parentProcessId": 100,
+            "name": "b",
+            "bytes": 5
+          },
+          {
+            "processId": 202,
+            "parentProcessId": 100,
+            "name": "a",
+            "bytes": 5
+          },
+          {
+            "processId": 203,
+            "parentProcessId": 100,
+            "name": "a",
+            "bytes": 5
+          },
+          {
+            "processId": 204,
+            "parentProcessId": 100,
+            "name": "c",
+            "bytes": 3
+          },
+          {
+            "processId": 205,
+            "parentProcessId": 100,
+            "name": "d",
+            "bytes": 2
+          },
+          {
+            "processId": 206,
+            "parentProcessId": 100,
+            "name": "z",
+            "bytes": 5
+          }
+        ],
+        "roles": [
+          {
+            "processId": 206,
+            "kind": "languageServer",
+            "name": "z"
+          }
+        ],
+        "entryLimit": 3
+      },
+      "expected": {
+        "totalBytes": 26,
+        "categories": [
+          {
+            "kind": "host",
+            "bytes": 1,
+            "processCount": 1
+          },
+          {
+            "kind": "languageServer",
+            "bytes": 5,
+            "processCount": 1
+          },
+          {
+            "kind": "pluginService",
+            "bytes": 0,
+            "processCount": 0
+          },
+          {
+            "kind": "systemHelper",
+            "bytes": 0,
+            "processCount": 0
+          },
+          {
+            "kind": "childProcess",
+            "bytes": 20,
+            "processCount": 5
+          }
+        ],
+        "entries": [
+          {
+            "kind": "languageServer",
+            "name": "z",
+            "processId": 206,
+            "bytes": 5,
+            "processCount": 1
+          },
+          {
+            "kind": "childProcess",
+            "name": "a",
+            "processId": 202,
+            "bytes": 5,
+            "processCount": 1
+          },
+          {
+            "kind": "childProcess",
+            "name": "a",
+            "processId": 203,
+            "bytes": 5,
+            "processCount": 1
+          }
+        ],
+        "omitted": {
+          "count": 3,
+          "bytes": 10
+        }
+      }
+    },
+    {
+      "name": "a limit of zero returns only the sums",
+      "request": {
+        "hostProcessId": 100,
+        "processes": [
+          {
+            "processId": 100,
+            "parentProcessId": 1,
+            "name": "Lithe",
+            "bytes": 7
+          },
+          {
+            "processId": 200,
+            "parentProcessId": 100,
+            "name": "tool",
+            "bytes": 3
+          }
+        ],
+        "entryLimit": 0
+      },
+      "expected": {
+        "totalBytes": 10,
+        "categories": [
+          {
+            "kind": "host",
+            "bytes": 7,
+            "processCount": 1
+          },
+          {
+            "kind": "languageServer",
+            "bytes": 0,
+            "processCount": 0
+          },
+          {
+            "kind": "pluginService",
+            "bytes": 0,
+            "processCount": 0
+          },
+          {
+            "kind": "systemHelper",
+            "bytes": 0,
+            "processCount": 0
+          },
+          {
+            "kind": "childProcess",
+            "bytes": 3,
+            "processCount": 1
+          }
+        ],
+        "entries": [],
+        "omitted": {
+          "count": 1,
+          "bytes": 3
+        }
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "the host is not in the table",
+      "request": {
+        "hostProcessId": 100,
+        "processes": [
+          {
+            "processId": 1,
+            "parentProcessId": 0,
+            "name": "launchd",
+            "bytes": 20
+          }
+        ]
+      }
+    },
+    {
+      "name": "a process appears twice",
+      "request": {
+        "hostProcessId": 100,
+        "processes": [
+          {
+            "processId": 100,
+            "parentProcessId": 1,
+            "name": "Lithe",
+            "bytes": 5
+          },
+          {
+            "processId": 200,
+            "parentProcessId": 100,
+            "name": "p200",
+            "bytes": 1
+          },
+          {
+            "processId": 200,
+            "parentProcessId": 100,
+            "name": "p200",
+            "bytes": 2
+          }
+        ]
+      }
+    },
+    {
+      "name": "an unknown role",
+      "request": {
+        "hostProcessId": 100,
+        "processes": [
+          {
+            "processId": 100,
+            "parentProcessId": 1,
+            "name": "Lithe",
+            "bytes": 5
+          }
+        ],
+        "roles": [
+          {
+            "processId": 100,
+            "kind": "debugger",
+            "name": "x"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a process without bytes",
+      "request": {
+        "hostProcessId": 100,
+        "processes": [
+          {
+            "processId": 100,
+            "parentProcessId": 1,
+            "name": "Lithe"
+          }
+        ]
+      }
+    },
+    {
+      "name": "negative bytes",
+      "request": {
+        "hostProcessId": 100,
+        "processes": [
+          {
+            "processId": 100,
+            "parentProcessId": 1,
+            "name": "Lithe",
+            "bytes": -1
+          }
+        ]
+      }
+    }
+  ]
+}

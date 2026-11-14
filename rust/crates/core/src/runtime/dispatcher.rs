@@ -425,6 +425,23 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                 ),
             }
         }
+        CoreCommand::ProcessMemorySummarize => {
+            match serde_json::from_value::<lithe_process::memory::MemoryRequest>(parsed.payload)
+                .map_err(|error| error.to_string())
+                .and_then(|request| {
+                    lithe_process::memory::summarize(&request).map_err(|error| error.to_string())
+                }) {
+                Ok(summary) => CoreResponse::success(
+                    id,
+                    serde_json::to_value(summary).expect("process memory summary should encode"),
+                ),
+                Err(details) => CoreResponse::failure(
+                    id,
+                    CoreError::new(ErrorCode::InvalidRequest, "Invalid process memory request")
+                        .with_details(details),
+                ),
+            }
+        }
         CoreCommand::Editor(command) => editor::dispatch(command, id, parsed.payload, document),
         CoreCommand::WorkbenchChromeLayoutReduce => {
             rules_response(id, "workbench.chromeLayout.reduce", parsed.payload)
