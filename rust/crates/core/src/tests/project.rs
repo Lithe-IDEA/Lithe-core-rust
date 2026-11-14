@@ -1003,6 +1003,7 @@ fn html_preview_commands_address_the_document_and_answer_its_requests() {
     );
     assert_eq!(site["ok"], true, "{site}");
     assert_eq!(site["data"]["address"], "site/index.html");
+    assert_eq!(site["data"]["mime"], "text/html; charset=utf-8");
     assert_eq!(site["data"]["root"], root.to_string_lossy().as_ref());
     assert_eq!(
         request("site/index.html"),

@@ -5577,10 +5577,12 @@ would serve them. Both commands accept:
 `workspaceRoot` is optional and sets the site's root exactly as it sets the
 scope of `markdown.resolveReference`: the workspace for a document inside it,
 otherwise the document's folder. `htmlPreview.site` returns
-`{ "root": "/workspace", "address": "site/index.html" }`; `address` is the
-document's path from the root with each segment percent-encoded, which the
-frontend appends to the address it serves the site from. A `documentPath` that
-is not absolute is `invalid_request`.
+`{ "root": "/workspace", "address": "site/index.html", "mime": "text/html; charset=utf-8" }`;
+`address` is the document's path from the root with each segment
+percent-encoded, which the frontend appends to the address it serves the site
+from, and `mime` is the content type the document is served as, by its
+extension like the site's other files. A `documentPath` that is not absolute is
+`invalid_request`.
 
 `htmlPreview.resolveRequest` adds `"path"`, the requested path from the root as
 the web engine reports it: percent-decoded, `/`-separated, without query or
@@ -5589,7 +5591,7 @@ tagged by `kind`:
 
 | kind | fields | the frontend serves |
 | --- | --- | --- |
-| `document` | — | The editor's text of the document as `text/html; charset=utf-8`, so unsaved edits show |
+| `document` | — | The editor's text of the document as the site's `mime`, so unsaved edits show |
 | `file` | `path`, `mime` | The canonical file `path`, read without following another link, as `mime` |
 | `directory` | — | A page that sends the browser on to the folder's `index.html` |
 | `denied` | — | HTTP 403 |

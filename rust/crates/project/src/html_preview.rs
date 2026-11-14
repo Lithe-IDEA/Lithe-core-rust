@@ -90,6 +90,8 @@ pub struct HtmlPreviewSite {
     /// The document's path from the root as a relative URL: its segments percent-encoded and
     /// joined by `/`. The frontend appends it to the address its site is served from.
     pub address: String,
+    /// Content type to serve the document as, by its extension, as the site's other files are.
+    pub mime: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -147,6 +149,7 @@ pub fn html_preview_site(request: HtmlPreviewSiteRequest) -> Option<HtmlPreviewS
     Some(HtmlPreviewSite {
         root: root.to_string_lossy().into_owned(),
         address,
+        mime: content_type(document).to_string(),
     })
 }
 
@@ -387,6 +390,7 @@ mod tests {
             Some(HtmlPreviewSite {
                 root: workspace.root.to_string_lossy().into_owned(),
                 address: "site/page%20one.html".to_string(),
+                mime: "text/html; charset=utf-8".to_string(),
             })
         );
         // Without a workspace, the document's folder is the site.
