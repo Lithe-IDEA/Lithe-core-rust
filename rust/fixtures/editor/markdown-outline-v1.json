@@ -1,0 +1,189 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "ATX and setext headings nest by level, each section running to the next heading of the same or a higher level",
+      "source": "# Title\n\nIntro\n\nSetext Two\n----------\n\n### Three\n\nBody\n\n## Back\n",
+      "expected": {
+        "symbols": [
+          {
+            "name": "Title",
+            "detail": null,
+            "kind": 15,
+            "tags": [],
+            "deprecated": false,
+            "range": {"start": {"line": 0, "utf16Column": 0}, "end": {"line": 12, "utf16Column": 0}},
+            "selectionRange": {"start": {"line": 0, "utf16Column": 0}, "end": {"line": 0, "utf16Column": 7}},
+            "containerName": null,
+            "children": [
+              {
+                "name": "Setext Two",
+                "detail": null,
+                "kind": 15,
+                "tags": [],
+                "deprecated": false,
+                "range": {"start": {"line": 4, "utf16Column": 0}, "end": {"line": 11, "utf16Column": 0}},
+                "selectionRange": {"start": {"line": 4, "utf16Column": 0}, "end": {"line": 5, "utf16Column": 10}},
+                "containerName": null,
+                "children": [
+                  {
+                    "name": "Three",
+                    "detail": null,
+                    "kind": 15,
+                    "tags": [],
+                    "deprecated": false,
+                    "range": {"start": {"line": 7, "utf16Column": 0}, "end": {"line": 11, "utf16Column": 0}},
+                    "selectionRange": {"start": {"line": 7, "utf16Column": 0}, "end": {"line": 7, "utf16Column": 9}},
+                    "containerName": null,
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "name": "Back",
+                "detail": null,
+                "kind": 15,
+                "tags": [],
+                "deprecated": false,
+                "range": {"start": {"line": 11, "utf16Column": 0}, "end": {"line": 12, "utf16Column": 0}},
+                "selectionRange": {"start": {"line": 11, "utf16Column": 0}, "end": {"line": 11, "utf16Column": 7}},
+                "containerName": null,
+                "children": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "front matter keeps source lines and is not a heading",
+      "source": "---\ntitle: '# Not a heading'\n---\n\n# Real\n",
+      "expected": {
+        "symbols": [
+          {
+            "name": "Real",
+            "detail": null,
+            "kind": 15,
+            "tags": [],
+            "deprecated": false,
+            "range": {"start": {"line": 4, "utf16Column": 0}, "end": {"line": 5, "utf16Column": 0}},
+            "selectionRange": {"start": {"line": 4, "utf16Column": 0}, "end": {"line": 4, "utf16Column": 6}},
+            "containerName": null,
+            "children": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "block quote heading with CJK and emoji counts UTF-16 columns; inline markup and shortcodes become text",
+      "source": "> # 中文😀标题\n\n## `code` *em* :tada:\n",
+      "expected": {
+        "symbols": [
+          {
+            "name": "中文😀标题",
+            "detail": null,
+            "kind": 15,
+            "tags": [],
+            "deprecated": false,
+            "range": {"start": {"line": 0, "utf16Column": 0}, "end": {"line": 3, "utf16Column": 0}},
+            "selectionRange": {"start": {"line": 0, "utf16Column": 2}, "end": {"line": 0, "utf16Column": 10}},
+            "containerName": null,
+            "children": [
+              {
+                "name": "code em 🎉",
+                "detail": null,
+                "kind": 15,
+                "tags": [],
+                "deprecated": false,
+                "range": {"start": {"line": 2, "utf16Column": 0}, "end": {"line": 3, "utf16Column": 0}},
+                "selectionRange": {"start": {"line": 2, "utf16Column": 0}, "end": {"line": 2, "utf16Column": 21}},
+                "containerName": null,
+                "children": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "CRLF line endings",
+      "source": "# A\r\n\r\n## B\r\n",
+      "expected": {
+        "symbols": [
+          {
+            "name": "A",
+            "detail": null,
+            "kind": 15,
+            "tags": [],
+            "deprecated": false,
+            "range": {"start": {"line": 0, "utf16Column": 0}, "end": {"line": 3, "utf16Column": 0}},
+            "selectionRange": {"start": {"line": 0, "utf16Column": 0}, "end": {"line": 0, "utf16Column": 3}},
+            "containerName": null,
+            "children": [
+              {
+                "name": "B",
+                "detail": null,
+                "kind": 15,
+                "tags": [],
+                "deprecated": false,
+                "range": {"start": {"line": 2, "utf16Column": 0}, "end": {"line": 3, "utf16Column": 0}},
+                "selectionRange": {"start": {"line": 2, "utf16Column": 0}, "end": {"line": 2, "utf16Column": 4}},
+                "containerName": null,
+                "children": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a skipped level nests once; code, raw HTML and empty headings are not listed",
+      "source": "# A\n### B\n\n```\n# code\n```\n\n<h2>Raw</h2>\n\n##\n## C\n",
+      "expected": {
+        "symbols": [
+          {
+            "name": "A",
+            "detail": null,
+            "kind": 15,
+            "tags": [],
+            "deprecated": false,
+            "range": {"start": {"line": 0, "utf16Column": 0}, "end": {"line": 11, "utf16Column": 0}},
+            "selectionRange": {"start": {"line": 0, "utf16Column": 0}, "end": {"line": 0, "utf16Column": 3}},
+            "containerName": null,
+            "children": [
+              {
+                "name": "B",
+                "detail": null,
+                "kind": 15,
+                "tags": [],
+                "deprecated": false,
+                "range": {"start": {"line": 1, "utf16Column": 0}, "end": {"line": 10, "utf16Column": 0}},
+                "selectionRange": {"start": {"line": 1, "utf16Column": 0}, "end": {"line": 1, "utf16Column": 5}},
+                "containerName": null,
+                "children": []
+              },
+              {
+                "name": "C",
+                "detail": null,
+                "kind": 15,
+                "tags": [],
+                "deprecated": false,
+                "range": {"start": {"line": 10, "utf16Column": 0}, "end": {"line": 11, "utf16Column": 0}},
+                "selectionRange": {"start": {"line": 10, "utf16Column": 0}, "end": {"line": 10, "utf16Column": 4}},
+                "containerName": null,
+                "children": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "no headings",
+      "source": "",
+      "expected": {
+        "symbols": []
+      }
+    }
+  ]
+}
