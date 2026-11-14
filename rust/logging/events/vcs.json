@@ -23,41 +23,6 @@
       "owner": "Lithe"
     },
     {
-      "id": "vcs.history_date_query.failed",
-      "channel": "vcs",
-      "level": "error",
-      "message": "Git history date filter failed",
-      "fields": {
-        "error": {
-          "type": "error",
-          "required": true,
-          "description": "Stable failure category for the shared date filter"
-        }
-      },
-      "rate": 60,
-      "owner": "LitheGitModule"
-    },
-    {
-      "id": "vcs.shelf.operation_failed",
-      "channel": "vcs",
-      "level": "error",
-      "message": "Saved changes operation failed",
-      "fields": {
-        "stage": {
-          "type": "token",
-          "required": true,
-          "description": "Saved changes action that failed, load, save or delete"
-        },
-        "error": {
-          "type": "error",
-          "required": true,
-          "description": "Underlying failure at this operation boundary, preserving stable domain and code"
-        }
-      },
-      "rate": 60,
-      "owner": "LitheGitModule"
-    },
-    {
       "id": "vcs.stderr.received",
       "channel": "vcs/{provider}",
       "level": "debug",
@@ -577,21 +542,6 @@
       "owner": "lithe-core"
     },
     {
-      "id": "vcs.history_action_capabilities.failed",
-      "channel": "vcs",
-      "level": "warn",
-      "message": "Git history action eligibility could not be read",
-      "fields": {
-        "error": {
-          "type": "error",
-          "required": true,
-          "description": "Stable failure category for the history action eligibility request"
-        }
-      },
-      "rate": 60,
-      "owner": "LitheGitModule"
-    },
-    {
       "id": "vcs.message.error.logged",
       "channel": "vcs/{provider}",
       "level": "error",
@@ -770,6 +720,31 @@
           "description": "Stable Core lifecycle failure category, such as serverExited or transportFailed, without protocol or process contents"
         }
       }
+    },
+    {
+      "id": "vcs.provider.skipped",
+      "channel": "vcs",
+      "level": "warn",
+      "message": "Version control provider {plugin} skipped for {vcs}",
+      "fields": {
+        "plugin": {
+          "type": "id",
+          "required": true,
+          "description": "Validated id of the plugin whose provider for this version control system was not used"
+        },
+        "vcs": {
+          "type": "token",
+          "required": true,
+          "description": "Version control system both plugins provide"
+        },
+        "selected": {
+          "type": "id",
+          "required": true,
+          "description": "Validated id of the plugin whose provider was selected instead"
+        }
+      },
+      "rate": 60,
+      "owner": "Lithe"
     }
   ]
 }

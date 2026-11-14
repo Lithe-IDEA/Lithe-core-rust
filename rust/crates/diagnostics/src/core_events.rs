@@ -456,7 +456,7 @@ mod tests {
     #[test]
     fn queue_rejects_non_core_owner_and_invalid_fields() {
         assert_eq!(
-            prepare("app.font.missing", BTreeMap::new(), None)
+            prepare("app.action.performed", BTreeMap::new(), None)
                 .unwrap_err()
                 .code,
             -32059

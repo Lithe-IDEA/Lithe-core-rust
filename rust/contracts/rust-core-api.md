@@ -3626,7 +3626,10 @@ parser diagnostics; hosts localize codes for presentation.
   With `deduplicate:true`, adjacent facts with equal event ID, fields, channel,
   level, message and op merge within a batch into `log.repeated`; structural hashing
   is followed by equality comparison. Results then correspond to retained records,
-  and the repeated record uses the last omitted event sequence. `previousEvent`
+  and the repeated record uses the last omitted event sequence. Every failed header
+  or event result carries `index`, the zero-based position of the rejected item in
+  its input list, so hosts can name the rejected event without relying on result
+  order; successful results have no `index`. `previousEvent`
   carries the prior batch’s last input for bounded cross-batch comparison; it is
   validated again and never emitted by itself.
   With `validateCatalog:true`, every ordinary event must exist in `catalog::EVENTS`;
@@ -5854,10 +5857,8 @@ row, and existing type/state/sequence/message/error fields remain unchanged.
 Hosts decode and forward optional structured identity independently of the event
 kind, once before event-specific handling; this also covers VCS, build, toolchain
 and backend sessions. Core owns these session lifecycle states and protocol
-initialization. macOS owns only `lsp.session.stage_changed` (DEBUG; closed
-requested|resolving|registered|stopping|cancelled) and `lsp.cache.cleaned` (DEBUG;
-removed entry count), emitted at the source rather than inferred from v1 text.
-Host ready/terminated callbacks retain v1 buffer lines without duplicate v2 facts.
+initialization; hosts add no launch-stage or cache-maintenance events of their
+own. Host ready/terminated callbacks retain v1 buffer lines without duplicate v2 facts.
 Stderr is framed by LF, removes a trailing CR, ignores empty lines, flushes the
 last partial line at EOF, and keeps at most 4096 bytes per line while discarding
 the remainder through LF. `truncated:true` marks the reader limit. Catalog text
@@ -5947,8 +5948,9 @@ accepts `{pluginId,operation,outcome,stage?,durationMs,operationId?}` with no ot
 keys and returns `data:{result:{}}` once the fact is queued, or
 `data:{error:{code:-32064,reason}}`. `outcome` is `finished|failed`; `stage` is
 required for `failed` and forbidden for `finished`. `durationMs` is monotonic
-milliseconds up to 2^53-1. `operationId` follows the SDK `operationId` grammar
-(1-128 bytes of ASCII letters, digits and `._:/-$`). The fact becomes
+milliseconds up to 2^53-1. `operationId` is 1-128 bytes of ASCII letters, digits
+and `._:/-`: the SDK `operationId` grammar without `$`, because the record also
+uses it as its `op`, whose grammar has no `$`. The fact becomes
 `plugins.operation.finished` or `plugins.operation.failed` on
 `plugins/{plugin}/host`, the same events and channel an SDK-backed plugin writes,
 with fields `plugin`, `operation`, `duration_ms` and, for failures, `code`.
@@ -5978,13 +5980,42 @@ a code has one meaning across every contribution with that lifecycle:
 An unknown operation, a stage the lifecycle cannot reach, an unknown key, an
 explicit `null` for an optional key, an invalid operation ID or an out-of-range
 duration all return -32064. Whoever executes the attempt records it. The host
-records debug adapter starts and build commands itself. A debug adapter start
-uses the debug session ID as `operationId`, so it correlates with that session's
-own debug records. It stays at `launch` until the adapter is reachable: a stdio
-process once it runs, a language server hosted adapter once its socket connects.
-A failure before then is `launch`, or `timeout` when the hosted adapter's
-discovery deadline fires. `exit` applies only to an adapter that was reached.
-Core refusing the debug session is a host outcome and is not recorded.
+records debug adapter starts and build commands itself.
+
+A debug adapter start uses the debug session ID as `operationId`, so it
+correlates with that session's own debug records. It runs from launch
+resolution until the adapter answers `initialize`. The adapter is reached once a
+stdio process runs, or once a language server hosted adapter's socket connects.
+The start records exactly one result:
+
+- `resolve` when the adapter's settings, launch plan, program or state
+  directories cannot be resolved;
+- `launch` when the adapter is not reached;
+- `timeout` when the hosted adapter's discovery deadline, the `initialize`
+  window or a write deadline runs out;
+- `exit` when a reached adapter's process or stream ends, or a stdio adapter
+  stops reading its input, before it answers `initialize`;
+- `initialize` for any other failure of a reached adapter before then, a refused
+  `initialize` included;
+- `finished` when the adapter answers `initialize`.
+
+A start the user stops records nothing, and neither does Core refusing the debug
+session, which is a host outcome.
+
+A build command source run uses the `op` of the action that loads the build
+model or its dependencies as `operationId`. It ends at:
+
+- `plan` when the host cannot prepare the plan or its output file, or the plan
+  is not a command;
+- `resolve` when the build tool cannot be found;
+- `launch` when the command's process does not start;
+- `exit` when the command fails, which also covers output that then does not
+  decode;
+- `decode` when a successful command's output is not a valid document;
+- `timeout` when a deadline runs out at any stage.
+
+A load that the project's close cancels records nothing. Requests to a
+provider-backed build system are the plugin's own to log.
 
 A declarative language server is resolved by the host and supervised by Core.
 The host records failures before launch, including servers that launch as
@@ -6038,32 +6069,45 @@ and `plugins/v1/fixtures/backend/plugin-logging.json`. Explicit upstream LSP mes
 types retain their severity through separate catalog events; unclassified
 stderr is DEBUG and actual lifecycle failure is ERROR.
 
-macOS PR3 passes `CoreLogRecord` directly to the injected `LogSink`. Every
-MacLogStore drain, flush and finish calls `diagnostics.drainCoreEvents` once,
-retaining source `ts`/`op` and allocating session `seq`. Only the application
-writer installs the Core log waker; its callback schedules the same 100 ms
-one-shot drain that host events use, so Core and plugin facts recorded without
-host activity reach disk and live subscribers without an idle poller or second
-writer. Finishing the session removes the waker before the final drain.
-MacLogStore sends `diagnostics.configureCoreEvents` only when the
-detailed-diagnostics state or its channel roots change. `channelCategory` maps
-lsp to language, vcs to git and plugin-host processes to plugins. The selected diagnostic category drives
-`lsp.setDetailedDiagnostics` for active sessions, newly registered sessions and
-a one-shot 15-minute expiry. A failed desired state, including a failed
-`configureCoreEvents`, is reported once with
-`app.logging.diagnostics_failed`; changing desired state permits another attempt.
-Language-server evidence has no in-memory v1 buffer on macOS; the log window reads
-only v2 session files.
+The desktop host (Viva/Go, `desktop/internal/logstore` in Lithe-IDEA) encodes
+the facts it drains together with its own events, in one
+`diagnostics.encodeLogBatch` with `validateCatalog: true`. Every drain, flush and
+close calls `diagnostics.drainCoreEvents` once, keeps each fact's `ts`, `op` and
+channel, and allocates the session `seq`. Core keeps one log waker per process,
+so only the application's writer installs it. Its callback only wakes the
+writer, which runs the same 100 ms coalesced drain that host events use. Core
+and plugin facts recorded without host activity therefore reach disk and live
+subscribers without an idle poller or a second writer. Closing the writer
+removes the waker before the final drain.
+
+The writer sends `diagnostics.configureCoreEvents` only when the
+detailed-diagnostics state changes. A failed `configureCoreEvents` is reported
+once with `app.logging.diagnostics_failed`, and is retried only after the
+desired state changes again. The same state drives `lsp.setDetailedDiagnostics`
+for every active plugin session the host started, for sessions started while it
+is on, and for its one-shot 15-minute expiry. Sessions refusing the switch are
+reported with the same event once per choice, however many refuse; a session
+that ended meanwhile is not a failure. `channelCategory` maps lsp to
+language, vcs to git and plugin-host processes to plugins.
+
+Lifecycle facts that Core attaches to runtime events (`event`, `catalogLevel`,
+`fields`) are forwarded to the writer once, before the host branches on the
+event type. This includes the exit event and the last events read while a
+session stops. The log window reads only v2 session files and the writer's
+live batches. There is no in-memory v1 buffer.
 
 `diagnostics.resolveLogChannel` additionally returns optional `pluginFilesPath`
-for a `plugins/<id>/host` channel using Core's `plugin_files_path` rule. macOS
-creates that directory under its current session with mode 0700 and descriptor
-relative no-follow traversal, and supplies `request.logDirectory` before local
-language/provider/backend launch. Missing log storage omits it; Core rejects a
-launch that actually uses `${logDir}`. Remote processes cannot write the macOS
-log directory, so remote requests omit it and reject `${logDir}` rather than
-writing into remote package/state directories. Package installation validation
-uses an uncreated placeholder only to validate expansion, never to launch.
+for a `plugins/<id>/host` channel using Core's `plugin_files_path` rule. The
+desktop host creates that directory under its current session with mode 0700,
+checking each path segment and refusing `.`, `..` and existing symbolic links or
+special files. It supplies the directory as `request.logDirectory` before a
+local language server or plugin backend launch. When the directory is
+unavailable, the host records `app.background.operation_failed` and omits it.
+Core then rejects a launch that actually uses `${logDir}`. Remote processes
+cannot write the host's log directory, so remote requests omit it and reject
+`${logDir}` rather than writing into remote package or state directories.
+Package installation validation uses an uncreated placeholder only to validate
+expansion, never to launch.
 
 Core directory traversal and scratch cleanup reuse PR1's
 `app.search.directory_skipped`, `app.workspace.directory_skipped` and

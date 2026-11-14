@@ -515,6 +515,11 @@ pub struct EncodedLogResult {
     /// Stable item-specific failure, absent on success.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<LogError>,
+    /// Zero-based position of the rejected item in its input list, present only with
+    /// `error`. Deduplication makes results correspond to retained records rather than
+    /// inputs, so this is how a host names the event it must report as rejected.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index: Option<usize>,
 }
 /// Owned batch output with one entry per input item.
 #[derive(Debug, Serialize)]
@@ -535,7 +540,13 @@ pub fn encode_log_batch(request: EncodeLogBatchRequest) -> EncodeLogBatchRespons
     let headers = request
         .headers
         .iter()
-        .map(|header| batch_result(encode_header(header), Some(header.channel.clone())))
+        .enumerate()
+        .map(|(index, header)| {
+            indexed(
+                batch_result(encode_header(header), Some(header.channel.clone())),
+                index,
+            )
+        })
         .collect();
     let mut results = Vec::new();
     let mut previous: Option<(u64, StructuredLogEvent, Option<String>)> =
@@ -550,7 +561,7 @@ pub fn encode_log_batch(request: EncodeLogBatchRequest) -> EncodeLogBatchRespons
         });
     let mut repeated = 0;
     let mut last: Option<StructuredLogEvent> = None;
-    for value in request.events {
+    for (index, value) in request.events.into_iter().enumerate() {
         let prepared = (|| {
             let mut event: StructuredLogEvent = serde_json::from_value(value.clone())
                 .map_err(|_| LogError::new(-32051, "Invalid structured event shape"))?;
@@ -582,13 +593,16 @@ pub fn encode_log_batch(request: EncodeLogBatchRequest) -> EncodeLogBatchRespons
                     continue;
                 }
                 flush_repeated(&mut results, &previous, &last, &mut repeated);
-                results.push(batch_result(encode_record(event.clone()), channel.clone()));
+                results.push(indexed(
+                    batch_result(encode_record(event.clone()), channel.clone()),
+                    index,
+                ));
                 previous = Some((hash, event, channel));
             }
             Err(error) => {
                 flush_repeated(&mut results, &previous, &last, &mut repeated);
                 previous = None;
-                results.push(batch_result(Err(error), None));
+                results.push(indexed(batch_result(Err(error), None), index));
             }
         }
     }
@@ -640,13 +654,23 @@ fn batch_result(result: Result<String, LogError>, channel: Option<String>) -> En
             line: Some(line),
             error: None,
             channel,
+            index: None,
         },
         Err(error) => EncodedLogResult {
             line: None,
             error: Some(error),
             channel: None,
+            index: None,
         },
     }
+}
+
+/// Names the input a failed result rejects; successful results stay unindexed.
+fn indexed(mut result: EncodedLogResult, index: usize) -> EncodedLogResult {
+    if result.error.is_some() {
+        result.index = Some(index);
+    }
+    result
 }
 
 /// Checks one structured event against the catalog, fills its catalog level,
@@ -797,24 +821,6 @@ mod tests {
             "../../../fixtures/diagnostics/logging-v2.json"
         ))
         .unwrap()
-    }
-
-    #[test]
-    fn browser_grammar_failure_accepts_cpp_and_missing_long_language_identity() {
-        for language in [Some("c++"), None] {
-            let mut fields = serde_json::json!({"plugin":"io.example.grammar"});
-            if let Some(language) = language {
-                fields["language"] = language.into();
-            }
-            let input = serde_json::json!({"events":[{"ts":"2026-11-03T00:00:00Z","level":"WARN","seq":1,
-                "event":"plugins.grammar.load_failed","msg":"","fields":fields}],"validateCatalog":true});
-            let result = encode_log_batch(serde_json::from_value(input).unwrap());
-            assert!(
-                result.results[0].line.is_some(),
-                "{language:?}: {:?}",
-                result.results[0].error
-            );
-        }
     }
 
     #[test]
@@ -1067,9 +1073,38 @@ mod tests {
     }
 
     #[test]
+    fn rejected_results_name_their_input_after_deduplication() {
+        let started = json!({"ts":"2026-11-03T08:00:00Z", "level":"INFO", "seq":1,
+            "event":"app.session.started", "msg":""});
+        let mut repeated = started.clone();
+        repeated["seq"] = json!(2);
+        let unknown = json!({"ts":"2026-11-03T08:00:00Z", "level":"INFO", "seq":3,
+            "event":"app.unknown.never_declared", "msg":""});
+        let wrong_level = json!({"ts":"2026-11-03T08:00:00Z", "level":"WARN", "seq":4,
+            "event":"app.session.started", "msg":""});
+        let batch = encode_log_batch(EncodeLogBatchRequest {
+            previous_event: None,
+            deduplicate: true,
+            validate_catalog: true,
+            headers: vec![],
+            events: vec![started, repeated, unknown, wrong_level],
+        });
+        let rejected: Vec<_> = batch
+            .results
+            .iter()
+            .filter_map(|result| Some((result.index?, result.error.as_ref()?.code)))
+            .collect();
+        assert_eq!(rejected, vec![(2, -32053), (3, -32057)]);
+        assert!(batch
+            .results
+            .iter()
+            .all(|result| result.error.is_some() == result.index.is_some()));
+    }
+
+    #[test]
     fn catalog_batch_deduplicates_equal_fields_without_merging_operations() {
-        let event = json!({"ts":"2026-11-03T08:00:00Z", "level":"WARN", "seq":1,
-            "event":"app.font.missing", "msg":"ignored", "fields":{"font":"fixture"}, "op":"first"});
+        let event = json!({"ts":"2026-11-03T08:00:00Z", "level":"INFO", "seq":1,
+            "event":"app.action.performed", "msg":"ignored", "fields":{"action":"fixture","surface":"menu"}, "op":"first"});
         let mut second = event.clone();
         second["seq"] = json!(2);
         let mut third = event.clone();
@@ -1093,13 +1128,13 @@ mod tests {
             .unwrap()
             .contains("op=second"));
         let next = encode_log_batch(EncodeLogBatchRequest {
-            previous_event: Some(json!({"ts":"2026-11-03T08:00:00Z", "level":"WARN", "seq":3,
-                "event":"app.font.missing", "msg":"ignored", "fields":{"font":"fixture"}, "op":"second"})),
+            previous_event: Some(json!({"ts":"2026-11-03T08:00:00Z", "level":"INFO", "seq":3,
+                "event":"app.action.performed", "msg":"ignored", "fields":{"action":"fixture","surface":"menu"}, "op":"second"})),
             deduplicate: true,
             validate_catalog: true,
             headers: vec![],
-            events: vec![json!({"ts":"2026-11-03T08:00:01Z", "level":"WARN", "seq":4,
-                "event":"app.font.missing", "msg":"ignored", "fields":{"font":"fixture"}, "op":"second"})],
+            events: vec![json!({"ts":"2026-11-03T08:00:01Z", "level":"INFO", "seq":4,
+                "event":"app.action.performed", "msg":"ignored", "fields":{"action":"fixture","surface":"menu"}, "op":"second"})],
         });
         assert_eq!(next.results.len(), 1);
         assert!(next.results[0]

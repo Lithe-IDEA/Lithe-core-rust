@@ -3,31 +3,6 @@
   "root": "lsp",
   "events": [
     {
-      "id": "lsp.host.operation_failed",
-      "channel": "lsp/{server}",
-      "level": "warn",
-      "message": "Language host operation failed at {stage}",
-      "fields": {
-        "server": {
-          "type": "id",
-          "required": true,
-          "description": "Core-resolved language server identity owning this host operation"
-        },
-        "stage": {
-          "type": "token",
-          "required": true,
-          "description": "Host operation step that failed, such as entrypoint-warmup or language-import"
-        },
-        "error": {
-          "type": "error",
-          "required": true,
-          "description": "Native or stable runtime error that caused the host operation fallback"
-        }
-      },
-      "rate": 120,
-      "owner": "LitheLanguageIntelligenceModule"
-    },
-    {
       "id": "lsp.message.logged",
       "channel": "lsp/{server}",
       "level": "info",
@@ -252,102 +227,6 @@
           "type": "token",
           "required": true,
           "description": "Core session lifecycle state emitted by the managed engine (for example ready or stopped)."
-        }
-      }
-    },
-    {
-      "id": "lsp.session.issue_failed",
-      "channel": "lsp/{server}",
-      "level": "error",
-      "owner": "LanguageToolingSessionManager",
-      "message": "Language server {server} operation failed",
-      "fields": {
-        "server": {
-          "type": "id",
-          "required": true,
-          "description": "Language provider identity owned by the registered session."
-        },
-        "stage": {
-          "type": "token",
-          "required": true,
-          "description": "Actual source stage, such as discovery, configuration, documentSync or processStart."
-        },
-        "failure_code": {
-          "type": "token",
-          "required": true,
-          "description": "Stable failure classification supplied by the owning runtime or host boundary."
-        },
-        "exit_code": {
-          "type": "int",
-          "required": false,
-          "description": "Native language server process exit status when supplied by the runtime."
-        }
-      }
-    },
-    {
-      "id": "lsp.session.degradation_received",
-      "channel": "lsp/{server}",
-      "level": "warn",
-      "owner": "LanguageToolingSessionManager",
-      "message": "Language server {server} operation degraded",
-      "fields": {
-        "server": {
-          "type": "id",
-          "required": true,
-          "description": "Language provider identity owned by the registered session."
-        },
-        "stage": {
-          "type": "token",
-          "required": true,
-          "description": "Actual source stage, such as discovery, configuration, documentSync or processStart."
-        },
-        "failure_code": {
-          "type": "token",
-          "required": true,
-          "description": "Stable failure classification supplied by the owning runtime or host boundary."
-        },
-        "exit_code": {
-          "type": "int",
-          "required": false,
-          "description": "Native language server process exit status when supplied by the runtime."
-        }
-      }
-    },
-    {
-      "id": "lsp.session.stage_changed",
-      "channel": "lsp/{server}",
-      "level": "debug",
-      "owner": "LanguageToolingSessionManager",
-      "message": "Language server {server} host stage changed to {stage}",
-      "fields": {
-        "server": {
-          "type": "id",
-          "required": true,
-          "description": "Core-resolved language provider routing segment shared with engine session events."
-        },
-        "stage": {
-          "type": "token",
-          "required": true,
-          "description": "Closed host orchestration stage: requested, resolving, registered, stopping, or cancelled."
-        }
-      }
-    },
-    {
-      "id": "lsp.cache.cleaned",
-      "channel": "lsp/{server}",
-      "level": "debug",
-      "owner": "LanguageToolingSessionManager",
-      "message": "Language server {server} cache cleaned",
-      "fields": {
-        "server": {
-          "type": "id",
-          "required": true,
-          "description": "Core-resolved language provider routing segment whose workspace cache was pruned."
-        },
-        "removed": {
-          "type": "int",
-          "required": true,
-          "description": "Number of workspace cache entries removed by the host cache cleaner."
         }
       }
     },
