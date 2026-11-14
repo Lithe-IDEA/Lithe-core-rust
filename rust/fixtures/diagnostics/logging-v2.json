@@ -941,16 +941,17 @@
       "name": "catalog message and channel",
       "input": {
         "ts": "2026-11-03T08:00:00Z",
-        "level": "WARN",
+        "level": "INFO",
         "seq": 1,
-        "event": "app.font.missing",
+        "event": "app.action.performed",
         "msg": "untrusted message",
         "fields": {
-          "font": "FixtureFont"
+          "action": "fixture.action",
+          "surface": "menu"
         }
       },
       "channel": "app",
-      "contains": "Bundled font FixtureFont missing"
+      "contains": "User action fixture.action performed"
     },
     {
       "name": "unknown event",
@@ -961,7 +962,8 @@
         "event": "unknown.event",
         "msg": "untrusted message",
         "fields": {
-          "font": "FixtureFont"
+          "action": "fixture.action",
+          "surface": "menu"
         }
       },
       "code": -32053
@@ -970,9 +972,9 @@
       "name": "missing field",
       "input": {
         "ts": "2026-11-03T08:00:00Z",
-        "level": "WARN",
+        "level": "INFO",
         "seq": 1,
-        "event": "app.font.missing",
+        "event": "app.action.performed",
         "msg": "untrusted message",
         "fields": {}
       },
@@ -982,12 +984,13 @@
       "name": "invalid field",
       "input": {
         "ts": "2026-11-03T08:00:00Z",
-        "level": "WARN",
+        "level": "INFO",
         "seq": 1,
-        "event": "app.font.missing",
+        "event": "app.action.performed",
         "msg": "untrusted message",
         "fields": {
-          "font": "has spaces"
+          "action": "has spaces",
+          "surface": "menu"
         }
       },
       "code": -32055
@@ -996,13 +999,14 @@
       "name": "unknown field",
       "input": {
         "ts": "2026-11-03T08:00:00Z",
-        "level": "WARN",
+        "level": "INFO",
         "seq": 1,
-        "event": "app.font.missing",
+        "event": "app.action.performed",
         "msg": "untrusted message",
         "fields": {
-          "font": "FixtureFont",
-          "extra": true
+          "extra": true,
+          "action": "fixture.action",
+          "surface": "menu"
         }
       },
       "code": -32056
@@ -1011,12 +1015,13 @@
       "name": "level mismatch",
       "input": {
         "ts": "2026-11-03T08:00:00Z",
-        "level": "INFO",
+        "level": "WARN",
         "seq": 1,
-        "event": "app.font.missing",
+        "event": "app.action.performed",
         "msg": "untrusted message",
         "fields": {
-          "font": "FixtureFont"
+          "action": "fixture.action",
+          "surface": "menu"
         }
       },
       "code": -32057

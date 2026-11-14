@@ -262,12 +262,11 @@ mod tests {
         let fields = BTreeMap::from([("failure_code".into(), json!("request_failed"))]);
         assert!(validate_fields("remote.upload.abort_failed", &fields).is_ok());
         let fields = BTreeMap::from([
-            ("plugin".into(), json!("io.example")),
-            ("language".into(), json!("toml")),
+            ("operation".into(), json!("fixture")),
             ("error".into(), json!("failed")),
         ]);
         assert_eq!(
-            validate_fields("plugins.grammar.load_failed", &fields)
+            validate_fields("app.background.operation_failed", &fields)
                 .unwrap_err()
                 .code,
             CatalogErrorCode::MissingField

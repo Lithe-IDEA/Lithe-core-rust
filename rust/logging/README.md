@@ -43,7 +43,7 @@
 
 Swift 的事件值是**未经脱敏的内存输入**，不能自行序列化落盘。Core 先对 `error`、`text` 输入脱敏、删除控制字符、按 UTF-8 字符边界截断到 1024 字节，再由 `catalog::validate_fields(id, fields)` 校验磁盘键展开后的类型、必填、未知字段、长度和错误组件完整性；这一步校验形状，不代替隐私脱敏。macOS 的跨边界适配器连接 Core 的脱敏、格式化和写入路径，不得另写 Swift 格式化或隐私策略。
 
-可选身份字段超长时只省略该字段，不省略整条事件。例如 `plugins.grammar.load_failed` 的语言字段是可选 `version`，允许 `c++` 等合法语言 ID；语言 ID 超长时省略语言字段，插件失败事件照常记录。
+可选身份字段超长时只省略该字段，不省略整条事件。例如 `lsp.process.started` 的 `runtime_version` 是可选 `version`；运行时上报的版本超过 64 字节时省略该字段，进程启动事件照常记录。
 
 ## 四、级别、span 与 rate
 
@@ -103,7 +103,7 @@ Swift 的事件值是**未经脱敏的内存输入**，不能自行序列化落�
 - 详细诊断只接纳 `$/logTrace.message` 摘要；`verbose` 可能包含原始 RPC 载荷和文档源码，禁止进入 v2 `text`。凭据脱敏和 1 KiB 限长不代表源码可以落盘。`initialized` 之前收到的开关只保存目标状态，Core 在 `initialized` 之后发送通知。
 - v1 的 detail、message、level 保持兼容原文；v2 字段通过独立的 `EngineLogInput` 传递，禁止从 detail 反解。原始通知 JSON、`projectCount=N` 和 navigation 格式不变。macOS 日志窗口统一读取 v2 会话文件和写入器的实时批次，不写 v1 文件。
 - Core 的生命周期事实挂在原有 `type: stateChanged` 运行时事件上，复用 `prepare_catalog_event` 校验，不额外增加 v1 日志行。Swift 在事件分支之前转发任何携带 `coreLog` 的事件一次，语言服务、VCS、构建、工具链和后端都适用。`*.session.updated` 的 state 指 Core 会话生命周期，owner 是 `lithe-core`，宿主不再重复发同一状态事实。
-- 宿主在实际调用点发 `lsp.session.stage_changed`，阶段闭集为 requested、resolving、registered、stopping、cancelled；缓存清理成功发 `lsp.cache.cleaned(removed)`，它与 Core 配置键清理的 `configuration.cleaned` 是不同事实。两者为 DEBUG，因为它们解释内部启动编排和缓存维护，不需要常态落盘。ready 和 terminated 由 Core 的 `protocol.initialized` 和 `session.updated` 表达。阶段、缓存、degradation 和 issue 事件统一使用 Core 计算的段；manager 按 providerID 缓存成功或失败结果，最多 128 项，满时清空；失败只跳过对应的宿主 v2 事件，不改变原有行为。
+- 语言服务的启动、ready 和 terminated 全部由 Core 的 `*.process.started`、`protocol.initialized` 和 `session.updated` 表达，宿主不另发启动阶段或缓存维护事件。
 - 本地启动前，`MacLogStore` 用 Core 的 `plugin_files_path` 创建当前会话的 `sessions/<session>/plugins/<id>/files/`，目录权限 0700，用相对描述符和 no-follow 遍历防止符号链接越界。该目录只属于当前日志会话，不注册为跨工作树可复用的构建资源，不写 bundle 或安装目录。存储不可用时不传 `logDirectory`，使用 `${logDir}` 的模板按现有 `invalidRequest` 失败。远程进程不能写本机日志目录，因此同样不传 `logDirectory` 并拒绝该变量。安装验证只用未创建的占位目录校验展开，不启动进程也不写入。
 
 ## 八、辅助 crate

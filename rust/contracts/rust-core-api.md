@@ -3626,7 +3626,10 @@ parser diagnostics; hosts localize codes for presentation.
   With `deduplicate:true`, adjacent facts with equal event ID, fields, channel,
   level, message and op merge within a batch into `log.repeated`; structural hashing
   is followed by equality comparison. Results then correspond to retained records,
-  and the repeated record uses the last omitted event sequence. `previousEvent`
+  and the repeated record uses the last omitted event sequence. Every failed header
+  or event result carries `index`, the zero-based position of the rejected item in
+  its input list, so hosts can name the rejected event without relying on result
+  order; successful results have no `index`. `previousEvent`
   carries the prior batch’s last input for bounded cross-batch comparison; it is
   validated again and never emitted by itself.
   With `validateCatalog:true`, every ordinary event must exist in `catalog::EVENTS`;
@@ -5854,10 +5857,8 @@ row, and existing type/state/sequence/message/error fields remain unchanged.
 Hosts decode and forward optional structured identity independently of the event
 kind, once before event-specific handling; this also covers VCS, build, toolchain
 and backend sessions. Core owns these session lifecycle states and protocol
-initialization. macOS owns only `lsp.session.stage_changed` (DEBUG; closed
-requested|resolving|registered|stopping|cancelled) and `lsp.cache.cleaned` (DEBUG;
-removed entry count), emitted at the source rather than inferred from v1 text.
-Host ready/terminated callbacks retain v1 buffer lines without duplicate v2 facts.
+initialization; hosts add no launch-stage or cache-maintenance events of their
+own. Host ready/terminated callbacks retain v1 buffer lines without duplicate v2 facts.
 Stderr is framed by LF, removes a trailing CR, ignores empty lines, flushes the
 last partial line at EOF, and keeps at most 4096 bytes per line while discarding
 the remainder through LF. `truncated:true` marks the reader limit. Catalog text
