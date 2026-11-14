@@ -131,6 +131,11 @@ pub enum CoreCommand {
     /// Decides what a link or an image of a rendered Markdown document points at
     /// (`markdown.resolveReference`).
     MarkdownResolveReference,
+    /// Finds the site an HTML file is previewed as and the document's address in it
+    /// (`htmlPreview.site`).
+    HtmlPreviewSite,
+    /// Decides what one request of an HTML preview's site serves (`htmlPreview.resolveRequest`).
+    HtmlPreviewResolveRequest,
     /// Editor reducers: workbench state, text edits, find, navigation and preferences (`editor.*`).
     Editor(EditorCommand),
     /// Applies one transition to the rearrangeable workbench chrome: stripe, title bar and status bar
@@ -1191,6 +1196,8 @@ impl CoreCommand {
             "markdown.render" => Some(Self::MarkdownRender),
             "markdown.outline" => Some(Self::MarkdownOutline),
             "markdown.resolveReference" => Some(Self::MarkdownResolveReference),
+            "htmlPreview.site" => Some(Self::HtmlPreviewSite),
+            "htmlPreview.resolveRequest" => Some(Self::HtmlPreviewResolveRequest),
             "keymap.parseContext" => Some(Self::Keymap(KeymapCommand::ParseContext)),
             "keymap.evaluateContext" => Some(Self::Keymap(KeymapCommand::EvaluateContext)),
             "keymap.analyzeConflicts" => Some(Self::Keymap(KeymapCommand::AnalyzeConflicts)),

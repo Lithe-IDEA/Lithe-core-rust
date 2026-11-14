@@ -999,6 +999,100 @@ fn markdown_resolve_reference_command_answers_links_and_resources() {
 }
 
 #[test]
+fn html_preview_commands_match_shared_fixture() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../fixtures/editor/html-preview-v1.json"
+    ))
+    .expect("HTML preview fixture should decode");
+    let top = temporary_root("html-preview");
+    let _ = fs::remove_dir_all(&top);
+    struct Cleanup(std::path::PathBuf);
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    let _cleanup = Cleanup(top.clone());
+    let root = top.join("workspace");
+    let under = |relative: &str| {
+        relative
+            .split('/')
+            .filter(|name| !name.is_empty())
+            .fold(root.clone(), |path, name| path.join(name))
+    };
+    for entry in fixture["files"].as_array().expect("fixture files") {
+        let entry = entry.as_str().expect("file entry");
+        let path = under(entry);
+        if entry.ends_with('/') {
+            fs::create_dir_all(&path).expect("fixture folder should be creatable");
+        } else {
+            fs::create_dir_all(path.parent().expect("file folder"))
+                .expect("fixture folder should be creatable");
+            fs::write(&path, "x").expect("fixture file should write");
+        }
+    }
+    let call = |command: &str, payload: Value| -> Value {
+        let request = serde_json::json!({ "id": "html", "command": command, "payload": payload });
+        serde_json::from_str(&execute_json(
+            &serde_json::to_string(&request).expect("HTML preview request should encode"),
+        ))
+        .expect("HTML preview response should be JSON")
+    };
+
+    for case in fixture["cases"].as_array().expect("fixture cases") {
+        let name = case["name"].as_str().expect("case name");
+        let mut payload = serde_json::json!({
+            "documentPath": under(case["document"].as_str().expect("case document")).to_string_lossy()
+        });
+        if case["inWorkspace"] == true {
+            payload["workspaceRoot"] = Value::from(root.to_string_lossy().into_owned());
+        }
+        let site = call("htmlPreview.site", payload.clone());
+        assert_eq!(site["ok"], true, "{name}: {site}");
+        let want = &case["site"];
+        assert_eq!(
+            site["data"]["root"],
+            under(want["root"].as_str().expect("site root"))
+                .to_string_lossy()
+                .as_ref(),
+            "{name}"
+        );
+        assert_eq!(site["data"]["address"], want["address"], "{name}");
+        assert_eq!(site["data"]["mime"], want["mime"], "{name}");
+
+        for request in case["requests"].as_array().expect("case requests") {
+            let path = request["path"].as_str().expect("request path");
+            payload["path"] = Value::from(path);
+            let response = call("htmlPreview.resolveRequest", payload.clone());
+            assert_eq!(response["ok"], true, "{name}: {path}: {response}");
+            let mut want = serde_json::json!({ "kind": request["kind"] });
+            if let Some(file) = request["file"].as_str() {
+                want["path"] = Value::from(
+                    fs::canonicalize(under(file))
+                        .expect("canonical fixture file")
+                        .to_string_lossy()
+                        .into_owned(),
+                );
+                want["mime"] = request["mime"].clone();
+            }
+            assert_eq!(response["data"], want, "{name}: {path}");
+        }
+    }
+
+    for document in fixture["invalidDocuments"]
+        .as_array()
+        .expect("invalid documents")
+    {
+        let response = call(
+            "htmlPreview.site",
+            serde_json::json!({ "documentPath": document }),
+        );
+        assert_eq!(response["ok"], false, "{document}: {response}");
+        assert_eq!(response["error"]["code"], "invalid_request", "{document}");
+    }
+}
+
+#[test]
 fn search_matches_shared_fixture_semantics() {
     let fixture = fixture();
     let root = temporary_root("search");

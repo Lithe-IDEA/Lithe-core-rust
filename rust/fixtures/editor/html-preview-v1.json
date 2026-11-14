@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "description": "htmlPreview.site and htmlPreview.resolveRequest for HTML files previewed as static sites. Paths are slash-separated and relative to a fresh workspace; an entry of `files` ending in `/` is an empty folder, any other entry a file. `site.root` is relative to the workspace, empty for the workspace itself. A `file` answer's `path` is relative to the workspace and compared after resolving symbolic links.",
+  "files": [
+    "site/index.html",
+    "site/page one.html",
+    "site/a%20b.html",
+    "site/css/app.css",
+    "site/app.mjs",
+    "site/data.bin",
+    "site/docs/index.html",
+    "site/empty/",
+    "site/server.pem",
+    "site/.env",
+    ".git/config",
+    ".github/pages/page.html",
+    ".github/pages/style.css"
+  ],
+  "cases": [
+    {
+      "name": "a page in the workspace is served from the workspace",
+      "document": "site/page one.html",
+      "inWorkspace": true,
+      "site": {
+        "root": "",
+        "address": "site/page%20one.html",
+        "mime": "text/html; charset=utf-8"
+      },
+      "requests": [
+        { "path": "site/page one.html", "kind": "document" },
+        { "path": "site/css/app.css", "kind": "file", "file": "site/css/app.css", "mime": "text/css; charset=utf-8" },
+        { "path": "site/app.mjs", "kind": "file", "file": "site/app.mjs", "mime": "text/javascript; charset=utf-8" },
+        { "path": "site/data.bin", "kind": "file", "file": "site/data.bin", "mime": "application/octet-stream" },
+        { "path": "site/a%20b.html", "kind": "file", "file": "site/a%20b.html", "mime": "text/html; charset=utf-8" },
+        { "path": "site/index.html", "kind": "file", "file": "site/index.html", "mime": "text/html; charset=utf-8" },
+        { "path": "site/docs", "kind": "directory" },
+        { "path": "site/docs/", "kind": "directory" },
+        { "path": "site/empty", "kind": "none" },
+        { "path": "", "kind": "none" },
+        { "path": "site/missing.css", "kind": "none" },
+        { "path": "../outside.css", "kind": "none" },
+        { "path": "site/../../outside.css", "kind": "none" },
+        { "path": "site\\..\\..\\outside.css", "kind": "none" },
+        { "path": "C:/Windows/win.ini", "kind": "none" },
+        { "path": ".git/config", "kind": "denied" },
+        { "path": "site/.env", "kind": "denied" },
+        { "path": "site/server.pem", "kind": "denied" },
+        { "path": ".github/pages/page.html", "kind": "denied" }
+      ]
+    },
+    {
+      "name": "a page in a hidden folder reaches its own folder but no other hidden one",
+      "document": ".github/pages/page.html",
+      "inWorkspace": true,
+      "site": {
+        "root": "",
+        "address": ".github/pages/page.html",
+        "mime": "text/html; charset=utf-8"
+      },
+      "requests": [
+        { "path": ".github/pages/page.html", "kind": "document" },
+        { "path": ".github/pages/style.css", "kind": "file", "file": ".github/pages/style.css", "mime": "text/css; charset=utf-8" },
+        { "path": ".git/config", "kind": "denied" },
+        { "path": "site/.env", "kind": "denied" }
+      ]
+    },
+    {
+      "name": "a page outside the workspace is served from its own folder",
+      "document": "site/index.html",
+      "inWorkspace": false,
+      "site": {
+        "root": "site",
+        "address": "index.html",
+        "mime": "text/html; charset=utf-8"
+      },
+      "requests": [
+        { "path": "index.html", "kind": "document" },
+        { "path": "css/app.css", "kind": "file", "file": "site/css/app.css", "mime": "text/css; charset=utf-8" },
+        { "path": "", "kind": "directory" },
+        { "path": "../.git/config", "kind": "none" },
+        { "path": ".env", "kind": "denied" }
+      ]
+    }
+  ],
+  "invalidDocuments": ["index.html"]
+}
