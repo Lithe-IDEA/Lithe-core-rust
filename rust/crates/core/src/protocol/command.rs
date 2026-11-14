@@ -124,6 +124,8 @@ pub enum CoreCommand {
     ProcessLifecycleInventory,
     /// Turns a plan and the user's answers into what ends (`processLifecycle.settle`).
     ProcessLifecycleSettle,
+    /// Sums a process table's memory by part of the instance (`processMemory.summarize`).
+    ProcessMemorySummarize,
     /// Renders and sanitizes shared Markdown (`markdown.render`).
     MarkdownRender,
     /// Outlines the headings of shared Markdown as document symbols (`markdown.outline`).
@@ -1193,6 +1195,7 @@ impl CoreCommand {
             "processLifecycle.resolve" => Some(Self::ProcessLifecycleResolve),
             "processLifecycle.inventory" => Some(Self::ProcessLifecycleInventory),
             "processLifecycle.settle" => Some(Self::ProcessLifecycleSettle),
+            "processMemory.summarize" => Some(Self::ProcessMemorySummarize),
             "markdown.render" => Some(Self::MarkdownRender),
             "markdown.outline" => Some(Self::MarkdownOutline),
             "markdown.resolveReference" => Some(Self::MarkdownResolveReference),
@@ -1622,6 +1625,10 @@ mod tests {
         assert!(matches!(
             CoreCommand::parse("processLifecycle.settle"),
             Some(CoreCommand::ProcessLifecycleSettle)
+        ));
+        assert!(matches!(
+            CoreCommand::parse("processMemory.summarize"),
+            Some(CoreCommand::ProcessMemorySummarize)
         ));
     }
 
