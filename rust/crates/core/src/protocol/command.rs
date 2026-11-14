@@ -126,6 +126,8 @@ pub enum CoreCommand {
     ProcessLifecycleSettle,
     /// Renders and sanitizes shared Markdown (`markdown.render`).
     MarkdownRender,
+    /// Outlines the headings of shared Markdown as document symbols (`markdown.outline`).
+    MarkdownOutline,
     /// Decides what a link or an image of a rendered Markdown document points at
     /// (`markdown.resolveReference`).
     MarkdownResolveReference,
@@ -1192,6 +1194,7 @@ impl CoreCommand {
             "processLifecycle.inventory" => Some(Self::ProcessLifecycleInventory),
             "processLifecycle.settle" => Some(Self::ProcessLifecycleSettle),
             "markdown.render" => Some(Self::MarkdownRender),
+            "markdown.outline" => Some(Self::MarkdownOutline),
             "markdown.resolveReference" => Some(Self::MarkdownResolveReference),
             "htmlPreview.site" => Some(Self::HtmlPreviewSite),
             "htmlPreview.resolveRequest" => Some(Self::HtmlPreviewResolveRequest),

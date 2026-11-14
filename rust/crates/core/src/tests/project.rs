@@ -927,6 +927,39 @@ fn markdown_render_command_returns_sanitized_html() {
 }
 
 #[test]
+fn markdown_outline_command_answers_the_shared_fixture() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../fixtures/editor/markdown-outline-v1.json"
+    ))
+    .expect("Markdown outline fixture should decode");
+    for case in fixture["cases"].as_array().expect("fixture cases") {
+        let request = serde_json::json!({
+            "id": "markdown-outline-1",
+            "command": "markdown.outline",
+            "payload": {"source": case["source"]}
+        });
+        let response: Value = serde_json::from_str(&execute_json(
+            &serde_json::to_string(&request).expect("outline request should encode"),
+        ))
+        .expect("outline response should be JSON");
+
+        assert_eq!(response["ok"], true, "{}: {response}", case["name"]);
+        assert_eq!(response["data"], case["expected"], "{}", case["name"]);
+    }
+}
+
+#[test]
+fn markdown_outline_command_rejects_a_payload_without_source() {
+    let response: Value = serde_json::from_str(&execute_json(
+        r#"{"id":"markdown-outline-2","command":"markdown.outline","payload":{}}"#,
+    ))
+    .expect("outline response should be JSON");
+
+    assert_eq!(response["ok"], false);
+    assert_eq!(response["error"]["code"], "invalid_request");
+}
+
+#[test]
 fn markdown_resolve_reference_command_answers_links_and_resources() {
     let resolve = |reference: &str, purpose: &str| -> Value {
         let request = serde_json::json!({

@@ -551,6 +551,7 @@ or removing a command fails until the table changes in the same commit.
 | `processLifecycle.inventory` | Group a process snapshot of one Lithe instance into terminals, Agent tasks and background services |
 | `processLifecycle.settle` | Turn confirmation answers into what ends, what is kept and the updated settings |
 | `markdown.render` | Renders and sanitizes shared Markdown |
+| `markdown.outline` | Outlines the headings of shared Markdown as a document-symbol tree |
 | `markdown.resolveReference` | Decides what a link or an image of a rendered Markdown document points at |
 | `htmlPreview.site` | Names the folder an HTML file is previewed from and the file's address in it |
 | `htmlPreview.resolveRequest` | Decides what one request of an HTML preview serves |
@@ -5560,6 +5561,42 @@ load what this command refuses.
 
 Shared examples: `rust/fixtures/editor/markdown-render-v1.json`,
 `markdown-html-v1.json` and `markdown-rich-content-v1.json`.
+
+### Markdown heading outline
+
+`markdown.outline` accepts `{ "source": "<Markdown text>" }` and returns
+`{ "symbols": [...] }`, the headings of the source as a tree in the normalized
+document-symbol shape `lsp.request` returns for `textDocument/documentSymbol`.
+Hosts show it where they show a language server's symbols, so a Markdown file
+has a structure without a language server, and it lists the headings the
+preview's outline lists: the source is parsed with the dialect of
+`markdown.render`.
+
+- Every heading Comrak parses is listed in document order, including ATX and
+  setext headings inside block quotes, lists and alerts. Front matter, code and
+  raw HTML headings such as `<h2>` are not headings.
+- `name` is the heading's text as the preview shows it: text, inline code, math
+  literals and shortcode emoji, without images, footnote references and HTML
+  tags, with each run of whitespace collapsed to one space and the ends trimmed.
+  A heading whose name is empty is left out, and its section belongs to the
+  heading before it.
+- A heading is a child of the nearest heading before it with a lower level, so a
+  skipped level nests one step.
+- `kind` is `15` (`SymbolKind.String`, as editors mark Markdown headings);
+  `detail` and `containerName` are `null`, `tags` is empty and `deprecated` is
+  `false`.
+- Positions are zero-based lines and UTF-16 columns (`{ line, utf16Column }`);
+  `\n`, `\r\n` and a lone `\r` end a line. `selectionRange` covers the heading
+  from its first character to just after its last, a setext heading's underline
+  included. `range` is its section: from the start of its first line to the start
+  of the line of the next heading of the same or a higher level, or to the end of
+  the source.
+
+Hosts request the outline off their window thread, discard a response to an
+older revision of the source, and bound the source size they send as they bound
+the preview's.
+
+Shared examples: `rust/fixtures/editor/markdown-outline-v1.json`.
 
 ## HTML file preview
 
