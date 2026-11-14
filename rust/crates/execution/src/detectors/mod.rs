@@ -24,7 +24,7 @@ use lithe_protocol::CoreError;
 use std::collections::BTreeMap;
 use std::path::Path;
 
-pub use scan::{scan, DirectoryContext};
+pub use scan::{scan, scan_ignoring, DirectoryContext};
 
 /// One runnable thing a detector found.
 ///

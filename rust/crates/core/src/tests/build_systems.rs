@@ -777,6 +777,59 @@ fn detection_skips_directories_git_ignores() {
     assert_eq!(instance_ids(&detection), ["cargo:.", "cargo:tools"]);
 }
 
+/// Dot-named directories hold tool state and copies of the workspace, so
+/// detection skips them unless the workspace's ignored paths say otherwise;
+/// those paths decide before Git, so `!` brings back a directory Git ignores.
+#[test]
+fn detection_skips_the_ignored_paths_and_by_default_every_dot_directory() {
+    let package = |name: &str| format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\n");
+    let workspace = TemporaryWorkspace::new("build-detect-ignored-paths");
+    workspace
+        .write(".git/HEAD", "ref: refs/heads/main\n")
+        .write(".gitignore", "/generated/\n")
+        .write("Cargo.toml", &package("app"))
+        .write("tools/Cargo.toml", &package("tools"))
+        .write("generated/Cargo.toml", &package("generated"))
+        .write(".cache/copy/Cargo.toml", &package("app"))
+        .write(".config/plugin/Cargo.toml", &package("plugin"));
+    let detect_ignoring = |patterns: Value| {
+        build_detect_command::<Manifest>(json!({
+            "workspaceRoot": workspace.root(),
+            "plugins": [{"manifest": fixture("build-static-file.plugin.json")}],
+            "ignoredPaths": patterns,
+        }))
+        .expect("payload is well formed")
+    };
+
+    let omitted = detect(
+        &workspace,
+        vec![fixture("build-static-file.plugin.json")],
+        json!({}),
+    );
+    assert_eq!(instance_ids(&omitted), ["cargo:.", "cargo:tools"]);
+    assert_eq!(detect_ignoring(Value::Null)["detection"], omitted);
+    assert_eq!(
+        instance_ids(&detect_ignoring(json!([]))["detection"]),
+        [
+            "cargo:.",
+            "cargo:.cache/copy",
+            "cargo:.config/plugin",
+            "cargo:tools"
+        ]
+    );
+    assert_eq!(
+        instance_ids(
+            &detect_ignoring(json!([".*", "!.config", "!generated", "/tools"]))["detection"]
+        ),
+        ["cargo:.", "cargo:.config/plugin", "cargo:generated"]
+    );
+
+    let rejected = detect_ignoring(json!([".*", "# comment"]));
+    assert_eq!(rejected["status"], "rejected", "{rejected}");
+    assert_eq!(rejected["error"]["code"], "plugin.build.invalidIgnoredPath");
+    assert_eq!(rejected["error"]["field"], "ignoredPaths[1]");
+}
+
 #[test]
 fn detection_returns_empty_for_non_directory_and_missing_workspace_roots() {
     let workspace = TemporaryWorkspace::new("build-detect-non-directory");

@@ -23,6 +23,9 @@ pub(super) fn dispatch(command: BuildCommand, id: Option<String>, payload: Value
             payload,
             crate::build::build_edit_stored_option_command::<Manifest>,
         ),
+        BuildCommand::EditIgnoredPaths => {
+            plugin_response(id, payload, crate::build::edit_ignored_paths_command)
+        }
         BuildCommand::InvocationPlan => plugin_response(
             id,
             payload,

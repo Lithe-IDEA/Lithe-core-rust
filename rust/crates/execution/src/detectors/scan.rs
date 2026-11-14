@@ -1,5 +1,6 @@
 //! Bounded workspace traversal shared by all run-configuration detectors.
 
+use crate::workspace_scan::{scan_run_workspace_ignoring, IgnoredPaths};
 use lithe_protocol::{CoreError, ErrorCode};
 use lithe_workspace::fs;
 use std::collections::BTreeSet;
@@ -77,7 +78,16 @@ impl DirectoryContext {
 /// Walks the project, pruning uninteresting subtrees *before* descending rather
 /// than filtering afterwards, so a `node_modules` tree is never read at all.
 pub fn scan(root: &Path) -> Result<Vec<DirectoryContext>, CoreError> {
-    let snapshot = super::super::workspace_scan::scan_run_workspace(root, Some(MAX_DEPTH))?;
+    scan_ignoring(root, &IgnoredPaths::default())
+}
+
+/// [`scan`] that also prunes the directories `ignored` names, for build
+/// detection, whose ignored paths are a Build option of the workspace.
+pub fn scan_ignoring(
+    root: &Path,
+    ignored: &IgnoredPaths,
+) -> Result<Vec<DirectoryContext>, CoreError> {
+    let snapshot = scan_run_workspace_ignoring(root, MAX_DEPTH, ignored)?;
     snapshot
         .directories
         .into_iter()

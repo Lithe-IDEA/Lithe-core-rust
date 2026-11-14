@@ -2,11 +2,14 @@
 //!
 //! Detection is one bounded walk shared by every enabled plugin: a plugin
 //! names marker files and a nesting rule, never code that walks the tree.
+//! The walk skips the workspace's ignored paths, a Build option that by
+//! default names every directory whose name starts with a dot.
 //! Instances whose model needs no process (a static file or a host
 //! integration) come back with their model, so opening a workspace shows
 //! projects without running a build tool.
 
 use super::decode::Workspace;
+use super::ignored_paths;
 use super::manifest::{BuildSystemDeclaration, ModelSource, Nesting, OptionKind, OptionScope};
 use super::options;
 use super::outputs::{model_value, read_model, source_marker};
@@ -40,6 +43,10 @@ pub(crate) struct DetectRequest {
     /// needed by sibling models. Unknown or changed option kinds ignore markers.
     #[serde(default)]
     pub(crate) empty_selections: BTreeMap<String, BTreeMap<String, BTreeSet<String>>>,
+    /// Directories the walk does not enter, as `build.resolveStoredOptions`
+    /// reports them; omitted, the default of every dot-named directory.
+    #[serde(default)]
+    pub(crate) ignored_paths: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -167,6 +174,7 @@ fn scan_directory_root(
 /// declare one build-system ID, the higher priority answers for it.
 pub(crate) fn detect<M: BuildManifest>(request: DetectRequest) -> Validation<Value> {
     let workspace = Workspace::new(&request.workspace_root)?;
+    let ignored = ignored_paths::compile(&workspace.path, request.ignored_paths.as_deref())?;
     let mut rejected = Vec::new();
     let mut manifests = Vec::new();
     for (index, plugin) in request.plugins.into_iter().enumerate() {
@@ -218,7 +226,9 @@ pub(crate) fn detect<M: BuildManifest>(request: DetectRequest) -> Validation<Val
     if owners.is_empty() {
         return Ok(json!({ "instances": [], "rejected": rejected, "shadowed": shadowed }));
     }
-    let directories = scan_directory_root(&workspace.path, lithe_execution::scan)?;
+    let directories = scan_directory_root(&workspace.path, |root| {
+        lithe_execution::scan_ignoring(root, &ignored)
+    })?;
     let empty = BTreeMap::new();
     let mut seen = BTreeSet::new();
     let mut instances = Vec::new();
