@@ -3,6 +3,26 @@
   "root": "update",
   "events": [
     {
+      "id": "update.delta.fallback_selected",
+      "channel": "update",
+      "level": "warn",
+      "message": "Delta update {stage} failed, falling back to the full download",
+      "fields": {
+        "stage": {
+          "type": "token",
+          "required": true,
+          "description": "Delta step that failed before the full archive replaced it: download, apply or install"
+        },
+        "error": {
+          "type": "error",
+          "required": true,
+          "description": "Error the delta step returned before the full download replaced it, keeping its stable code and domain"
+        }
+      },
+      "rate": 60,
+      "owner": "Lithe"
+    },
+    {
       "id": "update.download.interrupted",
       "channel": "update",
       "level": "warn",

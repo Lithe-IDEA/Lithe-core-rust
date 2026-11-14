@@ -121,18 +121,16 @@ Swift 的事件值是**未经脱敏的内存输入**，不能自行序列化落�
 
 1. 先调查真实调用，选择根和 owner；没有实际来源不新增事件。
 2. 在对应 JSON 中声明稳定 ID、通道模板、英文事实、级别和字段；成对操作优先使用 span。检查隐私和动态段来源。
-3. 运行生成器，核对 Swift 参数和 Rust 字段表；不得手改生成文件。
+3. 运行生成器，核对 Rust 字段表；不得手改生成文件。
 4. 接入时使用类型化事件。不再有调用点的事件从目录删除并重新生成。
 5. 运行下列检查。生成结果稳定排序、使用 LF，不读取运行时 JSON。
 
 ```sh
 node scripts/logging/generate-log-events.mjs
 node scripts/logging/generate-log-events.mjs --check
-node --test --test-timeout=60000 scripts/logging/test-log-events.mjs
-node scripts/logging/verify-log-usage.mjs
 ```
 
-`--check` 只读比较，不修复漂移，有缺失或差异即以非零状态退出。生成器先完成全部目录校验和输出规划，再写第一个文件。Swift target 自动发现 `Logging/` 源目录，不需要在 `Package.swift` 中逐个列出。
+`--check` 只读比较，不修复漂移，有缺失或差异即以非零状态退出。生成器先完成全部目录校验和输出规划，再写第一个文件。它只输出 `rust/crates/diagnostics/src/catalog_generated.rs`；桌面客户端的类型化事件、生成器测试和第十二节的用法门禁尚未恢复，由 [Lithe-IDEA#1802](https://github.com/1lck/Lithe-IDEA/issues/1802) 跟踪。
 
 ## 十一、API 示例
 
@@ -157,6 +155,8 @@ let reference = scope.emitReferenced(AppLoggingDiagnosticsFailed(error: failure)
 Rust 通过静态 `EVENTS`（按 ID 排序）和二分查找的 `event_by_id` 暴露元数据，不分配运行时目录缓存。生成表通过路径子模块载入：Rust 的 `include!` 不能接受仓库注释门禁要求的首行 `//!`，子模块能满足该门禁，不需要豁免或放宽检查。
 
 ## 十二、用法门禁
+
+本节描述的 `scripts/logging/verify-log-usage.mjs` 目前不在仓库中，恢复由 [Lithe-IDEA#1802](https://github.com/1lck/Lithe-IDEA/issues/1802) 跟踪；恢复前不要把它列进检查步骤。
 
 `scripts/logging/verify-log-usage.mjs` 扫描 `macos/Sources`、`rust/crates/core/src`、`rust/crates/git-host/src`、`rust/crates/ide-host/src` 和 `rust/crates/remote/src`。排除 `rust/crates/remote/src/server/`、`rust/crates/remote/src/bin/` 和 `rust/crates/ide-host/src/bin/`：它们在远端主机或独立进程中运行，stderr 由宿主进程处理，以后单独迁移。
 
