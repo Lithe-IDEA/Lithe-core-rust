@@ -3210,7 +3210,13 @@ revision and the diagnostic says so instead of listing modified files.
 Automatic run discovery, fingerprint traversal and Node manifest discovery use
 Core's shared scan policy. Known caches/build outputs
 are pruned before descending; other hidden source directories remain visible and
-symlinks are not followed. Failure to read the workspace root is an error. An
+symlinks are not followed. Automatic run discovery and `build.detect` search at
+most 6 levels and also prune directories Git ignores, using the `.gitignore`
+files they pass and the `info/exclude` of each repository whose root lies in the
+workspace (a linked worktree reads the main repository's shared one); a nested
+repository starts its own rules. Nothing above the workspace root is read, nor
+`core.excludesFile` or the index. Fingerprint traversal and Node manifest
+discovery keep ignored directories. Failure to read the workspace root is an error. An
 unreadable optional child or fingerprint input is recorded in
 `generator.unreadablePaths`; generation retains previous configurations and input
 hashes beneath those unknown paths. Inspection returns `incompleteProjectScan`

@@ -27,7 +27,7 @@
 
 | 字段 | 决定什么 |
 | --- | --- |
-| `detection` | 用 `markers` 里的文件名识别候选根目录；`nesting` 决定深层候选并入外层实例（`outermost`，如 Gradle、Maven）还是各自独立（`separate`，默认，如 Cargo）；`priority` 决定多个插件声明同一个 ID 时谁优先 |
+| `detection` | 用 `markers` 里的文件名识别候选根目录。Core 最多向下找 6 层，跳过已知的缓存和构建输出目录，以及被 Git 忽略的目录（规则来自工作区内途经的 `.gitignore`，以及根目录在工作区内的仓库的 `info/exclude`；不读工作区根以上的目录、`core.excludesFile` 和索引，所以被忽略目录下即使有已跟踪的清单文件也不算候选）；`nesting` 决定深层候选并入外层实例（`outermost`，如 Gradle、Maven）还是各自独立（`separate`，默认，如 Cargo）；`priority` 决定多个插件声明同一个 ID 时谁优先 |
 | `invocation` | 可执行文件候选（`executables`，按偏好排序）、`globalArguments`、版本探测和 `minimumVersion` |
 | `runtimeDependencies` | 构建工具依赖的运行时。`node`、`go` 由宿主管理；其他运行时要么命名同 ID 的[工具定义](toolchains.md)，要么自己声明 `executables` 和版本探测 |
 | `options` | 用户选择的构建维度：`boolean`、`singleSelect`、`multiSelect`、`text`、`file`、`directory`；每个选项在有值时贡献 `arguments` 和 `environment` |
@@ -124,7 +124,7 @@ IDs of build systems, tasks, and run entries start with a lowercase letter and u
 
 | Field | What it decides |
 | --- | --- |
-| `detection` | Candidate roots are directories holding one of the `markers` file names; `nesting` folds deeper candidates into the outer instance (`outermost`, such as Gradle and Maven) or keeps each one (`separate`, the default, such as Cargo); `priority` decides between plugins declaring the same ID |
+| `detection` | Candidate roots are directories holding one of the `markers` file names. Core searches at most 6 levels down and skips known caches and build outputs, plus directories Git ignores (rules from the `.gitignore` files inside the workspace and the `info/exclude` of each repository rooted there; directories above the workspace root, `core.excludesFile` and the index are not read, so a tracked manifest below an ignored directory is no candidate); `nesting` folds deeper candidates into the outer instance (`outermost`, such as Gradle and Maven) or keeps each one (`separate`, the default, such as Cargo); `priority` decides between plugins declaring the same ID |
 | `invocation` | Executable candidates (`executables`, in preference order), `globalArguments`, the version probe, and `minimumVersion` |
 | `runtimeDependencies` | Runtimes the build tool needs. `node` and `go` are host-managed; any other runtime either names the [tool definition](toolchains.md) with the same ID or declares its own `executables` and version probe |
 | `options` | Build dimensions the user chooses: `boolean`, `singleSelect`, `multiSelect`, `text`, `file`, `directory`; each contributes `arguments` and `environment` when it has a value |

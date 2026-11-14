@@ -754,6 +754,29 @@ fn detection_applies_nesting_priority_and_rejections() {
     assert_eq!(gradle["markers"], json!(["android/settings.gradle.kts"]));
 }
 
+/// A directory Git ignores is no candidate root: agent worktrees and local copies
+/// repeat the project's own manifests, and would list every module twice.
+#[test]
+fn detection_skips_directories_git_ignores() {
+    let package = |name: &str| format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\n");
+    let workspace = TemporaryWorkspace::new("build-detect-ignored");
+    workspace
+        .write(".git/HEAD", "ref: refs/heads/main\n")
+        .write(".git/info/exclude", ".claude/worktrees/\n")
+        .write(".gitignore", "/scratch/\n")
+        .write("Cargo.toml", &package("app"))
+        .write("tools/Cargo.toml", &package("tools"))
+        .write("scratch/Cargo.toml", &package("scratch"))
+        .write(".claude/worktrees/copy/Cargo.toml", &package("app"));
+
+    let detection = detect(
+        &workspace,
+        vec![fixture("build-static-file.plugin.json")],
+        json!({}),
+    );
+    assert_eq!(instance_ids(&detection), ["cargo:.", "cargo:tools"]);
+}
+
 #[test]
 fn detection_returns_empty_for_non_directory_and_missing_workspace_roots() {
     let workspace = TemporaryWorkspace::new("build-detect-non-directory");
