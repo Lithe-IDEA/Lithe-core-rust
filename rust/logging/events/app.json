@@ -260,6 +260,26 @@
       "owner": "lithe-core"
     },
     {
+      "id": "app.storage.maintenance_failed",
+      "channel": "app",
+      "level": "warn",
+      "message": "Host storage {stage} failed",
+      "fields": {
+        "stage": {
+          "type": "token",
+          "required": true,
+          "description": "Host storage operation that failed, such as plugin_install_cleanup: a downloaded or staged plugin package the install could not remove"
+        },
+        "error": {
+          "type": "error",
+          "required": true,
+          "description": "Filesystem error at the host's handling boundary, preserving its stable domain and code"
+        }
+      },
+      "rate": 60,
+      "owner": "Lithe"
+    },
+    {
       "id": "app.notification.operation_failed",
       "channel": "app",
       "level": "error",

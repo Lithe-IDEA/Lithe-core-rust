@@ -317,6 +317,19 @@ pub static EVENTS: &[EventMetadata] = &[
         owner: "lithe-core",
     },
     EventMetadata {
+        id: "app.storage.maintenance_failed",
+        channel: "app",
+        level: LogLevel::Warn,
+        message: "Host storage {stage} failed",
+        fields: &[
+            FieldMetadata { name: "error", field_type: FieldType::Error, required: true, description: "Filesystem error at the host's handling boundary, preserving its stable domain and code", reason: None },
+            FieldMetadata { name: "stage", field_type: FieldType::Token, required: true, description: "Host storage operation that failed, such as plugin_install_cleanup: a downloaded or staged plugin package the install could not remove", reason: None },
+        ],
+        span: None,
+        rate: 60,
+        owner: "Lithe",
+    },
+    EventMetadata {
         id: "app.workspace.directory_skipped",
         channel: "app",
         level: LogLevel::Warn,
