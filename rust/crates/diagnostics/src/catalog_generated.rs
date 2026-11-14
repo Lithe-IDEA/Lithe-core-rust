@@ -2345,6 +2345,19 @@ pub static EVENTS: &[EventMetadata] = &[
         owner: "Lithe",
     },
     EventMetadata {
+        id: "update.delta.fallback_selected",
+        channel: "update",
+        level: LogLevel::Warn,
+        message: "Delta update {stage} failed, falling back to the full download",
+        fields: &[
+            FieldMetadata { name: "error", field_type: FieldType::Error, required: true, description: "Error the delta step returned before the full download replaced it, keeping its stable code and domain", reason: None },
+            FieldMetadata { name: "stage", field_type: FieldType::Token, required: true, description: "Delta step that failed before the full archive replaced it: download, apply or install", reason: None },
+        ],
+        span: None,
+        rate: 60,
+        owner: "Lithe",
+    },
+    EventMetadata {
         id: "update.download.interrupted",
         channel: "update",
         level: LogLevel::Warn,
