@@ -2345,6 +2345,18 @@ pub static EVENTS: &[EventMetadata] = &[
         owner: "Lithe",
     },
     EventMetadata {
+        id: "update.delta.cleanup_failed",
+        channel: "update",
+        level: LogLevel::Warn,
+        message: "Staged delta update payload cleanup failed",
+        fields: &[
+            FieldMetadata { name: "error", field_type: FieldType::Error, required: true, description: "Filesystem error raised while removing the application a delta update rebuilt in the temporary directory", reason: None },
+        ],
+        span: None,
+        rate: 60,
+        owner: "Lithe",
+    },
+    EventMetadata {
         id: "update.delta.fallback_selected",
         channel: "update",
         level: LogLevel::Warn,

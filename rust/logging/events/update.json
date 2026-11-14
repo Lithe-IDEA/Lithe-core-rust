@@ -3,6 +3,21 @@
   "root": "update",
   "events": [
     {
+      "id": "update.delta.cleanup_failed",
+      "channel": "update",
+      "level": "warn",
+      "message": "Staged delta update payload cleanup failed",
+      "fields": {
+        "error": {
+          "type": "error",
+          "required": true,
+          "description": "Filesystem error raised while removing the application a delta update rebuilt in the temporary directory"
+        }
+      },
+      "rate": 60,
+      "owner": "Lithe"
+    },
+    {
       "id": "update.delta.fallback_selected",
       "channel": "update",
       "level": "warn",
