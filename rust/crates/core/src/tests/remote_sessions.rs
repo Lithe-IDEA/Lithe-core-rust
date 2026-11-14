@@ -747,6 +747,10 @@ fn shared_run_scan_reads_the_host_tree_and_stops_when_the_link_drops() {
     std::fs::create_dir_all(remote.join("service/api")).unwrap();
     std::fs::write(remote.join("package.json"), "{}").unwrap();
     std::fs::write(remote.join("service/tool-a.toml"), "").unwrap();
+    // The ignore rules are the host's: the placeholder has no `.gitignore`.
+    std::fs::create_dir_all(remote.join("generated")).unwrap();
+    std::fs::write(remote.join("generated/package.json"), "{}").unwrap();
+    std::fs::write(remote.join(".gitignore"), "generated/\n").unwrap();
     let workspace = serde_json::from_value(
         json!({"sessionId": host.id, "localRoot": local, "remoteRoot": remote}),
     )
@@ -768,7 +772,10 @@ fn shared_run_scan_reads_the_host_tree_and_stops_when_the_link_drops() {
     assert_eq!(
         files,
         [
-            (std::path::PathBuf::new(), vec!["package.json".to_owned()]),
+            (
+                std::path::PathBuf::new(),
+                vec![".gitignore".to_owned(), "package.json".to_owned()]
+            ),
             ("service".into(), vec!["tool-a.toml".to_owned()]),
             ("service/api".into(), Vec::new()),
         ]

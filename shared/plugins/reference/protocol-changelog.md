@@ -133,6 +133,7 @@
 
 | PR | 修改人 | API 编号 | 协议 / 能力 | 改了什么 |
 | --- | --- | --- | --- | --- |
+| [#33](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/33) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | — | `pluginAPIVersion` 0 内的补充 | `build.detect`（`buildSystems[].detection`）和自动运行项发现不再把被 Git 忽略的目录当作候选根目录。规则来自工作区内途经的 `.gitignore`，以及根目录在工作区内的仓库的 `info/exclude`（链接工作树读主仓库共享的那份），嵌套仓库另起一套规则；不读工作区根以上的目录、`core.excludesFile` 和索引，所以被忽略目录下已跟踪的清单文件也不再被发现。契约 README 同时写明检测最多向下 6 层。指纹扫描和 Node 清单发现仍然遍历被忽略的目录。 |
 | [#28](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/28) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | — | `pluginAPIVersion` 0 内的说明修正 | 清单 schema 删除构建系统 `model`、`test.results`、`dependencies` 里不可达的 `source: "hostIntegration"` 分支，以及语言服务器 `hostIntegration` 下的 `capabilities`、`resources`。`hostIntegration` 字段仍是保留字段：构建系统和语言服务器写了任何值，都以 `plugin.integration.unsupported` 拒绝，字段路径不变；`model`、`test.results`、`dependencies` 写 `source: "hostIntegration"` 时按未知来源以 `plugin.manifest.invalid` 拒绝（原先同时写了 `hostIntegration` 名字时报 `plugin.integration.unsupported`）。README 与指南同步删掉这些来源和“社区插件”说法。能力表移到 `rust/crates/plugin-model/src/capabilities.rs`，插件函数协议移到 `rust/crates/plugin-rpc/src/`，跨插件调用规则移到 `rust/crates/plugin-function-relay/`，内容不变。 |
 
 ### 2026-11-13
