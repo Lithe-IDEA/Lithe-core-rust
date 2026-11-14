@@ -129,7 +129,8 @@ pub enum CoreCommand {
     /// Editor reducers: workbench state, text edits, find, navigation and preferences (`editor.*`).
     Editor(EditorCommand),
     /// Applies one transition to the rearrangeable workbench chrome: stripe, title bar and status bar
-    /// button placement and open tool panels (`workbench.chromeLayout.reduce`), from `lithe-core-rules`.
+    /// button placement, hidden stripe buttons and open tool panels (`workbench.chromeLayout.reduce`),
+    /// from `lithe-core-rules`.
     WorkbenchChromeLayoutReduce,
     /// Resolves terminal link candidates into file or external targets (`terminal.parseLinkTarget`).
     TerminalParseLinkTarget,

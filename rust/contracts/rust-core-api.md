@@ -559,7 +559,7 @@ or removing a command fails until the table changes in the same commit.
 | `editor.groupLayout.dropTargets` | Say which places of each editor group accept a dragged tab (from `lithe-editor-layout`) |
 | `workspace.classifyVisibility` | Classify a batch of workspace-relative paths as hidden or visible. The rule lives in `lithe-core-rules` so the Windows frontend can run it synchronously |
 | `workspace.visibilityDefaults` | Return the built-in hidden-path lists (from `lithe-core-rules`) |
-| `workbench.chromeLayout.reduce` | Apply one transition to the rearrangeable workbench chrome: stripe, title bar and status bar button placement and open tool panels (from `lithe-core-rules`) |
+| `workbench.chromeLayout.reduce` | Apply one transition to the rearrangeable workbench chrome: stripe, title bar and status bar button placement, hidden stripe buttons and open tool panels (from `lithe-core-rules`) |
 | `terminal.parseLinkTarget` | Resolve terminal link candidates into file or external targets |
 | `debug.createSession` | Create a transport-neutral DAP session and return its initialize frame |
 | `debug.launch` | Queue a launch or attach request, including during initialization |
