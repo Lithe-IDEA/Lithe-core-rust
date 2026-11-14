@@ -610,7 +610,7 @@ or removing a command fails until the table changes in the same commit.
 | `git.workspaceCommitStep` | Execute one guarded workspace commit/push |
 | `git.classifyMetadataChanges` | Classify a bounded page of coalesced watcher paths without filesystem access |
 | `git.watchContext` | Resolve the repository and absolute Git metadata roots needed by native file watchers |
-| `git.worktrees` | Return deterministic registered-worktree metadata without scanning each checkout |
+| `git.worktrees` | Return deterministic registered-worktree metadata with each worktree's state and allowed writes; `countChanges` also counts each checkout's local changes |
 | `git.pullRequestContext` | Resolve worktree-aware PR branch defaults, publication state, and uncommitted-change state |
 | `git.command` | Execute one argument-based Git operation and return its arguments, streams, exit code, and ordered subprocess invocations |
 | `git.repositoryRoot` | Resolve the repository root containing a workspace path without acquiring repository write coordination |
@@ -683,6 +683,7 @@ or removing a command fails until the table changes in the same commit.
 | `git.rebasePlanPreview` | Validate an interactive rebase draft and derives its messages |
 | `git.referenceTree` | Group one kind of loaded references into an ordered tree |
 | `git.changedFileGroups` | Group the changed files of a commit, stash or shelf by folder, folders and files in natural order |
+| `git.worktreeCreationPreview` | Derive the worktree creation dialog's reference choices, checked branch name, suggested destination and readiness without running Git |
 | `git.pushPreview` | Resolve a local branch push destination and the bounded commits not present on that remote base |
 | `git.commit` | Return one structured commit by revision with its full message body |
 | `git.commitFiles` | Return files changed by one commit |
@@ -789,11 +790,26 @@ Traversal checks cancellation between directories and entries.
 `git.worktrees.worktrees` is ordered with the primary worktree first and then
 by path. Each entry contains `path`, `head`, nullable `branch`, `isCurrent`,
 `isPrimary`, `isBare`, `isDetached`, `isLocked`, nullable `lockReason`,
-`isPrunable`, and nullable `pruneReason`. The path is absolute because linked
+`isPrunable`, nullable `pruneReason`, `status`, nullable `changes`, and
+`actions`. The path is absolute because linked
 worktrees may live outside the opened workspace; clients must treat it as an
 opaque native boundary value and must not persist it as a portable identifier.
 Core reads the list with one porcelain operation and does not run status in
-each checkout.
+each checkout unless the request sets `countChanges: true`; then it runs status
+(index-only changes included, wholly untracked directories summarized) in every
+checkout that is there and not bare, and `changes` is the number of entries,
+`null` when the checkout's status failed or was not read. `status` is the one
+state a row shows, the first that holds of `missing` (prunable), `locked`,
+`modified` (counted changes above zero), `current`, and `available`.
+`actions` is `{ "remove": { "allowed", "reason" }, "lock": { "allowed",
+"reason" } }`: removal is refused for the primary worktree
+(`git_worktree_primary`), then the current one (`git_worktree_current`), a
+missing checkout (`git_worktree_missing`, pruned instead) and a lock
+(`git_worktree_locked`); changing the lock is refused for the primary worktree
+and a missing checkout. Apart from `git_worktree_missing`, each reason is the
+error code the write returns for the same refusal. Clients word the state and
+the reasons and do not derive them.
+`rust/fixtures/git/worktree-rules-v1.json` defines the rules.
 For a rename or copy, each change uses the destination as `path` and preserves
 the source as `originalPath`; platform mutations that act on the Git entry pass
 both paths back to Core.
@@ -1590,6 +1606,36 @@ before the folders inside it and `v0.1.4.md` before `v0.1.12.md`; names the
 natural order cannot tell apart fall back to their raw text, then to request
 order. Hosts group once per loaded list and own expansion, rows and drawing.
 `rust/fixtures/git/changed-file-groups-v1.json` defines the rules.
+
+`git.worktreeCreationPreview` derives what the worktree creation dialog shows;
+it never starts Git. The request has `root`, `mode` (`newBranch`,
+`existingBranch` or `detached`, as `createWorktree` takes them), `kind` (the
+reference kind listed, default `local`), `reference` (the held reference's
+`fullName`, `""` for none), `name`, `requireName`, `revision`, `destination`,
+`lastSuggestion` (the suggestion the destination last followed, `""` at first),
+`references` (the `git.references` entries; fields beyond `fullName`,
+`shortName`, `kind` and `isCurrent` are ignored) and `checkedOutBranches` (the
+`branch` of every registered worktree); other top-level fields are
+`invalid_request`. The response is `{ "choices", "reference", "branch",
+"suggestedDestination", "destination", "destinationIsAbsolute", "ready" }`.
+`choices` are indices into `references`: local branches no worktree has checked
+out for `existingBranch`, references of `kind` otherwise. `reference` stays the
+held one while it is a choice, else becomes the current local branch among the
+choices, else the first, and is `null` without choices. `branch` is the
+`git.branchNamePreview` response for `name` in `newBranch` mode and `null`
+otherwise; a name over 1,024 characters fails the request. The suggestion sits
+beside the repository as `<repository>-<leaf>`, the leaf being the last `/`
+segment of the cleaned branch name, the first nine characters of the trimmed
+revision in `detached` mode, or the held reference's short name, with every
+character other than a letter, a digit, `-` or `_` replaced by `-`, and
+`worktree` when nothing is left. `destination` is the suggestion while the
+request's `destination` equals `lastSuggestion` and the typed value otherwise.
+`ready` needs an absolute `destination`, plus a reference and a cleaned name
+without error for `newBranch`, a reference for `existingBranch`, and a
+reference or a revision for `detached`. Hosts preview when an input changes,
+again with `requireName: true` on submit, and keep `suggestedDestination` as the
+next `lastSuggestion`. `rust/fixtures/git/worktree-creation-preview-v1.json`
+defines the rules.
 
 `git.integrationPreflight` accepts either `reference` or `gitReference` with
 `root` and `operation`, where `operation` is `merge`, `rebase`, `cherryPick`,

@@ -805,6 +805,9 @@ pub enum GitCommand {
     ReferenceTree,
     /// Groups changed files by folder in natural order (`git.changedFileGroups`).
     ChangedFileGroups,
+    /// Derives the worktree creation dialog's choices, branch, destination and readiness
+    /// (`git.worktreeCreationPreview`).
+    WorktreeCreationPreview,
     /// Resolves the destination and commits for a branch push (`git.pushPreview`).
     PushPreview,
     /// Resolves metadata for one commit (`git.commit`).
@@ -1370,6 +1373,7 @@ impl CoreCommand {
             "git.rebasePlanPreview" => Some(Self::Git(GitCommand::RebasePlanPreview)),
             "git.referenceTree" => Some(Self::Git(GitCommand::ReferenceTree)),
             "git.changedFileGroups" => Some(Self::Git(GitCommand::ChangedFileGroups)),
+            "git.worktreeCreationPreview" => Some(Self::Git(GitCommand::WorktreeCreationPreview)),
             "git.pushPreview" => Some(Self::Git(GitCommand::PushPreview)),
             "git.commit" => Some(Self::Git(GitCommand::Commit)),
             "git.commitFiles" => Some(Self::Git(GitCommand::CommitFiles)),

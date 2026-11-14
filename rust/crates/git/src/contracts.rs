@@ -100,6 +100,13 @@ pub struct GitWorktreeResponse {
     pub(crate) is_prunable: bool,
     /// Git's explanation for why the registration can be pruned.
     pub prune_reason: Option<String>,
+    /// The one state the worktree's row shows (`crate::worktree_rules::status`).
+    pub(crate) status: crate::worktree_rules::GitWorktreeStatus,
+    /// Number of local changes of the checkout; `null` when they were not counted or could
+    /// not be read.
+    pub(crate) changes: Option<usize>,
+    /// Which writes the worktree allows (`crate::worktree_rules::actions`).
+    pub(crate) actions: crate::worktree_rules::GitWorktreeActions,
 }
 
 #[derive(Debug, Clone, Serialize)]

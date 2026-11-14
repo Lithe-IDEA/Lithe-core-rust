@@ -1,0 +1,893 @@
+{
+  "protocolVersion": 1,
+  "command": "git.worktreeCreationPreview",
+  "description": "Choices, branch name, suggested destination and readiness of the worktree creation dialog. Paths are written for Unix; the test rewrites them for Windows.",
+  "cases": [
+    {
+      "name": "new branch opens on the current branch and suggests a destination",
+      "request": {
+        "root": "/work/app",
+        "references": [
+          {
+            "fullName": "refs/heads/main",
+            "shortName": "main",
+            "kind": "local",
+            "isCurrent": true,
+            "peelsToCommit": true
+          },
+          {
+            "fullName": "refs/heads/feature/login",
+            "shortName": "feature/login",
+            "kind": "local",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/remotes/origin/main",
+            "shortName": "origin/main",
+            "kind": "remote",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/tags/v1.0",
+            "shortName": "v1.0",
+            "kind": "tag",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/heads/用户/修复 bug",
+            "shortName": "用户/修复 bug",
+            "kind": "local",
+            "isCurrent": false
+          }
+        ],
+        "checkedOutBranches": [
+          "refs/heads/main"
+        ],
+        "mode": "newBranch",
+        "name": "feature/login-page"
+      },
+      "response": {
+        "choices": [
+          0,
+          1,
+          4
+        ],
+        "reference": "refs/heads/main",
+        "branch": {
+          "typingCleanedName": "feature/login-page",
+          "cleanedName": "feature/login-page",
+          "initialName": "",
+          "error": null
+        },
+        "suggestedDestination": "/work/app-login-page",
+        "destination": "/work/app-login-page",
+        "destinationIsAbsolute": true,
+        "ready": true
+      }
+    },
+    {
+      "name": "new branch keeps a typed absolute destination",
+      "request": {
+        "root": "/work/app",
+        "references": [
+          {
+            "fullName": "refs/heads/main",
+            "shortName": "main",
+            "kind": "local",
+            "isCurrent": true,
+            "peelsToCommit": true
+          },
+          {
+            "fullName": "refs/heads/feature/login",
+            "shortName": "feature/login",
+            "kind": "local",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/remotes/origin/main",
+            "shortName": "origin/main",
+            "kind": "remote",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/tags/v1.0",
+            "shortName": "v1.0",
+            "kind": "tag",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/heads/用户/修复 bug",
+            "shortName": "用户/修复 bug",
+            "kind": "local",
+            "isCurrent": false
+          }
+        ],
+        "checkedOutBranches": [
+          "refs/heads/main"
+        ],
+        "mode": "newBranch",
+        "name": "feature/login-page",
+        "reference": "refs/heads/main",
+        "destination": "/elsewhere/checkout",
+        "lastSuggestion": "/work/app-login-page"
+      },
+      "response": {
+        "choices": [
+          0,
+          1,
+          4
+        ],
+        "reference": "refs/heads/main",
+        "branch": {
+          "typingCleanedName": "feature/login-page",
+          "cleanedName": "feature/login-page",
+          "initialName": "",
+          "error": null
+        },
+        "suggestedDestination": "/work/app-login-page",
+        "destination": "/elsewhere/checkout",
+        "destinationIsAbsolute": true,
+        "ready": true
+      }
+    },
+    {
+      "name": "destination follows the suggestion until edited",
+      "request": {
+        "root": "/work/app",
+        "references": [
+          {
+            "fullName": "refs/heads/main",
+            "shortName": "main",
+            "kind": "local",
+            "isCurrent": true,
+            "peelsToCommit": true
+          },
+          {
+            "fullName": "refs/heads/feature/login",
+            "shortName": "feature/login",
+            "kind": "local",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/remotes/origin/main",
+            "shortName": "origin/main",
+            "kind": "remote",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/tags/v1.0",
+            "shortName": "v1.0",
+            "kind": "tag",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/heads/用户/修复 bug",
+            "shortName": "用户/修复 bug",
+            "kind": "local",
+            "isCurrent": false
+          }
+        ],
+        "checkedOutBranches": [
+          "refs/heads/main"
+        ],
+        "mode": "newBranch",
+        "name": "feature/signup",
+        "reference": "refs/heads/main",
+        "destination": "/work/app-login-page",
+        "lastSuggestion": "/work/app-login-page"
+      },
+      "response": {
+        "choices": [
+          0,
+          1,
+          4
+        ],
+        "reference": "refs/heads/main",
+        "branch": {
+          "typingCleanedName": "feature/signup",
+          "cleanedName": "feature/signup",
+          "initialName": "",
+          "error": null
+        },
+        "suggestedDestination": "/work/app-signup",
+        "destination": "/work/app-signup",
+        "destinationIsAbsolute": true,
+        "ready": true
+      }
+    },
+    {
+      "name": "existing branch name is an error on submit",
+      "request": {
+        "root": "/work/app",
+        "references": [
+          {
+            "fullName": "refs/heads/main",
+            "shortName": "main",
+            "kind": "local",
+            "isCurrent": true,
+            "peelsToCommit": true
+          },
+          {
+            "fullName": "refs/heads/feature/login",
+            "shortName": "feature/login",
+            "kind": "local",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/remotes/origin/main",
+            "shortName": "origin/main",
+            "kind": "remote",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/tags/v1.0",
+            "shortName": "v1.0",
+            "kind": "tag",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/heads/用户/修复 bug",
+            "shortName": "用户/修复 bug",
+            "kind": "local",
+            "isCurrent": false
+          }
+        ],
+        "checkedOutBranches": [
+          "refs/heads/main"
+        ],
+        "mode": "newBranch",
+        "name": "feature/login",
+        "requireName": true,
+        "reference": "refs/heads/main"
+      },
+      "response": {
+        "choices": [
+          0,
+          1,
+          4
+        ],
+        "reference": "refs/heads/main",
+        "branch": {
+          "typingCleanedName": "feature/login",
+          "cleanedName": "feature/login",
+          "initialName": "",
+          "error": {
+            "code": "alreadyExists",
+            "name": "feature/login"
+          }
+        },
+        "suggestedDestination": "/work/app-login",
+        "destination": "/work/app-login",
+        "destinationIsAbsolute": true,
+        "ready": false
+      }
+    },
+    {
+      "name": "empty name is named after the start",
+      "request": {
+        "root": "/work/app",
+        "references": [
+          {
+            "fullName": "refs/heads/main",
+            "shortName": "main",
+            "kind": "local",
+            "isCurrent": true,
+            "peelsToCommit": true
+          },
+          {
+            "fullName": "refs/heads/feature/login",
+            "shortName": "feature/login",
+            "kind": "local",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/remotes/origin/main",
+            "shortName": "origin/main",
+            "kind": "remote",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/tags/v1.0",
+            "shortName": "v1.0",
+            "kind": "tag",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/heads/用户/修复 bug",
+            "shortName": "用户/修复 bug",
+            "kind": "local",
+            "isCurrent": false
+          }
+        ],
+        "checkedOutBranches": [
+          "refs/heads/main"
+        ],
+        "mode": "newBranch",
+        "reference": "refs/heads/main"
+      },
+      "response": {
+        "choices": [
+          0,
+          1,
+          4
+        ],
+        "reference": "refs/heads/main",
+        "branch": {
+          "typingCleanedName": "",
+          "cleanedName": "",
+          "initialName": "",
+          "error": null
+        },
+        "suggestedDestination": "/work/app-main",
+        "destination": "/work/app-main",
+        "destinationIsAbsolute": true,
+        "ready": false
+      }
+    },
+    {
+      "name": "empty name is an error on submit",
+      "request": {
+        "root": "/work/app",
+        "references": [
+          {
+            "fullName": "refs/heads/main",
+            "shortName": "main",
+            "kind": "local",
+            "isCurrent": true,
+            "peelsToCommit": true
+          },
+          {
+            "fullName": "refs/heads/feature/login",
+            "shortName": "feature/login",
+            "kind": "local",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/remotes/origin/main",
+            "shortName": "origin/main",
+            "kind": "remote",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/tags/v1.0",
+            "shortName": "v1.0",
+            "kind": "tag",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/heads/用户/修复 bug",
+            "shortName": "用户/修复 bug",
+            "kind": "local",
+            "isCurrent": false
+          }
+        ],
+        "checkedOutBranches": [
+          "refs/heads/main"
+        ],
+        "mode": "newBranch",
+        "requireName": true,
+        "reference": "refs/heads/main"
+      },
+      "response": {
+        "choices": [
+          0,
+          1,
+          4
+        ],
+        "reference": "refs/heads/main",
+        "branch": {
+          "typingCleanedName": "",
+          "cleanedName": "",
+          "initialName": "",
+          "error": {
+            "code": "empty"
+          }
+        },
+        "suggestedDestination": "/work/app-main",
+        "destination": "/work/app-main",
+        "destinationIsAbsolute": true,
+        "ready": false
+      }
+    },
+    {
+      "name": "remote kind lists remote branches",
+      "request": {
+        "root": "/work/app",
+        "references": [
+          {
+            "fullName": "refs/heads/main",
+            "shortName": "main",
+            "kind": "local",
+            "isCurrent": true,
+            "peelsToCommit": true
+          },
+          {
+            "fullName": "refs/heads/feature/login",
+            "shortName": "feature/login",
+            "kind": "local",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/remotes/origin/main",
+            "shortName": "origin/main",
+            "kind": "remote",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/tags/v1.0",
+            "shortName": "v1.0",
+            "kind": "tag",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/heads/用户/修复 bug",
+            "shortName": "用户/修复 bug",
+            "kind": "local",
+            "isCurrent": false
+          }
+        ],
+        "checkedOutBranches": [
+          "refs/heads/main"
+        ],
+        "mode": "newBranch",
+        "kind": "remote",
+        "name": "fix bug#12"
+      },
+      "response": {
+        "choices": [
+          2
+        ],
+        "reference": "refs/remotes/origin/main",
+        "branch": {
+          "typingCleanedName": "fix-bug#12",
+          "cleanedName": "fix-bug#12",
+          "initialName": "",
+          "error": null
+        },
+        "suggestedDestination": "/work/app-fix-bug-12",
+        "destination": "/work/app-fix-bug-12",
+        "destinationIsAbsolute": true,
+        "ready": true
+      }
+    },
+    {
+      "name": "existing branch lists free local branches only",
+      "request": {
+        "root": "/work/app",
+        "references": [
+          {
+            "fullName": "refs/heads/main",
+            "shortName": "main",
+            "kind": "local",
+            "isCurrent": true,
+            "peelsToCommit": true
+          },
+          {
+            "fullName": "refs/heads/feature/login",
+            "shortName": "feature/login",
+            "kind": "local",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/remotes/origin/main",
+            "shortName": "origin/main",
+            "kind": "remote",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/tags/v1.0",
+            "shortName": "v1.0",
+            "kind": "tag",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/heads/用户/修复 bug",
+            "shortName": "用户/修复 bug",
+            "kind": "local",
+            "isCurrent": false
+          }
+        ],
+        "checkedOutBranches": [
+          "refs/heads/main"
+        ],
+        "mode": "existingBranch",
+        "kind": "tag",
+        "reference": "refs/heads/main"
+      },
+      "response": {
+        "choices": [
+          1,
+          4
+        ],
+        "reference": "refs/heads/feature/login",
+        "branch": null,
+        "suggestedDestination": "/work/app-login",
+        "destination": "/work/app-login",
+        "destinationIsAbsolute": true,
+        "ready": true
+      }
+    },
+    {
+      "name": "existing branch keeps a free choice and replaces other characters",
+      "request": {
+        "root": "/work/app",
+        "references": [
+          {
+            "fullName": "refs/heads/main",
+            "shortName": "main",
+            "kind": "local",
+            "isCurrent": true,
+            "peelsToCommit": true
+          },
+          {
+            "fullName": "refs/heads/feature/login",
+            "shortName": "feature/login",
+            "kind": "local",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/remotes/origin/main",
+            "shortName": "origin/main",
+            "kind": "remote",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/tags/v1.0",
+            "shortName": "v1.0",
+            "kind": "tag",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/heads/用户/修复 bug",
+            "shortName": "用户/修复 bug",
+            "kind": "local",
+            "isCurrent": false
+          }
+        ],
+        "checkedOutBranches": [
+          "refs/heads/main"
+        ],
+        "mode": "existingBranch",
+        "reference": "refs/heads/用户/修复 bug",
+        "destination": "",
+        "lastSuggestion": ""
+      },
+      "response": {
+        "choices": [
+          1,
+          4
+        ],
+        "reference": "refs/heads/用户/修复 bug",
+        "branch": null,
+        "suggestedDestination": "/work/app-修复-bug",
+        "destination": "/work/app-修复-bug",
+        "destinationIsAbsolute": true,
+        "ready": true
+      }
+    },
+    {
+      "name": "detached is named after the first nine characters of the revision",
+      "request": {
+        "root": "/work/app",
+        "references": [
+          {
+            "fullName": "refs/heads/main",
+            "shortName": "main",
+            "kind": "local",
+            "isCurrent": true,
+            "peelsToCommit": true
+          },
+          {
+            "fullName": "refs/heads/feature/login",
+            "shortName": "feature/login",
+            "kind": "local",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/remotes/origin/main",
+            "shortName": "origin/main",
+            "kind": "remote",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/tags/v1.0",
+            "shortName": "v1.0",
+            "kind": "tag",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/heads/用户/修复 bug",
+            "shortName": "用户/修复 bug",
+            "kind": "local",
+            "isCurrent": false
+          }
+        ],
+        "checkedOutBranches": [
+          "refs/heads/main"
+        ],
+        "mode": "detached",
+        "kind": "tag",
+        "revision": "  1234567890abcdef  "
+      },
+      "response": {
+        "choices": [
+          3
+        ],
+        "reference": "refs/tags/v1.0",
+        "branch": null,
+        "suggestedDestination": "/work/app-123456789",
+        "destination": "/work/app-123456789",
+        "destinationIsAbsolute": true,
+        "ready": true
+      }
+    },
+    {
+      "name": "detached counts characters, not bytes",
+      "request": {
+        "root": "/work/app",
+        "references": [
+          {
+            "fullName": "refs/heads/main",
+            "shortName": "main",
+            "kind": "local",
+            "isCurrent": true,
+            "peelsToCommit": true
+          },
+          {
+            "fullName": "refs/heads/feature/login",
+            "shortName": "feature/login",
+            "kind": "local",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/remotes/origin/main",
+            "shortName": "origin/main",
+            "kind": "remote",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/tags/v1.0",
+            "shortName": "v1.0",
+            "kind": "tag",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/heads/用户/修复 bug",
+            "shortName": "用户/修复 bug",
+            "kind": "local",
+            "isCurrent": false
+          }
+        ],
+        "checkedOutBranches": [
+          "refs/heads/main"
+        ],
+        "mode": "detached",
+        "kind": "tag",
+        "revision": "版本发布候选一号二号三"
+      },
+      "response": {
+        "choices": [
+          3
+        ],
+        "reference": "refs/tags/v1.0",
+        "branch": null,
+        "suggestedDestination": "/work/app-版本发布候选一号二",
+        "destination": "/work/app-版本发布候选一号二",
+        "destinationIsAbsolute": true,
+        "ready": true
+      }
+    },
+    {
+      "name": "detached without references needs a revision",
+      "request": {
+        "root": "/work/app",
+        "mode": "detached",
+        "references": []
+      },
+      "response": {
+        "choices": [],
+        "reference": null,
+        "branch": null,
+        "suggestedDestination": "/work/app-worktree",
+        "destination": "/work/app-worktree",
+        "destinationIsAbsolute": true,
+        "ready": false
+      }
+    },
+    {
+      "name": "relative destination is not ready",
+      "request": {
+        "root": "/work/app",
+        "references": [
+          {
+            "fullName": "refs/heads/main",
+            "shortName": "main",
+            "kind": "local",
+            "isCurrent": true,
+            "peelsToCommit": true
+          },
+          {
+            "fullName": "refs/heads/feature/login",
+            "shortName": "feature/login",
+            "kind": "local",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/remotes/origin/main",
+            "shortName": "origin/main",
+            "kind": "remote",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/tags/v1.0",
+            "shortName": "v1.0",
+            "kind": "tag",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/heads/用户/修复 bug",
+            "shortName": "用户/修复 bug",
+            "kind": "local",
+            "isCurrent": false
+          }
+        ],
+        "checkedOutBranches": [
+          "refs/heads/main"
+        ],
+        "mode": "detached",
+        "revision": "HEAD~1",
+        "destination": "../app-HEAD-1",
+        "lastSuggestion": "/work/app-HEAD-1"
+      },
+      "response": {
+        "choices": [
+          0,
+          1,
+          4
+        ],
+        "reference": "refs/heads/main",
+        "branch": null,
+        "suggestedDestination": "/work/app-HEAD-1",
+        "destination": "../app-HEAD-1",
+        "destinationIsAbsolute": false,
+        "ready": false
+      }
+    }
+  ],
+  "invalidRequests": [
+    {
+      "name": "unknown field",
+      "request": {
+        "root": "/work/app",
+        "references": [
+          {
+            "fullName": "refs/heads/main",
+            "shortName": "main",
+            "kind": "local",
+            "isCurrent": true,
+            "peelsToCommit": true
+          },
+          {
+            "fullName": "refs/heads/feature/login",
+            "shortName": "feature/login",
+            "kind": "local",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/remotes/origin/main",
+            "shortName": "origin/main",
+            "kind": "remote",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/tags/v1.0",
+            "shortName": "v1.0",
+            "kind": "tag",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/heads/用户/修复 bug",
+            "shortName": "用户/修复 bug",
+            "kind": "local",
+            "isCurrent": false
+          }
+        ],
+        "checkedOutBranches": [
+          "refs/heads/main"
+        ],
+        "mode": "newBranch",
+        "extra": true
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "unknown mode",
+      "request": {
+        "root": "/work/app",
+        "references": [
+          {
+            "fullName": "refs/heads/main",
+            "shortName": "main",
+            "kind": "local",
+            "isCurrent": true,
+            "peelsToCommit": true
+          },
+          {
+            "fullName": "refs/heads/feature/login",
+            "shortName": "feature/login",
+            "kind": "local",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/remotes/origin/main",
+            "shortName": "origin/main",
+            "kind": "remote",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/tags/v1.0",
+            "shortName": "v1.0",
+            "kind": "tag",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/heads/用户/修复 bug",
+            "shortName": "用户/修复 bug",
+            "kind": "local",
+            "isCurrent": false
+          }
+        ],
+        "checkedOutBranches": [
+          "refs/heads/main"
+        ],
+        "mode": "bare"
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "branch name over 1024 characters",
+      "request": {
+        "root": "/work/app",
+        "references": [
+          {
+            "fullName": "refs/heads/main",
+            "shortName": "main",
+            "kind": "local",
+            "isCurrent": true,
+            "peelsToCommit": true
+          },
+          {
+            "fullName": "refs/heads/feature/login",
+            "shortName": "feature/login",
+            "kind": "local",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/remotes/origin/main",
+            "shortName": "origin/main",
+            "kind": "remote",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/tags/v1.0",
+            "shortName": "v1.0",
+            "kind": "tag",
+            "isCurrent": false
+          },
+          {
+            "fullName": "refs/heads/用户/修复 bug",
+            "shortName": "用户/修复 bug",
+            "kind": "local",
+            "isCurrent": false
+          }
+        ],
+        "checkedOutBranches": [
+          "refs/heads/main"
+        ],
+        "mode": "newBranch",
+        "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "code": "invalid_request"
+    }
+  ]
+}

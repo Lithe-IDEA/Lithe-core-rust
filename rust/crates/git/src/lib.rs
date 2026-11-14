@@ -68,6 +68,7 @@ mod stash;
 mod status;
 mod untracked_directories;
 mod update_plan;
+mod worktree_rules;
 mod worktrees;
 mod write;
 
@@ -123,6 +124,7 @@ pub use repository_colors::assign_command as repository_color_assignments_comman
 pub use rollback::{rollback_plan_command, rollback_prepare_command};
 pub use shelf::shelf_command;
 pub use update_plan::command as update_plan_command;
+pub use worktree_rules::creation_preview_command as worktree_creation_preview_command;
 
 /// Internals the `git.*` integration tests in `lithe-core` assert against.
 #[cfg(feature = "test-support")]
