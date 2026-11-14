@@ -3,7 +3,181 @@
 use ammonia::Builder;
 use comrak::{markdown_to_html, Options};
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::collections::HashSet;
+
+/// SVG elements that only draw. Inline `<svg>` in a README is a picture: shapes,
+/// text, gradients, clips, masks, markers and filters survive, while elements that
+/// run or embed something else do not (`script`, `foreignObject`, `style`, the
+/// animation elements, `feImage`). Names are the case html5ever gives SVG elements.
+const SVG_TAGS: &[&str] = &[
+    "svg",
+    "g",
+    "defs",
+    "symbol",
+    "use",
+    "title",
+    "desc",
+    "path",
+    "rect",
+    "circle",
+    "ellipse",
+    "line",
+    "polyline",
+    "polygon",
+    "text",
+    "tspan",
+    "textPath",
+    "image",
+    "linearGradient",
+    "radialGradient",
+    "stop",
+    "pattern",
+    "clipPath",
+    "mask",
+    "marker",
+    "filter",
+    "feBlend",
+    "feColorMatrix",
+    "feComponentTransfer",
+    "feComposite",
+    "feDropShadow",
+    "feFlood",
+    "feFuncA",
+    "feFuncB",
+    "feFuncG",
+    "feFuncR",
+    "feGaussianBlur",
+    "feMerge",
+    "feMergeNode",
+    "feMorphology",
+    "feOffset",
+];
+
+/// Geometry and presentation attributes of the SVG elements above. `style` stays
+/// out, as it does for HTML; presentation attributes carry the same paint.
+const SVG_ATTRIBUTES: &[&str] = &[
+    "viewBox",
+    "preserveAspectRatio",
+    "width",
+    "height",
+    "x",
+    "y",
+    "x1",
+    "y1",
+    "x2",
+    "y2",
+    "cx",
+    "cy",
+    "r",
+    "rx",
+    "ry",
+    "fx",
+    "fy",
+    "d",
+    "points",
+    "pathLength",
+    "transform",
+    "fill",
+    "fill-opacity",
+    "fill-rule",
+    "stroke",
+    "stroke-width",
+    "stroke-linecap",
+    "stroke-linejoin",
+    "stroke-miterlimit",
+    "stroke-dasharray",
+    "stroke-dashoffset",
+    "stroke-opacity",
+    "opacity",
+    "color",
+    "display",
+    "visibility",
+    "vector-effect",
+    "shape-rendering",
+    "text-rendering",
+    "paint-order",
+    "clip-path",
+    "clip-rule",
+    "clipPathUnits",
+    "mask",
+    "maskUnits",
+    "maskContentUnits",
+    "filter",
+    "filterUnits",
+    "primitiveUnits",
+    "marker-start",
+    "marker-mid",
+    "marker-end",
+    "markerWidth",
+    "markerHeight",
+    "markerUnits",
+    "refX",
+    "refY",
+    "orient",
+    "offset",
+    "stop-color",
+    "stop-opacity",
+    "gradientUnits",
+    "gradientTransform",
+    "spreadMethod",
+    "patternUnits",
+    "patternContentUnits",
+    "patternTransform",
+    "dx",
+    "dy",
+    "rotate",
+    "textLength",
+    "lengthAdjust",
+    "startOffset",
+    "text-anchor",
+    "dominant-baseline",
+    "alignment-baseline",
+    "baseline-shift",
+    "font-family",
+    "font-size",
+    "font-weight",
+    "font-style",
+    "letter-spacing",
+    "word-spacing",
+    "text-decoration",
+    "in",
+    "in2",
+    "result",
+    "mode",
+    "type",
+    "values",
+    "operator",
+    "k1",
+    "k2",
+    "k3",
+    "k4",
+    "stdDeviation",
+    "flood-color",
+    "flood-opacity",
+    "radius",
+    "tableValues",
+    "slope",
+    "intercept",
+    "amplitude",
+    "exponent",
+];
+
+/// Keeps a `use` or `textPath` reference inside the document (`#id`): an
+/// external reference would load another file's drawing into this one.
+fn svg_reference_filter<'u>(
+    element: &str,
+    attribute: &str,
+    value: &'u str,
+) -> Option<Cow<'u, str>> {
+    if attribute == "href"
+        && matches!(element, "use" | "textPath")
+        && !value.trim_start().starts_with('#')
+    {
+        return None;
+    }
+    Some(Cow::Borrowed(value))
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -90,6 +264,18 @@ pub fn render(request: MarkdownRenderRequest) -> MarkdownRenderResponse {
         sanitizer.add_tag_attributes(tag, &["align"]);
     }
 
+    // Inline SVG draws; Ammonia checks that an element only switches into the
+    // SVG namespace through <svg> and that every href passes the URL schemes.
+    sanitizer.add_tags(SVG_TAGS);
+    for tag in SVG_TAGS {
+        sanitizer.add_tag_attributes(tag, SVG_ATTRIBUTES);
+    }
+    sanitizer
+        .add_tag_attributes("use", &["href"])
+        .add_tag_attributes("textPath", &["href"])
+        .add_tag_attributes("image", &["href"])
+        .attribute_filter(svg_reference_filter);
+
     MarkdownRenderResponse {
         html: sanitizer.clean(&rendered).to_string(),
     }
@@ -104,6 +290,45 @@ mod tests {
             source: source.to_owned(),
         })
         .html
+    }
+
+    #[test]
+    fn satisfies_shared_render_fixture() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../fixtures/editor/markdown-render-v1.json"
+        ))
+        .expect("Markdown render fixture should decode");
+        for case in fixture["cases"].as_array().expect("fixture cases") {
+            let name = case["name"].as_str().expect("case name");
+            let output = html(case["source"].as_str().expect("case source"));
+            for want in case["contains"].as_array().expect("contains") {
+                let want = want.as_str().expect("contains entry");
+                assert!(output.contains(want), "{name}: lacks {want:?} in {output}");
+            }
+            for bad in case["absent"].as_array().expect("absent") {
+                let bad = bad.as_str().expect("absent entry");
+                assert!(!output.contains(bad), "{name}: has {bad:?} in {output}");
+            }
+        }
+    }
+
+    #[test]
+    fn inline_svg_keeps_drawing_and_drops_what_runs_or_embeds() {
+        let output = html(
+            "<svg viewBox=\"0 0 10 10\"><g transform=\"scale(2)\"><textPath href=\"https://example.com/p\">t</textPath><textPath href=\"#curve\">u</textPath><image href=\"logo.png\" width=\"4\" height=\"4\"/><image href=\"javascript:bad()\"/><filter id=\"f\"><feImage href=\"https://example.com/x.png\"/><feGaussianBlur stdDeviation=\"2\"/></filter><set attributeName=\"fill\" to=\"red\"/><style>rect{fill:red}</style></g></svg>\n",
+        );
+
+        assert!(output.contains("<g transform=\"scale(2)\""));
+        assert!(output.contains("<textPath href=\"#curve\""));
+        assert!(!output.contains("example.com/p"));
+        assert!(output.contains("<image href=\"logo.png\""));
+        assert!(!output.contains("javascript:"));
+        assert!(output.contains("<feGaussianBlur stdDeviation=\"2\""));
+        assert!(!output.contains("feImage"));
+        assert!(!output.contains("example.com/x.png"));
+        assert!(!output.contains("<set"));
+        assert!(!output.contains("<style"));
+        assert!(!output.contains("fill:red"));
     }
 
     #[test]

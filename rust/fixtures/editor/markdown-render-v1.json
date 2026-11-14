@@ -104,6 +104,34 @@
         "a\n\nb\n"
       ],
       "absent": []
+    },
+    {
+      "name": "inline SVG draws without scripts or external references",
+      "source": "<p align=\"center\">\n<svg width=\"120\" height=\"40\" viewBox=\"0 0 120 40\" onload=\"bad()\" style=\"position: fixed\">\n<title>Logo</title>\n<defs><linearGradient id=\"fade\" x1=\"0\" x2=\"1\"><stop offset=\"0\" stop-color=\"#36c\"/><stop offset=\"1\" stop-color=\"#9cf\"/></linearGradient></defs>\n<rect x=\"1\" y=\"1\" width=\"118\" height=\"38\" rx=\"6\" fill=\"url(#fade)\" stroke=\"#124\" stroke-width=\"2\"/>\n<path d=\"M10 20 L40 20\" stroke=\"white\" stroke-linecap=\"round\"/>\n<text x=\"60\" y=\"25\" text-anchor=\"middle\" font-size=\"14\" fill=\"white\">Lithe</text>\n<use href=\"#fade-shape\"/>\n<use href=\"https://example.com/sprite.svg#icon\"/>\n<script>bad()</script>\n<foreignObject><div>embedded</div></foreignObject>\n<animate attributeName=\"href\" to=\"javascript:bad()\"/>\n<a href=\"javascript:bad()\"><circle cx=\"5\" cy=\"5\" r=\"3\"/></a>\n</svg>\n</p>\n",
+      "contains": [
+        "<svg",
+        "viewBox=\"0 0 120 40\"",
+        "<linearGradient id=\"fade\"",
+        "stop-color=\"#36c\"",
+        "fill=\"url(#fade)\"",
+        "stroke-linecap=\"round\"",
+        "text-anchor=\"middle\"",
+        ">Lithe</text>",
+        "<title>Logo</title>",
+        "<use href=\"#fade-shape\"",
+        "<circle"
+      ],
+      "absent": [
+        "onload",
+        "style=",
+        "<script",
+        "bad()",
+        "foreignObject",
+        "embedded",
+        "<animate",
+        "example.com/sprite.svg",
+        "javascript:"
+      ]
     }
   ]
 }
