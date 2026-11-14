@@ -68,6 +68,21 @@
       "owner": "Lithe"
     },
     {
+      "id": "editor.recovery.applied",
+      "channel": "editor",
+      "level": "info",
+      "message": "Unsaved draft restored into its document",
+      "fields": {
+        "conflict": {
+          "type": "bool",
+          "required": true,
+          "description": "Whether the file changed on disk since the draft was written, so the draft opens as a conflict against the disk version"
+        }
+      },
+      "rate": 60,
+      "owner": "Lithe"
+    },
+    {
       "id": "editor.sync.freeze",
       "channel": "editor",
       "level": "debug",

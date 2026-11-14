@@ -13,7 +13,7 @@ pub static EVENTS: &[EventMetadata] = &[
         message: "User action {action} performed",
         fields: &[
             FieldMetadata { name: "action", field_type: FieldType::Token, required: true, description: "Stable id of the user action that started the work, never a localized menu or button title", reason: None },
-            FieldMetadata { name: "surface", field_type: FieldType::Token, required: true, description: "UI surface that invoked the action: menu, shortcut, palette, toolbar, button, context_menu, notification or plugin", reason: None },
+            FieldMetadata { name: "surface", field_type: FieldType::Token, required: true, description: "UI surface that invoked the action: menu, shortcut, palette, toolbar, button, context_menu, notification, plugin or drag_drop", reason: None },
         ],
         span: None,
         rate: 600,
@@ -289,6 +289,20 @@ pub static EVENTS: &[EventMetadata] = &[
         owner: "Lithe",
     },
     EventMetadata {
+        id: "app.startup.leftovers_resolved",
+        channel: "app",
+        level: LogLevel::Info,
+        message: "Leftover processes from the previous session resolved",
+        fields: &[
+            FieldMetadata { name: "decided_by", field_type: FieldType::Token, required: true, description: "What decided the leftovers: policy when the process lifecycle plan settled them without asking, dialog when the user answered the start-up question", reason: None },
+            FieldMetadata { name: "ended", field_type: FieldType::Int, required: true, description: "Number of leftover processes the client ended", reason: None },
+            FieldMetadata { name: "kept", field_type: FieldType::Int, required: true, description: "Number of leftover processes the client kept running and stopped tracking", reason: None },
+        ],
+        span: None,
+        rate: 60,
+        owner: "Lithe",
+    },
+    EventMetadata {
         id: "app.storage.cleanup_failed",
         channel: "app",
         level: LogLevel::Warn,
@@ -450,6 +464,18 @@ pub static EVENTS: &[EventMetadata] = &[
         message: "Document watch unavailable at {stage}",
         fields: &[
             FieldMetadata { name: "stage", field_type: FieldType::Token, required: true, description: "FSEvents setup step that failed, e.g. create or start", reason: None },
+        ],
+        span: None,
+        rate: 60,
+        owner: "Lithe",
+    },
+    EventMetadata {
+        id: "editor.recovery.applied",
+        channel: "editor",
+        level: LogLevel::Info,
+        message: "Unsaved draft restored into its document",
+        fields: &[
+            FieldMetadata { name: "conflict", field_type: FieldType::Bool, required: true, description: "Whether the file changed on disk since the draft was written, so the draft opens as a conflict against the disk version", reason: None },
         ],
         span: None,
         rate: 60,

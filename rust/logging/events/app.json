@@ -92,6 +92,31 @@
       "owner": "Lithe"
     },
     {
+      "id": "app.startup.leftovers_resolved",
+      "channel": "app",
+      "level": "info",
+      "message": "Leftover processes from the previous session resolved",
+      "fields": {
+        "decided_by": {
+          "type": "token",
+          "required": true,
+          "description": "What decided the leftovers: policy when the process lifecycle plan settled them without asking, dialog when the user answered the start-up question"
+        },
+        "ended": {
+          "type": "int",
+          "required": true,
+          "description": "Number of leftover processes the client ended"
+        },
+        "kept": {
+          "type": "int",
+          "required": true,
+          "description": "Number of leftover processes the client kept running and stopped tracking"
+        }
+      },
+      "rate": 60,
+      "owner": "Lithe"
+    },
+    {
       "id": "app.shell.environment",
       "channel": "app",
       "level": "info",
@@ -478,7 +503,7 @@
         "surface": {
           "type": "token",
           "required": true,
-          "description": "UI surface that invoked the action: menu, shortcut, palette, toolbar, button, context_menu, notification or plugin"
+          "description": "UI surface that invoked the action: menu, shortcut, palette, toolbar, button, context_menu, notification, plugin or drag_drop"
         }
       },
       "rate": 600,
