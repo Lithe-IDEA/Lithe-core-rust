@@ -507,6 +507,8 @@ or removing a command fails until the table changes in the same commit.
 | `workspace.filterChanges` | Filter an array of workspace-relative paths, or `{ paths, hiddenFilePatterns }` whose `!` entries turn default exclusions off, against Core's default build/cache exclusions; preserve order, spelling, and the empty root path. Native event loss bypasses filtering. Hosts relativize to the most specific explicit watch root and retain explicitly watched files |
 | `workspace.listDirectories` | Return one visible level of children for each requested workspace-relative directory (`""` is the root); missing, hidden, symlinked, or nested-worktree paths are omitted, and each listing reports the nested worktrees it left out. Child directories have `children: []` only when a shallow probe proves them visibly empty; otherwise children remain omitted (unloaded), with no recursive tree allocation. Children list directories first, then names in IDEA's natural file-name order (digit runs compare by value, case-insensitive, `-` next to `_`; fixture `rust/fixtures/workspace/file-name-order-v1.json`) |
 | `workspace.orderEntries` | Order natively enumerated directory siblings |
+| `workspace.projectTree.rows` | Say which loaded project tree nodes show as rows, keep the selection on a row that shows, and find the row the top of the view was on, without reading the disk (from `lithe-project-tree`) |
+| `workspace.rowSelection.reduce` | Apply one plain, Cmd/Ctrl or Shift click, or the end of a batch, to the multi-selection of rows of workspace paths and return what a batch acts on (from `lithe-row-selection`) |
 | `workspace.rankNames` | Pure ranking of candidate names that the platform enumerates itself (`{ query, candidates: [{ name, path? }], context: { openPaths, recentPaths }, limitPerTier? }`). Use it only for lists Core cannot index: Windows remote/WSL roots, symbol lists, navigator lists. Roots Core indexes go through `workspace.searchEverywhere`, so an inventory is never sent back to Core. Returns `matches: [{ index, degree, tier, nameMatchRanges }]` ordered by degree, open/recent tier, recency, then file-name order (fixture `rust/fixtures/search/rank-names-v1.json`) |
 | `workspace.planDuplicate` | Name the copy of one project item next to its source (`foo.txt` → `foo copy.txt`, then `foo copy 2.txt`) from the sibling names the host has seen to exist |
 | `workspace.planPaste` | Name pasted project items in one destination directory: a free name is kept, a taken one gets the copy suffix, and earlier items of the same paste count as taken |
@@ -785,6 +787,46 @@ NUL-containing or over-4,096-byte paths, negative times and out-of-range
 capacities return `invalid_request`. Hosts own persistence and which roots are
 worth recording; menus may show fewer rows than are retained. See
 `rust/fixtures/workspace/recent-projects-v1.json`.
+
+`workspace.rowSelection.reduce` accepts `{ rows, selection?, action }` and returns
+`{ selection, targets, rejection? }`. `rows` are the paths of the rows the host
+shows, top to bottom; the empty path is the workspace root. `selection` is
+`{ selected?, marked?, anchor? }`: the selected row, the paths marked for a batch
+(returned in path order) and the path a Shift click extends from. `action.kind` is
+`choose { path }` (a plain click: select the row, drop the marks and the anchor),
+`toggle { path }` (Cmd or Ctrl: mark or unmark the row, select it and make it the
+anchor), `extend { path }` (Shift: mark every row from the anchor, else from the
+selected row, else the clicked row alone, to the clicked row, keep the other marks
+and select it) or `clear` (a batch is over: drop the marks and the anchor, keep the
+selected row). The root is never marked: `toggle` and `extend` on it change nothing,
+and a range that covers it skips it. Marks and an anchor of rows the host does not
+show, such as rows inside a closed folder, stay. An action on a path that is not in
+`rows` returns `rejection: "workspace.rowSelection.stale"` with the selection as
+sent. `targets` is what a batch acts on: the marked paths without those inside a
+marked folder, empty when nothing is marked. A marked or anchored root, more than
+2^20 rows or marks, and unknown fields or actions return `invalid_request`. See
+`rust/fixtures/workspace/row-selection-v1.json`.
+
+`workspace.projectTree.rows` accepts `{ nodes, selection?, top? }` and returns
+`{ rows, selection, selectionMoved, topRow, targets }`. `nodes` are the project tree
+nodes the host loaded with `workspace.listDirectories`, in preorder, each
+`{ path, depth, open? }`: the first is the root `{ path: "", depth: 0 }`, and every
+other node is one name inside the nearest node above it at one less depth; `open`
+says the user opened that folder. A node shows as a row when every folder above it
+is open; the root always shows. `rows` are the positions in `nodes` of the rows that
+show, top to bottom. `selection` is that of `workspace.rowSelection.reduce`. A
+selected node that is not loaded, or that a closed folder hides, gives the selection
+to the nearest folder above it that shows (the root at last), and `selectionMoved`
+says so; marks and an anchor whose node is not loaded are dropped, while marks inside
+a closed folder stay. `top` is the path of the row at the top of the view before the
+change, and `topRow` its row now, or `null` when it no longer shows. `targets` is as
+in `workspace.rowSelection.reduce`. Nothing reads the disk, and a folder's children
+are only those the host listed. Hosts ask once per change of the tree's shape (a
+folder opens or closes, a listing arrives, a node goes away), never per paint. A
+first node that is not the root, a node that skips a depth or is not inside the node
+above it, a path listed twice, more than 2^20 nodes and the selection errors of
+`workspace.rowSelection.reduce` return `invalid_request`. See
+`rust/fixtures/workspace/project-tree-rows-v1.json`.
 
 `workspace.repositories.repositories` is ordered with the containing workspace
 repository first when present, then repositories under the opened workspace by

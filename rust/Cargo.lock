@@ -933,9 +933,11 @@ dependencies = [
  "lithe-process",
  "lithe-project",
  "lithe-project-generators",
+ "lithe-project-tree",
  "lithe-protocol",
  "lithe-remote",
  "lithe-request-context",
+ "lithe-row-selection",
  "lithe-terminal",
  "lithe-text",
  "lithe-toolchain",
@@ -1404,6 +1406,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "lithe-project-tree"
+version = "0.1.0"
+dependencies = [
+ "lithe-protocol",
+ "lithe-row-selection",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "lithe-protocol"
 version = "0.1.0"
 dependencies = [
@@ -1429,6 +1441,15 @@ version = "0.1.0"
 dependencies = [
  "lithe-diagnostics",
  "regex",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-row-selection"
+version = "0.1.0"
+dependencies = [
+ "lithe-protocol",
  "serde",
  "serde_json",
 ]

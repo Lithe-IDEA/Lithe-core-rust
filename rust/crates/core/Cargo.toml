@@ -47,7 +47,9 @@ lithe-plugin-web-content = { path = "../plugin-web-content" }
 lithe-process = { path = "../process" }
 lithe-project = { path = "../project" }
 lithe-project-generators = { path = "../project-generators" }
+lithe-project-tree = { path = "../project-tree" }
 lithe-protocol = { path = "../protocol" }
+lithe-row-selection = { path = "../row-selection" }
 lithe-request-context = { path = "../request-context" }
 lithe-terminal = { path = "../terminal" }
 lithe-text = { path = "../text" }

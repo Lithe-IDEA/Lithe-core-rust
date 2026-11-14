@@ -47,12 +47,14 @@ mod plugin_run_debug;
 mod plugin_settings_documents;
 mod project;
 mod project_generators;
+mod project_tree;
 mod protocol;
 mod published_build_plugins;
 mod rank_names;
 #[cfg(unix)]
 mod remote_sessions;
 mod request_events;
+mod row_selection;
 mod run_configuration;
 pub(crate) mod support;
 mod toolchain_definitions;

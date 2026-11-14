@@ -463,6 +463,12 @@ pub enum WorkspaceCommand {
     ReleaseIndexing,
     /// Lists the visible children of project directories (`workspace.listDirectories`).
     ListDirectories,
+    /// Says which loaded project tree nodes show as rows and keeps the selection on one
+    /// (`workspace.projectTree.rows`).
+    ProjectTreeRows,
+    /// Applies one click to the multi-selection of rows of workspace paths
+    /// (`workspace.rowSelection.reduce`).
+    RowSelectionReduce,
     /// Orders natively enumerated directory siblings (`workspace.orderEntries`).
     OrderEntries,
     /// Ranks host-supplied candidate names with the shared matcher (`workspace.rankNames`).
@@ -1112,6 +1118,12 @@ impl CoreCommand {
             "workspace.refreshIndexing" => Some(Self::Workspace(WorkspaceCommand::RefreshIndexing)),
             "workspace.filterChanges" => Some(Self::Workspace(WorkspaceCommand::FilterChanges)),
             "workspace.listDirectories" => Some(Self::Workspace(WorkspaceCommand::ListDirectories)),
+            "workspace.projectTree.rows" => {
+                Some(Self::Workspace(WorkspaceCommand::ProjectTreeRows))
+            }
+            "workspace.rowSelection.reduce" => {
+                Some(Self::Workspace(WorkspaceCommand::RowSelectionReduce))
+            }
             "workspace.orderEntries" => Some(Self::Workspace(WorkspaceCommand::OrderEntries)),
             "workspace.rankNames" => Some(Self::Workspace(WorkspaceCommand::RankNames)),
             "workspace.planDuplicate" => Some(Self::Workspace(WorkspaceCommand::PlanDuplicate)),
