@@ -467,7 +467,10 @@ mod identity_tests {
             io::ErrorKind::TimedOut
         );
         drop(owner);
-        let _next = startup_lock(&path, Instant::now()).unwrap();
+        // A test elsewhere in this binary can fork while `owner` is open; the
+        // child holds a copy of the descriptor, and so the lock, until it
+        // execs. Allow a bounded wait for that instead of failing at once.
+        let _next = startup_lock(&path, Instant::now() + Duration::from_secs(5)).unwrap();
     }
 
     #[test]

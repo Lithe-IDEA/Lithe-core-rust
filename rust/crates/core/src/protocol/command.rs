@@ -399,6 +399,8 @@ pub enum BuildCommand {
     ResolveStoredOptions,
     /// Edits one declared option in a machine-local Build document without I/O.
     EditStoredOption,
+    /// Replaces or removes the machine-local ignored paths for build detection (`build.editIgnoredPaths`).
+    EditIgnoredPaths,
     /// Lists a build system's executable candidates and version probes (`build.invocationPlan`).
     InvocationPlan,
     /// Compares a build tool's or runtime's version output with its minimum (`build.checkToolVersion`).
@@ -1065,6 +1067,7 @@ impl CoreCommand {
             "build.projectOptions" => Some(Self::Build(BuildCommand::ProjectOptions)),
             "build.resolveStoredOptions" => Some(Self::Build(BuildCommand::ResolveStoredOptions)),
             "build.editStoredOption" => Some(Self::Build(BuildCommand::EditStoredOption)),
+            "build.editIgnoredPaths" => Some(Self::Build(BuildCommand::EditIgnoredPaths)),
             "build.invocationPlan" => Some(Self::Build(BuildCommand::InvocationPlan)),
             "build.checkToolVersion" => Some(Self::Build(BuildCommand::CheckToolVersion)),
             "build.resolveOptions" => Some(Self::Build(BuildCommand::ResolveOptions)),

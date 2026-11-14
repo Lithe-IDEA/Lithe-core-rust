@@ -13,6 +13,10 @@
 //! tracked manifest below an ignored directory is not discovered. Fingerprint
 //! scans keep every directory: they decide freshness, and reading an ignored
 //! input there only costs an extra regeneration.
+//!
+//! A heuristic scan can also be given [`IgnoredPaths`], the workspace's own
+//! patterns (Build options keep them for build detection). They decide before
+//! Git's rules, so `!pattern` brings back a directory Git ignores.
 
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use ignore::Match;
@@ -102,6 +106,69 @@ pub fn scan_run_workspace(
     scan_with_reader(root, max_depth, &read_directory)
 }
 
+/// A heuristic scan that also skips the directories `ignored` names. Only a
+/// heuristic scan takes them, so the depth limit is required here.
+pub fn scan_run_workspace_ignoring(
+    root: &Path,
+    max_depth: usize,
+    ignored: &IgnoredPaths,
+) -> Result<WorkspaceScan, CoreError> {
+    scan_with_readers(
+        root,
+        Some(max_depth),
+        &read_directory,
+        &read_ignore_source,
+        ignored,
+    )
+}
+
+/// Workspace-relative patterns in `.gitignore` syntax, one pattern per entry,
+/// that a heuristic scan skips. They only ever name directories, since the scan
+/// prunes a directory before listing it, so a file pattern such as `*.txt`
+/// skips nothing. As in one ignore file, the last matching pattern decides, and
+/// a pattern with a `/` before its end is anchored at the workspace root while
+/// any other pattern matches a directory name at any depth (`.*` is every
+/// directory whose name starts with a dot).
+#[derive(Default)]
+pub struct IgnoredPaths {
+    matcher: Option<Gitignore>,
+}
+
+impl IgnoredPaths {
+    /// Patterns relative to `root`. `Err` carries the index of the first one
+    /// that is not a pattern: empty, padded with whitespace, holding a control
+    /// character, a comment (`#`), a lone `!`, or a glob Git cannot parse; it is
+    /// `patterns.len()` when each parses but they cannot be compiled together.
+    pub fn new(root: &Path, patterns: &[String]) -> Result<Self, usize> {
+        let mut builder = GitignoreBuilder::new(root);
+        for (index, pattern) in patterns.iter().enumerate() {
+            let bare = pattern.strip_prefix('!').unwrap_or(pattern);
+            if bare.is_empty()
+                || bare.trim() != bare
+                || pattern.starts_with('#')
+                || pattern.chars().any(char::is_control)
+                || builder.add_line(None, pattern).is_err()
+            {
+                return Err(index);
+            }
+        }
+        let matcher = builder.build().map_err(|_| patterns.len())?;
+        Ok(Self {
+            matcher: (!matcher.is_empty()).then_some(matcher),
+        })
+    }
+
+    /// Whether the patterns decide about `directory`: `Some(true)` skips it,
+    /// `Some(false)` keeps it whatever Git says, `None` leaves it to Git.
+    fn decides(&self, directory: &Path) -> Option<bool> {
+        match self.matcher.as_ref()?.matched(directory, true) {
+            Match::Ignore(_) => Some(true),
+            Match::Whitelist(_) => Some(false),
+            Match::None => None,
+        }
+    }
+}
+
 fn read_directory(path: &Path) -> io::Result<Vec<(PathBuf, bool, bool)>> {
     fs::read_dir(path)?
         .map(|entry| {
@@ -133,7 +200,13 @@ pub fn scan_with_reader(
     max_depth: Option<usize>,
     read: &impl Fn(&Path) -> io::Result<Vec<(PathBuf, bool, bool)>>,
 ) -> Result<WorkspaceScan, CoreError> {
-    scan_with_readers(root, max_depth, read, &read_ignore_source)
+    scan_with_readers(
+        root,
+        max_depth,
+        read,
+        &read_ignore_source,
+        &IgnoredPaths::default(),
+    )
 }
 
 // Tests also inject the reader of ignore files, gitfiles and `commondir`.
@@ -142,12 +215,14 @@ fn scan_with_readers(
     max_depth: Option<usize>,
     read: &impl Fn(&Path) -> io::Result<Vec<(PathBuf, bool, bool)>>,
     read_text: &impl Fn(&Path) -> io::Result<String>,
+    ignored: &IgnoredPaths,
 ) -> Result<WorkspaceScan, CoreError> {
     let mut directories = Vec::new();
-    let unreadable_paths = visit_with_readers(root, max_depth, read, read_text, |directory| {
-        directories.push(directory);
-        ControlFlow::Continue(())
-    })?;
+    let unreadable_paths =
+        visit_with_readers(root, max_depth, read, read_text, ignored, |directory| {
+            directories.push(directory);
+            ControlFlow::Continue(())
+        })?;
     directories.sort_by(|left, right| left.path.cmp(&right.path));
     Ok(WorkspaceScan {
         directories,
@@ -163,7 +238,14 @@ struct IgnoreRules {
     parent: Option<Rc<IgnoreRules>>,
 }
 
-fn is_ignored_directory(rules: Option<&Rc<IgnoreRules>>, path: &Path) -> bool {
+fn is_ignored_directory(
+    ignored: &IgnoredPaths,
+    rules: Option<&Rc<IgnoreRules>>,
+    path: &Path,
+) -> bool {
+    if let Some(decision) = ignored.decides(path) {
+        return decision;
+    }
     let mut current = rules;
     while let Some(rules) = current {
         match rules.matcher.matched(path, true) {
@@ -285,6 +367,7 @@ fn visit_with_readers(
     max_depth: Option<usize>,
     read: &impl Fn(&Path) -> io::Result<Vec<(PathBuf, bool, bool)>>,
     read_text: &impl Fn(&Path) -> io::Result<String>,
+    ignored: &IgnoredPaths,
     mut visit: impl FnMut(ScannedDirectory) -> ControlFlow<()>,
 ) -> Result<BTreeSet<String>, CoreError> {
     let heuristic = max_depth.is_some();
@@ -352,7 +435,7 @@ fn visit_with_readers(
         };
         let mut children = subdirectories
             .into_iter()
-            .filter(|child| !is_ignored_directory(rules.as_ref(), child))
+            .filter(|child| !is_ignored_directory(ignored, rules.as_ref(), child))
             .map(|child| (child, depth + 1, rules.clone()))
             .collect::<Vec<_>>();
         children.sort_by(|left, right| right.0.cmp(&left.0));
@@ -392,13 +475,20 @@ mod tests {
                 Ok(vec![(path.join("main.txt"), false, false)])
             }
         };
-        let unknown = visit_with_readers(root, None, &read, &read_ignore_source, |directory| {
-            if directory.files.contains("main.txt") {
-                ControlFlow::Break(())
-            } else {
-                ControlFlow::Continue(())
-            }
-        })
+        let unknown = visit_with_readers(
+            root,
+            None,
+            &read,
+            &read_ignore_source,
+            &IgnoredPaths::default(),
+            |directory| {
+                if directory.files.contains("main.txt") {
+                    ControlFlow::Break(())
+                } else {
+                    ControlFlow::Continue(())
+                }
+            },
+        )
         .unwrap();
         assert_eq!(unknown, BTreeSet::from(["a-blocked".into()]));
         let full = scan_with_reader(root, None, &read).unwrap();
@@ -479,6 +569,26 @@ mod tests {
     impl Tree {
         /// The directories a scan of `root` lists, relative to it.
         fn scan(&self, root: &str, max_depth: Option<usize>) -> BTreeSet<String> {
+            self.scan_with(root, max_depth, &IgnoredPaths::default())
+        }
+
+        /// The directories a heuristic scan of `root` lists when it also skips
+        /// `patterns`.
+        fn scan_ignoring(&self, root: &str, patterns: &[&str]) -> BTreeSet<String> {
+            let patterns: Vec<String> = patterns
+                .iter()
+                .map(|pattern| (*pattern).to_owned())
+                .collect();
+            let ignored = IgnoredPaths::new(Path::new(root), &patterns).unwrap();
+            self.scan_with(root, Some(6), &ignored)
+        }
+
+        fn scan_with(
+            &self,
+            root: &str,
+            max_depth: Option<usize>,
+            ignored: &IgnoredPaths,
+        ) -> BTreeSet<String> {
             let read = |path: &Path| -> io::Result<Vec<(PathBuf, bool, bool)>> {
                 let key = resolved(path);
                 let (_, entries) = self
@@ -503,7 +613,7 @@ mod tests {
                     .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))
             };
             let root = Path::new(root);
-            let scan = scan_with_readers(root, max_depth, &read, &read_text).unwrap();
+            let scan = scan_with_readers(root, max_depth, &read, &read_text, ignored).unwrap();
             assert!(scan.unreadable_paths.is_empty());
             scan.directories
                 .iter()
@@ -539,7 +649,7 @@ mod tests {
                 // `.gitignore`; a pattern Git cannot parse leaves the rest in force.
                 (
                     "fixture/.git/info/exclude",
-                    "# local\n[\n.claude/worktrees/\n",
+                    "# local\n[z-a]\n.claude/worktrees/\n",
                 ),
                 // A lower file re-includes what the root ignores and adds its own.
                 ("fixture/src/.gitignore", "!generated/\ncache/\n"),
@@ -597,5 +707,76 @@ mod tests {
             texts: vec![],
         };
         assert_eq!(tree.scan("fixture", Some(6)), set(["", "generated"]));
+    }
+
+    #[test]
+    fn ignored_paths_decide_before_git_and_the_last_matching_pattern_wins() {
+        let tree = Tree {
+            directories: vec![
+                (
+                    "fixture",
+                    vec![
+                        ".git/",
+                        ".gitignore",
+                        ".claude/",
+                        ".config/",
+                        "generated/",
+                        "tools/",
+                        "src/",
+                    ],
+                ),
+                ("fixture/.claude", vec!["worktrees/"]),
+                ("fixture/.claude/worktrees", vec![]),
+                ("fixture/.config", vec![]),
+                ("fixture/generated", vec![]),
+                ("fixture/tools", vec!["fixtures/"]),
+                ("fixture/tools/fixtures", vec![]),
+                ("fixture/src", vec!["tools/", ".hidden/"]),
+                ("fixture/src/tools", vec![]),
+                ("fixture/src/.hidden", vec![]),
+            ],
+            texts: vec![("fixture/.gitignore", "generated/\n")],
+        };
+        // `.*` skips every dot directory at any depth; Git still skips `generated`.
+        assert_eq!(
+            tree.scan_ignoring("fixture", &[".*"]),
+            set(["", "src", "src/tools", "tools", "tools/fixtures"])
+        );
+        // A later `!` keeps one dot directory and overrides Git, and a pattern
+        // with a leading `/` matches only below the root.
+        assert_eq!(
+            tree.scan_ignoring("fixture", &[".*", "!.config", "!generated", "/tools"]),
+            set(["", ".config", "generated", "src", "src/tools"])
+        );
+        // No pattern leaves only Git's rules.
+        assert_eq!(
+            tree.scan_ignoring("fixture", &[]),
+            tree.scan("fixture", Some(6))
+        );
+    }
+
+    #[test]
+    fn an_ignored_path_list_names_the_first_entry_that_is_not_a_pattern() {
+        let root = Path::new("fixture");
+        let check = |list: &[&str]| {
+            let patterns: Vec<String> = list.iter().map(|pattern| (*pattern).to_owned()).collect();
+            IgnoredPaths::new(root, &patterns).err()
+        };
+        assert_eq!(
+            check(&[".*", "!.config", "build/", "a/**/b", "\\#literal"]),
+            None
+        );
+        for (list, index) in [
+            (&["ok", ""][..], 1),
+            (&[" padded"][..], 0),
+            (&["trailing "][..], 0),
+            (&["# comment"][..], 0),
+            (&["!"][..], 0),
+            (&["! spaced"][..], 0),
+            (&["line\nbreak"][..], 0),
+            (&["ok", "[z-a]"][..], 1),
+        ] {
+            assert_eq!(check(list), Some(index), "{list:?}");
+        }
     }
 }

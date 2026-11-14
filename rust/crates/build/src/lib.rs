@@ -20,6 +20,7 @@ mod configuration;
 mod debug_preparation;
 mod decode;
 mod detect;
+mod ignored_paths;
 mod invocation;
 mod manifest;
 mod model;
@@ -44,7 +45,7 @@ pub use manifest::{
 };
 pub use project_options::project_options_command;
 pub use run_start::run_decode_start_command;
-pub use stored_options::resolve_stored_options_command;
+pub use stored_options::{edit_ignored_paths_command, resolve_stored_options_command};
 pub use test_outcome::resolve_test_run_outcome;
 pub use test_outcome_merge::merge_test_outcomes;
 

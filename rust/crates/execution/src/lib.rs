@@ -19,11 +19,11 @@ mod types;
 pub use argument_text::{format_argument_text, ArgumentTextRequest};
 pub use configuration::*;
 pub use context_selection::{select_context_configuration, ContextSelectionRequest};
-pub use detectors::{scan, DirectoryContext};
+pub use detectors::{scan, scan_ignoring, DirectoryContext};
 pub use title_action::{decide_title_action, TitleActionRequest};
 
 pub mod workspace_scan;
-pub use workspace_scan::is_run_scan_excluded_directory;
+pub use workspace_scan::{is_run_scan_excluded_directory, IgnoredPaths};
 
 mod environment;
 pub use environment::{

@@ -2,10 +2,10 @@
 //! Platforms own reads, conflict checks and atomic publication; no tool is run.
 
 use super::manifest::{BuildSystemDeclaration, OptionKind, OptionScope};
-use super::{options, project_options};
+use super::{ignored_paths, options, project_options};
 use lithe_plugin_model::{decode_payload, outcome, PluginRejection, Validation};
 use lithe_protocol::CoreError;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -40,6 +40,20 @@ pub(super) struct EditRequest {
     value: Value,
     #[serde(default)]
     model_values: Option<BTreeMap<String, Vec<String>>>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EditIgnoredPathsRequest {
+    document: Value,
+    local: Value,
+    /// Required: `null` removes the local list rather than meaning "unchanged".
+    #[serde(deserialize_with = "required")]
+    patterns: Option<Vec<String>>,
+}
+
+fn required<'de, D: Deserializer<'de>>(input: D) -> Result<Option<Vec<String>>, D::Error> {
+    Option::deserialize(input)
 }
 
 fn invalid() -> PluginRejection {
@@ -113,7 +127,20 @@ fn merge(team: &Value, local: &Local) -> Value {
                 .extend(values.as_object().expect("normalized values").clone());
         }
     }
+    if let Some(patterns) = local.document.get("ignoredPaths") {
+        document["ignoredPaths"] = patterns.clone();
+    }
     document
+}
+
+/// The ignored paths detection uses, and which layer set them.
+fn effective_ignored_paths(team: &Value, local: &Local) -> Value {
+    let (patterns, source) = match (local.document.get("ignoredPaths"), team.get("ignoredPaths")) {
+        (Some(patterns), _) => (patterns.clone(), "local"),
+        (None, Some(patterns)) => (patterns.clone(), "team"),
+        (None, None) => (json!(ignored_paths::DEFAULT), "default"),
+    };
+    json!({"patterns":patterns,"source":source})
 }
 
 fn effective(
@@ -155,7 +182,12 @@ pub fn resolve_stored_options_command(payload: Value) -> Result<Value, CoreError
         let local = validate_local(request.local)?;
         Ok((
             "storage",
-            json!({"document":merge(&team,&local),"local":local,"emptySelections":local.empty_selections}),
+            json!({
+                "document":merge(&team,&local),
+                "local":local,
+                "emptySelections":local.empty_selections,
+                "ignoredPaths":effective_ignored_paths(&team,&local),
+            }),
         ))
     })()))
 }
@@ -297,4 +329,31 @@ pub(super) fn edit(system: &BuildSystemDeclaration, request: &EditRequest) -> Va
     Ok(
         json!({"local":local,"options":options::describe(system,&resolved,request.model_values.as_ref())}),
     )
+}
+
+/// `build.editIgnoredPaths`: replaces or removes the local ignored-path list.
+/// The team document is only read, to report what applies after the edit.
+pub fn edit_ignored_paths_command(payload: Value) -> Result<Value, CoreError> {
+    let request: EditIgnoredPathsRequest = decode_payload(payload, "build.editIgnoredPaths")?;
+    Ok(outcome((|| {
+        let team = project_options::validate(request.document)?;
+        let mut local = validate_local(request.local)?;
+        let document = local
+            .document
+            .as_object_mut()
+            .expect("validated local document");
+        match request.patterns {
+            Some(patterns) => {
+                ignored_paths::check(&patterns)?;
+                document.insert("ignoredPaths".to_owned(), json!(patterns));
+            }
+            None => {
+                document.remove("ignoredPaths");
+            }
+        }
+        // Revalidate the aggregate size bound after the insertion.
+        let local = validate_local(serde_json::to_value(local).map_err(|_| invalid())?)?;
+        let ignored = effective_ignored_paths(&team, &local);
+        Ok(("edit", json!({"local":local,"ignoredPaths":ignored})))
+    })()))
 }

@@ -12,6 +12,16 @@
     "version": {
       "const": 1
     },
+    "ignoredPaths": {
+      "description": "Directories build detection skips: .gitignore patterns relative to the workspace root, the last match deciding. Absent, the layer below applies (the team document for a local one, Core's default [\".*\"] for the team's). Core also rejects comments, padded entries, a lone '!', control characters, unparsable globs and entries over 1024 bytes.",
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1024
+      }
+    },
     "systems": {
       "type": "object",
       "maxProperties": 32,

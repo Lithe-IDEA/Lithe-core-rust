@@ -181,3 +181,94 @@ fn native_build_options_preserve_the_existing_document_bounds() {
         );
     }
 }
+
+/// Ignored paths for build detection layer like the other Build options: the
+/// local list replaces the team's, and without either Core's default applies.
+#[test]
+fn ignored_paths_resolve_by_layer_and_local_edits_replace_or_remove_the_list() {
+    let empty_local =
+        json!({"version":1,"document":{"version":1,"systems":{}},"emptySelections":{}});
+    let team = json!({"version":1,"systems":{},"ignoredPaths":[".*","!.config"]});
+    let resolve = |team: &Value, local: &Value| {
+        crate::build::resolve_stored_options_command(json!({"document":team,"local":local}))
+            .unwrap()
+    };
+    let edit = |team: &Value, local: &Value, patterns: Value| {
+        crate::build::edit_ignored_paths_command(
+            json!({"document":team,"local":local,"patterns":patterns}),
+        )
+        .unwrap()
+    };
+
+    let plain = json!({"version":1,"systems":{}});
+    assert_eq!(
+        resolve(&plain, &empty_local)["storage"]["ignoredPaths"],
+        json!({"patterns":[".*"],"source":"default"})
+    );
+    let teams = resolve(&team, &empty_local);
+    assert_eq!(
+        teams["storage"]["ignoredPaths"],
+        json!({"patterns":[".*","!.config"],"source":"team"})
+    );
+    assert_eq!(
+        teams["storage"]["document"]["ignoredPaths"],
+        json!([".*", "!.config"])
+    );
+
+    let edited = edit(&team, &empty_local, json!(["build/", "\\#literal"]));
+    assert_eq!(edited["status"], "ok", "{edited}");
+    let local = &edited["edit"]["local"];
+    assert_eq!(
+        local["document"]["ignoredPaths"],
+        json!(["build/", "\\#literal"])
+    );
+    assert_eq!(
+        edited["edit"]["ignoredPaths"],
+        json!({"patterns":["build/","\\#literal"],"source":"local"})
+    );
+    assert_eq!(
+        resolve(&team, local)["storage"]["ignoredPaths"]["source"],
+        "local"
+    );
+    // An empty local list is an explicit choice to ignore nothing.
+    let nothing = edit(&team, &empty_local, json!([]));
+    assert_eq!(
+        nothing["edit"]["ignoredPaths"],
+        json!({"patterns":[],"source":"local"})
+    );
+
+    let removed = edit(&team, local, Value::Null);
+    assert_eq!(removed["edit"]["local"], empty_local);
+    assert_eq!(removed["edit"]["ignoredPaths"]["source"], "team");
+
+    for (patterns, field) in [
+        (json!([".*", ""]), "ignoredPaths[1]"),
+        (json!(["# comment"]), "ignoredPaths[0]"),
+        (json!(["ok", "[z-a]"]), "ignoredPaths[1]"),
+        (json!(["ok", "x".repeat(1025), "!"]), "ignoredPaths[1]"),
+        (json!(vec!["a"; 257]), "ignoredPaths[256]"),
+    ] {
+        let rejected = edit(&team, &empty_local, patterns);
+        assert_eq!(rejected["status"], "rejected", "{rejected}");
+        assert_eq!(rejected["error"]["code"], "plugin.build.invalidIgnoredPath");
+        assert_eq!(rejected["error"]["field"], field);
+    }
+    // `null` resets the list, so the field must be present rather than
+    // defaulting to a reset.
+    assert!(
+        crate::build::edit_ignored_paths_command(json!({"document":team,"local":empty_local}))
+            .is_err()
+    );
+
+    // A list Core cannot use makes a stored document invalid as a whole, like
+    // any other malformed value, instead of silently falling back.
+    let broken = json!({"version":1,"systems":{},"ignoredPaths":["!"]});
+    assert_eq!(
+        project_options_command(json!({"document":broken})).unwrap()["error"]["code"],
+        "plugin.build.invalidOptionsDocument"
+    );
+    assert_eq!(
+        resolve(&plain, &json!({"version":1,"document":broken}))["error"]["code"],
+        "plugin.build.invalidOptionsDocument"
+    );
+}

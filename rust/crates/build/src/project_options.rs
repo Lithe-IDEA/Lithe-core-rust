@@ -1,7 +1,10 @@
 //! Validates the existing team Build options document for native stores.
 //! This is storage syntax only: declarations still own option types, scope,
 //! defaults and contributions, and platforms own file access and publication.
+//! Besides per-system values, a document may carry the workspace's ignored
+//! paths for build detection (see `ignored_paths`).
 
+use super::ignored_paths;
 use lithe_plugin_model::{decode_payload, outcome, PluginRejection, Validation};
 use lithe_protocol::CoreError;
 use serde::{Deserialize, Serialize};
@@ -21,6 +24,14 @@ struct Document {
     // document validator does. Booleans must never become the version number.
     version: f64,
     systems: BTreeMap<String, System>,
+    /// Absent leaves ignored paths to the layer below: the team document for
+    /// a local one, the default for the team's.
+    #[serde(
+        default,
+        rename = "ignoredPaths",
+        skip_serializing_if = "Option::is_none"
+    )]
+    ignored_paths: Option<Vec<String>>,
 }
 
 #[derive(Default, Deserialize, Serialize)]
@@ -99,7 +110,14 @@ pub(super) fn validate(value: Value) -> Validation<Value> {
             return Err(invalid());
         }
     }
-    Ok(json!({"version":1,"systems":document.systems}))
+    if let Some(patterns) = &document.ignored_paths {
+        ignored_paths::check(patterns).map_err(|_| invalid())?;
+    }
+    let mut normalized = json!({"version":1,"systems":document.systems});
+    if let Some(patterns) = document.ignored_paths {
+        normalized["ignoredPaths"] = json!(patterns);
+    }
+    Ok(normalized)
 }
 
 /// Validates storage without dropping values belonging to inactive plugins or
