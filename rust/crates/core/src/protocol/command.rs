@@ -235,6 +235,9 @@ pub enum PluginsCommand {
     DeclarativeSettingsActionPlan,
     /// Selects numeric installed versions and reports malformed native facts.
     InstalledSelect,
+    /// Reports installed plugins' enablement and plans a lifecycle action
+    /// (`plugins.installed.lifecycle`).
+    InstalledLifecycle,
     /// Validates an atomic plugin settings edit and preserves unrelated values.
     DeclarativeEditSettings,
     /// Expands a language server's `workspaceConfiguration` (`plugins.declarative.workspaceConfiguration`).
@@ -987,6 +990,9 @@ impl CoreCommand {
                 Some(Self::Plugins(PluginsCommand::DeclarativeSettingsActionPlan))
             }
             "plugins.installed.select" => Some(Self::Plugins(PluginsCommand::InstalledSelect)),
+            "plugins.installed.lifecycle" => {
+                Some(Self::Plugins(PluginsCommand::InstalledLifecycle))
+            }
             "plugins.declarative.editSettings" => {
                 Some(Self::Plugins(PluginsCommand::DeclarativeEditSettings))
             }

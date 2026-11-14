@@ -35,6 +35,7 @@ mod git_workspace_status;
 mod git_worktree_creation_preview;
 mod github;
 mod history_events;
+mod installed_lifecycle;
 mod installed_versions;
 mod keymap_import;
 mod language_server_sessions;

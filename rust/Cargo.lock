@@ -921,6 +921,7 @@ dependencies = [
  "lithe-plugin-function-relay",
  "lithe-plugin-keymap-import",
  "lithe-plugin-language-servers",
+ "lithe-plugin-lifecycle",
  "lithe-plugin-manifest",
  "lithe-plugin-marketplace",
  "lithe-plugin-model",
@@ -1231,6 +1232,15 @@ name = "lithe-plugin-language-servers"
 version = "0.1.0"
 dependencies = [
  "lithe-plugin-model",
+ "lithe-protocol",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-plugin-lifecycle"
+version = "0.1.0"
+dependencies = [
  "lithe-protocol",
  "serde",
  "serde_json",

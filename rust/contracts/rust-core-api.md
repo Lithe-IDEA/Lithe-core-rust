@@ -389,6 +389,7 @@ or removing a command fails until the table changes in the same commit.
 | `plugins.declarative.settingsState` | Read complete plugin preference documents into Core-normalized rows, sources, and bounded native read plans |
 | `plugins.declarative.settingsActionPlan` | Resolve an installed settings action and its native confirmation requirement |
 | `plugins.installed.select` | Select numeric installed versions from native facts without reading paths |
+| `plugins.installed.lifecycle` | Report installed plugins' enablement and plan confirming an install, enabling, disabling or uninstalling one |
 | `plugins.declarative.editSettings` | Validate one atomic setting edit batch and return replacement text while preserving unrelated plugins and dormant values |
 | `plugins.declarative.workspaceConfiguration` | Expand a language server's `workspaceConfiguration` with the merged setting values |
 | `plugins.declarative.decodeGrammar` | Validate independent static editor resources |
@@ -4089,6 +4090,39 @@ available; the native owner must report diagnostics and must not abandon a
 successfully started session merely because other plugins failed discovery.
 This is metadata selection, not manifest validation, approval or admission.
 Shared cases are in `rust/fixtures/plugins/installed-versions.json`.
+
+`plugins.installed.lifecycle` accepts `{ installed: [{ pluginID, version }],
+choices?: [{ pluginID, enabled }], action?: { kind, pluginID } }`, with at most
+4096 installed versions and 4096 choices. `installed` lists every installed
+version and `choices` every enablement choice the user made; an empty ID or
+version, a repeated version or a second choice for one plugin is
+`invalid_request`. `kind` is `confirmInstall`, `enable`, `disable` or
+`uninstall`. It returns `{ plugins: [{ pluginID, enabled }], changed, steps,
+rejection? }`. `plugins` lists every installed plugin once, ordered by ID, with
+its enablement once the steps ran; an uninstalled plugin is left out.
+Enablement is per plugin, not per version, and a plugin without a choice is
+disabled. A choice for a plugin that is not installed is kept for a later
+installation. `changed` says the steps change the choice for the action's
+plugin. An action on a plugin with no installed version returns
+`rejection: "plugin.lifecycle.notInstalled"`, no steps and the unchanged
+`plugins`.
+
+`steps` are what the host does on the action's plugin, in order:
+`{ kind: "recordChoice", enabled }` records the choice, `{ kind: "forgetChoice" }`
+drops it, `{ kind: "stopPrograms" }` stops the plugin's language server and
+backend and returns once they ended or gave up, `{ kind: "removeVersion",
+version }` removes one installed version and then forgets that version's
+approval record (the record stays when the removal failed), and
+`{ kind: "removeState" }` removes the state directory the plugin's programs
+wrote. A failed step does not stop the steps after it; the host reports every
+failure. `confirmInstall` records `enabled: true` only when the plugin has no
+choice, so a plugin disabled before an update stays disabled. `enable` records
+`true` unless already chosen. `disable` records `false` unless already chosen
+and then stops the programs, so nothing starts the plugin again while it stops.
+`uninstall` stops the programs, removes every installed version in version text
+order, forgets the choice if there is one and removes the state, so a later
+installation starts as a first one. Shared cases are in
+`rust/fixtures/plugins/installed-lifecycle.json`.
 
 `plugins.declarative.decodeGrammar` accepts `{ manifest, languageID, grammar }`,
 where `grammar` is the text the host read from the language's `grammar.path`

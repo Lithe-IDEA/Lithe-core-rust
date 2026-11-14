@@ -74,6 +74,9 @@ pub(super) fn dispatch(
         PluginsCommand::InstalledSelect => {
             plugin_response(id, payload, lithe_plugin_model::installed::select_command)
         }
+        PluginsCommand::InstalledLifecycle => {
+            plugin_response(id, payload, lithe_plugin_lifecycle::command)
+        }
         PluginsCommand::SettingsCatalog => {
             plugin_response(id, payload, lithe_plugin_manifest::settings_catalog_command)
         }
