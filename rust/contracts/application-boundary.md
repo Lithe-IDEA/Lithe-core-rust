@@ -175,11 +175,26 @@ resources are released. A cancelled UI waiter cannot cancel another window's wai
 
 ### External HTML preview
 
-Both products open an existing local `.html` / `.htm` document in the system's
-configured web browser, independently of the file type's default editor. The
-browser reads the saved file; this action does not save buffers or start a web
-server. File URLs preserve Unicode and reserved characters. Browser discovery
-and launch belong to platform adapters, and launch failures are shown to the user.
+The desktop app opens an existing local `.html`, `.htm`, `.xhtml` or `.svg`
+document in the system's configured web browser, independently of the file
+type's default editor. The browser reads the file on disk, so the document's
+unsaved changes are saved first; this action does not start a web server. File
+URLs preserve Unicode and reserved characters. Browser discovery and launch
+belong to platform adapters, and launch failures are shown to the user.
+
+### Embedded HTML preview
+
+Where the platform has a web engine, `.html`, `.htm` and `.xhtml` documents open
+as editable text with their page beside it, in the editor, split and preview
+modes of SVG documents. The page shows the editor's current text, unsaved edits
+included, and loads its other files as a static site whose root and requests
+`htmlPreview.site` and `htmlPreview.resolveRequest` decide. The page runs the
+document's scripts, so the host serves only what those commands answer, never
+writes through the site, keeps none of the page's storage once the preview
+closes, and opens navigation away from the site with the link policy of
+`markdown.resolveReference`. Where the page cannot be opened, HTML documents are
+text alone and other previews are unaffected. The behavior fixture is
+[`html-preview-v1.json`](../fixtures/editor/html-preview-v1.json).
 
 ## Document Lifecycle Contract
 

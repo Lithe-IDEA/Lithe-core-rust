@@ -5651,6 +5651,8 @@ they serve only what this command answers, never write through the site, and
 handle top-level navigation away from it with the link policy of
 `markdown.resolveReference`.
 
+Shared examples: `rust/fixtures/editor/html-preview-v1.json`.
+
 ### Structured logging of recoverable LSP maintenance warnings
 
 `lsp.pollEvents` log observations may carry the existing `error` object even at

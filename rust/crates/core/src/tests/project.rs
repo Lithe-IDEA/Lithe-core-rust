@@ -999,14 +999,38 @@ fn markdown_resolve_reference_command_answers_links_and_resources() {
 }
 
 #[test]
-fn html_preview_commands_address_the_document_and_answer_its_requests() {
-    let root = temporary_root("html-preview");
-    let _ = fs::remove_dir_all(&root);
-    fs::create_dir_all(root.join("site").join("css")).expect("site folder should be creatable");
-    fs::write(root.join("site").join("index.html"), "<p>x</p>").expect("document should write");
-    fs::write(root.join("site").join("css").join("app.css"), "p{}").expect("style should write");
-    fs::write(root.join(".env"), "TOKEN=x").expect("hidden file should write");
-    let document = root.join("site").join("index.html");
+fn html_preview_commands_match_shared_fixture() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../fixtures/editor/html-preview-v1.json"
+    ))
+    .expect("HTML preview fixture should decode");
+    let top = temporary_root("html-preview");
+    let _ = fs::remove_dir_all(&top);
+    struct Cleanup(std::path::PathBuf);
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    let _cleanup = Cleanup(top.clone());
+    let root = top.join("workspace");
+    let under = |relative: &str| {
+        relative
+            .split('/')
+            .filter(|name| !name.is_empty())
+            .fold(root.clone(), |path, name| path.join(name))
+    };
+    for entry in fixture["files"].as_array().expect("fixture files") {
+        let entry = entry.as_str().expect("file entry");
+        let path = under(entry);
+        if entry.ends_with('/') {
+            fs::create_dir_all(&path).expect("fixture folder should be creatable");
+        } else {
+            fs::create_dir_all(path.parent().expect("file folder"))
+                .expect("fixture folder should be creatable");
+            fs::write(&path, "x").expect("fixture file should write");
+        }
+    }
     let call = |command: &str, payload: Value| -> Value {
         let request = serde_json::json!({ "id": "html", "command": command, "payload": payload });
         serde_json::from_str(&execute_json(
@@ -1014,52 +1038,58 @@ fn html_preview_commands_address_the_document_and_answer_its_requests() {
         ))
         .expect("HTML preview response should be JSON")
     };
-    let request = |path: &str| {
-        let response = call(
-            "htmlPreview.resolveRequest",
-            serde_json::json!({
-                "documentPath": document.to_string_lossy(),
-                "workspaceRoot": root.to_string_lossy(),
-                "path": path
-            }),
+
+    for case in fixture["cases"].as_array().expect("fixture cases") {
+        let name = case["name"].as_str().expect("case name");
+        let mut payload = serde_json::json!({
+            "documentPath": under(case["document"].as_str().expect("case document")).to_string_lossy()
+        });
+        if case["inWorkspace"] == true {
+            payload["workspaceRoot"] = Value::from(root.to_string_lossy().into_owned());
+        }
+        let site = call("htmlPreview.site", payload.clone());
+        assert_eq!(site["ok"], true, "{name}: {site}");
+        let want = &case["site"];
+        assert_eq!(
+            site["data"]["root"],
+            under(want["root"].as_str().expect("site root"))
+                .to_string_lossy()
+                .as_ref(),
+            "{name}"
         );
-        assert_eq!(response["ok"], true, "{response}");
-        response["data"].clone()
-    };
+        assert_eq!(site["data"]["address"], want["address"], "{name}");
+        assert_eq!(site["data"]["mime"], want["mime"], "{name}");
 
-    let site = call(
-        "htmlPreview.site",
-        serde_json::json!({
-            "documentPath": document.to_string_lossy(),
-            "workspaceRoot": root.to_string_lossy()
-        }),
-    );
-    assert_eq!(site["ok"], true, "{site}");
-    assert_eq!(site["data"]["address"], "site/index.html");
-    assert_eq!(site["data"]["mime"], "text/html; charset=utf-8");
-    assert_eq!(site["data"]["root"], root.to_string_lossy().as_ref());
-    assert_eq!(
-        request("site/index.html"),
-        serde_json::json!({"kind": "document"})
-    );
-    assert_eq!(
-        request("site/css/app.css")["mime"],
-        "text/css; charset=utf-8"
-    );
-    assert_eq!(request("site"), serde_json::json!({"kind": "directory"}));
-    assert_eq!(request(".env"), serde_json::json!({"kind": "denied"}));
-    assert_eq!(
-        request("../outside.html"),
-        serde_json::json!({"kind": "none"})
-    );
+        for request in case["requests"].as_array().expect("case requests") {
+            let path = request["path"].as_str().expect("request path");
+            payload["path"] = Value::from(path);
+            let response = call("htmlPreview.resolveRequest", payload.clone());
+            assert_eq!(response["ok"], true, "{name}: {path}: {response}");
+            let mut want = serde_json::json!({ "kind": request["kind"] });
+            if let Some(file) = request["file"].as_str() {
+                want["path"] = Value::from(
+                    fs::canonicalize(under(file))
+                        .expect("canonical fixture file")
+                        .to_string_lossy()
+                        .into_owned(),
+                );
+                want["mime"] = request["mime"].clone();
+            }
+            assert_eq!(response["data"], want, "{name}: {path}");
+        }
+    }
 
-    let relative = call(
-        "htmlPreview.site",
-        serde_json::json!({ "documentPath": "index.html" }),
-    );
-    assert_eq!(relative["ok"], false, "{relative}");
-    assert_eq!(relative["error"]["code"], "invalid_request");
-    let _ = fs::remove_dir_all(&root);
+    for document in fixture["invalidDocuments"]
+        .as_array()
+        .expect("invalid documents")
+    {
+        let response = call(
+            "htmlPreview.site",
+            serde_json::json!({ "documentPath": document }),
+        );
+        assert_eq!(response["ok"], false, "{document}: {response}");
+        assert_eq!(response["error"]["code"], "invalid_request", "{document}");
+    }
 }
 
 #[test]
