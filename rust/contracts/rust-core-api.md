@@ -550,7 +550,7 @@ or removing a command fails until the table changes in the same commit.
 | `processLifecycle.resolve` | Decide how each process or resource of one Lithe instance ends |
 | `processLifecycle.inventory` | Group a process snapshot of one Lithe instance into terminals, Agent tasks and background services |
 | `processLifecycle.settle` | Turn confirmation answers into what ends, what is kept and the updated settings |
-| `processMemory.summarize` | Sum a process table's memory by part of one Lithe instance: the host, language servers, plugin services, system helpers and other child processes |
+| `processMemory.summarize` | Sum a process table's memory, compressed memory, graphics memory and processor and graphics use by part of one Lithe instance: the host, language servers, plugin services, system helpers and other child processes |
 | `markdown.render` | Renders and sanitizes shared Markdown |
 | `markdown.outline` | Outlines the headings of shared Markdown as a document-symbol tree |
 | `markdown.resolveReference` | Decides what a link or an image of a rendered Markdown document points at |
@@ -5080,12 +5080,21 @@ scope-token ownership. Fixtures live in
 
 Fixtures live in `rust/fixtures/process-lifecycle/settle-v1.json`.
 
-`processMemory.summarize` accepts `{ hostProcessId, processes, roles, entryLimit }`
-and attributes every process the host could read to one part of the instance,
-so every host shows the same numbers for the same table. Each process row is
-`{ processId, parentProcessId, responsibleProcessId?, startTime?, name, bytes }`.
-`bytes` is the memory the host charges to the process; every row of one request
-uses the same measure. `responsibleProcessId` is the process the operating system
+`processMemory.summarize` accepts `{ hostProcessId, processes, roles, entryLimit,
+sampledAt?, previous?, logicalProcessors? }` and attributes every process the host
+could read to one part of the instance, so every host shows the same numbers for
+the same table. Each process row is `{ processId, parentProcessId,
+responsibleProcessId?, startTime?, name, bytes, compressedBytes?, gpuMemoryBytes?,
+cpuTime?, gpuEngines? }`. Every host reports memory the same way: `bytes` is
+what is in memory, and `compressedBytes` is what the system compressed or wrote
+out to disk, which `bytes` does not include. `gpuMemoryBytes` is graphics memory
+charged to the process that `bytes` does not hold, such as dedicated video memory
+on Windows; a host whose `bytes` already holds it leaves it out. `cpuTime` is the
+processor time the process used since it started, user and system together, in
+microseconds. `gpuEngines` are `{ engine, busyTime }`: the microseconds each
+graphics engine was busy with the process's work, where `engine` names the same
+engine for every process and table of one host and times of one name add up.
+`responsibleProcessId` is the process the operating system
 holds responsible, which macOS reports for XPC services. `startTime` is in
 microseconds since 1970; a reported parent that started after its child is a
 reused process ID and is not followed. `roles` are
@@ -5109,14 +5118,45 @@ Every process counts at most once:
 - Other processes are left out. The processes of a cycle of parent links are
   decided as if none of them had a parent.
 
-It returns `{ totalBytes, categories, entries, omitted }`. `categories` lists
+It returns `{ totalBytes, compressedBytes?, gpuMemoryBytes?, cpuPercent?,
+gpuPercent?, categories, entries, omitted, baseline? }`. `categories` lists
 `host`, `languageServer`, `pluginService`, `systemHelper` and `childProcess` in
-that order, each `{ kind, bytes, processCount }`, empty ones included. `entries`
-are the groups other than the host, `{ kind, name, processId, bytes,
-processCount }`, largest first, with ties ordered by part, name and process ID.
-`name` is the role name, else the process name, shortened to 80 characters.
-`omitted` is `{ count, bytes }` of the groups past the limit. A table without the
-host or with a repeated process ID is `invalid_request`. Fixtures live in
+that order, each `{ kind, bytes, processCount }` with the same optional figures,
+empty ones included. `entries` are the groups other than the host, `{ kind, name,
+processId, bytes, processCount }` with the same optional figures, largest first by
+`bytes`, with ties ordered by part, name and process ID. `name` is the role name,
+else the process name, shortened to 80 characters. `omitted` is `{ count, bytes }`
+of the groups past the limit.
+
+Each optional figure is on the summary, every category and every entry, or on
+none of them. `compressedBytes` and `gpuMemoryBytes` are there when a process of
+the instance reported them and sum the processes that did.
+
+Percentages measure use between two tables of one host:
+
+- `sampledAt` is when the table was read, in microseconds of a clock that only
+  moves forward. A request with it gets `baseline: { sampledAt, processes }`: the
+  instance's processes that have `cpuTime` or `gpuEngines`, by process ID, each
+  `{ processId, startTime?, cpuTime?, gpuEngines? }` with one engine row per name.
+  The host sends it back as `previous` with its next table.
+- A process is compared with the `previous` row of its process ID and start time;
+  a row with another start time belongs to an earlier process with the same ID.
+  A process the baseline does not have, such as one started since, adds nothing
+  until the next table. A counter lower than its baseline adds nothing.
+- `cpuPercent` is there when a process of the instance has `cpuTime` in both
+  tables. It is the processor time used over the interval, where 100 is one
+  processor busy, as Activity Monitor and `top` show it. With
+  `logicalProcessors` it is a share of that many processors instead, as the
+  Windows Task Manager shows it, and at most 100.
+- `gpuPercent` is there when a process of the instance has engines in both
+  tables. The busy times of each engine are added up over the group, and the
+  busiest engine's share of the interval is the percentage, at most 100. An engine
+  the baseline row does not list counts from zero.
+- Percentages are rounded to a tenth. Without `sampledAt`, without `previous`, or
+  with a `sampledAt` no later than the baseline's, there are none.
+
+A table without the host or with a repeated process ID, or a `logicalProcessors`
+of 0, is `invalid_request`. Fixtures live in
 `rust/fixtures/process-lifecycle/memory-summary-v1.json`.
 
 ## Local IDE capability broker

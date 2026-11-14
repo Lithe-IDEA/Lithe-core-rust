@@ -750,6 +750,716 @@
           "bytes": 3
         }
       }
+    },
+    {
+      "name": "compressed and graphics memory are summed apart from what is in memory",
+      "request": {
+        "hostProcessId": 100,
+        "processes": [
+          {
+            "processId": 100,
+            "parentProcessId": 1,
+            "name": "Lithe",
+            "bytes": 300,
+            "compressedBytes": 40,
+            "gpuMemoryBytes": 32
+          },
+          {
+            "processId": 200,
+            "parentProcessId": 100,
+            "name": "zsh",
+            "bytes": 50,
+            "compressedBytes": 10
+          },
+          {
+            "processId": 201,
+            "parentProcessId": 200,
+            "name": "git",
+            "bytes": 5
+          },
+          {
+            "processId": 300,
+            "parentProcessId": 100,
+            "name": "alpha-ls",
+            "bytes": 80,
+            "compressedBytes": 0
+          },
+          {
+            "processId": 900,
+            "parentProcessId": 1,
+            "name": "other",
+            "bytes": 1000,
+            "compressedBytes": 999,
+            "gpuMemoryBytes": 77
+          }
+        ],
+        "roles": [
+          {
+            "processId": 300,
+            "kind": "languageServer",
+            "name": "Alpha"
+          }
+        ]
+      },
+      "expected": {
+        "totalBytes": 435,
+        "compressedBytes": 50,
+        "gpuMemoryBytes": 32,
+        "categories": [
+          {
+            "kind": "host",
+            "bytes": 300,
+            "processCount": 1,
+            "compressedBytes": 40,
+            "gpuMemoryBytes": 32
+          },
+          {
+            "kind": "languageServer",
+            "bytes": 80,
+            "processCount": 1,
+            "compressedBytes": 0,
+            "gpuMemoryBytes": 0
+          },
+          {
+            "kind": "pluginService",
+            "bytes": 0,
+            "processCount": 0,
+            "compressedBytes": 0,
+            "gpuMemoryBytes": 0
+          },
+          {
+            "kind": "systemHelper",
+            "bytes": 0,
+            "processCount": 0,
+            "compressedBytes": 0,
+            "gpuMemoryBytes": 0
+          },
+          {
+            "kind": "childProcess",
+            "bytes": 55,
+            "processCount": 2,
+            "compressedBytes": 10,
+            "gpuMemoryBytes": 0
+          }
+        ],
+        "entries": [
+          {
+            "kind": "languageServer",
+            "name": "Alpha",
+            "processId": 300,
+            "bytes": 80,
+            "processCount": 1,
+            "compressedBytes": 0,
+            "gpuMemoryBytes": 0
+          },
+          {
+            "kind": "childProcess",
+            "name": "zsh",
+            "processId": 200,
+            "bytes": 55,
+            "processCount": 2,
+            "compressedBytes": 10,
+            "gpuMemoryBytes": 0
+          }
+        ],
+        "omitted": {
+          "count": 0,
+          "bytes": 0
+        }
+      }
+    },
+    {
+      "name": "processor and graphics use since the previous table",
+      "request": {
+        "hostProcessId": 100,
+        "processes": [
+          {
+            "processId": 1,
+            "parentProcessId": 0,
+            "name": "launchd",
+            "bytes": 20,
+            "cpuTime": 99000000
+          },
+          {
+            "processId": 100,
+            "parentProcessId": 1,
+            "name": "Lithe",
+            "bytes": 300,
+            "startTime": 1000,
+            "cpuTime": 5000000,
+            "gpuEngines": [
+              {
+                "engine": "gpu0/3d",
+                "busyTime": 900000
+              },
+              {
+                "engine": "gpu0/copy",
+                "busyTime": 100000
+              }
+            ]
+          },
+          {
+            "processId": 200,
+            "parentProcessId": 100,
+            "name": "zsh",
+            "bytes": 50,
+            "startTime": 2000,
+            "cpuTime": 3000000,
+            "gpuEngines": [
+              {
+                "engine": "gpu0/3d",
+                "busyTime": 300000
+              }
+            ]
+          },
+          {
+            "processId": 201,
+            "parentProcessId": 200,
+            "name": "node",
+            "bytes": 40,
+            "startTime": 3000,
+            "cpuTime": 9000000
+          },
+          {
+            "processId": 202,
+            "parentProcessId": 200,
+            "name": "git",
+            "bytes": 5,
+            "startTime": 4000,
+            "cpuTime": 100000
+          },
+          {
+            "processId": 300,
+            "parentProcessId": 100,
+            "name": "alpha-ls",
+            "bytes": 80,
+            "startTime": 1500,
+            "cpuTime": 2000000
+          }
+        ],
+        "roles": [
+          {
+            "processId": 300,
+            "kind": "languageServer",
+            "name": "Alpha"
+          }
+        ],
+        "sampledAt": 12000000,
+        "previous": {
+          "sampledAt": 10000000,
+          "processes": [
+            {
+              "processId": 1,
+              "cpuTime": 98000000
+            },
+            {
+              "processId": 100,
+              "startTime": 1000,
+              "cpuTime": 4000000,
+              "gpuEngines": [
+                {
+                  "engine": "gpu0/3d",
+                  "busyTime": 700000
+                },
+                {
+                  "engine": "gpu0/copy",
+                  "busyTime": 100000
+                }
+              ]
+            },
+            {
+              "processId": 200,
+              "startTime": 2000,
+              "cpuTime": 2500000,
+              "gpuEngines": [
+                {
+                  "engine": "gpu0/3d",
+                  "busyTime": 100000
+                }
+              ]
+            },
+            {
+              "processId": 201,
+              "startTime": 2500,
+              "cpuTime": 1000000
+            },
+            {
+              "processId": 300,
+              "startTime": 1500,
+              "cpuTime": 2000000
+            },
+            {
+              "processId": 400,
+              "startTime": 1800,
+              "cpuTime": 7000000
+            }
+          ]
+        }
+      },
+      "expected": {
+        "totalBytes": 475,
+        "cpuPercent": 75.0,
+        "gpuPercent": 20.0,
+        "categories": [
+          {
+            "kind": "host",
+            "bytes": 300,
+            "processCount": 1,
+            "cpuPercent": 50.0,
+            "gpuPercent": 10.0
+          },
+          {
+            "kind": "languageServer",
+            "bytes": 80,
+            "processCount": 1,
+            "cpuPercent": 0.0,
+            "gpuPercent": 0.0
+          },
+          {
+            "kind": "pluginService",
+            "bytes": 0,
+            "processCount": 0,
+            "cpuPercent": 0.0,
+            "gpuPercent": 0.0
+          },
+          {
+            "kind": "systemHelper",
+            "bytes": 0,
+            "processCount": 0,
+            "cpuPercent": 0.0,
+            "gpuPercent": 0.0
+          },
+          {
+            "kind": "childProcess",
+            "bytes": 95,
+            "processCount": 3,
+            "cpuPercent": 25.0,
+            "gpuPercent": 10.0
+          }
+        ],
+        "entries": [
+          {
+            "kind": "childProcess",
+            "name": "zsh",
+            "processId": 200,
+            "bytes": 95,
+            "processCount": 3,
+            "cpuPercent": 25.0,
+            "gpuPercent": 10.0
+          },
+          {
+            "kind": "languageServer",
+            "name": "Alpha",
+            "processId": 300,
+            "bytes": 80,
+            "processCount": 1,
+            "cpuPercent": 0.0,
+            "gpuPercent": 0.0
+          }
+        ],
+        "omitted": {
+          "count": 0,
+          "bytes": 0
+        },
+        "baseline": {
+          "sampledAt": 12000000,
+          "processes": [
+            {
+              "processId": 100,
+              "startTime": 1000,
+              "cpuTime": 5000000,
+              "gpuEngines": [
+                {
+                  "engine": "gpu0/3d",
+                  "busyTime": 900000
+                },
+                {
+                  "engine": "gpu0/copy",
+                  "busyTime": 100000
+                }
+              ]
+            },
+            {
+              "processId": 200,
+              "startTime": 2000,
+              "cpuTime": 3000000,
+              "gpuEngines": [
+                {
+                  "engine": "gpu0/3d",
+                  "busyTime": 300000
+                }
+              ]
+            },
+            {
+              "processId": 201,
+              "startTime": 3000,
+              "cpuTime": 9000000
+            },
+            {
+              "processId": 202,
+              "startTime": 4000,
+              "cpuTime": 100000
+            },
+            {
+              "processId": 300,
+              "startTime": 1500,
+              "cpuTime": 2000000
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "a share of every logical processor, and use beyond the interval is at most 100",
+      "request": {
+        "hostProcessId": 100,
+        "processes": [
+          {
+            "processId": 100,
+            "parentProcessId": 1,
+            "name": "Lithe",
+            "bytes": 300,
+            "cpuTime": 4000000,
+            "gpuEngines": [
+              {
+                "engine": "luid0/node0",
+                "busyTime": 1700000
+              }
+            ]
+          },
+          {
+            "processId": 200,
+            "parentProcessId": 100,
+            "name": "tool",
+            "bytes": 10,
+            "cpuTime": 1500000,
+            "gpuEngines": [
+              {
+                "engine": "luid0/node0",
+                "busyTime": 600000
+              }
+            ]
+          },
+          {
+            "processId": 300,
+            "parentProcessId": 100,
+            "name": "burst",
+            "bytes": 20,
+            "cpuTime": 7000000
+          }
+        ],
+        "sampledAt": 3000000,
+        "previous": {
+          "sampledAt": 2000000,
+          "processes": [
+            {
+              "processId": 100,
+              "cpuTime": 2000000,
+              "gpuEngines": [
+                {
+                  "engine": "luid0/node0",
+                  "busyTime": 1000000
+                }
+              ]
+            },
+            {
+              "processId": 200,
+              "cpuTime": 1000000,
+              "gpuEngines": [
+                {
+                  "engine": "luid0/node0",
+                  "busyTime": 0
+                }
+              ]
+            },
+            {
+              "processId": 300,
+              "cpuTime": 1000000
+            }
+          ]
+        },
+        "logicalProcessors": 4
+      },
+      "expected": {
+        "totalBytes": 330,
+        "cpuPercent": 100.0,
+        "gpuPercent": 100.0,
+        "categories": [
+          {
+            "kind": "host",
+            "bytes": 300,
+            "processCount": 1,
+            "cpuPercent": 50.0,
+            "gpuPercent": 70.0
+          },
+          {
+            "kind": "languageServer",
+            "bytes": 0,
+            "processCount": 0,
+            "cpuPercent": 0.0,
+            "gpuPercent": 0.0
+          },
+          {
+            "kind": "pluginService",
+            "bytes": 0,
+            "processCount": 0,
+            "cpuPercent": 0.0,
+            "gpuPercent": 0.0
+          },
+          {
+            "kind": "systemHelper",
+            "bytes": 0,
+            "processCount": 0,
+            "cpuPercent": 0.0,
+            "gpuPercent": 0.0
+          },
+          {
+            "kind": "childProcess",
+            "bytes": 30,
+            "processCount": 2,
+            "cpuPercent": 100.0,
+            "gpuPercent": 60.0
+          }
+        ],
+        "entries": [
+          {
+            "kind": "childProcess",
+            "name": "burst",
+            "processId": 300,
+            "bytes": 20,
+            "processCount": 1,
+            "cpuPercent": 100.0,
+            "gpuPercent": 0.0
+          },
+          {
+            "kind": "childProcess",
+            "name": "tool",
+            "processId": 200,
+            "bytes": 10,
+            "processCount": 1,
+            "cpuPercent": 12.5,
+            "gpuPercent": 60.0
+          }
+        ],
+        "omitted": {
+          "count": 0,
+          "bytes": 0
+        },
+        "baseline": {
+          "sampledAt": 3000000,
+          "processes": [
+            {
+              "processId": 100,
+              "cpuTime": 4000000,
+              "gpuEngines": [
+                {
+                  "engine": "luid0/node0",
+                  "busyTime": 1700000
+                }
+              ]
+            },
+            {
+              "processId": 200,
+              "cpuTime": 1500000,
+              "gpuEngines": [
+                {
+                  "engine": "luid0/node0",
+                  "busyTime": 600000
+                }
+              ]
+            },
+            {
+              "processId": 300,
+              "cpuTime": 7000000
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "the first table starts a baseline of the instance's processes but has no percentages",
+      "request": {
+        "hostProcessId": 100,
+        "processes": [
+          {
+            "processId": 100,
+            "parentProcessId": 1,
+            "name": "Lithe",
+            "bytes": 300,
+            "cpuTime": 1000,
+            "gpuEngines": [
+              {
+                "engine": "gpu",
+                "busyTime": 10
+              }
+            ]
+          },
+          {
+            "processId": 200,
+            "parentProcessId": 100,
+            "name": "zsh",
+            "bytes": 10,
+            "cpuTime": 2000
+          },
+          {
+            "processId": 900,
+            "parentProcessId": 1,
+            "name": "other",
+            "bytes": 5,
+            "cpuTime": 3
+          }
+        ],
+        "sampledAt": 5000000
+      },
+      "expected": {
+        "totalBytes": 310,
+        "categories": [
+          {
+            "kind": "host",
+            "bytes": 300,
+            "processCount": 1
+          },
+          {
+            "kind": "languageServer",
+            "bytes": 0,
+            "processCount": 0
+          },
+          {
+            "kind": "pluginService",
+            "bytes": 0,
+            "processCount": 0
+          },
+          {
+            "kind": "systemHelper",
+            "bytes": 0,
+            "processCount": 0
+          },
+          {
+            "kind": "childProcess",
+            "bytes": 10,
+            "processCount": 1
+          }
+        ],
+        "entries": [
+          {
+            "kind": "childProcess",
+            "name": "zsh",
+            "processId": 200,
+            "bytes": 10,
+            "processCount": 1
+          }
+        ],
+        "omitted": {
+          "count": 0,
+          "bytes": 0
+        },
+        "baseline": {
+          "sampledAt": 5000000,
+          "processes": [
+            {
+              "processId": 100,
+              "cpuTime": 1000,
+              "gpuEngines": [
+                {
+                  "engine": "gpu",
+                  "busyTime": 10
+                }
+              ]
+            },
+            {
+              "processId": 200,
+              "cpuTime": 2000
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "graphics use needs engines in both tables",
+      "request": {
+        "hostProcessId": 100,
+        "processes": [
+          {
+            "processId": 100,
+            "parentProcessId": 1,
+            "name": "Lithe",
+            "bytes": 300,
+            "cpuTime": 250000,
+            "gpuEngines": [
+              {
+                "engine": "gpu",
+                "busyTime": 500
+              }
+            ]
+          }
+        ],
+        "sampledAt": 2000000,
+        "previous": {
+          "sampledAt": 1000000,
+          "processes": [
+            {
+              "processId": 100,
+              "cpuTime": 0
+            }
+          ]
+        }
+      },
+      "expected": {
+        "totalBytes": 300,
+        "cpuPercent": 25.0,
+        "categories": [
+          {
+            "kind": "host",
+            "bytes": 300,
+            "processCount": 1,
+            "cpuPercent": 25.0
+          },
+          {
+            "kind": "languageServer",
+            "bytes": 0,
+            "processCount": 0,
+            "cpuPercent": 0.0
+          },
+          {
+            "kind": "pluginService",
+            "bytes": 0,
+            "processCount": 0,
+            "cpuPercent": 0.0
+          },
+          {
+            "kind": "systemHelper",
+            "bytes": 0,
+            "processCount": 0,
+            "cpuPercent": 0.0
+          },
+          {
+            "kind": "childProcess",
+            "bytes": 0,
+            "processCount": 0,
+            "cpuPercent": 0.0
+          }
+        ],
+        "entries": [],
+        "omitted": {
+          "count": 0,
+          "bytes": 0
+        },
+        "baseline": {
+          "sampledAt": 2000000,
+          "processes": [
+            {
+              "processId": 100,
+              "cpuTime": 250000,
+              "gpuEngines": [
+                {
+                  "engine": "gpu",
+                  "busyTime": 500
+                }
+              ]
+            }
+          ]
+        }
+      }
     }
   ],
   "invalid": [
@@ -839,6 +1549,21 @@
             "bytes": -1
           }
         ]
+      }
+    },
+    {
+      "name": "a share of no logical processor",
+      "request": {
+        "hostProcessId": 100,
+        "processes": [
+          {
+            "processId": 100,
+            "parentProcessId": 1,
+            "name": "Lithe",
+            "bytes": 5
+          }
+        ],
+        "logicalProcessors": 0
       }
     }
   ]

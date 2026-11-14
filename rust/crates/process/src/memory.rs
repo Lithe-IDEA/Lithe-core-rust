@@ -17,10 +17,16 @@
 //!   processes of a web view, grouped under the topmost such process;
 //! - every other process is not the instance's and is left out.
 //!
-//! Each process counts once. Fixtures live in
+//! Each process counts once. Every host reports memory the same way: `bytes`
+//! is what is in memory, and `compressedBytes` is what the system compressed
+//! or wrote out to disk, which `bytes` does not include. Graphics memory that
+//! `bytes` does not hold, such as dedicated video memory on Windows, is summed
+//! apart. Processor and graphics percentages come from the use counters of two
+//! tables: each summary returns a baseline the host sends back with the next
+//! table, so the percentages are computed here too. Fixtures live in
 //! `rust/fixtures/process-lifecycle/memory-summary-v1.json`.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
@@ -52,8 +58,37 @@ pub struct MemoryProcess {
     /// Short process name.
     #[serde(default)]
     pub name: String,
-    /// Memory charged to the process, in bytes. Every row uses the same measure.
+    /// Memory of the process that is in memory, in bytes. Every row uses the
+    /// same measure.
     pub bytes: u64,
+    /// Memory of the process that the system compressed or wrote out to disk,
+    /// in bytes, which `bytes` does not include. Absent when it was not read.
+    #[serde(default)]
+    pub compressed_bytes: Option<u64>,
+    /// Graphics memory charged to the process that `bytes` does not include,
+    /// such as dedicated video memory on Windows. Absent where it was not read
+    /// or `bytes` already holds it.
+    #[serde(default)]
+    pub gpu_memory_bytes: Option<u64>,
+    /// Processor time the process used since it started, user and system
+    /// together, in microseconds. Absent when it was not read.
+    #[serde(default)]
+    pub cpu_time: Option<u64>,
+    /// Busy time of every graphics engine the process used. Empty when the
+    /// process used none or they were not read.
+    #[serde(default)]
+    pub gpu_engines: Vec<GpuEngineTime>,
+}
+
+/// Time one graphics engine spent on a process's work since it started.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GpuEngineTime {
+    /// Name of the engine, the same for every process and every table of one
+    /// host, such as an adapter and its node. Times of one name add up.
+    pub engine: String,
+    /// Microseconds the engine was busy with the process's work.
+    pub busy_time: u64,
 }
 
 /// What the host started a process for.
@@ -94,6 +129,47 @@ pub struct MemoryRequest {
     /// Most entries to return; defaults to 20 and is capped at 200.
     #[serde(default)]
     pub entry_limit: Option<usize>,
+    /// When the table was read, in microseconds of a clock that only moves
+    /// forward. Without it the summary has no percentages and no baseline.
+    #[serde(default)]
+    pub sampled_at: Option<u64>,
+    /// The baseline of the host's previous summary.
+    #[serde(default)]
+    pub previous: Option<UsageBaseline>,
+    /// When given, a processor percentage is a share of this many logical
+    /// processors, as the Windows Task Manager shows it; otherwise 100 is one
+    /// processor busy, as Activity Monitor and top show it. Must be at least 1.
+    #[serde(default)]
+    pub logical_processors: Option<u32>,
+}
+
+/// Use counters of the instance's processes at one moment, which the next
+/// request sends back to measure the use in between.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageBaseline {
+    /// `sampledAt` of the table the baseline was taken from.
+    pub sampled_at: u64,
+    /// The instance's processes that had a use counter, by process ID.
+    pub processes: Vec<BaselineProcess>,
+}
+
+/// Use counters of one process in a baseline.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct BaselineProcess {
+    /// Operating-system process ID.
+    pub process_id: i64,
+    /// Start time of the process; a row of the next table with another start
+    /// time is a reused process ID and is not compared.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_time: Option<u64>,
+    /// Processor time used since the process started, in microseconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpu_time: Option<u64>,
+    /// Busy time of each graphics engine, one row per engine, by name.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub gpu_engines: Vec<GpuEngineTime>,
 }
 
 /// Part of the instance a process's memory counts in, in the order the
@@ -133,20 +209,45 @@ impl From<MemoryRoleKind> for MemoryKind {
     }
 }
 
+/// Figures of a group of processes beyond its memory in memory. Each one is
+/// present on the summary, every category and every entry, or on none: the
+/// byte sums when a process of the instance reported them, the percentages
+/// when a process of the instance can be compared with the previous baseline.
+#[derive(Clone, Debug, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageFigures {
+    /// Bytes the system compressed or wrote out to disk.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compressed_bytes: Option<u64>,
+    /// Graphics memory that the in-memory bytes do not hold.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gpu_memory_bytes: Option<u64>,
+    /// Processor use since the previous table, rounded to a tenth.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpu_percent: Option<f64>,
+    /// Use of the busiest graphics engine since the previous table, rounded
+    /// to a tenth and at most 100.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gpu_percent: Option<f64>,
+}
+
 /// Sum of one part.
-#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MemoryCategory {
     /// The part.
     pub kind: MemoryKind,
-    /// Bytes of every process in the part.
+    /// Bytes in memory of every process in the part.
     pub bytes: u64,
     /// Number of processes in the part.
     pub process_count: usize,
+    /// The part's other figures.
+    #[serde(flatten)]
+    pub usage: UsageFigures,
 }
 
 /// One process of the instance together with the processes counted under it.
-#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MemoryEntry {
     /// Part the entry counts in; never `host`.
@@ -155,10 +256,13 @@ pub struct MemoryEntry {
     pub name: String,
     /// Process ID of the entry's top process.
     pub process_id: i64,
-    /// Bytes of the top process and the processes below it.
+    /// Bytes in memory of the top process and the processes below it.
     pub bytes: u64,
     /// Number of processes in the entry, the top one included.
     pub process_count: usize,
+    /// The entry's other figures.
+    #[serde(flatten)]
+    pub usage: UsageFigures,
 }
 
 /// Entries past the limit.
@@ -167,16 +271,19 @@ pub struct MemoryEntry {
 pub struct OmittedEntries {
     /// Number of entries left out.
     pub count: usize,
-    /// Bytes of the entries left out.
+    /// Bytes in memory of the entries left out.
     pub bytes: u64,
 }
 
 /// Response of `processMemory.summarize`.
-#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MemorySummary {
-    /// Bytes of every process of the instance.
+    /// Bytes in memory of every process of the instance.
     pub total_bytes: u64,
+    /// The instance's other figures.
+    #[serde(flatten)]
+    pub usage: UsageFigures,
     /// Every part, in the order of [`MemoryKind`], empty ones included.
     pub categories: Vec<MemoryCategory>,
     /// Entries other than the host, largest first; ties go by part, then
@@ -184,6 +291,10 @@ pub struct MemorySummary {
     pub entries: Vec<MemoryEntry>,
     /// Entries past the limit.
     pub omitted: OmittedEntries,
+    /// Use counters to send with the next table; present when the request
+    /// has `sampledAt`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub baseline: Option<UsageBaseline>,
 }
 
 /// Why a process table cannot be summarized.
@@ -193,6 +304,8 @@ pub enum MemoryError {
     HostMissing(i64),
     /// Two rows have the same process ID.
     DuplicateProcess(i64),
+    /// The request counts processor shares of no processor.
+    NoLogicalProcessors,
 }
 
 impl fmt::Display for MemoryError {
@@ -203,6 +316,9 @@ impl fmt::Display for MemoryError {
             }
             MemoryError::DuplicateProcess(process_id) => {
                 write!(formatter, "process {process_id} appears more than once")
+            }
+            MemoryError::NoLogicalProcessors => {
+                write!(formatter, "logicalProcessors must be at least 1")
             }
         }
     }
@@ -224,6 +340,9 @@ enum Owner {
 /// Sums the memory of every process of the host's instance by part and by
 /// top process (`processMemory.summarize`).
 pub fn summarize(request: &MemoryRequest) -> Result<MemorySummary, MemoryError> {
+    if request.logical_processors == Some(0) {
+        return Err(MemoryError::NoLogicalProcessors);
+    }
     let processes = &request.processes;
     let mut positions = HashMap::with_capacity(processes.len());
     for (position, process) in processes.iter().enumerate() {
@@ -249,37 +368,77 @@ pub fn summarize(request: &MemoryRequest) -> Result<MemorySummary, MemoryError> 
     }
     .owners();
 
-    let mut categories = MemoryKind::ALL.map(|kind| MemoryCategory {
-        kind,
-        bytes: 0,
-        process_count: 0,
-    });
-    let mut groups: HashMap<usize, MemoryEntry> = HashMap::new();
-    let mut total_bytes = 0u64;
-    for (process, owner) in processes.iter().zip(&owners) {
-        let kind = match *owner {
-            Owner::Unowned => continue,
-            Owner::Host => MemoryKind::Host,
-            Owner::Part { kind, root } => {
-                let entry = groups.entry(root).or_insert_with(|| MemoryEntry {
-                    kind,
-                    name: entry_name(&processes[root], roles.get(&processes[root].process_id)),
-                    process_id: processes[root].process_id,
-                    bytes: 0,
-                    process_count: 0,
-                });
-                entry.bytes = entry.bytes.saturating_add(process.bytes);
-                entry.process_count += 1;
-                kind
-            }
-        };
-        let category = &mut categories[kind as usize];
-        category.bytes = category.bytes.saturating_add(process.bytes);
-        category.process_count += 1;
-        total_bytes = total_bytes.saturating_add(process.bytes);
+    let interval = match (request.sampled_at, &request.previous) {
+        (Some(now), Some(previous)) => now
+            .checked_sub(previous.sampled_at)
+            .filter(|&span| span > 0),
+        _ => None,
+    };
+    let mut previous: HashMap<i64, &BaselineProcess> = HashMap::new();
+    if let (Some(_), Some(baseline)) = (interval, &request.previous) {
+        for process in &baseline.processes {
+            previous.entry(process.process_id).or_insert(process);
+        }
     }
 
-    let mut entries: Vec<MemoryEntry> = groups.into_values().collect();
+    let mut shown = Shown::default();
+    let mut categories: [Tally; 5] = Default::default();
+    let mut groups: HashMap<usize, (MemoryKind, Tally)> = HashMap::new();
+    let mut total = Tally::default();
+    let mut baseline = Vec::new();
+    for (process, owner) in processes.iter().zip(&owners) {
+        let (kind, root) = match *owner {
+            Owner::Unowned => continue,
+            Owner::Host => (MemoryKind::Host, None),
+            Owner::Part { kind, root } => (kind, Some(root)),
+        };
+        let engines = engine_times(&process.gpu_engines);
+        let usage = Usage::since(
+            process,
+            &engines,
+            previous.get(&process.process_id).copied(),
+        );
+        shown.note(process, &usage);
+        categories[kind as usize].add(process, &usage);
+        total.add(process, &usage);
+        if let Some(root) = root {
+            groups
+                .entry(root)
+                .or_insert_with(|| (kind, Tally::default()))
+                .1
+                .add(process, &usage);
+        }
+        if request.sampled_at.is_some() && (process.cpu_time.is_some() || !engines.is_empty()) {
+            baseline.push(BaselineProcess {
+                process_id: process.process_id,
+                start_time: process.start_time,
+                cpu_time: process.cpu_time,
+                gpu_engines: engines
+                    .iter()
+                    .map(|(&engine, &busy_time)| GpuEngineTime {
+                        engine: engine.to_string(),
+                        busy_time,
+                    })
+                    .collect(),
+            });
+        }
+    }
+
+    let rates = Rates {
+        interval: interval.unwrap_or(0),
+        logical_processors: request.logical_processors,
+    };
+    let mut entries: Vec<MemoryEntry> = groups
+        .into_iter()
+        .map(|(root, (kind, tally))| MemoryEntry {
+            kind,
+            name: entry_name(&processes[root], roles.get(&processes[root].process_id)),
+            process_id: processes[root].process_id,
+            bytes: tally.bytes,
+            process_count: tally.process_count,
+            usage: shown.figures(&tally, &rates),
+        })
+        .collect();
     entries.sort_by(|a, b| {
         b.bytes
             .cmp(&a.bytes)
@@ -299,12 +458,177 @@ pub fn summarize(request: &MemoryRequest) -> Result<MemorySummary, MemoryError> 
             .iter()
             .fold(0u64, |sum, entry| sum.saturating_add(entry.bytes)),
     };
+    baseline.sort_by_key(|process| process.process_id);
     Ok(MemorySummary {
-        total_bytes,
-        categories: categories.to_vec(),
+        total_bytes: total.bytes,
+        usage: shown.figures(&total, &rates),
+        categories: MemoryKind::ALL
+            .iter()
+            .zip(&categories)
+            .map(|(&kind, tally)| MemoryCategory {
+                kind,
+                bytes: tally.bytes,
+                process_count: tally.process_count,
+                usage: shown.figures(tally, &rates),
+            })
+            .collect(),
         entries,
         omitted,
+        baseline: request.sampled_at.map(|sampled_at| UsageBaseline {
+            sampled_at,
+            processes: baseline,
+        }),
     })
+}
+
+/// Busy time of each engine of a list, times of one name added up.
+fn engine_times(engines: &[GpuEngineTime]) -> BTreeMap<&str, u64> {
+    let mut times = BTreeMap::new();
+    for engine in engines {
+        let time: &mut u64 = times.entry(engine.engine.as_str()).or_default();
+        *time = time.saturating_add(engine.busy_time);
+    }
+    times
+}
+
+/// What one process used between the previous baseline and this table.
+#[derive(Default)]
+struct Usage<'a> {
+    /// Processor microseconds, when both tables have the process's counter.
+    cpu_time: Option<u64>,
+    /// Busy microseconds of each engine, when both tables have engines for
+    /// the process. An engine the baseline does not list counts from zero.
+    gpu_engines: Option<BTreeMap<&'a str, u64>>,
+}
+
+impl<'a> Usage<'a> {
+    /// The use of `process`, whose engines are `engines`, since `previous`.
+    /// A baseline row with another start time belongs to an earlier process
+    /// with the same ID, so nothing is compared.
+    fn since(
+        process: &MemoryProcess,
+        engines: &BTreeMap<&'a str, u64>,
+        previous: Option<&BaselineProcess>,
+    ) -> Self {
+        let Some(previous) = previous.filter(|previous| previous.start_time == process.start_time)
+        else {
+            return Usage::default();
+        };
+        let cpu_time = process
+            .cpu_time
+            .zip(previous.cpu_time)
+            .map(|(now, before)| now.saturating_sub(before));
+        let gpu_engines = (!engines.is_empty() && !previous.gpu_engines.is_empty()).then(|| {
+            let before = engine_times(&previous.gpu_engines);
+            engines
+                .iter()
+                .map(|(&engine, &now)| {
+                    let earlier = before.get(engine).copied().unwrap_or(0);
+                    (engine, now.saturating_sub(earlier))
+                })
+                .collect()
+        });
+        Usage {
+            cpu_time,
+            gpu_engines,
+        }
+    }
+}
+
+/// Which figures the summary carries.
+#[derive(Default)]
+struct Shown {
+    compressed_bytes: bool,
+    gpu_memory_bytes: bool,
+    cpu_percent: bool,
+    gpu_percent: bool,
+}
+
+impl Shown {
+    /// Takes note of the figures one process of the instance has.
+    fn note(&mut self, process: &MemoryProcess, usage: &Usage) {
+        self.compressed_bytes |= process.compressed_bytes.is_some();
+        self.gpu_memory_bytes |= process.gpu_memory_bytes.is_some();
+        self.cpu_percent |= usage.cpu_time.is_some();
+        self.gpu_percent |= usage.gpu_engines.is_some();
+    }
+
+    /// The figures of one group.
+    fn figures(&self, tally: &Tally, rates: &Rates) -> UsageFigures {
+        UsageFigures {
+            compressed_bytes: self.compressed_bytes.then_some(tally.compressed_bytes),
+            gpu_memory_bytes: self.gpu_memory_bytes.then_some(tally.gpu_memory_bytes),
+            cpu_percent: self.cpu_percent.then(|| rates.cpu(tally.cpu_time)),
+            gpu_percent: self.gpu_percent.then(|| rates.gpu(&tally.gpu_engines)),
+        }
+    }
+}
+
+/// How use over the interval becomes a percentage.
+struct Rates {
+    /// Microseconds between the previous baseline and this table; never zero
+    /// when a percentage is shown.
+    interval: u64,
+    /// Processors a processor percentage is a share of, if any.
+    logical_processors: Option<u32>,
+}
+
+impl Rates {
+    /// Processor percentage of `time` microseconds.
+    fn cpu(&self, time: u64) -> f64 {
+        match self.logical_processors {
+            Some(processors) => tenths(self.share(time, f64::from(processors))).min(100.0),
+            None => tenths(self.share(time, 1.0)),
+        }
+    }
+
+    /// Percentage of the busiest engine.
+    fn gpu(&self, engines: &BTreeMap<String, u64>) -> f64 {
+        let busiest = engines.values().copied().max().unwrap_or(0);
+        tenths(self.share(busiest, 1.0)).min(100.0)
+    }
+
+    /// `time` as a percentage of the interval on `width` processors.
+    fn share(&self, time: u64, width: f64) -> f64 {
+        time as f64 * 100.0 / (self.interval as f64 * width)
+    }
+}
+
+/// `value` rounded to a tenth.
+fn tenths(value: f64) -> f64 {
+    (value * 10.0).round() / 10.0
+}
+
+/// Sums of one group of processes.
+#[derive(Default)]
+struct Tally {
+    bytes: u64,
+    process_count: usize,
+    compressed_bytes: u64,
+    gpu_memory_bytes: u64,
+    /// Processor microseconds used over the interval.
+    cpu_time: u64,
+    /// Busy microseconds of each engine over the interval.
+    gpu_engines: BTreeMap<String, u64>,
+}
+
+impl Tally {
+    /// Adds one process and its use.
+    fn add(&mut self, process: &MemoryProcess, usage: &Usage) {
+        self.bytes = self.bytes.saturating_add(process.bytes);
+        self.process_count += 1;
+        self.compressed_bytes = self
+            .compressed_bytes
+            .saturating_add(process.compressed_bytes.unwrap_or(0));
+        self.gpu_memory_bytes = self
+            .gpu_memory_bytes
+            .saturating_add(process.gpu_memory_bytes.unwrap_or(0));
+        self.cpu_time = self.cpu_time.saturating_add(usage.cpu_time.unwrap_or(0));
+        for (&engine, &time) in usage.gpu_engines.iter().flatten() {
+            let busy = self.gpu_engines.entry(engine.to_string()).or_default();
+            *busy = busy.saturating_add(time);
+        }
+    }
 }
 
 /// The role name, else the process name, short enough for one row.
@@ -470,6 +794,22 @@ mod tests {
             start_time: None,
             name: format!("p{process_id}"),
             bytes,
+            compressed_bytes: None,
+            gpu_memory_bytes: None,
+            cpu_time: None,
+            gpu_engines: Vec::new(),
+        }
+    }
+
+    fn request(host_process_id: i64, processes: Vec<MemoryProcess>) -> MemoryRequest {
+        MemoryRequest {
+            host_process_id,
+            processes,
+            roles: Vec::new(),
+            entry_limit: None,
+            sampled_at: None,
+            previous: None,
+            logical_processors: None,
         }
     }
 
@@ -503,19 +843,12 @@ mod tests {
 
     #[test]
     fn a_table_without_the_host_or_with_a_repeated_process_is_rejected() {
-        let missing = MemoryRequest {
-            host_process_id: 10,
-            processes: vec![process(11, 1, 5)],
-            roles: Vec::new(),
-            entry_limit: None,
-        };
+        let missing = request(10, vec![process(11, 1, 5)]);
         assert_eq!(summarize(&missing), Err(MemoryError::HostMissing(10)));
-        let repeated = MemoryRequest {
-            host_process_id: 10,
-            processes: vec![process(10, 1, 5), process(11, 10, 5), process(11, 10, 6)],
-            roles: Vec::new(),
-            entry_limit: None,
-        };
+        let repeated = request(
+            10,
+            vec![process(10, 1, 5), process(11, 10, 5), process(11, 10, 6)],
+        );
         assert_eq!(summarize(&repeated), Err(MemoryError::DuplicateProcess(11)));
     }
 
@@ -526,10 +859,8 @@ mod tests {
         processes.extend((2..=depth).map(|process_id| process(process_id, process_id - 1, 1)));
         processes.reverse();
         let summary = summarize(&MemoryRequest {
-            host_process_id: 1,
-            processes,
-            roles: Vec::new(),
             entry_limit: Some(1),
+            ..request(1, processes)
         })
         .expect("chain should summarize");
         assert_eq!(summary.total_bytes, depth as u64);
@@ -540,13 +871,8 @@ mod tests {
 
     #[test]
     fn sums_saturate_instead_of_overflowing() {
-        let summary = summarize(&MemoryRequest {
-            host_process_id: 1,
-            processes: vec![process(1, 0, u64::MAX), process(2, 1, 1)],
-            roles: Vec::new(),
-            entry_limit: None,
-        })
-        .expect("table should summarize");
+        let summary = summarize(&request(1, vec![process(1, 0, u64::MAX), process(2, 1, 1)]))
+            .expect("table should summarize");
         assert_eq!(summary.total_bytes, u64::MAX);
     }
 
@@ -554,13 +880,8 @@ mod tests {
     fn long_names_are_shortened() {
         let mut long = process(2, 1, 1);
         long.name = "x".repeat(200);
-        let summary = summarize(&MemoryRequest {
-            host_process_id: 1,
-            processes: vec![process(1, 0, 1), long],
-            roles: Vec::new(),
-            entry_limit: None,
-        })
-        .expect("table should summarize");
+        let summary =
+            summarize(&request(1, vec![process(1, 0, 1), long])).expect("table should summarize");
         let name = &summary.entries[0].name;
         assert_eq!(name.chars().count(), NAME_CHARACTERS);
         assert!(name.ends_with('…'));
@@ -571,10 +892,8 @@ mod tests {
         let mut processes = vec![process(1, 0, 1)];
         processes.extend((2..=251).map(|process_id| process(process_id, 1, 1)));
         let summary = summarize(&MemoryRequest {
-            host_process_id: 1,
-            processes,
-            roles: Vec::new(),
             entry_limit: Some(10_000),
+            ..request(1, processes)
         })
         .expect("table should summarize");
         assert_eq!(summary.entries.len(), MAX_ENTRY_LIMIT);
@@ -585,5 +904,82 @@ mod tests {
                 bytes: 50
             }
         );
+    }
+
+    fn engine(engine: &str, busy_time: u64) -> GpuEngineTime {
+        GpuEngineTime {
+            engine: engine.to_string(),
+            busy_time,
+        }
+    }
+
+    fn baseline(sampled_at: u64, processes: Vec<BaselineProcess>) -> Option<UsageBaseline> {
+        Some(UsageBaseline {
+            sampled_at,
+            processes,
+        })
+    }
+
+    #[test]
+    fn times_of_one_engine_add_up_and_counters_that_went_back_count_nothing() {
+        let mut host = process(1, 0, 1);
+        host.cpu_time = Some(100);
+        host.gpu_engines = vec![engine("gpu", 300_000), engine("gpu", 200_000)];
+        let summary = summarize(&MemoryRequest {
+            sampled_at: Some(2_000_000),
+            previous: baseline(
+                1_000_000,
+                vec![BaselineProcess {
+                    process_id: 1,
+                    start_time: None,
+                    cpu_time: Some(500),
+                    gpu_engines: vec![engine("gpu", 100_000)],
+                }],
+            ),
+            ..request(1, vec![host])
+        })
+        .expect("table should summarize");
+        assert_eq!(summary.usage.cpu_percent, Some(0.0));
+        assert_eq!(summary.usage.gpu_percent, Some(40.0));
+        let baseline = summary.baseline.expect("a sampled table has a baseline");
+        assert_eq!(
+            baseline.processes[0].gpu_engines,
+            vec![engine("gpu", 500_000)]
+        );
+    }
+
+    #[test]
+    fn a_table_read_no_later_than_the_baseline_has_no_percentages() {
+        let mut host = process(1, 0, 1);
+        host.cpu_time = Some(2_000);
+        let previous = BaselineProcess {
+            process_id: 1,
+            start_time: None,
+            cpu_time: Some(1_000),
+            gpu_engines: Vec::new(),
+        };
+        for sampled_at in [5_000, 4_000] {
+            let summary = summarize(&MemoryRequest {
+                sampled_at: Some(sampled_at),
+                previous: baseline(5_000, vec![previous.clone()]),
+                ..request(1, vec![host.clone()])
+            })
+            .expect("table should summarize");
+            assert_eq!(
+                summary.usage,
+                UsageFigures::default(),
+                "sampled at {sampled_at}"
+            );
+            assert_eq!(summary.baseline.map(|b| b.sampled_at), Some(sampled_at));
+        }
+    }
+
+    #[test]
+    fn a_share_of_no_processor_is_rejected() {
+        let rejected = summarize(&MemoryRequest {
+            logical_processors: Some(0),
+            ..request(1, vec![process(1, 0, 1)])
+        });
+        assert_eq!(rejected, Err(MemoryError::NoLogicalProcessors));
     }
 }
