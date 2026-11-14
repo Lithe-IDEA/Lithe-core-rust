@@ -5452,7 +5452,12 @@ these attributes and the original decoded code text.
 
 Raw formatting HTML can survive, but scripts, executable attributes, embeds,
 arbitrary inline styles and unsafe URL schemes are removed in Core before
-embedding. Windows asynchronously requests this existing command via its
+embedding. Inline `<svg>` keeps its drawing elements (shapes, text, `use`,
+`image`, gradients, patterns, clips, masks, markers and the non-loading filter
+primitives) with their geometry and presentation attributes; `script`,
+`foreignObject`, `style`, the animation elements, `feImage` and the `style`
+attribute are removed, and `use`/`textPath` may only reference `#id` in the
+same document. Windows asynchronously requests this existing command via its
 central dispatcher, discards obsolete responses and falls back to the sanitized
 fragment if syntax coloring fails. Render failures are shown as localized text;
 there is no frontend Markdown parser fallback. This does not promise Windows
