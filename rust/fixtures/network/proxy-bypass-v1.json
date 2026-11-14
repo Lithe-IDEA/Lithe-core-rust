@@ -1,0 +1,139 @@
+{
+  "protocolVersion": 1,
+  "description": "network.proxyPolicy reads the exclusions of a custom policy into exclusionRules and invalidExclusions; a host goes direct when bypasses(host, exclusionRules) is true. Hosts compare exactly as the contract states and replay these cases.",
+  "cases": [
+    {
+      "name": "everyForm",
+      "exclusions": [
+        "localhost",
+        "Example.COM.",
+        ".corp.example",
+        "*.Internal.Example",
+        "10.1.2.3/8",
+        "fd00::/8",
+        "192.168.0.10",
+        "[::1]",
+        "<local>"
+      ],
+      "exclusionRules": [
+        {
+          "kind": "host",
+          "value": "localhost"
+        },
+        {
+          "kind": "host",
+          "value": "example.com"
+        },
+        {
+          "kind": "suffix",
+          "value": "corp.example"
+        },
+        {
+          "kind": "suffix",
+          "value": "internal.example"
+        },
+        {
+          "kind": "cidr",
+          "value": "10.0.0.0/8"
+        },
+        {
+          "kind": "cidr",
+          "value": "fd00::/8"
+        },
+        {
+          "kind": "ip",
+          "value": "192.168.0.10"
+        },
+        {
+          "kind": "ip",
+          "value": "::1"
+        },
+        {
+          "kind": "local",
+          "value": ""
+        }
+      ],
+      "invalidExclusions": [],
+      "hosts": {
+        "localhost": true,
+        "LOCALHOST.": true,
+        "example.com": true,
+        "www.example.com": false,
+        "corp.example": true,
+        "git.corp.example": true,
+        "notcorp.example": false,
+        "internal.example": true,
+        "a.b.internal.example": true,
+        "10.200.0.1": true,
+        "11.0.0.1": false,
+        "fd12::1": true,
+        "fe80::1": false,
+        "fd12::1%en0": true,
+        "192.168.0.10": true,
+        "192.168.0.11": false,
+        "::ffff:192.168.0.10": false,
+        "::ffff:10.200.0.1": false,
+        "::1": true,
+        "intranet": true,
+        "printer.": true,
+        "": false
+      }
+    },
+    {
+      "name": "unsupportedEntriesSendNothingDirect",
+      "exclusions": [
+        "*",
+        "*.",
+        "10.0.0.0/33",
+        "10.0.0.0/x",
+        "example.com:8080",
+        "exa mple.com",
+        "*.*.example.com",
+        "a..b",
+        "10.0.0.0/8",
+        "10.0.0.0/8"
+      ],
+      "exclusionRules": [
+        {
+          "kind": "cidr",
+          "value": "10.0.0.0/8"
+        }
+      ],
+      "invalidExclusions": [
+        "*",
+        "*.",
+        "10.0.0.0/33",
+        "10.0.0.0/x",
+        "example.com:8080",
+        "exa mple.com",
+        "*.*.example.com",
+        "a..b"
+      ],
+      "hosts": {
+        "example.com": false,
+        "10.0.0.1": true,
+        "anything": false
+      }
+    },
+    {
+      "name": "noLocalRuleForAddressesOrDottedNames",
+      "exclusions": [
+        "<LOCAL>"
+      ],
+      "exclusionRules": [
+        {
+          "kind": "local",
+          "value": ""
+        }
+      ],
+      "invalidExclusions": [],
+      "hosts": {
+        "intranet": true,
+        "intranet.example": false,
+        "127.0.0.1": false,
+        "::1": false,
+        "fe80::1%en0": false
+      }
+    }
+  ]
+}

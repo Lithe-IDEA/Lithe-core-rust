@@ -1,0 +1,258 @@
+{
+  "protocolVersion": 1,
+  "description": "State and allowed writes of registered worktrees as git.worktrees reports them; changes is null while they were not counted.",
+  "cases": [
+    {
+      "name": "primary and current",
+      "worktree": {
+        "isPrimary": true,
+        "isCurrent": true,
+        "isLocked": false,
+        "isPrunable": false
+      },
+      "changes": 0,
+      "status": "current",
+      "actions": {
+        "remove": {
+          "allowed": false,
+          "reason": "git_worktree_primary"
+        },
+        "lock": {
+          "allowed": false,
+          "reason": "git_worktree_primary"
+        }
+      }
+    },
+    {
+      "name": "primary from another worktree",
+      "worktree": {
+        "isPrimary": true,
+        "isCurrent": false,
+        "isLocked": false,
+        "isPrunable": false
+      },
+      "changes": null,
+      "status": "available",
+      "actions": {
+        "remove": {
+          "allowed": false,
+          "reason": "git_worktree_primary"
+        },
+        "lock": {
+          "allowed": false,
+          "reason": "git_worktree_primary"
+        }
+      }
+    },
+    {
+      "name": "primary with changes",
+      "worktree": {
+        "isPrimary": true,
+        "isCurrent": true,
+        "isLocked": false,
+        "isPrunable": false
+      },
+      "changes": 3,
+      "status": "modified",
+      "actions": {
+        "remove": {
+          "allowed": false,
+          "reason": "git_worktree_primary"
+        },
+        "lock": {
+          "allowed": false,
+          "reason": "git_worktree_primary"
+        }
+      }
+    },
+    {
+      "name": "linked and current",
+      "worktree": {
+        "isPrimary": false,
+        "isCurrent": true,
+        "isLocked": false,
+        "isPrunable": false
+      },
+      "changes": null,
+      "status": "current",
+      "actions": {
+        "remove": {
+          "allowed": false,
+          "reason": "git_worktree_current"
+        },
+        "lock": {
+          "allowed": true,
+          "reason": null
+        }
+      }
+    },
+    {
+      "name": "linked",
+      "worktree": {
+        "isPrimary": false,
+        "isCurrent": false,
+        "isLocked": false,
+        "isPrunable": false
+      },
+      "changes": 0,
+      "status": "available",
+      "actions": {
+        "remove": {
+          "allowed": true,
+          "reason": null
+        },
+        "lock": {
+          "allowed": true,
+          "reason": null
+        }
+      }
+    },
+    {
+      "name": "linked, changes not counted",
+      "worktree": {
+        "isPrimary": false,
+        "isCurrent": false,
+        "isLocked": false,
+        "isPrunable": false
+      },
+      "changes": null,
+      "status": "available",
+      "actions": {
+        "remove": {
+          "allowed": true,
+          "reason": null
+        },
+        "lock": {
+          "allowed": true,
+          "reason": null
+        }
+      }
+    },
+    {
+      "name": "linked with changes",
+      "worktree": {
+        "isPrimary": false,
+        "isCurrent": false,
+        "isLocked": false,
+        "isPrunable": false
+      },
+      "changes": 2,
+      "status": "modified",
+      "actions": {
+        "remove": {
+          "allowed": true,
+          "reason": null
+        },
+        "lock": {
+          "allowed": true,
+          "reason": null
+        }
+      }
+    },
+    {
+      "name": "locked",
+      "worktree": {
+        "isPrimary": false,
+        "isCurrent": false,
+        "isLocked": true,
+        "isPrunable": false
+      },
+      "changes": 0,
+      "status": "locked",
+      "actions": {
+        "remove": {
+          "allowed": false,
+          "reason": "git_worktree_locked"
+        },
+        "lock": {
+          "allowed": true,
+          "reason": null
+        }
+      }
+    },
+    {
+      "name": "locked with changes",
+      "worktree": {
+        "isPrimary": false,
+        "isCurrent": false,
+        "isLocked": true,
+        "isPrunable": false
+      },
+      "changes": 4,
+      "status": "locked",
+      "actions": {
+        "remove": {
+          "allowed": false,
+          "reason": "git_worktree_locked"
+        },
+        "lock": {
+          "allowed": true,
+          "reason": null
+        }
+      }
+    },
+    {
+      "name": "locked and current",
+      "worktree": {
+        "isPrimary": false,
+        "isCurrent": true,
+        "isLocked": true,
+        "isPrunable": false
+      },
+      "changes": null,
+      "status": "locked",
+      "actions": {
+        "remove": {
+          "allowed": false,
+          "reason": "git_worktree_current"
+        },
+        "lock": {
+          "allowed": true,
+          "reason": null
+        }
+      }
+    },
+    {
+      "name": "missing",
+      "worktree": {
+        "isPrimary": false,
+        "isCurrent": false,
+        "isLocked": false,
+        "isPrunable": true
+      },
+      "changes": null,
+      "status": "missing",
+      "actions": {
+        "remove": {
+          "allowed": false,
+          "reason": "git_worktree_missing"
+        },
+        "lock": {
+          "allowed": false,
+          "reason": "git_worktree_missing"
+        }
+      }
+    },
+    {
+      "name": "missing and locked",
+      "worktree": {
+        "isPrimary": false,
+        "isCurrent": false,
+        "isLocked": true,
+        "isPrunable": true
+      },
+      "changes": null,
+      "status": "missing",
+      "actions": {
+        "remove": {
+          "allowed": false,
+          "reason": "git_worktree_missing"
+        },
+        "lock": {
+          "allowed": false,
+          "reason": "git_worktree_missing"
+        }
+      }
+    }
+  ]
+}

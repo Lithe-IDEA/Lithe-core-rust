@@ -341,6 +341,7 @@
         ],
         "plan": {
           "gracefulStopMilliseconds": 5000,
+          "gracefulStopRule": {"defaultSeconds": 5, "minSeconds": 1, "maxSeconds": 60},
           "decisions": [
             {
               "id": "agentTask:402:2500",
@@ -540,6 +541,7 @@
         ],
         "plan": {
           "gracefulStopMilliseconds": 5000,
+          "gracefulStopRule": {"defaultSeconds": 5, "minSeconds": 1, "maxSeconds": 60},
           "decisions": [
             {
               "id": "agentTask:400:1000",
@@ -718,6 +720,7 @@
         ],
         "plan": {
           "gracefulStopMilliseconds": 5000,
+          "gracefulStopRule": {"defaultSeconds": 5, "minSeconds": 1, "maxSeconds": 60},
           "decisions": [
             {
               "id": "service:350:300",
@@ -1120,6 +1123,7 @@
         ],
         "plan": {
           "gracefulStopMilliseconds": 5000,
+          "gracefulStopRule": {"defaultSeconds": 5, "minSeconds": 1, "maxSeconds": 60},
           "decisions": [
             {
               "id": "agentTask:111:30",
@@ -1227,6 +1231,7 @@
         ],
         "plan": {
           "gracefulStopMilliseconds": 5000,
+          "gracefulStopRule": {"defaultSeconds": 5, "minSeconds": 1, "maxSeconds": 60},
           "decisions": [
             {
               "id": "agentTask:111:30",
@@ -1288,6 +1293,7 @@
         ],
         "plan": {
           "gracefulStopMilliseconds": 5000,
+          "gracefulStopRule": {"defaultSeconds": 5, "minSeconds": 1, "maxSeconds": 60},
           "decisions": [
             {
               "id": "run:other",

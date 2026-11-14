@@ -178,10 +178,50 @@ returned as sent, so a host may send only the groups an action involves. `emptyG
 `normalize.unplaced` members no group lists join the focused group (the first group when `focusedGroup` is missing or
 stale), and `focusedGroup` moves to the first remaining group when its group was removed. Actions that name an unknown
 group or an unknown move destination change nothing. `removedGroupIds` lists removed groups in their previous order so
-hosts prune their own layout tree; split directions, ratios, pixels and dragging never reach Core. A malformed payload is
-`invalid_request`. It lives in `rust/crates/core-rules` and hosts call it synchronously through the C ABI, one call per
-user action. Core and the rules crate run every case of
+hosts that keep their own layout tree can prune it; a host that keeps the tree in the shape below uses
+`editor.groupLayout.reduce` instead. A malformed payload is `invalid_request`. It lives in `rust/crates/core-rules` and
+hosts call it synchronously through the C ABI, one call per user action. Core and the rules crate run every case of
 `rust/fixtures/editor/workbench-state-v1.json` through it.
+
+`editor.groupLayout.reduce` accepts `{state?, layout?, action}` and returns
+`{state, layout, removedGroupIds, group?, rejection?}`. `state` is the `editor.workbenchState.reduce` state, and its
+group IDs must be unique and not empty. `layout` is the tree that divides the editor area among the groups: a leaf
+`{group}` or a split `{node, row?, first, second}`, where `row` lays the children side by side (otherwise `first` is
+above `second`) and `node` is the host's number for the split, unique in the tree; a group appears at most once, and
+`layout` is `null` or missing when the editor area shows no group. Groups the layout does not show, such as a group
+docked in a tool window, may be in `state`. Splitter ratios, pixels and the drag in progress stay in the host, which
+keeps them by `node` and starts a split Core made in the middle. Before and after the action a leaf whose group is not
+in `state` leaves the tree, and the sibling of a removed leaf takes the room of their split. `action` is any action of
+`editor.workbenchState.reduce`, or tagged by `kind`:
+
+- `openTab {member, preferredGroup?, newGroup}` opens and shows `member` in `preferredGroup` while the layout shows it,
+  otherwise in the first group of the layout (leftmost, then topmost). Without a layout it adds the empty group
+  `newGroup`, which must be new, after the others and makes it the whole layout.
+- `dropTab {member, target, docked?, dockable?, newGroup?, newNode?}` releases a dragged tab. `docked` lists groups in
+  tool windows and `dockable` says whether the tab may join them. `target` is tagged by `kind`: `join {group, index}`
+  puts the tab in `group` at `index` counted among its tabs without the dragged one (an index past the end appends; in
+  the tab's own group it reorders), `split {group, edge}` with `edge` `left`, `right`, `top` or `bottom` puts it in the
+  new group `newGroup` on that side of `group` under the new split `newNode`, and `empty` puts it in the new group
+  `newGroup` that becomes the whole layout. The tab is shown where it lands, and a group it left empty is removed
+  unless it is docked. `group` in the response names that group. A drop whose tab or place no longer fits the request
+  returns `rejection: "editor.groupLayout.stale"` (the tab is in no group, `group` is not in `state`, a split `group`
+  is not in `layout`, or `empty` while `layout` shows a group); a place the drop rules refuse returns
+  `rejection: "editor.groupLayout.refused"`. With a rejection, `state` and `layout` are as sent. A split or an empty
+  drop without a new `newGroup`, or a split without a `newNode` unused in the layout, is `invalid_request`.
+- `removeEmptyGroups {groups}` removes the named groups that have no tab and keeps every other group.
+
+`group` is set after `openTab` and an applied `dropTab`. `removedGroupIds` lists the groups that left `state` in their
+previous order.
+
+`editor.groupLayout.dropTargets` accepts `{state?, layout?, member, docked?, dockable?}` and returns
+`{groups: [{group, join, split, append}], empty}`, one entry per group of `state` in its order. The drop rules: a group
+whose only tab is `member` accepts nothing, since the drop changes nothing, and neither does a docked group when the tab
+is not `dockable`. Every other group accepts the tab in its strip (`join`); its body accepts a split on an edge
+(`split`) unless the group is docked or the layout does not show it, and accepts the tab at its end (`append`) unless
+the tab is already in the group. `empty` says the editor area shows no group and the tab may open its first one. A
+tab no group has gets no place. The host asks once when a drag starts and hit-tests the pointer against what it
+painted. A malformed payload is `invalid_request` for both commands. Both live in `rust/crates/editor-layout`; Core
+runs every case of `rust/fixtures/editor/group-layout-v1.json` through them.
 
 `workspace.classifyVisibility` accepts `{hiddenDirectoryNames?, hiddenFilePatterns?, entries: [{path, isDirectory?}]}`
 and returns `{hidden: boolean[], watchedDespiteHiding: boolean[]}` with one answer per entry, in request order. `path`
@@ -389,6 +429,7 @@ or removing a command fails until the table changes in the same commit.
 | `plugins.declarative.settingsState` | Read complete plugin preference documents into Core-normalized rows, sources, and bounded native read plans |
 | `plugins.declarative.settingsActionPlan` | Resolve an installed settings action and its native confirmation requirement |
 | `plugins.installed.select` | Select numeric installed versions from native facts without reading paths |
+| `plugins.installed.lifecycle` | Report installed plugins' enablement and plan confirming an install, enabling, disabling or uninstalling one |
 | `plugins.declarative.editSettings` | Validate one atomic setting edit batch and return replacement text while preserving unrelated plugins and dormant values |
 | `plugins.declarative.workspaceConfiguration` | Expand a language server's `workspaceConfiguration` with the merged setting values |
 | `plugins.declarative.decodeGrammar` | Validate independent static editor resources |
@@ -466,6 +507,8 @@ or removing a command fails until the table changes in the same commit.
 | `workspace.filterChanges` | Filter an array of workspace-relative paths, or `{ paths, hiddenFilePatterns }` whose `!` entries turn default exclusions off, against Core's default build/cache exclusions; preserve order, spelling, and the empty root path. Native event loss bypasses filtering. Hosts relativize to the most specific explicit watch root and retain explicitly watched files |
 | `workspace.listDirectories` | Return one visible level of children for each requested workspace-relative directory (`""` is the root); missing, hidden, symlinked, or nested-worktree paths are omitted, and each listing reports the nested worktrees it left out. Child directories have `children: []` only when a shallow probe proves them visibly empty; otherwise children remain omitted (unloaded), with no recursive tree allocation. Children list directories first, then names in IDEA's natural file-name order (digit runs compare by value, case-insensitive, `-` next to `_`; fixture `rust/fixtures/workspace/file-name-order-v1.json`) |
 | `workspace.orderEntries` | Order natively enumerated directory siblings |
+| `workspace.projectTree.rows` | Say which loaded project tree nodes show as rows, keep the selection on a row that shows, and find the row the top of the view was on, without reading the disk (from `lithe-project-tree`) |
+| `workspace.rowSelection.reduce` | Apply one plain, Cmd/Ctrl or Shift click, or the end of a batch, to the multi-selection of rows of workspace paths and return what a batch acts on (from `lithe-row-selection`) |
 | `workspace.rankNames` | Pure ranking of candidate names that the platform enumerates itself (`{ query, candidates: [{ name, path? }], context: { openPaths, recentPaths }, limitPerTier? }`). Use it only for lists Core cannot index: Windows remote/WSL roots, symbol lists, navigator lists. Roots Core indexes go through `workspace.searchEverywhere`, so an inventory is never sent back to Core. Returns `matches: [{ index, degree, tier, nameMatchRanges }]` ordered by degree, open/recent tier, recency, then file-name order (fixture `rust/fixtures/search/rank-names-v1.json`) |
 | `workspace.planDuplicate` | Name the copy of one project item next to its source (`foo.txt` → `foo copy.txt`, then `foo copy 2.txt`) from the sibling names the host has seen to exist |
 | `workspace.planPaste` | Name pasted project items in one destination directory: a free name is kept, a taken one gets the copy suffix, and earlier items of the same paste count as taken |
@@ -512,6 +555,8 @@ or removing a command fails until the table changes in the same commit.
 | `keymap.analyzeConflicts` | Find conflicts among the final layered shortcut bindings (from `lithe-core-rules`) |
 | `keymap.modifierGestureStep` | Advance the double-Shift gesture recognizer by one event. The rule itself lives in `lithe-core-rules` so the Windows frontend can run it synchronously |
 | `editor.workbenchState.reduce` | Apply one editor-group state transition: open, close, move, pin, preview, merge or normalize. The rule lives in `lithe-core-rules` so the Windows frontend can run it synchronously inside store updates |
+| `editor.groupLayout.reduce` | Apply one transition to the editor groups and the tree that divides the editor area among them: a workbench state action, opening a tab, dropping a dragged tab or removing empty groups (from `lithe-editor-layout`) |
+| `editor.groupLayout.dropTargets` | Say which places of each editor group accept a dragged tab (from `lithe-editor-layout`) |
 | `workspace.classifyVisibility` | Classify a batch of workspace-relative paths as hidden or visible. The rule lives in `lithe-core-rules` so the Windows frontend can run it synchronously |
 | `workspace.visibilityDefaults` | Return the built-in hidden-path lists (from `lithe-core-rules`) |
 | `workbench.chromeLayout.reduce` | Apply one transition to the rearrangeable workbench chrome: stripe, title bar and status bar button placement and open tool panels (from `lithe-core-rules`) |
@@ -557,7 +602,7 @@ or removing a command fails until the table changes in the same commit.
 | `editor.parseNavigationInput` | Parse a bounded line or line:column input into zero-based editor coordinates |
 | `editor.navigationHistory.reduce` | Reduce one bounded back/forward navigation history event and return the next state plus the location to open |
 | `editor.lineCommentToken` | Resolve the line comment token for a file extension or language id |
-| `network.proxyPolicy` | Normalize the stored proxy settings into the policy a network stack must apply (mode, server, credentials, exclusions) |
+| `network.proxyPolicy` | Normalize the stored proxy settings into the policy a network stack must apply (mode, server, credentials, exclusion rules) |
 | `lsp.plainSnippet` | Convert LSP snippet insert text into plain editor text |
 | `lsp.builtinCompletions` | Return lightweight current-file identifier completions |
 | `lsp.builtinHover` | Return lightweight current-symbol hover text |
@@ -610,7 +655,7 @@ or removing a command fails until the table changes in the same commit.
 | `git.workspaceCommitStep` | Execute one guarded workspace commit/push |
 | `git.classifyMetadataChanges` | Classify a bounded page of coalesced watcher paths without filesystem access |
 | `git.watchContext` | Resolve the repository and absolute Git metadata roots needed by native file watchers |
-| `git.worktrees` | Return deterministic registered-worktree metadata without scanning each checkout |
+| `git.worktrees` | Return deterministic registered-worktree metadata with each worktree's state and allowed writes; `countChanges` also counts each checkout's local changes |
 | `git.pullRequestContext` | Resolve worktree-aware PR branch defaults, publication state, and uncommitted-change state |
 | `git.command` | Execute one argument-based Git operation and return its arguments, streams, exit code, and ordered subprocess invocations |
 | `git.repositoryRoot` | Resolve the repository root containing a workspace path without acquiring repository write coordination |
@@ -682,6 +727,8 @@ or removing a command fails until the table changes in the same commit.
 | `git.normalizeChangeTargets` | Drop targets already covered by a selected untracked summary |
 | `git.rebasePlanPreview` | Validate an interactive rebase draft and derives its messages |
 | `git.referenceTree` | Group one kind of loaded references into an ordered tree |
+| `git.changedFileGroups` | Group the changed files of a commit, stash or shelf by folder, folders and files in natural order |
+| `git.worktreeCreationPreview` | Derive the worktree creation dialog's reference choices, checked branch name, suggested destination and readiness without running Git |
 | `git.pushPreview` | Resolve a local branch push destination and the bounded commits not present on that remote base |
 | `git.commit` | Return one structured commit by revision with its full message body |
 | `git.commitFiles` | Return files changed by one commit |
@@ -741,6 +788,46 @@ capacities return `invalid_request`. Hosts own persistence and which roots are
 worth recording; menus may show fewer rows than are retained. See
 `rust/fixtures/workspace/recent-projects-v1.json`.
 
+`workspace.rowSelection.reduce` accepts `{ rows, selection?, action }` and returns
+`{ selection, targets, rejection? }`. `rows` are the paths of the rows the host
+shows, top to bottom; the empty path is the workspace root. `selection` is
+`{ selected?, marked?, anchor? }`: the selected row, the paths marked for a batch
+(returned in path order) and the path a Shift click extends from. `action.kind` is
+`choose { path }` (a plain click: select the row, drop the marks and the anchor),
+`toggle { path }` (Cmd or Ctrl: mark or unmark the row, select it and make it the
+anchor), `extend { path }` (Shift: mark every row from the anchor, else from the
+selected row, else the clicked row alone, to the clicked row, keep the other marks
+and select it) or `clear` (a batch is over: drop the marks and the anchor, keep the
+selected row). The root is never marked: `toggle` and `extend` on it change nothing,
+and a range that covers it skips it. Marks and an anchor of rows the host does not
+show, such as rows inside a closed folder, stay. An action on a path that is not in
+`rows` returns `rejection: "workspace.rowSelection.stale"` with the selection as
+sent. `targets` is what a batch acts on: the marked paths without those inside a
+marked folder, empty when nothing is marked. A marked or anchored root, more than
+2^20 rows or marks, and unknown fields or actions return `invalid_request`. See
+`rust/fixtures/workspace/row-selection-v1.json`.
+
+`workspace.projectTree.rows` accepts `{ nodes, selection?, top? }` and returns
+`{ rows, selection, selectionMoved, topRow, targets }`. `nodes` are the project tree
+nodes the host loaded with `workspace.listDirectories`, in preorder, each
+`{ path, depth, open? }`: the first is the root `{ path: "", depth: 0 }`, and every
+other node is one name inside the nearest node above it at one less depth; `open`
+says the user opened that folder. A node shows as a row when every folder above it
+is open; the root always shows. `rows` are the positions in `nodes` of the rows that
+show, top to bottom. `selection` is that of `workspace.rowSelection.reduce`. A
+selected node that is not loaded, or that a closed folder hides, gives the selection
+to the nearest folder above it that shows (the root at last), and `selectionMoved`
+says so; marks and an anchor whose node is not loaded are dropped, while marks inside
+a closed folder stay. `top` is the path of the row at the top of the view before the
+change, and `topRow` its row now, or `null` when it no longer shows. `targets` is as
+in `workspace.rowSelection.reduce`. Nothing reads the disk, and a folder's children
+are only those the host listed. Hosts ask once per change of the tree's shape (a
+folder opens or closes, a listing arrives, a node goes away), never per paint. A
+first node that is not the root, a node that skips a depth or is not inside the node
+above it, a path listed twice, more than 2^20 nodes and the selection errors of
+`workspace.rowSelection.reduce` return `invalid_request`. See
+`rust/fixtures/workspace/project-tree-rows-v1.json`.
+
 `workspace.repositories.repositories` is ordered with the containing workspace
 repository first when present, then repositories under the opened workspace by
 workspace containment, depth, and path. Each entry contains an absolute native
@@ -788,11 +875,26 @@ Traversal checks cancellation between directories and entries.
 `git.worktrees.worktrees` is ordered with the primary worktree first and then
 by path. Each entry contains `path`, `head`, nullable `branch`, `isCurrent`,
 `isPrimary`, `isBare`, `isDetached`, `isLocked`, nullable `lockReason`,
-`isPrunable`, and nullable `pruneReason`. The path is absolute because linked
+`isPrunable`, nullable `pruneReason`, `status`, nullable `changes`, and
+`actions`. The path is absolute because linked
 worktrees may live outside the opened workspace; clients must treat it as an
 opaque native boundary value and must not persist it as a portable identifier.
 Core reads the list with one porcelain operation and does not run status in
-each checkout.
+each checkout unless the request sets `countChanges: true`; then it runs status
+(index-only changes included, wholly untracked directories summarized) in every
+checkout that is there and not bare, and `changes` is the number of entries,
+`null` when the checkout's status failed or was not read. `status` is the one
+state a row shows, the first that holds of `missing` (prunable), `locked`,
+`modified` (counted changes above zero), `current`, and `available`.
+`actions` is `{ "remove": { "allowed", "reason" }, "lock": { "allowed",
+"reason" } }`: removal is refused for the primary worktree
+(`git_worktree_primary`), then the current one (`git_worktree_current`), a
+missing checkout (`git_worktree_missing`, pruned instead) and a lock
+(`git_worktree_locked`); changing the lock is refused for the primary worktree
+and a missing checkout. Apart from `git_worktree_missing`, each reason is the
+error code the write returns for the same refusal. Clients word the state and
+the reasons and do not derive them.
+`rust/fixtures/git/worktree-rules-v1.json` defines the rules.
 For a rename or copy, each change uses the destination as `path` and preserves
 the source as `originalPath`; platform mutations that act on the Git entry pass
 both paths back to Core.
@@ -1577,6 +1679,49 @@ an unreferenced fragment. Requests over 20,000 commits fail with `invalid_reques
 `rust/fixtures/git/graph-projection-v1.json` defines the rules and
 `rust/fixtures/git/graph-idea/` holds the pinned IntelliJ oracles.
 
+`git.changedFileGroups` groups the changed files of a commit, a stash or a shelf
+by folder; it never starts Git. The request is `{ "paths": string[] }`, the
+repository-relative `/`-separated paths in the order Git listed them, at most
+200,000. The response is `{ "folders": [{ "path", "files" }] }`: every path lands
+in the folder it names before its last `/` (`""` for the top of the repository),
+and `files` are indices into `paths`. Folder paths compare one segment at a time
+and file names compare by name, both in the project tree's natural order
+(`rust/fixtures/workspace/file-name-order-v1.json`), so a folder comes right
+before the folders inside it and `v0.1.4.md` before `v0.1.12.md`; names the
+natural order cannot tell apart fall back to their raw text, then to request
+order. Hosts group once per loaded list and own expansion, rows and drawing.
+`rust/fixtures/git/changed-file-groups-v1.json` defines the rules.
+
+`git.worktreeCreationPreview` derives what the worktree creation dialog shows;
+it never starts Git. The request has `root`, `mode` (`newBranch`,
+`existingBranch` or `detached`, as `createWorktree` takes them), `kind` (the
+reference kind listed, default `local`), `reference` (the held reference's
+`fullName`, `""` for none), `name`, `requireName`, `revision`, `destination`,
+`lastSuggestion` (the suggestion the destination last followed, `""` at first),
+`references` (the `git.references` entries; fields beyond `fullName`,
+`shortName`, `kind` and `isCurrent` are ignored) and `checkedOutBranches` (the
+`branch` of every registered worktree); other top-level fields are
+`invalid_request`. The response is `{ "choices", "reference", "branch",
+"suggestedDestination", "destination", "destinationIsAbsolute", "ready" }`.
+`choices` are indices into `references`: local branches no worktree has checked
+out for `existingBranch`, references of `kind` otherwise. `reference` stays the
+held one while it is a choice, else becomes the current local branch among the
+choices, else the first, and is `null` without choices. `branch` is the
+`git.branchNamePreview` response for `name` in `newBranch` mode and `null`
+otherwise; a name over 1,024 characters fails the request. The suggestion sits
+beside the repository as `<repository>-<leaf>`, the leaf being the last `/`
+segment of the cleaned branch name, the first nine characters of the trimmed
+revision in `detached` mode, or the held reference's short name, with every
+character other than a letter, a digit, `-` or `_` replaced by `-`, and
+`worktree` when nothing is left. `destination` is the suggestion while the
+request's `destination` equals `lastSuggestion` and the typed value otherwise.
+`ready` needs an absolute `destination`, plus a reference and a cleaned name
+without error for `newBranch`, a reference for `existingBranch`, and a
+reference or a revision for `detached`. Hosts preview when an input changes,
+again with `requireName: true` on submit, and keep `suggestedDestination` as the
+next `lastSuggestion`. `rust/fixtures/git/worktree-creation-preview-v1.json`
+defines the rules.
+
 `git.integrationPreflight` accepts either `reference` or `gitReference` with
 `root` and `operation`, where `operation` is `merge`, `rebase`, `cherryPick`,
 or `revert`. It returns sorted, de-duplicated `blockingPaths` and
@@ -2125,7 +2270,8 @@ network stack must apply. It accepts `{ "mode": "system" | "direct" |
 "username": string }, "exclusions"?: string[] }` (`port` must fit in 16 bits,
 otherwise the request is rejected with `invalid_request`) and returns
 `{ "policy": "system" | "direct" | "custom", "proxyType", "host", "port",
-"username", "password", "exclusions", "configured" }`.
+"username", "password", "exclusions", "exclusionRules", "invalidExclusions",
+"configured" }`.
 
 An optional `passwordIdentity` binds a restored password to its saved proxy
 type, host, port and username; a mismatch removes the password. Host matching
@@ -2142,6 +2288,35 @@ or port normalizes to `policy: "system"` with `configured: false`; system and
 direct never carry credentials, so hosts can forward the plan to their network
 stack without a second credential-scoping decision. Deterministic cases are
 pinned by `rust/fixtures/network/proxy-policy-v1.json`.
+
+Core alone reads what an exclusion entry means. For a custom policy,
+`exclusionRules` lists the entries as `{ "kind", "value" }` in entry order, a
+repeated rule once, and `invalidExclusions` lists the trimmed entries that have
+none of the forms below; both are empty for system and direct. Entries are
+compared lowercase and without one trailing dot:
+
+| Entry | `kind` | `value` |
+| --- | --- | --- |
+| `<local>` | `local` | empty |
+| `address/prefix` with a valid prefix length | `cidr` | network address with the host bits cleared, `/`, prefix length |
+| an IPv4 or IPv6 address, IPv6 optionally in brackets | `ip` | canonical address |
+| `*.domain` or `.domain` | `suffix` | `domain` |
+| any other name | `host` | the name |
+
+A name must not be empty or contain white space, `*`, `/`, `:`, brackets,
+angle brackets, or an empty label; an entry such as `*`, `*.`, `10.0.0.0/33`
+or `example.com:8080` is invalid and sends no host direct.
+
+A request goes direct when its host, lowercase and without one trailing dot,
+matches any rule; an empty host never does. `host` matches an equal host;
+`suffix` matches the domain itself or a host ending with `.` and the domain;
+`ip` matches a host that is an equal address of the same family; `cidr`
+matches a host that is an address of the same family inside the block, so an
+IPv4-mapped IPv6 host matches neither an IPv4 address nor an IPv4 block; an
+IPv6 host may carry a non-empty `%zone`, which is not compared; `local` matches
+a host that is not an address and contains no dot. Network stacks apply exactly this comparison
+and replay `rust/fixtures/network/proxy-bypass-v1.json`, whose cases list the
+rules of each exclusion list and which hosts go direct.
 
 The `debug.*` commands are the shared Debug Adapter Protocol boundary. Rust
 owns DAP framing, request sequences, response correlation, initialization and
@@ -4000,6 +4175,39 @@ successfully started session merely because other plugins failed discovery.
 This is metadata selection, not manifest validation, approval or admission.
 Shared cases are in `rust/fixtures/plugins/installed-versions.json`.
 
+`plugins.installed.lifecycle` accepts `{ installed: [{ pluginID, version }],
+choices?: [{ pluginID, enabled }], action?: { kind, pluginID } }`, with at most
+4096 installed versions and 4096 choices. `installed` lists every installed
+version and `choices` every enablement choice the user made; an empty ID or
+version, a repeated version or a second choice for one plugin is
+`invalid_request`. `kind` is `confirmInstall`, `enable`, `disable` or
+`uninstall`. It returns `{ plugins: [{ pluginID, enabled }], changed, steps,
+rejection? }`. `plugins` lists every installed plugin once, ordered by ID, with
+its enablement once the steps ran; an uninstalled plugin is left out.
+Enablement is per plugin, not per version, and a plugin without a choice is
+disabled. A choice for a plugin that is not installed is kept for a later
+installation. `changed` says the steps change the choice for the action's
+plugin. An action on a plugin with no installed version returns
+`rejection: "plugin.lifecycle.notInstalled"`, no steps and the unchanged
+`plugins`.
+
+`steps` are what the host does on the action's plugin, in order:
+`{ kind: "recordChoice", enabled }` records the choice, `{ kind: "forgetChoice" }`
+drops it, `{ kind: "stopPrograms" }` stops the plugin's language server and
+backend and returns once they ended or gave up, `{ kind: "removeVersion",
+version }` removes one installed version and then forgets that version's
+approval record (the record stays when the removal failed), and
+`{ kind: "removeState" }` removes the state directory the plugin's programs
+wrote. A failed step does not stop the steps after it; the host reports every
+failure. `confirmInstall` records `enabled: true` only when the plugin has no
+choice, so a plugin disabled before an update stays disabled. `enable` records
+`true` unless already chosen. `disable` records `false` unless already chosen
+and then stops the programs, so nothing starts the plugin again while it stops.
+`uninstall` stops the programs, removes every installed version in version text
+order, forgets the choice if there is one and removes the state, so a later
+installation starts as a first one. Shared cases are in
+`rust/fixtures/plugins/installed-lifecycle.json`.
+
 `plugins.declarative.decodeGrammar` accepts `{ manifest, languageID, grammar }`,
 where `grammar` is the text the host read from the language's `grammar.path`
 inside the installed package, and returns `language: { id, fileExtensions,
@@ -4707,8 +4915,11 @@ bridge exposes the same lifetime and result contract. Fixtures live in
 ### Process lifecycle decisions
 
 `processLifecycle.resolve` accepts `{ context, settings, records }` and returns
-`{ gracefulStopMilliseconds, decisions }` with exactly one decision per record,
-in request order. `context` is `quit`, `closeTerminalTab`, `agentDisconnect`,
+`{ gracefulStopMilliseconds, gracefulStopRule, decisions }` with exactly one
+decision per record, in request order. `gracefulStopRule` is
+`{ defaultSeconds, minSeconds, maxSeconds }`, the default of
+`settings.gracefulStopSeconds` and the limits it is clamped to, in seconds;
+settings pages read it instead of copying the numbers. `context` is `quit`, `closeTerminalTab`, `agentDisconnect`,
 `crashRecovery`, `startupSweep`, `finalSweep`, or `closeWorkspace` (a project or
 window closes while Lithe keeps running). Each record carries a host-chosen `id`, a
 `kind` (`run`, `terminal`, `agentTask`, `languageServer`, `debugAdapter`,

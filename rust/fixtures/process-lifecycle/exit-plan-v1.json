@@ -17,6 +17,7 @@
       },
       "expected": {
         "gracefulStopMilliseconds": 5000,
+        "gracefulStopRule": {"defaultSeconds": 5, "minSeconds": 1, "maxSeconds": 60},
         "decisions": [
           {"id": "idle-shell", "kind": "terminal", "policy": "terminate", "action": "terminate", "reason": "idleTerminal"},
           {"id": "spring", "kind": "terminal", "policy": "confirmEach", "action": "confirm", "reason": "busyTerminal"},
@@ -46,6 +47,7 @@
       },
       "expected": {
         "gracefulStopMilliseconds": 12000,
+        "gracefulStopRule": {"defaultSeconds": 5, "minSeconds": 1, "maxSeconds": 60},
         "decisions": [
           {"id": "spring", "kind": "terminal", "policy": "confirmEach", "action": "terminate", "reason": "terminalOnQuitSetting"},
           {"id": "migration", "kind": "agentTask", "policy": "confirmEach", "action": "retain", "reason": "agentTasksSetting"},
@@ -69,6 +71,7 @@
       },
       "expected": {
         "gracefulStopMilliseconds": 5000,
+        "gracefulStopRule": {"defaultSeconds": 5, "minSeconds": 1, "maxSeconds": 60},
         "decisions": [
           {"id": "gradle", "kind": "daemon", "policy": "askOnExit", "action": "retain", "reason": "rememberedChoice"},
           {"id": "kotlin", "kind": "daemon", "policy": "askOnExit", "action": "terminate", "reason": "rememberedChoice"},
@@ -88,6 +91,7 @@
       },
       "expected": {
         "gracefulStopMilliseconds": 5000,
+        "gracefulStopRule": {"defaultSeconds": 5, "minSeconds": 1, "maxSeconds": 60},
         "decisions": [
           {"id": "declared", "kind": "pluginTool", "policy": "terminate", "action": "terminate", "reason": "declaredByLauncher"},
           {"id": "recognized", "kind": "pluginTool", "policy": "terminate", "action": "terminate", "reason": "recognizer"},
@@ -106,6 +110,7 @@
       },
       "expected": {
         "gracefulStopMilliseconds": 5000,
+        "gracefulStopRule": {"defaultSeconds": 5, "minSeconds": 1, "maxSeconds": 60},
         "decisions": [
           {"id": "busy", "kind": "terminal", "policy": "confirmEach", "action": "confirm", "reason": "busyTerminal"},
           {"id": "detached-from-tab", "kind": "oneShot", "policy": "askOnExit", "action": "defer", "reason": "decidedOnQuit"}
@@ -123,6 +128,7 @@
       },
       "expected": {
         "gracefulStopMilliseconds": 5000,
+        "gracefulStopRule": {"defaultSeconds": 5, "minSeconds": 1, "maxSeconds": 60},
         "decisions": [
           {"id": "busy", "kind": "terminal", "policy": "confirmEach", "action": "terminate", "reason": "terminalTabCloseSetting"}
         ]
@@ -140,6 +146,7 @@
       },
       "expected": {
         "gracefulStopMilliseconds": 5000,
+        "gracefulStopRule": {"defaultSeconds": 5, "minSeconds": 1, "maxSeconds": 60},
         "decisions": [
           {"id": "deploy", "kind": "agentTask", "policy": "confirmEach", "action": "terminate", "reason": "agentTasksSetting"},
           {"id": "mcp-daemon", "kind": "daemon", "policy": "askOnExit", "action": "defer", "reason": "decidedOnQuit"}
@@ -160,6 +167,7 @@
       },
       "expected": {
         "gracefulStopMilliseconds": 5000,
+        "gracefulStopRule": {"defaultSeconds": 5, "minSeconds": 1, "maxSeconds": 60},
         "decisions": [
           {"id": "migration", "kind": "agentTask", "policy": "confirmEach", "action": "retain", "reason": "agentTaskNeverEndedUnattended"},
           {"id": "spring", "kind": "terminal", "policy": "confirmEach", "action": "terminate", "reason": "busyTerminal"},
@@ -181,6 +189,7 @@
       },
       "expected": {
         "gracefulStopMilliseconds": 5000,
+        "gracefulStopRule": {"defaultSeconds": 5, "minSeconds": 1, "maxSeconds": 60},
         "decisions": [
           {"id": "migration", "kind": "agentTask", "policy": "confirmEach", "action": "confirm", "reason": "agentTaskAlwaysConfirmedAtStartup"},
           {"id": "orphan", "kind": "daemon", "policy": "askOnExit", "action": "terminate", "reason": "startupSweepSetting"},
@@ -198,6 +207,7 @@
       },
       "expected": {
         "gracefulStopMilliseconds": 5000,
+        "gracefulStopRule": {"defaultSeconds": 5, "minSeconds": 1, "maxSeconds": 60},
         "decisions": [
           {"id": "orphan", "kind": "oneShot", "policy": "askOnExit", "action": "ask", "reason": "startupSweepSetting"}
         ]
@@ -217,6 +227,7 @@
       },
       "expected": {
         "gracefulStopMilliseconds": 5000,
+        "gracefulStopRule": {"defaultSeconds": 5, "minSeconds": 1, "maxSeconds": 60},
         "decisions": [
           {"id": "unseen-successor", "kind": "daemon", "policy": "askOnExit", "action": "defer", "reason": "backgroundResourceRequiresStartupConfirmation"},
           {"id": "approved-service", "kind": "daemon", "policy": "askOnExit", "action": "terminate", "reason": "finalSweepApproved"},
@@ -238,6 +249,7 @@
       },
       "expected": {
         "gracefulStopMilliseconds": 5000,
+        "gracefulStopRule": {"defaultSeconds": 5, "minSeconds": 1, "maxSeconds": 60},
         "decisions": [
           {"id": "unseen-service", "kind": "daemon", "policy": "askOnExit", "action": "terminate", "reason": "backgroundSetting"},
           {"id": "remembered-service", "kind": "daemon", "policy": "askOnExit", "action": "retain", "reason": "rememberedChoice"}
@@ -256,6 +268,7 @@
       },
       "expected": {
         "gracefulStopMilliseconds": 5000,
+        "gracefulStopRule": {"defaultSeconds": 5, "minSeconds": 1, "maxSeconds": 60},
         "decisions": [
           {"id": "api", "kind": "run", "policy": "terminate", "action": "confirmStop", "reason": "runServicesSetting"},
           {"id": "run:other", "kind": "run", "policy": "terminate", "action": "terminate", "reason": "defaultTerminate"},
@@ -274,6 +287,7 @@
       },
       "expected": {
         "gracefulStopMilliseconds": 5000,
+        "gracefulStopRule": {"defaultSeconds": 5, "minSeconds": 1, "maxSeconds": 60},
         "decisions": [
           {"id": "api", "kind": "run", "policy": "terminate", "action": "terminate", "reason": "runServicesSetting"}
         ]
@@ -295,6 +309,7 @@
       },
       "expected": {
         "gracefulStopMilliseconds": 5000,
+        "gracefulStopRule": {"defaultSeconds": 5, "minSeconds": 1, "maxSeconds": 60},
         "decisions": [
           {"id": "api", "kind": "run", "policy": "terminate", "action": "confirmStop", "reason": "runServicesSetting"},
           {"id": "kept-api", "kind": "run", "policy": "terminate", "action": "retain", "reason": "retainedByUser"},
@@ -316,6 +331,7 @@
       },
       "expected": {
         "gracefulStopMilliseconds": 5000,
+        "gracefulStopRule": {"defaultSeconds": 5, "minSeconds": 1, "maxSeconds": 60},
         "decisions": [
           {"id": "api", "kind": "run", "policy": "terminate", "action": "terminate", "reason": "defaultTerminate"}
         ]

@@ -1846,6 +1846,37 @@ fn git_worktrees_lists_primary_linked_and_locked_metadata() {
     assert_eq!(worktrees[1]["branch"], "refs/heads/feature/linked");
     assert_eq!(worktrees[1]["isLocked"], true);
     assert_eq!(worktrees[1]["lockReason"], "Codex task");
+    assert_eq!(worktrees[0]["status"], "current");
+    assert_eq!(worktrees[0]["changes"], Value::Null);
+    assert_eq!(
+        worktrees[0]["actions"]["remove"]["reason"],
+        "git_worktree_primary"
+    );
+    assert_eq!(worktrees[1]["status"], "locked");
+    assert_eq!(
+        worktrees[1]["actions"]["remove"]["reason"],
+        "git_worktree_locked"
+    );
+    assert_eq!(worktrees[1]["actions"]["lock"]["allowed"], true);
+
+    fs::write(root.join("draft.txt"), "draft\n").expect("untracked file should be written");
+    let counted: Value = serde_json::from_str(&execute_json(
+        &serde_json::to_string(&serde_json::json!({
+            "id": "git-worktrees-count",
+            "command": "git.worktrees",
+            "payload": { "root": root, "countChanges": true }
+        }))
+        .expect("worktrees request should encode"),
+    ))
+    .expect("worktrees response should be JSON");
+    assert_eq!(counted["ok"], true, "{counted:?}");
+    let counted = counted["data"]["worktrees"]
+        .as_array()
+        .expect("worktrees should be an array");
+    assert_eq!(counted[0]["changes"], 1, "{counted:?}");
+    assert_eq!(counted[0]["status"], "modified");
+    assert_eq!(counted[1]["changes"], 0, "{counted:?}");
+    assert_eq!(counted[1]["status"], "locked");
 }
 
 #[test]

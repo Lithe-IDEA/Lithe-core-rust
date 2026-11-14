@@ -1,4 +1,4 @@
-//! `editor.*` commands: workbench state, text edits, find, navigation and preferences.
+//! `editor.*` commands: workbench state, group layout, text edits, find, navigation and preferences.
 
 use super::{plugin_response, rules_response};
 use crate::protocol::{CoreError, CoreResponse, EditorCommand, ErrorCode};
@@ -14,6 +14,12 @@ pub(super) fn dispatch(
     match command {
         EditorCommand::WorkbenchStateReduce => {
             rules_response(id, "editor.workbenchState.reduce", payload)
+        }
+        EditorCommand::GroupLayoutReduce => {
+            plugin_response(id, payload, lithe_editor_layout::reduce_command)
+        }
+        EditorCommand::GroupLayoutDropTargets => {
+            plugin_response(id, payload, lithe_editor_layout::drop_targets_command)
         }
         EditorCommand::Find => match lithe_editor::find::command(payload, document) {
             Ok(data) => CoreResponse::success(id, data),

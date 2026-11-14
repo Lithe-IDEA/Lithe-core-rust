@@ -1,0 +1,255 @@
+{
+  "version": 1,
+  "description": "git.changedFileGroups groups repository-relative paths by the folder before their last '/', \"\" being the top of the repository; files are indices into paths. Folder paths compare segment by segment and file names by name, both in the project tree's natural order (workspace/file-name-order-v1.json); raw text, then request order, breaks the remaining ties. Views own expansion, rows and drawing.",
+  "cases": [
+    {
+      "name": "rootFilesAndNestedFolders",
+      "request": {
+        "paths": [
+          "b/x.go",
+          "a.go",
+          "b/c/y.go",
+          "b/a.go",
+          "README.md"
+        ]
+      },
+      "folders": [
+        {
+          "path": "",
+          "files": [
+            1,
+            4
+          ]
+        },
+        {
+          "path": "b",
+          "files": [
+            3,
+            0
+          ]
+        },
+        {
+          "path": "b/c",
+          "files": [
+            2
+          ]
+        }
+      ]
+    },
+    {
+      "name": "naturalOrderOfFoldersAndFiles",
+      "request": {
+        "paths": [
+          "docs/v0.1.12.md",
+          "docs/v0.1.4.md",
+          "v10/a",
+          "v2/a",
+          "docs/TEMPLATE.md"
+        ]
+      },
+      "folders": [
+        {
+          "path": "docs",
+          "files": [
+            4,
+            1,
+            0
+          ]
+        },
+        {
+          "path": "v2",
+          "files": [
+            3
+          ]
+        },
+        {
+          "path": "v10",
+          "files": [
+            2
+          ]
+        }
+      ]
+    },
+    {
+      "name": "folderRightBeforeItsSubfolders",
+      "request": {
+        "paths": [
+          "b-x/f",
+          "b/c/f",
+          "b/f",
+          "b.d/f"
+        ]
+      },
+      "folders": [
+        {
+          "path": "b",
+          "files": [
+            2
+          ]
+        },
+        {
+          "path": "b/c",
+          "files": [
+            1
+          ]
+        },
+        {
+          "path": "b.d",
+          "files": [
+            3
+          ]
+        },
+        {
+          "path": "b-x",
+          "files": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "sameNameInDifferentFolders",
+      "request": {
+        "paths": [
+          "src/main.rs",
+          "tests/main.rs",
+          "main.rs"
+        ]
+      },
+      "folders": [
+        {
+          "path": "",
+          "files": [
+            2
+          ]
+        },
+        {
+          "path": "src",
+          "files": [
+            0
+          ]
+        },
+        {
+          "path": "tests",
+          "files": [
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "name": "deepFoldersAndRenamedPaths",
+      "request": {
+        "paths": [
+          "a/b/c/d/new_name.rs",
+          "a/b/c/d/e/f.rs",
+          "a/b/old.rs"
+        ]
+      },
+      "folders": [
+        {
+          "path": "a/b",
+          "files": [
+            2
+          ]
+        },
+        {
+          "path": "a/b/c/d",
+          "files": [
+            0
+          ]
+        },
+        {
+          "path": "a/b/c/d/e",
+          "files": [
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "name": "nonAsciiNames",
+      "request": {
+        "paths": [
+          "文档/说明.md",
+          "文档/a.md",
+          "Ärger/b.txt",
+          "zeta/c"
+        ]
+      },
+      "folders": [
+        {
+          "path": "zeta",
+          "files": [
+            3
+          ]
+        },
+        {
+          "path": "Ärger",
+          "files": [
+            2
+          ]
+        },
+        {
+          "path": "文档",
+          "files": [
+            1,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "namesDifferingOnlyInCase",
+      "request": {
+        "paths": [
+          "src/b.txt",
+          "src/B.txt",
+          "src/a.txt",
+          "Src/x"
+        ]
+      },
+      "folders": [
+        {
+          "path": "Src",
+          "files": [
+            3
+          ]
+        },
+        {
+          "path": "src",
+          "files": [
+            2,
+            1,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "repeatedPathKeepsRequestOrder",
+      "request": {
+        "paths": [
+          "a/x",
+          "a/x"
+        ]
+      },
+      "folders": [
+        {
+          "path": "a",
+          "files": [
+            0,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "name": "noFiles",
+      "request": {
+        "paths": []
+      },
+      "folders": []
+    }
+  ]
+}

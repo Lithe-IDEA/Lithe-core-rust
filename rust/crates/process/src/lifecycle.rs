@@ -16,6 +16,9 @@ use serde::{Deserialize, Serialize};
 /// Lower and upper bound of the configurable graceful-stop wait, in seconds.
 const GRACEFUL_STOP_SECONDS: (u32, u32) = (1, 60);
 
+/// Graceful-stop wait of settings that do not set one, in seconds.
+const DEFAULT_GRACEFUL_STOP_SECONDS: u32 = 5;
+
 /// Situation in which the host asks for decisions.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -219,7 +222,7 @@ impl Default for TerminationSettings {
             run_services_on_exit: RunServicePolicy::default(),
             remembered_choices: BTreeMap::new(),
             startup_sweep: StartupSweepPolicy::default(),
-            graceful_stop_seconds: 5,
+            graceful_stop_seconds: DEFAULT_GRACEFUL_STOP_SECONDS,
         }
     }
 }
@@ -288,12 +291,34 @@ pub struct LifecycleDecision {
     pub reason: &'static str,
 }
 
+/// Rule of `TerminationSettings::graceful_stop_seconds`, so a settings page can show the
+/// default and keep the value within the limits `resolve` applies.
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GracefulStopRule {
+    /// Wait of settings that do not set one.
+    pub default_seconds: u32,
+    /// Shortest wait; a smaller setting is raised to it.
+    pub min_seconds: u32,
+    /// Longest wait; a larger setting is lowered to it.
+    pub max_seconds: u32,
+}
+
+/// The rule `resolve` applies to the graceful-stop wait.
+pub const GRACEFUL_STOP_RULE: GracefulStopRule = GracefulStopRule {
+    default_seconds: DEFAULT_GRACEFUL_STOP_SECONDS,
+    min_seconds: GRACEFUL_STOP_SECONDS.0,
+    max_seconds: GRACEFUL_STOP_SECONDS.1,
+};
+
 /// Response of `processLifecycle.resolve`.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct LifecyclePlan {
     /// Wait between the graceful stop request and the forced kill.
     pub graceful_stop_milliseconds: u64,
+    /// Default and limits of the setting that produced `graceful_stop_milliseconds`.
+    pub graceful_stop_rule: GracefulStopRule,
     /// One decision per record, in request order.
     pub decisions: Vec<LifecycleDecision>,
 }
@@ -307,6 +332,7 @@ pub fn resolve(request: &LifecycleRequest) -> LifecyclePlan {
         .clamp(minimum, maximum);
     LifecyclePlan {
         graceful_stop_milliseconds: u64::from(seconds) * 1_000,
+        graceful_stop_rule: GRACEFUL_STOP_RULE,
         decisions: request
             .records
             .iter()
@@ -684,5 +710,29 @@ mod tests {
             resolve(&request(settings)).graceful_stop_milliseconds,
             60_000
         );
+    }
+
+    #[test]
+    fn graceful_stop_rule_is_what_resolve_applies() {
+        let resolved = |seconds: Option<u32>| {
+            let settings = match seconds {
+                Some(graceful_stop_seconds) => TerminationSettings {
+                    graceful_stop_seconds,
+                    ..TerminationSettings::default()
+                },
+                None => TerminationSettings::default(),
+            };
+            let plan = resolve(&LifecycleRequest {
+                context: LifecycleContext::Quit,
+                settings,
+                records: Vec::new(),
+            });
+            assert_eq!(plan.graceful_stop_rule, GRACEFUL_STOP_RULE);
+            plan.graceful_stop_milliseconds / 1_000
+        };
+        let rule = GRACEFUL_STOP_RULE;
+        assert_eq!(resolved(None), u64::from(rule.default_seconds));
+        assert_eq!(resolved(Some(0)), u64::from(rule.min_seconds));
+        assert_eq!(resolved(Some(u32::MAX)), u64::from(rule.max_seconds));
     }
 }

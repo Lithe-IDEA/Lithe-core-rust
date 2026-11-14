@@ -235,6 +235,9 @@ pub enum PluginsCommand {
     DeclarativeSettingsActionPlan,
     /// Selects numeric installed versions and reports malformed native facts.
     InstalledSelect,
+    /// Reports installed plugins' enablement and plans a lifecycle action
+    /// (`plugins.installed.lifecycle`).
+    InstalledLifecycle,
     /// Validates an atomic plugin settings edit and preserves unrelated values.
     DeclarativeEditSettings,
     /// Expands a language server's `workspaceConfiguration` (`plugins.declarative.workspaceConfiguration`).
@@ -460,6 +463,12 @@ pub enum WorkspaceCommand {
     ReleaseIndexing,
     /// Lists the visible children of project directories (`workspace.listDirectories`).
     ListDirectories,
+    /// Says which loaded project tree nodes show as rows and keeps the selection on one
+    /// (`workspace.projectTree.rows`).
+    ProjectTreeRows,
+    /// Applies one click to the multi-selection of rows of workspace paths
+    /// (`workspace.rowSelection.reduce`).
+    RowSelectionReduce,
     /// Orders natively enumerated directory siblings (`workspace.orderEntries`).
     OrderEntries,
     /// Ranks host-supplied candidate names with the shared matcher (`workspace.rankNames`).
@@ -533,6 +542,13 @@ pub enum EditorCommand {
     /// (`editor.workbenchState.reduce`). The rule lives in `lithe-core-rules` so the Windows frontend
     /// can run it synchronously inside store updates.
     WorkbenchStateReduce,
+    /// Applies one transition to the editor groups and the tree that divides the editor area
+    /// among them: a workbench state action, opening a tab, dropping a dragged one or removing
+    /// empty groups (`editor.groupLayout.reduce`).
+    GroupLayoutReduce,
+    /// Says which places of each editor group accept a dragged tab
+    /// (`editor.groupLayout.dropTargets`).
+    GroupLayoutDropTargets,
     /// Applies a deterministic line-level editing transform
     /// (`editor.lineEdit`).
     LineEdit,
@@ -803,6 +819,11 @@ pub enum GitCommand {
     RebasePlanPreview,
     /// Groups one kind of loaded references into an ordered tree (`git.referenceTree`).
     ReferenceTree,
+    /// Groups changed files by folder in natural order (`git.changedFileGroups`).
+    ChangedFileGroups,
+    /// Derives the worktree creation dialog's choices, branch, destination and readiness
+    /// (`git.worktreeCreationPreview`).
+    WorktreeCreationPreview,
     /// Resolves the destination and commits for a branch push (`git.pushPreview`).
     PushPreview,
     /// Resolves metadata for one commit (`git.commit`).
@@ -982,6 +1003,9 @@ impl CoreCommand {
                 Some(Self::Plugins(PluginsCommand::DeclarativeSettingsActionPlan))
             }
             "plugins.installed.select" => Some(Self::Plugins(PluginsCommand::InstalledSelect)),
+            "plugins.installed.lifecycle" => {
+                Some(Self::Plugins(PluginsCommand::InstalledLifecycle))
+            }
             "plugins.declarative.editSettings" => {
                 Some(Self::Plugins(PluginsCommand::DeclarativeEditSettings))
             }
@@ -1094,6 +1118,12 @@ impl CoreCommand {
             "workspace.refreshIndexing" => Some(Self::Workspace(WorkspaceCommand::RefreshIndexing)),
             "workspace.filterChanges" => Some(Self::Workspace(WorkspaceCommand::FilterChanges)),
             "workspace.listDirectories" => Some(Self::Workspace(WorkspaceCommand::ListDirectories)),
+            "workspace.projectTree.rows" => {
+                Some(Self::Workspace(WorkspaceCommand::ProjectTreeRows))
+            }
+            "workspace.rowSelection.reduce" => {
+                Some(Self::Workspace(WorkspaceCommand::RowSelectionReduce))
+            }
             "workspace.orderEntries" => Some(Self::Workspace(WorkspaceCommand::OrderEntries)),
             "workspace.rankNames" => Some(Self::Workspace(WorkspaceCommand::RankNames)),
             "workspace.planDuplicate" => Some(Self::Workspace(WorkspaceCommand::PlanDuplicate)),
@@ -1156,6 +1186,10 @@ impl CoreCommand {
             "keymap.modifierGestureStep" => Some(Self::Keymap(KeymapCommand::ModifierGestureStep)),
             "editor.workbenchState.reduce" => {
                 Some(Self::Editor(EditorCommand::WorkbenchStateReduce))
+            }
+            "editor.groupLayout.reduce" => Some(Self::Editor(EditorCommand::GroupLayoutReduce)),
+            "editor.groupLayout.dropTargets" => {
+                Some(Self::Editor(EditorCommand::GroupLayoutDropTargets))
             }
             "workspace.classifyVisibility" => {
                 Some(Self::Workspace(WorkspaceCommand::ClassifyVisibility))
@@ -1367,6 +1401,8 @@ impl CoreCommand {
             "git.normalizeChangeTargets" => Some(Self::Git(GitCommand::NormalizeChangeTargets)),
             "git.rebasePlanPreview" => Some(Self::Git(GitCommand::RebasePlanPreview)),
             "git.referenceTree" => Some(Self::Git(GitCommand::ReferenceTree)),
+            "git.changedFileGroups" => Some(Self::Git(GitCommand::ChangedFileGroups)),
+            "git.worktreeCreationPreview" => Some(Self::Git(GitCommand::WorktreeCreationPreview)),
             "git.pushPreview" => Some(Self::Git(GitCommand::PushPreview)),
             "git.commit" => Some(Self::Git(GitCommand::Commit)),
             "git.commitFiles" => Some(Self::Git(GitCommand::CommitFiles)),

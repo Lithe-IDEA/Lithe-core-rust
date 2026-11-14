@@ -1,4 +1,5 @@
-//! `workspace.*` commands: snapshots, indexing, directory actions, repositories and search.
+//! `workspace.*` commands: snapshots, indexing, project tree rows, row selection, directory
+//! actions, repositories and search.
 
 use super::{plugin_response, rules_response};
 use crate::project::{
@@ -92,6 +93,12 @@ pub(super) fn dispatch(
                         .with_details(error.to_string()),
                 ),
             }
+        }
+        WorkspaceCommand::ProjectTreeRows => {
+            plugin_response(id, payload, lithe_project_tree::command)
+        }
+        WorkspaceCommand::RowSelectionReduce => {
+            plugin_response(id, payload, lithe_row_selection::command)
         }
         WorkspaceCommand::ListDirectories => {
             match serde_json::from_value::<DirectoryListingRequest>(payload)

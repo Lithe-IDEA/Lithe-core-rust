@@ -12,7 +12,19 @@
       "isLocked": false,
       "lockReason": null,
       "isPrunable": false,
-      "pruneReason": null
+      "pruneReason": null,
+      "status": "current",
+      "changes": null,
+      "actions": {
+        "remove": {
+          "allowed": false,
+          "reason": "git_worktree_primary"
+        },
+        "lock": {
+          "allowed": false,
+          "reason": "git_worktree_primary"
+        }
+      }
     },
     {
       "path": "/example/worktrees/feature-core",
@@ -25,7 +37,19 @@
       "isLocked": true,
       "lockReason": "active task",
       "isPrunable": false,
-      "pruneReason": null
+      "pruneReason": null,
+      "status": "locked",
+      "changes": null,
+      "actions": {
+        "remove": {
+          "allowed": false,
+          "reason": "git_worktree_locked"
+        },
+        "lock": {
+          "allowed": true,
+          "reason": null
+        }
+      }
     }
   ]
 }

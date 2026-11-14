@@ -9,6 +9,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::exclusions::{parse, ProxyExclusionRule};
+
 /// How the application's own HTTP traffic reaches the internet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -111,6 +113,10 @@ pub struct NetworkProxyPolicy {
     pub password: String,
     /// Trimmed, non-empty bypass hosts; empty unless `policy` is custom.
     pub exclusions: Vec<String>,
+    /// `exclusions` read into the rules a network stack compares (`bypasses`).
+    pub exclusion_rules: Vec<ProxyExclusionRule>,
+    /// Entries of `exclusions` that have none of the supported forms and send no host direct.
+    pub invalid_exclusions: Vec<String>,
     /// True when the caller-selected mode could actually be honored; false
     /// for an incomplete custom server that normalized to the system policy.
     pub configured: bool,
@@ -133,6 +139,8 @@ pub fn proxy_policy(request: NetworkProxyPolicyRequest) -> NetworkProxyPolicy {
         username: String::new(),
         password: String::new(),
         exclusions: Vec::new(),
+        exclusion_rules: Vec::new(),
+        invalid_exclusions: Vec::new(),
         configured: false,
     };
     match request.mode {
@@ -154,6 +162,7 @@ pub fn proxy_policy(request: NetworkProxyPolicyRequest) -> NetworkProxyPolicy {
                     && identity.port == request.port
                     && identity.username.trim() == username
             });
+            let parsed = parse(&exclusions);
             NetworkProxyPolicy {
                 policy: NetworkProxyPolicyKind::Custom,
                 proxy_type,
@@ -166,6 +175,8 @@ pub fn proxy_policy(request: NetworkProxyPolicyRequest) -> NetworkProxyPolicy {
                     String::new()
                 },
                 exclusions,
+                exclusion_rules: parsed.rules,
+                invalid_exclusions: parsed.invalid,
                 configured: true,
             }
         }

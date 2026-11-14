@@ -3,11 +3,34 @@
 use super::*;
 
 /// Returns one metadata-only snapshot for every registered worktree.
+///
+/// Each entry carries the state its row shows and the writes it allows. With `countChanges`
+/// Core also runs status in every checkout that is there and not bare; a checkout whose
+/// status fails keeps `changes: null` and is ranked as if it had none.
 pub fn worktrees(request: GitWorktreesRequest) -> Result<GitWorktreesResponse, CoreError> {
     let root = validate_root(&request.root)?;
-    Ok(GitWorktreesResponse {
-        worktrees: list_worktrees(&root)?,
-    })
+    let mut worktrees = list_worktrees(&root)?;
+    for worktree in &mut worktrees {
+        let facts = worktree_rules::WorktreeFacts {
+            is_primary: worktree.is_primary,
+            is_current: worktree.is_current,
+            is_locked: worktree.is_locked,
+            is_prunable: worktree.is_prunable,
+        };
+        if request.count_changes && !worktree.is_prunable && !worktree.is_bare {
+            worktree.changes = status(GitStatusRequest {
+                root: worktree.path.clone(),
+                include_index_only_changes: true,
+                repository_roots: Vec::new(),
+                summarize_untracked_directories: true,
+            })
+            .ok()
+            .map(|status| status.changes.len());
+        }
+        worktree.status = worktree_rules::status(facts, worktree.changes);
+        worktree.actions = worktree_rules::actions(facts);
+    }
+    Ok(GitWorktreesResponse { worktrees })
 }
 
 fn list_worktrees(root: &str) -> Result<Vec<GitWorktreeResponse>, CoreError> {
@@ -122,6 +145,9 @@ fn parse_worktree_record(
         lock_reason: lock.flatten(),
         is_prunable: prunable.is_some(),
         prune_reason: prunable.flatten(),
+        status: worktree_rules::GitWorktreeStatus::Available,
+        changes: None,
+        actions: worktree_rules::actions(worktree_rules::WorktreeFacts::default()),
     })
 }
 

@@ -1,0 +1,1724 @@
+{
+  "description": "editor.groupLayout.reduce and editor.groupLayout.dropTargets: one transition of the editor groups together with the tree that divides the editor area among them, and the places of each group a dragged tab may be dropped on. Hosts keep splitter ratios, pixels and the drag itself.",
+  "reduce": {
+    "cases": [
+      {
+        "name": "a workbench action that removes a group takes its leaf out of the layout",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ],
+                "selected": "a"
+              },
+              {
+                "id": "editor:2",
+                "members": [
+                  "b"
+                ],
+                "selected": "b"
+              }
+            ]
+          },
+          "action": {
+            "kind": "close",
+            "group": "editor:2",
+            "member": "b",
+            "emptyGroups": "remove"
+          },
+          "layout": {
+            "node": 1,
+            "row": true,
+            "first": {
+              "group": "editor:1"
+            },
+            "second": {
+              "group": "editor:2"
+            }
+          }
+        },
+        "response": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ],
+                "selected": "a",
+                "mru": [],
+                "pinned": [],
+                "preview": null
+              }
+            ]
+          },
+          "layout": {
+            "group": "editor:1"
+          },
+          "removedGroupIds": [
+            "editor:2"
+          ]
+        }
+      },
+      {
+        "name": "a leaf whose group the state does not have leaves the layout",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ],
+                "selected": "a"
+              }
+            ]
+          },
+          "action": {
+            "kind": "normalize"
+          },
+          "layout": {
+            "node": 1,
+            "row": true,
+            "first": {
+              "group": "editor:1"
+            },
+            "second": {
+              "group": "editor:9"
+            }
+          }
+        },
+        "response": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ],
+                "selected": "a",
+                "mru": [
+                  "a"
+                ],
+                "pinned": [],
+                "preview": null
+              }
+            ]
+          },
+          "layout": {
+            "group": "editor:1"
+          },
+          "removedGroupIds": []
+        }
+      },
+      {
+        "name": "openTab opens in the preferred group while the layout shows it",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ],
+                "selected": "a"
+              },
+              {
+                "id": "editor:2",
+                "members": [
+                  "b"
+                ],
+                "selected": "b"
+              }
+            ]
+          },
+          "action": {
+            "kind": "openTab",
+            "member": "c",
+            "preferredGroup": "editor:2",
+            "newGroup": "editor:3"
+          },
+          "layout": {
+            "node": 1,
+            "row": true,
+            "first": {
+              "group": "editor:1"
+            },
+            "second": {
+              "group": "editor:2"
+            }
+          }
+        },
+        "response": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ],
+                "selected": "a",
+                "mru": [],
+                "pinned": [],
+                "preview": null
+              },
+              {
+                "id": "editor:2",
+                "members": [
+                  "b",
+                  "c"
+                ],
+                "selected": "c",
+                "mru": [
+                  "c",
+                  "b"
+                ],
+                "pinned": [],
+                "preview": null
+              }
+            ]
+          },
+          "layout": {
+            "node": 1,
+            "row": true,
+            "first": {
+              "group": "editor:1"
+            },
+            "second": {
+              "group": "editor:2"
+            }
+          },
+          "removedGroupIds": [],
+          "group": "editor:2"
+        }
+      },
+      {
+        "name": "openTab falls back to the first group of the layout",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "tool",
+                "members": [
+                  "t1"
+                ],
+                "selected": "t1"
+              },
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ],
+                "selected": "a"
+              }
+            ]
+          },
+          "action": {
+            "kind": "openTab",
+            "member": "c",
+            "preferredGroup": "tool",
+            "newGroup": "editor:2"
+          },
+          "layout": {
+            "group": "editor:1"
+          }
+        },
+        "response": {
+          "state": {
+            "groups": [
+              {
+                "id": "tool",
+                "members": [
+                  "t1"
+                ],
+                "selected": "t1",
+                "mru": [],
+                "pinned": [],
+                "preview": null
+              },
+              {
+                "id": "editor:1",
+                "members": [
+                  "a",
+                  "c"
+                ],
+                "selected": "c",
+                "mru": [
+                  "c",
+                  "a"
+                ],
+                "pinned": [],
+                "preview": null
+              }
+            ]
+          },
+          "layout": {
+            "group": "editor:1"
+          },
+          "removedGroupIds": [],
+          "group": "editor:1"
+        }
+      },
+      {
+        "name": "openTab without a layout makes a group that becomes the whole layout",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "tool",
+                "members": [
+                  "t1"
+                ],
+                "selected": "t1"
+              }
+            ]
+          },
+          "action": {
+            "kind": "openTab",
+            "member": "a",
+            "newGroup": "editor:1"
+          }
+        },
+        "response": {
+          "state": {
+            "groups": [
+              {
+                "id": "tool",
+                "members": [
+                  "t1"
+                ],
+                "selected": "t1",
+                "mru": [],
+                "pinned": [],
+                "preview": null
+              },
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ],
+                "selected": "a",
+                "mru": [
+                  "a"
+                ],
+                "pinned": [],
+                "preview": null
+              }
+            ]
+          },
+          "layout": {
+            "group": "editor:1"
+          },
+          "removedGroupIds": [],
+          "group": "editor:1"
+        }
+      },
+      {
+        "name": "dropping a tab in the strip of its own group reorders it",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a",
+                  "b",
+                  "c"
+                ],
+                "selected": "b"
+              }
+            ]
+          },
+          "action": {
+            "kind": "dropTab",
+            "member": "a",
+            "target": {
+              "kind": "join",
+              "group": "editor:1",
+              "index": 2
+            }
+          },
+          "layout": {
+            "group": "editor:1"
+          }
+        },
+        "response": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "b",
+                  "c",
+                  "a"
+                ],
+                "selected": "a",
+                "mru": [
+                  "a",
+                  "b",
+                  "c"
+                ],
+                "pinned": [],
+                "preview": null
+              }
+            ]
+          },
+          "layout": {
+            "group": "editor:1"
+          },
+          "removedGroupIds": [],
+          "group": "editor:1"
+        }
+      },
+      {
+        "name": "dropping a tab in another strip moves it before the tab at the index and removes the emptied group",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ],
+                "selected": "a"
+              },
+              {
+                "id": "editor:2",
+                "members": [
+                  "b",
+                  "c"
+                ],
+                "selected": "b"
+              }
+            ]
+          },
+          "action": {
+            "kind": "dropTab",
+            "member": "a",
+            "target": {
+              "kind": "join",
+              "group": "editor:2",
+              "index": 1
+            }
+          },
+          "layout": {
+            "node": 1,
+            "row": true,
+            "first": {
+              "group": "editor:1"
+            },
+            "second": {
+              "group": "editor:2"
+            }
+          }
+        },
+        "response": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:2",
+                "members": [
+                  "b",
+                  "a",
+                  "c"
+                ],
+                "selected": "a",
+                "mru": [
+                  "a",
+                  "b",
+                  "c"
+                ],
+                "pinned": [],
+                "preview": null
+              }
+            ]
+          },
+          "layout": {
+            "group": "editor:2"
+          },
+          "removedGroupIds": [
+            "editor:1"
+          ],
+          "group": "editor:2"
+        }
+      },
+      {
+        "name": "a tab leaving a docked group keeps the group, and an index past the end appends",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "tool",
+                "members": [
+                  "t1"
+                ],
+                "selected": "t1"
+              },
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ],
+                "selected": "a"
+              }
+            ]
+          },
+          "action": {
+            "kind": "dropTab",
+            "member": "t1",
+            "target": {
+              "kind": "join",
+              "group": "editor:1",
+              "index": 9
+            },
+            "docked": [
+              "tool"
+            ],
+            "dockable": true
+          },
+          "layout": {
+            "group": "editor:1"
+          }
+        },
+        "response": {
+          "state": {
+            "groups": [
+              {
+                "id": "tool",
+                "members": [],
+                "selected": null,
+                "mru": [],
+                "pinned": [],
+                "preview": null
+              },
+              {
+                "id": "editor:1",
+                "members": [
+                  "a",
+                  "t1"
+                ],
+                "selected": "t1",
+                "mru": [
+                  "t1",
+                  "a"
+                ],
+                "pinned": [],
+                "preview": null
+              }
+            ]
+          },
+          "layout": {
+            "group": "editor:1"
+          },
+          "removedGroupIds": [],
+          "group": "editor:1"
+        }
+      },
+      {
+        "name": "dropping a tab on a body edge splits the group with the offered group and number",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a",
+                  "b"
+                ],
+                "selected": "b"
+              }
+            ]
+          },
+          "action": {
+            "kind": "dropTab",
+            "member": "b",
+            "target": {
+              "kind": "split",
+              "group": "editor:1",
+              "edge": "right"
+            },
+            "newGroup": "editor:2",
+            "newNode": 1
+          },
+          "layout": {
+            "group": "editor:1"
+          }
+        },
+        "response": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ],
+                "selected": "a",
+                "mru": [
+                  "a"
+                ],
+                "pinned": [],
+                "preview": null
+              },
+              {
+                "id": "editor:2",
+                "members": [
+                  "b"
+                ],
+                "selected": "b",
+                "mru": [
+                  "b"
+                ],
+                "pinned": [],
+                "preview": null
+              }
+            ]
+          },
+          "layout": {
+            "node": 1,
+            "row": true,
+            "first": {
+              "group": "editor:1"
+            },
+            "second": {
+              "group": "editor:2"
+            }
+          },
+          "removedGroupIds": [],
+          "group": "editor:2"
+        }
+      },
+      {
+        "name": "a leading edge puts the new group first, after the emptied source left the layout",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ],
+                "selected": "a"
+              },
+              {
+                "id": "editor:2",
+                "members": [
+                  "b",
+                  "c"
+                ],
+                "selected": "b"
+              }
+            ]
+          },
+          "action": {
+            "kind": "dropTab",
+            "member": "a",
+            "target": {
+              "kind": "split",
+              "group": "editor:2",
+              "edge": "top"
+            },
+            "newGroup": "editor:3",
+            "newNode": 2
+          },
+          "layout": {
+            "node": 1,
+            "row": true,
+            "first": {
+              "group": "editor:1"
+            },
+            "second": {
+              "group": "editor:2"
+            }
+          }
+        },
+        "response": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:2",
+                "members": [
+                  "b",
+                  "c"
+                ],
+                "selected": "b",
+                "mru": [],
+                "pinned": [],
+                "preview": null
+              },
+              {
+                "id": "editor:3",
+                "members": [
+                  "a"
+                ],
+                "selected": "a",
+                "mru": [
+                  "a"
+                ],
+                "pinned": [],
+                "preview": null
+              }
+            ]
+          },
+          "layout": {
+            "node": 2,
+            "row": false,
+            "first": {
+              "group": "editor:3"
+            },
+            "second": {
+              "group": "editor:2"
+            }
+          },
+          "removedGroupIds": [
+            "editor:1"
+          ],
+          "group": "editor:3"
+        }
+      },
+      {
+        "name": "dropping a terminal on an editor area without groups opens its first group",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "tool",
+                "members": [
+                  "t1",
+                  "t2"
+                ],
+                "selected": "t2"
+              }
+            ]
+          },
+          "action": {
+            "kind": "dropTab",
+            "member": "t2",
+            "target": {
+              "kind": "empty"
+            },
+            "docked": [
+              "tool"
+            ],
+            "dockable": true,
+            "newGroup": "editor:1"
+          }
+        },
+        "response": {
+          "state": {
+            "groups": [
+              {
+                "id": "tool",
+                "members": [
+                  "t1"
+                ],
+                "selected": "t1",
+                "mru": [
+                  "t1"
+                ],
+                "pinned": [],
+                "preview": null
+              },
+              {
+                "id": "editor:1",
+                "members": [
+                  "t2"
+                ],
+                "selected": "t2",
+                "mru": [
+                  "t2"
+                ],
+                "pinned": [],
+                "preview": null
+              }
+            ]
+          },
+          "layout": {
+            "group": "editor:1"
+          },
+          "removedGroupIds": [],
+          "group": "editor:1"
+        }
+      },
+      {
+        "name": "a drop of a tab no group has is stale",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ],
+                "selected": "a"
+              }
+            ]
+          },
+          "action": {
+            "kind": "dropTab",
+            "member": "x",
+            "target": {
+              "kind": "join",
+              "group": "editor:1",
+              "index": 0
+            }
+          },
+          "layout": {
+            "group": "editor:1"
+          }
+        },
+        "response": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ],
+                "selected": "a",
+                "mru": [],
+                "pinned": [],
+                "preview": null
+              }
+            ]
+          },
+          "layout": {
+            "group": "editor:1"
+          },
+          "removedGroupIds": [],
+          "rejection": "editor.groupLayout.stale"
+        }
+      },
+      {
+        "name": "a drop on a group that went away is stale",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a",
+                  "b"
+                ],
+                "selected": "a"
+              }
+            ]
+          },
+          "action": {
+            "kind": "dropTab",
+            "member": "a",
+            "target": {
+              "kind": "join",
+              "group": "editor:9",
+              "index": 0
+            }
+          },
+          "layout": {
+            "group": "editor:1"
+          }
+        },
+        "response": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a",
+                  "b"
+                ],
+                "selected": "a",
+                "mru": [],
+                "pinned": [],
+                "preview": null
+              }
+            ]
+          },
+          "layout": {
+            "group": "editor:1"
+          },
+          "removedGroupIds": [],
+          "rejection": "editor.groupLayout.stale"
+        }
+      },
+      {
+        "name": "a split of a group the layout does not show is stale",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "tool",
+                "members": [
+                  "t1",
+                  "t2"
+                ],
+                "selected": "t1"
+              },
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ],
+                "selected": "a"
+              }
+            ]
+          },
+          "action": {
+            "kind": "dropTab",
+            "member": "t1",
+            "target": {
+              "kind": "split",
+              "group": "tool",
+              "edge": "left"
+            },
+            "docked": [
+              "tool"
+            ],
+            "dockable": true,
+            "newGroup": "editor:2",
+            "newNode": 1
+          },
+          "layout": {
+            "group": "editor:1"
+          }
+        },
+        "response": {
+          "state": {
+            "groups": [
+              {
+                "id": "tool",
+                "members": [
+                  "t1",
+                  "t2"
+                ],
+                "selected": "t1",
+                "mru": [],
+                "pinned": [],
+                "preview": null
+              },
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ],
+                "selected": "a",
+                "mru": [],
+                "pinned": [],
+                "preview": null
+              }
+            ]
+          },
+          "layout": {
+            "group": "editor:1"
+          },
+          "removedGroupIds": [],
+          "rejection": "editor.groupLayout.stale"
+        }
+      },
+      {
+        "name": "a drop on an empty editor area while the layout shows a group is stale",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "tool",
+                "members": [
+                  "t1"
+                ],
+                "selected": "t1"
+              },
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ],
+                "selected": "a"
+              }
+            ]
+          },
+          "action": {
+            "kind": "dropTab",
+            "member": "t1",
+            "target": {
+              "kind": "empty"
+            },
+            "docked": [
+              "tool"
+            ],
+            "dockable": true,
+            "newGroup": "editor:2"
+          },
+          "layout": {
+            "group": "editor:1"
+          }
+        },
+        "response": {
+          "state": {
+            "groups": [
+              {
+                "id": "tool",
+                "members": [
+                  "t1"
+                ],
+                "selected": "t1",
+                "mru": [],
+                "pinned": [],
+                "preview": null
+              },
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ],
+                "selected": "a",
+                "mru": [],
+                "pinned": [],
+                "preview": null
+              }
+            ]
+          },
+          "layout": {
+            "group": "editor:1"
+          },
+          "removedGroupIds": [],
+          "rejection": "editor.groupLayout.stale"
+        }
+      },
+      {
+        "name": "the only tab of a group dropped back on it is refused",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ],
+                "selected": "a"
+              },
+              {
+                "id": "editor:2",
+                "members": [
+                  "b"
+                ],
+                "selected": "b"
+              }
+            ]
+          },
+          "action": {
+            "kind": "dropTab",
+            "member": "a",
+            "target": {
+              "kind": "split",
+              "group": "editor:1",
+              "edge": "left"
+            },
+            "newGroup": "editor:3",
+            "newNode": 2
+          },
+          "layout": {
+            "node": 1,
+            "row": true,
+            "first": {
+              "group": "editor:1"
+            },
+            "second": {
+              "group": "editor:2"
+            }
+          }
+        },
+        "response": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ],
+                "selected": "a",
+                "mru": [],
+                "pinned": [],
+                "preview": null
+              },
+              {
+                "id": "editor:2",
+                "members": [
+                  "b"
+                ],
+                "selected": "b",
+                "mru": [],
+                "pinned": [],
+                "preview": null
+              }
+            ]
+          },
+          "layout": {
+            "node": 1,
+            "row": true,
+            "first": {
+              "group": "editor:1"
+            },
+            "second": {
+              "group": "editor:2"
+            }
+          },
+          "removedGroupIds": [],
+          "rejection": "editor.groupLayout.refused"
+        }
+      },
+      {
+        "name": "a tab that is not dockable joining a docked group is refused",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "tool",
+                "members": [
+                  "t1"
+                ],
+                "selected": "t1"
+              },
+              {
+                "id": "editor:1",
+                "members": [
+                  "a",
+                  "b"
+                ],
+                "selected": "a"
+              }
+            ]
+          },
+          "action": {
+            "kind": "dropTab",
+            "member": "a",
+            "target": {
+              "kind": "join",
+              "group": "tool",
+              "index": 0
+            },
+            "docked": [
+              "tool"
+            ]
+          },
+          "layout": {
+            "group": "editor:1"
+          }
+        },
+        "response": {
+          "state": {
+            "groups": [
+              {
+                "id": "tool",
+                "members": [
+                  "t1"
+                ],
+                "selected": "t1",
+                "mru": [],
+                "pinned": [],
+                "preview": null
+              },
+              {
+                "id": "editor:1",
+                "members": [
+                  "a",
+                  "b"
+                ],
+                "selected": "a",
+                "mru": [],
+                "pinned": [],
+                "preview": null
+              }
+            ]
+          },
+          "layout": {
+            "group": "editor:1"
+          },
+          "removedGroupIds": [],
+          "rejection": "editor.groupLayout.refused"
+        }
+      },
+      {
+        "name": "removeEmptyGroups removes only the named groups that have no tab",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": []
+              },
+              {
+                "id": "editor:2",
+                "members": []
+              },
+              {
+                "id": "editor:3",
+                "members": [
+                  "a"
+                ],
+                "selected": "a"
+              }
+            ]
+          },
+          "action": {
+            "kind": "removeEmptyGroups",
+            "groups": [
+              "editor:1",
+              "editor:3"
+            ]
+          },
+          "layout": {
+            "node": 1,
+            "row": true,
+            "first": {
+              "node": 2,
+              "row": false,
+              "first": {
+                "group": "editor:1"
+              },
+              "second": {
+                "group": "editor:2"
+              }
+            },
+            "second": {
+              "group": "editor:3"
+            }
+          }
+        },
+        "response": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:2",
+                "members": [],
+                "selected": null,
+                "mru": [],
+                "pinned": [],
+                "preview": null
+              },
+              {
+                "id": "editor:3",
+                "members": [
+                  "a"
+                ],
+                "selected": "a",
+                "mru": [],
+                "pinned": [],
+                "preview": null
+              }
+            ]
+          },
+          "layout": {
+            "node": 1,
+            "row": true,
+            "first": {
+              "group": "editor:2"
+            },
+            "second": {
+              "group": "editor:3"
+            }
+          },
+          "removedGroupIds": [
+            "editor:1"
+          ]
+        }
+      }
+    ],
+    "invalid": [
+      {
+        "name": "a repeated group ID",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ]
+              },
+              {
+                "id": "editor:1",
+                "members": [
+                  "b"
+                ]
+              }
+            ]
+          },
+          "action": {
+            "kind": "normalize"
+          }
+        }
+      },
+      {
+        "name": "a layout leaf without a group",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ]
+              }
+            ]
+          },
+          "layout": {
+            "group": ""
+          },
+          "action": {
+            "kind": "normalize"
+          }
+        }
+      },
+      {
+        "name": "a group in the layout twice",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ]
+              }
+            ]
+          },
+          "layout": {
+            "node": 1,
+            "row": true,
+            "first": {
+              "group": "editor:1"
+            },
+            "second": {
+              "group": "editor:1"
+            }
+          },
+          "action": {
+            "kind": "normalize"
+          }
+        }
+      },
+      {
+        "name": "a split number in the layout twice",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ]
+              },
+              {
+                "id": "editor:2",
+                "members": [
+                  "b"
+                ]
+              },
+              {
+                "id": "editor:3",
+                "members": [
+                  "c"
+                ]
+              }
+            ]
+          },
+          "layout": {
+            "node": 1,
+            "row": true,
+            "first": {
+              "group": "editor:1"
+            },
+            "second": {
+              "node": 1,
+              "row": false,
+              "first": {
+                "group": "editor:2"
+              },
+              "second": {
+                "group": "editor:3"
+              }
+            }
+          },
+          "action": {
+            "kind": "normalize"
+          }
+        }
+      },
+      {
+        "name": "an unknown field of a drop",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a",
+                  "b"
+                ]
+              }
+            ]
+          },
+          "layout": {
+            "group": "editor:1"
+          },
+          "action": {
+            "kind": "dropTab",
+            "member": "a",
+            "target": {
+              "kind": "empty"
+            },
+            "pixels": 3
+          }
+        }
+      },
+      {
+        "name": "a split without a number",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a",
+                  "b"
+                ]
+              }
+            ]
+          },
+          "layout": {
+            "group": "editor:1"
+          },
+          "action": {
+            "kind": "dropTab",
+            "member": "a",
+            "target": {
+              "kind": "split",
+              "group": "editor:1",
+              "edge": "left"
+            },
+            "newGroup": "editor:2"
+          }
+        }
+      },
+      {
+        "name": "a split with a number in use",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a",
+                  "b"
+                ]
+              },
+              {
+                "id": "editor:2",
+                "members": [
+                  "c"
+                ]
+              }
+            ]
+          },
+          "layout": {
+            "node": 1,
+            "row": true,
+            "first": {
+              "group": "editor:1"
+            },
+            "second": {
+              "group": "editor:2"
+            }
+          },
+          "action": {
+            "kind": "dropTab",
+            "member": "a",
+            "target": {
+              "kind": "split",
+              "group": "editor:1",
+              "edge": "left"
+            },
+            "newGroup": "editor:3",
+            "newNode": 1
+          }
+        }
+      },
+      {
+        "name": "a split with a group that exists",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a",
+                  "b"
+                ]
+              },
+              {
+                "id": "editor:2",
+                "members": [
+                  "c"
+                ]
+              }
+            ]
+          },
+          "layout": {
+            "group": "editor:1"
+          },
+          "action": {
+            "kind": "dropTab",
+            "member": "a",
+            "target": {
+              "kind": "split",
+              "group": "editor:1",
+              "edge": "left"
+            },
+            "newGroup": "editor:2",
+            "newNode": 1
+          }
+        }
+      },
+      {
+        "name": "openTab without a layout and without a new group",
+        "request": {
+          "state": {
+            "groups": []
+          },
+          "action": {
+            "kind": "openTab",
+            "member": "a",
+            "newGroup": ""
+          }
+        }
+      }
+    ]
+  },
+  "dropTargets": {
+    "cases": [
+      {
+        "name": "a file tab joins any editor group, splits the ones the layout shows and never enters a docked group",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "tool",
+                "members": [
+                  "t1"
+                ]
+              },
+              {
+                "id": "editor:1",
+                "members": [
+                  "a",
+                  "b"
+                ]
+              },
+              {
+                "id": "editor:2",
+                "members": [
+                  "c"
+                ]
+              }
+            ]
+          },
+          "member": "a",
+          "layout": {
+            "node": 1,
+            "row": true,
+            "first": {
+              "group": "editor:1"
+            },
+            "second": {
+              "group": "editor:2"
+            }
+          },
+          "docked": [
+            "tool"
+          ],
+          "dockable": false
+        },
+        "response": {
+          "groups": [
+            {
+              "group": "tool",
+              "join": false,
+              "split": false,
+              "append": false
+            },
+            {
+              "group": "editor:1",
+              "join": true,
+              "split": true,
+              "append": false
+            },
+            {
+              "group": "editor:2",
+              "join": true,
+              "split": true,
+              "append": true
+            }
+          ],
+          "empty": false
+        }
+      },
+      {
+        "name": "a terminal joins its docked group but never splits it",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "tool",
+                "members": [
+                  "t1",
+                  "t2"
+                ]
+              },
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ]
+              }
+            ]
+          },
+          "member": "t1",
+          "layout": {
+            "group": "editor:1"
+          },
+          "docked": [
+            "tool"
+          ],
+          "dockable": true
+        },
+        "response": {
+          "groups": [
+            {
+              "group": "tool",
+              "join": true,
+              "split": false,
+              "append": false
+            },
+            {
+              "group": "editor:1",
+              "join": true,
+              "split": true,
+              "append": true
+            }
+          ],
+          "empty": false
+        }
+      },
+      {
+        "name": "the only tab of a group has no place in it, and may open an editor area without groups",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "tool",
+                "members": [
+                  "t1"
+                ]
+              }
+            ]
+          },
+          "member": "t1",
+          "docked": [
+            "tool"
+          ],
+          "dockable": true
+        },
+        "response": {
+          "groups": [
+            {
+              "group": "tool",
+              "join": false,
+              "split": false,
+              "append": false
+            }
+          ],
+          "empty": true
+        }
+      },
+      {
+        "name": "a tab no group has has no place",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ]
+              }
+            ]
+          },
+          "member": "x",
+          "layout": {
+            "group": "editor:1"
+          }
+        },
+        "response": {
+          "groups": [
+            {
+              "group": "editor:1",
+              "join": false,
+              "split": false,
+              "append": false
+            }
+          ],
+          "empty": false
+        }
+      }
+    ],
+    "invalid": [
+      {
+        "name": "an unknown field",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ]
+              }
+            ]
+          },
+          "member": "a",
+          "pointer": [
+            1,
+            2
+          ]
+        }
+      },
+      {
+        "name": "a group in the layout twice",
+        "request": {
+          "state": {
+            "groups": [
+              {
+                "id": "editor:1",
+                "members": [
+                  "a"
+                ]
+              }
+            ]
+          },
+          "layout": {
+            "node": 1,
+            "row": true,
+            "first": {
+              "group": "editor:1"
+            },
+            "second": {
+              "group": "editor:1"
+            }
+          },
+          "member": "a"
+        }
+      }
+    ]
+  }
+}

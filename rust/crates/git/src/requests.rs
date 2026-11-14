@@ -46,6 +46,10 @@ pub struct GitWatchContextRequest {
 /// Request for all worktrees registered in the current repository.
 pub struct GitWorktreesRequest {
     pub(crate) root: String,
+    /// Also reads the local changes of every checkout that is there and not bare, which sets
+    /// each entry's `changes` and lets its `status` be `modified`.
+    #[serde(default)]
+    pub(crate) count_changes: bool,
 }
 
 #[derive(Debug, Deserialize)]
