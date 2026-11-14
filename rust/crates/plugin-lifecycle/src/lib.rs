@@ -14,16 +14,33 @@
 //! running program; then it removes every installed version, because the plugin page shows one
 //! row per plugin and an older version left behind would keep the plugin installed; then it
 //! forgets the choice and removes the state the programs wrote, so a later installation starts
-//! as a first one. Fixtures live in `rust/fixtures/plugins/installed-lifecycle.json`.
+//! as a first one.
+//!
+//! A language has one language server: two plugins that both serve it would race for every
+//! document of it, and neither would know the other answers too. So enabling a plugin, or
+//! confirming its installation while it is enabled, turns off every other enabled plugin whose
+//! newest installed version serves one of the same languages, and the host records that and
+//! stops their programs. Choices made before this rule can still enable two such plugins;
+//! enablement then keeps the first by ID and reports the others disabled, without changing the
+//! choices, so enabling one of them later is what settles it. Fixtures live in
+//! `rust/fixtures/plugins/installed-lifecycle.json`.
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use lithe_plugin_model::PluginVersion;
 use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Upper bound of installed versions and of choices in one request.
 const MAX_ENTRIES: usize = 4096;
+
+/// Upper bound of the languages one installed version serves; a manifest declares at most one
+/// language server per language it declares.
+const MAX_LANGUAGE_SERVERS: usize = 256;
+
+/// Upper bound of one language ID, in bytes.
+const MAX_LANGUAGE_ID_BYTES: usize = 256;
 
 /// Rejection of an action on a plugin that has no installed version: enabling it would
 /// silently enable a later installation, and there is nothing to uninstall.
@@ -48,6 +65,10 @@ struct InstalledVersion {
     #[serde(rename = "pluginID")]
     plugin_id: String,
     version: String,
+    /// The `languageID` of every language server this version's manifest declares; only the
+    /// plugin's newest installed version counts, since it is the one that runs.
+    #[serde(default, rename = "languageServers")]
+    language_servers: Vec<String>,
 }
 
 /// One plugin and whether it is enabled: a choice in the request, a plugin's enablement in the
@@ -96,6 +117,15 @@ enum Step {
     RemoveVersion { version: String },
     /// Remove the state directory the plugin's programs wrote.
     RemoveState,
+    /// Turn another plugin off because the action's plugin now serves `language_ids` too:
+    /// record the choice `enabled: false` for `plugin_id`, then stop its programs. Unlike the
+    /// other steps it is on `plugin_id`, not on the action's plugin.
+    DisplacePlugin {
+        #[serde(rename = "pluginID")]
+        plugin_id: String,
+        #[serde(rename = "languageIDs")]
+        language_ids: Vec<String>,
+    },
 }
 
 #[derive(Debug, Serialize)]
@@ -135,6 +165,7 @@ pub fn command(payload: Value) -> Result<Value, CoreError> {
         if entry.plugin_id.is_empty() || entry.version.is_empty() {
             return Err(invalid("An installed plugin has an empty ID or version"));
         }
+        validate_language_servers(&entry.language_servers)?;
         if !versions
             .entry(&entry.plugin_id)
             .or_default()
@@ -152,9 +183,10 @@ pub fn command(payload: Value) -> Result<Value, CoreError> {
             return Err(invalid("A plugin has two choices"));
         }
     }
+    let served = served_languages(&request.installed);
     let Some(action) = &request.action else {
         return Ok(encode(Response {
-            plugins: enablement(&versions, &choices, None),
+            plugins: enablement(&versions, &choices, &served, None),
             changed: false,
             steps: Vec::new(),
             rejection: None,
@@ -168,7 +200,7 @@ pub fn command(payload: Value) -> Result<Value, CoreError> {
     let id = action.plugin_id.as_str();
     let Some(installed) = versions.get(id) else {
         return Ok(encode(Response {
-            plugins: enablement(&versions, &choices, None),
+            plugins: enablement(&versions, &choices, &served, None),
             changed: false,
             steps: Vec::new(),
             rejection: Some(NOT_INSTALLED),
@@ -214,28 +246,122 @@ pub fn command(payload: Value) -> Result<Value, CoreError> {
     if let Some(enabled) = after {
         choices.insert(id, enabled);
     }
+    if after == Some(true) {
+        steps.extend(displace_rivals(id, &served, &mut choices));
+    }
     Ok(encode(Response {
-        plugins: enablement(&versions, &choices, uninstalled),
+        plugins: enablement(&versions, &choices, &served, uninstalled),
         changed: after != chosen,
         steps,
         rejection: None,
     }))
 }
 
-/// Every installed plugin but `left_out`, by ID, enabled only when its choice says so.
+/// Every installed plugin but `left_out`, by ID, enabled only when its choice says so and no
+/// plugin before it by ID that is enabled already serves one of its languages.
 fn enablement(
     versions: &BTreeMap<&str, BTreeSet<&str>>,
     choices: &BTreeMap<&str, bool>,
+    served: &BTreeMap<&str, BTreeSet<&str>>,
     left_out: Option<&str>,
 ) -> Vec<Choice> {
+    let none = BTreeSet::new();
+    let mut claimed: BTreeSet<&str> = BTreeSet::new();
     versions
         .keys()
         .filter(|id| Some(**id) != left_out)
-        .map(|id| Choice {
-            plugin_id: (*id).to_string(),
-            enabled: choices.get(id).copied().unwrap_or(false),
+        .map(|id| {
+            let languages = served.get(id).unwrap_or(&none);
+            let enabled =
+                choices.get(id).copied().unwrap_or(false) && languages.is_disjoint(&claimed);
+            if enabled {
+                claimed.extend(languages.iter().copied());
+            }
+            Choice {
+                plugin_id: (*id).to_string(),
+                enabled,
+            }
         })
         .collect()
+}
+
+/// The languages each installed plugin's newest version serves.
+///
+/// Versions are compared as `major.minor.patch`; a version that is not one ranks below every
+/// one that is, and of two such versions the first listed counts.
+fn served_languages(installed: &[InstalledVersion]) -> BTreeMap<&str, BTreeSet<&str>> {
+    let mut newest: BTreeMap<&str, (Option<PluginVersion>, &InstalledVersion)> = BTreeMap::new();
+    for entry in installed {
+        let version = PluginVersion::parse(&entry.version);
+        let current = newest.entry(&entry.plugin_id).or_insert((version, entry));
+        if version > current.0 {
+            *current = (version, entry);
+        }
+    }
+    newest
+        .into_iter()
+        .map(|(id, (_, entry))| {
+            (
+                id,
+                entry.language_servers.iter().map(String::as_str).collect(),
+            )
+        })
+        .collect()
+}
+
+/// Turns off, in `choices`, every other enabled plugin that serves one of `id`'s languages, and
+/// returns the steps that make the host do the same, in plugin ID order.
+fn displace_rivals<'a>(
+    id: &str,
+    served: &BTreeMap<&'a str, BTreeSet<&'a str>>,
+    choices: &mut BTreeMap<&'a str, bool>,
+) -> Vec<Step> {
+    let Some(languages) = served.get(id).filter(|languages| !languages.is_empty()) else {
+        return Vec::new();
+    };
+    let mut steps = Vec::new();
+    for (other, other_languages) in served {
+        if *other == id || choices.get(other) != Some(&true) {
+            continue;
+        }
+        let shared: Vec<String> = languages
+            .intersection(other_languages)
+            .map(|language| (*language).to_string())
+            .collect();
+        if shared.is_empty() {
+            continue;
+        }
+        choices.insert(other, false);
+        steps.push(Step::DisplacePlugin {
+            plugin_id: (*other).to_string(),
+            language_ids: shared,
+        });
+    }
+    steps
+}
+
+/// Rejects a malformed `languageServers` list: too long, an empty or overlong ID, or an ID
+/// listed twice, which a valid manifest never produces.
+fn validate_language_servers(languages: &[String]) -> Result<(), CoreError> {
+    if languages.len() > MAX_LANGUAGE_SERVERS {
+        return Err(invalid(
+            "An installed plugin version serves too many languages",
+        ));
+    }
+    let mut seen = BTreeSet::new();
+    for language in languages {
+        if language.is_empty() || language.len() > MAX_LANGUAGE_ID_BYTES {
+            return Err(invalid(
+                "An installed plugin version serves an empty or overlong language ID",
+            ));
+        }
+        if !seen.insert(language.as_str()) {
+            return Err(invalid(
+                "An installed plugin version serves a language twice",
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn invalid(message: &str) -> CoreError {
