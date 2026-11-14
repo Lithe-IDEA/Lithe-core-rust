@@ -12,6 +12,7 @@ mod authentication_failure;
 mod branch_names;
 pub mod catalog;
 mod change_targets;
+mod changed_file_groups;
 mod changelists;
 mod command_trace;
 mod commit_message_context;
@@ -82,6 +83,7 @@ pub use setup::{
 };
 
 pub use change_targets::command as normalize_change_targets_command;
+pub use changed_file_groups::command as changed_file_groups_command;
 pub use changelists::changelists_command;
 pub use commit_message_context::commit_message_context_command;
 pub use commit_selection::prepare_commit_selection_command;

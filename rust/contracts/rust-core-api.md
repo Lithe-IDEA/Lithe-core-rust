@@ -682,6 +682,7 @@ or removing a command fails until the table changes in the same commit.
 | `git.normalizeChangeTargets` | Drop targets already covered by a selected untracked summary |
 | `git.rebasePlanPreview` | Validate an interactive rebase draft and derives its messages |
 | `git.referenceTree` | Group one kind of loaded references into an ordered tree |
+| `git.changedFileGroups` | Group the changed files of a commit, stash or shelf by folder, folders and files in natural order |
 | `git.pushPreview` | Resolve a local branch push destination and the bounded commits not present on that remote base |
 | `git.commit` | Return one structured commit by revision with its full message body |
 | `git.commitFiles` | Return files changed by one commit |
@@ -1576,6 +1577,19 @@ pixels, curves, and the mapping from a color ID to a theme color; `colorId` `0` 
 an unreferenced fragment. Requests over 20,000 commits fail with `invalid_request`.
 `rust/fixtures/git/graph-projection-v1.json` defines the rules and
 `rust/fixtures/git/graph-idea/` holds the pinned IntelliJ oracles.
+
+`git.changedFileGroups` groups the changed files of a commit, a stash or a shelf
+by folder; it never starts Git. The request is `{ "paths": string[] }`, the
+repository-relative `/`-separated paths in the order Git listed them, at most
+200,000. The response is `{ "folders": [{ "path", "files" }] }`: every path lands
+in the folder it names before its last `/` (`""` for the top of the repository),
+and `files` are indices into `paths`. Folder paths compare one segment at a time
+and file names compare by name, both in the project tree's natural order
+(`rust/fixtures/workspace/file-name-order-v1.json`), so a folder comes right
+before the folders inside it and `v0.1.4.md` before `v0.1.12.md`; names the
+natural order cannot tell apart fall back to their raw text, then to request
+order. Hosts group once per loaded list and own expansion, rows and drawing.
+`rust/fixtures/git/changed-file-groups-v1.json` defines the rules.
 
 `git.integrationPreflight` accepts either `reference` or `gitReference` with
 `root` and `operation`, where `operation` is `merge`, `rebase`, `cherryPick`,

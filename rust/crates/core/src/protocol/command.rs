@@ -803,6 +803,8 @@ pub enum GitCommand {
     RebasePlanPreview,
     /// Groups one kind of loaded references into an ordered tree (`git.referenceTree`).
     ReferenceTree,
+    /// Groups changed files by folder in natural order (`git.changedFileGroups`).
+    ChangedFileGroups,
     /// Resolves the destination and commits for a branch push (`git.pushPreview`).
     PushPreview,
     /// Resolves metadata for one commit (`git.commit`).
@@ -1367,6 +1369,7 @@ impl CoreCommand {
             "git.normalizeChangeTargets" => Some(Self::Git(GitCommand::NormalizeChangeTargets)),
             "git.rebasePlanPreview" => Some(Self::Git(GitCommand::RebasePlanPreview)),
             "git.referenceTree" => Some(Self::Git(GitCommand::ReferenceTree)),
+            "git.changedFileGroups" => Some(Self::Git(GitCommand::ChangedFileGroups)),
             "git.pushPreview" => Some(Self::Git(GitCommand::PushPreview)),
             "git.commit" => Some(Self::Git(GitCommand::Commit)),
             "git.commitFiles" => Some(Self::Git(GitCommand::CommitFiles)),
