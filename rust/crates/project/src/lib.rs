@@ -1,5 +1,5 @@
 //! Project services: workspace files and visibility, indexing policy, search, local history,
-//! document persistence decisions and Markdown rendering.
+//! document persistence decisions, and Markdown rendering and heading outlines.
 //!
 //! Language-server sessions sit above this crate. Calls that change indexing or the search index
 //! take an `update_providers` callback, which lithe-core uses to tell running sessions which
@@ -16,6 +16,7 @@ pub mod files;
 mod history;
 pub mod indexing;
 mod markdown;
+mod markdown_outline;
 mod markdown_reference;
 mod name_matching;
 pub mod name_ranking;
@@ -27,6 +28,7 @@ pub use document_lifecycle::*;
 pub use files::*;
 pub use history::*;
 pub use markdown::*;
+pub use markdown_outline::*;
 pub use markdown_reference::*;
 pub use search_paging::{search_page, SearchPageRequest};
 

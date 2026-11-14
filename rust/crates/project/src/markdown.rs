@@ -195,13 +195,10 @@ pub struct MarkdownRenderResponse {
     pub html: String,
 }
 
-/// Renders the shared Markdown dialect used by every Lithe frontend.
-///
-/// Raw HTML is deliberately enabled in Comrak so useful document elements such
-/// as `<details>` survive parsing, then the complete fragment is passed through
-/// Ammonia. This keeps formatting HTML while removing executable content,
-/// event handlers, embeds, and unsafe URL schemes.
-pub fn render(request: MarkdownRenderRequest) -> MarkdownRenderResponse {
+/// The Comrak options of the shared dialect. Rendering and the heading outline
+/// parse with the same options, so a heading the preview shows is a heading the
+/// outline lists, on the same source line.
+pub(crate) fn dialect() -> Options<'static> {
     let mut options = Options::default();
     options.extension.strikethrough = true;
     // The final Ammonia pass is the security boundary. Leaving tagfilter off
@@ -226,8 +223,17 @@ pub fn render(request: MarkdownRenderRequest) -> MarkdownRenderResponse {
     options.extension.header_id_prefix_in_href = true;
     options.render.r#unsafe = true;
     options.render.sourcepos = true;
+    options
+}
 
-    let rendered = markdown_to_html(&request.source, &options);
+/// Renders the shared Markdown dialect used by every Lithe frontend.
+///
+/// Raw HTML is deliberately enabled in Comrak so useful document elements such
+/// as `<details>` survive parsing, then the complete fragment is passed through
+/// Ammonia. This keeps formatting HTML while removing executable content,
+/// event handlers, embeds, and unsafe URL schemes.
+pub fn render(request: MarkdownRenderRequest) -> MarkdownRenderResponse {
+    let rendered = markdown_to_html(&request.source, &dialect());
     let mut sanitizer = Builder::default();
     sanitizer
         .add_tags(&["section", "tfoot", "input", "audio", "video", "source"])
