@@ -550,7 +550,8 @@ or removing a command fails until the table changes in the same commit.
 | `processLifecycle.resolve` | Decide how each process or resource of one Lithe instance ends |
 | `processLifecycle.inventory` | Group a process snapshot of one Lithe instance into terminals, Agent tasks and background services |
 | `processLifecycle.settle` | Turn confirmation answers into what ends, what is kept and the updated settings |
-| `markdown.render` | Render and sanitizes shared Markdown |
+| `markdown.render` | Renders and sanitizes shared Markdown |
+| `markdown.resolveReference` | Decides what a link or an image of a rendered Markdown document points at |
 | `keymap.parseContext` | Compile a bounded boolean shortcut context (from `lithe-core-rules`) |
 | `keymap.evaluateContext` | Evaluate a precompiled shortcut context (from `lithe-core-rules`) |
 | `keymap.analyzeConflicts` | Find conflicts among the final layered shortcut bindings (from `lithe-core-rules`) |
@@ -5496,11 +5497,50 @@ embedding. Inline `<svg>` keeps its drawing elements (shapes, text, `use`,
 primitives) with their geometry and presentation attributes; `script`,
 `foreignObject`, `style`, the animation elements, `feImage` and the `style`
 attribute are removed, and `use`/`textPath` may only reference `#id` in the
-same document. Windows asynchronously requests this existing command via its
-central dispatcher, discards obsolete responses and falls back to the sanitized
-fragment if syntax coloring fails. Render failures are shown as localized text;
-there is no frontend Markdown parser fallback. This does not promise Windows
-math or diagram rendering parity.
+same document. Frontends request the command off their window thread, discard
+responses to an older revision of the source and show the sanitized fragment
+unchanged if syntax coloring, math or diagram rendering fails. Render failures
+are shown as localized text; there is no frontend Markdown parser fallback.
+
+`markdown.resolveReference` decides what one link destination or image `src` of
+a rendered document points at, so every preview follows and loads the same
+things. It accepts:
+
+```json
+{
+  "documentPath": "/workspace/docs/guide.md",
+  "workspaceRoot": "/workspace",
+  "reference": "../assets/logo.svg?v=2",
+  "purpose": "resource"
+}
+```
+
+`workspaceRoot` is optional. A document inside it has the workspace as its
+scope; without it, or for a document outside it, the scope is the document's
+folder. `reference` is the attribute exactly as the HTML holds it. `purpose` is
+`link` for a click and `resource` for an image the page loads. The response is
+tagged by `kind`:
+
+| kind | purpose | fields | meaning |
+| --- | --- | --- | --- |
+| `external` | link | `url` | An http, https or mailto address for the system's browser or mail client |
+| `remote` | resource | `url` | An http or https address with a host; the frontend downloads it under its proxy policy |
+| `anchor` | link | `anchor` | A `#fragment` of the document, without `#` and percent-decoded |
+| `file` | both | `path`, `mime` for a resource | A file of the machine |
+| `none` | both | — | Nothing is followed or loaded |
+
+Addresses come back normalized as a browser reads them, and a scheme-relative
+`//host` address gets `https:`. Any other scheme, including `file:`, `data:`,
+`javascript:` and a one-letter Windows drive, is `none`. A path drops its query
+and fragment and is percent-decoded; `/path` starts at the scope's root and any
+other path at the document's folder, with `.` and `..` resolved lexically. A
+link's `file` is that lexical path, which need not exist. A resource's `file`
+must stay inside the scope both lexically and after Core resolves symbolic
+links, must be an existing regular file, and must have an image extension
+(`apng`, `avif`, `bmp`, `gif`, `ico`, `jpeg`, `jpg`, `png`, `svg`, `webp`); its
+`path` is canonical and `mime` names the type. Otherwise the resource is
+`none`. Frontends read a resource file without following another link and do not
+load what this command refuses.
 
 Shared examples: `rust/fixtures/editor/markdown-render-v1.json`,
 `markdown-html-v1.json` and `markdown-rich-content-v1.json`.

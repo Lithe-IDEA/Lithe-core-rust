@@ -4,7 +4,8 @@
 //! child module named after it; the remaining small families dispatch here.
 
 use crate::project::{
-    self, DocumentLifecycleRequest, FileReadRequest, FileWriteRequest, MarkdownRenderRequest,
+    self, DocumentLifecycleRequest, FileReadRequest, FileWriteRequest, MarkdownReferenceRequest,
+    MarkdownRenderRequest,
 };
 use crate::protocol::{CoreCommand, CoreError, CoreRequest, CoreResponse, ErrorCode, GitCommand};
 use lithe_github::{NormalizeResponseRequest, ParseRemoteRequest, RequestPlanRequest};
@@ -451,6 +452,24 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                     id,
                     serde_json::to_value(crate::project::render(request))
                         .expect("Markdown render response should encode"),
+                ),
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
+        CoreCommand::MarkdownResolveReference => {
+            match serde_json::from_value::<MarkdownReferenceRequest>(parsed.payload).map_err(
+                |error| {
+                    CoreError::new(
+                        ErrorCode::InvalidRequest,
+                        "Invalid Markdown reference request",
+                    )
+                    .with_details(error.to_string())
+                },
+            ) {
+                Ok(request) => CoreResponse::success(
+                    id,
+                    serde_json::to_value(crate::project::resolve_reference(request))
+                        .expect("Markdown reference response should encode"),
                 ),
                 Err(error) => CoreResponse::failure(id, error),
             }
