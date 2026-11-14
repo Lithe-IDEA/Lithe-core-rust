@@ -927,6 +927,45 @@ fn markdown_render_command_returns_sanitized_html() {
 }
 
 #[test]
+fn markdown_resolve_reference_command_answers_links_and_resources() {
+    let resolve = |reference: &str, purpose: &str| -> Value {
+        let request = serde_json::json!({
+            "id": "markdown-reference",
+            "command": "markdown.resolveReference",
+            "payload": {
+                "documentPath": "/workspace/docs/guide.md",
+                "workspaceRoot": "/workspace",
+                "reference": reference,
+                "purpose": purpose
+            }
+        });
+        let response: Value = serde_json::from_str(&execute_json(
+            &serde_json::to_string(&request).expect("Markdown reference request should encode"),
+        ))
+        .expect("Markdown reference response should be JSON");
+        assert_eq!(response["ok"], true, "{response}");
+        response["data"].clone()
+    };
+
+    assert_eq!(
+        resolve("https://example.com", "link"),
+        serde_json::json!({"kind": "external", "url": "https://example.com/"})
+    );
+    assert_eq!(
+        resolve("#usage", "link"),
+        serde_json::json!({"kind": "anchor", "anchor": "usage"})
+    );
+    assert_eq!(
+        resolve("//example.com/a.png", "resource"),
+        serde_json::json!({"kind": "remote", "url": "https://example.com/a.png"})
+    );
+    assert_eq!(
+        resolve("javascript:alert(1)", "link"),
+        serde_json::json!({"kind": "none"})
+    );
+}
+
+#[test]
 fn search_matches_shared_fixture_semantics() {
     let fixture = fixture();
     let root = temporary_root("search");

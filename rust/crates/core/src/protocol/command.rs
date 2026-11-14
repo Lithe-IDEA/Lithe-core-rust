@@ -126,6 +126,9 @@ pub enum CoreCommand {
     ProcessLifecycleSettle,
     /// Renders and sanitizes shared Markdown (`markdown.render`).
     MarkdownRender,
+    /// Decides what a link or an image of a rendered Markdown document points at
+    /// (`markdown.resolveReference`).
+    MarkdownResolveReference,
     /// Editor reducers: workbench state, text edits, find, navigation and preferences (`editor.*`).
     Editor(EditorCommand),
     /// Applies one transition to the rearrangeable workbench chrome: stripe, title bar and status bar
@@ -1184,6 +1187,7 @@ impl CoreCommand {
             "processLifecycle.inventory" => Some(Self::ProcessLifecycleInventory),
             "processLifecycle.settle" => Some(Self::ProcessLifecycleSettle),
             "markdown.render" => Some(Self::MarkdownRender),
+            "markdown.resolveReference" => Some(Self::MarkdownResolveReference),
             "keymap.parseContext" => Some(Self::Keymap(KeymapCommand::ParseContext)),
             "keymap.evaluateContext" => Some(Self::Keymap(KeymapCommand::EvaluateContext)),
             "keymap.analyzeConflicts" => Some(Self::Keymap(KeymapCommand::AnalyzeConflicts)),
