@@ -126,15 +126,9 @@ pub fn resolve_reference(request: MarkdownReferenceRequest) -> MarkdownReference
         return MarkdownReference::None;
     }
     let document = Path::new(&request.document_path);
-    let Some(folder) = document.parent().filter(|_| document.is_absolute()) else {
+    let Some((folder, scope)) = document_scope(document, request.workspace_root.as_deref()) else {
         return MarkdownReference::None;
     };
-    let scope = request
-        .workspace_root
-        .as_deref()
-        .map(Path::new)
-        .filter(|root| root.is_absolute() && within(document, root))
-        .unwrap_or(folder);
     // `/path` is the workspace's, as on a repository host; any other path is the document's.
     let (base, relative) = match decoded.strip_prefix('/') {
         Some(rest) => (scope, rest),
@@ -148,6 +142,21 @@ pub fn resolve_reference(request: MarkdownReferenceRequest) -> MarkdownReference
         },
         MarkdownReferencePurpose::Resource => resource_file(&lexical, scope),
     }
+}
+
+/// The folder of an absolute document and the scope its references reach: the workspace's root
+/// for a document inside it, otherwise the document's own folder. A relative document has
+/// neither.
+pub(crate) fn document_scope<'a>(
+    document: &'a Path,
+    workspace_root: Option<&'a str>,
+) -> Option<(&'a Path, &'a Path)> {
+    let folder = document.parent().filter(|_| document.is_absolute())?;
+    let scope = workspace_root
+        .map(Path::new)
+        .filter(|root| root.is_absolute() && within(document, root))
+        .unwrap_or(folder);
+    Some((folder, scope))
 }
 
 /// The answer for an address with a scheme: links follow web and mail addresses, resources
@@ -241,7 +250,7 @@ fn percent_decode(text: &str) -> Option<String> {
 
 /// Joins slash-separated segments to a base, resolving `.` and `..` without the file system. A
 /// `..` at the root of the file system stays there.
-fn join_lexically(base: &Path, relative: &str) -> PathBuf {
+pub(crate) fn join_lexically(base: &Path, relative: &str) -> PathBuf {
     let mut path = base.to_path_buf();
     for segment in relative.split('/') {
         match segment {
@@ -257,7 +266,7 @@ fn join_lexically(base: &Path, relative: &str) -> PathBuf {
 
 /// Whether a path lies inside a folder, comparing their normal components. Neither needs to
 /// exist; `..` components do not count as leaving and are resolved by the callers first.
-fn within(path: &Path, folder: &Path) -> bool {
+pub(crate) fn within(path: &Path, folder: &Path) -> bool {
     fn normal(path: &Path) -> Vec<Component<'_>> {
         path.components()
             .filter(|component| !matches!(component, Component::CurDir))

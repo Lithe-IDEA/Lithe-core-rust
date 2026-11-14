@@ -4,8 +4,8 @@
 //! child module named after it; the remaining small families dispatch here.
 
 use crate::project::{
-    self, DocumentLifecycleRequest, FileReadRequest, FileWriteRequest, MarkdownReferenceRequest,
-    MarkdownRenderRequest,
+    self, DocumentLifecycleRequest, FileReadRequest, FileWriteRequest, HtmlPreviewRequest,
+    HtmlPreviewSiteRequest, MarkdownReferenceRequest, MarkdownRenderRequest,
 };
 use crate::protocol::{CoreCommand, CoreError, CoreRequest, CoreResponse, ErrorCode, GitCommand};
 use lithe_github::{NormalizeResponseRequest, ParseRemoteRequest, RequestPlanRequest};
@@ -470,6 +470,44 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                     id,
                     serde_json::to_value(crate::project::resolve_reference(request))
                         .expect("Markdown reference response should encode"),
+                ),
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
+        CoreCommand::HtmlPreviewSite => {
+            let site = serde_json::from_value::<HtmlPreviewSiteRequest>(parsed.payload)
+                .map_err(|error| {
+                    CoreError::new(
+                        ErrorCode::InvalidRequest,
+                        "Invalid HTML preview site request",
+                    )
+                    .with_details(error.to_string())
+                })
+                .and_then(|request| {
+                    project::html_preview_site(request).ok_or_else(|| {
+                        CoreError::new(
+                            ErrorCode::InvalidRequest,
+                            "HTML preview document must be an absolute file path",
+                        )
+                    })
+                });
+            match site {
+                Ok(site) => CoreResponse::success(
+                    id,
+                    serde_json::to_value(site).expect("HTML preview site should encode"),
+                ),
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
+        CoreCommand::HtmlPreviewResolveRequest => {
+            match serde_json::from_value::<HtmlPreviewRequest>(parsed.payload).map_err(|error| {
+                CoreError::new(ErrorCode::InvalidRequest, "Invalid HTML preview request")
+                    .with_details(error.to_string())
+            }) {
+                Ok(request) => CoreResponse::success(
+                    id,
+                    serde_json::to_value(project::resolve_html_preview_request(request))
+                        .expect("HTML preview resource should encode"),
                 ),
                 Err(error) => CoreResponse::failure(id, error),
             }

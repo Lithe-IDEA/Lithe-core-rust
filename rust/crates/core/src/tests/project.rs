@@ -966,6 +966,69 @@ fn markdown_resolve_reference_command_answers_links_and_resources() {
 }
 
 #[test]
+fn html_preview_commands_address_the_document_and_answer_its_requests() {
+    let root = temporary_root("html-preview");
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(root.join("site").join("css")).expect("site folder should be creatable");
+    fs::write(root.join("site").join("index.html"), "<p>x</p>").expect("document should write");
+    fs::write(root.join("site").join("css").join("app.css"), "p{}").expect("style should write");
+    fs::write(root.join(".env"), "TOKEN=x").expect("hidden file should write");
+    let document = root.join("site").join("index.html");
+    let call = |command: &str, payload: Value| -> Value {
+        let request = serde_json::json!({ "id": "html", "command": command, "payload": payload });
+        serde_json::from_str(&execute_json(
+            &serde_json::to_string(&request).expect("HTML preview request should encode"),
+        ))
+        .expect("HTML preview response should be JSON")
+    };
+    let request = |path: &str| {
+        let response = call(
+            "htmlPreview.resolveRequest",
+            serde_json::json!({
+                "documentPath": document.to_string_lossy(),
+                "workspaceRoot": root.to_string_lossy(),
+                "path": path
+            }),
+        );
+        assert_eq!(response["ok"], true, "{response}");
+        response["data"].clone()
+    };
+
+    let site = call(
+        "htmlPreview.site",
+        serde_json::json!({
+            "documentPath": document.to_string_lossy(),
+            "workspaceRoot": root.to_string_lossy()
+        }),
+    );
+    assert_eq!(site["ok"], true, "{site}");
+    assert_eq!(site["data"]["address"], "site/index.html");
+    assert_eq!(site["data"]["root"], root.to_string_lossy().as_ref());
+    assert_eq!(
+        request("site/index.html"),
+        serde_json::json!({"kind": "document"})
+    );
+    assert_eq!(
+        request("site/css/app.css")["mime"],
+        "text/css; charset=utf-8"
+    );
+    assert_eq!(request("site"), serde_json::json!({"kind": "directory"}));
+    assert_eq!(request(".env"), serde_json::json!({"kind": "denied"}));
+    assert_eq!(
+        request("../outside.html"),
+        serde_json::json!({"kind": "none"})
+    );
+
+    let relative = call(
+        "htmlPreview.site",
+        serde_json::json!({ "documentPath": "index.html" }),
+    );
+    assert_eq!(relative["ok"], false, "{relative}");
+    assert_eq!(relative["error"]["code"], "invalid_request");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn search_matches_shared_fixture_semantics() {
     let fixture = fixture();
     let root = temporary_root("search");

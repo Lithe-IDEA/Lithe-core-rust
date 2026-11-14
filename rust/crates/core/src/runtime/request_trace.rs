@@ -155,6 +155,7 @@ pub(crate) fn is_hot(method: &str) -> bool {
                 | "document.lifecycle"
                 | "markdown.render"
                 | "markdown.resolveReference"
+                | "htmlPreview.resolveRequest"
                 | "workspace.classifyVisibility"
                 | "workspace.visibilityDefaults"
                 | "lsp.syncDocument"

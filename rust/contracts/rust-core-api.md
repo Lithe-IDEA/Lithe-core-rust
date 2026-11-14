@@ -552,6 +552,8 @@ or removing a command fails until the table changes in the same commit.
 | `processLifecycle.settle` | Turn confirmation answers into what ends, what is kept and the updated settings |
 | `markdown.render` | Renders and sanitizes shared Markdown |
 | `markdown.resolveReference` | Decides what a link or an image of a rendered Markdown document points at |
+| `htmlPreview.site` | Names the folder an HTML file is previewed from and the file's address in it |
+| `htmlPreview.resolveRequest` | Decides what one request of an HTML preview serves |
 | `keymap.parseContext` | Compile a bounded boolean shortcut context (from `lithe-core-rules`) |
 | `keymap.evaluateContext` | Evaluate a precompiled shortcut context (from `lithe-core-rules`) |
 | `keymap.analyzeConflicts` | Find conflicts among the final layered shortcut bindings (from `lithe-core-rules`) |
@@ -5558,6 +5560,57 @@ load what this command refuses.
 
 Shared examples: `rust/fixtures/editor/markdown-render-v1.json`,
 `markdown-html-v1.json` and `markdown-rich-content-v1.json`.
+
+## HTML file preview
+
+An HTML file is previewed as a static site, so a page loads its stylesheets,
+scripts, images, fonts, media and neighbouring pages the way a static web server
+would serve them. Both commands accept:
+
+```json
+{
+  "documentPath": "/workspace/site/index.html",
+  "workspaceRoot": "/workspace"
+}
+```
+
+`workspaceRoot` is optional and sets the site's root exactly as it sets the
+scope of `markdown.resolveReference`: the workspace for a document inside it,
+otherwise the document's folder. `htmlPreview.site` returns
+`{ "root": "/workspace", "address": "site/index.html" }`; `address` is the
+document's path from the root with each segment percent-encoded, which the
+frontend appends to the address it serves the site from. A `documentPath` that
+is not absolute is `invalid_request`.
+
+`htmlPreview.resolveRequest` adds `"path"`, the requested path from the root as
+the web engine reports it: percent-decoded, `/`-separated, without query or
+fragment, and empty for the root. Core does not decode it again. The response is
+tagged by `kind`:
+
+| kind | fields | the frontend serves |
+| --- | --- | --- |
+| `document` | — | The editor's text of the document as `text/html; charset=utf-8`, so unsaved edits show |
+| `file` | `path`, `mime` | The canonical file `path`, read without following another link, as `mime` |
+| `directory` | — | A page that sends the browser on to the folder's `index.html` |
+| `denied` | — | HTTP 403 |
+| `none` | — | HTTP 404 |
+
+The path resolves lexically from the root and must stay inside it before and
+after Core resolves symbolic links; a segment holding `\`, `:` or NUL is
+`none`. A path that reaches the document, under any name, is `document`. A
+hidden name (one starting with `.`) is `denied`, except the leading folders the
+document's own folder shares, so a page inside `.github/pages` can load its
+neighbours but not `.git/config`. A file with a key or certificate extension
+(`jks`, `key`, `keystore`, `p12`, `pem`, `pfx`) is `denied`. Otherwise an
+existing regular file is `file`, a folder whose `index.html` is a regular file
+inside the root is `directory`, and anything else is `none`. `mime` comes from
+the file's extension, with text types in UTF-8 and
+`application/octet-stream` for an unknown one.
+
+The page runs the document's scripts, so frontends trust nothing it requests:
+they serve only what this command answers, never write through the site, and
+handle top-level navigation away from it with the link policy of
+`markdown.resolveReference`.
 
 ### Structured logging of recoverable LSP maintenance warnings
 
