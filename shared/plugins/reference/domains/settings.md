@@ -11,10 +11,10 @@
 | 清单字段 | `settings`、`settingActions` |
 | 能力 | `settings`，版本 `0`。`workspaceConfiguration` 的展开和推送见[语言](languages.md) |
 | 协议 | 没有专用协议；`settingActions` 调用的是插件自己的[插件函数](backend.md) |
-| API 编号 | [API-19](../api-catalog.md#现在能用的-api)：声明式设置。运行期读取、查看来源、修改设置和变化事件仍在计划中 |
+| API 编号 | [API-19](../api-catalog.md#现在能用的-api)：声明式设置。运行期读取、查看来源、修改设置和变化事件仍在计划中。[API-37](../api-catalog.md#现在能用的-api)：设置文字的包内翻译 |
 | 权限 | 不需要额外权限。设置不会改变运行的程序，所以不进入安装审查的程序列表 |
 | 激活事件 | 不需要。值按设置的 `effect` 在下一次启动、模型重载、下一次运行或 `immediate` 推送时生效 |
-| 桌面端 | 已声明 `settings`：按语言和构建系统分页、分组、全部控件类型、项目层、生效方式和页面按钮都已呈现 |
+| 桌面端 | 已声明 `settings`：按语言和构建系统分页、分组、全部控件类型、项目层、生效方式和页面按钮都已呈现。还没有读取包内翻译 `l10n/`，始终显示清单原文 |
 
 ### 设置类型
 
@@ -27,7 +27,7 @@
 | `text` | `pattern`（必填）、`maxLength`（可选）、`placeholder`（可选） | `pattern` 必须匹配整个值；`maxLength` 默认 256，最多 1024 个 Unicode 标量 |
 | `file`、`directory` | `placeholder`（可选） | 绝对路径，最多 1024 个 Unicode 标量；空值表示“未设置” |
 
-所有类型的 `title`、`description` 都是宿主显示的文字。`text`、`file` 和 `directory` 的值不以 `-` 开头，也不含控制字符。`default` 的 JSON 类型必须符合 `type`，并且被这个声明接受。
+所有类型的 `title`、`description` 都是宿主显示的文字，用英文写；其他界面语言用包内翻译文件提供（见[翻译](#翻译)）。`text`、`file` 和 `directory` 的值不以 `-` 开头，也不含控制字符。`default` 的 JSON 类型必须符合 `type`，并且被这个声明接受。
 
 ```json
 "settings": [
@@ -78,12 +78,40 @@
 
 `plugins.declarative.resolveSettings` 返回每个生效值及其 `source`（`project`、`global` 或 `default`）。
 
+### 翻译
+
+插件包里的 `l10n/<语言>.json`（如 `l10n/zh-Hans.json`，[schema](../../contract/v1/plugin-l10n.schema.json)）把设置文字翻译成别的界面语言，按 ID 对应清单里的条目。没有翻译的语言，以及文件里没写到的文字，都显示 `plugin.json` 的原文。
+
+```json
+{
+  "settings": {
+    "dialyzer": { "title": "Dialyzer 静态分析" },
+    "checks": { "title": "检查项", "options": { "format": "格式检查" } }
+  },
+  "sections": { "Server": "服务器" },
+  "settingActions": { "rebuildPlt": { "title": "重建 PLT" } }
+}
+```
+
+| 成员 | 翻译的内容 |
+| --- | --- |
+| `settings.<id>` | 设置的 `title`、`description`、`placeholder`、`unit`；`options.<值>` 是 `enum`、`multiSelect` 选项的标题 |
+| `sections.<标题>` | 分组标题，键与 `section` 里写的原文完全一致 |
+| `settingActions.<id>` | 按钮的 `title`、`description` |
+
+- ID、选项值和顺序、保存的值、分组和分组顺序在所有语言下都不变，翻译只换显示的文字。
+- 界面语言是 `zh-Hans-CN` 时，依次找 `l10n/zh-Hans-CN.json`、`l10n/zh-Hans.json`、`l10n/zh.json`，显示第一个通过检查的文件，所以一份 `zh-Hans` 就能覆盖所有地区。
+- 一个文件有任何问题都整份不用，并以 `plugin.settings.invalidLocalization` 记进宿主日志，页面改用下一个候选或清单原文，不会因为翻译坏了而看不到设置。问题包括：不是 JSON 对象、超过 1 MiB、键重复、出现 `null`；条目里有格式没定义的字段；写了清单没有的设置、选项值、分组或按钮；翻译了清单没写的字段，或给没有选项的设置写 `options`；标题、占位符、单位、分组为空或超过 120 个字符，说明为空或超过 480 个字符。
+- 不需要声明能力或 `requires`；不读翻译的宿主照常显示清单原文。Core 忽略不认识的顶层成员，以后翻译更多插件文字时沿用同一份文件。
+- 翻译文件可以写 `"$schema"`，方便编辑器校验。
+
 ### 契约章节
 
 | 章节 | 内容 |
 | --- | --- |
 | [Plugin settings](../../contract/v1/README.md#plugin-settings) | 设置的字段、类型、模板 `${setting:<id>}` 和使用规则 |
 | [Placement, scope, effect, and page buttons](../../contract/v1/README.md#placement-scope-effect-and-page-buttons) | 放置位置、层级、生效时机、页面按钮和校验规则 |
+| [Translations](../../contract/v1/README.md#translations) | 包内翻译文件的格式、语言候选顺序和拒绝规则 |
 | [Workspace configuration](../../contract/v1/README.md#workspace-configuration) | `workspaceConfiguration` 的展开和推送 |
 | [Executable resolution](../../contract/v1/README.md#executable-resolution) | `setting` 类型的可执行文件候选：引用全局 `file` 设置选择工具路径、候选顺序和严格选择 |
 | [Launch templates](../../contract/v1/README.md#launch-templates) | 设置值在模板里的替换规则 |
@@ -93,6 +121,8 @@
 | 文件 | 内容 |
 | --- | --- |
 | [`settings/settings.plugin.json`](../../contract/v1/fixtures/settings/settings.plugin.json) | 放在 Elixir 语言页和 Mix 构建系统页上的设置、`immediate` 设置、`settingActions` 按钮 |
+| [`settings/l10n/zh-Hans.json`](../../contract/v1/fixtures/settings/l10n/zh-Hans.json) | 上面这份清单的简体中文翻译：设置标题、选项标题、分组标题和按钮 |
+| [`settings/localization-cases.json`](../../contract/v1/fixtures/settings/localization-cases.json) | 13 个翻译用例：按语言挑选文件、坏文件回退，以及每种拒绝和它的字段 |
 | [`languages/node-runtime.plugin.json`](../../contract/v1/fixtures/languages/node-runtime.plugin.json) | 带插件设置的语言服务器（`node` 运行时） |
 | [`build-systems/build-tool-path.plugin.json`](../../contract/v1/fixtures/build-systems/build-tool-path.plugin.json) | 用 `file` 设置选择构建工具的可执行文件候选 |
 | [`debug-adapters/debug-adapter.plugin.json`](../../contract/v1/fixtures/debug-adapters/debug-adapter.plugin.json) | 调试适配器用 `file` 设置（`nextRun`）选择要调试的程序 |
@@ -115,10 +145,10 @@ A plugin declares, in its manifest, the options a user may change. The host draw
 | Manifest fields | `settings`, `settingActions` |
 | Capability | `settings`, version `0`. Expanding and pushing `workspaceConfiguration` is described in [Languages](languages.md) |
 | Protocol | None of its own; `settingActions` call the plugin's own [plugin functions](backend.md) |
-| API IDs | [API-19](../api-catalog.md#apis-usable-now): declarative settings. Runtime reads, source inspection, writes, and change events are still planned |
+| API IDs | [API-19](../api-catalog.md#apis-usable-now): declarative settings. Runtime reads, source inspection, writes, and change events are still planned. [API-37](../api-catalog.md#apis-usable-now): packaged translations of settings text |
 | Permissions | None. Settings never change which program runs, so they are not in the install review's program list |
 | Activation | Not needed. Values take effect according to the setting's `effect`: at the next start, a model reload, the next run, or an `immediate` push |
-| Desktop | Declares `settings`: pages per language and build system, sections, every control type, the project layer, effects, and page buttons are presented |
+| Desktop | Declares `settings`: pages per language and build system, sections, every control type, the project layer, effects, and page buttons are presented. It does not read packaged translations `l10n/` yet and always shows the manifest text |
 
 ### Setting types
 
@@ -131,7 +161,7 @@ A plugin declares, in its manifest, the options a user may change. The host draw
 | `text` | `pattern` (required), `maxLength` (optional), `placeholder` (optional) | `pattern` matches the whole value; `maxLength` defaults to 256 and is at most 1024 Unicode scalars |
 | `file`, `directory` | `placeholder` (optional) | An absolute path of at most 1024 Unicode scalars, or empty for "not set" |
 
-`title` and `description` are text the host shows. Text and paths never start with `-` and contain no control characters. `default` must have the JSON type of `type` and must be accepted by the declaration.
+`title` and `description` are text the host shows; write them in English and translate them for other interface languages in the package (see [Translations](#translations)). Text and paths never start with `-` and contain no control characters. `default` must have the JSON type of `type` and must be accepted by the declaration.
 
 ```json
 "settings": [
@@ -182,12 +212,40 @@ The host stores one global value per plugin and setting, and a project value in 
 
 `plugins.declarative.resolveSettings` returns each effective value with its `source` (`project`, `global`, or `default`).
 
+### Translations
+
+`l10n/<language>.json` files in the package (such as `l10n/zh-Hans.json`, [schema](../../contract/v1/plugin-l10n.schema.json)) translate settings text into other interface languages, matched to manifest entries by ID. A language without a translation, and any text a file leaves out, shows the `plugin.json` text.
+
+```json
+{
+  "settings": {
+    "dialyzer": { "title": "Dialyzer 静态分析" },
+    "checks": { "title": "检查项", "options": { "format": "格式检查" } }
+  },
+  "sections": { "Server": "服务器" },
+  "settingActions": { "rebuildPlt": { "title": "重建 PLT" } }
+}
+```
+
+| Member | Translates |
+| --- | --- |
+| `settings.<id>` | The setting's `title`, `description`, `placeholder`, and `unit`; `options.<value>` is the title of an `enum` or `multiSelect` option |
+| `sections.<heading>` | A section heading, keyed by the exact text `section` writes |
+| `settingActions.<id>` | The button's `title` and `description` |
+
+- IDs, option values and their order, stored values, and sections and their order are the same in every language; a translation changes only the shown text.
+- For the interface language `zh-Hans-CN` the host looks for `l10n/zh-Hans-CN.json`, `l10n/zh-Hans.json`, and `l10n/zh.json`, and shows the first file that passes the checks, so one `zh-Hans` file serves every region.
+- A file with any problem is not used at all and is logged by the host with `plugin.settings.invalidLocalization`; the page uses the next candidate or the manifest text, so a broken translation never hides a setting. Problems are: not a JSON object, larger than 1 MiB, a repeated key, or `null`; a field the format does not define inside an entry; a setting, option value, heading, or action the manifest does not declare; a translation of a field the manifest leaves out, or `options` for a setting without options; an empty title, placeholder, unit, or heading or one longer than 120 characters, or an empty description or one longer than 480.
+- No capability or `requires` entry is needed; a host that does not read translations shows the manifest text. Core ignores top-level members it does not know, so translations of more plugin text will use the same files.
+- A translation file may contain `"$schema"` for editor validation.
+
 ### Contract sections
 
 | Section | Content |
 | --- | --- |
 | [Plugin settings](../../contract/v1/README.md#plugin-settings) | Setting fields, types, the `${setting:<id>}` template, and use rules |
 | [Placement, scope, effect, and page buttons](../../contract/v1/README.md#placement-scope-effect-and-page-buttons) | Placement, layers, effect timing, page buttons, and validation rules |
+| [Translations](../../contract/v1/README.md#translations) | Packaged translation files: format, language candidate order, and rejection rules |
 | [Workspace configuration](../../contract/v1/README.md#workspace-configuration) | Expanding and pushing `workspaceConfiguration` |
 | [Executable resolution](../../contract/v1/README.md#executable-resolution) | `setting` executable candidates: a global `file` setting selects the tool path, candidate order, and strict selection |
 | [Launch templates](../../contract/v1/README.md#launch-templates) | How setting values are substituted in templates |
@@ -197,6 +255,8 @@ The host stores one global value per plugin and setting, and a project value in 
 | File | Content |
 | --- | --- |
 | [`settings/settings.plugin.json`](../../contract/v1/fixtures/settings/settings.plugin.json) | Settings on the Elixir language page and the Mix build-system page, an `immediate` setting, and `settingActions` buttons |
+| [`settings/l10n/zh-Hans.json`](../../contract/v1/fixtures/settings/l10n/zh-Hans.json) | Simplified Chinese translation of that manifest: setting, option, and section titles and a button |
+| [`settings/localization-cases.json`](../../contract/v1/fixtures/settings/localization-cases.json) | 13 translation cases: choosing a file by language, falling back past a broken file, and each rejection with its field |
 | [`languages/node-runtime.plugin.json`](../../contract/v1/fixtures/languages/node-runtime.plugin.json) | A language server with plugin settings (`node` runtime) |
 | [`build-systems/build-tool-path.plugin.json`](../../contract/v1/fixtures/build-systems/build-tool-path.plugin.json) | A `file` setting selects the build tool's executable candidate |
 | [`debug-adapters/debug-adapter.plugin.json`](../../contract/v1/fixtures/debug-adapters/debug-adapter.plugin.json) | A debug adapter uses a `file` setting (`nextRun`) to pick the program to debug |

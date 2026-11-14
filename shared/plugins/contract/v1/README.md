@@ -14,6 +14,7 @@ This directory is the cross-platform source of truth:
 | `plugin-manifest.schema.json` | JSON shape of `plugin.json` |
 | `native-ui.schema.json` | JSON shape of native UI documents rendered by the host |
 | `plugin-index.schema.json` | JSON shape of a marketplace source index |
+| `plugin-l10n.schema.json` | JSON shape of a plugin's translation file `l10n/<language>.json` |
 | `fixtures/` | Valid example manifests and golden cases, one folder per contract area (below). Manifests are named after the capability they exercise rather than a published plugin. Case files name their base manifest by file name, so file names are unique across the folders |
 | `toolchains/README.md` | Implemented Core foundation: plugin definitions/provider declarations, registry (a short tool ID defined by several enabled plugins belongs to none of them), reply validation, directory pins, snapshot resolution, version matching and discovery plans; hosts that declare `toolDefinitions` use it for read-only settings pages and for Build and run tools |
 
@@ -24,7 +25,7 @@ This directory is the cross-platform source of truth:
 | `fixtures/backend/` | Plugin backends (`backend`, `backend-workspace`, `command-backend`, `terminal-backend`); cross-plugin calls (`plugin-functions-exporter`, `plugin-functions-caller`); `function-protocol.json` holds golden plugin-function negotiation, registration, invocation, outcome, progress, and refusal cases, `plugin-logging.json` the golden `litheLogging` negotiation and notifications |
 | `fixtures/editor/` | Editor actions served by a backend: `editor-actions.plugin.json`, icons, alternatives and click results in `editor-actions.json`; editor providers in `editor-providers.plugin.json` with registration and result cases in `editor-providers.json` |
 | `fixtures/ui/` | Native controls, forms, and panels, and a web panel |
-| `fixtures/settings/` | Plugin settings |
+| `fixtures/settings/` | Plugin settings; `l10n/zh-Hans.json` translates `settings.plugin.json`, and `localization-cases.json` holds golden translation choices and rejections |
 | `fixtures/build-systems/` | Build systems (`build-*`: static file, command output, instance options, model producer and consumer, tool path, toolchains); `build-plans.json` holds golden build-system plans and decoded outputs |
 | `fixtures/build-providers/` | Build providers (`build-provider*`) and the golden cases of their configuration, run options, run and debug preparation, execution, and test protocols |
 | `fixtures/debug-adapters/` | Debug adapters (standalone, served by a language server, remote attach, and `debug-adapter-features` with declared features and defaults), `debug-adapter-rejections.json`, and `debug-start.json`: what `debug.decodeBackendConfiguration` returns for each `debug/start` case |
@@ -149,6 +150,7 @@ Java and Rust SDKs implement `litheKeymapImport` 0.
 <plugin-id>/
 ├── plugin.json                    # this contract
 ├── lithe-plugin-signature.json    # publisher signature over every other file
+├── l10n/<language>.json           # optional translations (see Translations)
 └── …                              # resources referenced by plugin.json
 ```
 
@@ -531,7 +533,7 @@ unless the setting's [`effect`](#placement-scope-effect-and-page-buttons) says o
 | --- | --- |
 | `id` | Starts with a lowercase letter, then letters and digits. Unique within the plugin. |
 | `type` | `integer` (requires `minimum` and `maximum`, optional `unit`), `enum` (requires one to sixteen `options`, each `{value, title}`; values contain only letters, digits, `.`, `_`, `-`), `boolean`, `multiSelect` (one to 32 `options`; the value is an array of distinct option values), `text` (requires `pattern`, matched against the whole value; optional `maxLength`, default 256 and at most 1024 Unicode scalars; optional `placeholder`), or `file` and `directory` (an absolute path of at most 1024 Unicode scalars, or empty for "not set"; optional `placeholder`). Text and paths never start with `-` and contain no control characters. |
-| `title`, `description` | Text the host shows; the host localizes only its own chrome. |
+| `title`, `description` | Text the host shows. Write it in English; the package may [translate](#translations) it for other interface languages. |
 | `default` | Value used until the user changes it. Its JSON type follows `type`, and it must be accepted by the declaration. |
 
 Because every value is a number, a boolean, or one of the declared option
@@ -599,6 +601,57 @@ them as project (for `scope: "project"` only), then global, then default,
 skipping a stored value the declaration no longer accepts.
 `plugins.declarative.resolveSettings` returns each effective value with
 its `source` (`project`, `global`, or `default`).
+
+#### Translations
+
+A package may translate its setting text with `l10n/<language>.json` files
+([schema](plugin-l10n.schema.json)), where `<language>` is a language tag such
+as `zh-Hans` or `ja`. `plugin.json` remains the text for every language without
+a translation. Fixture: `fixtures/settings/l10n/zh-Hans.json`, with golden cases
+in `fixtures/settings/localization-cases.json`.
+
+```json
+{
+  "settings": {
+    "dialyzer": { "title": "Dialyzer 静态分析" },
+    "checks": { "title": "检查项", "options": { "format": "格式检查" } }
+  },
+  "sections": { "Server": "服务器" },
+  "settingActions": { "rebuildPlt": { "title": "重建 PLT" } }
+}
+```
+
+| Member | Translates |
+| --- | --- |
+| `settings.<id>` | The setting's `title`, `description`, `placeholder`, and `unit`; `options.<value>` is the title of an `enum` or `multiSelect` option |
+| `sections.<heading>` | A section heading, named exactly as `section` writes it |
+| `settingActions.<id>` | The action's `title` and `description` |
+
+Every member is optional, and text a file leaves out stays as `plugin.json`
+writes it. IDs, option values and their order, stored values, and the grouping
+and order of sections are the same in every language. For the interface
+language `zh-Hans-CN` the host reads `l10n/zh-Hans-CN.json`, `l10n/zh-Hans.json`,
+and `l10n/zh.json`, and shows the first one Core accepts, so one `zh-Hans` file
+serves every region.
+
+Core refuses a whole file, never part of it, with
+`plugin.settings.invalidLocalization` when:
+
+- it is not a JSON object, is larger than 1 MiB, repeats a key, or holds `null`;
+- an entry under `settings`, `sections`, or `settingActions` has a field this
+  format does not define;
+- it names a setting, option value, heading, or action the manifest does not
+  declare, gives `options` to a setting without options, or translates a field
+  the manifest leaves out;
+- a title, placeholder, unit, or heading is empty or longer than 120
+  characters, or a description is empty or longer than 480.
+
+The host then tries the next candidate and finally shows the manifest text, so
+a broken translation never hides a setting; it logs the refusal for the
+plugin's author. Core ignores top-level members it does not know, so a later
+host can read translations of more plugin text from the same files.
+Translations need no capability or `requires` entry: a host that does not read
+them shows the `plugin.json` text.
 
 ### Execution providers
 
@@ -3999,6 +4052,7 @@ command payload is a Core `invalid_request` failure instead.
 | `plugin.launch.unwritablePath` | Core | The answer writes outside the state, workspace state, log, and temporary directories |
 | `plugin.grammar.invalid` | Core | A language's grammar file is not a TextMate grammar Core accepts; `field` names the failing part |
 | `plugin.grammar.unavailable` | Core | The plugin declares no grammar for the language |
+| `plugin.settings.invalidLocalization` | Core | A [translation file](#translations) does not fit its manifest or format; the host shows the next candidate or the manifest text |
 | `plugin.vcs.reserved` | Core | A VCS provider claims the ID of the built-in Git support |
 | `plugin.vcs.invalidOutput` | Core | A VCS provider's reply does not fit the [VCS provider contract](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/contracts/vcs-provider-v1.md) |
 | `plugin.index.invalid` | Core | Malformed index root or entry, or an invalid URL, checksum, platform, version, or date |

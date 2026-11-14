@@ -11,8 +11,8 @@
 use lithe_plugin_manifest::{validate_manifest_value, SUPPORTED_PLUGIN_API_VERSIONS};
 use lithe_plugin_model::capabilities::{self, HostCapabilities, Requires};
 use lithe_plugin_model::{
-    decode_payload, is_official_namespace, is_plugin_id, is_semantic_version, PluginRejection,
-    Validation,
+    decode_payload, is_language_tag, is_official_namespace, is_plugin_id, is_semantic_version,
+    PluginRejection, Validation,
 };
 use lithe_protocol::CoreError;
 use serde::Deserialize;
@@ -203,20 +203,6 @@ fn validate_index(
     }
     plugins.sort_by(|left, right| left["id"].as_str().cmp(&right["id"].as_str()));
     Ok(json!({ "plugins": plugins, "rejected": rejected }))
-}
-
-/// Language tag in the `language[-Script][-REGION]` form used by `.lproj`
-/// directories, e.g. `zh-Hans` or `en`.
-fn is_language_tag(tag: &str) -> bool {
-    let mut parts = tag.split('-');
-    let Some(language) = parts.next() else {
-        return false;
-    };
-    (2..=3).contains(&language.len())
-        && language.chars().all(|c| c.is_ascii_lowercase())
-        && parts.all(|part| {
-            (2..=8).contains(&part.len()) && part.chars().all(|c| c.is_ascii_alphanumeric())
-        })
 }
 
 fn validate_entry(

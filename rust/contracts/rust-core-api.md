@@ -426,7 +426,7 @@ or removing a command fails until the table changes in the same commit.
 | `plugins.settings.catalog` | Project enabled plugin settings pages from installed manifests |
 | `plugins.settings.navigation` | Project searched settings navigation without platform policy |
 | `plugins.settings.delivery` | Route committed preference effects using native ownership facts |
-| `plugins.declarative.settingsState` | Read complete plugin preference documents into Core-normalized rows, sources, and bounded native read plans |
+| `plugins.declarative.settingsState` | Read complete plugin preference documents and packaged translations into Core-normalized rows, sources, and bounded native read plans |
 | `plugins.declarative.settingsActionPlan` | Resolve an installed settings action and its native confirmation requirement |
 | `plugins.installed.select` | Select numeric installed versions from native facts without reading paths |
 | `plugins.installed.lifecycle` | Report installed plugins' enablement and plan confirming an install, enabling, disabling or uninstalling one |
@@ -4086,7 +4086,8 @@ Hosts never merge layers themselves.
 
 `plugins.declarative.settingsState` accepts
 `{ manifest, globalDocument?: string|null, projectDocument?: string|null,
-  owner?: { pluginID, version } }`.
+  owner?: { pluginID, version }, language?: string,
+  localizations?: { [path]: string } }`.
 Send each complete captured UTF-8 document; null or omission means a missing
 file. An existing empty, malformed, oversized, or duplicate-key document is an
 error, not an empty layer. Native adapters must reject undecodable bytes rather
@@ -4098,8 +4099,33 @@ rejects a mismatched manifest ID or version with `plugin.settings.ownerChanged`
 before returning editable sources or catalog metadata. This binds native package
 identity; it neither enables capabilities nor grants process execution.
 
+`language` is the interface language as a tag such as `zh-Hans` or `en`; send
+it to show the plugin's own translation of its setting text (the
+`l10n/<language>.json` files of the plugin contract). Without it the state is
+not translated and `localization` is null. `localizations` holds the complete
+UTF-8 text of each candidate file the native adapter found in the installed
+package, keyed by the package-relative path from `localization.candidates`; a
+missing file is left out, and `{}` means none exists. A first call with
+`language` and without `localizations` returns the candidates to read, the same
+way the first call without documents returns `storage`; both reads can be
+answered in the second call. Native adapters read only these paths, only from
+the installed package, and never write there.
+
 Success returns `{ status: "ok", state }`. The state contains:
 
+- `localization`: null without `language`; otherwise `{ language, candidates,
+  maximumBytes: 1048576, readRequired: bool, applied: string|null,
+  rejected: [{ path, error: { code, message, field? } }] }`. `candidates` are
+  `l10n/<tag>.json` for the tag and each shorter prefix, most specific first
+  (`zh-Hans-CN` gives `zh-Hans-CN`, `zh-Hans`, `zh`). `readRequired` is true
+  until `localizations` is sent. Core checks every supplied file, applies the
+  first candidate that passes every check and names it in `applied`; a valid
+  file after it is not used. Every file that fails a check, before or after
+  the applied one, is listed in `rejected` with code
+  `plugin.settings.invalidLocalization` and the `field` of its first problem
+  (absent when the problem is the file as a whole). A refused file is never
+  partly applied, and text a file leaves out stays as written in the manifest. Hosts
+  should log rejections for the plugin's author; the page still shows.
 - `pluginID`, `actions`, and `rows` in validated declaration order. Each row has
   `declaration`, normalized `scope` and `effect`, `global` and `effective`
   `{ id, value, source }`, and `globalStored`/`projectStored` flags. `global` is
@@ -4107,7 +4133,8 @@ Success returns `{ status: "ok", state }`. The state contains:
 - `metadata`: `{ displayName, version, vendor }` from the validated manifest,
   for installed-plugin presentation without reinterpreting the manifest in a host.
 - `sections`: `{ title, rows: number[], actions: number[] }[]`, ordered by
-  section title (the empty heading first). References are zero-based indices
+  the manifest's section title (the empty heading first), so a translation
+  changes only the shown `title`. References are zero-based indices
   into `rows` and `actions`; declaration order is retained within each section.
 - `editors`: `{ global, project }`, each an array in exactly `rows` order.
   Every entry contains `value`, `resetValue`, `source`, `editable`, `overridden`
@@ -4162,7 +4189,9 @@ commands. They do not alter the plugin/SDK protocol or justify advertising
 
 Invalid documents use `plugin.settings.invalidDocument`; invalid batches,
 values, or edit scopes use `plugin.settings.invalidEdit`, with a safe `field`.
-Malformed envelopes use `invalid_request`; manifest failures retain existing
+Malformed envelopes use `invalid_request`, as do a `language` that is not a
+tag, `localizations` without `language`, and a `localizations` path that is
+not one of the candidates. Manifest failures retain existing
 rejection codes. Rejection never includes partial replacement text. Rust and
 desktop consumers share `rust/fixtures/plugins/settings-documents.json`.
 
@@ -5928,6 +5957,8 @@ no function invocation. Otherwise an unconfirmed action whose declaration has
 Once confirmed (or when the declaration needs no confirmation), `kind:"invoke"`
 adds `function` and `params:{}`. Labels and function identity always come from
 the validated manifest; callers cannot supply a different target or arguments.
+`title` is therefore the manifest text; a host that shows a translated
+settings page labels the confirmation with the state's `actions[].title`.
 See `rust/fixtures/plugins/settings-actions.json`.
 
 `confirmed` and `workspaceAvailable` are facts from the native owner, not a
@@ -5972,7 +6003,9 @@ with stable `key`, `kind` (`language` or `buildSystem`), opaque `id`, display
 `sections`). Sections reference indices in the complete settingsState rows and
 actions. Only enabled contributors create pages; action-only pages are valid.
 Names come from enabled language/build declarations, with opaque ID fallback.
-`settingsState.pages` supplies the same per-plugin placement projections.
+`settingsState.pages` supplies the same per-plugin placement projections, with
+section titles translated when the state is. Catalog contributor sections keep
+the manifest headings.
 
 `plugins.settings.navigation` accepts at most 576 two-level `items` (512 contributed pages plus 64 host entries) with stable
 `id`, `title`, nullable `parent`, `group`, `expanded`, optional `keywords`, plus

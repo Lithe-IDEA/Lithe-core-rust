@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 0,
+  "manifest": "settings.plugin.json",
+  "description": "Translation files a host passes to plugins.declarative.settingsState as localizations, and the localization report every host must get back. l10n/zh-Hans.json next to this file is the packaged translation of the same manifest. A case names the interface language and the files the native adapter found; a file is a JSON value the host sends as its serialized text, or a string the host sends as is, for text that is not JSON or repeats a key. applied is the path whose text the state shows, or null; rejected lists every file Core did not apply, with the field of the first problem (null when the problem is the file as a whole). All rejections use plugin.settings.invalidLocalization.",
+  "cases": [
+    {
+      "name": "a shorter tag serves a regional language",
+      "language": "zh-Hans-CN",
+      "files": { "l10n/zh-Hans.json": { "settings": { "dialyzer": { "title": "简体" } } } },
+      "applied": "l10n/zh-Hans.json",
+      "rejected": []
+    },
+    {
+      "name": "an invalid specific file falls back to a valid shorter one",
+      "language": "zh-Hans",
+      "files": {
+        "l10n/zh-Hans.json": { "settings": { "dialyzer": { "description": "清单里没有说明" } } },
+        "l10n/zh.json": { "settings": { "dialyzer": { "title": "中文" } } }
+      },
+      "applied": "l10n/zh.json",
+      "rejected": [{ "path": "l10n/zh-Hans.json", "field": "settings.dialyzer.description" }]
+    },
+    {
+      "name": "unknown setting",
+      "language": "zh",
+      "files": { "l10n/zh.json": { "settings": { "credo": { "title": "Credo" } } } },
+      "applied": null,
+      "rejected": [{ "path": "l10n/zh.json", "field": "settings.credo" }]
+    },
+    {
+      "name": "unknown option value",
+      "language": "zh",
+      "files": { "l10n/zh.json": { "settings": { "checks": { "options": { "lint": "检查" } } } } },
+      "applied": null,
+      "rejected": [{ "path": "l10n/zh.json", "field": "settings.checks.options.lint" }]
+    },
+    {
+      "name": "options of a setting without options",
+      "language": "zh",
+      "files": { "l10n/zh.json": { "settings": { "dialyzer": { "options": { "on": "开" } } } } },
+      "applied": null,
+      "rejected": [{ "path": "l10n/zh.json", "field": "settings.dialyzer.options" }]
+    },
+    {
+      "name": "unknown section heading",
+      "language": "zh",
+      "files": { "l10n/zh.json": { "sections": { "Client": "客户端" } } },
+      "applied": null,
+      "rejected": [{ "path": "l10n/zh.json", "field": "sections.Client" }]
+    },
+    {
+      "name": "unknown action",
+      "language": "zh",
+      "files": { "l10n/zh.json": { "settingActions": { "clean": { "title": "清理" } } } },
+      "applied": null,
+      "rejected": [{ "path": "l10n/zh.json", "field": "settingActions.clean" }]
+    },
+    {
+      "name": "empty title",
+      "language": "zh",
+      "files": { "l10n/zh.json": { "settings": { "checks": { "title": " " } } } },
+      "applied": null,
+      "rejected": [{ "path": "l10n/zh.json", "field": "settings.checks.title" }]
+    },
+    {
+      "name": "unknown field inside a setting",
+      "language": "zh",
+      "files": { "l10n/zh.json": { "settings": { "checks": { "label": "检查项" } } } },
+      "applied": null,
+      "rejected": [{ "path": "l10n/zh.json", "field": null }]
+    },
+    {
+      "name": "null instead of text",
+      "language": "zh",
+      "files": { "l10n/zh.json": { "settings": { "checks": { "title": null } } } },
+      "applied": null,
+      "rejected": [{ "path": "l10n/zh.json", "field": null }]
+    },
+    {
+      "name": "duplicate keys",
+      "language": "zh",
+      "files": { "l10n/zh.json": "{\"sections\":{\"Server\":\"一\",\"Server\":\"二\"}}" },
+      "applied": null,
+      "rejected": [{ "path": "l10n/zh.json", "field": null }]
+    },
+    {
+      "name": "not JSON",
+      "language": "zh",
+      "files": { "l10n/zh.json": "settings: {}" },
+      "applied": null,
+      "rejected": [{ "path": "l10n/zh.json", "field": null }]
+    },
+    {
+      "name": "no file for the language",
+      "language": "fr",
+      "files": {},
+      "applied": null,
+      "rejected": []
+    }
+  ]
+}

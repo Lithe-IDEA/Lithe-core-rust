@@ -2,6 +2,7 @@
 //! settings state, action, edit and workspace configuration commands.
 
 use super::*;
+use lithe_plugin_model::settings::LocalizationRequest;
 
 impl DeclarativePluginManifest {
     /// Checks the declared settings, sorts them by ID, and returns the IDs
@@ -129,13 +130,29 @@ struct SettingsStatePayload {
     /// Missing files are null; an existing empty or malformed file is an error.
     global_document: Option<String>,
     project_document: Option<String>,
+    /// Interface language whose plugin translation to apply, such as `zh-Hans`.
+    #[serde(default)]
+    language: Option<String>,
+    /// Translation files the native adapter found among the state's
+    /// `localization.candidates`, by package-relative path. Absent until read.
+    #[serde(default)]
+    localizations: Option<BTreeMap<String, String>>,
 }
 
 /// `plugins.declarative.settingsState`: checked UI rows and raw declared launch
 /// layers. Reading a state neither edits storage nor admits plugin capabilities.
 pub fn settings_state_command(payload: Value) -> Result<Value, CoreError> {
-    let payload: SettingsStatePayload =
-        decode_payload(payload, "plugins.declarative.settingsState")?;
+    const COMMAND: &str = "plugins.declarative.settingsState";
+    let payload: SettingsStatePayload = decode_payload(payload, COMMAND)?;
+    let localization =
+        LocalizationRequest::new(payload.language.as_deref(), payload.localizations.as_ref())
+            .map_err(|reason| {
+                CoreError::new(
+                    ErrorCode::InvalidRequest,
+                    format!("Invalid {COMMAND} payload"),
+                )
+                .with_details(reason)
+            })?;
     Ok(outcome(validate_manifest_value(payload.manifest).and_then(
         |manifest| {
             if payload.owner.as_ref().is_some_and(|owner| {
@@ -147,15 +164,20 @@ pub fn settings_state_command(payload: Value) -> Result<Value, CoreError> {
                     "The manifest does not match the captured installed package identity.",
                 ));
             }
+            let (translation, report) = localization.as_ref().map_or((None, Value::Null), |request| {
+                request.select(&manifest.settings, &manifest.setting_actions)
+            });
             lithe_plugin_model::settings::document_state(
                 &manifest.id,
                 &manifest.settings,
                 &manifest.setting_actions,
                 payload.global_document.as_deref(),
                 payload.project_document.as_deref(),
+                translation.as_ref(),
             )
             .map(|mut state| {
                 state["metadata"] = json!({"displayName": manifest.display_name, "version":manifest.version, "vendor":manifest.vendor.display_name});
+                state["localization"] = report;
                 ("state", state)
             })
         },

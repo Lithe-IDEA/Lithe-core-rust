@@ -26,6 +26,20 @@ pub fn is_bare_command(value: &str) -> bool {
         && !value.chars().any(char::is_whitespace)
 }
 
+/// Language tag in the `language[-Script][-REGION]` form used by `.lproj`
+/// directories and `l10n/` files, e.g. `zh-Hans` or `en`.
+pub fn is_language_tag(tag: &str) -> bool {
+    let mut parts = tag.split('-');
+    let Some(language) = parts.next() else {
+        return false;
+    };
+    (2..=3).contains(&language.len())
+        && language.chars().all(|c| c.is_ascii_lowercase())
+        && parts.all(|part| {
+            (2..=8).contains(&part.len()) && part.chars().all(|c| c.is_ascii_alphanumeric())
+        })
+}
+
 /// A short identifier: lowercase letters, digits and `-`.
 pub fn is_identifier(value: &str) -> bool {
     !value.is_empty()

@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Lithe-IDEA/Lithe-core-rust/main/shared/plugins/contract/v1/plugin-l10n.schema.json",
+  "title": "Lithe plugin translation file (plugin contract v1)",
+  "description": "Shape of l10n/<language>.json in a plugin package, such as l10n/zh-Hans.json: the plugin's own text in one interface language. Every member is optional, and text it leaves out stays as written in plugin.json. Rules that JSON Schema cannot express (every ID, option value and heading must exist in plugin.json, a field is translated only when plugin.json has it, no key repeats) are defined in README.md and enforced by plugins.declarative.settingsState, which reports a file that breaks one with plugin.settings.invalidLocalization and applies none of it. Core ignores top-level members it does not know, so a file that also translates text a later host supports stays usable on older hosts; this schema lists only the members Core reads today.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "description": "Editor hint only; Core ignores it.", "type": "string" },
+    "settings": {
+      "description": "Text of settings[] entries, by setting ID.",
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][A-Za-z0-9]*(?![\\s\\S])", "maxLength": 120 },
+      "additionalProperties": { "$ref": "#/$defs/settingText" }
+    },
+    "sections": {
+      "description": "Shown text of section headings, by the heading exactly as written in a setting's or action's section. Grouping and order still follow the original heading.",
+      "type": "object",
+      "propertyNames": { "minLength": 1, "maxLength": 120 },
+      "additionalProperties": { "$ref": "#/$defs/label" }
+    },
+    "settingActions": {
+      "description": "Text of settingActions[] entries, by action ID.",
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][A-Za-z0-9]*(?![\\s\\S])", "maxLength": 120 },
+      "additionalProperties": { "$ref": "#/$defs/actionText" }
+    }
+  },
+  "$defs": {
+    "label": {
+      "description": "Short text: not only whitespace, at most 120 characters.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "pattern": "\\S"
+    },
+    "description": {
+      "description": "Not only whitespace, at most 480 characters.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 480,
+      "pattern": "\\S"
+    },
+    "settingText": {
+      "description": "Each member replaces the field of the same name; plugin.json must have that field.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": { "$ref": "#/$defs/label" },
+        "description": { "$ref": "#/$defs/description" },
+        "placeholder": { "$ref": "#/$defs/label" },
+        "unit": { "$ref": "#/$defs/label" },
+        "options": {
+          "description": "enum and multiSelect only: option titles, by option value. Values and their order stay as declared.",
+          "type": "object",
+          "propertyNames": { "pattern": "^[A-Za-z0-9._-]+(?![\\s\\S])", "maxLength": 120 },
+          "additionalProperties": { "$ref": "#/$defs/label" }
+        }
+      }
+    },
+    "actionText": {
+      "description": "Each member replaces the field of the same name; plugin.json must have that field.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": { "$ref": "#/$defs/label" },
+        "description": { "$ref": "#/$defs/description" }
+      }
+    }
+  }
+}
