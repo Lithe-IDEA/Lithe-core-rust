@@ -34,6 +34,7 @@ mod git_workspace_commit;
 mod git_workspace_status;
 mod git_worktree_creation_preview;
 mod github;
+mod group_layout;
 mod history_events;
 mod installed_lifecycle;
 mod installed_versions;

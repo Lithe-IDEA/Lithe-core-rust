@@ -178,10 +178,50 @@ returned as sent, so a host may send only the groups an action involves. `emptyG
 `normalize.unplaced` members no group lists join the focused group (the first group when `focusedGroup` is missing or
 stale), and `focusedGroup` moves to the first remaining group when its group was removed. Actions that name an unknown
 group or an unknown move destination change nothing. `removedGroupIds` lists removed groups in their previous order so
-hosts prune their own layout tree; split directions, ratios, pixels and dragging never reach Core. A malformed payload is
-`invalid_request`. It lives in `rust/crates/core-rules` and hosts call it synchronously through the C ABI, one call per
-user action. Core and the rules crate run every case of
+hosts that keep their own layout tree can prune it; a host that keeps the tree in the shape below uses
+`editor.groupLayout.reduce` instead. A malformed payload is `invalid_request`. It lives in `rust/crates/core-rules` and
+hosts call it synchronously through the C ABI, one call per user action. Core and the rules crate run every case of
 `rust/fixtures/editor/workbench-state-v1.json` through it.
+
+`editor.groupLayout.reduce` accepts `{state?, layout?, action}` and returns
+`{state, layout, removedGroupIds, group?, rejection?}`. `state` is the `editor.workbenchState.reduce` state, and its
+group IDs must be unique and not empty. `layout` is the tree that divides the editor area among the groups: a leaf
+`{group}` or a split `{node, row?, first, second}`, where `row` lays the children side by side (otherwise `first` is
+above `second`) and `node` is the host's number for the split, unique in the tree; a group appears at most once, and
+`layout` is `null` or missing when the editor area shows no group. Groups the layout does not show, such as a group
+docked in a tool window, may be in `state`. Splitter ratios, pixels and the drag in progress stay in the host, which
+keeps them by `node` and starts a split Core made in the middle. Before and after the action a leaf whose group is not
+in `state` leaves the tree, and the sibling of a removed leaf takes the room of their split. `action` is any action of
+`editor.workbenchState.reduce`, or tagged by `kind`:
+
+- `openTab {member, preferredGroup?, newGroup}` opens and shows `member` in `preferredGroup` while the layout shows it,
+  otherwise in the first group of the layout (leftmost, then topmost). Without a layout it adds the empty group
+  `newGroup`, which must be new, after the others and makes it the whole layout.
+- `dropTab {member, target, docked?, dockable?, newGroup?, newNode?}` releases a dragged tab. `docked` lists groups in
+  tool windows and `dockable` says whether the tab may join them. `target` is tagged by `kind`: `join {group, index}`
+  puts the tab in `group` at `index` counted among its tabs without the dragged one (an index past the end appends; in
+  the tab's own group it reorders), `split {group, edge}` with `edge` `left`, `right`, `top` or `bottom` puts it in the
+  new group `newGroup` on that side of `group` under the new split `newNode`, and `empty` puts it in the new group
+  `newGroup` that becomes the whole layout. The tab is shown where it lands, and a group it left empty is removed
+  unless it is docked. `group` in the response names that group. A drop whose tab or place no longer fits the request
+  returns `rejection: "editor.groupLayout.stale"` (the tab is in no group, `group` is not in `state`, a split `group`
+  is not in `layout`, or `empty` while `layout` shows a group); a place the drop rules refuse returns
+  `rejection: "editor.groupLayout.refused"`. With a rejection, `state` and `layout` are as sent. A split or an empty
+  drop without a new `newGroup`, or a split without a `newNode` unused in the layout, is `invalid_request`.
+- `removeEmptyGroups {groups}` removes the named groups that have no tab and keeps every other group.
+
+`group` is set after `openTab` and an applied `dropTab`. `removedGroupIds` lists the groups that left `state` in their
+previous order.
+
+`editor.groupLayout.dropTargets` accepts `{state?, layout?, member, docked?, dockable?}` and returns
+`{groups: [{group, join, split, append}], empty}`, one entry per group of `state` in its order. The drop rules: a group
+whose only tab is `member` accepts nothing, since the drop changes nothing, and neither does a docked group when the tab
+is not `dockable`. Every other group accepts the tab in its strip (`join`); its body accepts a split on an edge
+(`split`) unless the group is docked or the layout does not show it, and accepts the tab at its end (`append`) unless
+the tab is already in the group. `empty` says the editor area shows no group and the tab may open its first one. A
+tab no group has gets no place. The host asks once when a drag starts and hit-tests the pointer against what it
+painted. A malformed payload is `invalid_request` for both commands. Both live in `rust/crates/editor-layout`; Core
+runs every case of `rust/fixtures/editor/group-layout-v1.json` through them.
 
 `workspace.classifyVisibility` accepts `{hiddenDirectoryNames?, hiddenFilePatterns?, entries: [{path, isDirectory?}]}`
 and returns `{hidden: boolean[], watchedDespiteHiding: boolean[]}` with one answer per entry, in request order. `path`
@@ -513,6 +553,8 @@ or removing a command fails until the table changes in the same commit.
 | `keymap.analyzeConflicts` | Find conflicts among the final layered shortcut bindings (from `lithe-core-rules`) |
 | `keymap.modifierGestureStep` | Advance the double-Shift gesture recognizer by one event. The rule itself lives in `lithe-core-rules` so the Windows frontend can run it synchronously |
 | `editor.workbenchState.reduce` | Apply one editor-group state transition: open, close, move, pin, preview, merge or normalize. The rule lives in `lithe-core-rules` so the Windows frontend can run it synchronously inside store updates |
+| `editor.groupLayout.reduce` | Apply one transition to the editor groups and the tree that divides the editor area among them: a workbench state action, opening a tab, dropping a dragged tab or removing empty groups (from `lithe-editor-layout`) |
+| `editor.groupLayout.dropTargets` | Say which places of each editor group accept a dragged tab (from `lithe-editor-layout`) |
 | `workspace.classifyVisibility` | Classify a batch of workspace-relative paths as hidden or visible. The rule lives in `lithe-core-rules` so the Windows frontend can run it synchronously |
 | `workspace.visibilityDefaults` | Return the built-in hidden-path lists (from `lithe-core-rules`) |
 | `workbench.chromeLayout.reduce` | Apply one transition to the rearrangeable workbench chrome: stripe, title bar and status bar button placement and open tool panels (from `lithe-core-rules`) |

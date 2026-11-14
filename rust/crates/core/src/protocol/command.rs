@@ -536,6 +536,13 @@ pub enum EditorCommand {
     /// (`editor.workbenchState.reduce`). The rule lives in `lithe-core-rules` so the Windows frontend
     /// can run it synchronously inside store updates.
     WorkbenchStateReduce,
+    /// Applies one transition to the editor groups and the tree that divides the editor area
+    /// among them: a workbench state action, opening a tab, dropping a dragged one or removing
+    /// empty groups (`editor.groupLayout.reduce`).
+    GroupLayoutReduce,
+    /// Says which places of each editor group accept a dragged tab
+    /// (`editor.groupLayout.dropTargets`).
+    GroupLayoutDropTargets,
     /// Applies a deterministic line-level editing transform
     /// (`editor.lineEdit`).
     LineEdit,
@@ -1167,6 +1174,10 @@ impl CoreCommand {
             "keymap.modifierGestureStep" => Some(Self::Keymap(KeymapCommand::ModifierGestureStep)),
             "editor.workbenchState.reduce" => {
                 Some(Self::Editor(EditorCommand::WorkbenchStateReduce))
+            }
+            "editor.groupLayout.reduce" => Some(Self::Editor(EditorCommand::GroupLayoutReduce)),
+            "editor.groupLayout.dropTargets" => {
+                Some(Self::Editor(EditorCommand::GroupLayoutDropTargets))
             }
             "workspace.classifyVisibility" => {
                 Some(Self::Workspace(WorkspaceCommand::ClassifyVisibility))

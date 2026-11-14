@@ -907,6 +907,7 @@ dependencies = [
  "lithe-diff",
  "lithe-document-uri",
  "lithe-editor",
+ "lithe-editor-layout",
  "lithe-execution",
  "lithe-git",
  "lithe-git-host",
@@ -1007,6 +1008,16 @@ dependencies = [
  "lithe-protocol",
  "lithe-text",
  "regex",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lithe-editor-layout"
+version = "0.1.0"
+dependencies = [
+ "lithe-core-rules",
+ "lithe-protocol",
  "serde",
  "serde_json",
 ]
