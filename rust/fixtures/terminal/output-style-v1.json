@@ -1,0 +1,426 @@
+{
+  "version": 1,
+  "description": "outputStyle.decode: each case sends its chunks in order, passing back the state each answer returned. lines are all finished lines, oldest first; open is the final state's line.",
+  "cases": [
+    {
+      "name": "maven info line",
+      "chunks": [
+        "[\u001b[1;34mINFO\u001b[m] Building \u001b[1mlithe\u001b[m\n"
+      ],
+      "lines": [
+        {
+          "text": "[INFO] Building lithe",
+          "spans": [
+            {
+              "start": 1,
+              "length": 4,
+              "style": {
+                "foreground": {
+                  "index": 4
+                },
+                "bold": true
+              }
+            },
+            {
+              "start": 16,
+              "length": 5,
+              "style": {
+                "bold": true
+              }
+            }
+          ]
+        }
+      ],
+      "open": {
+        "text": ""
+      }
+    },
+    {
+      "name": "escape split across chunks",
+      "chunks": [
+        "\u001b[3",
+        "2mok\u001b",
+        "[0m done\n"
+      ],
+      "lines": [
+        {
+          "text": "ok done",
+          "spans": [
+            {
+              "start": 0,
+              "length": 2,
+              "style": {
+                "foreground": {
+                  "index": 2
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "open": {
+        "text": ""
+      }
+    },
+    {
+      "name": "extended colours",
+      "chunks": [
+        "\u001b[38;5;208ma\u001b[48;2;16;32;48mb\u001b[0;38:2::255:0:0mc\u001b[38:5:21md\u001b[m\n"
+      ],
+      "lines": [
+        {
+          "text": "abcd",
+          "spans": [
+            {
+              "start": 0,
+              "length": 1,
+              "style": {
+                "foreground": {
+                  "index": 208
+                }
+              }
+            },
+            {
+              "start": 1,
+              "length": 1,
+              "style": {
+                "foreground": {
+                  "index": 208
+                },
+                "background": {
+                  "rgb": "#102030"
+                }
+              }
+            },
+            {
+              "start": 2,
+              "length": 1,
+              "style": {
+                "foreground": {
+                  "rgb": "#ff0000"
+                }
+              }
+            },
+            {
+              "start": 3,
+              "length": 1,
+              "style": {
+                "foreground": {
+                  "index": 21
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "open": {
+        "text": ""
+      }
+    },
+    {
+      "name": "invalid extended colours keep the colour",
+      "chunks": [
+        "\u001b[31;38;5;300mz\u001b[38;2;1;2mq\n"
+      ],
+      "lines": [
+        {
+          "text": "zq",
+          "spans": [
+            {
+              "start": 0,
+              "length": 2,
+              "style": {
+                "foreground": {
+                  "index": 1
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "open": {
+        "text": ""
+      }
+    },
+    {
+      "name": "bright colours and resets",
+      "chunks": [
+        "\u001b[91;1mE\u001b[22mr\u001b[39;104mb\u001b[49;3;4mi\u001b[23;24;9ms\u001b[29;7;2mv\u001b[27;22mx\n"
+      ],
+      "lines": [
+        {
+          "text": "Erbisvx",
+          "spans": [
+            {
+              "start": 0,
+              "length": 1,
+              "style": {
+                "foreground": {
+                  "index": 9
+                },
+                "bold": true
+              }
+            },
+            {
+              "start": 1,
+              "length": 1,
+              "style": {
+                "foreground": {
+                  "index": 9
+                }
+              }
+            },
+            {
+              "start": 2,
+              "length": 1,
+              "style": {
+                "background": {
+                  "index": 12
+                }
+              }
+            },
+            {
+              "start": 3,
+              "length": 1,
+              "style": {
+                "italic": true,
+                "underline": true
+              }
+            },
+            {
+              "start": 4,
+              "length": 1,
+              "style": {
+                "strikethrough": true
+              }
+            },
+            {
+              "start": 5,
+              "length": 1,
+              "style": {
+                "inverse": true,
+                "dim": true
+              }
+            }
+          ]
+        }
+      ],
+      "open": {
+        "text": ""
+      }
+    },
+    {
+      "name": "style continues across lines",
+      "chunks": [
+        "\u001b[32mone\n",
+        "two\u001b[0m\nthree"
+      ],
+      "lines": [
+        {
+          "text": "one",
+          "spans": [
+            {
+              "start": 0,
+              "length": 3,
+              "style": {
+                "foreground": {
+                  "index": 2
+                }
+              }
+            }
+          ]
+        },
+        {
+          "text": "two",
+          "spans": [
+            {
+              "start": 0,
+              "length": 3,
+              "style": {
+                "foreground": {
+                  "index": 2
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "open": {
+        "text": "three"
+      }
+    },
+    {
+      "name": "carriage return rewrites the line",
+      "chunks": [
+        "Downloading 10%\r",
+        "Downloading 100%\r\n",
+        "done"
+      ],
+      "lines": [
+        {
+          "text": "Downloading 100%"
+        }
+      ],
+      "open": {
+        "text": "done"
+      }
+    },
+    {
+      "name": "erase in line and first column",
+      "chunks": [
+        "abc\r\u001b[K\n",
+        "xy\u001b[2Kready\n",
+        "50%\u001b[1G100%\n",
+        "keep\u001b[Kme\n"
+      ],
+      "lines": [
+        {
+          "text": ""
+        },
+        {
+          "text": "ready"
+        },
+        {
+          "text": "100%"
+        },
+        {
+          "text": "keepme"
+        }
+      ],
+      "open": {
+        "text": ""
+      }
+    },
+    {
+      "name": "other sequences and controls are dropped",
+      "chunks": [
+        "\u001b]0;title\u0007\u001b]8;;https://x.test\u001b\\link\u001b]8;;\u001b\\ \u001bPq#0\u001b\\\u001b[?25l\u001b(Bo\u001b=k\u001b[?25h\u001b[2J\u0007\b\n"
+      ],
+      "lines": [
+        {
+          "text": "link ok"
+        }
+      ],
+      "open": {
+        "text": ""
+      }
+    },
+    {
+      "name": "private and intermediate sequences are not styles",
+      "chunks": [
+        "\u001b[>4;2mplain\u001b[1 mstill\n"
+      ],
+      "lines": [
+        {
+          "text": "plainstill"
+        }
+      ],
+      "open": {
+        "text": ""
+      }
+    },
+    {
+      "name": "crlf and tabs",
+      "chunks": [
+        "a\tb\r\nc\r\n"
+      ],
+      "lines": [
+        {
+          "text": "a\tb"
+        },
+        {
+          "text": "c"
+        }
+      ],
+      "open": {
+        "text": ""
+      }
+    },
+    {
+      "name": "ranges count utf16 code units",
+      "chunks": [
+        "\u001b[1m✓\u001b[0m 构建 \u001b[33m😀ok\u001b[m\n"
+      ],
+      "lines": [
+        {
+          "text": "✓ 构建 😀ok",
+          "spans": [
+            {
+              "start": 0,
+              "length": 1,
+              "style": {
+                "bold": true
+              }
+            },
+            {
+              "start": 5,
+              "length": 4,
+              "style": {
+                "foreground": {
+                  "index": 3
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "open": {
+        "text": ""
+      }
+    },
+    {
+      "name": "string sequence split across chunks",
+      "chunks": [
+        "a\u001b]8;;https://exa",
+        "mple.test\u001b",
+        "\\b\n"
+      ],
+      "lines": [
+        {
+          "text": "ab"
+        }
+      ],
+      "open": {
+        "text": ""
+      }
+    },
+    {
+      "name": "lone escape and unfinished control sequence",
+      "chunks": [
+        "x\u001b\u001b[31\ny\u001b[m\n"
+      ],
+      "lines": [
+        {
+          "text": "x"
+        },
+        {
+          "text": "y"
+        }
+      ],
+      "open": {
+        "text": ""
+      }
+    },
+    {
+      "name": "open line keeps its style",
+      "chunks": [
+        "\u001b[36mcoord"
+      ],
+      "lines": [],
+      "open": {
+        "text": "coord",
+        "spans": [
+          {
+            "start": 0,
+            "length": 5,
+            "style": {
+              "foreground": {
+                "index": 6
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

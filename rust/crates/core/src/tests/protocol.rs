@@ -540,3 +540,38 @@ fn terminal_link_fixtures_cross_the_json_boundary() {
         );
     }
 }
+
+#[test]
+fn output_style_fixtures_cross_the_json_boundary() {
+    // Each case replays its chunks with the state the previous answer returned, as a host does.
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../fixtures/terminal/output-style-v1.json"
+    ))
+    .unwrap();
+    for case in fixture["cases"].as_array().unwrap() {
+        let mut lines = Vec::new();
+        let mut state = Value::Null;
+        for chunk in case["chunks"].as_array().unwrap() {
+            let mut request = serde_json::json!({ "text": chunk });
+            if !state.is_null() {
+                request["state"] = state;
+            }
+            let result = call_fixture_command("outputStyle.decode", request);
+            assert_eq!(result["ok"], true, "{}: {result}", case["name"]);
+            lines.extend(result["data"]["lines"].as_array().unwrap().iter().cloned());
+            state = result["data"]["state"].clone();
+        }
+        assert_eq!(Value::Array(lines), case["lines"], "{}", case["name"]);
+        assert_eq!(state["line"], case["open"], "{}", case["name"]);
+    }
+}
+
+#[test]
+fn output_style_rejects_a_state_it_did_not_return() {
+    let result = call_fixture_command(
+        "outputStyle.decode",
+        serde_json::json!({ "text": "x", "state": { "line": { "text": "a" }, "pending": "not an escape" } }),
+    );
+    assert_eq!(result["ok"], false);
+    assert_eq!(result["error"]["code"], "invalid_request");
+}

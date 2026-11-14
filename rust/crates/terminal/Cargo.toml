@@ -3,8 +3,11 @@ name = "lithe-terminal"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
-description = "Terminal output link detection shared by every Lithe host"
+description = "Terminal output link detection and ANSI style decoding shared by every Lithe host"
 
 [dependencies]
 lithe-protocol = { path = "../protocol" }
 serde = { version = "1.0", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = { version = "1.0", features = ["preserve_order"] }

@@ -251,6 +251,32 @@ itself says it is a path (separator, `~`, `file://`, provider URI or line suffix
 file extensions or touches the file system: the host checks existence, owns hit regions, and opens the
 target. At most 256 texts of 4096 bytes. See `rust/fixtures/terminal/link-target-v1.json`.
 
+## Output styles
+
+`outputStyle.decode` accepts `{text, state?}` and returns `{lines: Line[], state}`. A host sends each chunk of one
+console's output as it arrives, passing back the `state` the previous answer returned (none for the first chunk), and
+keeps only plain text plus styled ranges, so copying, search, output links and the IDE API never see an escape. A
+`Line` is `{text, spans?}`: the text without its line ending and `{start, length, style}` ranges in UTF-16 code units,
+ascending and non-overlapping; text outside every range is plain. A `style` has optional `foreground` and `background`
+(`{index: 0-255}` or `{rgb: "#rrggbb"}`) and the flags `bold`, `dim`, `italic`, `underline`, `inverse`, `hidden` and
+`strikethrough`, each omitted when unset. `lines` are the lines the chunk ended, oldest first, the first continuing the
+previous open line; `state.line` is the line still open, which the host shows after them. The rest of the state (the
+style in effect, an unfinished escape sequence and a pending carriage return) is opaque to the host, and a state Core
+did not return is `invalid_request`.
+
+SGR (`ESC [ … m`) sets the style across chunks and lines: 0 resets; 1, 2, 3, 4 (`4:0` off), 7, 8, 9 and 21 set
+attributes and 22–29 clear them; 30–37, 90–97, 40–47 and 100–107 pick palette colours 0–15, and 39 and 49 restore the
+defaults; 38 and 48 take `5;n` or `2;r;g;b`, also in the colon forms `38:5:n`, `38:2:r:g:b` and `38:2::r:g:b`; 58 is
+consumed and ignored, and an invalid colour keeps the current one. `\n` ends a line. `\r` makes the next printed
+character replace the line, so `\r\n` is a plain line ending and progress rewrites keep their last state; `ESC [ 2 K`,
+and `ESC [ K` right after a carriage return, clear the line; `ESC [ G` (column 1) acts as `\r`. Private (`<=>?`) and
+intermediate-byte sequences, every other control sequence, OSC/DCS/SOS/PM/APC strings (up to BEL or `ESC \`, keeping
+the text between OSC 8 hyperlink markers), other escapes, and control characters other than tab are dropped. The host
+maps palette entries 0–15 to its theme and 16–255 to the xterm cube and grey ramp, swaps colours for `inverse` and
+draws `hidden` text in the background colour. A chunk is at most 1 MiB; lines longer than 16 KiB continue on the next
+line, and a line keeps at most 512 ranges. Lives in `rust/crates/terminal`; see
+`rust/fixtures/terminal/output-style-v1.json`.
+
 The Rust core is the shared application runtime for macOS SwiftUI and Windows
 React/Tauri. macOS calls the stable C ABI while the Tauri host links the Rust
 crate directly. The C ABI remains:
@@ -567,6 +593,7 @@ or removing a command fails until the table changes in the same commit.
 | `workspace.visibilityDefaults` | Return the built-in hidden-path lists (from `lithe-core-rules`) |
 | `workbench.chromeLayout.reduce` | Apply one transition to the rearrangeable workbench chrome: stripe, title bar and status bar button placement, hidden stripe buttons and open tool panels (from `lithe-core-rules`) |
 | `terminal.parseLinkTarget` | Resolve terminal link candidates into file or external targets |
+| `outputStyle.decode` | Decode one chunk of console output with ANSI escapes into plain lines and styled ranges, carrying the console's state to the next chunk |
 | `debug.createSession` | Create a transport-neutral DAP session and return its initialize frame |
 | `debug.launch` | Queue a launch or attach request, including during initialization |
 | `debug.steppingFilters` | Return adapter defaults or normalize portable stepping filters |
