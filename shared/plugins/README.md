@@ -65,14 +65,15 @@ Lithe 读取并校验 `plugin.json`，然后自己启动其中声明的外部进
 
 ### 在编辑器里校验 plugin.json
 
-契约里的两份 JSON Schema 地址固定：
+契约里的 JSON Schema 地址固定：
 
 | 文件 | Schema |
 | --- | --- |
 | `plugin.json` | `https://raw.githubusercontent.com/Lithe-IDEA/Lithe-core-rust/main/shared/plugins/contract/v1/plugin-manifest.schema.json` |
 | `lithe-plugin-index.json` | `https://raw.githubusercontent.com/Lithe-IDEA/Lithe-core-rust/main/shared/plugins/contract/v1/plugin-index.schema.json` |
+| `l10n/<语言>.json`（如 `l10n/zh-Hans.json`） | `https://raw.githubusercontent.com/Lithe-IDEA/Lithe-core-rust/main/shared/plugins/contract/v1/plugin-l10n.schema.json` |
 
-> **不要在 `plugin.json` 里写 `"$schema"`。** Lithe 会拒绝清单中的未知字段，加了以后插件反而装不上。请在编辑器里按文件名关联 Schema。
+> **不要在 `plugin.json` 里写 `"$schema"`。** Lithe 会拒绝清单中的未知字段，加了以后插件反而装不上。请在编辑器里按文件名关联 Schema。翻译文件 `l10n/*.json` 可以写 `"$schema"`，Lithe 会忽略它。
 
 VS Code：在插件仓库的 `.vscode/settings.json` 中加入
 
@@ -86,12 +87,16 @@ VS Code：在插件仓库的 `.vscode/settings.json` 中加入
     {
       "fileMatch": ["**/lithe-plugin-index.json"],
       "url": "https://raw.githubusercontent.com/Lithe-IDEA/Lithe-core-rust/main/shared/plugins/contract/v1/plugin-index.schema.json"
+    },
+    {
+      "fileMatch": ["**/l10n/*.json"],
+      "url": "https://raw.githubusercontent.com/Lithe-IDEA/Lithe-core-rust/main/shared/plugins/contract/v1/plugin-l10n.schema.json"
     }
   ]
 }
 ```
 
-JetBrains IDE：设置 → Languages & Frameworks → Schemas and DTDs → JSON Schema Mappings，添加上面的 URL，文件模式填 `plugin.json`。
+JetBrains IDE：设置 → Languages & Frameworks → Schemas and DTDs → JSON Schema Mappings，按上表添加每个 URL 和它的文件模式，例如 `plugin.json`。
 
 Schema 只检查 JSON 结构。ID 引用、权限、激活事件、模板变量这类规则由 Lithe 在安装时检查，规则写在[插件契约](#插件契约)里。
 
@@ -166,6 +171,7 @@ SDK 的源码都在本目录的 `sdk/` 下，发布在 [Core 仓库的 Releases]
 | [`plugin-manifest.schema.json`](contract/v1/plugin-manifest.schema.json) | `plugin.json` 的 JSON Schema |
 | [`plugin-index.schema.json`](contract/v1/plugin-index.schema.json) | `lithe-plugin-index.json` 的 JSON Schema |
 | [`native-ui.schema.json`](contract/v1/native-ui.schema.json) | `ui` 能力里宿主渲染的原生内容的 JSON Schema |
+| [`plugin-l10n.schema.json`](contract/v1/plugin-l10n.schema.json) | 插件翻译文件 `l10n/<语言>.json` 的 JSON Schema |
 | [`toolchains/`](contract/v1/toolchains/README.md) | 插件提供的工具链：工具定义、版本管理器提供方、提供方后端协商（`litheToolchains`）、查询与回复校验（含稳定失败码）、固定值（pin）和四层解析。Core 实现这些命令；Lithe 桌面端声明 `toolDefinitions`，未声明 `toolchainProviders` |
 | [`fixtures/`](contract/v1/fixtures) | 标准用例，按功能分目录（`manifest`、`languages`、`backend`、`build-systems`、`build-providers`、`marketplace` 等），和 [reference 功能页](reference/README.md#功能页)一一对应：合法和非法的清单、命令和构建规划、插件函数协议、市场索引，以及 Lithe 对每个用例的预期结果 |
 
@@ -269,14 +275,15 @@ A capability may get a new version later. One change adds a new version to exact
 
 ### Validate plugin.json in your editor
 
-The contract's two JSON Schemas have fixed addresses:
+The contract's JSON Schemas have fixed addresses:
 
 | File | Schema |
 | --- | --- |
 | `plugin.json` | `https://raw.githubusercontent.com/Lithe-IDEA/Lithe-core-rust/main/shared/plugins/contract/v1/plugin-manifest.schema.json` |
 | `lithe-plugin-index.json` | `https://raw.githubusercontent.com/Lithe-IDEA/Lithe-core-rust/main/shared/plugins/contract/v1/plugin-index.schema.json` |
+| `l10n/<language>.json` (such as `l10n/zh-Hans.json`) | `https://raw.githubusercontent.com/Lithe-IDEA/Lithe-core-rust/main/shared/plugins/contract/v1/plugin-l10n.schema.json` |
 
-> **Do not put `"$schema"` in `plugin.json`.** Lithe refuses unknown manifest fields, so adding it makes the plugin uninstallable. Associate the schema by file name in your editor instead.
+> **Do not put `"$schema"` in `plugin.json`.** Lithe refuses unknown manifest fields, so adding it makes the plugin uninstallable. Associate the schema by file name in your editor instead. Translation files `l10n/*.json` may contain `"$schema"`; Lithe ignores it.
 
 VS Code: add this to `.vscode/settings.json` in your plugin repository:
 
@@ -290,12 +297,16 @@ VS Code: add this to `.vscode/settings.json` in your plugin repository:
     {
       "fileMatch": ["**/lithe-plugin-index.json"],
       "url": "https://raw.githubusercontent.com/Lithe-IDEA/Lithe-core-rust/main/shared/plugins/contract/v1/plugin-index.schema.json"
+    },
+    {
+      "fileMatch": ["**/l10n/*.json"],
+      "url": "https://raw.githubusercontent.com/Lithe-IDEA/Lithe-core-rust/main/shared/plugins/contract/v1/plugin-l10n.schema.json"
     }
   ]
 }
 ```
 
-JetBrains IDEs: Settings → Languages & Frameworks → Schemas and DTDs → JSON Schema Mappings; add the URL above with the file pattern `plugin.json`.
+JetBrains IDEs: Settings → Languages & Frameworks → Schemas and DTDs → JSON Schema Mappings; add each URL from the table above with its file pattern, such as `plugin.json`.
 
 A schema checks only JSON structure. Rules such as ID references, permissions, activation events, and template variables are checked by Lithe at install time and are written in the [plugin contract](#plugin-contract).
 
@@ -370,6 +381,7 @@ The plugin contract defines the meaning, validation rules, and error codes of ev
 | [`plugin-manifest.schema.json`](contract/v1/plugin-manifest.schema.json) | JSON Schema for `plugin.json` |
 | [`plugin-index.schema.json`](contract/v1/plugin-index.schema.json) | JSON Schema for `lithe-plugin-index.json` |
 | [`native-ui.schema.json`](contract/v1/native-ui.schema.json) | JSON Schema for the host-rendered native content of the `ui` capability |
+| [`plugin-l10n.schema.json`](contract/v1/plugin-l10n.schema.json) | JSON Schema for a plugin's translation file `l10n/<language>.json` |
 | [`toolchains/`](contract/v1/toolchains/README.md) | Plugin-owned toolchains: tool definitions, version manager providers, provider backend negotiation (`litheToolchains`), query and reply validation (with stable failure codes), pins, and four-layer resolution. Core implements these commands; the Lithe desktop client declares `toolDefinitions` and does not declare `toolchainProviders` |
 | [`fixtures/`](contract/v1/fixtures) | Conformance cases in one directory per feature (`manifest`, `languages`, `backend`, `build-systems`, `build-providers`, `marketplace`, and so on), matching the [reference feature pages](reference/README.md#feature-pages): valid and invalid manifests, command and build plans, plugin function protocol, marketplace indexes, and Lithe's expected result for each case |
 

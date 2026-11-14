@@ -16,6 +16,10 @@
 
 mod documents;
 pub use documents::{document_state, edit_document, SettingsEdit};
+mod localization;
+pub use localization::{
+    localization_candidates, LocalizationRequest, SettingsLocalization, MAX_LOCALIZATION_BYTES,
+};
 mod pages;
 pub use pages::page_sections;
 

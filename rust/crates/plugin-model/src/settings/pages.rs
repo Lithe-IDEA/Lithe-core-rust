@@ -1,6 +1,6 @@
 //! Placement projections retain indices into the complete owner-bound editor.
 
-use super::{SettingAction, SettingDeclaration, SettingPage};
+use super::{SettingAction, SettingDeclaration, SettingPage, SettingsLocalization};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
@@ -9,7 +9,13 @@ type SectionIndices = (Vec<usize>, Vec<usize>);
 
 /// Groups only explicitly placed rows and actions. Unplaced declarations remain
 /// on the plugin's own page; an action alone is sufficient to create a page.
-pub fn page_sections(rows: &[SettingDeclaration], actions: &[SettingAction]) -> Vec<Value> {
+/// Sections are grouped and ordered by their manifest heading; `localization`
+/// changes only the heading shown.
+pub fn page_sections(
+    rows: &[SettingDeclaration],
+    actions: &[SettingAction],
+    localization: Option<&SettingsLocalization>,
+) -> Vec<Value> {
     let mut pages: BTreeMap<SettingPage, BTreeMap<String, SectionIndices>> = BTreeMap::new();
     for (index, row) in rows.iter().enumerate() {
         if let Some(page) = &row.page {
@@ -38,6 +44,9 @@ pub fn page_sections(rows: &[SettingDeclaration], actions: &[SettingAction]) -> 
             SettingPage::Language(id) => ("language", id),
             SettingPage::BuildSystem(id) => ("buildSystem", id),
         };
-        json!({"key":format!("{kind}:{id}"),"kind":kind,"id":id,"sections":sections.into_iter().map(|(title,(rows,actions))| json!({"title":title,"rows":rows,"actions":actions})).collect::<Vec<_>>()})
+        let sections: Vec<_> = sections.into_iter().map(|(title, (rows, actions))| {
+            json!({"title":super::localization::shown_section(localization, title),"rows":rows,"actions":actions})
+        }).collect();
+        json!({"key":format!("{kind}:{id}"),"kind":kind,"id":id,"sections":sections})
     }).collect()
 }

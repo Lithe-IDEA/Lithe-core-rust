@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Lithe-IDEA/Lithe-core-rust/main/shared/plugins/contract/v1/plugin-l10n.schema.json",
+  "settings": {
+    "dialyzer": {
+      "title": "Dialyzer 静态分析"
+    },
+    "checks": {
+      "title": "检查项",
+      "options": {
+        "format": "格式检查"
+      }
+    }
+  },
+  "sections": {
+    "Server": "服务器"
+  },
+  "settingActions": {
+    "rebuildPlt": {
+      "title": "重建 PLT"
+    }
+  }
+}

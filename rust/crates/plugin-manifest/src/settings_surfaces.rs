@@ -84,6 +84,7 @@ pub fn settings_catalog_command(payload: Value) -> Result<Value, CoreError> {
             for page in lithe_plugin_model::settings::page_sections(
                 &manifest.settings,
                 &manifest.setting_actions,
+                None,
             ) {
                 let key = page["key"].as_str().unwrap_or_default().to_owned();
                 let target = pages.entry(key.clone()).or_insert_with(|| json!({

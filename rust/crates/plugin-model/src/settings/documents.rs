@@ -3,8 +3,10 @@
 //! Native adapters own storage, conflict checks and file publication. This
 //! module never opens paths or grants permission to start a plugin process.
 
+use super::localization::shown_section;
 use super::{
     resolve, SettingAction, SettingDeclaration, SettingEffect, SettingLayers, SettingScope,
+    SettingsLocalization,
 };
 use crate::names::is_plugin_id;
 use crate::rejection::{PluginRejection, Validation};
@@ -66,12 +68,15 @@ fn read_document(content: Option<&str>, field: &str) -> Validation<Document> {
 
 /// Projects declared rows and raw launch layers from complete native documents.
 /// Unknown settings remain in storage but are not sent across the UI boundary.
+/// `localization` translates the text rows, actions and section headings show;
+/// IDs, values, grouping and order stay those of the manifest.
 pub fn document_state(
     plugin: &str,
     declarations: &[SettingDeclaration],
     actions: &[SettingAction],
     global: Option<&str>,
     project: Option<&str>,
+    localization: Option<&SettingsLocalization>,
 ) -> Validation<Value> {
     let global = read_document(global, "globalDocument")?;
     let project = read_document(project, "projectDocument")?;
@@ -90,8 +95,14 @@ pub fn document_state(
         },
     );
     let effective = resolve(declarations, SettingLayers { global, project });
+    let shown = |declaration: &SettingDeclaration| {
+        localization.map_or_else(
+            || declaration.clone(),
+            |localization| localization.declaration(declaration),
+        )
+    };
     let rows: Vec<_> = declarations.iter().zip(global_resolved.iter()).zip(effective.iter()).map(|((declaration, global_value), effective)| json!({
-        "declaration": declaration, "scope": declaration.scope(), "effect": declaration.effect(),
+        "declaration": shown(declaration), "scope": declaration.scope(), "effect": declaration.effect(),
         "global": global_value, "effective": effective,
         "globalStored": global.contains_key(&declaration.id),
         "projectStored": project.contains_key(&declaration.id),
@@ -148,11 +159,20 @@ pub fn document_state(
     }
     let sections: Vec<_> = sections
         .into_iter()
-        .map(|(title, (rows, actions))| json!({"title":title, "rows":rows, "actions":actions}))
+        .map(|(title, (rows, actions))| json!({"title":shown_section(localization, title), "rows":rows, "actions":actions}))
+        .collect();
+    let shown_actions: Vec<_> = actions
+        .iter()
+        .map(|action| {
+            localization.map_or_else(
+                || action.clone(),
+                |localization| localization.action(action),
+            )
+        })
         .collect();
     Ok(
-        json!({"pluginID":plugin, "rows":rows, "actions":actions, "sections":sections,
-        "pages":super::page_sections(declarations, actions),
+        json!({"pluginID":plugin, "rows":rows, "actions":shown_actions, "sections":sections,
+        "pages":super::page_sections(declarations, actions, localization),
         "editors":{"global":global_editor,"project":project_editor},
         "settings":declared_values(global), "projectSettings":declared_values(project),
         "storage":{"globalRelativePath":"plugin-settings.json", "projectRelativePath":".lithe/plugin-settings.json", "maximumBytes":MAX_DOCUMENT_BYTES, "readRequired":!declarations.is_empty()}}),

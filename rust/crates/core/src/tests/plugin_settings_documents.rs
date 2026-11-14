@@ -375,3 +375,163 @@ fn settings_navigation_reserves_capacity_for_host_rows() {
     assert_eq!(response["data"]["status"], "ok", "{response}");
     assert_eq!(response["data"]["rows"].as_array().unwrap().len(), 513);
 }
+
+fn contract_settings_file(name: &str) -> String {
+    std::fs::read_to_string(format!(
+        "{}/../../../shared/plugins/contract/v1/fixtures/settings/{name}",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap()
+}
+
+fn localized_state(language: &str, localizations: Option<Value>) -> Value {
+    let mut payload = json!({"manifest": manifest(), "language": language});
+    if let Some(localizations) = localizations {
+        payload["localizations"] = localizations;
+    }
+    let result = execute("plugins.declarative.settingsState", payload);
+    assert_eq!(result["data"]["status"], "ok", "{result}");
+    result["data"]["state"].clone()
+}
+
+fn section_titles(sections: &Value) -> Vec<String> {
+    sections
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|section| section["title"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[test]
+fn settings_state_names_translation_candidates_before_they_are_read() {
+    let plain = execute(
+        "plugins.declarative.settingsState",
+        json!({"manifest": manifest()}),
+    );
+    assert_eq!(plain["data"]["state"]["localization"], Value::Null);
+    let state = localized_state("zh-Hans", None);
+    assert_eq!(
+        state["localization"],
+        json!({"language":"zh-Hans","candidates":["l10n/zh-Hans.json","l10n/zh.json"],
+            "maximumBytes":1048576,"readRequired":true,"applied":null,"rejected":[]})
+    );
+    assert_eq!(state["rows"][0]["declaration"]["title"], "Checks");
+}
+
+#[test]
+fn settings_state_shows_packaged_translation_and_keeps_manifest_identity() {
+    let text = contract_settings_file("l10n/zh-Hans.json");
+    let state = localized_state("zh-Hans", Some(json!({ "l10n/zh-Hans.json": text })));
+    assert_eq!(state["localization"]["applied"], "l10n/zh-Hans.json");
+    let row = |id: &str| {
+        state["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["declaration"]["id"] == id)
+            .unwrap()
+            .clone()
+    };
+    let checks = row("checks");
+    assert_eq!(checks["declaration"]["title"], "检查项");
+    assert_eq!(checks["declaration"]["options"][0]["value"], "format");
+    assert_eq!(checks["declaration"]["options"][0]["title"], "格式检查");
+    assert_eq!(checks["declaration"]["options"][1]["title"], "Credo");
+    assert_eq!(row("dialyzer")["declaration"]["title"], "Dialyzer 静态分析");
+    let mix_env = row("mixEnv");
+    assert_eq!(mix_env["declaration"]["title"], "MIX_ENV");
+    assert_eq!(mix_env["declaration"]["section"], "Server");
+    assert_eq!(state["actions"][0]["title"], "重建 PLT");
+    assert_eq!(state["actions"][0]["function"], "dialyzer.rebuild");
+    let english = localized_state("en", Some(json!({})));
+    assert_eq!(english["localization"]["applied"], Value::Null);
+    assert_eq!(section_titles(&english["sections"]), ["", "Server"]);
+    // Translated headings keep the manifest's grouping and order.
+    assert_eq!(section_titles(&state["sections"]), ["", "服务器"]);
+    for (translated, original) in state["sections"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .zip(english["sections"].as_array().unwrap())
+    {
+        assert_eq!(translated["rows"], original["rows"]);
+        assert_eq!(translated["actions"], original["actions"]);
+    }
+    let elixir = state["pages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|page| page["key"] == "language:elixir")
+        .unwrap();
+    assert_eq!(section_titles(&elixir["sections"]), ["", "服务器"]);
+}
+
+#[test]
+fn settings_state_localization_fixture_cases() {
+    let fixture: Value =
+        serde_json::from_str(&contract_settings_file("localization-cases.json")).unwrap();
+    assert_eq!(fixture["manifest"], "settings.plugin.json");
+    for case in fixture["cases"].as_array().unwrap() {
+        let files: serde_json::Map<String, Value> = case["files"]
+            .as_object()
+            .unwrap()
+            .iter()
+            .map(|(path, file)| {
+                let text = file
+                    .as_str()
+                    .map_or_else(|| file.to_string(), str::to_owned);
+                (path.clone(), json!(text))
+            })
+            .collect();
+        let state = localized_state(
+            case["language"].as_str().unwrap(),
+            Some(Value::Object(files)),
+        );
+        let report = &state["localization"];
+        assert_eq!(report["applied"], case["applied"], "case {}", case["name"]);
+        let rejected: Vec<_> = report["rejected"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|rejection| {
+                assert_eq!(
+                    rejection["error"]["code"], "plugin.settings.invalidLocalization",
+                    "case {}",
+                    case["name"]
+                );
+                json!({"path": rejection["path"], "field": rejection["error"]["field"]})
+            })
+            .collect();
+        assert_eq!(
+            Value::Array(rejected),
+            case["rejected"],
+            "case {}",
+            case["name"]
+        );
+    }
+}
+
+#[test]
+fn settings_state_refuses_malformed_localization_requests() {
+    for (payload, detail) in [
+        (json!({"language": "zh_Hans"}), "language must be a tag"),
+        (
+            json!({"language": "zh-Hans", "localizations": {"l10n/en.json": "{}"}}),
+            "not a candidate",
+        ),
+        (json!({"localizations": {}}), "require language"),
+    ] {
+        let mut request = payload.clone();
+        request["manifest"] = manifest();
+        let response = execute("plugins.declarative.settingsState", request);
+        assert_eq!(response["ok"], false, "{payload}: {response}");
+        assert_eq!(response["error"]["code"], "invalid_request", "{response}");
+        assert!(
+            response["error"]["details"]
+                .as_str()
+                .is_some_and(|details| details.contains(detail)),
+            "{response}"
+        );
+    }
+}

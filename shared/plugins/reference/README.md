@@ -25,7 +25,7 @@
 | [插件后端与插件函数](domains/backend.md) | 后端进程、函数协议、宿主方法、工作区上下文、文件、凭据、终端、跨插件调用 | API-01、04–08、20–22、24、35、37、40、41 | `backend`、`pluginFunctions` |
 | [编辑器、文档与预览](domains/editor.md) | 文档和选区、版本化编辑、打开与定位、HTML 预览、编辑器动作、编辑器语言功能 Provider、虚拟文档内容提供者 | API-09、10、12、15、16、25、27 | `backend` |
 | [界面](domains/ui.md) | 工具窗口、命令、包内网页、原生控件、后端命令、消息框 | API-02、03、13、14、17 | `ui` |
-| [插件设置](domains/settings.md) | 声明式设置、放置位置、作用域、生效方式、设置页按钮 | API-19 | `settings` |
+| [插件设置](domains/settings.md) | 声明式设置、放置位置、作用域、生效方式、设置页按钮、包内翻译 | API-19、API-37 | `settings` |
 | [声明式构建系统](domains/build-systems.md) | 构建检测、模型、命令规划、项目准备角色 | API-29 | `buildSystems` |
 | [构建提供者](domains/build-providers.md) | `litheBuild` 协议：同步、任务、测试、运行和调试准备、模型输入 | API-29 | `buildProviders`、`buildModelInputs` |
 | [调试适配器](domains/debug-adapters.md) | DAP 适配器声明、启动和传输 | API-30 | `debugAdapters` |
@@ -71,7 +71,7 @@ This directory organizes the plugin contract by feature: what each numbered API 
 | [Plugin backend and plugin functions](domains/backend.md) | Backend process, function protocol, host methods, workspace contexts, files, credentials, terminals, cross-plugin calls | API-01, 04–08, 20–22, 24, 35, 37, 40, 41 | `backend`, `pluginFunctions` |
 | [Editor, documents, and previews](domains/editor.md) | Documents and selections, versioned edits, open and reveal, HTML preview, editor actions, editor language-feature providers, virtual-document content providers | API-09, 10, 12, 15, 16, 25, 27 | `backend` |
 | [UI](domains/ui.md) | Tool windows, commands, package web content, native controls, backend commands, message boxes | API-02, 03, 13, 14, 17 | `ui` |
-| [Plugin settings](domains/settings.md) | Declarative settings, placement, scope, apply behavior, settings page actions | API-19 | `settings` |
+| [Plugin settings](domains/settings.md) | Declarative settings, placement, scope, apply behavior, settings page actions, packaged translations | API-19, API-37 | `settings` |
 | [Declarative build systems](domains/build-systems.md) | Build detection, models, command planning, project preparation roles | API-29 | `buildSystems` |
 | [Build providers](domains/build-providers.md) | The `litheBuild` protocol: sync, tasks, tests, run and debug preparation, model inputs | API-29 | `buildProviders`, `buildModelInputs` |
 | [Debug adapters](domains/debug-adapters.md) | DAP adapter declarations, launch, and transports | API-30 | `debugAdapters` |
