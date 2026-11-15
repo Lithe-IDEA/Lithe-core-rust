@@ -149,6 +149,18 @@ fn inheritance_and_current_effective_values_remain_distinct_from_an_override() {
     );
     assert_eq!(
         result["state"]["effectiveDisplays"]["child"]["target"],
-        json!({"kind":"text","text":"Version 1"})
+        json!({"kind":"text","text":"Version 1","inherited":false})
+    );
+}
+
+#[test]
+fn absent_boolean_values_expose_inheritance_and_unknown_effective_values() {
+    let mut fixture = snapshot();
+    fixture["sources"][0]["fields"][1]["value"] = Value::Null;
+    fixture["sources"][0]["fields"][1]["effectiveValue"] = Value::Null;
+    let result = state_command(json!({"result":fixture})).unwrap();
+    assert_eq!(
+        result["state"]["effectiveDisplays"]["root"]["checks"],
+        json!({"kind":"unknown","inherited":true})
     );
 }

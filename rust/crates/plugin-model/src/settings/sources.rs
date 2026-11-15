@@ -396,18 +396,34 @@ pub fn state_command(payload: Value) -> Result<Value, CoreError> {
                 )
             })
             .collect();
-        let effective_displays:BTreeMap<_,BTreeMap<_,Value>>=snapshot.sources.iter().map(|source|{
-            (source.id.clone(),source.fields.iter().filter(|field|!field.value.is_null()&&field.value!=field.effective_value).map(|field|{
-                let value=&field.effective_value;
-                let display=if value.is_null(){json!({"kind":"unknown"})}else{match field.kind.as_str(){
-                    "enum"=>json!({"kind":"text","text":field.options.iter().find(|option|Some(option.value.as_str())==value.as_str()).map(|option|option.title.as_str()).unwrap_or_default()}),
-                    "boolean"=>json!({"kind":"boolean","on":value.as_bool().unwrap_or_default()}),
-                    "fileList"|"stringList"=>json!({"kind":"list","count":value.as_array().map_or(0,Vec::len)}),
-                    _=>json!({"kind":"text","text":value.as_str().unwrap_or_default()}),
-                }};
-                (field.id.clone(),display)
-            }).collect())
-        }).collect();
+        let effective_displays: BTreeMap<_, BTreeMap<_, Value>> = snapshot
+            .sources
+            .iter()
+            .map(|source| {
+                let displays = source.fields.iter().filter(|field| {
+                    (field.value.is_null() && field.kind != "enum")
+                        || (!field.value.is_null() && field.value != field.effective_value)
+                }).map(|field| {
+                    let value = &field.effective_value;
+                    let mut display = if value.is_null() {
+                        json!({"kind":"unknown"})
+                    } else {
+                        match field.kind.as_str() {
+                            "enum" => {
+                                let title = field.options.iter().find(|option| Some(option.value.as_str()) == value.as_str())
+                                    .map(|option| option.title.as_str()).unwrap_or_default();
+                                json!({"kind":"text","text":title})
+                            }
+                            "boolean" => json!({"kind":"boolean","on":value.as_bool().unwrap_or_default()}),
+                            "fileList" | "stringList" => json!({"kind":"list","count":value.as_array().map_or(0, Vec::len)}),
+                            _ => json!({"kind":"text","text":value.as_str().unwrap_or_default()}),
+                        }
+                    };
+                    display["inherited"] = json!(field.value.is_null());
+                    (field.id.clone(), display)
+                }).collect();
+                (source.id.clone(), displays)
+            }).collect();
         let layout: Vec<_> = snapshot
             .groups
             .iter()

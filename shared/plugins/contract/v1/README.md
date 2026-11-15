@@ -656,8 +656,8 @@ model inputs or logs. The host presents inherited values without creating an
 override, maintains drafts and displays each confirmed target path. Core
 `plugins.settings.sourceState` supplies `inputs`, `inheritedInputs`, ordered
 `layout`, native I/O `limits`, and `effectiveDisplays`. The latter describes
-actual values differing from explicit raw values as `unknown`, `text`,
-`boolean`, or list `count`; the host localizes these presentation hints.
+inherited non-enum values and actual values differing from explicit raw values as `unknown`, `text`,
+`boolean`, or list `count`, with an `inherited` flag; the host localizes these presentation hints.
 
 On explicit Save the host uses `plugins.settings.sourceEdit` to derive only
 changed raw fields. It captures each target with a bounded native reader,
