@@ -164,3 +164,13 @@ fn absent_boolean_values_expose_inheritance_and_unknown_effective_values() {
         json!({"kind":"unknown","inherited":true})
     );
 }
+
+#[test]
+fn source_editor_bindings_follow_the_public_id_field_spelling() {
+    let value = json!({"editFunction":"compiler.prepare","buildSystemID":"fictional","languageID":"fictional"});
+    let declaration: crate::settings::SourceEditorDeclaration =
+        serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(declaration.build_system_id.as_deref(), Some("fictional"));
+    assert_eq!(declaration.language_id.as_deref(), Some("fictional"));
+    assert_eq!(serde_json::to_value(declaration).unwrap(), value);
+}

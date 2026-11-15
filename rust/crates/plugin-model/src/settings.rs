@@ -145,9 +145,11 @@ pub struct SourceEditorDeclaration {
     pub edit_function: String,
     /// Optional declared build system whose native tool and stored options accompany reads.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "buildSystemID")]
     pub build_system_id: Option<String>,
     /// Optional declared language server made ready before a source query.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "languageID")]
     pub language_id: Option<String>,
 }
 
