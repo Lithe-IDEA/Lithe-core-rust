@@ -28,9 +28,11 @@
 | `plugins.editorActions.decode` 请求的 `version` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | 插件网页桥 `window.lithe.version` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 
+| `litheSettingsSources`、`litheSettingsSourceEdit` | 0 | 2026-11-15 | [#57](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/57) |
+
 ### 能力版本（`requires`）
 
-18 个能力都从版本 `0` 开始。
+各项能力都从版本 `0` 开始。
 
 | 能力 | 版本 | 日期 | PR |
 | --- | --- | --- | --- |
@@ -48,6 +50,7 @@
 | `packageTrust` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `pluginFunctions` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `projectGenerators` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
+| `sourceSettings` | 0 | 2026-11-15 | [#57](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/57) |
 | `settings` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `toolDefinitions` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `toolchainProviders` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
@@ -134,6 +137,7 @@
 
 | PR | 修改人 | API 编号 | 协议 / 能力 | 改了什么 |
 | --- | --- | --- | --- | --- |
+| [#57](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/57) | [@1lck](https://github.com/1lck) | API-19、API-29 | **`sourceSettings` 0**；`buildSystems` 0 内补充 | 原生配置来源编辑：同插件独立读取/暂存函数、编译器页、上游语言/构建上下文、实际值与移除覆盖后的继承值、严格限额、显式保存及 SHA-256 收据。Core 新增 sourceState/sourceEdit/sourceReceipt 命令，原文不跨协议。构建运行时计划返回明确候选与 pathVariable，由原生宿主先验证运行时再启动构建工具；未新增宿主 RPC 方法或通知。 |
 | [#56](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/56) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | API-30 | `debugAdapters` 0 内的补充 | `targetBindings.cwd` 除了 `target.workingDirectory`，也可以绑到 `target.directory`（源文件所在目录）。调试引擎在 launch 参数缺 `cwd` 时会填工作区根目录；Go 插件绑定 `cwd` ← `target.directory` 后，被调程序在包目录运行，按包目录写的相对路径能读到。其他值以 `plugin.manifest.invalid`（字段 `targetBindings.cwd`）拒绝；目标路径是裸文件名、取不出目录时以 `debug.target.invalid`（字段 `target.path`）拒绝。只是可选取值，不需要新能力版本。 |
 | [#55](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/55) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | API-30 | `debugAdapters` 0 内的补充 | `targetBindings` 新增 `adapterArguments`：最多 8 个只有这个适配器才有的 DAP 参数，`{"<参数路径>": "<事实>"}`，路径和 `connection` 的目标一样用点分隔、最多 4 段，事实只能是 `target.path`、`target.directory` 或 `target.workingDirectory`，和其他绑定一样只在没有值时填入。`env.<变量名>` 往环境里加一个变量，`arguments` 和 `env` 绑定给的变量都保留。例如 Delve 在 `dlvCwd` 里编译程序，不在宿主给它的工作目录（工作区根目录）里编译，`go build` 又从 `PWD` 读当前目录；Go 插件绑定 `dlvCwd` 和 `env.PWD` ← `target.directory` 后，工作区根目录没有 `go.mod`、一个工作区放了多个模块、路径经过符号链接时都能调试。路径不能从 `program`、`processId`、`cwd`、`args`、`env` 本身、`noDebug`、`__` 开头的名字开始，路径之间、路径和 `connection` 的目标之间不能重叠，也不能落在 `arguments` 已有的值上或它的下面，违反时以 `plugin.manifest.invalid`（字段 `targetBindings.adapterArguments[.<参数路径>]`）拒绝；目标缺少事实时以 `debug.target.invalid`（字段 `target.path` 或 `target.workingDirectory`）拒绝。只是可选字段，不需要新能力版本。 |
 | [#53](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/53) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | API-23 | **`commandInstallers` 0** | 新能力 `commandInstallers` 和权限 `commands.install`：清单顶层 `commandInstallers[]` 声明怎样用插件已依赖的工具（`requiresTools`）安装 `systemCommand` 启动缺的裸命令，例如用 `go install` 装 `dlv`。每个安装声明 `commands`、`tool`、`minimumVersion?`、字面量 `arguments`、`mayUseNetwork`、`timeoutSeconds?`（1–3600，默认 600）和至少一个目标：`managed` 装进宿主为插件管理的目录，参数或环境变量必须用唯一的模板变量 `${installDirectory}`，`commandDirectory` 指命令所在的子目录；`toolDefault` 装到工具默认位置，`directory` 最多 4 个探针，按顺序运行同一工具，从输出读目录（`pathList`、`append`）。新增宿主命令 `plugins.commandInstallers.requirements`、`plan`、`defaultDirectory` 和错误码 `plugin.commandInstaller.unknown`、`targetUndeclared`、`directoryInvalid`、`probeOutputsInvalid`（Core），以及宿主报告的 `plugin.command.missing`、`plugin.commandInstaller.failed`、`timedOut`、`commandsMissing`。安装声明进入安装审查（`kind: "commandInstaller"`）。宿主只在用户确认命令行、网络和目标后安装，每次安装用 `diagnostics.recordPluginOperation` 记一条 `commandInstaller/install`（命令执行生命周期，安装后命令仍缺记 `decode`）。 |
