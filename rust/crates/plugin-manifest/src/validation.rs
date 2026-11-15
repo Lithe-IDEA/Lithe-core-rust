@@ -259,7 +259,11 @@ impl DeclarativePluginManifest {
                 // when the host asks it for the server's command line; an
                 // exported function starts it when another plugin calls it.
                 // Neither needs a page, command or workspace event.
-                provider_query_trigger: !self.toolchain_providers.is_empty()
+                provider_query_trigger: self
+                    .setting_actions
+                    .iter()
+                    .any(|action| action.source_editor.is_some())
+                    || !self.toolchain_providers.is_empty()
                     || !self.keymap_import_providers.is_empty()
                     || self
                         .language_servers
@@ -300,6 +304,12 @@ impl DeclarativePluginManifest {
             (
                 capabilities::SETTINGS,
                 !self.settings.is_empty() || !self.setting_actions.is_empty(),
+            ),
+            (
+                capabilities::SOURCE_SETTINGS,
+                self.setting_actions
+                    .iter()
+                    .any(|action| action.source_editor.is_some()),
             ),
             (capabilities::UI, self.ui.is_some()),
             (capabilities::BUILD_SYSTEMS, !self.build_systems.is_empty()),

@@ -47,7 +47,16 @@ fn host_runtime_probe_arguments_are_portable_across_platforms() {
             .enumerate()
         {
             assert_eq!(runtimes[index]["hostManaged"], true, "{platform}");
-            assert_eq!(runtimes[index]["executables"], json!([]), "{platform}");
+            let id = if index == 0 { "node" } else { "go" };
+            assert_eq!(
+                runtimes[index]["executables"],
+                json!([{"kind":"runtime","runtime":id}]),
+                "{platform}"
+            );
+            assert_eq!(
+                runtimes[index]["pathVariable"],
+                format!("LITHE_{}_PATH", id.to_ascii_uppercase())
+            );
             assert_eq!(
                 runtimes[index]["version"]["arguments"], arguments,
                 "{platform}"
@@ -77,6 +86,7 @@ fn runtime_without_executables_becomes_a_toolchain_candidate() {
                 "id": "vm",
                 "displayName": null,
                 "hostManaged": false,
+                "pathVariable":"LITHE_VM_PATH",
                 "executables": [
                     { "kind": "toolchain", "toolchainID": "vm", "root": "." }
                 ],

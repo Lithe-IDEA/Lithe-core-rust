@@ -22,6 +22,7 @@ pub use localization::{
 };
 mod pages;
 pub use pages::page_sections;
+pub mod sources;
 
 use crate::rejection::{invalid, PluginRejection, Validation};
 use regex::Regex;
@@ -97,6 +98,9 @@ pub enum SettingPage {
     /// Build Tools › *build system*.
     #[serde(rename = "buildSystemID")]
     BuildSystem(String),
+    /// Build, Execution, Deployment › Compilers › *compiler*.
+    #[serde(rename = "compilerID")]
+    Compiler(String),
 }
 
 /// A button the host draws on a settings page that invokes one of the same
@@ -126,6 +130,25 @@ pub struct SettingAction {
     /// Ask before invoking, for actions that discard state.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     confirm: bool,
+    /// The read result is a typed native-source form; saves invoke its distinct
+    /// staging function only after native confirmation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_editor: Option<SourceEditorDeclaration>,
+}
+
+/// Explicit read/edit roles allow frequent read successes to be suppressed
+/// while SDKs record confirmed edit outcomes at their ordinary boundary.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SourceEditorDeclaration {
+    /// Same-plugin function that writes only the host's private staging file.
+    pub edit_function: String,
+    /// Optional declared build system whose native tool and stored options accompany reads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build_system_id: Option<String>,
+    /// Optional declared language server made ready before a source query.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language_id: Option<String>,
 }
 
 /// Resolves one declared action without native I/O or runtime admission. Only
@@ -161,6 +184,12 @@ pub fn plan_action(
         plan["kind"] = json!("invoke");
         plan["function"] = json!(action.function);
         plan["params"] = json!({});
+        if let Some(editor) = &action.source_editor {
+            plan["sourceEditor"] = json!(true);
+            plan["editFunction"] = json!(editor.edit_function);
+            plan["buildSystemID"] = json!(editor.build_system_id);
+            plan["languageID"] = json!(editor.language_id);
+        }
     }
     Ok(plan)
 }
@@ -171,6 +200,22 @@ pub const MAX_SETTING_ACTIONS: usize = 16;
 impl SettingAction {
     /// Checks the action as the manifest entry at `field`.
     pub fn validate(&self, field: &str) -> Validation<()> {
+        if matches!(self.page, Some(SettingPage::Compiler(_))) && self.source_editor.is_none() {
+            return Err(invalid(
+                field,
+                "Compiler pages require a native source-editor action.",
+            ));
+        }
+        if let Some(editor) = &self.source_editor {
+            if !crate::is_function_id(&editor.edit_function)
+                || editor.edit_function == self.function
+            {
+                return Err(invalid(
+                    format!("{field}.sourceEditor.editFunction"),
+                    "A source editor names a distinct same-plugin staging function.",
+                ));
+            }
+        }
         if !is_setting_identifier(&self.id) {
             return Err(invalid(
                 format!("{field}.id"),
@@ -216,6 +261,7 @@ fn check_page(page: &SettingPage, field: &str) -> Validation<()> {
     let (key, id) = match page {
         SettingPage::Language(id) => ("languageID", id),
         SettingPage::BuildSystem(id) => ("buildSystemID", id),
+        SettingPage::Compiler(id) => ("compilerID", id),
     };
     if !is_setting_option_value(id) {
         return Err(invalid(
@@ -470,6 +516,9 @@ impl SettingDeclaration {
 
     /// Checks the declaration against the `settings` capability contract.
     pub fn validate(&self, field: &str) -> Validation<()> {
+        if matches!(self.page, Some(SettingPage::Compiler(_))) {
+            return Err(invalid(field,"Compiler pages contain native source-editor actions, not stored plugin preferences."));
+        }
         if !is_setting_identifier(&self.id) {
             return Err(invalid(
                 format!("{field}.id"),

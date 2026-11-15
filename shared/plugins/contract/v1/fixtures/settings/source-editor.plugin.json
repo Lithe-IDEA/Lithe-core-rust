@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 0,
+  "id": "dev.lithe.test.source-settings",
+  "displayName": "Fictional compiler settings",
+  "version": "1.0.0",
+  "pluginAPIVersion": 0,
+  "requires": { "backend": 0, "languages": 0, "settings": 0, "sourceSettings": 0 },
+  "vendor": { "id": "org.example", "displayName": "Fixture publisher", "signatureRequirement": "publisherPackage" },
+  "permissions": ["backend.launch", "workspace.metadata"],
+  "languages": [{ "id": "fictional", "displayName": "Fictional", "fileExtensions": ["fictional"] }],
+  "backend": { "launch": { "kind": "packaged", "path": "bin/fixture" } },
+  "settingActions": [{
+    "id": "compiler", "title": "Compiler settings", "description": "Read and edit the tool's native workspace files.",
+    "function": "compiler.settings", "sourceEditor": {"editFunction":"compiler.prepareSettings"}, "page": { "compilerID": "fictional" }
+  }]
+}

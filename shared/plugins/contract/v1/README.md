@@ -612,6 +612,84 @@ skipping a stored value the declaration no longer accepts.
 `plugins.declarative.resolveSettings` returns each effective value with
 its `source` (`project`, `global`, or `default`).
 
+#### Source-backed settings editors
+
+An action may declare `sourceEditor: {"editFunction":"compiler.prepareSettings"}` and require `sourceSettings: 0`
+alongside `settings: 0`. The host invokes the read function only after an
+explicit user action; opening its page must not run project wrappers or tools.
+The function must **only read** and return the
+non-sensitive `litheSettingsSources` snapshot described below. It never returns
+source documents. Source-editor actions may use `page: {"compilerID":"<id>"}`
+to appear under Build, Execution, Deployment; other placements
+retain their existing behavior. The editor, tables, pickers, theme, cancellation
+and explicit Save/Cancel actions belong to the host. The plugin owns formats,
+upstream discovery, module identity, supported choices and effective values.
+
+A source editor requires the plugin's own backend. Its optional `languageID`
+names a declared language server: the host makes it ready before querying.
+Its optional `buildSystemID` names a declared build system: each detected instance
+contributes `{root,options,tool,model}` from the same resolved native executable,
+stored options and upstream model used for Build. Reads receive
+`{context:{language,builds:[...]}}`; each `model` contains only the upstream
+`projects` projection, without task/run lists or document contents. `language`
+is the host interface language. No build selection is inferred from a tool's name.
+The read function receives `operation:"readAfterSave"` after publication and
+must refresh the upstream tool's native configuration before projecting it.
+
+Snapshot fields (unknown fields are rejected):
+
+| Field | Contract |
+| --- | --- |
+| `format`, `version`, `title` | `litheSettingsSources`, `0`, and a localized nonblank title of at most 256 UTF-8 bytes. The complete snapshot is at most 2 MiB. |
+| `groups` | 1–32 ordered `{id,title,layout,rowTitle?}` sections. `layout` is `form` or `table`; table rows use source titles in the first column and their fields as value columns. |
+| `sources` | At most 1024 `{id,group,title,path,revision,writable,fields}` bindings. `path` is normalized, workspace-relative, slash-separated, at most 4096 bytes and contains no empty/dot/parent components, drive letters or backslashes. Duplicate IDs or paths are rejected. Native adapters must additionally reject native file aliases and any installation resource. |
+| `revision` | `missing`, or `sha256:` followed by 64 lowercase hexadecimal digits covering the exact source bytes. Reading a missing source does not create it. |
+| `fields` | 1–32 `{id,title,description?,kind,value,effectiveValue,inheritedValue?,effectiveSource,options?}` records per source. IDs are opaque ASCII identifiers of at most 128 bytes; labels are nonblank and at most 256 bytes, descriptions at most 2048 bytes. Only explicitly non-sensitive fields may be projected. |
+| Field values | `value:null` means absent/inherited. `effectiveValue` comes from the upstream tool and may also be null if there is no value. `inheritedValue` is the upstream value after removing a local override; omit it or use null when unknown. `effectiveSource` is a localized origin label of at most 1024 bytes. |
+| Field kinds | `enum` with 1–64 distinct `{value,title}` options; `boolean`; `text` up to 8192 bytes; `stringList` or `fileList` with at most 256 nonblank strings, each at most 4096 bytes. Non-enumeration fields omit options. `fileList` adds the host's file picker; list editing uses one item per line, preserving spaces and platform path spelling. |
+
+No secret/password field, arbitrary script, CSS or host action is accepted.
+All plugin-provided labels and choices use the current interface language.
+Raw source content, credentials and unrelated configuration stay private to
+the plugin and native adapter; they must not appear in RPC, normal controls,
+model inputs or logs. The host presents inherited values without creating an
+override, maintains drafts and displays each confirmed target path. Core
+`plugins.settings.sourceState` supplies `inputs`, `inheritedInputs`, ordered
+`layout`, native I/O `limits`, and `effectiveDisplays`. The latter describes
+actual values differing from explicit raw values as `unknown`, `text`,
+`boolean`, or list `count`; the host localizes these presentation hints.
+
+On explicit Save the host uses `plugins.settings.sourceEdit` to derive only
+changed raw fields. It captures each target with a bounded native reader,
+verifies the snapshot revision and current workspace/package ownership, and
+creates a private **already existing empty** staging file. It invokes the
+distinct `sourceEditor.editFunction` with
+`{operation:"editSource",sourceID,revision,values,outputFile}`. `values` maps
+opaque field IDs to raw JSON values; null removes just that override.
+The function rechecks the source revision, uses its upstream/mature reader
+and writer, preserves unrelated fields/comments/secrets, and writes only to
+the supplied existing staging file without CREATE or following symlinks.
+It does not write the original source. Cancellation cannot recreate staging.
+
+The reply is exactly
+`{format:"litheSettingsSourceEdit",version:0,sourceID,revision,changed}`.
+`plugins.settings.sourceReceipt` binds it to the confirmed source. The native
+adapter checks the staged bytes' SHA-256 and uses conditional atomic
+publication preserving permissions and native metadata. A no-op never creates
+a source. Multiple source changes are all prepared and verified before the
+first publication; failures retain drafts and report any partial publication.
+Publication must still own the workspace, enabled package version and editor
+read baseline. After saving, invalidate affected tool facts and invoke the
+read function again; report success only after each published digest appears
+in the new snapshot. Missing sources and cancel are normal outcomes; all
+other failures use the existing action/SDK logging path. Staging is private,
+bounded, never reusable across worktrees, and removed on every terminal path.
+
+Invalid forms, edits or receipts return `plugin.settings.invalidSourceEditor`;
+unknown or revoked actions retain their existing errors. These editors are
+local-workspace operations; remote workspaces are not supported in version 0.
+Fixture: [`settings-sources.json`](../../../../rust/fixtures/plugins/settings-sources.json).
+
 #### Translations
 
 A package may translate its setting text with `l10n/<language>.json` files

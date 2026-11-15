@@ -18,6 +18,20 @@ verification scripts are the executable source of boundary checks.
 - Every asynchronous operation exposes `idle`, `loading`, `ready`, and `failed` outcomes.
 - Failures contain a stable `code` and user-facing `message`; platform details belong in `details`.
 
+## Source-backed plugin settings
+
+Source-backed plugin settings use `sourceSettings: 0` and the three
+`plugins.settings.source*` commands. Plugins supply only allowlisted non-sensitive
+fields from their upstream configuration; Core validates and projects the form,
+inheritance and confirmed edits. Native adapters capture workspace identity,
+reject installation roots and source aliases, verify exact revisions, create
+private existing staging files and publish with guarded atomic replacement.
+Opening or cancelling a page never writes sources. A failed read-back retains
+drafts and cannot announce that settings took effect. Closing or replacing the
+workspace or plugin revokes pending publication and cleans staging files.
+See [source-editor protocol](../../shared/plugins/contract/v1/README.md#source-backed-settings-editors)
+and [the inert fixture](../fixtures/plugins/settings-sources.json).
+
 ## Shared built-in translations
 
 [Shared i18n](https://github.com/1lck/Lithe-IDEA/blob/preview/shared/i18n/README.md) owns migrated semantic keys, typed named parameters,

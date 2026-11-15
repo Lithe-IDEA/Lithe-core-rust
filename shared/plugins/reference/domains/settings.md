@@ -267,3 +267,13 @@ Settings rejections are in [`manifest/invalid-manifests.json`](../../contract/v1
 
 - [Building an LSP plugin end to end](../../guides/lsp-plugin-lifecycle.md)
 - [Build, run, and test for language plugins](../../guides/build-tool-integration.md)
+
+## Native source editors / 真实配置来源
+
+`sourceSettings: 0` adds native forms and per-module tables backed by actual
+tool configuration. See the normative [source editor contract](../../contract/v1/README.md#source-backed-settings-editors)
+for `sourceEditor`, compiler placement, upstream context, inheritance, limits,
+staging and conflict handling. The plugin must translate its labels itself.
+Read actions explain that they may execute the project tool or wrapper; opening
+a page does not authorize that execution. Only explicit Save stages changes,
+and the host publishes them conditionally before refreshing upstream facts.

@@ -46,6 +46,7 @@ mod notification_read;
 mod plugin_editor_resources;
 mod plugin_run_debug;
 mod plugin_settings_documents;
+mod plugin_source_settings;
 mod process_memory;
 mod project;
 mod project_generators;

@@ -89,7 +89,7 @@ pub fn settings_catalog_command(payload: Value) -> Result<Value, CoreError> {
                 let key = page["key"].as_str().unwrap_or_default().to_owned();
                 let target = pages.entry(key.clone()).or_insert_with(|| json!({
                     "key":key,"kind":page["kind"],"id":page["id"],
-                    "title":titles.get(&key).cloned().unwrap_or_else(|| page["id"].as_str().unwrap_or_default().to_owned()),"contributors":[]
+                    "title":titles.get(&key).or_else(|| titles.get(&format!("language:{}",page["id"].as_str().unwrap_or_default()))).or_else(|| titles.get(&format!("buildSystem:{}",page["id"].as_str().unwrap_or_default()))).cloned().unwrap_or_else(|| page["id"].as_str().unwrap_or_default().to_owned()),"contributors":[]
                 }));
                 target["contributors"].as_array_mut().expect("catalog array").push(json!({
                     "pluginID":id,"version":manifest.version,"title":manifest.display_name,"sections":page["sections"]

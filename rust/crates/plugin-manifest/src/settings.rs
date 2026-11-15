@@ -48,6 +48,35 @@ impl DeclarativePluginManifest {
         for (index, action) in self.setting_actions.iter().enumerate() {
             let field = format!("settingActions[{index}]");
             action.validate(&field)?;
+            if let Some(editor) = &action.source_editor {
+                if self.backend.is_none() {
+                    return Err(invalid(
+                        &field,
+                        "A source editor requires the plugin's own backend.",
+                    ));
+                }
+                if editor
+                    .build_system_id
+                    .as_ref()
+                    .is_some_and(|id| !self.build_systems.iter().any(|system| &system.id == id))
+                {
+                    return Err(invalid(
+                        &field,
+                        "A source editor may reference only a declared build system.",
+                    ));
+                }
+                if editor.language_id.as_ref().is_some_and(|id| {
+                    !self
+                        .language_servers
+                        .iter()
+                        .any(|server| &server.language_id == id)
+                }) {
+                    return Err(invalid(
+                        &field,
+                        "A source editor may reference only a declared language server.",
+                    ));
+                }
+            }
             if !ids.insert(action.id.clone()) {
                 return Err(invalid(
                     format!("{field}.id"),

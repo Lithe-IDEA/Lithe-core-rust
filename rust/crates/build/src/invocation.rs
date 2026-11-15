@@ -100,6 +100,8 @@ fn runtime(
     // definition with the same ID; resolving it checks `minimumVersion`.
     let executables = if runtime.names_tool_definition() {
         vec![json!({ "kind": "toolchain", "toolchainID": runtime.id, "root": root })]
+    } else if runtime.is_host_managed() {
+        vec![json!({"kind":"runtime","runtime":runtime.id})]
     } else {
         candidates(&runtime.executables, root, platform, manifest, settings)?
     };
@@ -107,6 +109,7 @@ fn runtime(
         "id": runtime.id,
         "displayName": runtime.display_name,
         "hostManaged": runtime.is_host_managed(),
+        "pathVariable":format!("LITHE_{}_PATH",runtime.id.to_ascii_uppercase().replace('-',"_")),
         "minimumVersion": runtime.minimum_version,
         "executables": executables,
         "version": version,

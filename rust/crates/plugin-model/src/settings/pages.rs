@@ -43,6 +43,7 @@ pub fn page_sections(
         let (kind, id) = match &page {
             SettingPage::Language(id) => ("language", id),
             SettingPage::BuildSystem(id) => ("buildSystem", id),
+            SettingPage::Compiler(id) => ("compiler", id),
         };
         let sections: Vec<_> = sections.into_iter().map(|(title, (rows, actions))| {
             json!({"title":super::localization::shown_section(localization, title),"rows":rows,"actions":actions})

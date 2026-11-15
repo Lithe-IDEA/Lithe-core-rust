@@ -256,6 +256,12 @@ pub enum PluginsCommand {
     SettingsNavigation,
     /// Routes committed preference effects using native ownership facts.
     SettingsDelivery,
+    /// Validates a plugin's native workspace settings projection.
+    SettingsSourceState,
+    /// Plans confirmed changes without copying source documents into RPC.
+    SettingsSourceEdit,
+    /// Binds a plugin's private staging receipt to its confirmed source.
+    SettingsSourceReceipt,
     /// Resolves an installed settings action and its native confirmation requirement.
     DeclarativeSettingsActionPlan,
     /// Selects numeric installed versions and reports malformed native facts.
@@ -1038,6 +1044,15 @@ impl CoreCommand {
                 Some(Self::Plugins(PluginsCommand::SettingsNavigation))
             }
             "plugins.settings.delivery" => Some(Self::Plugins(PluginsCommand::SettingsDelivery)),
+            "plugins.settings.sourceState" => {
+                Some(Self::Plugins(PluginsCommand::SettingsSourceState))
+            }
+            "plugins.settings.sourceEdit" => {
+                Some(Self::Plugins(PluginsCommand::SettingsSourceEdit))
+            }
+            "plugins.settings.sourceReceipt" => {
+                Some(Self::Plugins(PluginsCommand::SettingsSourceReceipt))
+            }
             "plugins.declarative.settingsState" => {
                 Some(Self::Plugins(PluginsCommand::DeclarativeSettingsState))
             }

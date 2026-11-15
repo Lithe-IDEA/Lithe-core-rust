@@ -462,6 +462,9 @@ or removing a command fails until the table changes in the same commit.
 | `plugins.settings.catalog` | Project enabled plugin settings pages from installed manifests |
 | `plugins.settings.navigation` | Project searched settings navigation without platform policy |
 | `plugins.settings.delivery` | Route committed preference effects using native ownership facts |
+| `plugins.settings.sourceState` | Validate a source-editor function result and project inherited native control inputs |
+| `plugins.settings.sourceEdit` | Validate explicit confirmation and derive changed source-bound values without file I/O |
+| `plugins.settings.sourceReceipt` | Bind a private staged-file receipt to a confirmed source and exact byte revision |
 | `plugins.declarative.settingsState` | Read complete plugin preference documents and packaged translations into Core-normalized rows, sources, and bounded native read plans |
 | `plugins.declarative.settingsActionPlan` | Resolve an installed settings action and its native confirmation requirement |
 | `plugins.installed.select` | Select numeric installed versions from native facts without reading paths |
@@ -6495,3 +6498,14 @@ state or diagnostic payload.
 executes through the rule dispatcher, the Core JSON envelope and the desktop
 bridge. It covers repeats, either history entry point, clearing, visible
 arrivals, non-prefix display order, read/unread eviction and invalid inputs.
+
+### Build runtime resolution
+
+`build.invocation` includes declared `runtimeDependencies` before its primary
+executable candidates. Each requirement supplies its candidate plans, minimum
+version and `pathVariable` (`LITHE_<NORMALIZED_ID>_PATH`). The native adapter
+resolves and validates these runtimes first, applies Core-selected environment
+and executable exports, then resolves/probes the main build tool in that same
+environment. User-configured invocation environment retains its existing
+precedence. Host-managed runtime candidates are explicit `runtime` plans; hosts
+must not infer executable names from opaque runtime IDs.

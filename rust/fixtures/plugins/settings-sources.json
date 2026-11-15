@@ -1,0 +1,95 @@
+{
+  "snapshot": {
+    "format": "litheSettingsSources",
+    "version": 0,
+    "title": "Fictional compiler",
+    "groups": [
+      {
+        "id": "project",
+        "title": "Project defaults",
+        "layout": "form"
+      },
+      {
+        "id": "modules",
+        "title": "Module overrides",
+        "layout": "table"
+      }
+    ],
+    "sources": [
+      {
+        "id": "root",
+        "group": "project",
+        "title": "Workspace",
+        "path": "tool.json",
+        "revision": "missing",
+        "writable": true,
+        "fields": [
+          {
+            "id": "target",
+            "title": "Target",
+            "kind": "enum",
+            "value": null,
+            "effectiveValue": "one",
+            "effectiveSource": "Tool default",
+            "description": "Select the format written by the compiler.",
+            "options": [
+              {
+                "value": "one",
+                "title": "Version 1"
+              },
+              {
+                "value": "two",
+                "title": "Version 2"
+              }
+            ]
+          },
+          {
+            "id": "checks",
+            "title": "Checks",
+            "kind": "boolean",
+            "value": null,
+            "effectiveValue": true,
+            "effectiveSource": "Tool default"
+          },
+          {
+            "id": "files",
+            "title": "Referenced files",
+            "kind": "fileList",
+            "value": [],
+            "effectiveValue": [],
+            "effectiveSource": "Workspace"
+          }
+        ]
+      },
+      {
+        "id": "child",
+        "group": "modules",
+        "title": "Child module",
+        "path": "child/tool.json",
+        "revision": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "writable": true,
+        "fields": [
+          {
+            "id": "target",
+            "title": "Target",
+            "kind": "enum",
+            "value": "two",
+            "effectiveValue": "two",
+            "effectiveSource": "Child module",
+            "options": [
+              {
+                "value": "one",
+                "title": "Version 1"
+              },
+              {
+                "value": "two",
+                "title": "Version 2"
+              }
+            ],
+            "inheritedValue": "one"
+          }
+        ]
+      }
+    ]
+  }
+}

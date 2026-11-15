@@ -56,6 +56,9 @@ pub const EXECUTION_PROVIDERS: &str = "executionProviders";
 /// `settings[]`: scopes, effects, settings pages, and the multiSelect, text,
 /// file, and directory types; see [`crate::settings`].
 pub const SETTINGS: &str = "settings";
+/// Source-backed workspace editors returned by settings actions, including
+/// compiler pages and guarded native staging receipts.
+pub const SOURCE_SETTINGS: &str = "sourceSettings";
 /// `ui`: tool windows with text, web, or host-rendered native content, and
 /// commands.
 pub const UI: &str = "ui";
@@ -121,6 +124,7 @@ pub const SUPPORTED_CAPABILITIES: &[(&str, &[u32])] = &[
     (PLUGIN_FUNCTIONS, &[0]),
     (PROJECT_GENERATORS, &[0]),
     (SETTINGS, &[0]),
+    (SOURCE_SETTINGS, &[0]),
     (TOOL_DEFINITIONS, &[0]),
     (TOOLCHAIN_PROVIDERS, &[0]),
     (UI, &[0]),

@@ -95,6 +95,21 @@ pub(super) fn dispatch(
         PluginsCommand::SettingsCatalog => {
             plugin_response(id, payload, lithe_plugin_manifest::settings_catalog_command)
         }
+        PluginsCommand::SettingsSourceState => plugin_response(
+            id,
+            payload,
+            lithe_plugin_model::settings::sources::state_command,
+        ),
+        PluginsCommand::SettingsSourceEdit => plugin_response(
+            id,
+            payload,
+            lithe_plugin_model::settings::sources::edit_command,
+        ),
+        PluginsCommand::SettingsSourceReceipt => plugin_response(
+            id,
+            payload,
+            lithe_plugin_model::settings::sources::receipt_command,
+        ),
         PluginsCommand::SettingsNavigation => plugin_response(
             id,
             payload,
