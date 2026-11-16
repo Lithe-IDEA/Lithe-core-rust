@@ -116,6 +116,12 @@ pub(crate) fn automatic_choice(
 /// resolving a directory: login-shell homes and the discovered installations with their
 /// checked executables, versions or skip reasons, and Core's automatic choice. Hosts
 /// probe only the executables returned here, then call again with `probes`.
+///
+/// `shell` reports each declared `environment` variable and `command` the host found
+/// (`environment`, `commandHomes`). A shell home that checks out is also an entry of
+/// `installations` under the `host:shell` provider, once per canonical home: it is a
+/// home the resolver would run, so a picker must be able to offer it even where no
+/// discovery scan covers it. `selected` stays the automatic layer's own choice.
 pub(crate) fn candidates(input: &Value, validate_manifest: ManifestValidator) -> Validation<Value> {
     fields(
         input,
@@ -135,6 +141,7 @@ pub(crate) fn candidates(input: &Value, validate_manifest: ManifestValidator) ->
             "fixed",
             "projectCodeAllowed",
             "environment",
+            "commandHomes",
         ],
     )?;
     let registry = definitions::registry(&input["registry"], validate_manifest)?;
@@ -150,31 +157,53 @@ pub(crate) fn candidates(input: &Value, validate_manifest: ManifestValidator) ->
     {
         return Err(reject("projectCodeAllowed"));
     }
-    string_maps(input, &["environment"])?;
+    string_maps(input, &["environment", "commandHomes"])?;
     let mut shell = Vec::new();
+    let mut shell_selections = Vec::new();
     for candidate in definition["executables"]
         .as_array()
         .into_iter()
         .flatten()
-        .filter(|value| value["kind"] == "environment" && applicable(value, snapshot.platform))
+        .filter(|value| applicable(value, snapshot.platform))
     {
-        let Some(variable) = candidate["variable"].as_str() else {
+        // The same lookups the resolver's environment and command layers make.
+        let (source, home, layout) = match candidate["kind"].as_str() {
+            Some("environment") => {
+                let Some(variable) = candidate["variable"].as_str() else {
+                    continue;
+                };
+                let home = input["environment"][variable].as_str();
+                (
+                    json!({"variable":variable}),
+                    home,
+                    candidate["path"].as_str(),
+                )
+            }
+            Some("command") => {
+                let Some(command) = candidate["command"].as_str() else {
+                    continue;
+                };
+                let home = input["commandHomes"][command].as_str();
+                (json!({"command":command}), home, None)
+            }
+            _ => continue,
+        };
+        let Some(home) = home.filter(|value| !value.is_empty()) else {
             continue;
         };
-        let Some(home) = input["environment"][variable]
-            .as_str()
-            .filter(|value| !value.is_empty())
-        else {
-            continue;
-        };
-        let layout = candidate["path"].as_str();
-        let mut row = json!({"candidateID":candidate["id"],"variable":variable,"home":home});
+        let mut row = json!({"candidateID":candidate["id"],"home":home});
+        for (key, value) in source.as_object().into_iter().flatten() {
+            row[key] = value.clone();
+        }
         if let Ok(checked) = snapshot.checked(home, layout) {
             row["home"] = checked["home"].clone();
             row["executable"] = checked["executable"].clone();
         }
         match snapshot.layout_selection(home, layout, "host:shell", "global") {
-            Ok(value) => row["version"] = value["version"].clone(),
+            Ok(value) => {
+                row["version"] = value["version"].clone();
+                shell_selections.push(value);
+            }
             Err(code) => row["reason"] = json!(code),
         }
         shell.push(row);
@@ -182,8 +211,12 @@ pub(crate) fn candidates(input: &Value, validate_manifest: ManifestValidator) ->
     let mut reported = provider_installations(input, tool, &registry)?;
     reported.extend(system_installations(input, tool)?);
     let set = automatic_set(&snapshot, &reported)?;
-    let mut installations: Vec<_> = set
-        .eligible
+    let mut listed = set.eligible.clone();
+    for selection in shell_selections {
+        let key = snapshot.key(selection["home"].as_str().unwrap_or(""))?;
+        listed.entry(key).or_insert(selection);
+    }
+    let mut installations: Vec<_> = listed
         .values()
         .map(|value| {
             json!({"home":value["home"],"executable":value["executable"],
