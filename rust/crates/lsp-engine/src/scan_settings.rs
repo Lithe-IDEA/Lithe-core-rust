@@ -1,12 +1,20 @@
-//! Provider-owned native scan settings. These are not build-system exclusions.
+//! A server's declared indexing exclusions, written into the workspace
+//! configuration it reads. These are not build-system exclusions.
+use lithe_plugin_language_servers::IndexingExclusions;
 use serde_json::{json, Value};
 
 /// Overlay the current policy without mutating the user's stored configuration.
-/// Removing exclusions therefore restores the original settings exactly.
-pub(crate) fn configuration(provider: &str, root_uri: &str, base: Option<&Value>) -> Option<Value> {
-    if !matches!(provider, "rust" | "go") {
+/// Removing exclusions therefore restores the original settings exactly. A
+/// server that declares no `indexingExclusions` sees its configuration
+/// unchanged; Core never guesses the setting from the server or language.
+pub(crate) fn configuration(
+    exclusions: Option<&IndexingExclusions>,
+    root_uri: &str,
+    base: Option<&Value>,
+) -> Option<Value> {
+    let Some(exclusions) = exclusions else {
         return base.cloned();
-    }
+    };
     let Some(root) = url::Url::parse(root_uri)
         .ok()
         .and_then(|uri| uri.to_file_path().ok())
@@ -18,48 +26,25 @@ pub(crate) fn configuration(provider: &str, root_uri: &str, base: Option<&Value>
         return base.cloned();
     }
     Some(with_roots(
-        provider,
+        exclusions,
         base,
         &lithe_project::indexing::excluded_roots(&root),
     ))
 }
 
-fn with_roots(provider: &str, base: Option<&Value>, roots: &[String]) -> Value {
+fn with_roots(exclusions: &IndexingExclusions, base: Option<&Value>, roots: &[String]) -> Value {
     let mut configuration = base.cloned().unwrap_or_else(|| json!({}));
-    match provider {
-        // rust-analyzer.files.exclude takes literal workspace-relative paths, not globs.
-        // https://rust-analyzer.github.io/book/configuration#rust-analyzerfilesexclude
-        "rust" => append_array(
-            &mut configuration,
-            &["rust-analyzer", "files", "exclude"],
-            roots.to_vec(),
-            &[],
-        ),
-        // https://go.dev/gopls/settings#directoryFilters: ordered filters, last match wins.
-        // Preserve its documented default when the user did not configure this array.
-        "go" => append_array(
-            &mut configuration,
-            &["gopls", "directoryFilters"],
-            roots
-                .iter()
-                .filter(|path| !path.contains(['*', '?', '[', ']', '{', '}']))
-                .map(|path| {
-                    if path == "." {
-                        "-".into()
-                    } else {
-                        format!("-{path}")
-                    }
-                })
-                .collect(),
-            &["-**/node_modules"],
-        ),
-        _ => {}
-    }
+    append_array(
+        &mut configuration,
+        &exclusions.section_keys(),
+        exclusions.entries(roots),
+        exclusions.default_entries(),
+    );
     configuration
 }
 
 /// Normalize owned dotted prefixes, so a request for the provider section sees them too.
-fn append_array(value: &mut Value, path: &[&str], additions: Vec<String>, defaults: &[&str]) {
+fn append_array(value: &mut Value, path: &[&str], additions: Vec<String>, defaults: &[String]) {
     for length in 2..=path.len() {
         let dotted = path[..length].join(".");
         let previous = value
@@ -80,8 +65,9 @@ fn append_array(value: &mut Value, path: &[&str], additions: Vec<String>, defaul
     if let Some(array) = slot.as_array_mut() {
         for addition in additions {
             let value = Value::String(addition);
-            // Go filters are ordered: an existing exclusion before a later inclusion
-            // must move to the end rather than being treated as a harmless duplicate.
+            // Filters may be ordered with the last match winning: an existing
+            // exclusion before a later inclusion must move to the end rather
+            // than being treated as a harmless duplicate.
             array.retain(|item| item != &value);
             array.push(value);
         }
@@ -124,7 +110,7 @@ mod tests {
             "rust-analyzer.files.exclude":["leaf"]
         });
         let original = base.clone();
-        let configured = with_roots("rust", Some(&base), &["vendor".into()]);
+        let configured = with_roots(&literal(), Some(&base), &["vendor".into()]);
         assert_eq!(
             configured["rust-analyzer"]["files"],
             json!({
@@ -143,7 +129,11 @@ mod tests {
     #[test]
     fn native_exclusions_preserve_settings_and_restore_them_on_undo() {
         let base = json!({"rust-analyzer":{"files":{"exclude":["existing"]},"cargo":{"allFeatures":true}}});
-        let excluded = with_roots("rust", Some(&base), &["vendor".into(), "带 空格".into()]);
+        let excluded = with_roots(
+            &literal(),
+            Some(&base),
+            &["vendor".into(), "带 空格".into()],
+        );
         assert_eq!(
             excluded["rust-analyzer"]["files"]["exclude"],
             json!(["existing", "vendor", "带 空格"])
@@ -152,34 +142,56 @@ mod tests {
             excluded["rust-analyzer"]["cargo"],
             base["rust-analyzer"]["cargo"]
         );
-        assert_eq!(with_roots("rust", Some(&base), &[]), base);
+        assert_eq!(with_roots(&literal(), Some(&base), &[]), base);
         let go = json!({"gopls.directoryFilters":["+vendor","-cache"]});
         assert_eq!(
-            with_roots("go", Some(&go), &["vendor".into()])["gopls"]["directoryFilters"],
+            with_roots(&glob(), Some(&go), &["vendor".into()])["gopls"]["directoryFilters"],
             json!(["+vendor", "-cache", "-vendor"])
         );
         assert_eq!(
             with_roots(
-                "go",
+                &glob(),
                 Some(&json!({"gopls":{"directoryFilters":["-vendor","+vendor"]}})),
                 &["vendor".into()]
             )["gopls"]["directoryFilters"],
             json!(["+vendor", "-vendor"])
         );
         assert_eq!(
-            with_roots("go", None, &["vendor".into()])["gopls"]["directoryFilters"],
-            json!(["-**/node_modules", "-vendor"])
+            with_roots(&glob(), None, &[".".into(), "vendor".into()])["gopls"]["directoryFilters"],
+            json!(["-**/node_modules", "-", "-vendor"])
         );
     }
     #[test]
     fn native_patterns_do_not_accidentally_exclude_literal_metacharacter_siblings() {
         assert_eq!(
-            with_roots("go", None, &["literal*".into()])["gopls"]["directoryFilters"],
+            with_roots(&glob(), None, &["literal*".into()])["gopls"]["directoryFilters"],
             json!(["-**/node_modules"])
         );
         assert_eq!(
-            with_roots("rust", None, &["literal*".into()])["rust-analyzer"]["files"]["exclude"],
+            with_roots(&literal(), None, &["literal*".into()])["rust-analyzer"]["files"]["exclude"],
             json!(["literal*"])
         );
+    }
+
+    /// A server whose setting takes literal paths, as rust-analyzer's
+    /// `files.exclude` does.
+    fn literal() -> IndexingExclusions {
+        serde_json::from_value(
+            json!({"section": "rust-analyzer.files.exclude", "entry": "${path}"}),
+        )
+        .unwrap()
+    }
+
+    /// A server whose setting takes ordered glob filters with a default, as
+    /// gopls's `directoryFilters` does.
+    fn glob() -> IndexingExclusions {
+        serde_json::from_value(json!({
+            "section": "gopls.directoryFilters",
+            "entry": "-${path}",
+            "rootEntry": "-",
+            "default": ["-**/node_modules"],
+            "pathSyntax": "glob"
+        }))
+        .unwrap()
     }
 }

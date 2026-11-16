@@ -49,15 +49,6 @@ pub struct LineEditRequest {
     pub comment_token: Option<String>,
 }
 
-/// Request for `editor.lineCommentToken`.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LineCommentTokenRequest {
-    /// File extension, file name (including dotfiles such as `.env`), or
-    /// language id, matched case-insensitively.
-    pub identifier: String,
-}
-
 /// Result of `editor.lineEdit`. When `applied` is false the operation is a
 /// no-op (for example moving the first line up) and the caller must not
 /// modify its text view. Otherwise `text` replaces
@@ -112,53 +103,6 @@ impl LineEditOutcome {
             selection_start: Some(selection_start),
             selection_length: Some(selection_length),
         }
-    }
-}
-
-/// Result of `editor.lineCommentToken`. `token` is `None` for file types
-/// without a line comment token; callers must not intercept the shortcut.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LineCommentToken {
-    /// Line comment token, such as `//` or `#`.
-    pub token: Option<String>,
-}
-
-/// Resolves the line comment token for a file extension, file name, or
-/// language id. The table is the single shared source of truth; it covers
-/// file extensions (`swift`, `py`), language ids (`python`, `javascript`),
-/// and dotfile names whose basename matches an entry (`.env`).
-pub fn line_comment_token(request: LineCommentTokenRequest) -> LineCommentToken {
-    let key = request.identifier.to_lowercase();
-    let token = lookup_line_comment_token(&key).or_else(|| {
-        // Dotfiles report an empty pathExtension on macOS, so callers pass
-        // the basename: fall back to the segment after the last dot so
-        // `.env` resolves through `env` and `Foo.py` through `py`.
-        let last_segment = key.rsplit('.').next()?;
-        if last_segment.is_empty() || last_segment == key {
-            return None;
-        }
-        lookup_line_comment_token(last_segment)
-    });
-    LineCommentToken {
-        token: token.map(str::to_string),
-    }
-}
-
-fn lookup_line_comment_token(identifier: &str) -> Option<&'static str> {
-    match identifier {
-        // C family and other double-slash languages
-        "c" | "h" | "cpp" | "cc" | "cxx" | "hpp" | "hxx" | "kt" | "kts" | "swift" | "js"
-        | "jsx" | "mjs" | "cjs" | "ts" | "tsx" | "go" | "rs" | "cs" | "csharp" | "php" | "dart"
-        | "scala" | "groovy" | "m" | "mm" | "zig" | "javascript" | "javascriptreact"
-        | "typescript" | "typescriptreact" | "kotlin" | "rust" => Some("//"),
-        // Hash languages
-        "py" | "python" | "rb" | "ruby" | "sh" | "bash" | "zsh" | "shell" | "yml" | "yaml"
-        | "toml" | "ini" | "cfg" | "conf" | "properties" | "env" | "dotenv" | "r" | "rmarkdown"
-        | "pl" | "elixir" | "ex" => Some("#"),
-        // Dash languages
-        "sql" | "lua" | "hs" | "haskell" => Some("--"),
-        _ => None,
     }
 }
 

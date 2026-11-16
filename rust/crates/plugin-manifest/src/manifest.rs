@@ -260,8 +260,9 @@ pub(crate) struct LanguageServerDeclaration {
     /// is `immediate`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) workspace_configuration: Option<Value>,
-    /// Fields that govern what the plugin backend may send to its own server
-    /// and how the host keeps the server's state.
+    /// Fields that govern what the plugin backend may send to its own server,
+    /// how the host keeps the server's state, and which setting lists the
+    /// workspace's excluded directories.
     #[serde(flatten)]
     pub(crate) session: lithe_plugin_language_servers::SessionDeclaration,
 }

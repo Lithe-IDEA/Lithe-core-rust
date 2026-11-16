@@ -137,6 +137,7 @@
 
 | PR | 修改人 | API 编号 | 协议 / 能力 | 改了什么 |
 | --- | --- | --- | --- | --- |
+| [#68](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/68) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | API-25 | `languageServers` 0 内的补充 | 语言服务器新增可选字段 `indexingExclusions`（[1lck/Lithe-IDEA#1856](https://github.com/1lck/Lithe-IDEA/issues/1856)）：声明工作区配置里列出排除目录的数组 `section`、一项的写法 `entry`（恰好一个 `${path}`）、根目录写法 `rootEntry?`、配置没有该数组时的 `default?`（最多 32 项）和 `pathSyntax?`（`literal` 默认或 `glob`，`glob` 时名字含通配符的目录不写入）。LSP 引擎只按这份声明把排除目录追加进服务器读到的配置，不再按 `rust`、`go` 识别 rust-analyzer 和 gopls；没有声明的服务器配置不变。启动计划的 `sessionPolicy` 带上这份声明，宿主原样交给 `lsp.startServer`。违反时以 `plugin.manifest.invalid`（字段 `languageServers[<n>].indexingExclusions.<field>`）拒绝。旧宿主不认识这个字段，会拒绝带它的清单，所以 Go 插件要等包含本改动的桌面端发布后再声明。没有新增宿主方法、通知或能力版本。 |
 | [#61](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/61) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | — | `languageServers` 0 内的补充 | LSP 引擎在一次会话里保留语言服务器的悬浮提示答案（[1lck/Lithe-IDEA#1995](https://github.com/1lck/Lithe-IDEA/issues/1995)）：同一文档版本的同一位置，或答案 `range` 在同一行内覆盖的位置，直接用保留的答案完成请求，不再发 `textDocument/hover`。每个会话最多 32 个，先丢最久没用的；空答案、错误、文本超过 64 KiB 的答案和清空之后才到达的答案照常交付但不保留。文档打开、修改、保存、关闭，工作区文件变化，设置或索引排除项变化，运行命令，后端的 `languageServer/request`、`languageServer/notify` 和宿主通知，服务器发来的任何请求和 `$/progress` 结束，以及会话停止时全部清空。`requestCompleted` 的结果形状不变，没有新增方法、字段或能力版本。 |
 
 ### 2026-11-15

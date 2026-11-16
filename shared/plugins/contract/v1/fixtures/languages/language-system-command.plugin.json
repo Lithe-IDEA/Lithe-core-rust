@@ -64,7 +64,14 @@
       "validationArguments": [
         "version"
       ],
-      "runtimeDependencies": [{ "tool": "go" }]
+      "runtimeDependencies": [{ "tool": "go" }],
+      "indexingExclusions": {
+        "section": "gopls.directoryFilters",
+        "entry": "-${path}",
+        "rootEntry": "-",
+        "default": ["-**/node_modules"],
+        "pathSyntax": "glob"
+      }
     }
   ],
   "executionProviders": [

@@ -6,7 +6,9 @@
 //! time, which server notifications reach the backend, how long per-
 //! workspace state is kept, and whether the server works on a remote
 //! workspace. The backend may also resolve the command line each time the
-//! server starts (`launch.kind: "backend"`).
+//! server starts (`launch.kind: "backend"`). Any server may declare which of
+//! its settings lists the workspace's excluded directories
+//! (`indexingExclusions`).
 //!
 //! Core validates those declarations, turns them into the session policy
 //! the LSP engine enforces, decodes the backend's launch answer, and selects
@@ -20,6 +22,9 @@ use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
+
+mod indexing_exclusions;
+pub use indexing_exclusions::IndexingExclusions;
 
 /// How long a forwarded request may take when the backend names no timeout,
 /// in milliseconds.
@@ -84,7 +89,7 @@ pub(crate) fn is_host_owned_method(method: &str) -> bool {
 
 /// The `languageServers` session fields, flattened into the server's
 /// declaration. Every field is optional: a server that its backend does not
-/// drive declares none of them.
+/// drive declares at most `indexingExclusions`.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionDeclaration {
@@ -107,6 +112,9 @@ pub struct SessionDeclaration {
     /// Whether the server works on a remote workspace; supported when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     remote: Option<RemoteSupport>,
+    /// The setting the engine fills with the workspace's excluded directories.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    indexing_exclusions: Option<IndexingExclusions>,
 }
 
 /// `state` of a language server: the host prunes its per-workspace state
@@ -225,6 +233,9 @@ impl SessionDeclaration {
                 .validate()
                 .map_err(|message| invalid(format!("{field}.state.retention"), message))?;
         }
+        if let Some(exclusions) = &self.indexing_exclusions {
+            exclusions.validate(&format!("{field}.indexingExclusions"))?;
+        }
         Ok(())
     }
 
@@ -250,6 +261,9 @@ impl SessionDeclaration {
         });
         if let Some(state) = &self.state {
             policy["state"] = json!(state);
+        }
+        if let Some(exclusions) = &self.indexing_exclusions {
+            policy["indexingExclusions"] = json!(exclusions);
         }
         policy
     }

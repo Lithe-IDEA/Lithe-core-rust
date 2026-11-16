@@ -650,7 +650,6 @@ or removing a command fails until the table changes in the same commit.
 | `editor.planTextEdits` | Validate and order a plugin document edit batch into UTF-16 offsets with the document's line ending |
 | `editor.parseNavigationInput` | Parse a bounded line or line:column input into zero-based editor coordinates |
 | `editor.navigationHistory.reduce` | Reduce one bounded back/forward navigation history event and return the next state plus the location to open |
-| `editor.lineCommentToken` | Resolve the line comment token for a file extension or language id |
 | `network.proxyPolicy` | Normalize the stored proxy settings into the policy a network stack must apply (mode, server, credentials, exclusion rules) |
 | `lsp.plainSnippet` | Convert LSP snippet insert text into plain editor text |
 | `lsp.builtinCompletions` | Return lightweight current-file identifier completions |
@@ -2400,7 +2399,7 @@ destination cannot be opened. See
 `rust/fixtures/editor/navigation-history-v1.json`.
 
 `editor.lineEdit` applies one deterministic line-level transform. All offsets
-are UTF-16 code units so both hosts can feed the result straight into their
+are UTF-16 code units so hosts can feed the result straight into their
 text engines. The payload is `{ "operation": "toggleLineComment" |
 "duplicateLine" | "deleteLine" | "moveLineUp" | "moveLineDown" | "copyLineUp" |
 "copyLineDown", "source": string, "selectionStart": 0, "selectionLength": 0,
@@ -2414,16 +2413,10 @@ to restore. `applied: false` with every other field omitted marks a legitimate
 no-op such as moving the first line up; callers must leave their text view
 unchanged and must not consume the keyboard shortcut.
 
-`editor.lineCommentToken` accepts `{ "identifier": "py" }` (case
-insensitive; the identifier may be a file extension, a file name including
-dotfiles such as `.env`, or a language id — extensions, dotfile basenames,
-and language ids share one table) and returns `{ "token": "#" }` or
-`{ "token": null }` for file types without a line comment token.
-
-macOS consumes both commands today. Windows still uses its local TypeScript
-implementations (`comment-toggle.ts`, `line-operations.ts`) and is expected
-to adopt the same contract in a follow-up change; the fixture pins the
-canonical behavior for that migration. Deterministic cases are pinned by
+Core does not know which token a language uses: the host resolves
+`commentToken` from its language registry, where every language — bundled or
+contributed by a plugin through `languages[].configuration.lineComment` —
+declares its own comments. Deterministic cases are pinned by
 `rust/fixtures/editor/line-edit-v1.json`.
 
 `network.proxyPolicy` normalizes the stored proxy settings into the policy a

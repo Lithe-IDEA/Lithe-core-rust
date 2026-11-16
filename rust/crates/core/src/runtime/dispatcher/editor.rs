@@ -63,23 +63,5 @@ pub(super) fn dispatch(
                 Err(error) => CoreResponse::failure(id, error),
             }
         }
-        EditorCommand::LineCommentToken => {
-            match serde_json::from_value::<lithe_editor::LineCommentTokenRequest>(payload)
-                .map_err(|error| {
-                    CoreError::new(
-                        ErrorCode::InvalidRequest,
-                        "Invalid editor line comment token request",
-                    )
-                    .with_details(error.to_string())
-                })
-                .map(lithe_editor::line_comment_token)
-            {
-                Ok(data) => CoreResponse::success(
-                    id,
-                    serde_json::to_value(data).expect("Comment token response should encode"),
-                ),
-                Err(error) => CoreResponse::failure(id, error),
-            }
-        }
     }
 }

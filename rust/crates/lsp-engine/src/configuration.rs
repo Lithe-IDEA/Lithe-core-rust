@@ -155,8 +155,12 @@ impl RuntimeSession {
             .lock()
             .map(|configuration| configuration.clone())
             .unwrap_or_else(|poisoned| poisoned.into_inner().clone());
-        crate::scan_settings::configuration(&self.provider_id, &self.root_uri, base.as_deref())
-            .map(Arc::new)
+        crate::scan_settings::configuration(
+            self.indexing_exclusions.as_ref(),
+            &self.root_uri,
+            base.as_deref(),
+        )
+        .map(Arc::new)
     }
 
     pub(crate) fn update_plugin_configuration(

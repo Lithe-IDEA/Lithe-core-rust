@@ -177,6 +177,10 @@ impl LspEngine {
         let request_id = (initialize.state.next_request_id - 1).to_string();
         let now = Instant::now();
         let process_id = process.handle.process_id();
+        let indexing_exclusions = request
+            .session_policy
+            .as_ref()
+            .and_then(|policy| policy.indexing_exclusions.clone());
         let plugin_server = request.session_policy.map(PluginServerState::new);
         let session = Arc::new(RuntimeSession {
             startup_attempt: Arc::clone(attempt),
@@ -191,6 +195,7 @@ impl LspEngine {
             plugin_id: request.plugin_id,
             workspace_host: lithe_workspace::current(),
             plugin_configuration: Mutex::new(workspace_configuration.map(Arc::new)),
+            indexing_exclusions,
             root_uri: request.root_uri,
             indexing_roots: Mutex::default(),
             indexing_revision: std::sync::atomic::AtomicU64::new(0),

@@ -608,9 +608,6 @@ pub enum EditorCommand {
     /// Reduces one bounded back/forward navigation history event
     /// (`editor.navigationHistory.reduce`).
     NavigationHistoryReduce,
-    /// Resolves the line comment token for a file extension
-    /// (`editor.lineCommentToken`).
-    LineCommentToken,
 }
 
 #[derive(Debug, Clone)]
@@ -1328,7 +1325,6 @@ impl CoreCommand {
             "editor.navigationHistory.reduce" => {
                 Some(Self::Editor(EditorCommand::NavigationHistoryReduce))
             }
-            "editor.lineCommentToken" => Some(Self::Editor(EditorCommand::LineCommentToken)),
             "network.proxyPolicy" => Some(Self::NetworkProxyPolicy),
             "lsp.plainSnippet" => Some(Self::Lsp(LspCommand::PlainSnippet)),
             "lsp.builtinCompletions" => Some(Self::Lsp(LspCommand::BuiltinCompletions)),

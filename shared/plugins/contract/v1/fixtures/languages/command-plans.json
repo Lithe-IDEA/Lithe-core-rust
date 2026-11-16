@@ -421,7 +421,14 @@
             "serializedCommands": [],
             "forwardNotifications": [],
             "remote": "supported",
-            "gates": []
+            "gates": [],
+            "indexingExclusions": {
+              "section": "gopls.directoryFilters",
+              "entry": "-${path}",
+              "rootEntry": "-",
+              "default": ["-**/node_modules"],
+              "pathSyntax": "glob"
+            }
           }
         }
       }

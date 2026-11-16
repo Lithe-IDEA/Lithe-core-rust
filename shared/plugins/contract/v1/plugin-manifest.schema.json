@@ -1482,6 +1482,13 @@
       "maxItems": 2,
       "items": { "$ref": "#/$defs/editorDelimiter" }
     },
+    "indexingExclusionLiteral": {
+      "description": "A literal indexing exclusion entry: non-empty text of at most 256 bytes without control characters or a ${ template.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^(?:(?!\\$\\{)[^\\u0000-\\u001f\\u007f-\\u009f])+(?![\\s\\S])"
+    },
     "protocolName": {
       "description": "An LSP method or command name: non-empty text of at most 256 bytes without whitespace or control characters.",
       "type": "string",
@@ -1550,6 +1557,40 @@
                 "maxEntries": { "type": "integer", "minimum": 1, "maximum": 64 },
                 "maxAgeDays": { "type": "integer", "minimum": 1, "maximum": 365 }
               }
+            }
+          }
+        },
+        "indexingExclusions": {
+          "description": "The array in workspaceConfiguration the host fills with the workspace's excluded directories, and how the server writes one entry. Without it the server's configuration does not change when directories are excluded.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["section", "entry"],
+          "properties": {
+            "section": {
+              "description": "Dotted path of the array, at most 8 non-empty keys without whitespace.",
+              "type": "string",
+              "maxLength": 256,
+              "pattern": "^[^\\s.\\u0000-\\u001f\\u007f-\\u009f]+(\\.[^\\s.\\u0000-\\u001f\\u007f-\\u009f]+){0,7}(?![\\s\\S])"
+            },
+            "entry": {
+              "description": "One excluded directory. ${path} appears exactly once and is the directory's workspace-relative path separated by /; no other template is allowed.",
+              "type": "string",
+              "maxLength": 256,
+              "pattern": "^(?:(?!\\$\\{)[^\\u0000-\\u001f\\u007f-\\u009f])*\\$\\{path\\}(?:(?!\\$\\{)[^\\u0000-\\u001f\\u007f-\\u009f])*(?![\\s\\S])"
+            },
+            "rootEntry": {
+              "description": "The entry for the workspace root. Without it the root is entry with the path \".\".",
+              "$ref": "#/$defs/indexingExclusionLiteral"
+            },
+            "default": {
+              "description": "What the server uses when the configuration has no such array. The excluded directories are added after it.",
+              "type": "array",
+              "maxItems": 32,
+              "items": { "$ref": "#/$defs/indexingExclusionLiteral" }
+            },
+            "pathSyntax": {
+              "description": "How the server reads the path. With glob, a directory whose name contains * ? [ ] { or } is left out. literal when absent.",
+              "enum": ["literal", "glob"]
             }
           }
         },

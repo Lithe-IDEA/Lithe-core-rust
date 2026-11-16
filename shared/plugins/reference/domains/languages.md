@@ -56,6 +56,7 @@
 | `validationArguments` | 候选在使用前必须以状态 0 退出的探针；为空时宿主信任候选，由 LSP 握手决定。 |
 | `runtimeDependencies` | 宿主要发现并传给服务器的工具，每一项是 `requiresTools` 列出的工具定义 ID。宿主把每个路径导出为 `LITHE_<TOOL>_PATH`（用户设置的值优先），并把其目录加到服务器的 `PATH` 前面。项目本地副本不会被选中。 |
 | `initializationOptions` | 作为 LSP `initializationOptions` 发送的 JSON 对象；其中每个字符串值都是启动模板。 |
+| `indexingExclusions` | 服务器工作区配置里由宿主填入工作区排除目录的数组，见“索引排除”。 |
 | `hostIntegration` | 保留字段，见下一节。 |
 | `requestMethods`、`commands`、`serializedCommands`、`forwardNotifications`、`state`、`remote` | 后端可以向运行中的服务器发什么，以及宿主怎样保存它的状态，见“插件自有会话”。 |
 
@@ -85,6 +86,25 @@
 #### 工作区配置（`workspaceConfiguration`）
 
 语言服务器可以声明 `workspaceConfiguration`：一个对象，其中的字符串叶子可以是 `${setting:<id>}`。Core 用合并后的设置展开它，按节路径回答服务器的 `workspace/configuration` 请求，并在 `initialized` 之后发送 `workspace/didChangeConfiguration`。`immediate` 设置变化时，宿主通过 `lsp.updateWorkspaceConfiguration` 推送新值，运行中的服务器无需重启即可收到。
+
+#### 索引排除（`indexingExclusions`）
+
+用户可以把工作区目录排除在索引之外，Git 忽略的目录也可以一起排除。很多服务器默认索引所有目录，只有自己的某个设置列出要跳过的目录时才会跳过。服务器用 `indexingExclusions` 声明这个设置，宿主负责把它填好；Core 不按语言、服务器或工具名去猜是哪个设置。
+
+| 字段 | 含义 |
+| --- | --- |
+| `section` | 工作区配置里数组的点分路径，例如 `gopls.directoryFilters`；最多 8 个不含空白的非空键。 |
+| `entry` | 一个排除目录的写法。`${path}` 恰好出现一次，替换为目录相对工作区、以 `/` 分隔的路径；不允许其他模板。 |
+| `rootEntry` | 工作区根目录本身的写法。缺省时根目录按 `entry` 写，路径为 `.`。 |
+| `default` | 配置里没有这个数组时服务器使用的默认值，最多 32 项。 |
+| `pathSyntax` | `literal`（默认）或 `glob`：服务器怎样读路径。 |
+
+- 宿主回答 `workspace/configuration`、发送 `workspace/didChangeConfiguration` 时，把排除目录按顺序追加到 `section` 指向的数组后面。存储的配置不会被改，所以去掉排除后用户原来的数组原样恢复。
+- 配置里已有数组时保留它，排除项追加在后面；已存在的同一项移到末尾，因为 gopls 这类过滤器按顺序读、最后一条匹配生效。没有数组时从 `default` 开始，服务器自己的默认值仍然生效。
+- 用点分键写的配置（`"gopls.directoryFilters"`、`"gopls": {"directoryFilters": …}`）会先沿 `section` 规整成嵌套对象再追加，无关设置保留。
+- `glob` 时，名字含 `*`、`?`、`[`、`]`、`{` 或 `}` 的目录不写入，否则会把模式匹配到的其他目录也排除掉。
+- 排除目录变化时，运行中的服务器会再收到一次 `workspace/didChangeConfiguration`。没有声明 `indexingExclusions` 的服务器配置不变；宿主仍然不向它发送排除目录里的文档、诊断和文件变化。
+- 文本字段最多 256 字节、不含控制字符，`rootEntry` 和 `default` 的各项是字面文本。违反时是 `plugin.manifest.invalid`，字段为 `languageServers[<n>].indexingExclusions.<field>`。
 
 ### 后端决定启动方式（`launch.kind: "backend"`）
 
@@ -119,7 +139,7 @@
 
 - 名称是不含空白和控制字符、最多 256 字节的非空文本，在各自列表里唯一。宿主自己发送的方法（`initialize`、`initialized`、`shutdown`、`exit`、`textDocument/didOpen` 等文档同步方法、`workspace/didChangeWorkspaceFolders` 和所有 `$/` 方法）不能出现在 `requestMethods` 或 `forwardNotifications` 里。
 - 服务器列出 `requestMethods` 或 `forwardNotifications` 时必须声明 `languageServer.request` 权限；没有这样的服务器却声明该权限，是 `plugin.manifest.invalid`。
-- 启动计划的 `sessionPolicy` 就是这些字段（排序后的列表）加 `serverID`（即 `languageID`）和 `gates`。宿主原样交给 `lsp.startServer.sessionPolicy`，由 Core 的 LSP 引擎执行：宿主不能放宽，后端不能越界。
+- 启动计划的 `sessionPolicy` 就是这些字段（排序后的列表）加 `serverID`（即 `languageID`）、`gates`，以及声明了的 `indexingExclusions`。宿主原样交给 `lsp.startServer.sessionPolicy`，由 Core 的 LSP 引擎执行：宿主不能放宽，后端不能越界。
 - 请求必须在 `requestMethods` 里，`workspace/executeCommand` 的 `params.command` 必须在 `commands` 里，否则是 `plugin.host.methodNotDeclared`。通知可以是 `workspace/didChangeConfiguration`，或 `requestMethods` 里除 `workspace/executeCommand` 以外的方法；宿主自己的方法仍然被拒绝。
 - 会话必须属于调用方插件，并且正在运行；请求等待最多 `timeoutMilliseconds`（默认 60000，最大 300000），取消时向服务器发 `$/cancelRequest`。服务器的 JSON-RPC 错误不转发 `data`。
 - **gate** 是 `{id, until: "notification", method, match}`，由启动应答声明：服务器发出该 `method` 的通知、且参数包含 `match` 的所有成员时才打开。所有 gate 打开之前，`request` 按顺序等待，最多 128 个，第 129 个是 `plugin.host.busy`；通知从不被挡住。
@@ -222,6 +242,7 @@
 | [Language servers](../../contract/v1/README.md#language-servers) | 启动方式（含 `backend`）、参数、探测参数、运行时依赖 |
 | [Language server host integrations](../../contract/v1/README.md#language-server-host-integrations) | 宿主集成（保留字段，Core 不实现） |
 | [Workspace configuration](../../contract/v1/README.md#workspace-configuration) | `workspaceConfiguration` 的展开与推送 |
+| [Indexing exclusions](../../contract/v1/README.md#indexing-exclusions) | `indexingExclusions` 的声明与填充 |
 | [Plugin-owned sessions](../../contract/v1/README.md#plugin-owned-sessions) | 会话字段、会话策略、gate、状态目录与回收、准备状态 |
 | [Runtime launch](../../contract/v1/README.md#runtime-launch) | 用 `java` 或 `node` 等工具启动包内入口文件 |
 | [Tool references](../../contract/v1/README.md#tool-references) | 按工具定义 ID 引用运行时、启动计划里的 `tool` 启动方式 |
@@ -308,6 +329,7 @@ The rules for `id`, `fileExtensions`, `fileNames`, `projectFileNames`, and `depe
 | `validationArguments` | A probe that must exit with status 0 before a candidate is used; empty means the host trusts the candidate and lets the LSP handshake decide. |
 | `runtimeDependencies` | Tools the host discovers and passes to the server, each a tool-definition ID that `requiresTools` lists. The host exports each path as `LITHE_<TOOL>_PATH` (a user-set value takes precedence) and prepends its directory to the server's `PATH`. A project-local copy is never chosen. |
 | `initializationOptions` | A JSON object sent as the LSP `initializationOptions`. Every string value inside it is a launch template. |
+| `indexingExclusions` | The array in the server's workspace configuration that the host fills with the workspace's excluded directories; see "Indexing exclusions". |
 | `hostIntegration` | Reserved; see the next section. |
 | `requestMethods`, `commands`, `serializedCommands`, `forwardNotifications`, `state`, `remote` | What the backend may ask of the running server and how the host keeps its state; see "Plugin-owned sessions". |
 
@@ -337,6 +359,25 @@ A plugin that declares a language owns its process-backed features: the host sto
 #### Workspace configuration
 
 A language server may declare `workspaceConfiguration`, an object whose string leaves may be `${setting:<id>}` templates. Core expands it with the merged settings, answers the server's `workspace/configuration` requests by section path, and sends `workspace/didChangeConfiguration` after `initialized`. When an `immediate` setting changes, the host sends the new value with `lsp.updateWorkspaceConfiguration`, and the running server receives it without a restart.
+
+#### Indexing exclusions (`indexingExclusions`)
+
+The user can exclude workspace directories from indexing, and directories Git ignores can be excluded too. Many servers index every directory unless one of their own settings lists the ones to skip. A server whose setting does so declares `indexingExclusions`, and the host keeps that setting filled; Core never guesses the setting from the language, the server or the tool.
+
+| Field | Meaning |
+| --- | --- |
+| `section` | Dotted path of the array in the workspace configuration, such as `gopls.directoryFilters`; at most 8 non-empty keys without whitespace. |
+| `entry` | One excluded directory. `${path}` appears exactly once and is the directory's workspace-relative path separated by `/`; no other template is allowed. |
+| `rootEntry` | The entry for the workspace root itself. Without it the root is `entry` with the path `.`. |
+| `default` | What the server uses when the configuration has no such array, at most 32 entries. |
+| `pathSyntax` | `literal` (default) or `glob`: how the server reads the path. |
+
+- The host answers `workspace/configuration` and sends `workspace/didChangeConfiguration` with the excluded directories appended, in order, to the array at `section`. It never changes the stored configuration, so removing an exclusion restores the user's array exactly.
+- An array the configuration already has is kept and the entries are added after it; an entry already present moves to the end, because filters such as gopls's are read in order and the last match wins. Without an array the host starts from `default`, so the server's own default still applies.
+- A configuration written with dotted keys (`"gopls.directoryFilters"`, `"gopls": {"directoryFilters": …}`) is normalized to nested objects along `section` before the entries are added; unrelated settings are kept.
+- With `glob`, a directory whose name contains `*`, `?`, `[`, `]`, `{` or `}` is left out, since writing it would exclude every directory the pattern matches.
+- When the excluded directories change, a running server receives `workspace/didChangeConfiguration` again. A server without `indexingExclusions` sees its configuration unchanged; the host still stops sending it the documents, diagnostics and file changes of excluded directories.
+- A text field is at most 256 bytes without control characters, and `rootEntry` and `default` entries are literal. A violation is `plugin.manifest.invalid` at `languageServers[<n>].indexingExclusions.<field>`.
 
 ### Backend-resolved launch (`launch.kind: "backend"`)
 
@@ -371,7 +412,7 @@ A plugin backend drives its own server only through what the server declares:
 
 - A name is non-empty text of at most 256 bytes without whitespace or control characters, unique within its list. The names the host sends itself (`initialize`, `initialized`, `shutdown`, `exit`, the document sync methods such as `textDocument/didOpen`, `workspace/didChangeWorkspaceFolders`, and every `$/` method) cannot appear in `requestMethods` or `forwardNotifications`.
 - A server that lists `requestMethods` or `forwardNotifications` requires the `languageServer.request` permission; declaring the permission without such a server is `plugin.manifest.invalid`.
-- The launch plan's `sessionPolicy` is these fields as sorted lists plus `serverID` (the `languageID`) and `gates`. The host passes it unchanged to `lsp.startServer.sessionPolicy`; Core's LSP engine enforces it, so the host cannot widen it and the backend cannot step outside it.
+- The launch plan's `sessionPolicy` is these fields as sorted lists plus `serverID` (the `languageID`), `gates` and, when declared, the server's `indexingExclusions`. The host passes it unchanged to `lsp.startServer.sessionPolicy`; Core's LSP engine enforces it, so the host cannot widen it and the backend cannot step outside it.
 - A request must be in `requestMethods`, and a `workspace/executeCommand` must carry a `params.command` in `commands`; anything else is `plugin.host.methodNotDeclared`. A notification may be `workspace/didChangeConfiguration`, or a `requestMethods` entry other than `workspace/executeCommand`. The host's own methods stay refused.
 - The session must belong to the calling plugin and be running. A request waits at most `timeoutMilliseconds` (default 60000, at most 300000); cancelling it sends the server `$/cancelRequest`. A server's JSON-RPC error does not forward its `data`.
 - A **gate** is `{id, until: "notification", method, match}`, declared by the launch answer. It opens when the server sends a notification with that `method` whose params contain every member of `match`. Until every gate has opened, `request` calls wait in order, at most 128; the 129th is `plugin.host.busy`. Notifications are never held.
@@ -474,6 +515,7 @@ Discovery returns `{id: "<language>:workspace", kind: "workspace"}` followed by 
 | [Language servers](../../contract/v1/README.md#language-servers) | Launch kinds (including `backend`), arguments, probe arguments, runtime dependencies |
 | [Language server host integrations](../../contract/v1/README.md#language-server-host-integrations) | Host integrations (reserved; Core implements none) |
 | [Workspace configuration](../../contract/v1/README.md#workspace-configuration) | Expanding and pushing `workspaceConfiguration` |
+| [Indexing exclusions](../../contract/v1/README.md#indexing-exclusions) | Declaring and filling `indexingExclusions` |
 | [Plugin-owned sessions](../../contract/v1/README.md#plugin-owned-sessions) | Session fields, session policy, gates, state directories and pruning, preparation status |
 | [Runtime launch](../../contract/v1/README.md#runtime-launch) | Starting a package entry file with a tool such as `java` or `node` |
 | [Tool references](../../contract/v1/README.md#tool-references) | Referencing runtimes by tool-definition ID; the `tool` launch in a launch plan |
