@@ -3,7 +3,9 @@
 //!
 //! Core owns the whole decision. It checks declarations, finds matches in
 //! console lines, and turns a match into a workspace location, or into the
-//! groups a plugin backend resolves. A host only shows links and opens them.
+//! groups a plugin backend resolves. It also links the web addresses a line
+//! prints, which no plugin declares, so a server's URL opens in the browser.
+//! A host only shows links and opens them.
 
 use lithe_plugin_model::{invalid, Validation};
 use lithe_protocol::{CoreError, ErrorCode};
@@ -208,12 +210,15 @@ fn request_error(message: &str) -> CoreError {
 }
 
 /// `outputLinks.match`: finds links in console lines with the matchers of
-/// every installed plugin, in source order and then declaration order.
+/// every installed plugin, in source order and then declaration order, and
+/// then the web addresses the lines print.
 ///
-/// Each link reports its line index, its UTF-16 `start` and `length`, the
-/// plugin and matcher, and either `location` with `paths` the host opens the
-/// first existing one of, or `resolve` with the groups the backend function
-/// receives. Matches overlapping an earlier link on the line are skipped.
+/// Each link reports its line index and its UTF-16 `start` and `length`. A
+/// plugin's link names the plugin and matcher and has either `location` with
+/// `paths` the host opens the first existing one of, or `resolve` with the
+/// groups the backend function receives; a web address has `url` alone, which
+/// the host opens in the browser. Matches overlapping an earlier link on the
+/// line are skipped, so a plugin's link wins over an address inside it.
 pub fn match_lines(payload: Value) -> Result<Value, CoreError> {
     let request: MatchRequest = serde_json::from_value(payload).map_err(|error| {
         request_error("Invalid output link match request.").with_details(error.to_string())
@@ -299,8 +304,69 @@ pub fn match_lines(payload: Value) -> Result<Value, CoreError> {
                 links.push(link);
             }
         }
+        for (start, end) in web_addresses(scanned) {
+            if taken.len() >= MAX_LINKS_PER_LINE {
+                break;
+            }
+            if taken
+                .iter()
+                .any(|(taken_start, taken_end)| start < *taken_end && *taken_start < end)
+            {
+                continue;
+            }
+            taken.push((start, end));
+            links.push(json!({
+                "line": line_index,
+                "start": utf16_len(&scanned[..start]),
+                "length": utf16_len(&scanned[start..end]),
+                "url": &scanned[start..end],
+            }));
+        }
     }
+    // A line's plugin links come first and its addresses after them, so the
+    // links of a line are ordered by where they start.
+    links.sort_by_key(|link| (link["line"].as_u64(), link["start"].as_u64()));
     Ok(json!({ "links": links }))
+}
+
+/// The byte ranges of the `http` and `https` addresses in `line`. An address
+/// runs until whitespace or a character URLs do not contain unencoded; the
+/// punctuation that ends a sentence after it, and a closing bracket it did
+/// not open, are not part of it.
+fn web_addresses(line: &str) -> Vec<(usize, usize)> {
+    static ADDRESS: OnceLock<Regex> = OnceLock::new();
+    let address = ADDRESS.get_or_init(|| {
+        Regex::new(r#"(?i)\bhttps?://[^\s<>"'`\x00-\x1f\x7f]+"#)
+            .expect("the address pattern is valid")
+    });
+    let mut ranges = Vec::new();
+    for found in address.find_iter(line) {
+        let text = found.as_str();
+        let mut end = text.len();
+        while let Some(last) = text[..end].chars().next_back() {
+            let unbalanced = |open: char, close: char| {
+                last == close
+                    && text[..end].matches(close).count() > text[..end].matches(open).count()
+            };
+            if ".,;:!?".contains(last)
+                || unbalanced('(', ')')
+                || unbalanced('[', ']')
+                || unbalanced('{', '}')
+            {
+                end -= last.len_utf8();
+            } else {
+                break;
+            }
+        }
+        // An address needs a host after the scheme.
+        if text[..end]
+            .split_once("://")
+            .is_some_and(|(_, rest)| !rest.is_empty())
+        {
+            ranges.push((found.start(), found.start() + end));
+        }
+    }
+    ranges
 }
 
 /// The longest prefix of `line` within `limit` bytes that ends on a
@@ -443,6 +509,49 @@ pub fn decode_resolution(payload: Value) -> Result<Value, CoreError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn addresses(line: &str) -> Vec<&str> {
+        web_addresses(line)
+            .into_iter()
+            .map(|(start, end)| &line[start..end])
+            .collect()
+    }
+
+    #[test]
+    fn web_addresses_end_before_trailing_punctuation_and_unopened_brackets() {
+        assert_eq!(
+            addresses("Local:   http://localhost:8080/, see (https://example.org/a_(b)) now."),
+            ["http://localhost:8080/", "https://example.org/a_(b)"]
+        );
+        assert_eq!(
+            addresses("Swagger UI: HTTP://127.0.0.1:8080/swagger-ui/index.html?x=1&y=[2]"),
+            ["HTTP://127.0.0.1:8080/swagger-ui/index.html?x=1&y=[2]"]
+        );
+        // Quotes, angle brackets and the scheme alone end or are no address.
+        assert_eq!(
+            addresses("<http://a.test/x> \"https://b.test\" http:// ftp://c.test mailto:x"),
+            ["http://a.test/x", "https://b.test"]
+        );
+        // A scheme inside a word is not the start of an address.
+        assert!(addresses("nothttp://a.test").is_empty());
+    }
+
+    #[test]
+    fn a_plugin_link_wins_over_an_address_it_contains() {
+        let reply = match_lines(json!({
+            "scope": "run", "platform": "linux", "workspaceRoots": ["/w"],
+            "sources": [{"pluginID": "p", "matchers": [{
+                "id": "m", "pattern": r"see (?P<path>\S+) \S+", "resolve": {"function": "f"}
+            }]}],
+            "lines": ["see a.txt https://x.test/ then https://y.test/"]
+        }))
+        .unwrap();
+        let links = reply["links"].as_array().unwrap();
+        assert_eq!(links.len(), 2, "{links:?}");
+        assert_eq!(links[0]["matcherID"], "m");
+        assert_eq!(links[1]["url"], "https://y.test/");
+        assert_eq!(links[1]["start"], 31);
+    }
 
     fn matcher(value: Value) -> OutputLinkMatcher {
         serde_json::from_value(value).unwrap()

@@ -2743,9 +2743,15 @@ Core owns the decision, so every host links the same text:
   line?, column?}`: the host opens the first existing path) or `resolve`
   (`{function, groups}`). `start` and `length` count UTF-16 code units of the
   line. Matches are found in source order and then declaration order, and a match
-  overlapping an earlier link is skipped. A request carries at most 256 lines,
-  64 sources and 16 roots; a line is scanned up to 4096 bytes and links at most
-  8 times.
+  overlapping an earlier link is skipped. Core then links the `http` and
+  `https` addresses a line prints, which no plugin declares: such a link is
+  `{line, start, length, url}` with no plugin, the host opens `url` in the
+  browser, and an address inside a plugin's link stays part of that link. An
+  address ends at whitespace, a quote or an angle bracket, without the
+  sentence punctuation after it or a closing bracket it did not open. The links
+  of a line are returned in the order they start. A request carries at most 256
+  lines, 64 sources and 16 roots; a line is scanned up to 4096 bytes and links
+  at most 8 times.
 - `outputLinks.decodeResolution` takes `{reply}` (what the function answered)
   and returns the location to open, `{path, line?, column?}` with 1-based
   positions, or `null`. A reply opens only a `file:` URI and only the members
