@@ -5517,11 +5517,20 @@ the instance reported them and sum the processes that did.
 Percentages measure use between two tables of one host:
 
 - `sampledAt` is when the table was read, in microseconds of a clock that only
-  moves forward. A request with it gets `baseline: { sampledAt, processes }`: the
-  instance's processes that have `cpuTime` or `gpuEngines`, by process ID, each
-  `{ processId, startTime?, cpuTime?, gpuEngines? }` with one engine row per name.
-  The host sends it back as `previous` with its next table.
-- A process is compared with the `previous` row of its process ID and start time;
+  moves forward. A request with it gets `baseline: { sampledAt, processes,
+  earlier? }`: the instance's processes that have `cpuTime` or `gpuEngines`, by
+  process ID, each `{ processId, startTime?, cpuTime?, gpuEngines? }` with one
+  engine row per name. The host sends it back unchanged as `previous` with its
+  next table.
+- Two tables less than one second (1,000,000 µs) apart are never compared, so the
+  use of one moment, such as the reading itself or the details opening, does not
+  read as a sustained rate. A table read at least that long after `previous` is
+  measured from it, and its baseline keeps `previous`'s `{ sampledAt, processes }`
+  as `earlier`. A table read sooner is measured from `previous.earlier` when that
+  is at least one second before it, and has no percentages otherwise; either way
+  its `baseline` is `previous` unchanged, so the next table is measured from the
+  same counters.
+- A process is compared with the counters' row of its process ID and start time;
   a row with another start time belongs to an earlier process with the same ID.
   A process the baseline does not have, such as one started since, adds nothing
   until the next table. A counter lower than its baseline adds nothing.
@@ -5535,7 +5544,9 @@ Percentages measure use between two tables of one host:
   busiest engine's share of the interval is the percentage, at most 100. An engine
   the baseline row does not list counts from zero.
 - Percentages are rounded to a tenth. Without `sampledAt`, without `previous`, or
-  with a `sampledAt` no later than the baseline's, there are none.
+  without counters at least one second before the table, there are none. A
+  `sampledAt` earlier than the baseline's, which only a clock that went back
+  produces, has none and starts a new baseline without `earlier`.
 
 A table without the host or with a repeated process ID, or a `logicalProcessors`
 of 0, is `invalid_request`. Fixtures live in
