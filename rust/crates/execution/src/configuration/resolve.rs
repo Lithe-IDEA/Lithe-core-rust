@@ -123,12 +123,22 @@ pub(crate) fn resolve_layers(
             continue;
         }
         if !project_directory_exists(root, &configuration.cwd) {
-            configuration.disabled = true;
+            let message = format!("Working directory does not exist: {}", configuration.cwd);
             diagnostics.push(json!({
                 "id": configuration.id,
                 "code": "missingWorkingDirectory",
-                "message": format!("Working directory does not exist: {}", configuration.cwd)
+                "message": message
             }));
+            // A generated entry follows the build model, which detection
+            // refreshes. A saved entry stays listed, so the user can fix or
+            // delete it instead of losing it.
+            if generated_ids.contains_key(&configuration.id) {
+                configuration.disabled = true;
+            } else {
+                configuration.availability.get_or_insert_with(|| {
+                    Availability::unavailable("missingWorkingDirectory", message)
+                });
+            }
         }
     }
     configurations.retain(|configuration| !configuration.disabled);

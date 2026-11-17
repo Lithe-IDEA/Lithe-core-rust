@@ -3640,8 +3640,10 @@ default, the effective global `toolchain`, and the machine-local
 build run references). A saved configuration that cannot run carries
 `availability: {status: "unavailable", code, message}` instead of being
 dropped: `pluginMissing`, `pluginRepositoryMismatch` (the installed plugin
-comes from another repository), `pluginVersionUnsupported`, or
-`invalidConfiguration` (it fails validation, also reported as a diagnostic).
+comes from another repository), `pluginVersionUnsupported`,
+`invalidConfiguration` (it fails validation, also reported as a diagnostic) or
+`missingWorkingDirectory` (its working directory is gone; a generated entry
+whose directory is gone is left out instead, with the same diagnostic).
 Omitting `plugins` skips the plugin checks. Hosts show unavailable entries with
 their message and do not start them; `runConfig.createLaunchPlan` and
 `runConfig.providerLaunchInputs` refuse them. Entries of a built-in type the

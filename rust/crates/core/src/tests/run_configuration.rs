@@ -1942,6 +1942,40 @@ fn batch_runs_are_unavailable_outside_windows() {
     assert_eq!(form["error"]["code"], "not_supported", "{form}");
 }
 
+/// A saved run whose working directory was removed stays listed as unavailable,
+/// so the user can fix or delete it; launching it is refused.
+#[test]
+fn saved_runs_with_a_missing_working_directory_stay_listed_as_unavailable() {
+    let root = temporary_root("process-run-missing-cwd");
+    let _cleanup = Cleanup(root.clone());
+    write_run_document(
+        &root,
+        ".lithe/run/local.yaml",
+        &serde_json::json!({"version":2,"configurations":[{
+            "id":"user:list","name":"list","provider":"process.executable",
+            "cwd":"gone","extensions":{"process":{"program":"ls"}}
+        }]}),
+    );
+    let resolved = run_config_command("runConfig.resolve", serde_json::json!({"root":root}));
+    assert_eq!(resolved["ok"], true, "{resolved}");
+    let configuration = &resolved["data"]["configurations"][0];
+    assert_eq!(configuration["id"], "user:list", "{resolved}");
+    assert_eq!(configuration["disabled"], false);
+    assert_eq!(
+        configuration["availability"]["code"],
+        "missingWorkingDirectory"
+    );
+    assert_eq!(
+        resolved["data"]["diagnostics"][0]["code"],
+        "missingWorkingDirectory"
+    );
+    let plan = run_config_command(
+        "runConfig.createLaunchPlan",
+        serde_json::json!({"root":root,"configurationId":"user:list"}),
+    );
+    assert_eq!(plan["ok"], false, "{plan}");
+}
+
 /// PowerShell bypasses the execution policy unless the user unticks it, and a
 /// program is kept as a `PATH` name or saved as a path inside the project.
 #[test]
