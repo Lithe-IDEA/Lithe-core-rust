@@ -645,7 +645,8 @@ pub enum LspCommand {
     MergeCompletions,
     /// Decides whether a language server may start automatically (`lsp.activationPolicy`).
     ActivationPolicy,
-    /// Filters, orders, and groups Problems tool-window diagnostics (`lsp.problems.query`).
+    /// Filters, orders, and groups Problems tool-window diagnostics and lays the tree rows out
+    /// (`lsp.problems.query`).
     ProblemsQuery,
     /// Groups Find Usages locations by file and lays out the References tool
     /// window's rows (`lsp.references.query`).
