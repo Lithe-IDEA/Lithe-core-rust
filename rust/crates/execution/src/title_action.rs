@@ -43,6 +43,12 @@ pub(crate) enum TitleConfiguration {
     ModelNotLoaded { failed: bool },
     /// The instance's model is loaded; `debuggable` says the run declares a debug adapter.
     ModelLoaded { debuggable: bool },
+    /// A built-in process run, such as a shell script or a program; it needs
+    /// no model and has no debug adapter.
+    Process,
+    /// Resolution marked the configuration unavailable, such as a run whose
+    /// plugin is missing or too old; the host shows its availability.
+    Unavailable,
 }
 
 /// The facts one decision depends on.
@@ -83,6 +89,8 @@ pub enum TitleDecision {
     Debug,
     /// The configuration's run declares no debug adapter.
     NotDebuggable,
+    /// The configuration cannot start here; show why.
+    Unavailable,
 }
 
 /// Decides what one press does.
@@ -98,6 +106,11 @@ pub fn decide_title_action(request: TitleActionRequest) -> TitleDecision {
     };
     match configuration {
         TitleConfiguration::Unsupported => TitleDecision::Unsupported,
+        TitleConfiguration::Unavailable => TitleDecision::Unavailable,
+        TitleConfiguration::Process => match request.action {
+            TitleAction::Run => TitleDecision::Run,
+            TitleAction::Debug => TitleDecision::NotDebuggable,
+        },
         TitleConfiguration::InstanceMissing => TitleDecision::TargetMissing,
         TitleConfiguration::ModelNotLoaded { failed: true }
             if request.trigger == TitleTrigger::Settled =>

@@ -230,7 +230,7 @@ host does not know (every component may then be a folder). The two lists are the
 default folders and patterns, and a `!entry` turns a default off. Matching ignores case. A folder name hides the folder,
 everything below it and a file with that exact name (a linked worktree's `.git` file). `hidden` means the tree, search and
 Local History leave the path out; `watchedDespiteHiding` marks the hidden project configuration folder (`.lithe`) whose file
-events must still be delivered, except the built-in noise below it such as `.lithe/run/local.json`. Hosts send all children
+events must still be delivered, except the built-in noise below it such as `.lithe/run/local.yaml`. Hosts send all children
 of a directory in one call. `workspace.visibilityDefaults` takes `{}` and returns the default lists
 (`hiddenDirectoryNames`, `hiddenFilePatterns`, `builtInPatterns`, `configurationDirectory`, `configurationPattern`) so hosts
 display them without keeping a copy. Both live in `rust/crates/core-rules` like `keymap.modifierGestureStep` and are tested
@@ -238,7 +238,8 @@ against `rust/fixtures/workspace/visibility-v1.json`.
 
 The default folders are Core's own (`.git`, `.worktree`, `.worktrees`) plus the folder names the enabled plugins declare;
 Core names no language or tool folder itself. The default file patterns are `.DS_Store`, the root `.lithe/**` and
-`.lithe/run/local.json`. `workspace.configureVisibility` accepts `{plugins: [{manifest}]}`, the manifests of every enabled
+the machine-local run configuration files `.lithe/run/local.yaml`, `.lithe/run/local.json` and
+`.lithe/run/plugin/*.local.toml`. `workspace.configureVisibility` accepts `{plugins: [{manifest}]}`, the manifests of every enabled
 plugin, and replaces the declared names with theirs: each build system's `layout.hiddenDirectoryNames` (its generated
 output, such as `target`) and the directory markers of each VCS provider (its metadata, such as `.svn`). It returns
 `{hiddenDirectoryNames, rejected: [{index, error}]}`: every declared name, sorted, and the manifests that failed
@@ -706,10 +707,14 @@ or removing a command fails until the table changes in the same commit.
 | `runConfig.resolve` | Merge generated, project, and local layers and return diagnostics |
 | `runConfig.selectContextConfiguration` | Choose a matching effective configuration for a provider-supplied source and entry identity |
 | `runConfig.decideTitleAction` | Decide what a press on the title bar's Run or Debug button does |
-| `runConfig.updateOptions` | Apply typed option edits and return an updated project or local document |
-| `runConfig.updateToolPreferences` | Replace only generic preferences in a captured local Run document, preserving legacy defaults and unrelated metadata |
-| `runConfig.saveEditorChanges` | Prepare the local and optional project documents for one editor save |
-| `runConfig.createUserConfiguration` | Validate a typed user configuration and return an updated document |
+| `runConfig.updateOptions` | Apply typed option edits and return the file changes of the edited layer |
+| `runConfig.updateToolPreferences` | Replace only generic preferences in the local layer, preserving legacy defaults and unrelated metadata |
+| `runConfig.saveEditorChanges` | Prepare the file changes of the local and optional project layers for one editor save |
+| `runConfig.createUserConfiguration` | Validate a typed user configuration and return the file changes that save it |
+| `runConfig.configurationTypes` | List the built-in run configuration types this platform can create |
+| `runConfig.editorForm` | Describe the editor fields and current values of a built-in run configuration |
+| `runConfig.saveConfiguration` | Validate an editor form's values and return field errors or the file changes that save it |
+| `runConfig.deleteConfiguration` | Return the file changes that delete a saved user configuration |
 | `runConfig.createLaunchPlan` | Project one effective configuration into a platform-neutral Run or Debug plan |
 | `runConfig.providerLaunchInputs` | Resolve user choices for a provider-owned launch |
 | `git.status` | Resolve the repository, current branch, and working-tree changes |
@@ -2248,7 +2253,7 @@ workspace-root `.lithe` folder by default with the built-in entry `.lithe/**`, l
 `.idea`; deleting that line (stored as `!.lithe/**`) shows it again. The macOS file
 watcher is the one place that does not follow the hiding rules for the workspace-root `.lithe`
 folder: hiding it removes it from the tree and listings, but its file events are still
-delivered (except built-in noise such as `.lithe/run/local.json`) because editing its JSON
+delivered (except built-in noise such as `.lithe/run/local.yaml`) because editing its
 files reloads project services. Empty user exclusions preserve the
 normal visibility rules. Search settings changes invalidate only the search
 cache, not the workspace tree. Each root retains at most one content and one
@@ -3545,12 +3550,15 @@ a press it kept. `settled` says the configurations are read (detection answered,
 no model is loading and the configurations were resolved since). `configuration`
 describes the configuration the title bar shows, absent when the project has
 none: `{ kind: "unsupported" }` (it does not start through a build provider),
+`{ kind: "process" }` (a built-in process run, which the host starts itself),
+`{ kind: "unavailable" }` (resolution gave it an `availability`),
 `{ kind: "instanceMissing" }`, `{ kind: "modelNotLoaded", failed }` or
 `{ kind: "modelLoaded", debuggable }` (its run declares a debug adapter). It
 returns `{ kind }`: `currentFile`, `wait` (keep the press until the
 configurations are read), `loadModel` (load the instance's model and keep the
-press), `unsupported`, `targetMissing`, `modelFailed`, `run`, `debug` or
-`notDebuggable`. A model whose last load failed is loaded again only on a press,
+press), `unsupported`, `unavailable`, `targetMissing`, `modelFailed`, `run`,
+`debug` or `notDebuggable`. A process run answers `run` for Run and
+`notDebuggable` for Debug. A model whose last load failed is loaded again only on a press,
 so a settled answer that failed again ends with `modelFailed` instead of looping.
 Hosts own the loads, the kept press and the notices.
 Cases: `rust/fixtures/run-configuration/title-action-v1.json`.
@@ -3565,22 +3573,80 @@ Windows compares paths case-insensitively and treats both separators alike;
 case-sensitive hosts compare the supplied path exactly. Discovery remains with
 the provider, and clients must reject results made stale by workspace changes.
 
-`runConfig.resolve` accepts `root` and optional `localDocument` / `teamDocument`.
-A supplied document replaces that layer
-for this read-only resolution; omitted layers come from `.lithe/run/local.json` /
-`.lithe/run/configurations.json`. Hosts can preflight a complete two-file transaction
-against the current generated layer without publishing either file. Core never writes
-these documents; hosts still own source-identity checks, cancellation, conditional
-publication and readback. It merges
+Saved configurations live in two layers, each made of one Lithe document and
+one TOML document per plugin:
+
+| Layer | Lithe document | Plugin documents |
+| --- | --- | --- |
+| project, shared with the team | `.lithe/run/configurations.yaml` | `.lithe/run/plugin/<plugin ID>.toml` |
+| local, this machine only | `.lithe/run/local.yaml` | `.lithe/run/plugin/<plugin ID>.local.toml` |
+
+Core reads a layer's files as one `{version, configurations, ...}` document
+(version 2, `run-configuration-v2.schema.json`). A configuration belongs to the
+plugin whose build run it references or whose generated entry it overrides;
+every other one, the built-in process runs included, stays in the Lithe
+document, so it keeps working whatever plugins are installed. A plugin document
+starts with `schemaVersion = 1` and a `[plugin]` table recording the plugin's
+`id`, `name`, `author` and `repository` (the owner and repository of its
+`https://github.com/<owner>/<name>` source, so two plugins with the same ID
+are told apart), the `version` it was last saved with, the `versionRequirement`
+that can run it (a new document gets `>=` the saving version; one the user
+wrote is kept), `pluginAPIVersion` and the plugin's `requires` as
+`capabilities`, followed by one `[[configurations]]` table per entry. TOML has
+no null, so a tool choice cleared to automatic is spelled `"automatic"`. Other
+header keys are kept. The JSON documents of earlier releases
+(`configurations.json`, `local.json`) are read while their YAML replacement
+does not exist, and the first edit of that layer writes the YAML document and
+deletes the JSON one; when both exist the YAML document wins and the diagnostic
+`legacyDocumentIgnored` names the JSON one. A plugin document that cannot be
+read (`invalidPluginDocument`), whose file name and `[plugin].id` differ
+(`pluginDocumentMismatch`), that saves an ID another file already holds
+(`duplicateConfiguration`) or beyond the first 256 (`tooManyPluginDocuments`)
+is reported with its `path` and left out, so one bad file never hides the
+built-in configurations; an edit that would rewrite it is refused until it is
+fixed or removed.
+
+Core never writes these files. Every edit command returns `changes`, a list of
+`{path, baseSha256, content}`: `path` is workspace-relative with `/`,
+`baseSha256` the lowercase hex SHA-256 of the bytes the change was computed
+from (`null` when the file did not exist) and `content` the new text (`null`
+deletes the file). Hosts apply a change only while the file still has those
+bytes, apply all changes of one reply as one transaction, and resolve again
+afterwards; a mismatch means another edit came first and is reported instead
+of overwritten. `localDocument`, where a request accepts it, replaces the local
+layer for a read; an edit that would write the local layer is refused while it
+is supplied, because only files can be changed.
+
+`runConfig.resolve` accepts `root`, optional `localDocument` / `teamDocument`
+and optional `plugins`. A supplied document replaces that layer
+for this read-only resolution; omitted layers come from the files above. Hosts
+can preflight a complete two-layer transaction against the current generated
+layer without publishing either file. It merges
 configurations by stable ID using this precedence:
-`local.json > configurations.json > generated layer`. Scalars and arrays are
+`local > project > generated layer`. Scalars and arrays are
 replaced by the higher layer, while toolchain maps merge by key. It returns
 effective configurations, their source, the default (the team default from
 `.lithe/project.json`, else the first generated service, else the first
 generated entry other than Current File), structured diagnostics for orphaned
-overrides, missing working directories, disabled entries and an unavailable
+overrides, missing working directories, disabled entries, invalid entries, the
+file problems above and an unavailable
 default, the effective global `toolchain`, and the machine-local
 `localToolchains` document. Core does not match toolchain versions or vendors.
+
+`plugins` lists the installed, enabled plugins as
+`{id, displayName?, version, repository?, pluginAPIVersion?, requires?}`
+(their `plugin.json` fields). Each configuration that needs a plugin carries
+`plugin`, the dependency its document records (or only the `id` of the plugin a
+build run references). A saved configuration that cannot run carries
+`availability: {status: "unavailable", code, message}` instead of being
+dropped: `pluginMissing`, `pluginRepositoryMismatch` (the installed plugin
+comes from another repository), `pluginVersionUnsupported`, or
+`invalidConfiguration` (it fails validation, also reported as a diagnostic).
+Omitting `plugins` skips the plugin checks. Hosts show unavailable entries with
+their message and do not start them; `runConfig.createLaunchPlan` and
+`runConfig.providerLaunchInputs` refuse them. Entries of a built-in type the
+platform cannot run, such as a batch script outside Windows, are left out with
+the diagnostic `unsupportedPlatform`; their saved text is kept.
 
 Each configuration carries a `category` of `project` or `infrastructure`.
 `infrastructure` marks the external services the project runs against, such as
@@ -3629,9 +3695,12 @@ older team target does not accidentally hide a different auto entry. The
 generated layer and its fingerprint remain unchanged by user-layer resolution.
 See `fixtures/run-configuration/build-provider-stable-identities.json`.
 
-The platform guards the source snapshot, atomically writes only the local layer,
-then re-reads the result. `rust/fixtures/run-configuration/build-provider.json`
-is the canonical persistence example.
+The reply is `{id, changes}`. The reference is stored in the local layer's
+document of the plugin it names, `.lithe/run/plugin/<plugin ID>.local.toml`;
+the optional `plugins` list supplies the identity that document records. The
+platform re-reads the result after applying the changes.
+`rust/fixtures/run-configuration/build-provider.json` is the canonical
+persistence example.
 
 `extensions.build-run` stores portable user choices separately from the selector:
 `{runtimeArguments?: string[], entrypoint?: string, options?: object, tools?: object}`. Runtime arguments
@@ -3677,16 +3746,18 @@ before process launch, and an invalidated configuration or operation rejects lat
 
 `runConfig.updateOptions` and `runConfig.createUserConfiguration` are pure
 document transformations. They validate scope, paths, supported types, stable
-IDs, provider run options, and argument parsing, then return UTF-8 JSON in the
-`document` field. The platform adapter selects the target project or local
-file and performs the atomic write. These commands never write files. An empty
+IDs, provider run options, and argument parsing, then return the `changes` of
+the files the edit touches. The platform adapter applies them as described
+above; these commands never write files. An empty
 `workingDirectory` removes the layer's `cwd` override. A non-empty value must
 name an existing directory inside `root`, given relative to it or as an
 absolute path, and is stored project-relative. Values are literal paths; editor
 variables such as `${workspaceFolder}` are rejected rather than stored, because
 resolution disables and omits a configuration whose `cwd` does not exist.
 `runConfig.updateOptions` and `runConfig.inspect` accept the same optional
-`localDocument` override. When `updateOptions` carries a `toolchain` object
+`localDocument` override, and both edit commands accept the `plugins` list of
+`runConfig.resolve` so a written plugin document records the installed
+plugin. When `updateOptions` carries a `toolchain` object
 (`{ runtimeExecutablePaths?, preferences? }`), it replaces only the
 document-level `toolchain.preferences` in the local layer instead of patching a
 configuration, preserving every other document-level toolchain field; project
@@ -3709,13 +3780,14 @@ expansion or execution. Empty arguments remain explicit. The shared cases are in
 required `toolchain` object. That object may contain `preferences` and
 `runtimeExecutablePaths`, keyed by stable generic toolchain ID. It
 applies the global toolchain and configuration override edits together,
-returning `localDocument`, either a `projectDocument` string or `null`, and
-either a `toolchainDocument` string or `null`. The latter updates
-`.lithe/toolchains/local.json`, preserves unrelated toolchain IDs, and removes
-an entry when its supplied executable path is empty. Local scope combines the
-run-option edits in the local run document. Project scope returns the local
-defaults and team options as separate fully prepared documents; the platform
-adapter writes all returned documents as one transaction with rollback.
+returning the `changes` of the local layer, of the project layer in project
+scope, and of `.lithe/toolchains/local.json` when `runtimeExecutablePaths` is
+not empty. That
+document keeps unrelated toolchain IDs and drops an entry whose supplied
+executable path is empty. Local scope combines the run-option edits in the
+local layer. Project scope changes the team options and the local defaults
+separately; the platform adapter applies every returned change as one
+transaction with rollback.
 Platform clients report the editor save as successful only after the written
 documents resolve again. Failures identify whether preparation, document
 writing, or post-save reload failed; a reload failure keeps the last usable UI
@@ -3730,9 +3802,88 @@ selected Node installation. They do not fall back to a PATH shim from another
 installation, and Windows executable extensions take precedence over extensionless
 shell scripts.
 
-`runConfig.createLaunchPlan` accepts `root`, `configurationId` and optional
-`localDocument`. It resolves the configuration through the same layers and
-rejects a missing or disabled one. Core assembles only process-based plans: a
+#### Built-in process runs
+
+Four providers start a script or a program without any plugin, so they keep
+working when no plugin is installed or a plugin fails: `process.shell` (a shell
+script), `process.powershell` (a PowerShell script), `process.batch` (a batch
+script run by `cmd`, Windows only) and `process.executable` (a program started
+directly). Interpreters of other languages and build tools stay with the
+plugins that declare them. Every `process.*` provider is reserved for Core; a
+kind this Core does not know is invalid instead of belonging to a plugin.
+
+An entry keeps its choices in `extensions.process`: `script` (a file,
+project-relative with `/` or absolute) or `text` (script text), `program` (a
+bare name looked up on `PATH`, a project-relative path containing `/`, or an
+absolute path), `interpreter` (named like `program`; absent picks one
+automatically), `interpreterArguments` (absent uses the automatic ones) and,
+for PowerShell, `executionPolicyBypass` (default `true`, saved only when
+`false`). Script kinds need exactly one of `script` and `text`; a program needs
+`program` and allows none of the others. `args` holds the script options or the
+program arguments, and `cwd` and `env` keep their usual meaning. Keys a later
+release adds are kept when an older Core saves the entry.
+
+The automatic interpreter of a shell script is its `#!` line, else `/bin/sh`;
+on Windows it is the program the `#!` line names (`#!/usr/bin/env bash -e`
+becomes `bash -e`), else `bash`, both looked up on `PATH`. PowerShell uses
+`pwsh` outside Windows and `powershell` on Windows, with `-NoLogo -NoProfile`;
+batch uses `cmd /d`. A chosen interpreter drops the automatic arguments.
+
+`runConfig.configurationTypes` accepts `{}` and returns `{types: [{provider}]}`,
+the kinds a user can create on this platform in display order; batch is listed
+only on Windows.
+
+`runConfig.editorForm` accepts `{root, provider?, configurationId?, values?}`
+and describes the editor of a new configuration of `provider` or of the saved
+`configurationId` (its provider must match `provider` when both are given).
+`values` holds the open editor's unsaved values; they replace the saved ones so
+automatic values follow the edit. It returns `{formVersion, provider,
+configurationId, values, fields}`. `formVersion` is `1`; a host refuses a newer
+one. `values` maps field IDs to the current values. `fields` is the ordered list
+of `{id, kind, required?, placement?, automatic?, options?, visibleWhen?,
+note?}`:
+
+| Attribute | Meaning |
+| --- | --- |
+| `kind` | `text`, `checkbox`, `choice` (one of `options`), `file`, `multilineText`, `arguments` (argument text), `directory`, `environment` (a list of `{name, value}` rows) or `executable` (a program name or path) |
+| `placement` | `header` puts the field in the editor's top row, beside the name |
+| `automatic` | The value used while the field is empty, shown as its placeholder |
+| `visibleWhen` | `{field, equals}`: shown only while that field has that value |
+| `note` | An explanation key; `windowsOnly` says the field matters only on Windows |
+
+Hosts draw the fields in order, skip a field whose `kind` they do not know and
+send back every value they received, including keys they do not show, so a
+later Core adds fields without a host change. Script kinds show `name`,
+`storeAsProjectFile`, `source` (`file` or `text`), `script`, `text`,
+`scriptOptions`, `workingDirectory`, `environment`, `interpreter`,
+`interpreterArguments` and, for PowerShell, `executionPolicyBypass`; a program
+shows `name`, `storeAsProjectFile`, `program`, `programArguments`,
+`workingDirectory` and `environment`. An empty name saves the automatic name,
+the script or program file name. A saved entry that is not a built-in process
+run, or a batch run outside Windows, is `not_supported`.
+
+`runConfig.saveConfiguration` accepts `{root, provider, configurationId?,
+values, plugins?}`. It replies `{status: "invalid", errors: [{field, code}]}`
+when a value is wrong, else `{status: "saved", id, changes}`. `code` is
+`required`, `conflict`, `notAllowed`, `tooLong`, `invalidCharacter`,
+`invalidPath`, `notFound`, `outsideProject` (a working directory outside the
+project), `invalidName` (an environment variable name) or `duplicate` (an
+environment variable given twice); hosts show the message for the code beside
+the field. A new entry gets a `user:` ID from its name. The entry is saved whole
+in the project layer when `storeAsProjectFile` is `true` and in the local layer
+otherwise, and removed from the other layer, so it lives in one file. A path
+inside the project is saved project-relative with `/`, other paths absolute; a
+program in the project root gains `./` so it is not looked up on `PATH`. Keys and
+extension namespaces the editor does not show are kept.
+
+`runConfig.deleteConfiguration` accepts `{root, configurationId, plugins?}` and
+returns `{changes}` that remove the saved `user:` configuration from every layer.
+Generated entries cannot be deleted.
+
+`runConfig.createLaunchPlan` accepts `root`, `configurationId`, optional
+`localDocument` and optional `inlineScriptBase`. It resolves the configuration
+through the same layers and rejects a missing, disabled or unavailable one.
+Core assembles only process-based plans: a
 configuration with a bare program-name `command` returns
 `executable: { command }`, which the host resolves on PATH; one that transfers
 executable ownership to a runtime toolchain (`toolchains.runtime`) returns
@@ -3741,9 +3892,31 @@ registry. Any other configuration, including a `build.provider` reference, is
 `invalid_request`: ecosystem launch semantics stay with the plugin that
 declared the run. The plan also returns the string argument array, the
 project-relative `workingDirectory`, an empty `environment` reserved for
-toolchain-derived values, and the configuration's literal `env`. It does not
-return a shell command or platform executable path. All project paths use `/`,
-reject absolute paths and `..` traversal, and remain relative to `root`.
+toolchain-derived values, and the configuration's literal `env`. All project
+paths use `/`, reject absolute paths and `..` traversal, and remain relative to
+`root`.
+
+A built-in process run is planned for the host platform. `executable` is
+`{command}` for a name the host looks up on the `PATH` of the launch
+environment, or `{path}`, a native absolute path; `arguments` already hold the
+interpreter options, the script and its options (PowerShell gains
+`-ExecutionPolicy Bypass` on Windows unless turned off, then `-File`). A missing
+script file, or a program or interpreter named by a path that is not a file, is
+`invalid_request`. Two more keys may appear:
+
+- `inlineScript: {path, content}` for a script saved as text. The host writes
+  `content` to `path` before starting and removes it after the process exits.
+  `path` is `inlineScriptBase`, an absolute path prefix in a host-owned
+  temporary directory (never the application bundle or install directory),
+  followed by `.sh`, `.ps1` or `.cmd`; planning such a run without it is
+  `invalid_request`. The content ends with a line break, uses CRLF for batch and
+  starts with a UTF-8 byte order mark for PowerShell on Windows.
+- `commandLine` for a batch script: the exact Windows command line
+  (`cmd /d /s /c "<script> <options>"`, each word quoted the way `cmd` reads
+  it). `cmd` does not split quotes the way other programs do, so the host passes
+  this line unchanged instead of quoting `arguments` itself.
+
+Batch runs are `not_supported` outside Windows.
 
 `diagnostics.redactText` accepts `text` and returns `redacted` with
 credentials, tokens, and home-directory paths replaced by stable placeholders
@@ -5862,10 +6035,10 @@ an allowed symbolic inheritance reference. The command validates both the origin
 documents, preserves siblings, prunes empty containers along the edited path, and returns
 `{status: ok, edit: {document, preferences}}`. Resetting an absent value is a no-op.
 
-`runConfig.updateToolPreferences` accepts `{localDocument, preferences}` and returns
-`{document}` containing the replacement local Run JSON. It replaces only `toolchain.preferences`;
+`runConfig.updateToolPreferences` accepts `{root, preferences}` and returns the `changes` of
+the local layer. It replaces only `toolchain.preferences`;
 it does not materialize legacy language/build defaults, migrate v1 Run entries or modify other fields.
-The captured `localDocument` is required; this command performs no native I/O. Unknown document
+It reads the local layer's files and writes none of them. Unknown document
 versions are rejected without numeric narrowing. The native adapter owns bounded reads, cancellation,
 read-only package boundaries, optimistic comparison, metadata-preserving atomic replacement and
 read-back. No editor command discovers or executes tools. Global defaults and complete one-time

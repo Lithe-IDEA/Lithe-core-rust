@@ -63,6 +63,11 @@
         }
       }
     },
+    "repository": {
+      "description": "Optional source repository. Together with id it tells two plugins of the same name apart; run configuration documents record it and refuse a plugin built from another repository.",
+      "type": "string",
+      "pattern": "^https://github\\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/?$"
+    },
     "permissions": {
       "type": "array",
       "items": { "enum": ["backend.launch", "commands.install", "credentials.store", "debug.attach", "debug.launch", "languageServer.launch", "process.build", "process.run", "process.test", "process.vcs", "project.generate", "ui.contribute", "ui.web", "workspace.metadata",

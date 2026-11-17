@@ -27,6 +27,11 @@ pub struct DeclarativePluginManifest {
     /// `lithe_plugin_model::capabilities`.
     pub(crate) requires: Requires,
     pub(crate) vendor: PluginVendor,
+    /// The plugin's source repository, `https://github.com/<owner>/<name>`.
+    /// Together with the ID it tells two plugins of the same name apart: a run
+    /// configuration document records it and refuses a plugin built elsewhere.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) repository: Option<String>,
     #[serde(default)]
     pub(crate) permissions: Vec<String>,
     #[serde(default)]

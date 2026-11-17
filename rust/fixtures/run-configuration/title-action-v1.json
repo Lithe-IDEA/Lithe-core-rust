@@ -212,6 +212,51 @@
       "expected": {
         "kind": "notDebuggable"
       }
+    },
+    {
+      "name": "run a built-in process run, which needs no model",
+      "request": {
+        "action": "run",
+        "trigger": "press",
+        "currentFileChosen": false,
+        "settled": true,
+        "configuration": {
+          "kind": "process"
+        }
+      },
+      "expected": {
+        "kind": "run"
+      }
+    },
+    {
+      "name": "debug a built-in process run, which has no debug adapter",
+      "request": {
+        "action": "debug",
+        "trigger": "press",
+        "currentFileChosen": false,
+        "settled": true,
+        "configuration": {
+          "kind": "process"
+        }
+      },
+      "expected": {
+        "kind": "notDebuggable"
+      }
+    },
+    {
+      "name": "a configuration that cannot start here",
+      "request": {
+        "action": "run",
+        "trigger": "press",
+        "currentFileChosen": false,
+        "settled": true,
+        "configuration": {
+          "kind": "unavailable"
+        }
+      },
+      "expected": {
+        "kind": "unavailable"
+      }
     }
   ]
 }

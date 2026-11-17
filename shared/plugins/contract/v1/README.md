@@ -170,6 +170,7 @@ symbolic links. A host treats an installed package as read-only.
 | `requires` | Required: every capability the manifest uses, each with version `0`; see [Capabilities](#capabilities). |
 | `requiresTools` | Every tool-definition ID the manifest's launches and runtime dependencies name; see [Tool references](#tool-references). |
 | `vendor` | `id`, `displayName`, and `signatureRequirement` (see Trust). |
+| `repository` | Optional `https://github.com/<owner>/<name>` source repository, at most one trailing `/`; owner and name use ASCII letters, digits, `.`, `_` and `-` and are neither `.` nor `..`. Any other value is refused with `field: "repository"`. Run configuration documents under `.lithe/run/plugin/` record it with the ID, and a plugin installed from another repository does not satisfy them. |
 | `permissions` | Capabilities the plugin may ask the host to perform. |
 | `activationEvents` | When the host may start each provider. |
 | `languages` | Languages the plugin recognizes. |
