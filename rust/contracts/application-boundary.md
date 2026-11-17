@@ -20,7 +20,8 @@ verification scripts are the executable source of boundary checks.
 
 ## Source-backed plugin settings
 
-Source-backed plugin settings use `sourceSettings: 0` and the three
+Source-backed plugin settings use `sourceSettings: 0` (version 1 adds module
+sidebars, field sections and typed entry lists) and the three
 `plugins.settings.source*` commands. Plugins supply only allowlisted non-sensitive
 fields from their upstream configuration; Core validates and projects the form,
 inheritance and confirmed edits. Native adapters capture workspace identity,

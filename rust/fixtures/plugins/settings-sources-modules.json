@@ -1,0 +1,296 @@
+{
+  "snapshot": {
+    "format": "litheSettingsSources",
+    "version": 0,
+    "title": "Fictional project structure",
+    "groups": [
+      {
+        "id": "modules",
+        "title": "Modules",
+        "layout": "sidebar"
+      },
+      {
+        "id": "workspace",
+        "title": "Workspace",
+        "layout": "form"
+      }
+    ],
+    "sources": [
+      {
+        "id": "root",
+        "group": "modules",
+        "title": "example",
+        "path": "tool.xml",
+        "revision": "missing",
+        "writable": true,
+        "fields": [
+          {
+            "id": "runtime",
+            "title": "Runtime",
+            "section": "Dependencies",
+            "kind": "enum",
+            "value": null,
+            "effectiveValue": "two",
+            "effectiveSource": "Tool default",
+            "description": "Runtime the tool compiles this module against.",
+            "options": [
+              {
+                "value": "one",
+                "title": "Runtime 1"
+              },
+              {
+                "value": "two",
+                "title": "Runtime 2"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "app",
+        "group": "modules",
+        "parent": "root",
+        "title": "app",
+        "path": "app/tool.xml",
+        "revision": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "writable": true,
+        "fields": [
+          {
+            "id": "roots",
+            "title": "Source folders",
+            "section": "Sources",
+            "kind": "entryList",
+            "value": [
+              {
+                "kind": "folder",
+                "value": "src"
+              },
+              {
+                "kind": "folder",
+                "value": "test",
+                "attributes": {
+                  "test": true
+                }
+              }
+            ],
+            "effectiveValue": [
+              {
+                "kind": "folder",
+                "value": "src"
+              },
+              {
+                "kind": "folder",
+                "value": "test",
+                "attributes": {
+                  "test": true
+                }
+              }
+            ],
+            "effectiveSource": "app/tool.xml",
+            "entryKinds": [
+              {
+                "id": "folder",
+                "title": "Source folder",
+                "input": "directory"
+              }
+            ],
+            "attributes": [
+              {
+                "id": "test",
+                "title": "Test",
+                "kind": "boolean"
+              }
+            ]
+          },
+          {
+            "id": "output",
+            "title": "Output folder",
+            "section": "Paths",
+            "kind": "text",
+            "value": "build",
+            "effectiveValue": "build",
+            "effectiveSource": "app/tool.xml"
+          },
+          {
+            "id": "runtime",
+            "title": "Runtime",
+            "section": "Dependencies",
+            "kind": "enum",
+            "value": "one",
+            "effectiveValue": "one",
+            "inheritedValue": "two",
+            "effectiveSource": "app/tool.xml",
+            "options": [
+              {
+                "value": "one",
+                "title": "Runtime 1"
+              },
+              {
+                "value": "two",
+                "title": "Runtime 2"
+              }
+            ]
+          },
+          {
+            "id": "dependencies",
+            "title": "Dependencies",
+            "section": "Dependencies",
+            "kind": "entryList",
+            "description": "Archives, folders, libraries and modules this module compiles against, in classpath order.",
+            "value": [
+              {
+                "kind": "archive",
+                "value": "lib/one.zip",
+                "title": "one.zip",
+                "detail": "lib"
+              },
+              {
+                "kind": "library",
+                "value": "lib:legacy",
+                "title": "Legacy library",
+                "detail": "2 archives",
+                "attributes": {
+                  "exported": true
+                }
+              }
+            ],
+            "effectiveValue": [
+              {
+                "kind": "archive",
+                "value": "lib/one.zip",
+                "title": "one.zip",
+                "detail": "lib"
+              },
+              {
+                "kind": "library",
+                "value": "lib:legacy",
+                "title": "Legacy library",
+                "detail": "2 archives",
+                "attributes": {
+                  "exported": true
+                }
+              }
+            ],
+            "effectiveSource": "app/tool.xml",
+            "entryKinds": [
+              {
+                "id": "archive",
+                "title": "Archives",
+                "input": "file",
+                "extensions": [
+                  "zip",
+                  "jar"
+                ]
+              },
+              {
+                "id": "directory",
+                "title": "Folder",
+                "input": "directory"
+              },
+              {
+                "id": "library",
+                "title": "Library",
+                "input": "choice",
+                "choices": [
+                  {
+                    "value": "lib:shared",
+                    "title": "Shared library",
+                    "detail": "3 archives"
+                  }
+                ]
+              },
+              {
+                "id": "module",
+                "title": "Module dependency",
+                "input": "choice",
+                "choices": [
+                  {
+                    "value": "core",
+                    "title": "core"
+                  }
+                ]
+              }
+            ],
+            "attributes": [
+              {
+                "id": "exported",
+                "title": "Export",
+                "kind": "boolean"
+              },
+              {
+                "id": "scope",
+                "title": "Scope",
+                "kind": "enum",
+                "options": [
+                  {
+                    "value": "compile",
+                    "title": "Compile"
+                  },
+                  {
+                    "value": "test",
+                    "title": "Test"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "core",
+        "group": "modules",
+        "parent": "root",
+        "title": "core",
+        "path": "core/build.file",
+        "revision": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "writable": false,
+        "fields": [
+          {
+            "id": "dependencies",
+            "title": "Dependencies",
+            "section": "Dependencies",
+            "kind": "entryList",
+            "value": null,
+            "effectiveValue": [
+              {
+                "kind": "archive",
+                "value": "/cache/library-1.0.zip",
+                "title": "library-1.0.zip",
+                "detail": "/cache"
+              }
+            ],
+            "effectiveSource": "core/build.file",
+            "entryKinds": [
+              {
+                "id": "archive",
+                "title": "Archives",
+                "input": "file"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "settings",
+        "group": "workspace",
+        "title": "Workspace",
+        "path": "settings.json",
+        "revision": "missing",
+        "writable": true,
+        "fields": [
+          {
+            "id": "files",
+            "title": "Referenced files",
+            "section": "Libraries",
+            "kind": "fileList",
+            "value": null,
+            "effectiveValue": [
+              "lib/*.zip"
+            ],
+            "effectiveSource": "Tool default"
+          }
+        ]
+      }
+    ]
+  }
+}

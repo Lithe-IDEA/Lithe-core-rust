@@ -55,3 +55,49 @@ fn source_editor_actions_require_explicit_host_capability_and_keep_their_binding
     assert_eq!(plan["data"]["plan"]["function"], "compiler.settings");
     assert_eq!(plan["data"]["plan"]["params"], json!({}));
 }
+
+#[test]
+fn module_structure_editors_need_source_settings_version_one() {
+    let fixture: Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/plugins/settings-sources-modules.json"
+    )))
+    .unwrap();
+    let run = |command: &str, payload: Value| -> Value {
+        serde_json::from_str(&crate::execute_json(
+            &json!({"command":command,"payload":payload}).to_string(),
+        ))
+        .unwrap()
+    };
+    let state = run(
+        "plugins.settings.sourceState",
+        json!({"result":fixture["snapshot"]}),
+    );
+    assert_eq!(state["data"]["status"], "ok", "{state}");
+    assert_eq!(
+        state["data"]["state"]["inputs"]["app"]["roots"]["entries"][1]["attributes"]["test"],
+        true
+    );
+    // A plugin that projects sidebars, sections or entry lists requires
+    // version 1; a host that only offers version 0 refuses to install it.
+    let mut manifest: Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../shared/plugins/contract/v1/fixtures/settings/source-editor.plugin.json"
+    )))
+    .unwrap();
+    manifest["requires"]["sourceSettings"] = json!(1);
+    let host = |versions: Value| json!({"backend":[0],"languages":[0],"settings":[0],"sourceSettings":versions});
+    let refused = run(
+        "plugins.declarative.validate",
+        json!({"manifest":manifest,"hostCapabilities":host(json!([0]))}),
+    );
+    assert_eq!(
+        refused["data"]["error"]["code"], "plugin.api.unsupported",
+        "{refused}"
+    );
+    let accepted = run(
+        "plugins.declarative.validate",
+        json!({"manifest":manifest,"hostCapabilities":host(json!([0, 1]))}),
+    );
+    assert_eq!(accepted["data"]["status"], "ok", "{accepted}");
+}

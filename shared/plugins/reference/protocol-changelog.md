@@ -51,6 +51,7 @@
 | `pluginFunctions` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `projectGenerators` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `sourceSettings` | 0 | 2026-11-15 | [#57](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/57) |
+| `sourceSettings` | 1 | 2026-11-17 | [#79](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/79) |
 | `settings` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `toolDefinitions` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `toolchainProviders` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
@@ -137,6 +138,7 @@
 
 | PR | 修改人 | API 编号 | 协议 / 能力 | 改了什么 |
 | --- | --- | --- | --- | --- |
+| [#79](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/79) | [@1lck](https://github.com/1lck) | API-19 | **`sourceSettings` 1** | 原生来源设置可以做成“项目结构”页（[1lck/Lithe-IDEA#2086](https://github.com/1lck/Lithe-IDEA/issues/2086)）：分组布局 `sidebar` 把来源列成左侧模块列表，来源用 `parent` 嵌套（同组、在前、最多 8 层）；字段 `section` 在 `sidebar` 中是标签页、在 `form` 中是小标题；新字段类型 `entryList` 是有序的类型化条目列表，`entryKinds` 声明添加菜单（`file` 可带扩展名、`directory`、`choice` 带可选项），`attributes` 声明至多 4 个布尔或枚举列。条目的 `title`、`detail` 只用于显示，比较和写回时忽略；新增的 `choice` 条目必须来自当前可选项或原值。`SourceInput` 新增 `entries`，`effectiveDisplays` 对条目列表给出 `count`。快照 `version` 仍为 0；用到这些成员的插件声明 `sourceSettings: 1`，只支持 0 的宿主不会安装。新增 fixture `settings-sources-modules.json`。没有新增宿主方法或通知。 |
 | [#77](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/77) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | API-29 | `buildSystems` 0 内的说明修正 | Core 不再内置运行发现探测器（[1lck/Lithe-IDEA#1856](https://github.com/1lck/Lithe-IDEA/issues/1856) 第 4 项）：原来按 `Cargo.toml`、`go.mod`、`package.json`、`pyproject.toml`、`Makefile`、`justfile`、`Procfile`、`compose.yaml` 自己生成的 Run 配置、指纹输入和工具链要求全部删除。Run 列表里自动生成的条目只来自已启用构建插件声明的 `buildSystems[].run`，模型何时过期只由插件的 `sync.watch` 决定。插件想让项目出现在 Run 列表里，就要声明 `run`。契约 README 只改了一句措辞（不再提“探测器生成的 Run 配置”）；清单字段、校验、fixture 和能力版本都没有变，没有新增宿主方法或通知。 |
 
 ### 2026-11-16

@@ -124,7 +124,7 @@ pub const SUPPORTED_CAPABILITIES: &[(&str, &[u32])] = &[
     (PLUGIN_FUNCTIONS, &[0]),
     (PROJECT_GENERATORS, &[0]),
     (SETTINGS, &[0]),
-    (SOURCE_SETTINGS, &[0]),
+    (SOURCE_SETTINGS, &[0, 1]),
     (TOOL_DEFINITIONS, &[0]),
     (TOOLCHAIN_PROVIDERS, &[0]),
     (UI, &[0]),
