@@ -1105,7 +1105,57 @@
               "startTime": 1500,
               "cpuTime": 2000000
             }
-          ]
+          ],
+          "earlier": {
+            "sampledAt": 10000000,
+            "processes": [
+              {
+                "processId": 1,
+                "cpuTime": 98000000
+              },
+              {
+                "processId": 100,
+                "startTime": 1000,
+                "cpuTime": 4000000,
+                "gpuEngines": [
+                  {
+                    "engine": "gpu0/3d",
+                    "busyTime": 700000
+                  },
+                  {
+                    "engine": "gpu0/copy",
+                    "busyTime": 100000
+                  }
+                ]
+              },
+              {
+                "processId": 200,
+                "startTime": 2000,
+                "cpuTime": 2500000,
+                "gpuEngines": [
+                  {
+                    "engine": "gpu0/3d",
+                    "busyTime": 100000
+                  }
+                ]
+              },
+              {
+                "processId": 201,
+                "startTime": 2500,
+                "cpuTime": 1000000
+              },
+              {
+                "processId": 300,
+                "startTime": 1500,
+                "cpuTime": 2000000
+              },
+              {
+                "processId": 400,
+                "startTime": 1800,
+                "cpuTime": 7000000
+              }
+            ]
+          }
         }
       }
     },
@@ -1272,7 +1322,36 @@
               "processId": 300,
               "cpuTime": 7000000
             }
-          ]
+          ],
+          "earlier": {
+            "sampledAt": 2000000,
+            "processes": [
+              {
+                "processId": 100,
+                "cpuTime": 2000000,
+                "gpuEngines": [
+                  {
+                    "engine": "luid0/node0",
+                    "busyTime": 1000000
+                  }
+                ]
+              },
+              {
+                "processId": 200,
+                "cpuTime": 1000000,
+                "gpuEngines": [
+                  {
+                    "engine": "luid0/node0",
+                    "busyTime": 0
+                  }
+                ]
+              },
+              {
+                "processId": 300,
+                "cpuTime": 1000000
+              }
+            ]
+          }
         }
       }
     },
@@ -1456,6 +1535,303 @@
                   "busyTime": 500
                 }
               ]
+            }
+          ],
+          "earlier": {
+            "sampledAt": 1000000,
+            "processes": [
+              {
+                "processId": 100,
+                "cpuTime": 0
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "a table read less than a second after the baseline is measured from its earlier counters and keeps it",
+      "request": {
+        "hostProcessId": 100,
+        "processes": [
+          {
+            "processId": 100,
+            "parentProcessId": 1,
+            "startTime": 1000,
+            "name": "Lithe",
+            "bytes": 300,
+            "cpuTime": 3000000,
+            "gpuEngines": [
+              {
+                "engine": "gpu0/3d",
+                "busyTime": 600000
+              }
+            ]
+          },
+          {
+            "processId": 200,
+            "parentProcessId": 100,
+            "startTime": 2000,
+            "name": "zsh",
+            "bytes": 50,
+            "cpuTime": 1500000
+          }
+        ],
+        "sampledAt": 12050000,
+        "previous": {
+          "sampledAt": 12000000,
+          "processes": [
+            {
+              "processId": 100,
+              "startTime": 1000,
+              "cpuTime": 2990000,
+              "gpuEngines": [
+                {
+                  "engine": "gpu0/3d",
+                  "busyTime": 590000
+                }
+              ]
+            },
+            {
+              "processId": 200,
+              "startTime": 2000,
+              "cpuTime": 1490000
+            }
+          ],
+          "earlier": {
+            "sampledAt": 10000000,
+            "processes": [
+              {
+                "processId": 100,
+                "startTime": 1000,
+                "cpuTime": 1975000,
+                "gpuEngines": [
+                  {
+                    "engine": "gpu0/3d",
+                    "busyTime": 190000
+                  }
+                ]
+              },
+              {
+                "processId": 200,
+                "startTime": 2000,
+                "cpuTime": 1090000
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "totalBytes": 350,
+        "cpuPercent": 70.0,
+        "gpuPercent": 20.0,
+        "categories": [
+          {
+            "kind": "host",
+            "bytes": 300,
+            "processCount": 1,
+            "cpuPercent": 50.0,
+            "gpuPercent": 20.0
+          },
+          {
+            "kind": "languageServer",
+            "bytes": 0,
+            "processCount": 0,
+            "cpuPercent": 0.0,
+            "gpuPercent": 0.0
+          },
+          {
+            "kind": "pluginService",
+            "bytes": 0,
+            "processCount": 0,
+            "cpuPercent": 0.0,
+            "gpuPercent": 0.0
+          },
+          {
+            "kind": "systemHelper",
+            "bytes": 0,
+            "processCount": 0,
+            "cpuPercent": 0.0,
+            "gpuPercent": 0.0
+          },
+          {
+            "kind": "childProcess",
+            "bytes": 50,
+            "processCount": 1,
+            "cpuPercent": 20.0,
+            "gpuPercent": 0.0
+          }
+        ],
+        "entries": [
+          {
+            "kind": "childProcess",
+            "name": "zsh",
+            "processId": 200,
+            "bytes": 50,
+            "processCount": 1,
+            "cpuPercent": 20.0,
+            "gpuPercent": 0.0
+          }
+        ],
+        "omitted": {
+          "count": 0,
+          "bytes": 0
+        },
+        "baseline": {
+          "sampledAt": 12000000,
+          "processes": [
+            {
+              "processId": 100,
+              "startTime": 1000,
+              "cpuTime": 2990000,
+              "gpuEngines": [
+                {
+                  "engine": "gpu0/3d",
+                  "busyTime": 590000
+                }
+              ]
+            },
+            {
+              "processId": 200,
+              "startTime": 2000,
+              "cpuTime": 1490000
+            }
+          ],
+          "earlier": {
+            "sampledAt": 10000000,
+            "processes": [
+              {
+                "processId": 100,
+                "startTime": 1000,
+                "cpuTime": 1975000,
+                "gpuEngines": [
+                  {
+                    "engine": "gpu0/3d",
+                    "busyTime": 190000
+                  }
+                ]
+              },
+              {
+                "processId": 200,
+                "startTime": 2000,
+                "cpuTime": 1090000
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "a table read less than a second after a baseline without earlier counters has no percentages and keeps it",
+      "request": {
+        "hostProcessId": 100,
+        "processes": [
+          {
+            "processId": 100,
+            "parentProcessId": 1,
+            "startTime": 1000,
+            "name": "Lithe",
+            "bytes": 300,
+            "cpuTime": 3000000,
+            "gpuEngines": [
+              {
+                "engine": "gpu0/3d",
+                "busyTime": 600000
+              }
+            ]
+          },
+          {
+            "processId": 200,
+            "parentProcessId": 100,
+            "startTime": 2000,
+            "name": "zsh",
+            "bytes": 50,
+            "cpuTime": 1500000
+          }
+        ],
+        "sampledAt": 12050000,
+        "previous": {
+          "sampledAt": 12000000,
+          "processes": [
+            {
+              "processId": 100,
+              "startTime": 1000,
+              "cpuTime": 2990000,
+              "gpuEngines": [
+                {
+                  "engine": "gpu0/3d",
+                  "busyTime": 590000
+                }
+              ]
+            },
+            {
+              "processId": 200,
+              "startTime": 2000,
+              "cpuTime": 1490000
+            }
+          ]
+        }
+      },
+      "expected": {
+        "totalBytes": 350,
+        "categories": [
+          {
+            "kind": "host",
+            "bytes": 300,
+            "processCount": 1
+          },
+          {
+            "kind": "languageServer",
+            "bytes": 0,
+            "processCount": 0
+          },
+          {
+            "kind": "pluginService",
+            "bytes": 0,
+            "processCount": 0
+          },
+          {
+            "kind": "systemHelper",
+            "bytes": 0,
+            "processCount": 0
+          },
+          {
+            "kind": "childProcess",
+            "bytes": 50,
+            "processCount": 1
+          }
+        ],
+        "entries": [
+          {
+            "kind": "childProcess",
+            "name": "zsh",
+            "processId": 200,
+            "bytes": 50,
+            "processCount": 1
+          }
+        ],
+        "omitted": {
+          "count": 0,
+          "bytes": 0
+        },
+        "baseline": {
+          "sampledAt": 12000000,
+          "processes": [
+            {
+              "processId": 100,
+              "startTime": 1000,
+              "cpuTime": 2990000,
+              "gpuEngines": [
+                {
+                  "engine": "gpu0/3d",
+                  "busyTime": 590000
+                }
+              ]
+            },
+            {
+              "processId": 200,
+              "startTime": 2000,
+              "cpuTime": 1490000
             }
           ]
         }
