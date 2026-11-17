@@ -484,6 +484,8 @@ pub enum BuildCommand {
     DecodeDependencies,
     /// Digests the files a build model depends on (`build.syncFingerprint`).
     SyncFingerprint,
+    /// Nests a loaded model's projects and files their tasks for a tool window (`build.modelTree`).
+    ModelTree,
     /// Reduces a test run's termination and decoded summary to one verdict (`build.resolveTestRunOutcome`).
     ResolveTestRunOutcome,
     /// Merges a run's test results into the stored history inside the host-stated scope (`build.mergeTestOutcomes`).
@@ -546,8 +548,11 @@ pub enum WorkspaceCommand {
     /// Classifies a batch of workspace-relative paths as hidden or visible (`workspace.classifyVisibility`).
     /// The rule lives in `lithe-core-rules` so the Windows frontend can run it synchronously.
     ClassifyVisibility,
-    /// Returns the built-in hidden-path lists (`workspace.visibilityDefaults`), also from `lithe-core-rules`.
+    /// Returns the default hidden-path lists (`workspace.visibilityDefaults`), also from `lithe-core-rules`.
     VisibilityDefaults,
+    /// Replaces the folder names the enabled plugins hide in every workspace
+    /// (`workspace.configureVisibility`), collected from their validated manifests.
+    ConfigureVisibility,
 }
 
 #[derive(Debug, Clone)]
@@ -610,9 +615,6 @@ pub enum EditorCommand {
     /// Reduces one bounded back/forward navigation history event
     /// (`editor.navigationHistory.reduce`).
     NavigationHistoryReduce,
-    /// Resolves the line comment token for a file extension
-    /// (`editor.lineCommentToken`).
-    LineCommentToken,
 }
 
 #[derive(Debug, Clone)]
@@ -706,7 +708,7 @@ pub enum RunConfigCommand {
     Inspect,
     /// Reads effective saved tool paths for one Provider root (`runConfig.projectToolchain`).
     ProjectToolchain,
-    /// Regenerates detected run configurations (`runConfig.generate`).
+    /// Regenerates the provider run configurations (`runConfig.generate`).
     Generate,
     /// Formats argument vectors as reversible editor text (`runConfig.argumentText`).
     ArgumentText,
@@ -849,10 +851,12 @@ pub enum GitCommand {
     BranchNamePreview,
     /// Assigns palette slots to a page of ordered repository identities.
     RepositoryColorAssignments,
-    /// Chooses the workspace repository a view acts on (`git.workspaceRepositorySelection`).
+    /// Chooses the workspace repositories a view acts on (`git.workspaceRepositorySelection`).
     WorkspaceRepositorySelection,
     /// Groups workspace repositories' changes and plans their staging (`git.workspaceChangeGroups`).
     WorkspaceChangeGroups,
+    /// Interleaves the loaded histories of workspace repositories (`git.workspaceHistoryMerge`).
+    WorkspaceHistoryMerge,
     /// Plans a branch Update or Pull from collected facts (`git.updatePlan`).
     UpdatePlan,
     /// Plans history refresh windows, page merges, and selection retention (`git.historyWindow`).
@@ -872,6 +876,8 @@ pub enum GitCommand {
     WorktreeCreationPreview,
     /// Resolves the destination and commits for a branch push (`git.pushPreview`).
     PushPreview,
+    /// Reviews pushing every workspace repository, in push order (`git.workspacePushPreview`).
+    WorkspacePushPreview,
     /// Resolves metadata for one commit (`git.commit`).
     Commit,
     /// Lists paths changed by one commit (`git.commitFiles`).
@@ -1161,6 +1167,7 @@ impl CoreCommand {
             "build.decodeDiagnostics" => Some(Self::Build(BuildCommand::DecodeDiagnostics)),
             "build.decodeDependencies" => Some(Self::Build(BuildCommand::DecodeDependencies)),
             "build.syncFingerprint" => Some(Self::Build(BuildCommand::SyncFingerprint)),
+            "build.modelTree" => Some(Self::Build(BuildCommand::ModelTree)),
             "build.resolveTestRunOutcome" => Some(Self::Build(BuildCommand::ResolveTestRunOutcome)),
             "build.mergeTestOutcomes" => Some(Self::Build(BuildCommand::MergeTestOutcomes)),
             "vcs.detectRoots" => Some(Self::VcsDetectRoots),
@@ -1272,6 +1279,9 @@ impl CoreCommand {
             "workspace.visibilityDefaults" => {
                 Some(Self::Workspace(WorkspaceCommand::VisibilityDefaults))
             }
+            "workspace.configureVisibility" => {
+                Some(Self::Workspace(WorkspaceCommand::ConfigureVisibility))
+            }
             "workbench.chromeLayout.reduce" => Some(Self::WorkbenchChromeLayoutReduce),
             "workbench.notifications.reduceReadState" => {
                 Some(Self::WorkbenchNotificationsReduceReadState)
@@ -1333,7 +1343,6 @@ impl CoreCommand {
             "editor.navigationHistory.reduce" => {
                 Some(Self::Editor(EditorCommand::NavigationHistoryReduce))
             }
-            "editor.lineCommentToken" => Some(Self::Editor(EditorCommand::LineCommentToken)),
             "network.proxyPolicy" => Some(Self::NetworkProxyPolicy),
             "lsp.plainSnippet" => Some(Self::Lsp(LspCommand::PlainSnippet)),
             "lsp.builtinCompletions" => Some(Self::Lsp(LspCommand::BuiltinCompletions)),
@@ -1481,6 +1490,7 @@ impl CoreCommand {
                 Some(Self::Git(GitCommand::WorkspaceRepositorySelection))
             }
             "git.workspaceChangeGroups" => Some(Self::Git(GitCommand::WorkspaceChangeGroups)),
+            "git.workspaceHistoryMerge" => Some(Self::Git(GitCommand::WorkspaceHistoryMerge)),
             "git.updatePlan" => Some(Self::Git(GitCommand::UpdatePlan)),
             "git.historyWindow" => Some(Self::Git(GitCommand::HistoryWindow)),
             "git.graphProjection" => Some(Self::Git(GitCommand::GraphProjection)),
@@ -1490,6 +1500,7 @@ impl CoreCommand {
             "git.changedFileGroups" => Some(Self::Git(GitCommand::ChangedFileGroups)),
             "git.worktreeCreationPreview" => Some(Self::Git(GitCommand::WorktreeCreationPreview)),
             "git.pushPreview" => Some(Self::Git(GitCommand::PushPreview)),
+            "git.workspacePushPreview" => Some(Self::Git(GitCommand::WorkspacePushPreview)),
             "git.commit" => Some(Self::Git(GitCommand::Commit)),
             "git.commitFiles" => Some(Self::Git(GitCommand::CommitFiles)),
             "git.comparison" => Some(Self::Git(GitCommand::Comparison)),
@@ -1757,6 +1768,10 @@ mod tests {
         assert!(matches!(
             CoreCommand::parse("git.pushPreview"),
             Some(CoreCommand::Git(GitCommand::PushPreview))
+        ));
+        assert!(matches!(
+            CoreCommand::parse("git.workspacePushPreview"),
+            Some(CoreCommand::Git(GitCommand::WorkspacePushPreview))
         ));
     }
 

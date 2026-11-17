@@ -144,8 +144,10 @@ call.
 Roots come from static markers; detection never starts a process. One
 breadth-first walk reads the markers directly inside each directory down to
 eight levels below the workspace, at most 20,000 directories. It never enters a
-marker directory (`.git`, `.svn`), a symbolic link, or a dependency or build
-directory such as `node_modules`, `target`, or `.worktrees`. When the workspace
+marker directory (`.git`, `.svn`), a symbolic link, or a folder the default
+visibility rules hide: Core's `.worktree` and `.worktrees` and the folder names
+enabled plugins declare through `workspace.configureVisibility`, such as a build
+system's `target`. When the workspace
 itself has no marker, its ancestors are checked, because a Subversion working
 copy has one `.svn` at its top; the enclosing root's `id` is `..`, `../..`, ….
 `truncated` is `true` only when the directory budget ran out, so a root may be

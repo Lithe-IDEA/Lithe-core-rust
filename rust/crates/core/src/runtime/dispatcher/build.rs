@@ -141,6 +141,11 @@ pub(super) fn dispatch(command: BuildCommand, id: Option<String>, payload: Value
             payload,
             crate::build::build_sync_fingerprint_command::<Manifest>,
         ),
+        BuildCommand::ModelTree => plugin_response(
+            id,
+            payload,
+            crate::build::build_model_tree_command::<Manifest>,
+        ),
         BuildCommand::ResolveTestRunOutcome => reducer_response(
             id,
             payload,

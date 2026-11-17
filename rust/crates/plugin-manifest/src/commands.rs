@@ -211,3 +211,66 @@ pub fn decode_grammar_command(payload: Value) -> Result<Value, CoreError> {
         },
     )))
 }
+
+/// Payload of `workspace.configureVisibility`: the manifests of every enabled
+/// plugin, in any order.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VisibilityPayload {
+    plugins: Vec<VisibilityPlugin>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VisibilityPlugin {
+    manifest: Value,
+}
+
+/// The folder names the enabled plugins hide in every workspace, unordered and
+/// possibly repeated.
+pub struct DeclaredHiddenDirectories {
+    /// Each build system's `layout.hiddenDirectoryNames`: dependency, cache
+    /// and build output folders.
+    pub generated: Vec<String>,
+    /// Each VCS provider's directory markers, such as `.svn`.
+    pub metadata: Vec<String>,
+    /// `{index, error}` for each manifest that failed validation, by its
+    /// position in the payload; such a manifest contributes no names.
+    pub rejected: Vec<Value>,
+}
+
+/// Decodes a `workspace.configureVisibility` payload and collects the folder
+/// names of every manifest that validates. As in `build.detect`, an invalid
+/// manifest is reported instead of failing the call.
+pub fn declared_hidden_directories(payload: Value) -> Result<DeclaredHiddenDirectories, CoreError> {
+    let payload: VisibilityPayload = decode_payload(payload, "workspace.configureVisibility")?;
+    let mut generated = Vec::new();
+    let mut metadata = Vec::new();
+    let mut rejected = Vec::new();
+    for (index, plugin) in payload.plugins.into_iter().enumerate() {
+        match validate_manifest_value(plugin.manifest) {
+            Ok(manifest) => {
+                generated.extend(
+                    manifest
+                        .build_systems
+                        .iter()
+                        .flat_map(|build_system| build_system.hidden_directory_names())
+                        .cloned(),
+                );
+                metadata.extend(
+                    manifest
+                        .vcs_providers
+                        .iter()
+                        .flat_map(|provider| provider.metadata_directory_names())
+                        .map(str::to_string),
+                );
+            }
+            Err(error) => rejected.push(json!({ "index": index, "error": error })),
+        }
+    }
+    Ok(DeclaredHiddenDirectories {
+        generated,
+        metadata,
+        rejected,
+    })
+}

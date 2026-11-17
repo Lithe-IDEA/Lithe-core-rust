@@ -1,6 +1,6 @@
 //! Workspace repository projections against their shared fixtures.
 
-use super::{change_groups_command, selection_command, MAX_REPOSITORIES};
+use super::{change_groups_command, history_merge_command, selection_command, MAX_REPOSITORIES};
 use lithe_protocol::CoreError;
 use serde_json::{json, Value};
 
@@ -37,6 +37,66 @@ fn change_groups_match_the_shared_fixture() {
         include_str!("../../../../fixtures/git/workspace-change-groups-v1.json"),
         change_groups_command,
     );
+}
+
+#[test]
+fn history_merge_matches_the_shared_fixture() {
+    check_fixture(
+        include_str!("../../../../fixtures/git/workspace-history-merge-v1.json"),
+        history_merge_command,
+    );
+}
+
+/// The loaded commits of one repository: `count` commits a minute apart, newest
+/// first, each the child of the next. The last loaded one has a parent unless
+/// the walk is complete, as a page cut mid-history does.
+fn history(id: &str, count: usize, newest: i64, complete: bool) -> Value {
+    let commits = (0..count)
+        .map(|index| {
+            let parents = if index + 1 < count || !complete {
+                vec![format!("{:x}{:06x}", id.len(), index + 1)]
+            } else {
+                Vec::new()
+            };
+            json!({
+                "hash": format!("{:x}{index:06x}", id.len()),
+                "parentHashes": parents,
+                "timestamp": newest - 60 * index as i64,
+            })
+        })
+        .collect::<Vec<_>>();
+    json!({"id": id, "complete": complete, "commits": commits})
+}
+
+#[test]
+fn history_merge_rows_only_grow_at_the_end_as_pages_arrive() {
+    let first = history_merge_command(json!({"repositories": [
+        history("a", 100, 10_000, false),
+        history("bb", 100, 9_000, true),
+    ]}))
+    .unwrap();
+    let second = history_merge_command(json!({"repositories": [
+        history("a", 200, 10_000, false),
+        history("bb", 100, 9_000, true),
+    ]}))
+    .unwrap();
+    let placed = first["entries"].as_array().unwrap();
+    assert_eq!(first["pending"], json!([0]));
+    assert_eq!(
+        &second["entries"].as_array().unwrap()[..placed.len()],
+        placed
+    );
+    assert!(second["entries"].as_array().unwrap().len() > placed.len());
+}
+
+#[test]
+fn history_merges_past_the_commit_bound_are_rejected() {
+    let half = crate::history::MAX_LOG_COMMITS / 2;
+    let request = json!({"repositories": [
+        history("a", half + 1, 100_000_000, true),
+        history("bb", half, 100_000_000, true),
+    ]});
+    assert!(history_merge_command(request).is_err());
 }
 
 #[test]

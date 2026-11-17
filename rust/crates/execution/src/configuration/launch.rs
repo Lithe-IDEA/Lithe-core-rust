@@ -26,7 +26,6 @@ pub fn provider_launch_inputs(request: ProviderLaunchInputsRequest) -> Result<Va
     let resolved = resolve(ResolveRequest {
         team_document: None,
         root: request.root,
-        toolchain_candidates: Vec::new(),
         local_document: request.local_document,
     })?;
     let config = resolved["configurations"]
@@ -93,7 +92,7 @@ pub fn provider_launch_inputs(request: ProviderLaunchInputsRequest) -> Result<Va
 
 /// Resolves one configuration into the exact executable, arguments, and environment.
 ///
-/// Core only assembles process-based plans: a detector or provider either named
+/// Core only assembles process-based plans: the provider or the saved entry named
 /// the command, or transferred executable ownership to a runtime toolchain.
 /// Ecosystem launch semantics stay in the plugin that declared the run.
 pub fn create_launch_plan(request: LaunchPlanRequest) -> Result<Value, CoreError> {
@@ -101,7 +100,6 @@ pub fn create_launch_plan(request: LaunchPlanRequest) -> Result<Value, CoreError
     let resolved = resolve(ResolveRequest {
         team_document: None,
         root: request.root,
-        toolchain_candidates: Vec::new(),
         local_document: request.local_document,
     })?;
     let config = resolved["configurations"]

@@ -1,5 +1,6 @@
-//! Host runtimes keep Core's version probe; any other runtime names the tool
-//! definition with the same ID, which checks the version itself.
+//! A runtime without executables names the tool definition with the same ID,
+//! which finds the executable and checks the version itself. Core knows no
+//! runtime by name: `go` and `node` follow the same rules as any other ID.
 
 use crate::build::{build_check_tool_version_command, build_invocation_plan_command};
 use lithe_plugin_manifest::DeclarativePluginManifest as Manifest;
@@ -31,126 +32,93 @@ fn check(manifest: Value, runtime: &str, output: &str) -> Value {
     .expect("version request is valid")
 }
 
-#[test]
-fn host_runtime_probe_arguments_are_portable_across_platforms() {
-    for platform in ["macos", "linux", "windows"] {
-        let mut manifest = manifest();
-        manifest["buildSystems"][0]["invocation"]["runtimeDependencies"] = json!([
-            { "id": "node", "minimumVersion": "20" },
-            { "id": "go", "minimumVersion": "1.22" }
-        ]);
-        let result = plan(manifest, platform);
-        assert_eq!(result["status"], "ok", "{platform}: {result}");
-        let runtimes = &result["invocation"]["runtimeDependencies"];
-        for (index, arguments) in [json!(["--version"]), json!(["version"])]
-            .into_iter()
-            .enumerate()
-        {
-            assert_eq!(runtimes[index]["hostManaged"], true, "{platform}");
-            let id = if index == 0 { "node" } else { "go" };
-            assert_eq!(
-                runtimes[index]["executables"],
-                json!([{"kind":"runtime","runtime":id}]),
-                "{platform}"
-            );
-            assert_eq!(
-                runtimes[index]["pathVariable"],
-                format!("LITHE_{}_PATH", id.to_ascii_uppercase())
-            );
-            assert_eq!(
-                runtimes[index]["version"]["arguments"], arguments,
-                "{platform}"
-            );
-        }
-        // The build tool's own probe stays independent of its runtimes.
-        assert_eq!(
-            result["invocation"]["version"]["arguments"],
-            json!(["--version"])
-        );
-    }
-}
-
-/// A published manifest that names `vm` without executables keeps
-/// validating; the plan resolves it through the tool definition `vm`.
+/// A published manifest that names a runtime without executables keeps
+/// validating; the plan resolves it through the tool definition with that
+/// ID. `go` and `node` get no host candidate and no Core probe.
 #[test]
 fn runtime_without_executables_becomes_a_toolchain_candidate() {
     for platform in ["macos", "linux", "windows"] {
-        let mut manifest = manifest();
-        manifest["buildSystems"][0]["invocation"]["runtimeDependencies"] =
-            json!([{ "id": "vm", "minimumVersion": "8" }]);
-        let result = plan(manifest, platform);
-        assert_eq!(result["status"], "ok", "{platform}: {result}");
-        assert_eq!(
-            result["invocation"]["runtimeDependencies"][0],
-            json!({
-                "id": "vm",
-                "displayName": null,
-                "hostManaged": false,
-                "pathVariable":"LITHE_VM_PATH",
-                "executables": [
-                    { "kind": "toolchain", "toolchainID": "vm", "root": "." }
-                ],
-                "version": null,
-                "minimumVersion": "8"
-            }),
-            "{platform}"
-        );
+        for (id, minimum, path_variable) in [
+            ("vm", "8", "LITHE_VM_PATH"),
+            ("go", "1.22", "LITHE_GO_PATH"),
+            ("node", "20", "LITHE_NODE_PATH"),
+        ] {
+            let mut manifest = manifest();
+            manifest["buildSystems"][0]["invocation"]["runtimeDependencies"] =
+                json!([{ "id": id, "minimumVersion": minimum }]);
+            let result = plan(manifest, platform);
+            assert_eq!(result["status"], "ok", "{platform} {id}: {result}");
+            assert_eq!(
+                result["invocation"]["runtimeDependencies"][0],
+                json!({
+                    "id": id,
+                    "displayName": null,
+                    "pathVariable": path_variable,
+                    "executables": [
+                        { "kind": "toolchain", "toolchainID": id, "root": "." }
+                    ],
+                    "version": null,
+                    "minimumVersion": minimum
+                }),
+                "{platform} {id}"
+            );
+            // The build tool's own probe stays independent of its runtimes.
+            assert_eq!(
+                result["invocation"]["version"]["arguments"],
+                json!(["--version"])
+            );
+        }
     }
 }
 
 #[test]
 fn runtime_named_by_tool_definition_has_no_core_probe() {
-    let mut manifest = manifest();
-    manifest["buildSystems"][0]["invocation"]["runtimeDependencies"] =
-        json!([{ "id": "vm", "minimumVersion": "8" }]);
-    let result = check(manifest, "vm", "21.0.4\n");
-    assert_eq!(
-        result,
-        json!({
-            "status": "rejected",
-            "error": {
-                "code": "plugin.build.unavailable",
-                "message": "Cargo declares no version probe for vm; its tool definition checks the version."
-            }
-        })
-    );
-}
-
-#[test]
-fn host_runtime_output_reads_the_first_dotted_number() {
-    for (runtime, minimum, output, satisfied, version) in [
-        ("node", "20", "v20.11.0\n", true, "20.11.0"),
-        (
-            "node",
-            "20",
-            "warning: custom build\nv18.20.4\n",
-            false,
-            "18.20.4",
-        ),
-        (
-            "go",
-            "1.22",
-            "go version go1.22.3 darwin/arm64\n",
-            true,
-            "1.22.3",
-        ),
-        (
-            "go",
-            "1.22",
-            "go version go1.21.9 linux/amd64\n",
-            false,
-            "1.21.9",
-        ),
+    for (id, output) in [
+        ("vm", "21.0.4\n"),
+        ("go", "go version go1.22.3 darwin/arm64\n"),
+        ("node", "v20.11.0\n"),
     ] {
         let mut manifest = manifest();
         manifest["buildSystems"][0]["invocation"]["runtimeDependencies"] =
-            json!([{ "id": runtime, "minimumVersion": minimum }]);
-        let result = check(manifest, runtime, output);
+            json!([{ "id": id, "minimumVersion": "8" }]);
+        let result = check(manifest, id, output);
+        assert_eq!(
+            result,
+            json!({
+                "status": "rejected",
+                "error": {
+                    "code": "plugin.build.unavailable",
+                    "message": format!(
+                        "Cargo declares no version probe for {id}; its tool definition checks the version."
+                    )
+                }
+            }),
+            "{id}"
+        );
+    }
+}
+
+/// A runtime the plugin describes itself reads its version with its own
+/// pattern, whatever its ID.
+#[test]
+fn described_runtime_reads_its_own_probe() {
+    for (output, satisfied, version) in [
+        ("go version go1.22.3 darwin/arm64\n", true, "1.22.3"),
+        ("go version go1.21.9 linux/amd64\n", false, "1.21.9"),
+    ] {
+        let mut manifest = manifest();
+        manifest["buildSystems"][0]["invocation"]["runtimeDependencies"] = json!([{
+            "id": "go",
+            "minimumVersion": "1.22",
+            "executables": [{ "kind": "command", "command": "go" }],
+            "version": { "arguments": ["version"], "pattern": "go(\\d+\\.\\d+(?:\\.\\d+)?)" }
+        }]);
+        let result = check(manifest, "go", output);
         assert_eq!(result["status"], "ok", "{result}");
         assert_eq!(
             result["version"],
             json!({ "satisfied": satisfied, "version": version }),
-            "{runtime} {output}"
+            "{output}"
         );
     }
 }

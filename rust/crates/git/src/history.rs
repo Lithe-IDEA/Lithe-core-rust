@@ -20,7 +20,11 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 const DEFAULT_HISTORY_LIMIT: usize = 300;
-const MAX_HISTORY_COMMITS: usize = 5_000;
+/// Commits one history stream reads when its first page names no `maxCommits`.
+const DEFAULT_MAX_HISTORY_COMMITS: usize = 5_000;
+/// Largest Git Log a view may read: the most `maxCommits` one stream accepts, and the most
+/// commits `git.graphProjection` and `git.workspaceHistoryMerge` take in one request.
+pub(crate) const MAX_LOG_COMMITS: usize = 100_000;
 const RECENT_BRANCH_LIMIT: usize = 5;
 const RECENT_BRANCH_REFLOG_LIMIT: &str = "100";
 const DEFAULT_BRANCH_FALLBACKS: [&str; 2] = ["main", "master"];
@@ -78,6 +82,11 @@ pub struct GitHistoryPageRequest {
     pub offset: Option<usize>,
     #[serde(default = "default_history_limit")]
     pub(crate) limit: usize,
+    /// Most commits the stream reads in all, `1..=MAX_LOG_COMMITS`; omission is
+    /// `DEFAULT_MAX_HISTORY_COMMITS`. The first page fixes it for the cursor, and a
+    /// continuation omits it or repeats the same value.
+    #[serde(default)]
+    pub(crate) max_commits: Option<usize>,
 }
 
 /// Git-native ordering policies that both preserve child-before-parent order.
@@ -173,6 +182,7 @@ pub fn history(request: GitHistoryRequest) -> Result<GitHistoryResponse, CoreErr
         cursor: None,
         offset: None,
         limit: request.limit,
+        max_commits: None,
     })?;
     if let Some(cursor) = page.next_cursor.as_deref() {
         if let Err(error) = close_history_cursor(GitHistoryCursorCloseRequest {
@@ -325,6 +335,20 @@ pub fn history_page(request: GitHistoryPageRequest) -> Result<GitHistoryPageResp
             "Git history page cannot combine cursor and offset",
         ));
     }
+    if let Some(max_commits) = request.max_commits {
+        if !(1..=MAX_LOG_COMMITS).contains(&max_commits) {
+            return Err(CoreError::new(
+                ErrorCode::InvalidRequest,
+                "Git history maxCommits must be between 1 and 100000",
+            ));
+        }
+        if request.offset.is_some() {
+            return Err(CoreError::new(
+                ErrorCode::InvalidRequest,
+                "Git history page cannot combine offset and maxCommits",
+            ));
+        }
+    }
     if let Some(offset) = request.offset {
         return offset_history_page(
             request.root,
@@ -356,6 +380,7 @@ pub fn history_page(request: GitHistoryPageRequest) -> Result<GitHistoryPageResp
                 next_cursor: None,
                 next_offset: None,
                 has_more: false,
+                limit_reached: false,
             });
         }
     }
@@ -365,14 +390,21 @@ pub fn history_page(request: GitHistoryPageRequest) -> Result<GitHistoryPageResp
         take_history_session(cursor)?.ok_or_else(|| invalid_history_cursor(cursor))?
     } else {
         let lease = reserve_history_session_slot()?;
-        let session =
-            HistorySession::start(root.clone(), request.reference.clone(), request.order)?;
+        let session = HistorySession::start(
+            root.clone(),
+            request.reference.clone(),
+            request.order,
+            request.max_commits.unwrap_or(DEFAULT_MAX_HISTORY_COMMITS),
+        )?;
         (session, lease)
     };
     if session.root != root
         || session.host_key != lithe_workspace::identity_key(std::path::Path::new(&root))
         || session.reference != request.reference
         || session.order != request.order
+        || request
+            .max_commits
+            .is_some_and(|max_commits| max_commits != session.max_commits)
     {
         let cursor = session.cursor.clone();
         lease.store(session)?;
@@ -381,11 +413,11 @@ pub fn history_page(request: GitHistoryPageRequest) -> Result<GitHistoryPageResp
 
     let limit = request.limit.clamp(
         1,
-        MAX_HISTORY_COMMITS.saturating_sub(session.emitted).max(1),
+        session.max_commits.saturating_sub(session.emitted).max(1),
     );
     let page = session.read_page(limit);
     match page {
-        Ok((commits, has_more)) => {
+        Ok((commits, has_more, limit_reached)) => {
             let next_cursor = has_more.then(|| session.cursor.clone());
             if has_more {
                 session.last_access = Instant::now();
@@ -398,6 +430,7 @@ pub fn history_page(request: GitHistoryPageRequest) -> Result<GitHistoryPageResp
                 next_cursor,
                 next_offset: None,
                 has_more,
+                limit_reached,
             })
         }
         Err(error) => {
@@ -442,6 +475,7 @@ pub fn history_locate(
             cursor: cursor.clone(),
             offset: None,
             limit: request.limit,
+            max_commits: None,
         }) {
             Ok(page) => page,
             Err(error) => {
@@ -541,12 +575,13 @@ fn offset_history_page(
     offset: usize,
     requested_limit: usize,
 ) -> Result<GitHistoryPageResponse, CoreError> {
-    if offset >= MAX_HISTORY_COMMITS {
+    if offset >= DEFAULT_MAX_HISTORY_COMMITS {
         return Ok(GitHistoryPageResponse {
             commits: Vec::new(),
             next_cursor: None,
             next_offset: None,
             has_more: false,
+            limit_reached: false,
         });
     }
     validate_reference(reference.as_deref())?;
@@ -567,10 +602,11 @@ fn offset_history_page(
                 next_cursor: None,
                 next_offset: None,
                 has_more: false,
+                limit_reached: false,
             });
         }
     }
-    let limit = requested_limit.clamp(1, MAX_HISTORY_COMMITS - offset);
+    let limit = requested_limit.clamp(1, DEFAULT_MAX_HISTORY_COMMITS - offset);
     let mut arguments = vec!["log".to_string()];
     if let Some(reference) = reference {
         arguments.push(reference);
@@ -607,7 +643,8 @@ fn offset_history_page(
         .lines()
         .filter_map(parse_commit)
         .collect::<Vec<_>>();
-    let has_more = commits.len() > limit && offset.saturating_add(limit) < MAX_HISTORY_COMMITS;
+    let has_more =
+        commits.len() > limit && offset.saturating_add(limit) < DEFAULT_MAX_HISTORY_COMMITS;
     commits.truncate(limit);
     let next_offset = has_more.then_some(offset.saturating_add(commits.len()));
     Ok(GitHistoryPageResponse {
@@ -615,6 +652,7 @@ fn offset_history_page(
         next_cursor: None,
         next_offset,
         has_more,
+        limit_reached: false,
     })
 }
 
@@ -668,6 +706,8 @@ struct HistorySession {
     stderr_reader: Option<JoinHandle<Vec<u8>>>,
     pending: Option<GitCommitResponse>,
     emitted: usize,
+    /// Most commits the stream reads, fixed by its first page.
+    max_commits: usize,
     last_access: Instant,
     finished: bool,
     /// Records the one `git log` process this cursor owns when it ends.
@@ -714,10 +754,13 @@ impl Drop for HistorySessionLease {
 }
 
 impl HistorySession {
+    /// Starts `git log` for at most `max_commits` commits, plus one that only tells whether the
+    /// history goes on past them.
     fn start(
         root: String,
         reference: Option<String>,
         order: HistoryOrder,
+        max_commits: usize,
     ) -> Result<Self, CoreError> {
         cancellation::check()?;
         let mut arguments = vec!["log".to_string()];
@@ -734,7 +777,7 @@ impl HistorySession {
             "--decorate=short".to_string(),
             format!("--decorate-refs-exclude={INTERNAL_REF_PREFIX}*"),
             "-n".to_string(),
-            MAX_HISTORY_COMMITS.to_string(),
+            (max_commits + 1).to_string(),
             GIT_COMMIT_DATE_ARGUMENT.to_string(),
             "--pretty=format:%H%x1f%h%x1f%P%x1f%an%x1f%ae%x1f%ad%x1f%s%x1f%D".to_string(),
         ]);
@@ -763,6 +806,7 @@ impl HistorySession {
                 stderr_reader: None,
                 pending: None,
                 emitted: 0,
+                max_commits,
                 last_access: Instant::now(),
                 finished: false,
                 trace: Some(trace),
@@ -809,32 +853,42 @@ impl HistorySession {
             stderr_reader: Some(stderr_reader),
             pending: None,
             emitted: 0,
+            max_commits,
             last_access: Instant::now(),
             finished: false,
             trace: Some(trace),
         })
     }
 
-    fn read_page(&mut self, limit: usize) -> Result<(Vec<GitCommitResponse>, bool), CoreError> {
+    /// Reads the next page of at most `limit` commits and returns it, whether more follow, and
+    /// whether the stream stopped at `max_commits` while the history goes on.
+    fn read_page(
+        &mut self,
+        limit: usize,
+    ) -> Result<(Vec<GitCommitResponse>, bool, bool), CoreError> {
         let deadline = Instant::now() + HISTORY_PAGE_DEADLINE;
         let mut commits = Vec::with_capacity(limit);
         if let Some(commit) = self.pending.take() {
             commits.push(commit);
         }
-        while commits.len() < limit && self.emitted + commits.len() < MAX_HISTORY_COMMITS {
+        while commits.len() < limit && self.emitted + commits.len() < self.max_commits {
             let Some(commit) = self.next_commit(deadline)? else {
                 break;
             };
             commits.push(commit);
         }
         self.emitted += commits.len();
-        let has_more = if self.emitted >= MAX_HISTORY_COMMITS || self.finished {
-            false
-        } else {
-            self.pending = self.next_commit(deadline)?;
-            self.pending.is_some()
-        };
-        Ok((commits, has_more))
+        if self.finished {
+            return Ok((commits, false, false));
+        }
+        if self.emitted >= self.max_commits {
+            // Git was asked for one commit past the bound; it only tells that the history
+            // goes on, and is never returned.
+            let beyond = self.next_commit(deadline)?.is_some();
+            return Ok((commits, false, beyond));
+        }
+        self.pending = self.next_commit(deadline)?;
+        Ok((commits, self.pending.is_some(), false))
     }
 
     fn next_commit(&mut self, deadline: Instant) -> Result<Option<GitCommitResponse>, CoreError> {
@@ -1461,6 +1515,41 @@ mod tests {
             page(json!({"order": "authorDate", "limit": 20}))["ok"],
             false
         );
+
+        // The first page fixes how many commits the stream reads; the last page says the
+        // history goes on past them, and a continuation cannot change the bound.
+        let bounded =
+            page(json!({"reference": "HEAD", "order": "date", "maxCommits": 3, "limit": 2}));
+        let bounded_cursor = bounded["data"]["nextCursor"]
+            .as_str()
+            .expect("bounded cursor")
+            .to_string();
+        repository.cursors.push(bounded_cursor.clone());
+        assert_eq!(subjects(&bounded), ["merge", "b2"]);
+        assert_eq!(bounded["data"]["limitReached"], Value::Null);
+        let rebound = page(json!({
+            "reference": "HEAD", "order": "date", "cursor": bounded_cursor, "maxCommits": 4, "limit": 2
+        }));
+        assert_eq!(rebound["error"]["code"], "invalid_request", "{rebound}");
+        let last = page(json!({
+            "reference": "HEAD", "order": "date", "cursor": bounded_cursor, "maxCommits": 3, "limit": 2
+        }));
+        assert_eq!(subjects(&last), ["a2"]);
+        assert_eq!(last["data"]["hasMore"], false);
+        assert_eq!(last["data"]["nextCursor"], Value::Null);
+        assert_eq!(last["data"]["limitReached"], true);
+        let whole =
+            page(json!({"reference": "HEAD", "order": "date", "maxCommits": 6, "limit": 20}));
+        assert_eq!(subjects(&whole).len(), 6);
+        assert_eq!(whole["data"]["hasMore"], false);
+        assert_eq!(whole["data"]["limitReached"], Value::Null);
+        for invalid in [
+            json!({"maxCommits": 0}),
+            json!({"maxCommits": super::MAX_LOG_COMMITS + 1}),
+            json!({"maxCommits": 3, "offset": 0}),
+        ] {
+            assert_eq!(page(invalid)["error"]["code"], "invalid_request");
+        }
     }
 
     #[test]
@@ -1581,6 +1670,7 @@ mod tests {
             stderr_reader: None,
             pending: None,
             emitted: 0,
+            max_commits: super::DEFAULT_MAX_HISTORY_COMMITS,
             last_access,
             finished: true,
             trace: None,

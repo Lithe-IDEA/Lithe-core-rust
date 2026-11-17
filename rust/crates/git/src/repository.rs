@@ -22,6 +22,8 @@ pub fn workspace_repositories(
 
     let mut queue = VecDeque::from([(workspace_root.clone(), 0usize)]);
     let mut visited_directories = HashSet::new();
+    // Read once per scan: a plugin enabled during the scan applies from the next one.
+    let hidden_directories = lithe_core_rules::visibility::default_hidden_directories();
 
     while let Some((directory, depth)) = queue.pop_front() {
         lithe_protocol::cancellation::check()?;
@@ -55,7 +57,7 @@ pub fn workspace_repositories(
                 }
                 continue;
             }
-            if !repository_scan_directory_is_visible(&name) {
+            if !repository_scan_directory_is_visible(&name, &hidden_directories) {
                 continue;
             }
             let file_type = entry.file_type().map_err(repository_scan_error)?;
@@ -154,7 +156,7 @@ fn workspace_repository_id(repository: &Path, workspace_root: &Path) -> Option<S
     Some(vec![".."; levels].join("/"))
 }
 
-fn repository_scan_directory_is_visible(name: &str) -> bool {
+fn repository_scan_directory_is_visible(name: &str, hidden_directories: &[String]) -> bool {
     // These intentional checkout containers are hidden in the file tree but
     // remain discoverable in Git. Apply exclusions to their children as usual.
     if name.eq_ignore_ascii_case(".worktree") || name.eq_ignore_ascii_case(".worktrees") {
@@ -163,9 +165,9 @@ fn repository_scan_directory_is_visible(name: &str) -> bool {
     // Filter descendants, never the explicitly opened root or its containing
     // repository. Git ignore rules govern tracked files, not repository ownership.
     !name.starts_with('.')
-        && !lithe_core_rules::visibility::BUILT_IN_HIDDEN_DIRECTORIES
+        && !hidden_directories
             .iter()
-            .any(|hidden| name.eq_ignore_ascii_case(hidden))
+            .any(|hidden| hidden.eq_ignore_ascii_case(name))
 }
 
 /// Rejects Windows names that cannot round-trip through ordinary path identifiers.

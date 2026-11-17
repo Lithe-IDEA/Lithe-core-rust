@@ -6,30 +6,34 @@ use super::*;
 /// Callers first relativize to the most specific explicitly watched root; native
 /// event-loss flags always bypass this filter and request recovery.
 pub fn is_workspace_event_relevant(relative: &str) -> bool {
-    is_workspace_event_relevant_with(relative, &[])
+    is_workspace_event_relevant_with(relative, &default_hidden_directories(), &[])
 }
 
-/// Like [`is_workspace_event_relevant`], but a built-in folder the user turned
-/// off with a `!` hidden-path entry is visible, so its events are kept.
-fn is_workspace_event_relevant_with(relative: &str, hidden_file_patterns: &[String]) -> bool {
-    let disabled = disabled_built_ins(hidden_file_patterns);
+/// Like [`is_workspace_event_relevant`] against one snapshot of the default
+/// hidden folders, where a folder the user turned off with a `!` hidden-path
+/// entry (`disabled`, see [`disabled_built_ins`]) is visible, so its events are kept.
+fn is_workspace_event_relevant_with(
+    relative: &str,
+    hidden_directories: &[String],
+    disabled: &[String],
+) -> bool {
     !relative
         .split(|character| is_separator(character, Platform::HOST))
         .any(|component| {
-            BUILT_IN_HIDDEN_DIRECTORIES.iter().any(|name| {
-                component.eq_ignore_ascii_case(name) && !is_disabled_directory(name, &disabled)
+            hidden_directories.iter().any(|name| {
+                component.eq_ignore_ascii_case(name) && !is_disabled_directory(name, disabled)
             })
         })
 }
 
 /// Changed paths for `workspace.filterChanges`: a bare path list, or the
-/// paths with the hidden-path entries whose `!` lines turn built-in folders off.
+/// paths with the hidden-path entries whose `!` lines turn default folders off.
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum WorkspaceChangeFilterRequest {
-    /// Changed workspace-relative paths, filtered with the built-in rules only.
+    /// Changed workspace-relative paths, filtered with the default rules only.
     Paths(Vec<String>),
-    /// Changed paths plus the hidden-path entries that adjust the built-in folders.
+    /// Changed paths plus the hidden-path entries that adjust the default folders.
     #[serde(rename_all = "camelCase")]
     WithRules {
         /// Changed workspace-relative paths.
@@ -40,7 +44,7 @@ pub enum WorkspaceChangeFilterRequest {
     },
 }
 
-/// Keeps the changed paths outside the effective built-in hidden folders.
+/// Keeps the changed paths outside the effective default hidden folders.
 pub fn filter_workspace_changes(request: WorkspaceChangeFilterRequest) -> Vec<String> {
     let (paths, patterns) = match request {
         WorkspaceChangeFilterRequest::Paths(paths) => (paths, Vec::new()),
@@ -49,8 +53,10 @@ pub fn filter_workspace_changes(request: WorkspaceChangeFilterRequest) -> Vec<St
             hidden_file_patterns,
         } => (paths, hidden_file_patterns),
     };
+    let hidden_directories = default_hidden_directories();
+    let disabled = disabled_built_ins(&patterns);
     paths
         .into_iter()
-        .filter(|path| is_workspace_event_relevant_with(path, &patterns))
+        .filter(|path| is_workspace_event_relevant_with(path, &hidden_directories, &disabled))
         .collect()
 }

@@ -4,10 +4,6 @@
     ".build/checkouts/SwiftTerm",
     "macos/.build/checkouts/SwiftTerm",
     ".cache/package",
-    "node_modules/package",
-    "target/package",
-    "build/package",
-    "DerivedData/package",
     "visible",
     "vendor/source"
   ],

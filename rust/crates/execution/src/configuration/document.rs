@@ -1,4 +1,4 @@
-//! The stored run-configuration document, its migrations and toolchain requirements.
+//! The stored run-configuration document and its migrations.
 
 use super::*;
 
@@ -135,22 +135,12 @@ fn migrate_configuration_value(item: &mut Value) {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-/// Fingerprint and inputs used to decide whether generated output is stale.
-///
-/// `inputs` maps each workspace-relative input to `sha256:<hex>` of its bytes.
+/// What a generation was derived from, to decide whether its output is stale.
 pub struct GeneratorMetadata {
-    /// Combined hash over `inputs` and the generator revision.
-    pub fingerprint: String,
-    /// Identity of generic run declarations and opaque targets, separate from
-    /// the file inputs so a provider answer alone can mark the layer stale.
+    /// Identity of the provider run snapshot the generation materialized; a
+    /// different snapshot from the providers marks the layer stale.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_run_fingerprint: Option<String>,
-    /// Unreadable inputs retained as unknown; a partial baseline cannot prove freshness.
-    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
-    pub unreadable_paths: BTreeSet<String>,
-    /// Workspace-relative input path mapped to `sha256:<hex>` of its bytes.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub inputs: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -169,7 +159,7 @@ pub struct RunConfiguration {
     pub id: String,
     /// Display name shown in the Run list.
     pub name: String,
-    /// Open namespaced discriminator, e.g. `npm.script`, `cargo.run`.
+    /// Open namespaced discriminator, e.g. `build.provider`.
     /// Deliberately not an enum: new ecosystems must not require a contract change.
     pub provider: String,
     /// How the entry behaves once started.
@@ -194,8 +184,8 @@ pub struct RunConfiguration {
     /// How the entry was discovered; higher confidence wins deduplication.
     #[serde(default)]
     pub confidence: Confidence,
-    /// Toolchain role mapped to the requirement identity it consumes, such as
-    /// `runtime` to `project-node`.
+    /// Toolchain role mapped to the local toolchain identity it consumes. A
+    /// `runtime` binding names the executable when `command` is absent.
     #[serde(default)]
     pub toolchains: BTreeMap<String, String>,
     /// Debug adapter that can launch this entry, when one is declared.
@@ -204,7 +194,7 @@ pub struct RunConfiguration {
     /// Configuration identities started together when `execution` is `group`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub members: Vec<String>,
-    /// Ecosystem-specific payload keyed by namespace (`npm`, `build`, ...).
+    /// Provider-specific payload keyed by namespace, such as `build`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub extensions: BTreeMap<String, Value>,
     /// Hidden from the resolved list; set by a user or when the working directory is missing.
@@ -217,33 +207,4 @@ pub struct RunConfiguration {
 
 fn dot() -> String {
     ".".to_string()
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Versioned requirements written separately from run configurations.
-pub struct ToolchainRequirementsDocument {
-    /// Document version the reader must accept before trusting any requirement.
-    pub version: u32,
-    /// Requirement per toolchain kind, keyed by the kind the caller asks about.
-    #[serde(default)]
-    pub toolchains: BTreeMap<String, ToolchainRequirement>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Constraints the host uses when selecting one toolchain candidate.
-pub struct ToolchainRequirement {
-    /// Toolchain role matched against [`ToolchainCandidate::kind`].
-    #[serde(rename = "type")]
-    pub kind: String,
-    /// Lowest acceptable version; newer releases also satisfy it.
-    #[serde(default)]
-    pub minimum_version: Option<String>,
-    /// Vendor preferred when several candidates satisfy the version.
-    #[serde(default)]
-    pub preferred_vendor: Option<String>,
-    /// Exact version prefix; [`Self::minimum_version`] accepts newer releases.
-    #[serde(default)]
-    pub version: Option<String>,
 }

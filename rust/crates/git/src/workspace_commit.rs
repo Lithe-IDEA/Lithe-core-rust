@@ -194,7 +194,7 @@ fn invalid(message: &str) -> CoreError {
     CoreError::new(ErrorCode::InvalidRequest, message)
 }
 
-fn validate_bindings(bindings: &[RepositoryBinding]) -> Result<(), CoreError> {
+pub(crate) fn validate_bindings(bindings: &[RepositoryBinding]) -> Result<(), CoreError> {
     let mut ids = BTreeSet::new();
     let mut roots = BTreeSet::new();
     for binding in bindings {
@@ -560,7 +560,7 @@ fn settle_push_targets(
     Ok((confirmed, questions))
 }
 
-fn relations(
+pub(crate) fn relations(
     bindings: &[RepositoryBinding],
     states: &BTreeMap<String, GitCommitState>,
 ) -> Result<Vec<Relation>, CoreError> {
@@ -584,7 +584,7 @@ fn relations(
     Ok(relations)
 }
 
-fn commit_order(
+pub(crate) fn commit_order(
     mut remaining: Vec<String>,
     relations: &[Relation],
 ) -> Result<Vec<String>, CoreError> {

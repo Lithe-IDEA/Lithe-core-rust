@@ -120,7 +120,7 @@ fn is_marker_name(value: &str) -> bool {
 pub struct DeclarationContext<'a> {
     /// The manifest's validated settings, which launch templates may reference.
     pub declared_settings: &'a DeclaredSettings,
-    /// Whether tool names are host runtimes or tool-definition IDs.
+    /// The tool-definition IDs in `requiresTools` that a process may name.
     pub runtime_tools: lithe_plugin_model::process::RuntimeTools<'a>,
 }
 
@@ -259,6 +259,16 @@ impl VcsProviderDeclaration {
             "tool": self.tool,
             "mayUseNetwork": self.may_use_network,
         })
+    }
+
+    /// Names of the directory markers, such as `.svn`: the VCS's own
+    /// metadata, which every workspace hides while the plugin is enabled.
+    pub fn metadata_directory_names(&self) -> impl Iterator<Item = &str> {
+        self.detection
+            .markers
+            .iter()
+            .filter(|marker| marker.kind == MarkerKind::Directory)
+            .map(|marker| marker.name.as_str())
     }
 }
 

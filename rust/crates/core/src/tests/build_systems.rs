@@ -190,23 +190,6 @@ fn detect(workspace: &TemporaryWorkspace, manifests: Vec<Value>, options: Value)
     outcome["detection"].clone()
 }
 
-fn generated_configurations(workspace: &TemporaryWorkspace) -> Vec<Value> {
-    let response: Value = serde_json::from_str(&crate::execute_json(
-        &json!({
-            "id": "generate",
-            "command": "runConfig.generate",
-            "payload": { "root": workspace.root() },
-        })
-        .to_string(),
-    ))
-    .unwrap();
-    assert_eq!(response["ok"], true, "{response}");
-    response["data"]["generated"]["configurations"]
-        .as_array()
-        .cloned()
-        .unwrap()
-}
-
 fn instance<'a>(detection: &'a Value, id: &str) -> &'a Value {
     detection["instances"]
         .as_array()
@@ -367,9 +350,6 @@ fn instance_options_drive_static_run_entries_without_crossing_roots_or_scopes() 
     assert_eq!(options["options"]["options"][0]["scope"], "instance");
 }
 
-/// The Cargo plugin reproduces the built-in Cargo detector's run entries
-/// field for field, so moving Cargo onto the plugin model keeps every stored
-/// run configuration.
 #[test]
 fn provider_test_reports_are_inline_bounded_and_keep_project_identity() {
     let workspace = TemporaryWorkspace::new("provider-test-reports");
@@ -537,9 +517,11 @@ fn opaque_test_selectors_require_a_declared_namespace_and_never_become_host_filt
     );
 }
 
+/// A static-file provider plans one run entry per binary target, carrying the
+/// root, command and source each entry needs, beside the rest of the model.
 #[test]
-fn cargo_run_entries_match_the_builtin_detector() {
-    let workspace = TemporaryWorkspace::new("build-cargo-parity");
+fn static_cargo_model_plans_a_run_entry_per_binary_target() {
+    let workspace = TemporaryWorkspace::new("build-cargo-run-entries");
     workspace
         .write(
             "rust/Cargo.toml",
@@ -561,32 +543,35 @@ fn cargo_run_entries_match_the_builtin_detector() {
         .iter()
         .flat_map(|instance| instance["model"]["run"].as_array().unwrap().clone())
         .collect();
-    let mut builtin: Vec<Value> = generated_configurations(&workspace)
-        .into_iter()
-        .filter(|configuration| configuration["provider"] == "cargo.binary")
-        .collect();
     planned.sort_by_key(|entry| entry["id"].to_string());
-    builtin.sort_by_key(|entry| entry["id"].to_string());
-    assert_eq!(planned.len(), 3, "{planned:?}");
-    assert_eq!(planned.len(), builtin.len(), "{planned:?} vs {builtin:?}");
-    for (plan, configuration) in planned.iter().zip(&builtin) {
-        for field in [
-            "id",
-            "name",
-            "provider",
-            "execution",
-            "command",
-            "args",
-            "cwd",
-            "env",
-            "source",
-            "extensions",
-        ] {
-            assert_eq!(
-                plan[field], configuration[field],
-                "{field}: {plan} vs {configuration}"
-            );
-        }
+    let expected = [
+        ("rust", "rust-app", "cargo:rust/rust-app"),
+        ("tools", "gen", "cargo:tools/tools"),
+        ("tools", "lint", "cargo:tools/tools"),
+    ];
+    assert_eq!(planned.len(), expected.len(), "{planned:?}");
+    for (entry, (root, bin, project)) in planned.iter().zip(expected) {
+        assert_eq!(entry["id"], format!("cargo.binary:{root}/{bin}"), "{entry}");
+        assert_eq!(entry["name"], bin, "{entry}");
+        assert_eq!(entry["provider"], "cargo.binary", "{entry}");
+        assert_eq!(entry["execution"], "application", "{entry}");
+        assert_eq!(entry["command"], "cargo", "{entry}");
+        assert_eq!(entry["args"], json!(["run", "--bin", bin]), "{entry}");
+        assert_eq!(entry["cwd"], root, "{entry}");
+        assert_eq!(entry["env"], json!({}), "{entry}");
+        assert_eq!(entry["source"], format!("{root}/Cargo.toml"), "{entry}");
+        assert_eq!(
+            entry["extensions"],
+            json!({"cargo": {"bin": bin}}),
+            "{entry}"
+        );
+        assert_eq!(entry["buildSystem"]["root"], root, "{entry}");
+        assert_eq!(entry["buildSystem"]["projectID"], project, "{entry}");
+        assert_eq!(
+            entry["buildSystem"]["targetID"],
+            format!("cargo.application:{root}/{bin}"),
+            "{entry}"
+        );
     }
 
     let rust = instance(&detection, "cargo:rust");
@@ -698,7 +683,10 @@ fn detection_applies_nesting_priority_and_rejections() {
             "android/app/build.gradle.kts",
             "plugins { id(\"application\") }\n",
         )
-        .write("target/debug/Cargo.toml", "[package]\nname = \"ignored\"\n");
+        .write(
+            ".worktrees/feature/Cargo.toml",
+            "[package]\nname = \"ignored\"\n",
+        );
 
     let mut preferred = fixture("build-static-file.plugin.json");
     preferred["id"] = json!("dev.lithe.fixture.cargo-preferred");

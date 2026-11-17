@@ -2,7 +2,7 @@
 
 use super::*;
 
-/// Merges generated, team, and local layers and selects compatible toolchains.
+/// Merges generated, team, and local layers into the configurations a launch can use.
 pub fn resolve(request: ResolveRequest) -> Result<Value, CoreError> {
     let root = existing_root(&request.root)?;
     let team = match request.team_document {
@@ -15,8 +15,8 @@ pub fn resolve(request: ResolveRequest) -> Result<Value, CoreError> {
     };
     let local = local_layer_document(&root, request.local_document)?;
     let layer = generated_layer::get(&root);
-    let generated = match layer.as_ref() {
-        Some(layer) => serde_json::to_value(&layer.document).expect("run configurations encode"),
+    let generated = match layer.as_deref() {
+        Some(document) => serde_json::to_value(document).expect("run configurations encode"),
         None if has_saved_build_run(&local) || has_saved_build_run(&team) => {
             json!({"version": VERSION, "configurations": []})
         }
@@ -53,13 +53,7 @@ pub fn resolve(request: ResolveRequest) -> Result<Value, CoreError> {
             }
         }
     }
-    normalize_runtime_consumption(&mut configurations);
     let global_toolchain = local.get("toolchain").cloned();
-    diagnostics.extend(toolchain_diagnostics(
-        &root,
-        &request.toolchain_candidates,
-        &configurations,
-    )?);
     for configuration in &mut configurations {
         validate_configuration(configuration)?;
         if configuration.provider == "build.provider" {
@@ -116,8 +110,8 @@ pub fn resolve(request: ResolveRequest) -> Result<Value, CoreError> {
     }
     if default_run_configuration.is_none() {
         default_run_configuration = layer
-            .as_ref()
-            .and_then(|layer| detected_default(&layer.document, &configurations));
+            .as_deref()
+            .and_then(|document| generated_default(document, &configurations));
     }
     Ok(json!({
         "version": VERSION,
@@ -129,9 +123,9 @@ pub fn resolve(request: ResolveRequest) -> Result<Value, CoreError> {
     }))
 }
 
-/// Prefer a detected service when the project names no default, otherwise
-/// select the first available entry.
-fn detected_default(
+/// Prefer a generated service when the project names no default, otherwise
+/// select the first available generated entry.
+fn generated_default(
     generated: &RunConfigurationDocument,
     available: &[RunConfiguration],
 ) -> Option<String> {
@@ -147,7 +141,7 @@ fn detected_default(
             by_selector.entry(selector).or_insert(configuration);
         }
     }
-    let detected = generated.configurations.iter().filter_map(|configuration| {
+    let candidates = generated.configurations.iter().filter_map(|configuration| {
         by_id.get(configuration.id.as_str()).copied().or_else(|| {
             let selector = crate::provider_runs::selector(
                 &serde_json::to_value(configuration).expect("configuration encodes"),
@@ -155,9 +149,9 @@ fn detected_default(
             by_selector.get(&selector).copied()
         })
     });
-    detected
+    candidates
         .clone()
         .find(|configuration| configuration.execution == Execution::Service)
-        .or_else(|| detected.clone().next())
+        .or_else(|| candidates.clone().next())
         .map(|configuration| configuration.id.clone())
 }

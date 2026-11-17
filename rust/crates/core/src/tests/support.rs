@@ -18,14 +18,7 @@ pub(super) fn fixture() -> Value {
 /// this session. `root` must exist: the layer is keyed by its canonical path.
 pub(crate) fn seed_generated(root: &Path, document: impl ToString) {
     let document = serde_json::from_str(&document.to_string()).expect("generated fixture");
-    crate::execution::generated_layer::seed(root, Some(document), None);
-}
-
-/// Installs `requirements` as the toolchain requirements generated for `root`.
-pub(crate) fn seed_requirements(root: &Path, requirements: impl ToString) {
-    let requirements =
-        serde_json::from_str(&requirements.to_string()).expect("requirements fixture");
-    crate::execution::generated_layer::seed(root, None, Some(requirements));
+    crate::execution::generated_layer::seed(root, document);
 }
 
 pub(crate) fn temporary_root(label: &str) -> PathBuf {

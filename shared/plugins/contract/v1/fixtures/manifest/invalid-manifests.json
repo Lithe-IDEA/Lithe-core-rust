@@ -435,7 +435,7 @@
       "expectedCode": "plugin.manifest.invalid"
     },
     {
-      "name": "host-managed runtime with its own executables",
+      "name": "runtime minimum version with a command candidate but no probe",
       "base": "build-command-stdout.plugin.json",
       "edits": [{ "op": "set", "path": "/buildSystems/0/invocation/runtimeDependencies/0/executables", "value": [{ "kind": "command", "command": "go" }] }],
       "expectedCode": "plugin.manifest.invalid"
@@ -475,6 +475,27 @@
       "base": "build-static-file.plugin.json",
       "edits": [{ "op": "set", "path": "/buildSystems/0/model/file", "value": "../Cargo.toml" }],
       "expectedCode": "plugin.path.invalid"
+    },
+    {
+      "name": "hidden directory name with a path separator",
+      "base": "build-static-file.plugin.json",
+      "edits": [{ "op": "set", "path": "/buildSystems/0/layout/hiddenDirectoryNames", "value": ["target", "out/classes"] }],
+      "expectedCode": "plugin.path.invalid",
+      "expectedField": "buildSystems[0].layout.hiddenDirectoryNames[1]"
+    },
+    {
+      "name": "hidden directory name with a glob character",
+      "base": "build-static-file.plugin.json",
+      "edits": [{ "op": "set", "path": "/buildSystems/0/layout/hiddenDirectoryNames", "value": ["*.egg-info"] }],
+      "expectedCode": "plugin.path.invalid",
+      "expectedField": "buildSystems[0].layout.hiddenDirectoryNames[0]"
+    },
+    {
+      "name": "hidden directory name that turns a default off",
+      "base": "build-static-file.plugin.json",
+      "edits": [{ "op": "set", "path": "/buildSystems/0/layout/hiddenDirectoryNames", "value": ["!target"] }],
+      "expectedCode": "plugin.path.invalid",
+      "expectedField": "buildSystems[0].layout.hiddenDirectoryNames[0]"
     },
     {
       "name": "selector without a pointer",
@@ -885,6 +906,10 @@
     {"name": "state retention keeps a workspace for a day at least", "base": "language-server-backend-launch.plugin.json", "edits": [{"op": "set", "path": "/languageServers/0/state/retention/maxAgeDays", "value": 0}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "state belongs to a known scope", "base": "language-server-backend-launch.plugin.json", "edits": [{"op": "set", "path": "/languageServers/0/state/scope", "value": "user"}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "remote support is supported or unsupported", "base": "language-server-backend-launch.plugin.json", "edits": [{"op": "set", "path": "/languageServers/0/remote", "value": "partial"}], "expectedCode": "plugin.manifest.invalid"},
+    {"name": "an indexing exclusion entry places the path once", "base": "language-system-command.plugin.json", "edits": [{"op": "set", "path": "/languageServers/0/indexingExclusions/entry", "value": "-vendor"}], "expectedCode": "plugin.manifest.invalid", "expectedField": "languageServers[0].indexingExclusions.entry"},
+    {"name": "an indexing exclusion section names dotted keys", "base": "language-system-command.plugin.json", "edits": [{"op": "set", "path": "/languageServers/0/indexingExclusions/section", "value": "gopls..directoryFilters"}], "expectedCode": "plugin.manifest.invalid", "expectedField": "languageServers[0].indexingExclusions.section"},
+    {"name": "an indexing exclusion default is literal", "base": "language-system-command.plugin.json", "edits": [{"op": "set", "path": "/languageServers/0/indexingExclusions/default", "value": ["-${path}"]}], "expectedCode": "plugin.manifest.invalid", "expectedField": "languageServers[0].indexingExclusions.default"},
+    {"name": "an indexing exclusion path syntax is literal or glob", "base": "language-system-command.plugin.json", "edits": [{"op": "set", "path": "/languageServers/0/indexingExclusions/pathSyntax", "value": "regex"}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "an export states its calling context", "base": "plugin-functions-exporter.plugin.json", "edits": [{"op": "remove", "path": "/pluginFunctions/exports/0/context"}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "an export names a context Lithe knows", "base": "plugin-functions-exporter.plugin.json", "edits": [{"op": "set", "path": "/pluginFunctions/exports/0/context", "value": "remote"}], "expectedCode": "plugin.manifest.invalid"},
     {"name": "an export is an object, not a bare function ID", "base": "plugin-functions-exporter.plugin.json", "edits": [{"op": "set", "path": "/pluginFunctions/exports/0", "value": "document.format"}], "expectedCode": "plugin.manifest.invalid"},

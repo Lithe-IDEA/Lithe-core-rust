@@ -743,11 +743,13 @@ fn remote_workspace_file_limits_preserve_host_content_and_report_disconnects() {
     assert_eq!(std::fs::read_dir(local).unwrap().count(), 0);
 }
 
-// `runConfig.inspect` has no remote adapter yet; this pins the shared traversal's
-// remote contract so enabling it cannot read the placeholder or accept a dead link.
+// Build detection walks a remote project through the workspace adapter; this pins
+// that the shared traversal reads the host's tree, never the placeholder, and
+// fails instead of shrinking when the link drops.
 #[test]
-fn shared_run_scan_reads_the_host_tree_and_stops_when_the_link_drops() {
-    use crate::execution::workspace_scan::{scan_run_workspace, scan_with_reader};
+fn shared_workspace_scan_reads_the_host_tree_and_stops_when_the_link_drops() {
+    use crate::execution::workspace_scan::{scan_with_reader, scan_workspace};
+    use crate::execution::IgnoredPaths;
     use lithe_workspace::{self as workspace, fs};
 
     let host = HostFixture::new();
@@ -767,9 +769,8 @@ fn shared_run_scan_reads_the_host_tree_and_stops_when_the_link_drops() {
     .unwrap();
     let _workspace = workspace::Scope::begin(Some(workspace)).unwrap();
 
-    let scan = scan_run_workspace(&local, Some(3)).unwrap();
+    let scan = scan_workspace(&local, 3, &IgnoredPaths::default()).unwrap();
     let files: Vec<_> = scan
-        .directories
         .iter()
         .map(|directory| {
             let relative = directory.path.strip_prefix(&local).unwrap();
@@ -790,12 +791,11 @@ fn shared_run_scan_reads_the_host_tree_and_stops_when_the_link_drops() {
             ("service/api".into(), Vec::new()),
         ]
     );
-    assert!(scan.unreadable_paths.is_empty());
     assert_eq!(std::fs::read_dir(&local).unwrap().count(), 0);
 
-    // A directory the host reports as unreadable is incomplete-scan evidence,
-    // while the same session keeps serving its siblings.
-    let unreadable = scan_with_reader(&local, Some(3), &|path| {
+    // A directory the host reports as unreadable is skipped, while the same
+    // session keeps serving the rest of the tree.
+    let unreadable = scan_with_reader(&local, 3, &|path| {
         if path.ends_with("service") {
             return Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
         }
@@ -808,14 +808,15 @@ fn shared_run_scan_reads_the_host_tree_and_stops_when_the_link_drops() {
             .collect()
     })
     .unwrap();
-    assert_eq!(
-        unreadable.unreadable_paths,
-        std::collections::BTreeSet::from(["service".to_owned()])
-    );
+    let listed: Vec<_> = unreadable
+        .iter()
+        .map(|directory| directory.path.strip_prefix(&local).unwrap().to_owned())
+        .collect();
+    assert_eq!(listed, [std::path::PathBuf::new()]);
 
     // The link dropping after the root was listed must fail the whole scan,
     // not publish the root alone as if the project had no modules.
-    let dropped = scan_with_reader(&local, Some(3), &|path| {
+    let dropped = scan_with_reader(&local, 3, &|path| {
         let entries = fs::read_dir(path)?
             .map(|entry| {
                 let entry = entry?;
@@ -830,7 +831,7 @@ fn shared_run_scan_reads_the_host_tree_and_stops_when_the_link_drops() {
         dropped.is_err(),
         "a dropped link must not look like a smaller project"
     );
-    assert!(scan_run_workspace(&local, Some(3)).is_err());
+    assert!(scan_workspace(&local, 3, &IgnoredPaths::default()).is_err());
     assert_eq!(std::fs::read_dir(local).unwrap().count(), 0);
 }
 

@@ -59,6 +59,57 @@
       "name": "noRepositories",
       "request": {"repositories": [], "selected": "service-a"},
       "response": {"active": null, "fellBack": true, "others": []}
+    },
+    {
+      "name": "chosenPicksFollowDiscoveryOrder",
+      "request": {
+        "repositories": [
+          {"path": "/projects/shop", "id": ".", "name": "shop", "role": "workspace"},
+          {"path": "/projects/shop/modules/payments", "id": "modules/payments", "name": "modules/payments", "role": "nested"},
+          {"path": "/projects/shop/tools", "id": "tools", "name": "tools", "role": "nested"}
+        ],
+        "chosen": ["tools", "."]
+      },
+      "response": {"active": ".", "fellBack": false, "others": ["modules/payments"], "chosen": [".", "tools"]}
+    },
+    {
+      "name": "aRemovedChosenPickDropsOnlyThatPick",
+      "request": {
+        "repositories": [
+          {"path": "/workspace/service-a", "id": "service-a", "name": "service-a", "role": "nested"},
+          {"path": "/workspace/service-b", "id": "service-b", "name": "service-b", "role": "nested"},
+          {"path": "/workspace/service-c", "id": "service-c", "name": "service-c", "role": "nested"}
+        ],
+        "chosen": ["service-c", "service-old", "service-b"]
+      },
+      "response": {"active": "service-b", "fellBack": true, "others": ["service-a"], "chosen": ["service-b", "service-c"]}
+    },
+    {
+      "name": "noListedChosenPickFallsBackToOneRepository",
+      "request": {
+        "repositories": [
+          {"path": "/projects/shop", "id": ".", "name": "shop", "role": "workspace"},
+          {"path": "/projects/shop/tools", "id": "tools", "name": "tools", "role": "nested"}
+        ],
+        "chosen": ["vendor/old"]
+      },
+      "response": {"active": ".", "fellBack": true, "others": ["tools"], "chosen": ["."]}
+    },
+    {
+      "name": "anEmptyChosenListIsNoPick",
+      "request": {
+        "repositories": [
+          {"path": "/workspace/service-a", "id": "service-a", "name": "service-a", "role": "nested"},
+          {"path": "/workspace/service-b", "id": "service-b", "name": "service-b", "role": "nested"}
+        ],
+        "chosen": []
+      },
+      "response": {"active": "service-a", "fellBack": false, "others": ["service-b"], "chosen": ["service-a"]}
+    },
+    {
+      "name": "chosenWithNoRepositories",
+      "request": {"repositories": [], "chosen": ["service-a"]},
+      "response": {"active": null, "fellBack": true, "others": [], "chosen": []}
     }
   ],
   "invalid": [
@@ -108,6 +159,22 @@
     {
       "name": "unknownRole",
       "request": {"repositories": [{"path": "/w/a", "id": "a", "name": "a", "role": "submodule"}]}
+    },
+    {
+      "name": "selectedAndChosen",
+      "request": {"repositories": [], "selected": "a", "chosen": ["a"]}
+    },
+    {
+      "name": "duplicateChosenPick",
+      "request": {"repositories": [], "chosen": ["a", "a"]}
+    },
+    {
+      "name": "emptyChosenPick",
+      "request": {"repositories": [], "chosen": [""]}
+    },
+    {
+      "name": "absoluteChosenPick",
+      "request": {"repositories": [], "chosen": ["/w/a"]}
     },
     {
       "name": "unknownField",

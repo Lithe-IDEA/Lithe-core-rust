@@ -15,8 +15,8 @@
 //! failing the session therefore only pick the operations to complete.
 
 use lithe_plugin_language_servers::{
-    is_protocol_name, matches_pattern, Gate, RemoteSupport, DID_CHANGE_CONFIGURATION,
-    EXECUTE_COMMAND,
+    is_protocol_name, matches_pattern, Gate, IndexingExclusions, RemoteSupport,
+    DID_CHANGE_CONFIGURATION, EXECUTE_COMMAND,
 };
 use lithe_plugin_rpc::{codes, MAX_HOST_NOTIFICATION_BYTES};
 use lithe_protocol::{CoreError, ErrorCode};
@@ -69,6 +69,10 @@ pub struct SessionPolicy {
     /// prunes the directories, so the engine only accepts the field.
     #[serde(default, rename = "state")]
     _state: Option<serde::de::IgnoredAny>,
+    /// The setting the engine fills with the workspace's excluded
+    /// directories whenever it answers the server's configuration.
+    #[serde(default)]
+    pub indexing_exclusions: Option<IndexingExclusions>,
 }
 
 impl SessionPolicy {
@@ -110,6 +114,13 @@ impl SessionPolicy {
                 .any(|gate| !is_protocol_name(&gate.method))
         {
             return Err(invalid("gates"));
+        }
+        if self
+            .indexing_exclusions
+            .as_ref()
+            .is_some_and(|exclusions| exclusions.validate("indexingExclusions").is_err())
+        {
+            return Err(invalid("indexingExclusions"));
         }
         Ok(())
     }

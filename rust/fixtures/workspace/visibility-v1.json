@@ -1,55 +1,21 @@
 {
-  "description": "Hidden-path rules shared by Rust Core, macOS and Windows. isDirectory is true for a folder, false for a file and null when the host does not know. hidden means the tree, search and history leave the path out; watchedDespiteHiding marks hidden paths whose file events must still be delivered. Rule lists are the user's own entries; built-ins are added by Core.",
+  "description": "Hidden-path rules shared by Rust Core, macOS and Windows. isDirectory is true for a folder, false for a file and null when the host does not know. hidden means the tree, search and history leave the path out; watchedDespiteHiding marks hidden paths whose file events must still be delivered. Rule lists are the user's own entries; Core adds its own folders and patterns and, while plugins declare any through workspace.configureVisibility, their folder names. No plugin is configured here.",
   "defaults": {
     "hiddenDirectoryNames": [
       ".git",
-      ".svn",
       ".worktree",
-      ".worktrees",
-      ".build",
-      ".swiftpm",
-      "node_modules",
-      ".venv",
-      "venv",
-      "__pycache__",
-      "target",
-      "build",
-      "DerivedData",
-      ".gradle",
-      ".next",
-      "dist",
-      "coverage",
-      "design-qa-artifacts",
-      ".artifacts"
+      ".worktrees"
     ],
     "hiddenFilePatterns": [
       ".DS_Store",
-      "*.pyc",
       ".lithe/**",
       ".lithe/run/local.json"
     ],
     "builtInPatterns": [
       "**/.git/",
-      "**/.svn/",
       "**/.worktree/",
       "**/.worktrees/",
-      "**/.build/",
-      "**/.swiftpm/",
-      "**/node_modules/",
-      "**/.venv/",
-      "**/venv/",
-      "**/__pycache__/",
-      "**/target/",
-      "**/build/",
-      "**/DerivedData/",
-      "**/.gradle/",
-      "**/.next/",
-      "**/dist/",
-      "**/coverage/",
-      "**/design-qa-artifacts/",
-      "**/.artifacts/",
       ".DS_Store",
-      "*.pyc",
       ".lithe/**",
       ".lithe/run/local.json"
     ],
@@ -58,7 +24,7 @@
   },
   "cases": [
     {
-      "name": "built-in folders are hidden at any depth, as folders and as ancestors",
+      "name": "Core's folders are hidden at any depth, as folders and as ancestors",
       "hiddenDirectoryNames": [],
       "hiddenFilePatterns": [],
       "entries": [
@@ -68,27 +34,27 @@
           "hidden": true
         },
         {
-          "path": "node_modules",
+          "path": ".worktree",
           "isDirectory": true,
           "hidden": true
         },
         {
-          "path": "target",
+          "path": ".worktrees",
           "isDirectory": true,
           "hidden": true
         },
         {
-          "path": "a/b/node_modules",
+          "path": "a/b/.git",
           "isDirectory": true,
           "hidden": true
         },
         {
-          "path": "node_modules/left-pad/index.js",
+          "path": ".worktrees/feature/src/App.java",
           "isDirectory": false,
           "hidden": true
         },
         {
-          "path": "packages/app/target/classes/A.class",
+          "path": "packages/app/.git/HEAD",
           "isDirectory": false,
           "hidden": true
         },
@@ -110,8 +76,44 @@
       ]
     },
     {
-      "name": "a file named like a built-in folder is hidden too, such as a linked worktree's .git",
+      "name": "a tool's folders stay listed until a plugin declares them",
       "hiddenDirectoryNames": [],
+      "hiddenFilePatterns": [],
+      "entries": [
+        {
+          "path": "node_modules",
+          "isDirectory": true,
+          "hidden": false
+        },
+        {
+          "path": "target",
+          "isDirectory": true,
+          "hidden": false
+        },
+        {
+          "path": "build/out.txt",
+          "isDirectory": false,
+          "hidden": false
+        },
+        {
+          "path": ".svn",
+          "isDirectory": true,
+          "hidden": false
+        },
+        {
+          "path": "mod/__init__.pyc",
+          "isDirectory": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "name": "a file named like a hidden folder is hidden too, such as a linked worktree's .git",
+      "hiddenDirectoryNames": [
+        "build",
+        "target",
+        "dist"
+      ],
       "hiddenFilePatterns": [],
       "entries": [
         {
@@ -157,7 +159,7 @@
       ]
     },
     {
-      "name": "built-in file patterns",
+      "name": "Core's file patterns",
       "hiddenDirectoryNames": [],
       "hiddenFilePatterns": [],
       "entries": [
@@ -168,16 +170,6 @@
         },
         {
           "path": "src/.DS_Store",
-          "isDirectory": false,
-          "hidden": true
-        },
-        {
-          "path": "mod/__init__.pyc",
-          "isDirectory": false,
-          "hidden": true
-        },
-        {
-          "path": "a/b/c.pyc",
           "isDirectory": false,
           "hidden": true
         },
@@ -195,18 +187,20 @@
     },
     {
       "name": "matching ignores case on every platform",
-      "hiddenDirectoryNames": [],
+      "hiddenDirectoryNames": [
+        "generated"
+      ],
       "hiddenFilePatterns": [
         "*.LOG"
       ],
       "entries": [
         {
-          "path": "Node_Modules/x.js",
+          "path": ".WORKTREES/x.js",
           "isDirectory": false,
           "hidden": true
         },
         {
-          "path": "SRC/TARGET",
+          "path": "SRC/GENERATED",
           "isDirectory": true,
           "hidden": true
         },
@@ -233,7 +227,7 @@
       ]
     },
     {
-      "name": "user folder names and globs add to the built-ins",
+      "name": "user folder names and globs add to the defaults",
       "hiddenDirectoryNames": [
         "generated",
         "Out"
@@ -350,40 +344,35 @@
       ]
     },
     {
-      "name": "a bang entry turns a built-in rule off, by name or by displayed form",
+      "name": "a bang entry turns a default rule off, by name or by displayed form",
       "hiddenDirectoryNames": [
         "build"
       ],
       "hiddenFilePatterns": [
-        "!node_modules",
-        "!**/target/",
-        "!*.pyc"
+        "!.worktrees",
+        "!**/.worktree/",
+        "!.DS_Store"
       ],
       "entries": [
         {
-          "path": "node_modules/x.js",
+          "path": ".worktrees/x.js",
           "isDirectory": false,
           "hidden": false
         },
         {
-          "path": "target",
+          "path": ".worktree",
           "isDirectory": true,
           "hidden": false
         },
         {
-          "path": "a/target/x",
+          "path": "a/.worktree/x",
           "isDirectory": false,
           "hidden": false
         },
         {
-          "path": "mod/a.pyc",
+          "path": "src/.DS_Store",
           "isDirectory": false,
           "hidden": false
-        },
-        {
-          "path": "dist",
-          "isDirectory": true,
-          "hidden": true
         },
         {
           "path": "build",
@@ -396,7 +385,7 @@
           "hidden": true
         },
         {
-          "path": ".DS_Store",
+          "path": ".lithe/run/local.json",
           "isDirectory": false,
           "hidden": true
         }
@@ -411,12 +400,12 @@
       ],
       "entries": [
         {
-          "path": "build",
+          "path": ".worktrees",
           "isDirectory": null,
           "hidden": true
         },
         {
-          "path": "src/build",
+          "path": "src/.git",
           "isDirectory": null,
           "hidden": true
         },
@@ -554,14 +543,14 @@
           "hidden": true
         },
         {
-          "path": "app/node_modules",
+          "path": "app/.worktrees",
           "isDirectory": true,
           "hidden": true
         },
         {
           "path": "app/target",
           "isDirectory": true,
-          "hidden": true
+          "hidden": false
         },
         {
           "path": "app/src",

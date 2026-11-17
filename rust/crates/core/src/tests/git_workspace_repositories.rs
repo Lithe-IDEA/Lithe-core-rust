@@ -63,7 +63,7 @@ fn check_fixture(command: &str, fixture: &str) {
 }
 
 #[test]
-fn selection_and_change_groups_match_their_shared_fixtures() {
+fn selection_change_groups_and_history_merge_match_their_shared_fixtures() {
     check_fixture(
         "git.workspaceRepositorySelection",
         include_str!("../../../../fixtures/git/workspace-repository-selection-v1.json"),
@@ -71,6 +71,10 @@ fn selection_and_change_groups_match_their_shared_fixtures() {
     check_fixture(
         "git.workspaceChangeGroups",
         include_str!("../../../../fixtures/git/workspace-change-groups-v1.json"),
+    );
+    check_fixture(
+        "git.workspaceHistoryMerge",
+        include_str!("../../../../fixtures/git/workspace-history-merge-v1.json"),
     );
 }
 
@@ -168,4 +172,70 @@ fn discovery_and_status_pass_through_to_selection_and_change_groups() {
         "moved",
         "{groups}"
     );
+}
+
+/// Commits `message` in `root` with `date` as both the author and the committer date.
+fn commit_at(root: &Path, message: &str, date: &str) {
+    fs::write(root.join("file.txt"), message).unwrap();
+    git(root, &["add", "file.txt"]);
+    git(root, &["commit", "-qm", message, "--date", date]);
+}
+
+/// One `git.historyPage` page of `root` as the merge takes it.
+fn history_page(root: &Path, id: &str, limit: usize) -> Value {
+    let page = data(
+        "git.historyPage",
+        json!({"root": root, "order": "date", "limit": limit}),
+    );
+    let commits = page["commits"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|commit| {
+            json!({
+                "hash": commit["hash"],
+                "parentHashes": commit["parentHashes"],
+                "timestamp": commit["dateUnixSeconds"],
+            })
+        })
+        .collect::<Vec<_>>();
+    json!({"id": id, "complete": page["hasMore"] == false, "commits": commits})
+}
+
+#[test]
+fn history_pages_pass_through_to_the_history_merge() {
+    let folder = Folder(temporary_root("workspace-history-merge"));
+    let backend = folder.0.join("backend");
+    let frontend = folder.0.join("frontend");
+    init(&backend);
+    init(&frontend);
+    commit_at(&backend, "backend one", "2026-01-01T10:00:00+00:00");
+    commit_at(&frontend, "frontend one", "2026-01-02T10:00:00+00:00");
+    commit_at(&backend, "backend two", "2026-01-03T10:00:00+00:00");
+
+    // A first page that leaves backend's older commit unread stops after it.
+    let merged = data(
+        "git.workspaceHistoryMerge",
+        json!({"repositories": [history_page(&backend, "backend", 1), history_page(&frontend, "frontend", 100)]}),
+    );
+    assert_eq!(merged["pending"], json!([0]), "{merged}");
+    assert_eq!(merged["entries"].as_array().unwrap().len(), 1, "{merged}");
+
+    let merged = data(
+        "git.workspaceHistoryMerge",
+        json!({"repositories": [history_page(&backend, "backend", 100), history_page(&frontend, "frontend", 100)]}),
+    );
+    let order = merged["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| {
+            (
+                entry["repository"].as_u64().unwrap(),
+                entry["index"].as_u64().unwrap(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(order, [(0, 0), (1, 0), (0, 1)], "{merged}");
+    assert_eq!(merged["pending"], json!([]), "{merged}");
 }

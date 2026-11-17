@@ -3,6 +3,8 @@
 //! This crate holds rules that are small, deterministic and sit on a synchronous hot path
 //! (for example a gesture recognizer that runs on every native key event). It performs no
 //! file-system, process, thread or clock access: time is always supplied by the caller.
+//! The only process-wide state is the folder names enabled plugins hide, which
+//! [`visibility::set_plugin_hidden_directories`] replaces as a whole.
 //!
 //! `lithe-core` links this crate as a normal dependency and exposes each rule through its JSON
 //! command dispatch, so hosts reach the rules over the usual Core C ABI. Rule failures use

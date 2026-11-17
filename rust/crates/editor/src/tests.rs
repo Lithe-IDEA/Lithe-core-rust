@@ -1,10 +1,10 @@
-//! Tests for the deterministic line-editing transforms and the comment
-//! token table. Expected values were pinned against IDEA semantics and the
-//! review regressions from PR #642.
+//! Tests for the deterministic line-editing transforms. Expected values
+//! were pinned against IDEA semantics and the review regressions from
+//! PR #642.
 
 use serde_json::{json, Value};
 
-use super::line_edit::{line_comment_token, line_edit, LineCommentTokenRequest, LineEditRequest};
+use super::line_edit::{line_edit, LineEditRequest};
 
 fn edit(
     operation: &str,
@@ -500,65 +500,6 @@ fn copy_line_down_behaves_like_duplicate() {
     assert_eq!(outcome["selectionStart"], json!(5));
 }
 
-// MARK: Comment token table
-
-#[test]
-fn line_comment_token_maps_common_extensions_and_language_ids() {
-    for (extension, expected) in [
-        ("swift", "//"),
-        ("Swift", "//"),
-        ("ts", "//"),
-        ("csharp", "//"),
-        ("zig", "//"),
-        ("rust", "//"),
-        ("javascript", "//"),
-        ("javascriptreact", "//"),
-        ("typescript", "//"),
-        ("typescriptreact", "//"),
-        ("kotlin", "//"),
-        ("py", "#"),
-        ("python", "#"),
-        ("ruby", "#"),
-        ("yaml", "#"),
-        ("properties", "#"),
-        ("shell", "#"),
-        ("dotenv", "#"),
-        ("sql", "--"),
-        ("lua", "--"),
-    ] {
-        let token = line_comment_token(LineCommentTokenRequest {
-            identifier: extension.to_string(),
-        });
-        assert_eq!(
-            token.token.as_deref(),
-            Some(expected),
-            "extension {extension}"
-        );
-    }
-}
-
-#[test]
-fn line_comment_token_returns_none_for_unknown_extension() {
-    for extension in ["json", ""] {
-        let token = line_comment_token(LineCommentTokenRequest {
-            identifier: extension.to_string(),
-        });
-        assert_eq!(token.token, None, "extension {extension}");
-    }
-}
-
-#[test]
-fn line_comment_token_resolves_dotfile_basenames() {
-    // Regression: macOS pathExtension is empty for dotfiles such as .env,
-    // so callers pass the basename and Core resolves the last dot segment.
-    for (name, expected) in [(".env", Some("#")), ("Foo.py", Some("#")), ("README", None)] {
-        let token = line_comment_token(LineCommentTokenRequest {
-            identifier: name.to_string(),
-        });
-        assert_eq!(token.token.as_deref(), expected, "file name {name}");
-    }
-}
-
 #[test]
 fn move_down_maps_crlf_separator_caret_to_valid_selection() {
     // Regression: a caret between \r and \n once mapped to an offset
@@ -655,21 +596,12 @@ fn shared_fixture_cases_match_core_outcomes() {
     .expect("line edit fixture should be valid JSON");
     for case_value in fixture["cases"].as_array().expect("cases") {
         let name = case_value["name"].as_str().expect("case name");
-        // The fixture covers both editor commands; dispatch on the request
-        // shape so one file pins the whole editor contract.
-        let outcome = if case_value["request"].get("operation").is_some() {
-            let request: LineEditRequest = serde_json::from_value(case_value["request"].clone())
-                .unwrap_or_else(|error| panic!("{name}: {error:?}"));
-            serde_json::to_value(
-                line_edit(request).unwrap_or_else(|error| panic!("{name}: {error:?}")),
-            )
-            .expect("outcome should serialize")
-        } else {
-            let request: LineCommentTokenRequest =
-                serde_json::from_value(case_value["request"].clone())
-                    .unwrap_or_else(|error| panic!("{name}: {error:?}"));
-            serde_json::to_value(line_comment_token(request)).expect("token should serialize")
-        };
+        let request: LineEditRequest = serde_json::from_value(case_value["request"].clone())
+            .unwrap_or_else(|error| panic!("{name}: {error:?}"));
+        let outcome = serde_json::to_value(
+            line_edit(request).unwrap_or_else(|error| panic!("{name}: {error:?}")),
+        )
+        .expect("outcome should serialize");
         assert_eq!(outcome, case_value["expected"], "case {name}");
     }
 }

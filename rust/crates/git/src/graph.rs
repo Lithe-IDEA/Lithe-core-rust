@@ -30,8 +30,9 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
 const GRAPH_PROJECTION_VERSION: u32 = 1;
-/// Largest commit list (scoped window or repository context) one request may carry.
-const MAX_COMMITS: usize = 20_000;
+/// Largest commit list (scoped window or repository context) one request may carry: the
+/// largest Git Log a view may read.
+const MAX_COMMITS: usize = crate::history::MAX_LOG_COMMITS;
 /// IntelliJ samples at most this many rows when recommending a graph width.
 const RECOMMENDED_WIDTH_SAMPLE_SIZE: usize = 20_000;
 const RECOMMENDED_WIDTH_WEIGHT_RATIO: f64 = 0.1;

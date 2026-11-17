@@ -4,16 +4,19 @@
 //! that contains the folder, if any, and the independent repositories nested
 //! below it. A folder without `.git` that holds several repositories lists only
 //! nested ones. Hosts pass those discovery entries back unchanged, together with
-//! what they read from each repository, and Core decides which repository a view
-//! acts on and how the repositories' changes group and stage. Views keep drawing,
-//! folding, and the native Git writes the plans name.
+//! what they read from each repository, and Core decides which repositories a
+//! view acts on, how the repositories' changes group and stage, and how their
+//! histories interleave in one log. Views keep drawing, folding, and the native
+//! Git reads and writes the plans name.
 
 mod change_groups;
+mod history_merge;
 mod selection;
 #[cfg(test)]
 mod tests;
 
 pub use change_groups::command as change_groups_command;
+pub use history_merge::command as history_merge_command;
 pub use selection::command as selection_command;
 
 use crate::contracts::WorkspaceRepositoryRole;

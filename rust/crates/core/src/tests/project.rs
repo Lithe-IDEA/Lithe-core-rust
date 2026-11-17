@@ -275,18 +275,25 @@ fn search_everywhere_matches_names_before_limits_and_shares_utf16_fragments() {
     for i in 0..60 {
         fs::write(root.join(format!("aName{i}.txt")), "").unwrap();
     }
-    let search = |generated: bool, cap: usize| -> Vec<Value> {
-        let response: Value = serde_json::from_str(&execute_json(&serde_json::json!({
-            "command": "workspace.searchEverywhere", "payload": {
-                "root": root, "query": fixture["query"], "maxResults": 1000,
-                "maxFileResults": cap, "maxContentResults": 0, "maxSymbolResults": 0,
-                "includeGeneratedFileNames": generated, "hiddenDirectoryNames": ["excluded", ".build", "target"]
-            }
-        }).to_string())).unwrap();
+    // Folders a plugin declares as generated, listed again by includeGeneratedFileNames,
+    // are covered by the `configure_visibility` integration test: the declarations are
+    // process-wide, so these unit tests run with none.
+    let search = |cap: usize| -> Vec<Value> {
+        let response: Value = serde_json::from_str(&execute_json(
+            &serde_json::json!({
+                "command": "workspace.searchEverywhere", "payload": {
+                    "root": root, "query": fixture["query"], "maxResults": 1000,
+                    "maxFileResults": cap, "maxContentResults": 0, "maxSymbolResults": 0,
+                    "includeGeneratedFileNames": true, "hiddenDirectoryNames": ["excluded"]
+                }
+            })
+            .to_string(),
+        ))
+        .unwrap();
         assert_eq!(response["ok"], true, "{response}");
         response["data"]["matches"].as_array().unwrap().clone()
     };
-    let results = search(true, 200);
+    let results = search(200);
     for case in fixture["cases"].as_array().unwrap() {
         let result = results
             .iter()
@@ -304,12 +311,8 @@ fn search_everywhere_matches_names_before_limits_and_shares_utf16_fragments() {
         .any(|m| m["path"].as_str().unwrap().starts_with(".git/")
             || m["path"].as_str().unwrap().starts_with("excluded/")
             || m["path"] == "src/Unrelated.rs"));
-    let limited = search(true, 1);
+    let limited = search(1);
     assert_eq!(limited[0]["path"], ".build/checkouts/Name.swift");
-    assert!(!search(false, 200)
-        .iter()
-        .any(|m| m["path"].as_str().unwrap().contains(".build/")
-            || m["path"].as_str().unwrap().contains("target/")));
     let response: Value = serde_json::from_str(&execute_json(
         &serde_json::json!({
             "command": "workspace.searchEverywhere", "payload": {
@@ -321,24 +324,29 @@ fn search_everywhere_matches_names_before_limits_and_shares_utf16_fragments() {
     ))
     .unwrap();
     assert_eq!(response["data"]["matches"].as_array().unwrap().len(), 2);
-    // A cached names-only index must follow file updates, deletion and directory invalidation.
+    // A cached name index must follow file updates, deletion and directory invalidation.
     let update = |paths: &[&str]| {
-        crate::project::files::update_search_index(serde_json::from_value(serde_json::json!({
-            "root": root, "paths": paths, "hiddenDirectoryNames": ["excluded", ".build", "target"]
-        })).unwrap(), lithe_lsp_engine::indexing_changed).unwrap()
+        crate::project::files::update_search_index(
+            serde_json::from_value(serde_json::json!({
+                "root": root, "paths": paths, "hiddenDirectoryNames": ["excluded"]
+            }))
+            .unwrap(),
+            lithe_lsp_engine::indexing_changed,
+        )
+        .unwrap()
     };
     fs::write(root.join(".build/checkouts/NameGuide.swift"), "").unwrap();
     update(&[".build/checkouts/NameGuide.swift"]);
-    assert!(search(true, 200)
+    assert!(search(200)
         .iter()
         .any(|m| m["path"] == ".build/checkouts/NameGuide.swift"));
     fs::remove_file(root.join(".build/checkouts/NameGuide.swift")).unwrap();
     update(&[".build/checkouts/NameGuide.swift"]);
-    assert!(!search(true, 200)
+    assert!(!search(200)
         .iter()
         .any(|m| m["path"] == ".build/checkouts/NameGuide.swift"));
     assert!(update(&[".build/checkouts"]).rebuilt);
-    assert!(search(true, 200)
+    assert!(search(200)
         .iter()
         .any(|m| m["path"] == ".build/checkouts/Name.swift"));
 }
@@ -498,14 +506,14 @@ fn list_directories_returns_one_visible_level_per_requested_directory() {
     let root = temporary_root("list-directories");
     write_linked_worktree_fixture(&root);
     write_fixture_file(&root.join("src/main/Util.txt"), "Util");
-    write_fixture_file(&root.join("build/output.bin"), "");
+    write_fixture_file(&root.join(".worktrees/feature/output.bin"), "");
 
     let data = core_data(
         "list-directories",
         "workspace.listDirectories",
         serde_json::json!({
             "root": root,
-            "paths": ["", "src/", ".claude/worktrees", "missing", "build", "../outside",
+            "paths": ["", "src/", ".claude/worktrees", "missing", ".worktrees", "../outside",
                       ".claude/worktrees/agent", ".claude/worktrees/agent/src"]
         }),
     );
@@ -668,7 +676,7 @@ fn workspace_snapshot_keeps_worktrees_outside_their_main_checkout() {
 }
 
 #[test]
-fn workspace_snapshot_hides_build_artifact_directory() {
+fn workspace_snapshot_hides_the_folders_the_user_names() {
     let root = temporary_root("snapshot-artifacts");
     write_fixture_file(&root.join("src/App.txt"), "App");
     write_fixture_file(
@@ -679,7 +687,7 @@ fn workspace_snapshot_hides_build_artifact_directory() {
     let data = core_data(
         "snapshot-artifacts",
         "workspace.snapshot",
-        serde_json::json!({"root": root}),
+        serde_json::json!({"root": root, "hiddenDirectoryNames": [".artifacts"]}),
     );
 
     assert_eq!(data["files"], serde_json::json!(["src/App.txt"]));
@@ -687,26 +695,25 @@ fn workspace_snapshot_hides_build_artifact_directory() {
 }
 
 #[test]
-fn workspace_snapshot_skips_python_environments_and_bytecode_caches() {
-    let root = temporary_root("snapshot-python");
+fn workspace_snapshot_skips_hidden_folders_and_files_at_any_depth() {
+    let root = temporary_root("snapshot-hidden");
     write_fixture_file(&root.join("app/main.py"), "print('hi')");
     write_fixture_file(&root.join("app/helper.py"), "");
-    // Environments are skipped at any depth, not only at the workspace root.
-    write_fixture_file(&root.join(".venv/Lib/site-packages/pkg/mod.py"), "");
-    write_fixture_file(&root.join("venv/bin/activate"), "");
-    write_fixture_file(&root.join("service/.venv/Lib/site-packages/dep.py"), "");
-    // Bytecode is generated output: both the cache folder and stray `.pyc` files.
-    write_fixture_file(&root.join("app/__pycache__/main.cpython-311.pyc"), "");
-    write_fixture_file(&root.join("app/legacy.pyc"), "");
+    // Core's folders are skipped at any depth, not only at the workspace root.
+    write_fixture_file(&root.join(".worktrees/feature/app/main.py"), "");
+    write_fixture_file(&root.join(".worktree/bin/activate"), "");
+    write_fixture_file(&root.join("service/.worktrees/fix/dep.py"), "");
+    // Core's file patterns hide files by name too.
+    write_fixture_file(&root.join("app/.DS_Store"), "");
     // Names that merely resemble the hidden ones stay visible.
-    write_fixture_file(&root.join("environment/venv_notes.md"), "");
-    write_fixture_file(&root.join("app/pyc_overview.md"), "");
+    write_fixture_file(&root.join("environment/worktree_notes.md"), "");
+    write_fixture_file(&root.join("app/DS_Store_overview.md"), "");
 
     let expected = serde_json::json!([
+        "app/DS_Store_overview.md",
         "app/helper.py",
         "app/main.py",
-        "app/pyc_overview.md",
-        "environment/venv_notes.md",
+        "environment/worktree_notes.md",
     ]);
     let sorted = |data: &Value| {
         let mut files: Vec<String> = data["files"]
@@ -719,12 +726,12 @@ fn workspace_snapshot_skips_python_environments_and_bytecode_caches() {
         serde_json::json!(files)
     };
     let full = core_data(
-        "snapshot-python",
+        "snapshot-hidden",
         "workspace.snapshot",
         serde_json::json!({"root": root}),
     );
     let files_only = core_data(
-        "snapshot-python-files-only",
+        "snapshot-hidden-files-only",
         "workspace.snapshot",
         serde_json::json!({"root": root, "includeTree": false}),
     );
@@ -734,12 +741,12 @@ fn workspace_snapshot_skips_python_environments_and_bytecode_caches() {
     // The project tree lists directories through the same rules, so the hidden
     // folders must not appear one level at a time either.
     let listing = core_data(
-        "list-python",
+        "list-hidden",
         "workspace.listDirectories",
-        serde_json::json!({"root": root, "paths": ["", "app"]}),
+        serde_json::json!({"root": root, "paths": ["", "app", "service"]}),
     );
     let listed = listing.to_string();
-    for hidden in [".venv", "\"venv\"", "__pycache__", "legacy.pyc"] {
+    for hidden in ["\".worktrees\"", "\".worktree\"", ".DS_Store\""] {
         assert!(
             !listed.contains(hidden),
             "{hidden} must stay hidden: {listed}"
@@ -747,33 +754,36 @@ fn workspace_snapshot_skips_python_environments_and_bytecode_caches() {
     }
     assert!(listed.contains("main.py"), "{listed}");
 
-    // File watchers use the same boundary, so environment churn raises no refresh.
+    // File watchers use the same boundary, so churn in hidden folders raises no refresh.
     assert!(!crate::project::files::is_workspace_event_relevant(
-        ".venv/Lib/site-packages/pkg/mod.py"
+        ".worktrees/feature/app/main.py"
     ));
     assert!(!crate::project::files::is_workspace_event_relevant(
-        "app/__pycache__/main.cpython-311.pyc"
+        "service/.worktrees/fix/dep.py"
     ));
     assert!(crate::project::files::is_workspace_event_relevant(
         "app/main.py"
     ));
-    // A built-in folder turned off with `!` is shown again, and its events kept.
+    // A default folder or pattern turned off with `!` is shown again, and its events kept.
     let turned_off = crate::project::files::VisibilityRules::new(
-        vec!["venv".into()],
-        vec!["!**/venv/".into(), "!*.pyc".into()],
+        Vec::new(),
+        vec!["!**/.worktree/".into(), "!.DS_Store".into()],
     );
-    assert!(!turned_off.is_hidden("venv/lib/site.py", false));
-    assert!(!turned_off.is_hidden("app/a.pyc", false));
-    assert!(turned_off.is_hidden(".venv/lib/site.py", false));
+    assert!(!turned_off.is_hidden(".worktree/bin/activate", false));
+    assert!(!turned_off.is_hidden("app/.DS_Store", false));
+    assert!(turned_off.is_hidden(".worktrees/feature/app/main.py", false));
     assert_eq!(
         crate::project::filter_workspace_changes(
             serde_json::from_value(serde_json::json!({
-                "paths": ["venv/lib/site.py", ".venv/lib/site.py", "app/main.py"],
-                "hiddenFilePatterns": ["!**/venv/"]
+                "paths": [".worktree/bin/activate", ".worktrees/fix/dep.py", "app/main.py"],
+                "hiddenFilePatterns": ["!**/.worktree/"]
             }))
             .unwrap()
         ),
-        vec!["venv/lib/site.py".to_string(), "app/main.py".to_string()]
+        vec![
+            ".worktree/bin/activate".to_string(),
+            "app/main.py".to_string()
+        ]
     );
     fs::remove_dir_all(root).expect("temporary fixture should be removable");
 }

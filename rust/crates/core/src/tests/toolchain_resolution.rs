@@ -653,6 +653,63 @@ fn toolchain_candidates_list_versions_and_share_the_resolver_choice() {
 }
 
 #[test]
+fn toolchain_candidates_offer_shell_homes_that_no_discovery_scan_covers() {
+    // A JDK reached only through JAVA_HOME or the PATH is still one the resolver runs.
+    let mut value = input();
+    installation(&mut value, HOME, "21.0.4");
+    installation(&mut value, OLD, "17.0.12");
+    value["environment"]["JAVA_HOME"] = json!(OLD);
+    let mut listing = listing(&value);
+    listing["commandHomes"] = json!({"java":HOME});
+    let result = candidates_command(listing.clone(), validated_manifest_json).unwrap();
+    assert_eq!(result["status"], "ok", "{result}");
+    let listed = &result["candidates"];
+    assert_eq!(
+        listed["installations"],
+        json!([
+            {"home":HOME,"executable":format!("{HOME}/bin/java"),"version":"21.0.4","provider":"host:shell"},
+            {"home":OLD,"executable":format!("{OLD}/bin/java"),"version":"17.0.12","provider":"host:shell"}
+        ])
+    );
+    assert_eq!(
+        listed["shell"],
+        json!([
+            {"candidateID":"home","variable":"JAVA_HOME","home":OLD,
+                "executable":format!("{OLD}/bin/java"),"version":"17.0.12"},
+            {"candidateID":"shell","command":"java","home":HOME,
+                "executable":format!("{HOME}/bin/java"),"version":"21.0.4"}
+        ])
+    );
+    // Shell homes are choices, not the automatic layer's own installations.
+    assert_eq!(listed["selected"], Value::Null);
+
+    // One home reached through both routes, or also scanned, is listed once and keeps
+    // the scan's attribution.
+    listing["commandHomes"] = json!({"java":OLD});
+    listing["systemInstallations"] = json!([{"tool":"java","home":OLD}]);
+    let listed =
+        candidates_command(listing.clone(), validated_manifest_json).unwrap()["candidates"].clone();
+    assert_eq!(
+        listed["installations"],
+        json!([{"home":OLD,"executable":format!("{OLD}/bin/java"),"version":"17.0.12","provider":"host:system"}])
+    );
+
+    // A shell home that fails its check is reported but never offered.
+    listing["systemInstallations"] = json!([]);
+    listing["minimumVersion"] = json!("21");
+    let listed =
+        candidates_command(listing.clone(), validated_manifest_json).unwrap()["candidates"].clone();
+    assert_eq!(listed["installations"], json!([]));
+    assert_eq!(listed["shell"][0]["reason"], "versionUnsatisfied");
+
+    listing["commandHomes"] = json!({"java":7});
+    assert_eq!(
+        candidates_command(listing, validated_manifest_json).unwrap()["status"],
+        "rejected"
+    );
+}
+
+#[test]
 fn toolchain_candidates_keep_provider_attribution_and_count_one_home_once() {
     let mut value = input();
     self_provided(&mut value);

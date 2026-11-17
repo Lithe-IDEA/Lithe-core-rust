@@ -142,7 +142,7 @@ pub struct DeclarationContext<'a> {
     pub declared_settings: &'a lithe_plugin_model::settings::DeclaredSettings,
     /// Language IDs the plugin declares a language server for.
     pub language_servers: &'a BTreeSet<String>,
-    /// Whether tool names are host runtimes or tool-definition IDs.
+    /// The tool-definition IDs in `requiresTools` that a process may name.
     pub runtime_tools: lithe_plugin_model::process::RuntimeTools<'a>,
 }
 
@@ -177,6 +177,14 @@ pub fn validate_declarations(
 }
 
 impl BuildSystemDeclaration {
+    /// Folder names every workspace hides at any depth while the plugin is
+    /// enabled (`layout.hiddenDirectoryNames`), sorted and unique once validated.
+    pub fn hidden_directory_names(&self) -> &[String] {
+        self.layout
+            .as_ref()
+            .map_or(&[], |layout| &layout.hidden_directory_names)
+    }
+
     fn validate(&mut self, field: &str, context: &DeclarationContext<'_>) -> Validation<()> {
         if !is_entry_identifier(&self.id) {
             return Err(invalid(
@@ -212,6 +220,10 @@ impl BuildSystemDeclaration {
                 &mut layout.excluded,
                 &format!("{field}.layout.excluded"),
                 false,
+            )?;
+            check_directory_names(
+                &mut layout.hidden_directory_names,
+                &format!("{field}.layout.hiddenDirectoryNames"),
             )?;
         }
         self.validate_option_emission(field)

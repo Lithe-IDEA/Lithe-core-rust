@@ -6,6 +6,7 @@ license = "Apache-2.0"
 description = "The unified VCS model for Lithe: provider declarations, root detection, request planning and reply validation"
 
 [dependencies]
+lithe-core-rules = { path = "../core-rules" }
 lithe-plugin-model = { path = "../plugin-model" }
 lithe-protocol = { path = "../protocol" }
 serde = { version = "1.0", features = ["derive"] }

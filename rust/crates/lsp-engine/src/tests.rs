@@ -1759,31 +1759,53 @@ fn indexing_cold_start_resolves_git_before_provider_initialization() {
     let status = lithe_project::indexing::configure(serde_json::from_value(json!({
         "root": root, "manualExcludedDirectories": [], "includedDirectories": [], "gitIgnoreEnabled": true
     })).unwrap(), crate::indexing_changed).unwrap();
-    let harness = Harness::start(|request| {
-        workspace.configure(request);
-        request.root_uri = url::Url::from_directory_path(&root).unwrap().to_string();
-    });
-    assert!(notifications(&harness, "initialize").pop().is_some());
-    for (provider, pointer) in [
-        ("go", "/gopls/directoryFilters"),
-        ("rust", "/rust-analyzer/files/exclude"),
+    let start = |exclusions: Option<Value>| {
+        Harness::start(|request| {
+            workspace.configure(request);
+            request.root_uri = url::Url::from_directory_path(&root).unwrap().to_string();
+            request.plugin_id = Some("io.example.server".into());
+            request.workspace_configuration = Some(json!({"server": {"mode": "full"}}));
+            request.session_policy = Some(
+                serde_json::from_value(
+                    json!({"serverID": "server", "indexingExclusions": exclusions}),
+                )
+                .unwrap(),
+            );
+        })
+    };
+    // The server's declaration alone decides where the exclusions go and how
+    // one is written; its provider ID plays no part.
+    for (declaration, pointer, entry) in [
+        (
+            json!({"section": "server.filters", "entry": "-${path}", "pathSyntax": "glob"}),
+            "/server/filters",
+            "-ignored",
+        ),
+        (
+            json!({"section": "server.files.exclude", "entry": "${path}"}),
+            "/server/files/exclude",
+            "ignored",
+        ),
     ] {
-        let value =
-            crate::scan_settings::configuration(provider, &harness.session().root_uri, None)
-                .unwrap();
+        let harness = start(Some(declaration));
+        assert!(notifications(&harness, "initialize").pop().is_some());
+        let value = harness.session().plugin_configuration().unwrap();
+        assert_eq!(value["server"]["mode"], "full");
         assert!(value
             .pointer(pointer)
             .unwrap()
             .as_array()
             .unwrap()
             .iter()
-            .any(|item| item
-                == if provider == "go" {
-                    "-ignored"
-                } else {
-                    "ignored"
-                }));
+            .any(|item| item == entry));
     }
+    let undeclared = start(None);
+    assert_eq!(
+        *undeclared.session().plugin_configuration().unwrap(),
+        json!({"server": {"mode": "full"}}),
+        "a server without indexingExclusions keeps its configuration"
+    );
+    drop(undeclared);
     lithe_project::indexing::release(lithe_project::indexing::ReleaseIndexingRequest {
         root: root.to_string_lossy().into_owned(),
         revision: status.revision,

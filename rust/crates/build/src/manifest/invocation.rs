@@ -21,20 +21,12 @@ pub(crate) struct Invocation {
     pub(crate) minimum_version: Option<String>,
 }
 
-/// Runtime tools the host discovers and manages itself for build-system
-/// runtime dependencies: it exports each as `LITHE_<TOOL>_PATH` and puts its
-/// directory on the process's `PATH`. Server processes never use this list;
-/// they name tool definitions from `requiresTools`.
-pub(crate) const KNOWN_RUNTIME_TOOLS: &[&str] = &["go", "node"];
-
 pub(crate) use lithe_plugin_model::executables::{ExecutableCandidate, ExecutableSource, Platform};
 
-/// A runtime the tool needs. Runtimes the host already manages (`node`,
-/// `go`) take only an ID and an optional minimum version and follow the
-/// user's runtime settings. Any other runtime either describes how to find
-/// and probe it, or lists no executables and names the tool definition with
-/// its ID, which finds the executable and checks `minimumVersion`. A
-/// plugin is never limited to a host list.
+/// A runtime the tool needs. It either describes how to find and probe the
+/// executable, or lists no executables and names the tool definition with
+/// its ID, which finds the executable and checks `minimumVersion`. Core
+/// knows no runtime by name; every runtime comes from a manifest.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct RuntimeDependency {
@@ -50,31 +42,24 @@ pub(crate) struct RuntimeDependency {
 }
 
 impl RuntimeDependency {
-    /// True when the host discovers this runtime with its own settings.
-    pub(crate) fn is_host_managed(&self) -> bool {
-        KNOWN_RUNTIME_TOOLS.contains(&self.id.as_str())
-    }
-
     /// True when the runtime is the tool definition with the same ID: it
-    /// lists no executables and the host does not manage it. Plans give it
-    /// a single toolchain candidate for that ID.
+    /// lists no executables. Plans give it a single toolchain candidate for
+    /// that ID.
     pub(crate) fn names_tool_definition(&self) -> bool {
-        self.executables.is_empty() && !self.is_host_managed()
+        self.executables.is_empty()
     }
 
     /// True when the tool definition the runtime resolves through checks
-    /// `minimumVersion`, so the manifest needs no version probe: a runtime
-    /// the host does not manage that is an implicit reference or has exactly
-    /// one toolchain candidate.
+    /// `minimumVersion`, so the manifest needs no version probe: the runtime
+    /// is an implicit reference or has exactly one toolchain candidate.
     pub(crate) fn checked_by_tool_definition(&self) -> bool {
-        !self.is_host_managed()
-            && matches!(
-                self.executables.as_slice(),
-                [] | [ExecutableCandidate {
-                    source: ExecutableSource::Toolchain { .. },
-                    ..
-                }]
-            )
+        matches!(
+            self.executables.as_slice(),
+            [] | [ExecutableCandidate {
+                source: ExecutableSource::Toolchain { .. },
+                ..
+            }]
+        )
     }
 }
 
@@ -136,33 +121,6 @@ impl BuildSystemDeclaration {
             }
             if let Some(minimum) = &runtime.minimum_version {
                 validate_minimum_version(minimum, &format!("{field}.minimumVersion"))?;
-            }
-            if runtime.is_host_managed() {
-                // The host finds these with the user's own runtime settings;
-                // a plugin must not route around that choice.
-                let toolchain = runtime.executables.len() == 1
-                    && matches!(
-                        runtime.executables[0].source,
-                        ExecutableSource::Toolchain { .. }
-                    );
-                if (!runtime.executables.is_empty() && !toolchain) || runtime.version.is_some() {
-                    return Err(invalid(
-                        field,
-                        format!(
-                            "{} is discovered by the host; declare only its minimumVersion.",
-                            runtime.id
-                        ),
-                    ));
-                }
-                if toolchain {
-                    check_candidate(
-                        &mut runtime.executables[0],
-                        &format!("{field}.executables[0]"),
-                        &invocation.environment_inputs,
-                        &BTreeSet::new(),
-                    )?;
-                }
-                continue;
             }
             if runtime.names_tool_definition() {
                 // The tool definition finds the executable and checks

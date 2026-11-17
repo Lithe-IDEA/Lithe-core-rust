@@ -746,6 +746,7 @@ fn history_page_response_matches_shared_fixture() {
         next_cursor: Some("git-history-cursor-fixture".into()),
         next_offset: None,
         has_more: true,
+        limit_reached: false,
     };
 
     assert_eq!(

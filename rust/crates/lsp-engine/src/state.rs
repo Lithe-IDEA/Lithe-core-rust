@@ -118,6 +118,10 @@ pub(crate) struct RuntimeSession {
     /// Replaced as a whole by `lsp.updateWorkspaceConfiguration`; never held
     /// across another lock.
     pub(crate) plugin_configuration: Mutex<Option<Arc<Value>>>,
+    /// The setting of `plugin_configuration` that lists the workspace's
+    /// excluded directories, as the session policy declares it. Without one
+    /// the configuration is answered unchanged.
+    pub(crate) indexing_exclusions: Option<lithe_plugin_language_servers::IndexingExclusions>,
     /// Workspace URI the server was initialized with; scopes indexing
     /// exclusions and other workspace-wide checks to this session's root.
     pub(crate) root_uri: String,

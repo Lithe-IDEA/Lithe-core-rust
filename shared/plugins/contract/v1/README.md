@@ -297,6 +297,7 @@ activation event, and a plugin may consist of grammars alone.
 | `validationArguments` | Probe that must exit with status 0 before a candidate is used; empty means the host trusts the candidate and lets the LSP handshake decide. |
 | `runtimeDependencies` | Tools the host must discover and pass to the server, each a tool-definition ID that `requiresTools` lists (see [Tool references](#tool-references)). The host exports each path as `LITHE_<TOOL>_PATH` (`LITHE_NODE_PATH`, `LITHE_GO_PATH`; a user-set value takes precedence) and prepends its directory to the server's `PATH`, because servers such as gopls run the tool themselves and an app opened from the Dock does not inherit the shell `PATH`. A project-local copy is never chosen, since servers start automatically when a file opens. |
 | `initializationOptions` | A JSON object sent as the LSP `initializationOptions`. Every string value inside it is a launch template. |
+| `indexingExclusions` | The array in the server's workspace configuration that the host fills with the workspace's excluded directories; see [Indexing exclusions](#indexing-exclusions). |
 | `hostIntegration` | Reserved. Core implements no host integration, so any ID is refused; see [Language server host integrations](#language-server-host-integrations). |
 | `requestMethods`, `commands`, `serializedCommands`, `forwardNotifications`, `state`, `remote` | What the plugin backend may ask of the running server and how the host keeps its state; see [Plugin-owned sessions](#plugin-owned-sessions). |
 
@@ -360,6 +361,55 @@ requests by section path from it, and sends
 value with `lsp.updateWorkspaceConfiguration` when an `immediate` setting
 changes; the running server receives it without a restart.
 
+#### Indexing exclusions
+
+The user can exclude workspace directories from indexing, and directories Git
+ignores can be excluded too. Many servers index every directory unless one of
+their own settings lists the ones to skip. A server whose setting does so
+declares `indexingExclusions`, and the host keeps that setting filled; Core
+never guesses the setting from the language, the server or the tool.
+
+| Field | Meaning |
+| --- | --- |
+| `section` | Dotted path of the array in the workspace configuration, such as `gopls.directoryFilters`; at most 8 non-empty keys without whitespace. |
+| `entry` | One excluded directory. `${path}` appears exactly once and is the directory's workspace-relative path separated by `/`; no other template is allowed. |
+| `rootEntry` | The entry for the workspace root itself. Without it the root is `entry` with the path `.`. |
+| `default` | What the server uses when the configuration has no such array, at most 32 entries. |
+| `pathSyntax` | `literal` (default) or `glob`: how the server reads the path. |
+
+- The host answers `workspace/configuration` and sends
+  `workspace/didChangeConfiguration` with the excluded directories appended,
+  in order, to the array at `section`. It never changes the stored
+  configuration, so removing an exclusion restores the user's array exactly.
+- An array the configuration already has is kept and the entries are added
+  after it; an entry already present moves to the end, because filters such as
+  gopls's are read in order and the last match wins. Without an array the
+  host starts from `default`, so the server's own default still applies.
+- A configuration written with dotted keys (`"gopls.directoryFilters"`,
+  `"gopls": {"directoryFilters": …}`) is normalized to nested objects along
+  `section` before the entries are added; unrelated settings are kept.
+- With `glob`, a directory whose name contains `*`, `?`, `[`, `]`, `{` or `}`
+  is left out, since writing it would exclude every directory the pattern
+  matches.
+- When the excluded directories change, a running server receives
+  `workspace/didChangeConfiguration` again. A server without
+  `indexingExclusions` sees its configuration unchanged; the host still stops
+  sending it the documents, diagnostics and file changes of excluded
+  directories.
+- A text field is at most 256 bytes without control characters, and
+  `rootEntry` and `default` entries are literal. A violation is
+  `plugin.manifest.invalid` at `languageServers[<n>].indexingExclusions.<field>`.
+
+```json
+"indexingExclusions": {
+  "section": "gopls.directoryFilters",
+  "entry": "-${path}",
+  "rootEntry": "-",
+  "default": ["-**/node_modules"],
+  "pathSyntax": "glob"
+}
+```
+
 #### Plugin-owned sessions
 
 A plugin backend drives its own server only through what the server
@@ -384,7 +434,8 @@ declares. A server may declare:
   `languageServer.request` permission; declaring the permission without such a
   server is `plugin.manifest.invalid`.
 - The launch plan's `sessionPolicy` is these fields as sorted lists plus
-  `serverID` (the `languageID`) and `gates`. The host sends it unchanged as
+  `serverID` (the `languageID`), `gates` and, when declared, the server's
+  `indexingExclusions`. The host sends it unchanged as
   `lsp.startServer.sessionPolicy`; Core's LSP engine enforces it, so a host
   cannot widen it and a backend cannot step outside it.
 - A server with `remote: "unsupported"` is not started for a remote
@@ -1227,10 +1278,10 @@ normalized instance `root`. The host adapter resolves installed definitions
 against fresh native evidence and directory pins. Unavailable selections are terminal,
 including when a prerequisite runtime fails first; they cannot silently fall
 back to Provider discovery.
-A host-managed `node` or `go` dependency may select one such candidate,
-while retaining Core's version probe. Any other dependency that declares no
-`executables` is already this candidate for the definition with its own ID, and
-that definition checks `minimumVersion`. A tool that needs another tool as a
+A runtime dependency that declares no `executables` is already this candidate
+for the definition with its own ID, and that definition checks
+`minimumVersion`. Core knows no runtime by name: `node` and `go` are tool
+definitions like any other. A tool that needs another tool as a
 prerequisite names that tool's definition; Core adds no registry entry for any
 particular tool.
 Passive import performs no version or runtime probes; a definition that requires
@@ -1641,9 +1692,9 @@ declaration are relative, use `/`, and stay inside their base directory
 
 | Field | Meaning |
 | --- | --- |
-| `detection` | `markers` are file names; a directory holding one is a candidate root. Core searches at most 6 levels below the workspace root and skips known caches and build outputs, plus directories Git ignores: the rules come from the `.gitignore` files inside the workspace and the `info/exclude` of each repository whose root lies in it, not from directories above the workspace root, `core.excludesFile` or the index, so a tracked manifest below an ignored directory is not a candidate. Detection also skips the workspace's ignored paths, a Build option the user edits (`.gitignore` patterns stored in the team or machine-local Build options): by default every directory whose name starts with a dot, such as `.claude/worktrees`, and the user can list more or bring one back with `!`. `nesting: "outermost"` folds deeper candidates into the outer instance (Gradle builds, Maven reactors); `"separate"` (default) keeps each (Cargo packages). `priority` (0–100, default 50) decides between plugins declaring the same ID; ties go to the smaller plugin ID. |
+| `detection` | `markers` are file names; a directory holding one is a candidate root. Core searches at most 6 levels below the workspace root and skips the folders hidden by default (Core's own and the names enabled plugins declare, see `layout`), plus directories Git ignores: the rules come from the `.gitignore` files inside the workspace and the `info/exclude` of each repository whose root lies in it, not from directories above the workspace root, `core.excludesFile` or the index, so a tracked manifest below an ignored directory is not a candidate. Detection also skips the workspace's ignored paths, a Build option the user edits (`.gitignore` patterns stored in the team or machine-local Build options): by default every directory whose name starts with a dot, such as `.claude/worktrees`, and the user can list more or bring one back with `!`. `nesting: "outermost"` folds deeper candidates into the outer instance (Gradle builds, Maven reactors); `"separate"` (default) keeps each (Cargo packages). `priority` (0–100, default 50) decides between plugins declaring the same ID; ties go to the smaller plugin ID. |
 | `invocation` | `executables` in preference order: `projectFile` (a wrapper inside the root, with `requires` files; always runs project code), `environment` (a path below a variable listed in `environmentInputs`), `command` (a bare name found on `PATH`), `runtime` (a declared runtime dependency itself). `platforms` limits a candidate. `globalArguments` precede every command. `version` probes the executable with literal `arguments` and a `pattern` whose first group is the version; `minimumVersion` needs a probe. |
-| `runtimeDependencies` | `node` and `go` are host-managed: only `id` and `minimumVersion`, discovered with the user's runtime settings; `build.invocationPlan` returns the probe arguments Core reads their version with, so hosts keep no per-runtime probe. Any other runtime without `executables` names the [tool definition](toolchains/README.md) with the same ID, so its `id` must be a valid tool-definition ID and it declares only `minimumVersion`: `build.invocationPlan` returns it with `hostManaged: false`, `version: null`, and the single candidate `{ "kind": "toolchain", "toolchainID": <id>, "root": <root> }`, whose resolution checks `minimumVersion`, and `build.checkToolVersion` for it is `plugin.build.unavailable` because Core reads no version. Any other runtime describes its own `executables` and `version` probe, so the runtime list is open; a runtime whose only candidate is a `toolchain` candidate may omit the probe, since the definition checks the version. |
+| `runtimeDependencies` | Core knows no runtime by name; `node` and `go` follow the same rules as any other ID. A runtime without `executables` names the [tool definition](toolchains/README.md) with the same ID, so its `id` must be a valid tool-definition ID and it declares only `minimumVersion`: `build.invocationPlan` returns it with `version: null` and the single candidate `{ "kind": "toolchain", "toolchainID": <id>, "root": <root> }`, whose resolution checks `minimumVersion`, and `build.checkToolVersion` for it is `plugin.build.unavailable` because Core reads no version. Any other runtime describes its own `executables` and `version` probe, so the runtime list is open; a runtime whose only candidate is a `toolchain` candidate may omit the probe, since the definition checks the version. |
 | `options` | Build dimensions the user chooses: `boolean`, `singleSelect`, `multiSelect`, `text`, `file`, `directory`. Each contributes `arguments` and `environment` (with `${value}`) when it has a value. Choices are declared, come from the model (`choicesFromModel`), or are free (`allowCustom`). |
 | `provider` | The process that answers model and dependency requests when no command prints them; see [Build providers](#build-providers). |
 | `model` | `static` (a `toml` file read during detection, no process), `command` (a command whose output Core decodes; it states `executesProjectCode` and `mayUseNetwork`), or `provider`. |
@@ -1653,7 +1704,7 @@ declaration are relative, use `/`, and stay inside their base directory
 | `diagnostics` | `lineMatcher` patterns with capture-group numbers, or `litheDiagnostics` lines. |
 | `dependencies` | A command (with `scopes`) whose output Core decodes, as a flat list through a `map` or as a tree from `litheDependencies`; or `provider` (with `scopes`, `workspace` and `project` only). |
 | `sync` | Files whose change makes the model stale, relative to the root and to each project. |
-| `layout` | `excluded` directories relative to each project, added to every project as `excluded` content roots. |
+| `layout` | `excluded` directories relative to each project, added to every project as `excluded` content roots. `hiddenDirectoryNames` (at most 32) are folder names, such as dependency, cache and build output folders, that every workspace hides at any depth while the plugin is enabled: the project tree, search, file events, Local History, run discovery, build detection and VCS and Git repository discovery skip them. Each name is one path component compared ignoring ASCII case, never a glob: it is not `.` or `..`, has no surrounding whitespace, `/`, `\`, `*`, `?`, `[`, `]` or control character, and does not start with `!` (`plugin.path.invalid` otherwise). Search Everywhere still lists their file names when the host asks for generated file names. Users turn a name off with a `!name` hidden-file pattern, as for Core's own folders. |
 
 An option may declare `scope: "instance"`.
 Omitted scope (or `"workspace"`) keeps workspace/build-system storage. Instance
@@ -1692,6 +1743,27 @@ changes a plan.
   an array of strings. Core trims the headings. A category that is deeper
   than four headings or has an empty heading falls back to the template's, so
   a tool that reports a bad heading still has its task filed.
+
+Core lays out the window's tree from the model, the same way for every build
+tool (`build.modelTree` in the
+[Rust Core API](../../../../rust/contracts/rust-core-api.md#build-systems)):
+
+- Projects nest by `parentID`. A project with no parent in the model, or one
+  whose parent chain loops back to itself, becomes a root.
+- Each project lists, in this order, its tasks in their folders, a
+  dependencies node when `dependencies.scopes` contains `project`, a targets
+  node whose targets carry their target-scoped tasks (filtered by
+  `targetTags`), and its child projects.
+- A declared task with a `project` scope appears in every project. A task with
+  only a `workspace` scope, or one that `requiresUserArguments`, appears once,
+  beside the root projects; so do workspace dependencies and discovered
+  tests. When the model has no projects, every `workspace` task appears there.
+- When the model has a single root project, that project's contents become
+  the build system's own, and its tasks still run on the root project. Guard
+  project-only arguments with `nestedProjectSelected` so running them on the
+  root builds everything.
+- A filter keeps each matching node whole, together with the projects and
+  folders on the way to it.
 
 A host that draws build-system windows gives each detected build system its own tool window and uses
 these presentation fields. The host-drawn windows share Build Output, docking,
@@ -2058,7 +2130,7 @@ as `provider: "build.provider"` with `extensions.build`. The reference contains
 raw `userArguments`, never an executable, environment, or cached classpath.
 Every restart re-resolves the enabled instance/model and sends a fresh preparation.
 Missing plugins/targets/models fail explicitly; there is no command fallback.
-Saving and running work before detector-generated Run configurations exist.
+Saving and running work before Run configurations are generated.
 See `fixtures/build-providers/build-provider-run-preparation.plugin.json`
 and `fixtures/build-providers/build-run-preparation.json`.
 
@@ -2422,7 +2494,10 @@ version of `vcsProviders`.
 
 Detection never starts a process: `vcs.detectRoots` finds roots from the
 markers, and the host starts a provider only after a root of its VCS is
-found. The install review lists the provider as a `…VcsProvider` program with
+found. Directory markers, such as `.svn`, are the VCS's metadata: while the
+plugin is enabled every workspace hides them like the folders a build system
+lists in `layout.hiddenDirectoryNames`, except that Search Everywhere never
+lists their file names. The install review lists the provider as a `…VcsProvider` program with
 its VCS client (`vcsTool`) and `mayUseNetwork`. Requests go through
 `lsp.vcsRequest` by operation name and replies are normalized by
 `vcs.decodeReply`. The fields, operations, reply shapes, and error codes are
