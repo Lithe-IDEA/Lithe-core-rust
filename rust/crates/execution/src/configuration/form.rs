@@ -721,6 +721,8 @@ impl Draft {
         };
         // The saved entry must pass the same checks a launch makes; report
         // the ones the steps above do not, such as lengths and characters.
+        // A missing value is left to the steps above, which name the field
+        // of the chosen source: an empty text is not also a missing script.
         let configuration = RunConfiguration {
             id: "user:draft".into(),
             name: stored.name.clone(),
@@ -746,7 +748,9 @@ impl Draft {
         };
         if let Ok(found) = process::field_errors(&configuration, Platform::HOST) {
             for error in found {
-                if !errors.iter().any(|known| known.field == error.field) {
+                if error.code != "required"
+                    && !errors.iter().any(|known| known.field == error.field)
+                {
                     errors.push(error);
                 }
             }

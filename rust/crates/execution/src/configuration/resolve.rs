@@ -23,18 +23,13 @@ pub(crate) fn resolve_layers(
 ) -> Result<Value, CoreError> {
     let team = &layers.project.document;
     let local = &layers.local.document;
+    // Before any build model is loaded nothing is generated: the saved runs
+    // still resolve, and a project with none has an empty list. Overrides of
+    // generated runs are only orphaned once a generation can be compared.
     let layer = generated_layer::get(root);
     let generated = match layer.as_deref() {
         Some(document) => serde_json::to_value(document).expect("run configurations encode"),
-        None if has_saved_runnable(local) || has_saved_runnable(team) => {
-            json!({"version": VERSION, "configurations": []})
-        }
-        None => {
-            return Err(CoreError::new(
-                ErrorCode::WorkspaceNotFound,
-                "Run configuration has not been generated",
-            ))
-        }
+        None => json!({"version": VERSION, "configurations": []}),
     };
     let generated_ids = configuration_ids(&generated)?;
     let local_toolchains = read_local_toolchains(root)?;
@@ -49,7 +44,7 @@ pub(crate) fn resolve_layers(
         .iter()
         .map(|item| item.id.as_str())
         .collect::<BTreeSet<_>>();
-    for source in [team, local] {
+    for source in [team, local].into_iter().filter(|_| layer.is_some()) {
         for id in configuration_ids(source)?.keys() {
             if !resolved_ids.contains(id.as_str()) && !id.starts_with("user:") {
                 diagnostics.push(json!({

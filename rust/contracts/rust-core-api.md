@@ -3684,7 +3684,10 @@ An implicit selector-root cwd remains omitted from launch options. Current model
 native build workflow before every preparation. No generated document is needed:
 `runConfig.inspect` recognizes explicit saved team/local references and `runConfig.resolve`
 merges them against an empty generated layer. A workspace without generated data
-or an explicit saved Provider reference retains the existing missing state.
+or a saved runnable entry is still `missing` for `runConfig.inspect`, while
+`runConfig.resolve` returns an empty list, so the first built-in process run can be
+created before any build model loads. Without generated data, overrides of generated
+runs are not reported as `orphanedOverride`.
 Complete saved `build.provider` entries (name, provider, selector and matching execution)
 can retain any existing Run ID, including IDs imported from older formats; a prefix
 does not grant launch authority. Sparse unknown-ID patches remain orphaned. Such an

@@ -1725,6 +1725,13 @@ fn built_in_process_runs_are_created_edited_moved_and_deleted_through_the_editor
     let local = ".lithe/run/local.yaml";
     let project = ".lithe/run/configurations.yaml";
 
+    // A project with no build model and no saved run has an empty list, so the
+    // first configuration can be created there.
+    let empty = call("runConfig.resolve", serde_json::json!({"root": root}));
+    assert_eq!(empty["ok"], true, "{empty}");
+    assert_eq!(empty["data"]["configurations"], serde_json::json!([]));
+    assert_eq!(empty["data"]["diagnostics"], serde_json::json!([]));
+
     let types = call("runConfig.configurationTypes", serde_json::json!({}));
     let providers: Vec<_> = types["data"]["types"]
         .as_array()
@@ -1779,6 +1786,18 @@ fn built_in_process_runs_are_created_edited_moved_and_deleted_through_the_editor
             {"field":"workingDirectory","code":"notFound"},
             {"field":"environment","code":"duplicate"}
         ])
+    );
+    // An empty text is reported once, on the field the chosen source shows.
+    let empty_text = call(
+        "runConfig.saveConfiguration",
+        serde_json::json!({"root":root,"provider":"process.shell","values":{
+            "name":"inline","source":"text","text":"  "
+        }}),
+    );
+    assert_eq!(
+        empty_text["data"]["errors"],
+        serde_json::json!([{"field":"text","code":"required"}]),
+        "{empty_text}"
     );
 
     let saved = call(
