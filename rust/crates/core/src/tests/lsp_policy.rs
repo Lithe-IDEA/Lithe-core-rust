@@ -145,6 +145,10 @@ fn malformed_requests_fail_with_invalid_request() {
             json!({"diagnostics": [], "groupBy": "type"}),
         ),
         (
+            "lsp.problems.query",
+            json!({"diagnostics": [], "collapsed": "file:a"}),
+        ),
+        (
             "lsp.references.query",
             json!({"locations": [{"fileKey": "a"}]}),
         ),

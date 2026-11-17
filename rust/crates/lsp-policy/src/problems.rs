@@ -1,17 +1,26 @@
-//! Problems tool-window filtering, ordering, and grouping (`lsp.problems.query`).
+//! Problems tool-window filtering, ordering, grouping, and tree rows
+//! (`lsp.problems.query`).
 //!
 //! Platforms submit the diagnostics they display together with the active
 //! view options. Core returns indices into the submitted list, so the large
 //! message payload never crosses the boundary a second time. File paths are
 //! compared with the IDEA natural file-name order that the Project view uses,
 //! which keeps `File2` before `File10` on both platforms.
+//!
+//! The tool window shows the groups the way IntelliJ IDEA's Problems window
+//! does: a node per file (or severity) over its diagnostics. Platforms keep
+//! which nodes are collapsed and which row is selected, and ask Core again
+//! after a change; Core returns the rows that show and moves a selection that
+//! a collapsed node hides to that node. A diagnostic's row key names its file,
+//! position, and place among the diagnostics at that position rather than its
+//! index, so the selection stays on it when the server republishes the list.
 
 use lithe_core_rules::file_names::FileNameKey;
 use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::cmp::Ordering;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// LSP severities in display order; unknown (`0`) ranks after hints.
 const SEVERITY_RANKS: [u8; 5] = [1, 2, 3, 4, 0];
@@ -26,6 +35,12 @@ struct Request {
     sort_by: SortBy,
     #[serde(default)]
     filter: Filter,
+    /// The keys of the group nodes the user closed; unknown keys are ignored.
+    #[serde(default)]
+    collapsed: Vec<String>,
+    /// The key of the selected row; absent or unknown selects nothing.
+    #[serde(default)]
+    selected: Option<String>,
 }
 
 /// One displayed diagnostic. Only the fields that affect filtering and order
@@ -142,11 +157,46 @@ struct Group {
     file_key: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     display_path: Option<String>,
+    /// The last segment of a file group's `displayPath`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    /// A file group's `displayPath` without its last segment; empty at the
+    /// workspace root.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    folder: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     severity: Option<u8>,
     /// Indices into the submitted `diagnostics`, in display order.
     indices: Vec<usize>,
     counts: SeverityCounts,
+}
+
+#[derive(Serialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+enum RowKind {
+    Group,
+    Diagnostic,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Row {
+    /// The group's key, or `diagnostic:<line>:<column>:<ordinal>:<fileKey>`
+    /// where `ordinal` counts the earlier submitted diagnostics at the same
+    /// file and position; stable while nodes open and close.
+    key: String,
+    kind: RowKind,
+    /// 0 for a group node and for a diagnostic of the ungrouped list, 1 for a
+    /// diagnostic under a node.
+    depth: u8,
+    /// Whether a node's diagnostics show; absent on a diagnostic.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expanded: Option<bool>,
+    /// The row's group.
+    group: usize,
+    /// The diagnostic the row previews and opens: itself, or the first
+    /// diagnostic under a node.
+    shows: usize,
 }
 
 #[derive(Serialize)]
@@ -167,6 +217,15 @@ struct Response {
     files: Vec<FileSummary>,
     visible_counts: SeverityCounts,
     total_counts: SeverityCounts,
+    /// The rows that show, top to bottom; empty when nothing is visible.
+    rows: Vec<Row>,
+    /// The key of the selected row, always one of `rows`; absent when nothing
+    /// is selected.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    selected: Option<String>,
+    /// The position of the selected row in `rows`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    selected_row: Option<usize>,
 }
 
 struct Entry<'a> {
@@ -273,14 +332,23 @@ fn query(request: &Request) -> Response {
     let groups = match request.group_by {
         GroupBy::File => files
             .iter()
-            .map(|file| Group {
-                key: format!("file:{}", file.facts.file_key),
-                kind: "file",
-                file_key: Some(file.facts.file_key.clone()),
-                display_path: Some(file.facts.display_path.clone()),
-                severity: None,
-                indices: file.indices.clone(),
-                counts: file.counts,
+            .map(|file| {
+                let path = file.facts.display_path.as_str();
+                let (folder, name) = match path.rfind('/') {
+                    Some(at) => (&path[..at], &path[at + 1..]),
+                    None => ("", path),
+                };
+                Group {
+                    key: file_group_key(&file.facts.file_key),
+                    kind: "file",
+                    file_key: Some(file.facts.file_key.clone()),
+                    display_path: Some(path.to_string()),
+                    name: Some(name.to_string()),
+                    folder: Some(folder.to_string()),
+                    severity: None,
+                    indices: file.indices.clone(),
+                    counts: file.counts,
+                }
             })
             .collect(),
         GroupBy::Severity => SEVERITY_RANKS
@@ -299,6 +367,8 @@ fn query(request: &Request) -> Response {
                         kind: "severity",
                         file_key: None,
                         display_path: None,
+                        name: None,
+                        folder: None,
                         severity: Some(severity),
                         indices,
                         counts,
@@ -312,6 +382,8 @@ fn query(request: &Request) -> Response {
             kind: "all",
             file_key: None,
             display_path: None,
+            name: None,
+            folder: None,
             severity: None,
             indices: visible.iter().map(|entry| entry.index).collect(),
             counts: visible_counts,
@@ -327,12 +399,118 @@ fn query(request: &Request) -> Response {
             counts: file.counts,
         })
         .collect();
+    let keys = diagnostic_keys(&request.diagnostics);
+    let (rows, selected) = tree(request, &groups, &keys);
+    let selected_row = selected
+        .as_ref()
+        .and_then(|key| rows.iter().position(|row| &row.key == key));
     Response {
         groups,
         files,
         visible_counts,
         total_counts,
+        rows,
+        selected,
+        selected_row,
     }
+}
+
+/// The rows that show and the key of the selected one. Group nodes head
+/// their diagnostics except in the ungrouped list, whose diagnostics sit at
+/// the top level. A selected diagnostic that a closed node hides moves to
+/// that node; one that is gone moves to its file's node when the list is
+/// grouped by file and the file still shows, and is dropped otherwise.
+fn tree(request: &Request, groups: &[Group], keys: &[String]) -> (Vec<Row>, Option<String>) {
+    let headed = request.group_by != GroupBy::None;
+    let collapsed: BTreeSet<&str> = request.collapsed.iter().map(String::as_str).collect();
+    let expanded: Vec<bool> = groups
+        .iter()
+        .map(|group| !headed || !collapsed.contains(group.key.as_str()))
+        .collect();
+    let mut rows = Vec::new();
+    for (slot, group) in groups.iter().enumerate() {
+        if headed {
+            rows.push(Row {
+                key: group.key.clone(),
+                kind: RowKind::Group,
+                depth: 0,
+                expanded: Some(expanded[slot]),
+                group: slot,
+                shows: group.indices[0],
+            });
+        }
+        if !expanded[slot] {
+            continue;
+        }
+        for index in &group.indices {
+            rows.push(Row {
+                key: keys[*index].clone(),
+                kind: RowKind::Diagnostic,
+                depth: u8::from(headed),
+                expanded: None,
+                group: slot,
+                shows: *index,
+            });
+        }
+    }
+
+    let Some(wanted) = request.selected.as_deref() else {
+        return (rows, None);
+    };
+    if headed && groups.iter().any(|group| group.key == wanted) {
+        return (rows, Some(wanted.to_string()));
+    }
+    if let Some(index) = keys.iter().position(|key| key == wanted) {
+        if let Some(slot) = groups
+            .iter()
+            .position(|group| group.indices.contains(&index))
+        {
+            let shown = if expanded[slot] {
+                wanted.to_string()
+            } else {
+                groups[slot].key.clone()
+            };
+            return (rows, Some(shown));
+        }
+    }
+    let file = (request.group_by == GroupBy::File)
+        .then(|| diagnostic_file(wanted))
+        .flatten()
+        .map(file_group_key)
+        .filter(|key| groups.iter().any(|group| &group.key == key));
+    (rows, file)
+}
+
+/// Each submitted diagnostic's row key, in submission order.
+fn diagnostic_keys(diagnostics: &[DiagnosticFacts]) -> Vec<String> {
+    let mut seen = BTreeMap::<(&str, u64, u64), usize>::new();
+    diagnostics
+        .iter()
+        .map(|facts| {
+            let ordinal = seen
+                .entry((facts.file_key.as_str(), facts.line, facts.column))
+                .or_insert(0);
+            let key = format!(
+                "diagnostic:{}:{}:{}:{}",
+                facts.line, facts.column, ordinal, facts.file_key
+            );
+            *ordinal += 1;
+            key
+        })
+        .collect()
+}
+
+/// The `fileKey` a diagnostic row key names, or `None` for another key.
+fn diagnostic_file(key: &str) -> Option<&str> {
+    let mut parts = key.strip_prefix("diagnostic:")?.splitn(4, ':');
+    for _ in 0..3 {
+        parts.next()?.parse::<u64>().ok()?;
+    }
+    parts.next()
+}
+
+fn file_group_key(file_key: &str) -> String {
+    format!("file:{file_key}")
 }
 
 struct FileGroup<'a> {

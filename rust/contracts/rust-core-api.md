@@ -671,7 +671,7 @@ or removing a command fails until the table changes in the same commit.
 | `lsp.builtinNavigation` | Return lightweight current-file definition/reference locations |
 | `lsp.mergeCompletions` | Choose which candidates survive when several prioritized providers complete at one position |
 | `lsp.activationPolicy` | Decide whether a language server may start automatically after failures, using a platform monotonic clock |
-| `lsp.problems.query` | Filter, order, and group Problems tool-window diagnostics and count them by severity |
+| `lsp.problems.query` | Filter, order, and group Problems tool-window diagnostics, count them by severity, and lay the tree rows out |
 | `lsp.references.query` | Group Find Usages locations by file and lay out the References tool window's visible rows, selection, and previous/next usages |
 | `lsp.references.lines` | Show the lines of References tool-window usages with highlighted usage ranges, as search results show theirs |
 | `lsp.startServer` | Start one Rust-owned process/session and begin initialization |
@@ -2979,8 +2979,24 @@ stable `key`, `indices` into the submitted list, and per-severity `counts`),
 `files` (file summaries in file order regardless of `groupBy`),
 `visibleCounts`, and `totalCounts`. `fileKey` is the platform's native file
 identity; `displayPath` is the workspace-relative path and orders files with
-the Project view's natural file-name order. Severity is the LSP number;
-missing or out-of-range values are unknown (`0`) and rank last. Cases:
+the Project view's natural file-name order; file groups also carry `name`
+(its last segment) and `folder` (the rest, empty at the root). Severity is the
+LSP number; missing or out-of-range values are unknown (`0`) and rank last.
+The request also carries the platform-held tree state: `collapsed` (the keys
+of closed group nodes; unknown keys are ignored) and the `selected` row key.
+The response lays the tree out the way IntelliJ IDEA's Problems window does:
+`rows` are the rows that show from top to bottom, each with `key`, `kind`
+(`group`, `diagnostic`), `depth`, `expanded` (group nodes only), `group`, and
+`shows` (the diagnostic the row previews and opens: itself, or the first under
+a node). Group nodes (`file:<fileKey>`, `severity:<n>`) head their diagnostics
+at depth 1; with `groupBy` `none` there are no nodes and the diagnostics sit at
+depth 0. A diagnostic's key is `diagnostic:<line>:<column>:<ordinal>:<fileKey>`,
+where `ordinal` counts the earlier submitted diagnostics at the same file and
+position, so a selection stays on a diagnostic the server republishes at
+another index. `selected` and `selectedRow` name the selected row: an absent
+or unknown key selects nothing, a diagnostic a closed node hides moves the
+selection to that node, and a diagnostic that is gone moves it to its file's
+node when the list is grouped by file and the file still shows. Cases:
 `rust/fixtures/lsp/problems-query-v1.json`.
 
 `lsp.references.query` accepts the Find Usages answer as
