@@ -13,10 +13,13 @@
 //! size, so every grammar Core accepts loads in the editor and none can make
 //! it allocate without limit. An include of another grammar's scope resolves
 //! against the grammars the editor has; an include nothing defines matches
-//! nothing, as in VS Code. `injections` and `injectionSelector` are not run,
-//! so they are not checked. Regex cost cannot be proven from the source: the
-//! editor tokenizes plugin grammars off its UI thread with a time budget per
-//! line, and a pattern its engine cannot compile never matches.
+//! nothing, as in VS Code. `injections` run as in VS Code: the grammar being
+//! tokenized applies its own, keyed by scope selector, and the injections of
+//! a grammar it includes do not apply. `injectionSelector` is not run, since
+//! no grammar is injected into another, so it is not checked. Regex cost
+//! cannot be proven from the source: the editor tokenizes plugin grammars off
+//! its UI thread with a time budget per line, and a pattern its engine cannot
+//! compile never matches.
 //!
 //! Note: the decision is recorded in .agents/notes/implemented/architecture/2026-10-31-plugin-editor-extension-apis.md
 
@@ -41,6 +44,11 @@ const MAX_SCOPE_NAME_BYTES: usize = 128;
 const MAX_SCOPES_BYTES: usize = 1024;
 /// Longest `include` or repository key.
 const MAX_REFERENCE_BYTES: usize = 256;
+/// Most `injections` entries. The editor tests every selector where it
+/// scans, so the count bounds the work each position adds.
+const MAX_INJECTIONS: usize = 64;
+/// Longest scope selector keying an injection. PHP's is 262 bytes.
+const MAX_SELECTOR_BYTES: usize = 1024;
 /// Most bracket pairs in a language configuration.
 const MAX_BRACKETS: usize = 32;
 /// Longest comment or bracket delimiter.
@@ -186,6 +194,9 @@ pub fn decode_textmate(text: &str) -> Validation<String> {
     if let Some(repository) = grammar.get("repository") {
         rules.repository(repository, "grammar.repository", 1)?;
     }
+    if let Some(injections) = grammar.get("injections") {
+        rules.injections(injections, "grammar.injections")?;
+    }
     Ok(scope_name)
 }
 
@@ -211,6 +222,30 @@ impl RuleBudget {
                 return Err(grammar_error(field, "A repository key is 1 to 256 bytes."));
             }
             self.rule(rule, &format!("{field}.{key}"), depth)?;
+        }
+        Ok(())
+    }
+
+    /// Injections are an object of rules keyed by scope selector.
+    fn injections(&mut self, injections: &Value, field: &str) -> Validation<()> {
+        let Value::Object(entries) = injections else {
+            return Err(grammar_error(
+                field,
+                "injections is an object of rules keyed by scope selector.",
+            ));
+        };
+        if entries.len() > MAX_INJECTIONS {
+            return Err(grammar_error(field, "A grammar has at most 64 injections."));
+        }
+        for (selector, rule) in entries {
+            let entry_field = format!("{field}.{selector}");
+            if selector.is_empty() || selector.len() > MAX_SELECTOR_BYTES {
+                return Err(grammar_error(
+                    entry_field,
+                    "An injection selector is 1 to 1024 bytes.",
+                ));
+            }
+            self.rule(rule, &entry_field, 1)?;
         }
         Ok(())
     }
