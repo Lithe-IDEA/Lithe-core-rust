@@ -1,6 +1,39 @@
 {
-  "description": "Requests of outputLinks.match and the links Core returns, and replies of a matcher's resolve function with what outputLinks.decodeResolution returns. `start` and `length` count UTF-16 code units of the console line. A relative path yields one candidate per workspace root, and a path outside every root yields no link.",
+  "description": "Requests of outputLinks.match and the links Core returns, and replies of a matcher's resolve function with what outputLinks.decodeResolution returns. `start` and `length` count UTF-16 code units of the console line. A relative path yields one candidate per workspace root, and a path outside every root yields no link. Web addresses are linked without a matcher, as `url` links, unless a plugin link covers them.",
   "match": [
+    {
+      "name": "a web address links without a matcher and stops before trailing punctuation",
+      "request": {
+        "scope": "run",
+        "platform": "macos",
+        "workspaceRoots": ["/work/app"],
+        "sources": [
+          {
+            "pluginID": "example.script",
+            "matchers": [
+              { "id": "frame", "pattern": "File \"(?P<path>[^\"]+)\", line (?P<line>\\d+)" }
+            ]
+          }
+        ],
+        "lines": [
+          "Tomcat started on http://localhost:8080/ (see https://example.org/docs_(v2)).",
+          "  File \"/work/app/main.script\", line 12, from https://example.org/x"
+        ]
+      },
+      "links": [
+        { "line": 0, "start": 18, "length": 22, "url": "http://localhost:8080/" },
+        { "line": 0, "start": 46, "length": 29, "url": "https://example.org/docs_(v2)" },
+        {
+          "line": 1,
+          "start": 2,
+          "length": 37,
+          "pluginID": "example.script",
+          "matcherID": "frame",
+          "location": { "paths": ["/work/app/main.script"], "line": 12 }
+        },
+        { "line": 1, "start": 46, "length": 21, "url": "https://example.org/x" }
+      ]
+    },
     {
       "name": "a frame in the workspace links to its line",
       "request": {
