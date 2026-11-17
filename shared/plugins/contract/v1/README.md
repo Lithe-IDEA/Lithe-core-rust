@@ -251,8 +251,8 @@ activation event, and a plugin may consist of grammars alone.
   [`fixtures/languages/grammars/http.tmLanguage.json`](fixtures/languages/grammars/http.tmLanguage.json)
   is a complete example. A grammar is an object with `scopeName`, 1 to 128
   bytes of ASCII letters, digits, `.`, `-`, `_`, and `+`, and a `patterns`
-  array, and optionally `repository` and `name`. Every rule is an object. The
-  editor reads `include`, `match`, `begin`, `end`, `while`, `name`,
+  array, and optionally `repository`, `injections`, and `name`. Every rule is
+  an object. The editor reads `include`, `match`, `begin`, `end`, `while`, `name`,
   `contentName`, `captures`, `beginCaptures`, `endCaptures`, `whileCaptures`,
   `patterns`, `repository`, and `applyEndPatternLast` (`true`, `false`, `0`,
   or `1`), and Core refuses a grammar where one of them has another type.
@@ -262,9 +262,10 @@ activation event, and a plugin may consist of grammars alone.
   checked.
 - Core accepts at most 2 MiB, 16384 rules counting every pattern, repository
   entry, and capture, rules nested 32 deep, regexes of 32 KiB, capture group
-  4096, `name` and `contentName` of 1024 bytes, and `include` targets and
-  repository keys of 256 bytes. VS Code's own grammars, the largest of which is
-  C++ at 662 KiB and 3165 rules, are well within these bounds.
+  4096, `name` and `contentName` of 1024 bytes, `include` targets and
+  repository keys of 256 bytes, and 64 injections with selectors of 1024
+  bytes. VS Code's own grammars, the largest of which is C++ at 662 KiB and
+  3165 rules, are well within these bounds.
 - Regexes use the Oniguruma syntax TextMate grammars are written in. Core does
   not compile them: a pattern the editor's engine cannot compile never
   matches, and the rest of the grammar still applies.
@@ -272,8 +273,17 @@ activation event, and a plugin may consist of grammars alone.
   `scope#name` for another grammar. Another grammar resolves against those the
   editor has, its own and those of enabled plugins, which is how a grammar
   embeds a language such as CSS inside HTML; an include that resolves to
-  nothing matches nothing, as in VS Code. `injections` and `injectionSelector`
-  are not supported, so they are ignored and not checked.
+  nothing matches nothing, as in VS Code.
+- `injections` is an object of rules keyed by scope selector, run as VS Code
+  runs them: where the scopes at a position match a selector, the rule's
+  patterns are tried alongside the current rule's. The match that starts
+  earlier wins; at the same start the current rule wins, unless the selector
+  has the `L:` prefix. Only the grammar a document is tokenized with applies
+  its injections; those of a grammar it includes do not, which is how
+  `text.html.php` marks `<?php` inside the tags, scripts, and styles of the
+  HTML it includes. Each injection is a rule checked and counted like any
+  other. `injectionSelector` is not supported, since no grammar is injected
+  into another, so it is ignored and not checked.
 - A plugin grammar replaces the editor's own grammar of the same `scopeName`
   while the plugin is enabled. Two plugin languages cannot register the same
   scope: the first keeps it, and the other is reported and opens as plain

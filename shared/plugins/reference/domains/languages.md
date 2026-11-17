@@ -36,9 +36,10 @@
 ```
 
 - `grammar.kind` 只有 `textmate` 一种。`grammar.path` 指向包内的 `.tmLanguage.json`（plist 和 YAML 语法要先转成 JSON）。宿主只读地从已安装的包里读取它，交给 `plugins.declarative.decodeGrammar` 校验，然后用返回的 `scopeName` 注册校验过的 `source`。Core 拒绝的语法是 `plugin.grammar.invalid`，并带出错字段；该语言按纯文本打开，插件其余部分照常工作。
-- 上限：语法最大 2 MiB，规则（含每个 pattern、repository 项和捕获）最多 16384 条，嵌套 32 层，正则 32 KiB，捕获组 4096 个，`name`、`contentName` 1024 字节，`include` 目标和 repository 键 256 字节。
+- 上限：语法最大 2 MiB，规则（含每个 pattern、repository 项和捕获）最多 16384 条，嵌套 32 层，正则 32 KiB，捕获组 4096 个，`name`、`contentName` 1024 字节，`include` 目标和 repository 键 256 字节，`injections` 最多 64 项、选择器 1024 字节。
 - 正则使用 TextMate 语法所用的 Oniguruma 语法。编辑器的引擎编译不了的模式永不匹配，语法的其余部分照常生效。
-- `include` 可以是 `$self`、`$base`、`#name`（repository 项），或 `scope`、`scope#name`（另一个语法）。`injections` 和 `injectionSelector` 不支持，会被忽略。
+- `include` 可以是 `$self`、`$base`、`#name`（repository 项），或 `scope`、`scope#name`（另一个语法）。
+- `injections` 是以 scope 选择器为键的规则对象，按 VS Code 的方式运行：某个位置的 scope 符合选择器时，该规则的模式和当前规则的模式一起尝试，起点更靠前的匹配胜出；起点相同时当前规则胜出，除非选择器带 `L:` 前缀。只有给文档分词的那个语法会应用自己的 `injections`，被它包含的语法的 `injections` 不生效。`injectionSelector` 不支持，会被忽略。
 - 插件语法在启用期间替换编辑器里同一 `scopeName` 的语法。两个插件语言不能注册同一个 scope：先注册的保留，另一个报告后按纯文本打开。
 - `configuration` 包含 `lineComment`、`blockComment`（开始和结束）、`brackets`、`autoClosingPairs`。每个定界符 1–16 字节且不含控制字符，每个列表最多 32 对。
 - 插件语法从不在编辑器界面线程上运行。宿主限制每次正则搜索的回溯和每行的耗时，无法在预算内分词的行按纯文本绘制。
@@ -311,9 +312,10 @@ The rules for `id`, `fileExtensions`, `fileNames`, `projectFileNames`, and `depe
 ```
 
 - `grammar.kind` is only `textmate`. `grammar.path` names a `.tmLanguage.json` file in the package (plist and YAML grammars are converted to JSON first). The host reads it read-only from the installed package, passes it to `plugins.declarative.decodeGrammar`, and registers the returned `source` under the returned `scopeName`. A grammar Core refuses is `plugin.grammar.invalid` with the failing field; the language then opens as plain text and the rest of the plugin keeps working.
-- Limits: a grammar is at most 2 MiB; at most 16384 rules, counting every pattern, repository entry, and capture; nesting 32 deep; regexes of 32 KiB; 4096 capture groups; `name` and `contentName` of 1024 bytes; `include` targets and repository keys of 256 bytes.
+- Limits: a grammar is at most 2 MiB; at most 16384 rules, counting every pattern, repository entry, and capture; nesting 32 deep; regexes of 32 KiB; 4096 capture groups; `name` and `contentName` of 1024 bytes; `include` targets and repository keys of 256 bytes; 64 injections with selectors of 1024 bytes.
 - Regexes use the Oniguruma syntax TextMate grammars are written in. A pattern the editor's engine cannot compile never matches, and the rest of the grammar still applies.
-- `include` is `$self`, `$base`, `#name` for a repository entry, or `scope` or `scope#name` for another grammar. `injections` and `injectionSelector` are not supported and are ignored.
+- `include` is `$self`, `$base`, `#name` for a repository entry, or `scope` or `scope#name` for another grammar.
+- `injections` is an object of rules keyed by scope selector, run as VS Code runs them: where the scopes at a position match a selector, the rule's patterns are tried alongside the current rule's, and the match that starts earlier wins; at the same start the current rule wins unless the selector has the `L:` prefix. Only the grammar a document is tokenized with applies its injections; those of a grammar it includes do not. `injectionSelector` is not supported and is ignored.
 - A plugin grammar replaces the editor's own grammar of the same `scopeName` while the plugin is enabled. Two plugin languages cannot register the same scope: the first keeps it, and the other opens as plain text.
 - `configuration` sets `lineComment`, `blockComment` (open and close), `brackets`, and `autoClosingPairs`. Each delimiter is 1 to 16 bytes without control characters; each list has at most 32 pairs.
 - Plugin grammars never run on the editor UI thread. The host bounds the backtracking of each regex search and the time one line may take; a line that cannot be tokenized within that budget is drawn as plain text.
