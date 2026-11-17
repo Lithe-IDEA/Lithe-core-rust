@@ -435,7 +435,7 @@
       "expectedCode": "plugin.manifest.invalid"
     },
     {
-      "name": "host-managed runtime with its own executables",
+      "name": "runtime minimum version with a command candidate but no probe",
       "base": "build-command-stdout.plugin.json",
       "edits": [{ "op": "set", "path": "/buildSystems/0/invocation/runtimeDependencies/0/executables", "value": [{ "kind": "command", "command": "go" }] }],
       "expectedCode": "plugin.manifest.invalid"
@@ -475,6 +475,27 @@
       "base": "build-static-file.plugin.json",
       "edits": [{ "op": "set", "path": "/buildSystems/0/model/file", "value": "../Cargo.toml" }],
       "expectedCode": "plugin.path.invalid"
+    },
+    {
+      "name": "hidden directory name with a path separator",
+      "base": "build-static-file.plugin.json",
+      "edits": [{ "op": "set", "path": "/buildSystems/0/layout/hiddenDirectoryNames", "value": ["target", "out/classes"] }],
+      "expectedCode": "plugin.path.invalid",
+      "expectedField": "buildSystems[0].layout.hiddenDirectoryNames[1]"
+    },
+    {
+      "name": "hidden directory name with a glob character",
+      "base": "build-static-file.plugin.json",
+      "edits": [{ "op": "set", "path": "/buildSystems/0/layout/hiddenDirectoryNames", "value": ["*.egg-info"] }],
+      "expectedCode": "plugin.path.invalid",
+      "expectedField": "buildSystems[0].layout.hiddenDirectoryNames[0]"
+    },
+    {
+      "name": "hidden directory name that turns a default off",
+      "base": "build-static-file.plugin.json",
+      "edits": [{ "op": "set", "path": "/buildSystems/0/layout/hiddenDirectoryNames", "value": ["!target"] }],
+      "expectedCode": "plugin.path.invalid",
+      "expectedField": "buildSystems[0].layout.hiddenDirectoryNames[0]"
     },
     {
       "name": "selector without a pointer",

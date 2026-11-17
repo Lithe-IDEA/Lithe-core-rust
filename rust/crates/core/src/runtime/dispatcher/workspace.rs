@@ -296,5 +296,22 @@ pub(super) fn dispatch(
         WorkspaceCommand::VisibilityDefaults => {
             rules_response(id, "workspace.visibilityDefaults", payload)
         }
+        WorkspaceCommand::ConfigureVisibility => {
+            match lithe_plugin_manifest::declared_hidden_directories(payload) {
+                Ok(declared) => {
+                    let names = lithe_core_rules::visibility::set_plugin_hidden_directories(
+                        lithe_core_rules::visibility::PluginHiddenDirectories {
+                            generated: declared.generated,
+                            metadata: declared.metadata,
+                        },
+                    );
+                    CoreResponse::success(
+                        id,
+                        json!({ "hiddenDirectoryNames": names, "rejected": declared.rejected }),
+                    )
+                }
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
     }
 }

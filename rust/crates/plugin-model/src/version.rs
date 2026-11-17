@@ -29,27 +29,6 @@ pub fn version_components(value: &str) -> Vec<u64> {
         .collect()
 }
 
-/// First dotted number in a version probe's output, at most three
-/// components: `20.11.0` from `v20.11.0`, `1.22.4` from
-/// `go version go1.22.4 darwin/arm64`. A tool whose output needs more than
-/// this is checked through its tool definition instead.
-pub fn reported_version(output: &str) -> Option<Vec<u64>> {
-    let line = output
-        .lines()
-        .find(|line| line.contains(|character: char| character.is_ascii_digit()))?;
-    let start = line.find(|character: char| character.is_ascii_digit())?;
-    let text: String = line[start..]
-        .chars()
-        .take_while(|character| character.is_ascii_digit() || *character == '.')
-        .collect();
-    // A sentence-ending period is not a component.
-    text.split('.')
-        .take_while(|part| !part.is_empty())
-        .take(3)
-        .map(|part| part.parse().ok())
-        .collect()
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 /// Strict three-component semantic version used for compatibility comparisons.
 pub struct PluginVersion {

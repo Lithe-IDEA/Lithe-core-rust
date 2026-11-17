@@ -248,7 +248,7 @@
       "expectedAmbiguous": []
     },
     {
-      "name": "metadata and dependency directories are not searched",
+      "name": "metadata directories and the folders Core hides are not searched",
       "markers": [
         {
           "directory": "",
@@ -261,12 +261,12 @@
           "type": "directory"
         },
         {
-          "directory": "node_modules/left-pad",
+          "directory": ".worktrees/left-pad",
           "name": ".git",
           "type": "directory"
         },
         {
-          "directory": "target/checkout",
+          "directory": "app/.worktree/checkout",
           "name": ".svn",
           "type": "directory"
         }
@@ -279,7 +279,7 @@
       ],
       "expectedOwnership": [
         {
-          "path": "node_modules/left-pad/index.js",
+          "path": ".worktrees/left-pad/index.js",
           "root": ""
         }
       ],

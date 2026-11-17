@@ -29,13 +29,13 @@
 | --- | --- |
 | `detection` | 用 `markers` 里的文件名识别候选根目录。Core 最多向下找 6 层，跳过已知的缓存和构建输出目录，以及被 Git 忽略的目录（规则来自工作区内途经的 `.gitignore`，以及根目录在工作区内的仓库的 `info/exclude`；不读工作区根以上的目录、`core.excludesFile` 和索引，所以被忽略目录下即使有已跟踪的清单文件也不算候选）。检测还会跳过工作区的忽略路径：这是用户在构建选项里编辑的 `.gitignore` 规则，存放在团队或本机的构建选项中，默认是所有名字以 `.` 开头的目录（如 `.claude/worktrees`），用户可以再添加，也可以用 `!` 放回某个目录；`nesting` 决定深层候选并入外层实例（`outermost`，如 Gradle、Maven）还是各自独立（`separate`，默认，如 Cargo）；`priority` 决定多个插件声明同一个 ID 时谁优先 |
 | `invocation` | 可执行文件候选（`executables`，按偏好排序）、`globalArguments`、版本探测和 `minimumVersion` |
-| `runtimeDependencies` | 构建工具依赖的运行时。`node`、`go` 由宿主管理；其他运行时要么命名同 ID 的[工具定义](toolchains.md)，要么自己声明 `executables` 和版本探测 |
+| `runtimeDependencies` | 构建工具依赖的运行时。每个运行时要么命名同 ID 的[工具定义](toolchains.md)（不写 `executables`，由工具定义查找可执行文件并检查 `minimumVersion`），要么自己声明 `executables` 和版本探测。Core 不认识任何具体运行时，`node`、`go` 也一样：用它们的插件要提供或依赖同名工具定义 |
 | `options` | 用户选择的构建维度：`boolean`、`singleSelect`、`multiSelect`、`text`、`file`、`directory`；每个选项在有值时贡献 `arguments` 和 `environment` |
 | `model` | 怎么得到项目模型，见下表 |
 | `provider` | 没有命令能打印模型时，由[构建提供者](build-providers.md)回答模型和依赖请求 |
 | `tasks`、`run`、`test` | 任务目录、从模型目标或任务生成的运行入口、测试的范围、过滤器和结果文件 |
 | `diagnostics`、`dependencies` | 诊断的行匹配或 `litheDiagnostics`；依赖列表或依赖树的来源 |
-| `sync`、`layout` | 哪些文件变化会让模型过期；每个项目要作为 `excluded` 内容根加入的目录 |
+| `sync`、`layout` | 哪些文件变化会让模型过期；每个项目要作为 `excluded` 内容根加入的目录；`layout.hiddenDirectoryNames` 是插件启用期间所有工作区在任意层级隐藏的目录名（如依赖、缓存和构建输出目录），项目树、搜索、文件事件、本地历史、运行发现、构建探测和仓库发现都会跳过 |
 
 ### 模型来源
 
@@ -55,7 +55,7 @@
 
 - **选项范围。** 选项可以声明 `scope: "instance"`，按检测到的每个根目录分别保存：改动或重置 `a` 不会影响 `b`。省略范围（或 `"workspace"`）使用工作区和构建系统存储。显式的 `false`、`""`、`[]` 仍然是用户保存的值。实例值不能覆盖工作区选项，工作区值也不能悄悄覆盖实例选项。示例：`build-instance-options`。
 - **可执行文件解析。** `invocation.executables` 按偏好顺序列出来源：`projectFile`（项目里的包装脚本，总是运行项目代码）、`environment`、`command`（`PATH` 上的命令名）、`runtime`、`setting`（引用声明为 `file` 的全局设置）和 `toolchain`（工具定义 ID）。可以用 `id`、`priority`、`insertBefore`、`insertAfter` 调整同一个候选集内的顺序。用户配置的路径失败是终止性的，不会回退到后面的候选或提供者自己的查找。示例：`build-tool-path`（`setting`）、`build-toolchains`（`toolchain`）。规则见[可执行文件解析](../../contract/v1/README.md#executable-resolution)。
-- **展示。** 每个启用的构建系统有自己的工具窗口，由宿主按模型绘制；`options[].presentation` 把布尔选项放到工具栏（`toolbar`，需要 `icon`）或把多选选项放成树顶部的清单（`tree`），`tasks[].category` 给任务归类。这些字段不改变任何计划。
+- **展示。** 每个启用的构建系统有自己的工具窗口，由宿主按模型绘制；`options[].presentation` 把布尔选项放到工具栏（`toolbar`，需要 `icon`）或把多选选项放成树顶部的清单（`tree`），`tasks[].category` 给任务归类。这些字段不改变任何计划。树由 Core 统一排布：项目按 `parentID` 嵌套，每个项目下依次是它的任务文件夹、依赖、目标和子项目；只作用于整个工作区的任务、依赖和测试在根项目旁边只出现一次；只有一个根项目时，它的内容直接作为构建系统的内容，任务仍在根项目上运行。
 - **项目准备任务。** 项目任务可以声明 `preparation: { purpose, sourceRoles }`，按用途（如 `run`）和内容根角色绑定运行前要执行的任务；宿主从当前模型选出最深的所属项目和内容根，要求恰好一个匹配的声明，不猜任务名，也不回退到约定的任务 ID。示例：`build-providers/build-provider-preparation`。
 - **只读模型输入。** 生产者用 `modelSharing: { options: [...] }` 公开规范化的项目、目标和内容根（以及明确列出的普通选项的有效值），消费者用 `modelInputs: [{ pluginID, buildSystemID }]` 读取，最多 8 个槽位。缺失、被禁用或不公开的生产者只会让该槽位 `unavailable`，从不被自动安装或激活；一个生产者不能同时是消费者。示例：`build-model-producer`、`build-model-consumer`。
 
@@ -126,13 +126,13 @@ IDs of build systems, tasks, and run entries start with a lowercase letter and u
 | --- | --- |
 | `detection` | Candidate roots are directories holding one of the `markers` file names. Core searches at most 6 levels down and skips known caches and build outputs, plus directories Git ignores (rules from the `.gitignore` files inside the workspace and the `info/exclude` of each repository rooted there; directories above the workspace root, `core.excludesFile` and the index are not read, so a tracked manifest below an ignored directory is no candidate). Detection also skips the workspace's ignored paths, `.gitignore` patterns the user edits in the team or machine-local Build options: by default every directory whose name starts with a dot, such as `.claude/worktrees`, and the user can add more or bring one back with `!`; `nesting` folds deeper candidates into the outer instance (`outermost`, such as Gradle and Maven) or keeps each one (`separate`, the default, such as Cargo); `priority` decides between plugins declaring the same ID |
 | `invocation` | Executable candidates (`executables`, in preference order), `globalArguments`, the version probe, and `minimumVersion` |
-| `runtimeDependencies` | Runtimes the build tool needs. `node` and `go` are host-managed; any other runtime either names the [tool definition](toolchains.md) with the same ID or declares its own `executables` and version probe |
+| `runtimeDependencies` | Runtimes the build tool needs. Each runtime either names the [tool definition](toolchains.md) with the same ID (no `executables`; the definition finds the executable and checks `minimumVersion`) or declares its own `executables` and version probe. Core knows no runtime by name, `node` and `go` included: a plugin that uses them provides or requires the tool definition with that ID |
 | `options` | Build dimensions the user chooses: `boolean`, `singleSelect`, `multiSelect`, `text`, `file`, `directory`; each contributes `arguments` and `environment` when it has a value |
 | `model` | How the project model is obtained; see the table below |
 | `provider` | The [build provider](build-providers.md) that answers model and dependency requests when no command prints them |
 | `tasks`, `run`, `test` | The task catalog, run entries generated from model targets or tasks, and the scopes, filters, and result files of tests |
 | `diagnostics`, `dependencies` | Line matchers or `litheDiagnostics` for diagnostics; the source of the dependency list or tree |
-| `sync`, `layout` | Which file changes make the model stale; directories added to every project as `excluded` content roots |
+| `sync`, `layout` | Which file changes make the model stale; directories added to every project as `excluded` content roots; `layout.hiddenDirectoryNames`, folder names such as dependency, cache and build output folders that every workspace hides at any depth while the plugin is enabled: the project tree, search, file events, Local History, run discovery, build detection and repository discovery skip them |
 
 ### Model sources
 
@@ -152,7 +152,7 @@ A build system's `hostIntegration` and a language server's `hostIntegration` are
 
 - **Option scope.** An option may declare `scope: "instance"`, stored separately per detected root: changing or resetting `a` cannot change `b`. Omitting the scope (or `"workspace"`) uses the workspace and build-system storage. Explicit `false`, `""`, and `[]` remain stored user values. Instance values cannot override workspace options, and workspace values cannot silently override an instance option. Example: `build-instance-options`.
 - **Executable resolution.** `invocation.executables` lists sources in preference order: `projectFile` (a wrapper inside the project; always runs project code), `environment`, `command` (a bare name on `PATH`), `runtime`, `setting` (references a declared global `file` setting), and `toolchain` (a tool-definition ID). `id`, `priority`, `insertBefore`, and `insertAfter` reorder candidates within one candidate set. A configured path that fails is terminal and never falls back to later candidates or to the provider's own lookup. Examples: `build-tool-path` (`setting`) and `build-toolchains` (`toolchain`). The rules are in [Executable resolution](../../contract/v1/README.md#executable-resolution).
-- **Presentation.** Every enabled build system gets a tool window of its own, drawn by the host from the model; `options[].presentation` puts a boolean option on the toolbar (`toolbar`, needs an `icon`) or a multiSelect option as a checklist at the top of the tree (`tree`), and `tasks[].category` files a task under headings. None of these fields changes a plan.
+- **Presentation.** Every enabled build system gets a tool window of its own, drawn by the host from the model; `options[].presentation` puts a boolean option on the toolbar (`toolbar`, needs an `icon`) or a multiSelect option as a checklist at the top of the tree (`tree`), and `tasks[].category` files a task under headings. None of these fields changes a plan. Core lays out the tree the same way for every tool: projects nest by `parentID`, and each project lists its task folders, its dependencies, its targets and then its child projects; tasks, dependencies and tests that act on the whole workspace appear once, beside the root projects. With a single root project, its contents become the build system's own, and its tasks still run on the root project.
 - **Project preparation tasks.** A project task may declare `preparation: { purpose, sourceRoles }`, binding the task to run first by purpose (such as `run`) and content-root role. The host selects the deepest owning project and content root from the current model, requires exactly one matching declaration, never guesses a task name, and never falls back to a conventional task ID. Example: `build-providers/build-provider-preparation`.
 - **Read-only model inputs.** A producer publishes normalized projects, targets, and content roots (and the effective values of explicitly listed ordinary options) with `modelSharing: { options: [...] }`; a consumer reads them with `modelInputs: [{ pluginID, buildSystemID }]`, up to 8 slots. A missing, disabled, or non-public producer only makes that slot `unavailable` and is never installed or activated automatically; a producer cannot also be a consumer. Examples: `build-model-producer` and `build-model-consumer`.
 

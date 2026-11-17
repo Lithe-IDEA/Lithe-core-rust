@@ -139,7 +139,6 @@ fn update_configuration_options(
     let resolved = resolve(ResolveRequest {
         team_document: None,
         root: request.root.clone(),
-        toolchain_candidates: Vec::new(),
         local_document: request.local_document.clone(),
     })?;
     let provider = resolved["configurations"]
@@ -263,7 +262,7 @@ fn create_build_provider_configuration(
     validate_version_value(&document)?;
     let mut ids: std::collections::BTreeSet<String> =
         configuration_ids(&document)?.into_keys().collect();
-    ids.extend(detected_ids(root));
+    ids.extend(generated_ids(root));
     if let Some(other) = read_document_value(root, "run/configurations.json")? {
         validate_version_value(&other)?;
         ids.extend(configuration_ids(&other)?.into_keys());

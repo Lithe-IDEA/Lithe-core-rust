@@ -227,14 +227,25 @@ runs every case of `rust/fixtures/editor/group-layout-v1.json` through them.
 and returns `{hidden: boolean[], watchedDespiteHiding: boolean[]}` with one answer per entry, in request order. `path`
 is workspace-relative with `/` separators; `isDirectory` is `true` for a folder, `false` for a file and omitted when the
 host does not know (every component may then be a folder). The two lists are the user's own entries: Core adds the
-built-in folders and patterns, and a `!entry` turns a built-in off. Matching ignores case. A folder name hides the folder,
+default folders and patterns, and a `!entry` turns a default off. Matching ignores case. A folder name hides the folder,
 everything below it and a file with that exact name (a linked worktree's `.git` file). `hidden` means the tree, search and
 Local History leave the path out; `watchedDespiteHiding` marks the hidden project configuration folder (`.lithe`) whose file
 events must still be delivered, except the built-in noise below it such as `.lithe/run/local.json`. Hosts send all children
-of a directory in one call. `workspace.visibilityDefaults` takes `{}` and returns the built-in lists
+of a directory in one call. `workspace.visibilityDefaults` takes `{}` and returns the default lists
 (`hiddenDirectoryNames`, `hiddenFilePatterns`, `builtInPatterns`, `configurationDirectory`, `configurationPattern`) so hosts
 display them without keeping a copy. Both live in `rust/crates/core-rules` like `keymap.modifierGestureStep` and are tested
 against `rust/fixtures/workspace/visibility-v1.json`.
+
+The default folders are Core's own (`.git`, `.worktree`, `.worktrees`) plus the folder names the enabled plugins declare;
+Core names no language or tool folder itself. The default file patterns are `.DS_Store`, the root `.lithe/**` and
+`.lithe/run/local.json`. `workspace.configureVisibility` accepts `{plugins: [{manifest}]}`, the manifests of every enabled
+plugin, and replaces the declared names with theirs: each build system's `layout.hiddenDirectoryNames` (its generated
+output, such as `target`) and the directory markers of each VCS provider (its metadata, such as `.svn`). It returns
+`{hiddenDirectoryNames, rejected: [{index, error}]}`: every declared name, sorted, and the manifests that failed
+validation, which contribute nothing. The names are process-wide and apply from the next request, listing or scan: the
+tree, search, file events, Local History's default ignored folders, run discovery, build detection and VCS root and
+repository discovery. Hosts send the full list at startup and whenever a plugin is enabled, disabled, installed or
+removed; `{plugins: []}` clears it. A malformed payload is `invalid_request`.
 
 ## Terminal link targets
 
@@ -529,6 +540,7 @@ or removing a command fails until the table changes in the same commit.
 | `build.decodeDiagnostics` | Decode build output into workspace file diagnostics |
 | `build.decodeDependencies` | Decode dependency output or a provider result into one project's bounded tree |
 | `build.syncFingerprint` | Digest the files a build model depends on, to tell whether it is stale |
+| `build.modelTree` | Nest a decoded model's projects by parent and file each one's tasks, dependencies and targets for a tool window |
 | `build.resolveTestRunOutcome` | Reduce a test run's termination, selected scope and decoded summary to one tool-neutral verdict |
 | `build.mergeTestOutcomes` | Merge a run's test result ids into the stored history inside the host-stated id/prefix scope |
 | `vcs.detectRoots` | Find the VCS roots of a workspace from static markers, with registered providers, ambiguous directories, and applied mappings |
@@ -542,11 +554,11 @@ or removing a command fails until the table changes in the same commit.
 | `plugins.marketplace.validateIndex` | Validate a marketplace index and report each plugin's availability for one platform |
 | `plugins.marketplace.resolveSource` | Resolve a user-entered marketplace source to the index URL to fetch |
 | `plugins.marketplace.installReview` | List a package's permissions and programs, and those not yet approved |
-| `workspace.snapshot` | Enumerate visible workspace nodes and relative file paths; `nestedWorktrees` lists linked worktrees checked out inside their own repository, which are left out of the tree, files, and search index; the built-in hidden names are skipped without being read, and include `node_modules`, Python virtual environments (`.venv`, `venv`), `__pycache__` and `*.pyc` files; `includeTree: false` returns only `files` and a childless `root`; `files` (and the tree, when included) keep the lowercase traversal order that bounded consumers such as Windows Quick Open rely on, not the natural display order of `workspace.listDirectories` |
+| `workspace.snapshot` | Enumerate visible workspace nodes and relative file paths; `nestedWorktrees` lists linked worktrees checked out inside their own repository, which are left out of the tree, files, and search index; hidden folders, Core's own and the ones enabled plugins declare through `workspace.configureVisibility`, are skipped without being read; `includeTree: false` returns only `files` and a childless `root`; `files` (and the tree, when included) keep the lowercase traversal order that bounded consumers such as Windows Quick Open rely on, not the natural display order of `workspace.listDirectories` |
 | `workspace.releaseIndexing` | Retire a policy and clear index/cache data at project close; accepts `root`, optional `ownerId`, and that owner's last observed `revision`, returns `released`; an old close must not retire a new generation |
 | `workspace.configureIndexing` | Install a process-local, canonical-root indexing policy before workspace consumers run; returns a monotonic revision, effective directory reasons and Git failure state; see `rust/fixtures/workspace/indexing-policy-v1.json` |
 | `workspace.refreshIndexing` | Refresh external Git decisions for a live `root`, `ownerId`, `revision` lease without changing preferences or release tokens; returns lazy `IndexingStatus` |
-| `workspace.filterChanges` | Filter an array of workspace-relative paths, or `{ paths, hiddenFilePatterns }` whose `!` entries turn default exclusions off, against Core's default build/cache exclusions; preserve order, spelling, and the empty root path. Native event loss bypasses filtering. Hosts relativize to the most specific explicit watch root and retain explicitly watched files |
+| `workspace.filterChanges` | Filter an array of workspace-relative paths, or `{ paths, hiddenFilePatterns }` whose `!` entries turn default exclusions off, against Core's default hidden folders and patterns, including the folders enabled plugins declare; preserve order, spelling, and the empty root path. Native event loss bypasses filtering. Hosts relativize to the most specific explicit watch root and retain explicitly watched files |
 | `workspace.listDirectories` | Return one visible level of children for each requested workspace-relative directory (`""` is the root); missing, hidden, symlinked, or nested-worktree paths are omitted, and each listing reports the nested worktrees it left out. Child directories have `children: []` only when a shallow probe proves them visibly empty; otherwise children remain omitted (unloaded), with no recursive tree allocation. Children list directories first, then names in IDEA's natural file-name order (digit runs compare by value, case-insensitive, `-` next to `_`; fixture `rust/fixtures/workspace/file-name-order-v1.json`) |
 | `workspace.orderEntries` | Order natively enumerated directory siblings |
 | `workspace.projectTree.rows` | Say which loaded project tree nodes show as rows, keep the selection on a row that shows, and find the row the top of the view was on, without reading the disk (from `lithe-project-tree`) |
@@ -605,7 +617,8 @@ or removing a command fails until the table changes in the same commit.
 | `editor.groupLayout.reduce` | Apply one transition to the editor groups and the tree that divides the editor area among them: a workbench state action, opening a tab, dropping a dragged tab or removing empty groups (from `lithe-editor-layout`) |
 | `editor.groupLayout.dropTargets` | Say which places of each editor group accept a dragged tab (from `lithe-editor-layout`) |
 | `workspace.classifyVisibility` | Classify a batch of workspace-relative paths as hidden or visible. The rule lives in `lithe-core-rules` so the Windows frontend can run it synchronously |
-| `workspace.visibilityDefaults` | Return the built-in hidden-path lists (from `lithe-core-rules`) |
+| `workspace.visibilityDefaults` | Return the default hidden-path lists, Core's own and the folders enabled plugins declare (from `lithe-core-rules`) |
+| `workspace.configureVisibility` | Replace the folder names enabled plugins declare as hidden (build systems' `layout.hiddenDirectoryNames`, VCS providers' directory markers) and return them with the rejected manifests |
 | `workbench.chromeLayout.reduce` | Apply one transition to the rearrangeable workbench chrome: stripe, title bar and status bar button placement, hidden stripe buttons and open tool panels (from `lithe-core-rules`) |
 | `workbench.notifications.reduceReadState` | Apply one notification arrival or mark a window's history read; return bounded unread identities and the ready-to-render count (from `lithe-core-rules`) |
 | `terminal.parseLinkTarget` | Resolve terminal link candidates into file or external targets |
@@ -685,7 +698,7 @@ or removing a command fails until the table changes in the same commit.
 | `lsp.destroyServer` | Remove a terminal session handle from the registry |
 | `runConfig.inspect` | Inspect `.lithe` run documents, versions, and staleness without writing files |
 | `runConfig.projectToolchain` | Read saved project tool paths for one Provider root, with the nearest path override |
-| `runConfig.generate` | Regenerate detected run configurations |
+| `runConfig.generate` | Regenerate the provider run configurations |
 | `runConfig.argumentText` | Format a batch of exact argument vectors as reversible editor text |
 | `runConfig.resolve` | Merge generated, project, and local layers and return diagnostics |
 | `runConfig.selectContextConfiguration` | Choose a matching effective configuration for a provider-supplied source and entry identity |
@@ -769,8 +782,9 @@ or removing a command fails until the table changes in the same commit.
 | `git.historyLocate` | Append bounded history pages until one commit is found and report the budget, window cursor, and exhaustion |
 | `git.branchNamePreview` | Clean and validate a new branch name against already loaded references without running Git |
 | `git.repositoryColorAssignments` | Assign color slots to a bounded page of ordered repository identities |
-| `git.workspaceRepositorySelection` | Choose the workspace repository a view acts on and the others it lists for switching, from discovery entries and the previous pick |
+| `git.workspaceRepositorySelection` | Choose the workspace repository, or the set of repositories, a view acts on and the others it lists for switching, from discovery entries and the previous pick |
 | `git.workspaceChangeGroups` | Group every workspace repository's status changes, plan each group's and the workspace line's staging, and report what a listed ancestor records for a submodule |
+| `git.workspaceHistoryMerge` | Interleave the loaded history pages of several workspace repositories into one stable newest-first list with collision-safe commit keys, and name the repositories whose next page it waits on |
 | `git.updatePlan` | Route a branch Update and gate a Pull from facts the host collected: blockers, strategy default, whether to ask, and the expected checkout |
 | `git.historyWindow` | Plan a history refresh window, page merge, and selection retention over commit identities |
 | `git.graphProjection` | Project a loaded history window into commit-graph lanes, color IDs, routes, print elements, and labels, optionally filtered |
@@ -780,6 +794,7 @@ or removing a command fails until the table changes in the same commit.
 | `git.changedFileGroups` | Group the changed files of a commit, stash or shelf by folder, folders and files in natural order |
 | `git.worktreeCreationPreview` | Derive the worktree creation dialog's reference choices, checked branch name, suggested destination and readiness without running Git |
 | `git.pushPreview` | Resolve a local branch push destination and the bounded commits not present on that remote base |
+| `git.workspacePushPreview` | Review pushing the checked-out branch of every bound repository, in push order |
 | `git.commit` | Return one structured commit by revision with its full message body |
 | `git.commitFiles` | Return files changed by one commit |
 | `git.comparison` | Return files changed between a reference and the working tree |
@@ -921,9 +936,9 @@ becomes a listed repository when Git can open it: a `.git` directory needs
 the marker's directory) that exists and holds `HEAD`. A stale submodule or
 worktree pointer whose gitdir was removed is not listed, because status and
 reference loads for the whole workspace would otherwise fail for it. The default traversal
-skips dot-prefixed descendant directories and the built-in workspace hidden
-directory names (including `.build`, `node_modules`, `.venv`, `venv`, `__pycache__`,
-`target`, `build`, `DerivedData`, `dist` and `coverage`). `.worktree` and `.worktrees` remain
+skips dot-prefixed descendant directories and the folder names enabled plugins
+declare through `workspace.configureVisibility` (such as a build system's `target`).
+`.worktree` and `.worktrees` remain
 traversable checkout containers; the same exclusions apply inside them.
 Traversal continues below eligible discovered repositories, including ordinary
 `vendor` source checkouts. An explicitly opened root and its containing repository
@@ -1524,6 +1539,36 @@ so a repository change after validation cannot add unreviewed commits to the
 operation. Because Git cannot infer an upstream from an OID source, Core
 explicitly configures the reviewed local branch after a successful first push.
 
+`git.workspacePushPreview` reviews pushing several repositories at once, like
+IntelliJ IDEA's Push dialog, which lists every repository of a project with what
+it would push. It accepts `repositories: [{ id, root }]` (the bindings
+`git.workspaceCommitPrepare` takes, at most 10,000, IDs unique), an optional
+`limit` (default 100) and `pushTags` applied to every preview, and optional
+`pushTargets: { <repository-id>: "publish" | "upstream" }` for divergent
+upstreams. It returns `{ repositories: [{ id, state, branch?, preview?,
+needsTarget, records, detail? }] }` with one entry per binding. `state` is
+`ready` (commits to send, or the remote branch does not exist yet), `upToDate`,
+`noRemote` (no remote configured), `emptyRepository` (the branch has no commit),
+`detachedHead`, or `failed` (the root is not a readable repository, or Git could
+not resolve the destination; `detail` carries Core's message and Git's output).
+`branch` is the checked-out branch's short name, absent when HEAD is detached or
+the repository could not be read. `preview` is present for `ready` and
+`upToDate` and is exactly the `git.pushPreview` of that branch with the same
+`limit`, `pushTags` and `pushTarget`; a client pushes a repository with `git.write`
+`push`, that preview as `expectedPush`, the same `pushTags` and `pushTarget`, and
+`checkSubmodules: true`. `needsTarget` is true when the upstream has a different
+name (`targetKind: divergent`) and `pushTargets` gave that repository no
+destination; such a push is refused until the client previews again with one.
+The list is in push order: a repository comes after every listed repository it
+records as a gitlink, otherwise in request order, using the relations
+`git.workspaceCommitPrepare` orders commits by. `records` names those listed
+submodules, so a client skips a parent whose submodule push failed instead of
+letting `--recurse-submodules=check` refuse it. A failed repository does not fail
+the request; duplicate IDs, more than 10,000 repositories, an unsupported
+`pushTags`, a `pushTargets` key that names no listed repository, unknown fields,
+or a gitlink cycle return `invalid_request`. Repositories are read one after
+another, nothing is fetched and nothing is written.
+
 New reference-based workflows send `gitReference` as `{ "fullName": string,
 "shortName": string, "kind": "local" | "remote" | "tag" }`. Core verifies
 that all three fields describe the same namespace and validates the full ref
@@ -1794,7 +1839,8 @@ Each visible row carries `commitHash`, integer `lane` and `laneCount`, a signed
 `printElements` (the up and down half-edges with `position`, `adjacentPosition`,
 `colorId`, `isDotted`, `isMissing`, `hasArrow`, `isTerminal`, `targetHash`). Hosts own
 pixels, curves, and the mapping from a color ID to a theme color; `colorId` `0` means
-an unreferenced fragment. Requests over 20,000 commits fail with `invalid_request`.
+an unreferenced fragment. Requests over 100,000 commits, the largest Git Log a
+`git.historyPage` stream reads, fail with `invalid_request`.
 `rust/fixtures/git/graph-projection-v1.json` defines the rules and
 `rust/fixtures/git/graph-idea/` holds the pinned IntelliJ oracles.
 
@@ -1958,7 +2004,7 @@ core clamps it to `1...5000`). It remains the compatibility command that
 combines `git.references` with the first `git.historyPage`. New clients use
 `git.references` with `{ "root": string }` and request commits separately with
 `git.historyPage` using `root`, optional full `reference`, nullable opaque
-`cursor`, `limit`, and optional `order` (`"topo"` or `"date"`). Omitted
+`cursor`, `limit`, optional `maxCommits`, and optional `order` (`"topo"` or `"date"`). Omitted
 `order` preserves the original `git log --topo-order` behavior. `"date"` uses
 `git log --date-order`: committer date descending whenever the child-before-
 parent constraint permits, independently of the displayed author date. macOS
@@ -1969,9 +2015,17 @@ continuations must repeat the same order. A mismatched order returns
 `rust/fixtures/git/history-page-date-request-v1.json`.
 The first request omits `cursor`; each later request
 returns the prior page's `nextCursor`. Core keeps one bounded, backpressured
-`git log` stream behind that cursor and clamps the stream to the first 5,000
-commits, so later pages continue traversal instead of replaying earlier commits.
-A history page returns `commits`, nullable `nextCursor`, and `hasMore`. Clients
+`git log` stream behind that cursor and clamps the stream to the first
+`maxCommits` commits, so later pages continue traversal instead of replaying earlier
+commits. `maxCommits` is 1 to 100,000 and defaults to 5,000; the first page fixes it
+for the cursor, a continuation omits it or repeats the same value, and a different
+value returns `invalid_request` without consuming the cursor. `maxCommits` with
+`offset`, or out of range, fails with `invalid_request`; the deprecated offset pages
+keep the 5,000 bound.
+A history page returns `commits`, nullable `nextCursor`, and `hasMore`. When the
+stream stops at `maxCommits` while the history goes on, the last page also returns
+`limitReached: true` with `hasMore: false`, so a client can tell a bounded log from
+a finished one and offer a larger bound; the field is omitted otherwise. Clients
 call `git.historyCursorClose` with `root` and `cursor` when abandoning an
 unfinished stream, and discard and close a late page when its repository,
 selected reference, or owning `operationId` is stale. Core also expires idle
@@ -2041,11 +2095,46 @@ for an empty list; `fellBack` is `true` only when `selected` was given and is no
 longer listed, so the view drops state that belonged to it such as an open
 history cursor or a reference filter; `others` are the remaining IDs in
 discovery order, the groups the branch popup and the Git Log list for switching.
+A view that acts on several repositories at once, such as a Git Log that shows
+the histories of a chosen set in one list, sends `chosen`, the IDs it picked
+before in any order, instead of `selected`; an empty list is no pick. The
+response then also carries `chosen`: the listed picks in discovery order, or
+`[active]` when none is listed (`[]` for an empty workspace). `active` is the
+first of them, `others` are every ID outside them, and `fellBack` is `true` when
+any pick is no longer listed. Without `chosen` in the request the response has
+no `chosen` field.
 The list holds at most 10,000 entries. An ID that is empty, longer than 4,096
 bytes, starts with `/`, or contains `\` or NUL, an empty path or name, a repeated
 ID or path, more than one `workspace` role, an unknown role, an empty `selected`,
-or an unknown field fails with `invalid_request`. See
+both `selected` and `chosen`, a `chosen` ID that is invalid or repeated, or an
+unknown field fails with `invalid_request`. See
 `rust/fixtures/git/workspace-repository-selection-v1.json`.
+
+`git.workspaceHistoryMerge` is pure. It accepts `{ repositories }`, the
+repositories a log walks in the order the view lists them, each
+`{ id, commits, complete }`: `id` is the `workspace.repositories` ID, `commits`
+are every commit loaded so far in the order Git walked them as
+`{ hash, parentHashes?, timestamp? }` (`timestamp` is the `git.historyPage`
+`dateUnixSeconds`), and `complete` is `true` once no page is left. The response
+is `{ entries, pending }`. `entries` is the merged list newest first, each
+`{ repository, index, key, parentKeys }`: `repository` indexes the request's
+`repositories`, `index` that repository's `commits`. Each repository keeps its
+own order; among the next commits of the repositories the newest timestamp goes
+first, a commit without one takes the timestamp placed before it in its
+repository, and equal timestamps go in request order. The merge stops as soon as
+a repository that is not `complete` has no loaded commit left, because its next
+page may hold a newer commit than every one still unplaced; `pending` lists those
+repositories' indices in request order, and is empty when every loaded commit is
+placed and no page is left. A view loads the next page of each pending repository
+and asks again; the earlier entries stay the same, so rows only grow at the end.
+`key` is the commit's hash, except that a hash more than one repository names,
+as a commit or as a parent, is keyed `<hash>@<id>` in each of them; `parentKeys`
+apply the same rule, so `git.graphProjection` laid out over the keys never joins
+two repositories. At most 10,000 repositories and 100,000 commits in total,
+the bound of `git.graphProjection`, are accepted. An invalid or repeated `id`, a hash or parent that is not 1 to 64
+hexadecimal digits, a commit repeated within one repository, a missing
+`complete`, or an unknown field fails with `invalid_request`. See
+`rust/fixtures/git/workspace-history-merge-v1.json`.
 
 `git.workspaceChangeGroups` is pure and validates `repositories` the same way;
 each entry also carries `changes`, the `git.status` changes read for that
@@ -2258,10 +2347,10 @@ scheme's ignored-file color; Windows tolerates the optional status but does not
 currently render this foreground.
 
 `includeGeneratedFileNames` opts into a separate in-memory names-only index:
-built-in build/dependency directory exclusions (including `.build` and `target`)
-do not suppress names, even when callers pass the same default exclusions.
-Git metadata and nested worktrees remain excluded; custom directory names and
-file/path globs still apply. It does not enable generated-file content or symbol
+the folders enabled plugins declare as generated output (a build system's
+`layout.hiddenDirectoryNames`, such as `target`) do not suppress names, even when
+callers also pass them. VCS metadata, Core's own folders and nested worktrees remain
+excluded; other custom directory names and file/path globs still apply. It does not enable generated-file content or symbol
 indexing and does not change `workspace.search`, tree, watcher, or replacement
 visibility. Names share index invalidation and reported file updates; changes
 inside unwatched generated directories require workspace/index refresh. No index
@@ -3301,8 +3390,8 @@ and an optional `storageLimitBytes` (default
 Patterns use the hidden-path glob syntax; regexes use Rust `regex` syntax,
 case-insensitive, matched unanchored against the `/`-separated relative path.
 A matching file is not recorded, existing entries stay listed, and an invalid
-or empty regex never matches. Built-in dependency, cache and build output
-folders (such as `node_modules`, `.venv`, `target`) also apply as `**/name/`
+or empty regex never matches. The default hidden folders, Core's own and the
+ones enabled plugins declare (such as a build system's `target`), also apply as `**/name/`
 patterns, for baselines and edits alike; a `!**/name/` or `!name` pattern turns
 one off, and saving drops baselines the current rules reject. `history.ignorePreview` accepts the
 same `ignoreRules`, optional `hiddenFilePatterns`, an optional relative
@@ -3353,78 +3442,43 @@ stored paths or documents fail without changing source bytes. The command does
 not discover, probe or run any tool, inspect project descriptors, or write files.
 
 `runConfig.inspect` also returns the local document-level `toolchain`, including
-when no generated configuration exists (`status: "missing"`). Settings,
-toolchain-only callers, and initial run-panel presentation may send
-`checkFingerprint: false` to validate documents without traversing or hashing
-project sources. Omission preserves full inspection. The Windows run panel
-publishes readable configurations first, then performs full inspection and
-reports freshness failures without discarding those configurations.
-The input fingerprint covers what generation reads: the manifests the built-in
-detectors consume (package and lock files, Compose files, Procfiles, task-runner
-files and runtime version files) by content (`sha256:<hex>` in
-`generator.inputs`), plus the detector revision. When the stored inputs no longer
-reproduce the stored fingerprint, the document came from another generator
-revision and the diagnostic says so instead of listing modified files.
-Automatic run discovery, fingerprint traversal and Node manifest discovery use
-Core's shared scan policy. Known caches/build outputs
-are pruned before descending; other hidden source directories remain visible and
-symlinks are not followed. Automatic run discovery and `build.detect` search at
-most 6 levels and also prune directories Git ignores, using the `.gitignore`
-files they pass and the `info/exclude` of each repository whose root lies in the
-workspace (a linked worktree reads the main repository's shared one); a nested
-repository starts its own rules. Nothing above the workspace root is read, nor
-`core.excludesFile` or the index. `build.detect` additionally prunes the
-workspace's ignored paths (see the Build table below), which decide before Git's
-rules. Fingerprint traversal and Node manifest
-discovery keep ignored directories. Failure to read the workspace root is an error. An
-unreadable optional child or fingerprint input is recorded in
-`generator.unreadablePaths`; generation retains previous configurations and input
-hashes beneath those unknown paths. Inspection returns `incompleteProjectScan`
-instead of claiming fingerprint freshness or inferred removals when either the
-current scan or saved baseline is incomplete. The persisted diagnostic also appears
-with `checkFingerprint: false`; a successful complete regeneration clears it.
+when no generated configuration exists (`status: "missing"`).
 Project environment saves use the existing local `runConfig.updateOptions`
 toolchain payload with an empty `configurationId`; service overrides are untouched.
 
 The `runConfig.*` commands implement the versioned project protocol described
-by the JSON Schemas in this directory. `runConfig.inspect` accepts `root` and
-optional `checkFingerprint`, `localDocument` and `providerRuns`, and never
-writes files. `runConfig.generate` accepts `root`, optional `providerRuns` and
-an optional `cacheDirectory`, and returns `{ generated, toolchainRequirements,
-entryCount }`.
+by the JSON Schemas in this directory. Core discovers no runnable entries
+itself: every generated configuration is a run that a build provider plugin
+declares (`buildSystems[].run`), and each provider names the inputs that make its
+model stale through `sync.watch`. `runConfig.inspect` accepts `root` and
+optional `localDocument` and `providerRuns`, and never writes files.
+`runConfig.generate` accepts `root` and optional `providerRuns`, and returns
+`{ generated, entryCount }`.
 
-`runConfig.generate` and `runConfig.inspect` also accept optional `providerRuns`:
-a complete list of `{projectPath,name,reference}`. The native host matches current
-model targets against enabled public run declarations; `reference` has exactly the
-`extensions.build` selector shape below, with empty model `userArguments`. Core validates
-at most 10,000 unique selectors, provider-root/project containment and bounded labels,
-then creates `build.provider` entries without interpreting target IDs, tool names,
-frameworks, commands or debug adapters. An explicit `[]` withdraws generated runs;
-omission preserves older callers.
+`providerRuns` is a complete list of `{projectPath,name,reference}`. The host
+matches current model targets against enabled public run declarations;
+`reference` has exactly the `extensions.build` selector shape below, with empty
+model `userArguments`. Core validates at most 10,000 unique selectors,
+provider-root/project containment and bounded labels, then creates
+`build.provider` entries without interpreting target IDs, tool names,
+frameworks, commands or debug adapters. Generating without `providerRuns` is
+the same as `[]`: the generated layer is empty.
 IDs hash plugin/build/root/run/project/target identity, so changed labels or execution
 kind retain user overrides. Current declarations still validate the execution kind
 before preparation. `generator.providerRunFingerprint` hashes the complete sorted
-snapshot; changed or missing metadata yields `staleProviderModel`, including when
-file fingerprinting is disabled. Withdrawn entries cannot be restored from cached
-configurations; unmatched overrides stay in their user-owned layer and are diagnosed.
-See `fixtures/run-configuration/build-provider-stable-identities.json`. macOS supplies this
-snapshot; Windows retains its existing generator until its Provider host is migrated.
+snapshot; when `runConfig.inspect` receives `providerRuns` and the generated layer
+was made from a different snapshot, it reports `staleProviderModel`. Withdrawn
+entries cannot be restored from an earlier generation; unmatched overrides stay in
+their user-owned layer and are diagnosed.
+See `fixtures/run-configuration/build-provider-stable-identities.json`.
 
-Generation keeps the generated configuration and toolchain requirement
-documents in memory as the workspace's detected layer for `inspect` and
-`resolve`; nothing is written into the workspace. With `cacheDirectory` (an
-application cache root outside the workspace) it also records the result under
-`run-configurations/`, so retained entries keep their IDs and the Run list is
-complete before providers answer again; failing to read or write that cache
-changes nothing else. The previous generation, used only to retain entries
-beneath unreadable paths, is this process's last generation, else the cached
-result, else read-only a `.lithe/run/generated.json` that older versions wrote.
-`inspect` returns `requiresGeneration: true` while this process has
-no detected layer. Hosts identify the workspace when this flag is true or the
-status is `missing`; a saved provider task can make `status` be `ready` before
-detection, and must not suppress discovery of the remaining entries. Generated
-fingerprints include both project inputs and the detector revision; either
-changing marks the detected layer stale and requires regeneration.
+Generation keeps the generated document in memory as the workspace's generated
+layer for `inspect` and `resolve`; nothing is written into the workspace or a
+cache, and the `.lithe/run/generated.json` that older versions wrote is not read.
+`inspect` returns `requiresGeneration: true` while this process has no generated
+layer. Hosts generate when this flag is true or the status is `missing`; a saved
+provider task can make `status` be `ready` before generation, and must not
+suppress generation of the remaining entries.
 
 `runConfig.decideTitleAction { action, trigger, currentFileChosen, settled, configuration? }`
 decides what a press on the title bar's Run or Debug button does. `action` is
@@ -3453,54 +3507,38 @@ Windows compares paths case-insensitively and treats both separators alike;
 case-sensitive hosts compare the supplied path exactly. Discovery remains with
 the provider, and clients must reject results made stale by workspace changes.
 
-`runConfig.resolve` accepts `root`, optional local `toolchainCandidates`, and
-optional `localDocument` / `teamDocument`. A supplied document replaces that layer
+`runConfig.resolve` accepts `root` and optional `localDocument` / `teamDocument`.
+A supplied document replaces that layer
 for this read-only resolution; omitted layers come from `.lithe/run/local.json` /
 `.lithe/run/configurations.json`. Hosts can preflight a complete two-file transaction
-against the current detected layer without publishing either file. Core never writes
+against the current generated layer without publishing either file. Core never writes
 these documents; hosts still own source-identity checks, cancellation, conditional
 publication and readback. It merges
 configurations by stable ID using this precedence:
-`local.json > configurations.json > detected layer`. Scalars and arrays are
+`local.json > configurations.json > generated layer`. Scalars and arrays are
 replaced by the higher layer, while toolchain maps merge by key. It returns
 effective configurations, their source, the default (the team default from
-`.lithe/project.json`, else the first detected service, else the first
-detected entry other than Current File), structured
-diagnostics for stale, orphaned, missing, disabled, and toolchain mismatch
-states, the effective global `toolchain`, and the machine-local
-`localToolchains` document. Toolchain diagnostics carry the affected run
-configuration ID when a requirement is consumed by one or more configurations;
-requirements with no configuration consumer do not emit a blocking diagnostic.
+`.lithe/project.json`, else the first generated service, else the first
+generated entry other than Current File), structured diagnostics for orphaned
+overrides, missing working directories, disabled entries and an unavailable
+default, the effective global `toolchain`, and the machine-local
+`localToolchains` document. Core does not match toolchain versions or vendors.
 
 Each configuration carries a `category` of `project` or `infrastructure`.
-Docker Compose detections are `infrastructure`: a Compose file in an application
-repository declares the databases and brokers the project runs against, not the
-project itself. The field is omitted for `project`, which is the default, so
-existing generated documents keep their exact shape. Hosts present
-infrastructure apart from the project's own services and must not include it in
-"run all services" or in the default service selection.
-
-Windows implements this grouping. During the macOS transition, Compose entries
-remain in its execution-based Services scope; category-based grouping and service
-selection filtering are pending there.
+`infrastructure` marks the external services the project runs against, such as
+a database or a message broker, rather than the project itself. Generated
+provider entries are `project`; a saved configuration may declare
+`infrastructure`. The field is omitted for `project`, which is the default.
+Hosts present infrastructure apart from the project's own services and must not
+include it in "run all services" or in the default service selection.
 
 Display names that repeat are qualified by Core, because hosts show the name
-alone: the first candidate that separates every entry in the group wins, trying
-the working directory (when it is not the workspace root), then the source
-manifest. Three
-Compose files each declaring `compose up` become `compose up (script/docker)`
-and so on, while a name that occurs once is never decorated. Ids are unaffected.
+alone: when the working directories of the repeated entries all differ and none
+is the workspace root, each name gains its directory, so two modules declaring
+`serve` become `serve (services/api)` and `serve (services/worker)`. Otherwise
+the names stay as they are, and a name that occurs once is never decorated. Ids
+are unaffected.
 
-A process detector declares a runtime binding only when that command genuinely
-consumes the runtime. npm, pnpm, and Yarn scripts consume `project-node`; Bun
-scripts keep their independent `bun` command and do not acquire a Node
-requirement. Go, Python, and Cargo remain command-based until every host
-provides the corresponding configurable runtime registry, so their PATH-based
-launch behavior is not blocked by an unavailable platform selector.
-During resolution, Core also reconciles npm, pnpm, and Yarn commands from older
-v2 generated documents with the same `project-node` binding. This compatibility
-normalization is based on the effective command, does not mutate the stored
-document, and keeps legacy hybrid projects scoped without requiring regeneration.
 The document-level `toolchain` object in the local layer holds generic
 `preferences`; other fields there belong to whichever host or plugin wrote them,
 and Core preserves them unchanged.
@@ -3529,8 +3567,8 @@ entry also makes a team-only workspace runnable before generation, while still r
 When generation contains that selector, resolution suppresses its duplicate automatic
 entry, retains all explicitly saved configurations, and resolves defaults through the
 same effective selector. Local selector patches update the effective claim, so an
-older team target does not accidentally hide a different auto entry. Detection
-fingerprints and the detected document remain unchanged by user-layer resolution.
+older team target does not accidentally hide a different auto entry. The
+generated layer and its fingerprint remain unchanged by user-layer resolution.
 See `fixtures/run-configuration/build-provider-stable-identities.json`.
 
 The platform guards the source snapshot, atomically writes only the local layer,
@@ -3626,9 +3664,8 @@ writing, or post-save reload failed; a reload failure keeps the last usable UI
 snapshot and states that the documents were already saved.
 
 Automatic runtime discovery produces an effective executable path for the
-current session. Platforms use that same path both to construct
-`toolchainCandidates` and to resolve the launch command. An automatic path is
-not a persisted user selection and is written to `.lithe/toolchains/local.json`
+current session. Platforms use that same path to resolve the launch command.
+An automatic path is not a persisted user selection and is written to `.lithe/toolchains/local.json`
 only after an explicit editor save.
 On Windows, Node-backed commands resolve their package-manager shim from the
 selected Node installation. They do not fall back to a PATH shim from another
@@ -4624,6 +4661,19 @@ version to stderr. The definition's `version.pattern` alone captures the
 version, including any tool-specific numbering such as a legacy `1.` prefix;
 Core never branches on a tool name.
 
+`build.detect` walks the workspace with Core's shared scan policy. It searches at
+most 6 levels and does not follow symlinks. It skips the directories the
+default visibility rules hide (Core's own folders and the folder names enabled
+plugins declare) and the directories Git ignores, using the `.gitignore` files
+it passes and the `info/exclude` of each repository whose root lies in the
+workspace (a linked worktree reads the main repository's shared one); a nested
+repository starts its own rules. Nothing above the workspace root is read, nor
+`core.excludesFile` or the index. The workspace's ignored paths (see
+`build.detect` below) decide before Git's rules. Failure to read the workspace
+root fails detection, and so does a remote link that drops during the scan; a
+deeper directory that cannot be read contributes nothing, and the scan lists at
+most 4,000 directories.
+
 Paths in requests are workspace-relative with `/` unless named absolute.
 `root` is the instance root from detection. Selected entities are
 `{ name, path?, tags?, execution?, properties? }` as the decoded model
@@ -4660,6 +4710,7 @@ and the directories are absolute host paths used only as substitution text.
 | `build.decodeDiagnostics` | `{ workspaceRoot, root, output }` | `diagnostics`: `[{ path, line, column?, severity, message }]`, deduplicated, inside the workspace only |
 | `build.decodeDependencies` | `{ workspaceRoot, root, project?, output?, outputFile?, result? }` | `dependencies`: `{ project, dependencies: [{ name, group?, version?, scope?, properties?, children }], truncated }` |
 | `build.syncFingerprint` | `{ workspaceRoot, root, projects, options? }` | `sync`: `{ fingerprint, watch }` |
+| `build.modelTree` | `{ model: { projects, targets, tasks }, query?, groupHeadings?: { <group>: heading } }`; `model` is a `build.decodeModel` result, other model fields are ignored | `tree`: `{ project?, nodes, truncated? }`; see below |
 
 Invocation candidates also include `{ kind: "toolchain", toolchainID, root }`.
 Hosts resolve them through the same canonical project/subproject
@@ -4685,6 +4736,57 @@ seconds attribute, rounded to whole milliseconds. Repeated invocations of one ca
 sum their times; when any invocation lacks a valid non-negative time, or the sum
 exceeds 2^53 - 1, the field is omitted. A reported zero is valid. Hosts hide a
 missing duration and never substitute a suite or console summary.
+
+#### Build model tree
+
+`build.modelTree` lays out one instance's tool window, the same way for every
+build tool; hosts render the nodes and neither nest projects nor file tasks
+themselves. It reads no file and starts no process.
+
+- Projects nest by `parentID`. A project whose parent is missing, itself, or
+  part of a loop, or that is nested deeper than 64 levels, becomes a root;
+  roots whose parent is missing or themselves come first, then the rest in
+  model order. A repeated project ID keeps its first project.
+- A `project` node holds, in order: its tasks in folders, a `dependencies`
+  node when `dependencies.scopes` contains `project`, a `targets` node of
+  `target` nodes, and its child projects. A target's children are the
+  declared `target`-scoped tasks whose `targetTags` match it.
+- A declared task (not `fromModel`) with a `project` scope appears in every
+  project; one with a `workspace` scope that has no `project` scope or
+  `requiresUserArguments` appears once in `nodes`, as do tasks with a
+  `workspace` scope when the model has no projects. Model tasks appear in their
+  project. Workspace dependencies (`scopes` with `workspace` but not
+  `project`, or a model with no projects) and test discovery
+  (`test.discovery`) add a `dependencies` or `tests` node to `nodes`.
+- A task is filed under its `category` headings, outermost first, or under
+  one `folder` for its `group`. A group folder carries `group` and the
+  host-sent `groupHeadings` label; a host that sends none labels it itself.
+  Folders keep the order they first appear in; a folder's subfolders come
+  before its tasks.
+- With exactly one root project, `project` is that project's node without
+  children and `nodes` is its contents plus the instance's own; otherwise
+  `nodes` holds the instance's nodes, then the root projects.
+- `query` (at most 256 bytes, no control characters) is trimmed and matched
+  case-insensitively against `label`, `detail` and `tooltip`. A matching node
+  is kept whole, with `matched: true`, and with the nodes on the way to it, so
+  a host opens those and shows the match as the user left it; an unmatched
+  `dependencies` node is dropped, and a `tests` node is always kept because
+  its entries load later. A blank query, or one the single root project
+  matches, keeps everything; the matching `project` then carries
+  `matched: true`.
+- A node is `{ kind, key, label?, detail?, tooltip?, group?, projectID?,
+  targetID?, taskID?, matched?, children? }`, `kind` one of `project`,
+  `folder`, `task`, `targets`, `target`, `dependencies`, `tests`. `key` is
+  opaque, unique in the instance and stable across reloads and filters, so
+  hosts remember open nodes by it. `projectID` and `targetID` are what a task
+  runs on (absent: the whole instance); `taskID` is a declared task's ID or a
+  model task's ID. `targets`, `dependencies` and `tests` nodes have no label.
+- The model may hold at most 2,000 projects and 10,000 targets and 10,000
+  tasks; more is `invalid_request`, as are unknown request fields and group
+  headings that are blank, longer than 120 bytes or contain control
+  characters. A tree is cut at 50,000 nodes and then carries
+  `truncated: true`. `rust/fixtures/build/model-tree-v1.json` holds the golden
+  trees.
 
 ### VCS providers
 

@@ -215,6 +215,9 @@ pub struct GitHistoryPageResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_offset: Option<usize>,
     pub(crate) has_more: bool,
+    /// The stream stopped at its `maxCommits` while the history goes on; omitted when false.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) limit_reached: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

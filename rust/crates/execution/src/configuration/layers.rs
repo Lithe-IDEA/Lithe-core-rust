@@ -131,17 +131,45 @@ pub(crate) fn read_document_value(root: &Path, relative: &str) -> Result<Option<
     Ok(Some(value))
 }
 
-/// Ids of the configurations this session detected for `root`; a user
+/// Ids of the configurations this session generated for `root`; a user
 /// configuration must not reuse one.
-pub(crate) fn detected_ids(root: &Path) -> BTreeSet<String> {
+pub(crate) fn generated_ids(root: &Path) -> BTreeSet<String> {
     generated_layer::get(root)
-        .map(|layer| {
-            layer
-                .document
+        .map(|document| {
+            document
                 .configurations
                 .iter()
                 .map(|configuration| configuration.id.clone())
                 .collect()
         })
         .unwrap_or_default()
+}
+
+pub(crate) fn existing_root(value: &str) -> Result<PathBuf, CoreError> {
+    let path = PathBuf::from(value);
+    if !path.is_dir() {
+        return Err(CoreError::new(
+            ErrorCode::WorkspaceNotFound,
+            "Project root does not exist",
+        ));
+    }
+    Ok(path)
+}
+
+pub(crate) fn read_local_toolchains(root: &Path) -> Result<Option<Value>, CoreError> {
+    let Some(document) = read_document_value(root, "toolchains/local.json")? else {
+        return Ok(None);
+    };
+    validate_sidecar_version_value(&document)?;
+    if document
+        .get("toolchains")
+        .and_then(Value::as_object)
+        .is_none()
+    {
+        return Err(CoreError::new(
+            ErrorCode::ParseFailed,
+            "Local toolchains must contain a toolchains object",
+        ));
+    }
+    Ok(Some(document))
 }

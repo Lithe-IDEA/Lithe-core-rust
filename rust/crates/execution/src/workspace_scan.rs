@@ -1,86 +1,47 @@
-//! Shared run-discovery traversal and incomplete-snapshot diagnostics.
+//! Bounded workspace traversal for build-system detection.
 //!
-//! Automatic discovery is best effort below the required workspace root. Declared
-//! build-system modules remain owned by their provider and bypass these defaults.
+//! Detection is best effort below the required workspace root: a directory that
+//! cannot be read contributes nothing, and a scan stops after a fixed number of
+//! directories. Declared build-system modules remain owned by their provider and
+//! bypass these defaults.
 //!
-//! Heuristic discovery also skips the directories Git ignores: agent worktrees,
-//! generated trees and local checkouts repeat or imitate the project's own
-//! manifests, and listing them as run or build roots shows every module twice.
-//! The rules come from the `.gitignore` files the scan lists and the `info/exclude`
-//! of each repository whose root it lists. Nothing above the workspace root is
-//! read, so a workspace opened below its repository root uses only the files
-//! inside it. A global `core.excludesFile` and the index are not read either, so a
-//! tracked manifest below an ignored directory is not discovered. Fingerprint
-//! scans keep every directory: they decide freshness, and reading an ignored
-//! input there only costs an extra regeneration.
+//! Every scan skips the directories the default visibility rules hide: Core's own
+//! folders (`.git`, the worktree containers and the root `.lithe`) and the folder
+//! names the enabled plugins declare, such as `target` while a Cargo plugin is
+//! enabled. The rules are read once per scan, so a plugin enabled during a scan
+//! applies from the next one.
 //!
-//! A heuristic scan can also be given [`IgnoredPaths`], the workspace's own
-//! patterns (Build options keep them for build detection). They decide before
-//! Git's rules, so `!pattern` brings back a directory Git ignores.
+//! A scan also skips the directories Git ignores: agent worktrees, generated
+//! trees and local checkouts repeat or imitate the project's own manifests, and
+//! listing them as build roots shows every module twice. The rules come from the
+//! `.gitignore` files the scan lists and the `info/exclude` of each repository
+//! whose root it lists. Nothing above the workspace root is read, so a workspace
+//! opened below its repository root uses only the files inside it. A global
+//! `core.excludesFile` and the index are not read either, so a tracked manifest
+//! below an ignored directory is not discovered.
+//!
+//! A scan can also be given [`IgnoredPaths`], the workspace's own patterns (Build
+//! options keep them). They decide before Git's rules, so `!pattern` brings back a
+//! directory Git ignores.
 
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use ignore::Match;
+use lithe_core_rules::visibility::VisibilityRules;
 use lithe_platform::paths::slash_separated_path;
 use lithe_platform::Platform;
 use lithe_protocol::CoreError;
 use lithe_workspace::fs;
 use std::collections::BTreeSet;
 use std::io;
-use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-/// Heuristic discovery budget; full fingerprint scans retain cancellation checks.
-const MAX_HEURISTIC_DIRECTORIES: usize = 4000;
+/// Directories one scan lists at most; the deeper rest of a huge tree is skipped.
+const MAX_DIRECTORIES: usize = 4000;
 
 /// Largest ignore file, gitfile or `commondir` file the scan reads. A larger one
 /// contributes no rules, which only lets the scan see more directories.
 const MAX_IGNORE_SOURCE_BYTES: u64 = 1 << 20;
-
-const EXCLUDED_DIRECTORIES: &[&str] = &[
-    ".git",
-    ".worktree",
-    ".worktrees",
-    ".lithe",
-    ".idea",
-    ".vscode",
-    ".gradle",
-    ".venv",
-    "venv",
-    ".tox",
-    ".mypy_cache",
-    ".pytest_cache",
-    "__pycache__",
-    ".next",
-    ".nuxt",
-    ".svelte-kit",
-    ".terraform",
-    ".cargo",
-    ".stack-work",
-    ".bundle",
-    ".dart_tool",
-    ".build",
-    ".swiftpm",
-    "node_modules",
-    "bower_components",
-    "vendor",
-    "target",
-    "build",
-    "dist",
-    "out",
-    "obj",
-    "coverage",
-    "DerivedData",
-    "Pods",
-];
-
-/// Default pruning for automatic run discovery, fingerprints and host file lists.
-/// Hidden source directories are allowed unless explicitly named here.
-pub fn is_run_scan_excluded_directory(name: &str) -> bool {
-    EXCLUDED_DIRECTORIES
-        .iter()
-        .any(|excluded| excluded.eq_ignore_ascii_case(name))
-}
 
 /// One directory's files, without following directory symlinks.
 pub struct ScannedDirectory {
@@ -90,34 +51,17 @@ pub struct ScannedDirectory {
     pub files: BTreeSet<String>,
 }
 
-/// A partial scan must never be used as evidence of deletion or freshness.
-pub struct WorkspaceScan {
-    /// Readable directories, sorted by path.
-    pub directories: Vec<ScannedDirectory>,
-    /// Workspace-relative paths that could not be read; their contents are unknown.
-    pub unreadable_paths: BTreeSet<String>,
-}
-
-/// Traverses automatic discovery inputs. A depth limit belongs only to heuristic
-/// service detection, which also skips Git-ignored directories; fingerprints and
-/// explicit host file lists use no depth limit and keep them.
-pub fn scan_run_workspace(
-    root: &Path,
-    max_depth: Option<usize>,
-) -> Result<WorkspaceScan, CoreError> {
-    scan_with_reader(root, max_depth, &read_directory)
-}
-
-/// A heuristic scan that also skips the directories `ignored` names. Only a
-/// heuristic scan takes them, so the depth limit is required here.
-pub fn scan_run_workspace_ignoring(
+/// Lists the directories below `root`, at most `max_depth` levels deep, sorted
+/// by path. Hidden and Git-ignored directories are skipped, and so are the
+/// directories `ignored` names.
+pub fn scan_workspace(
     root: &Path,
     max_depth: usize,
     ignored: &IgnoredPaths,
-) -> Result<WorkspaceScan, CoreError> {
+) -> Result<Vec<ScannedDirectory>, CoreError> {
     scan_with_readers(
         root,
-        Some(max_depth),
+        max_depth,
         &read_directory,
         &read_ignore_source,
         ignored,
@@ -125,7 +69,7 @@ pub fn scan_run_workspace_ignoring(
 }
 
 /// Workspace-relative patterns in `.gitignore` syntax, one pattern per entry,
-/// that a heuristic scan skips. They only ever name directories, since the scan
+/// that a scan skips. They only ever name directories, since the scan
 /// prunes a directory before listing it, so a file pattern such as `*.txt`
 /// skips nothing. As in one ignore file, the last matching pattern decides, and
 /// a pattern with a `/` before its end is anchored at the workspace root while
@@ -191,17 +135,17 @@ fn read_ignore_source(path: &Path) -> io::Result<String> {
         ));
     }
     // A pattern that is not UTF-8 cannot match a name the scan keeps: names that
-    // are not UTF-8 are reported unreadable instead of being traversed.
+    // are not UTF-8 are skipped instead of being traversed.
     Ok(String::from_utf8_lossy(&fs::read(path)?).into_owned())
 }
 
-/// Same traversal as [`scan_run_workspace`] with an injected directory reader,
-/// so tests can fail or remove a directory between reads.
+/// Same traversal as [`scan_workspace`] with an injected directory reader, so
+/// tests can fail or remove a directory between reads.
 pub fn scan_with_reader(
     root: &Path,
-    max_depth: Option<usize>,
+    max_depth: usize,
     read: &impl Fn(&Path) -> io::Result<Vec<(PathBuf, bool, bool)>>,
-) -> Result<WorkspaceScan, CoreError> {
+) -> Result<Vec<ScannedDirectory>, CoreError> {
     scan_with_readers(
         root,
         max_depth,
@@ -209,27 +153,6 @@ pub fn scan_with_reader(
         &read_ignore_source,
         &IgnoredPaths::default(),
     )
-}
-
-// Tests also inject the reader of ignore files, gitfiles and `commondir`.
-fn scan_with_readers(
-    root: &Path,
-    max_depth: Option<usize>,
-    read: &impl Fn(&Path) -> io::Result<Vec<(PathBuf, bool, bool)>>,
-    read_text: &impl Fn(&Path) -> io::Result<String>,
-    ignored: &IgnoredPaths,
-) -> Result<WorkspaceScan, CoreError> {
-    let mut directories = Vec::new();
-    let unreadable_paths =
-        visit_with_readers(root, max_depth, read, read_text, ignored, |directory| {
-            directories.push(directory);
-            ControlFlow::Continue(())
-        })?;
-    directories.sort_by(|left, right| left.path.cmp(&right.path));
-    Ok(WorkspaceScan {
-        directories,
-        unreadable_paths,
-    })
 }
 
 /// The ignore rules in force in one directory: its own `.gitignore` first, then
@@ -362,26 +285,21 @@ fn directory_rules(
     Ok(rules)
 }
 
-// Consumers decide whether to retain each directory and when enough inputs have
-// been found. Early stopping must not change full fingerprint scan semantics.
-fn visit_with_readers(
+// Tests also inject the reader of ignore files, gitfiles and `commondir`.
+fn scan_with_readers(
     root: &Path,
-    max_depth: Option<usize>,
+    max_depth: usize,
     read: &impl Fn(&Path) -> io::Result<Vec<(PathBuf, bool, bool)>>,
     read_text: &impl Fn(&Path) -> io::Result<String>,
     ignored: &IgnoredPaths,
-    mut visit: impl FnMut(ScannedDirectory) -> ControlFlow<()>,
-) -> Result<BTreeSet<String>, CoreError> {
-    let heuristic = max_depth.is_some();
-    let mut unreadable_paths = BTreeSet::new();
-    let mut directory_count = 0;
+) -> Result<Vec<ScannedDirectory>, CoreError> {
+    let hidden = VisibilityRules::new(Vec::new(), Vec::new());
+    let mut directories = Vec::new();
     let mut pending: Vec<(PathBuf, usize, Option<Rc<IgnoreRules>>)> =
         vec![(root.to_owned(), 0, None)];
     while let Some((path, depth, inherited)) = pending.pop() {
         lithe_protocol::cancellation::check()?;
-        if heuristic && directory_count >= MAX_HEURISTIC_DIRECTORIES {
-            unreadable_paths.insert(relative(root, &path));
-            unreadable_paths.extend(pending.iter().map(|(path, _, _)| relative(root, path)));
+        if directories.len() >= MAX_DIRECTORIES {
             break;
         }
         let entries = match read(&path) {
@@ -389,13 +307,10 @@ fn visit_with_readers(
             Err(error) if path == root => return Err(CoreError::from(error)),
             // A broken remote transport says nothing about this directory, and
             // continuing would publish a model built from a truncated tree.
-            // Failures the host reports for one path stay explicit incomplete-scan
-            // evidence, exactly as they do for a local workspace.
             Err(error) if fs::is_transport_failure(&error) => return Err(CoreError::from(error)),
-            Err(_) => {
-                unreadable_paths.insert(relative(root, &path));
-                continue;
-            }
+            // A directory the host reports unreadable holds no markers detection
+            // could use; its siblings are still listed.
+            Err(_) => continue,
         };
         let mut files = BTreeSet::new();
         let mut subdirectories = Vec::new();
@@ -404,8 +319,8 @@ fn visit_with_readers(
         let mut repository = None;
         for (child, directory, symlink) in entries {
             lithe_protocol::cancellation::check()?;
+            // No marker or pattern names an entry that is not UTF-8.
             let Some(name) = child.file_name().and_then(|name| name.to_str()) else {
-                unreadable_paths.insert(relative(root, &child));
                 continue;
             };
             if symlink {
@@ -415,26 +330,20 @@ fn visit_with_readers(
                 repository = Some(directory);
             }
             if directory {
-                if !is_run_scan_excluded_directory(name)
-                    && max_depth.is_none_or(|limit| depth < limit)
-                {
+                if depth < max_depth && !hidden.is_hidden(&relative(root, &child), true) {
                     subdirectories.push(child);
                 }
             } else {
                 files.insert(name.to_owned());
             }
         }
-        let rules = if heuristic {
-            directory_rules(
-                &path,
-                inherited,
-                repository,
-                files.contains(".gitignore"),
-                read_text,
-            )?
-        } else {
-            None
-        };
+        let rules = directory_rules(
+            &path,
+            inherited,
+            repository,
+            files.contains(".gitignore"),
+            read_text,
+        )?;
         let mut children = subdirectories
             .into_iter()
             .filter(|child| !is_ignored_directory(ignored, rules.as_ref(), child))
@@ -442,12 +351,10 @@ fn visit_with_readers(
             .collect::<Vec<_>>();
         children.sort_by(|left, right| right.0.cmp(&left.0));
         pending.extend(children);
-        directory_count += 1;
-        if visit(ScannedDirectory { path, files }).is_break() {
-            break;
-        }
+        directories.push(ScannedDirectory { path, files });
     }
-    Ok(unreadable_paths)
+    directories.sort_by(|left, right| left.path.cmp(&right.path));
+    Ok(directories)
 }
 
 fn relative(root: &Path, path: &Path) -> String {
@@ -459,46 +366,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn early_stop_retains_observed_unreadable_paths_without_affecting_full_scans() {
-        let root = Path::new("fixture");
-        let read = |path: &Path| {
-            if path == root {
-                Ok(vec![
-                    (root.join("a-blocked"), true, false),
-                    (root.join("b-sources"), true, false),
-                    (root.join("z-later"), true, false),
-                ])
-            } else if path.ends_with("a-blocked") {
-                Err(io::Error::from(io::ErrorKind::PermissionDenied))
-            } else {
-                Ok(vec![(path.join("main.txt"), false, false)])
-            }
-        };
-        let unknown = visit_with_readers(
-            root,
-            None,
-            &read,
-            &read_ignore_source,
-            &IgnoredPaths::default(),
-            |directory| {
-                if directory.files.contains("main.txt") {
-                    ControlFlow::Break(())
-                } else {
-                    ControlFlow::Continue(())
-                }
-            },
-        )
-        .unwrap();
-        assert_eq!(unknown, BTreeSet::from(["a-blocked".into()]));
-        let full = scan_with_reader(root, None, &read).unwrap();
-        assert_eq!(full.unreadable_paths, unknown);
-        assert!(full
-            .directories
-            .iter()
-            .any(|dir| dir.path.ends_with("z-later")));
-    }
-
-    #[test]
     fn unreadable_child_preserves_siblings_but_root_is_required() {
         let root = Path::new("fixture");
         let read = |path: &Path| {
@@ -506,7 +373,7 @@ mod tests {
                 Ok(vec![
                     (root.join("blocked"), true, false),
                     (root.join(".sources"), true, false),
-                    (root.join(".pytest_cache"), true, false),
+                    (root.join(".git"), true, false),
                 ])
             } else if path.ends_with(".sources") {
                 Ok(vec![(path.join("main.txt"), false, false)])
@@ -514,21 +381,22 @@ mod tests {
                 Err(io::Error::from(io::ErrorKind::PermissionDenied))
             }
         };
-        let result = scan_with_reader(root, None, &read).unwrap();
-        assert_eq!(result.unreadable_paths, BTreeSet::from(["blocked".into()]));
-        assert!(result
-            .directories
+        let listed: BTreeSet<String> = scan_with_reader(root, 6, &read)
+            .unwrap()
             .iter()
-            .any(|dir| dir.files.contains("main.txt")));
-        assert!(scan_with_reader(root, None, &|_| Err(io::Error::from(
+            .map(|directory| relative(root, &directory.path))
+            .collect();
+        assert_eq!(listed, BTreeSet::from(["".into(), ".sources".into()]));
+        assert!(scan_with_reader(root, 6, &|_| Err(io::Error::from(
             io::ErrorKind::PermissionDenied
         )))
         .is_err());
     }
+
     #[test]
     fn directory_links_do_not_escape_or_reenter_the_scan() {
         let root = Path::new("fixture");
-        let result = scan_with_reader(root, None, &|path| {
+        let result = scan_with_reader(root, 6, &|path| {
             assert_eq!(path, root, "links must never be traversed");
             Ok(vec![
                 (root.join("cycle"), true, true),
@@ -536,11 +404,8 @@ mod tests {
             ])
         })
         .unwrap();
-        assert_eq!(result.directories.len(), 1);
-        assert_eq!(
-            result.directories[0].files,
-            BTreeSet::from(["main.txt".into()])
-        );
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].files, BTreeSet::from(["main.txt".into()]));
     }
 
     /// A tree in memory: each directory lists its entries, a trailing `/` marking
@@ -567,25 +432,24 @@ mod tests {
 
     impl Tree {
         /// The directories a scan of `root` lists, relative to it.
-        fn scan(&self, root: &str, max_depth: Option<usize>) -> BTreeSet<String> {
+        fn scan(&self, root: &str, max_depth: usize) -> BTreeSet<String> {
             self.scan_with(root, max_depth, &IgnoredPaths::default())
         }
 
-        /// The directories a heuristic scan of `root` lists when it also skips
-        /// `patterns`.
+        /// The directories a scan of `root` lists when it also skips `patterns`.
         fn scan_ignoring(&self, root: &str, patterns: &[&str]) -> BTreeSet<String> {
             let patterns: Vec<String> = patterns
                 .iter()
                 .map(|pattern| (*pattern).to_owned())
                 .collect();
             let ignored = IgnoredPaths::new(Path::new(root), &patterns).unwrap();
-            self.scan_with(root, Some(6), &ignored)
+            self.scan_with(root, 6, &ignored)
         }
 
         fn scan_with(
             &self,
             root: &str,
-            max_depth: Option<usize>,
+            max_depth: usize,
             ignored: &IgnoredPaths,
         ) -> BTreeSet<String> {
             let read = |path: &Path| -> io::Result<Vec<(PathBuf, bool, bool)>> {
@@ -612,9 +476,8 @@ mod tests {
                     .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))
             };
             let root = Path::new(root);
-            let scan = scan_with_readers(root, max_depth, &read, &read_text, ignored).unwrap();
-            assert!(scan.unreadable_paths.is_empty());
-            scan.directories
+            scan_with_readers(root, max_depth, &read, &read_text, ignored)
+                .unwrap()
                 .iter()
                 .map(|directory| relative(root, &directory.path))
                 .collect()
@@ -626,7 +489,7 @@ mod tests {
     }
 
     #[test]
-    fn heuristic_discovery_skips_what_git_ignores_and_full_scans_keep_it() {
+    fn scans_skip_what_git_ignores_and_lower_files_reinclude() {
         let tree = Tree {
             directories: vec![
                 (
@@ -655,22 +518,8 @@ mod tests {
             ],
         };
         assert_eq!(
-            tree.scan("fixture", Some(6)),
+            tree.scan("fixture", 6),
             set(["", ".claude", ".claude/settings", "src", "src/generated"])
-        );
-        assert_eq!(
-            tree.scan("fixture", None),
-            set([
-                "",
-                ".claude",
-                ".claude/settings",
-                ".claude/worktrees",
-                ".claude/worktrees/copy",
-                "generated",
-                "src",
-                "src/cache",
-                "src/generated",
-            ])
         );
     }
 
@@ -692,7 +541,7 @@ mod tests {
             ],
         };
         // The enclosing `logs/` stops at `lib`, a repository of its own.
-        assert_eq!(tree.scan("work", Some(6)), set(["", "lib", "lib/logs"]));
+        assert_eq!(tree.scan("work", 6), set(["", "lib", "lib/logs"]));
     }
 
     #[test]
@@ -705,7 +554,7 @@ mod tests {
             // Neither the `.gitignore` nor the gitfile can be read.
             texts: vec![],
         };
-        assert_eq!(tree.scan("fixture", Some(6)), set(["", "generated"]));
+        assert_eq!(tree.scan("fixture", 6), set(["", "generated"]));
     }
 
     #[test]
@@ -748,10 +597,7 @@ mod tests {
             set(["", ".config", "generated", "src", "src/tools"])
         );
         // No pattern leaves only Git's rules.
-        assert_eq!(
-            tree.scan_ignoring("fixture", &[]),
-            tree.scan("fixture", Some(6))
-        );
+        assert_eq!(tree.scan_ignoring("fixture", &[]), tree.scan("fixture", 6));
     }
 
     #[test]

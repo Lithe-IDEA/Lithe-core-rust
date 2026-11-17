@@ -3477,6 +3477,16 @@
                 "pattern": "^[^/\\\\]"
               },
               "maxItems": 32
+            },
+            "hiddenDirectoryNames": {
+              "description": "Folder names every workspace hides at any depth while the plugin is enabled, compared with one path component ignoring ASCII case.",
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 255,
+                "pattern": "^(?!\\.{1,2}$)(?![!\\s])(?!.*\\s$)[^/\\\\*?\\[\\]\\u0000-\\u001f\\u007f]+$"
+              },
+              "maxItems": 32
             }
           }
         }

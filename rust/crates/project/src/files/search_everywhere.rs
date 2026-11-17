@@ -69,15 +69,22 @@ pub(crate) fn search_everywhere_with_page(
     let mut symbols = Vec::new();
     let mut last_flush = None;
     if file_limit > 0 {
+        // Generated output is a file-name source, not a content/symbol index: with
+        // includeGeneratedFileNames the folders plugins declare as generated are listed
+        // again, while VCS metadata and Core's own folders stay hidden.
+        let generated = if request.include_generated_file_names {
+            plugin_generated_directories()
+        } else {
+            Vec::new()
+        };
         let name_rules = VisibilityRules {
-            // Generated output is a file-name source, not a content/symbol index.
             hidden_directories: rules
                 .hidden_directories
                 .iter()
                 .filter(|name| {
-                    !request.include_generated_file_names
-                        || !BUILT_IN_HIDDEN_DIRECTORIES.contains(&name.as_str())
-                        || [".git", ".svn", ".worktree", ".worktrees"].contains(&name.as_str())
+                    !generated
+                        .iter()
+                        .any(|generated| generated.eq_ignore_ascii_case(name))
                 })
                 .cloned()
                 .collect(),

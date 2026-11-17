@@ -55,13 +55,19 @@ pub(crate) struct SyncDeclaration {
     pub(crate) watch: Vec<String>,
 }
 
-/// Output directories excluded from every project, relative to each
-/// project directory.
+/// Where the build system puts files nobody edits.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct LayoutDeclaration {
+    /// Output directories excluded from every project, relative to each
+    /// project directory.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) excluded: Vec<String>,
+    /// Folder names, such as `target` or `node_modules`, that every
+    /// workspace hides at any depth while the plugin is enabled: the tree,
+    /// search, watchers, local history and every workspace walk skip them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) hidden_directory_names: Vec<String>,
 }
 
 impl BuildSystemDeclaration {

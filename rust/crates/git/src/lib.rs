@@ -22,6 +22,7 @@ pub mod contracts;
 mod deleted_selection;
 mod diff_blocks;
 pub mod workspace_commit;
+pub mod workspace_push;
 mod workspace_repositories;
 pub mod workspace_status;
 pub use commit_state::{inspect as commit_state, GitCommitGitlink, GitCommitState};
@@ -127,6 +128,7 @@ pub use shelf::shelf_command;
 pub use update_plan::command as update_plan_command;
 pub use workspace_repositories::{
     change_groups_command as workspace_change_groups_command,
+    history_merge_command as workspace_history_merge_command,
     selection_command as workspace_repository_selection_command,
 };
 pub use worktree_rules::creation_preview_command as worktree_creation_preview_command;

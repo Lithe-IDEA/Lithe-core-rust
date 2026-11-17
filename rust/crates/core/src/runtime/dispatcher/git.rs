@@ -39,6 +39,25 @@ pub(super) fn dispatch(command: GitCommand, id: Option<String>, payload: Value) 
                 Err(error) => CoreResponse::failure(id, error),
             }
         }
+        GitCommand::WorkspacePushPreview => {
+            let result = serde_json::from_value::<git::workspace_push::PreviewRequest>(payload)
+                .map_err(|error| {
+                    CoreError::new(
+                        ErrorCode::InvalidRequest,
+                        "Invalid workspace push preview request",
+                    )
+                    .with_details(error.to_string())
+                })
+                .and_then(git::workspace_push::preview);
+            match result {
+                Ok(data) => CoreResponse::success(
+                    id,
+                    serde_json::to_value(data)
+                        .expect("Workspace push preview response should encode"),
+                ),
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
         GitCommand::WorkspaceCommitStep => {
             let result = serde_json::from_value::<git::workspace_commit::StepRequest>(payload)
                 .map_err(|error| {
@@ -426,6 +445,9 @@ pub(super) fn dispatch(command: GitCommand, id: Option<String>, payload: Value) 
         ),
         GitCommand::WorkspaceChangeGroups => {
             plugin_response(id, payload, lithe_git::workspace_change_groups_command)
+        }
+        GitCommand::WorkspaceHistoryMerge => {
+            plugin_response(id, payload, lithe_git::workspace_history_merge_command)
         }
         GitCommand::UpdatePlan => plugin_response(id, payload, lithe_git::update_plan_command),
         GitCommand::HistoryWindow => {

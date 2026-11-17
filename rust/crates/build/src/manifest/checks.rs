@@ -165,6 +165,35 @@ pub(crate) fn check_paths(values: &mut Vec<String>, field: &str, glob: bool) -> 
     Ok(())
 }
 
+/// Folder names matched against one path component at any depth. A name is
+/// literal: it holds no separator or glob character, is not `.` or `..`,
+/// and does not start with `!`, which users write to turn a default off.
+pub(crate) fn check_directory_names(values: &mut Vec<String>, field: &str) -> Validation<()> {
+    if values.len() > MAX_LIST {
+        return Err(invalid(field, "The list is too long."));
+    }
+    for (index, value) in values.iter().enumerate() {
+        let literal = !value.is_empty()
+            && value.len() <= 255
+            && value.trim() == value
+            && value != "."
+            && value != ".."
+            && !value.starts_with('!')
+            && !value.chars().any(|character| {
+                character.is_control() || matches!(character, '/' | '\\' | '*' | '?' | '[' | ']')
+            });
+        if !literal {
+            return Err(PluginRejection::at(
+                "plugin.path.invalid",
+                format!("{field}[{index}]"),
+                "Directory names are single path components without glob characters.",
+            ));
+        }
+    }
+    *values = sorted_unique(std::mem::take(values));
+    Ok(())
+}
+
 pub(crate) fn check_regex(value: &str, field: &str, groups: usize) -> Validation<Regex> {
     let compiled = (value.len() <= MAX_REGEX)
         .then(|| Regex::new(value).ok())

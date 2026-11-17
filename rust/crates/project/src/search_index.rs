@@ -622,7 +622,7 @@ mod tests {
     }
 
     #[test]
-    fn source_caps_build_only_required_cold_indexes_and_skip_generated_text_enumeration() {
+    fn source_caps_build_only_required_cold_indexes_and_never_enumerate_hidden_folders() {
         let root = crate::test_support::temporary_root("search-source-caps");
         fs::create_dir_all(root.join("src")).unwrap();
         let root = root.canonicalize().unwrap();
@@ -636,12 +636,15 @@ mod tests {
         }
         let _cleanup = Cleanup(root.clone());
         fs::write(root.join("src/Name.txt"), "Name\n").unwrap();
-        // This guards enumeration decisions, not filesystem throughput. Both generated
-        // roots only need enough entries to exceed the result cap on every platform.
-        let generated_files_per_directory = 16;
-        for directory in [".build", "node_modules"] {
+        // This guards enumeration decisions, not filesystem throughput. Core's own folders
+        // stay hidden even where generated file names are listed, and only need enough
+        // entries to exceed the result cap on every platform. Plugin-declared generated
+        // folders are covered by `lithe-core`'s configure_visibility test, which owns the
+        // process-wide registry.
+        let hidden_files_per_directory = 16;
+        for directory in [".worktree", ".worktrees"] {
             fs::create_dir(root.join(directory)).unwrap();
-            for number in 0..generated_files_per_directory {
+            for number in 0..hidden_files_per_directory {
                 fs::write(root.join(directory).join(format!("Name{number}.bin")), "").unwrap();
             }
         }
@@ -691,8 +694,7 @@ mod tests {
                 .sum();
             assert_eq!(
                 resident_files,
-                usize::from(files > 0) * (2 * generated_files_per_directory + 1)
-                    + usize::from(content > 0)
+                usize::from(files > 0) + usize::from(content > 0)
             );
             eprintln!("Cold source caps files={files} content={content} symbols={symbols}: {:?}, indexes={}, resident files={resident_files}, results={}",
                 started.elapsed(), built.len(), response.matches.len());
@@ -701,12 +703,10 @@ mod tests {
                 if expected_indexes.is_empty() {
                     assert!(visits.is_empty());
                 }
-                if files == 0 {
-                    assert!(!visits
-                        .iter()
-                        .any(|path| path.starts_with(root.join(".build"))
-                            || path.starts_with(root.join("node_modules"))));
-                }
+                assert!(!visits
+                    .iter()
+                    .any(|path| path.starts_with(root.join(".worktree"))
+                        || path.starts_with(root.join(".worktrees"))));
             });
         }
     }

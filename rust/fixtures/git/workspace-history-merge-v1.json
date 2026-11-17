@@ -1,0 +1,225 @@
+{
+  "version": 1,
+  "description": "git.workspaceHistoryMerge interleaves the loaded histories of the repositories a log walks, newest first, keeping each repository's own order. It stops where a repository that is not complete has no loaded commit left, and lists it in pending, so later pages only add rows at the end. A commit without a timestamp takes the one placed before it in its repository; equal timestamps go in request order. A hash more than one repository names, as a commit or as a parent, is keyed <hash>@<id> in each; every other key is the hash.",
+  "cases": [
+    {
+      "name": "repositoriesInterleaveByDate",
+      "request": {
+        "repositories": [
+          {"id": "backend", "complete": true, "commits": [
+            {"hash": "aaa3", "parentHashes": ["aaa1"], "timestamp": 300},
+            {"hash": "aaa1", "timestamp": 100}
+          ]},
+          {"id": "frontend", "complete": true, "commits": [
+            {"hash": "bbb2", "timestamp": 200}
+          ]}
+        ]
+      },
+      "response": {
+        "entries": [
+          {"repository": 0, "index": 0, "key": "aaa3", "parentKeys": ["aaa1"]},
+          {"repository": 1, "index": 0, "key": "bbb2", "parentKeys": []},
+          {"repository": 0, "index": 1, "key": "aaa1", "parentKeys": []}
+        ],
+        "pending": []
+      }
+    },
+    {
+      "name": "aRepositoryWithPagesLeftStopsTheMergeWhenItRunsOut",
+      "request": {
+        "repositories": [
+          {"id": "backend", "complete": false, "commits": [
+            {"hash": "aaa4", "parentHashes": ["aaa2"], "timestamp": 400},
+            {"hash": "aaa2", "parentHashes": ["aaa0"], "timestamp": 200}
+          ]},
+          {"id": "frontend", "complete": true, "commits": [
+            {"hash": "bbb3", "parentHashes": ["bbb1"], "timestamp": 300},
+            {"hash": "bbb1", "timestamp": 100}
+          ]}
+        ]
+      },
+      "response": {
+        "entries": [
+          {"repository": 0, "index": 0, "key": "aaa4", "parentKeys": ["aaa2"]},
+          {"repository": 1, "index": 0, "key": "bbb3", "parentKeys": ["bbb1"]},
+          {"repository": 0, "index": 1, "key": "aaa2", "parentKeys": ["aaa0"]}
+        ],
+        "pending": [0]
+      }
+    },
+    {
+      "name": "anIncompleteRepositoryWithNothingLoadedPlacesNothing",
+      "request": {
+        "repositories": [
+          {"id": "backend", "complete": true, "commits": [{"hash": "aaa1", "timestamp": 100}]},
+          {"id": "frontend", "complete": false, "commits": []},
+          {"id": "docs", "complete": false, "commits": []}
+        ]
+      },
+      "response": {"entries": [], "pending": [1, 2]}
+    },
+    {
+      "name": "aCompleteEmptyRepositoryDoesNotStopTheMerge",
+      "request": {
+        "repositories": [
+          {"id": "backend", "complete": true, "commits": []},
+          {"id": "frontend", "complete": true, "commits": [{"hash": "bbb1", "timestamp": 100}]}
+        ]
+      },
+      "response": {
+        "entries": [{"repository": 1, "index": 0, "key": "bbb1", "parentKeys": []}],
+        "pending": []
+      }
+    },
+    {
+      "name": "aHashTwoRepositoriesHoldIsKeyedPerRepository",
+      "request": {
+        "repositories": [
+          {"id": "app", "complete": true, "commits": [
+            {"hash": "ccc2", "parentHashes": ["ccc1"], "timestamp": 200},
+            {"hash": "ccc1", "timestamp": 100}
+          ]},
+          {"id": "vendor/app", "complete": true, "commits": [
+            {"hash": "ddd3", "parentHashes": ["ccc2"], "timestamp": 300},
+            {"hash": "ccc2", "parentHashes": ["ccc1"], "timestamp": 200},
+            {"hash": "ccc1", "timestamp": 100}
+          ]}
+        ]
+      },
+      "response": {
+        "entries": [
+          {"repository": 1, "index": 0, "key": "ddd3", "parentKeys": ["ccc2@vendor/app"]},
+          {"repository": 0, "index": 0, "key": "ccc2@app", "parentKeys": ["ccc1@app"]},
+          {"repository": 1, "index": 1, "key": "ccc2@vendor/app", "parentKeys": ["ccc1@vendor/app"]},
+          {"repository": 0, "index": 1, "key": "ccc1@app", "parentKeys": []},
+          {"repository": 1, "index": 2, "key": "ccc1@vendor/app", "parentKeys": []}
+        ],
+        "pending": []
+      }
+    },
+    {
+      "name": "aParentAnotherRepositoryLoadedIsKeyedPerRepository",
+      "request": {
+        "repositories": [
+          {"id": "app", "complete": false, "commits": [
+            {"hash": "aaa2", "parentHashes": ["eee1"], "timestamp": 200}
+          ]},
+          {"id": "lib", "complete": true, "commits": [
+            {"hash": "eee1", "timestamp": 100}
+          ]}
+        ]
+      },
+      "response": {
+        "entries": [
+          {"repository": 0, "index": 0, "key": "aaa2", "parentKeys": ["eee1@app"]}
+        ],
+        "pending": [0]
+      }
+    },
+    {
+      "name": "aCommitWithoutADateStaysBesideTheOneBeforeIt",
+      "request": {
+        "repositories": [
+          {"id": "backend", "complete": true, "commits": [
+            {"hash": "aaa3", "parentHashes": ["aaa2"], "timestamp": 300},
+            {"hash": "aaa2", "parentHashes": ["aaa1"]},
+            {"hash": "aaa1", "timestamp": 100}
+          ]},
+          {"id": "frontend", "complete": true, "commits": [
+            {"hash": "bbb2", "timestamp": 250}
+          ]}
+        ]
+      },
+      "response": {
+        "entries": [
+          {"repository": 0, "index": 0, "key": "aaa3", "parentKeys": ["aaa2"]},
+          {"repository": 0, "index": 1, "key": "aaa2", "parentKeys": ["aaa1"]},
+          {"repository": 1, "index": 0, "key": "bbb2", "parentKeys": []},
+          {"repository": 0, "index": 2, "key": "aaa1", "parentKeys": []}
+        ],
+        "pending": []
+      }
+    },
+    {
+      "name": "aRepositoryKeepsGitsOrderEvenWhenItsDatesDoNot",
+      "request": {
+        "repositories": [
+          {"id": "backend", "complete": true, "commits": [
+            {"hash": "aaa2", "parentHashes": ["aaa1"], "timestamp": 100},
+            {"hash": "aaa1", "timestamp": 300}
+          ]},
+          {"id": "frontend", "complete": true, "commits": [
+            {"hash": "bbb1", "timestamp": 200}
+          ]}
+        ]
+      },
+      "response": {
+        "entries": [
+          {"repository": 1, "index": 0, "key": "bbb1", "parentKeys": []},
+          {"repository": 0, "index": 0, "key": "aaa2", "parentKeys": ["aaa1"]},
+          {"repository": 0, "index": 1, "key": "aaa1", "parentKeys": []}
+        ],
+        "pending": []
+      }
+    },
+    {
+      "name": "equalDatesGoInRequestOrder",
+      "request": {
+        "repositories": [
+          {"id": "frontend", "complete": true, "commits": [{"hash": "bbb1", "timestamp": 100}]},
+          {"id": "backend", "complete": true, "commits": [{"hash": "aaa1", "timestamp": 100}]}
+        ]
+      },
+      "response": {
+        "entries": [
+          {"repository": 0, "index": 0, "key": "bbb1", "parentKeys": []},
+          {"repository": 1, "index": 0, "key": "aaa1", "parentKeys": []}
+        ],
+        "pending": []
+      }
+    },
+    {
+      "name": "noRepositories",
+      "request": {"repositories": []},
+      "response": {"entries": [], "pending": []}
+    }
+  ],
+  "invalid": [
+    {
+      "name": "repeatedRepository",
+      "request": {"repositories": [
+        {"id": "a", "complete": true, "commits": []},
+        {"id": "a", "complete": true, "commits": []}
+      ]}
+    },
+    {
+      "name": "absoluteRepositoryId",
+      "request": {"repositories": [{"id": "/w/a", "complete": true, "commits": []}]}
+    },
+    {
+      "name": "repeatedCommitInOneRepository",
+      "request": {"repositories": [{"id": "a", "complete": true, "commits": [
+        {"hash": "aaa1", "timestamp": 1},
+        {"hash": "aaa1", "timestamp": 1}
+      ]}]}
+    },
+    {
+      "name": "hashThatIsNoObjectName",
+      "request": {"repositories": [{"id": "a", "complete": true, "commits": [{"hash": "HEAD", "timestamp": 1}]}]}
+    },
+    {
+      "name": "parentThatIsNoObjectName",
+      "request": {"repositories": [{"id": "a", "complete": true, "commits": [
+        {"hash": "aaa1", "parentHashes": ["aaa0@b"], "timestamp": 1}
+      ]}]}
+    },
+    {
+      "name": "missingComplete",
+      "request": {"repositories": [{"id": "a", "commits": []}]}
+    },
+    {
+      "name": "unknownField",
+      "request": {"repositories": [], "cursor": "x"}
+    }
+  ]
+}

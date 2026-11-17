@@ -1,4 +1,4 @@
-//! Merging the shared, local and detected layers of a configuration.
+//! Merging the shared, local and generated layers of a configuration.
 
 use super::*;
 
@@ -139,35 +139,10 @@ fn merge_configuration_value(existing: &mut Value, item: &Value) -> Result<(), C
     Ok(())
 }
 
-/// Reconciles runtime bindings from the effective command for generated v2
-/// documents written before detectors declared their consumption explicitly.
-pub(crate) fn normalize_runtime_consumption(configurations: &mut [RunConfiguration]) {
-    for configuration in configurations {
-        let command = configuration
-            .command
-            .as_deref()
-            .unwrap_or("")
-            .to_ascii_lowercase();
-        if matches!(
-            command.as_str(),
-            "npm" | "npm.cmd" | "pnpm" | "pnpm.cmd" | "yarn" | "yarn.cmd"
-        ) {
-            configuration
-                .toolchains
-                .entry("runtime".to_string())
-                .or_insert_with(|| "project-node".to_string());
-        } else if matches!(command.as_str(), "bun" | "bun.exe")
-            && configuration.toolchains.get("runtime").map(String::as_str) == Some("project-node")
-        {
-            configuration.toolchains.remove("runtime");
-        }
-    }
-}
-
 /// Deep-merges the `extensions` object one namespace at a time.
 ///
-/// A shallow insert would let a layer that touches a single `build-run` key
-/// drop the whole `npm` namespace it never mentioned.
+/// A shallow insert would let a layer that touches one namespace drop the
+/// other namespaces it never mentioned.
 pub(crate) fn merge_extensions(
     target: &mut serde_json::Map<String, Value>,
     patch: &mut Value,

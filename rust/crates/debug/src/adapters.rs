@@ -204,7 +204,7 @@ pub struct DeclarationContext<'a> {
     pub declared_settings: &'a DeclaredSettings,
     /// Language IDs of the plugin's `languageServers[]`.
     pub language_servers: &'a BTreeSet<String>,
-    /// Whether tool names are host runtimes or tool-definition IDs.
+    /// The tool-definition IDs in `requiresTools` that a process may name.
     pub runtime_tools: lithe_plugin_model::process::RuntimeTools<'a>,
 }
 

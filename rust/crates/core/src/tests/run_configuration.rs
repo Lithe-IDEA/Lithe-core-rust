@@ -1,4 +1,4 @@
-use super::support::{seed_generated, seed_requirements, temporary_root};
+use super::support::{seed_generated, temporary_root};
 use crate::execute_json;
 use serde_json::Value;
 use std::fs;
@@ -447,177 +447,37 @@ fn run_configuration_inspect_reports_malformed_and_unsupported_documents() {
 }
 
 #[test]
-fn run_configuration_inspection_summarizes_changed_inputs() {
-    let root = temporary_root("run-config-input-summary");
-    fs::create_dir_all(root.join("src")).unwrap();
-    fs::write(root.join("src/app.txt"), "app").unwrap();
-    fs::write(root.join("package.json"), r#"{"name":"demo"}"#).unwrap();
-    let generated = generate_run_configuration(&root, &["src/app.txt"]);
-    let generated_again = generate_run_configuration(&root, &["src/app.txt"]);
-    assert_eq!(generated, generated_again);
-    write_generated_run_document(&root, &generated);
-    fs::write(root.join("package.json"), r#"{"name":"renamed"}"#).unwrap();
-
-    let inspected = inspect_run_configuration(&root);
-    assert_eq!(
-        inspected["diagnostics"][0]["message"],
-        "Project inputs changed: 0 added, 0 removed, 1 modified"
-    );
-
-    fs::remove_dir_all(root).unwrap();
-}
-
-fn generate_run_configuration(root: &std::path::Path, paths: &[&str]) -> Value {
-    let payload = serde_json::json!({ "root": root, "paths": paths, "modulePaths": [] });
-    let response: Value = serde_json::from_str(&execute_json(
-        &serde_json::json!({ "id": "generate", "command": "runConfig.generate", "payload": payload })
-            .to_string(),
-    ))
-    .unwrap();
-    assert_eq!(response["ok"], true, "{response}");
-    response["data"]["generated"].clone()
-}
-
-fn write_generated_run_document(root: &std::path::Path, generated: &Value) {
+fn run_configuration_resolve_rejects_unsafe_working_directories() {
+    let root = temporary_root("run-config-unsafe-paths");
     fs::create_dir_all(root.join(".lithe/run")).unwrap();
-    seed_generated(root, serde_json::to_string(generated).unwrap());
-}
-
-fn inspect_run_configuration(root: &std::path::Path) -> Value {
-    let payload = serde_json::json!({ "root": root });
-    let response: Value = serde_json::from_str(&execute_json(
-        &serde_json::json!({ "id": "inspect", "command": "runConfig.inspect", "payload": payload })
-            .to_string(),
-    ))
-    .unwrap();
-    assert_eq!(response["ok"], true, "{response}");
-    response["data"].clone()
-}
-
-#[test]
-fn run_configuration_resolve_matches_toolchains_and_rejects_unsafe_paths() {
-    let root = temporary_root("run-config-toolchain-resolution");
-    fs::create_dir_all(root.join(".lithe/run")).unwrap();
-    fs::create_dir_all(root.join(".lithe/toolchains")).unwrap();
     seed_generated(
         &root,
         r#"{"version":1,"configurations":[{"id":"current-file","name":"Current File","type":"example.current-file","toolchains":{"runtime":"project-runtime"}}]}"#,
     );
-    seed_requirements(
-        &root,
-        r#"{"version":1,"toolchains":{"project-runtime":{"type":"runtime","minimumVersion":"21","preferredVendor":"temurin"}}}"#,
-    );
 
-    let resolve = |version: &str, vendor: &str| -> Value {
+    let resolve = || -> Value {
         serde_json::from_str(&execute_json(
             &serde_json::json!({
-                "id": "resolve-toolchains",
+                "id": "resolve-unsafe-paths",
                 "command": "runConfig.resolve",
-                "payload": {
-                    "root": root,
-                    "toolchainCandidates": [{
-                        "id": "project-runtime",
-                        "type": "runtime",
-                        "version": version,
-                        "vendor": vendor
-                    }]
-                }
+                "payload": {"root": root}
             })
             .to_string(),
         ))
         .unwrap()
     };
-    let mismatch = resolve("17.0.12", "Zulu");
-    assert!(mismatch["data"]["diagnostics"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|value| value["code"] == "toolchainVersionMismatch"));
-    assert!(mismatch["data"]["diagnostics"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|value| value["code"] == "toolchainVendorMismatch"));
-
-    let matching = resolve("21.0.5", "Eclipse Temurin");
-    assert!(matching["data"]["diagnostics"]
-        .as_array()
-        .unwrap()
-        .is_empty());
+    let safe = resolve();
+    assert_eq!(safe["ok"], true, "{safe}");
+    assert!(safe["data"]["diagnostics"].as_array().unwrap().is_empty());
 
     fs::write(
         root.join(".lithe/run/local.json"),
         r#"{"version":1,"configurations":[{"id":"current-file","workingDirectory":"../outside"}]}"#,
     )
     .unwrap();
-    let unsafe_path = resolve("21.0.5", "Eclipse Temurin");
+    let unsafe_path = resolve();
     assert_eq!(unsafe_path["ok"], false);
     assert_eq!(unsafe_path["error"]["code"], "invalid_request");
-
-    fs::remove_dir_all(root).unwrap();
-}
-
-#[test]
-fn legacy_v2_runtime_requirements_are_reconciled_without_regeneration() {
-    let root = temporary_root("run-config-legacy-runtime-consumption");
-    fs::create_dir_all(root.join(".lithe/run")).unwrap();
-    fs::create_dir_all(root.join(".lithe/toolchains")).unwrap();
-    fs::create_dir_all(root.join("web")).unwrap();
-    fs::create_dir_all(root.join("bun-web")).unwrap();
-    seed_generated(
-        &root,
-        r#"{"version":2,"configurations":[
-            {"id":"service","name":"backend","provider":"build.service","execution":"service","cwd":".","toolchains":{"runtime":"project-runtime","build":"project-build"}},
-            {"id":"npm","name":"web","provider":"npm.script","execution":"service","command":"npm","args":["run","dev"],"cwd":"web","toolchains":{}},
-            {"id":"bun","name":"bun web","provider":"npm.script","execution":"service","command":"bun","args":["run","dev"],"cwd":"bun-web","toolchains":{"runtime":"project-node"}}
-        ]}"#,
-    );
-    seed_requirements(
-        &root,
-        r#"{"version":1,"toolchains":{
-            "project-runtime":{"type":"runtime"},
-            "project-build":{"type":"build-tool"},
-            "project-node":{"type":"node","minimumVersion":"22"}
-        }}"#,
-    );
-
-    let resolved: Value = serde_json::from_str(&execute_json(
-        &serde_json::json!({
-            "id": "resolve-legacy-runtime-consumption",
-            "command": "runConfig.resolve",
-            "payload": {
-                "root": root,
-                "toolchainCandidates": [
-                    {"id":"project-runtime","type":"runtime","version":"21","vendor":"Example"},
-                    {"id":"project-build","type":"build-tool","version":"3.9.9","vendor":""}
-                ]
-            }
-        })
-        .to_string(),
-    ))
-    .unwrap();
-    assert_eq!(resolved["ok"], true, "{resolved}");
-    let node_diagnostics = resolved["data"]["diagnostics"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|diagnostic| diagnostic["toolchain"] == "project-node")
-        .collect::<Vec<_>>();
-    assert_eq!(node_diagnostics.len(), 1, "{resolved}");
-    assert_eq!(node_diagnostics[0]["id"], "npm");
-    let configurations = resolved["data"]["configurations"].as_array().unwrap();
-    assert_eq!(
-        configurations
-            .iter()
-            .find(|configuration| configuration["id"] == "npm")
-            .unwrap()["toolchains"]["runtime"],
-        "project-node"
-    );
-    assert!(configurations
-        .iter()
-        .find(|configuration| configuration["id"] == "bun")
-        .unwrap()["toolchains"]["runtime"]
-        .is_null());
 
     fs::remove_dir_all(root).unwrap();
 }
@@ -642,68 +502,6 @@ fn shared_run_configuration_fixtures_have_the_versioned_contract_shape() {
         }
     }
     assert!(fixture_count >= 6);
-}
-
-#[test]
-fn shared_hybrid_fixture_executes_scoped_toolchain_expectations() {
-    let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../fixtures/run-configuration/hybrid-service-web.json");
-    let fixture: Value = serde_json::from_str(&fs::read_to_string(fixture_path).unwrap()).unwrap();
-    let root = temporary_root("run-config-hybrid-fixture");
-    fs::create_dir_all(root.join(".lithe/run")).unwrap();
-    fs::create_dir_all(root.join(".lithe/toolchains")).unwrap();
-    seed_generated(&root, serde_json::to_string(&fixture["generated"]).unwrap());
-    seed_requirements(
-        &root,
-        serde_json::to_string(&fixture["requirements"]).unwrap(),
-    );
-
-    let resolved: Value = serde_json::from_str(&execute_json(
-        &serde_json::json!({
-            "id": "resolve-hybrid-fixture",
-            "command": "runConfig.resolve",
-            "payload": {
-                "root": root,
-                "toolchainCandidates": [
-                    {"id":"project-runtime","type":"runtime","version":"21","vendor":"Example"},
-                    {"id":"project-build","type":"build-tool","version":"3.9.9","vendor":""}
-                ]
-            }
-        })
-        .to_string(),
-    ))
-    .unwrap();
-    assert_eq!(resolved["ok"], true, "{resolved}");
-    let missing_node_ids = resolved["data"]["diagnostics"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|diagnostic| diagnostic["toolchain"] == "project-node")
-        .filter_map(|diagnostic| diagnostic["id"].as_str())
-        .collect::<Vec<_>>();
-    assert_eq!(
-        missing_node_ids,
-        fixture["expected"]["missingNodeDiagnosticConfigurationIds"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter_map(Value::as_str)
-            .collect::<Vec<_>>()
-    );
-    for id in fixture["expected"]["unblockedConfigurationIds"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(Value::as_str)
-    {
-        assert!(resolved["data"]["diagnostics"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|diagnostic| diagnostic["id"] != id));
-    }
-
-    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
@@ -751,7 +549,11 @@ fn migration_leaves_sidecar_documents_at_their_own_version() {
         r#"{"version":1,"defaultRunConfiguration":"current-file"}"#,
     )
     .unwrap();
-    seed_requirements(&root, r#"{"version":1,"toolchains":{}}"#);
+    fs::write(
+        root.join(".lithe/toolchains/local.json"),
+        r#"{"version":1,"toolchains":{}}"#,
+    )
+    .unwrap();
 
     let resolved: Value = serde_json::from_str(&execute_json(
         &serde_json::json!({
@@ -841,96 +643,6 @@ fn toolchain_backed_process_uses_the_generic_runtime_binding() {
         serde_json::json!(["run", "./cmd/api"])
     );
     assert_eq!(plan["data"]["env"]["APP_ENV"], "dev");
-
-    fs::remove_dir_all(root).unwrap();
-}
-
-#[test]
-fn pure_go_generation_adds_no_current_file_configuration() {
-    let root = temporary_root("pure-go-generation");
-    fs::create_dir_all(&root).unwrap();
-    fs::write(root.join("go.mod"), "module example.com/api\n\ngo 1.24\n").unwrap();
-    fs::write(root.join("main.go"), "package main\nfunc main() {}\n").unwrap();
-
-    let generated: Value = serde_json::from_str(&execute_json(
-        &serde_json::json!({
-            "id": "generate-pure-go",
-            "command": "runConfig.generate",
-            "payload": {"root": root, "paths": ["go.mod", "main.go"], "modulePaths": []}
-        })
-        .to_string(),
-    ))
-    .unwrap();
-    assert_eq!(generated["ok"], true, "{generated}");
-    let configurations = generated["data"]["generated"]["configurations"]
-        .as_array()
-        .unwrap();
-    assert!(configurations
-        .iter()
-        .any(|value| value["provider"] == "go.main"));
-    assert!(!configurations
-        .iter()
-        .any(|value| value["id"] == "current-file"));
-
-    fs::remove_dir_all(root).unwrap();
-}
-
-#[test]
-fn multi_language_generation_declares_only_consumed_runtime_requirements() {
-    let root = temporary_root("generic-toolchain-requirements");
-    for directory in ["python", "web", "worker/src"] {
-        fs::create_dir_all(root.join(directory)).unwrap();
-    }
-    fs::write(root.join("go.mod"), "module example.com/api\n\ngo 1.24\n").unwrap();
-    fs::write(root.join("main.go"), "package main\nfunc main() {}\n").unwrap();
-    fs::write(
-        root.join("python/pyproject.toml"),
-        "[project]\nname = \"api\"\nrequires-python = \">=3.12\"\n[project.scripts]\napi = \"api:main\"\n",
-    )
-    .unwrap();
-    fs::write(
-        root.join("web/package.json"),
-        r#"{"engines":{"node":">=22.4"},"scripts":{"dev":"vite"}}"#,
-    )
-    .unwrap();
-    fs::write(
-        root.join("worker/Cargo.toml"),
-        "[package]\nname = \"worker\"\nversion = \"0.1.0\"\nrust-version = \"1.82\"\n",
-    )
-    .unwrap();
-    fs::write(root.join("worker/src/main.rs"), "fn main() {}\n").unwrap();
-
-    let generated: Value = serde_json::from_str(&execute_json(
-        &serde_json::json!({
-            "id": "generate-generic-requirements",
-            "command": "runConfig.generate",
-            "payload": {"root": root}
-        })
-        .to_string(),
-    ))
-    .unwrap();
-    assert_eq!(generated["ok"], true, "{generated}");
-    let requirements = &generated["data"]["toolchainRequirements"]["toolchains"];
-    assert_eq!(
-        requirements["project-node"]["type"], "node",
-        "{requirements}"
-    );
-    assert_eq!(
-        requirements["project-node"]["minimumVersion"], "22.4",
-        "{requirements}"
-    );
-    for id in ["project-go", "project-python", "project-cargo"] {
-        assert!(requirements[id].is_null(), "{id}: {requirements}");
-    }
-    for provider in ["go.main", "python.script", "cargo.binary"] {
-        let configuration = generated["data"]["generated"]["configurations"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|configuration| configuration["provider"] == provider)
-            .unwrap();
-        assert!(configuration["toolchains"].as_object().unwrap().is_empty());
-    }
 
     fs::remove_dir_all(root).unwrap();
 }
@@ -1065,11 +777,11 @@ fn process_configurations_reject_path_qualified_commands() {
     fs::remove_dir_all(root).unwrap();
 }
 
-/// Without a default in `.lithe/project.json`, a framework service is chosen
-/// before a plain main class; a project default still wins when available.
+/// Without a default in `.lithe/project.json`, a generated service is chosen
+/// before a plain application; a project default still wins when available.
 #[test]
-fn resolve_chooses_detected_default_unless_the_project_names_one() {
-    let root = temporary_root("run-config-detected-default");
+fn resolve_chooses_generated_default_unless_the_project_names_one() {
+    let root = temporary_root("run-config-generated-default");
     struct Cleanup(PathBuf);
     impl Drop for Cleanup {
         fn drop(&mut self) {
@@ -1089,10 +801,10 @@ fn resolve_chooses_detected_default_unless_the_project_names_one() {
              "execution": "service", "toolchains": {}}
         ]}),
     );
-    let detected = run_config_command("runConfig.resolve", serde_json::json!({ "root": root }));
-    assert_eq!(detected["ok"], true, "{detected}");
+    let generated = run_config_command("runConfig.resolve", serde_json::json!({ "root": root }));
+    assert_eq!(generated["ok"], true, "{generated}");
     assert_eq!(
-        detected["data"]["defaultRunConfiguration"],
+        generated["data"]["defaultRunConfiguration"],
         "build.service:."
     );
 
@@ -1184,77 +896,6 @@ fn working_directory_override_must_name_an_existing_project_directory() {
     assert_eq!(document["configurations"][0]["cwd"], "backend");
 }
 
-#[test]
-fn shared_run_scan_excludes_caches_and_keeps_hidden_sources() {
-    let root = temporary_root("shared-run-scan");
-    struct Cleanup(PathBuf);
-    impl Drop for Cleanup {
-        fn drop(&mut self) {
-            fs::remove_dir_all(&self.0).unwrap();
-        }
-    }
-    fs::create_dir_all(&root).unwrap();
-    let _cleanup = Cleanup(root.clone());
-    // Core scans the workspace itself: cache directories are left out, a hidden
-    // source directory stays.
-    for path in [
-        ".sources/Makefile",
-        "src/Makefile",
-        ".pytest_cache/Makefile",
-        "node_modules/Makefile",
-        "target/Makefile",
-    ] {
-        let file = root.join(path);
-        fs::create_dir_all(file.parent().unwrap()).unwrap();
-        fs::write(file, "all:\n\ttrue\n").unwrap();
-    }
-    let call = |command, payload| -> Value {
-        let response: Value = serde_json::from_str(&execute_json(
-            &serde_json::json!({
-                "id": "scan", "command": command, "payload": payload
-            })
-            .to_string(),
-        ))
-        .unwrap();
-        assert_eq!(response["ok"], true, "{response}");
-        response["data"].clone()
-    };
-    let generated = call("runConfig.generate", serde_json::json!({"root": root}));
-    let inputs = generated["generated"]["generator"]["inputs"]
-        .as_object()
-        .unwrap();
-    assert!(inputs.contains_key(".sources/Makefile"));
-    assert!(inputs.contains_key("src/Makefile"));
-    assert!(!inputs.keys().any(|path| {
-        path.starts_with(".pytest_cache/")
-            || path.starts_with("node_modules/")
-            || path.starts_with("target/")
-    }));
-    let mut document = generated["generated"].clone();
-    // A persisted incomplete baseline cannot certify freshness or infer deletion,
-    // even after the previously inaccessible directory becomes readable again.
-    document["generator"]["unreadablePaths"] = serde_json::json!(["blocked"]);
-    fs::create_dir_all(root.join(".lithe/run")).unwrap();
-    seed_generated(&root, document.to_string());
-    for full in [false, true] {
-        let inspected = call(
-            "runConfig.inspect",
-            serde_json::json!({"root": root, "checkFingerprint": full}),
-        );
-        assert_eq!(inspected["status"], "ready");
-        assert!(inspected["diagnostics"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|d| d["code"] == "incompleteProjectScan"));
-        assert!(!inspected["diagnostics"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|d| d["code"] == "staleFingerprint"));
-    }
-}
-
 /// Saving a selector never stores an executable, generates a model, or loses local defaults.
 #[test]
 fn build_provider_configurations_persist_before_generation_and_reuse_identity() {
@@ -1305,10 +946,7 @@ fn build_provider_configurations_persist_before_generation_and_reuse_identity() 
     document["configurations"][0]["extensions"]["annotations"] =
         serde_json::json!({"label":"keep user metadata"});
     fs::write(&local, document.to_string()).unwrap();
-    let inspected = call(
-        "runConfig.inspect",
-        serde_json::json!({"root":root,"checkFingerprint":false}),
-    );
+    let inspected = call("runConfig.inspect", serde_json::json!({"root":root}));
     assert_eq!(
         inspected["data"]["status"], fixture["expected"]["inspectionStatus"],
         "{inspected}"
@@ -1317,10 +955,7 @@ fn build_provider_configurations_persist_before_generation_and_reuse_identity() 
         inspected["data"]["requiresGeneration"],
         fixture["expected"]["requiresGeneration"]
     );
-    let resolved = call(
-        "runConfig.resolve",
-        serde_json::json!({"root":root,"toolchainCandidates":[]}),
-    );
+    let resolved = call("runConfig.resolve", serde_json::json!({"root":root}));
     assert_eq!(resolved["ok"], true, "{resolved}");
     assert_eq!(
         resolved["data"]["configurations"].as_array().unwrap().len(),
@@ -1428,10 +1063,7 @@ fn explicit_provider_references_keep_arbitrary_ids_and_shadow_only_current_selec
     let team_path = root.join(".lithe/run/configurations.json");
     let local_path = root.join(".lithe/run/local.json");
     fs::write(&team_path, team.to_string()).unwrap();
-    let inspected = call(
-        "runConfig.inspect",
-        serde_json::json!({"root":root,"checkFingerprint":false}),
-    );
+    let inspected = call("runConfig.inspect", serde_json::json!({"root":root}));
     assert_eq!(inspected["status"], "ready");
     assert_eq!(inspected["requiresGeneration"], true);
     let before = call("runConfig.resolve", serde_json::json!({"root":root}));
@@ -1445,7 +1077,7 @@ fn explicit_provider_references_keep_arbitrary_ids_and_shadow_only_current_selec
     second["targetID"] = serde_json::json!("another/opaque-target");
     let generated = call(
         "runConfig.generate",
-        serde_json::json!({"root":root,"paths":[],"projectOwnership":[],"providerRuns":[
+        serde_json::json!({"root":root,"providerRuns":[
             {"projectPath":"app","name":"Auto A","reference":reference},{"projectPath":"app","name":"Auto B","reference":second}
         ]}),
     );
@@ -1727,7 +1359,7 @@ fn provider_run_options_reject_malformed_or_oversized_values() {
 }
 
 /// A build provider owns discovery; regenerating labels must retain user choices,
-/// while withdrawing a target must not resurrect it from the previous detected layer.
+/// while withdrawing a target must not resurrect it from the previous generated layer.
 #[test]
 fn generic_provider_runs_regenerate_without_language_facts_and_keep_stable_overrides() {
     let root = temporary_root("generic-provider-generation");
@@ -1752,7 +1384,7 @@ fn generic_provider_runs_regenerate_without_language_facts_and_keep_stable_overr
         call(
             "runConfig.generate",
             serde_json::json!({
-                "root":root,"paths":[],"projectOwnership":[],"providerRuns":runs
+                "root":root,"providerRuns":runs
             }),
         )
     };
@@ -1868,7 +1500,7 @@ fn provider_launch_inputs_preserve_document_layers_and_current_selector() {
     let inspect = || -> Value {
         serde_json::from_str(&execute_json(
             &serde_json::json!({"id":"inspect-launch-inputs","command":"runConfig.inspect",
-            "payload":{"root":root,"checkFingerprint":false}})
+            "payload":{"root":root}})
             .to_string(),
         ))
         .unwrap()
@@ -1932,4 +1564,83 @@ fn provider_launch_inputs_require_a_typed_reference_after_domain_migration() {
         assert_eq!(reply["error"]["code"], "invalid_request");
     }
     assert!(!root.join(".lithe/run/local.json").exists());
+}
+
+/// Generation materializes only the provider runs. Names that repeat across
+/// roots are qualified by the root they run in, and inspection reports a layer
+/// generated from another provider snapshot as stale.
+#[test]
+fn provider_run_generation_qualifies_repeated_names_and_reports_stale_snapshots() {
+    let root = temporary_root("provider-run-generation");
+    for directory in ["services/api", "services/worker", "tools"] {
+        fs::create_dir_all(root.join(directory)).unwrap();
+    }
+    struct Cleanup(PathBuf);
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    let _cleanup = Cleanup(root.clone());
+    let call = |command: &str, payload: Value| -> Value {
+        let result: Value = serde_json::from_str(&execute_json(
+            &serde_json::json!({"id":"provider-runs","command":command,"payload":payload})
+                .to_string(),
+        ))
+        .unwrap();
+        assert_eq!(result["ok"], true, "{result}");
+        result["data"].clone()
+    };
+    let run = |root: &str, name: &str, target: &str| {
+        serde_json::json!({"projectPath":root,"name":name,"reference":{
+            "pluginID":"dev.lithe.test.engine","buildSystemID":"engine","root":root,
+            "run":"serve","projectID":root,"targetID":target,"userArguments":[]}})
+    };
+    let runs = serde_json::json!([
+        run("services/api", "serve", "api"),
+        run("services/worker", "serve", "worker"),
+        run("tools", "lint", "lint"),
+    ]);
+
+    let generated = call(
+        "runConfig.generate",
+        serde_json::json!({"root":root,"providerRuns":runs}),
+    );
+    assert_eq!(generated["entryCount"], 3);
+    let mut names = generated["generated"]["configurations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| {
+            assert_eq!(item["provider"], "build.provider");
+            item["name"].as_str().unwrap().to_string()
+        })
+        .collect::<Vec<_>>();
+    names.sort();
+    assert_eq!(
+        names,
+        ["lint", "serve (services/api)", "serve (services/worker)"]
+    );
+
+    let stale = |runs: Value| -> bool {
+        call(
+            "runConfig.inspect",
+            serde_json::json!({"root":root,"providerRuns":runs}),
+        )["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["code"] == "staleProviderModel")
+    };
+    assert!(!stale(runs.clone()));
+    assert!(stale(serde_json::json!([run("tools", "lint", "lint")])));
+
+    // Without a provider snapshot Core has nothing to generate.
+    let empty = call("runConfig.generate", serde_json::json!({"root":root}));
+    assert_eq!(empty["entryCount"], 0);
+    assert!(empty["generated"]["configurations"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    assert!(!root.join(".lithe").exists());
 }

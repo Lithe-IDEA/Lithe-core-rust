@@ -3,7 +3,9 @@
 //! Roots are found from static markers only, so opening a workspace never
 //! starts a provider. One bounded walk serves every provider: it records the
 //! markers directly inside each directory, never descends into a VCS's own
-//! metadata directory or through a symbolic link, and stops at a depth and
+//! metadata directory, a directory the default visibility rules hide (Core's
+//! own folders and the folder names the enabled plugins declare, such as
+//! `target`) or through a symbolic link, and stops at a depth and
 //! directory budget. When the workspace root itself carries no marker, its
 //! ancestors are checked too, because a Subversion working copy has a single
 //! `.svn` at its top and a workspace may be opened below it.
@@ -14,6 +16,7 @@
 
 use super::manifest::{MarkerKind, VcsMarker};
 use super::model::is_root_relative;
+use lithe_core_rules::visibility::VisibilityRules;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fs::{self, FileType};
 use std::path::{Path, PathBuf};
@@ -22,37 +25,6 @@ use std::path::{Path, PathBuf};
 const MAX_DEPTH: usize = 8;
 /// Most directories one detection reads before reporting a partial result.
 const MAX_DIRECTORIES: usize = 20_000;
-
-/// Directories that hold generated or downloaded files and never a working
-/// copy worth tracking, and whose size would dominate the walk. Lithe's own
-/// worktrees are pruned so they are not listed as nested repositories.
-const PRUNED: &[&str] = &[
-    ".build",
-    ".cargo",
-    ".dart_tool",
-    ".gradle",
-    ".idea",
-    ".lithe",
-    ".mypy_cache",
-    ".next",
-    ".nuxt",
-    ".pytest_cache",
-    ".stack-work",
-    ".svelte-kit",
-    ".swiftpm",
-    ".terraform",
-    ".tox",
-    ".venv",
-    ".vscode",
-    ".worktree",
-    ".worktrees",
-    "DerivedData",
-    "Pods",
-    "__pycache__",
-    "bower_components",
-    "node_modules",
-    "target",
-];
 
 /// The markers of one VCS, as detection sees them.
 pub(crate) struct MarkerSet<'a> {
@@ -206,6 +178,7 @@ pub(crate) fn detect(workspace: &Path, sets: &[MarkerSet<'_>], mappings: &[Mappi
         .filter(|marker| marker.kind == MarkerKind::Directory)
         .map(|marker| marker.name.as_str())
         .collect();
+    let hidden = VisibilityRules::new(Vec::new(), Vec::new());
     let mut found: BTreeMap<String, (PathBuf, BTreeSet<String>)> = BTreeMap::new();
     let mut truncated = false;
     let mut visited = 0usize;
@@ -239,7 +212,6 @@ pub(crate) fn detect(workspace: &Path, sets: &[MarkerSet<'_>], mappings: &[Mappi
             if !file_type.is_dir()
                 || level == MAX_DEPTH
                 || metadata_directories.contains(name.as_str())
-                || PRUNED.contains(&name.as_str())
             {
                 continue;
             }
@@ -248,6 +220,9 @@ pub(crate) fn detect(workspace: &Path, sets: &[MarkerSet<'_>], mappings: &[Mappi
             } else {
                 format!("{relative}/{name}")
             };
+            if hidden.is_hidden(&child, true) {
+                continue;
+            }
             queue.push_back((path, child, level + 1));
         }
         if !here.is_empty() {

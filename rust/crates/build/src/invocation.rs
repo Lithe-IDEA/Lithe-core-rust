@@ -14,7 +14,7 @@ use super::manifest::{
 use super::BuildManifest;
 use lithe_plugin_model::executables::ordered_indices;
 use lithe_plugin_model::{
-    reported_version, validate_minimum_version, version_components, PluginRejection, Validation,
+    validate_minimum_version, version_components, PluginRejection, Validation,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -67,19 +67,6 @@ fn candidates(
         }).collect()
 }
 
-/// Arguments that make a host-managed runtime print its version and exit.
-/// Core owns them so hosts use the same probe, for build runtimes and for
-/// plugin launch runtimes alike. Hosts capture stderr together with stdout
-/// before checking the declared minimum. A tool definition probes the
-/// runtimes it resolves itself, so other IDs have none.
-pub(crate) fn host_runtime_version_arguments(id: &str) -> Option<&'static [&'static str]> {
-    match id {
-        "go" => Some(&["version"]),
-        "node" => Some(&["--version"]),
-        _ => None,
-    }
-}
-
 fn runtime(
     runtime: &RuntimeDependency,
     root: &str,
@@ -87,28 +74,20 @@ fn runtime(
     manifest: &impl BuildManifest,
     settings: &BTreeMap<String, Value>,
 ) -> Validation<Value> {
-    let version = if runtime.is_host_managed() {
-        host_runtime_version_arguments(&runtime.id)
-            .map(|arguments| json!({ "arguments": arguments }))
-    } else {
-        runtime
-            .version
-            .as_ref()
-            .map(|probe| json!({ "arguments": probe.arguments }))
-    };
+    let version = runtime
+        .version
+        .as_ref()
+        .map(|probe| json!({ "arguments": probe.arguments }));
     // An implicit reference is the toolchain candidate of the tool
     // definition with the same ID; resolving it checks `minimumVersion`.
     let executables = if runtime.names_tool_definition() {
         vec![json!({ "kind": "toolchain", "toolchainID": runtime.id, "root": root })]
-    } else if runtime.is_host_managed() {
-        vec![json!({"kind":"runtime","runtime":runtime.id})]
     } else {
         candidates(&runtime.executables, root, platform, manifest, settings)?
     };
     Ok(json!({
         "id": runtime.id,
         "displayName": runtime.display_name,
-        "hostManaged": runtime.is_host_managed(),
         "pathVariable":format!("LITHE_{}_PATH",runtime.id.to_ascii_uppercase().replace('-',"_")),
         "minimumVersion": runtime.minimum_version,
         "executables": executables,
@@ -202,14 +181,10 @@ pub(crate) fn check_version(
                     ),
                 ));
             }
-            let found = if dependency.is_host_managed() {
-                reported_version(&request.output)
-            } else {
-                dependency
-                    .version
-                    .as_ref()
-                    .and_then(|probe: &VersionProbe| probe.version(&request.output))
-            };
+            let found = dependency
+                .version
+                .as_ref()
+                .and_then(|probe: &VersionProbe| probe.version(&request.output));
             (found, dependency.minimum_version.as_deref())
         }
     };

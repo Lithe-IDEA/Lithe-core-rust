@@ -20,7 +20,8 @@ use std::collections::{BTreeMap, BTreeSet};
 /// Version of the canonical `litheBuildModel` format.
 pub(crate) const CANONICAL_MODEL_VERSION: u32 = 0;
 pub(crate) const MAX_PROJECTS: usize = 2_000;
-const MAX_ITEMS: usize = 10_000;
+/// Most targets, tasks, or content roots one model holds.
+pub(crate) const MAX_ITEMS: usize = 10_000;
 const MAX_NAME: usize = 256;
 const MAX_PROPERTY_VALUE: usize = 1_024;
 /// Tags that name what a target is, in the order one of them becomes the

@@ -20,11 +20,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-/// Default workspace exclusions, also used by Git discovery for generated directories.
-/// The list lives in `lithe-core-rules`, the only definition every host shares.
-pub(crate) use lithe_core_rules::visibility::BUILT_IN_HIDDEN_DIRECTORIES;
+// The default workspace exclusions live in `lithe-core-rules`, the only definition every host
+// shares: Core's own folders and the folder names the enabled plugins declare.
 use lithe_core_rules::visibility::{
-    self as shared_visibility, disabled_built_ins, glob_matches, is_disabled_directory,
+    self as shared_visibility, default_hidden_directories, disabled_built_ins, glob_matches,
+    is_disabled_directory, plugin_generated_directories,
 };
 
 mod events;

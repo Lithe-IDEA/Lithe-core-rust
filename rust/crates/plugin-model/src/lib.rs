@@ -37,4 +37,4 @@ pub use rejection::{
     decode_payload, invalid, invalid_template, outcome, PluginRejection, Validation,
 };
 pub use template::{parse_template_with, regex_literal, TemplatePart};
-pub use version::{reported_version, validate_minimum_version, version_components, PluginVersion};
+pub use version::{validate_minimum_version, version_components, PluginVersion};

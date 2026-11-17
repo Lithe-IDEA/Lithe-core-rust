@@ -1317,3 +1317,240 @@ fn new_worktree_freezes_tracking_semantics() {
     );
     assert_no_upstream(&repository, "feature/from-commit");
 }
+
+fn workspace_push_preview(payload: Value) -> Value {
+    let request = json!({
+        "id": "test-git.workspacePushPreview",
+        "command": "git.workspacePushPreview",
+        "payload": payload
+    });
+    serde_json::from_str(&execute_json(
+        &serde_json::to_string(&request).expect("Core request should encode"),
+    ))
+    .expect("Core response should be JSON")
+}
+
+/// A repository with one commit on `main` and no remote.
+fn local_repository(directory: &Path) {
+    fs::create_dir_all(directory).expect("repository should be creatable");
+    require_git(directory, &["init", "-q"]);
+    require_git(directory, &["config", "user.email", "tests@lithe.local"]);
+    require_git(directory, &["config", "user.name", "Lithe Tests"]);
+    fs::write(directory.join("file.txt"), "initial\n").expect("fixture should be writable");
+    require_git(directory, &["add", "file.txt"]);
+    require_git(directory, &["commit", "-q", "-m", "initial"]);
+    require_git(directory, &["branch", "-M", "main"]);
+}
+
+fn commit_file(directory: &Path, name: &str, subject: &str) {
+    fs::write(directory.join(name), format!("{subject}\n")).expect("fixture should be writable");
+    require_git(directory, &["add", name]);
+    require_git(directory, &["commit", "-q", "-m", subject]);
+}
+
+fn binding(id: &str, root: &Path) -> Value {
+    json!({ "id": id, "root": root })
+}
+
+fn subjects(repository: &Value) -> Vec<String> {
+    repository["preview"]["commits"]
+        .as_array()
+        .expect("a preview lists its commits")
+        .iter()
+        .map(|commit| commit["subject"].as_str().unwrap_or_default().to_string())
+        .collect()
+}
+
+/// IDEA's Push dialog lists every repository of the project. Core says which can
+/// push and why the others cannot, and lists a submodule before the repository
+/// that records it, so pushing the checked ones in order passes
+/// `--recurse-submodules=check`.
+#[test]
+fn workspace_push_preview_reviews_every_repository_in_push_order() {
+    let fixture = GitFixture::new();
+    let (parent, _) = initialize_repository(&fixture);
+    let child = parent.join("child");
+    local_repository(&child);
+    add_bare_remote(&fixture, &child, "origin");
+    require_git(&child, &["push", "-q", "-u", "origin", "main"]);
+    commit_file(&child, "child.txt", "child work");
+    require_git(&parent, &["add", "child"]);
+    require_git(&parent, &["commit", "-q", "-m", "record child"]);
+
+    let current = fixture.root.join("current");
+    local_repository(&current);
+    add_bare_remote(&fixture, &current, "current-origin");
+    require_git(&current, &["push", "-q", "-u", "current-origin", "main"]);
+    let local = fixture.root.join("local");
+    local_repository(&local);
+    let empty = fixture.root.join("empty");
+    fs::create_dir_all(&empty).expect("repository should be creatable");
+    require_git(&empty, &["init", "-q", "-b", "main"]);
+    let detached = fixture.root.join("detached");
+    local_repository(&detached);
+    require_git(&detached, &["switch", "-q", "--detach"]);
+    let plain = fixture.root.join("plain");
+    fs::create_dir_all(&plain).expect("folder should be creatable");
+
+    let response = workspace_push_preview(json!({
+        "repositories": [
+            binding("repository", &parent),
+            binding("repository/child", &child),
+            binding("current", &current),
+            binding("local", &local),
+            binding("empty", &empty),
+            binding("detached", &detached),
+            binding("plain", &plain),
+        ]
+    }));
+    assert_eq!(response["ok"], true, "response: {response}");
+    let repositories = response["data"]["repositories"]
+        .as_array()
+        .expect("the response lists the repositories");
+    let ids: Vec<_> = repositories
+        .iter()
+        .map(|r| r["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        ids,
+        [
+            "repository/child",
+            "repository",
+            "current",
+            "local",
+            "empty",
+            "detached",
+            "plain"
+        ],
+        "a submodule pushes before the repository that records it"
+    );
+    let states: Vec<_> = repositories
+        .iter()
+        .map(|r| r["state"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        states,
+        [
+            "ready",
+            "ready",
+            "upToDate",
+            "noRemote",
+            "emptyRepository",
+            "detachedHead",
+            "failed"
+        ]
+    );
+    assert_eq!(subjects(&repositories[0]), ["child work"]);
+    assert_eq!(subjects(&repositories[1]), ["record child"]);
+    assert_eq!(repositories[1]["records"], json!(["repository/child"]));
+    assert_eq!(repositories[0]["records"], json!([]));
+    assert!(subjects(&repositories[2]).is_empty());
+    for (index, branch) in [
+        (0, "main"),
+        (1, "main"),
+        (2, "main"),
+        (3, "main"),
+        (4, "main"),
+    ] {
+        assert_eq!(
+            repositories[index]["branch"], branch,
+            "response: {response}"
+        );
+    }
+    assert!(repositories[5].get("branch").is_none());
+    assert!(repositories[3].get("preview").is_none());
+    assert!(repositories[6]["detail"]
+        .as_str()
+        .is_some_and(|d| !d.is_empty()));
+    assert!(repositories.iter().all(|r| r["needsTarget"] == false));
+
+    // Each preview is the review its repository's push is checked against. Pushed in
+    // the listed order, the parent passes the submodule check; before the child it
+    // would not.
+    let early = core(
+        "git.write",
+        &parent,
+        json!({
+            "operation": "push",
+            "checkSubmodules": true,
+            "expectedPush": workspace_expectation(&repositories[1]),
+        }),
+    );
+    assert_eq!(early["ok"], true, "response: {early}");
+    assert_ne!(early["data"]["exitCode"], 0, "response: {early}");
+    assert!(
+        early["data"]["stderr"]
+            .as_str()
+            .is_some_and(|stderr| stderr.contains("child")),
+        "Git names the submodule it could not find: {early}"
+    );
+    for (repository, root) in [(&repositories[0], &child), (&repositories[1], &parent)] {
+        let pushed = core(
+            "git.write",
+            root,
+            json!({
+                "operation": "push",
+                "checkSubmodules": true,
+                "expectedPush": workspace_expectation(repository),
+            }),
+        );
+        assert_eq!(pushed["ok"], true, "response: {pushed}");
+        assert_eq!(pushed["data"]["exitCode"], 0, "response: {pushed}");
+    }
+    let again = workspace_push_preview(json!({
+        "repositories": [binding("repository", &parent), binding("repository/child", &child)]
+    }));
+    let states: Vec<_> = again["data"]["repositories"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["state"].as_str().unwrap())
+        .collect();
+    assert_eq!(states, ["upToDate", "upToDate"], "response: {again}");
+}
+
+fn workspace_expectation(repository: &Value) -> Value {
+    push_expectation(&json!({ "data": repository["preview"] }))
+}
+
+/// A divergent upstream is still reviewed, but marked as needing a destination
+/// until the request picks one for that repository.
+#[test]
+fn workspace_push_preview_asks_for_a_divergent_destination() {
+    let fixture = GitFixture::new();
+    let (repository, _) = divergent_feature_branch(&fixture);
+    let unanswered = workspace_push_preview(json!({
+        "repositories": [binding("topic", &repository)]
+    }));
+    let review = &unanswered["data"]["repositories"][0];
+    assert_eq!(review["state"], "ready", "response: {unanswered}");
+    assert_eq!(review["needsTarget"], true, "response: {unanswered}");
+    assert_eq!(review["preview"]["targetKind"], "divergent");
+
+    let answered = workspace_push_preview(json!({
+        "repositories": [binding("topic", &repository)],
+        "pushTargets": { "topic": "upstream" }
+    }));
+    let review = &answered["data"]["repositories"][0];
+    assert_eq!(review["needsTarget"], false, "response: {answered}");
+    assert_eq!(review["preview"]["remoteBranch"], "main");
+}
+
+#[test]
+fn workspace_push_preview_rejects_requests_discovery_cannot_produce() {
+    let fixture = GitFixture::new();
+    let (repository, _) = initialize_repository(&fixture);
+    for payload in [
+        json!({ "repositories": [binding("a", &repository), binding("a", &fixture.root)] }),
+        json!({ "repositories": [binding("a", &repository)], "pushTags": "some" }),
+        json!({ "repositories": [binding("a", &repository)], "pushTargets": { "b": "publish" } }),
+        json!({ "repositories": [binding("a", &repository)], "unknown": true }),
+    ] {
+        let response = workspace_push_preview(payload.clone());
+        assert_eq!(response["ok"], false, "payload: {payload}");
+        assert_eq!(
+            response["error"]["code"], "invalid_request",
+            "payload: {payload}"
+        );
+    }
+}

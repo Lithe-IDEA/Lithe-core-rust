@@ -11,10 +11,10 @@ pub struct WorkspaceSnapshotRequest {
     /// Explicit roots of this workspace; nested roots own their inventories independently.
     #[serde(default)]
     pub workspace_roots: Vec<String>,
-    /// Extra directory names hidden from the tree, on top of the built-in ones.
+    /// Extra directory names hidden from the tree, on top of the default ones.
     #[serde(default)]
     pub hidden_directory_names: Vec<String>,
-    /// Hidden-path globs; `!` lines turn built-in hidden folders back on.
+    /// Hidden-path globs; `!` lines turn default hidden folders back on.
     #[serde(default)]
     pub hidden_file_patterns: Vec<String>,
     /// When false, the response keeps only the file list and returns `root`
@@ -37,10 +37,10 @@ pub struct DirectoryListingRequest {
     /// Workspace-relative directories; an empty string is the root itself.
     #[serde(default)]
     pub paths: Vec<String>,
-    /// Extra directory names hidden from the tree, on top of the built-in ones.
+    /// Extra directory names hidden from the tree, on top of the default ones.
     #[serde(default)]
     pub hidden_directory_names: Vec<String>,
-    /// Hidden-path globs; `!` lines turn built-in hidden folders back on.
+    /// Hidden-path globs; `!` lines turn default hidden folders back on.
     #[serde(default)]
     pub hidden_file_patterns: Vec<String>,
 }
@@ -83,10 +83,10 @@ pub struct SearchRequest {
     /// Search Everywhere may discover generated file names without indexing their contents.
     #[serde(default)]
     pub include_generated_file_names: bool,
-    /// Extra directory names hidden from the tree, on top of the built-in ones.
+    /// Extra directory names hidden from the tree, on top of the default ones.
     #[serde(default)]
     pub hidden_directory_names: Vec<String>,
-    /// Hidden-path globs; `!` lines turn built-in hidden folders back on.
+    /// Hidden-path globs; `!` lines turn default hidden folders back on.
     #[serde(default)]
     pub hidden_file_patterns: Vec<String>,
     /// Comma-separated file masks such as `*.md, *.txt`; empty means no filter.
@@ -119,10 +119,10 @@ pub struct SearchIndexRequest {
     /// Explicit workspace roots used when warming this index variant.
     #[serde(default)]
     pub workspace_roots: Vec<String>,
-    /// Extra directory names hidden from the tree, on top of the built-in ones.
+    /// Extra directory names hidden from the tree, on top of the default ones.
     #[serde(default)]
     pub hidden_directory_names: Vec<String>,
-    /// Hidden-path globs; `!` lines turn built-in hidden folders back on.
+    /// Hidden-path globs; `!` lines turn default hidden folders back on.
     #[serde(default)]
     pub hidden_file_patterns: Vec<String>,
 }
@@ -139,10 +139,10 @@ pub struct SearchIndexUpdateRequest {
     /// Workspace-relative paths that changed on disk.
     #[serde(default)]
     pub paths: Vec<String>,
-    /// Extra directory names hidden from the tree, on top of the built-in ones.
+    /// Extra directory names hidden from the tree, on top of the default ones.
     #[serde(default)]
     pub hidden_directory_names: Vec<String>,
-    /// Hidden-path globs; `!` lines turn built-in hidden folders back on.
+    /// Hidden-path globs; `!` lines turn default hidden folders back on.
     #[serde(default)]
     pub hidden_file_patterns: Vec<String>,
 }
@@ -196,10 +196,10 @@ pub struct ReplacementPreviewRequest {
     /// Unsaved editor text by workspace-relative path, used instead of the file on disk.
     #[serde(default)]
     pub text_overrides: HashMap<String, String>,
-    /// Extra directory names hidden from the tree, on top of the built-in ones.
+    /// Extra directory names hidden from the tree, on top of the default ones.
     #[serde(default)]
     pub hidden_directory_names: Vec<String>,
-    /// Hidden-path globs; `!` lines turn built-in hidden folders back on.
+    /// Hidden-path globs; `!` lines turn default hidden folders back on.
     #[serde(default)]
     pub hidden_file_patterns: Vec<String>,
 }

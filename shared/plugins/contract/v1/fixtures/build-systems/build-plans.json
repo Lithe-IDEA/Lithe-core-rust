@@ -462,7 +462,7 @@
       }
     },
     {
-      "name": "go runs through the host-managed runtime",
+      "name": "go runs through the go tool definition",
       "plugin": "build-command-stdout.plugin.json",
       "buildSystemID": "go",
       "operation": "invocationPlan",
@@ -486,19 +486,15 @@
             {
               "id": "go",
               "displayName": null,
-              "hostManaged": true,
               "minimumVersion": "1.21",
               "executables": [
                 {
-                  "kind": "runtime",
-                  "runtime": "go"
+                  "kind": "toolchain",
+                  "toolchainID": "go",
+                  "root": "."
                 }
               ],
-              "version": {
-                "arguments": [
-                  "version"
-                ]
-              },
+              "version": null,
               "pathVariable": "LITHE_GO_PATH"
             }
           ],
@@ -508,7 +504,7 @@
       }
     },
     {
-      "name": "go runtime version",
+      "name": "go runtime version is checked by its tool definition",
       "plugin": "build-command-stdout.plugin.json",
       "buildSystemID": "go",
       "operation": "checkToolVersion",
@@ -517,27 +513,10 @@
         "output": "go version go1.22.3 darwin/arm64\n"
       },
       "expected": {
-        "status": "ok",
-        "version": {
-          "satisfied": true,
-          "version": "1.22.3"
-        }
-      }
-    },
-    {
-      "name": "go runtime below the minimum",
-      "plugin": "build-command-stdout.plugin.json",
-      "buildSystemID": "go",
-      "operation": "checkToolVersion",
-      "request": {
-        "runtime": "go",
-        "output": "go version go1.20.14 linux/amd64\n"
-      },
-      "expected": {
-        "status": "ok",
-        "version": {
-          "satisfied": false,
-          "version": "1.20.14"
+        "status": "rejected",
+        "error": {
+          "code": "plugin.build.unavailable",
+          "message": "Go Modules declares no version probe for go; its tool definition checks the version."
         }
       }
     },
@@ -859,7 +838,6 @@
             {
               "id": "java",
               "displayName": null,
-              "hostManaged": false,
               "minimumVersion": "17",
               "executables": [
                 {
@@ -921,7 +899,6 @@
             {
               "id": "java",
               "displayName": null,
-              "hostManaged": false,
               "minimumVersion": "17",
               "executables": [
                 {
