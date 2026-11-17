@@ -40,7 +40,7 @@
         "packageTrust": { "description": "Required exactly when vendor.bundledSignatureRequirement is present.", "enum": [0] },
         "projectGenerators": { "description": "Entries of the New Project window: fields, requirements, and steps, with tool fields that pick tool installations.", "enum": [0] },
         "settings": { "description": "Required exactly when settings or settingActions is non-empty. Covers integer, enum, boolean, multiSelect, text, file, and directory options, scope, effect, page, section, and settingActions.", "enum": [0] },
-        "sourceSettings": { "description": "Required exactly when a setting action declares sourceEditor. Native-source settings projection, compiler placement, confirmed staging and read-back.", "enum": [0] },
+        "sourceSettings": { "description": "Required exactly when a setting action declares sourceEditor. Native-source settings projection, compiler placement, confirmed staging and read-back. Version 1 adds sidebar groups, nested sources, field sections and entry lists.", "enum": [0, 1] },
         "toolDefinitions": { "enum": [0] },
         "toolchainProviders": { "enum": [0] },
         "keymapImportProviders": { "enum": [0] },
@@ -1426,7 +1426,7 @@
         "section": { "type": "string", "minLength": 1, "maxLength": 120 },
         "function": { "description": "Plugin function ID: dot-separated lowerCamelCase segments.", "type": "string", "maxLength": 128, "pattern": "^[a-z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)*(?![\\s\\S])" },
         "confirm": { "description": "Ask before invoking, for actions that discard state.", "type": "boolean" },
-        "sourceEditor": { "description": "Read a non-sensitive native-source editor; requires sourceSettings 0. Only explicit Save invokes editFunction for private staging.", "type": "object", "additionalProperties": false, "required": ["editFunction"], "properties": { "editFunction": { "type":"string", "pattern":"^[a-z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)*(?![\\s\\S])", "maxLength":128 }, "buildSystemID": {"type":"string","minLength":1,"maxLength":128}, "languageID": {"type":"string","minLength":1,"maxLength":128} } }
+        "sourceEditor": { "description": "Read a non-sensitive native-source editor; requires sourceSettings 0 or 1. Only explicit Save invokes editFunction for private staging.", "type": "object", "additionalProperties": false, "required": ["editFunction"], "properties": { "editFunction": { "type":"string", "pattern":"^[a-z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)*(?![\\s\\S])", "maxLength":128 }, "buildSystemID": {"type":"string","minLength":1,"maxLength":128}, "languageID": {"type":"string","minLength":1,"maxLength":128} } }
       }
     },
     "fileNameList": {
