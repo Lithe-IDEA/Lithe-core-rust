@@ -1155,6 +1155,7 @@ dependencies = [
  "lithe-document-uri",
  "lithe-platform",
  "lithe-protocol",
+ "lithe-text",
  "serde",
  "serde_json",
  "url",

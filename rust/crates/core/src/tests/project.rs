@@ -1316,6 +1316,15 @@ fn search_pages_apply_path_filters_before_the_page_limit() {
         first["data"]["matches"][0]["contentMatchRanges"],
         case["expected"]["contentMatchRanges"]
     );
+    // The row's line drops the indentation and keeps the match marked in it.
+    assert_eq!(
+        first["data"]["matches"][0]["preview"],
+        case["expected"]["preview"]
+    );
+    assert_eq!(
+        first["data"]["matches"][0]["previewRanges"],
+        case["expected"]["previewRanges"]
+    );
     payload["cursor"] = first["data"]["nextCursor"].clone();
     assert!(payload["cursor"].is_string());
     let second = call(&payload);

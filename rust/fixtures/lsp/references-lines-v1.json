@@ -1,0 +1,197 @@
+{
+  "description": "lsp.references.lines shows the lines of References tool-window usages as search results show theirs: without indentation or line break, cut in front of a far usage, at most 240 bytes. Columns and ranges are UTF-16 code units; one preview per usage, in order.",
+  "cases": [
+    {
+      "name": "the indentation goes and the usage is highlighted in what is left",
+      "request": {
+        "texts": [
+          "\tabsSelf  uint8 = 1 << 0",
+          "func (b *Box) Absolute() *Box {\r"
+        ],
+        "usages": [
+          {
+            "text": 0,
+            "line": 4,
+            "column": 1,
+            "endLine": 4,
+            "endColumn": 8
+          },
+          {
+            "text": 1,
+            "line": 2,
+            "column": 14,
+            "endLine": 2,
+            "endColumn": 22
+          }
+        ]
+      },
+      "response": {
+        "lines": [
+          {
+            "text": "absSelf  uint8 = 1 << 0",
+            "ranges": [
+              {
+                "start": 0,
+                "length": 7
+              }
+            ]
+          },
+          {
+            "text": "func (b *Box) Absolute() *Box {",
+            "ranges": [
+              {
+                "start": 14,
+                "length": 8
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a usage running onto later lines is marked to the end of its first line; CJK text and surrogate pairs count in UTF-16",
+      "request": {
+        "texts": [
+          "\treturn call(a,\r",
+          "  中文😀 name := value"
+        ],
+        "usages": [
+          {
+            "text": 0,
+            "line": 3,
+            "column": 8,
+            "endLine": 5,
+            "endColumn": 2
+          },
+          {
+            "text": 1,
+            "line": 0,
+            "column": 7,
+            "endLine": 0,
+            "endColumn": 11
+          }
+        ]
+      },
+      "response": {
+        "lines": [
+          {
+            "text": "return call(a,",
+            "ranges": [
+              {
+                "start": 7,
+                "length": 7
+              }
+            ]
+          },
+          {
+            "text": "中文😀 name := value",
+            "ranges": [
+              {
+                "start": 5,
+                "length": 4
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a far usage cuts the line in front of it and the line is bounded",
+      "request": {
+        "texts": [
+          "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxtargetyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+        ],
+        "usages": [
+          {
+            "text": 0,
+            "line": 0,
+            "column": 100,
+            "endLine": 0,
+            "endColumn": 106
+          }
+        ]
+      },
+      "response": {
+        "lines": [
+          {
+            "text": "…xxxxxxxxxxxxxxxxtargetyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+            "ranges": [
+              {
+                "start": 17,
+                "length": 6
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "usages on one line share its text; an empty or reversed range is not highlighted",
+      "request": {
+        "texts": [
+          "a = a + a"
+        ],
+        "usages": [
+          {
+            "text": 0,
+            "line": 0,
+            "column": 0,
+            "endLine": 0,
+            "endColumn": 1
+          },
+          {
+            "text": 0,
+            "line": 0,
+            "column": 8,
+            "endLine": 0,
+            "endColumn": 9
+          },
+          {
+            "text": 0,
+            "line": 0,
+            "column": 4,
+            "endLine": 0,
+            "endColumn": 4
+          },
+          {
+            "text": 0,
+            "line": 2,
+            "column": 4,
+            "endLine": 1,
+            "endColumn": 9
+          }
+        ]
+      },
+      "response": {
+        "lines": [
+          {
+            "text": "a = a + a",
+            "ranges": [
+              {
+                "start": 0,
+                "length": 1
+              }
+            ]
+          },
+          {
+            "text": "a = a + a",
+            "ranges": [
+              {
+                "start": 8,
+                "length": 1
+              }
+            ]
+          },
+          {
+            "text": "a = a + a",
+            "ranges": []
+          },
+          {
+            "text": "a = a + a",
+            "ranges": []
+          }
+        ]
+      }
+    }
+  ]
+}

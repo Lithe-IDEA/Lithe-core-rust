@@ -672,6 +672,8 @@ or removing a command fails until the table changes in the same commit.
 | `lsp.mergeCompletions` | Choose which candidates survive when several prioritized providers complete at one position |
 | `lsp.activationPolicy` | Decide whether a language server may start automatically after failures, using a platform monotonic clock |
 | `lsp.problems.query` | Filter, order, and group Problems tool-window diagnostics and count them by severity |
+| `lsp.references.query` | Group Find Usages locations by file and lay out the References tool window's visible rows, selection, and previous/next usages |
+| `lsp.references.lines` | Show the lines of References tool-window usages with highlighted usage ranges, as search results show theirs |
 | `lsp.startServer` | Start one Rust-owned process/session and begin initialization |
 | `lsp.stopServer` | Gracefully shut down a session, with a bounded force-stop fallback |
 | `lsp.updateWorkspaceConfiguration` | Replace the plugin configuration a running plugin-owned session answers `workspace/configuration` with, and announce it |
@@ -2290,8 +2292,12 @@ Optional `includePathPatterns`, `excludePathPatterns`, and `pathFilterPrefix`
 filter paths before the page limit. Patterns are case-insensitive glob fragments:
 `*` excludes separators, `**` crosses them, and `?` matches one non-separator.
 When `includeContentRanges` is true, content matches also return the original
-`sourceLine` and `contentMatchRanges` in UTF-16 units; existing callers keep the
-trimmed `preview` and do not pay for those fields.
+`sourceLine` and `contentMatchRanges` in UTF-16 units, and `preview` becomes the
+result row's line with `previewRanges` (UTF-16 `{ start, length }` inside
+`preview`): indentation and line break dropped and, when the first match starts
+more than 32 units in, the front cut and replaced by `…`, the same rule
+`lsp.references.lines` applies. Existing callers keep the trimmed `preview`
+and do not pay for those fields.
 
 Observed `workspace.searchEverywhere` calls may emit
 `{ "type": "searchResults", "operationId": "…", "results": { "matches": […] } }`
@@ -2976,6 +2982,41 @@ identity; `displayPath` is the workspace-relative path and orders files with
 the Project view's natural file-name order. Severity is the LSP number;
 missing or out-of-range values are unknown (`0`) and rank last. Cases:
 `rust/fixtures/lsp/problems-query-v1.json`.
+
+`lsp.references.query` accepts the Find Usages answer as
+`{ locations: [{ fileKey, displayPath, line, column }] }` together with the
+platform-held tree state: `rootCollapsed`, `collapsed` (the `fileKey`s of
+closed file nodes; unknown keys are ignored), and the `selected` row key. It
+returns `groups` (one per file in the natural file-name order of
+`displayPath`, each with `key` `file:<fileKey>`, `fileKey`, `displayPath`,
+`name`, `folder`, and `indices` into the submitted list ordered by line and
+column, then submission order) and `rows`, the rows that show from top to
+bottom. A row has `key` (`root`, `file:<fileKey>`, or `usage:<index>`),
+`kind` (`root`, `file`, `usage`), `depth`, `expanded` (nodes only), `group`
+(files and usages), `shows` (the usage the row previews and opens: itself, or
+the first usage under a node), and `previous`/`next` (the usages before and
+after it in tree order, counting usages under closed nodes; absent at the
+ends), so the platform steps through usages without another call. `selected`
+and `selectedRow` name the selected row: an unknown or absent key selects the
+first usage, and a row a closed node hides moves the selection to that node.
+An empty answer returns no rows and no selection. Every location is kept;
+none is filtered or merged with another on the same line. The platform keeps
+the tree state, focus, and file reading, and queries again after a new
+answer or an expand, collapse, or selection change. Cases:
+`rust/fixtures/lsp/references-query-v1.json`.
+
+`lsp.references.lines` accepts `{ texts, usages: [{ text, line, column,
+endLine, endColumn }] }`, where `text` indexes the distinct line texts (so a
+long line with several usages crosses the boundary once) and positions are
+zero-based UTF-16. It returns one `{ text, ranges: [{ start, length }] }` per
+usage, in order. The usage is highlighted from `column` to `endColumn` on its
+line, or to the end of the line when it runs onto later lines; an empty or
+reversed range is not highlighted. The line is shown with the rule of search
+result rows (`lithe_text::line_preview`): indentation and line break dropped,
+the front cut and replaced by `…` when the usage starts more than 32 units in
+(16 units stay before it), and the text bounded to 240 bytes at a character
+boundary. A `text` index past `texts` is `invalid_request`. Cases:
+`rust/fixtures/lsp/references-lines-v1.json`.
 
 Core ships no built-in language-provider catalog. Every language server comes
 from a plugin's `languageServers` declaration, which Core validates and plans.

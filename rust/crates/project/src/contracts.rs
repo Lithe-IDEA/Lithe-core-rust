@@ -67,6 +67,7 @@ pub struct SearchMatch {
     /// One-based line of a content match; absent for file and symbol matches.
     pub line: Option<usize>,
     /// Text shown for the match: the trimmed line, the path, or the symbol name.
+    /// With `sourceLine`, a content match's line as a result row shows it.
     pub preview: String,
     /// Symbol name of a symbol match.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -80,6 +81,11 @@ pub struct SearchMatch {
     /// Content match ranges in UTF-16 units of `sourceLine`.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub content_match_ranges: Vec<SearchNameRange>,
+    /// Content match ranges in UTF-16 units of `preview`, present with
+    /// `sourceLine`: the preview is then the line as a result row shows it
+    /// ([`lithe_text::line_preview`]).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub preview_ranges: Vec<SearchNameRange>,
     /// Name relevance computed before category truncation; absent for content search.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub matching_degree: Option<i32>,

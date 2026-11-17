@@ -1,8 +1,10 @@
 //! Text search, with and without the search index.
 
 use super::*;
+use crate::contracts::SearchNameRange;
 use lithe_platform::paths::relative_path_contains;
 use lithe_platform::Platform;
+use lithe_text::{line_preview, Utf16Span};
 
 /// Applies workspace matching to provider snapshots in one bounded request.
 pub fn search_text_batch(request: SearchTextBatchRequest) -> Result<serde_json::Value, CoreError> {
@@ -144,6 +146,7 @@ pub(crate) fn search_with_index(
                 name_match_ranges: Vec::new(),
                 source_line: None,
                 content_match_ranges: Vec::new(),
+                preview_ranges: Vec::new(),
                 matching_degree: None,
                 is_ignored: None,
             });
@@ -179,19 +182,22 @@ pub(crate) fn search_with_index(
         for (index, line) in text.split('\n').enumerate() {
             lithe_protocol::cancellation::check()?;
             if matcher.matches(line) {
+                let (preview, content_match_ranges, preview_ranges) =
+                    if request.include_content_ranges {
+                        content_preview(line, matcher.content_ranges(line))
+                    } else {
+                        (line.trim().to_string(), Vec::new(), Vec::new())
+                    };
                 let result = SearchMatch {
                     kind: "content".to_string(),
                     path: path.clone(),
                     line: Some(index + 1),
-                    preview: line.trim().to_string(),
+                    preview,
                     symbol_name: None,
                     name_match_ranges: Vec::new(),
                     source_line: request.include_content_ranges.then(|| line.to_string()),
-                    content_match_ranges: if request.include_content_ranges {
-                        matcher.content_ranges(line)
-                    } else {
-                        Vec::new()
-                    },
+                    content_match_ranges,
+                    preview_ranges,
                     matching_degree: None,
                     is_ignored: None,
                 };
@@ -208,6 +214,31 @@ pub(crate) fn search_with_index(
     }
 
     Ok(SearchResponse { matches })
+}
+
+/// The preview of a content match's line and its matches in it, as every
+/// result row shows a line ([`line_preview`]), next to the matches in the line.
+fn content_preview(
+    line: &str,
+    ranges: Vec<SearchNameRange>,
+) -> (String, Vec<SearchNameRange>, Vec<SearchNameRange>) {
+    let highlights: Vec<Utf16Span> = ranges
+        .iter()
+        .map(|range| Utf16Span {
+            start: range.start,
+            length: range.length,
+        })
+        .collect();
+    let shown = line_preview(line, &highlights, None);
+    let preview_ranges = shown
+        .ranges
+        .iter()
+        .map(|span| SearchNameRange {
+            start: span.start,
+            length: span.length,
+        })
+        .collect();
+    (shown.text, ranges, preview_ranges)
 }
 
 /// Builds or reuses the search index and reports its current size.
