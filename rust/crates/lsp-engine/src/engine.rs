@@ -114,13 +114,18 @@ impl LspEngine {
                 "The plugin's language server does not support remote workspaces",
             ));
         }
-        // Initial provider settings must include native Git decisions even when
-        // no session or inventory warm-up has run. Never scan under registry locks.
+        // Resolving native Git decisions walks the whole workspace, which can take
+        // minutes on a large multi-repository tree and used to outlast the host's
+        // start deadline before the process was even launched. The start only
+        // reads the live context; unresolved decisions are resolved after the
+        // launch by `publish_pending_exclusions`, which pushes them to the
+        // session through the same path as any later indexing change. Never scan
+        // under registry locks.
         let indexing_root = canonical_workspace_path(&request.root_uri);
-        let indexing_context = if let Some(root) = &indexing_root {
-            lithe_project::indexing::prepare_provider_exclusions(root)?
+        let (indexing_context, exclusions_pending) = if let Some(root) = &indexing_root {
+            lithe_project::indexing::provider_context_without_scan(root)?
         } else {
-            None
+            (None, false)
         };
         let check_indexing = || {
             if let Some(context) = &indexing_context {
@@ -324,6 +329,12 @@ impl LspEngine {
             return Err(error);
         }
 
+        if exclusions_pending {
+            if let Some(root) = indexing_root.clone() {
+                publish_pending_exclusions(root, Arc::clone(&self.sessions), &session);
+            }
+        }
+
         Ok(StartServerResponse {
             channel: session.log_identity.channel(),
             session_id,
@@ -410,5 +421,152 @@ fn startup_attempt(request: &StartServerRequest) -> AttemptSlot {
             Attempt::slot(&LANGUAGE_SERVER_START, handoff.clone())
         }
         _ => Attempt::none(),
+    }
+}
+
+/// Resolves the workspace's native Git decisions off the start path and pushes
+/// them to every running session of that workspace.
+///
+/// `start_server_attempt` launches the process without waiting for the full
+/// workspace walk. Until this finishes, a server that pulls
+/// `workspace/configuration` sees only the exclusions known at start; the
+/// update below then re-sends the configuration exactly like a later indexing
+/// change, so the server narrows its import scope instead of missing it. During
+/// the walk the thread holds no session, only a weak reference to the started
+/// one, which is used to record a failure in that session's log channel.
+fn publish_pending_exclusions(
+    root: PathBuf,
+    sessions: Arc<Mutex<BTreeMap<String, Arc<RuntimeSession>>>>,
+    started: &Arc<RuntimeSession>,
+) {
+    let started = Arc::downgrade(started);
+    thread::spawn(move || {
+        #[cfg(test)]
+        deferred_exclusions::wait_while_held(&root);
+        // Walk before listing the sessions: the walk can take minutes, and a
+        // list taken first would keep sessions stopped meanwhile alive for that
+        // long and leave out the ones started meanwhile.
+        let result = lithe_project::indexing::prepare_provider_exclusions(&root)
+            .and_then(|_| {
+                sessions
+                    .lock()
+                    .map_err(|_| {
+                        CoreError::new(ErrorCode::Unknown, "LSP registry lock was poisoned")
+                    })
+                    .map(|registry| registry.values().cloned().collect::<Vec<_>>())
+            })
+            .and_then(|running| apply_indexing_to_sessions(&root, running));
+        #[cfg(test)]
+        deferred_exclusions::finish(&root);
+        let Err(error) = result else {
+            return;
+        };
+        // log-exempt: User cancellation: a closed workspace or a replaced indexing policy retires the context, and the replacement publishes its own decisions.
+        if matches!(error.code, ErrorCode::Cancelled) {
+            return;
+        }
+        if let Some(session) = started.upgrade() {
+            session.log(
+                "warn",
+                EngineLog::ExclusionsFailed,
+                "Indexing exclusions could not be published to the language server",
+                Some(core_error_detail(&error)),
+            );
+        }
+    });
+}
+
+/// Test seam that fixes the order between a start and its deferred Git walk.
+///
+/// A test holds a workspace before starting a server, observes the start
+/// return while the decisions are still unresolved, then releases the walk and
+/// waits for the publisher to finish. Roots no test holds pass straight
+/// through, so concurrent tests are unaffected. Every wait is bounded, so a
+/// failed assertion cannot leave a publisher thread blocked.
+#[cfg(test)]
+pub(crate) mod deferred_exclusions {
+    use std::path::{Path, PathBuf};
+    use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
+    use std::time::Duration;
+
+    /// Where a held workspace is: its walk waits, the test has released it, or
+    /// its publisher has finished.
+    #[derive(Clone, Copy, PartialEq)]
+    enum Stage {
+        Held,
+        Released,
+        Finished,
+    }
+
+    /// Workspaces a test is watching; roots not listed are never held.
+    static ROOTS: Mutex<Vec<(PathBuf, Stage)>> = Mutex::new(Vec::new());
+    static CHANGED: Condvar = Condvar::new();
+    const LIMIT: Duration = Duration::from_secs(5);
+
+    fn roots() -> MutexGuard<'static, Vec<(PathBuf, Stage)>> {
+        ROOTS.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn stage(roots: &[(PathBuf, Stage)], root: &Path) -> Option<Stage> {
+        roots
+            .iter()
+            .find(|(watched, _)| watched == root)
+            .map(|(_, stage)| *stage)
+    }
+
+    fn advance(root: &Path, from: Stage, to: Stage) {
+        let mut roots = roots();
+        if let Some(entry) = roots
+            .iter_mut()
+            .find(|(watched, stage)| watched == root && *stage == from)
+        {
+            entry.1 = to;
+        }
+        CHANGED.notify_all();
+    }
+
+    /// Holds the walk of the workspace at `root_uri` until the returned guard
+    /// releases it or is dropped.
+    pub(crate) fn hold(root_uri: &str) -> Held {
+        let root = super::canonical_workspace_path(root_uri).expect("the workspace exists");
+        let mut roots = roots();
+        roots.retain(|(watched, _)| *watched != root);
+        roots.push((root.clone(), Stage::Held));
+        Held(root)
+    }
+
+    pub(crate) struct Held(PathBuf);
+
+    impl Held {
+        /// Releases the walk and waits until its publisher has finished;
+        /// false when that took longer than the limit.
+        pub(crate) fn release_and_wait(&self) -> bool {
+            advance(&self.0, Stage::Held, Stage::Released);
+            let (_roots, wait) = CHANGED
+                .wait_timeout_while(roots(), LIMIT, |roots| {
+                    stage(roots, &self.0) != Some(Stage::Finished)
+                })
+                .unwrap_or_else(PoisonError::into_inner);
+            !wait.timed_out()
+        }
+    }
+
+    impl Drop for Held {
+        fn drop(&mut self) {
+            roots().retain(|(watched, _)| *watched != self.0);
+            CHANGED.notify_all();
+        }
+    }
+
+    pub(super) fn wait_while_held(root: &Path) {
+        let _released = CHANGED
+            .wait_timeout_while(roots(), LIMIT, |roots| {
+                stage(roots, root) == Some(Stage::Held)
+            })
+            .unwrap_or_else(PoisonError::into_inner);
+    }
+
+    pub(super) fn finish(root: &Path) {
+        advance(root, Stage::Released, Stage::Finished);
     }
 }

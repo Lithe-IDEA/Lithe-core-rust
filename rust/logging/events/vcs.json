@@ -69,6 +69,26 @@
       "owner": "lithe-core"
     },
     {
+      "id": "vcs.indexing.exclusions_failed",
+      "channel": "vcs/{provider}",
+      "level": "warn",
+      "message": "Engine indexing exclusions could not be published for server {provider}",
+      "fields": {
+        "error": {
+          "type": "error",
+          "required": true,
+          "description": "Failure resolving or publishing the workspace Git exclusions after the server started"
+        },
+        "provider": {
+          "type": "id",
+          "required": true,
+          "description": "Validated provider identity assigned by Core to this engine session"
+        }
+      },
+      "rate": 120,
+      "owner": "lithe-core"
+    },
+    {
       "id": "vcs.message.logged",
       "channel": "vcs/{provider}",
       "level": "info",

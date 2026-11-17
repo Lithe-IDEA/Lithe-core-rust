@@ -657,6 +657,23 @@ pub fn prepare_provider_exclusions(root: &Path) -> Result<Option<Arc<IndexingCon
     Ok(Some(context))
 }
 
+/// Returns the live provider context without walking the workspace, and whether
+/// its native Git decisions are still unresolved. A language-server start uses
+/// this so a large workspace cannot hold the process launch behind a full scan;
+/// the caller resolves the pending decisions with `prepare_provider_exclusions`
+/// off the start path and then publishes them to the running sessions.
+pub fn provider_context_without_scan(
+    root: &Path,
+) -> Result<(Option<Arc<IndexingContext>>, bool), CoreError> {
+    let Some(context) = active_provider_context(root) else {
+        return Ok((None, false));
+    };
+    context.check()?;
+    let pending =
+        context.policy.git_ignore_enabled && !context.git_resolved.load(Ordering::Acquire);
+    Ok((Some(context), pending))
+}
+
 fn contains(directory: &str, path: &str) -> bool {
     relative_path_contains(directory, path, Platform::HOST)
 }
@@ -1931,6 +1948,36 @@ mod tests {
         let next = context(&workspace.0).unwrap();
         assert!(!next.git_resolved.load(Ordering::Acquire));
         assert!(next.check().is_ok());
+    }
+
+    #[test]
+    fn provider_context_without_scan_reports_pending_git_decisions_without_resolving_them() {
+        let workspace = Workspace::new();
+        assert!(provider_context_without_scan(&workspace.0)
+            .unwrap()
+            .0
+            .is_none());
+        workspace.configure(&[], &[], true);
+        let (context, pending) = provider_context_without_scan(&workspace.0).unwrap();
+        let context = context.unwrap();
+        assert!(pending, "Git decisions are unresolved before any scan");
+        assert!(
+            !context.git_resolved.load(Ordering::Acquire),
+            "the start path must not walk the workspace"
+        );
+        let prepared = prepare_provider_exclusions(&workspace.0).unwrap().unwrap();
+        assert_eq!(prepared.revision, context.revision);
+        let (_, pending) = provider_context_without_scan(&workspace.0).unwrap();
+        assert!(!pending, "a resolved generation needs no background scan");
+    }
+
+    #[test]
+    fn provider_context_without_scan_needs_no_scan_when_git_ignore_is_disabled() {
+        let workspace = Workspace::new();
+        workspace.configure(&[], &[], false);
+        let (context, pending) = provider_context_without_scan(&workspace.0).unwrap();
+        assert!(context.is_some());
+        assert!(!pending);
     }
 
     #[test]
