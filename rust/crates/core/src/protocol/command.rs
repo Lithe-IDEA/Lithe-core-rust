@@ -647,6 +647,11 @@ pub enum LspCommand {
     ActivationPolicy,
     /// Filters, orders, and groups Problems tool-window diagnostics (`lsp.problems.query`).
     ProblemsQuery,
+    /// Groups Find Usages locations by file and lays out the References tool
+    /// window's rows (`lsp.references.query`).
+    ReferencesQuery,
+    /// Shows the lines of References tool-window usages (`lsp.references.lines`).
+    ReferencesLines,
     /// Starts and initializes a managed language server (`lsp.startServer`).
     StartServer,
     /// Gracefully shuts down a managed server (`lsp.stopServer`).
@@ -1351,6 +1356,8 @@ impl CoreCommand {
             "lsp.mergeCompletions" => Some(Self::Lsp(LspCommand::MergeCompletions)),
             "lsp.activationPolicy" => Some(Self::Lsp(LspCommand::ActivationPolicy)),
             "lsp.problems.query" => Some(Self::Lsp(LspCommand::ProblemsQuery)),
+            "lsp.references.query" => Some(Self::Lsp(LspCommand::ReferencesQuery)),
+            "lsp.references.lines" => Some(Self::Lsp(LspCommand::ReferencesLines)),
             "lsp.startServer" => Some(Self::Lsp(LspCommand::StartServer)),
             "lsp.stopServer" => Some(Self::Lsp(LspCommand::StopServer)),
             "lsp.updateWorkspaceConfiguration" => {

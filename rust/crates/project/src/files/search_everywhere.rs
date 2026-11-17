@@ -114,6 +114,7 @@ pub(crate) fn search_everywhere_with_page(
                 name_match_ranges: Vec::new(),
                 source_line: None,
                 content_match_ranges: Vec::new(),
+                preview_ranges: Vec::new(),
                 matching_degree: None,
                 is_ignored: None,
             };

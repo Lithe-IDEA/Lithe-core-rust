@@ -114,6 +114,7 @@ mod event_filter_tests {
                     name_match_ranges: vec![],
                     source_line: None,
                     content_match_ranges: Vec::new(),
+                    preview_ranges: Vec::new(),
                     matching_degree: Some(degree),
                     is_ignored: None,
                 };
