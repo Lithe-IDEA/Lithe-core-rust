@@ -14,7 +14,7 @@
 | API 编号 | API-02、03、13、14、17，见 [API 总表](../api-catalog.md#现在能用的-api) |
 | 权限 | `ui.contribute`；网页加 `ui.web`；没有窗口的命令加 `backend.launch`；后端弹出消息用 `window.messages` |
 | 激活事件 | 每个窗口 `onView:<window-id>`，每个命令 `onCommand:<command-id>` |
-| Lithe 桌面端 | 声明 `ui` 0，呈现文本和网页工具窗口，以及打开工具窗口的命令；插件视图的桌面绘制在后续桌面端 PR 中接入。不呈现不属于任何工具窗口的命令：这类包照常安装，但这些命令没有入口 |
+| Lithe 桌面端 | 声明 `ui` 0，呈现文本、网页和插件视图工具窗口，以及打开工具窗口的命令；插件视图用 Viva 原生绘制宿主控件、树和画布。不呈现不属于任何工具窗口的命令：这类包照常安装，但这些命令没有入口 |
 
 ### 规则
 
@@ -70,7 +70,7 @@ A plugin can place tool windows and commands in the workbench. The window shell 
 | API IDs | API-02, 03, 13, 14, 17; see the [API catalog](../api-catalog.md#apis-usable-now) |
 | Permissions | `ui.contribute`; `ui.web` for web pages; `backend.launch` for a command without a window; `window.messages` for messages shown by the backend |
 | Activation events | `onView:<window-id>` per window, `onCommand:<command-id>` per command |
-| Lithe desktop | Declares `ui` 0 and presents text and web tool windows, and commands that open a tool window; desktop drawing of plugin views lands in a later desktop PR. It does not present commands that belong to no tool window: such packages install, but those commands have no entry point |
+| Lithe desktop | Declares `ui` 0 and presents text, web, and plugin view tool windows, and commands that open a tool window; plugin views draw their host controls, trees, and canvases natively with Viva. It does not present commands that belong to no tool window: such packages install, but those commands have no entry point |
 
 ### Rules
 

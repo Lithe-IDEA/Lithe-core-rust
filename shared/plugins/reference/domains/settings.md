@@ -14,7 +14,7 @@
 | API 编号 | [API-19](../api-catalog.md#现在能用的-api)：声明式设置和设置区域。运行期读取、查看来源、修改设置和变化事件仍在计划中。[API-37](../api-catalog.md#现在能用的-api)：设置文字的包内翻译 |
 | 权限 | 不需要额外权限。设置不会改变运行的程序，所以不进入安装审查的程序列表 |
 | 激活事件 | 不需要。值按设置的 `effect` 在下一次启动、模型重载、下一次运行或 `immediate` 推送时生效 |
-| 桌面端 | 已声明 `settings`：按语言和构建系统分页、分组、全部控件类型、项目层、生效方式和页面按钮都已呈现。还没有读取包内翻译 `l10n/`，始终显示清单原文；还没有呈现设置区域 `settingRegions` |
+| 桌面端 | 已声明 `settings`：按语言和构建系统分页、分组、全部控件类型、项目层、生效方式、页面按钮和设置区域 `settingRegions`（搜索关键词和插件视图）都已呈现，并按界面语言显示包内翻译 `l10n/` |
 
 ### 设置类型
 
@@ -166,7 +166,7 @@ A plugin declares, in its manifest, the options a user may change. The host draw
 | API IDs | [API-19](../api-catalog.md#apis-usable-now): declarative settings and settings regions. Runtime reads, source inspection, writes, and change events are still planned. [API-37](../api-catalog.md#apis-usable-now): packaged translations of settings text |
 | Permissions | None. Settings never change which program runs, so they are not in the install review's program list |
 | Activation | Not needed. Values take effect according to the setting's `effect`: at the next start, a model reload, the next run, or an `immediate` push |
-| Desktop | Declares `settings`: pages per language and build system, sections, every control type, the project layer, effects, and page buttons are presented. It does not read packaged translations `l10n/` yet and always shows the manifest text, and does not present settings regions `settingRegions` yet |
+| Desktop | Declares `settings`: pages per language and build system, sections, every control type, the project layer, effects, page buttons, and settings regions `settingRegions` (search keywords and plugin views) are presented, in the interface language from the packaged translations `l10n/` |
 
 ### Setting types
 

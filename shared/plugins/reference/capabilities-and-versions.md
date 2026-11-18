@@ -74,7 +74,6 @@ Core 列以本仓库 `main` 上的 Core 源码为准（[`capabilities.rs`](https
 - 构建提供者的调试准备、模型输入、原生配置、内联测试报告和运行期调试；构建系统的实例选项和任务准备。
 - 插件声明的运行配置类型只能运行，不能调试。
 - 不属于任何工具窗口的 `ui` 命令。
-- 工具窗口和设置区域里的[插件视图](../contract/v1/README.md#plugin-views)，以及 `settingRegions` 的搜索关键词。
 - VCS 提供者的逐行追溯（annotation）、文件历史、文件操作、元数据监听、认证、历史提交差异、项目树与编辑器行号栏状态，以及 `lithe/vcs/execution` 控制台输出。
 - 后端宿主服务：工作区文件与搜索（`workspace/readDirectory`、`stat`、`readFile`、`watch`、`findFiles`、`findText`）和 `preview/openHTML` 尚未注册，请求这些权限的插件被拒绝。运行期以 `lithe/host/getCapabilities` 的返回为准，见 [API 总表](api-catalog.md)。
 
@@ -188,7 +187,6 @@ Each row is one capability. `requires` lists **exactly** the capabilities a mani
 - For build providers: debug preparation, model inputs, native configuration, inline test reports, and runtime debugging; for build systems: instance options and task preparations.
 - Run configuration types a plugin declares run but cannot be debugged.
 - `ui` commands that belong to no tool window.
-- [Plugin views](../contract/v1/README.md#plugin-views) in tool windows and settings regions, and the search keywords of `settingRegions`.
 - For VCS providers: annotation, file history, file operations, metadata watching, authentication, history entry diffs, status in the project tree and the editor gutter, and `lithe/vcs/execution` console output.
 - Backend host services: the workspace file and search methods (`workspace/readDirectory`, `stat`, `readFile`, `watch`, `findFiles`, `findText`) and `preview/openHTML` are not registered, so a plugin that asks for one of those permissions is refused. At runtime, the reply of `lithe/host/getCapabilities` is authoritative; see the [API catalog](api-catalog.md).
 
