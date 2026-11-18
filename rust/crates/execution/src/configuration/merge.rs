@@ -1,12 +1,28 @@
-//! Merging the shared, local and detected layers of a configuration.
+//! Merging the shared, local and generated layers of a configuration.
 
 use super::*;
 
+/// Keys resolution computes; a value saved under one of them is ignored.
+const OUTPUT_KEYS: [&str; 3] = ["source", "plugin", "availability"];
+
+/// Merges the layers by configuration id, later layers winning key by key.
+///
+/// An entry whose overrides cannot be applied or whose merged value is not a
+/// configuration is left out with an `invalidConfiguration` diagnostic, so
+/// one broken entry never hides the others.
 pub(crate) fn merge_values(
     base: &Value,
     team: &Value,
     local: &Value,
+    diagnostics: &mut Vec<Value>,
 ) -> Result<Vec<RunConfiguration>, CoreError> {
+    let mut invalid = |id: &str, error: String| {
+        diagnostics.push(json!({
+            "id": id,
+            "code": "invalidConfiguration",
+            "message": error
+        }));
+    };
     let mut result: BTreeMap<String, Value> = BTreeMap::new();
     let mut saved = BTreeMap::<String, Value>::new();
     let mut complete_ids = BTreeSet::new();
@@ -19,7 +35,10 @@ pub(crate) fn merge_values(
                 complete_ids.insert(id.to_string());
             }
             if let Some(previous) = saved.get_mut(id) {
-                merge_configuration_value(previous, item)?;
+                let mut candidate = previous.clone();
+                if merge_configuration_value(&mut candidate, item).is_ok() {
+                    *previous = candidate;
+                }
             } else {
                 saved.insert(id.to_string(), item.clone());
             }
@@ -64,40 +83,51 @@ pub(crate) fn merge_values(
             {
                 continue;
             }
+            let source = json!(["generated", "project", "local"][source_index]);
             if let Some(existing) = result.get_mut(id) {
-                merge_configuration_value(existing, item)?;
+                let mut candidate = existing.clone();
+                if let Err(error) = merge_configuration_value(&mut candidate, item) {
+                    invalid(id, error.message);
+                    continue;
+                }
+                *existing = candidate;
                 let target = existing
                     .as_object_mut()
                     .expect("merged configuration is an object");
-                target.insert(
-                    "source".to_string(),
-                    json!(["generated", "project", "local"][source_index]),
-                );
+                target.insert("source".to_string(), source);
             } else {
-                let mut value = item.clone();
-                if let Some(object) = value.as_object_mut() {
-                    object.insert(
-                        "source".to_string(),
-                        json!(["generated", "project", "local"][source_index]),
-                    );
+                let Some(object) = item.as_object() else {
+                    invalid(id, "Run configuration must be an object".to_string());
+                    continue;
+                };
+                let mut object = object.clone();
+                for key in OUTPUT_KEYS {
+                    object.remove(key);
                 }
-                result.insert(id.to_string(), value);
+                object.insert("source".to_string(), source);
+                result.insert(id.to_string(), Value::Object(object));
             }
         }
     }
-    result
-        .into_values()
-        .map(|item| {
-            serde_json::from_value::<RunConfiguration>(item).map_err(|e| {
-                CoreError::new(ErrorCode::ParseFailed, "Invalid merged run configuration")
-                    .with_details(e.to_string())
-            })
-        })
-        .collect()
+    Ok(result
+        .into_iter()
+        .filter_map(
+            |(id, item)| match serde_json::from_value::<RunConfiguration>(item) {
+                Ok(configuration) => Some(configuration),
+                Err(error) => {
+                    invalid(&id, format!("Invalid run configuration: {error}"));
+                    None
+                }
+            },
+        )
+        .collect())
 }
 
 /// Applies one sparse configuration patch using the same rules for claim discovery and resolution.
-fn merge_configuration_value(existing: &mut Value, item: &Value) -> Result<(), CoreError> {
+pub(crate) fn merge_configuration_value(
+    existing: &mut Value,
+    item: &Value,
+) -> Result<(), CoreError> {
     let (Some(target), Some(patch)) = (existing.as_object_mut(), item.as_object()) else {
         return Err(CoreError::new(
             ErrorCode::ParseFailed,
@@ -105,7 +135,7 @@ fn merge_configuration_value(existing: &mut Value, item: &Value) -> Result<(), C
         ));
     };
     for (key, value) in patch {
-        if key == "source" {
+        if OUTPUT_KEYS.contains(&key.as_str()) {
             continue;
         }
         if key == "extensions" {
@@ -139,35 +169,10 @@ fn merge_configuration_value(existing: &mut Value, item: &Value) -> Result<(), C
     Ok(())
 }
 
-/// Reconciles runtime bindings from the effective command for generated v2
-/// documents written before detectors declared their consumption explicitly.
-pub(crate) fn normalize_runtime_consumption(configurations: &mut [RunConfiguration]) {
-    for configuration in configurations {
-        let command = configuration
-            .command
-            .as_deref()
-            .unwrap_or("")
-            .to_ascii_lowercase();
-        if matches!(
-            command.as_str(),
-            "npm" | "npm.cmd" | "pnpm" | "pnpm.cmd" | "yarn" | "yarn.cmd"
-        ) {
-            configuration
-                .toolchains
-                .entry("runtime".to_string())
-                .or_insert_with(|| "project-node".to_string());
-        } else if matches!(command.as_str(), "bun" | "bun.exe")
-            && configuration.toolchains.get("runtime").map(String::as_str) == Some("project-node")
-        {
-            configuration.toolchains.remove("runtime");
-        }
-    }
-}
-
 /// Deep-merges the `extensions` object one namespace at a time.
 ///
-/// A shallow insert would let a layer that touches a single `build-run` key
-/// drop the whole `npm` namespace it never mentioned.
+/// A shallow insert would let a layer that touches one namespace drop the
+/// other namespaces it never mentioned.
 pub(crate) fn merge_extensions(
     target: &mut serde_json::Map<String, Value>,
     patch: &mut Value,

@@ -1,48 +1,50 @@
 //! Resolving the configuration a launch uses.
 
 use super::*;
+use lithe_plugin_model::is_plugin_id;
 
-/// Merges generated, team, and local layers and selects compatible toolchains.
+/// Merges generated, team, and local layers into the configurations a launch can use.
 pub fn resolve(request: ResolveRequest) -> Result<Value, CoreError> {
     let root = existing_root(&request.root)?;
-    let team = match request.team_document {
-        Some(mut document) => {
-            migrate_document_value(&mut document);
-            document
-        }
-        None => read_document_value(&root, "run/configurations.json")?
-            .unwrap_or_else(|| json!({"version": VERSION, "configurations": []})),
+    let layers = read_layers(&root, request.team_document, request.local_document)?;
+    resolve_layers(&root, &layers, request.plugins.as_deref())
+}
+
+/// Resolves layers already read, so an edit validates against the same bytes
+/// it changes.
+///
+/// One configuration that cannot run never fails the list: it is returned
+/// with an `availability` explaining why, and the others stay runnable. Only
+/// unreadable Lithe documents and sidecars fail the request.
+pub(crate) fn resolve_layers(
+    root: &Path,
+    layers: &Layers,
+    installed: Option<&[InstalledPlugin]>,
+) -> Result<Value, CoreError> {
+    let team = &layers.project.document;
+    let local = &layers.local.document;
+    // Before any build model is loaded nothing is generated: the saved runs
+    // still resolve, and a project with none has an empty list. Overrides of
+    // generated runs are only orphaned once a generation can be compared.
+    let layer = generated_layer::get(root);
+    let generated = match layer.as_deref() {
+        Some(document) => serde_json::to_value(document).expect("run configurations encode"),
+        None => json!({"version": VERSION, "configurations": []}),
     };
-    let local = local_layer_document(&root, request.local_document)?;
-    let layer = generated_layer::get(&root);
-    let generated = match layer.as_ref() {
-        Some(layer) => serde_json::to_value(&layer.document).expect("run configurations encode"),
-        None if has_saved_build_run(&local) || has_saved_build_run(&team) => {
-            json!({"version": VERSION, "configurations": []})
-        }
-        None => {
-            return Err(CoreError::new(
-                ErrorCode::WorkspaceNotFound,
-                "Run configuration has not been generated",
-            ))
-        }
-    };
-    let local_toolchains = read_local_toolchains(&root)?;
-    let manifest = read_document_value(&root, "project.json")?;
+    let generated_ids = configuration_ids(&generated)?;
+    let local_toolchains = read_local_toolchains(root)?;
+    let manifest = read_sidecar(root, "project.json")?.map(|(document, _)| document);
     validate_version_value(&generated)?;
-    validate_version_value(&team)?;
-    validate_version_value(&local)?;
     if let Some(manifest) = manifest.as_ref() {
         validate_sidecar_version_value(manifest)?;
     }
-    configuration_ids(&generated)?;
-    let mut configurations = merge_values(&generated, &team, &local)?;
+    let mut diagnostics = layers.diagnostics.clone();
+    let mut configurations = merge_values(&generated, team, local, &mut diagnostics)?;
     let resolved_ids = configurations
         .iter()
         .map(|item| item.id.as_str())
         .collect::<BTreeSet<_>>();
-    let mut diagnostics = Vec::new();
-    for source in [&team, &local] {
+    for source in [team, local].into_iter().filter(|_| layer.is_some()) {
         for id in configuration_ids(source)?.keys() {
             if !resolved_ids.contains(id.as_str()) && !id.starts_with("user:") {
                 diagnostics.push(json!({
@@ -53,27 +55,55 @@ pub fn resolve(request: ResolveRequest) -> Result<Value, CoreError> {
             }
         }
     }
-    normalize_runtime_consumption(&mut configurations);
     let global_toolchain = local.get("toolchain").cloned();
-    diagnostics.extend(toolchain_diagnostics(
-        &root,
-        &request.toolchain_candidates,
-        &configurations,
-    )?);
+    let platform = Platform::HOST;
+    configurations.retain(|configuration| {
+        let supported = super::process::supported_on(&configuration.provider, platform);
+        if !supported {
+            diagnostics.push(json!({
+                "id": configuration.id,
+                "code": "unsupportedPlatform",
+                "message": format!("{} runs only on Windows", configuration.provider)
+            }));
+        }
+        supported
+    });
     for configuration in &mut configurations {
-        validate_configuration(configuration)?;
+        configuration.plugin = layers
+            .plugin_dependency(&configuration.id)
+            .cloned()
+            .or_else(|| {
+                configuration
+                    .extensions
+                    .get("build")
+                    .and_then(|build| build.get("pluginID"))
+                    .and_then(Value::as_str)
+                    .filter(|id| configuration.provider == "build.provider" && is_plugin_id(id))
+                    .map(PluginDependency::named)
+            });
+        if !generated_ids.contains_key(&configuration.id) {
+            configuration.availability = configuration
+                .plugin
+                .as_ref()
+                .and_then(|dependency| super::plugin_document::availability(dependency, installed));
+        }
+        if let Err(error) = validate_configuration(configuration) {
+            diagnostics.push(json!({
+                "id": configuration.id,
+                "code": "invalidConfiguration",
+                "message": error.message
+            }));
+            configuration.availability.get_or_insert_with(|| {
+                Availability::unavailable("invalidConfiguration", error.message)
+            });
+            continue;
+        }
         if configuration.provider == "build.provider" {
             // Materialize optional defaults in the shared output so native
             // consumers receive the same shape as a newly saved selector.
-            let reference: BuildProviderRunReference = serde_json::from_value(
-                configuration.extensions["build"].clone(),
-            )
-            .map_err(|_| {
-                CoreError::new(
-                    ErrorCode::ParseFailed,
-                    "Invalid build provider run reference",
-                )
-            })?;
+            let reference: BuildProviderRunReference =
+                serde_json::from_value(configuration.extensions["build"].clone())
+                    .expect("validated build provider references decode");
             configuration.extensions.insert(
                 "build".to_string(),
                 serde_json::to_value(reference).expect("reference encodes"),
@@ -87,26 +117,38 @@ pub fn resolve(request: ResolveRequest) -> Result<Value, CoreError> {
             }));
             continue;
         }
-        if !project_directory_exists(&root, &configuration.cwd) {
-            configuration.disabled = true;
+        if !project_directory_exists(root, &configuration.cwd) {
+            let message = format!("Working directory does not exist: {}", configuration.cwd);
             diagnostics.push(json!({
                 "id": configuration.id,
                 "code": "missingWorkingDirectory",
-                "message": format!("Working directory does not exist: {}", configuration.cwd)
+                "message": message
             }));
+            // A generated entry follows the build model, which detection
+            // refreshes. A saved entry stays listed, so the user can fix or
+            // delete it instead of losing it.
+            if generated_ids.contains_key(&configuration.id) {
+                configuration.disabled = true;
+            } else {
+                configuration.availability.get_or_insert_with(|| {
+                    Availability::unavailable("missingWorkingDirectory", message)
+                });
+            }
         }
     }
     configurations.retain(|configuration| !configuration.disabled);
+    let runnable = |id: &str| {
+        configurations
+            .iter()
+            .any(|configuration| configuration.id == id && configuration.availability.is_none())
+    };
     let mut default_run_configuration = manifest
         .as_ref()
         .and_then(|value| value.get("defaultRunConfiguration"))
         .and_then(Value::as_str)
         .map(str::to_string);
     if let Some(default_id) = default_run_configuration.as_deref() {
-        if !configurations
-            .iter()
-            .any(|configuration| configuration.id == default_id)
-        {
+        if !runnable(default_id) {
             diagnostics.push(json!({
                 "code": "missingDefaultConfiguration",
                 "message": format!("Default run configuration is unavailable: {default_id}")
@@ -116,8 +158,9 @@ pub fn resolve(request: ResolveRequest) -> Result<Value, CoreError> {
     }
     if default_run_configuration.is_none() {
         default_run_configuration = layer
-            .as_ref()
-            .and_then(|layer| detected_default(&layer.document, &configurations));
+            .as_deref()
+            .and_then(|document| generated_default(document, &configurations))
+            .filter(|id| runnable(id));
     }
     Ok(json!({
         "version": VERSION,
@@ -129,9 +172,33 @@ pub fn resolve(request: ResolveRequest) -> Result<Value, CoreError> {
     }))
 }
 
-/// Prefer a detected service when the project names no default, otherwise
-/// select the first available entry.
-fn detected_default(
+/// The resolved configuration `id`, or an error naming why it cannot be used.
+pub(crate) fn runnable_configuration<'a>(
+    resolved: &'a Value,
+    id: &str,
+) -> Result<&'a Value, CoreError> {
+    let configuration = resolved["configurations"]
+        .as_array()
+        .and_then(|items| items.iter().find(|item| item["id"] == id))
+        .ok_or_else(|| {
+            CoreError::new(ErrorCode::InvalidRequest, "Run configuration was not found")
+        })?;
+    if let Some(availability) = configuration
+        .get("availability")
+        .filter(|value| !value.is_null())
+    {
+        return Err(CoreError::new(
+            ErrorCode::InvalidRequest,
+            "Run configuration is unavailable",
+        )
+        .with_details(availability["message"].as_str().unwrap_or_default()));
+    }
+    Ok(configuration)
+}
+
+/// Prefer a generated service when the project names no default, otherwise
+/// select the first available generated entry.
+fn generated_default(
     generated: &RunConfigurationDocument,
     available: &[RunConfiguration],
 ) -> Option<String> {
@@ -147,7 +214,7 @@ fn detected_default(
             by_selector.entry(selector).or_insert(configuration);
         }
     }
-    let detected = generated.configurations.iter().filter_map(|configuration| {
+    let candidates = generated.configurations.iter().filter_map(|configuration| {
         by_id.get(configuration.id.as_str()).copied().or_else(|| {
             let selector = crate::provider_runs::selector(
                 &serde_json::to_value(configuration).expect("configuration encodes"),
@@ -155,9 +222,9 @@ fn detected_default(
             by_selector.get(&selector).copied()
         })
     });
-    detected
+    candidates
         .clone()
         .find(|configuration| configuration.execution == Execution::Service)
-        .or_else(|| detected.clone().next())
+        .or_else(|| candidates.clone().next())
         .map(|configuration| configuration.id.clone())
 }

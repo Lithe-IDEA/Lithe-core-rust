@@ -12,6 +12,10 @@ const MAX_SOURCES: usize = 1024;
 const MAX_FIELDS: usize = 32;
 const MAX_TEXT: usize = 8192;
 const MAX_BYTES: usize = 2 * 1024 * 1024;
+/// Entries of one `entryList` value, matching the list bound of `fileList`.
+const MAX_ENTRIES: usize = 256;
+/// Nesting bound of `sidebar` sources; deeper trees are not a presentation the host supports.
+const MAX_DEPTH: usize = 8;
 
 #[cfg(test)]
 mod tests;
@@ -40,7 +44,8 @@ pub struct SourceGroup {
     pub id: String,
     /// Plugin-localized section heading.
     pub title: String,
-    /// `form` presents labeled controls; `table` presents source labels as rows.
+    /// `form` presents labeled controls; `table` presents source labels as rows;
+    /// `sidebar` lists the sources for navigation and shows one selected source.
     pub layout: String,
     /// Localized heading of the first table column; empty uses the host default.
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -65,6 +70,10 @@ pub struct SettingsSource {
     pub writable: bool,
     /// Allowlisted non-sensitive fields; unrelated source content stays private.
     pub fields: Vec<SourceField>,
+    /// Earlier source of the same `sidebar` group under which the host nests
+    /// this one; empty for a top-level source.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub parent: String,
 }
 
 /// One explicitly non-sensitive raw value and its upstream effective value.
@@ -78,8 +87,12 @@ pub struct SourceField {
     /// Explanation displayed by the host's information control.
     #[serde(default)]
     pub description: String,
-    /// `text`, `enum`, `boolean`, `stringList`, or `fileList`.
+    /// `text`, `enum`, `boolean`, `stringList`, `fileList`, or `entryList`.
     pub kind: String,
+    /// Localized tab (`sidebar` group) or subheading (`form` group) holding the
+    /// field; empty places it before any section. Table columns have none.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub section: String,
     /// Null means the source has no explicit override.
     pub value: Value,
     /// Current value selected by the upstream tool, including inheritance.
@@ -92,6 +105,92 @@ pub struct SourceField {
     /// Upstream-supported choices; empty for non-enumeration controls.
     #[serde(default)]
     pub options: Vec<SourceOption>,
+    /// Kinds of entry an `entryList` holds, in the order of the host's add menu.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub entry_kinds: Vec<EntryKind>,
+    /// Per-entry columns of an `entryList`, such as whether an entry is exported.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attributes: Vec<EntryAttribute>,
+}
+
+/// One kind of `entryList` entry and how the host lets the user add it.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EntryKind {
+    /// Opaque kind identity stored in each entry.
+    pub id: String,
+    /// Localized add-menu item, such as "JAR files".
+    pub title: String,
+    /// `file` and `directory` open the host's native picker, whose absolute
+    /// native paths the plugin turns into its own spelling on write; `choice`
+    /// offers `choices`.
+    pub input: String,
+    /// File-name extensions a `file` picker offers, without dots; empty allows any file.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extensions: Vec<String>,
+    /// Values a `choice` kind may add; empty when nothing can be added now.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub choices: Vec<EntryChoice>,
+}
+
+/// A value the user may add as a `choice` entry, such as a library or module.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EntryChoice {
+    /// Opaque native value written only after confirmation.
+    pub value: String,
+    /// Localized label.
+    pub title: String,
+    /// Localized secondary text, such as a location or a count.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub detail: String,
+}
+
+/// A per-entry column; absent values mean the plugin's default for the entry.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EntryAttribute {
+    /// Opaque attribute identity, a key of each entry's `attributes`.
+    pub id: String,
+    /// Localized column heading.
+    pub title: String,
+    /// `boolean` or `enum`.
+    pub kind: String,
+    /// Choices of an `enum` attribute; empty for `boolean`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub options: Vec<SourceOption>,
+}
+
+/// One ordered item of an `entryList` value. Only `kind`, `value` and
+/// `attributes` are native data; `title` and `detail` are display text that
+/// edits and comparisons ignore.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SourceEntry {
+    /// Identity of one of the field's `entryKinds`.
+    pub kind: String,
+    /// Opaque native value: a path as the plugin spells it, or a choice value.
+    pub value: String,
+    /// Localized label; empty shows `value`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub title: String,
+    /// Localized secondary text.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub detail: String,
+    /// Declared attribute values; an absent key keeps the plugin's default.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub attributes: BTreeMap<String, Value>,
+}
+
+impl SourceEntry {
+    /// The native part of an entry, as edits carry it to the plugin.
+    fn native(&self) -> Value {
+        let mut value = json!({"kind":self.kind,"value":self.value});
+        if !self.attributes.is_empty() {
+            value["attributes"] = json!(self.attributes);
+        }
+        value
+    }
 }
 
 /// An upstream-supported choice; its opaque value never becomes a command line.
@@ -120,6 +219,9 @@ pub struct SourceInput {
     /// Explicitly retain or restore absence of a native override.
     #[serde(default)]
     pub inherit: bool,
+    /// Ordered `entryList` draft, ignored by other control kinds.
+    #[serde(default)]
+    pub entries: Vec<SourceEntry>,
 }
 
 /// A source-bound collection of changed controls, not a source document.
@@ -203,8 +305,94 @@ fn value_valid(field: &SourceField, value: &Value) -> bool {
                     .iter()
                     .all(|item| item.as_str().is_some_and(|item| text(item, 4096, false)))
         }),
+        "entryList" => value.as_array().is_some_and(|items| {
+            let mut seen = BTreeSet::new();
+            items.len() <= MAX_ENTRIES
+                && items.iter().all(|item| {
+                    entry(item).is_some_and(|item| {
+                        entry_valid(field, &item) && seen.insert((item.kind, item.value))
+                    })
+                })
+        }),
         _ => false,
     }
+}
+
+fn entry(value: &Value) -> Option<SourceEntry> {
+    serde_json::from_value(value.clone()).ok()
+}
+
+fn entry_valid(field: &SourceField, entry: &SourceEntry) -> bool {
+    field.entry_kinds.iter().any(|kind| kind.id == entry.kind)
+        && text(&entry.value, 4096, false)
+        && text(&entry.title, 256, true)
+        && text(&entry.detail, 1024, true)
+        && entry.attributes.iter().all(|(id, value)| {
+            field
+                .attributes
+                .iter()
+                .find(|attribute| &attribute.id == id)
+                .is_some_and(|attribute| match attribute.kind.as_str() {
+                    "boolean" => value.is_boolean(),
+                    _ => value.as_str().is_some_and(|value| {
+                        attribute.options.iter().any(|option| option.value == value)
+                    }),
+                })
+        })
+}
+
+fn options_valid(options: &[SourceOption]) -> bool {
+    let mut choices = BTreeSet::new();
+    !options.is_empty()
+        && options.len() <= 64
+        && options.iter().all(|option| {
+            text(&option.value, 128, false)
+                && choices.insert(&option.value)
+                && text(&option.title, 256, false)
+        })
+}
+
+/// Validates the add menu and columns of an `entryList`, or their absence elsewhere.
+fn entry_declarations_valid(field: &SourceField) -> bool {
+    if field.kind != "entryList" {
+        return field.entry_kinds.is_empty() && field.attributes.is_empty();
+    }
+    let mut kinds = BTreeSet::new();
+    let mut attributes = BTreeSet::new();
+    (1..=16).contains(&field.entry_kinds.len())
+        && field.entry_kinds.iter().all(|kind| {
+            let mut choices = BTreeSet::new();
+            identifier(&kind.id)
+                && kinds.insert(&kind.id)
+                && text(&kind.title, 256, false)
+                && matches!(kind.input.as_str(), "file" | "directory" | "choice")
+                && (kind.input == "file" || kind.extensions.is_empty())
+                && kind.extensions.len() <= 16
+                && kind.extensions.iter().all(|extension| {
+                    !extension.is_empty()
+                        && extension.len() <= 32
+                        && extension.bytes().all(|byte| byte.is_ascii_alphanumeric())
+                })
+                && (kind.input == "choice" || kind.choices.is_empty())
+                && kind.choices.len() <= 1024
+                && kind.choices.iter().all(|choice| {
+                    text(&choice.value, 4096, false)
+                        && choices.insert(&choice.value)
+                        && text(&choice.title, 256, false)
+                        && text(&choice.detail, 1024, true)
+                })
+        })
+        && field.attributes.len() <= 4
+        && field.attributes.iter().all(|attribute| {
+            identifier(&attribute.id)
+                && attributes.insert(&attribute.id)
+                && text(&attribute.title, 256, false)
+                && match attribute.kind.as_str() {
+                    "boolean" => attribute.options.is_empty(),
+                    "enum" => options_valid(&attribute.options),
+                    _ => false,
+                }
+        })
 }
 
 impl SourceSettings {
@@ -222,12 +410,12 @@ impl SourceSettings {
         {
             return Err(rejected("snapshot"));
         }
-        let mut groups = BTreeSet::new();
+        let mut groups = BTreeMap::new();
         for group in &self.groups {
             if !identifier(&group.id)
-                || !groups.insert(&group.id)
+                || groups.insert(&group.id, group.layout.as_str()).is_some()
                 || !text(&group.title, 256, false)
-                || !matches!(group.layout.as_str(), "form" | "table")
+                || !matches!(group.layout.as_str(), "form" | "table" | "sidebar")
                 || !text(&group.row_title, 256, true)
             {
                 return Err(rejected("groups"));
@@ -235,11 +423,33 @@ impl SourceSettings {
         }
         let mut ids = BTreeSet::new();
         let mut paths = BTreeSet::new();
+        // Depth of each `sidebar` source; a parent must precede its children,
+        // which also rules out cycles.
+        let mut depths: BTreeMap<&str, (&str, usize)> = BTreeMap::new();
         for source in &self.sources {
+            let Some(&layout) = groups.get(&source.group) else {
+                return Err(rejected("sources"));
+            };
+            if layout == "sidebar" {
+                let depth = if source.parent.is_empty() {
+                    0
+                } else {
+                    match depths.get(source.parent.as_str()) {
+                        Some((group, depth))
+                            if *group == source.group && *depth + 1 < MAX_DEPTH =>
+                        {
+                            depth + 1
+                        }
+                        _ => return Err(rejected("parent")),
+                    }
+                };
+                depths.insert(&source.id, (&source.group, depth));
+            } else if !source.parent.is_empty() {
+                return Err(rejected("parent"));
+            }
             if !identifier(&source.id)
                 || !ids.insert(&source.id)
                 || !paths.insert(&source.path)
-                || !groups.contains(&source.group)
                 || !text(&source.title, 256, false)
                 || !relative_path(&source.path)
                 || !valid_source_revision(&source.revision)
@@ -257,8 +467,11 @@ impl SourceSettings {
                     || !text(&field.effective_source, 1024, true)
                     || !matches!(
                         field.kind.as_str(),
-                        "text" | "enum" | "boolean" | "stringList" | "fileList"
+                        "text" | "enum" | "boolean" | "stringList" | "fileList" | "entryList"
                     )
+                    || !text(&field.section, 64, true)
+                    || layout == "table" && (!field.section.is_empty() || field.kind == "entryList")
+                    || !entry_declarations_valid(field)
                     || !value_valid(field, &field.value)
                     || !value_valid(field, &field.effective_value)
                     || !value_valid(field, &field.inherited_value)
@@ -266,17 +479,8 @@ impl SourceSettings {
                     return Err(rejected("fields"));
                 }
                 if field.kind == "enum" {
-                    let mut choices = BTreeSet::new();
-                    if field.options.is_empty() || field.options.len() > 64 {
+                    if !options_valid(&field.options) {
                         return Err(rejected("options"));
-                    }
-                    for option in &field.options {
-                        if !text(&option.value, 128, false)
-                            || !choices.insert(&option.value)
-                            || !text(&option.title, 256, false)
-                        {
-                            return Err(rejected("options"));
-                        }
                     }
                 } else if !field.options.is_empty() {
                     return Err(rejected("options"));
@@ -302,6 +506,14 @@ impl SourceField {
         match self.kind.as_str() {
             "enum" => input.choice = value.as_str().unwrap_or_default().to_owned(),
             "boolean" => input.on = value.as_bool().unwrap_or_default(),
+            "entryList" => {
+                input.entries = value
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(entry)
+                    .collect();
+            }
             "stringList" | "fileList" => {
                 input.text = value
                     .as_array()
@@ -334,12 +546,50 @@ impl SourceField {
                     .filter(|line| !line.trim().is_empty())
                     .collect::<Vec<_>>())
             }
+            "entryList" => {
+                // A new choice entry must be one the plugin offers now or one
+                // the source already holds; the host cannot invent containers.
+                let known = |added: &SourceEntry| {
+                    [&self.value, &self.effective_value]
+                        .into_iter()
+                        .filter_map(Value::as_array)
+                        .flatten()
+                        .filter_map(entry)
+                        .any(|known| known.kind == added.kind && known.value == added.value)
+                };
+                for entry in &input.entries {
+                    let offered = self.entry_kinds.iter().any(|kind| {
+                        kind.id == entry.kind
+                            && (kind.input != "choice"
+                                || kind
+                                    .choices
+                                    .iter()
+                                    .any(|choice| choice.value == entry.value))
+                    });
+                    if !offered && !known(entry) {
+                        return Err(rejected("input"));
+                    }
+                }
+                json!(input.entries)
+            }
             _ => return Err(rejected("input")),
         };
         if !value_valid(self, &value) {
             return Err(rejected("input"));
         }
-        Ok(value)
+        Ok(self.native(&value))
+    }
+
+    /// Drops the display text of `entryList` entries, which never reaches a
+    /// write and never makes two values differ.
+    fn native(&self, value: &Value) -> Value {
+        match (self.kind.as_str(), value.as_array()) {
+            ("entryList", Some(items)) => items
+                .iter()
+                .map(|item| entry(item).map_or_else(|| item.clone(), |item| item.native()))
+                .collect(),
+            _ => value.clone(),
+        }
     }
 }
 
@@ -402,7 +652,8 @@ pub fn state_command(payload: Value) -> Result<Value, CoreError> {
             .map(|source| {
                 let displays = source.fields.iter().filter(|field| {
                     (field.value.is_null() && field.kind != "enum")
-                        || (!field.value.is_null() && field.value != field.effective_value)
+                        || (!field.value.is_null()
+                            && field.native(&field.value) != field.native(&field.effective_value))
                 }).map(|field| {
                     let value = &field.effective_value;
                     let mut display = if value.is_null() {
@@ -415,7 +666,7 @@ pub fn state_command(payload: Value) -> Result<Value, CoreError> {
                                 json!({"kind":"text","text":title})
                             }
                             "boolean" => json!({"kind":"boolean","on":value.as_bool().unwrap_or_default()}),
-                            "fileList" | "stringList" => json!({"kind":"list","count":value.as_array().map_or(0, Vec::len)}),
+                            "fileList" | "stringList" | "entryList" => json!({"kind":"list","count":value.as_array().map_or(0, Vec::len)}),
                             _ => json!({"kind":"text","text":value.as_str().unwrap_or_default()}),
                         }
                     };
@@ -483,7 +734,7 @@ pub fn edit_command(payload: Value) -> Result<Value, CoreError> {
                     .find(|field| field.id == id)
                     .ok_or_else(|| rejected("fieldID"))?;
                 let value = field.edited_value(&input)?;
-                if value != field.value {
+                if value != field.native(&field.value) {
                     values.insert(id, value);
                 }
             }

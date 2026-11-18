@@ -11,37 +11,12 @@ pub fn provider_launch_inputs(request: ProviderLaunchInputsRequest) -> Result<Va
             "The provider instance leaves the workspace.",
         ));
     }
-    let explicit_cwd = configuration_override_has_key(
-        &root,
-        request.local_document.as_ref(),
-        &request.configuration_id,
-        "cwd",
-    )?;
-    let explicit_arguments = configuration_override_has_key(
-        &root,
-        request.local_document.as_ref(),
-        &request.configuration_id,
-        "args",
-    )?;
-    let resolved = resolve(ResolveRequest {
-        team_document: None,
-        root: request.root,
-        toolchain_candidates: Vec::new(),
-        local_document: request.local_document,
-    })?;
-    let config = resolved["configurations"]
-        .as_array()
-        .and_then(|items| {
-            items
-                .iter()
-                .find(|value| value["id"] == request.configuration_id)
-        })
-        .ok_or_else(|| {
-            CoreError::new(
-                ErrorCode::InvalidRequest,
-                "Run configuration is unavailable.",
-            )
-        })?;
+    let layers = read_layers(&root, None, request.local_document)?;
+    let explicit_cwd = configuration_override_has_key(&layers, &request.configuration_id, "cwd");
+    let explicit_arguments =
+        configuration_override_has_key(&layers, &request.configuration_id, "args");
+    let resolved = resolve_layers(&root, &layers, None)?;
+    let config = runnable_configuration(&resolved, &request.configuration_id)?;
     if config["provider"] == "build.provider" {
         let reference: BuildProviderRunReference =
             serde_json::from_value(config["extensions"]["build"].clone()).map_err(|_| {
@@ -93,28 +68,31 @@ pub fn provider_launch_inputs(request: ProviderLaunchInputsRequest) -> Result<Va
 
 /// Resolves one configuration into the exact executable, arguments, and environment.
 ///
-/// Core only assembles process-based plans: a detector or provider either named
-/// the command, or transferred executable ownership to a runtime toolchain.
+/// Core only assembles process-based plans: a built-in process run, a command
+/// the provider or the saved entry named, or an executable owned by a runtime
+/// toolchain.
 /// Ecosystem launch semantics stay in the plugin that declared the run.
 pub fn create_launch_plan(request: LaunchPlanRequest) -> Result<Value, CoreError> {
-    existing_root(&request.root)?;
-    let resolved = resolve(ResolveRequest {
-        team_document: None,
-        root: request.root,
-        toolchain_candidates: Vec::new(),
-        local_document: request.local_document,
-    })?;
-    let config = resolved["configurations"]
-        .as_array()
-        .and_then(|items| items.iter().find(|v| v["id"] == request.configuration_id))
-        .ok_or_else(|| {
-            CoreError::new(ErrorCode::InvalidRequest, "Run configuration was not found")
-        })?;
+    let root = existing_root(&request.root)?;
+    let layers = read_layers(&root, None, request.local_document)?;
+    let resolved = resolve_layers(&root, &layers, None)?;
+    let config = runnable_configuration(&resolved, &request.configuration_id)?;
     if config["disabled"].as_bool().unwrap_or(false) {
         return Err(CoreError::new(
             ErrorCode::InvalidRequest,
             "Run configuration is disabled",
         ));
+    }
+    if config["provider"]
+        .as_str()
+        .is_some_and(super::process::is_process_provider)
+    {
+        return super::process::launch_plan(
+            &root,
+            config,
+            Platform::HOST,
+            request.inline_script_base.as_deref(),
+        );
     }
     if let Some(command) = config["command"].as_str().filter(|value| !value.is_empty()) {
         return process_launch_plan(config, command);
@@ -137,26 +115,15 @@ pub fn create_launch_plan(request: LaunchPlanRequest) -> Result<Value, CoreError
 /// Generated `cwd: "."` is the schema default and may inherit the provider
 /// root. A project or local `cwd: "."`, however, is an intentional override
 /// and must keep the workspace root.
-fn configuration_override_has_key(
-    root: &Path,
-    provided_local: Option<&Value>,
-    configuration_id: &str,
-    key: &str,
-) -> Result<bool, CoreError> {
-    let team = read_document_value(root, "run/configurations.json")?
-        .unwrap_or_else(|| json!({"version": VERSION, "configurations": []}));
-    let local = local_layer_document(root, provided_local.cloned())?;
-    for document in [&team, &local] {
-        validate_version_value(document)?;
-        if document["configurations"]
-            .as_array()
-            .and_then(|items| items.iter().find(|item| item["id"] == configuration_id))
-            .is_some_and(|item| item.get(key).is_some())
-        {
-            return Ok(true);
-        }
-    }
-    Ok(false)
+fn configuration_override_has_key(layers: &Layers, configuration_id: &str, key: &str) -> bool {
+    [&layers.project.document, &layers.local.document]
+        .into_iter()
+        .any(|document| {
+            document["configurations"]
+                .as_array()
+                .and_then(|items| items.iter().find(|item| item["id"] == configuration_id))
+                .is_some_and(|item| item.get(key).is_some())
+        })
 }
 
 /// Launch plan for configurations that name their own executable.

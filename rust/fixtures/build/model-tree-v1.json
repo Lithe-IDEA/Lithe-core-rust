@@ -1,0 +1,2026 @@
+{
+  "version": 0,
+  "description": "build.modelTree: projects nest by parentID; each holds its tasks filed by category, else by group, then its dependencies, its targets and its child projects. Workspace tasks appear once beside the root projects, and one root project is merged into the instance. A filter keeps each match whole and the nodes on the way to it.",
+  "manifest": {
+    "schemaVersion": 0,
+    "id": "dev.lithe.fixture.build-model-tree",
+    "displayName": "Build Model Tree Fixture",
+    "version": "0.1.0",
+    "pluginAPIVersion": 0,
+    "requires": {
+      "buildProviders": 0,
+      "buildSystems": 0
+    },
+    "requiresTools": [
+      "java"
+    ],
+    "vendor": {
+      "id": "org.example",
+      "displayName": "Example",
+      "signatureRequirement": "publisherPackage"
+    },
+    "permissions": [
+      "languageServer.launch",
+      "process.build"
+    ],
+    "activationEvents": [
+      "onBuildSystem:nested",
+      "onBuildSystem:flat"
+    ],
+    "languages": [],
+    "buildSystems": [
+      {
+        "id": "nested",
+        "displayName": "Nested",
+        "detection": {
+          "markers": [
+            "nested.toml"
+          ]
+        },
+        "invocation": {
+          "executables": [
+            {
+              "kind": "command",
+              "command": "nested"
+            }
+          ]
+        },
+        "model": {
+          "source": "command",
+          "arguments": [
+            "model"
+          ],
+          "decoder": "litheBuildModel",
+          "executesProjectCode": false,
+          "mayUseNetwork": false
+        },
+        "tasks": [
+          {
+            "id": "clean",
+            "displayName": "clean",
+            "description": "Deletes the build outputs.",
+            "group": "lifecycle",
+            "scopes": [
+              "workspace",
+              "project"
+            ],
+            "category": [
+              "Lifecycle"
+            ],
+            "arguments": [
+              "clean"
+            ]
+          },
+          {
+            "id": "package",
+            "displayName": "package",
+            "group": "lifecycle",
+            "scopes": [
+              "workspace",
+              "project"
+            ],
+            "category": [
+              "Lifecycle"
+            ],
+            "arguments": [
+              "package"
+            ]
+          },
+          {
+            "id": "check",
+            "displayName": "Check",
+            "group": "verification",
+            "scopes": [
+              "project"
+            ],
+            "arguments": [
+              "check"
+            ]
+          },
+          {
+            "id": "plugin-goal",
+            "displayName": "Plugin Goal",
+            "group": "build",
+            "fromModel": true,
+            "category": [
+              "Plugins"
+            ],
+            "arguments": [
+              "${task.name}"
+            ]
+          },
+          {
+            "id": "goal",
+            "displayName": "Run Goal…",
+            "group": "other",
+            "scopes": [
+              "workspace",
+              "project"
+            ],
+            "requiresUserArguments": true,
+            "arguments": [
+              "${userArguments}"
+            ]
+          },
+          {
+            "id": "report",
+            "displayName": "Report",
+            "group": "documentation",
+            "scopes": [
+              "workspace"
+            ],
+            "arguments": [
+              "report"
+            ]
+          },
+          {
+            "id": "start",
+            "displayName": "Start",
+            "group": "run",
+            "scopes": [
+              "target"
+            ],
+            "targetTags": [
+              "application"
+            ],
+            "arguments": [
+              "start",
+              "${target.name}"
+            ]
+          }
+        ],
+        "dependencies": {
+          "source": "command",
+          "scopes": [
+            "workspace",
+            "project"
+          ],
+          "arguments": [
+            "dependencies"
+          ],
+          "decoder": "litheDependencies",
+          "executesProjectCode": false,
+          "mayUseNetwork": false
+        }
+      },
+      {
+        "id": "flat",
+        "displayName": "Flat",
+        "detection": {
+          "markers": [
+            "flat.toml"
+          ]
+        },
+        "invocation": {
+          "executables": [
+            {
+              "kind": "command",
+              "command": "flat"
+            }
+          ]
+        },
+        "provider": {
+          "launch": {
+            "kind": "runtime",
+            "tool": "java",
+            "minimumVersion": "17",
+            "entry": "provider/flat.jar"
+          },
+          "arguments": [
+            "--stdio"
+          ],
+          "executesProjectCode": false,
+          "mayUseNetwork": false
+        },
+        "model": {
+          "source": "provider"
+        },
+        "tasks": [
+          {
+            "id": "assemble",
+            "displayName": "Assemble",
+            "group": "build",
+            "scopes": [
+              "project"
+            ],
+            "source": "provider",
+            "arguments": []
+          },
+          {
+            "id": "refresh",
+            "displayName": "Refresh All",
+            "group": "other",
+            "scopes": [
+              "workspace"
+            ],
+            "source": "provider",
+            "arguments": []
+          }
+        ],
+        "dependencies": {
+          "source": "provider",
+          "scopes": [
+            "workspace"
+          ]
+        },
+        "test": {
+          "source": "provider",
+          "scopes": [
+            "workspace",
+            "project"
+          ],
+          "filters": [
+            "suite",
+            "case"
+          ],
+          "arguments": [],
+          "discovery": true
+        }
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "One root project's contents become the instance's; child projects nest with their own folders",
+      "buildSystemID": "nested",
+      "request": {
+        "model": {
+          "projects": [
+            {
+              "id": "nested:app",
+              "path": ".",
+              "name": "app",
+              "properties": {},
+              "displayName": "App"
+            },
+            {
+              "id": "nested:core/core",
+              "path": "core",
+              "name": "core",
+              "properties": {},
+              "parentID": "nested:app"
+            },
+            {
+              "id": "nested:web/web",
+              "path": "web",
+              "name": "web",
+              "properties": {},
+              "parentID": "nested:app"
+            },
+            {
+              "id": "nested:core/api/api",
+              "path": "core/api",
+              "name": "api",
+              "properties": {},
+              "parentID": "nested:core/core"
+            }
+          ],
+          "targets": [
+            {
+              "id": "nested:core/library/core",
+              "projectID": "nested:core/core",
+              "name": "core-lib",
+              "path": "core",
+              "tags": [
+                "library"
+              ],
+              "properties": {}
+            },
+            {
+              "id": "nested:web/server/application/server",
+              "projectID": "nested:web/web",
+              "name": "example.com/app/web/server",
+              "path": "web/server",
+              "tags": [
+                "application"
+              ],
+              "properties": {}
+            },
+            {
+              "id": "nested:gone/application/gone",
+              "projectID": "nested:gone/gone",
+              "name": "gone",
+              "path": "gone",
+              "tags": [
+                "application"
+              ],
+              "properties": {}
+            }
+          ],
+          "tasks": [
+            {
+              "id": "nested:compiler:compile",
+              "projectID": "nested:app",
+              "name": "compiler:compile",
+              "path": ".",
+              "template": "plugin-goal",
+              "group": "build",
+              "execution": "task",
+              "properties": {},
+              "category": [
+                "Plugins",
+                "compiler"
+              ],
+              "description": "Compiles the sources."
+            },
+            {
+              "id": "nested:core/compiler:compile",
+              "projectID": "nested:core/core",
+              "name": "compiler:compile",
+              "path": ".",
+              "template": "plugin-goal",
+              "group": "build",
+              "execution": "task",
+              "properties": {},
+              "category": [
+                "Plugins",
+                "compiler"
+              ]
+            },
+            {
+              "id": "nested:core/compiler:testCompile",
+              "projectID": "nested:core/core",
+              "name": "compiler:testCompile",
+              "path": ".",
+              "template": "plugin-goal",
+              "group": "build",
+              "execution": "task",
+              "properties": {},
+              "category": [
+                "Plugins",
+                "compiler"
+              ],
+              "displayName": "testCompile"
+            },
+            {
+              "id": "nested:web/jar:jar",
+              "projectID": "nested:web/web",
+              "name": "jar:jar",
+              "path": ".",
+              "template": "plugin-goal",
+              "group": "build",
+              "execution": "task",
+              "properties": {}
+            },
+            {
+              "id": "nested:gone/jar:jar",
+              "projectID": "nested:gone/gone",
+              "name": "jar:jar",
+              "path": ".",
+              "template": "plugin-goal",
+              "group": "build",
+              "execution": "task",
+              "properties": {}
+            }
+          ],
+          "contentRoots": [],
+          "optionValues": {}
+        },
+        "groupHeadings": {
+          "lifecycle": "Lifecycle",
+          "build": "Build",
+          "test": "Test",
+          "run": "Run",
+          "verification": "Verification",
+          "documentation": "Documentation",
+          "other": "Other"
+        }
+      },
+      "expected": {
+        "project": {
+          "kind": "project",
+          "key": "p\u001fnested:app",
+          "label": "App",
+          "projectID": "nested:app"
+        },
+        "nodes": [
+          {
+            "kind": "folder",
+            "key": "p\u001fnested:app\u001fc\u001fLifecycle",
+            "label": "Lifecycle",
+            "children": [
+              {
+                "kind": "task",
+                "key": "p\u001fnested:app\u001fc\u001fLifecycle\u001ft\u001fclean",
+                "label": "clean",
+                "tooltip": "Deletes the build outputs.",
+                "projectID": "nested:app",
+                "taskID": "clean"
+              },
+              {
+                "kind": "task",
+                "key": "p\u001fnested:app\u001fc\u001fLifecycle\u001ft\u001fpackage",
+                "label": "package",
+                "projectID": "nested:app",
+                "taskID": "package"
+              }
+            ]
+          },
+          {
+            "kind": "folder",
+            "key": "p\u001fnested:app\u001fg\u001fverification",
+            "label": "Verification",
+            "group": "verification",
+            "children": [
+              {
+                "kind": "task",
+                "key": "p\u001fnested:app\u001fg\u001fverification\u001ft\u001fcheck",
+                "label": "Check",
+                "projectID": "nested:app",
+                "taskID": "check"
+              }
+            ]
+          },
+          {
+            "kind": "folder",
+            "key": "p\u001fnested:app\u001fc\u001fPlugins",
+            "label": "Plugins",
+            "children": [
+              {
+                "kind": "folder",
+                "key": "p\u001fnested:app\u001fc\u001fPlugins\u001fc\u001fcompiler",
+                "label": "compiler",
+                "children": [
+                  {
+                    "kind": "task",
+                    "key": "p\u001fnested:app\u001fc\u001fPlugins\u001fc\u001fcompiler\u001ft\u001fnested:compiler:compile",
+                    "label": "compiler:compile",
+                    "tooltip": "Compiles the sources.",
+                    "projectID": "nested:app",
+                    "taskID": "nested:compiler:compile"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "folder",
+            "key": "p\u001fnested:app\u001fg\u001fother",
+            "label": "Other",
+            "group": "other",
+            "children": [
+              {
+                "kind": "task",
+                "key": "p\u001fnested:app\u001fg\u001fother\u001ft\u001fgoal",
+                "label": "Run Goal…",
+                "taskID": "goal"
+              }
+            ]
+          },
+          {
+            "kind": "folder",
+            "key": "p\u001fnested:app\u001fg\u001fdocumentation",
+            "label": "Documentation",
+            "group": "documentation",
+            "children": [
+              {
+                "kind": "task",
+                "key": "p\u001fnested:app\u001fg\u001fdocumentation\u001ft\u001freport",
+                "label": "Report",
+                "taskID": "report"
+              }
+            ]
+          },
+          {
+            "kind": "dependencies",
+            "key": "p\u001fnested:app\u001fdependencies",
+            "projectID": "nested:app"
+          },
+          {
+            "kind": "project",
+            "key": "p\u001fnested:core/core",
+            "label": "core",
+            "detail": "core",
+            "projectID": "nested:core/core",
+            "children": [
+              {
+                "kind": "folder",
+                "key": "p\u001fnested:core/core\u001fc\u001fLifecycle",
+                "label": "Lifecycle",
+                "children": [
+                  {
+                    "kind": "task",
+                    "key": "p\u001fnested:core/core\u001fc\u001fLifecycle\u001ft\u001fclean",
+                    "label": "clean",
+                    "tooltip": "Deletes the build outputs.",
+                    "projectID": "nested:core/core",
+                    "taskID": "clean"
+                  },
+                  {
+                    "kind": "task",
+                    "key": "p\u001fnested:core/core\u001fc\u001fLifecycle\u001ft\u001fpackage",
+                    "label": "package",
+                    "projectID": "nested:core/core",
+                    "taskID": "package"
+                  }
+                ]
+              },
+              {
+                "kind": "folder",
+                "key": "p\u001fnested:core/core\u001fg\u001fverification",
+                "label": "Verification",
+                "group": "verification",
+                "children": [
+                  {
+                    "kind": "task",
+                    "key": "p\u001fnested:core/core\u001fg\u001fverification\u001ft\u001fcheck",
+                    "label": "Check",
+                    "projectID": "nested:core/core",
+                    "taskID": "check"
+                  }
+                ]
+              },
+              {
+                "kind": "folder",
+                "key": "p\u001fnested:core/core\u001fc\u001fPlugins",
+                "label": "Plugins",
+                "children": [
+                  {
+                    "kind": "folder",
+                    "key": "p\u001fnested:core/core\u001fc\u001fPlugins\u001fc\u001fcompiler",
+                    "label": "compiler",
+                    "children": [
+                      {
+                        "kind": "task",
+                        "key": "p\u001fnested:core/core\u001fc\u001fPlugins\u001fc\u001fcompiler\u001ft\u001fnested:core/compiler:compile",
+                        "label": "compiler:compile",
+                        "projectID": "nested:core/core",
+                        "taskID": "nested:core/compiler:compile"
+                      },
+                      {
+                        "kind": "task",
+                        "key": "p\u001fnested:core/core\u001fc\u001fPlugins\u001fc\u001fcompiler\u001ft\u001fnested:core/compiler:testCompile",
+                        "label": "testCompile",
+                        "projectID": "nested:core/core",
+                        "taskID": "nested:core/compiler:testCompile"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "kind": "dependencies",
+                "key": "p\u001fnested:core/core\u001fdependencies",
+                "projectID": "nested:core/core"
+              },
+              {
+                "kind": "targets",
+                "key": "p\u001fnested:core/core\u001ftargets",
+                "projectID": "nested:core/core",
+                "children": [
+                  {
+                    "kind": "target",
+                    "key": "p\u001fnested:core/core\u001ftargets\u001fnested:core/library/core",
+                    "label": "core-lib",
+                    "detail": "core",
+                    "projectID": "nested:core/core",
+                    "targetID": "nested:core/library/core"
+                  }
+                ]
+              },
+              {
+                "kind": "project",
+                "key": "p\u001fnested:core/api/api",
+                "label": "api",
+                "detail": "core/api",
+                "projectID": "nested:core/api/api",
+                "children": [
+                  {
+                    "kind": "folder",
+                    "key": "p\u001fnested:core/api/api\u001fc\u001fLifecycle",
+                    "label": "Lifecycle",
+                    "children": [
+                      {
+                        "kind": "task",
+                        "key": "p\u001fnested:core/api/api\u001fc\u001fLifecycle\u001ft\u001fclean",
+                        "label": "clean",
+                        "tooltip": "Deletes the build outputs.",
+                        "projectID": "nested:core/api/api",
+                        "taskID": "clean"
+                      },
+                      {
+                        "kind": "task",
+                        "key": "p\u001fnested:core/api/api\u001fc\u001fLifecycle\u001ft\u001fpackage",
+                        "label": "package",
+                        "projectID": "nested:core/api/api",
+                        "taskID": "package"
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "folder",
+                    "key": "p\u001fnested:core/api/api\u001fg\u001fverification",
+                    "label": "Verification",
+                    "group": "verification",
+                    "children": [
+                      {
+                        "kind": "task",
+                        "key": "p\u001fnested:core/api/api\u001fg\u001fverification\u001ft\u001fcheck",
+                        "label": "Check",
+                        "projectID": "nested:core/api/api",
+                        "taskID": "check"
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "dependencies",
+                    "key": "p\u001fnested:core/api/api\u001fdependencies",
+                    "projectID": "nested:core/api/api"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "project",
+            "key": "p\u001fnested:web/web",
+            "label": "web",
+            "detail": "web",
+            "projectID": "nested:web/web",
+            "children": [
+              {
+                "kind": "folder",
+                "key": "p\u001fnested:web/web\u001fc\u001fLifecycle",
+                "label": "Lifecycle",
+                "children": [
+                  {
+                    "kind": "task",
+                    "key": "p\u001fnested:web/web\u001fc\u001fLifecycle\u001ft\u001fclean",
+                    "label": "clean",
+                    "tooltip": "Deletes the build outputs.",
+                    "projectID": "nested:web/web",
+                    "taskID": "clean"
+                  },
+                  {
+                    "kind": "task",
+                    "key": "p\u001fnested:web/web\u001fc\u001fLifecycle\u001ft\u001fpackage",
+                    "label": "package",
+                    "projectID": "nested:web/web",
+                    "taskID": "package"
+                  }
+                ]
+              },
+              {
+                "kind": "folder",
+                "key": "p\u001fnested:web/web\u001fg\u001fverification",
+                "label": "Verification",
+                "group": "verification",
+                "children": [
+                  {
+                    "kind": "task",
+                    "key": "p\u001fnested:web/web\u001fg\u001fverification\u001ft\u001fcheck",
+                    "label": "Check",
+                    "projectID": "nested:web/web",
+                    "taskID": "check"
+                  }
+                ]
+              },
+              {
+                "kind": "folder",
+                "key": "p\u001fnested:web/web\u001fg\u001fbuild",
+                "label": "Build",
+                "group": "build",
+                "children": [
+                  {
+                    "kind": "task",
+                    "key": "p\u001fnested:web/web\u001fg\u001fbuild\u001ft\u001fnested:web/jar:jar",
+                    "label": "jar:jar",
+                    "projectID": "nested:web/web",
+                    "taskID": "nested:web/jar:jar"
+                  }
+                ]
+              },
+              {
+                "kind": "dependencies",
+                "key": "p\u001fnested:web/web\u001fdependencies",
+                "projectID": "nested:web/web"
+              },
+              {
+                "kind": "targets",
+                "key": "p\u001fnested:web/web\u001ftargets",
+                "projectID": "nested:web/web",
+                "children": [
+                  {
+                    "kind": "target",
+                    "key": "p\u001fnested:web/web\u001ftargets\u001fnested:web/server/application/server",
+                    "label": "web/server",
+                    "tooltip": "example.com/app/web/server",
+                    "projectID": "nested:web/web",
+                    "targetID": "nested:web/server/application/server",
+                    "children": [
+                      {
+                        "kind": "task",
+                        "key": "p\u001fnested:web/web\u001ftargets\u001fnested:web/server/application/server\u001ft\u001fstart",
+                        "label": "Start",
+                        "projectID": "nested:web/web",
+                        "targetID": "nested:web/server/application/server",
+                        "taskID": "start"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "A filter keeps a matching project whole and the projects on the way to it",
+      "buildSystemID": "nested",
+      "request": {
+        "model": {
+          "projects": [
+            {
+              "id": "nested:app",
+              "path": ".",
+              "name": "app",
+              "properties": {},
+              "displayName": "App"
+            },
+            {
+              "id": "nested:core/core",
+              "path": "core",
+              "name": "core",
+              "properties": {},
+              "parentID": "nested:app"
+            },
+            {
+              "id": "nested:web/web",
+              "path": "web",
+              "name": "web",
+              "properties": {},
+              "parentID": "nested:app"
+            },
+            {
+              "id": "nested:core/api/api",
+              "path": "core/api",
+              "name": "api",
+              "properties": {},
+              "parentID": "nested:core/core"
+            }
+          ],
+          "targets": [
+            {
+              "id": "nested:core/library/core",
+              "projectID": "nested:core/core",
+              "name": "core-lib",
+              "path": "core",
+              "tags": [
+                "library"
+              ],
+              "properties": {}
+            },
+            {
+              "id": "nested:web/server/application/server",
+              "projectID": "nested:web/web",
+              "name": "example.com/app/web/server",
+              "path": "web/server",
+              "tags": [
+                "application"
+              ],
+              "properties": {}
+            },
+            {
+              "id": "nested:gone/application/gone",
+              "projectID": "nested:gone/gone",
+              "name": "gone",
+              "path": "gone",
+              "tags": [
+                "application"
+              ],
+              "properties": {}
+            }
+          ],
+          "tasks": [
+            {
+              "id": "nested:compiler:compile",
+              "projectID": "nested:app",
+              "name": "compiler:compile",
+              "path": ".",
+              "template": "plugin-goal",
+              "group": "build",
+              "execution": "task",
+              "properties": {},
+              "category": [
+                "Plugins",
+                "compiler"
+              ],
+              "description": "Compiles the sources."
+            },
+            {
+              "id": "nested:core/compiler:compile",
+              "projectID": "nested:core/core",
+              "name": "compiler:compile",
+              "path": ".",
+              "template": "plugin-goal",
+              "group": "build",
+              "execution": "task",
+              "properties": {},
+              "category": [
+                "Plugins",
+                "compiler"
+              ]
+            },
+            {
+              "id": "nested:core/compiler:testCompile",
+              "projectID": "nested:core/core",
+              "name": "compiler:testCompile",
+              "path": ".",
+              "template": "plugin-goal",
+              "group": "build",
+              "execution": "task",
+              "properties": {},
+              "category": [
+                "Plugins",
+                "compiler"
+              ],
+              "displayName": "testCompile"
+            },
+            {
+              "id": "nested:web/jar:jar",
+              "projectID": "nested:web/web",
+              "name": "jar:jar",
+              "path": ".",
+              "template": "plugin-goal",
+              "group": "build",
+              "execution": "task",
+              "properties": {}
+            },
+            {
+              "id": "nested:gone/jar:jar",
+              "projectID": "nested:gone/gone",
+              "name": "jar:jar",
+              "path": ".",
+              "template": "plugin-goal",
+              "group": "build",
+              "execution": "task",
+              "properties": {}
+            }
+          ],
+          "contentRoots": [],
+          "optionValues": {}
+        },
+        "groupHeadings": {
+          "lifecycle": "Lifecycle",
+          "build": "Build",
+          "test": "Test",
+          "run": "Run",
+          "verification": "Verification",
+          "documentation": "Documentation",
+          "other": "Other"
+        },
+        "query": "API"
+      },
+      "expected": {
+        "project": {
+          "kind": "project",
+          "key": "p\u001fnested:app",
+          "label": "App",
+          "projectID": "nested:app"
+        },
+        "nodes": [
+          {
+            "kind": "project",
+            "key": "p\u001fnested:core/core",
+            "label": "core",
+            "detail": "core",
+            "projectID": "nested:core/core",
+            "children": [
+              {
+                "kind": "project",
+                "key": "p\u001fnested:core/api/api",
+                "label": "api",
+                "detail": "core/api",
+                "projectID": "nested:core/api/api",
+                "matched": true,
+                "children": [
+                  {
+                    "kind": "folder",
+                    "key": "p\u001fnested:core/api/api\u001fc\u001fLifecycle",
+                    "label": "Lifecycle",
+                    "children": [
+                      {
+                        "kind": "task",
+                        "key": "p\u001fnested:core/api/api\u001fc\u001fLifecycle\u001ft\u001fclean",
+                        "label": "clean",
+                        "tooltip": "Deletes the build outputs.",
+                        "projectID": "nested:core/api/api",
+                        "taskID": "clean"
+                      },
+                      {
+                        "kind": "task",
+                        "key": "p\u001fnested:core/api/api\u001fc\u001fLifecycle\u001ft\u001fpackage",
+                        "label": "package",
+                        "projectID": "nested:core/api/api",
+                        "taskID": "package"
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "folder",
+                    "key": "p\u001fnested:core/api/api\u001fg\u001fverification",
+                    "label": "Verification",
+                    "group": "verification",
+                    "children": [
+                      {
+                        "kind": "task",
+                        "key": "p\u001fnested:core/api/api\u001fg\u001fverification\u001ft\u001fcheck",
+                        "label": "Check",
+                        "projectID": "nested:core/api/api",
+                        "taskID": "check"
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "dependencies",
+                    "key": "p\u001fnested:core/api/api\u001fdependencies",
+                    "projectID": "nested:core/api/api"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "A filter matches localized group headings",
+      "buildSystemID": "nested",
+      "request": {
+        "model": {
+          "projects": [
+            {
+              "id": "nested:app",
+              "path": ".",
+              "name": "app",
+              "properties": {},
+              "displayName": "App"
+            },
+            {
+              "id": "nested:core/core",
+              "path": "core",
+              "name": "core",
+              "properties": {},
+              "parentID": "nested:app"
+            },
+            {
+              "id": "nested:web/web",
+              "path": "web",
+              "name": "web",
+              "properties": {},
+              "parentID": "nested:app"
+            },
+            {
+              "id": "nested:core/api/api",
+              "path": "core/api",
+              "name": "api",
+              "properties": {},
+              "parentID": "nested:core/core"
+            }
+          ],
+          "targets": [
+            {
+              "id": "nested:core/library/core",
+              "projectID": "nested:core/core",
+              "name": "core-lib",
+              "path": "core",
+              "tags": [
+                "library"
+              ],
+              "properties": {}
+            },
+            {
+              "id": "nested:web/server/application/server",
+              "projectID": "nested:web/web",
+              "name": "example.com/app/web/server",
+              "path": "web/server",
+              "tags": [
+                "application"
+              ],
+              "properties": {}
+            },
+            {
+              "id": "nested:gone/application/gone",
+              "projectID": "nested:gone/gone",
+              "name": "gone",
+              "path": "gone",
+              "tags": [
+                "application"
+              ],
+              "properties": {}
+            }
+          ],
+          "tasks": [
+            {
+              "id": "nested:compiler:compile",
+              "projectID": "nested:app",
+              "name": "compiler:compile",
+              "path": ".",
+              "template": "plugin-goal",
+              "group": "build",
+              "execution": "task",
+              "properties": {},
+              "category": [
+                "Plugins",
+                "compiler"
+              ],
+              "description": "Compiles the sources."
+            },
+            {
+              "id": "nested:core/compiler:compile",
+              "projectID": "nested:core/core",
+              "name": "compiler:compile",
+              "path": ".",
+              "template": "plugin-goal",
+              "group": "build",
+              "execution": "task",
+              "properties": {},
+              "category": [
+                "Plugins",
+                "compiler"
+              ]
+            },
+            {
+              "id": "nested:core/compiler:testCompile",
+              "projectID": "nested:core/core",
+              "name": "compiler:testCompile",
+              "path": ".",
+              "template": "plugin-goal",
+              "group": "build",
+              "execution": "task",
+              "properties": {},
+              "category": [
+                "Plugins",
+                "compiler"
+              ],
+              "displayName": "testCompile"
+            },
+            {
+              "id": "nested:web/jar:jar",
+              "projectID": "nested:web/web",
+              "name": "jar:jar",
+              "path": ".",
+              "template": "plugin-goal",
+              "group": "build",
+              "execution": "task",
+              "properties": {}
+            },
+            {
+              "id": "nested:gone/jar:jar",
+              "projectID": "nested:gone/gone",
+              "name": "jar:jar",
+              "path": ".",
+              "template": "plugin-goal",
+              "group": "build",
+              "execution": "task",
+              "properties": {}
+            }
+          ],
+          "contentRoots": [],
+          "optionValues": {}
+        },
+        "groupHeadings": {
+          "lifecycle": "Lifecycle",
+          "build": "Build",
+          "test": "Test",
+          "run": "Run",
+          "verification": "Verification",
+          "documentation": "Documentation",
+          "other": "Other"
+        },
+        "query": "verif"
+      },
+      "expected": {
+        "project": {
+          "kind": "project",
+          "key": "p\u001fnested:app",
+          "label": "App",
+          "projectID": "nested:app"
+        },
+        "nodes": [
+          {
+            "kind": "folder",
+            "key": "p\u001fnested:app\u001fg\u001fverification",
+            "label": "Verification",
+            "group": "verification",
+            "matched": true,
+            "children": [
+              {
+                "kind": "task",
+                "key": "p\u001fnested:app\u001fg\u001fverification\u001ft\u001fcheck",
+                "label": "Check",
+                "projectID": "nested:app",
+                "taskID": "check"
+              }
+            ]
+          },
+          {
+            "kind": "project",
+            "key": "p\u001fnested:core/core",
+            "label": "core",
+            "detail": "core",
+            "projectID": "nested:core/core",
+            "children": [
+              {
+                "kind": "folder",
+                "key": "p\u001fnested:core/core\u001fg\u001fverification",
+                "label": "Verification",
+                "group": "verification",
+                "matched": true,
+                "children": [
+                  {
+                    "kind": "task",
+                    "key": "p\u001fnested:core/core\u001fg\u001fverification\u001ft\u001fcheck",
+                    "label": "Check",
+                    "projectID": "nested:core/core",
+                    "taskID": "check"
+                  }
+                ]
+              },
+              {
+                "kind": "project",
+                "key": "p\u001fnested:core/api/api",
+                "label": "api",
+                "detail": "core/api",
+                "projectID": "nested:core/api/api",
+                "children": [
+                  {
+                    "kind": "folder",
+                    "key": "p\u001fnested:core/api/api\u001fg\u001fverification",
+                    "label": "Verification",
+                    "group": "verification",
+                    "matched": true,
+                    "children": [
+                      {
+                        "kind": "task",
+                        "key": "p\u001fnested:core/api/api\u001fg\u001fverification\u001ft\u001fcheck",
+                        "label": "Check",
+                        "projectID": "nested:core/api/api",
+                        "taskID": "check"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "project",
+            "key": "p\u001fnested:web/web",
+            "label": "web",
+            "detail": "web",
+            "projectID": "nested:web/web",
+            "children": [
+              {
+                "kind": "folder",
+                "key": "p\u001fnested:web/web\u001fg\u001fverification",
+                "label": "Verification",
+                "group": "verification",
+                "matched": true,
+                "children": [
+                  {
+                    "kind": "task",
+                    "key": "p\u001fnested:web/web\u001fg\u001fverification\u001ft\u001fcheck",
+                    "label": "Check",
+                    "projectID": "nested:web/web",
+                    "taskID": "check"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "A filter matches a target's full name",
+      "buildSystemID": "nested",
+      "request": {
+        "model": {
+          "projects": [
+            {
+              "id": "nested:app",
+              "path": ".",
+              "name": "app",
+              "properties": {},
+              "displayName": "App"
+            },
+            {
+              "id": "nested:core/core",
+              "path": "core",
+              "name": "core",
+              "properties": {},
+              "parentID": "nested:app"
+            },
+            {
+              "id": "nested:web/web",
+              "path": "web",
+              "name": "web",
+              "properties": {},
+              "parentID": "nested:app"
+            },
+            {
+              "id": "nested:core/api/api",
+              "path": "core/api",
+              "name": "api",
+              "properties": {},
+              "parentID": "nested:core/core"
+            }
+          ],
+          "targets": [
+            {
+              "id": "nested:core/library/core",
+              "projectID": "nested:core/core",
+              "name": "core-lib",
+              "path": "core",
+              "tags": [
+                "library"
+              ],
+              "properties": {}
+            },
+            {
+              "id": "nested:web/server/application/server",
+              "projectID": "nested:web/web",
+              "name": "example.com/app/web/server",
+              "path": "web/server",
+              "tags": [
+                "application"
+              ],
+              "properties": {}
+            },
+            {
+              "id": "nested:gone/application/gone",
+              "projectID": "nested:gone/gone",
+              "name": "gone",
+              "path": "gone",
+              "tags": [
+                "application"
+              ],
+              "properties": {}
+            }
+          ],
+          "tasks": [
+            {
+              "id": "nested:compiler:compile",
+              "projectID": "nested:app",
+              "name": "compiler:compile",
+              "path": ".",
+              "template": "plugin-goal",
+              "group": "build",
+              "execution": "task",
+              "properties": {},
+              "category": [
+                "Plugins",
+                "compiler"
+              ],
+              "description": "Compiles the sources."
+            },
+            {
+              "id": "nested:core/compiler:compile",
+              "projectID": "nested:core/core",
+              "name": "compiler:compile",
+              "path": ".",
+              "template": "plugin-goal",
+              "group": "build",
+              "execution": "task",
+              "properties": {},
+              "category": [
+                "Plugins",
+                "compiler"
+              ]
+            },
+            {
+              "id": "nested:core/compiler:testCompile",
+              "projectID": "nested:core/core",
+              "name": "compiler:testCompile",
+              "path": ".",
+              "template": "plugin-goal",
+              "group": "build",
+              "execution": "task",
+              "properties": {},
+              "category": [
+                "Plugins",
+                "compiler"
+              ],
+              "displayName": "testCompile"
+            },
+            {
+              "id": "nested:web/jar:jar",
+              "projectID": "nested:web/web",
+              "name": "jar:jar",
+              "path": ".",
+              "template": "plugin-goal",
+              "group": "build",
+              "execution": "task",
+              "properties": {}
+            },
+            {
+              "id": "nested:gone/jar:jar",
+              "projectID": "nested:gone/gone",
+              "name": "jar:jar",
+              "path": ".",
+              "template": "plugin-goal",
+              "group": "build",
+              "execution": "task",
+              "properties": {}
+            }
+          ],
+          "contentRoots": [],
+          "optionValues": {}
+        },
+        "query": "example.com"
+      },
+      "expected": {
+        "project": {
+          "kind": "project",
+          "key": "p\u001fnested:app",
+          "label": "App",
+          "projectID": "nested:app"
+        },
+        "nodes": [
+          {
+            "kind": "project",
+            "key": "p\u001fnested:web/web",
+            "label": "web",
+            "detail": "web",
+            "projectID": "nested:web/web",
+            "children": [
+              {
+                "kind": "targets",
+                "key": "p\u001fnested:web/web\u001ftargets",
+                "projectID": "nested:web/web",
+                "children": [
+                  {
+                    "kind": "target",
+                    "key": "p\u001fnested:web/web\u001ftargets\u001fnested:web/server/application/server",
+                    "label": "web/server",
+                    "tooltip": "example.com/app/web/server",
+                    "projectID": "nested:web/web",
+                    "targetID": "nested:web/server/application/server",
+                    "matched": true,
+                    "children": [
+                      {
+                        "kind": "task",
+                        "key": "p\u001fnested:web/web\u001ftargets\u001fnested:web/server/application/server\u001ft\u001fstart",
+                        "label": "Start",
+                        "projectID": "nested:web/web",
+                        "targetID": "nested:web/server/application/server",
+                        "taskID": "start"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "An unknown parent, a cycle and a self parent make roots; a repeated project ID is dropped",
+      "buildSystemID": "nested",
+      "request": {
+        "model": {
+          "projects": [
+            {
+              "id": "nested:a/a",
+              "path": "a",
+              "name": "a",
+              "properties": {},
+              "parentID": "nested:missing/missing"
+            },
+            {
+              "id": "nested:b/b",
+              "path": "b",
+              "name": "b",
+              "properties": {},
+              "parentID": "nested:c/c"
+            },
+            {
+              "id": "nested:c/c",
+              "path": "c",
+              "name": "c",
+              "properties": {},
+              "parentID": "nested:b/b"
+            },
+            {
+              "id": "nested:d/d",
+              "path": "d",
+              "name": "d",
+              "properties": {},
+              "parentID": "nested:d/d"
+            },
+            {
+              "id": "nested:a/a",
+              "path": "a2",
+              "name": "duplicate",
+              "properties": {}
+            }
+          ],
+          "targets": null,
+          "tasks": null
+        }
+      },
+      "expected": {
+        "nodes": [
+          {
+            "kind": "folder",
+            "key": "\u001fg\u001fother",
+            "group": "other",
+            "children": [
+              {
+                "kind": "task",
+                "key": "\u001fg\u001fother\u001ft\u001fgoal",
+                "label": "Run Goal…",
+                "taskID": "goal"
+              }
+            ]
+          },
+          {
+            "kind": "folder",
+            "key": "\u001fg\u001fdocumentation",
+            "group": "documentation",
+            "children": [
+              {
+                "kind": "task",
+                "key": "\u001fg\u001fdocumentation\u001ft\u001freport",
+                "label": "Report",
+                "taskID": "report"
+              }
+            ]
+          },
+          {
+            "kind": "project",
+            "key": "p\u001fnested:a/a",
+            "label": "a",
+            "detail": "a",
+            "projectID": "nested:a/a",
+            "children": [
+              {
+                "kind": "folder",
+                "key": "p\u001fnested:a/a\u001fc\u001fLifecycle",
+                "label": "Lifecycle",
+                "children": [
+                  {
+                    "kind": "task",
+                    "key": "p\u001fnested:a/a\u001fc\u001fLifecycle\u001ft\u001fclean",
+                    "label": "clean",
+                    "tooltip": "Deletes the build outputs.",
+                    "projectID": "nested:a/a",
+                    "taskID": "clean"
+                  },
+                  {
+                    "kind": "task",
+                    "key": "p\u001fnested:a/a\u001fc\u001fLifecycle\u001ft\u001fpackage",
+                    "label": "package",
+                    "projectID": "nested:a/a",
+                    "taskID": "package"
+                  }
+                ]
+              },
+              {
+                "kind": "folder",
+                "key": "p\u001fnested:a/a\u001fg\u001fverification",
+                "group": "verification",
+                "children": [
+                  {
+                    "kind": "task",
+                    "key": "p\u001fnested:a/a\u001fg\u001fverification\u001ft\u001fcheck",
+                    "label": "Check",
+                    "projectID": "nested:a/a",
+                    "taskID": "check"
+                  }
+                ]
+              },
+              {
+                "kind": "dependencies",
+                "key": "p\u001fnested:a/a\u001fdependencies",
+                "projectID": "nested:a/a"
+              }
+            ]
+          },
+          {
+            "kind": "project",
+            "key": "p\u001fnested:d/d",
+            "label": "d",
+            "detail": "d",
+            "projectID": "nested:d/d",
+            "children": [
+              {
+                "kind": "folder",
+                "key": "p\u001fnested:d/d\u001fc\u001fLifecycle",
+                "label": "Lifecycle",
+                "children": [
+                  {
+                    "kind": "task",
+                    "key": "p\u001fnested:d/d\u001fc\u001fLifecycle\u001ft\u001fclean",
+                    "label": "clean",
+                    "tooltip": "Deletes the build outputs.",
+                    "projectID": "nested:d/d",
+                    "taskID": "clean"
+                  },
+                  {
+                    "kind": "task",
+                    "key": "p\u001fnested:d/d\u001fc\u001fLifecycle\u001ft\u001fpackage",
+                    "label": "package",
+                    "projectID": "nested:d/d",
+                    "taskID": "package"
+                  }
+                ]
+              },
+              {
+                "kind": "folder",
+                "key": "p\u001fnested:d/d\u001fg\u001fverification",
+                "group": "verification",
+                "children": [
+                  {
+                    "kind": "task",
+                    "key": "p\u001fnested:d/d\u001fg\u001fverification\u001ft\u001fcheck",
+                    "label": "Check",
+                    "projectID": "nested:d/d",
+                    "taskID": "check"
+                  }
+                ]
+              },
+              {
+                "kind": "dependencies",
+                "key": "p\u001fnested:d/d\u001fdependencies",
+                "projectID": "nested:d/d"
+              }
+            ]
+          },
+          {
+            "kind": "project",
+            "key": "p\u001fnested:b/b",
+            "label": "b",
+            "detail": "b",
+            "projectID": "nested:b/b",
+            "children": [
+              {
+                "kind": "folder",
+                "key": "p\u001fnested:b/b\u001fc\u001fLifecycle",
+                "label": "Lifecycle",
+                "children": [
+                  {
+                    "kind": "task",
+                    "key": "p\u001fnested:b/b\u001fc\u001fLifecycle\u001ft\u001fclean",
+                    "label": "clean",
+                    "tooltip": "Deletes the build outputs.",
+                    "projectID": "nested:b/b",
+                    "taskID": "clean"
+                  },
+                  {
+                    "kind": "task",
+                    "key": "p\u001fnested:b/b\u001fc\u001fLifecycle\u001ft\u001fpackage",
+                    "label": "package",
+                    "projectID": "nested:b/b",
+                    "taskID": "package"
+                  }
+                ]
+              },
+              {
+                "kind": "folder",
+                "key": "p\u001fnested:b/b\u001fg\u001fverification",
+                "group": "verification",
+                "children": [
+                  {
+                    "kind": "task",
+                    "key": "p\u001fnested:b/b\u001fg\u001fverification\u001ft\u001fcheck",
+                    "label": "Check",
+                    "projectID": "nested:b/b",
+                    "taskID": "check"
+                  }
+                ]
+              },
+              {
+                "kind": "dependencies",
+                "key": "p\u001fnested:b/b\u001fdependencies",
+                "projectID": "nested:b/b"
+              },
+              {
+                "kind": "project",
+                "key": "p\u001fnested:c/c",
+                "label": "c",
+                "detail": "c",
+                "projectID": "nested:c/c",
+                "children": [
+                  {
+                    "kind": "folder",
+                    "key": "p\u001fnested:c/c\u001fc\u001fLifecycle",
+                    "label": "Lifecycle",
+                    "children": [
+                      {
+                        "kind": "task",
+                        "key": "p\u001fnested:c/c\u001fc\u001fLifecycle\u001ft\u001fclean",
+                        "label": "clean",
+                        "tooltip": "Deletes the build outputs.",
+                        "projectID": "nested:c/c",
+                        "taskID": "clean"
+                      },
+                      {
+                        "kind": "task",
+                        "key": "p\u001fnested:c/c\u001fc\u001fLifecycle\u001ft\u001fpackage",
+                        "label": "package",
+                        "projectID": "nested:c/c",
+                        "taskID": "package"
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "folder",
+                    "key": "p\u001fnested:c/c\u001fg\u001fverification",
+                    "group": "verification",
+                    "children": [
+                      {
+                        "kind": "task",
+                        "key": "p\u001fnested:c/c\u001fg\u001fverification\u001ft\u001fcheck",
+                        "label": "Check",
+                        "projectID": "nested:c/c",
+                        "taskID": "check"
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "dependencies",
+                    "key": "p\u001fnested:c/c\u001fdependencies",
+                    "projectID": "nested:c/c"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "Without projects, every workspace task and the dependencies act on the instance",
+      "buildSystemID": "nested",
+      "request": {
+        "model": {
+          "projects": null,
+          "targets": null,
+          "tasks": null
+        },
+        "groupHeadings": {
+          "lifecycle": "Lifecycle",
+          "build": "Build",
+          "test": "Test",
+          "run": "Run",
+          "verification": "Verification",
+          "documentation": "Documentation",
+          "other": "Other"
+        }
+      },
+      "expected": {
+        "nodes": [
+          {
+            "kind": "folder",
+            "key": "\u001fc\u001fLifecycle",
+            "label": "Lifecycle",
+            "children": [
+              {
+                "kind": "task",
+                "key": "\u001fc\u001fLifecycle\u001ft\u001fclean",
+                "label": "clean",
+                "tooltip": "Deletes the build outputs.",
+                "taskID": "clean"
+              },
+              {
+                "kind": "task",
+                "key": "\u001fc\u001fLifecycle\u001ft\u001fpackage",
+                "label": "package",
+                "taskID": "package"
+              }
+            ]
+          },
+          {
+            "kind": "folder",
+            "key": "\u001fg\u001fother",
+            "label": "Other",
+            "group": "other",
+            "children": [
+              {
+                "kind": "task",
+                "key": "\u001fg\u001fother\u001ft\u001fgoal",
+                "label": "Run Goal…",
+                "taskID": "goal"
+              }
+            ]
+          },
+          {
+            "kind": "folder",
+            "key": "\u001fg\u001fdocumentation",
+            "label": "Documentation",
+            "group": "documentation",
+            "children": [
+              {
+                "kind": "task",
+                "key": "\u001fg\u001fdocumentation\u001ft\u001freport",
+                "label": "Report",
+                "taskID": "report"
+              }
+            ]
+          },
+          {
+            "kind": "dependencies",
+            "key": "\u001fdependencies"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Workspace-only dependencies and discovered tests sit beside the root projects",
+      "buildSystemID": "flat",
+      "request": {
+        "model": {
+          "projects": [
+            {
+              "id": "flat:x",
+              "path": "x",
+              "name": "x",
+              "properties": {}
+            },
+            {
+              "id": "flat:y",
+              "path": "y",
+              "name": "y",
+              "properties": {}
+            }
+          ],
+          "targets": [],
+          "tasks": []
+        }
+      },
+      "expected": {
+        "nodes": [
+          {
+            "kind": "folder",
+            "key": "\u001fg\u001fother",
+            "group": "other",
+            "children": [
+              {
+                "kind": "task",
+                "key": "\u001fg\u001fother\u001ft\u001frefresh",
+                "label": "Refresh All",
+                "taskID": "refresh"
+              }
+            ]
+          },
+          {
+            "kind": "dependencies",
+            "key": "\u001fdependencies"
+          },
+          {
+            "kind": "tests",
+            "key": "\u001ftests"
+          },
+          {
+            "kind": "project",
+            "key": "p\u001fflat:x",
+            "label": "x",
+            "detail": "x",
+            "projectID": "flat:x",
+            "children": [
+              {
+                "kind": "folder",
+                "key": "p\u001fflat:x\u001fg\u001fbuild",
+                "group": "build",
+                "children": [
+                  {
+                    "kind": "task",
+                    "key": "p\u001fflat:x\u001fg\u001fbuild\u001ft\u001fassemble",
+                    "label": "Assemble",
+                    "projectID": "flat:x",
+                    "taskID": "assemble"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "project",
+            "key": "p\u001fflat:y",
+            "label": "y",
+            "detail": "y",
+            "projectID": "flat:y",
+            "children": [
+              {
+                "kind": "folder",
+                "key": "p\u001fflat:y\u001fg\u001fbuild",
+                "group": "build",
+                "children": [
+                  {
+                    "kind": "task",
+                    "key": "p\u001fflat:y\u001fg\u001fbuild\u001ft\u001fassemble",
+                    "label": "Assemble",
+                    "projectID": "flat:y",
+                    "taskID": "assemble"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "A filter drops unmatched dependencies and keeps the tests node",
+      "buildSystemID": "flat",
+      "request": {
+        "model": {
+          "projects": [
+            {
+              "id": "flat:x",
+              "path": "x",
+              "name": "x",
+              "properties": {}
+            },
+            {
+              "id": "flat:y",
+              "path": "y",
+              "name": "y",
+              "properties": {}
+            }
+          ],
+          "targets": [],
+          "tasks": []
+        },
+        "query": "assem",
+        "groupHeadings": {
+          "lifecycle": "Lifecycle",
+          "build": "Build",
+          "test": "Test",
+          "run": "Run",
+          "verification": "Verification",
+          "documentation": "Documentation",
+          "other": "Other"
+        }
+      },
+      "expected": {
+        "nodes": [
+          {
+            "kind": "tests",
+            "key": "\u001ftests"
+          },
+          {
+            "kind": "project",
+            "key": "p\u001fflat:x",
+            "label": "x",
+            "detail": "x",
+            "projectID": "flat:x",
+            "children": [
+              {
+                "kind": "folder",
+                "key": "p\u001fflat:x\u001fg\u001fbuild",
+                "label": "Build",
+                "group": "build",
+                "children": [
+                  {
+                    "kind": "task",
+                    "key": "p\u001fflat:x\u001fg\u001fbuild\u001ft\u001fassemble",
+                    "label": "Assemble",
+                    "projectID": "flat:x",
+                    "taskID": "assemble",
+                    "matched": true
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "project",
+            "key": "p\u001fflat:y",
+            "label": "y",
+            "detail": "y",
+            "projectID": "flat:y",
+            "children": [
+              {
+                "kind": "folder",
+                "key": "p\u001fflat:y\u001fg\u001fbuild",
+                "label": "Build",
+                "group": "build",
+                "children": [
+                  {
+                    "kind": "task",
+                    "key": "p\u001fflat:y\u001fg\u001fbuild\u001ft\u001fassemble",
+                    "label": "Assemble",
+                    "projectID": "flat:y",
+                    "taskID": "assemble",
+                    "matched": true
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "rejected": [
+    {
+      "name": "Unknown request field",
+      "buildSystemID": "nested",
+      "request": {
+        "model": {
+          "projects": [
+            {
+              "id": "flat:x",
+              "path": "x",
+              "name": "x",
+              "properties": {}
+            },
+            {
+              "id": "flat:y",
+              "path": "y",
+              "name": "y",
+              "properties": {}
+            }
+          ],
+          "targets": [],
+          "tasks": []
+        },
+        "expanded": []
+      }
+    },
+    {
+      "name": "Control character in the query",
+      "buildSystemID": "nested",
+      "request": {
+        "model": {
+          "projects": [
+            {
+              "id": "flat:x",
+              "path": "x",
+              "name": "x",
+              "properties": {}
+            },
+            {
+              "id": "flat:y",
+              "path": "y",
+              "name": "y",
+              "properties": {}
+            }
+          ],
+          "targets": [],
+          "tasks": []
+        },
+        "query": "a\nb"
+      }
+    },
+    {
+      "name": "Blank group heading",
+      "buildSystemID": "nested",
+      "request": {
+        "model": {
+          "projects": [
+            {
+              "id": "flat:x",
+              "path": "x",
+              "name": "x",
+              "properties": {}
+            },
+            {
+              "id": "flat:y",
+              "path": "y",
+              "name": "y",
+              "properties": {}
+            }
+          ],
+          "targets": [],
+          "tasks": []
+        },
+        "groupHeadings": {
+          "build": " "
+        }
+      }
+    },
+    {
+      "name": "Unknown group",
+      "buildSystemID": "nested",
+      "request": {
+        "model": {
+          "projects": [
+            {
+              "id": "flat:x",
+              "path": "x",
+              "name": "x",
+              "properties": {}
+            },
+            {
+              "id": "flat:y",
+              "path": "y",
+              "name": "y",
+              "properties": {}
+            }
+          ],
+          "targets": [],
+          "tasks": []
+        },
+        "groupHeadings": {
+          "compile": "Compile"
+        }
+      }
+    }
+  ]
+}

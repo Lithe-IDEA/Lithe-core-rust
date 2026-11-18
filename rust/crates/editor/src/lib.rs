@@ -12,6 +12,7 @@ pub mod navigation_input;
 pub mod preferences;
 pub mod recent;
 pub mod recovery;
+pub mod reference_location;
 pub mod text_edit_plan;
 
 pub use line_edit::{line_edit, LineEditRequest};

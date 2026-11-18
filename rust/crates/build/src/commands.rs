@@ -16,6 +16,7 @@ use super::outputs::{
 };
 use super::plans::{self, OutputPlanRequest, TaskPlanRequest, TestPlanRequest};
 use super::test_discovery::{self, DecodeTestDiscoveryRequest};
+use super::tree::{self, ModelTreeRequest};
 use super::BuildManifest;
 use lithe_plugin_model::{decode_payload, outcome, PluginRejection, Validation};
 use lithe_protocol::CoreError;
@@ -314,6 +315,17 @@ pub fn build_sync_fingerprint_command<M: BuildManifest>(
         |build_system, request: &SyncFingerprintRequest| {
             outputs::sync_fingerprint(build_system, request)
         },
+    )
+}
+
+/// `build.modelTree`: a loaded model's projects nested by parent, each with
+/// its tasks filed in folders, its dependencies, and its targets.
+pub fn build_model_tree_command<M: BuildManifest>(payload: Value) -> Result<Value, CoreError> {
+    with_build_system::<M, _>(
+        payload,
+        "build.modelTree",
+        "tree",
+        |build_system, request: &ModelTreeRequest| tree::model_tree(build_system, request),
     )
 }
 

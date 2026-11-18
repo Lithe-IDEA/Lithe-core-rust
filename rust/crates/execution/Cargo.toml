@@ -3,7 +3,7 @@ name = "lithe-execution"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
-description = "Run configurations for Lithe: generation, resolution, launch environments and project run discovery"
+description = "Run configurations for Lithe: generation, resolution, launch planning and environments"
 
 [features]
 # Lets lithe-core's tests seed the generated layer as if a host had generated it.
@@ -12,16 +12,14 @@ test-support = []
 [dependencies]
 ignore = "=0.4.33"
 lithe-core-rules = { path = "../core-rules" }
-lithe-diagnostics = { path = "../diagnostics" }
 lithe-platform = { path = "../platform" }
 lithe-plugin-model = { path = "../plugin-model" }
 lithe-protocol = { path = "../protocol" }
 lithe-toolchain = { path = "../toolchain" }
 lithe-workspace = { path = "../workspace" }
-regex = "1.11"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
-serde_yaml_ng = "0.10.0"
+serde_yaml_ng = "=0.10.0"
 sha2 = "0.10"
-toml = { version = "1.1.4", default-features = false, features = ["parse", "serde"] }
+toml = { version = "1.1.4", default-features = false, features = ["display", "parse", "preserve_order", "serde", "std"] }
 

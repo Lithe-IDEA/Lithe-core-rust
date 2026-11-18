@@ -657,6 +657,23 @@ pub fn prepare_provider_exclusions(root: &Path) -> Result<Option<Arc<IndexingCon
     Ok(Some(context))
 }
 
+/// Returns the live provider context without walking the workspace, and whether
+/// its native Git decisions are still unresolved. A language-server start uses
+/// this so a large workspace cannot hold the process launch behind a full scan;
+/// the caller resolves the pending decisions with `prepare_provider_exclusions`
+/// off the start path and then publishes them to the running sessions.
+pub fn provider_context_without_scan(
+    root: &Path,
+) -> Result<(Option<Arc<IndexingContext>>, bool), CoreError> {
+    let Some(context) = active_provider_context(root) else {
+        return Ok((None, false));
+    };
+    context.check()?;
+    let pending =
+        context.policy.git_ignore_enabled && !context.git_resolved.load(Ordering::Acquire);
+    Ok((Some(context), pending))
+}
+
 fn contains(directory: &str, path: &str) -> bool {
     relative_path_contains(directory, path, Platform::HOST)
 }
@@ -760,36 +777,46 @@ impl IndexingContext {
         if let Some(ignored) = ignored {
             // The index is authoritative for tracked descendants; check-ignore on a directory
             // alone does not protect tracked files below an otherwise ignored directory.
+            // A lazy tree listing has no scan prefetch. Ask for its ignored siblings together
+            // instead of starting one process per directory; keep the native fallback when
+            // Git cannot map a batched answer reliably (for example, normalized Unicode).
+            let ignored_directories = candidates
+                .iter()
+                .filter(|name| ignored.contains(*name))
+                .cloned()
+                .collect::<Vec<_>>();
+            let tracked = lithe_git::tracked_directories(parent, &ignored_directories)?;
             for name in candidates {
-                let excluded = if parent.join(&name).join(".git").exists() {
-                    // A nested repository owns its ignore rules and tracked content.
-                    false
-                } else if ignored.contains(&name) {
-                    let response = lithe_git::execute_git_readonly(
-                        &parent.to_string_lossy(),
-                        &[
-                            "--literal-pathspecs".into(),
-                            "ls-files".into(),
-                            "-z".into(),
-                            "--".into(),
-                            name.clone(),
-                        ],
-                        None,
-                    );
-                    self.check()?;
-                    let Ok(response) = response else {
-                        self.git_failed.store(true, Ordering::Release);
-                        continue;
-                    };
-                    if response.exit_code != 0 {
-                        self.git_failed.store(true, Ordering::Release);
+                let excluded =
+                    if parent.join(&name).join(".git").exists() || !ignored.contains(&name) {
+                        // A nested repository owns its ignore rules and tracked content.
                         false
+                    } else if let Some(tracked) = &tracked {
+                        !tracked.contains(&name)
                     } else {
-                        response.stdout.is_empty()
-                    }
-                } else {
-                    false
-                };
+                        let response = lithe_git::execute_git_readonly(
+                            &parent.to_string_lossy(),
+                            &[
+                                "--literal-pathspecs".into(),
+                                "ls-files".into(),
+                                "-z".into(),
+                                "--".into(),
+                                name.clone(),
+                            ],
+                            None,
+                        );
+                        self.check()?;
+                        let Ok(response) = response else {
+                            self.git_failed.store(true, Ordering::Release);
+                            continue;
+                        };
+                        if response.exit_code != 0 {
+                            self.git_failed.store(true, Ordering::Release);
+                            false
+                        } else {
+                            response.stdout.is_empty()
+                        }
+                    };
                 decisions.insert(relative_path(&parent.join(name), &self.root), excluded);
             }
         } else {
@@ -1924,6 +1951,36 @@ mod tests {
     }
 
     #[test]
+    fn provider_context_without_scan_reports_pending_git_decisions_without_resolving_them() {
+        let workspace = Workspace::new();
+        assert!(provider_context_without_scan(&workspace.0)
+            .unwrap()
+            .0
+            .is_none());
+        workspace.configure(&[], &[], true);
+        let (context, pending) = provider_context_without_scan(&workspace.0).unwrap();
+        let context = context.unwrap();
+        assert!(pending, "Git decisions are unresolved before any scan");
+        assert!(
+            !context.git_resolved.load(Ordering::Acquire),
+            "the start path must not walk the workspace"
+        );
+        let prepared = prepare_provider_exclusions(&workspace.0).unwrap().unwrap();
+        assert_eq!(prepared.revision, context.revision);
+        let (_, pending) = provider_context_without_scan(&workspace.0).unwrap();
+        assert!(!pending, "a resolved generation needs no background scan");
+    }
+
+    #[test]
+    fn provider_context_without_scan_needs_no_scan_when_git_ignore_is_disabled() {
+        let workspace = Workspace::new();
+        workspace.configure(&[], &[], false);
+        let (context, pending) = provider_context_without_scan(&workspace.0).unwrap();
+        assert!(context.is_some());
+        assert!(!pending);
+    }
+
+    #[test]
     fn git_negation_nested_rules_new_directories_and_unicode_are_native() {
         let workspace = Workspace::new();
         workspace.git(&["init", "--quiet"]);
@@ -1953,6 +2010,205 @@ mod tests {
             !workspace.files().contains(&"晚到目录/hidden.txt".into()),
             "A cached parent must still check a newly created directory"
         );
+    }
+
+    /// Listing one expanded directory must not start one Git process per ignored sibling.
+    /// This exercises the lazy tree path before a snapshot or provider scan warms its cache.
+    #[test]
+    fn directory_listing_batches_tracked_checks_for_ignored_siblings() {
+        use lithe_git::console::QueryCategory;
+        let _deadline = lithe_protocol::cancellation::Scope::begin(None, Some(10_000));
+        let workspace = Workspace::new();
+        workspace.git(&["init", "--quiet"]);
+        fs::write(workspace.0.join(".gitignore"), "generated*/\n").unwrap();
+        for index in 0..64 {
+            fs::create_dir(workspace.0.join(format!("generated {index:03}"))).unwrap();
+        }
+        fs::write(workspace.0.join("generated 000/kept.txt"), "tracked").unwrap();
+        workspace.git(&["add", "-f", "generated 000/kept.txt"]);
+        for name in ["generated [literal]", "generated literal"] {
+            fs::create_dir(workspace.0.join(name)).unwrap();
+        }
+        fs::write(workspace.0.join("generated [literal]/kept.txt"), "tracked").unwrap();
+        workspace.git(&["add", "-f", "generated [literal]/kept.txt"]);
+        let nested = workspace.0.join("generated nested");
+        fs::create_dir(&nested).unwrap();
+        let initialized = lithe_git::execute_git_readonly(
+            &nested.to_string_lossy(),
+            &["init".into(), "--quiet".into()],
+            None,
+        )
+        .unwrap();
+        assert_eq!(initialized.exit_code, 0, "{}", initialized.stderr);
+        workspace.configure(&[], &[], true);
+
+        let calls = Arc::new(Mutex::new(Vec::<String>::new()));
+        let recorded = calls.clone();
+        let listings = lithe_request_context::events::with_sink(
+            Arc::new(move |event| {
+                let event: serde_json::Value = serde_json::from_str(event).unwrap();
+                if event["type"] == "started" {
+                    for argument in event["arguments"].as_array().unwrap() {
+                        if let Some(command @ ("check-ignore" | "ls-files")) = argument.as_str() {
+                            recorded.lock().unwrap().push(command.to_owned());
+                        }
+                    }
+                }
+            }),
+            || {
+                let _policy = lithe_git::execution_policy::Scope::begin(Some(
+                    lithe_git::execution_policy::GitExecutionOptions {
+                        console_queries: vec![QueryCategory::Checks],
+                        query_category: Some(QueryCategory::Checks),
+                        ..Default::default()
+                    },
+                ))
+                .unwrap();
+                let request =
+                    || serde_json::from_value(json!({"root":workspace.0,"paths":[""]})).unwrap();
+                let first = files::list_directories(request()).unwrap();
+                let second = files::list_directories(request()).unwrap();
+                assert_eq!(
+                    first.directories[0].children.len(),
+                    second.directories[0].children.len()
+                );
+                first
+            },
+        );
+        let children = &listings.directories[0].children;
+        for index in 0..64 {
+            let name = format!("generated {index:03}");
+            assert!(children.iter().any(|node| node.name == name));
+        }
+        let policy = context(&workspace.0).unwrap();
+        assert_eq!(policy.reason("generated 000", true).unwrap(), None);
+        assert_eq!(policy.reason("generated 001", true).unwrap(), Some("git"));
+        assert_eq!(policy.reason("generated [literal]", true).unwrap(), None);
+        assert_eq!(
+            policy.reason("generated literal", true).unwrap(),
+            Some("git")
+        );
+        assert_eq!(policy.reason("generated nested", true).unwrap(), None);
+        assert!(!policy.git_failed.load(Ordering::Acquire));
+        let calls = calls.lock().unwrap();
+        let count = |command: &str| calls.iter().filter(|value| *value == command).count();
+        assert_eq!(count("check-ignore"), 1, "queries: {calls:?}");
+        assert_eq!(count("ls-files"), 1, "queries: {calls:?}");
+    }
+
+    /// A failed or unmatchable batch still uses the native per-directory answer.
+    #[cfg(unix)]
+    #[test]
+    fn directory_listing_falls_back_when_batched_tracked_checks_are_unavailable() {
+        use std::os::unix::fs::PermissionsExt;
+        let _deadline = lithe_protocol::cancellation::Scope::begin(None, Some(10_000));
+        for batch_result in ["exit 128", "printf 'outside-request/file\\000'; exit 0"] {
+            let workspace = Workspace::new();
+            workspace.git(&["init", "--quiet"]);
+            fs::write(
+                workspace.0.join(".gitignore"),
+                "ignored/\nother/\ntracked/\n",
+            )
+            .unwrap();
+            fs::create_dir(workspace.0.join("other")).unwrap();
+            fs::create_dir(workspace.0.join("tracked")).unwrap();
+            fs::write(workspace.0.join("tracked/kept.txt"), "tracked").unwrap();
+            workspace.git(&["add", "-f", "tracked/kept.txt"]);
+            let wrapper = workspace.0.join(".git/listing-test-git");
+            fs::write(
+                &wrapper,
+                format!(
+                    "#!/bin/sh\ntracked=0\npaths=0\ncount=0\n\
+                     for argument in \"$@\"; do\n\
+                       if [ \"$argument\" = ls-files ]; then tracked=1; fi\n\
+                       if [ \"$paths\" = 1 ]; then count=$((count + 1)); fi\n\
+                       if [ \"$argument\" = -- ]; then paths=1; fi\n\
+                     done\n\
+                     if [ \"$tracked\" = 1 ] && [ \"$count\" -gt 1 ]; then\n\
+                       printf 'batch\\n' >> \"$0.attempts\"\n\
+                       {batch_result}\n\
+                     fi\n\
+                     exec git \"$@\"\n"
+                ),
+            )
+            .unwrap();
+            fs::set_permissions(&wrapper, fs::Permissions::from_mode(0o755)).unwrap();
+            workspace.configure(&[], &[], true);
+            let _policy = lithe_git::execution_policy::Scope::begin(Some(
+                lithe_git::execution_policy::GitExecutionOptions {
+                    executable: Some(wrapper.to_string_lossy().into_owned()),
+                    ..Default::default()
+                },
+            ))
+            .unwrap();
+            let listing = files::list_directories(
+                serde_json::from_value(json!({"root":workspace.0,"paths":[""]})).unwrap(),
+            )
+            .unwrap();
+            assert!(listing.directories[0]
+                .children
+                .iter()
+                .any(|node| node.name == "ignored"));
+            let policy = context(&workspace.0).unwrap();
+            assert_eq!(policy.reason("ignored", true).unwrap(), Some("git"));
+            assert_eq!(policy.reason("other", true).unwrap(), Some("git"));
+            assert_eq!(policy.reason("tracked", true).unwrap(), None);
+            assert!(!policy.git_failed.load(Ordering::Acquire));
+            assert_eq!(
+                fs::read_to_string(wrapper.with_extension("attempts")).unwrap(),
+                "batch\n"
+            );
+        }
+    }
+
+    /// Cancelling a tracked query must not start the per-directory fallback or cache answers.
+    #[test]
+    fn directory_listing_tracked_check_cancellation_does_not_fall_back() {
+        use lithe_git::console::QueryCategory;
+        let workspace = Workspace::new();
+        workspace.git(&["init", "--quiet"]);
+        fs::write(workspace.0.join(".gitignore"), "ignored/\nother/\n").unwrap();
+        fs::create_dir(workspace.0.join("other")).unwrap();
+        workspace.configure(&[], &[], true);
+        let operation = format!("listing-cancel-{}", workspace.0.display());
+        let _deadline =
+            lithe_protocol::cancellation::Scope::begin(Some(operation.clone()), Some(5_000));
+        let attempts = Arc::new(AtomicU64::new(0));
+        let recorded = attempts.clone();
+        let result = lithe_request_context::events::with_sink(
+            Arc::new(move |event| {
+                let event: serde_json::Value = serde_json::from_str(event).unwrap();
+                if event["type"] == "started"
+                    && event["arguments"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|arg| arg == "ls-files")
+                {
+                    recorded.fetch_add(1, Ordering::Relaxed);
+                    assert!(lithe_protocol::cancellation::cancel(&operation));
+                }
+            }),
+            || {
+                let _policy = lithe_git::execution_policy::Scope::begin(Some(
+                    lithe_git::execution_policy::GitExecutionOptions {
+                        console_queries: vec![QueryCategory::Checks],
+                        query_category: Some(QueryCategory::Checks),
+                        ..Default::default()
+                    },
+                ))
+                .unwrap();
+                context(&workspace.0).unwrap().reason("ignored", true)
+            },
+        );
+        assert!(matches!(result.unwrap_err().code, ErrorCode::Cancelled));
+        assert_eq!(attempts.load(Ordering::Relaxed), 1);
+        assert!(context(&workspace.0)
+            .unwrap()
+            .decisions
+            .lock()
+            .unwrap()
+            .is_empty());
     }
 
     /// Regression for Lithe-IDEA#1994: preparing provider exclusions asked Git once per

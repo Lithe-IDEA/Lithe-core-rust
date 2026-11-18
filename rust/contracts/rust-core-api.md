@@ -230,7 +230,7 @@ host does not know (every component may then be a folder). The two lists are the
 default folders and patterns, and a `!entry` turns a default off. Matching ignores case. A folder name hides the folder,
 everything below it and a file with that exact name (a linked worktree's `.git` file). `hidden` means the tree, search and
 Local History leave the path out; `watchedDespiteHiding` marks the hidden project configuration folder (`.lithe`) whose file
-events must still be delivered, except the built-in noise below it such as `.lithe/run/local.json`. Hosts send all children
+events must still be delivered, except the built-in noise below it such as `.lithe/run/local.yaml`. Hosts send all children
 of a directory in one call. `workspace.visibilityDefaults` takes `{}` and returns the default lists
 (`hiddenDirectoryNames`, `hiddenFilePatterns`, `builtInPatterns`, `configurationDirectory`, `configurationPattern`) so hosts
 display them without keeping a copy. Both live in `rust/crates/core-rules` like `keymap.modifierGestureStep` and are tested
@@ -238,7 +238,8 @@ against `rust/fixtures/workspace/visibility-v1.json`.
 
 The default folders are Core's own (`.git`, `.worktree`, `.worktrees`) plus the folder names the enabled plugins declare;
 Core names no language or tool folder itself. The default file patterns are `.DS_Store`, the root `.lithe/**` and
-`.lithe/run/local.json`. `workspace.configureVisibility` accepts `{plugins: [{manifest}]}`, the manifests of every enabled
+the machine-local run configuration files `.lithe/run/local.yaml`, `.lithe/run/local.json` and
+`.lithe/run/plugin/*.local.toml`. `workspace.configureVisibility` accepts `{plugins: [{manifest}]}`, the manifests of every enabled
 plugin, and replaces the declared names with theirs: each build system's `layout.hiddenDirectoryNames` (its generated
 output, such as `target`) and the directory markers of each VCS provider (its metadata, such as `.svn`). It returns
 `{hiddenDirectoryNames, rejected: [{index, error}]}`: every declared name, sorted, and the manifests that failed
@@ -510,7 +511,7 @@ or removing a command fails until the table changes in the same commit.
 | `toolchains.instantiateLaunch` | Expand an enabled tool definition's `launch` template for a selected executable, entry, runtime arguments and arguments; a part the template cannot carry is `plugin.toolchain.launchMismatch`; performs no I/O |
 | `run.decodeStart` | Validate a plugin backend's `lithe/host/run/start` params against its manifest and the workspace, and return the normalized start with temporary-file paths substituted |
 | `debug.decodeBackendConfiguration` | Validate a plugin backend's `lithe/host/debug/start` params against its manifest and return the qualified adapter, request, label and configuration |
-| `outputLinks.match` | Find the links plugin `outputLinkMatchers` declare in Run or Test console lines, as UTF-16 ranges with candidate paths or a backend function to resolve them |
+| `outputLinks.match` | Find the links plugin `outputLinkMatchers` declare in Run or Test console lines, as UTF-16 ranges with candidate paths or a backend function to resolve them, and the web addresses the lines print, as `url` links the host opens in the browser |
 | `outputLinks.decodeResolution` | Check a matcher's `resolve` function reply and return the 1-based file location to open, or `null` |
 | `build.detect` | Find every build-system instance the enabled plugins declare in a workspace, with models that need no process |
 | `build.projectOptions` | Validate a native team's persisted Build options |
@@ -540,6 +541,7 @@ or removing a command fails until the table changes in the same commit.
 | `build.decodeDiagnostics` | Decode build output into workspace file diagnostics |
 | `build.decodeDependencies` | Decode dependency output or a provider result into one project's bounded tree |
 | `build.syncFingerprint` | Digest the files a build model depends on, to tell whether it is stale |
+| `build.modelTree` | Nest a decoded model's projects by parent and file each one's tasks, dependencies and targets for a tool window |
 | `build.resolveTestRunOutcome` | Reduce a test run's termination, selected scope and decoded summary to one tool-neutral verdict |
 | `build.mergeTestOutcomes` | Merge a run's test result ids into the stored history inside the host-stated id/prefix scope |
 | `vcs.detectRoots` | Find the VCS roots of a workspace from static markers, with registered providers, ambiguous directories, and applied mappings |
@@ -654,6 +656,7 @@ or removing a command fails until the table changes in the same commit.
 | `lsp.classifyNavigationTarget` | Classify a language-server jump target as workspace, external read-only or rejected |
 | `lsp.declarationOrUsages` | Decide whether a go-to-declaration gesture opens the declaration or shows its usages |
 | `editor.lineEdit` | Apply a deterministic line-level text transform and return the replacement plus selection to restore |
+| `editor.copyReferenceLocation` | Format a one-based line reference from normalized document symbols; fall back to a file path when no containing symbol exists |
 | `editor.find` | Find text or plans bounded replacements in a borrowed document |
 | `editor.preferences.resolve` | Resolve persisted editor presentation preferences |
 | `editor.recent.reduce` | Reduce and queries bounded recent-file history |
@@ -669,7 +672,9 @@ or removing a command fails until the table changes in the same commit.
 | `lsp.builtinNavigation` | Return lightweight current-file definition/reference locations |
 | `lsp.mergeCompletions` | Choose which candidates survive when several prioritized providers complete at one position |
 | `lsp.activationPolicy` | Decide whether a language server may start automatically after failures, using a platform monotonic clock |
-| `lsp.problems.query` | Filter, order, and group Problems tool-window diagnostics and count them by severity |
+| `lsp.problems.query` | Filter, order, and group Problems tool-window diagnostics, count them by severity, and lay the tree rows out |
+| `lsp.references.query` | Group Find Usages locations by file and lay out the References tool window's visible rows, selection, and previous/next usages |
+| `lsp.references.lines` | Show the lines of References tool-window usages with highlighted usage ranges, as search results show theirs |
 | `lsp.startServer` | Start one Rust-owned process/session and begin initialization |
 | `lsp.stopServer` | Gracefully shut down a session, with a bounded force-stop fallback |
 | `lsp.updateWorkspaceConfiguration` | Replace the plugin configuration a running plugin-owned session answers `workspace/configuration` with, and announce it |
@@ -697,15 +702,19 @@ or removing a command fails until the table changes in the same commit.
 | `lsp.destroyServer` | Remove a terminal session handle from the registry |
 | `runConfig.inspect` | Inspect `.lithe` run documents, versions, and staleness without writing files |
 | `runConfig.projectToolchain` | Read saved project tool paths for one Provider root, with the nearest path override |
-| `runConfig.generate` | Regenerate detected run configurations |
+| `runConfig.generate` | Regenerate the provider run configurations |
 | `runConfig.argumentText` | Format a batch of exact argument vectors as reversible editor text |
 | `runConfig.resolve` | Merge generated, project, and local layers and return diagnostics |
 | `runConfig.selectContextConfiguration` | Choose a matching effective configuration for a provider-supplied source and entry identity |
 | `runConfig.decideTitleAction` | Decide what a press on the title bar's Run or Debug button does |
-| `runConfig.updateOptions` | Apply typed option edits and return an updated project or local document |
-| `runConfig.updateToolPreferences` | Replace only generic preferences in a captured local Run document, preserving legacy defaults and unrelated metadata |
-| `runConfig.saveEditorChanges` | Prepare the local and optional project documents for one editor save |
-| `runConfig.createUserConfiguration` | Validate a typed user configuration and return an updated document |
+| `runConfig.updateOptions` | Apply typed option edits and return the file changes of the edited layer |
+| `runConfig.updateToolPreferences` | Replace only generic preferences in the local layer, preserving legacy defaults and unrelated metadata |
+| `runConfig.saveEditorChanges` | Prepare the file changes of the local and optional project layers for one editor save |
+| `runConfig.createUserConfiguration` | Validate a typed user configuration and return the file changes that save it |
+| `runConfig.configurationTypes` | List the built-in run configuration types this platform can create |
+| `runConfig.editorForm` | Describe the editor fields and current values of a built-in run configuration |
+| `runConfig.saveConfiguration` | Validate an editor form's values and return field errors or the file changes that save it |
+| `runConfig.deleteConfiguration` | Return the file changes that delete a saved user configuration |
 | `runConfig.createLaunchPlan` | Project one effective configuration into a platform-neutral Run or Debug plan |
 | `runConfig.providerLaunchInputs` | Resolve user choices for a provider-owned launch |
 | `git.status` | Resolve the repository, current branch, and working-tree changes |
@@ -2271,7 +2280,7 @@ workspace-root `.lithe` folder by default with the built-in entry `.lithe/**`, l
 `.idea`; deleting that line (stored as `!.lithe/**`) shows it again. The macOS file
 watcher is the one place that does not follow the hiding rules for the workspace-root `.lithe`
 folder: hiding it removes it from the tree and listings, but its file events are still
-delivered (except built-in noise such as `.lithe/run/local.json`) because editing its JSON
+delivered (except built-in noise such as `.lithe/run/local.yaml`) because editing its
 files reloads project services. Empty user exclusions preserve the
 normal visibility rules. Search settings changes invalidate only the search
 cache, not the workspace tree. Each root retains at most one content and one
@@ -2315,8 +2324,12 @@ Optional `includePathPatterns`, `excludePathPatterns`, and `pathFilterPrefix`
 filter paths before the page limit. Patterns are case-insensitive glob fragments:
 `*` excludes separators, `**` crosses them, and `?` matches one non-separator.
 When `includeContentRanges` is true, content matches also return the original
-`sourceLine` and `contentMatchRanges` in UTF-16 units; existing callers keep the
-trimmed `preview` and do not pay for those fields.
+`sourceLine` and `contentMatchRanges` in UTF-16 units, and `preview` becomes the
+result row's line with `previewRanges` (UTF-16 `{ start, length }` inside
+`preview`): indentation and line break dropped and, when the first match starts
+more than 32 units in, the front cut and replaced by `…`, the same rule
+`lsp.references.lines` applies. Existing callers keep the trimmed `preview`
+and do not pay for those fields.
 
 Observed `workspace.searchEverywhere` calls may emit
 `{ "type": "searchResults", "operationId": "…", "results": { "matches": […] } }`
@@ -2998,9 +3011,60 @@ stable `key`, `indices` into the submitted list, and per-severity `counts`),
 `files` (file summaries in file order regardless of `groupBy`),
 `visibleCounts`, and `totalCounts`. `fileKey` is the platform's native file
 identity; `displayPath` is the workspace-relative path and orders files with
-the Project view's natural file-name order. Severity is the LSP number;
-missing or out-of-range values are unknown (`0`) and rank last. Cases:
+the Project view's natural file-name order; file groups also carry `name`
+(its last segment) and `folder` (the rest, empty at the root). Severity is the
+LSP number; missing or out-of-range values are unknown (`0`) and rank last.
+The request also carries the platform-held tree state: `collapsed` (the keys
+of closed group nodes; unknown keys are ignored) and the `selected` row key.
+The response lays the tree out the way IntelliJ IDEA's Problems window does:
+`rows` are the rows that show from top to bottom, each with `key`, `kind`
+(`group`, `diagnostic`), `depth`, `expanded` (group nodes only), `group`, and
+`shows` (the diagnostic the row previews and opens: itself, or the first under
+a node). Group nodes (`file:<fileKey>`, `severity:<n>`) head their diagnostics
+at depth 1; with `groupBy` `none` there are no nodes and the diagnostics sit at
+depth 0. A diagnostic's key is `diagnostic:<line>:<column>:<ordinal>:<fileKey>`,
+where `ordinal` counts the earlier submitted diagnostics at the same file and
+position, so a selection stays on a diagnostic the server republishes at
+another index. `selected` and `selectedRow` name the selected row: an absent
+or unknown key selects nothing, a diagnostic a closed node hides moves the
+selection to that node, and a diagnostic that is gone moves it to its file's
+node when the list is grouped by file and the file still shows. Cases:
 `rust/fixtures/lsp/problems-query-v1.json`.
+
+`lsp.references.query` accepts the Find Usages answer as
+`{ locations: [{ fileKey, displayPath, line, column }] }` together with the
+platform-held tree state: `rootCollapsed`, `collapsed` (the `fileKey`s of
+closed file nodes; unknown keys are ignored), and the `selected` row key. It
+returns `groups` (one per file in the natural file-name order of
+`displayPath`, each with `key` `file:<fileKey>`, `fileKey`, `displayPath`,
+`name`, `folder`, and `indices` into the submitted list ordered by line and
+column, then submission order) and `rows`, the rows that show from top to
+bottom. A row has `key` (`root`, `file:<fileKey>`, or `usage:<index>`),
+`kind` (`root`, `file`, `usage`), `depth`, `expanded` (nodes only), `group`
+(files and usages), `shows` (the usage the row previews and opens: itself, or
+the first usage under a node), and `previous`/`next` (the usages before and
+after it in tree order, counting usages under closed nodes; absent at the
+ends), so the platform steps through usages without another call. `selected`
+and `selectedRow` name the selected row: an unknown or absent key selects the
+first usage, and a row a closed node hides moves the selection to that node.
+An empty answer returns no rows and no selection. Every location is kept;
+none is filtered or merged with another on the same line. The platform keeps
+the tree state, focus, and file reading, and queries again after a new
+answer or an expand, collapse, or selection change. Cases:
+`rust/fixtures/lsp/references-query-v1.json`.
+
+`lsp.references.lines` accepts `{ texts, usages: [{ text, line, column,
+endLine, endColumn }] }`, where `text` indexes the distinct line texts (so a
+long line with several usages crosses the boundary once) and positions are
+zero-based UTF-16. It returns one `{ text, ranges: [{ start, length }] }` per
+usage, in order. The usage is highlighted from `column` to `endColumn` on its
+line, or to the end of the line when it runs onto later lines; an empty or
+reversed range is not highlighted. The line is shown with the rule of search
+result rows (`lithe_text::line_preview`): indentation and line break dropped,
+the front cut and replaced by `…` when the usage starts more than 32 units in
+(16 units stay before it), and the text bounded to 240 bytes at a character
+boundary. A `text` index past `texts` is `invalid_request`. Cases:
+`rust/fixtures/lsp/references-lines-v1.json`.
 
 Core ships no built-in language-provider catalog. Every language server comes
 from a plugin's `languageServers` declaration, which Core validates and plans.
@@ -3468,78 +3532,43 @@ stored paths or documents fail without changing source bytes. The command does
 not discover, probe or run any tool, inspect project descriptors, or write files.
 
 `runConfig.inspect` also returns the local document-level `toolchain`, including
-when no generated configuration exists (`status: "missing"`). Settings,
-toolchain-only callers, and initial run-panel presentation may send
-`checkFingerprint: false` to validate documents without traversing or hashing
-project sources. Omission preserves full inspection. The Windows run panel
-publishes readable configurations first, then performs full inspection and
-reports freshness failures without discarding those configurations.
-The input fingerprint covers what generation reads: the manifests the built-in
-detectors consume (package and lock files, Compose files, Procfiles, task-runner
-files and runtime version files) by content (`sha256:<hex>` in
-`generator.inputs`), plus the detector revision. When the stored inputs no longer
-reproduce the stored fingerprint, the document came from another generator
-revision and the diagnostic says so instead of listing modified files.
-Automatic run discovery, fingerprint traversal and Node manifest discovery use
-Core's shared scan policy. Known caches/build outputs
-are pruned before descending; other hidden source directories remain visible and
-symlinks are not followed. Automatic run discovery and `build.detect` search at
-most 6 levels and also prune directories Git ignores, using the `.gitignore`
-files they pass and the `info/exclude` of each repository whose root lies in the
-workspace (a linked worktree reads the main repository's shared one); a nested
-repository starts its own rules. Nothing above the workspace root is read, nor
-`core.excludesFile` or the index. `build.detect` additionally prunes the
-workspace's ignored paths (see the Build table below), which decide before Git's
-rules. Fingerprint traversal and Node manifest
-discovery keep ignored directories. Failure to read the workspace root is an error. An
-unreadable optional child or fingerprint input is recorded in
-`generator.unreadablePaths`; generation retains previous configurations and input
-hashes beneath those unknown paths. Inspection returns `incompleteProjectScan`
-instead of claiming fingerprint freshness or inferred removals when either the
-current scan or saved baseline is incomplete. The persisted diagnostic also appears
-with `checkFingerprint: false`; a successful complete regeneration clears it.
+when no generated configuration exists (`status: "missing"`).
 Project environment saves use the existing local `runConfig.updateOptions`
 toolchain payload with an empty `configurationId`; service overrides are untouched.
 
 The `runConfig.*` commands implement the versioned project protocol described
-by the JSON Schemas in this directory. `runConfig.inspect` accepts `root` and
-optional `checkFingerprint`, `localDocument` and `providerRuns`, and never
-writes files. `runConfig.generate` accepts `root`, optional `providerRuns` and
-an optional `cacheDirectory`, and returns `{ generated, toolchainRequirements,
-entryCount }`.
+by the JSON Schemas in this directory. Core discovers no runnable entries
+itself: every generated configuration is a run that a build provider plugin
+declares (`buildSystems[].run`), and each provider names the inputs that make its
+model stale through `sync.watch`. `runConfig.inspect` accepts `root` and
+optional `localDocument` and `providerRuns`, and never writes files.
+`runConfig.generate` accepts `root` and optional `providerRuns`, and returns
+`{ generated, entryCount }`.
 
-`runConfig.generate` and `runConfig.inspect` also accept optional `providerRuns`:
-a complete list of `{projectPath,name,reference}`. The native host matches current
-model targets against enabled public run declarations; `reference` has exactly the
-`extensions.build` selector shape below, with empty model `userArguments`. Core validates
-at most 10,000 unique selectors, provider-root/project containment and bounded labels,
-then creates `build.provider` entries without interpreting target IDs, tool names,
-frameworks, commands or debug adapters. An explicit `[]` withdraws generated runs;
-omission preserves older callers.
+`providerRuns` is a complete list of `{projectPath,name,reference}`. The host
+matches current model targets against enabled public run declarations;
+`reference` has exactly the `extensions.build` selector shape below, with empty
+model `userArguments`. Core validates at most 10,000 unique selectors,
+provider-root/project containment and bounded labels, then creates
+`build.provider` entries without interpreting target IDs, tool names,
+frameworks, commands or debug adapters. Generating without `providerRuns` is
+the same as `[]`: the generated layer is empty.
 IDs hash plugin/build/root/run/project/target identity, so changed labels or execution
 kind retain user overrides. Current declarations still validate the execution kind
 before preparation. `generator.providerRunFingerprint` hashes the complete sorted
-snapshot; changed or missing metadata yields `staleProviderModel`, including when
-file fingerprinting is disabled. Withdrawn entries cannot be restored from cached
-configurations; unmatched overrides stay in their user-owned layer and are diagnosed.
-See `fixtures/run-configuration/build-provider-stable-identities.json`. macOS supplies this
-snapshot; Windows retains its existing generator until its Provider host is migrated.
+snapshot; when `runConfig.inspect` receives `providerRuns` and the generated layer
+was made from a different snapshot, it reports `staleProviderModel`. Withdrawn
+entries cannot be restored from an earlier generation; unmatched overrides stay in
+their user-owned layer and are diagnosed.
+See `fixtures/run-configuration/build-provider-stable-identities.json`.
 
-Generation keeps the generated configuration and toolchain requirement
-documents in memory as the workspace's detected layer for `inspect` and
-`resolve`; nothing is written into the workspace. With `cacheDirectory` (an
-application cache root outside the workspace) it also records the result under
-`run-configurations/`, so retained entries keep their IDs and the Run list is
-complete before providers answer again; failing to read or write that cache
-changes nothing else. The previous generation, used only to retain entries
-beneath unreadable paths, is this process's last generation, else the cached
-result, else read-only a `.lithe/run/generated.json` that older versions wrote.
-`inspect` returns `requiresGeneration: true` while this process has
-no detected layer. Hosts identify the workspace when this flag is true or the
-status is `missing`; a saved provider task can make `status` be `ready` before
-detection, and must not suppress discovery of the remaining entries. Generated
-fingerprints include both project inputs and the detector revision; either
-changing marks the detected layer stale and requires regeneration.
+Generation keeps the generated document in memory as the workspace's generated
+layer for `inspect` and `resolve`; nothing is written into the workspace or a
+cache, and the `.lithe/run/generated.json` that older versions wrote is not read.
+`inspect` returns `requiresGeneration: true` while this process has no generated
+layer. Hosts generate when this flag is true or the status is `missing`; a saved
+provider task can make `status` be `ready` before generation, and must not
+suppress generation of the remaining entries.
 
 `runConfig.decideTitleAction { action, trigger, currentFileChosen, settled, configuration? }`
 decides what a press on the title bar's Run or Debug button does. `action` is
@@ -3548,12 +3577,15 @@ a press it kept. `settled` says the configurations are read (detection answered,
 no model is loading and the configurations were resolved since). `configuration`
 describes the configuration the title bar shows, absent when the project has
 none: `{ kind: "unsupported" }` (it does not start through a build provider),
+`{ kind: "process" }` (a built-in process run, which the host starts itself),
+`{ kind: "unavailable" }` (resolution gave it an `availability`),
 `{ kind: "instanceMissing" }`, `{ kind: "modelNotLoaded", failed }` or
 `{ kind: "modelLoaded", debuggable }` (its run declares a debug adapter). It
 returns `{ kind }`: `currentFile`, `wait` (keep the press until the
 configurations are read), `loadModel` (load the instance's model and keep the
-press), `unsupported`, `targetMissing`, `modelFailed`, `run`, `debug` or
-`notDebuggable`. A model whose last load failed is loaded again only on a press,
+press), `unsupported`, `unavailable`, `targetMissing`, `modelFailed`, `run`,
+`debug` or `notDebuggable`. A process run answers `run` for Run and
+`notDebuggable` for Debug. A model whose last load failed is loaded again only on a press,
 so a settled answer that failed again ends with `modelFailed` instead of looping.
 Hosts own the loads, the kept press and the notices.
 Cases: `rust/fixtures/run-configuration/title-action-v1.json`.
@@ -3568,54 +3600,98 @@ Windows compares paths case-insensitively and treats both separators alike;
 case-sensitive hosts compare the supplied path exactly. Discovery remains with
 the provider, and clients must reject results made stale by workspace changes.
 
-`runConfig.resolve` accepts `root`, optional local `toolchainCandidates`, and
-optional `localDocument` / `teamDocument`. A supplied document replaces that layer
-for this read-only resolution; omitted layers come from `.lithe/run/local.json` /
-`.lithe/run/configurations.json`. Hosts can preflight a complete two-file transaction
-against the current detected layer without publishing either file. Core never writes
-these documents; hosts still own source-identity checks, cancellation, conditional
-publication and readback. It merges
+Saved configurations live in two layers, each made of one Lithe document and
+one TOML document per plugin:
+
+| Layer | Lithe document | Plugin documents |
+| --- | --- | --- |
+| project, shared with the team | `.lithe/run/configurations.yaml` | `.lithe/run/plugin/<plugin ID>.toml` |
+| local, this machine only | `.lithe/run/local.yaml` | `.lithe/run/plugin/<plugin ID>.local.toml` |
+
+Core reads a layer's files as one `{version, configurations, ...}` document
+(version 2, `run-configuration-v2.schema.json`). A configuration belongs to the
+plugin whose build run it references or whose generated entry it overrides;
+every other one, the built-in process runs included, stays in the Lithe
+document, so it keeps working whatever plugins are installed. A plugin document
+starts with `schemaVersion = 1` and a `[plugin]` table recording the plugin's
+`id`, `name`, `author` and `repository` (the owner and repository of its
+`https://github.com/<owner>/<name>` source, so two plugins with the same ID
+are told apart), the `version` it was last saved with, the `versionRequirement`
+that can run it (a new document gets `>=` the saving version; one the user
+wrote is kept), `pluginAPIVersion` and the plugin's `requires` as
+`capabilities`, followed by one `[[configurations]]` table per entry. TOML has
+no null, so a tool choice cleared to automatic is spelled `"automatic"`. Other
+header keys are kept. The JSON documents of earlier releases
+(`configurations.json`, `local.json`) are read while their YAML replacement
+does not exist, and the first edit of that layer writes the YAML document and
+deletes the JSON one; when both exist the YAML document wins and the diagnostic
+`legacyDocumentIgnored` names the JSON one. A plugin document that cannot be
+read (`invalidPluginDocument`), whose file name and `[plugin].id` differ
+(`pluginDocumentMismatch`), that saves an ID another file already holds
+(`duplicateConfiguration`) or beyond the first 256 (`tooManyPluginDocuments`)
+is reported with its `path` and left out, so one bad file never hides the
+built-in configurations; an edit that would rewrite it is refused until it is
+fixed or removed.
+
+Core never writes these files. Every edit command returns `changes`, a list of
+`{path, baseSha256, content}`: `path` is workspace-relative with `/`,
+`baseSha256` the lowercase hex SHA-256 of the bytes the change was computed
+from (`null` when the file did not exist) and `content` the new text (`null`
+deletes the file). Hosts apply a change only while the file still has those
+bytes, apply all changes of one reply as one transaction, and resolve again
+afterwards; a mismatch means another edit came first and is reported instead
+of overwritten. `localDocument`, where a request accepts it, replaces the local
+layer for a read; an edit that would write the local layer is refused while it
+is supplied, because only files can be changed.
+
+`runConfig.resolve` accepts `root`, optional `localDocument` / `teamDocument`
+and optional `plugins`. A supplied document replaces that layer
+for this read-only resolution; omitted layers come from the files above. Hosts
+can preflight a complete two-layer transaction against the current generated
+layer without publishing either file. It merges
 configurations by stable ID using this precedence:
-`local.json > configurations.json > detected layer`. Scalars and arrays are
+`local > project > generated layer`. Scalars and arrays are
 replaced by the higher layer, while toolchain maps merge by key. It returns
 effective configurations, their source, the default (the team default from
-`.lithe/project.json`, else the first detected service, else the first
-detected entry other than Current File), structured
-diagnostics for stale, orphaned, missing, disabled, and toolchain mismatch
-states, the effective global `toolchain`, and the machine-local
-`localToolchains` document. Toolchain diagnostics carry the affected run
-configuration ID when a requirement is consumed by one or more configurations;
-requirements with no configuration consumer do not emit a blocking diagnostic.
+`.lithe/project.json`, else the first generated service, else the first
+generated entry other than Current File), structured diagnostics for orphaned
+overrides, missing working directories, disabled entries, invalid entries, the
+file problems above and an unavailable
+default, the effective global `toolchain`, and the machine-local
+`localToolchains` document. Core does not match toolchain versions or vendors.
+
+`plugins` lists the installed, enabled plugins as
+`{id, displayName?, version, repository?, pluginAPIVersion?, requires?}`
+(their `plugin.json` fields). Each configuration that needs a plugin carries
+`plugin`, the dependency its document records (or only the `id` of the plugin a
+build run references). A saved configuration that cannot run carries
+`availability: {status: "unavailable", code, message}` instead of being
+dropped: `pluginMissing`, `pluginRepositoryMismatch` (the installed plugin
+comes from another repository), `pluginVersionUnsupported`,
+`invalidConfiguration` (it fails validation, also reported as a diagnostic) or
+`missingWorkingDirectory` (its working directory is gone; a generated entry
+whose directory is gone is left out instead, with the same diagnostic).
+Omitting `plugins` skips the plugin checks. Hosts show unavailable entries with
+their message and do not start them; `runConfig.createLaunchPlan` and
+`runConfig.providerLaunchInputs` refuse them. Entries of a built-in type the
+platform cannot run, such as a batch script outside Windows, are left out with
+the diagnostic `unsupportedPlatform`; their saved text is kept.
 
 Each configuration carries a `category` of `project` or `infrastructure`.
-Docker Compose detections are `infrastructure`: a Compose file in an application
-repository declares the databases and brokers the project runs against, not the
-project itself. The field is omitted for `project`, which is the default, so
-existing generated documents keep their exact shape. Hosts present
-infrastructure apart from the project's own services and must not include it in
-"run all services" or in the default service selection.
-
-Windows implements this grouping. During the macOS transition, Compose entries
-remain in its execution-based Services scope; category-based grouping and service
-selection filtering are pending there.
+`infrastructure` marks the external services the project runs against, such as
+a database or a message broker, rather than the project itself. Generated
+provider entries are `project`; a saved configuration may declare
+`infrastructure`. The field is omitted for `project`, which is the default.
+Hosts present infrastructure apart from the project's own services and must not
+include it in "run all services" or in the default service selection.
 
 Display names that repeat are qualified by Core, because hosts show the name
-alone: the first candidate that separates every entry in the group wins, trying
-the working directory (when it is not the workspace root), then the source
-manifest. Three
-Compose files each declaring `compose up` become `compose up (script/docker)`
-and so on, while a name that occurs once is never decorated. Ids are unaffected.
+alone: when the working directories of the repeated entries all differ and none
+is the workspace root, each name gains its directory, so two modules declaring
+`serve` become `serve (services/api)` and `serve (services/worker)`. Otherwise
+the names stay as they are, and a name that occurs once is never decorated. Ids
+are unaffected.
 
-A process detector declares a runtime binding only when that command genuinely
-consumes the runtime. npm, pnpm, and Yarn scripts consume `project-node`; Bun
-scripts keep their independent `bun` command and do not acquire a Node
-requirement. Go, Python, and Cargo remain command-based until every host
-provides the corresponding configurable runtime registry, so their PATH-based
-launch behavior is not blocked by an unavailable platform selector.
-During resolution, Core also reconciles npm, pnpm, and Yarn commands from older
-v2 generated documents with the same `project-node` binding. This compatibility
-normalization is based on the effective command, does not mutate the stored
-document, and keeps legacy hybrid projects scoped without requiring regeneration.
 The document-level `toolchain` object in the local layer holds generic
 `preferences`; other fields there belong to whichever host or plugin wrote them,
 and Core preserves them unchanged.
@@ -3635,7 +3711,10 @@ An implicit selector-root cwd remains omitted from launch options. Current model
 native build workflow before every preparation. No generated document is needed:
 `runConfig.inspect` recognizes explicit saved team/local references and `runConfig.resolve`
 merges them against an empty generated layer. A workspace without generated data
-or an explicit saved Provider reference retains the existing missing state.
+or a saved runnable entry is still `missing` for `runConfig.inspect`, while
+`runConfig.resolve` returns an empty list, so the first built-in process run can be
+created before any build model loads. Without generated data, overrides of generated
+runs are not reported as `orphanedOverride`.
 Complete saved `build.provider` entries (name, provider, selector and matching execution)
 can retain any existing Run ID, including IDs imported from older formats; a prefix
 does not grant launch authority. Sparse unknown-ID patches remain orphaned. Such an
@@ -3644,13 +3723,16 @@ entry also makes a team-only workspace runnable before generation, while still r
 When generation contains that selector, resolution suppresses its duplicate automatic
 entry, retains all explicitly saved configurations, and resolves defaults through the
 same effective selector. Local selector patches update the effective claim, so an
-older team target does not accidentally hide a different auto entry. Detection
-fingerprints and the detected document remain unchanged by user-layer resolution.
+older team target does not accidentally hide a different auto entry. The
+generated layer and its fingerprint remain unchanged by user-layer resolution.
 See `fixtures/run-configuration/build-provider-stable-identities.json`.
 
-The platform guards the source snapshot, atomically writes only the local layer,
-then re-reads the result. `rust/fixtures/run-configuration/build-provider.json`
-is the canonical persistence example.
+The reply is `{id, changes}`. The reference is stored in the local layer's
+document of the plugin it names, `.lithe/run/plugin/<plugin ID>.local.toml`;
+the optional `plugins` list supplies the identity that document records. The
+platform re-reads the result after applying the changes.
+`rust/fixtures/run-configuration/build-provider.json` is the canonical
+persistence example.
 
 `extensions.build-run` stores portable user choices separately from the selector:
 `{runtimeArguments?: string[], entrypoint?: string, options?: object, tools?: object}`. Runtime arguments
@@ -3696,16 +3778,18 @@ before process launch, and an invalidated configuration or operation rejects lat
 
 `runConfig.updateOptions` and `runConfig.createUserConfiguration` are pure
 document transformations. They validate scope, paths, supported types, stable
-IDs, provider run options, and argument parsing, then return UTF-8 JSON in the
-`document` field. The platform adapter selects the target project or local
-file and performs the atomic write. These commands never write files. An empty
+IDs, provider run options, and argument parsing, then return the `changes` of
+the files the edit touches. The platform adapter applies them as described
+above; these commands never write files. An empty
 `workingDirectory` removes the layer's `cwd` override. A non-empty value must
 name an existing directory inside `root`, given relative to it or as an
 absolute path, and is stored project-relative. Values are literal paths; editor
 variables such as `${workspaceFolder}` are rejected rather than stored, because
 resolution disables and omits a configuration whose `cwd` does not exist.
 `runConfig.updateOptions` and `runConfig.inspect` accept the same optional
-`localDocument` override. When `updateOptions` carries a `toolchain` object
+`localDocument` override, and both edit commands accept the `plugins` list of
+`runConfig.resolve` so a written plugin document records the installed
+plugin. When `updateOptions` carries a `toolchain` object
 (`{ runtimeExecutablePaths?, preferences? }`), it replaces only the
 document-level `toolchain.preferences` in the local layer instead of patching a
 configuration, preserving every other document-level toolchain field; project
@@ -3728,31 +3812,110 @@ expansion or execution. Empty arguments remain explicit. The shared cases are in
 required `toolchain` object. That object may contain `preferences` and
 `runtimeExecutablePaths`, keyed by stable generic toolchain ID. It
 applies the global toolchain and configuration override edits together,
-returning `localDocument`, either a `projectDocument` string or `null`, and
-either a `toolchainDocument` string or `null`. The latter updates
-`.lithe/toolchains/local.json`, preserves unrelated toolchain IDs, and removes
-an entry when its supplied executable path is empty. Local scope combines the
-run-option edits in the local run document. Project scope returns the local
-defaults and team options as separate fully prepared documents; the platform
-adapter writes all returned documents as one transaction with rollback.
+returning the `changes` of the local layer, of the project layer in project
+scope, and of `.lithe/toolchains/local.json` when `runtimeExecutablePaths` is
+not empty. That
+document keeps unrelated toolchain IDs and drops an entry whose supplied
+executable path is empty. Local scope combines the run-option edits in the
+local layer. Project scope changes the team options and the local defaults
+separately; the platform adapter applies every returned change as one
+transaction with rollback.
 Platform clients report the editor save as successful only after the written
 documents resolve again. Failures identify whether preparation, document
 writing, or post-save reload failed; a reload failure keeps the last usable UI
 snapshot and states that the documents were already saved.
 
 Automatic runtime discovery produces an effective executable path for the
-current session. Platforms use that same path both to construct
-`toolchainCandidates` and to resolve the launch command. An automatic path is
-not a persisted user selection and is written to `.lithe/toolchains/local.json`
+current session. Platforms use that same path to resolve the launch command.
+An automatic path is not a persisted user selection and is written to `.lithe/toolchains/local.json`
 only after an explicit editor save.
 On Windows, Node-backed commands resolve their package-manager shim from the
 selected Node installation. They do not fall back to a PATH shim from another
 installation, and Windows executable extensions take precedence over extensionless
 shell scripts.
 
-`runConfig.createLaunchPlan` accepts `root`, `configurationId` and optional
-`localDocument`. It resolves the configuration through the same layers and
-rejects a missing or disabled one. Core assembles only process-based plans: a
+#### Built-in process runs
+
+Four providers start a script or a program without any plugin, so they keep
+working when no plugin is installed or a plugin fails: `process.shell` (a shell
+script), `process.powershell` (a PowerShell script), `process.batch` (a batch
+script run by `cmd`, Windows only) and `process.executable` (a program started
+directly). Interpreters of other languages and build tools stay with the
+plugins that declare them. Every `process.*` provider is reserved for Core; a
+kind this Core does not know is invalid instead of belonging to a plugin.
+
+An entry keeps its choices in `extensions.process`: `script` (a file,
+project-relative with `/` or absolute) or `text` (script text), `program` (a
+bare name looked up on `PATH`, a project-relative path containing `/`, or an
+absolute path), `interpreter` (named like `program`; absent picks one
+automatically), `interpreterArguments` (absent uses the automatic ones) and,
+for PowerShell, `executionPolicyBypass` (default `true`, saved only when
+`false`). Script kinds need exactly one of `script` and `text`; a program needs
+`program` and allows none of the others. `args` holds the script options or the
+program arguments, and `cwd` and `env` keep their usual meaning. Keys a later
+release adds are kept when an older Core saves the entry.
+
+The automatic interpreter of a shell script is its `#!` line, else `/bin/sh`;
+on Windows it is the program the `#!` line names (`#!/usr/bin/env bash -e`
+becomes `bash -e`), else `bash`, both looked up on `PATH`. PowerShell uses
+`pwsh` outside Windows and `powershell` on Windows, with `-NoLogo -NoProfile`;
+batch uses `cmd /d`. A chosen interpreter drops the automatic arguments.
+
+`runConfig.configurationTypes` accepts `{}` and returns `{types: [{provider}]}`,
+the kinds a user can create on this platform in display order; batch is listed
+only on Windows.
+
+`runConfig.editorForm` accepts `{root, provider?, configurationId?, values?}`
+and describes the editor of a new configuration of `provider` or of the saved
+`configurationId` (its provider must match `provider` when both are given).
+`values` holds the open editor's unsaved values; they replace the saved ones so
+automatic values follow the edit. It returns `{formVersion, provider,
+configurationId, values, fields}`. `formVersion` is `1`; a host refuses a newer
+one. `values` maps field IDs to the current values. `fields` is the ordered list
+of `{id, kind, required?, placement?, automatic?, options?, visibleWhen?,
+note?}`:
+
+| Attribute | Meaning |
+| --- | --- |
+| `kind` | `text`, `checkbox`, `choice` (one of `options`), `file`, `multilineText`, `arguments` (argument text), `directory`, `environment` (a list of `{name, value}` rows) or `executable` (a program name or path) |
+| `placement` | `header` puts the field in the editor's top row, beside the name |
+| `automatic` | The value used while the field is empty, shown as its placeholder |
+| `visibleWhen` | `{field, equals}`: shown only while that field has that value |
+| `note` | An explanation key; `windowsOnly` says the field matters only on Windows |
+
+Hosts draw the fields in order, skip a field whose `kind` they do not know and
+send back every value they received, including keys they do not show, so a
+later Core adds fields without a host change. Script kinds show `name`,
+`storeAsProjectFile`, `source` (`file` or `text`), `script`, `text`,
+`scriptOptions`, `workingDirectory`, `environment`, `interpreter`,
+`interpreterArguments` and, for PowerShell, `executionPolicyBypass`; a program
+shows `name`, `storeAsProjectFile`, `program`, `programArguments`,
+`workingDirectory` and `environment`. An empty name saves the automatic name,
+the script or program file name. A saved entry that is not a built-in process
+run, or a batch run outside Windows, is `not_supported`.
+
+`runConfig.saveConfiguration` accepts `{root, provider, configurationId?,
+values, plugins?}`. It replies `{status: "invalid", errors: [{field, code}]}`
+when a value is wrong, else `{status: "saved", id, changes}`. `code` is
+`required`, `conflict`, `notAllowed`, `tooLong`, `invalidCharacter`,
+`invalidPath`, `notFound`, `outsideProject` (a working directory outside the
+project), `invalidName` (an environment variable name) or `duplicate` (an
+environment variable given twice); hosts show the message for the code beside
+the field. A new entry gets a `user:` ID from its name. The entry is saved whole
+in the project layer when `storeAsProjectFile` is `true` and in the local layer
+otherwise, and removed from the other layer, so it lives in one file. A path
+inside the project is saved project-relative with `/`, other paths absolute; a
+program in the project root gains `./` so it is not looked up on `PATH`. Keys and
+extension namespaces the editor does not show are kept.
+
+`runConfig.deleteConfiguration` accepts `{root, configurationId, plugins?}` and
+returns `{changes}` that remove the saved `user:` configuration from every layer.
+Generated entries cannot be deleted.
+
+`runConfig.createLaunchPlan` accepts `root`, `configurationId`, optional
+`localDocument` and optional `inlineScriptBase`. It resolves the configuration
+through the same layers and rejects a missing, disabled or unavailable one.
+Core assembles only process-based plans: a
 configuration with a bare program-name `command` returns
 `executable: { command }`, which the host resolves on PATH; one that transfers
 executable ownership to a runtime toolchain (`toolchains.runtime`) returns
@@ -3761,9 +3924,31 @@ registry. Any other configuration, including a `build.provider` reference, is
 `invalid_request`: ecosystem launch semantics stay with the plugin that
 declared the run. The plan also returns the string argument array, the
 project-relative `workingDirectory`, an empty `environment` reserved for
-toolchain-derived values, and the configuration's literal `env`. It does not
-return a shell command or platform executable path. All project paths use `/`,
-reject absolute paths and `..` traversal, and remain relative to `root`.
+toolchain-derived values, and the configuration's literal `env`. All project
+paths use `/`, reject absolute paths and `..` traversal, and remain relative to
+`root`.
+
+A built-in process run is planned for the host platform. `executable` is
+`{command}` for a name the host looks up on the `PATH` of the launch
+environment, or `{path}`, a native absolute path; `arguments` already hold the
+interpreter options, the script and its options (PowerShell gains
+`-ExecutionPolicy Bypass` on Windows unless turned off, then `-File`). A missing
+script file, or a program or interpreter named by a path that is not a file, is
+`invalid_request`. Two more keys may appear:
+
+- `inlineScript: {path, content}` for a script saved as text. The host writes
+  `content` to `path` before starting and removes it after the process exits.
+  `path` is `inlineScriptBase`, an absolute path prefix in a host-owned
+  temporary directory (never the application bundle or install directory),
+  followed by `.sh`, `.ps1` or `.cmd`; planning such a run without it is
+  `invalid_request`. The content ends with a line break, uses CRLF for batch and
+  starts with a UTF-8 byte order mark for PowerShell on Windows.
+- `commandLine` for a batch script: the exact Windows command line
+  (`cmd /d /s /c "<script> <options>"`, each word quoted the way `cmd` reads
+  it). `cmd` does not split quotes the way other programs do, so the host passes
+  this line unchanged instead of quoting `arguments` itself.
+
+Batch runs are `not_supported` outside Windows.
 
 `diagnostics.redactText` accepts `text` and returns `redacted` with
 credentials, tokens, and home-directory paths replaced by stable placeholders
@@ -4739,6 +4924,19 @@ version to stderr. The definition's `version.pattern` alone captures the
 version, including any tool-specific numbering such as a legacy `1.` prefix;
 Core never branches on a tool name.
 
+`build.detect` walks the workspace with Core's shared scan policy. It searches at
+most 6 levels and does not follow symlinks. It skips the directories the
+default visibility rules hide (Core's own folders and the folder names enabled
+plugins declare) and the directories Git ignores, using the `.gitignore` files
+it passes and the `info/exclude` of each repository whose root lies in the
+workspace (a linked worktree reads the main repository's shared one); a nested
+repository starts its own rules. Nothing above the workspace root is read, nor
+`core.excludesFile` or the index. The workspace's ignored paths (see
+`build.detect` below) decide before Git's rules. Failure to read the workspace
+root fails detection, and so does a remote link that drops during the scan; a
+deeper directory that cannot be read contributes nothing, and the scan lists at
+most 4,000 directories.
+
 Paths in requests are workspace-relative with `/` unless named absolute.
 `root` is the instance root from detection. Selected entities are
 `{ name, path?, tags?, execution?, properties? }` as the decoded model
@@ -4775,6 +4973,7 @@ and the directories are absolute host paths used only as substitution text.
 | `build.decodeDiagnostics` | `{ workspaceRoot, root, output }` | `diagnostics`: `[{ path, line, column?, severity, message }]`, deduplicated, inside the workspace only |
 | `build.decodeDependencies` | `{ workspaceRoot, root, project?, output?, outputFile?, result? }` | `dependencies`: `{ project, dependencies: [{ name, group?, version?, scope?, properties?, children }], truncated }` |
 | `build.syncFingerprint` | `{ workspaceRoot, root, projects, options? }` | `sync`: `{ fingerprint, watch }` |
+| `build.modelTree` | `{ model: { projects, targets, tasks }, query?, groupHeadings?: { <group>: heading } }`; `model` is a `build.decodeModel` result, other model fields are ignored | `tree`: `{ project?, nodes, truncated? }`; see below |
 
 Invocation candidates also include `{ kind: "toolchain", toolchainID, root }`.
 Hosts resolve them through the same canonical project/subproject
@@ -4800,6 +4999,57 @@ seconds attribute, rounded to whole milliseconds. Repeated invocations of one ca
 sum their times; when any invocation lacks a valid non-negative time, or the sum
 exceeds 2^53 - 1, the field is omitted. A reported zero is valid. Hosts hide a
 missing duration and never substitute a suite or console summary.
+
+#### Build model tree
+
+`build.modelTree` lays out one instance's tool window, the same way for every
+build tool; hosts render the nodes and neither nest projects nor file tasks
+themselves. It reads no file and starts no process.
+
+- Projects nest by `parentID`. A project whose parent is missing, itself, or
+  part of a loop, or that is nested deeper than 64 levels, becomes a root;
+  roots whose parent is missing or themselves come first, then the rest in
+  model order. A repeated project ID keeps its first project.
+- A `project` node holds, in order: its tasks in folders, a `dependencies`
+  node when `dependencies.scopes` contains `project`, a `targets` node of
+  `target` nodes, and its child projects. A target's children are the
+  declared `target`-scoped tasks whose `targetTags` match it.
+- A declared task (not `fromModel`) with a `project` scope appears in every
+  project; one with a `workspace` scope that has no `project` scope or
+  `requiresUserArguments` appears once in `nodes`, as do tasks with a
+  `workspace` scope when the model has no projects. Model tasks appear in their
+  project. Workspace dependencies (`scopes` with `workspace` but not
+  `project`, or a model with no projects) and test discovery
+  (`test.discovery`) add a `dependencies` or `tests` node to `nodes`.
+- A task is filed under its `category` headings, outermost first, or under
+  one `folder` for its `group`. A group folder carries `group` and the
+  host-sent `groupHeadings` label; a host that sends none labels it itself.
+  Folders keep the order they first appear in; a folder's subfolders come
+  before its tasks.
+- With exactly one root project, `project` is that project's node without
+  children and `nodes` is its contents plus the instance's own; otherwise
+  `nodes` holds the instance's nodes, then the root projects.
+- `query` (at most 256 bytes, no control characters) is trimmed and matched
+  case-insensitively against `label`, `detail` and `tooltip`. A matching node
+  is kept whole, with `matched: true`, and with the nodes on the way to it, so
+  a host opens those and shows the match as the user left it; an unmatched
+  `dependencies` node is dropped, and a `tests` node is always kept because
+  its entries load later. A blank query, or one the single root project
+  matches, keeps everything; the matching `project` then carries
+  `matched: true`.
+- A node is `{ kind, key, label?, detail?, tooltip?, group?, projectID?,
+  targetID?, taskID?, matched?, children? }`, `kind` one of `project`,
+  `folder`, `task`, `targets`, `target`, `dependencies`, `tests`. `key` is
+  opaque, unique in the instance and stable across reloads and filters, so
+  hosts remember open nodes by it. `projectID` and `targetID` are what a task
+  runs on (absent: the whole instance); `taskID` is a declared task's ID or a
+  model task's ID. `targets`, `dependencies` and `tests` nodes have no label.
+- The model may hold at most 2,000 projects and 10,000 targets and 10,000
+  tasks; more is `invalid_request`, as are unknown request fields and group
+  headings that are blank, longer than 120 bytes or contain control
+  characters. A tree is cut at 50,000 nodes and then carries
+  `truncated: true`. `rust/fixtures/build/model-tree-v1.json` holds the golden
+  trees.
 
 ### VCS providers
 
@@ -5472,11 +5722,20 @@ the instance reported them and sum the processes that did.
 Percentages measure use between two tables of one host:
 
 - `sampledAt` is when the table was read, in microseconds of a clock that only
-  moves forward. A request with it gets `baseline: { sampledAt, processes }`: the
-  instance's processes that have `cpuTime` or `gpuEngines`, by process ID, each
-  `{ processId, startTime?, cpuTime?, gpuEngines? }` with one engine row per name.
-  The host sends it back as `previous` with its next table.
-- A process is compared with the `previous` row of its process ID and start time;
+  moves forward. A request with it gets `baseline: { sampledAt, processes,
+  earlier? }`: the instance's processes that have `cpuTime` or `gpuEngines`, by
+  process ID, each `{ processId, startTime?, cpuTime?, gpuEngines? }` with one
+  engine row per name. The host sends it back unchanged as `previous` with its
+  next table.
+- Two tables less than one second (1,000,000 µs) apart are never compared, so the
+  use of one moment, such as the reading itself or the details opening, does not
+  read as a sustained rate. A table read at least that long after `previous` is
+  measured from it, and its baseline keeps `previous`'s `{ sampledAt, processes }`
+  as `earlier`. A table read sooner is measured from `previous.earlier` when that
+  is at least one second before it, and has no percentages otherwise; either way
+  its `baseline` is `previous` unchanged, so the next table is measured from the
+  same counters.
+- A process is compared with the counters' row of its process ID and start time;
   a row with another start time belongs to an earlier process with the same ID.
   A process the baseline does not have, such as one started since, adds nothing
   until the next table. A counter lower than its baseline adds nothing.
@@ -5490,7 +5749,9 @@ Percentages measure use between two tables of one host:
   busiest engine's share of the interval is the percentage, at most 100. An engine
   the baseline row does not list counts from zero.
 - Percentages are rounded to a tenth. Without `sampledAt`, without `previous`, or
-  with a `sampledAt` no later than the baseline's, there are none.
+  without counters at least one second before the table, there are none. A
+  `sampledAt` earlier than the baseline's, which only a clock that went back
+  produces, has none and starts a new baseline without `earlier`.
 
 A table without the host or with a repeated process ID, or a `logicalProcessors`
 of 0, is `invalid_request`. Fixtures live in
@@ -5806,10 +6067,10 @@ an allowed symbolic inheritance reference. The command validates both the origin
 documents, preserves siblings, prunes empty containers along the edited path, and returns
 `{status: ok, edit: {document, preferences}}`. Resetting an absent value is a no-op.
 
-`runConfig.updateToolPreferences` accepts `{localDocument, preferences}` and returns
-`{document}` containing the replacement local Run JSON. It replaces only `toolchain.preferences`;
+`runConfig.updateToolPreferences` accepts `{root, preferences}` and returns the `changes` of
+the local layer. It replaces only `toolchain.preferences`;
 it does not materialize legacy language/build defaults, migrate v1 Run entries or modify other fields.
-The captured `localDocument` is required; this command performs no native I/O. Unknown document
+It reads the local layer's files and writes none of them. Unknown document
 versions are rejected without numeric narrowing. The native adapter owns bounded reads, cancellation,
 read-only package boundaries, optimistic comparison, metadata-preserving atomic replacement and
 read-back. No editor command discovers or executes tools. Global defaults and complete one-time

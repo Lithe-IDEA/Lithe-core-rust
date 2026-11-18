@@ -9,7 +9,9 @@
     "hiddenFilePatterns": [
       ".DS_Store",
       ".lithe/**",
-      ".lithe/run/local.json"
+      ".lithe/run/local.yaml",
+      ".lithe/run/local.json",
+      ".lithe/run/plugin/*.local.toml"
     ],
     "builtInPatterns": [
       "**/.git/",
@@ -17,7 +19,9 @@
       "**/.worktrees/",
       ".DS_Store",
       ".lithe/**",
-      ".lithe/run/local.json"
+      ".lithe/run/local.yaml",
+      ".lithe/run/local.json",
+      ".lithe/run/plugin/*.local.toml"
     ],
     "configurationDirectory": ".lithe",
     "configurationPattern": ".lithe/**"
@@ -455,6 +459,28 @@
           "watchedDespiteHiding": true
         },
         {
+          "path": ".lithe/run/local.yaml",
+          "isDirectory": false,
+          "hidden": true
+        },
+        {
+          "path": ".lithe/run/configurations.yaml",
+          "isDirectory": false,
+          "hidden": true,
+          "watchedDespiteHiding": true
+        },
+        {
+          "path": ".lithe/run/plugin/dev.example.gradle.local.toml",
+          "isDirectory": false,
+          "hidden": true
+        },
+        {
+          "path": ".lithe/run/plugin/dev.example.gradle.toml",
+          "isDirectory": false,
+          "hidden": true,
+          "watchedDespiteHiding": true
+        },
+        {
           "path": ".lithe/run/local.json",
           "isDirectory": false,
           "hidden": true
@@ -492,6 +518,21 @@
           "path": ".lithe/run/local.json",
           "isDirectory": false,
           "hidden": true
+        },
+        {
+          "path": ".lithe/run/local.yaml",
+          "isDirectory": false,
+          "hidden": true
+        },
+        {
+          "path": ".lithe/run/plugin/dev.example.gradle.local.toml",
+          "isDirectory": false,
+          "hidden": true
+        },
+        {
+          "path": ".lithe/run/plugin/dev.example.gradle.toml",
+          "isDirectory": false,
+          "hidden": false
         }
       ]
     },

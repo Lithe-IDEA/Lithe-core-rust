@@ -8,17 +8,8 @@
     "version": { "const": 2 },
     "generator": {
       "type": "object",
-      "required": ["fingerprint"],
       "properties": {
-        "fingerprint": { "type": "string", "pattern": "^sha256:" },
-        "providerFingerprint": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
-        "providerRunFingerprint": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
-        "unreadablePaths": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
-        "inputs": {
-          "type": "object",
-          "propertyNames": { "type": "string", "minLength": 1 },
-          "additionalProperties": { "type": "string", "pattern": "^(sha256:.+|path)$" }
-        }
+        "providerRunFingerprint": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
       },
       "additionalProperties": false
     },
@@ -171,6 +162,19 @@
         }
       }
     },
+    "processOptions": {
+      "description": "Choices of a built-in process run (process.* providers); keys a later release adds are kept.",
+      "type": "object",
+      "properties": {
+        "script": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "text": { "type": "string", "minLength": 1, "maxLength": 1048576 },
+        "program": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "interpreter": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "interpreterArguments": { "type": "array", "maxItems": 256, "items": { "type": "string" } },
+        "executionPolicyBypass": { "type": "boolean" }
+      },
+      "not": { "required": ["script", "text"] }
+    },
     "configuration": {
       "type": "object",
       "required": ["id", "provider"],
@@ -226,6 +230,21 @@
                 "build": { "$ref": "#/$defs/buildProviderReference" },
                 "build-run": { "$ref": "#/$defs/buildProviderRunOptions" }
               }
+            }
+          }
+        }
+      }, {
+        "if": { "properties": { "provider": { "pattern": "^process\\." } } },
+        "then": {
+          "properties": {
+            "provider": { "enum": ["process.shell", "process.powershell", "process.batch", "process.executable"] },
+            "execution": { "enum": ["application", "service", "task"] },
+            "command": false,
+            "toolchains": { "maxProperties": 0 },
+            "debug": false,
+            "members": { "maxItems": 0 },
+            "extensions": {
+              "properties": { "process": { "$ref": "#/$defs/processOptions" } }
             }
           }
         }

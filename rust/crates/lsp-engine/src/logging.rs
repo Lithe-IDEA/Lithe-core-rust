@@ -135,6 +135,9 @@ pub(super) enum EngineLog {
     ShutdownTimedOut,
     StderrReceived,
     StderrReadFailed,
+    /// Resolving or publishing the workspace's Git exclusions after a start
+    /// failed; the server keeps the exclusions it was started with.
+    ExclusionsFailed,
     MessageLogged,
     MessageShown,
     TraceReceived,
@@ -189,6 +192,7 @@ impl EngineLog {
             Self::ShutdownTimedOut => "shutdown.timed_out",
             Self::StderrReceived => "stderr.received",
             Self::StderrReadFailed => "stderr.read_failed",
+            Self::ExclusionsFailed => "indexing.exclusions_failed",
             Self::MessageLogged => "message.logged",
             Self::MessageShown => "message.shown",
             Self::TraceReceived => "trace.received",
@@ -218,7 +222,9 @@ impl EngineLog {
                 );
                 copy(&mut fields, "truncated", input, "truncated");
             }
-            Self::ProcessCleanupFailed | Self::StderrReadFailed => failure(&mut fields, code),
+            Self::ProcessCleanupFailed | Self::StderrReadFailed | Self::ExclusionsFailed => {
+                failure(&mut fields, code)
+            }
             Self::MessageLogged | Self::MessageShown => {
                 copy(&mut fields, "diagnostic", input, "diagnostic");
                 copy(&mut fields, "severity", input, "severity");
@@ -594,6 +600,7 @@ mod tests {
                 EngineLog::NotificationReceived,
                 EngineLog::ProcessStarted,
                 EngineLog::ProcessCleanupFailed,
+                EngineLog::ExclusionsFailed,
                 EngineLog::ProtocolInitialized,
                 EngineLog::ResponseSkipped,
                 EngineLog::ShutdownTimedOut,

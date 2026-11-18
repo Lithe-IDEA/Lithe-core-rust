@@ -21,6 +21,11 @@ pub(super) fn dispatch(
         EditorCommand::GroupLayoutDropTargets => {
             plugin_response(id, payload, lithe_editor_layout::drop_targets_command)
         }
+        EditorCommand::CopyReferenceLocation => plugin_response(
+            id,
+            payload,
+            lithe_editor::reference_location::reference_command,
+        ),
         EditorCommand::Find => match lithe_editor::find::command(payload, document) {
             Ok(data) => CoreResponse::success(id, data),
             Err(error) => CoreResponse::failure(id, error),

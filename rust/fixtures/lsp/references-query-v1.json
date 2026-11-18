@@ -1,0 +1,552 @@
+{
+  "description": "lsp.references.query groups Find Usages locations by file and lays out the References tool window's rows. Files follow the natural file-name order, usages their position; every location is kept. Indices point into the submitted locations.",
+  "cases": [
+    {
+      "name": "interleaved files are grouped in natural path order with usages by position",
+      "request": {
+        "locations": [
+          {
+            "fileKey": "/w/ui/layout.go",
+            "displayPath": "ui/layout.go",
+            "line": 8,
+            "column": 12
+          },
+          {
+            "fileKey": "/w/ui/absolute.go",
+            "displayPath": "ui/absolute.go",
+            "line": 10,
+            "column": 14
+          },
+          {
+            "fileKey": "/w/ui/layout.go",
+            "displayPath": "ui/layout.go",
+            "line": 3,
+            "column": 12
+          },
+          {
+            "fileKey": "/w/ui/absolute.go",
+            "displayPath": "ui/absolute.go",
+            "line": 4,
+            "column": 1
+          },
+          {
+            "fileKey": "/w/File10.go",
+            "displayPath": "File10.go",
+            "line": 0,
+            "column": 0
+          },
+          {
+            "fileKey": "/w/File2.go",
+            "displayPath": "File2.go",
+            "line": 0,
+            "column": 0
+          }
+        ]
+      },
+      "response": {
+        "groups": [
+          {
+            "key": "file:/w/File2.go",
+            "fileKey": "/w/File2.go",
+            "displayPath": "File2.go",
+            "name": "File2.go",
+            "folder": "",
+            "indices": [
+              5
+            ]
+          },
+          {
+            "key": "file:/w/File10.go",
+            "fileKey": "/w/File10.go",
+            "displayPath": "File10.go",
+            "name": "File10.go",
+            "folder": "",
+            "indices": [
+              4
+            ]
+          },
+          {
+            "key": "file:/w/ui/absolute.go",
+            "fileKey": "/w/ui/absolute.go",
+            "displayPath": "ui/absolute.go",
+            "name": "absolute.go",
+            "folder": "ui",
+            "indices": [
+              3,
+              1
+            ]
+          },
+          {
+            "key": "file:/w/ui/layout.go",
+            "fileKey": "/w/ui/layout.go",
+            "displayPath": "ui/layout.go",
+            "name": "layout.go",
+            "folder": "ui",
+            "indices": [
+              2,
+              0
+            ]
+          }
+        ],
+        "rows": [
+          {
+            "key": "root",
+            "kind": "root",
+            "depth": 0,
+            "expanded": true,
+            "shows": 5,
+            "next": 5
+          },
+          {
+            "key": "file:/w/File2.go",
+            "kind": "file",
+            "depth": 1,
+            "expanded": true,
+            "group": 0,
+            "shows": 5,
+            "next": 5
+          },
+          {
+            "key": "usage:5",
+            "kind": "usage",
+            "depth": 2,
+            "group": 0,
+            "shows": 5,
+            "next": 4
+          },
+          {
+            "key": "file:/w/File10.go",
+            "kind": "file",
+            "depth": 1,
+            "expanded": true,
+            "group": 1,
+            "shows": 4,
+            "previous": 5,
+            "next": 4
+          },
+          {
+            "key": "usage:4",
+            "kind": "usage",
+            "depth": 2,
+            "group": 1,
+            "shows": 4,
+            "previous": 5,
+            "next": 3
+          },
+          {
+            "key": "file:/w/ui/absolute.go",
+            "kind": "file",
+            "depth": 1,
+            "expanded": true,
+            "group": 2,
+            "shows": 3,
+            "previous": 4,
+            "next": 3
+          },
+          {
+            "key": "usage:3",
+            "kind": "usage",
+            "depth": 2,
+            "group": 2,
+            "shows": 3,
+            "previous": 4,
+            "next": 1
+          },
+          {
+            "key": "usage:1",
+            "kind": "usage",
+            "depth": 2,
+            "group": 2,
+            "shows": 1,
+            "previous": 3,
+            "next": 2
+          },
+          {
+            "key": "file:/w/ui/layout.go",
+            "kind": "file",
+            "depth": 1,
+            "expanded": true,
+            "group": 3,
+            "shows": 2,
+            "previous": 1,
+            "next": 2
+          },
+          {
+            "key": "usage:2",
+            "kind": "usage",
+            "depth": 2,
+            "group": 3,
+            "shows": 2,
+            "previous": 1,
+            "next": 0
+          },
+          {
+            "key": "usage:0",
+            "kind": "usage",
+            "depth": 2,
+            "group": 3,
+            "shows": 0,
+            "previous": 2
+          }
+        ],
+        "selected": "usage:5",
+        "selectedRow": 2
+      }
+    },
+    {
+      "name": "a closed file hides its usages and takes their selection; equal names in two folders stay apart; equal positions keep the submission order",
+      "request": {
+        "locations": [
+          {
+            "fileKey": "/w/b/util.go",
+            "displayPath": "b/util.go",
+            "line": 1,
+            "column": 0
+          },
+          {
+            "fileKey": "/w/a/util.go",
+            "displayPath": "a/util.go",
+            "line": 2,
+            "column": 0
+          },
+          {
+            "fileKey": "/w/a/util.go",
+            "displayPath": "a/util.go",
+            "line": 2,
+            "column": 0
+          }
+        ],
+        "collapsed": [
+          "/w/a/util.go",
+          "/w/gone.go"
+        ],
+        "selected": "usage:2"
+      },
+      "response": {
+        "groups": [
+          {
+            "key": "file:/w/a/util.go",
+            "fileKey": "/w/a/util.go",
+            "displayPath": "a/util.go",
+            "name": "util.go",
+            "folder": "a",
+            "indices": [
+              1,
+              2
+            ]
+          },
+          {
+            "key": "file:/w/b/util.go",
+            "fileKey": "/w/b/util.go",
+            "displayPath": "b/util.go",
+            "name": "util.go",
+            "folder": "b",
+            "indices": [
+              0
+            ]
+          }
+        ],
+        "rows": [
+          {
+            "key": "root",
+            "kind": "root",
+            "depth": 0,
+            "expanded": true,
+            "shows": 1,
+            "next": 1
+          },
+          {
+            "key": "file:/w/a/util.go",
+            "kind": "file",
+            "depth": 1,
+            "expanded": false,
+            "group": 0,
+            "shows": 1,
+            "next": 1
+          },
+          {
+            "key": "file:/w/b/util.go",
+            "kind": "file",
+            "depth": 1,
+            "expanded": true,
+            "group": 1,
+            "shows": 0,
+            "previous": 2,
+            "next": 0
+          },
+          {
+            "key": "usage:0",
+            "kind": "usage",
+            "depth": 2,
+            "group": 1,
+            "shows": 0,
+            "previous": 2
+          }
+        ],
+        "selected": "file:/w/a/util.go",
+        "selectedRow": 1
+      }
+    },
+    {
+      "name": "a closed Usages node shows alone and takes the selection of a file",
+      "request": {
+        "locations": [
+          {
+            "fileKey": "/w/src/main.go",
+            "displayPath": "src/main.go",
+            "line": 7,
+            "column": 2
+          },
+          {
+            "fileKey": "/w/src/main.go",
+            "displayPath": "src/main.go",
+            "line": 3,
+            "column": 9
+          }
+        ],
+        "rootCollapsed": true,
+        "selected": "file:/w/src/main.go"
+      },
+      "response": {
+        "groups": [
+          {
+            "key": "file:/w/src/main.go",
+            "fileKey": "/w/src/main.go",
+            "displayPath": "src/main.go",
+            "name": "main.go",
+            "folder": "src",
+            "indices": [
+              1,
+              0
+            ]
+          }
+        ],
+        "rows": [
+          {
+            "key": "root",
+            "kind": "root",
+            "depth": 0,
+            "expanded": false,
+            "shows": 1,
+            "next": 1
+          }
+        ],
+        "selected": "root",
+        "selectedRow": 0
+      }
+    },
+    {
+      "name": "a selected file node that shows stays selected",
+      "request": {
+        "locations": [
+          {
+            "fileKey": "/w/main.go",
+            "displayPath": "main.go",
+            "line": 1,
+            "column": 1
+          },
+          {
+            "fileKey": "/w/lib.go",
+            "displayPath": "lib.go",
+            "line": 4,
+            "column": 0
+          }
+        ],
+        "selected": "file:/w/main.go"
+      },
+      "response": {
+        "groups": [
+          {
+            "key": "file:/w/lib.go",
+            "fileKey": "/w/lib.go",
+            "displayPath": "lib.go",
+            "name": "lib.go",
+            "folder": "",
+            "indices": [
+              1
+            ]
+          },
+          {
+            "key": "file:/w/main.go",
+            "fileKey": "/w/main.go",
+            "displayPath": "main.go",
+            "name": "main.go",
+            "folder": "",
+            "indices": [
+              0
+            ]
+          }
+        ],
+        "rows": [
+          {
+            "key": "root",
+            "kind": "root",
+            "depth": 0,
+            "expanded": true,
+            "shows": 1,
+            "next": 1
+          },
+          {
+            "key": "file:/w/lib.go",
+            "kind": "file",
+            "depth": 1,
+            "expanded": true,
+            "group": 0,
+            "shows": 1,
+            "next": 1
+          },
+          {
+            "key": "usage:1",
+            "kind": "usage",
+            "depth": 2,
+            "group": 0,
+            "shows": 1,
+            "next": 0
+          },
+          {
+            "key": "file:/w/main.go",
+            "kind": "file",
+            "depth": 1,
+            "expanded": true,
+            "group": 1,
+            "shows": 0,
+            "previous": 1,
+            "next": 0
+          },
+          {
+            "key": "usage:0",
+            "kind": "usage",
+            "depth": 2,
+            "group": 1,
+            "shows": 0,
+            "previous": 1
+          }
+        ],
+        "selected": "file:/w/main.go",
+        "selectedRow": 3
+      }
+    },
+    {
+      "name": "a usage key past the answer selects the first usage",
+      "request": {
+        "locations": [
+          {
+            "fileKey": "/w/main.go",
+            "displayPath": "main.go",
+            "line": 1,
+            "column": 1
+          }
+        ],
+        "selected": "usage:7"
+      },
+      "response": {
+        "groups": [
+          {
+            "key": "file:/w/main.go",
+            "fileKey": "/w/main.go",
+            "displayPath": "main.go",
+            "name": "main.go",
+            "folder": "",
+            "indices": [
+              0
+            ]
+          }
+        ],
+        "rows": [
+          {
+            "key": "root",
+            "kind": "root",
+            "depth": 0,
+            "expanded": true,
+            "shows": 0,
+            "next": 0
+          },
+          {
+            "key": "file:/w/main.go",
+            "kind": "file",
+            "depth": 1,
+            "expanded": true,
+            "group": 0,
+            "shows": 0,
+            "next": 0
+          },
+          {
+            "key": "usage:0",
+            "kind": "usage",
+            "depth": 2,
+            "group": 0,
+            "shows": 0
+          }
+        ],
+        "selected": "usage:0",
+        "selectedRow": 2
+      }
+    },
+    {
+      "name": "a location that is not a local file is grouped under its URI",
+      "request": {
+        "locations": [
+          {
+            "fileKey": "jar:file:///lib/rt.jar!/java/lang/String.class",
+            "displayPath": "jar:file:///lib/rt.jar!/java/lang/String.class",
+            "line": 10,
+            "column": 4
+          }
+        ]
+      },
+      "response": {
+        "groups": [
+          {
+            "key": "file:jar:file:///lib/rt.jar!/java/lang/String.class",
+            "fileKey": "jar:file:///lib/rt.jar!/java/lang/String.class",
+            "displayPath": "jar:file:///lib/rt.jar!/java/lang/String.class",
+            "name": "String.class",
+            "folder": "jar:file:///lib/rt.jar!/java/lang",
+            "indices": [
+              0
+            ]
+          }
+        ],
+        "rows": [
+          {
+            "key": "root",
+            "kind": "root",
+            "depth": 0,
+            "expanded": true,
+            "shows": 0,
+            "next": 0
+          },
+          {
+            "key": "file:jar:file:///lib/rt.jar!/java/lang/String.class",
+            "kind": "file",
+            "depth": 1,
+            "expanded": true,
+            "group": 0,
+            "shows": 0,
+            "next": 0
+          },
+          {
+            "key": "usage:0",
+            "kind": "usage",
+            "depth": 2,
+            "group": 0,
+            "shows": 0
+          }
+        ],
+        "selected": "usage:0",
+        "selectedRow": 2
+      }
+    },
+    {
+      "name": "an empty answer has no rows and no selection",
+      "request": {
+        "locations": [],
+        "selected": "root"
+      },
+      "response": {
+        "groups": [],
+        "rows": []
+      }
+    }
+  ]
+}

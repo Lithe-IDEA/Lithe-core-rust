@@ -659,6 +659,19 @@ pub static EVENTS: &[EventMetadata] = &[
         owner: "Lithe",
     },
     EventMetadata {
+        id: "lsp.indexing.exclusions_failed",
+        channel: "lsp/{server}",
+        level: LogLevel::Warn,
+        message: "Language server indexing exclusions could not be published for server {server}",
+        fields: &[
+            FieldMetadata { name: "error", field_type: FieldType::Error, required: true, description: "Failure resolving or publishing the workspace Git exclusions after the server started", reason: None },
+            FieldMetadata { name: "server", field_type: FieldType::Id, required: true, description: "Validated language server session id whose workspace exclusions could not be published", reason: None },
+        ],
+        span: None,
+        rate: 120,
+        owner: "lithe-core",
+    },
+    EventMetadata {
         id: "lsp.message.detail.logged",
         channel: "lsp/{server}",
         level: LogLevel::Debug,
@@ -924,6 +937,19 @@ pub static EVENTS: &[EventMetadata] = &[
         ],
         span: None,
         rate: 1,
+        owner: "lithe-core",
+    },
+    EventMetadata {
+        id: "plugins.host.indexing.exclusions_failed",
+        channel: "plugins/{plugin}/host",
+        level: LogLevel::Warn,
+        message: "Engine indexing exclusions could not be published for server {plugin}",
+        fields: &[
+            FieldMetadata { name: "error", field_type: FieldType::Error, required: true, description: "Failure resolving or publishing the workspace Git exclusions after the server started", reason: None },
+            FieldMetadata { name: "plugin", field_type: FieldType::Id, required: true, description: "Validated plugin identity assigned by Core to this engine session", reason: None },
+        ],
+        span: None,
+        rate: 120,
         owner: "lithe-core",
     },
     EventMetadata {
@@ -1563,6 +1589,19 @@ pub static EVENTS: &[EventMetadata] = &[
         ],
         span: None,
         rate: 60,
+        owner: "lithe-core",
+    },
+    EventMetadata {
+        id: "vcs.indexing.exclusions_failed",
+        channel: "vcs/{provider}",
+        level: LogLevel::Warn,
+        message: "Engine indexing exclusions could not be published for server {provider}",
+        fields: &[
+            FieldMetadata { name: "error", field_type: FieldType::Error, required: true, description: "Failure resolving or publishing the workspace Git exclusions after the server started", reason: None },
+            FieldMetadata { name: "provider", field_type: FieldType::Id, required: true, description: "Validated provider identity assigned by Core to this engine session", reason: None },
+        ],
+        span: None,
+        rate: 120,
         owner: "lithe-core",
     },
     EventMetadata {

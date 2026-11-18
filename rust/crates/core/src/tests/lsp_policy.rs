@@ -89,6 +89,22 @@ fn problems_query_matches_shared_fixture() {
 }
 
 #[test]
+fn references_query_matches_shared_fixture() {
+    run_fixture(
+        "lsp.references.query",
+        include_str!("../../../../fixtures/lsp/references-query-v1.json"),
+    );
+}
+
+#[test]
+fn references_lines_matches_shared_fixture() {
+    run_fixture(
+        "lsp.references.lines",
+        include_str!("../../../../fixtures/lsp/references-lines-v1.json"),
+    );
+}
+
+#[test]
 fn activation_policy_matches_shared_fixture() {
     let fixture: Value = serde_json::from_str(include_str!(
         "../../../../fixtures/lsp/activation-policy-v1.json"
@@ -127,6 +143,22 @@ fn malformed_requests_fail_with_invalid_request() {
         (
             "lsp.problems.query",
             json!({"diagnostics": [], "groupBy": "type"}),
+        ),
+        (
+            "lsp.problems.query",
+            json!({"diagnostics": [], "collapsed": "file:a"}),
+        ),
+        (
+            "lsp.references.query",
+            json!({"locations": [{"fileKey": "a"}]}),
+        ),
+        (
+            "lsp.references.query",
+            json!({"locations": [], "expanded": []}),
+        ),
+        (
+            "lsp.references.lines",
+            json!({"texts": [], "usages": [{"text": 0, "line": 0, "column": 0, "endLine": 0, "endColumn": 1}]}),
         ),
         ("lsp.activationPolicy", json!({"event": "automaticStart"})),
         (

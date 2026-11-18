@@ -11,5 +11,6 @@ pub mod declaration_or_usages;
 pub mod document_identity;
 pub mod navigation_target;
 pub mod problems;
+pub mod references;
 pub mod workspace_edit_plan;
 mod workspace_scope;

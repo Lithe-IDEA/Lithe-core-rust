@@ -20,7 +20,8 @@ verification scripts are the executable source of boundary checks.
 
 ## Source-backed plugin settings
 
-Source-backed plugin settings use `sourceSettings: 0` and the three
+Source-backed plugin settings use `sourceSettings: 0` (version 1 adds module
+sidebars, field sections and typed entry lists) and the three
 `plugins.settings.source*` commands. Plugins supply only allowlisted non-sensitive
 fields from their upstream configuration; Core validates and projects the form,
 inheritance and confirmed edits. Native adapters capture workspace identity,
@@ -429,19 +430,23 @@ replace those channels or swallow real source changes mixed with build output.
 Run configuration behavior is exposed through the `runConfig.*` commands.
 Platform clients coordinate inspection, generation, resolution, typed document
 edits, and launch planning, but must not implement a second JSON merger,
-toolchain matcher, ID generator, or argument parser. Ecosystem-specific
+ID generator, or argument parser. Ecosystem-specific
 arguments are built by the plugin that declared the run. Opening a project inspects existing files without writing; generation
 is an explicit user action. Shared project overrides stay in
-`.lithe/run/configurations.json`. Machine-local overrides may live in
-`.lithe/run/local.json` or in a host-owned document supplied as
-`localDocument`; absolute toolchain paths belong only in that local layer and
-are excluded from project visibility and Git by default. Generic runtime
+`.lithe/run/configurations.yaml`, and the configurations a plugin launches in
+`.lithe/run/plugin/<plugin ID>.toml`, which records the plugin and the versions
+it needs. Machine-local overrides live in `.lithe/run/local.yaml` and
+`.lithe/run/plugin/<plugin ID>.local.toml`, or in a host-owned document supplied
+as `localDocument` for a read. Core returns every edit as hash-checked file
+changes that the platform applies. Absolute toolchain paths belong only in the local layer,
+which is excluded from project visibility and Git by default. Generic runtime
 executables such as Node are selected in `.lithe/toolchains/local.json`; this
-machine-local document is also excluded from Git by default. Missing or
-incompatible toolchains block only configurations that consume the affected
-toolchain, while diagnostics without a configuration ID apply to the project.
-Runtime consumption is declared by the detector from the actual command rather
-than inferred from the provider namespace. An automatically discovered runtime
+machine-local document is also excluded from Git by default. Core discovers
+no runnable entries and infers no runtime: generated configurations are the runs
+build provider plugins declare, and a runtime binding is one a saved
+configuration declares. Starting a shell, PowerShell or batch script or a
+program is Core's own (the `process.*` providers): the user creates these
+configurations through `runConfig.editorForm`, and they run without any plugin. An automatically discovered runtime
 path is session-effective: validation and launch share it, but persistence
 still requires an explicit user selection.
 

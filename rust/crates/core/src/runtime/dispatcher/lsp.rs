@@ -113,6 +113,12 @@ pub(super) fn dispatch(command: LspCommand, id: Option<String>, payload: Value) 
         LspCommand::ProblemsQuery => {
             plugin_response(id, payload, lithe_lsp_policy::problems::query_command)
         }
+        LspCommand::ReferencesQuery => {
+            plugin_response(id, payload, lithe_lsp_policy::references::query_command)
+        }
+        LspCommand::ReferencesLines => {
+            plugin_response(id, payload, lithe_lsp_policy::references::lines_command)
+        }
         LspCommand::StartServer => {
             match serde_json::from_value::<lithe_lsp_engine::StartServerRequest>(payload)
                 .map_err(|error| {

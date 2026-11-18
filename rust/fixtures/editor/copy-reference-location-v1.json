@@ -1,0 +1,148 @@
+{
+  "cases": [
+    {
+      "name": "method-with-package",
+      "request": {
+        "path": "DemoClass.java",
+        "line": 136,
+        "utf16Column": 4,
+        "symbols": [
+          {
+            "name": "com.example",
+            "kind": 4,
+            "range": {
+              "start": {
+                "line": 0,
+                "utf16Column": 0
+              },
+              "end": {
+                "line": 200,
+                "utf16Column": 0
+              }
+            },
+            "children": [
+              {
+                "name": "DemoClass",
+                "kind": 5,
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "utf16Column": 0
+                  },
+                  "end": {
+                    "line": 190,
+                    "utf16Column": 0
+                  }
+                },
+                "children": [
+                  {
+                    "name": "goHome(String,Integer)",
+                    "kind": 6,
+                    "range": {
+                      "start": {
+                        "line": 130,
+                        "utf16Column": 0
+                      },
+                      "end": {
+                        "line": 144,
+                        "utf16Column": 0
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "reference": "com.example.DemoClass#goHome(String,Integer)#L137",
+        "source": "symbol"
+      }
+    },
+    {
+      "name": "no-language-server",
+      "request": {
+        "path": "src/DemoClass.java",
+        "line": 136,
+        "utf16Column": 4,
+        "symbols": []
+      },
+      "expected": {
+        "reference": "src/DemoClass.java#L137",
+        "source": "file"
+      }
+    },
+    {
+      "name": "flat-symbol",
+      "request": {
+        "path": "source.txt",
+        "line": 7,
+        "utf16Column": 0,
+        "symbols": [
+          {
+            "name": "save(int)",
+            "kind": 6,
+            "containerName": "Editor",
+            "range": {
+              "start": {
+                "line": 5,
+                "utf16Column": 0
+              },
+              "end": {
+                "line": 10,
+                "utf16Column": 0
+              }
+            }
+          }
+        ]
+      },
+      "expected": {
+        "reference": "Editor#save(int)#L8",
+        "source": "symbol"
+      }
+    },
+    {
+      "name": "nullable-children-from-go-document-symbol",
+      "request": {
+        "path": "/workspace/DemoClass.java",
+        "line": 0,
+        "utf16Column": 0,
+        "symbols": [
+          {
+            "name": "DemoClass",
+            "kind": 5,
+            "detail": null,
+            "tags": null,
+            "containerName": null,
+            "children": null,
+            "range": {
+              "start": {
+                "line": 0,
+                "utf16Column": 0
+              },
+              "end": {
+                "line": 1,
+                "utf16Column": 0
+              }
+            },
+            "selectionRange": {
+              "start": {
+                "line": 0,
+                "utf16Column": 0
+              },
+              "end": {
+                "line": 0,
+                "utf16Column": 4
+              }
+            }
+          }
+        ]
+      },
+      "expected": {
+        "reference": "DemoClass#L1",
+        "source": "symbol"
+      }
+    }
+  ]
+}

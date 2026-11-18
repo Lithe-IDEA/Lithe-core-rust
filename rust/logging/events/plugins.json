@@ -49,6 +49,26 @@
       "owner": "lithe-core"
     },
     {
+      "id": "plugins.host.indexing.exclusions_failed",
+      "channel": "plugins/{plugin}/host",
+      "level": "warn",
+      "message": "Engine indexing exclusions could not be published for server {plugin}",
+      "fields": {
+        "error": {
+          "type": "error",
+          "required": true,
+          "description": "Failure resolving or publishing the workspace Git exclusions after the server started"
+        },
+        "plugin": {
+          "type": "id",
+          "required": true,
+          "description": "Validated plugin identity assigned by Core to this engine session"
+        }
+      },
+      "rate": 120,
+      "owner": "lithe-core"
+    },
+    {
       "id": "plugins.host.message.logged",
       "channel": "plugins/{plugin}/host",
       "level": "info",

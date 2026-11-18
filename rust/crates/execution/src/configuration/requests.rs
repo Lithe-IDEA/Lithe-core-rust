@@ -8,65 +8,43 @@ use super::*;
 pub struct InspectRequest {
     /// Canonical workspace root whose `.lithe` documents are inspected.
     pub root: String,
-    /// Settings-only reads may skip source hashing; omitted preserves full inspection.
-    #[serde(default)]
-    pub check_fingerprint: Option<bool>,
-    /// Host-owned local layer. When present, Core validates it instead of `.lithe/run/local.json`.
+    /// Host-owned local layer. When present, Core validates it instead of the local files.
     #[serde(default)]
     pub local_document: Option<Value>,
-    /// Complete generic run selectors; omission preserves older callers.
+    /// Current provider run snapshot. When present, a generated layer from a
+    /// different snapshot is reported as stale.
     #[serde(default)]
     pub provider_runs: Option<Vec<crate::provider_runs::ProviderRunConfiguration>>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-/// Request to regenerate detected configurations from the current project tree.
+/// Request to regenerate the generated layer from the current provider runs.
 pub struct GenerateRequest {
-    /// Canonical workspace root scanned for run entries.
+    /// Canonical workspace root the generated layer belongs to.
     pub root: String,
-    /// Complete generic run selectors; omission preserves older callers.
+    /// Complete provider run snapshot; omitted generates an empty layer.
     #[serde(default)]
     pub provider_runs: Option<Vec<crate::provider_runs::ProviderRunConfiguration>>,
-    /// Application cache directory, outside the workspace. Generation records
-    /// its result there so the next session can list provider entries before
-    /// the providers answer again; omitted, only this process remembers it.
-    #[serde(default)]
-    pub cache_directory: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-/// Request to merge configuration layers and resolve host toolchains.
+/// Request to merge the generated, team and local configuration layers.
 pub struct ResolveRequest {
     /// Canonical workspace root whose layers are merged.
     pub root: String,
-    /// Executables the host discovered; requirements pick among these by role.
-    #[serde(default)]
-    pub toolchain_candidates: Vec<ToolchainCandidate>,
-    /// Host-owned local layer. When present, Core uses it instead of `.lithe/run/local.json`.
+    /// Host-owned local layer. When present, Core uses it instead of the local files.
     #[serde(default)]
     pub local_document: Option<Value>,
     /// Optional prepared team layer for a host transaction preflight; never persisted by Core.
     #[serde(default)]
     pub team_document: Option<Value>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Host-discovered executable that may satisfy a configuration requirement.
-pub struct ToolchainCandidate {
-    /// Host-stable candidate identifier referenced by resolved configurations.
-    pub id: String,
-    /// Toolchain role such as `node`, not a display label.
-    #[serde(rename = "type")]
-    pub kind: String,
-    /// Reported version, empty when the host could not read one.
+    /// The installed, enabled plugins, so a plugin configuration whose plugin
+    /// is missing, from another repository or too old is marked unavailable.
+    /// Omitted skips that check.
     #[serde(default)]
-    pub version: String,
-    /// Distribution vendor, empty when unknown.
-    #[serde(default)]
-    pub vendor: String,
+    pub plugins: Option<Vec<InstalledPlugin>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -77,9 +55,14 @@ pub struct LaunchPlanRequest {
     pub root: String,
     /// Merged configuration identity to plan.
     pub configuration_id: String,
-    /// Host-owned local layer. When present, Core uses it instead of `.lithe/run/local.json`.
+    /// Host-owned local layer. When present, Core uses it instead of the local files.
     #[serde(default)]
     pub local_document: Option<Value>,
+    /// Absolute path prefix, in a host-owned temporary directory, that an
+    /// inline script is written to; Core appends the script's suffix. Needed
+    /// only to plan a process run whose script is text.
+    #[serde(default)]
+    pub inline_script_base: Option<String>,
 }
 
 /// Resolves saved Run choices without assembling a build tool's command line.
@@ -101,7 +84,7 @@ pub struct ProviderLaunchInputsRequest {
 #[serde(rename_all = "camelCase")]
 /// Global machine toolchain stored at document level in the local layer.
 pub struct ToolchainPaths {
-    /// Explicit executables for generic runtime toolchain IDs such as `project-node`.
+    /// Explicit executables keyed by the local toolchain ID a `runtime` binding names.
     #[serde(default)]
     pub runtime_executable_paths: BTreeMap<String, String>,
     /// Generic consumer preferences in the same machine-local document.
@@ -110,13 +93,13 @@ pub struct ToolchainPaths {
     pub preferences: Option<Value>,
 }
 
-/// Replaces only generic preferences in a captured machine-local Run document.
-/// Other toolchain fields are preserved untouched for their owners.
+/// Replaces only generic preferences in the machine-local layer. Other
+/// toolchain fields are preserved untouched for their owners.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UpdateToolPreferencesRequest {
-    /// Required captured local layer; this command never reads native files.
-    pub local_document: Value,
+    /// Canonical workspace root whose local layer is edited.
+    pub root: String,
     /// Inert v1 preferences already edited by the shared preference command.
     pub preferences: Value,
 }
@@ -151,9 +134,13 @@ pub struct UpdateOptionsRequest {
     /// into the local layer instead of patching one configuration.
     #[serde(default)]
     pub toolchain: Option<ToolchainPaths>,
-    /// Host-owned local layer used when `scope` is `local` and when resolving first.
+    /// Host-owned local layer used to resolve the configuration first. A
+    /// local edit is refused while it is set: only files can be changed.
     #[serde(default)]
     pub local_document: Option<Value>,
+    /// The installed plugins, whose identity a written plugin document records.
+    #[serde(default)]
+    pub plugins: Option<Vec<InstalledPlugin>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -172,4 +159,7 @@ pub struct CreateUserConfigurationRequest {
     /// A typed selector, never a cached executable or resolved launch payload.
     #[serde(default)]
     pub build: Option<BuildProviderRunReference>,
+    /// The installed plugins, whose identity a written plugin document records.
+    #[serde(default)]
+    pub plugins: Option<Vec<InstalledPlugin>>,
 }

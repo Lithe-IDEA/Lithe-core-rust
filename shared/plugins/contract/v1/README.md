@@ -170,6 +170,7 @@ symbolic links. A host treats an installed package as read-only.
 | `requires` | Required: every capability the manifest uses, each with version `0`; see [Capabilities](#capabilities). |
 | `requiresTools` | Every tool-definition ID the manifest's launches and runtime dependencies name; see [Tool references](#tool-references). |
 | `vendor` | `id`, `displayName`, and `signatureRequirement` (see Trust). |
+| `repository` | Optional `https://github.com/<owner>/<name>` source repository, at most one trailing `/`; owner and name use ASCII letters, digits, `.`, `_` and `-` and are neither `.` nor `..`. Any other value is refused with `field: "repository"`. Run configuration documents under `.lithe/run/plugin/` record it with the ID, and a plugin installed from another repository does not satisfy them. |
 | `permissions` | Capabilities the plugin may ask the host to perform. |
 | `activationEvents` | When the host may start each provider. |
 | `languages` | Languages the plugin recognizes. |
@@ -251,8 +252,8 @@ activation event, and a plugin may consist of grammars alone.
   [`fixtures/languages/grammars/http.tmLanguage.json`](fixtures/languages/grammars/http.tmLanguage.json)
   is a complete example. A grammar is an object with `scopeName`, 1 to 128
   bytes of ASCII letters, digits, `.`, `-`, `_`, and `+`, and a `patterns`
-  array, and optionally `repository` and `name`. Every rule is an object. The
-  editor reads `include`, `match`, `begin`, `end`, `while`, `name`,
+  array, and optionally `repository`, `injections`, and `name`. Every rule is
+  an object. The editor reads `include`, `match`, `begin`, `end`, `while`, `name`,
   `contentName`, `captures`, `beginCaptures`, `endCaptures`, `whileCaptures`,
   `patterns`, `repository`, and `applyEndPatternLast` (`true`, `false`, `0`,
   or `1`), and Core refuses a grammar where one of them has another type.
@@ -262,9 +263,10 @@ activation event, and a plugin may consist of grammars alone.
   checked.
 - Core accepts at most 2 MiB, 16384 rules counting every pattern, repository
   entry, and capture, rules nested 32 deep, regexes of 32 KiB, capture group
-  4096, `name` and `contentName` of 1024 bytes, and `include` targets and
-  repository keys of 256 bytes. VS Code's own grammars, the largest of which is
-  C++ at 662 KiB and 3165 rules, are well within these bounds.
+  4096, `name` and `contentName` of 1024 bytes, `include` targets and
+  repository keys of 256 bytes, and 64 injections with selectors of 1024
+  bytes. VS Code's own grammars, the largest of which is C++ at 662 KiB and
+  3165 rules, are well within these bounds.
 - Regexes use the Oniguruma syntax TextMate grammars are written in. Core does
   not compile them: a pattern the editor's engine cannot compile never
   matches, and the rest of the grammar still applies.
@@ -272,8 +274,17 @@ activation event, and a plugin may consist of grammars alone.
   `scope#name` for another grammar. Another grammar resolves against those the
   editor has, its own and those of enabled plugins, which is how a grammar
   embeds a language such as CSS inside HTML; an include that resolves to
-  nothing matches nothing, as in VS Code. `injections` and `injectionSelector`
-  are not supported, so they are ignored and not checked.
+  nothing matches nothing, as in VS Code.
+- `injections` is an object of rules keyed by scope selector, run as VS Code
+  runs them: where the scopes at a position match a selector, the rule's
+  patterns are tried alongside the current rule's. The match that starts
+  earlier wins; at the same start the current rule wins, unless the selector
+  has the `L:` prefix. Only the grammar a document is tokenized with applies
+  its injections; those of a grammar it includes do not, which is how
+  `text.html.php` marks `<?php` inside the tags, scripts, and styles of the
+  HTML it includes. Each injection is a rule checked and counted like any
+  other. `injectionSelector` is not supported, since no grammar is injected
+  into another, so it is ignored and not checked.
 - A plugin grammar replaces the editor's own grammar of the same `scopeName`
   while the plugin is enabled. Two plugin languages cannot register the same
   scope: the first keeps it, and the other is reported and opens as plain
@@ -682,7 +693,7 @@ its `source` (`project`, `global`, or `default`).
 
 #### Source-backed settings editors
 
-An action may declare `sourceEditor: {"editFunction":"compiler.prepareSettings"}` and require `sourceSettings: 0`
+An action may declare `sourceEditor: {"editFunction":"compiler.prepareSettings"}` and require `sourceSettings: 0` (or `1`, below)
 alongside `settings: 0`. The host invokes the read function only after an
 explicit user action; opening its page must not run project wrappers or tools.
 The function must **only read** and return the
@@ -709,12 +720,29 @@ Snapshot fields (unknown fields are rejected):
 | Field | Contract |
 | --- | --- |
 | `format`, `version`, `title` | `litheSettingsSources`, `0`, and a localized nonblank title of at most 256 UTF-8 bytes. The complete snapshot is at most 2 MiB. |
-| `groups` | 1–32 ordered `{id,title,layout,rowTitle?}` sections. `layout` is `form` or `table`; table rows use source titles in the first column and their fields as value columns. |
-| `sources` | At most 1024 `{id,group,title,path,revision,writable,fields}` bindings. `path` is normalized, workspace-relative, slash-separated, at most 4096 bytes and contains no empty/dot/parent components, drive letters or backslashes. Duplicate IDs or paths are rejected. Native adapters must additionally reject native file aliases and any installation resource. |
+| `groups` | 1–32 ordered `{id,title,layout,rowTitle?}` sections. `layout` is `form`, `table`, or (version 1) `sidebar`; table rows use source titles in the first column and their fields as value columns. A `sidebar` group lists its sources for navigation, like a module list, and shows the fields of the one the user selects. |
+| `sources` | At most 1024 `{id,group,title,path,revision,writable,fields,parent?}` bindings. `parent` (version 1, `sidebar` groups only) is the ID of an earlier source of the same group under which the host nests this one, at most 8 levels deep. `path` is normalized, workspace-relative, slash-separated, at most 4096 bytes and contains no empty/dot/parent components, drive letters or backslashes. Duplicate IDs or paths are rejected. Native adapters must additionally reject native file aliases and any installation resource. |
 | `revision` | `missing`, or `sha256:` followed by 64 lowercase hexadecimal digits covering the exact source bytes. Reading a missing source does not create it. |
-| `fields` | 1–32 `{id,title,description?,kind,value,effectiveValue,inheritedValue?,effectiveSource,options?}` records per source. IDs are opaque identifiers using only lowercase ASCII letters, digits and hyphens, at most 128 bytes; labels are nonblank and at most 256 bytes, descriptions at most 2048 bytes. Only explicitly non-sensitive fields may be projected. |
+| `fields` | 1–32 `{id,title,description?,section?,kind,value,effectiveValue,inheritedValue?,effectiveSource,options?,entryKinds?,attributes?}` records per source. `section` (version 1) is a localized label of at most 64 bytes: in a `sidebar` group each distinct section becomes a tab, in order of first appearance, and fields without one come before the tabs; in a `form` group it is a subheading. Table fields have no section. IDs are opaque identifiers using only lowercase ASCII letters, digits and hyphens, at most 128 bytes; labels are nonblank and at most 256 bytes, descriptions at most 2048 bytes. Only explicitly non-sensitive fields may be projected. |
 | Field values | `value:null` means absent/inherited. `effectiveValue` comes from the upstream tool and may also be null if there is no value. `inheritedValue` is the upstream value after removing a local override; omit it or use null when unknown. `effectiveSource` is a localized origin label of at most 1024 bytes. |
-| Field kinds | `enum` with 1–64 distinct `{value,title}` options; `boolean`; `text` up to 8192 bytes; `stringList` or `fileList` with at most 256 nonblank strings, each at most 4096 bytes. Non-enumeration fields omit options. `fileList` adds the host's file picker; list editing uses one item per line, preserving spaces and platform path spelling. |
+| Field kinds | `enum` with 1–64 distinct `{value,title}` options; `boolean`; `text` up to 8192 bytes; `stringList` or `fileList` with at most 256 nonblank strings, each at most 4096 bytes; (version 1) `entryList`, described below. Non-enumeration fields omit options. `fileList` adds the host's file picker; list editing uses one item per line, preserving spaces and platform path spelling. Only `entryList` fields have `entryKinds` and `attributes`, and tables cannot hold them. |
+
+**Entry lists (version 1).** An `entryList` is an ordered list of typed
+entries, such as a module's dependencies or source folders. The host shows it
+as a list with an add menu, remove, move up and move down, and one column per
+attribute; a read-only source shows it without those controls.
+
+| Member | Contract |
+| --- | --- |
+| `entryKinds` | 1–16 `{id,title,input,extensions?,choices?}` in add-menu order. `id` is an opaque identifier, `title` a localized menu item. `input` is `file` or `directory`, which open the host's native picker, or `choice`, which offers `choices`. A `file` kind may list up to 16 `extensions` (ASCII letters and digits, no dot) to filter the picker. A `choice` kind has 0–1024 distinct `{value,title,detail?}` choices: `value` up to 4096 bytes, `title` up to 256, `detail` up to 1024; with none, nothing of that kind can be added now. |
+| `attributes` | 0–4 per-entry columns `{id,title,kind,options?}`. `kind` is `boolean` or `enum`, which has 1–64 distinct `{value,title}` options. |
+| Value | Up to 256 entries `{kind,value,title?,detail?,attributes?}`. `kind` names a declared entry kind; `value` is nonblank, at most 4096 bytes, and no two entries share both `kind` and `value`. `title` (at most 256 bytes) and `detail` (at most 1024) are display text; without a title the host shows `value`. `attributes` maps declared attribute IDs to a boolean or one of the attribute's option values; an absent key means the plugin's default, which the host shows as off or as the first option. |
+| Edits | `value` is the native list in its order. Display text never makes two lists differ and never reaches the edit function, which receives `[{kind,value,attributes?}]`. A `file` or `directory` entry the user adds carries the picker's absolute native path; the plugin decides how to store it, for example relative to the source. An added `choice` entry must be one of the kind's current choices or an entry the field already holds, so the host cannot introduce a value the plugin did not offer. An empty list is an explicit value, not inheritance. |
+
+Version 1 adds `sidebar`, `parent`, `section` and `entryList` without changing
+the snapshot `version` (still `0`) or anything a version-0 snapshot means. A
+plugin whose snapshots use them requires `sourceSettings: 1`; a host that
+supports only version 0 rejects such a snapshot and does not install the plugin.
 
 No secret/password field, arbitrary script, CSS or host action is accepted.
 All plugin-provided labels and choices use the current interface language.
@@ -725,7 +753,9 @@ override, maintains drafts and displays each confirmed target path. Core
 `plugins.settings.sourceState` supplies `inputs`, `inheritedInputs`, ordered
 `layout`, native I/O `limits`, and `effectiveDisplays`. The latter describes
 inherited non-enum values and actual values differing from explicit raw values as `unknown`, `text`,
-`boolean`, or list `count`, with an `inherited` flag; the host localizes these presentation hints.
+`boolean`, or list `count`, with an `inherited` flag; the host localizes these presentation hints. An
+`entryList` draft is `entries`, its entries in order, and its effective display
+is a `count`.
 
 On explicit Save the host uses `plugins.settings.sourceEdit` to derive only
 changed raw fields. It captures each target with a bounded native reader,
@@ -756,7 +786,9 @@ bounded, never reusable across worktrees, and removed on every terminal path.
 Invalid forms, edits or receipts return `plugin.settings.invalidSourceEditor`;
 unknown or revoked actions retain their existing errors. These editors are
 local-workspace operations; remote workspaces are not supported in version 0.
-Fixture: [`settings-sources.json`](../../../../rust/fixtures/plugins/settings-sources.json).
+Fixtures: [`settings-sources.json`](../../../../rust/fixtures/plugins/settings-sources.json)
+(version 0) and [`settings-sources-modules.json`](../../../../rust/fixtures/plugins/settings-sources-modules.json)
+(version 1: a `sidebar` of nested modules with sections, entry lists, attributes and a read-only module).
 
 #### Translations
 
@@ -1744,6 +1776,27 @@ changes a plan.
   than four headings or has an empty heading falls back to the template's, so
   a tool that reports a bad heading still has its task filed.
 
+Core lays out the window's tree from the model, the same way for every build
+tool (`build.modelTree` in the
+[Rust Core API](../../../../rust/contracts/rust-core-api.md#build-systems)):
+
+- Projects nest by `parentID`. A project with no parent in the model, or one
+  whose parent chain loops back to itself, becomes a root.
+- Each project lists, in this order, its tasks in their folders, a
+  dependencies node when `dependencies.scopes` contains `project`, a targets
+  node whose targets carry their target-scoped tasks (filtered by
+  `targetTags`), and its child projects.
+- A declared task with a `project` scope appears in every project. A task with
+  only a `workspace` scope, or one that `requiresUserArguments`, appears once,
+  beside the root projects; so do workspace dependencies and discovered
+  tests. When the model has no projects, every `workspace` task appears there.
+- When the model has a single root project, that project's contents become
+  the build system's own, and its tasks still run on the root project. Guard
+  project-only arguments with `nestedProjectSelected` so running them on the
+  root builds everything.
+- A filter keeps each matching node whole, together with the projects and
+  folders on the way to it.
+
 A host that draws build-system windows gives each detected build system its own tool window and uses
 these presentation fields. The host-drawn windows share Build Output, docking,
 layout restoration, activation, and lifecycle with other workbench contributions.
@@ -2109,7 +2162,7 @@ as `provider: "build.provider"` with `extensions.build`. The reference contains
 raw `userArguments`, never an executable, environment, or cached classpath.
 Every restart re-resolves the enabled instance/model and sends a fresh preparation.
 Missing plugins/targets/models fail explicitly; there is no command fallback.
-Saving and running work before detector-generated Run configurations exist.
+Saving and running work before Run configurations are generated.
 See `fixtures/build-providers/build-provider-run-preparation.plugin.json`
 and `fixtures/build-providers/build-run-preparation.json`.
 
@@ -2691,9 +2744,15 @@ Core owns the decision, so every host links the same text:
   line?, column?}`: the host opens the first existing path) or `resolve`
   (`{function, groups}`). `start` and `length` count UTF-16 code units of the
   line. Matches are found in source order and then declaration order, and a match
-  overlapping an earlier link is skipped. A request carries at most 256 lines,
-  64 sources and 16 roots; a line is scanned up to 4096 bytes and links at most
-  8 times.
+  overlapping an earlier link is skipped. Core then links the `http` and
+  `https` addresses a line prints, which no plugin declares: such a link is
+  `{line, start, length, url}` with no plugin, the host opens `url` in the
+  browser, and an address inside a plugin's link stays part of that link. An
+  address ends at whitespace, a quote or an angle bracket, without the
+  sentence punctuation after it or a closing bracket it did not open. The links
+  of a line are returned in the order they start. A request carries at most 256
+  lines, 64 sources and 16 roots; a line is scanned up to 4096 bytes and links
+  at most 8 times.
 - `outputLinks.decodeResolution` takes `{reply}` (what the function answered)
   and returns the location to open, `{path, line?, column?}` with 1-based
   positions, or `null`. A reply opens only a `file:` URI and only the members

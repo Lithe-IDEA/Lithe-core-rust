@@ -76,6 +76,24 @@ pub fn is_plugin_id(value: &str) -> bool {
         })
 }
 
+/// The owner and name of a `https://github.com/<owner>/<name>` repository URL,
+/// spelled as the plugin index spells it: ASCII letters, digits, `.`, `_` and
+/// `-` in each part, neither part `.` nor `..`, and at most a trailing `/`.
+pub fn github_repository(value: &str) -> Option<(&str, &str)> {
+    let rest = value.strip_prefix("https://github.com/")?;
+    let rest = rest.strip_suffix('/').unwrap_or(rest);
+    let (owner, name) = rest.split_once('/')?;
+    let valid = |part: &str| {
+        !part.is_empty()
+            && part != "."
+            && part != ".."
+            && part
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || "._-".contains(character))
+    };
+    (valid(owner) && valid(name)).then_some((owner, name))
+}
+
 /// Exactly three dot-separated decimal components, such as `1.2.3`.
 pub fn is_semantic_version(value: &str) -> bool {
     let parts: Vec<&str> = value.split('.').collect();
@@ -144,4 +162,32 @@ pub fn is_local_tool_id(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::github_repository;
+
+    #[test]
+    fn github_repository_accepts_only_owner_and_name_urls() {
+        assert_eq!(
+            github_repository("https://github.com/Lithe-IDEA/lithe-plugin-java"),
+            Some(("Lithe-IDEA", "lithe-plugin-java"))
+        );
+        assert_eq!(
+            github_repository("https://github.com/a.b/c_d/"),
+            Some(("a.b", "c_d"))
+        );
+        for value in [
+            "http://github.com/a/b",
+            "https://gitlab.com/a/b",
+            "https://github.com/a",
+            "https://github.com/a/b/c",
+            "https://github.com/../b",
+            "https://github.com/a/b c",
+            "https://github.com//b",
+        ] {
+            assert_eq!(github_repository(value), None, "{value}");
+        }
+    }
 }

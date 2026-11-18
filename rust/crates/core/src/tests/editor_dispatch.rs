@@ -135,3 +135,20 @@ fn navigation_history_keeps_only_the_newest_entries() {
     assert_eq!(forward.len() as u64, limit);
     assert_eq!(forward[0]["line"], 5);
 }
+
+#[test]
+fn copy_reference_location_matches_shared_fixture() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../fixtures/editor/copy-reference-location-v1.json"
+    ))
+    .unwrap();
+    for case in fixture["cases"].as_array().unwrap() {
+        let response: Value = serde_json::from_str(&crate::execute_json(
+            &json!({"command":"editor.copyReferenceLocation","payload":case["request"]})
+                .to_string(),
+        ))
+        .unwrap();
+        assert_eq!(response["ok"], true, "{}: {response}", case["name"]);
+        assert_eq!(response["data"], case["expected"], "{}", case["name"]);
+    }
+}

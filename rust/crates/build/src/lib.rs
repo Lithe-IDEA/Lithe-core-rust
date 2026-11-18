@@ -37,6 +37,7 @@ mod template;
 mod test_discovery;
 mod test_outcome;
 mod test_outcome_merge;
+mod tree;
 
 pub use commands::*;
 pub use manifest::{

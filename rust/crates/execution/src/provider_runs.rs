@@ -75,6 +75,8 @@ pub(super) fn configurations(runs: &[ProviderRunConfiguration]) -> Vec<RunConfig
             .collect(),
             disabled: false,
             source: None,
+            plugin: None,
+            availability: None,
         })
         .collect()
 }

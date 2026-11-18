@@ -186,19 +186,6 @@ fn content_matches(root: &Path) -> Vec<String> {
     paths
 }
 
-fn run_scan_inputs(root: &Path) -> Vec<String> {
-    let generated = data("runConfig.generate", json!({ "root": root }));
-    let mut inputs: Vec<String> = generated["generated"]["generator"]["inputs"]
-        .as_object()
-        .expect("generation should list its inputs")
-        .keys()
-        .filter(|path| path.ends_with("Makefile"))
-        .cloned()
-        .collect();
-    inputs.sort();
-    inputs
-}
-
 fn build_instances(root: &Path) -> Vec<String> {
     let detected = data(
         "build.detect",
@@ -290,7 +277,6 @@ fn plugin_declared_folders_are_hidden_by_every_walk_until_cleared() {
         "target/debug/Report.txt",
     ];
     assert_eq!(file_names(&root, false), everything);
-    assert_eq!(run_scan_inputs(&root), ["Makefile", "target/Makefile"]);
     assert_eq!(build_instances(&root), ["cargo:.", "cargo:target/debug"]);
     assert_eq!(vcs_roots(&root), ["legacy", "target/checkout"]);
     assert_eq!(
@@ -395,7 +381,6 @@ fn plugin_declared_folders_are_hidden_by_every_walk_until_cleared() {
     assert!(lithe_core::is_workspace_event_relevant("src/Report.txt"));
 
     // Run discovery, build detection, VCS roots and Git repositories skip them too.
-    assert_eq!(run_scan_inputs(&root), ["Makefile"]);
     assert_eq!(build_instances(&root), ["cargo:."]);
     assert_eq!(vcs_roots(&root), ["legacy"]);
     assert_eq!(repositories(&root), [checkout(".")]);

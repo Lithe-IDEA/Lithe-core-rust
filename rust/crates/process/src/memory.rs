@@ -23,7 +23,10 @@
 //! `bytes` does not hold, such as dedicated video memory on Windows, is summed
 //! apart. Processor and graphics percentages come from the use counters of two
 //! tables: each summary returns a baseline the host sends back with the next
-//! table, so the percentages are computed here too. Fixtures live in
+//! table, so the percentages are computed here too. Two tables less than
+//! [`MIN_USAGE_WINDOW`] apart are never compared: a table read that soon is
+//! measured from the counters the baseline was itself measured from, and the
+//! baseline stays as it is. Fixtures live in
 //! `rust/fixtures/process-lifecycle/memory-summary-v1.json`.
 
 use std::collections::{BTreeMap, HashMap};
@@ -37,6 +40,10 @@ const DEFAULT_ENTRY_LIMIT: usize = 20;
 const MAX_ENTRY_LIMIT: usize = 200;
 /// Longest entry name before it is shortened with an ellipsis.
 const NAME_CHARACTERS: usize = 80;
+/// Shortest span, in microseconds, that processor and graphics percentages are
+/// measured over. Over a shorter span the use of a moment, such as the reading
+/// itself or a window opening, would read as a sustained rate.
+pub const MIN_USAGE_WINDOW: u64 = 1_000_000;
 
 /// One row of the host's process table.
 #[derive(Clone, Debug, Deserialize)]
@@ -152,6 +159,21 @@ pub struct UsageBaseline {
     pub sampled_at: u64,
     /// The instance's processes that had a use counter, by process ID.
     pub processes: Vec<BaselineProcess>,
+    /// The counters this baseline's own percentages were measured from, which
+    /// a table read less than [`MIN_USAGE_WINDOW`] after the baseline is
+    /// measured from instead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub earlier: Option<UsageCounters>,
+}
+
+/// Use counters of an earlier table, kept in a baseline.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageCounters {
+    /// `sampledAt` of the table the counters were taken from.
+    pub sampled_at: u64,
+    /// The instance's processes that had a use counter, by process ID.
+    pub processes: Vec<BaselineProcess>,
 }
 
 /// Use counters of one process in a baseline.
@@ -222,11 +244,12 @@ pub struct UsageFigures {
     /// Graphics memory that the in-memory bytes do not hold.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gpu_memory_bytes: Option<u64>,
-    /// Processor use since the previous table, rounded to a tenth.
+    /// Processor use since the counters the table is measured from, rounded
+    /// to a tenth.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cpu_percent: Option<f64>,
-    /// Use of the busiest graphics engine since the previous table, rounded
-    /// to a tenth and at most 100.
+    /// Use of the busiest graphics engine since the counters the table is
+    /// measured from, rounded to a tenth and at most 100.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gpu_percent: Option<f64>,
 }
@@ -292,7 +315,8 @@ pub struct MemorySummary {
     /// Entries past the limit.
     pub omitted: OmittedEntries,
     /// Use counters to send with the next table; present when the request
-    /// has `sampledAt`.
+    /// has `sampledAt`. A table read less than [`MIN_USAGE_WINDOW`] after the
+    /// previous baseline returns that baseline unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub baseline: Option<UsageBaseline>,
 }
@@ -368,15 +392,10 @@ pub fn summarize(request: &MemoryRequest) -> Result<MemorySummary, MemoryError> 
     }
     .owners();
 
-    let interval = match (request.sampled_at, &request.previous) {
-        (Some(now), Some(previous)) => now
-            .checked_sub(previous.sampled_at)
-            .filter(|&span| span > 0),
-        _ => None,
-    };
+    let window = UsageWindow::of(request.sampled_at, request.previous.as_ref());
     let mut previous: HashMap<i64, &BaselineProcess> = HashMap::new();
-    if let (Some(_), Some(baseline)) = (interval, &request.previous) {
-        for process in &baseline.processes {
+    if let Some((_, processes)) = window.measured_from {
+        for process in processes {
             previous.entry(process.process_id).or_insert(process);
         }
     }
@@ -408,7 +427,10 @@ pub fn summarize(request: &MemoryRequest) -> Result<MemorySummary, MemoryError> 
                 .1
                 .add(process, &usage);
         }
-        if request.sampled_at.is_some() && (process.cpu_time.is_some() || !engines.is_empty()) {
+        if request.sampled_at.is_some()
+            && !window.keeps_baseline
+            && (process.cpu_time.is_some() || !engines.is_empty())
+        {
             baseline.push(BaselineProcess {
                 process_id: process.process_id,
                 start_time: process.start_time,
@@ -425,7 +447,7 @@ pub fn summarize(request: &MemoryRequest) -> Result<MemorySummary, MemoryError> 
     }
 
     let rates = Rates {
-        interval: interval.unwrap_or(0),
+        interval: window.measured_from.map_or(0, |(span, _)| span),
         logical_processors: request.logical_processors,
     };
     let mut entries: Vec<MemoryEntry> = groups
@@ -474,11 +496,72 @@ pub fn summarize(request: &MemoryRequest) -> Result<MemorySummary, MemoryError> 
             .collect(),
         entries,
         omitted,
-        baseline: request.sampled_at.map(|sampled_at| UsageBaseline {
-            sampled_at,
-            processes: baseline,
-        }),
+        baseline: request
+            .sampled_at
+            .map(|sampled_at| match &request.previous {
+                Some(previous) if window.keeps_baseline => previous.clone(),
+                previous => UsageBaseline {
+                    sampled_at,
+                    processes: baseline,
+                    earlier: previous
+                        .as_ref()
+                        .filter(|_| window.measured_from.is_some())
+                        .map(|previous| UsageCounters {
+                            sampled_at: previous.sampled_at,
+                            processes: previous.processes.clone(),
+                        }),
+                },
+            }),
     })
+}
+
+/// The counters a table's use is measured from, and whether the table starts
+/// the next baseline.
+struct UsageWindow<'a> {
+    /// Microseconds between the counters and the table, at least
+    /// [`MIN_USAGE_WINDOW`], and the counters; none when nothing can be
+    /// compared.
+    measured_from: Option<(u64, &'a [BaselineProcess])>,
+    /// Whether the table was read too soon after the previous baseline, which
+    /// is then returned unchanged so the next table is measured from it.
+    keeps_baseline: bool,
+}
+
+impl<'a> UsageWindow<'a> {
+    /// The window of a table read at `sampled_at`, given the previous
+    /// baseline.
+    ///
+    /// A table read at least [`MIN_USAGE_WINDOW`] after the baseline is
+    /// measured from it and starts a new one. A table read sooner is measured
+    /// from the baseline's earlier counters when they are old enough, and
+    /// keeps the baseline. A table read before the baseline, which only a
+    /// clock that went back produces, has nothing to compare with and starts a
+    /// new baseline.
+    fn of(sampled_at: Option<u64>, previous: Option<&'a UsageBaseline>) -> Self {
+        let none = UsageWindow {
+            measured_from: None,
+            keeps_baseline: false,
+        };
+        let (Some(now), Some(previous)) = (sampled_at, previous) else {
+            return none;
+        };
+        let Some(span) = now.checked_sub(previous.sampled_at) else {
+            return none;
+        };
+        if span >= MIN_USAGE_WINDOW {
+            return UsageWindow {
+                measured_from: Some((span, &previous.processes)),
+                keeps_baseline: false,
+            };
+        }
+        UsageWindow {
+            measured_from: previous.earlier.as_ref().and_then(|earlier| {
+                let span = now.checked_sub(earlier.sampled_at)?;
+                (span >= MIN_USAGE_WINDOW).then_some((span, earlier.processes.as_slice()))
+            }),
+            keeps_baseline: true,
+        }
+    }
 }
 
 /// Busy time of each engine of a list, times of one name added up.
@@ -491,7 +574,7 @@ fn engine_times(engines: &[GpuEngineTime]) -> BTreeMap<&str, u64> {
     times
 }
 
-/// What one process used between the previous baseline and this table.
+/// What one process used between the counters compared and this table.
 #[derive(Default)]
 struct Usage<'a> {
     /// Processor microseconds, when both tables have the process's counter.
@@ -502,7 +585,8 @@ struct Usage<'a> {
 }
 
 impl<'a> Usage<'a> {
-    /// The use of `process`, whose engines are `engines`, since `previous`.
+    /// The use of `process`, whose engines are `engines`, since the counters
+    /// `previous` of the same process ID.
     /// A baseline row with another start time belongs to an earlier process
     /// with the same ID, so nothing is compared.
     fn since(
@@ -566,8 +650,8 @@ impl Shown {
 
 /// How use over the interval becomes a percentage.
 struct Rates {
-    /// Microseconds between the previous baseline and this table; never zero
-    /// when a percentage is shown.
+    /// Microseconds between the counters compared and this table; at least
+    /// [`MIN_USAGE_WINDOW`] when a percentage is shown.
     interval: u64,
     /// Processors a processor percentage is a share of, if any.
     logical_processors: Option<u32>,
@@ -917,7 +1001,24 @@ mod tests {
         Some(UsageBaseline {
             sampled_at,
             processes,
+            earlier: None,
         })
+    }
+
+    fn cpu_counter(process_id: i64, cpu_time: u64) -> BaselineProcess {
+        BaselineProcess {
+            process_id,
+            start_time: None,
+            cpu_time: Some(cpu_time),
+            gpu_engines: Vec::new(),
+        }
+    }
+
+    fn host_using(cpu_time: u64) -> MemoryProcess {
+        MemoryProcess {
+            cpu_time: Some(cpu_time),
+            ..process(1, 0, 1)
+        }
     }
 
     #[test]
@@ -949,20 +1050,31 @@ mod tests {
     }
 
     #[test]
-    fn a_table_read_no_later_than_the_baseline_has_no_percentages() {
-        let mut host = process(1, 0, 1);
-        host.cpu_time = Some(2_000);
-        let previous = BaselineProcess {
-            process_id: 1,
-            start_time: None,
-            cpu_time: Some(1_000),
-            gpu_engines: Vec::new(),
-        };
-        for sampled_at in [5_000, 4_000] {
+    fn a_table_read_before_the_baseline_starts_a_new_one_without_percentages() {
+        let summary = summarize(&MemoryRequest {
+            sampled_at: Some(4_000_000),
+            previous: baseline(5_000_000, vec![cpu_counter(1, 1_000)]),
+            ..request(1, vec![host_using(2_000)])
+        })
+        .expect("table should summarize");
+        assert_eq!(summary.usage, UsageFigures::default());
+        assert_eq!(
+            summary.baseline,
+            baseline(4_000_000, vec![cpu_counter(1, 2_000)])
+        );
+    }
+
+    // A table read 50 ms after the baseline once showed 100% for the processor
+    // time of that moment, which the reading itself and the opening details
+    // used; so short a window has no percentages and keeps the baseline.
+    #[test]
+    fn a_table_read_too_soon_after_the_baseline_keeps_it_and_has_no_percentages() {
+        let previous = baseline(5_000_000, vec![cpu_counter(1, 1_000)]);
+        for sampled_at in [5_000_000, 5_050_000, 5_999_999] {
             let summary = summarize(&MemoryRequest {
                 sampled_at: Some(sampled_at),
-                previous: baseline(5_000, vec![previous.clone()]),
-                ..request(1, vec![host.clone()])
+                previous: previous.clone(),
+                ..request(1, vec![host_using(51_000)])
             })
             .expect("table should summarize");
             assert_eq!(
@@ -970,8 +1082,73 @@ mod tests {
                 UsageFigures::default(),
                 "sampled at {sampled_at}"
             );
-            assert_eq!(summary.baseline.map(|b| b.sampled_at), Some(sampled_at));
+            assert_eq!(summary.baseline, previous, "sampled at {sampled_at}");
         }
+    }
+
+    #[test]
+    fn a_table_read_too_soon_is_measured_from_the_earlier_counters() {
+        let previous = Some(UsageBaseline {
+            earlier: Some(UsageCounters {
+                sampled_at: 3_000_000,
+                processes: vec![cpu_counter(1, 500_000)],
+            }),
+            ..baseline(5_000_000, vec![cpu_counter(1, 1_000_000)]).unwrap()
+        });
+        let summary = summarize(&MemoryRequest {
+            sampled_at: Some(5_050_000),
+            previous: previous.clone(),
+            ..request(1, vec![host_using(1_525_000)])
+        })
+        .expect("table should summarize");
+        assert_eq!(summary.usage.cpu_percent, Some(50.0));
+        assert_eq!(summary.baseline, previous);
+
+        // Earlier counters a window does not separate from the table are not
+        // compared either.
+        let close = Some(UsageBaseline {
+            earlier: Some(UsageCounters {
+                sampled_at: 4_500_000,
+                processes: vec![cpu_counter(1, 500_000)],
+            }),
+            ..baseline(5_000_000, vec![cpu_counter(1, 1_000_000)]).unwrap()
+        });
+        let summary = summarize(&MemoryRequest {
+            sampled_at: Some(5_050_000),
+            previous: close.clone(),
+            ..request(1, vec![host_using(1_525_000)])
+        })
+        .expect("table should summarize");
+        assert_eq!(summary.usage, UsageFigures::default());
+        assert_eq!(summary.baseline, close);
+    }
+
+    #[test]
+    fn a_table_read_a_window_later_keeps_the_previous_counters_as_earlier() {
+        let previous = Some(UsageBaseline {
+            earlier: Some(UsageCounters {
+                sampled_at: 3_000_000,
+                processes: vec![cpu_counter(1, 0)],
+            }),
+            ..baseline(5_000_000, vec![cpu_counter(1, 1_000_000)]).unwrap()
+        });
+        let summary = summarize(&MemoryRequest {
+            sampled_at: Some(5_000_000 + MIN_USAGE_WINDOW),
+            previous,
+            ..request(1, vec![host_using(1_250_000)])
+        })
+        .expect("table should summarize");
+        assert_eq!(summary.usage.cpu_percent, Some(25.0));
+        assert_eq!(
+            summary.baseline,
+            Some(UsageBaseline {
+                earlier: Some(UsageCounters {
+                    sampled_at: 5_000_000,
+                    processes: vec![cpu_counter(1, 1_000_000)],
+                }),
+                ..baseline(6_000_000, vec![cpu_counter(1, 1_250_000)]).unwrap()
+            })
+        );
     }
 
     #[test]

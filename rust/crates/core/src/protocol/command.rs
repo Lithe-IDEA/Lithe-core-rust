@@ -484,6 +484,8 @@ pub enum BuildCommand {
     DecodeDependencies,
     /// Digests the files a build model depends on (`build.syncFingerprint`).
     SyncFingerprint,
+    /// Nests a loaded model's projects and files their tasks for a tool window (`build.modelTree`).
+    ModelTree,
     /// Reduces a test run's termination and decoded summary to one verdict (`build.resolveTestRunOutcome`).
     ResolveTestRunOutcome,
     /// Merges a run's test results into the stored history inside the host-stated scope (`build.mergeTestOutcomes`).
@@ -595,6 +597,8 @@ pub enum EditorCommand {
     /// Applies a deterministic line-level editing transform
     /// (`editor.lineEdit`).
     LineEdit,
+    /// Formats a symbol or file reference for one caret position (`editor.copyReferenceLocation`).
+    CopyReferenceLocation,
     /// Finds text or plans bounded replacements in a borrowed document (`editor.find`).
     Find,
     /// Resolves persisted editor presentation preferences (`editor.preferences.resolve`).
@@ -641,8 +645,14 @@ pub enum LspCommand {
     MergeCompletions,
     /// Decides whether a language server may start automatically (`lsp.activationPolicy`).
     ActivationPolicy,
-    /// Filters, orders, and groups Problems tool-window diagnostics (`lsp.problems.query`).
+    /// Filters, orders, and groups Problems tool-window diagnostics and lays the tree rows out
+    /// (`lsp.problems.query`).
     ProblemsQuery,
+    /// Groups Find Usages locations by file and lays out the References tool
+    /// window's rows (`lsp.references.query`).
+    ReferencesQuery,
+    /// Shows the lines of References tool-window usages (`lsp.references.lines`).
+    ReferencesLines,
     /// Starts and initializes a managed language server (`lsp.startServer`).
     StartServer,
     /// Gracefully shuts down a managed server (`lsp.stopServer`).
@@ -704,7 +714,7 @@ pub enum RunConfigCommand {
     Inspect,
     /// Reads effective saved tool paths for one Provider root (`runConfig.projectToolchain`).
     ProjectToolchain,
-    /// Regenerates detected run configurations (`runConfig.generate`).
+    /// Regenerates the provider run configurations (`runConfig.generate`).
     Generate,
     /// Formats argument vectors as reversible editor text (`runConfig.argumentText`).
     ArgumentText,
@@ -722,6 +732,14 @@ pub enum RunConfigCommand {
     SaveEditorChanges,
     /// Adds a user-authored run configuration (`runConfig.createUserConfiguration`).
     CreateUserConfiguration,
+    /// Lists the configuration kinds a user can create (`runConfig.configurationTypes`).
+    ConfigurationTypes,
+    /// Describes the editor of a built-in process run (`runConfig.editorForm`).
+    EditorForm,
+    /// Checks and saves a built-in process run editor (`runConfig.saveConfiguration`).
+    SaveConfiguration,
+    /// Removes a user-authored run configuration (`runConfig.deleteConfiguration`).
+    DeleteConfiguration,
     /// Produces the process plan for one configuration (`runConfig.createLaunchPlan`).
     CreateLaunchPlan,
     /// Resolves user choices for a provider-owned launch (`runConfig.providerLaunchInputs`).
@@ -1165,6 +1183,7 @@ impl CoreCommand {
             "build.decodeDiagnostics" => Some(Self::Build(BuildCommand::DecodeDiagnostics)),
             "build.decodeDependencies" => Some(Self::Build(BuildCommand::DecodeDependencies)),
             "build.syncFingerprint" => Some(Self::Build(BuildCommand::SyncFingerprint)),
+            "build.modelTree" => Some(Self::Build(BuildCommand::ModelTree)),
             "build.resolveTestRunOutcome" => Some(Self::Build(BuildCommand::ResolveTestRunOutcome)),
             "build.mergeTestOutcomes" => Some(Self::Build(BuildCommand::MergeTestOutcomes)),
             "vcs.detectRoots" => Some(Self::VcsDetectRoots),
@@ -1325,6 +1344,9 @@ impl CoreCommand {
             "lsp.classifyNavigationTarget" => Some(Self::Lsp(LspCommand::ClassifyNavigationTarget)),
             "lsp.declarationOrUsages" => Some(Self::Lsp(LspCommand::DeclarationOrUsages)),
             "editor.lineEdit" => Some(Self::Editor(EditorCommand::LineEdit)),
+            "editor.copyReferenceLocation" => {
+                Some(Self::Editor(EditorCommand::CopyReferenceLocation))
+            }
             "editor.find" => Some(Self::Editor(EditorCommand::Find)),
             "editor.preferences.resolve" => Some(Self::Editor(EditorCommand::PreferencesResolve)),
             "editor.recent.reduce" => Some(Self::Editor(EditorCommand::RecentReduce)),
@@ -1345,6 +1367,8 @@ impl CoreCommand {
             "lsp.mergeCompletions" => Some(Self::Lsp(LspCommand::MergeCompletions)),
             "lsp.activationPolicy" => Some(Self::Lsp(LspCommand::ActivationPolicy)),
             "lsp.problems.query" => Some(Self::Lsp(LspCommand::ProblemsQuery)),
+            "lsp.references.query" => Some(Self::Lsp(LspCommand::ReferencesQuery)),
+            "lsp.references.lines" => Some(Self::Lsp(LspCommand::ReferencesLines)),
             "lsp.startServer" => Some(Self::Lsp(LspCommand::StartServer)),
             "lsp.stopServer" => Some(Self::Lsp(LspCommand::StopServer)),
             "lsp.updateWorkspaceConfiguration" => {
@@ -1394,6 +1418,16 @@ impl CoreCommand {
             }
             "runConfig.createUserConfiguration" => {
                 Some(Self::RunConfig(RunConfigCommand::CreateUserConfiguration))
+            }
+            "runConfig.configurationTypes" => {
+                Some(Self::RunConfig(RunConfigCommand::ConfigurationTypes))
+            }
+            "runConfig.editorForm" => Some(Self::RunConfig(RunConfigCommand::EditorForm)),
+            "runConfig.saveConfiguration" => {
+                Some(Self::RunConfig(RunConfigCommand::SaveConfiguration))
+            }
+            "runConfig.deleteConfiguration" => {
+                Some(Self::RunConfig(RunConfigCommand::DeleteConfiguration))
             }
             "runConfig.createLaunchPlan" => {
                 Some(Self::RunConfig(RunConfigCommand::CreateLaunchPlan))

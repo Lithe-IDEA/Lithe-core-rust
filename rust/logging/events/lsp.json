@@ -165,6 +165,26 @@
       "owner": "lithe-core"
     },
     {
+      "id": "lsp.indexing.exclusions_failed",
+      "channel": "lsp/{server}",
+      "level": "warn",
+      "message": "Language server indexing exclusions could not be published for server {server}",
+      "fields": {
+        "error": {
+          "type": "error",
+          "required": true,
+          "description": "Failure resolving or publishing the workspace Git exclusions after the server started"
+        },
+        "server": {
+          "type": "id",
+          "required": true,
+          "description": "Validated language server session id whose workspace exclusions could not be published"
+        }
+      },
+      "rate": 120,
+      "owner": "lithe-core"
+    },
+    {
       "id": "lsp.stderr.received",
       "channel": "lsp/{server}",
       "level": "debug",

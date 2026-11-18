@@ -1,4 +1,4 @@
-//! Shared classification types used by configuration generation and detectors.
+//! Shared classification types of run configurations.
 
 use serde::{Deserialize, Serialize};
 
@@ -18,7 +18,7 @@ pub enum Execution {
     Group,
 }
 
-/// How the configuration was discovered. Higher values win deduplication.
+/// How the configuration came to exist. Higher values win deduplication.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 #[derive(Default)]
@@ -28,17 +28,17 @@ pub enum Confidence {
     /// Supported by a manifest, build plugin, dependency, or other project declaration.
     #[default]
     Declared,
-    /// Authored by Lithe itself and therefore stronger than detector evidence.
+    /// Authored by Lithe itself and therefore stronger than any declaration.
     Native,
 }
 
 /// Whether a configuration runs the project itself or the external services it
 /// depends on.
 ///
-/// A Docker Compose file in an application repository usually declares
-/// databases and caches, not the application. Both are runnable, but presenting
-/// nineteen containers beside the one application service buries it, so hosts
-/// group infrastructure separately instead of dropping it.
+/// An application repository often declares the databases and caches it runs
+/// against beside the application. Both are runnable, but listing every
+/// dependency beside the one application service buries it, so hosts group
+/// infrastructure separately instead of dropping it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 #[derive(Default)]
@@ -46,7 +46,7 @@ pub enum RunCategory {
     /// Code in this repository: a service, application, or build task.
     #[default]
     Project,
-    /// External dependencies the project runs against, such as Compose services.
+    /// External dependencies the project runs against, such as a database.
     Infrastructure,
 }
 

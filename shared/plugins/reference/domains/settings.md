@@ -277,3 +277,32 @@ staging and conflict handling. The plugin must translate its labels itself.
 Read actions explain that they may execute the project tool or wrapper; opening
 a page does not authorize that execution. Only explicit Save stages changes,
 and the host publishes them conditionally before refreshing upstream facts.
+
+### Module structure pages (`sourceSettings: 1`)
+
+Version 1 lets a source editor look like an IDE's project structure dialog:
+a list of modules on the left and, for the selected module, tabs such as
+Sources, Paths and Dependencies. Put the modules in a group with
+`layout: "sidebar"`, nest submodules with `parent`, and give each field a
+`section` to choose its tab. A dependency list is an `entryList`:
+
+- Declare one `entryKinds` item per add-menu entry. Use `file` (optionally with
+  `extensions`) for archives, `directory` for class or source folders, and
+  `choice` for things the plugin knows, such as libraries or other modules.
+  List only the choices that can be added now; the host refuses any other new
+  value of that kind.
+- Declare per-entry columns such as an "Export" checkbox or a scope menu in
+  `attributes`; leave a key out of an entry to keep your default.
+- Give entries a `title` and `detail` for display. They are ignored when the
+  host compares values and are not sent back on Save.
+- Pickers return absolute native paths. Store them the way your tool expects,
+  for example relative to the module, and show the stored spelling on the next
+  read.
+- A module whose dependencies belong to a build file (Maven, Gradle, a lock
+  file) can still appear: make the source read-only and project the resolved
+  dependencies as its `effectiveValue`, with `effectiveSource` naming the file
+  to edit.
+
+Require `sourceSettings: 1` when any snapshot uses these members; hosts that
+only support version 0 then do not install the plugin. The example is
+[`settings-sources-modules.json`](../../../../rust/fixtures/plugins/settings-sources-modules.json).

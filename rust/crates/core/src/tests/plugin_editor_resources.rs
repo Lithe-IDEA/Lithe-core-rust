@@ -226,9 +226,74 @@ fn grammar_size_rule_count_and_nesting_are_bounded() {
     assert!(field.ends_with(".patterns[0]"), "{field}");
 }
 
+/// Injections are rules the editor runs, keyed by the scope selector where
+/// they apply, so each is checked and counted like any other rule, and their
+/// number and selector length are bounded because every scan tests them.
+#[test]
+fn injections_are_checked_like_the_rules_they_add() {
+    let rejected = |injections: Value, field: &str| {
+        let grammar =
+            json!({ "scopeName": "source.test", "patterns": [], "injections": injections });
+        let (code, actual) = grammar_rejection(&grammar.to_string());
+        assert_eq!(code, "plugin.grammar.invalid", "{grammar}");
+        assert_eq!(actual, field, "{grammar}");
+    };
+    rejected(json!([]), "grammar.injections");
+    rejected(
+        json!({ "L:source.test": "#php-tag" }),
+        "grammar.injections.L:source.test",
+    );
+    rejected(
+        json!({ "R:source.test": { "patterns": [{ "match": 1 }] } }),
+        "grammar.injections.R:source.test.patterns[0].match",
+    );
+    rejected(json!({ "": { "match": "a" } }), "grammar.injections.");
+    let long = "s".repeat(1025);
+    rejected(
+        json!({ long.clone(): { "match": "a" } }),
+        &format!("grammar.injections.{long}"),
+    );
+    let many: serde_json::Map<String, Value> = (0..65)
+        .map(|index| (format!("source.test{index}"), json!({ "match": "a" })))
+        .collect();
+    rejected(Value::Object(many), "grammar.injections");
+
+    let mut over_budget = grammar_with(Value::Array(vec![json!({ "match": "a" }); 16384]));
+    over_budget["injections"] = json!({ "source.test": { "match": "a" } });
+    assert_eq!(
+        grammar_rejection(&over_budget.to_string()),
+        ("plugin.grammar.invalid".into(), "grammar".into())
+    );
+
+    let mut most: serde_json::Map<String, Value> = (0..63)
+        .map(|index| (format!("source.test{index}"), json!({ "match": "a" })))
+        .collect();
+    most.insert("s".repeat(1024), json!({ "include": "#tag" }));
+    let accepted = json!({
+        "scopeName": "text.html.test",
+        "patterns": [{ "include": "text.html.basic" }],
+        "repository": { "tag": { "match": "<\\?test", "name": "punctuation.section.embedded" } },
+        "injections": most,
+    });
+    assert_eq!(decode_grammar(&accepted.to_string())["status"], "ok");
+
+    let php = json!({
+        "scopeName": "text.html.test",
+        "patterns": [{ "include": "text.html.basic" }],
+        "repository": { "tag": { "match": "<\\?test" } },
+        "injections": {
+            "text.html.test - (meta.embedded | meta.tag), L:((text.html.test meta.tag) - (meta.embedded.block.test | meta.embedded.line.test))": {
+                "patterns": [{ "include": "#tag" }]
+            },
+            "L:meta.embedded.test.blade": { "patterns": [{ "include": "text.html.test.blade#blade" }] }
+        }
+    });
+    assert_eq!(decode_grammar(&php.to_string())["status"], "ok");
+}
+
 /// What VS Code grammars carry that the editor does not run is accepted
-/// unchecked: notes, injections, includes of grammars the editor may not have,
-/// and repository entries nothing includes.
+/// unchecked: notes, `injectionSelector`, includes of grammars the editor may
+/// not have, and repository entries nothing includes.
 #[test]
 fn what_the_engine_does_not_read_is_accepted_as_in_vs_code() {
     let grammar = json!({
@@ -239,7 +304,6 @@ fn what_the_engine_does_not_read_is_accepted_as_in_vs_code() {
         "fileTypes": 5,
         "uuid": {},
         "injectionSelector": "L:source.other",
-        "injections": { "R:source.test": { "patterns": [{ "match": 1 }] } },
         "patterns": [
             { "include": "$self" },
             { "include": "$base" },

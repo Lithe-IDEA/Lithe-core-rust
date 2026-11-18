@@ -56,6 +56,7 @@ fn default_limit() -> usize {
 #[serde(rename_all = "camelCase")]
 /// Every bound repository in push order.
 pub struct PreviewResponse {
+    /// The bound repositories, submodules before the repositories that contain them.
     pub repositories: Vec<RepositoryPush>,
 }
 
@@ -83,6 +84,7 @@ pub enum PushState {
 pub struct RepositoryPush {
     /// The repository's binding ID.
     pub id: String,
+    /// Whether the repository can push, and why not.
     pub state: PushState,
     /// Short name of the checked-out branch; absent when HEAD is detached or the
     /// repository could not be read.

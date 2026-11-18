@@ -3,13 +3,14 @@ name = "lithe-lsp-policy"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
-description = "Deterministic language-tooling decisions both platform hosts apply: document identity, navigation targets, workspace edit plans, completion merging, activation and problems queries"
+description = "Deterministic language-tooling decisions both platform hosts apply: document identity, navigation targets, workspace edit plans, completion merging, activation, and the Problems and References tool-window queries"
 
 [dependencies]
 lithe-core-rules = { path = "../core-rules" }
 lithe-document-uri = { path = "../document-uri" }
 lithe-platform = { path = "../platform" }
 lithe-protocol = { path = "../protocol" }
+lithe-text = { path = "../text" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 url = "2.5"
