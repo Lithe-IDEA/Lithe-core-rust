@@ -18,13 +18,20 @@ const FORM_VERSION: u32 = 1;
 /// Request for the configuration kinds a user can create on this platform.
 pub struct ConfigurationTypesRequest {}
 
-/// The kinds of configuration a user can create here, in display order.
-/// Batch scripts are listed only on Windows.
+/// The kinds of configuration a user can create, in display order. Every
+/// platform creates and edits every kind, so a project shared with Windows
+/// keeps its batch scripts editable elsewhere; a kind this platform cannot
+/// run carries the `availability` its configurations resolve with.
 pub fn configuration_types(_request: ConfigurationTypesRequest) -> Result<Value, CoreError> {
     let types = Kind::ALL
         .into_iter()
-        .filter(|kind| kind.supported_on(Platform::HOST))
-        .map(|kind| json!({ "provider": kind.provider() }))
+        .map(|kind| {
+            let mut item = json!({ "provider": kind.provider() });
+            if let Some(availability) = process::platform_availability(kind, Platform::HOST) {
+                item["availability"] = json!(availability);
+            }
+            item
+        })
         .collect::<Vec<_>>();
     Ok(json!({ "types": types }))
 }
@@ -74,13 +81,17 @@ pub fn editor_form(request: EditorFormRequest) -> Result<Value, CoreError> {
     };
     values.extend(request.values.unwrap_or_default());
     let draft = Draft::read(kind, &values)?;
-    Ok(json!({
+    let mut form = json!({
         "formVersion": FORM_VERSION,
         "provider": kind.provider(),
         "configurationId": request.configuration_id,
         "values": values,
         "fields": fields(kind, &root, &draft),
-    }))
+    });
+    if let Some(availability) = process::platform_availability(kind, Platform::HOST) {
+        form["availability"] = json!(availability);
+    }
+    Ok(form)
 }
 
 #[derive(Debug, Deserialize)]
@@ -266,22 +277,16 @@ pub fn delete_configuration(request: DeleteConfigurationRequest) -> Result<Value
     Ok(json!({ "changes": changes }))
 }
 
-/// The kind of `provider` when this platform can create it.
+/// The built-in kind of `provider`. Every platform creates and edits every
+/// kind, also one it cannot run.
 fn creatable_kind(provider: &str) -> Result<Kind, CoreError> {
-    let kind = Kind::from_provider(provider).ok_or_else(|| {
+    Kind::from_provider(provider).ok_or_else(|| {
         CoreError::new(
             ErrorCode::NotSupported,
             "Only built-in process runs have an editor form",
         )
         .with_details(provider)
-    })?;
-    if !kind.supported_on(Platform::HOST) {
-        return Err(CoreError::new(
-            ErrorCode::NotSupported,
-            "Batch scripts run only on Windows",
-        ));
-    }
-    Ok(kind)
+    })
 }
 
 /// Removes configuration `id` from a layer document; whether it was there.

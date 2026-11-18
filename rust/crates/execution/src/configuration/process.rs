@@ -104,10 +104,22 @@ pub(crate) fn is_process_provider(provider: &str) -> bool {
     provider.starts_with("process.")
 }
 
-/// Whether `platform` can run entries of `provider`. Providers that are not
-/// built-in process runs are not judged here.
-pub(crate) fn supported_on(provider: &str, platform: Platform) -> bool {
-    Kind::from_provider(provider).is_none_or(|kind| kind.supported_on(platform))
+/// Why `platform` cannot run entries of `provider`, absent when it can.
+/// Providers that are not built-in process runs are not judged here.
+pub(crate) fn provider_availability(provider: &str, platform: Platform) -> Option<Availability> {
+    platform_availability(Kind::from_provider(provider)?, platform)
+}
+
+/// Why `platform` cannot run `kind`, absent when it can: `unsupportedPlatform`
+/// for a batch script outside Windows. Such an entry is still created, edited
+/// and saved, so a project shared with Windows keeps it.
+pub(crate) fn platform_availability(kind: Kind, platform: Platform) -> Option<Availability> {
+    (!kind.supported_on(platform)).then(|| {
+        Availability::unavailable(
+            "unsupportedPlatform",
+            format!("{} runs only on Windows", kind.provider()),
+        )
+    })
 }
 
 /// The `extensions.process` choices of a built-in process run.
