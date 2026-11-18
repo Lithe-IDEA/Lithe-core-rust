@@ -760,6 +760,8 @@ pub enum RunConfigCommand {
     BeforeLaunch,
     /// Checks the values of a plugin task step before launch (`runConfig.checkBeforeLaunchTask`).
     CheckBeforeLaunchTask,
+    /// Reads the Before Launch list of a saved configuration for an editor (`runConfig.beforeLaunchField`).
+    BeforeLaunchField,
     /// Produces the process plan for one configuration (`runConfig.createLaunchPlan`).
     CreateLaunchPlan,
     /// Resolves user choices for a provider-owned launch (`runConfig.providerLaunchInputs`).
@@ -1469,6 +1471,9 @@ impl CoreCommand {
             "runConfig.beforeLaunch" => Some(Self::RunConfig(RunConfigCommand::BeforeLaunch)),
             "runConfig.checkBeforeLaunchTask" => {
                 Some(Self::RunConfig(RunConfigCommand::CheckBeforeLaunchTask))
+            }
+            "runConfig.beforeLaunchField" => {
+                Some(Self::RunConfig(RunConfigCommand::BeforeLaunchField))
             }
             "runConfig.createLaunchPlan" => {
                 Some(Self::RunConfig(RunConfigCommand::CreateLaunchPlan))

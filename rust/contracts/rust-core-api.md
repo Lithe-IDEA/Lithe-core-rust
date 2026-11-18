@@ -725,6 +725,7 @@ or removing a command fails until the table changes in the same commit.
 | `runConfig.arrange` | Return the file changes that move configurations between folders and save the list order |
 | `runConfig.beforeLaunch` | Expand the process runs and plugin tasks a configuration starts first, and say whether the user must confirm them |
 | `runConfig.checkBeforeLaunchTask` | Check the values of a plugin task step being added or edited and return the step for the `beforeLaunch` editor value |
+| `runConfig.beforeLaunchField` | Return the `beforeLaunch` editor field of a saved configuration for an editor that does not use `runConfig.editorForm` |
 | `runConfig.createLaunchPlan` | Project one effective configuration into a platform-neutral Run or Debug plan |
 | `runConfig.providerLaunchInputs` | Resolve user choices for a provider-owned launch |
 | `git.status` | Resolve the repository, current branch, and working-tree changes |
@@ -4163,6 +4164,14 @@ replies `{status: "ok", step}` with the step to put in the field's value, or
 keys of a declared editor. A task no installed plugin declares fails the call
 with `not_supported`. Nothing is written; the step is saved with the
 configuration.
+
+`runConfig.beforeLaunchField` accepts `{root, configurationId,
+localDocument?, runTypePlugins?}` and replies `{candidates, tasks, value}`:
+the field of `runConfig.editorForm` for a saved configuration of any
+provider, with `value` the effective list. It serves an editor that edits
+the list without the rest of a form, such as the editor of a build run, which
+then sends the edited value to `runConfig.updateOptions`. An unknown
+configuration is `invalid_request`.
 
 `runConfig.saveConfiguration` checks the field like `runConfig.beforeLaunch`
 and reports `{field: "beforeLaunch", code}` with `notFound`, `notAllowed`,

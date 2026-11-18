@@ -609,3 +609,47 @@ pub fn check_before_launch_task(request: CheckBeforeLaunchTaskRequest) -> Result
     reference.validate()?;
     Ok(json!({ "status": "ok", "step": task.task_step_item(&reference) }))
 }
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Request for the Before Launch list of a saved configuration, for an editor
+/// that does not use `runConfig.editorForm`.
+pub struct BeforeLaunchFieldRequest {
+    /// Canonical workspace root.
+    pub root: String,
+    /// The saved configuration whose list is edited.
+    pub configuration_id: String,
+    /// Host-owned replacement for the machine-local layer.
+    #[serde(default)]
+    pub local_document: Option<Value>,
+    /// The kinds installed plugins declare, set by the dispatcher from
+    /// `runTypePlugins`.
+    #[serde(skip)]
+    pub run_types: Vec<DeclaredRunType>,
+}
+
+/// `runConfig.beforeLaunchField`: the Before Launch list of configuration
+/// `configurationId` as the `beforeLaunch` field of `runConfig.editorForm`
+/// gives it.
+///
+/// Replies `{candidates, tasks, value}`: the configurations a step may start,
+/// the task kinds installed plugins declare, and the effective list as editor
+/// items. The host sends the edited items back through
+/// `runConfig.updateOptions`. An unknown ID fails with `InvalidRequest`.
+pub fn before_launch_field(request: BeforeLaunchFieldRequest) -> Result<Value, CoreError> {
+    let root = existing_root(&request.root)?;
+    let layers = read_layers(&root, None, request.local_document)?;
+    let resolved = Resolved::read(&root, &layers)?;
+    let configuration = resolved
+        .by_id
+        .get(&request.configuration_id)
+        .ok_or_else(|| {
+            CoreError::new(ErrorCode::InvalidRequest, "Run configuration was not found")
+        })?;
+    let choices = StepChoices::new(&resolved, Some(&configuration.id), &request.run_types);
+    Ok(json!({
+        "candidates": choices.candidates,
+        "tasks": choices.tasks,
+        "value": editor_items(&configuration.before_launch, &request.run_types),
+    }))
+}

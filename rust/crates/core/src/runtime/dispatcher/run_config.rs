@@ -231,6 +231,18 @@ pub(super) fn dispatch(
                 },
             ),
         ),
+        RunConfigCommand::BeforeLaunchField => respond(
+            id,
+            with_run_types(
+                payload,
+                "Invalid before-launch field request",
+                false,
+                |mut request: crate::execution::BeforeLaunchFieldRequest, run_types| {
+                    request.run_types = run_types;
+                    crate::execution::before_launch_field(request)
+                },
+            ),
+        ),
         RunConfigCommand::DeleteConfiguration => {
             match serde_json::from_value::<crate::execution::DeleteConfigurationRequest>(payload)
                 .map_err(|error| {

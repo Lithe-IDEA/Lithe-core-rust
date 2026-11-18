@@ -37,8 +37,9 @@ mod validation;
 pub use arrangement::{arrange, ArrangeRequest};
 pub(crate) use arrangement::{valid_folder, Arrangement};
 pub use before_launch::{
-    before_launch, check_before_launch_task, BeforeLaunchRequest, BeforeLaunchStep,
-    CheckBeforeLaunchTaskRequest, ConfigurationStep, TaskStep,
+    before_launch, before_launch_field, check_before_launch_task, BeforeLaunchFieldRequest,
+    BeforeLaunchRequest, BeforeLaunchStep, CheckBeforeLaunchTaskRequest, ConfigurationStep,
+    TaskStep,
 };
 pub use copying::{copy_configuration, CopyConfigurationRequest};
 pub use declared::{

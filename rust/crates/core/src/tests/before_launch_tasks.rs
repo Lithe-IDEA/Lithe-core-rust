@@ -1,6 +1,7 @@
 //! Before-launch tasks plugins declare in `buildSystems[].beforeLaunchTasks`
 //! (API-29): the `beforeLaunch` editor field offers them as kinds of step,
 //! `runConfig.checkBeforeLaunchTask` checks the step's form,
+//! `runConfig.beforeLaunchField` gives the field to an editor without a form,
 //! `runConfig.beforeLaunch` expands them with the runs, and
 //! `build.beforeLaunchTaskPlan` turns one into the argv plan the host starts.
 
@@ -262,6 +263,22 @@ fn task_steps_are_checked_saved_and_reopened() {
         reopened["values"]["beforeLaunch"],
         json!([step, "user:gen"])
     );
+    // An editor without runConfig.editorForm reads the same field.
+    let field = call(
+        "runConfig.beforeLaunchField",
+        json!({ "root": root, "configurationId": "user:app", "runTypePlugins": plugins() }),
+    );
+    assert_eq!(field["value"], json!([step, "user:gen"]), "{field}");
+    assert_eq!(
+        field["candidates"],
+        json!([{ "id": "user:gen", "name": "gen" }])
+    );
+    assert_eq!(field["tasks"], before_launch_field(&reopened)["tasks"]);
+    let unknown = reply(
+        "runConfig.beforeLaunchField",
+        json!({ "root": root, "configurationId": "user:none" }),
+    );
+    assert_eq!(unknown["error"]["code"], "invalid_request", "{unknown}");
     let removed = call(
         "runConfig.editorForm",
         json!({ "root": root, "configurationId": "user:app" }),
