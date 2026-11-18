@@ -6,6 +6,7 @@
 use super::manifest::{BuildSystemDeclaration, OptionDeclaration, OptionKind};
 use super::template::{self, Values};
 use lithe_plugin_model::{PluginRejection, Validation};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -19,6 +20,25 @@ pub(crate) struct ModelOptionFacts<'a> {
     pub(crate) values: Option<&'a BTreeMap<String, Vec<String>>>,
     pub(crate) defaults: Option<&'a BTreeMap<String, Vec<String>>>,
     pub(crate) exclude_prefixes: Option<&'a BTreeMap<String, String>>,
+}
+
+/// Choices the tool observed when it produced a model, scoped to its invocation.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct ModelOptionSelection {
+    pub(crate) fingerprint: String,
+    pub(crate) active_choices: BTreeMap<String, Vec<String>>,
+}
+
+impl ModelOptionSelection {
+    /// A model can answer only for the option values used to load it.
+    pub(crate) fn matching_choices(
+        &self,
+        build_system: &BuildSystemDeclaration,
+        resolved: &ResolvedOptions,
+    ) -> Option<&BTreeMap<String, Vec<String>>> {
+        (self.fingerprint == fingerprint(build_system, resolved)).then_some(&self.active_choices)
+    }
 }
 
 /// One choice of a select option as resolved for display and editing.
@@ -310,6 +330,7 @@ pub(crate) fn choice_state(
     option: &OptionDeclaration,
     resolved: &ResolvedOptions,
     facts: &ModelOptionFacts<'_>,
+    active: Option<&[String]>,
 ) -> Vec<ResolvedChoice> {
     let exclude_prefix = effective_exclude_prefix(option, facts);
     let defaults = default_choice_set(option, facts);
@@ -323,11 +344,14 @@ pub(crate) fn choice_state(
         .filter_map(Value::as_str)
         .filter(|value| !exclude_prefix.is_some_and(|prefix| value.starts_with(prefix)))
         .collect();
+    let active = active.map(|choices| choices.iter().map(String::as_str).collect::<BTreeSet<_>>());
     let is_checked = |value: &str| {
         if option.kind != OptionKind::MultiSelect {
             return false;
         }
-        if chosen {
+        if let Some(active) = &active {
+            active.contains(value)
+        } else if chosen {
             stored_positives.contains(value)
         } else {
             defaults.contains(value)
@@ -379,7 +403,7 @@ pub(crate) fn choice_state(
                     from_model: false,
                     custom: true,
                     default_active: false,
-                    checked: true,
+                    checked: is_checked(value),
                 });
             }
         }
@@ -388,12 +412,12 @@ pub(crate) fn choice_state(
 }
 
 /// Turns the positive choices the user checked for a `multiSelect` option into
-/// the stored JSON value (`Value::Null` when no team override exists and the
-/// checked set equals the default active set).
+/// the stored JSON value. Callers can require an explicit override to preserve
+/// inheritance and sibling selections even when the checked set is the default.
 pub(crate) fn encode_selected_choices(
     option: &OptionDeclaration,
     selected: &[String],
-    has_team_override: bool,
+    keep_override: bool,
     facts: &ModelOptionFacts<'_>,
 ) -> Validation<Value> {
     if option.kind != OptionKind::MultiSelect {
@@ -419,7 +443,7 @@ pub(crate) fn encode_selected_choices(
     checked.sort();
     checked.dedup();
     let defaults: Vec<String> = default_choice_set(option, facts).into_iter().collect();
-    if !has_team_override && checked == defaults {
+    if !keep_override && checked == defaults {
         return Ok(Value::Null);
     }
     let mut items = checked.clone();
@@ -440,12 +464,15 @@ pub(crate) fn describe_with_facts(
     build_system: &BuildSystemDeclaration,
     resolved: &ResolvedOptions,
     facts: ModelOptionFacts<'_>,
+    selection: Option<&ModelOptionSelection>,
 ) -> Value {
+    let active = selection.and_then(|selection| selection.matching_choices(build_system, resolved));
     let options: Vec<Value> = build_system
         .options
         .iter()
         .map(|option| {
-            let resolved_choices = choice_state(option, resolved, &facts);
+            let active = active.and_then(|choices| choices.get(&option.id).map(Vec::as_slice));
+            let resolved_choices = choice_state(option, resolved, &facts, active);
             let choices: Vec<Value> = resolved_choices
                 .iter()
                 .map(|choice| {
@@ -501,7 +528,8 @@ pub(crate) fn describe_with_facts(
                 "allowCustom": option.allow_custom,
             });
             if option.kind == OptionKind::MultiSelect
-                && (!defaults.is_empty()
+                && (active.is_some()
+                    || !defaults.is_empty()
                     || exclude_prefix.is_some()
                     || resolved_choices.iter().any(|choice| choice.custom))
             {

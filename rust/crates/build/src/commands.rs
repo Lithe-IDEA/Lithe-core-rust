@@ -43,6 +43,9 @@ struct ResolveOptionsRequest {
     /// Stored option values by option ID.
     #[serde(default)]
     options: BTreeMap<String, Value>,
+    /// Lower-priority instance options when editing per-run overrides.
+    #[serde(default)]
+    inherited_options: BTreeMap<String, Value>,
     /// Positive choices checked in an option editor, encoded into `options`
     /// before resolution.
     #[serde(default)]
@@ -57,6 +60,9 @@ struct ResolveOptionsRequest {
     /// The loaded model's `optionExcludePrefixes`.
     #[serde(default)]
     model_exclude_prefixes: Option<BTreeMap<String, String>>,
+    /// The loaded model's observed choices, valid for its option fingerprint.
+    #[serde(default)]
+    model_selection: Option<options::ModelOptionSelection>,
 }
 
 fn with_build_system<M: BuildManifest, T: DeserializeOwned>(
@@ -145,12 +151,18 @@ pub fn build_resolve_options_command<M: BuildManifest>(payload: Value) -> Result
                 defaults: request.model_defaults.as_ref(),
                 exclude_prefixes: request.model_exclude_prefixes.as_ref(),
             };
-            let mut stored = request.options.clone();
+            let mut stored = request.inherited_options.clone();
+            stored.extend(request.options.clone());
             for (id, selected) in &request.selected_choices {
                 let option = build_system.option(id).ok_or_else(|| {
                     PluginRejection::new("plugin.build.invalidOption", "Unknown declared option")
                 })?;
-                let encoded = options::encode_selected_choices(option, selected, false, &facts)?;
+                let encoded = options::encode_selected_choices(
+                    option,
+                    selected,
+                    request.inherited_options.contains_key(id),
+                    &facts,
+                )?;
                 if encoded.is_null() {
                     stored.remove(id);
                 } else {
@@ -158,7 +170,12 @@ pub fn build_resolve_options_command<M: BuildManifest>(payload: Value) -> Result
                 }
             }
             let resolved = options::resolve_with_facts(build_system, &stored, facts);
-            Ok(options::describe_with_facts(build_system, &resolved, facts))
+            Ok(options::describe_with_facts(
+                build_system,
+                &resolved,
+                facts,
+                request.model_selection.as_ref(),
+            ))
         },
     )
 }

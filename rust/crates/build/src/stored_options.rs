@@ -47,6 +47,8 @@ pub(super) struct EditRequest {
     model_defaults: Option<BTreeMap<String, Vec<String>>>,
     #[serde(default)]
     model_exclude_prefixes: Option<BTreeMap<String, String>>,
+    #[serde(default)]
+    model_selection: Option<options::ModelOptionSelection>,
 }
 
 fn optional_value<'de, D: Deserializer<'de>>(input: D) -> Result<Option<Value>, D::Error> {
@@ -223,20 +225,49 @@ pub(super) fn edit(system: &BuildSystemDeclaration, request: &EditRequest) -> Va
         exclude_prefixes: request.model_exclude_prefixes.as_ref(),
     };
     let before = merge(&team, &local);
-    let current = effective(system, &before, &local, &request.root);
+    let workspace_multi =
+        option.scope == OptionScope::Workspace && option.kind == OptionKind::MultiSelect;
+    let mut sibling_values = Vec::new();
+    let mut sibling_clear = false;
+    if workspace_multi {
+        let current = effective(system, &before, &local, &request.root);
+        let visible = options::resolve_with_facts(system, &current, facts);
+        let visible = visible
+            .chosen_values
+            .get(&option.id)
+            .and_then(Value::as_array);
+        if let Some(raw) = before["systems"][&system.id]["options"][&option.id].as_array() {
+            sibling_values.extend(
+                raw.iter()
+                    .filter(|value| visible.is_none_or(|values| !values.contains(value)))
+                    .cloned(),
+            );
+        }
+        sibling_clear = local.empty_selections.get(&system.id).is_some_and(|roots| {
+            roots
+                .iter()
+                .any(|(root, ids)| root != &request.root && ids.contains(&option.id))
+        });
+    }
     let mut next = match (&request.value, &request.selected_choices) {
         (Some(value), None) => value.clone(),
         (None, Some(selected)) => {
             let team_system = &team["systems"][&system.id];
-            let has_team_override = if option.scope == OptionScope::Instance {
+            // Reset only if the current root inherits the model's defaults
+            // and removing the workspace value cannot erase sibling state.
+            let keep_override = if option.scope == OptionScope::Instance {
                 team_system["instances"][&request.root]
                     .get(&option.id)
                     .is_some()
-                    || team_system["instanceDefaults"].get(&option.id).is_some()
+                    || before["systems"][&system.id]["instanceDefaults"]
+                        .get(&option.id)
+                        .is_some()
             } else {
                 team_system["options"].get(&option.id).is_some()
+                    || !sibling_values.is_empty()
+                    || sibling_clear
             };
-            options::encode_selected_choices(option, selected, has_team_override, &facts)?
+            options::encode_selected_choices(option, selected, keep_override, &facts)?
         }
         _ => {
             return Err(PluginRejection::new(
@@ -292,21 +323,7 @@ pub(super) fn edit(system: &BuildSystemDeclaration, request: &EditRequest) -> Va
             }
         }
     } else {
-        if option.scope == OptionScope::Workspace && option.kind == OptionKind::MultiSelect {
-            let visible = options::resolve_with_facts(system, &current, facts)
-                .chosen_values
-                .get(&option.id)
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default();
-            let raw = before["systems"][&system.id]["options"][&option.id]
-                .as_array()
-                .cloned()
-                .unwrap_or_default();
-            let mut merged = raw
-                .into_iter()
-                .filter(|value| !visible.contains(value))
-                .collect::<Vec<_>>();
+        if workspace_multi {
             let exclude_prefix = options::effective_exclude_prefix(option, &facts);
             for value in next.as_array().expect("checked multi-select") {
                 if let (Some(prefix), Some(text)) = (exclude_prefix, value.as_str()) {
@@ -314,10 +331,10 @@ pub(super) fn edit(system: &BuildSystemDeclaration, request: &EditRequest) -> Va
                         Some(rest) => rest.to_string(),
                         None => format!("{prefix}{text}"),
                     };
-                    merged.retain(|entry| entry.as_str() != Some(opposite.as_str()));
+                    sibling_values.retain(|entry| entry.as_str() != Some(opposite.as_str()));
                 }
-                if !merged.contains(value) {
-                    merged.push(value.clone());
+                if !sibling_values.contains(value) {
+                    sibling_values.push(value.clone());
                 }
             }
             let ids = local
@@ -331,7 +348,7 @@ pub(super) fn edit(system: &BuildSystemDeclaration, request: &EditRequest) -> Va
             } else {
                 ids.remove(&option.id);
             }
-            next = json!(merged);
+            next = json!(sibling_values);
         }
         values.insert(option.id.clone(), next);
     }
@@ -370,7 +387,10 @@ pub(super) fn edit(system: &BuildSystemDeclaration, request: &EditRequest) -> Va
     let document = merge(&team, &local);
     let stored = effective(system, &document, &local, &request.root);
     let resolved = options::resolve_with_facts(system, &stored, facts);
-    Ok(json!({"local":local,"options":options::describe_with_facts(system,&resolved,facts)}))
+    Ok(json!({
+        "local": local,
+        "options": options::describe_with_facts(system, &resolved, facts, request.model_selection.as_ref())
+    }))
 }
 
 /// `build.editIgnoredPaths`: replaces or removes the local ignored-path list.

@@ -70,6 +70,8 @@ struct TreeModel {
     option_defaults: BTreeMap<String, Vec<String>>,
     #[serde(default)]
     option_exclude_prefixes: BTreeMap<String, String>,
+    #[serde(default)]
+    option_selection: Option<options::ModelOptionSelection>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -283,13 +285,19 @@ fn tree_option_nodes(
         exclude_prefixes: Some(&request.model.option_exclude_prefixes),
     };
     let resolved = options::resolve_with_facts(build_system, &request.options, facts);
+    let active = request
+        .model
+        .option_selection
+        .as_ref()
+        .and_then(|selection| selection.matching_choices(build_system, &resolved));
     let mut nodes = Vec::new();
     for option in build_system
         .options
         .iter()
         .filter(|option| option.presentation == Some(OptionPresentation::Tree))
     {
-        let choices = options::choice_state(option, &resolved, &facts);
+        let active = active.and_then(|choices| choices.get(&option.id).map(Vec::as_slice));
+        let choices = options::choice_state(option, &resolved, &facts, active);
         if choices.is_empty() {
             continue;
         }

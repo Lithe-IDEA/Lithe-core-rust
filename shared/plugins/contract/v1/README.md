@@ -1866,10 +1866,18 @@ Canonical formats let a plugin's own script print the shape Core expects:
 
 | Format | Shape |
 | --- | --- |
-| `litheBuildModel` | `{ "format": "litheBuildModel", "version": 0, "projects", "targets", "tasks", "contentRoots", "optionValues", "optionDefaults"?, "optionExcludePrefixes"? }` with the model's field names; `tasks[].category` is an array of headings |
+| `litheBuildModel` | `{ "format": "litheBuildModel", "version": 0, "projects", "targets", "tasks", "contentRoots", "optionValues", "optionDefaults"?, "optionExcludePrefixes"?, "optionActiveChoices"? }` with the model's field names; `tasks[].category` is an array of headings |
 | `litheTestResults` | `{ "format": "litheTestResults", "version": 0, "tests": [{ "suite", "case", "status", "message"?, "durationMillis"?, "path"?, "line"? }] }` |
 | `litheDependencies` | `{ "format": "litheDependencies", "version": 0, "dependencies": [{ "name", "group"?, "version"?, "scope"?, "properties"?, "children" }] }` |
 | `litheDiagnostics` | output lines `{ "lithe": "diagnostic", "path", "line", "column"?, "severity"?, "message" }` |
+
+A canonical model can report `optionActiveChoices: { <optionID>: [...] }` for
+model-backed multi-select options. List the values the tool actually activated
+for this invocation, including values activated outside the IDE's saved
+options. Use an empty array if the tool reports that none are active. Omit the
+entry when the tool cannot observe the active set. Report baseline defaults in
+`optionDefaults`; Core restricts both sets to the available `optionValues` and
+ties the observed set to the option fingerprint of the model load.
 
 Unknown fields in canonical documents are ignored, so a script may add fields
 without a new version. Output that does not fit its decoder is `plugin.build.invalidOutput`.

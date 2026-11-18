@@ -182,8 +182,21 @@ pub(crate) fn resolve<M: BuildManifest>(
                                     .unwrap_or_else(|| json!({})),
                             )
                             .map_err(|_| invalid())?;
-                            let resolved =
-                                options::resolve(producer, &instance.options, Some(&values));
+                            let exclude_prefixes = model
+                                .get("optionExcludePrefixes")
+                                .cloned()
+                                .map(serde_json::from_value)
+                                .transpose()
+                                .map_err(|_| invalid())?;
+                            let resolved = options::resolve_with_facts(
+                                producer,
+                                &instance.options,
+                                options::ModelOptionFacts {
+                                    values: Some(&values),
+                                    exclude_prefixes: exclude_prefixes.as_ref(),
+                                    ..options::ModelOptionFacts::default()
+                                },
+                            );
                             shared["configurationFingerprint"] =
                                 json!(options::fingerprint(producer, &resolved));
                             let shared_values: BTreeMap<_, _> = producer

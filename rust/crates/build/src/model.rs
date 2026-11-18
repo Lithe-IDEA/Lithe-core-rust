@@ -44,6 +44,9 @@ pub(crate) struct BuildModel {
     /// Per-option prefix a `litheBuildModel` script supplies to turn a default choice off.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub(crate) option_exclude_prefixes: BTreeMap<String, String>,
+    /// Actual choices reported by the tool. Model output attaches the invocation fingerprint.
+    #[serde(skip)]
+    pub(crate) option_active_choices: BTreeMap<String, Vec<String>>,
     /// True when a bound dropped entries.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub(crate) truncated: bool,
@@ -482,6 +485,15 @@ impl<'a> ModelBuilder<'a> {
                 (!kept.is_empty()).then_some((id, kept))
             })
             .collect();
+        model.option_active_choices.retain(|id, active| {
+            let Some(known) = model.option_values.get(id) else {
+                return false;
+            };
+            active.retain(|choice| known.binary_search(choice).is_ok());
+            active.sort();
+            active.dedup();
+            true
+        });
         model
     }
 }
@@ -737,6 +749,8 @@ struct CanonicalModel {
     option_defaults: BTreeMap<String, Vec<String>>,
     #[serde(default)]
     option_exclude_prefixes: BTreeMap<String, String>,
+    #[serde(default)]
+    option_active_choices: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -914,6 +928,13 @@ pub(crate) fn map_canonical(builder: &mut ModelBuilder<'_>, document: Value) -> 
     for (option, values) in &model.option_defaults {
         for value in values {
             builder.add_option_default(option, value);
+        }
+    }
+    for (id, choices) in model.option_active_choices {
+        if builder.build_system.option(&id).is_some_and(|option| {
+            option.choices_from_model && option.kind == super::manifest::OptionKind::MultiSelect
+        }) {
+            builder.model.option_active_choices.insert(id, choices);
         }
     }
     for (option, prefix) in &model.option_exclude_prefixes {

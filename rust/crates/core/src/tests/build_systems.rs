@@ -2469,6 +2469,16 @@ fn provider_run_preparation_selects_targets_and_validates_launch_data() {
         json!(["application"])
     );
     assert!(prepared["plan"].get("arguments").is_none());
+    let mut request = fixture["request"].clone();
+    request["options"] = json!({"offline": true});
+    request["optionOverrides"] = json!({"offline": false});
+    let override_plan = plan(request);
+    assert_eq!(
+        override_plan["plan"]["provider"]["params"]["options"]["offline"],
+        Value::Null,
+        "{override_plan}"
+    );
+
     for (field, value) in [
         (
             "target",
@@ -3033,26 +3043,24 @@ fn provider_run_options_refuse_explicit_cwd_symlinks_outside_workspace() {
 fn model_option_defaults_and_exclusions_round_trip_through_storage_and_plans() {
     use crate::build::{build_edit_stored_option_command, build_model_plan_command};
     let workspace = TemporaryWorkspace::new("model-option-defaults");
-    let manifest: Value = serde_json::from_str(include_str!(
-        "fixtures/published_build_plugins/maven/plugin.json"
-    ))
-    .unwrap();
+    let fixture = option_edit_fixture();
+    let manifest = &fixture["manifest"];
     let canonical = json!({
         "format": "litheBuildModel",
         "version": 0,
         "projects": [{"path": ".", "name": "demo"}],
+        "targets": [{"path": ".", "name": "demo", "tags": ["launchable"]}],
         "optionValues": {"profiles": ["dev", "prod", "release"]},
         "optionDefaults": {"profiles": ["dev"]},
         "optionExcludePrefixes": {"profiles": "-"}
     });
-    workspace.write("model.json", &canonical.to_string());
     let decoded = build_decode_model_command::<Manifest>(json!({
         "manifest": manifest,
-        "buildSystemID": "maven",
+        "buildSystemID": "fixture",
         "request": {
             "workspaceRoot": workspace.root(),
             "root": ".",
-            "outputFile": workspace.0.join("model.json").to_string_lossy(),
+            "output": canonical.to_string(),
         }
     }))
     .unwrap();
@@ -3077,7 +3085,7 @@ fn model_option_defaults_and_exclusions_round_trip_through_storage_and_plans() {
 
     let resolved = build_resolve_options_command::<Manifest>(json!({
         "manifest": manifest,
-        "buildSystemID": "maven",
+        "buildSystemID": "fixture",
         "request": {
             "options": {},
             "modelValues": model["optionValues"],
@@ -3096,10 +3104,10 @@ fn model_option_defaults_and_exclusions_round_trip_through_storage_and_plans() {
     let empty_local = json!({"version": 1, "document": {"version": 1, "systems": {}}});
 
     // Unchecking the default-active `dev` profile stores `["-dev"]`, so even a
-    // cold `build.modelPlan` before the model loads passes `-P -dev`.
+    // cold `build.modelPlan` before the model loads passes `--profiles -dev`.
     let unchecked = build_edit_stored_option_command::<Manifest>(json!({
         "manifest": manifest,
-        "buildSystemID": "maven",
+        "buildSystemID": "fixture",
         "request": {
             "document": empty_team,
             "local": empty_local,
@@ -3119,12 +3127,10 @@ fn model_option_defaults_and_exclusions_round_trip_through_storage_and_plans() {
 
     let plan = build_model_plan_command::<Manifest>(json!({
         "manifest": manifest,
-        "buildSystemID": "maven",
+        "buildSystemID": "fixture",
         "request": {
             "root": ".",
-            "options": {"profiles": ["-dev"]},
-            "pluginDirectory": workspace.root(),
-            "outputFile": workspace.0.join("next.json").to_string_lossy()
+            "options": {"profiles": ["-dev"]}
         }
     }))
     .unwrap();
@@ -3135,14 +3141,30 @@ fn model_option_defaults_and_exclusions_round_trip_through_storage_and_plans() {
         .filter_map(Value::as_str)
         .collect();
     assert!(
-        args.windows(2).any(|pair| pair == ["-P", "-dev"]),
-        "expected -P -dev in {args:?}"
+        args.windows(2).any(|pair| pair == ["--profiles", "-dev"]),
+        "expected --profiles -dev in {args:?}"
     );
 
-    // Switching to `prod` while keeping `dev` unchecked passes `-P -dev,prod`.
+    let decoded = build_decode_model_command::<Manifest>(json!({
+        "manifest": manifest,
+        "buildSystemID": "fixture",
+        "request": {
+            "workspaceRoot": workspace.root(),
+            "root": ".",
+            "output": canonical.to_string(),
+            "options": {"profiles": ["-dev"]}
+        }
+    }))
+    .unwrap();
+    assert_eq!(
+        decoded["model"]["run"][0]["args"],
+        json!(["--profiles", "-dev", "launch"])
+    );
+
+    // Switching to `prod` while keeping `dev` unchecked passes `--profiles -dev,prod`.
     let switched = build_edit_stored_option_command::<Manifest>(json!({
         "manifest": manifest,
-        "buildSystemID": "maven",
+        "buildSystemID": "fixture",
         "request": {
             "document": empty_team,
             "local": unchecked["edit"]["local"],
@@ -3162,7 +3184,7 @@ fn model_option_defaults_and_exclusions_round_trip_through_storage_and_plans() {
     // Returning to `["dev"]` removes the local override altogether.
     let restored = build_edit_stored_option_command::<Manifest>(json!({
         "manifest": manifest,
-        "buildSystemID": "maven",
+        "buildSystemID": "fixture",
         "request": {
             "document": empty_team,
             "local": switched["edit"]["local"],
@@ -3179,4 +3201,127 @@ fn model_option_defaults_and_exclusions_round_trip_through_storage_and_plans() {
     assert_eq!(restored["edit"]["local"]["emptySelections"], json!({}));
     let after_restore = option_by_id(&restored["edit"]["options"], "profiles");
     assert_eq!(after_restore["source"], "default");
+}
+
+fn option_edit_fixture() -> Value {
+    serde_json::from_str(include_str!(
+        "../../../../fixtures/build/option-edit-v1.json"
+    ))
+    .unwrap()
+}
+
+#[test]
+fn selecting_model_defaults_preserves_sibling_and_inherited_options() {
+    use crate::build::build_edit_stored_option_command;
+    let fixture = option_edit_fixture();
+    let case = &fixture["restoreDefault"];
+    let outcome = build_edit_stored_option_command::<Manifest>(json!({
+        "manifest": fixture["manifest"],
+        "buildSystemID": "fixture",
+        "request": case["request"],
+    }))
+    .unwrap();
+    let edit = &outcome["edit"];
+    assert_eq!(
+        edit["local"]["document"]["systems"]["fixture"]["options"]["profiles"],
+        case["expectedStoredChoices"],
+        "{outcome}"
+    );
+    assert_eq!(
+        edit["local"]["emptySelections"],
+        case["expectedEmptySelections"]
+    );
+    assert_eq!(
+        edit["options"]["options"][0]["selectedChoices"],
+        case["expectedSelectedChoices"]
+    );
+
+    let mut manifest = fixture["manifest"].clone();
+    manifest["buildSystems"][0]["options"][0]["scope"] = json!("instance");
+    let mut request = case["request"].clone();
+    request["local"] = json!({"version": 1, "document": {"version": 1, "systems": {
+        "fixture": {"instanceDefaults": {"profiles": ["prod"]}}
+    }}});
+    let outcome = build_edit_stored_option_command::<Manifest>(json!({
+        "manifest": manifest,
+        "buildSystemID": "fixture",
+        "request": request,
+    }))
+    .unwrap();
+    let edit = &outcome["edit"];
+    assert_eq!(
+        edit["local"]["document"]["systems"]["fixture"]["instances"]["a"]["profiles"],
+        json!(["dev"]),
+        "{outcome}"
+    );
+    assert_eq!(
+        edit["options"]["options"][0]["selectedChoices"],
+        json!(["dev"])
+    );
+}
+
+#[test]
+fn observed_model_choices_apply_only_to_the_matching_build_options() {
+    use crate::build::build_model_tree_command;
+    let fixture = option_edit_fixture();
+    let manifest = &fixture["manifest"];
+    let workspace = TemporaryWorkspace::new("observed-build-option-choices");
+    let stored = json!({"profiles": ["prod"]});
+    let result = build_decode_model_command::<Manifest>(json!({
+        "manifest": manifest,
+        "buildSystemID": "fixture",
+        "request": {
+            "workspaceRoot": workspace.root(), "root": ".", "options": stored,
+            "output": json!({
+                "format": "litheBuildModel", "version": 0,
+                "optionValues": {"profiles": ["dev", "prod"]},
+                "optionDefaults": {"profiles": ["dev"]},
+                "optionExcludePrefixes": {"profiles": "-"},
+                "optionActiveChoices": {"profiles": ["prod", "dev", "-dev", "unknown"]}
+            }).to_string()
+        }
+    }))
+    .unwrap();
+    let model = &result["model"];
+    assert_eq!(
+        model["optionSelection"]["activeChoices"]["profiles"],
+        json!(["dev", "prod"]),
+        "{result}"
+    );
+    let mut request = json!({
+        "options": stored, "modelValues": model["optionValues"],
+        "modelDefaults": model["optionDefaults"],
+        "modelExcludePrefixes": model["optionExcludePrefixes"],
+        "modelSelection": model["optionSelection"]
+    });
+    let resolve = |request: &Value| {
+        let result = build_resolve_options_command::<Manifest>(json!({
+            "manifest": manifest, "buildSystemID": "fixture", "request": request
+        }))
+        .unwrap();
+        result["options"]["options"][0]["selectedChoices"].clone()
+    };
+    assert_eq!(resolve(&request), json!(["dev", "prod"]));
+    let mut editor_request = request.clone();
+    editor_request["inheritedOptions"] = stored.clone();
+    editor_request["options"] = json!({});
+    assert_eq!(resolve(&editor_request), json!(["dev", "prod"]));
+    editor_request["selectedChoices"] = json!({"profiles": ["dev"]});
+    assert_eq!(resolve(&editor_request), json!(["dev"]));
+
+    request["options"]["profiles"] = json!(["-dev", "prod"]);
+    assert_eq!(resolve(&request), json!(["prod"]));
+    let tree = build_model_tree_command::<Manifest>(json!({
+        "manifest": manifest, "buildSystemID": "fixture",
+        "request": {"model": model, "options": stored}
+    }))
+    .unwrap();
+    assert_eq!(
+        tree["tree"]["nodes"][0]["children"][0]["checked"], true,
+        "{tree}"
+    );
+    assert_eq!(
+        tree["tree"]["nodes"][0]["children"][1]["checked"], true,
+        "{tree}"
+    );
 }
