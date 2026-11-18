@@ -198,6 +198,7 @@ impl LspEngine {
             ),
             provider_id: request.provider_id,
             plugin_id: request.plugin_id,
+            function_relay_enabled: request.function_relay_enabled,
             workspace_host: lithe_workspace::current(),
             plugin_configuration: Mutex::new(workspace_configuration.map(Arc::new)),
             indexing_exclusions,
@@ -208,7 +209,19 @@ impl LspEngine {
             state: Mutex::new(SessionState {
                 lifecycle: LspLifecycleState::Created,
                 client: LspClientState {
-                    host_services: request.host_services.into_iter().collect(),
+                    host_services: request
+                        .host_services
+                        .into_iter()
+                        .filter(|service| {
+                            request.function_relay_enabled
+                                || !matches!(
+                                    service.as_str(),
+                                    lithe_plugin_rpc::HOST_SERVICE_FUNCTIONS
+                                        | lithe_plugin_rpc::FUNCTIONS_PROVIDERS
+                                        | lithe_plugin_rpc::FUNCTIONS_INVOKE
+                                )
+                        })
+                        .collect(),
                     host_options: request.host_options,
                     ..initialize.state
                 },

@@ -42,7 +42,7 @@ Lithe 读取并校验 `plugin.json`，然后自己启动其中声明的外部进
 
 1. **复制模板。** 以 [Lua 插件](https://github.com/Lithe-IDEA/lithe-plugin-lua) 为起点，它是 Lithe Store 的示例和模板。
 2. **改 `plugin.json`。** 换成你自己的 ID、名称、语言和语言服务器，并按[下面](#清单里的版本号)的规则写版本号和 `requires`。先按[后面一节](#在编辑器里校验-pluginjson)配置编辑器，写错字段时会直接提示。
-3. **在构建阶段准备好所有文件。** 语言服务器、后端都在打包时放进插件包，运行时不下载任何东西。详见 [LSP 插件完整生命周期教程](guides/lsp-plugin-lifecycle.md)。
+3. **在构建阶段准备插件代码。** 后端及其运行时随包提供；语言服务器可随包提供，或通过 [`managedRuntimes`](contract/v1/README.md#managed-runtimes) 声明固定下载与校验，由支持该能力的宿主在安装审查后准备、跨插件版本复用。详见 [LSP 插件完整生命周期教程](guides/lsp-plugin-lifecycle.md)。
 4. **在 Lithe 里试装。** 开发时可以用“从磁盘安装插件…”选择 zip 或目录（同样要确认安装审查；Lithe 安装的是一份快照，改完要重新安装）。发布前在自己仓库发一个 Release，并在仓库根目录放 `lithe-plugin-index.json`，然后在“管理插件仓库…”里加入你的仓库地址，走一遍用户的真实安装流程。
 5. **发布。** 想让所有 Lithe 用户在插件市场看到，按 [Lithe Store 发布指南](https://github.com/Lithe-IDEA/Lithe-store/blob/main/docs/publishing.md) 收录；收录后新版本会被自动追踪。
 
@@ -118,7 +118,7 @@ lithe-plugin-sdk = { git = "https://github.com/Lithe-IDEA/Lithe-core-rust", tag 
 
 SDK 的源码都在本目录的 `sdk/` 下，发布在 [Core 仓库的 Releases](https://github.com/Lithe-IDEA/Lithe-core-rust/releases) 里（标签 `sdk-node-v<版本>`、`sdk-java-v<版本>`、`sdk-rust-v<版本>`），不在 npm、Maven 或 crates.io 上。Rust SDK 只实现插件后端（`backend`）：插件函数和宿主服务；构建后端请用 Node.js 或 Java SDK，VCS 后端请用 Node.js SDK。各 SDK 的 README 有 “What the Lithe desktop serves” 一节，说明 Lithe 桌面端提供哪些协议；各协议的版本见[进程协议版本](reference/capabilities-and-versions.md#进程协议版本)。以上三个版本说的是版本 `0` 的协议；已退役的 `lithe-plugin-docs` 仓库发布过更早的 SDK，它们说的是旧协议，Lithe 桌面端不接受用它们写的插件，请只使用 Core 仓库发布的版本。
 
-规则只有一条：**在构建时下载，并按你锁定的 SHA-256（或 Git commit）校验；运行时不下载任何东西。** 插件包安装后没有 `npm install` 步骤，也必须能离线运行。
+SDK 与插件后端在构建时下载，并按锁定的 SHA-256（或 Git commit）校验；插件包安装后没有 `npm install` 步骤。独立的大型依赖可声明 [`managedRuntimes`](contract/v1/README.md#managed-runtimes)：宿主在用户批准安装后校验并准备，完整缓存可离线复用；插件自身不能用启动脚本绕过这项声明或自行改写包。
 
 [Maven 插件](https://github.com/Lithe-IDEA/lithe-plugin-maven) 的 `sdk.lock.json` 是锁定 Java SDK 的现成例子。
 
@@ -252,7 +252,7 @@ Community plugins must follow these rules:
 
 1. **Copy the template.** Start from the [Lua plugin](https://github.com/Lithe-IDEA/lithe-plugin-lua), Lithe Store's example and template.
 2. **Edit `plugin.json`.** Use your own ID, name, language, and language server, and write the version numbers and `requires` by the rules [below](#version-numbers-in-the-manifest). Set up your editor as in the [section after that](#validate-pluginjson-in-your-editor) first, so mistyped fields are flagged as you write.
-3. **Prepare every file at build time.** Language servers and backends go into the package when you build it; nothing is downloaded at run time. See the [LSP plugin lifecycle guide](guides/lsp-plugin-lifecycle.md).
+3. **Prepare plugin code at build time.** Package the backend and its own runtime. Ship language servers in the package, or declare pinned dependencies through [`managedRuntimes`](contract/v1/README.md#managed-runtimes) for a supporting host to prepare after install review and reuse across plugin versions. See the [LSP plugin lifecycle guide](guides/lsp-plugin-lifecycle.md).
 4. **Try it in Lithe.** During development, use "Install Plugin from Disk…" with a zip or directory (you still confirm the install review; Lithe installs a snapshot, so reinstall after each change). Before publishing, create a Release in your repository, put `lithe-plugin-index.json` at the repository root, and add your repository under "Manage Plugin Repositories…" to walk through the real user install flow.
 5. **Publish.** To list the plugin in every Lithe user's marketplace, follow the [Lithe Store publishing guide](https://github.com/Lithe-IDEA/Lithe-store/blob/main/docs/publishing.md); new versions are tracked automatically once listed.
 
@@ -328,7 +328,7 @@ lithe-plugin-sdk = { git = "https://github.com/Lithe-IDEA/Lithe-core-rust", tag 
 
 All SDK sources live under `sdk/` in this directory and are published in the [Core repository's Releases](https://github.com/Lithe-IDEA/Lithe-core-rust/releases) (tags `sdk-node-v<version>`, `sdk-java-v<version>`, `sdk-rust-v<version>`), not on npm, Maven, or crates.io. The Rust SDK implements only the plugin backend (`backend`): plugin functions and host services; write build backends with the Node.js or Java SDK and VCS backends with the Node.js SDK. Each SDK's README has a "What the Lithe desktop serves" section naming the protocols the Lithe desktop client provides; the version of each protocol is in [Process protocol versions](reference/capabilities-and-versions.md#process-protocol-versions). The three versions above speak the version `0` protocols; the retired `lithe-plugin-docs` repository published earlier SDKs that speak an older protocol, and the Lithe desktop client does not accept plugins written with them, so use only versions released from the Core repository.
 
-There is one rule: **download at build time and verify against the SHA-256 (or Git commit) you pinned; download nothing at run time.** An installed package has no `npm install` step and must run offline.
+Download SDKs and plugin backends at build time and verify against the SHA-256 (or Git commit) you pinned. An installed package has no `npm install` step. Large independent dependencies can declare [`managedRuntimes`](contract/v1/README.md#managed-runtimes): the host verifies and prepares them after approved installation, and complete cached sets work offline. Plugin launch scripts must not bypass this declaration or rewrite the package.
 
 The [Maven plugin](https://github.com/Lithe-IDEA/lithe-plugin-maven)'s `sdk.lock.json` is a ready example of pinning the Java SDK.
 

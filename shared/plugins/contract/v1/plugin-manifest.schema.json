@@ -11,6 +11,7 @@
     {"if": {"required": ["toolDefinitions"]}, "then": {"properties": {"requires": {"required": ["toolDefinitions"]}}}},
     {"if": {"required": ["buildSystems"], "properties": {"buildSystems": {"contains": {"required": ["runConfigurationTypes"]}}}}, "then": {"properties": {"requires": {"required": ["runConfigurationTypes"]}}}},
     {"if": {"required": ["commandInstallers"]}, "then": {"required": ["permissions"], "properties": {"requires": {"required": ["commandInstallers"]}, "permissions": {"contains": {"const": "commands.install"}}}}},
+    {"if": {"required": ["managedRuntimes"]}, "then": {"required": ["backend", "permissions"], "properties": {"requires": {"required": ["managedRuntimes", "backend"]}, "permissions": {"allOf": [{"contains": {"const": "runtimes.install"}}, {"contains": {"const": "backend.launch"}}]}}}},
     {"if": {"required": ["toolchainProviders"]}, "then": {"required": ["backend"], "properties": {"requires": {"required": ["toolchainProviders", "backend"]}, "permissions": {"allOf": [{"contains": {"const": "toolchains.provide"}}, {"contains": {"const": "backend.launch"}}]}}}},
     {"if": {"required": ["pluginFunctions"]}, "then": {"required": ["backend"], "properties": {"requires": {"required": ["pluginFunctions", "backend"]}}}},
     {"if": {"required": ["keymapImportProviders"]}, "then": {"required": ["backend", "permissions"], "properties": {"requires": {"required": ["keymapImportProviders", "backend"]}, "permissions": {"allOf": [{"contains": {"const": "keymaps.provide"}}, {"contains": {"const": "keymaps.readSelectedSources"}}, {"contains": {"const": "backend.launch"}}]}}}},
@@ -37,6 +38,7 @@
         "executionProviders": { "enum": [0] },
         "languageServers": { "description": "Required exactly when languageServers is non-empty. Covers languageServers[].workspaceConfiguration and the session fields requestMethods, commands, serializedCommands, forwardNotifications, state, and remote.", "enum": [0] },
         "languages": { "description": "Required exactly when languages is non-empty. Covers languages[].grammar, a TextMate grammar, and languages[].configuration.", "enum": [0] },
+        "managedRuntimes": { "description": "Required exactly when managedRuntimes is present: approved pinned runtime archives, plugin-owned qualification and host-owned installation outside versioned packages.", "enum": [0] },
         "outputLinkMatchers": { "description": "Required exactly when outputLinkMatchers is non-empty.", "enum": [0] },
         "packageTrust": { "description": "Required exactly when vendor.bundledSignatureRequirement is present.", "enum": [0] },
         "projectGenerators": { "description": "Entries of the New Project window: fields, requirements, and steps, with tool fields that pick tool installations.", "enum": [0] },
@@ -72,7 +74,7 @@
     },
     "permissions": {
       "type": "array",
-      "items": { "enum": ["backend.launch", "commands.install", "credentials.store", "debug.attach", "debug.launch", "languageServer.launch", "process.build", "process.run", "process.test", "process.vcs", "project.generate", "ui.contribute", "ui.web", "workspace.metadata",
+      "items": { "enum": ["backend.launch", "commands.install", "credentials.store", "debug.attach", "debug.launch", "languageServer.launch", "process.build", "process.run", "process.test", "process.vcs", "project.generate", "runtimes.install", "ui.contribute", "ui.web", "workspace.metadata",
           "workspace.files.read",
           "workspace.files.watch",
           "workspace.search",
@@ -161,6 +163,7 @@
       "maxItems": 16,
       "items": { "$ref": "#/$defs/commandInstaller" }
     },
+    "managedRuntimes": { "$ref": "#/$defs/managedRuntimes" },
     "projectGenerators": {
       "description": "requires.projectGenerators: entries of the New Project window. Requires the project.generate permission.",
       "type": "array",
@@ -952,6 +955,55 @@
           }
         }
       }
+    },
+    "managedRuntimes": {
+      "description": "A dependency set qualified by the plugin backend before install/update commit and repaired lazily before launch. Requires runtimes.install and a backend that carries its own executable/runtime.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resolve", "dependencies"],
+      "properties": {
+        "resolve": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["function"],
+          "properties": {
+            "function": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-z][A-Za-z0-9]*(?:\\.[a-z][A-Za-z0-9]*)*$" },
+            "timeoutMilliseconds": { "type": "integer", "minimum": 100, "maximum": 120000, "default": 30000 }
+          }
+        },
+        "dependencies": {
+          "type": "array", "minItems": 1, "maxItems": 16,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["id", "version", "artifacts"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z0-9-]+$", "maxLength": 64 },
+              "version": { "type": "string", "minLength": 1, "maxLength": 128 },
+              "tool": { "description": "One unique tool this plugin defines and lists in requiresTools. Selected only for this plugin's server session.", "$ref": "#/$defs/toolchainToolID" },
+              "artifacts": { "type": "array", "minItems": 1, "maxItems": 6, "items": { "$ref": "#/$defs/managedRuntimeArtifact" } }
+            }
+          }
+        }
+      }
+    },
+    "managedRuntimeArtifact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["os", "arch", "url", "sha256", "archive"],
+      "properties": {
+        "os": { "enum": ["macos", "windows", "linux"] },
+        "arch": { "enum": ["arm64", "x86_64"] },
+        "url": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^https://", "description": "HTTPS without credentials or fragments; semantic URL validation is performed by Core." },
+        "sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
+        "archive": { "enum": ["zip", "tar.gz"] },
+        "stripPrefix": { "$ref": "#/$defs/managedRuntimePath", "default": "" },
+        "home": { "$ref": "#/$defs/managedRuntimePath", "default": "" },
+        "executable": { "$ref": "#/$defs/managedRuntimePath", "default": "", "description": "Relative to home, required and nonempty exactly when the dependency binds a tool." }
+      }
+    },
+    "managedRuntimePath": {
+      "description": "Empty or a portable relative path, without empty, dot or parent components; no backslash, colon, control character or surrounding whitespace.",
+      "type": "string", "maxLength": 512,
+      "pattern": "^(?:[^/\\\\:]+(?:/[^/\\\\:]+)*)?$"
     },
     "commandInstaller": {
       "description": "One way to install bare commands. The host shows the tool, the expanded command line, the network use and the target directory, and runs it only after the user confirms.",

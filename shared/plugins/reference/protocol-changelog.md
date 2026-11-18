@@ -12,6 +12,10 @@
 - **API 编号**：这个 PR 涉及的 API-01–44 规划编号，来自 [API 实施计划](https://github.com/1lck/Lithe-IDEA/blob/main/docs/development/macos-plugin-api-plan.md)，和协议版本、能力版本分开记录。— 表示没有改到具体 API，例如清单、市场、包信任、SDK 或契约文档整理。
 - **协议 / 能力**：**加粗**的是这个 PR 新增的版本号；没有加粗的，是同一版本内的补充、宿主接入或说明修正。
 
+## 待合入
+
+- `managedRuntimes` 0（API-23）：新增固定 HTTPS 归档与 SHA-256、平台选择、与插件版本无关的缓存身份，以及插件后端对外部/暂存依赖的资格检查契约。新增权限 `runtimes.install`、审查程序 `managedRuntime`、Core 命令 `plugins.managedRuntimes.plan` 与 `plugins.managedRuntimes.decodeResolution`；正常语言服务器启动可接收只读 `runtimes` 映射。原生 `lsp.startServer` 新增可选 `functionRelayEnabled`（默认 true），准备会话设为 false 隔离跨插件调用但保留宿主直接调用。无新增宿主 RPC 或 SDK 版本。实现见 [#96](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/96)（lithe-support[bot]）；合入日期在合并后补入下方时间线。宿主须先发布对应能力，插件才可要求它。
+
 ## 按协议查首次出现
 
 所有版本都从 `0` 开始。以后一个 PR 给某个能力加版本 `1` 时，在对应的表里为它加一行。

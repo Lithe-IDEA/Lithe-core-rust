@@ -97,6 +97,10 @@ pub const DEBUG_ADAPTERS: &str = "debugAdapters";
 /// `lithe_plugin_manifest::command_installers`.
 pub const COMMAND_INSTALLERS: &str = "commandInstallers";
 
+/// `managedRuntimes`: pinned archives, isolated runtime storage, and the
+/// plugin-owned discovery and validation hook invoked before publication.
+pub const MANAGED_RUNTIMES: &str = "managedRuntimes";
+
 /// Independent providers that translate external shortcut settings.
 pub const KEYMAP_IMPORT_PROVIDERS: &str = "keymapImportProviders";
 /// `pluginFunctions`: functions exported to, and called from, other plugins;
@@ -124,6 +128,7 @@ pub const SUPPORTED_CAPABILITIES: &[(&str, &[u32])] = &[
     (KEYMAP_IMPORT_PROVIDERS, &[0]),
     (LANGUAGE_SERVERS, &[0]),
     (LANGUAGES, &[0]),
+    (MANAGED_RUNTIMES, &[0]),
     (OUTPUT_LINK_MATCHERS, &[0]),
     (PACKAGE_TRUST, &[0]),
     (PLUGIN_FUNCTIONS, &[0]),

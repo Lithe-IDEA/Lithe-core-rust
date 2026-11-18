@@ -78,6 +78,16 @@ pub(super) fn dispatch(
             payload,
             lithe_plugin_manifest::command_installer_default_directory_command,
         ),
+        PluginsCommand::ManagedRuntimesPlan => plugin_response(
+            id,
+            payload,
+            lithe_plugin_manifest::managed_runtime_plan_command,
+        ),
+        PluginsCommand::ManagedRuntimesDecodeResolution => plugin_response(
+            id,
+            payload,
+            lithe_plugin_manifest::managed_runtime_resolution_command,
+        ),
         PluginsCommand::ContentProvidersDecode => plugin_response(
             id,
             payload,

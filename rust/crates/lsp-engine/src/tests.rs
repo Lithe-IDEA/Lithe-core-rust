@@ -18,6 +18,7 @@ pub(super) fn start_request(server: &ScriptedServer) -> StartServerRequest {
         role: SessionRole::LanguageServer,
         log_subject: None,
         plugin_id: None,
+        function_relay_enabled: true,
         startup_operation: None,
         host_services: Vec::new(),
         host_options: Default::default(),

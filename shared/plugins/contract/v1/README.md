@@ -181,6 +181,7 @@ symbolic links. A host treats an installed package as read-only.
 | `ui` | Host-rendered tool windows and commands. |
 | `buildSystems` | Project-level build tools. |
 | `commandInstallers` | How the host installs a bare command a `systemCommand` launch needs; requires `commandInstallers: 0` and `commands.install`; see [Command installers](#command-installers). |
+| `managedRuntimes` | Pinned dependencies qualified by a packaged backend and installed in host-owned storage independent of plugin version; requires `managedRuntimes: 0` and `runtimes.install`; see [Managed runtimes](#managed-runtimes). |
 | `toolDefinitions` | Plugin-owned tool policy ([Core foundation](toolchains/README.md)); requires `toolDefinitions: 0`; a host may offer read-only discovery and resolve Build and run tools. |
 | `toolchainProviders` | Backend fact-provider declarations ([Core foundation](toolchains/README.md)); requires `toolchainProviders: 0`, `backend: 0` and `toolchains.provide`. |
 | `keymapImportProviders` | Independent shortcut import providers; requires `keymapImportProviders: 0`, `backend: 0` and `keymaps.provide`. A host provides access to explicitly selected sources. |
@@ -974,6 +975,7 @@ belongs to one capability:
 | `outputLinkMatchers` | [`outputLinkMatchers[]`](#output-link-matchers) | — | Turns Run and Test console text into links through the declared patterns. |
 | `projectGenerators` | [`projectGenerators[]`](#project-generators), including [`tool` fields](#tool-fields) | — | Lists the entries in the New Project window and generates the project. |
 | `commandInstallers` | [`commandInstallers[]`](#command-installers) | — | Reports missing commands of `systemCommand` launches and installs them after the user confirms the command line, the network use and the target. |
+| `managedRuntimes` | [`managedRuntimes`](#managed-runtimes) | Existing backend functions | Qualifies external and cached dependencies before committing an approved install/update, downloads only missing pinned artifacts, and repairs missing state before a server starts. |
 | `backend` | [`backend`](#plugin-backend): the plugin's own long-lived process | `litheFunctions` | Starts the backend with or without a page, serves the host services its permissions grant, and speaks `litheFunctions`. |
 | `toolDefinitions` | `toolDefinitions[]`: [tool identities, layouts, discovery and four-layer candidates](toolchains/README.md) | — | Resolves the definitions through the four layers. |
 | `toolchainProviders` | `toolchainProviders[]`: [provider declarations and permission-bound answer validation](toolchains/README.md) | toolchain provider protocol (`litheToolchains`) | Starts the provider and validates its answers. |
@@ -1137,7 +1139,7 @@ process does not use `${workspaceStateDir}`; otherwise the request is
 | `requiredDirectories` | `state`, `workspaceState`, `log`, and/or `temporary`: the directories the host must create before starting the server. |
 | `requiredPackagePaths` | Sorted package-relative paths the launch points at. The host verifies each is inside the package and not a symbolic link before starting the server. |
 | `settings` | Effective value of every declared setting that produced this plan; absent when the plugin declares none. |
-| `resolveParams` | Present only for a backend-resolved launch: the params of the launch function, without the `context` and the optional `tools` the host adds. |
+| `resolveParams` | Present only for a backend-resolved launch: the params of the launch function, without the `context`, optional `tools`, and optional read-only `runtimes` map the host adds. |
 | `environment`, `writablePaths` | Present only in the plan `decodeLaunch` returns: the variables of the process, and the paths it writes. |
 | `sessionPolicy` | Present for a language server that declares session fields: the [session policy](#plugin-owned-sessions) the host passes to `lsp.startServer` unchanged. |
 | `buildProvider` | Present only for a `buildSystemID` selection: `{buildSystemID, executesProjectCode, mayUseNetwork, languageServer?}`. `languageServer` names the language whose server is the provider; the rest of the plan is then that server's plan, and the host reuses its running session instead of starting a second process. |
@@ -1420,6 +1422,174 @@ approved again. See
 and the golden cases in
 [`command-installer-plans.json`](fixtures/command-installers/command-installer-plans.json).
 
+## Managed runtimes
+
+`managedRuntimes: 0` lets a plugin qualify existing native installations and ask
+the host to install only its missing, pinned dependencies. Dependencies live
+outside the immutable plugin package and its versioned state directory. Their
+identity is independent of `manifest.version`, so an update that changes only
+plugin code reuses an already qualified runtime without another download.
+No dependency path changes the user's project compiler or global tool selection.
+
+```json
+"requires": {"backend": 0, "managedRuntimes": 0},
+"permissions": ["backend.launch", "runtimes.install"],
+"managedRuntimes": {
+  "resolve": {"function": "runtime.resolve", "timeoutMilliseconds": 30000},
+  "dependencies": [{
+    "id": "engine", "version": "4.2.0",
+    "artifacts": [{
+      "os": "linux", "arch": "x86_64",
+      "url": "https://example.invalid/engine-4.2.0.tar.gz",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "archive": "tar.gz", "stripPrefix": "engine-4.2.0", "home": ""
+    }]
+  }]
+}
+```
+
+The illustration's digest and domain are inert examples, not downloadable assets.
+The backend and any runtime needed to execute that backend must be packaged
+(`packaged`, or `runtime` with `packagedRuntime`, without external runtime
+dependencies). This prevents a bootstrap cycle: the resolver runs before the
+dependency set or the new package version is committed. Declaring the resolver
+is itself a backend activation trigger; it needs no workspace or UI contribution.
+
+| Field | Contract |
+| --- | --- |
+| `resolve` | Required `{function, timeoutMilliseconds?}`. A private backend function ID; timeout 100–120000 milliseconds, default 30000. It uses the existing `litheFunctions` protocol and requires no export. |
+| `dependencies` | 1–16 entries, sorted by `id` on normalization. IDs are unique lowercase letters, digits and hyphens, at most 64 bytes. |
+| `version` | Required nonempty opaque upstream identity, at most 128 bytes, without controls or surrounding whitespace. It is not the plugin version and is not compared as semver by Core. |
+| `tool` | Optional unique tool binding. The plugin must own that `toolDefinitions` ID and list it in `requiresTools`. It is available only in this plugin's language-server session. |
+| `artifacts` | 1–6 entries, one per distinct exact `os`/`arch` pair. OS is `macos`, `windows` or `linux`; architecture is `arm64` or `x86_64`. No target fallback or wildcard. |
+| `url`, `sha256`, `archive` | HTTPS URL without credentials or fragments, at most 4096 bytes; complete SHA-256 normalized to lowercase; explicit `zip` or `tar.gz`. The host verifies bytes before extracting. |
+| `stripPrefix` | Exact archive root removed by extraction, default empty. |
+| `home` | Relative to the stripped extraction root, default empty for the root itself. |
+| `executable` | Relative to `home`; required and nonempty exactly when `tool` is present. The host derives the executable from the qualified home and this path. |
+
+The three layout paths are empty or portable `/`-separated relative paths of at
+most 512 bytes, with no empty, `.` or `..` component, backslash, colon, control
+character or surrounding whitespace. They contain no template variables. Native
+extraction also rejects escaping links, duplicate/aliased entries, oversized
+archives and nonregular payload types; Core does not inspect a filesystem.
+The desktop extraction budgets are 512 MiB compressed, 4 GiB expanded, 50,000
+entries and a 32 MiB completion inventory. Permission bits are preserved where
+the native filesystem supports them, and safe archive links are created last.
+
+### Runtime qualification
+
+The host calls the resolver with this typed input:
+
+```json
+{
+  "platform": {"os": "linux", "arch": "x86_64"},
+  "dependencies": [{"id": "engine", "version": "4.2.0", "os": "linux", "arch": "x86_64", "url": "https://example.invalid/engine.tar.gz", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "archive": "tar.gz", "stripPrefix": "engine", "home": "", "executable": "", "cacheKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}],
+  "candidates": {"engine": "/host/managed/engine"},
+  "tools": {},
+  "settings": {}
+}
+```
+
+`dependencies` is the selected plan from Core, including an optional `tool`.
+`candidates` maps dependency IDs to existing or newly staged managed homes;
+the hook can be called repeatedly during preparation. `tools`, when available,
+maps tool IDs to `{executable, home, version}` discovered by the host, with
+optional `provider` and `layer` facts copied unchanged from Core's toolchain
+resolution. The plugin can use those facts to distinguish an explicit selection
+from automatic discovery without duplicating selection policy in the host. Settings
+are the effective declared plugin settings. Optional `language` is the host UI's
+BCP 47 language tag (for example `en-US` or `zh-Hans`) for localized qualification
+errors; plugins fall back to English when it is absent or unsupported.
+No workspace is required for install
+preflight; no candidate or external home is a writable state directory.
+
+The plugin owns compatibility: it inspects required files, probes the actual
+runtime, checks extension compatibility and rejects broken explicit settings.
+Explicit user paths take precedence. Otherwise it tries qualified candidates,
+then eligible external installations, and reports only unmet dependencies as
+missing. A configured but unusable explicit path is an error, never a request
+to silently download a replacement. The host must not implement language names,
+version rules, layout probes or discovery heuristics for a particular plugin.
+
+The response has exactly `runtimes` and `missing`:
+
+```json
+{"runtimes": [{"id": "engine", "home": "/opt/engine", "version": "4.2.1"}], "missing": []}
+```
+
+Every declared dependency occurs exactly once across the two arrays. Unknown or
+duplicate IDs are rejected. A returned home is an absolute path for the requested
+native OS, at most 4096 bytes, without controls or dot/parent components; version
+is a bounded nonempty identity under the same rules as the declaration. Core
+validates structure and identity; the plugin qualifies compatibility and the host
+checks native evidence. The host never writes into an external home.
+
+### Runtime preparation, approval and reuse
+
+Installation review includes `runtimes.install`, explaining network downloads
+and installation of executable dependencies, plus one program of kind
+`managedRuntime` per dependency. That program contains the complete normalized
+dependency, all platform URLs and hashes, and the resolver declaration. Changing
+any of them is a changed reviewed program. Package content integrity binds this
+manifest as it does other program declarations. Preparation starts only after
+the normal installation/update review succeeds.
+
+The native preparation backend starts with no host-service grants and
+`lsp.startServer.functionRelayEnabled: false`. This optional native flag defaults
+to true for existing sessions. False excludes the temporary backend from both
+incoming and outgoing cross-plugin routing, even if an installed backend shares
+its plugin ID. Direct host-to-session resolver calls, capability discovery and
+structured logging still work. The preparation process is stopped and disposed
+before its private state is removed; it never replaces the normal backend in
+the host's installed-session registry.
+
+The host qualifies external/cached homes before downloading. It downloads only
+missing dependencies into private staging, verifies pinned content and safe
+extraction, and calls the resolver again with staged homes. It serializes cache
+publication across windows and processes. The complete newly qualified set is
+published before the approved package installation is committed; failures or
+cancellation retain the previously usable package and set. Existing sessions
+keep their selected homes. A failed dependency cannot produce a partially active
+set or launch the new language server. The host can retry this preparation when
+a declared managed dependency is absent or damaged before launch.
+
+Storage is under a host-managed plugin directory independent of plugin version.
+`cacheKey` is an opaque 64-character lowercase SHA-256 of Core's normalized
+selected dependency identity (including platform, upstream version, URL, digest
+and layout), excluding plugin version. Hosts use that key without reconstructing
+it. Cached content must pass native integrity checks and plugin qualification;
+existence alone is insufficient. A verified unchanged set works offline. A new
+or damaged dependency that cannot be downloaded produces an actionable failure;
+it does not destroy the prior set. Updating a plugin never clears all runtime
+caches. Removal/reclamation must not remove a home used by a live session.
+
+After preparation the host adds optional `runtimes: {<id>: {home, version}}`
+to a backend-resolved language server's `resolveParams`. It is read-only launch
+information, not a writable directory grant. A tool binding supplies
+`tools[tool]` and the corresponding `{kind: "tool", tool}` launch from the
+qualified home in that session only. Global toolchain catalogs, project pins and
+project runtime selection remain independent. There is no absolute executable
+answer kind and no runtime directory template variable.
+
+### Managed runtime Core commands
+
+`plugins.managedRuntimes.plan` accepts `{manifest, platform:{os,arch}}` and
+returns `{status:"ok", plan:{resolve, dependencies:[...]}}`. Each selected
+dependency contains `id`, `version`, optional `tool`, `os`, `arch`, `url`,
+`sha256`, `archive`, `stripPrefix`, `home`, `executable` and `cacheKey`.
+Without a declaration it returns `plan:{dependencies:[]}` without `resolve`.
+
+`plugins.managedRuntimes.decodeResolution` accepts
+`{manifest, platform:{os,arch}, result}` and returns
+`{status:"ok", resolution:{runtimes,missing}}`, sorted by dependency ID.
+Both commands revalidate the manifest and perform no native I/O. A target without
+all required artifacts is `plugin.managedRuntime.unavailable`; invalid resolver
+output is `plugin.managedRuntime.invalidResolution`; malformed declarations use
+`plugin.manifest.invalid`. Malformed command envelopes use `invalid_request`.
+The shared inert fixture is `rust/fixtures/plugins/managed-runtimes.json`.
+Older hosts that do not advertise this capability reject
+`requires.managedRuntimes` precisely, while existing manifests are unchanged.
+
 ## Permissions and activation
 
 | Permission | Required when |
@@ -1433,6 +1603,7 @@ and the golden cases in
 | `debug.attach` | an adapter lists `attach` in `requests` (and only then); it also covers attaching to a remote host and port |
 | `project.generate` | `projectGenerators` is not empty |
 | `commands.install` | `commandInstallers` is not empty (and only then); permits running the declared installations after the user confirms each, nothing else |
+| `runtimes.install` | `managedRuntimes` is present (and only then); permits the host to download and install its pinned archives after normal plugin install/update review, and repair their managed storage |
 | `ui.contribute` | `ui` is declared |
 | `ui.web` | a tool window shows [web content](#web-content) |
 | `backend.launch` | `backend` is declared |

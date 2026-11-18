@@ -244,6 +244,10 @@ pub enum PluginsCommand {
     CommandInstallersPlan,
     /// Reads where a `toolDefault` installation puts its commands (`plugins.commandInstallers.defaultDirectory`).
     CommandInstallersDefaultDirectory,
+    /// Selects pinned runtime artifacts for one target (`plugins.managedRuntimes.plan`).
+    ManagedRuntimesPlan,
+    /// Validates the plugin resolver's complete runtime partition (`plugins.managedRuntimes.decodeResolution`).
+    ManagedRuntimesDecodeResolution,
     /// Checks a plugin content provider's answer (`plugins.contentProviders.decode`).
     ContentProvidersDecode,
     /// Merges a plugin's stored setting layers into effective values (`plugins.declarative.resolveSettings`).
@@ -1065,6 +1069,12 @@ impl CoreCommand {
             "plugins.commandInstallers.defaultDirectory" => Some(Self::Plugins(
                 PluginsCommand::CommandInstallersDefaultDirectory,
             )),
+            "plugins.managedRuntimes.plan" => {
+                Some(Self::Plugins(PluginsCommand::ManagedRuntimesPlan))
+            }
+            "plugins.managedRuntimes.decodeResolution" => Some(Self::Plugins(
+                PluginsCommand::ManagedRuntimesDecodeResolution,
+            )),
             "plugins.contentProviders.decode" => {
                 Some(Self::Plugins(PluginsCommand::ContentProvidersDecode))
             }
@@ -1725,6 +1735,8 @@ mod tests {
             "plugins.commandInstallers.requirements",
             "plugins.commandInstallers.plan",
             "plugins.commandInstallers.defaultDirectory",
+            "plugins.managedRuntimes.plan",
+            "plugins.managedRuntimes.decodeResolution",
             "plugins.contentProviders.decode",
             "lsp.cancelOperation",
             "lsp.pollEvents",

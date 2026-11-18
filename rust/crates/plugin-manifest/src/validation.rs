@@ -287,6 +287,7 @@ impl DeclarativePluginManifest {
                     .any(|action| action.source_editor.is_some())
                     || !self.toolchain_providers.is_empty()
                     || !self.keymap_import_providers.is_empty()
+                    || self.managed_runtimes.is_some()
                     || self
                         .language_servers
                         .iter()
@@ -300,6 +301,7 @@ impl DeclarativePluginManifest {
         // Installers serve the launches above, so they are checked against
         // the validated program list.
         self.validate_command_installers(runtime_tools)?;
+        self.validate_managed_runtimes()?;
         self.validate_permissions()?;
         self.validate_activation_events()?;
         Ok(self)
@@ -365,6 +367,10 @@ impl DeclarativePluginManifest {
             (
                 capabilities::COMMAND_INSTALLERS,
                 !self.command_installers.is_empty(),
+            ),
+            (
+                capabilities::MANAGED_RUNTIMES,
+                self.managed_runtimes.is_some(),
             ),
             (capabilities::BACKEND, self.backend.is_some()),
             (
