@@ -61,6 +61,7 @@ mod remote_sessions;
 mod request_events;
 mod row_selection;
 mod run_configuration;
+mod run_configuration_arrangement;
 pub(crate) mod support;
 mod toolchain_definitions;
 mod toolchain_pins;

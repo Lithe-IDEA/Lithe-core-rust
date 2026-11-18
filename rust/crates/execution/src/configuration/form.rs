@@ -765,6 +765,7 @@ impl Draft {
         let configuration = RunConfiguration {
             id: "user:draft".into(),
             name: stored.name.clone(),
+            folder: None,
             provider: self.kind.provider().into(),
             execution: Execution::default(),
             category: Default::default(),

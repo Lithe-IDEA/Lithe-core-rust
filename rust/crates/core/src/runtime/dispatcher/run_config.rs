@@ -247,6 +247,36 @@ pub(super) fn dispatch(
                 Err(error) => CoreResponse::failure(id, error),
             }
         }
+        RunConfigCommand::CopyConfiguration => {
+            match serde_json::from_value::<crate::execution::CopyConfigurationRequest>(payload)
+                .map_err(|error| {
+                    CoreError::new(
+                        ErrorCode::InvalidRequest,
+                        "Invalid run configuration copy request",
+                    )
+                    .with_details(error.to_string())
+                })
+                .and_then(crate::execution::copy_configuration)
+            {
+                Ok(data) => CoreResponse::success(id, data),
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
+        RunConfigCommand::Arrange => {
+            match serde_json::from_value::<crate::execution::ArrangeRequest>(payload)
+                .map_err(|error| {
+                    CoreError::new(
+                        ErrorCode::InvalidRequest,
+                        "Invalid run configuration arrange request",
+                    )
+                    .with_details(error.to_string())
+                })
+                .and_then(crate::execution::arrange)
+            {
+                Ok(data) => CoreResponse::success(id, data),
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
         RunConfigCommand::ProviderLaunchInputs => {
             match serde_json::from_value::<crate::execution::ProviderLaunchInputsRequest>(payload)
                 .map_err(|error| {

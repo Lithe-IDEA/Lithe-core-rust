@@ -717,6 +717,8 @@ or removing a command fails until the table changes in the same commit.
 | `runConfig.editorForm` | Describe the editor fields and current values of a built-in run configuration |
 | `runConfig.saveConfiguration` | Validate an editor form's values and return field errors or the file changes that save it |
 | `runConfig.deleteConfiguration` | Return the file changes that delete a saved user configuration |
+| `runConfig.copyConfiguration` | Return the file changes that save a copy of any configuration under a new name |
+| `runConfig.arrange` | Return the file changes that move configurations between folders and save the list order |
 | `runConfig.beforeLaunch` | Expand the built-in process runs a configuration starts first, and say whether the user must confirm them |
 | `runConfig.createLaunchPlan` | Project one effective configuration into a platform-neutral Run or Debug plan |
 | `runConfig.providerLaunchInputs` | Resolve user choices for a provider-owned launch |
@@ -3964,6 +3966,47 @@ extension namespaces the editor does not show are kept.
 `runConfig.deleteConfiguration` accepts `{root, configurationId, plugins?}` and
 returns `{changes}` that remove the saved `user:` configuration from every layer.
 Generated entries cannot be deleted.
+
+`runConfig.copyConfiguration` accepts `{root, configurationId, name, plugins?}`
+and replies `{id, changes}`: the copy's new `user:` ID and the changes that
+save it. The copy is the resolved configuration with every saved choice, its
+folder included, under the new ID and `name` (trimmed, 1 to 256 bytes). It is
+saved in the project layer when the original is a user configuration defined
+there without a local override, and in the local layer otherwise, so local
+choices never reach the team. A saved `build.provider` run supersedes the
+generated run with the same selector, so copying a generated one also saves the
+original whole in the local layer under its own ID; both stay listed, and the
+original stops following later name changes of the build model.
+
+#### Folders and order
+
+A configuration may name a `folder`, the folder it is listed in within its
+kind (IntelliJ IDEA's `folderName`): 1 to 256 bytes, without surrounding
+whitespace or control characters. A folder is display metadata saved in the
+configuration, so a project configuration carries its folder to the team, and
+a local entry `{id, folder}` overrides it like any other key; launching
+ignores it. An invalid folder makes the configuration unavailable
+(`invalidConfiguration`).
+
+The order of the list and whether it is sorted by name are this machine's
+choice, saved only in the local Lithe document under `arrangement:
+{sortAlphabetically?: boolean, order?: string[]}`. The default sorts by name,
+ignoring case. `runConfig.resolve` returns the configurations in the order the
+list shows them and adds `sortAlphabetically`: by name when sorted, otherwise in
+the saved `order`, with the configurations it does not name after it by name;
+IDs that no longer resolve are skipped. A malformed `arrangement` is ignored
+and reported as the `invalidArrangement` diagnostic.
+
+`runConfig.arrange` accepts `{root, folders?, order?, sortAlphabetically?,
+plugins?}` and returns `{changes}`. `folders` maps configuration IDs to the
+folder each moves to, or `null` to take it out of its folder; each ID must
+resolve. The folder is written to the layer that defines the configuration:
+the project layer for a configuration saved there, otherwise the local layer,
+where a generated configuration gets a sparse `{id, folder}` entry, and the
+other layer's folder for it is removed. `order` replaces the whole saved order
+(at most 4,096 IDs, repeats dropped) and `sortAlphabetically` the sort choice;
+an omitted field keeps the saved value, and saving the defaults removes
+`arrangement`. Nothing to change returns no changes.
 
 #### Steps before launch
 
