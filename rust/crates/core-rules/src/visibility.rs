@@ -140,10 +140,16 @@ pub const CONFIGURATION_PATTERN: &str = ".lithe/**";
 /// the tree hides it, because edits to its JSON files reload project services.
 pub const CONFIGURATION_DIRECTORY: &str = ".lithe";
 
-/// File names and globs hidden everywhere unless a `!` entry turns them off: Finder metadata and
-/// the project configuration folder.
-pub const BUILT_IN_HIDDEN_FILE_PATTERNS: &[&str] =
-    &[".DS_Store", CONFIGURATION_PATTERN, ".lithe/run/local.json"];
+/// File names and globs hidden everywhere unless a `!` entry turns them off: Finder metadata,
+/// the project configuration folder, and the machine-local run configuration documents the host
+/// writes itself (the YAML document, its legacy JSON, and the plugin records).
+pub const BUILT_IN_HIDDEN_FILE_PATTERNS: &[&str] = &[
+    ".DS_Store",
+    CONFIGURATION_PATTERN,
+    ".lithe/run/local.yaml",
+    ".lithe/run/local.json",
+    ".lithe/run/plugin/*.local.toml",
+];
 
 /// The default rules written as Hidden paths patterns, for display. Folder names, Core's own and
 /// the plugin-declared ones, become `**/name/`, the pattern that hides them at any depth.
@@ -237,7 +243,7 @@ impl VisibilityRules {
 
     /// Whether file events at `path` must still be delivered although the rules hide it. Only
     /// the project configuration folder qualifies, and only for files outside the default noise
-    /// below it, such as `.lithe/run/local.json`.
+    /// below it, such as `.lithe/run/local.yaml`.
     pub fn is_watched_despite_hiding(&self, path: &str) -> bool {
         let first = path.split('/').find(|value| !value.is_empty());
         if first != Some(CONFIGURATION_DIRECTORY) {

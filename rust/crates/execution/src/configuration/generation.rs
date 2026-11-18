@@ -8,45 +8,13 @@ pub fn inspect(request: InspectRequest) -> Result<Value, CoreError> {
     let layer = generated_layer::get(&root);
     let generated = layer.as_deref();
     let local_toolchains = read_local_toolchains(&root)?;
-    for relative in [
-        "run/configurations.json",
-        "run/local.json",
-        "toolchains/local.json",
-        "project.json",
-    ] {
-        if relative == "run/local.json" {
-            if let Some(document) = request.local_document.as_ref() {
-                let mut migrated = document.clone();
-                migrate_document_value(&mut migrated);
-                validate_version_value(&migrated)?;
-                configuration_ids(&migrated)?;
-                continue;
-            }
-        }
-        if let Some(document) = read_document_value(&root, relative)? {
-            if relative.starts_with("run/") {
-                validate_version_value(&document)?;
-                configuration_ids(&document)?;
-            } else {
-                validate_sidecar_version_value(&document)?;
-                if relative == "toolchains/local.json"
-                    && document
-                        .get("toolchains")
-                        .and_then(Value::as_object)
-                        .is_none()
-                {
-                    return Err(CoreError::new(
-                        ErrorCode::ParseFailed,
-                        "Local toolchains must contain a toolchains object",
-                    ));
-                }
-            }
-        }
+    if let Some((manifest, _)) = read_sidecar(&root, "project.json")? {
+        validate_sidecar_version_value(&manifest)?;
     }
-    let local = local_layer_document(&root, request.local_document.clone())?;
-    let team = read_document_value(&root, "run/configurations.json")?
-        .unwrap_or_else(|| json!({"version": VERSION, "configurations": []}));
-    let mut diagnostics = Vec::new();
+    let layers = read_layers(&root, None, request.local_document.clone())?;
+    let team = &layers.project.document;
+    let local = &layers.local.document;
+    let mut diagnostics = layers.diagnostics.clone();
     if let Some(runs) = &request.provider_runs {
         crate::provider_runs::validate(runs)?;
         if let Some(document) = generated {
@@ -62,15 +30,19 @@ pub fn inspect(request: InspectRequest) -> Result<Value, CoreError> {
         }
     }
     Ok(json!({
-        "status": if generated.is_some() || has_saved_build_run(&local) || has_saved_build_run(&team) { "ready" } else { "missing" },
-        // Saved provider tasks remain runnable before generation, but must not
+        "status": if generated.is_some() || has_saved_runnable(local) || has_saved_runnable(team) { "ready" } else { "missing" },
+        // Saved runs remain runnable before generation, but must not
         // suppress generation of the other entries after a process restart.
         "requiresGeneration": generated.is_none(),
         "generated": generated,
         "localToolchains": local_toolchains,
         "toolchain": local.get("toolchain"),
         "diagnostics": diagnostics,
-        "paths": { "configurations": ".lithe/run/configurations.json", "local": ".lithe/run/local.json" }
+        "paths": {
+            "configurations": format!(".lithe/{}", Scope::Project.document()),
+            "local": format!(".lithe/{}", Scope::Local.document()),
+            "plugins": ".lithe/run/plugin"
+        }
     }))
 }
 

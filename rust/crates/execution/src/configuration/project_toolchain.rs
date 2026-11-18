@@ -3,7 +3,7 @@
 //! machine-local runtime paths, tool preferences and the per-Run defined tools.
 //! It never inspects a build file or runs a tool.
 
-use super::{existing_root, local_layer_document, read_local_toolchains, validate_version_value};
+use super::{existing_root, read_layers, read_local_toolchains, resolve_layers};
 use lithe_platform::paths::invalid_portable_relative_path;
 use lithe_protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
@@ -44,9 +44,8 @@ pub fn project_toolchain(request: ProjectToolchainRequest) -> Result<Value, Core
         ));
     }
     let root = existing_root(&request.root)?;
-    let document = local_layer_document(&root, request.local_document)?;
-    validate_version_value(&document)?;
-    let toolchain = &document["toolchain"];
+    let layers = read_layers(&root, None, request.local_document)?;
+    let toolchain = &layers.local.document["toolchain"];
     if !toolchain.is_null() && !toolchain.is_object() {
         return Err(invalid_paths());
     }
@@ -75,25 +74,13 @@ pub fn project_toolchain(request: ProjectToolchainRequest) -> Result<Value, Core
         result["toolPreferences"] = preferences.clone();
     }
     if let Some(id) = request.configuration_id.as_deref() {
-        let mut explicit = document.clone();
-        // Reuse the existing layer merge, without materializing global
-        // defaults as if they were per-configuration choices. The caller's
-        // workspace defaults have already been selected above.
-        explicit
-            .as_object_mut()
-            .ok_or_else(invalid_paths)?
-            .remove("toolchain");
-        let resolved = super::resolve(super::ResolveRequest {
-            team_document: None,
-            root: root.to_string_lossy().into_owned(),
-            local_document: Some(explicit),
-        })?;
+        let resolved = resolve_layers(&root, &layers, None)?;
         let config = resolved["configurations"]
             .as_array()
             .and_then(|items| {
-                items
-                    .iter()
-                    .find(|item| item["id"] == id && item["disabled"] != true)
+                items.iter().find(|item| {
+                    item["id"] == id && item["disabled"] != true && item["availability"].is_null()
+                })
             })
             .ok_or_else(|| {
                 CoreError::new(

@@ -18,22 +18,34 @@ use std::path::{Path, PathBuf};
 
 mod document;
 mod editing;
+mod form;
 mod generation;
 mod launch;
 mod layers;
 mod merge;
+mod plugin_document;
+mod process;
 mod requests;
 mod resolve;
+mod storage;
 mod validation;
 
 pub use document::*;
 pub use editing::*;
+pub use form::{
+    configuration_types, delete_configuration, editor_form, save_configuration,
+    ConfigurationTypesRequest, DeleteConfigurationRequest, EditorFormRequest,
+    SaveConfigurationRequest,
+};
 pub use generation::*;
 pub use launch::*;
 pub(crate) use layers::*;
 pub(crate) use merge::*;
+pub use plugin_document::{Availability, InstalledPlugin, PluginDependency};
 pub use requests::*;
 pub use resolve::*;
+pub use storage::FileChange;
+pub(crate) use storage::{read_layers, Layers, Scope, WriteContext};
 pub use validation::*;
 
 const VERSION: u32 = 2;

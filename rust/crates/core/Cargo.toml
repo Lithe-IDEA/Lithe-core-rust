@@ -69,7 +69,9 @@ lithe-git = { path = "../git", features = ["test-support"] }
 lithe-lsp-transport = { path = "../lsp-transport", features = ["test-support"] }
 lithe-project = { path = "../project", features = ["test-support"] }
 lithe-workspace = { path = "../workspace", features = ["test-support"] }
+serde_yaml_ng = "=0.10.0"
 sha2 = "0.10"
+toml = { version = "1.1.4", default-features = false, features = ["display", "parse", "serde", "std"] }
 
 [target.'cfg(unix)'.dev-dependencies]
 lithe-remote = { path = "../remote", default-features = false, features = ["server"] }

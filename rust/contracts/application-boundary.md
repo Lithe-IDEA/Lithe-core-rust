@@ -433,15 +433,20 @@ edits, and launch planning, but must not implement a second JSON merger,
 ID generator, or argument parser. Ecosystem-specific
 arguments are built by the plugin that declared the run. Opening a project inspects existing files without writing; generation
 is an explicit user action. Shared project overrides stay in
-`.lithe/run/configurations.json`. Machine-local overrides may live in
-`.lithe/run/local.json` or in a host-owned document supplied as
-`localDocument`; absolute toolchain paths belong only in that local layer and
-are excluded from project visibility and Git by default. Generic runtime
+`.lithe/run/configurations.yaml`, and the configurations a plugin launches in
+`.lithe/run/plugin/<plugin ID>.toml`, which records the plugin and the versions
+it needs. Machine-local overrides live in `.lithe/run/local.yaml` and
+`.lithe/run/plugin/<plugin ID>.local.toml`, or in a host-owned document supplied
+as `localDocument` for a read. Core returns every edit as hash-checked file
+changes that the platform applies. Absolute toolchain paths belong only in the local layer,
+which is excluded from project visibility and Git by default. Generic runtime
 executables such as Node are selected in `.lithe/toolchains/local.json`; this
 machine-local document is also excluded from Git by default. Core discovers
 no runnable entries and infers no runtime: generated configurations are the runs
 build provider plugins declare, and a runtime binding is one a saved
-configuration declares. An automatically discovered runtime
+configuration declares. Starting a shell, PowerShell or batch script or a
+program is Core's own (the `process.*` providers): the user creates these
+configurations through `runConfig.editorForm`, and they run without any plugin. An automatically discovered runtime
 path is session-effective: validation and launch share it, but persistence
 still requires an explicit user selection.
 

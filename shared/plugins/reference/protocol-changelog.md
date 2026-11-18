@@ -134,6 +134,12 @@
 
 ## 时间线（新的在上）
 
+### 2026-11-18
+
+| PR | 修改人 | API 编号 | 协议 / 能力 | 改了什么 |
+| --- | --- | --- | --- | --- |
+| [#85](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/85) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | — | 插件清单 `schemaVersion` 0 内的补充 | 清单新增可选字段 `repository`（[1lck/Lithe-IDEA#2100](https://github.com/1lck/Lithe-IDEA/issues/2100)）：值是插件源码仓库的 GitHub 地址 `https://github.com/<作者>/<仓库>`，格式不对时以 `plugin.manifest.invalid`（字段 `repository`）拒绝。项目里由插件提供的 Run 配置改存 `.lithe/run/plugin/<插件 ID>.toml`（共享）和 `<插件 ID>.local.toml`（本机），文件头 `[plugin]` 记录插件 ID、名称、作者、仓库、版本、版本要求（默认 `>=保存时的版本`）、`pluginAPIVersion` 和用到的能力，作者和仓库取自 `repository`，用来区分同名插件；插件没有安装、仓库不一致或版本不满足要求时，这些配置在 Run 列表里显示为不可用并说明原因，不会让整个列表读取失败。Core 自带的脚本和程序运行（shell、PowerShell、Windows 批处理、可执行文件）不依赖任何插件。没写 `repository` 的插件照常安装，Run 文件里不记作者和仓库、也不比对仓库；清单格式和能力版本不变，没有新增宿主方法或通知。 |
+
 ### 2026-11-17
 
 | PR | 修改人 | API 编号 | 协议 / 能力 | 改了什么 |
