@@ -29,7 +29,7 @@ fn program(build_system: &BuildSystemDeclaration) -> Value {
         .options
         .iter()
         .map(|option| {
-            json!({
+            let mut review = json!({
                 "id": option.id,
                 "kind": option.kind,
                 "default": option.default,
@@ -39,7 +39,11 @@ fn program(build_system: &BuildSystemDeclaration) -> Value {
                 "separator": option.separator(),
                 "arguments": option.arguments,
                 "environment": option.environment,
-            })
+            });
+            if let Some(prefix) = &option.exclude_prefix {
+                review["excludePrefix"] = json!(prefix);
+            }
+            review
         })
         .collect();
     let tasks: Vec<Value> = build_system

@@ -37,9 +37,20 @@ pub(super) struct EditRequest {
     root: String,
     #[serde(rename = "optionID")]
     option_id: String,
-    value: Value,
+    #[serde(default, deserialize_with = "optional_value")]
+    value: Option<Value>,
+    #[serde(default)]
+    selected_choices: Option<Vec<String>>,
     #[serde(default)]
     model_values: Option<BTreeMap<String, Vec<String>>>,
+    #[serde(default)]
+    model_defaults: Option<BTreeMap<String, Vec<String>>>,
+    #[serde(default)]
+    model_exclude_prefixes: Option<BTreeMap<String, String>>,
+}
+
+fn optional_value<'de, D: Deserializer<'de>>(input: D) -> Result<Option<Value>, D::Error> {
+    Value::deserialize(input).map(Some)
 }
 
 #[derive(Deserialize)]
@@ -206,14 +217,39 @@ pub(super) fn edit(system: &BuildSystemDeclaration, request: &EditRequest) -> Va
         .ok_or_else(|| {
             PluginRejection::new("plugin.build.invalidOption", "Unknown declared option")
         })?;
+    let facts = options::ModelOptionFacts {
+        values: request.model_values.as_ref(),
+        defaults: request.model_defaults.as_ref(),
+        exclude_prefixes: request.model_exclude_prefixes.as_ref(),
+    };
     let before = merge(&team, &local);
     let current = effective(system, &before, &local, &request.root);
-    let mut next = request.value.clone();
+    let mut next = match (&request.value, &request.selected_choices) {
+        (Some(value), None) => value.clone(),
+        (None, Some(selected)) => {
+            let team_system = &team["systems"][&system.id];
+            let has_team_override = if option.scope == OptionScope::Instance {
+                team_system["instances"][&request.root]
+                    .get(&option.id)
+                    .is_some()
+                    || team_system["instanceDefaults"].get(&option.id).is_some()
+            } else {
+                team_system["options"].get(&option.id).is_some()
+            };
+            options::encode_selected_choices(option, selected, has_team_override, &facts)?
+        }
+        _ => {
+            return Err(PluginRejection::new(
+                "plugin.build.invalidOption",
+                "Pass either value or selectedChoices",
+            ));
+        }
+    };
     if !next.is_null() {
-        let resolved = options::resolve(
+        let resolved = options::resolve_with_facts(
             system,
             &BTreeMap::from([(option.id.clone(), next)]),
-            request.model_values.as_ref(),
+            facts,
         );
         next = resolved
             .chosen_values
@@ -257,7 +293,7 @@ pub(super) fn edit(system: &BuildSystemDeclaration, request: &EditRequest) -> Va
         }
     } else {
         if option.scope == OptionScope::Workspace && option.kind == OptionKind::MultiSelect {
-            let visible = options::resolve(system, &current, request.model_values.as_ref())
+            let visible = options::resolve_with_facts(system, &current, facts)
                 .chosen_values
                 .get(&option.id)
                 .and_then(Value::as_array)
@@ -271,7 +307,15 @@ pub(super) fn edit(system: &BuildSystemDeclaration, request: &EditRequest) -> Va
                 .into_iter()
                 .filter(|value| !visible.contains(value))
                 .collect::<Vec<_>>();
+            let exclude_prefix = options::effective_exclude_prefix(option, &facts);
             for value in next.as_array().expect("checked multi-select") {
+                if let (Some(prefix), Some(text)) = (exclude_prefix, value.as_str()) {
+                    let opposite = match text.strip_prefix(prefix) {
+                        Some(rest) => rest.to_string(),
+                        None => format!("{prefix}{text}"),
+                    };
+                    merged.retain(|entry| entry.as_str() != Some(opposite.as_str()));
+                }
                 if !merged.contains(value) {
                     merged.push(value.clone());
                 }
@@ -325,10 +369,8 @@ pub(super) fn edit(system: &BuildSystemDeclaration, request: &EditRequest) -> Va
     let local = validate_local(serde_json::to_value(local).map_err(|_| invalid())?)?;
     let document = merge(&team, &local);
     let stored = effective(system, &document, &local, &request.root);
-    let resolved = options::resolve(system, &stored, request.model_values.as_ref());
-    Ok(
-        json!({"local":local,"options":options::describe(system,&resolved,request.model_values.as_ref())}),
-    )
+    let resolved = options::resolve_with_facts(system, &stored, facts);
+    Ok(json!({"local":local,"options":options::describe_with_facts(system,&resolved,facts)}))
 }
 
 /// `build.editIgnoredPaths`: replaces or removes the local ignored-path list.

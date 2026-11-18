@@ -38,6 +38,12 @@ pub(crate) struct BuildModel {
     pub(crate) content_roots: Vec<ModelContentRoot>,
     /// Values the model offers for `choicesFromModel` options.
     pub(crate) option_values: BTreeMap<String, Vec<String>>,
+    /// Subset of `option_values` the build tool activates when the option is unset.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub(crate) option_defaults: BTreeMap<String, Vec<String>>,
+    /// Per-option prefix a `litheBuildModel` script supplies to turn a default choice off.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub(crate) option_exclude_prefixes: BTreeMap<String, String>,
     /// True when a bound dropped entries.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub(crate) truncated: bool,
@@ -138,6 +144,8 @@ pub(crate) struct ModelBuilder<'a> {
     /// Explicit parent directory per project, resolved in `finish`.
     parents: Vec<Option<String>>,
     option_values: BTreeMap<String, BTreeSet<String>>,
+    option_defaults: BTreeMap<String, BTreeSet<String>>,
+    option_exclude_prefixes: BTreeMap<String, String>,
 }
 
 impl<'a> ModelBuilder<'a> {
@@ -153,6 +161,8 @@ impl<'a> ModelBuilder<'a> {
             model: BuildModel::default(),
             parents: Vec::new(),
             option_values: BTreeMap::new(),
+            option_defaults: BTreeMap::new(),
+            option_exclude_prefixes: BTreeMap::new(),
         }
     }
 
@@ -333,6 +343,32 @@ impl<'a> ModelBuilder<'a> {
         }
     }
 
+    fn add_option_default(&mut self, option: &str, value: &str) {
+        let accepted = self
+            .build_system
+            .option(option)
+            .is_some_and(|declaration| declaration.choices_from_model)
+            && super::manifest::is_option_value(value);
+        if accepted {
+            let values = self.option_defaults.entry(option.to_string()).or_default();
+            if values.len() < MAX_ITEMS {
+                values.insert(value.to_string());
+            }
+        }
+    }
+
+    fn set_option_exclude_prefix(&mut self, option: &str, prefix: &str) {
+        let accepted = self.build_system.option(option).is_some_and(|declaration| {
+            declaration.choices_from_model
+                && declaration.exclude_prefix.is_none()
+                && declaration.is_valid_exclude_prefix(prefix)
+        });
+        if accepted {
+            self.option_exclude_prefixes
+                .insert(option.to_string(), prefix.to_string());
+        }
+    }
+
     /// Resolves parents, applies the declared layout, and orders entries.
     pub(crate) fn finish(mut self) -> BuildModel {
         let paths: Vec<String> = self.model.projects.iter().map(|p| p.path.clone()).collect();
@@ -413,10 +449,38 @@ impl<'a> ModelBuilder<'a> {
         });
         model.content_roots.sort();
         model.content_roots.dedup();
+        model.option_exclude_prefixes = self.option_exclude_prefixes;
         model.option_values = self
             .option_values
             .into_iter()
-            .map(|(id, values)| (id, values.into_iter().collect()))
+            .filter_map(|(id, values)| {
+                let declaration = self.build_system.option(&id)?;
+                let prefix = declaration
+                    .exclude_prefix
+                    .as_deref()
+                    .or_else(|| model.option_exclude_prefixes.get(&id).map(String::as_str));
+                let kept: Vec<String> = values
+                    .into_iter()
+                    .filter(|value| {
+                        declaration.kind != super::manifest::OptionKind::MultiSelect
+                            || (!value.contains(declaration.separator())
+                                && !prefix.is_some_and(|prefix| value.starts_with(prefix)))
+                    })
+                    .collect();
+                Some((id, kept))
+            })
+            .collect();
+        model.option_defaults = self
+            .option_defaults
+            .into_iter()
+            .filter_map(|(id, defaults)| {
+                let known = model.option_values.get(&id)?;
+                let kept: Vec<String> = defaults
+                    .into_iter()
+                    .filter(|value| known.binary_search(value).is_ok())
+                    .collect();
+                (!kept.is_empty()).then_some((id, kept))
+            })
             .collect();
         model
     }
@@ -443,6 +507,15 @@ pub(crate) fn map_document(builder: &mut ModelBuilder<'_>, map: &ModelMap, docum
             if select::all_hold(&rule.filter, document, &node) {
                 if let Some(value) = rule.value.text(document, &node) {
                     builder.add_option_value(option, &value);
+                }
+            }
+        }
+    }
+    for (option, rule) in &map.option_defaults {
+        for node in select::nodes(&rule.each, document, &root) {
+            if select::all_hold(&rule.filter, document, &node) {
+                if let Some(value) = rule.value.text(document, &node) {
+                    builder.add_option_default(option, &value);
                 }
             }
         }
@@ -660,6 +733,10 @@ struct CanonicalModel {
     content_roots: Vec<CanonicalContentRoot>,
     #[serde(default)]
     option_values: BTreeMap<String, Vec<String>>,
+    #[serde(default)]
+    option_defaults: BTreeMap<String, Vec<String>>,
+    #[serde(default)]
+    option_exclude_prefixes: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -833,6 +910,14 @@ pub(crate) fn map_canonical(builder: &mut ModelBuilder<'_>, document: Value) -> 
         for value in values {
             builder.add_option_value(option, value);
         }
+    }
+    for (option, values) in &model.option_defaults {
+        for value in values {
+            builder.add_option_default(option, value);
+        }
+    }
+    for (option, prefix) in &model.option_exclude_prefixes {
+        builder.set_option_exclude_prefix(option, prefix);
     }
     Ok(())
 }

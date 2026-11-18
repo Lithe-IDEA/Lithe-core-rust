@@ -2907,3 +2907,159 @@ fn provider_run_options_refuse_explicit_cwd_symlinks_outside_workspace() {
         "request":{"workspaceRoot":workspace.root(),"root":"app","launchOptions":fixture["launchOptions"],"result":fixture["result"]}})).unwrap();
     assert_eq!(result["error"]["code"], "plugin.build.invalidOutput");
 }
+
+/// Model-supplied default choices and exclusion prefixes let a build tool's
+/// profiles or features show default-active entries, deactivate them on CLI
+/// even before the model reloads, and clear the local override once the user
+/// returns to the defaults.
+#[test]
+fn model_option_defaults_and_exclusions_round_trip_through_storage_and_plans() {
+    use crate::build::{build_edit_stored_option_command, build_model_plan_command};
+    let workspace = TemporaryWorkspace::new("model-option-defaults");
+    let manifest: Value = serde_json::from_str(include_str!(
+        "fixtures/published_build_plugins/maven/plugin.json"
+    ))
+    .unwrap();
+    let canonical = json!({
+        "format": "litheBuildModel",
+        "version": 0,
+        "projects": [{"path": ".", "name": "demo"}],
+        "optionValues": {"profiles": ["dev", "prod", "release"]},
+        "optionDefaults": {"profiles": ["dev"]},
+        "optionExcludePrefixes": {"profiles": "-"}
+    });
+    workspace.write("model.json", &canonical.to_string());
+    let decoded = build_decode_model_command::<Manifest>(json!({
+        "manifest": manifest,
+        "buildSystemID": "maven",
+        "request": {
+            "workspaceRoot": workspace.root(),
+            "root": ".",
+            "outputFile": workspace.0.join("model.json").to_string_lossy(),
+        }
+    }))
+    .unwrap();
+    assert_eq!(decoded["status"], "ok", "{decoded}");
+    let model = &decoded["model"];
+    assert_eq!(
+        model["optionValues"]["profiles"],
+        json!(["dev", "prod", "release"])
+    );
+    assert_eq!(model["optionDefaults"]["profiles"], json!(["dev"]));
+    assert_eq!(model["optionExcludePrefixes"]["profiles"], json!("-"));
+
+    let option_by_id = |options: &Value, id: &str| {
+        options["options"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|opt| opt["id"] == id)
+            .unwrap()
+            .clone()
+    };
+
+    let resolved = build_resolve_options_command::<Manifest>(json!({
+        "manifest": manifest,
+        "buildSystemID": "maven",
+        "request": {
+            "options": {},
+            "modelValues": model["optionValues"],
+            "modelDefaults": model["optionDefaults"],
+            "modelExcludePrefixes": model["optionExcludePrefixes"]
+        }
+    }))
+    .unwrap();
+    let profiles = option_by_id(&resolved["options"], "profiles");
+    assert_eq!(profiles["source"], "default", "{profiles}");
+    assert_eq!(profiles["value"], json!([]));
+    assert_eq!(profiles["selectedChoices"], json!(["dev"]));
+    assert_eq!(profiles["choices"][0]["defaultActive"], json!(true));
+
+    let empty_team = json!({"version": 1, "systems": {}});
+    let empty_local = json!({"version": 1, "document": {"version": 1, "systems": {}}});
+
+    // Unchecking the default-active `dev` profile stores `["-dev"]`, so even a
+    // cold `build.modelPlan` before the model loads passes `-P -dev`.
+    let unchecked = build_edit_stored_option_command::<Manifest>(json!({
+        "manifest": manifest,
+        "buildSystemID": "maven",
+        "request": {
+            "document": empty_team,
+            "local": empty_local,
+            "root": ".",
+            "optionID": "profiles",
+            "selectedChoices": [],
+            "modelValues": model["optionValues"],
+            "modelDefaults": model["optionDefaults"],
+            "modelExcludePrefixes": model["optionExcludePrefixes"]
+        }
+    }))
+    .unwrap();
+    assert_eq!(unchecked["status"], "ok", "{unchecked}");
+    let after_uncheck = option_by_id(&unchecked["edit"]["options"], "profiles");
+    assert_eq!(after_uncheck["value"], json!(["-dev"]));
+    assert_eq!(after_uncheck["selectedChoices"], json!([]));
+
+    let plan = build_model_plan_command::<Manifest>(json!({
+        "manifest": manifest,
+        "buildSystemID": "maven",
+        "request": {
+            "root": ".",
+            "options": {"profiles": ["-dev"]},
+            "pluginDirectory": workspace.root(),
+            "outputFile": workspace.0.join("next.json").to_string_lossy()
+        }
+    }))
+    .unwrap();
+    let args: Vec<&str> = plan["plan"]["arguments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    assert!(
+        args.windows(2).any(|pair| pair == ["-P", "-dev"]),
+        "expected -P -dev in {args:?}"
+    );
+
+    // Switching to `prod` while keeping `dev` unchecked passes `-P -dev,prod`.
+    let switched = build_edit_stored_option_command::<Manifest>(json!({
+        "manifest": manifest,
+        "buildSystemID": "maven",
+        "request": {
+            "document": empty_team,
+            "local": unchecked["edit"]["local"],
+            "root": ".",
+            "optionID": "profiles",
+            "selectedChoices": ["prod"],
+            "modelValues": model["optionValues"],
+            "modelDefaults": model["optionDefaults"],
+            "modelExcludePrefixes": model["optionExcludePrefixes"]
+        }
+    }))
+    .unwrap();
+    let after_switch = option_by_id(&switched["edit"]["options"], "profiles");
+    assert_eq!(after_switch["value"], json!(["-dev", "prod"]));
+    assert_eq!(after_switch["selectedChoices"], json!(["prod"]));
+
+    // Returning to `["dev"]` removes the local override altogether.
+    let restored = build_edit_stored_option_command::<Manifest>(json!({
+        "manifest": manifest,
+        "buildSystemID": "maven",
+        "request": {
+            "document": empty_team,
+            "local": switched["edit"]["local"],
+            "root": ".",
+            "optionID": "profiles",
+            "selectedChoices": ["dev"],
+            "modelValues": model["optionValues"],
+            "modelDefaults": model["optionDefaults"],
+            "modelExcludePrefixes": model["optionExcludePrefixes"]
+        }
+    }))
+    .unwrap();
+    assert_eq!(restored["edit"]["local"]["document"]["systems"], json!({}));
+    assert_eq!(restored["edit"]["local"]["emptySelections"], json!({}));
+    let after_restore = option_by_id(&restored["edit"]["options"], "profiles");
+    assert_eq!(after_restore["source"], "default");
+}

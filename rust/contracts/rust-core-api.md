@@ -4749,7 +4749,7 @@ and the directories are absolute host paths used only as substitution text.
 | `build.invocationPlan` | `{ root, platform: "macos" \| "linux" \| "windows" }` | `invocation`: `{ buildSystemID, root, executables, environmentInputs, runtimeDependencies, version, minimumVersion }` with project-file paths joined to `root`; every runtime dependency with a known probe, host-managed ones included, carries `version: { arguments }` |
 | `build.checkToolVersion` | `{ runtime?, output }` | `version`: `{ satisfied, version? }`; `runtime` checks that runtime dependency instead of the tool |
 | `build.resolveModelInputs` | `{revision, sources: [{manifest, instances: [{buildSystemID, root, state, model?, options?}]}]}` from installed enabled current-workspace sources | `modelInputs`: version 1 public snapshot with exact optional producer slots, state, normalized projects/targets/content roots, configuration fingerprint and explicitly shared options; no tasks/run/settings/private functions; see the [plugin contract](https://github.com/1lck/Lithe-IDEA/blob/preview/shared/plugins/contract/v1/README.md#optional-read-only-model-inputs) |
-| `build.resolveOptions` | `{ options, modelValues? }` | `options`: `{ options: [{ id, displayName, kind, scope?, value, source, choices, allowCustom }], dropped, fingerprint }` |
+| `build.resolveOptions` | `{ options?, selectedChoices?, modelValues?, modelDefaults?, modelExcludePrefixes? }` | `options`: `{ options: [{ id, displayName, kind, scope?, value, selectedChoices?, source, choices: [{ value, title?, fromModel?, custom?, defaultActive? }], allowCustom }], dropped, fingerprint }` |
 | `build.configurationPlan` | plan fields and optional host-selected `tool` | `plan.provider` for `lithe/build/configuration`; no mutation, project or output-file parameters |
 | `build.decodeConfiguration` | `{ result }` | `configuration`: bounded `litheBuildConfiguration` v1 native sources/fields; see the plugin contract |
 | `build.configurationEditPlan` | `{ root, options?, workspaceStateDirectory, outputFile, snapshot, edits: { sourceID, revision, values }, tool? }` | Provider request `lithe/build/editConfiguration`; existing private staging only, no document bytes |
@@ -4763,12 +4763,12 @@ and the directories are absolute host paths used only as substitution text.
 | `build.decodeRunPreparation` | `workspaceRoot`, instance `root`, raw `result`, same optional `launchOptions` | `launch` with portable `{executable:{kind,value},arguments,workingDirectory,environment}`; bounded strings and workspace directory containment, `plugin.build.invalidOutput` on invalid result |
 | `build.prepareDebugPlan` | same selected fields as `build.prepareRunPlan`; run declares same-plugin `debug.adapter` | `plan.provider` for `lithe/build/prepareDebug`; no cross-package reference, and launch options are refused: they apply only to running a target |
 | `build.decodeDebugPreparation` | `workspaceRoot`, instance `root`, selected `run`, raw `result` | `preparation` with declaration-owned `adapter`, normalized `root`, `program`, `arguments`, `workingDirectory`, `environment`; program is an existing regular file contained in the instance after canonicalization |
-| `build.decodeModel` | `{ workspaceRoot, root, output?, outputFile?, result?, options? }`; `result` is the provider's JSON answer | `model`: `{ projects, targets, tasks, contentRoots, optionValues, run }`; `run` entries carry `buildSystem: { id, root, projectID, targetID?, optionFingerprint }` |
+| `build.decodeModel` | `{ workspaceRoot, root, output?, outputFile?, result?, options? }`; `result` is the provider's JSON answer | `model`: `{ projects, targets, tasks, contentRoots, optionValues, optionDefaults?, optionExcludePrefixes?, run }`; `run` entries carry `buildSystem: { id, root, projectID, targetID?, optionFingerprint }` |
 | `build.decodeTestResults` | `{ workspaceRoot, root, project?, projects?, output, notBeforeMillis?, suite? }`; without `project` the reports of the root and every listed model project are read | `results`: `{ tests: [{ suite, case, status, message?, durationMillis?, path?, line?, invocations }], summary: { total, passed, failed, errors, skipped }, success }`; repeated invocations of one case merge into the most severe status |
 | `build.decodeDiagnostics` | `{ workspaceRoot, root, output }` | `diagnostics`: `[{ path, line, column?, severity, message }]`, deduplicated, inside the workspace only |
 | `build.decodeDependencies` | `{ workspaceRoot, root, project?, output?, outputFile?, result? }` | `dependencies`: `{ project, dependencies: [{ name, group?, version?, scope?, properties?, children }], truncated }` |
 | `build.syncFingerprint` | `{ workspaceRoot, root, projects, options? }` | `sync`: `{ fingerprint, watch }` |
-| `build.modelTree` | `{ model: { projects, targets, tasks }, query?, groupHeadings?: { <group>: heading } }`; `model` is a `build.decodeModel` result, other model fields are ignored | `tree`: `{ project?, nodes, truncated? }`; see below |
+| `build.modelTree` | `{ model: { projects, targets, tasks, optionValues?, optionDefaults?, optionExcludePrefixes? }, options?, query?, groupHeadings?: { <group>: heading } }`; `model` is a `build.decodeModel` result, other model fields are ignored | `tree`: `{ project?, nodes, truncated? }`; see below |
 
 Invocation candidates also include `{ kind: "toolchain", toolchainID, root }`.
 Hosts resolve them through the same canonical project/subproject
@@ -4833,10 +4833,13 @@ themselves. It reads no file and starts no process.
   matches, keeps everything; the matching `project` then carries
   `matched: true`.
 - A node is `{ kind, key, label?, detail?, tooltip?, group?, projectID?,
-  targetID?, taskID?, matched?, children? }`, `kind` one of `project`,
+  targetID?, taskID?, optionID?, optionValue?, checked?, defaultActive?,
+  matched?, children? }`, `kind` one of `option`, `optionChoice`, `project`,
   `folder`, `task`, `targets`, `target`, `dependencies`, `tests`. `key` is
   opaque, unique in the instance and stable across reloads and filters, so
-  hosts remember open nodes by it. `projectID` and `targetID` are what a task
+  hosts remember open nodes by it. Each `presentation: "tree"` option with at
+  least one choice adds an `option` node at the top of `nodes` (whose `detail`
+  summarizes the checked choices) with `optionChoice` children. `projectID` and `targetID` are what a task
   runs on (absent: the whole instance); `taskID` is a declared task's ID or a
   model task's ID. `targets`, `dependencies` and `tests` nodes have no label.
 - The model may hold at most 2,000 projects and 10,000 targets and 10,000

@@ -84,6 +84,8 @@ pub(crate) struct ModelMap {
     pub(crate) projects: Vec<ProjectRule>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub(crate) option_values: BTreeMap<String, OptionValueRule>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(crate) option_defaults: BTreeMap<String, OptionValueRule>,
 }
 
 /// Fields every rule shares: which elements it reads and when it applies.
@@ -317,6 +319,18 @@ impl ModelMap {
                 return Err(invalid(
                     field,
                     "optionValues may only fill options declared with choicesFromModel.",
+                ));
+            }
+            select::validate(&rule.each, &format!("{field}.each"), false)?;
+            check_predicates(&rule.filter, &field)?;
+            rule.value.validate(&format!("{field}.value"))?;
+        }
+        for (id, rule) in &self.option_defaults {
+            let field = format!("{field}.optionDefaults.{id}");
+            if !model_options.contains(id) {
+                return Err(invalid(
+                    field,
+                    "optionDefaults may only fill options declared with choicesFromModel.",
                 ));
             }
             select::validate(&rule.each, &format!("{field}.each"), false)?;
