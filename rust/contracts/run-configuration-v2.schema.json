@@ -21,6 +21,18 @@
       },
       "additionalProperties": true
     },
+    "arrangement": {
+      "type": "object",
+      "description": "Machine-local order of the run configuration list. Stored only in the local layer; omitted means sorted by name.",
+      "properties": {
+        "sortAlphabetically": { "type": "boolean" },
+        "order": {
+          "type": "array", "maxItems": 4096, "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 4096 }
+        }
+      },
+      "additionalProperties": false
+    },
     "configurations": {
       "type": "array",
       "items": { "$ref": "#/$defs/configuration" }
@@ -181,6 +193,11 @@
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "name": { "type": "string", "minLength": 1 },
+        "folder": {
+          "type": "string", "minLength": 1, "maxLength": 256,
+          "pattern": "^[^\\s\\p{Cc}](?:[^\\p{Cc}]*[^\\s\\p{Cc}])?$",
+          "description": "Folder the configuration is listed in within its kind; display only."
+        },
         "provider": {
           "type": "string",
           "pattern": "^[a-z][a-z0-9-]*\\.[a-z][a-z0-9-]*$"

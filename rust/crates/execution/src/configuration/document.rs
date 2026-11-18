@@ -161,6 +161,10 @@ pub struct RunConfiguration {
     pub id: String,
     /// Display name shown in the Run list.
     pub name: String,
+    /// Folder the entry is listed in within its kind; display only, launching
+    /// ignores it (`runConfig.arrange`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<String>,
     /// Open namespaced discriminator, e.g. `build.provider`.
     /// Deliberately not an enum: new ecosystems must not require a contract change.
     pub provider: String,

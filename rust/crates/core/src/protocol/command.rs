@@ -744,6 +744,10 @@ pub enum RunConfigCommand {
     SaveConfiguration,
     /// Removes a user-authored run configuration (`runConfig.deleteConfiguration`).
     DeleteConfiguration,
+    /// Saves a copy of a configuration under a new name (`runConfig.copyConfiguration`).
+    CopyConfiguration,
+    /// Moves configurations between folders and saves the list order (`runConfig.arrange`).
+    Arrange,
     /// Expands the steps run before a configuration starts (`runConfig.beforeLaunch`).
     BeforeLaunch,
     /// Produces the process plan for one configuration (`runConfig.createLaunchPlan`).
@@ -1440,6 +1444,10 @@ impl CoreCommand {
             "runConfig.deleteConfiguration" => {
                 Some(Self::RunConfig(RunConfigCommand::DeleteConfiguration))
             }
+            "runConfig.copyConfiguration" => {
+                Some(Self::RunConfig(RunConfigCommand::CopyConfiguration))
+            }
+            "runConfig.arrange" => Some(Self::RunConfig(RunConfigCommand::Arrange)),
             "runConfig.beforeLaunch" => Some(Self::RunConfig(RunConfigCommand::BeforeLaunch)),
             "runConfig.createLaunchPlan" => {
                 Some(Self::RunConfig(RunConfigCommand::CreateLaunchPlan))

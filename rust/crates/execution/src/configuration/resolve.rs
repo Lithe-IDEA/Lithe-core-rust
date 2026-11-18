@@ -133,6 +133,8 @@ pub(crate) fn resolve_layers(
         }
     }
     configurations.retain(|configuration| !configuration.disabled);
+    let arrangement = Arrangement::read(local, &mut diagnostics);
+    arrangement.apply(&mut configurations);
     let runnable = |id: &str| {
         configurations
             .iter()
@@ -163,6 +165,7 @@ pub(crate) fn resolve_layers(
         "configurations": configurations,
         "diagnostics": diagnostics,
         "defaultRunConfiguration": default_run_configuration,
+        "sortAlphabetically": arrangement.sort_alphabetically,
         "toolchain": global_toolchain,
         "localToolchains": local_toolchains
     }))
