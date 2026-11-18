@@ -104,7 +104,7 @@ pub fn settings_catalog_command(payload: Value) -> Result<Value, CoreError> {
 }
 
 /// Native static page labels and stable identifiers. Hierarchy is supplied once;
-/// search, expansion, folding and ancestor retention are shared projection rules.
+/// search, expansion and ancestor retention are shared projection rules.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct NavigationItem {
@@ -115,10 +115,6 @@ struct NavigationItem {
     expanded: bool,
     #[serde(default)]
     keywords: String,
-    /// Shows at most this many children outside search; the rest fold into one
-    /// overflow row that opens the group's own directory page.
-    #[serde(default)]
-    limit: Option<usize>,
 }
 
 #[derive(Deserialize)]
@@ -128,7 +124,7 @@ struct NavigationRequest {
     query: String,
 }
 
-/// The deepest level a row may sit at: group, kind fold, page.
+/// The deepest level a row may sit at: group, kind, page.
 const MAX_LEVEL: usize = 2;
 
 struct Navigation<'a> {
@@ -171,21 +167,10 @@ impl<'a> Navigation<'a> {
         if item.group && !item.expanded && !searching {
             return;
         }
-        let children = self.children(&item.id);
-        let limit = match item.limit {
-            Some(limit) if !searching => limit,
-            _ => children.len(),
-        };
         let mut below = path.to_vec();
         below.push(&item.title);
-        for child in children.iter().take(limit) {
+        for child in self.children(&item.id) {
             self.emit(child, level + 1, &below, shown || own);
-        }
-        if children.len() > limit {
-            self.rows.push(json!({
-                "id":item.id,"title":item.title,"group":false,"expanded":false,
-                "level":level + 1,"matched":false,"path":below,"overflow":children.len(),
-            }));
         }
     }
 }
@@ -206,9 +191,6 @@ pub fn settings_navigation_command(payload: Value) -> Result<Value, CoreError> {
                 || item.id.len() > 256
                 || item.title.len() > 1024
                 || item.keywords.len() > 16384
-                || item
-                    .limit
-                    .is_some_and(|limit| limit == 0 || limit > MAX_PAGES)
                 || !ids.insert(&item.id)
             {
                 return Err(rejected("items"));

@@ -69,9 +69,8 @@ fn tool_definitions_declare_settings_category_and_audience() {
     tagged["audience"] = json!("plugin");
     let mut plugin = manifest("dev.lithe.fixture.compiler", tagged);
     // The fields are toolDefinitions 1, so a host that supports only 0 never installs it.
-    let rejected = validate_manifest_value(plugin.clone())
-        .err()
-        .expect("version 0 refuses settings categories");
+    let rejected =
+        validate_manifest_value(plugin.clone()).expect_err("version 0 refuses settings categories");
     assert_eq!(rejected.field.as_deref(), Some("requires.toolDefinitions"));
     plugin["requires"]["toolDefinitions"] = json!(1);
     assert!(validate_manifest_value(plugin.clone()).is_ok());
