@@ -286,6 +286,48 @@ fn the_editor_form_lists_candidates_and_checks_the_steps_it_saves() {
     assert_eq!(step_ids(&deploy), ["user:prepare", "user:serve"]);
 }
 
+// Issue 1lck/Lithe-IDEA#2100: outside Windows a batch script is listed but
+// cannot run, so the editor does not offer it as a step and a list that names
+// it, such as one a Windows user saved in the project, is refused.
+#[cfg(not(windows))]
+#[test]
+fn a_batch_script_outside_windows_is_no_step() {
+    let root = temporary_root("before-launch-batch");
+    let _cleanup = Cleanup(root.clone());
+    write_run_document(
+        &root,
+        ".lithe/run/configurations.yaml",
+        &json!({"version": 2, "configurations": [
+            {
+                "id": "user:package", "name": "package", "provider": "process.batch",
+                "confidence": "declared", "extensions": {"process": {"script": "package.cmd"}}
+            },
+            executable("user:app", "echo", &["user:package"]),
+        ]}),
+    );
+    let form = call(
+        "runConfig.editorForm",
+        json!({"root": root, "configurationId": "user:app"}),
+    );
+    let field = form["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|field| field["id"] == "beforeLaunch")
+        .cloned()
+        .unwrap();
+    assert_eq!(field["candidates"], json!([]), "{field}");
+    let reply = call(
+        "runConfig.beforeLaunch",
+        json!({"root": root, "configurationId": "user:app"}),
+    );
+    assert_eq!(reply["status"], "rejected", "{reply}");
+    assert_eq!(
+        reply["refusal"],
+        json!({"code": "unavailable", "configurationId": "user:package"})
+    );
+}
+
 fn serde_yaml_value(text: &str) -> Value {
     serde_yaml_ng::from_str(text).expect("run documents are YAML")
 }
