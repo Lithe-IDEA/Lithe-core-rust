@@ -1,0 +1,54 @@
+{
+  "manifest": {
+    "schemaVersion": 0,
+    "id": "dev.lithe.fixture.managed-runtime",
+    "displayName": "Managed Runtime Fixture",
+    "version": "1.0.0",
+    "pluginAPIVersion": 0,
+    "requires": {"backend": 0, "managedRuntimes": 0, "toolDefinitions": 0},
+    "vendor": {"id": "org.example", "displayName": "Example", "signatureRequirement": "publisherPackage"},
+    "permissions": ["backend.launch", "runtimes.install"],
+    "backend": {"launch": {"kind": "packaged", "path": "bin/resolver"}},
+    "requiresTools": ["fixture-runtime"],
+    "toolDefinitions": [{
+      "id": "fixture-runtime",
+      "displayName": "Fixture Runtime",
+      "executableLayouts": [{"path": "bin/runtime"}],
+      "executables": [{"id": "shell", "kind": "command", "command": "fixture-runtime"}],
+      "version": {"arguments": ["--version"], "pattern": "([0-9]+(?:\\.[0-9]+)*)"},
+      "commands": ["fixture-runtime"],
+      "launch": ["${executable}", "${arguments}"]
+    }],
+    "managedRuntimes": {
+      "resolve": {"function": "fixture.resolveRuntimes"},
+      "dependencies": [
+        {
+          "id": "engine",
+          "version": "25.0.1+2",
+          "tool": "fixture-runtime",
+          "artifacts": [
+            {"os": "windows", "arch": "x86_64", "url": "https://example.invalid/engine-25-windows.zip", "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "archive": "zip", "stripPrefix": "engine-25", "executable": "bin/runtime.exe"},
+            {"os": "linux", "arch": "x86_64", "url": "https://example.invalid/engine-25-linux.tar.gz", "sha256": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "archive": "tar.gz", "stripPrefix": "engine-25", "executable": "bin/runtime"}
+          ]
+        },
+        {
+          "id": "server",
+          "version": "4.2.0",
+          "artifacts": [
+            {"os": "linux", "arch": "x86_64", "url": "https://example.invalid/server-4.2.zip", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "archive": "zip", "home": "server"},
+            {"os": "windows", "arch": "x86_64", "url": "https://example.invalid/server-4.2.zip", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "archive": "zip", "home": "server"}
+          ]
+        }
+      ]
+    }
+  },
+  "platform": {"os": "linux", "arch": "x86_64"},
+  "resolution": {
+    "runtimes": [{"id": "engine", "home": "/opt/fixture/runtime", "version": "25.0.2"}],
+    "missing": ["server"]
+  },
+  "windowsResolution": {
+    "runtimes": [{"id": "engine", "home": "C:\\Tools\\Fixture Runtime", "version": "25.0.2"}],
+    "missing": ["server"]
+  }
+}
