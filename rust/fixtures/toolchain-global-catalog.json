@@ -56,6 +56,64 @@
         "platform": "windows"
       },
       "error": "plugin.toolchain.invalidDocument"
+    },
+    {
+      "name": "workspace-trust-grant-normalizes-and-Preserves-tools",
+      "command": "toolchains.editCatalog",
+      "input": {
+        "document": "{\"version\":1,\"tools\":{\"vm\":{\"homes\":[\"C:/SDK/21\"]}}}",
+        "platform": "windows",
+        "workspaceTrust": {
+          "workspace": "C:\\Projects\\Sample\\",
+          "trusted": true
+        }
+      },
+      "expected": {
+        "status": "ok",
+        "edit": {
+          "changed": true,
+          "document": "{\n  \"version\": 1,\n  \"tools\": {\n    \"vm\": {\n      \"homes\": [\n        \"C:/SDK/21\"\n      ]\n    }\n  },\n  \"trustedWorkspaces\": [\n    \"C:/Projects/Sample\"\n  ]\n}\n",
+          "catalog": {
+            "version": 1,
+            "tools": {
+              "vm": {
+                "homes": [
+                  "C:/SDK/21"
+                ]
+              }
+            },
+            "trustedWorkspaces": [
+              "C:/Projects/Sample"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "workspace-trust-lookup-uses-platform-case-policy",
+      "command": "toolchains.catalogState",
+      "input": {
+        "document": "{\"version\":1,\"tools\":{},\"trustedWorkspaces\":[\"C:/Projects/Sample\"]}",
+        "platform": "windows",
+        "workspaceRoot": "c:\\projects\\sample\\"
+      },
+      "expected": {
+        "status": "ok",
+        "state": {
+          "document": {
+            "version": 1,
+            "tools": {},
+            "trustedWorkspaces": [
+              "C:/Projects/Sample"
+            ]
+          },
+          "storage": {
+            "relativePath": "toolchains/global.json",
+            "maximumBytes": 262144
+          },
+          "projectCodeAllowed": true
+        }
+      }
     }
   ]
 }

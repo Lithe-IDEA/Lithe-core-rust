@@ -11,6 +11,7 @@ use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
 const MAX_BYTES: usize = 256 * 1024;
+const MAX_TRUSTED_WORKSPACES: usize = 256;
 
 #[derive(Clone, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -21,10 +22,12 @@ struct Entry {
 }
 
 #[derive(Clone, Deserialize, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Catalog {
     version: u32,
     tools: BTreeMap<String, Entry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    trusted_workspaces: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -34,6 +37,8 @@ struct Request {
     platform: String,
     #[serde(default)]
     filesystem_case_sensitive: Option<bool>,
+    #[serde(default)]
+    workspace_root: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -44,6 +49,14 @@ struct Edit {
     default_home: Option<String>,
 }
 
+/// Explicit machine-local trust mutation for executing tool environments inside one workspace.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct WorkspaceTrustEdit {
+    workspace: String,
+    trusted: bool,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct EditRequest {
@@ -51,7 +64,10 @@ struct EditRequest {
     platform: String,
     #[serde(default)]
     filesystem_case_sensitive: Option<bool>,
+    #[serde(default)]
     edits: Vec<Edit>,
+    #[serde(default)]
+    workspace_trust: Option<WorkspaceTrustEdit>,
 }
 
 fn invalid(field: &str) -> PluginRejection {
@@ -111,6 +127,24 @@ impl Request {
         })
     }
 
+    fn trusted_workspaces(&self, workspaces: &[String]) -> Validation<Vec<String>> {
+        let case_sensitive = self.case_sensitive()?;
+        if workspaces.len() > MAX_TRUSTED_WORKSPACES {
+            return Err(invalid("trustedWorkspaces"));
+        }
+        let mut by_key = BTreeMap::new();
+        for workspace in workspaces {
+            let path = paths::normalize(workspace, &self.platform, true)
+                .ok_or_else(|| invalid("trustedWorkspaces"))?;
+            let key = paths::normalize(&path, &self.platform, case_sensitive)
+                .ok_or_else(|| invalid("trustedWorkspaces"))?;
+            if by_key.insert(key, path).is_some() {
+                return Err(invalid("trustedWorkspaces"));
+            }
+        }
+        Ok(by_key.into_values().collect())
+    }
+
     fn read(&self) -> Validation<Catalog> {
         self.case_sensitive()?;
         let mut catalog = if let Some(text) = &self.document {
@@ -123,6 +157,7 @@ impl Request {
             Catalog {
                 version: 1,
                 tools: BTreeMap::new(),
+                trusted_workspaces: Vec::new(),
             }
         };
         if catalog.version != 1 || catalog.tools.len() > 64 {
@@ -134,30 +169,59 @@ impl Request {
             }
             *entry = self.entry(&entry.homes, &entry.default_home)?;
         }
+        catalog.trusted_workspaces = self.trusted_workspaces(&catalog.trusted_workspaces)?;
         Ok(catalog)
+    }
+
+    fn workspace_trusted(&self, catalog: &Catalog, workspace: &str) -> Validation<bool> {
+        if workspace.is_empty() {
+            return Ok(false);
+        }
+        let case_sensitive = self.case_sensitive()?;
+        let key = paths::normalize(workspace, &self.platform, case_sensitive)
+            .ok_or_else(|| invalid("workspaceRoot"))?;
+        Ok(catalog.trusted_workspaces.iter().any(|entry| {
+            paths::normalize(entry, &self.platform, case_sensitive).as_ref() == Some(&key)
+        }))
     }
 }
 
 /// Returns the complete validated catalog and the native read plan.
 pub(crate) fn state(input: &Value) -> Validation<Value> {
     let request: Request = serde_json::from_value(input.clone()).map_err(|_| invalid("input"))?;
-    Ok(
-        json!({"document":request.read()?,"storage":{"relativePath":"toolchains/global.json","maximumBytes":MAX_BYTES}}),
-    )
+    let catalog = request.read()?;
+    let project_code_allowed = request
+        .workspace_root
+        .as_deref()
+        .map(|root| request.workspace_trusted(&catalog, root))
+        .transpose()?;
+    let mut response = json!({
+        "document": catalog,
+        "storage": {
+            "relativePath": "toolchains/global.json",
+            "maximumBytes": MAX_BYTES
+        }
+    });
+    if let Some(allowed) = project_code_allowed {
+        response["projectCodeAllowed"] = json!(allowed);
+    }
+    Ok(response)
 }
 
-/// Merges only the confirmed tools, preserving all dormant registrations.
+/// Merges confirmed tool edits and explicit machine-local workspace trust, preserving dormant registrations.
 pub(crate) fn edit(input: &Value) -> Validation<Value> {
     let request: EditRequest =
         serde_json::from_value(input.clone()).map_err(|_| invalid("input"))?;
-    if request.edits.is_empty() || request.edits.len() > 64 {
+    if (request.edits.is_empty() && request.workspace_trust.is_none()) || request.edits.len() > 64 {
         return Err(invalid("edits"));
     }
     let source = Request {
         document: request.document,
         platform: request.platform,
         filesystem_case_sensitive: request.filesystem_case_sensitive,
+        workspace_root: None,
     };
+    let case_sensitive = source.case_sensitive()?;
     let mut catalog = source.read()?;
     let original = catalog.clone();
     let mut tools = BTreeSet::new();
@@ -174,6 +238,31 @@ pub(crate) fn edit(input: &Value) -> Validation<Value> {
     }
     if catalog.tools.len() > 64 {
         return Err(invalid("tools"));
+    }
+    if let Some(trust) = request.workspace_trust {
+        let normalized = paths::normalize(&trust.workspace, &source.platform, true)
+            .ok_or_else(|| invalid("workspaceTrust.workspace"))?;
+        let key = paths::normalize(&normalized, &source.platform, case_sensitive)
+            .ok_or_else(|| invalid("workspaceTrust.workspace"))?;
+        let mut by_key: BTreeMap<String, String> = catalog
+            .trusted_workspaces
+            .iter()
+            .filter_map(|entry| {
+                Some((
+                    paths::normalize(entry, &source.platform, case_sensitive)?,
+                    entry.clone(),
+                ))
+            })
+            .collect();
+        if trust.trusted {
+            by_key.entry(key).or_insert(normalized);
+            if by_key.len() > MAX_TRUSTED_WORKSPACES {
+                return Err(invalid("trustedWorkspaces"));
+            }
+        } else {
+            by_key.remove(&key);
+        }
+        catalog.trusted_workspaces = by_key.into_values().collect();
     }
     let changed = catalog != original;
     let document = if changed {
@@ -238,5 +327,94 @@ mod tests {
             assert!(state(&json!({"document":document,"platform":"windows"})).is_err());
         }
         assert!(edit(&json!({"document":null,"platform":"macos","edits":[{"tool":"vm","homes":["../sdk"],"defaultHome":null}]})).is_err());
+    }
+
+    #[test]
+    fn trusted_workspaces_are_normalized_and_preserved_across_sdk_and_trust_edits() {
+        for (platform, workspace, lookup, other) in [
+            (
+                "macos",
+                "/Users/dev/project",
+                "/Users/dev/project/",
+                "/Users/dev/other",
+            ),
+            (
+                "windows",
+                r"C:\Projects\Sample\",
+                "c:/projects/sample",
+                r"C:\Projects\Other",
+            ),
+        ] {
+            // Revoking trust on an absent document is a no-op and creates no file.
+            let noop = edit(&json!({
+                "document": null,
+                "platform": platform,
+                "workspaceTrust": {"workspace": workspace, "trusted": false}
+            }))
+            .unwrap();
+            assert_eq!(noop["changed"], false, "{platform}");
+            assert_eq!(noop["document"], Value::Null, "{platform}");
+
+            // Granting trust normalizes the path and reports projectCodeAllowed only for that root.
+            let trusted = edit(&json!({
+                "document": null,
+                "platform": platform,
+                "workspaceTrust": {"workspace": workspace, "trusted": true}
+            }))
+            .unwrap();
+            assert_eq!(trusted["changed"], true, "{platform}");
+            let doc = trusted["document"].as_str().unwrap();
+            let allowed = state(&json!({
+                "document": doc,
+                "platform": platform,
+                "workspaceRoot": lookup
+            }))
+            .unwrap();
+            assert_eq!(allowed["projectCodeAllowed"], true, "{platform}");
+            let denied = state(&json!({
+                "document": doc,
+                "platform": platform,
+                "workspaceRoot": other
+            }))
+            .unwrap();
+            assert_eq!(denied["projectCodeAllowed"], false, "{platform}");
+
+            // Editing SDK homes preserves trustedWorkspaces, and revoking trust preserves SDK homes.
+            let with_sdk = edit(&json!({
+                "document": doc,
+                "platform": platform,
+                "edits": [{"tool": "vm", "homes": [other], "defaultHome": null}]
+            }))
+            .unwrap();
+            let doc2 = with_sdk["document"].as_str().unwrap();
+            assert_eq!(
+                state(&json!({"document": doc2, "platform": platform, "workspaceRoot": lookup}))
+                    .unwrap()["projectCodeAllowed"],
+                true,
+                "{platform}"
+            );
+            let revoked = edit(&json!({
+                "document": doc2,
+                "platform": platform,
+                "workspaceTrust": {"workspace": lookup, "trusted": false}
+            }))
+            .unwrap();
+            let doc3 = revoked["document"].as_str().unwrap();
+            let after_revoke = state(&json!({
+                "document": doc3,
+                "platform": platform,
+                "workspaceRoot": lookup
+            }))
+            .unwrap();
+            assert_eq!(after_revoke["projectCodeAllowed"], false, "{platform}");
+            assert_eq!(
+                after_revoke["document"]["tools"]["vm"]["homes"]
+                    .as_array()
+                    .unwrap()
+                    .len(),
+                1,
+                "{platform}"
+            );
+        }
     }
 }

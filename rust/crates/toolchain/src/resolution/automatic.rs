@@ -150,7 +150,7 @@ pub(crate) fn candidates(input: &Value, validate_manifest: ManifestValidator) ->
         .filter(|tool| lithe_plugin_model::is_tool_id(tool))
         .ok_or_else(|| reject("tool"))?;
     let definition = enabled(&registry, tool).ok_or_else(|| reject("tool"))?;
-    let (snapshot, _) = prepare(input, definition)?;
+    let (snapshot, root) = prepare(input, definition)?;
     if input
         .get("projectCodeAllowed")
         .is_some_and(|value| !value.is_boolean())
@@ -158,14 +158,23 @@ pub(crate) fn candidates(input: &Value, validate_manifest: ManifestValidator) ->
         return Err(reject("projectCodeAllowed"));
     }
     string_maps(input, &["environment", "commandHomes"])?;
-    let mut shell = Vec::new();
-    let mut shell_selections = Vec::new();
-    for candidate in definition["executables"]
+    let applicable_candidates: Vec<_> = definition["executables"]
         .as_array()
         .into_iter()
         .flatten()
         .filter(|value| applicable(value, snapshot.platform))
-    {
+        .collect();
+    let project = if root.is_empty() {
+        Vec::new()
+    } else {
+        collect_project_file_choices(&snapshot, &applicable_candidates, &root, ".")
+            .iter()
+            .map(|choice| project_candidate_row(&snapshot, choice))
+            .collect()
+    };
+    let mut shell = Vec::new();
+    let mut shell_selections = Vec::new();
+    for candidate in &applicable_candidates {
         // The same lookups the resolver's environment and command layers make.
         let (source, home, layout) = match candidate["kind"].as_str() {
             Some("environment") => {
@@ -256,7 +265,7 @@ pub(crate) fn candidates(input: &Value, validate_manifest: ManifestValidator) ->
     }
     let (selected, conflict) = automatic_choice(&snapshot, set.eligible, None)?;
     Ok(
-        json!({"tool":tool,"shell":shell,"installations":installations,"skipped":skipped,
+        json!({"tool":tool,"project":project,"shell":shell,"installations":installations,"skipped":skipped,
         "selected":selected.map(|value| value["home"].clone()),
         "conflicts":conflict.into_iter().collect::<Vec<_>>()}),
     )

@@ -222,7 +222,18 @@ impl Snapshot<'_> {
                     .as_str()
                     .and_then(|template| template.strip_prefix("${home}"))
                     .ok_or("unsafePath")?;
-                let path = format!("{home}{suffix}");
+                let path = if suffix.is_empty() {
+                    home.to_owned()
+                } else {
+                    paths::join(home, suffix.trim_start_matches('/'), self.platform)
+                        .ok_or("unsafePath")?
+                };
+                // Cross-platform definitions may declare both `bin` and `Scripts`; an entry
+                // attested as `missing` on this layout is omitted, while unobserved or
+                // escaping entries still fail closed.
+                if self.fact(&path, "missing").is_ok() {
+                    continue;
+                }
                 let fact = self.fact(&path, "directory").map_err(|_| "unsafePath")?;
                 let canonical = fact["canonicalPath"].as_str().ok_or("unsafePath")?;
                 if !paths::within(canonical, home, self.platform, self.case_sensitive) {
@@ -260,9 +271,10 @@ pub(crate) fn output(
     input: &Value,
     outcome: Value,
     trace: Vec<Value>,
+    project_candidates: Vec<Value>,
     unmet: Vec<Value>,
     conflicts: Vec<Value>,
 ) -> Value {
     json!({"operationID":input["operationID"],"tool":input["tool"],"directory":input["directory"],
-        "outcome":outcome,"trace":trace,"unmet":unmet,"conflicts":conflicts})
+        "outcome":outcome,"trace":trace,"projectCandidates":project_candidates,"unmet":unmet,"conflicts":conflicts})
 }
