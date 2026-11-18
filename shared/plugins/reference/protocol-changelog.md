@@ -27,7 +27,7 @@
 | 插件 API 版本 `pluginAPIVersion` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | 插件清单 `schemaVersion` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | 市场索引 `schemaVersion` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
-| 原生 UI 文档 `schemaVersion` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
+| 原生 UI 文档 `schemaVersion`（已删除：`ui` 0 内改为插件视图，视图结果不带版本号，见待合入） | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `litheBuildModel`、`litheDependencies`、`litheTestResults`、`litheTestDiscovery`、`litheBuildConfiguration`、`litheConfigurationEdit` 和 `modelInputs` 快照的 `version` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `plugins.editorActions.decode` 请求的 `version` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | 插件网页桥 `window.lithe.version` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |

@@ -9,9 +9,10 @@
 //!
 //! Note: the decision is recorded in .agents/notes/implemented/architecture/2026-10-21-plugin-settings-surfaces.md
 
+use super::regions::check_keywords;
 use super::{
-    check_label, SettingAction, SettingDeclaration, MAX_SETTING_TEXT, SETTING_ENUM,
-    SETTING_MULTI_SELECT,
+    check_label, SettingAction, SettingDeclaration, SettingsSurface, MAX_SETTING_TEXT,
+    SETTING_ENUM, SETTING_MULTI_SELECT,
 };
 use crate::names::is_language_tag;
 use crate::rejection::PluginRejection;
@@ -41,6 +42,16 @@ struct LocalizationFile {
     sections: UniqueMap<String>,
     #[serde(default)]
     setting_actions: UniqueMap<ActionText>,
+    #[serde(default)]
+    setting_regions: UniqueMap<RegionText>,
+}
+
+/// Search keywords a translation adds to one region; the manifest keywords
+/// stay, so a page is found in either language.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RegionText {
+    keywords: Vec<String>,
 }
 
 /// Translated text of one setting, by the manifest field it replaces.
@@ -85,6 +96,7 @@ pub struct SettingsLocalization {
     settings: BTreeMap<String, CheckedSettingText>,
     sections: BTreeMap<String, String>,
     actions: BTreeMap<String, (Option<String>, Option<String>)>,
+    regions: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Default)]
@@ -137,6 +149,11 @@ impl SettingsLocalization {
             .get(title)
             .cloned()
             .unwrap_or_else(|| title.to_owned())
+    }
+
+    /// Keywords the translation adds to the region `id`.
+    pub fn region_keywords(&self, id: &str) -> Option<&Vec<String>> {
+        self.regions.get(id)
     }
 }
 
@@ -217,12 +234,8 @@ impl<'a> LocalizationRequest<'a> {
     /// file wins; every invalid file is reported with its rejection and never
     /// applied in part. Before the adapter has read the candidates the report
     /// asks it to, and nothing is translated.
-    pub fn select(
-        &self,
-        declarations: &[SettingDeclaration],
-        actions: &[SettingAction],
-    ) -> (Option<SettingsLocalization>, Value) {
-        self.select_with(|text| decode(text, declarations, actions))
+    pub fn select(&self, surface: SettingsSurface<'_>) -> (Option<SettingsLocalization>, Value) {
+        self.select_with(|text| decode(text, surface))
     }
 
     /// [`Self::select`] for another surface: `decode` checks one file
@@ -297,11 +310,23 @@ pub fn parse_localization_file<T: for<'de> Deserialize<'de>>(
 /// translates.
 fn decode(
     text: &str,
-    declarations: &[SettingDeclaration],
-    actions: &[SettingAction],
+    surface: SettingsSurface<'_>,
 ) -> Result<SettingsLocalization, PluginRejection> {
+    let declarations = surface.settings;
+    let actions = surface.actions;
     let file: LocalizationFile = parse_localization_file(text, INVALID_LOCALIZATION)?;
     let mut localization = SettingsLocalization::default();
+    for (id, text) in file.setting_regions.0 {
+        let field = format!("settingRegions.{id}.keywords");
+        if !surface.regions.iter().any(|region| region.id == id) {
+            return Err(rejection(
+                format!("settingRegions.{id}"),
+                "The plugin declares no region with this ID.",
+            ));
+        }
+        check_keywords(&text.keywords).map_err(|message| rejection(&field, message))?;
+        localization.regions.insert(id, text.keywords);
+    }
     for (id, text) in file.settings.0 {
         let field = format!("settings.{id}");
         let declaration = declarations
@@ -467,6 +492,10 @@ mod tests {
         .expect("actions")
     }
 
+    fn regions() -> Vec<super::super::SettingRegion> {
+        serde_json::from_value(json!([{"id":"overview","keywords":["PLT"]}])).expect("regions")
+    }
+
     fn select_text(
         language: Option<&str>,
         files: Option<&BTreeMap<String, String>>,
@@ -474,7 +503,11 @@ mod tests {
         LocalizationRequest::new(language, files)
             .expect("well-formed request")
             .map_or((None, Value::Null), |request| {
-                request.select(&declarations(), &actions())
+                request.select(SettingsSurface {
+                    settings: &declarations(),
+                    actions: &actions(),
+                    regions: &regions(),
+                })
             })
     }
 

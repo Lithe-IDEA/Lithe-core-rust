@@ -8,13 +8,13 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 清单字段 | `settings`、`settingActions` |
+| 清单字段 | `settings`、`settingActions`、`settingRegions` |
 | 能力 | `settings`，版本 `0`。`workspaceConfiguration` 的展开和推送见[语言](languages.md) |
-| 协议 | 没有专用协议；`settingActions` 调用的是插件自己的[插件函数](backend.md) |
-| API 编号 | [API-19](../api-catalog.md#现在能用的-api)：声明式设置。运行期读取、查看来源、修改设置和变化事件仍在计划中。[API-37](../api-catalog.md#现在能用的-api)：设置文字的包内翻译 |
+| 协议 | 没有专用协议；`settingActions` 和设置区域的视图调用的是插件自己的[插件函数](backend.md)，视图结果交给 Core 命令 `plugins.ui.applyResult` 校验 |
+| API 编号 | [API-19](../api-catalog.md#现在能用的-api)：声明式设置和设置区域。运行期读取、查看来源、修改设置和变化事件仍在计划中。[API-37](../api-catalog.md#现在能用的-api)：设置文字的包内翻译 |
 | 权限 | 不需要额外权限。设置不会改变运行的程序，所以不进入安装审查的程序列表 |
 | 激活事件 | 不需要。值按设置的 `effect` 在下一次启动、模型重载、下一次运行或 `immediate` 推送时生效 |
-| 桌面端 | 已声明 `settings`：按语言和构建系统分页、分组、全部控件类型、项目层、生效方式和页面按钮都已呈现。还没有读取包内翻译 `l10n/`，始终显示清单原文 |
+| 桌面端 | 已声明 `settings`：按语言和构建系统分页、分组、全部控件类型、项目层、生效方式和页面按钮都已呈现。还没有读取包内翻译 `l10n/`，始终显示清单原文；还没有呈现设置区域 `settingRegions` |
 
 ### 设置类型
 
@@ -72,6 +72,21 @@
 - `immediate` 设置只能出现在语言服务器的 `workspaceConfiguration` 里，它从不进入命令行或 `initializationOptions`，所以修改它从不需要新进程。
 - `text`、`file`、`directory` 设置只能是一个完整的模板值，或某个 `name=` 参数的值，不能是较长参数的一部分。
 
+### 设置区域
+
+声明的行画不出来的内容放进设置区域 `settingRegions`（最多 16 个，`id` 唯一，每页最多一个）：搜索关键词、一个[插件视图](../../contract/v1/README.md#plugin-views)，或两者都有。区域放在它的 `page` 上（和设置一样，另外可以写 `{ "compilerID": … }` 放到编译器页），不写 `page` 时放在插件自己的设置标签上。
+
+```json
+"settingRegions": [
+  { "id": "plt", "page": { "languageID": "elixir" },
+    "keywords": ["PLT", "dialyzer cache"], "view": { "function": "settings.plt" } }
+]
+```
+
+- `keywords`：1–32 个，忽略大小写互不相同，每个 1–64 个字符、不换行、首尾没有空白。设置搜索除了页面标题和声明的行，也按这些词找到页面，并打开到这个插件的部分。
+- `view`：`{function}`，插件后端的视图函数，画在页面标题和插件声明的行之间。视图可以放宿主控件、画布，也可以用绑定控件编辑本插件的设置（和声明的行改的是同一份草稿）、放本插件按钮和显示本插件工具解析结果的工具行，但不能放树。需要 `backend`、`ui` 0 和 `ui.contribute` 权限；页面打开时宿主启动后端。
+- 只写关键词的区域不需要后端。区域本身不保存任何值。声明区域也算使用了 `settings`。
+
 ### 两层保存与生效顺序
 
 宿主为每个插件的每个设置保存一个全局值，并把项目值保存在项目的 `.lithe/plugin-settings.json` 里（格式 `{pluginID: {settingID: value}}`，适合通过版本控制共享）。宿主把两者都作为 `settings` 和 `projectSettings` 传给 Core。Core 按这个顺序合并：项目值（只对 `scope: "project"` 有效）、全局值、默认值；存储的值如果不被声明接受，就跳过。
@@ -98,6 +113,7 @@
 | `settings.<id>` | 设置的 `title`、`description`、`placeholder`、`unit`；`options.<值>` 是 `enum`、`multiSelect` 选项的标题 |
 | `sections.<标题>` | 分组标题，键与 `section` 里写的原文完全一致 |
 | `settingActions.<id>` | 按钮的 `title`、`description` |
+| `settingRegions.<id>` | `keywords`：追加在声明的关键词后面的本语言关键词，忽略大小写重复的去掉。区域视图里的文字不在这里翻译：视图事件带界面语言，后端按它返回文字 |
 
 - ID、选项值和顺序、保存的值、分组和分组顺序在所有语言下都不变，翻译只换显示的文字。
 - 界面语言是 `zh-Hans-CN` 时，依次找 `l10n/zh-Hans-CN.json`、`l10n/zh-Hans.json`、`l10n/zh.json`，显示第一个通过检查的文件，所以一份 `zh-Hans` 就能覆盖所有地区。
@@ -111,6 +127,8 @@
 | --- | --- |
 | [Plugin settings](../../contract/v1/README.md#plugin-settings) | 设置的字段、类型、模板 `${setting:<id>}` 和使用规则 |
 | [Placement, scope, effect, and page buttons](../../contract/v1/README.md#placement-scope-effect-and-page-buttons) | 放置位置、层级、生效时机、页面按钮和校验规则 |
+| [Settings regions](../../contract/v1/README.md#settings-regions) | 设置区域的字段、关键词规则和放置 |
+| [Plugin views](../../contract/v1/README.md#plugin-views) | 区域视图的事件、结果、控件、画布和预算 |
 | [Translations](../../contract/v1/README.md#translations) | 包内翻译文件的格式、语言候选顺序和拒绝规则 |
 | [Workspace configuration](../../contract/v1/README.md#workspace-configuration) | `workspaceConfiguration` 的展开和推送 |
 | [Executable resolution](../../contract/v1/README.md#executable-resolution) | `setting` 类型的可执行文件候选：引用全局 `file` 设置选择工具路径、候选顺序和严格选择 |
@@ -120,9 +138,9 @@
 
 | 文件 | 内容 |
 | --- | --- |
-| [`settings/settings.plugin.json`](../../contract/v1/fixtures/settings/settings.plugin.json) | 放在 Elixir 语言页和 Mix 构建系统页上的设置、`immediate` 设置、`settingActions` 按钮 |
-| [`settings/l10n/zh-Hans.json`](../../contract/v1/fixtures/settings/l10n/zh-Hans.json) | 上面这份清单的简体中文翻译：设置标题、选项标题、分组标题和按钮 |
-| [`settings/localization-cases.json`](../../contract/v1/fixtures/settings/localization-cases.json) | 13 个翻译用例：按语言挑选文件、坏文件回退，以及每种拒绝和它的字段 |
+| [`settings/settings.plugin.json`](../../contract/v1/fixtures/settings/settings.plugin.json) | 放在 Elixir 语言页和 Mix 构建系统页上的设置、`immediate` 设置、`settingActions` 按钮，以及 Elixir 页上只带关键词的设置区域 |
+| [`settings/l10n/zh-Hans.json`](../../contract/v1/fixtures/settings/l10n/zh-Hans.json) | 上面这份清单的简体中文翻译：设置标题、选项标题、分组标题、按钮和设置区域的关键词 |
+| [`settings/localization-cases.json`](../../contract/v1/fixtures/settings/localization-cases.json) | 15 个翻译用例：按语言挑选文件、坏文件回退，以及每种拒绝和它的字段（含设置区域的关键词） |
 | [`languages/node-runtime.plugin.json`](../../contract/v1/fixtures/languages/node-runtime.plugin.json) | 带插件设置的语言服务器（`node` 运行时） |
 | [`build-systems/build-tool-path.plugin.json`](../../contract/v1/fixtures/build-systems/build-tool-path.plugin.json) | 用 `file` 设置选择构建工具的可执行文件候选 |
 | [`debug-adapters/debug-adapter.plugin.json`](../../contract/v1/fixtures/debug-adapters/debug-adapter.plugin.json) | 调试适配器用 `file` 设置（`nextRun`）选择要调试的程序 |
@@ -142,13 +160,13 @@ A plugin declares, in its manifest, the options a user may change. The host draw
 
 | Item | Value |
 | --- | --- |
-| Manifest fields | `settings`, `settingActions` |
+| Manifest fields | `settings`, `settingActions`, `settingRegions` |
 | Capability | `settings`, version `0`. Expanding and pushing `workspaceConfiguration` is described in [Languages](languages.md) |
-| Protocol | None of its own; `settingActions` call the plugin's own [plugin functions](backend.md) |
-| API IDs | [API-19](../api-catalog.md#apis-usable-now): declarative settings. Runtime reads, source inspection, writes, and change events are still planned. [API-37](../api-catalog.md#apis-usable-now): packaged translations of settings text |
+| Protocol | None of its own; `settingActions` and settings-region views call the plugin's own [plugin functions](backend.md), and the Core command `plugins.ui.applyResult` checks view results |
+| API IDs | [API-19](../api-catalog.md#apis-usable-now): declarative settings and settings regions. Runtime reads, source inspection, writes, and change events are still planned. [API-37](../api-catalog.md#apis-usable-now): packaged translations of settings text |
 | Permissions | None. Settings never change which program runs, so they are not in the install review's program list |
 | Activation | Not needed. Values take effect according to the setting's `effect`: at the next start, a model reload, the next run, or an `immediate` push |
-| Desktop | Declares `settings`: pages per language and build system, sections, every control type, the project layer, effects, and page buttons are presented. It does not read packaged translations `l10n/` yet and always shows the manifest text |
+| Desktop | Declares `settings`: pages per language and build system, sections, every control type, the project layer, effects, and page buttons are presented. It does not read packaged translations `l10n/` yet and always shows the manifest text, and does not present settings regions `settingRegions` yet |
 
 ### Setting types
 
@@ -206,6 +224,21 @@ Placement and use rules that Core checks at validation:
 - An `immediate` setting may appear only in a language server's `workspaceConfiguration`. It never reaches a command line or `initializationOptions`, so a change never needs a new process.
 - A `text`, `file`, or `directory` setting is a whole template value, or the value of one `name=` argument; it is never part of a longer argument.
 
+### Settings regions
+
+Content that declared rows cannot draw goes in `settingRegions` (at most 16, unique `id`s, at most one per page): search keywords, a [plugin view](../../contract/v1/README.md#plugin-views), or both. A region sits on its `page` (as for settings, plus `{ "compilerID": … }` for a compiler page), or on the plugin's own Settings tab when it names no page.
+
+```json
+"settingRegions": [
+  { "id": "plt", "page": { "languageID": "elixir" },
+    "keywords": ["PLT", "dialyzer cache"], "view": { "function": "settings.plt" } }
+]
+```
+
+- `keywords`: 1–32, distinct ignoring case, each 1–64 characters without line breaks or surrounding spaces. Settings search finds the page by them in addition to the page title and the declared rows, and opens the page at this plugin's part.
+- `view`: `{function}`, a view function of the plugin's backend, drawn between the page header and the plugin's declared rows. The view may hold host controls and canvases, edit the plugin's own settings through bound controls (the same draft the declared rows edit), show the plugin's buttons and tool rows with how its tools resolve, but no tree. It needs `backend`, `ui` 0, and the `ui.contribute` permission; the host starts the backend when the page opens.
+- A region with keywords only needs no backend. A region stores no values. Declaring regions counts as using `settings`.
+
 ### Two layers and their order
 
 The host stores one global value per plugin and setting, and a project value in the project's `.lithe/plugin-settings.json` (`{pluginID: {settingID: value}}`, meant to be shared through version control). It sends both as `settings` and `projectSettings`. Core merges them in this order: project (only for `scope: "project"`), then global, then default, skipping a stored value the declaration no longer accepts.
@@ -232,6 +265,7 @@ The host stores one global value per plugin and setting, and a project value in 
 | `settings.<id>` | The setting's `title`, `description`, `placeholder`, and `unit`; `options.<value>` is the title of an `enum` or `multiSelect` option |
 | `sections.<heading>` | A section heading, keyed by the exact text `section` writes |
 | `settingActions.<id>` | The button's `title` and `description` |
+| `settingRegions.<id>` | `keywords`: keywords in this language added after the declared ones, dropping repeats ignoring case. A region view's own text is not translated here: view events carry the interface language, and the backend returns text in it |
 
 - IDs, option values and their order, stored values, and sections and their order are the same in every language; a translation changes only the shown text.
 - For the interface language `zh-Hans-CN` the host looks for `l10n/zh-Hans-CN.json`, `l10n/zh-Hans.json`, and `l10n/zh.json`, and shows the first file that passes the checks, so one `zh-Hans` file serves every region.
@@ -245,6 +279,8 @@ The host stores one global value per plugin and setting, and a project value in 
 | --- | --- |
 | [Plugin settings](../../contract/v1/README.md#plugin-settings) | Setting fields, types, the `${setting:<id>}` template, and use rules |
 | [Placement, scope, effect, and page buttons](../../contract/v1/README.md#placement-scope-effect-and-page-buttons) | Placement, layers, effect timing, page buttons, and validation rules |
+| [Settings regions](../../contract/v1/README.md#settings-regions) | Settings region fields, keyword rules, and placement |
+| [Plugin views](../../contract/v1/README.md#plugin-views) | Events, results, controls, canvases, and budgets of region views |
 | [Translations](../../contract/v1/README.md#translations) | Packaged translation files: format, language candidate order, and rejection rules |
 | [Workspace configuration](../../contract/v1/README.md#workspace-configuration) | Expanding and pushing `workspaceConfiguration` |
 | [Executable resolution](../../contract/v1/README.md#executable-resolution) | `setting` executable candidates: a global `file` setting selects the tool path, candidate order, and strict selection |
@@ -254,9 +290,9 @@ The host stores one global value per plugin and setting, and a project value in 
 
 | File | Content |
 | --- | --- |
-| [`settings/settings.plugin.json`](../../contract/v1/fixtures/settings/settings.plugin.json) | Settings on the Elixir language page and the Mix build-system page, an `immediate` setting, and `settingActions` buttons |
-| [`settings/l10n/zh-Hans.json`](../../contract/v1/fixtures/settings/l10n/zh-Hans.json) | Simplified Chinese translation of that manifest: setting, option, and section titles and a button |
-| [`settings/localization-cases.json`](../../contract/v1/fixtures/settings/localization-cases.json) | 13 translation cases: choosing a file by language, falling back past a broken file, and each rejection with its field |
+| [`settings/settings.plugin.json`](../../contract/v1/fixtures/settings/settings.plugin.json) | Settings on the Elixir language page and the Mix build-system page, an `immediate` setting, `settingActions` buttons, and a keywords-only settings region on the Elixir page |
+| [`settings/l10n/zh-Hans.json`](../../contract/v1/fixtures/settings/l10n/zh-Hans.json) | Simplified Chinese translation of that manifest: setting, option, and section titles, a button, and settings-region keywords |
+| [`settings/localization-cases.json`](../../contract/v1/fixtures/settings/localization-cases.json) | 15 translation cases: choosing a file by language, falling back past a broken file, and each rejection with its field (settings-region keywords included) |
 | [`languages/node-runtime.plugin.json`](../../contract/v1/fixtures/languages/node-runtime.plugin.json) | A language server with plugin settings (`node` runtime) |
 | [`build-systems/build-tool-path.plugin.json`](../../contract/v1/fixtures/build-systems/build-tool-path.plugin.json) | A `file` setting selects the build tool's executable candidate |
 | [`debug-adapters/debug-adapter.plugin.json`](../../contract/v1/fixtures/debug-adapters/debug-adapter.plugin.json) | A debug adapter uses a `file` setting (`nextRun`) to pick the program to debug |

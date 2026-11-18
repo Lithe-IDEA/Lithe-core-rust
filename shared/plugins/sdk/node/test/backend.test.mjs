@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { createBackend, isFunctionId, PluginError, PluginSdkError } from '../src/index.mjs';
+import { checkViewEvent } from '../src/view.mjs';
 import { gate, TestHost, withTimeout } from './harness.mjs';
 
 const fixture = JSON.parse(
@@ -101,6 +102,71 @@ test('an invocation returns its result; undefined becomes null', async () => {
   const unknown = await host.request('lithe/function/invoke', { functionID: 'missing', operationID: 'op-3' });
   assert.equal(unknown.error.code, -32602);
   await host.close();
+});
+
+test('a view function gets the view event and answers {} when it returns nothing', async () => {
+  const events = [];
+  const backend = createBackend().view('explorer.draw', (event) => {
+    events.push(event);
+    if (event.event === 'open') return { view: [{ type: 'label', text: event.language }] };
+    return undefined;
+  });
+  assert.deepEqual(backend.functionIDs, ['explorer.draw']);
+  const host = new TestHost(backend);
+  await host.initialize();
+  const base = { instance: 'i1', surface: { toolWindowID: 'dev.example.explorer' }, language: 'zh-Hans', settings: { effective: {}, draft: {} } };
+  const open = await host.request('lithe/function/invoke', {
+    functionID: 'explorer.draw', operationID: 'op-1', params: { event: 'open', ...base },
+  });
+  assert.deepEqual(open.result, { view: [{ type: 'label', text: 'zh-Hans' }] });
+  const click = await host.request('lithe/function/invoke', {
+    functionID: 'explorer.draw', operationID: 'op-2', params: { event: 'click', node: 'refresh', ...base },
+  });
+  assert.deepEqual(click.result, {});
+  assert.deepEqual(events.map(({ event, node }) => [event, node]), [['open', undefined], ['click', 'refresh']]);
+  // An optional field sent as null counts as absent.
+  const absent = await host.request('lithe/function/invoke', {
+    functionID: 'explorer.draw', operationID: 'op-3',
+    params: { event: 'change', node: null, value: null, viewport: null, ...base },
+  });
+  assert.deepEqual(absent.result, {});
+  // Params that are not a view event never reach the handler.
+  const refused = await host.request('lithe/function/invoke', {
+    functionID: 'explorer.draw', operationID: 'op-4', params: { event: 'open' },
+  });
+  assert.equal(refused.error.code, -32603);
+  assert.equal(events.length, 3);
+  await host.close();
+  assert.throws(() => createBackend().view('Bad-ID', () => {}), (error) => error.code === 'sdk.function.invalidID');
+  assert.throws(() => createBackend().view('explorer.draw', null), TypeError);
+});
+
+test('a view event without its required shape is refused', () => {
+  const event = (extra) => ({
+    event: 'change',
+    instance: 'i1',
+    surface: { settingRegionID: 'otp' },
+    language: 'zh-Hans',
+    settings: { effective: { otpRelease: '26' }, draft: { otpRelease: '27' } },
+    ...extra,
+  });
+  const parsed = event({ setting: 'otpRelease', value: 27, viewport: { x: 0, y: 10.5, width: 1200, height: 640 } });
+  assert.equal(checkViewEvent(parsed), parsed);
+  for (const params of [
+    null,
+    [],
+    event({ event: 'hover' }),
+    event({ instance: 1 }),
+    event({ surface: { toolWindowID: 'a', settingRegionID: 'b' } }),
+    event({ surface: { toolWindowID: 'a', settingRegionID: 3 } }),
+    event({ surface: {} }),
+    event({ settings: { effective: {} } }),
+    event({ node: 3 }),
+    event({ value: ['a'] }),
+    event({ viewport: { x: 0 } }),
+  ]) {
+    assert.throws(() => checkViewEvent(params), (error) => error.code === 'sdk.view.invalidEvent', JSON.stringify(params));
+  }
 });
 
 test('progress echoes the operation ID, is bounded, and stops once the call ended', async () => {

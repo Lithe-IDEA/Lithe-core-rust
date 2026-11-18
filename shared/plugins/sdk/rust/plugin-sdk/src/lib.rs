@@ -1,13 +1,14 @@
 //! Official SDK for Lithe plugin backends written in Rust.
 //!
 //! A plugin backend is the one long-lived process a plugin declares under
-//! `backend` in `plugin.json`; Lithe starts it when one of the plugin's own
-//! web pages first calls a function. It speaks the LSP base protocol on
-//! stdio and implements, from
-//! [plugin contract v2](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/shared/plugins/contract/v1/README.md):
+//! `backend` in `plugin.json`; Lithe starts it when the plugin first needs
+//! it, such as when one of its web pages calls a function or one of its views
+//! opens. It speaks the LSP base protocol on stdio and implements, from
+//! [plugin contract v1](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/shared/plugins/contract/v1/README.md):
 //!
 //! - **`litheFunctions`**: plugin functions with progress, cancellation, and
-//!   registration at runtime;
+//!   registration at runtime, and the [`view`] functions that draw the
+//!   plugin's tool windows and settings regions;
 //! - **[`Host`] services**: the plugin's own [`Credentials`] in the
 //!   platform's secret store, workspace contexts, files, documents, the
 //!   editor, previews, the browser, window messages, capability discovery,
@@ -36,6 +37,7 @@ mod host;
 mod panic_boundary;
 mod protocol;
 mod stdio;
+pub mod view;
 
 pub use backend::{
     Backend, BackendHandle, Caller, Cancellation, Context, Initialize, KeymapImportRequest,

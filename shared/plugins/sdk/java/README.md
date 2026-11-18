@@ -18,7 +18,9 @@ next to the SDK and changes with it, with the same rules and error mapping:
   credentials, workspace contexts, capability discovery, host notifications,
   and the public document, file, editor, and window methods; and
   [calls to other plugins' functions](#calling-other-plugins), which Core
-  relays. A function also learns which plugin called it.
+  relays. A function also learns which plugin called it. The
+  [view functions](#plugin-views) that draw a plugin's tool windows and
+  settings regions are plugin functions too.
 - **`litheKeymapImport`**: independently negotiated shortcut import
   providers reading only explicitly selected source snapshots.
 - **`litheLogging`**: typed diagnostics, required in every session.
@@ -81,6 +83,52 @@ runtime, and cancellation. From the root of this repository,
 with the scenario in [`sdk/e2e`](../e2e/plugin_sdk/mod.rs), the same one the
 Node.js sample answers.
 
+## Plugin views
+
+A tool window or settings region whose manifest entry has
+`view: { function }` is drawn by that backend function
+([Plugin views](../../contract/v1/README.md#plugin-views)). Declare it with
+`backend.view(id, handler)`. The handler gets a `ViewEvent`: `kind()`,
+`instance()`, `toolWindowId()` or `settingRegionId()`, `language()`, the
+`effective()` and `draft()` setting values, and the fields of that event.
+Params that are not a view event fail the call with `sdk.view.invalidEvent`
+before the handler runs; an optional field that is `null` counts as absent. The
+handler answers a `ViewResult`:
+
+- `ViewResult.view(nodes)`: a whole view. The first answer after `OPEN` must
+  be one.
+- `ViewResult.patches(patches)`: edits to the view the host is drawing, built
+  with `ViewPatch`.
+- `ViewResult.unchanged()` or `null`: nothing changed. The SDK answers `{}`.
+
+Nodes are plain JSON maps shaped as
+[`plugin-ui.schema.json`](../../contract/v1/plugin-ui.schema.json) describes.
+Core checks every answer, and the host draws nothing that Core refused. Return
+view text in `event.language()`.
+
+```java
+backend.view("explorer.draw", (event, context) -> {
+    if (event.kind() == ViewEvent.Kind.OPEN) {
+        Map<String, Object> label = new LinkedHashMap<>();
+        label.put("type", "label");
+        label.put("text", "Modules");
+        Map<String, Object> refresh = new LinkedHashMap<>();
+        refresh.put("type", "button");
+        refresh.put("id", "refresh");
+        refresh.put("text", "Refresh");
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("type", "row");
+        row.put("children", Arrays.asList(label, refresh));
+        return ViewResult.view(Collections.singletonList(row));
+    }
+    if (event.kind() == ViewEvent.Kind.CLICK && "refresh".equals(event.node())) {
+        return ViewResult.patches(Collections.singletonList(
+                ViewPatch.set("refresh", Collections.singletonMap("enabled", false))));
+    }
+    return null;
+});
+```
+
 ## Getting the SDK
 
 The SDK is released from this repository, tagged `sdk-java-v<version>`; the
@@ -120,6 +168,7 @@ stderr fallback and no plugin-owned file writer.
 | `onPrepareRun(handler)`, `onPrepareDebug(handler)` | Prepare a portable run or debug plan; the host owns the application. |
 | `negotiated().build()` | Whether the host offered `litheBuild` and the backend declared a build handler; build methods are refused before their handler runs when it is false. |
 | `function(id, handler)` | Declares a function offered in `initialize`. |
+| `view(id, handler)` | Declares a view function; see [Plugin views](#plugin-views). |
 | `registerFunction(id, handler)`, `unregisterFunction(id)` | Add or withdraw a function. Called before the `initialize` answer (for example from `onInitialize`), they change the initial list. Later calls send `lithe/function/register` or `lithe/function/unregister`, in order. Both return a `CompletableFuture`. Withdrawing a function revokes its running calls. |
 | `negotiated().functions()` | Whether the host offered plugin functions. `host().negotiated()` reports the same. |
 | `host()` | [Host services](#host-services) for work outside a call, such as a command handler. Its calls to other plugins name no parent call. |

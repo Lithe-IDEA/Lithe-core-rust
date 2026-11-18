@@ -18,13 +18,13 @@ use lithe_plugin_model::process::{
 };
 use lithe_plugin_model::settings::{
     DeclaredSettings, ResolvedSetting, SettingAction, SettingDeclaration, SettingLayers,
-    MAX_SETTINGS, MAX_SETTING_ACTIONS,
+    SettingRegion, SettingsSurface, MAX_SETTINGS, MAX_SETTING_ACTIONS,
 };
 use lithe_plugin_model::{
     decode_payload, invalid, invalid_template, is_bare_command, is_environment_name, is_identifier,
     is_official_namespace, is_plugin_id, is_safe_relative_path, is_semantic_version, outcome,
     parse_template_with, regex_literal, sorted_unique, validate_minimum_version, PluginRejection,
-    TemplatePart, UIIcon, Validation,
+    TemplatePart, UIIcon, Validation, ViewDeclaration,
 };
 use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
@@ -46,6 +46,7 @@ mod settings_surfaces;
 mod templates;
 mod ui;
 mod validation;
+mod views;
 
 pub use command_installers::{
     command_installer_default_directory_command, command_installer_plan_command,
@@ -64,5 +65,6 @@ pub use settings_surfaces::{
 };
 use templates::*;
 pub use validation::*;
+pub use views::apply_result_command;
 
 pub use lithe_plugin_model::capabilities::SUPPORTED_PLUGIN_API_VERSIONS;

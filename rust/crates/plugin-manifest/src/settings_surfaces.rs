@@ -3,8 +3,9 @@
 //! these commands never discover files, subscribe windows or launch plugins.
 
 use crate::{validate_manifest_value, SettingsOwner};
+use lithe_plugin_model::settings::LocalizationRequest;
 use lithe_plugin_model::{decode_payload, outcome, PluginRejection};
-use lithe_protocol::CoreError;
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -20,12 +21,20 @@ struct Contribution {
     manifest: Value,
     owner: SettingsOwner,
     enabled: bool,
+    /// Translation files the native adapter found among the candidates for
+    /// the request's `language`, by package-relative path.
+    #[serde(default)]
+    localizations: Option<BTreeMap<String, String>>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CatalogRequest {
     plugins: Vec<Contribution>,
+    /// Interface language whose plugin translations translate section
+    /// headings and add region keywords, such as `zh-Hans`.
+    #[serde(default)]
+    language: Option<String>,
 }
 
 fn rejected(field: &str) -> PluginRejection {
@@ -38,15 +47,31 @@ fn rejected(field: &str) -> PluginRejection {
 
 /// Builds a deterministic catalog from complete validated installed manifests.
 /// Disabled packages cannot contribute pages or rename another plugin's page.
+/// Each contributor carries its sections and, when it placed one there, its
+/// region: search keywords and the view it draws on the page.
 pub fn settings_catalog_command(payload: Value) -> Result<Value, CoreError> {
-    let request: CatalogRequest = decode_payload(payload, "plugins.settings.catalog")?;
+    const COMMAND: &str = "plugins.settings.catalog";
+    let request: CatalogRequest = decode_payload(payload, COMMAND)?;
+    let mut requests = Vec::with_capacity(request.plugins.len());
+    for entry in &request.plugins {
+        requests.push(
+            LocalizationRequest::new(request.language.as_deref(), entry.localizations.as_ref())
+                .map_err(|reason| {
+                    CoreError::new(
+                        ErrorCode::InvalidRequest,
+                        format!("Invalid {COMMAND} payload"),
+                    )
+                    .with_details(reason)
+                })?,
+        );
+    }
     Ok(outcome((|| {
         if request.plugins.len() > MAX_PLUGINS {
             return Err(rejected("plugins"));
         }
         let mut owners = BTreeSet::new();
         let mut manifests = BTreeMap::new();
-        for entry in request.plugins {
+        for (entry, localization) in request.plugins.iter().zip(&requests) {
             let manifest = validate_manifest_value(entry.manifest.clone())?;
             if manifest.id != entry.owner.plugin_id || manifest.version != entry.owner.version {
                 return Err(PluginRejection::at(
@@ -59,12 +84,20 @@ pub fn settings_catalog_command(payload: Value) -> Result<Value, CoreError> {
                 return Err(rejected("plugins"));
             }
             if entry.enabled {
-                manifests.insert(manifest.id.clone(), (manifest, entry.manifest));
+                let (translation, report) = localization
+                    .as_ref()
+                    .map_or((None, Value::Null), |request| {
+                        request.select(manifest.settings_surface())
+                    });
+                manifests.insert(
+                    manifest.id.clone(),
+                    (manifest, &entry.manifest, translation, report),
+                );
             }
         }
         let mut titles = BTreeMap::new();
         // Plugin ID order resolves competing display names deterministically.
-        for (_, raw) in manifests.values() {
+        for (_, raw, _, _) in manifests.values() {
             for (field, kind) in [("languages", "language"), ("buildSystems", "buildSystem")] {
                 if let Some(entries) = raw[field].as_array() {
                     for entry in entries {
@@ -80,20 +113,29 @@ pub fn settings_catalog_command(payload: Value) -> Result<Value, CoreError> {
             }
         }
         let mut pages = BTreeMap::<String, Value>::new();
-        for (id, (manifest, _)) in manifests {
+        for (id, (manifest, _, translation, report)) in manifests {
             for page in lithe_plugin_model::settings::page_sections(
-                &manifest.settings,
-                &manifest.setting_actions,
-                None,
+                manifest.settings_surface(),
+                translation.as_ref(),
             ) {
                 let key = page["key"].as_str().unwrap_or_default().to_owned();
                 let target = pages.entry(key.clone()).or_insert_with(|| json!({
                     "key":key,"kind":page["kind"],"id":page["id"],
                     "title":titles.get(&key).or_else(|| titles.get(&format!("language:{}",page["id"].as_str().unwrap_or_default()))).or_else(|| titles.get(&format!("buildSystem:{}",page["id"].as_str().unwrap_or_default()))).cloned().unwrap_or_else(|| page["id"].as_str().unwrap_or_default().to_owned()),"contributors":[]
                 }));
-                target["contributors"].as_array_mut().expect("catalog array").push(json!({
+                let mut contributor = json!({
                     "pluginID":id,"version":manifest.version,"title":manifest.display_name,"sections":page["sections"]
-                }));
+                });
+                if let Some(region) = page.get("region") {
+                    contributor["region"] = region.clone();
+                }
+                if !report.is_null() {
+                    contributor["localization"] = report.clone();
+                }
+                target["contributors"]
+                    .as_array_mut()
+                    .expect("catalog array")
+                    .push(contributor);
             }
         }
         if pages.len() > MAX_PAGES {

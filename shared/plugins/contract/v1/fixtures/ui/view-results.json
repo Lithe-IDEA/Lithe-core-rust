@@ -1,0 +1,140 @@
+{
+  "manifest": "view-panel.plugin.json",
+  "cases": [
+    {
+      "name": "the first result is a whole tool-window view",
+      "surface": {"toolWindowID": "dev.lithe.fixture.view-panel.explorer"},
+      "result": {
+        "view": [
+          {"type": "section", "title": "Modules", "info": "Modules the backend found.", "children": [
+            {"type": "row", "children": [
+              {"type": "label", "id": "count", "text": "2 modules", "style": "strong"},
+              {"type": "button", "id": "refresh", "text": "Refresh", "icon": "refresh"}
+            ]},
+            {"type": "tree", "id": "modules", "items": [
+              {"id": "core", "label": "core", "icon": "plugin", "expanded": true, "children": [
+                {"id": "core.api", "label": "api", "detail": "12 classes"}
+              ]}
+            ]}
+          ]},
+          {"type": "canvas", "id": "graph", "label": "Module graph", "height": 160,
+           "viewBox": [0, 0, 320, 160], "nodes": [
+            {"type": "rect", "x": 0, "y": 0, "w": 320, "h": 160, "radius": 8, "fill": "$surface"},
+            {"type": "group", "id": "node.core", "x": 20, "y": 20, "w": 120, "h": 40, "radius": 6,
+             "on": ["click"], "label": "core module", "states": {"hover": {"fill": "$hover"}}, "children": [
+              {"type": "text", "x": 60, "y": 20, "text": "core", "style": "strong", "align": "center"}
+            ]}
+          ]}
+        ]
+      },
+      "expected": {"status": "ok", "changed": true, "view": "result.view"}
+    },
+    {
+      "name": "patches edit host controls, tree items and canvas nodes by ID",
+      "surface": {"toolWindowID": "dev.lithe.fixture.view-panel.explorer"},
+      "view": [
+        {"type": "label", "id": "count", "text": "2 modules"},
+        {"type": "tree", "id": "modules", "items": [{"id": "core", "label": "core"}]},
+        {"type": "canvas", "id": "graph", "label": "Module graph", "height": 160,
+         "viewBox": [0, 0, 320, 160], "nodes": [
+          {"type": "rect", "id": "core", "x": 20, "y": 20, "w": 120, "h": 40, "fill": "$surface"}
+        ]}
+      ],
+      "result": {
+        "patches": [
+          {"op": "set", "id": "count", "fields": {"text": "3 modules", "tone": "accent"}},
+          {"op": "insert", "tree": "modules", "node": {"id": "ui", "label": "ui"}},
+          {"op": "set", "canvas": "graph", "id": "core", "fields": {"fill": "$selection"}}
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "changed": true,
+        "view": [
+          {"type": "label", "id": "count", "text": "3 modules", "tone": "accent"},
+          {"type": "tree", "id": "modules", "items": [{"id": "core", "label": "core"}, {"id": "ui", "label": "ui"}]},
+          {"type": "canvas", "id": "graph", "label": "Module graph", "height": 160,
+           "viewBox": [0, 0, 320, 160], "nodes": [
+            {"type": "rect", "id": "core", "x": 20, "y": 20, "w": 120, "h": 40, "fill": "$selection"}
+          ]}
+        ]
+      }
+    },
+    {
+      "name": "an empty result keeps the drawn view",
+      "surface": {"toolWindowID": "dev.lithe.fixture.view-panel.explorer"},
+      "view": [{"type": "label", "id": "count", "text": "2 modules"}],
+      "result": {},
+      "expected": {"status": "ok", "changed": false, "view": [{"type": "label", "id": "count", "text": "2 modules"}]}
+    },
+    {
+      "name": "a settings region binds declared settings, actions and tools",
+      "surface": {"settingRegionID": "overview"},
+      "result": {
+        "view": [
+          {"type": "segmented", "id": "layout", "setting": "layout"},
+          {"type": "toggle", "id": "offline", "label": "Work offline", "setting": "offline"},
+          {"type": "tool", "tool": "node"},
+          {"type": "button", "id": "reindex", "text": "Reindex", "action": "reindex"}
+        ]
+      },
+      "expected": {"status": "ok", "changed": true, "view": "result.view"}
+    },
+    {
+      "name": "patches need a drawn view",
+      "surface": {"toolWindowID": "dev.lithe.fixture.view-panel.explorer"},
+      "result": {"patches": []},
+      "expected": {"status": "rejected", "field": "result.patches"}
+    },
+    {
+      "name": "a result returns a view or patches, not both",
+      "surface": {"toolWindowID": "dev.lithe.fixture.view-panel.explorer"},
+      "view": [],
+      "result": {"view": [], "patches": []},
+      "expected": {"status": "rejected", "field": "result"}
+    },
+    {
+      "name": "an unknown node type is refused",
+      "surface": {"toolWindowID": "dev.lithe.fixture.view-panel.explorer"},
+      "result": {"view": [{"type": "webview", "url": "https://example.com"}]},
+      "expected": {"status": "rejected", "field": "result.view[0].type"}
+    },
+    {
+      "name": "canvas colors are hex or theme tokens",
+      "surface": {"toolWindowID": "dev.lithe.fixture.view-panel.explorer"},
+      "result": {"view": [
+        {"type": "canvas", "id": "graph", "label": "Graph", "height": 100, "viewBox": [0, 0, 100, 100],
+         "nodes": [{"type": "rect", "x": 0, "y": 0, "w": 10, "h": 10, "fill": "red"}]}
+      ]},
+      "expected": {"status": "rejected", "field": "result.view[0].nodes[0].fill"}
+    },
+    {
+      "name": "a tool window cannot bind settings",
+      "surface": {"toolWindowID": "dev.lithe.fixture.view-panel.explorer"},
+      "result": {"view": [{"type": "toggle", "id": "offline", "label": "Offline", "setting": "offline"}]},
+      "expected": {"status": "rejected", "field": "result.view[0].setting"}
+    },
+    {
+      "name": "a settings region cannot show a tree",
+      "surface": {"settingRegionID": "overview"},
+      "result": {"view": [{"type": "tree", "id": "modules", "items": []}]},
+      "expected": {"status": "rejected", "field": "result.view[0]"}
+    },
+    {
+      "name": "a patch that misses refuses the whole result",
+      "surface": {"toolWindowID": "dev.lithe.fixture.view-panel.explorer"},
+      "view": [{"type": "label", "id": "count", "text": "2 modules"}],
+      "result": {"patches": [
+        {"op": "set", "id": "count", "fields": {"text": "3 modules"}},
+        {"op": "remove", "id": "missing"}
+      ]},
+      "expected": {"status": "rejected", "field": "result.patches[1].id"}
+    },
+    {
+      "name": "the surface must be a declared view",
+      "surface": {"toolWindowID": "dev.lithe.fixture.view-panel.missing"},
+      "result": {"view": []},
+      "expected": {"status": "rejected", "field": "surface.toolWindowID"}
+    }
+  ]
+}

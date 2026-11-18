@@ -20,6 +20,7 @@ use crate::protocol::{
     offers, FUNCTIONS_VERSION, KEYMAP_IMPORT_VERSION, LOGGING_VERSION, MAX_FUNCTIONS,
     MAX_MESSAGE_BYTES, MAX_RESULT_BYTES,
 };
+use crate::view::{ViewEvent, ViewResult};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde_json::{json, Map, Value};
 use std::any::Any;
@@ -206,6 +207,20 @@ impl Backend {
         state.functions.insert(id.to_string(), Arc::new(handler));
         drop(state);
         Ok(self)
+    }
+
+    /// Declares the view function a tool window or settings region names in
+    /// `view.function`: a plugin function whose params the SDK reads into a
+    /// [`ViewEvent`] and whose [`ViewResult`] it answers. Params that are not
+    /// a view event fail the call before the handler runs.
+    pub fn view<F>(&mut self, id: &str, handler: F) -> Result<&mut Self, SdkError>
+    where
+        F: Fn(ViewEvent, &Context) -> Result<ViewResult, FunctionError> + Send + Sync + 'static,
+    {
+        self.function(id, move |params, context| {
+            let event = ViewEvent::parse(&params)?;
+            Ok(handler(event, context)?.into())
+        })
     }
 
     /// Declares an independent typed shortcut import provider. Its handler

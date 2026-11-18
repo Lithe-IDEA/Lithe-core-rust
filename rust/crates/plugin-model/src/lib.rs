@@ -5,8 +5,8 @@
 //! section, but they refuse content the same way ([`PluginRejection`]), check
 //! the same identifier alphabets ([`is_plugin_id`], [`is_safe_relative_path`]),
 //! parse the same `${...}` templates ([`parse_template_with`]), and declare
-//! the same [`settings`], [`executables`] and server [`process`]es, and are
-//! gated by the same [`capabilities`]. This crate holds that vocabulary so
+//! the same [`settings`], [`executables`], server [`process`]es and plugin
+//! views ([`ViewDeclaration`]), and are gated by the same [`capabilities`]. This crate holds that vocabulary so
 //! each domain can live in its own crate; assembling a whole manifest stays
 //! with the plugin host in `lithe-core`.
 //!
@@ -24,6 +24,7 @@ mod rejection;
 pub mod settings;
 mod template;
 mod version;
+mod view;
 
 pub use icon::UIIcon;
 pub use manifest::PluginManifest;
@@ -40,3 +41,4 @@ pub use template::{parse_template_with, regex_literal, TemplatePart};
 pub use version::{
     validate_minimum_version, version_components, PluginVersion, PluginVersionRequirement,
 };
+pub use view::ViewDeclaration;

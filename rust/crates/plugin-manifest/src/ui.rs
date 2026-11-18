@@ -1,4 +1,5 @@
-//! Validation of UI contributions: tool windows, web content, docks and commands.
+//! Validation of UI contributions: tool windows, web content, plugin views,
+//! docks and commands.
 
 use super::*;
 
@@ -24,23 +25,7 @@ impl DeclarativePluginManifest {
             if let Some(icon) = &window.icon {
                 icon.validate()?;
             }
-            validate_window_body(window, index)?;
-            if let Some(source) = window
-                .native
-                .as_ref()
-                .and_then(|native| native.source.as_ref())
-            {
-                if !self
-                    .build_systems
-                    .iter()
-                    .any(|system| system.id == source.build_system_id)
-                {
-                    return Err(invalid(
-                        "ui.toolWindows.native.source",
-                        "The native source must belong to this plugin's build systems.",
-                    ));
-                }
-            }
+            validate_window_body(window, index, self.backend.is_some())?;
             if !is_plugin_id(&window.id)
                 || !window.id.starts_with(&prefix)
                 || window.title.trim().is_empty()
@@ -105,28 +90,27 @@ impl DeclarativePluginManifest {
     }
 }
 
-/// A window body is literal text, one package HTML page, or host-rendered
-/// native content.
-fn validate_window_body(window: &UIToolWindow, index: usize) -> Validation<()> {
+/// A window body is literal text, one package HTML page, or a plugin view
+/// that the plugin's backend draws.
+fn validate_window_body(window: &UIToolWindow, index: usize, has_backend: bool) -> Validation<()> {
     let field = format!("ui.toolWindows[{index}]");
-    if let Some(native) = &window.native {
-        if window.text.is_some() || window.web.is_some() {
-            return Err(invalid(
-                &field,
-                "Native content cannot coexist with text or web.",
-            ));
-        }
-        return native
-            .validate()
-            .map_err(|message| invalid(&field, message));
-    }
-    match (&window.text, &window.web) {
-        (Some(text), None) if text.len() <= 65536 => Ok(()),
-        (Some(_), None) => Err(invalid(
+    match (&window.text, &window.web, &window.view) {
+        (Some(text), None, None) if text.len() <= 65536 => Ok(()),
+        (Some(_), None, None) => Err(invalid(
             format!("{field}.text"),
             "The window text is too long.",
         )),
-        (None, Some(web)) => {
+        (None, None, Some(view)) => {
+            view.validate(&format!("{field}.view"))?;
+            if !has_backend {
+                return Err(invalid(
+                    format!("{field}.view"),
+                    "A view is drawn by the plugin backend; declare one.",
+                ));
+            }
+            Ok(())
+        }
+        (None, Some(web), None) => {
             let entry = &web.entry;
             let valid = is_safe_relative_path(entry)
                 && entry.len() <= 256
@@ -145,7 +129,7 @@ fn validate_window_body(window: &UIToolWindow, index: usize) -> Validation<()> {
         }
         _ => Err(invalid(
             field,
-            "A tool window shows exactly one of text and web content.",
+            "A tool window shows exactly one of text, web and view.",
         )),
     }
 }

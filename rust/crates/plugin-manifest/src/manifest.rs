@@ -50,6 +50,10 @@ pub struct DeclarativePluginManifest {
     /// Buttons on settings pages that invoke the plugin's functions.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) setting_actions: Vec<SettingAction>,
+    /// Plugin-owned parts of settings pages: search keywords and an optional
+    /// view; see `lithe_plugin_model::settings::SettingRegion`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) setting_regions: Vec<SettingRegion>,
     /// Project-level build tools the plugin describes. The shape and its
     /// validation live in `lithe_build`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -103,7 +107,8 @@ pub struct DeclarativePluginManifest {
 /// UI supplied by plugins. The host owns every window shell: docking, title,
 /// activity bar, order, visibility, layout and lifecycle. A window body is
 /// text, web content that the host loads from the package into a sandboxed
-/// web view inside that shell, or host-rendered native content.
+/// web view inside that shell, or a plugin view the backend draws and the
+/// host renders natively (see `lithe_plugin_ui`).
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct UIContributions {
@@ -125,15 +130,15 @@ pub(crate) struct UIToolWindow {
     #[serde(default)]
     pub(crate) order: i32,
     /// Plain text shown in the window body; the host never interprets markup.
-    /// Exactly one of `text` and `web`.
+    /// Exactly one of `text`, `web` and `view`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) text: Option<String>,
     /// The plugin's own page shown in the window body.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) web: Option<UIWebContent>,
-    /// Host-rendered tree/list content.
+    /// Backend function that draws the window body as a plugin view.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) native: Option<lithe_plugin_native_ui::NativeUI>,
+    pub(crate) view: Option<ViewDeclaration>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) icon: Option<UIIcon>,
 }

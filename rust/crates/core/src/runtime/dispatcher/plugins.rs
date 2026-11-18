@@ -1,4 +1,4 @@
-//! `plugins.*` commands: plugin manifests, native UI and web content, plugin settings,
+//! `plugins.*` commands: plugin manifests, plugin views and web content, plugin settings,
 //! installed plugins and the marketplace.
 
 use super::plugin_response;
@@ -12,8 +12,8 @@ pub(super) fn dispatch(
     payload: Value,
 ) -> CoreResponse {
     match command {
-        PluginsCommand::NativeUIValidateData => {
-            plugin_response(id, payload, lithe_plugin_native_ui::validate_data_command)
+        PluginsCommand::UIApplyResult => {
+            plugin_response(id, payload, lithe_plugin_manifest::apply_result_command)
         }
         PluginsCommand::WebOpen => {
             plugin_response(id, payload, lithe_plugin_web_content::open_command)

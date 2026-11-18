@@ -1,0 +1,627 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Lithe-IDEA/Lithe-core-rust/main/shared/plugins/contract/v1/plugin-ui.schema.json",
+  "title": "Lithe plugin view result (plugin contract v1)",
+  "description": "What a view function returns for each view event: a whole view, a batch of patches, or {} when nothing changed. A view is an array of nodes. Host-control nodes carry meaning only and every host draws them with its own native controls; canvas nodes carry a bounded vector scene the host draws natively. Rules JSON Schema cannot express (identifiers unique per namespace, the 512 control-node, 2000 tree-item, 8 canvas and 2000 canvas-node budgets, 3 MiB per view and 256 KiB per canvas scene, 16 levels of nesting, one table cell per column, select values among the options, references to declared settings, setting actions and tools, nodes that belong to one surface, patches whose targets exist) are defined in README.md and enforced by plugins.ui.applyResult, which refuses the whole result with plugin.ui.invalidView and the JSON path of the first offending value.",
+  "type": "object",
+  "additionalProperties": false,
+  "maxProperties": 1,
+  "properties": {
+    "view": { "$ref": "#/$defs/view" },
+    "patches": {
+      "description": "Edits to the view the host is drawing, applied in order. The first result after open returns a view instead.",
+      "type": "array",
+      "maxItems": 512,
+      "items": { "$ref": "#/$defs/patch" }
+    }
+  },
+  "$defs": {
+    "view": {
+      "description": "View nodes, top to bottom.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/node" }
+    },
+    "id": {
+      "description": "Node identifier: 1 to 64 letters, digits, '.', '_' or '-', starting with a letter or digit. Events and patches address nodes by it.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}(?![\\s\\S])"
+    },
+    "label": {
+      "description": "Single-line, not blank, at most 120 characters.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*\\S[^\\u0000-\\u001f\\u007f-\\u009f]*(?![\\s\\S])"
+    },
+    "longLabel": {
+      "description": "Single-line, not blank, at most 240 characters.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240,
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*\\S[^\\u0000-\\u001f\\u007f-\\u009f]*(?![\\s\\S])"
+    },
+    "text": {
+      "description": "At most 1024 characters; may hold line breaks and tabs but no other control characters.",
+      "type": "string",
+      "maxLength": 1024,
+      "pattern": "^[^\\u0000-\\u0008\\u000b-\\u001f\\u007f-\\u009f]*(?![\\s\\S])"
+    },
+    "info": {
+      "description": "The ⓘ explanation or tooltip: at most 480 characters; may hold line breaks.",
+      "type": "string",
+      "maxLength": 480,
+      "pattern": "^[^\\u0000-\\u0008\\u000b-\\u001f\\u007f-\\u009f]*(?![\\s\\S])"
+    },
+    "tone": { "enum": ["secondary", "muted", "accent", "success", "warning", "error"] },
+    "hostIcon": {
+      "description": "A host icon name, as in plugin-manifest.schema.json#/$defs/uiIcon host.",
+      "type": "string"
+    },
+    "settingID": {
+      "description": "settings only: a setting this plugin declares. The control edits the host draft; Apply in the settings window commits it.",
+      "type": "string",
+      "pattern": "^[a-z][A-Za-z0-9]*(?![\\s\\S])",
+      "maxLength": 120
+    },
+    "option": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "label"],
+      "properties": {
+        "value": { "$ref": "#/$defs/label" },
+        "label": { "$ref": "#/$defs/label" }
+      }
+    },
+    "node": {
+      "description": "One view node, by type. setting, tool, bound controls (setting) and setting-action buttons (action) appear only in settings regions; tree appears only in tool windows.",
+      "type": "object",
+      "required": ["type"],
+      "oneOf": [
+        { "$ref": "#/$defs/row" },
+        { "$ref": "#/$defs/section" },
+        { "$ref": "#/$defs/labelNode" },
+        { "$ref": "#/$defs/textField" },
+        { "$ref": "#/$defs/select" },
+        { "$ref": "#/$defs/segmented" },
+        { "$ref": "#/$defs/toggle" },
+        { "$ref": "#/$defs/button" },
+        { "$ref": "#/$defs/keyValue" },
+        { "$ref": "#/$defs/table" },
+        { "$ref": "#/$defs/banner" },
+        { "$ref": "#/$defs/settingRow" },
+        { "$ref": "#/$defs/toolRow" },
+        { "$ref": "#/$defs/tree" },
+        { "$ref": "#/$defs/canvas" }
+      ]
+    },
+    "row": {
+      "description": "Children side by side.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "children"],
+      "properties": {
+        "type": { "const": "row" },
+        "id": { "$ref": "#/$defs/id" },
+        "children": { "$ref": "#/$defs/view" }
+      }
+    },
+    "section": {
+      "description": "A titled group of children.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "children"],
+      "properties": {
+        "type": { "const": "section" },
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "$ref": "#/$defs/label" },
+        "info": { "$ref": "#/$defs/info" },
+        "children": { "$ref": "#/$defs/view" }
+      }
+    },
+    "labelNode": {
+      "description": "Text. width reserves that many characters.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "text"],
+      "properties": {
+        "type": { "const": "label" },
+        "id": { "$ref": "#/$defs/id" },
+        "text": { "$ref": "#/$defs/text" },
+        "tone": { "$ref": "#/$defs/tone" },
+        "style": { "enum": ["title", "strong", "body", "caption", "mono"] },
+        "width": { "type": "integer", "minimum": 1, "maximum": 120 },
+        "info": { "$ref": "#/$defs/info" }
+      }
+    },
+    "textField": {
+      "description": "A text input: its own value, or a text, file, directory or integer setting.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "not": { "required": ["value", "setting"] },
+      "properties": {
+        "type": { "const": "textField" },
+        "id": { "$ref": "#/$defs/id" },
+        "label": { "$ref": "#/$defs/label" },
+        "info": { "$ref": "#/$defs/info" },
+        "value": { "$ref": "#/$defs/text" },
+        "setting": { "$ref": "#/$defs/settingID" },
+        "placeholder": { "$ref": "#/$defs/label" },
+        "width": {
+          "description": "\"fill\" takes the row's free width; a number reserves that many characters.",
+          "oneOf": [{ "const": "fill" }, { "type": "integer", "minimum": 1, "maximum": 120 }]
+        },
+        "mono": { "type": "boolean" },
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "select": {
+      "description": "A pop-up menu: its own options and value, or an enum setting, which supplies the options.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "oneOf": [{ "required": ["options"] }, { "required": ["setting"] }],
+      "not": { "required": ["value", "setting"] },
+      "properties": {
+        "type": { "const": "select" },
+        "id": { "$ref": "#/$defs/id" },
+        "label": { "$ref": "#/$defs/label" },
+        "info": { "$ref": "#/$defs/info" },
+        "value": { "type": "string" },
+        "setting": { "$ref": "#/$defs/settingID" },
+        "options": { "type": "array", "minItems": 1, "maxItems": 128, "items": { "$ref": "#/$defs/option" } },
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "segmented": {
+      "description": "A segmented control of 2 to 8 choices: its own options and value, or an enum setting with 2 to 8 options.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "oneOf": [{ "required": ["options"] }, { "required": ["setting"] }],
+      "not": { "required": ["value", "setting"] },
+      "properties": {
+        "type": { "const": "segmented" },
+        "id": { "$ref": "#/$defs/id" },
+        "label": { "$ref": "#/$defs/label" },
+        "info": { "$ref": "#/$defs/info" },
+        "value": { "type": "string" },
+        "setting": { "$ref": "#/$defs/settingID" },
+        "options": { "type": "array", "minItems": 2, "maxItems": 8, "items": { "$ref": "#/$defs/option" } },
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "toggle": {
+      "description": "A switch: its own value, or a boolean setting.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "label"],
+      "not": { "required": ["value", "setting"] },
+      "properties": {
+        "type": { "const": "toggle" },
+        "id": { "$ref": "#/$defs/id" },
+        "label": { "$ref": "#/$defs/label" },
+        "info": { "$ref": "#/$defs/info" },
+        "value": { "type": "boolean" },
+        "setting": { "$ref": "#/$defs/settingID" },
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "button": {
+      "description": "A button. A click sends the click event, or, with action, runs that declared setting action through the host's confirmation flow.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "text"],
+      "properties": {
+        "type": { "const": "button" },
+        "id": { "$ref": "#/$defs/id" },
+        "text": { "$ref": "#/$defs/label" },
+        "tone": { "const": "primary" },
+        "enabled": { "type": "boolean" },
+        "action": { "description": "settings only: a settingActions[] ID.", "type": "string", "pattern": "^[a-z][A-Za-z0-9]*(?![\\s\\S])", "maxLength": 120 },
+        "icon": { "$ref": "#/$defs/hostIcon" }
+      }
+    },
+    "keyValue": {
+      "description": "Label and value pairs.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "items"],
+      "properties": {
+        "type": { "const": "keyValue" },
+        "id": { "$ref": "#/$defs/id" },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["label", "value"],
+            "properties": {
+              "label": { "$ref": "#/$defs/label" },
+              "value": { "$ref": "#/$defs/text" },
+              "tone": { "$ref": "#/$defs/tone" }
+            }
+          }
+        }
+      }
+    },
+    "table": {
+      "description": "A read-only table; each row has one single-line cell per column.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "columns", "rows"],
+      "properties": {
+        "type": { "const": "table" },
+        "id": { "$ref": "#/$defs/id" },
+        "columns": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["title"],
+            "properties": {
+              "title": { "$ref": "#/$defs/label" },
+              "align": { "enum": ["start", "center", "end"] }
+            }
+          }
+        },
+        "rows": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "array",
+            "maxItems": 16,
+            "items": { "type": "string", "maxLength": 1024, "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*(?![\\s\\S])" }
+          }
+        }
+      }
+    },
+    "banner": {
+      "description": "A message across the view.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "text", "tone"],
+      "properties": {
+        "type": { "const": "banner" },
+        "id": { "$ref": "#/$defs/id" },
+        "text": { "$ref": "#/$defs/text" },
+        "tone": { "$ref": "#/$defs/tone" }
+      }
+    },
+    "settingRow": {
+      "description": "settings only: the host's own row for a declared setting, exactly as the page would draw it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "setting"],
+      "properties": {
+        "type": { "const": "setting" },
+        "id": { "$ref": "#/$defs/id" },
+        "setting": { "$ref": "#/$defs/settingID" }
+      }
+    },
+    "toolRow": {
+      "description": "settings only: the host's row for a tool this plugin defines (toolDefinitions) or requires (requiresTools): its resolved version and path, as the toolchain pages draw it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "tool"],
+      "properties": {
+        "type": { "const": "tool" },
+        "id": { "$ref": "#/$defs/id" },
+        "tool": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    },
+    "tree": {
+      "description": "tool windows only: an outline. Selecting an item sends select; double-click or Return sends activate.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "items"],
+      "properties": {
+        "type": { "const": "tree" },
+        "id": { "$ref": "#/$defs/id" },
+        "label": { "$ref": "#/$defs/label" },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/treeItem" } }
+      }
+    },
+    "treeItem": {
+      "description": "Item IDs are unique within the tree.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "label": { "$ref": "#/$defs/longLabel" },
+        "icon": { "$ref": "#/$defs/hostIcon" },
+        "detail": { "$ref": "#/$defs/longLabel" },
+        "expanded": { "type": "boolean" },
+        "children": { "type": "array", "items": { "$ref": "#/$defs/treeItem" } }
+      }
+    },
+    "canvas": {
+      "description": "A vector scene the host draws natively in view-box coordinates, scaled to the view width. Pan, zoom, hover states and tooltips stay in the host; viewport sends viewport events after the user pans or zooms. Canvas text is not searchable; a settings region names its words in keywords.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "label", "height", "viewBox", "nodes"],
+      "properties": {
+        "type": { "const": "canvas" },
+        "id": { "$ref": "#/$defs/id" },
+        "label": { "description": "Accessible name of the whole scene.", "$ref": "#/$defs/label" },
+        "height": { "type": "integer", "minimum": 1, "maximum": 2000 },
+        "viewBox": {
+          "description": "[x, y, width, height] with a positive size.",
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": { "$ref": "#/$defs/coordinate" }
+        },
+        "pan": { "type": "boolean" },
+        "zoom": {
+          "description": "[minimum, maximum] around 1, from 0.05 to 20.",
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": { "type": "number", "minimum": 0.05, "maximum": 20 }
+        },
+        "on": { "type": "array", "maxItems": 1, "uniqueItems": true, "items": { "const": "viewport" } },
+        "nodes": { "$ref": "#/$defs/shapes" }
+      }
+    },
+    "coordinate": { "type": "number", "minimum": -1000000, "maximum": 1000000 },
+    "extent": { "type": "number", "minimum": 0, "maximum": 1000000 },
+    "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+    "scale": { "type": "number", "minimum": 0.1, "maximum": 10 },
+    "shadow": { "description": "Elevation step mapped to the host's shadows.", "type": "integer", "minimum": 1, "maximum": 3 },
+    "dash": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "$ref": "#/$defs/extent" } },
+    "plainColor": {
+      "description": "#RRGGBB, #RRGGBBAA, or a $token the host maps to its theme.",
+      "type": "string",
+      "pattern": "^(?:#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})|\\$(?:text|textSecondary|textMuted|accent|success|warning|error|surface|background|sidebar|line|hover|selection|badge))(?![\\s\\S])"
+    },
+    "color": {
+      "description": "A plain color, a {light, dark} pair, or a linear gradient of 2 to 8 [offset, color] stops at angle degrees.",
+      "oneOf": [
+        { "$ref": "#/$defs/plainColor" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["light", "dark"],
+          "properties": {
+            "light": { "$ref": "#/$defs/plainColor" },
+            "dark": { "$ref": "#/$defs/plainColor" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["linear"],
+          "properties": {
+            "linear": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 8,
+              "items": {
+                "type": "array",
+                "prefixItems": [{ "type": "number", "minimum": 0, "maximum": 1 }, { "$ref": "#/$defs/plainColor" }],
+                "minItems": 2,
+                "maxItems": 2
+              }
+            },
+            "angle": { "type": "number", "minimum": -360, "maximum": 360 }
+          }
+        }
+      ]
+    },
+    "shapes": {
+      "description": "Canvas nodes, painted in order. IDs are unique within the canvas.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/shape" }
+    },
+    "shape": {
+      "type": "object",
+      "required": ["type"],
+      "oneOf": [
+        { "$ref": "#/$defs/rect" },
+        { "$ref": "#/$defs/path" },
+        { "$ref": "#/$defs/canvasText" },
+        { "$ref": "#/$defs/image" },
+        { "$ref": "#/$defs/group" }
+      ]
+    },
+    "rect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "x", "y", "w", "h"],
+      "properties": {
+        "type": { "const": "rect" },
+        "id": { "$ref": "#/$defs/id" },
+        "x": { "$ref": "#/$defs/coordinate" },
+        "y": { "$ref": "#/$defs/coordinate" },
+        "w": { "$ref": "#/$defs/extent" },
+        "h": { "$ref": "#/$defs/extent" },
+        "radius": { "$ref": "#/$defs/extent" },
+        "fill": { "$ref": "#/$defs/color" },
+        "stroke": { "$ref": "#/$defs/color" },
+        "width": { "$ref": "#/$defs/extent" },
+        "dash": { "$ref": "#/$defs/dash" },
+        "shadow": { "$ref": "#/$defs/shadow" },
+        "opacity": { "$ref": "#/$defs/opacity" }
+      }
+    },
+    "path": {
+      "description": "An SVG path. bounds, [x, y, width, height], lets the host skip a path outside the visible area without parsing it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "d"],
+      "properties": {
+        "type": { "const": "path" },
+        "id": { "$ref": "#/$defs/id" },
+        "d": { "type": "string", "minLength": 1, "maxLength": 8192, "pattern": "^[MmLlHhVvCcSsQqTtAaZz0-9.,eE+\\- ]*[^ ][MmLlHhVvCcSsQqTtAaZz0-9.,eE+\\- ]*(?![\\s\\S])" },
+        "bounds": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "$ref": "#/$defs/coordinate" } },
+        "fill": { "$ref": "#/$defs/color" },
+        "stroke": { "$ref": "#/$defs/color" },
+        "width": { "$ref": "#/$defs/extent" },
+        "dash": { "$ref": "#/$defs/dash" },
+        "cap": { "enum": ["butt", "round", "square"] },
+        "rule": { "enum": ["nonzero", "evenodd"] },
+        "opacity": { "$ref": "#/$defs/opacity" }
+      }
+    },
+    "canvasText": {
+      "description": "Text in the host font at a type-scale style: one string, or runs of differently colored text.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "x", "y"],
+      "oneOf": [{ "required": ["text"] }, { "required": ["runs"] }],
+      "properties": {
+        "type": { "const": "text" },
+        "id": { "$ref": "#/$defs/id" },
+        "x": { "$ref": "#/$defs/coordinate" },
+        "y": { "$ref": "#/$defs/coordinate" },
+        "text": { "$ref": "#/$defs/text" },
+        "runs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["text"],
+            "properties": {
+              "text": { "$ref": "#/$defs/text" },
+              "color": { "$ref": "#/$defs/color" }
+            }
+          }
+        },
+        "style": { "enum": ["title", "strong", "body", "caption", "display", "mono", "monoSmall"] },
+        "align": { "enum": ["start", "center", "end"] },
+        "color": { "$ref": "#/$defs/color" },
+        "maxWidth": { "type": "number", "minimum": 1, "maximum": 1000000 },
+        "opacity": { "$ref": "#/$defs/opacity" }
+      }
+    },
+    "image": {
+      "description": "A PNG from the plugin package.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "x", "y", "w", "h", "src"],
+      "properties": {
+        "type": { "const": "image" },
+        "id": { "$ref": "#/$defs/id" },
+        "x": { "$ref": "#/$defs/coordinate" },
+        "y": { "$ref": "#/$defs/coordinate" },
+        "w": { "$ref": "#/$defs/extent" },
+        "h": { "$ref": "#/$defs/extent" },
+        "src": { "description": "Package-relative path ending in .png, at most 256 bytes, without '..', '.', empty segments or ':'.", "type": "string", "maxLength": 256, "pattern": "^[^/:\\u0000-\\u001f\\u007f-\\u009f][^:\\u0000-\\u001f\\u007f-\\u009f]*\\.png(?![\\s\\S])" },
+        "opacity": { "$ref": "#/$defs/opacity" }
+      }
+    },
+    "group": {
+      "description": "Children offset by x and y and scaled by scale. A group with on [click] is a control: it needs id, w, h (its hit area) and label, the host draws its states without a round trip, and a click sends the click event.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "children"],
+      "if": { "required": ["on"] },
+      "then": { "required": ["id", "w", "h", "label"] },
+      "properties": {
+        "type": { "const": "group" },
+        "id": { "$ref": "#/$defs/id" },
+        "x": { "$ref": "#/$defs/coordinate" },
+        "y": { "$ref": "#/$defs/coordinate" },
+        "w": { "$ref": "#/$defs/extent" },
+        "h": { "$ref": "#/$defs/extent" },
+        "radius": { "$ref": "#/$defs/extent" },
+        "clip": { "type": "boolean" },
+        "scale": { "$ref": "#/$defs/scale" },
+        "children": { "$ref": "#/$defs/shapes" },
+        "on": { "type": "array", "maxItems": 1, "uniqueItems": true, "items": { "const": "click" } },
+        "label": { "$ref": "#/$defs/label" },
+        "tooltip": { "$ref": "#/$defs/info" },
+        "states": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "hover": { "$ref": "#/$defs/state" },
+            "pressed": { "$ref": "#/$defs/state" },
+            "selected": { "$ref": "#/$defs/state" }
+          }
+        },
+        "selected": { "type": "boolean" },
+        "opacity": { "$ref": "#/$defs/opacity" },
+        "shadow": { "$ref": "#/$defs/shadow" },
+        "hidden": { "type": "boolean" }
+      }
+    },
+    "state": {
+      "description": "What the host draws while the group is hovered, pressed or selected: fill, stroke, width and shadow paint the group's w by h area with its radius behind the children; scale and opacity apply to the whole group.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fill": { "$ref": "#/$defs/color" },
+        "stroke": { "$ref": "#/$defs/color" },
+        "width": { "$ref": "#/$defs/extent" },
+        "shadow": { "$ref": "#/$defs/shadow" },
+        "scale": { "$ref": "#/$defs/scale" },
+        "opacity": { "$ref": "#/$defs/opacity" }
+      }
+    },
+    "patch": {
+      "description": "One edit, addressed by node ID within the view's host controls, one canvas scene (canvas) or one tree's items (tree). A patch whose target is missing refuses the whole result.",
+      "type": "object",
+      "required": ["op"],
+      "not": { "required": ["canvas", "tree"] },
+      "oneOf": [
+        {
+          "description": "Merge fields into the node; a null field removes it. type and id stay.",
+          "additionalProperties": false,
+          "required": ["op", "id", "fields"],
+          "properties": {
+            "op": { "const": "set" },
+            "canvas": { "$ref": "#/$defs/id" },
+            "tree": { "$ref": "#/$defs/id" },
+            "id": { "$ref": "#/$defs/id" },
+            "fields": { "type": "object", "minProperties": 1, "propertyNames": { "not": { "enum": ["type", "id"] } } }
+          }
+        },
+        {
+          "description": "Swap the node for node.",
+          "additionalProperties": false,
+          "required": ["op", "id", "node"],
+          "properties": {
+            "op": { "const": "replace" },
+            "canvas": { "$ref": "#/$defs/id" },
+            "tree": { "$ref": "#/$defs/id" },
+            "id": { "$ref": "#/$defs/id" },
+            "node": { "type": "object" }
+          }
+        },
+        {
+          "description": "Delete the node.",
+          "additionalProperties": false,
+          "required": ["op", "id"],
+          "properties": {
+            "op": { "const": "remove" },
+            "canvas": { "$ref": "#/$defs/id" },
+            "tree": { "$ref": "#/$defs/id" },
+            "id": { "$ref": "#/$defs/id" }
+          }
+        },
+        {
+          "description": "Add node to the children of parent, or to the top of the namespace, at index or at the end.",
+          "additionalProperties": false,
+          "required": ["op", "node"],
+          "properties": {
+            "op": { "const": "insert" },
+            "canvas": { "$ref": "#/$defs/id" },
+            "tree": { "$ref": "#/$defs/id" },
+            "parent": { "$ref": "#/$defs/id" },
+            "index": { "type": "integer", "minimum": 0 },
+            "node": { "type": "object" }
+          }
+        }
+      ]
+    }
+  }
+}

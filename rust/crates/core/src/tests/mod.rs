@@ -52,6 +52,7 @@ mod plugin_run_debug;
 mod plugin_run_types;
 mod plugin_settings_documents;
 mod plugin_source_settings;
+mod plugin_views;
 mod process_memory;
 mod project;
 mod project_generators;

@@ -280,10 +280,15 @@ impl DeclarativePluginManifest {
         if let Some(backend) = &self.backend {
             backend.validate(&lithe_plugin_backend::DeclarationContext {
                 declared_settings: &declared_settings,
-                has_web_window: self
-                    .ui
-                    .as_ref()
-                    .is_some_and(|ui| ui.tool_windows.iter().any(|window| window.web.is_some())),
+                // Web pages and plugin views both call the backend once shown.
+                has_web_window: self.ui.as_ref().is_some_and(|ui| {
+                    ui.tool_windows
+                        .iter()
+                        .any(|window| window.web.is_some() || window.view.is_some())
+                }) || self
+                    .setting_regions
+                    .iter()
+                    .any(|region| region.view.is_some()),
                 has_command: self.ui.as_ref().is_some_and(|ui| !ui.commands.is_empty()),
                 activates_on_workspace_open: self
                     .activation_events
@@ -339,7 +344,9 @@ impl DeclarativePluginManifest {
             ),
             (
                 capabilities::SETTINGS,
-                !self.settings.is_empty() || !self.setting_actions.is_empty(),
+                !self.settings.is_empty()
+                    || !self.setting_actions.is_empty()
+                    || !self.setting_regions.is_empty(),
             ),
             (
                 capabilities::SOURCE_SETTINGS,
@@ -347,7 +354,14 @@ impl DeclarativePluginManifest {
                     .iter()
                     .any(|action| action.source_editor.is_some()),
             ),
-            (capabilities::UI, self.ui.is_some()),
+            (
+                capabilities::UI,
+                self.ui.is_some()
+                    || self
+                        .setting_regions
+                        .iter()
+                        .any(|region| region.view.is_some()),
+            ),
             (capabilities::BUILD_SYSTEMS, !self.build_systems.is_empty()),
             (
                 capabilities::PROJECT_GENERATORS,
