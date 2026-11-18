@@ -14,7 +14,7 @@
 
 ## 待合入
 
-- `toolDefinitions` 1 内的补充（API-23、API-19）：`toolchains.settingsView` 的 `issues` 每项改为 `{index,status,group?}`：查询分组时 `group` 是工具所在分组的键，宿主从问题列表打开这个工具时可以一并展开它的分组，不必自己拼分组键；契约 README 同时写明 `issues` 一直不受查询影响、先错误后警告并各按名称排序。没有新增版本号、宿主方法、通知或 SDK 版本。实现见 [#PR](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/PR)（[@xiaoyumuxi](https://github.com/xiaoyumuxi)）。
+- `toolDefinitions` 1 内的补充（API-23、API-19）：`toolchains.settingsView` 的 `issues` 每项改为 `{index,status,group?}`：查询分组时 `group` 是工具所在分组的键，宿主从问题列表打开这个工具时可以一并展开它的分组，不必自己拼分组键；契约 README 同时写明 `issues` 一直不受查询影响、先错误后警告并各按名称排序。没有新增版本号、宿主方法、通知或 SDK 版本。实现见 [#102](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/102)（[@xiaoyumuxi](https://github.com/xiaoyumuxi)）。
 
 ## 按协议查首次出现
 
