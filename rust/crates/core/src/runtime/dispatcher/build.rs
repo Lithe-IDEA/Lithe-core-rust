@@ -111,6 +111,16 @@ pub(super) fn dispatch(command: BuildCommand, id: Option<String>, payload: Value
             payload,
             crate::build::build_decode_test_discovery_command::<Manifest>,
         ),
+        BuildCommand::RunEntrypointsPlan => plugin_response(
+            id,
+            payload,
+            crate::build::build_run_entrypoints_plan_command::<Manifest>,
+        ),
+        BuildCommand::DecodeRunEntrypoints => plugin_response(
+            id,
+            payload,
+            crate::build::build_decode_run_entrypoints_command::<Manifest>,
+        ),
         BuildCommand::DependencyPlan => plugin_response(
             id,
             payload,

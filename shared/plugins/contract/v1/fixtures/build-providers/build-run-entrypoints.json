@@ -1,0 +1,68 @@
+{
+  "plan": {
+    "root": ".",
+    "file": "app/src/main/java/example/Tool.java",
+    "refresh": false
+  },
+  "result": {
+    "format": "litheRunEntrypoints",
+    "version": 0,
+    "entrypoints": [
+      {
+        "run": "main",
+        "name": "Tool",
+        "entrypoint": "example.Tool",
+        "project": {
+          "name": "app",
+          "path": "app"
+        }
+      },
+      {
+        "run": "main",
+        "name": "Tool.Inner",
+        "entrypoint": "example.Tool$Inner",
+        "project": {
+          "name": "app",
+          "path": "app"
+        }
+      }
+    ]
+  },
+  "entrypoints": [
+    {
+      "run": "main",
+      "name": "Tool",
+      "entrypoint": "example.Tool",
+      "project": {
+        "name": "app",
+        "path": "app"
+      }
+    },
+    {
+      "run": "main",
+      "name": "Tool.Inner",
+      "entrypoint": "example.Tool$Inner",
+      "project": {
+        "name": "app",
+        "path": "app"
+      }
+    }
+  ],
+  "prepareRun": {
+    "root": ".",
+    "run": "main",
+    "project": {
+      "name": "app",
+      "path": "app"
+    },
+    "launchOptions": {
+      "execution": "application",
+      "runtimeArguments": [],
+      "arguments": [
+        "--verbose"
+      ],
+      "environment": {},
+      "entrypoint": "example.Tool"
+    }
+  }
+}

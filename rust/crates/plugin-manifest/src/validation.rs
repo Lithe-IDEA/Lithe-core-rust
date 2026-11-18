@@ -113,6 +113,20 @@ impl DeclarativePluginManifest {
             }
         }
         capabilities::check_used(&self.requires, &self.used_capabilities())?;
+        if self
+            .build_systems
+            .iter()
+            .any(|system| system.has_run_entrypoints())
+            && self
+                .requires
+                .get(capabilities::BUILD_PROVIDERS)
+                .is_none_or(|version| *version < 1)
+        {
+            return Err(invalid(
+                "requires.buildProviders",
+                "Entrypoint runs need buildProviders 1.",
+            ));
+        }
         if self.languages.is_empty()
             && self.ui.is_none()
             && self.build_systems.is_empty()

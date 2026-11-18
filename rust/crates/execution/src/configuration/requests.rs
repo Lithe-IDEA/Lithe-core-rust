@@ -164,6 +164,10 @@ pub struct CreateUserConfigurationRequest {
     /// A typed selector, never a cached executable or resolved launch payload.
     #[serde(default)]
     pub build: Option<BuildProviderRunReference>,
+    /// The provider entrypoint an entrypoint run starts, saved as
+    /// `extensions.build-run.entrypoint`; it is part of the entry's identity.
+    #[serde(default)]
+    pub entrypoint: Option<String>,
     /// The installed plugins, whose identity a written plugin document records.
     #[serde(default)]
     pub plugins: Option<Vec<InstalledPlugin>>,

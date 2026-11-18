@@ -177,6 +177,12 @@ pub fn validate_declarations(
 }
 
 impl BuildSystemDeclaration {
+    /// Whether a run starts entrypoints the provider finds in files, which
+    /// `buildProviders` 1 introduced.
+    pub fn has_run_entrypoints(&self) -> bool {
+        self.run.iter().any(|run| run.entrypoints)
+    }
+
     /// Folder names every workspace hides at any depth while the plugin is
     /// enabled (`layout.hiddenDirectoryNames`), sorted and unique once validated.
     pub fn hidden_directory_names(&self) -> &[String] {

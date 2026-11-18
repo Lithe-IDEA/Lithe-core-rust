@@ -29,6 +29,7 @@ mod options;
 mod outputs;
 mod plans;
 mod project_options;
+mod run_entrypoints;
 mod run_preparation;
 mod run_start;
 mod select;

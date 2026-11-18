@@ -30,6 +30,11 @@ pub(crate) struct RunDeclaration {
     /// Metadata stored under `extensions.<buildSystemID>` of the entry.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub(crate) extension: BTreeMap<String, String>,
+    /// `buildProviders` 1: the provider names entrypoints in source files
+    /// (`lithe/build/runEntrypoints`), and the run starts one of them in a
+    /// project. It applies to no target and is never listed per target.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) entrypoints: bool,
 }
 
 /// Native launch binds a local adapter; connection attach names a public registry type.
@@ -107,6 +112,26 @@ impl BuildSystemDeclaration {
                     &field,
                     "Debug preparation requires a provider run.",
                 ));
+            }
+            if run.entrypoints {
+                if run.source != TaskSource::Provider
+                    || run.from_targets.is_some()
+                    || run.from_tasks.is_some()
+                    || !run.arguments.is_empty()
+                    || !run.extension.is_empty()
+                    || run.execution.unwrap_or(BuildExecution::Application)
+                        != BuildExecution::Application
+                    || run.debug.is_some()
+                    || run.name.as_ref().is_some_and(|name| {
+                        name.trim().is_empty() || name.len() > MAX_TEXT || name.contains("${")
+                    })
+                {
+                    return Err(invalid(
+                        &field,
+                        "Entrypoint runs are provider applications without targets, templates or debug.",
+                    ));
+                }
+                continue;
             }
             if run.source == TaskSource::Provider {
                 let valid_targets = run.from_targets.as_ref().is_some_and(|from| {
