@@ -3928,7 +3928,7 @@ when this platform cannot run the kind, as in `runConfig.configurationTypes`;
 the form still edits and saves it. `formVersion` is `1`; a host refuses a newer
 one. `values` maps field IDs to the current values. `fields` is the ordered list
 of `{id, kind, required?, placement?, automatic?, options?, visibleWhen?,
-note?}`:
+note?, shellFamily?}`:
 
 | Attribute | Meaning |
 | --- | --- |
@@ -3937,6 +3937,7 @@ note?}`:
 | `automatic` | The value used while the field is empty, shown as its placeholder |
 | `visibleWhen` | `{field, equals}`: shown only while that field has that value |
 | `note` | An explanation key; `windowsOnly` says the field matters only on Windows |
+| `shellFamily` | On an `executable` field, the family of shell it takes: `posix` (sh, bash, zsh and the like), `powershell` (Windows PowerShell and `pwsh`) or `cmd`. A host that finds the installed shells may offer those of the family as choices beside the automatic value and a path of the user's own; the value is still a program name or path. The `interpreter` field of each script kind has it |
 
 Hosts draw the fields in order, skip a field whose `kind` they do not know and
 send back every value they received, including keys they do not show, so a

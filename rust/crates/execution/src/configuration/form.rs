@@ -506,7 +506,8 @@ fn fields(kind: Kind, root: &Path, draft: &Draft, candidates: Vec<Value>) -> Vec
             field("workingDirectory", "directory"),
             field("environment", "environment"),
             field("interpreter", "executable")
-                .automatic(Some(automatic.executable.text().to_string())),
+                .automatic(Some(automatic.executable.text().to_string()))
+                .shell_family(kind.shell_family()),
             field("interpreterArguments", "arguments")
                 .automatic(Some(argument_text(&effective.arguments))),
         ]);
@@ -548,6 +549,15 @@ impl Field {
     fn automatic(mut self, value: Option<String>) -> Self {
         if let Some(value) = value.filter(|value| !value.is_empty()) {
             self.0["automatic"] = json!(value);
+        }
+        self
+    }
+
+    /// The family of shell an `executable` field takes, such as `posix`, so
+    /// a host can offer the installed shells of that family as choices.
+    fn shell_family(mut self, family: Option<&str>) -> Self {
+        if let Some(family) = family {
+            self.0["shellFamily"] = json!(family);
         }
         self
     }
