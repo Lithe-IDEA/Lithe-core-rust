@@ -14,7 +14,7 @@
 
 ## 待合入
 
-- `managedRuntimes` 0（API-23）：新增固定 HTTPS 归档与 SHA-256、平台选择、与插件版本无关的缓存身份，以及插件后端对外部/暂存依赖的资格检查契约。新增权限 `runtimes.install`、审查程序 `managedRuntime`、Core 命令 `plugins.managedRuntimes.plan` 与 `plugins.managedRuntimes.decodeResolution`；正常语言服务器启动可接收只读 `runtimes` 映射。原生 `lsp.startServer` 新增可选 `functionRelayEnabled`（默认 true），准备会话设为 false 隔离跨插件调用但保留宿主直接调用。无新增宿主 RPC 或 SDK 版本。日期、PR 与作者在合入时补入下方时间线；宿主须先发布对应能力，插件才可要求它。
+- `managedRuntimes` 0（API-23）：新增固定 HTTPS 归档与 SHA-256、平台选择、与插件版本无关的缓存身份，以及插件后端对外部/暂存依赖的资格检查契约。新增权限 `runtimes.install`、审查程序 `managedRuntime`、Core 命令 `plugins.managedRuntimes.plan` 与 `plugins.managedRuntimes.decodeResolution`；正常语言服务器启动可接收只读 `runtimes` 映射。原生 `lsp.startServer` 新增可选 `functionRelayEnabled`（默认 true），准备会话设为 false 隔离跨插件调用但保留宿主直接调用。无新增宿主 RPC 或 SDK 版本。实现见 [#96](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/96)（lithe-support[bot]）；合入日期在合并后补入下方时间线。宿主须先发布对应能力，插件才可要求它。
 
 ## 按协议查首次出现
 
