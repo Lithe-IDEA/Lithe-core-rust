@@ -359,6 +359,12 @@ impl DeclarativePluginManifest {
                     .iter()
                     .any(|system| system.has_run_configuration_types()),
             ),
+            (
+                capabilities::BEFORE_LAUNCH_TASKS,
+                self.build_systems
+                    .iter()
+                    .any(|system| system.has_before_launch_tasks()),
+            ),
             (capabilities::VCS_PROVIDERS, !self.vcs_providers.is_empty()),
             (
                 capabilities::DEBUG_ADAPTERS,

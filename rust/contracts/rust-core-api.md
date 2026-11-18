@@ -526,6 +526,7 @@ or removing a command fails until the table changes in the same commit.
 | `build.modelPlan` | Expand the command that prints a command-sourced build model, or the request a build provider answers |
 | `build.taskPlan` | Expand one declared or model task for a workspace, project, or target |
 | `build.runConfigurationPlan` | Expand a saved configuration of a declared run configuration type into an argv plan |
+| `build.beforeLaunchTaskPlan` | Expand a plugin task step of a Before Launch list into an argv plan |
 | `build.testPlan` | Plan a test run for a scope, suite, or case and say where its reports will be |
 | `build.prepareDebugPlan` | Plan same-plugin native debug preparation |
 | `build.decodeDebugPreparation` | Validate an existing instance-contained native debug program and bounded process facts |
@@ -722,7 +723,8 @@ or removing a command fails until the table changes in the same commit.
 | `runConfig.deleteConfiguration` | Return the file changes that delete a saved user configuration |
 | `runConfig.copyConfiguration` | Return the file changes that save a copy of any configuration under a new name |
 | `runConfig.arrange` | Return the file changes that move configurations between folders and save the list order |
-| `runConfig.beforeLaunch` | Expand the built-in process runs a configuration starts first, and say whether the user must confirm them |
+| `runConfig.beforeLaunch` | Expand the process runs and plugin tasks a configuration starts first, and say whether the user must confirm them |
+| `runConfig.checkBeforeLaunchTask` | Check the values of a plugin task step being added or edited and return the step for the `beforeLaunch` editor value |
 | `runConfig.createLaunchPlan` | Project one effective configuration into a platform-neutral Run or Debug plan |
 | `runConfig.providerLaunchInputs` | Resolve user choices for a provider-owned launch |
 | `git.status` | Resolve the repository, current branch, and working-tree changes |
@@ -4040,6 +4042,16 @@ program arguments, working directory and environment in `args`, `cwd` and
 with the plugin it needs. `build.runConfigurationPlan` expands it into the
 argv plan the host starts like a task plan.
 
+A build system's `beforeLaunchTasks` (`beforeLaunchTasks` 0) declare kinds of
+step for a configuration's Before Launch list the same way, such as Run Go
+Command: an `id`, `displayName`, `description?`, `icon?`, fields and
+`arguments`, translated from the `beforeLaunchTasks` section of the plugin's
+localization. A task runs to completion in the working directory of the
+configuration whose list names it, so it declares no `execution` and its
+arguments cannot take `${userArguments}`. Tasks are not configuration types:
+`runConfig.configurationTypes` does not list them; the `beforeLaunch` field
+offers them (see [Steps before launch](#steps-before-launch)).
+
 #### Folders and order
 
 A configuration may name a `folder`, the folder it is listed in within its
@@ -4073,50 +4085,91 @@ an omitted field keeps the saved value, and saving the defaults removes
 #### Steps before launch
 
 A configuration of any provider may name `beforeLaunch`, an ordered list of at
-most 16 `{configuration}` steps. Each step is the ID of a built-in process run
-of the same project, which starts and must exit with 0 before the next step,
-and the configuration itself, starts (IntelliJ IDEA's "Before launch: Run
-Another Configuration"). A shell script that compiles a module or a program
-that generates sources is saved as a process run and named as a step, so a step
-has the interpreter, arguments, working directory, environment and launch plan
-a process run already has. A layer replaces the whole list: an empty list in the
-local layer hides the steps the project layer names. A step that names the
-configuration itself makes the configuration unavailable
-(`invalidConfiguration`); a step whose target is missing or cannot run is
-reported when the configuration starts, so the list still resolves.
+most 16 steps, each of which starts and must exit with 0 before the next step,
+and the configuration itself, starts (IntelliJ IDEA's "Before launch"). A step
+is one of:
 
-`runConfig.beforeLaunch` accepts `{root, configurationId, localDocument?}` and
-replies `{status: "ok", steps, confirmation}` or `{status: "rejected", refusal:
-{code, configurationId}}`. `steps` are the runs to start, in order, each
-`{configurationId, name, summary}`; `summary` is one line naming what it starts
-(the program or script and its arguments) for the confirmation. A step whose run
-names steps of its own starts them first, as starting that run alone would; at
-most 32 steps are expanded. `refusal.code` is `notFound` (no such
-configuration), `notAllowed` (not a built-in process run), `unavailable` (the
-run cannot start, see its `availability`), `cycle` (a step leads back to a
-configuration being started) or `tooLong`; `configurationId` names the step.
+- `{configuration}`: the ID of a built-in process run of the same project
+  ("Run Another Configuration"). A shell script that compiles a module or a
+  program that generates sources is saved as a process run and named as a
+  step, so the step has the interpreter, arguments, working directory,
+  environment and launch plan a process run already has.
+- `{task: {pluginID, buildSystemID, type, values}}`: a task an installed
+  plugin declares (see [Plugin-declared types](#plugin-declared-types)), with
+  the values of its fields by declared field ID, saved like the `values` of a
+  declared configuration. It runs in the working directory of the
+  configuration whose list names it, without program arguments or an
+  environment of its own.
+
+A step has no other keys. A layer replaces the whole list: an empty list in the
+local layer hides the steps the project layer names. A step that names the
+configuration itself, or a task reference of an invalid shape, makes the
+configuration unavailable (`invalidConfiguration`); a step whose target is
+missing or cannot run, such as a task whose plugin was removed, is reported
+when the configuration starts, so the list still resolves.
+
+The commands below take the installed plugins as `runTypePlugins`, like the
+editor commands of declared types; without them every task step is
+`taskNotDeclared`.
+
+`runConfig.beforeLaunch` accepts `{root, configurationId, localDocument?,
+runTypePlugins?}` and replies `{status: "ok", steps, confirmation}` or
+`{status: "rejected", refusal: {code, configurationId, task?}}`. `steps` are
+what to start, in order: a run is `{configurationId, name, summary}`, a task
+`{task, name, summary, workingDirectory}`; `summary` is one line naming what it
+starts (the program or script and its arguments, or the task's visible field
+values) for the confirmation. A step whose run names steps of its own starts
+them first, as starting that run alone would, and its task steps run in that
+run's working directory; at most 32 steps are expanded. `refusal.code` is
+`notFound` (no such configuration), `notAllowed` (not a built-in process run),
+`unavailable` (the run cannot start, see its `availability`), `cycle` (a step
+leads back to a configuration being started), `tooLong`, `taskNotDeclared` (no
+installed plugin declares the task) or `invalidTaskValues` (its saved values no
+longer fit the task, such as an empty required field); `configurationId` names
+the step, or for a task the configuration whose list names it, and `task`
+(`{pluginID, buildSystemID, type}`) is set for the two task codes.
 
 `confirmation` is `{fingerprint}` when the project layer names any of the
 expanded lists, and `null` otherwise. Those steps run code from the repository
 that nobody chose on this machine, so the host asks the user before running
 them, showing each step's name and summary, and remembers the fingerprint per
 project in its own storage, never in the project. The fingerprint is a SHA-256
-over the lists and the definitions of the runs they start, so changing either
-asks again; it does not cover the contents of a script file a step runs. A list
-the local layer names, including one that starts runs the project defines, was
-chosen on this machine and needs no confirmation. The host runs each step
-through `runConfig.createLaunchPlan`, writes its output to the console of the
-configuration that starts, stops it with that configuration, and does not start
-the configuration when a step fails or is stopped. Run and Debug both run the
-steps.
+over the lists, the definitions of the runs they start, and each task with its
+values and working directory, so changing any of them asks again; it does not
+cover the contents of a script file a step runs or the plugin's declaration of
+a task. A list the local layer names, including one that starts runs the
+project defines, was chosen on this machine and needs no confirmation. The
+host runs a run step through `runConfig.createLaunchPlan` and a task step
+through `build.beforeLaunchTaskPlan`, writes their output to the console of the
+configuration that starts, stops them with that configuration, and does not
+start the configuration when a step fails or is stopped. Run and Debug both run
+the steps.
 
 `runConfig.editorForm` adds a `beforeLaunch` field to every process run with
-`candidates: [{id, name}]`, the runnable process runs other than the edited one;
-its value is the list of IDs. `runConfig.saveConfiguration` checks it like
-`runConfig.beforeLaunch` and reports `{field: "beforeLaunch", code}` with
-`notFound`, `notAllowed`, `unavailable`, `conflict` (a cycle) or `tooLong`.
-`runConfig.updateOptions` and `runConfig.saveEditorChanges` accept an optional
-`beforeLaunch` list of IDs for any configuration: omission keeps the saved
+`candidates: [{id, name}]`, the runnable process runs other than the edited
+one, and `tasks`, each task kind the installed plugins declare as `{runType,
+displayName, description?, icon?, fields, values}`: `runType` is `{pluginID,
+buildSystemID, type}`, and `fields` and `values` describe the task's own form,
+keyed `field:<id>` like the editor of a declared type, with the defaults as
+`values`. The field's value is the list of steps: a run is its configuration
+ID, a task `{task, name, summary, values}` with the form values of its fields,
+and a task no installed plugin declares `{task, name, summary, missing: true}`,
+so the editor still shows and keeps it.
+
+`runConfig.checkBeforeLaunchTask` accepts `{root, runType, values?,
+runTypePlugins?}`, the form values of a task step being added or edited, and
+replies `{status: "ok", step}` with the step to put in the field's value, or
+`{status: "invalid", errors: [{field, code}]}` with the codes and `field:<id>`
+keys of a declared editor. A task no installed plugin declares fails the call
+with `not_supported`. Nothing is written; the step is saved with the
+configuration.
+
+`runConfig.saveConfiguration` checks the field like `runConfig.beforeLaunch`
+and reports `{field: "beforeLaunch", code}` with `notFound`, `notAllowed`,
+`unavailable`, `conflict` (a cycle), `tooLong`, `taskNotDeclared` or
+`invalidTaskValues`. `runConfig.updateOptions` and `runConfig.saveEditorChanges`
+accept an optional `beforeLaunch` list for any configuration, in the field's
+value shape, with an optional `runTypePlugins`: omission keeps the saved
 steps, an empty list removes them from the edited layer (and in the local layer
 hides the project's), and a list that cannot run is `invalid_request` with
 `beforeLaunch: <code>` in the details.
@@ -5199,6 +5252,7 @@ and the directories are absolute host paths used only as substitution text.
 | `build.modelPlan`, `build.dependencyPlan` | plan fields plus `project?` (dependencies), `outputFile?`, and for provider sources `refresh?` (boolean) and `tool?: { executable }` (absolute path) | `plan`: `{ buildSystemID, root, arguments, environment, workingDirectory, execution, optionFingerprint, output, decoder, executesProjectCode, mayUseNetwork }`; for a `provider` source `{ buildSystemID, root, provider: { method, params }, decoder, executesProjectCode, mayUseNetwork, optionFingerprint }`, where `method` is `lithe/build/model` or `lithe/build/dependencies` and `params` is `{ buildSystemID, root, options, optionArguments, environment, project?, refresh?, tool? }`; `refresh` appears only when `true` and `tool` only when the host sent it |
 | `build.taskPlan` | plan fields plus `task`, `project?`, `target?`, `modelTask?`, `userArguments?` | command `plan` with `arguments`, `environment`, `workingDirectory`, `execution`, and `optionFingerprint`; a provider task instead returns `provider: {method: "lithe/build/execute", params}` with effective options, selected task/entities, user arguments and effect metadata |
 | `build.runConfigurationPlan` | `manifest`, `buildSystemID`, required `workspaceRoot`, and `request: {configurationId, localDocument?, instances: [{root, options?, modelInputs?}], pluginDirectory?, workspaceStateDirectory?}` | `plan` as `build.taskPlan` returns it plus `runType: {pluginID, buildSystemID, type}`: the global arguments, then the type's `arguments` with the saved field values, the instance's options and the configuration's program arguments, at the configuration's working directory, with its environment over the options'. The instance is the deepest one whose root holds the working directory, or the only one; `plugin.build.invalidSelection` when several exist and none holds it or the configuration belongs to another plugin or build system, `plugin.build.unavailable` when the type is no longer declared, `plugin.build.invalidRunConfiguration` with `field: values.<fieldID>` when a saved value no longer fits. A configuration that is missing, disabled, unavailable or of another provider fails the call |
+| `build.beforeLaunchTaskPlan` | `manifest`, `buildSystemID`, required `workspaceRoot`, and `request: {task, workingDirectory, instances: [{root, options?, modelInputs?}], pluginDirectory?, workspaceStateDirectory?}`, with `task` and `workingDirectory` as `runConfig.beforeLaunch` returned the step | `plan` as `build.taskPlan` returns it plus `beforeLaunchTask: {pluginID, buildSystemID, type}`: the global arguments, then the task's `arguments` with the saved field values and the instance's options, at the step's working directory with the options' environment, as a `task` execution. The instance is chosen as for `build.runConfigurationPlan`; `plugin.build.invalidSelection` when several exist and none holds the working directory or the task belongs to another plugin or build system, `plugin.build.unavailable` when the task is no longer declared, `plugin.build.invalidBeforeLaunchTask` with `field: values.<fieldID>` when a saved value no longer fits. A working directory outside the workspace fails the call |
 | `build.testPlan` | plan fields plus `project?`, `target?`, `suite?`, `case?`, `userArguments?`, `projects?` (the model's project directories) | command plan or `provider: {method: "lithe/build/test", params}`, plus `results`: `null`, `{ decoder, reports }` with workspace-relative globs (for the selected project, or for the root and every listed project when none is selected), or command-only `{ decoder: "hostIntegration" }`. Command filters that templates cannot place, such as a case without its suite when the tool only addresses `Suite#case`, are `plugin.build.invalidSelection`; Provider filters remain separate typed values and must be declared supported |
 | `build.testDiscoveryPlan` | common plan fields plus `refresh?`, `tool?`; no project/output file | `plan.provider` for `lithe/build/discoverTests`, only with `test.discovery: true`, using the same effective options and effect metadata |
 | `build.decodeTestDiscovery` | common plan fields plus canonical `result` | `discovery.tests` with validated `{id, suite, case, project?, target?}` selectors; bounded at 10,000 items/32 MiB, deterministic and exactly runnable; malformed replies reject in full |

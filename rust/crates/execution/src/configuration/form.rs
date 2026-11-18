@@ -12,8 +12,12 @@
 //! request, already checked and localized; a configuration whose plugin is
 //! gone cannot be edited until the plugin is back.
 
-use super::before_launch::{check_edit, steps_of, Resolved};
-use super::declared::{declared, DeclaredRunType, RunTypeKey, RunTypeReference, RUN_TYPE_PROVIDER};
+use super::before_launch::{
+    check_edit, editor_items, steps_from_editor, BeforeLaunchStep, Resolved, StepChoices,
+};
+use super::declared::{
+    declared, DeclaredRole, DeclaredRunType, RunTypeKey, RunTypeReference, RUN_TYPE_PROVIDER,
+};
 use super::process::{self, FieldError, Kind, ProcessOptions};
 use super::*;
 
@@ -48,7 +52,13 @@ pub fn configuration_types(request: ConfigurationTypesRequest) -> Result<Value, 
             item
         })
         .collect::<Vec<_>>();
-    types.extend(request.run_types.iter().map(DeclaredRunType::type_item));
+    types.extend(
+        request
+            .run_types
+            .iter()
+            .filter(|run_type| run_type.role == DeclaredRole::Configuration)
+            .map(DeclaredRunType::type_item),
+    );
     Ok(json!({ "types": types }))
 }
 
@@ -95,7 +105,7 @@ pub fn editor_form(request: EditorFormRequest) -> Result<Value, CoreError> {
             {
                 return Err(different_provider());
             }
-            (editor, saved.values(editor)?)
+            (editor, saved.values(editor, run_types)?)
         }
         None => {
             let editor = Editor::new(
@@ -107,13 +117,16 @@ pub fn editor_form(request: EditorFormRequest) -> Result<Value, CoreError> {
         }
     };
     values.extend(request.values.unwrap_or_default());
-    let candidates =
-        Resolved::read(&root, &layers)?.candidates(request.configuration_id.as_deref());
+    let choices = StepChoices::new(
+        &Resolved::read(&root, &layers)?,
+        request.configuration_id.as_deref(),
+        run_types,
+    );
     let fields = match editor {
-        Editor::Process(kind) => fields(kind, &root, &Draft::read(kind, &values)?, candidates),
+        Editor::Process(kind) => fields(kind, &root, &Draft::read(kind, &values)?, choices),
         Editor::Declared(run_type) => {
             Common::read(&values, DECLARED_ARGUMENTS_FIELD)?;
-            declared_fields(run_type, candidates)
+            declared_fields(run_type, choices)
         }
     };
     let mut form = json!({
@@ -216,7 +229,7 @@ pub fn save_configuration(request: SaveConfigurationRequest) -> Result<Value, Co
         Some(saved) => saved.id.clone(),
         None => unique_user_configuration_id(&stored.name, &existing_ids(&root, &layers)),
     };
-    if let Some(code) = check_edit(&root, &layers, &id, &common.before_launch)? {
+    if let Some(code) = check_edit(&root, &layers, &id, &common.before_launch, run_types)? {
         errors.push(FieldError::new("beforeLaunch", code));
     }
     if !errors.is_empty() {
@@ -264,7 +277,7 @@ pub fn save_configuration(request: SaveConfigurationRequest) -> Result<Value, Co
     set_or_remove(
         object,
         "beforeLaunch",
-        (!common.before_launch.is_empty()).then(|| json!(steps_of(&common.before_launch))),
+        (!common.before_launch.is_empty()).then(|| json!(common.before_launch)),
     );
     set_or_remove(
         object,
@@ -537,8 +550,13 @@ impl SavedEntry {
         Editor::new(&configuration.provider, None, run_types)
     }
 
-    /// The editor values of the saved entry.
-    fn values(&self, editor: Editor<'_>) -> Result<serde_json::Map<String, Value>, CoreError> {
+    /// The editor values of the saved entry; `run_types` describe its task
+    /// steps.
+    fn values(
+        &self,
+        editor: Editor<'_>,
+        run_types: &[DeclaredRunType],
+    ) -> Result<serde_json::Map<String, Value>, CoreError> {
         let configuration = self.configuration()?;
         let mut values = editor.default_values();
         values.insert("name".into(), json!(configuration.name));
@@ -562,11 +580,7 @@ impl SavedEntry {
         );
         values.insert(
             "beforeLaunch".into(),
-            json!(configuration
-                .before_launch
-                .iter()
-                .map(|step| step.configuration.clone())
-                .collect::<Vec<_>>()),
+            json!(editor_items(&configuration.before_launch, run_types)),
         );
         let kind = match editor {
             Editor::Process(kind) => kind,
@@ -657,7 +671,7 @@ fn header_fields(automatic_name: Option<String>) -> Vec<Field> {
 }
 
 /// The fields of `kind`'s editor, with automatic values for `draft`.
-fn fields(kind: Kind, root: &Path, draft: &Draft, candidates: Vec<Value>) -> Vec<Value> {
+fn fields(kind: Kind, root: &Path, draft: &Draft, choices: StepChoices) -> Vec<Value> {
     let platform = Platform::HOST;
     let options = draft.options();
     let mut fields = header_fields(process::default_name(&options));
@@ -711,13 +725,13 @@ fn fields(kind: Kind, root: &Path, draft: &Draft, candidates: Vec<Value>) -> Vec
             field("environment", "environment"),
         ]);
     }
-    fields.push(field("beforeLaunch", "beforeLaunch").candidates(candidates));
+    fields.push(field("beforeLaunch", "beforeLaunch").steps(choices));
     fields.into_iter().map(|field| field.0).collect()
 }
 
 /// The fields of a declared kind's editor: the header, the kind's own
 /// fields, then the fields every run has.
-fn declared_fields(run_type: &DeclaredRunType, candidates: Vec<Value>) -> Vec<Value> {
+fn declared_fields(run_type: &DeclaredRunType, choices: StepChoices) -> Vec<Value> {
     let mut fields = header_fields(Some(run_type.display_name.clone()))
         .into_iter()
         .map(|field| field.0)
@@ -730,7 +744,7 @@ fn declared_fields(run_type: &DeclaredRunType, candidates: Vec<Value>) -> Vec<Va
         [
             field("workingDirectory", "directory"),
             field("environment", "environment"),
-            field("beforeLaunch", "beforeLaunch").candidates(candidates),
+            field("beforeLaunch", "beforeLaunch").steps(choices),
         ]
         .map(|field| field.0),
     );
@@ -783,9 +797,14 @@ impl Field {
         self
     }
 
-    /// The run configurations a `beforeLaunch` field may name, `{id, name}`.
-    fn candidates(mut self, candidates: Vec<Value>) -> Self {
-        self.0["candidates"] = json!(candidates);
+    /// What a `beforeLaunch` field offers: `candidates`, the run
+    /// configurations a step may start as `{id, name}`, and, when installed
+    /// plugins declare any, `tasks`, the kinds of task a step may run.
+    fn steps(mut self, choices: StepChoices) -> Self {
+        self.0["candidates"] = json!(choices.candidates);
+        if !choices.tasks.is_empty() {
+            self.0["tasks"] = json!(choices.tasks);
+        }
         self
     }
 
@@ -832,8 +851,8 @@ struct Common {
     arguments: String,
     working_directory: String,
     environment: Vec<(String, String)>,
-    /// The configurations started before this one, by ID.
-    before_launch: Vec<String>,
+    /// The steps run before this one.
+    before_launch: Vec<BeforeLaunchStep>,
 }
 
 /// The fields every editable run has, in the form they are saved.
@@ -868,8 +887,10 @@ impl Common {
             environment,
             before_launch: match values.get("beforeLaunch") {
                 None | Some(Value::Null) => Vec::new(),
-                Some(value) => serde_json::from_value::<Vec<String>>(value.clone())
-                    .map_err(|_| invalid_value("beforeLaunch"))?,
+                Some(Value::Array(items)) => {
+                    steps_from_editor(items).ok_or_else(|| invalid_value("beforeLaunch"))?
+                }
+                Some(_) => return Err(invalid_value("beforeLaunch")),
             },
         })
     }

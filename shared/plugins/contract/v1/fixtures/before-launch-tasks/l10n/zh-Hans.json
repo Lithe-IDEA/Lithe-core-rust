@@ -1,0 +1,19 @@
+{
+  "beforeLaunchTasks": {
+    "go": {
+      "command": {
+        "displayName": "运行 Go 命令",
+        "description": "在配置的工作目录中运行一条 go 命令，例如 generate ./...。",
+        "fields": {
+          "command": { "title": "命令" }
+        }
+      },
+      "generate": {
+        "displayName": "Go 生成",
+        "fields": {
+          "verbose": { "title": "列出文件" }
+        }
+      }
+    }
+  }
+}

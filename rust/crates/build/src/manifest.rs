@@ -107,6 +107,12 @@ pub struct BuildSystemDeclaration {
     /// Configurations dialog; `runConfigurationTypes` 0.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) run_configuration_types: Vec<RunTypeDeclaration>,
+    /// Kinds of step a configuration runs before it starts, offered in the
+    /// "Add New Task" menu of its Before Launch list; `beforeLaunchTasks` 0.
+    /// They are declared like run configuration types, without an execution
+    /// or program arguments.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) before_launch_tasks: Vec<RunTypeDeclaration>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) test: Option<TestDeclaration>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

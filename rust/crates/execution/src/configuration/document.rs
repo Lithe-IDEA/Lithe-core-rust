@@ -203,9 +203,10 @@ pub struct RunConfiguration {
     /// Provider-specific payload keyed by namespace, such as `build`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub extensions: BTreeMap<String, Value>,
-    /// Built-in process runs started in order before this one, each of which
-    /// must exit with 0 first (`runConfig.beforeLaunch`). A layer replaces the
-    /// whole list, so an empty list clears the steps of a lower layer.
+    /// Steps run in order before this one, each of which must exit with 0
+    /// first (`runConfig.beforeLaunch`): a built-in process run, or a task an
+    /// installed plugin declares. A layer replaces the whole list, so an empty
+    /// list clears the steps of a lower layer.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub before_launch: Vec<super::BeforeLaunchStep>,
     /// Hidden from the resolved list; set by a user or when the working directory is missing.

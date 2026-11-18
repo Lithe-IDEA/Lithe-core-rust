@@ -73,6 +73,10 @@ pub const BUILD_MODEL_INPUTS: &str = "buildModelInputs";
 /// `buildSystems[].runConfigurationTypes`: kinds of run configuration whose
 /// editor fields and command line the plugin declares.
 pub const RUN_CONFIGURATION_TYPES: &str = "runConfigurationTypes";
+/// `buildSystems[].beforeLaunchTasks`: kinds of before-launch step whose
+/// fields and command line the plugin declares, offered in a configuration's
+/// "Add New Task" menu next to running another configuration.
+pub const BEFORE_LAUNCH_TASKS: &str = "beforeLaunchTasks";
 /// `vcsProviders[]`: version control systems implemented by a plugin
 /// process; see `lithe_vcs`.
 pub const VCS_PROVIDERS: &str = "vcsProviders";
@@ -119,6 +123,7 @@ pub const OUTPUT_LINK_MATCHERS: &str = "outputLinkMatchers";
 /// of a capability is appended to its list.
 pub const SUPPORTED_CAPABILITIES: &[(&str, &[u32])] = &[
     (BACKEND, &[0]),
+    (BEFORE_LAUNCH_TASKS, &[0]),
     (BUILD_MODEL_INPUTS, &[0]),
     (BUILD_PROVIDERS, &[0, 1]),
     (BUILD_SYSTEMS, &[0]),

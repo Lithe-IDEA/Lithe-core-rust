@@ -89,6 +89,26 @@ fn program(build_system: &BuildSystemDeclaration) -> Value {
             })
         })
         .collect();
+    // A task's command line runs like a run configuration's, so it is
+    // reviewed the same way; it has no execution.
+    let before_launch_tasks: Vec<Value> = build_system
+        .before_launch_tasks
+        .iter()
+        .map(|task| {
+            json!({
+                "id": task.id,
+                "arguments": task.arguments,
+                "fields": task.fields.iter().map(|field| json!({
+                    "id": field.id,
+                    "kind": field.kind,
+                    "default": field.default,
+                    "choices": field.choices.iter().map(|choice| &choice.value).collect::<Vec<_>>(),
+                    "visibleWhen": field.visible_when,
+                    "arguments": field.arguments,
+                })).collect::<Vec<_>>(),
+            })
+        })
+        .collect();
     let mut program = json!({
         "kind": "buildSystem",
         "buildSystemID": build_system.id,
@@ -110,6 +130,9 @@ fn program(build_system: &BuildSystemDeclaration) -> Value {
     // Absent while empty, so a plugin without types keeps its review.
     if !run_types.is_empty() {
         program["runConfigurationTypes"] = json!(run_types);
+    }
+    if !before_launch_tasks.is_empty() {
+        program["beforeLaunchTasks"] = json!(before_launch_tasks);
     }
     // Build requests reaching a language server change what that process
     // is asked to do, so the shared form is part of this entry.

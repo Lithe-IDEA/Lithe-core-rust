@@ -56,6 +56,11 @@ pub(super) fn dispatch(command: BuildCommand, id: Option<String>, payload: Value
             payload,
             crate::build::build_run_configuration_plan_command::<Manifest>,
         ),
+        BuildCommand::BeforeLaunchTaskPlan => plugin_response(
+            id,
+            payload,
+            crate::build::build_before_launch_task_plan_command::<Manifest>,
+        ),
         BuildCommand::PrepareDebugPlan => plugin_response(
             id,
             payload,

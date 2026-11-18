@@ -36,12 +36,15 @@ mod validation;
 
 pub use arrangement::{arrange, ArrangeRequest};
 pub(crate) use arrangement::{valid_folder, Arrangement};
-pub use before_launch::{before_launch, BeforeLaunchRequest, BeforeLaunchStep};
+pub use before_launch::{
+    before_launch, check_before_launch_task, BeforeLaunchRequest, BeforeLaunchStep,
+    CheckBeforeLaunchTaskRequest, ConfigurationStep, TaskStep,
+};
 pub use copying::{copy_configuration, CopyConfigurationRequest};
 pub use declared::{
-    declared_launch, DeclaredChoice, DeclaredCondition, DeclaredField, DeclaredFieldKind,
-    DeclaredLaunch, DeclaredRunType, DeclaredValue, DeclaredValueError, RunTypeKey,
-    RunTypeReference, RUN_TYPE_PROVIDER,
+    declared_launch, declared_task_launch, DeclaredChoice, DeclaredCondition, DeclaredField,
+    DeclaredFieldKind, DeclaredLaunch, DeclaredRole, DeclaredRunType, DeclaredValue,
+    DeclaredValueError, RunTypeKey, RunTypeReference, RUN_TYPE_PROVIDER,
 };
 pub use document::*;
 pub use editing::*;

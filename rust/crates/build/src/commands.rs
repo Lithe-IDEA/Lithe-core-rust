@@ -15,7 +15,7 @@ use super::outputs::{
     DecodeTestResultsRequest, SyncFingerprintRequest,
 };
 use super::plans::{self, OutputPlanRequest, TaskPlanRequest, TestPlanRequest};
-use super::run_types::{self, RunConfigurationPlanRequest};
+use super::run_types::{self, BeforeLaunchTaskPlanRequest, RunConfigurationPlanRequest};
 use super::test_discovery::{self, DecodeTestDiscoveryRequest};
 use super::tree::{self, ModelTreeRequest};
 use super::BuildManifest;
@@ -136,6 +136,42 @@ pub fn build_run_configuration_plan_command<M: BuildManifest>(
         |manifest| {
             let build_system = find_build_system(&manifest, &payload.build_system_id)?;
             run_types::run_configuration_plan(
+                manifest.id(),
+                build_system,
+                &launch,
+                request,
+                &launch.root,
+            )
+            .map(|plan| ("plan", plan))
+        },
+    )))
+}
+
+/// `build.beforeLaunchTaskPlan`: the argv plan of a before-launch task step
+/// as `runConfig.beforeLaunch` returned it, in `workspaceRoot`, which it
+/// requires. A task the build system no longer declares, a working directory
+/// outside the project, or values the task cannot run fail the call.
+pub fn build_before_launch_task_plan_command<M: BuildManifest>(
+    payload: Value,
+) -> Result<Value, CoreError> {
+    let command = "build.beforeLaunchTaskPlan";
+    let payload: BuildPayload<BeforeLaunchTaskPlanRequest> = decode_payload(payload, command)?;
+    let workspace_root = payload.workspace_root.as_deref().ok_or_else(|| {
+        CoreError::new(
+            ErrorCode::InvalidRequest,
+            "build.beforeLaunchTaskPlan needs workspaceRoot",
+        )
+    })?;
+    let request = &payload.request;
+    let launch = lithe_execution::declared_task_launch(
+        workspace_root,
+        request.task.clone(),
+        &request.working_directory,
+    )?;
+    Ok(outcome(M::validate(payload.manifest).and_then(
+        |manifest| {
+            let build_system = find_build_system(&manifest, &payload.build_system_id)?;
+            run_types::before_launch_task_plan(
                 manifest.id(),
                 build_system,
                 &launch,

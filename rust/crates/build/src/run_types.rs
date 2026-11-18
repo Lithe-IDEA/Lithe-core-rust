@@ -8,18 +8,24 @@
 //! stores. `build.runConfigurationPlan` reads a saved configuration of such a
 //! type and expands the type's template into an argv plan, like a task plan,
 //! so the host starts it as it starts any build command.
+//!
+//! Before-launch tasks (`beforeLaunchTasks`) are declared the same way and
+//! become [`DeclaredRunType`]s of the [`DeclaredRole::BeforeLaunchTask`]
+//! role. `build.beforeLaunchTaskPlan` expands a task step that
+//! `runConfig.beforeLaunch` returned into the same kind of plan; a task
+//! always runs to completion and takes no program arguments.
 
 use super::decode;
 use super::manifest::{
     check_description, check_text, BuildExecution, BuildSystemDeclaration, RunFieldDeclaration,
-    RunFieldKind, RunTypeDeclaration,
+    RunFieldKind, RunTypeDeclaration, RunTypeRole,
 };
 use super::plans::{self, invalid_selection, unavailable, PlanBase, PlanContext};
 use super::template::{self, Values};
 use super::BuildManifest;
 use lithe_execution::{
     DeclaredChoice, DeclaredCondition, DeclaredField, DeclaredFieldKind, DeclaredLaunch,
-    DeclaredRunType, DeclaredValue, Execution, RunTypeKey,
+    DeclaredRole, DeclaredRunType, DeclaredValue, Execution, RunTypeKey, RunTypeReference,
 };
 use lithe_plugin_model::settings::{parse_localization_file, present, LocalizationRequest};
 use lithe_plugin_model::{PluginRejection, Validation};
@@ -34,12 +40,15 @@ use std::path::Path;
 const INVALID_LOCALIZATION: &str = "plugin.build.invalidLocalization";
 /// Error code of a saved configuration whose values the type cannot run.
 const INVALID_RUN_CONFIGURATION: &str = "plugin.build.invalidRunConfiguration";
+/// Error code of a before-launch task step whose values the task cannot run.
+const INVALID_BEFORE_LAUNCH_TASK: &str = "plugin.build.invalidBeforeLaunchTask";
 /// Most plugins one editor request may name.
 const MAX_PLUGINS: usize = 512;
 /// Most build-system instances one plan request may name.
 const MAX_INSTANCES: usize = 4_096;
 
-/// The installed plugins whose run configuration types the editor offers.
+/// The installed plugins whose run configuration types and before-launch
+/// tasks the editor offers.
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RunTypePlugins {
@@ -64,8 +73,9 @@ pub struct RunTypePlugin {
     pub localizations: Option<BTreeMap<String, String>>,
 }
 
-/// The types the plugins declare, in plugin and declaration order, with one
-/// translation report per plugin that declares a type when a language is
+/// The run configuration types and before-launch tasks the plugins declare,
+/// in plugin and declaration order, each with its role, with one
+/// translation report per plugin that declares either when a language is
 /// named: `{pluginID, language, candidates, maximumBytes, readRequired,
 /// applied, rejected}`, the report of `plugins.settings`.
 ///
@@ -90,7 +100,9 @@ pub fn declared_run_types<M: BuildManifest>(
         let systems: Vec<&BuildSystemDeclaration> = manifest
             .build_systems()
             .iter()
-            .filter(|system| system.has_run_configuration_types())
+            .filter(|system| {
+                system.has_run_configuration_types() || system.has_before_launch_tasks()
+            })
             .collect();
         if systems.is_empty() {
             continue;
@@ -113,22 +125,23 @@ pub fn declared_run_types<M: BuildManifest>(
             }
             None => Localization::default(),
         };
-        for system in systems {
-            for declaration in &system.run_configuration_types {
-                let text = localization
-                    .types
-                    .get(&(system.id.clone(), declaration.id.clone()));
-                types.push(declared(manifest.id(), system, declaration, text));
+        for role in [RunTypeRole::Configuration, RunTypeRole::BeforeLaunchTask] {
+            for system in &systems {
+                for declaration in system.run_types(role) {
+                    let text = localization.text(role, &system.id, &declaration.id);
+                    types.push(declared(manifest.id(), system, role, declaration, text));
+                }
             }
         }
     }
     Ok((types, reports))
 }
 
-/// The run type of a validated declaration, with translated text.
+/// The run type or task of a validated declaration, with translated text.
 fn declared(
     plugin_id: &str,
     system: &BuildSystemDeclaration,
+    role: RunTypeRole,
     declaration: &RunTypeDeclaration,
     text: Option<&TypeText>,
 ) -> DeclaredRunType {
@@ -149,6 +162,10 @@ fn declared(
             build_system_id: system.id.clone(),
             type_id: declaration.id.clone(),
         },
+        role: match role {
+            RunTypeRole::Configuration => DeclaredRole::Configuration,
+            RunTypeRole::BeforeLaunchTask => DeclaredRole::BeforeLaunchTask,
+        },
         display_name: text
             .and_then(|text| text.display_name.clone())
             .unwrap_or_else(|| declaration.display_name.clone()),
@@ -159,13 +176,21 @@ fn declared(
             .icon
             .as_ref()
             .map(|icon| serde_json::to_value(icon).expect("icons encode")),
-        execution: match declaration.execution() {
+        execution: match execution(role, declaration) {
             BuildExecution::Task => Execution::Task,
             // Validation rejects `service`.
             BuildExecution::Application | BuildExecution::Service => Execution::Application,
         },
         takes_arguments: declaration.takes_arguments(),
         fields,
+    }
+}
+
+/// How a started declaration behaves: a task always runs to completion.
+fn execution(role: RunTypeRole, declaration: &RunTypeDeclaration) -> BuildExecution {
+    match role {
+        RunTypeRole::Configuration => declaration.execution(),
+        RunTypeRole::BeforeLaunchTask => BuildExecution::Task,
     }
 }
 
@@ -213,13 +238,16 @@ fn declared_field(field: &RunFieldDeclaration, text: Option<&FieldText>) -> Decl
 }
 
 /// The part of a translation file this module reads:
-/// `runConfigurationTypes.<buildSystemID>.<typeID>`. Other top-level keys
-/// belong to other surfaces.
+/// `runConfigurationTypes.<buildSystemID>.<typeID>` and
+/// `beforeLaunchTasks.<buildSystemID>.<taskID>`. Other top-level keys belong
+/// to other surfaces.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct LocalizationFile {
     #[serde(default)]
     run_configuration_types: UniqueMap<UniqueMap<TypeText>>,
+    #[serde(default)]
+    before_launch_tasks: UniqueMap<UniqueMap<TypeText>>,
 }
 
 /// Translated text of one type, by the manifest field it replaces.
@@ -250,42 +278,68 @@ struct FieldText {
     options: Option<UniqueMap<String>>,
 }
 
-/// A checked translation of one plugin's types, by build system and type ID.
+/// A checked translation of one plugin's types and tasks, by build system
+/// and declaration ID.
 #[derive(Debug, Default)]
 struct Localization {
     types: BTreeMap<(String, String), TypeText>,
+    tasks: BTreeMap<(String, String), TypeText>,
+}
+
+impl Localization {
+    fn entries(&mut self, role: RunTypeRole) -> &mut BTreeMap<(String, String), TypeText> {
+        match role {
+            RunTypeRole::Configuration => &mut self.types,
+            RunTypeRole::BeforeLaunchTask => &mut self.tasks,
+        }
+    }
+
+    fn text(&self, role: RunTypeRole, system_id: &str, id: &str) -> Option<&TypeText> {
+        let entries = match role {
+            RunTypeRole::Configuration => &self.types,
+            RunTypeRole::BeforeLaunchTask => &self.tasks,
+        };
+        entries.get(&(system_id.to_string(), id.to_string()))
+    }
 }
 
 /// Parses one translation file and checks it against the declarations: it
-/// names only declared build systems, types, fields and choices, translates
-/// only text the manifest has, and every text fits the manifest's limits.
-/// A file that does not fit is refused whole.
+/// names only declared build systems, types, tasks, fields and choices,
+/// translates only text the manifest has, and every text fits the
+/// manifest's limits. A file that does not fit is refused whole.
 fn decode_file(text: &str, systems: &[&BuildSystemDeclaration]) -> Validation<Localization> {
     let file: LocalizationFile = parse_localization_file(text, INVALID_LOCALIZATION)?;
     let mut localization = Localization::default();
-    for (system_id, types) in file.run_configuration_types.0 {
-        let field = format!("runConfigurationTypes.{system_id}");
-        let system = systems
-            .iter()
-            .find(|system| system.id == system_id)
-            .ok_or_else(|| {
-                rejection(
-                    &field,
-                    "The plugin declares no build system with run configuration types under this ID.",
-                )
-            })?;
-        for (type_id, text) in types.0 {
-            let field = format!("{field}.{type_id}");
-            let declaration = system.run_type(&type_id).ok_or_else(|| {
-                rejection(
-                    &field,
-                    "The build system declares no run configuration type with this ID.",
-                )
-            })?;
-            check_type_text(&text, declaration, &field)?;
-            localization
-                .types
-                .insert((system_id.clone(), type_id), text);
+    for (role, section) in [
+        (RunTypeRole::Configuration, file.run_configuration_types),
+        (RunTypeRole::BeforeLaunchTask, file.before_launch_tasks),
+    ] {
+        let (no_system, no_entry) = match role {
+            RunTypeRole::Configuration => (
+                "The plugin declares no build system with run configuration types under this ID.",
+                "The build system declares no run configuration type with this ID.",
+            ),
+            RunTypeRole::BeforeLaunchTask => (
+                "The plugin declares no build system with before-launch tasks under this ID.",
+                "The build system declares no before-launch task with this ID.",
+            ),
+        };
+        for (system_id, entries) in section.0 {
+            let field = format!("{}.{system_id}", role.key());
+            let system = systems
+                .iter()
+                .find(|system| system.id == system_id && !system.run_types(role).is_empty())
+                .ok_or_else(|| rejection(&field, no_system))?;
+            for (id, text) in entries.0 {
+                let field = format!("{field}.{id}");
+                let declaration = system
+                    .run_type(role, &id)
+                    .ok_or_else(|| rejection(&field, no_entry))?;
+                check_type_text(&text, declaration, &field)?;
+                localization
+                    .entries(role)
+                    .insert((system_id.clone(), id), text);
+            }
         }
     }
     Ok(localization)
@@ -315,7 +369,7 @@ fn check_type_text(
             .fields
             .iter()
             .find(|declared| &declared.id == id)
-            .ok_or_else(|| rejection(&field, "The type declares no field with this ID."))?;
+            .ok_or_else(|| rejection(&field, "The declaration has no field with this ID."))?;
         if let Some(title) = &field_text.title {
             relabel(check_text(title, &format!("{field}.title"), "title"))?;
         }
@@ -414,6 +468,65 @@ pub(crate) struct RunTypeInstance {
     model_inputs: Option<Value>,
 }
 
+/// `build.beforeLaunchTaskPlan`: the argv plan of one before-launch task
+/// step, as `runConfig.beforeLaunch` returned it.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct BeforeLaunchTaskPlanRequest {
+    /// The step's `task`: the plugin, build system, task ID and saved values.
+    pub(crate) task: RunTypeReference,
+    /// The step's `workingDirectory`, workspace-relative.
+    pub(crate) working_directory: String,
+    /// The detected instances of the build system, as in
+    /// `build.runConfigurationPlan`.
+    pub(crate) instances: Vec<RunTypeInstance>,
+    /// Absolute installed plugin directory, for `${pluginDir}`.
+    #[serde(default)]
+    pub(crate) plugin_directory: Option<String>,
+    /// Absolute writable directory of this plugin for this workspace.
+    #[serde(default)]
+    pub(crate) workspace_state_directory: Option<String>,
+}
+
+/// What a plan takes from its request besides the launch.
+struct PlanSources<'a> {
+    instances: &'a [RunTypeInstance],
+    plugin_directory: Option<String>,
+    workspace_state_directory: Option<String>,
+}
+
+/// The wording and identity of one role in a plan.
+struct PlanRole {
+    role: RunTypeRole,
+    other_owner: &'static str,
+    entry: &'static str,
+    code: &'static str,
+    required: &'static str,
+    does_not_fit: &'static str,
+    /// The plan key that names the kind.
+    key: &'static str,
+}
+
+const CONFIGURATION_PLAN: PlanRole = PlanRole {
+    role: RunTypeRole::Configuration,
+    other_owner: "The run configuration belongs to another plugin or build system.",
+    entry: "the run configuration type",
+    code: INVALID_RUN_CONFIGURATION,
+    required: "A required field of the run configuration is empty.",
+    does_not_fit: "A saved value does not fit the run configuration type.",
+    key: "runType",
+};
+
+const TASK_PLAN: PlanRole = PlanRole {
+    role: RunTypeRole::BeforeLaunchTask,
+    other_owner: "The before-launch task belongs to another plugin or build system.",
+    entry: "the before-launch task",
+    code: INVALID_BEFORE_LAUNCH_TASK,
+    required: "A required field of the before-launch task is empty.",
+    does_not_fit: "A saved value does not fit the before-launch task.",
+    key: "beforeLaunchTask",
+};
+
 /// The plan of `launch`, a saved configuration of a type `system` declares.
 ///
 /// The plan is the task plan shape plus `runType`: the global arguments and
@@ -427,31 +540,70 @@ pub(crate) fn run_configuration_plan(
     request: &RunConfigurationPlanRequest,
     workspace_root: &Path,
 ) -> Validation<Value> {
+    declared_plan(
+        plugin_id,
+        system,
+        &CONFIGURATION_PLAN,
+        launch,
+        PlanSources {
+            instances: &request.instances,
+            plugin_directory: request.plugin_directory.clone(),
+            workspace_state_directory: request.workspace_state_directory.clone(),
+        },
+        workspace_root,
+    )
+}
+
+/// The plan of `launch`, a before-launch task step of a task `system`
+/// declares: the task plan shape plus `beforeLaunchTask`, the global
+/// arguments and the task's arguments with the field values and the
+/// instance's options, at the step's working directory. A task always runs
+/// to completion.
+pub(crate) fn before_launch_task_plan(
+    plugin_id: &str,
+    system: &BuildSystemDeclaration,
+    launch: &DeclaredLaunch,
+    request: &BeforeLaunchTaskPlanRequest,
+    workspace_root: &Path,
+) -> Validation<Value> {
+    declared_plan(
+        plugin_id,
+        system,
+        &TASK_PLAN,
+        launch,
+        PlanSources {
+            instances: &request.instances,
+            plugin_directory: request.plugin_directory.clone(),
+            workspace_state_directory: request.workspace_state_directory.clone(),
+        },
+        workspace_root,
+    )
+}
+
+fn declared_plan(
+    plugin_id: &str,
+    system: &BuildSystemDeclaration,
+    role: &PlanRole,
+    launch: &DeclaredLaunch,
+    sources: PlanSources<'_>,
+    workspace_root: &Path,
+) -> Validation<Value> {
     let reference = &launch.reference;
     if reference.plugin_id != plugin_id || reference.build_system_id != system.id {
-        return Err(invalid_selection(
-            "The run configuration belongs to another plugin or build system.",
-        ));
+        return Err(invalid_selection(role.other_owner));
     }
-    let declaration = system.run_type(&reference.type_id).ok_or_else(|| {
-        unavailable(
-            system,
-            &format!("the run configuration type {}", reference.type_id),
-        )
-    })?;
-    let run_type = declared(plugin_id, system, declaration, None);
+    let declaration = system
+        .run_type(role.role, &reference.type_id)
+        .ok_or_else(|| unavailable(system, &format!("{} {}", role.entry, reference.type_id)))?;
+    let run_type = declared(plugin_id, system, role.role, declaration, None);
     let values = run_type
         .launch_values(&reference.values, workspace_root)
         .map_err(|error| {
             let message = match error.code {
-                "required" => "A required field of the run configuration is empty.",
-                _ => "A saved value does not fit the run configuration type.",
+                "required" => role.required,
+                _ => role.does_not_fit,
             };
-            PluginRejection::at(
-                INVALID_RUN_CONFIGURATION,
-                format!("values.{}", error.field),
-                message,
-            )
+            PluginRejection::at(role.code, format!("values.{}", error.field), message)
         })?;
     plans::check_user_arguments(&launch.arguments, &declaration.arguments)?;
     let mut field_arguments = Vec::new();
@@ -463,24 +615,24 @@ pub(crate) fn run_configuration_plan(
             .expect("launch values name declared fields");
         field_arguments.push((id.clone(), field_value_arguments(field, value)?));
     }
-    let instance = instance_of(&request.instances, &launch.working_directory)?;
+    let instance = instance_of(sources.instances, &launch.working_directory)?;
     let base = PlanBase {
         model_inputs: instance.model_inputs.clone(),
         root: instance.root.clone(),
         options: instance.options.clone(),
-        plugin_directory: request.plugin_directory.clone(),
-        workspace_state_directory: request.workspace_state_directory.clone(),
+        plugin_directory: sources.plugin_directory,
+        workspace_state_directory: sources.workspace_state_directory,
     };
     let context = PlanContext::new(system, &base)?;
     let mut values = context.values(&launch.arguments);
     values.field_arguments = &field_arguments;
     let mut extra = Map::new();
     extra.insert("workingDirectory".into(), json!(launch.working_directory));
-    extra.insert("runType".into(), json!(reference.key()));
+    extra.insert(role.key.into(), json!(reference.key()));
     let mut plan = context.plan(
         &declaration.arguments,
         &values,
-        declaration.execution(),
+        execution(role.role, declaration),
         extra,
     )?;
     if let Some(environment) = plan["environment"].as_object_mut() {

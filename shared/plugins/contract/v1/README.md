@@ -817,6 +817,7 @@ in `fixtures/settings/localization-cases.json`.
 | `sections.<heading>` | A section heading, named exactly as `section` writes it |
 | `settingActions.<id>` | The action's `title` and `description` |
 | `runConfigurationTypes.<buildSystemID>.<typeID>` | A [run configuration type](#run-configuration-types)'s `displayName` and `description`, and `fields.<id>` with a field's `title`, `description`, `placeholder`, and `options.<value>`; refused as `plugin.build.invalidLocalization` |
+| `beforeLaunchTasks.<buildSystemID>.<taskID>` | A [before-launch task](#before-launch-tasks)'s text, shaped like `runConfigurationTypes`; refused as `plugin.build.invalidLocalization` |
 
 Every member is optional, and text a file leaves out stays as `plugin.json`
 writes it. IDs, option values and their order, stored values, and the grouping
@@ -969,6 +970,7 @@ belongs to one capability:
 | `buildSystems` | [`buildSystems[]`](#build-systems) without `provider`: detection, options, project model, tasks, run entries, tests, diagnostics, dependencies, sync, and [declarative preparation](#declarative-project-preparation) | — | Detects projects, loads the model, and runs the declared commands. |
 | `buildProviders` | `buildSystems[].provider`, including own-process and shared language-server providers | `litheBuild` | Starts the provider and speaks `litheBuild` with workspace-owned sessions. |
 | `runConfigurationTypes` | [`buildSystems[].runConfigurationTypes`](#run-configuration-types) | — | Lists the types in the Run/Debug Configurations dialog, draws their editors, and runs their saved configurations through `build.runConfigurationPlan`. |
+| `beforeLaunchTasks` | [`buildSystems[].beforeLaunchTasks`](#before-launch-tasks) | — | Offers the tasks in the Add New Task menu of a configuration's Before Launch list, draws their forms, and runs their steps through `build.beforeLaunchTaskPlan`. |
 | `buildModelInputs` | `buildSystems[].modelSharing` and `modelInputs`: [optional read-only model inputs](#optional-read-only-model-inputs) | — | Supplies the model snapshot between enabled workspace plugins. |
 | `vcsProviders` | [`vcsProviders[]`](#vcs-providers) | `litheVcs` | Starts the provider and speaks `litheVcs`. |
 | `debugAdapters` | [`debugAdapters[]`](#debug-adapters) | — | Starts the adapter and applies its [declared features and defaults](#adapter-features-and-defaults). |
@@ -1907,6 +1909,7 @@ declaration are relative, use `/`, and stay inside their base directory
 | `tasks` | The task catalog. `scopes` say what a task runs on (`workspace`, `project`, `target`); `targetTags` restrict targets; `requiresUserArguments` makes the host ask for arguments. A `fromModel` task is the template for tasks the model lists. |
 | `run` | Run entries from model targets (`fromTargets.tags`, with `arguments`) or model tasks (`fromTasks`, reusing the template task's arguments). |
 | `runConfigurationTypes` | Kinds of run configuration the user creates in the Run/Debug Configurations dialog, from declared fields and a command line; see [Run configuration types](#run-configuration-types). |
+| `beforeLaunchTasks` | Kinds of step a configuration's Before Launch list runs first, declared like run configuration types; see [Before-launch tasks](#before-launch-tasks). |
 | `test` | How tests run: `scopes`, `targetTags`, the `filters` (`suite`, `case`) it can select, and `results` (`junitXml` or `litheTestResults` report globs relative to the project). A workspace run reads the globs under the root and every model project. A requested filter must reach the command line through a template whose conditions hold; a `case` guarded by `suiteSelected` therefore needs its suite. |
 | `diagnostics` | `lineMatcher` patterns with capture-group numbers, or `litheDiagnostics` lines. |
 | `dependencies` | A command (with `scopes`) whose output Core decodes, as a flat list through a `map` or as a tree from `litheDependencies`; or `provider` (with `scopes`, `workspace` and `project` only). |
@@ -2730,6 +2733,64 @@ The type's text is translated in the package's `l10n/<language>.json` under
 `placeholder` and `options.<value>`, chosen and checked as in
 [Translations](#translations). A file that does not fit is refused whole
 with `plugin.build.invalidLocalization`, and the manifest's text is shown.
+
+### Before-launch tasks
+
+`beforeLaunchTasks` adds kinds of step to the *Before launch* list every run
+configuration has, as IntelliJ IDEA's Go plugin adds Run Go Command to its
+*Add New Task* menu. The host lists them in that menu after Run Another
+Configuration; picking one opens a form of the task's fields, and the step
+keeps their values. Before the configuration starts, each step runs and must
+exit with 0. A build system that declares tasks needs `beforeLaunchTasks: 0`
+in `requires` beside `buildSystems: 0`. Fixture:
+`fixtures/before-launch-tasks/`, translated by its `l10n/zh-Hans.json`.
+
+```json
+"beforeLaunchTasks": [{
+  "id": "command",
+  "displayName": "Run Go Command",
+  "description": "Runs one go command, such as generate ./..., in the configuration's working directory.",
+  "icon": { "host": "run" },
+  "fields": [
+    { "id": "command", "title": "Command", "kind": "arguments", "required": true,
+      "placeholder": "generate ./..." }
+  ],
+  "arguments": ["${field:command}"]
+}]
+```
+
+A task is declared like a [run configuration type](#run-configuration-types),
+with the same `id`, `displayName`, `description`, `icon`, `fields` and
+`arguments` rules, at most 16 per build system, with two differences:
+
+- A task always runs to completion, so it has no `execution`; declaring one
+  is `plugin.manifest.invalid`.
+- A task has no program arguments, so its `arguments` do not take
+  `${userArguments}`; using it is `plugin.template.invalid`.
+
+A task's ID is separate from the type IDs: a build system may declare a type
+and a task with the same ID. A step saves the task's identity and the visible
+fields' values in the configuration's `beforeLaunch` list as `{task:
+{pluginID, buildSystemID, type, values}}`, so removing the plugin keeps the
+step, which then refuses to start until the plugin is installed again.
+
+A step runs in the working directory of the configuration whose list names
+it, without that configuration's program arguments or environment. To run
+one, the host calls `build.beforeLaunchTaskPlan` with the manifest, the build
+system, `workspaceRoot`, the step and its working directory as
+`runConfig.beforeLaunch` returned them, and the detected instances of the
+build system with their stored options. Core picks the instance as for a run
+configuration and returns a task plan: the global arguments, then the task's
+`arguments` with the field values and the instance's options. A saved value
+that no longer fits the task is `plugin.build.invalidBeforeLaunchTask` with
+`field: "values.<fieldID>"`; a task the plugin no longer declares is
+`plugin.build.unavailable`.
+
+A step a project file names runs code from the repository, so the host asks
+the user before running a list it has not seen, as for steps that start other
+configurations. The text is translated under
+`beforeLaunchTasks.<buildSystemID>.<taskID>`, shaped like
+`runConfigurationTypes`.
 
 ### Build providers
 
@@ -4697,7 +4758,8 @@ command payload is a Core `invalid_request` failure instead.
 | `plugin.build.invalidSelection` | Core | A build request selects a scope, target, filter, or argument the declaration does not allow, or misses a required path |
 | `plugin.build.invalidOutput` | Core | Build-tool output or a report does not fit its decoder |
 | `plugin.build.invalidRunConfiguration` | Core | A saved configuration of a [run configuration type](#run-configuration-types) holds a value the type no longer accepts; `field` is `values.<fieldID>` |
-| `plugin.build.invalidLocalization` | Core | The `runConfigurationTypes` part of a [translation file](#translations) does not fit the declarations; the host shows the next candidate or the manifest text |
+| `plugin.build.invalidBeforeLaunchTask` | Core | A step of a [before-launch task](#before-launch-tasks) holds a value the task no longer accepts; `field` is `values.<fieldID>` |
+| `plugin.build.invalidLocalization` | Core | The `runConfigurationTypes` or `beforeLaunchTasks` part of a [translation file](#translations) does not fit the declarations; the host shows the next candidate or the manifest text |
 | `plugin.launch.invalidRequest` | Core | A launch plan request has an unusable directory or an unknown architecture |
 | `plugin.launch.notBackend` | Core | `decodeLaunch` named a language server that the plugin backend does not launch |
 | `plugin.launch.invalidResult` | Core | A [backend-resolved launch](#backend-resolved-launch) answer is malformed, unknown in a field, or over a bound |
