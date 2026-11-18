@@ -36,7 +36,7 @@ Core 列以本仓库 `main` 上的 Core 源码为准（[`capabilities.rs`](https
 
 ### 能力版本（`requires`）
 
-每一行是一个能力。`requires` 必须**恰好**列出清单用到的能力：漏一个或多列一个都是 `plugin.manifest.invalid`；每个能力的值都是 `0`。启动进程（[Process start](../contract/v1/README.md#process-start)）和可执行文件解析（[Executable resolution](../contract/v1/README.md#executable-resolution)）属于基础契约，不是能力；写 `requires.serverProcess` 会像未知能力一样被拒绝。
+每一行是一个能力。`requires` 必须**恰好**列出清单用到的能力：漏一个或多列一个都是 `plugin.manifest.invalid`；每个能力的值是能覆盖插件用法的最低版本，没有用到 `1` 的新内容就写 `0`。启动进程（[Process start](../contract/v1/README.md#process-start)）和可执行文件解析（[Executable resolution](../contract/v1/README.md#executable-resolution)）属于基础契约，不是能力；写 `requires.serverProcess` 会像未知能力一样被拒绝。
 
 | 版本 | 内容 | Core | Lithe 桌面端 | 详见 |
 | --- | --- | --- | --- | --- |
@@ -62,6 +62,7 @@ Core 列以本仓库 `main` 上的 Core 源码为准（[`capabilities.rs`](https
 | `projectGenerators` `0` | [`projectGenerators[]`](../contract/v1/README.md#project-generators)：新建项目窗口里的条目，含 [`tool` 字段](../contract/v1/README.md#tool-fields) | ✅ | ✅ | [项目生成器](domains/project-generators.md) |
 | `backend` `0` | [`backend`](../contract/v1/README.md#plugin-backend)：插件自己的长驻进程，带或不带页面启动，按权限提供宿主服务，说 `litheFunctions` | ✅ | ✅¹ | [插件后端与插件函数](domains/backend.md) |
 | `toolDefinitions` `0` | `toolDefinitions[]`：[工具身份、布局、发现和四层候选](../contract/v1/toolchains/README.md) | ✅ | ✅¹ | [工具链](domains/toolchains.md) |
+| `toolDefinitions` `1` | 在 `0` 之上加：工具定义的 `category`（设置页「工具链」里的分组）和 `audience`（`plugin` 表示插件自用的运行时，单独放在最后一组），只影响显示位置 | ✅ | 未声明 | [Settings list](../contract/v1/toolchains/README.md#settings-list) |
 | `toolchainProviders` `0` | `toolchainProviders[]`：[提供者声明和按权限校验应答](../contract/v1/toolchains/README.md)；说 `litheToolchains` | ✅ | 未声明 | [工具链](domains/toolchains.md) |
 | `pluginFunctions` `0` | 清单顶层 [`pluginFunctions`](../contract/v1/README.md#cross-plugin-calls)：导出的函数（`exports`）和要调用的其他插件函数（`calls`）；不授予任何清单权限，调用经 Core 中转 | ✅ | ✅¹ | [插件后端与插件函数](domains/backend.md) |
 | `keymapImportProviders` `0` | `keymapImportProviders[]`：[独立的快捷键导入提供者](../contract/v1/README.md#shortcut-import-providers-core-foundation)；说 `litheKeymapImport` | ✅ | 未声明 | [快捷键导入](domains/keymap-import.md) |
@@ -149,7 +150,7 @@ Future changes follow the contract's rules:
 
 ### Capability versions (`requires`)
 
-Each row is one capability. `requires` lists **exactly** the capabilities a manifest uses: leaving one out or listing an unused one is `plugin.manifest.invalid`; every value is `0`. [Process start](../contract/v1/README.md#process-start) and [Executable resolution](../contract/v1/README.md#executable-resolution) belong to the base contract and are not capabilities; `requires.serverProcess` is refused like any unknown capability.
+Each row is one capability. `requires` lists **exactly** the capabilities a manifest uses: leaving one out or listing an unused one is `plugin.manifest.invalid`; each value is the lowest version that covers the plugin's use, so `0` unless the plugin uses something a version `1` added. [Process start](../contract/v1/README.md#process-start) and [Executable resolution](../contract/v1/README.md#executable-resolution) belong to the base contract and are not capabilities; `requires.serverProcess` is refused like any unknown capability.
 
 | Version | Content | Core | Lithe desktop | See |
 | --- | --- | --- | --- | --- |
@@ -175,6 +176,7 @@ Each row is one capability. `requires` lists **exactly** the capabilities a mani
 | `projectGenerators` `0` | [`projectGenerators[]`](../contract/v1/README.md#project-generators): entries of the New Project window, including [`tool` fields](../contract/v1/README.md#tool-fields) | ✅ | ✅ | [Project generators](domains/project-generators.md) |
 | `backend` `0` | [`backend`](../contract/v1/README.md#plugin-backend): the plugin's own long-lived process, started with or without a page, serving the host services its permissions grant and speaking `litheFunctions` | ✅ | ✅¹ | [Plugin backend and plugin functions](domains/backend.md) |
 | `toolDefinitions` `0` | `toolDefinitions[]`: [tool identities, layouts, discovery, and four-layer candidates](../contract/v1/toolchains/README.md) | ✅ | ✅¹ | [Toolchains](domains/toolchains.md) |
+| `toolDefinitions` `1` | Adds to `0`: a definition's `category` (its group in the settings page's Toolchains list) and `audience` (`plugin` for a runtime a plugin runs for itself, shown in its own last group); display placement only | ✅ | Not declared | [Settings list](../contract/v1/toolchains/README.md#settings-list) |
 | `toolchainProviders` `0` | `toolchainProviders[]`: [provider declarations and permission-bound answer validation](../contract/v1/toolchains/README.md); they speak `litheToolchains` | ✅ | Not declared | [Toolchains](domains/toolchains.md) |
 | `pluginFunctions` `0` | The manifest's top-level [`pluginFunctions`](../contract/v1/README.md#cross-plugin-calls): the functions the plugin exports (`exports`) and the functions of other plugins it calls (`calls`); grants no manifest permission, and Core relays the calls | ✅ | ✅¹ | [Plugin backend and plugin functions](domains/backend.md) |
 | `keymapImportProviders` `0` | `keymapImportProviders[]`: [independent shortcut import providers](../contract/v1/README.md#shortcut-import-providers-core-foundation); they speak `litheKeymapImport` | ✅ | Not declared | [Shortcut import](domains/keymap-import.md) |

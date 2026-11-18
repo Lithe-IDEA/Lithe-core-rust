@@ -33,7 +33,7 @@
         "backend": { "description": "Required exactly when backend is present: the plugin's own process. It serves its web pages, may also start on onWorkspaceOpen or a plugin command, receives workspace contexts through the litheFunctions protocol, and may be granted workspace.metadata.", "enum": [0] },
         "beforeLaunchTasks": { "description": "Required exactly when any buildSystems[].beforeLaunchTasks is non-empty: kinds of step a run configuration's Before Launch list runs first, offered in its Add New Task menu, drawn from declared fields and run through a declared command line. Needs buildSystems.", "enum": [0] },
         "buildModelInputs": {"description": "Optional public model sharing between already enabled workspace plugins; no installation, private function, or process authority. Required exactly when modelSharing or modelInputs is used. Consumers require buildProviders. A producer cannot also consume inputs.", "enum": [0]},
-        "buildProviders": { "description": "Required exactly when any buildSystems[].provider is present, including own-process and shared language-server providers. Declares host support for Provider orchestration (task execution, test execution and discovery, run preparation, native debug preparation, optional read-only model inputs, non-sensitive native configuration sources, inline test reports, opaque semantic test selectors, typed run options and service/task preparation, registry-selected adapters and host-owned connection targets for service debugging), independent of declarative buildSystems.", "enum": [0] },
+        "buildProviders": { "description": "Required exactly when any buildSystems[].provider is present, including own-process and shared language-server providers. Declares host support for Provider orchestration (task execution, test execution and discovery, run preparation, native debug preparation, optional read-only model inputs, non-sensitive native configuration sources, inline test reports, opaque semantic test selectors, typed run options and service/task preparation, registry-selected adapters and host-owned connection targets for service debugging), independent of declarative buildSystems. Version 1 adds entrypoint runs (lithe/build/runEntrypoints).", "enum": [0, 1] },
         "buildSystems": { "description": "Declarative build detection, models, and command plans, including the executable setting adapter, instance-scoped options, and declarative preparation roles; does not imply buildProviders support.", "enum": [0] },
         "commandInstallers": { "description": "Required exactly when commandInstallers is non-empty: installations of bare commands that systemCommand launches name, run by the host only after the user confirms them.", "enum": [0] },
         "debugAdapters": { "description": "Required exactly when debugAdapters is non-empty. Covers bounded target argument and environment bindings and debugAdapters[].features and defaults. The DAP session itself is negotiated by the adapter in initialize.", "enum": [0] },
@@ -47,7 +47,7 @@
         "runConfigurationTypes": { "description": "Required exactly when any buildSystems[].runConfigurationTypes is non-empty: kinds of run configuration the user creates in the Run/Debug Configurations dialog, drawn from declared fields and run through a declared command line. Needs buildSystems.", "enum": [0] },
         "settings": { "description": "Required exactly when settings or settingActions is non-empty. Covers integer, enum, boolean, multiSelect, text, file, and directory options, scope, effect, page, section, and settingActions.", "enum": [0] },
         "sourceSettings": { "description": "Required exactly when a setting action declares sourceEditor. Native-source settings projection, compiler placement, confirmed staging and read-back. Version 1 adds sidebar groups, nested sources, field sections and entry lists.", "enum": [0, 1] },
-        "toolDefinitions": { "enum": [0] },
+        "toolDefinitions": { "description": "Required exactly when toolDefinitions is present. Version 1 adds the display-only category and audience of a definition.", "enum": [0, 1] },
         "toolchainProviders": { "enum": [0] },
         "keymapImportProviders": { "enum": [0] },
         "pluginFunctions": { "description": "Required exactly when pluginFunctions is present: functions this plugin's backend exports to other plugins, and exported functions it calls. Needs backend.", "enum": [0] },
@@ -4165,6 +4165,14 @@
         },
         "icon": {
           "$ref": "#/$defs/uiIcon"
+        },
+        "category": {
+          "description": "toolDefinitions 1: settings display group; absent means other. Does not affect discovery or resolution.",
+          "enum": ["runtime", "build", "package", "debug", "lint", "other"]
+        },
+        "audience": {
+          "description": "toolDefinitions 1: user (default) for a tool people run; plugin for a runtime the plugin runs for itself, such as a language server's JDK.",
+          "enum": ["user", "plugin"]
         },
         "executableLayouts": {
           "type": "array",

@@ -127,6 +127,18 @@ impl DeclarativePluginManifest {
                 "Entrypoint runs need buildProviders 1.",
             ));
         }
+        if self.tool_definitions.iter().any(|definition| {
+            definition.get("category").is_some() || definition.get("audience").is_some()
+        }) && self
+            .requires
+            .get(capabilities::TOOL_DEFINITIONS)
+            .is_none_or(|version| *version < 1)
+        {
+            return Err(invalid(
+                "requires.toolDefinitions",
+                "Settings categories and audiences need toolDefinitions 1.",
+            ));
+        }
         if self.languages.is_empty()
             && self.ui.is_none()
             && self.build_systems.is_empty()

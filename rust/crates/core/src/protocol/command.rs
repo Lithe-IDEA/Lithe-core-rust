@@ -427,6 +427,8 @@ pub enum ToolchainsCommand {
     Candidates,
     /// Expands a tool definition's launch template for a selected executable.
     InstantiateLaunch,
+    /// Projects the settings list of every enabled tool: status, filter, groups and counts.
+    SettingsView,
 }
 
 #[derive(Debug, Clone)]
@@ -1176,6 +1178,7 @@ impl CoreCommand {
             "toolchains.instantiateLaunch" => {
                 Some(Self::Toolchains(ToolchainsCommand::InstantiateLaunch))
             }
+            "toolchains.settingsView" => Some(Self::Toolchains(ToolchainsCommand::SettingsView)),
             "run.decodeStart" => Some(Self::RunDecodeStart),
             "debug.decodeBackendConfiguration" => {
                 Some(Self::Debug(DebugCommand::DecodeBackendConfiguration))

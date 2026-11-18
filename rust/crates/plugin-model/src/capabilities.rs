@@ -5,8 +5,9 @@
 //! capabilities it uses, each with the version of that capability's contract
 //! it was written against, so a plugin without build systems never depends on
 //! the build-system contract and a later version of one capability only
-//! affects plugins that opt into it. Every capability currently supports only
-//! version 0. Everything outside the capability sections, including launches,
+//! affects plugins that opt into it. Every capability starts at version 0;
+//! `SUPPORTED_CAPABILITIES` lists the later versions this build accepts.
+//! Everything outside the capability sections, including launches,
 //! tool references, and executable candidates, belongs to the base contract
 //! (`pluginAPIVersion`) and is never listed in `requires`.
 //!
@@ -111,7 +112,8 @@ pub const KEYMAP_IMPORT_PROVIDERS: &str = "keymapImportProviders";
 /// see `lithe_plugin_functions`.
 pub const PLUGIN_FUNCTIONS: &str = "pluginFunctions";
 /// `toolDefinitions[]`: plugin-owned tool identities, discovery policy, and
-/// executable candidates.
+/// executable candidates. Version 1 adds the display-only `category` and
+/// `audience` that place a tool in the settings list.
 pub const TOOL_DEFINITIONS: &str = "toolDefinitions";
 /// Backend facts that can influence the executable selected for a defined tool.
 pub const TOOLCHAIN_PROVIDERS: &str = "toolchainProviders";
@@ -141,7 +143,7 @@ pub const SUPPORTED_CAPABILITIES: &[(&str, &[u32])] = &[
     (RUN_CONFIGURATION_TYPES, &[0]),
     (SETTINGS, &[0]),
     (SOURCE_SETTINGS, &[0, 1]),
-    (TOOL_DEFINITIONS, &[0]),
+    (TOOL_DEFINITIONS, &[0, 1]),
     (TOOLCHAIN_PROVIDERS, &[0]),
     (UI, &[0]),
     (VCS_PROVIDERS, &[0]),

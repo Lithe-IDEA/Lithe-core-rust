@@ -16,6 +16,8 @@
 
 目前没有。
 
+- **`toolDefinitions` 1**（API-23、API-19）：工具定义新增只影响显示位置的 `category`（`runtime`、`build`、`package`、`debug`、`lint`、`other`，默认 `other`）和 `audience`（`user` 默认，`plugin` 表示插件自用的运行时）；用到任一字段的插件声明 `toolDefinitions: 1`，只支持 0 的宿主不会安装，其他插件继续写 0。新增 Core 命令 `toolchains.settingsView`：按宿主已有的解析原因、固定和未应用状态给设置页工具列表分类（`error`、`warning`、`ok`）、筛选、分组、折叠和计数，最多 20,000 个工具。`plugins.settings.navigation` 支持三级、每项可选 `limit`（超出的子项折叠成一行“全部 N 个”）以及每行的 `matched` 与 `path`。清单 schema 的 `requires.buildProviders` 补上 #89 已支持的版本 1。没有新增宿主方法、通知或 SDK 版本。实现见 [#99](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/99)（[@xiaoyumuxi](https://github.com/xiaoyumuxi)）；合入日期在合并后补入下方时间线。宿主须先声明 `toolDefinitions` 1，插件才可要求它。
+
 ## 按协议查首次出现
 
 所有版本都从 `0` 开始。以后一个 PR 给某个能力加版本 `1` 时，在对应的表里为它加一行。
@@ -62,6 +64,7 @@
 | `sourceSettings` | 1 | 2026-11-17 | [#79](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/79) |
 | `settings` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `toolDefinitions` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
+| `toolDefinitions` | 1 | 2026-11-18 | [#99](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/99) |
 | `toolchainProviders` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `ui` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `vcsProviders` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |

@@ -472,6 +472,11 @@ fn toolchain_commands_cross_the_json_dispatch_boundary() {
         ),
         ("toolchains.resolve", input(), "resolution"),
         ("toolchains.candidates", listing(&input()), "candidates"),
+        (
+            "toolchains.settingsView",
+            json!({"tools":[{"id":"java","displayName":"JDK","pluginID":"dev.lithe.fixture","reason":"notFound"}],"query":{"filter":"problems"}}),
+            "view",
+        ),
     ] {
         let response: Value = serde_json::from_str(&crate::execute_json(
             &json!({"id":"toolchains","command":command,"payload":payload}).to_string(),

@@ -60,6 +60,43 @@ fn tool_definitions_second_tool_needs_only_plugin_data() {
     }
 }
 
+/// `category` and `audience` only group a tool on the settings page, so they pass
+/// through the registry unchanged and accept only the fixed display values.
+#[test]
+fn tool_definitions_declare_settings_category_and_audience() {
+    let mut tagged = definition("dev.lithe.fixture.compiler:compiler");
+    tagged["category"] = json!("build");
+    tagged["audience"] = json!("plugin");
+    let mut plugin = manifest("dev.lithe.fixture.compiler", tagged);
+    // The fields are toolDefinitions 1, so a host that supports only 0 never installs it.
+    let rejected = validate_manifest_value(plugin.clone())
+        .err()
+        .expect("version 0 refuses settings categories");
+    assert_eq!(rejected.field.as_deref(), Some("requires.toolDefinitions"));
+    plugin["requires"]["toolDefinitions"] = json!(1);
+    assert!(validate_manifest_value(plugin.clone()).is_ok());
+    let result = registry(
+        &json!({"plugins":[{"manifest":plugin}]}),
+        validated_manifest_json,
+    )
+    .unwrap();
+    let registered = &result["definitions"][0]["definition"];
+    assert_eq!(registered["category"], "build");
+    assert_eq!(registered["audience"], "plugin");
+    for (field, value) in [
+        ("category", json!("compiler")),
+        ("category", json!(1)),
+        ("audience", json!("system")),
+    ] {
+        let mut changed = definition("dev.lithe.fixture.compiler:compiler");
+        changed[field] = value;
+        assert!(
+            validate_declarations("dev.lithe.fixture.compiler", &[changed], &[]).is_err(),
+            "{field}"
+        );
+    }
+}
+
 /// No plugin needs a host-attested origin for a short ID.
 #[test]
 fn registry_accepts_short_ids_from_any_enabled_plugin() {

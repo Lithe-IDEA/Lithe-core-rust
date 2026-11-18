@@ -424,6 +424,8 @@ fn definition(plugin_id: &str, value: &Value) -> Validation<()> {
             "exports",
             "pathPrepend",
             "launch",
+            "category",
+            "audience",
         ],
         &[
             "id",
@@ -448,6 +450,29 @@ fn definition(plugin_id: &str, value: &Value) -> Validation<()> {
         ));
     }
     text(&value["displayName"], 64, "toolDefinitions.displayName")?;
+    // Display grouping only: neither field changes discovery, resolution or launch.
+    if let Some(category) = value.get("category") {
+        if !category
+            .as_str()
+            .is_some_and(|value| crate::settings_view::CATEGORIES.contains(&value))
+        {
+            return Err(invalid(
+                "toolDefinitions.category",
+                "The category is not one of the fixed display groups.",
+            ));
+        }
+    }
+    if let Some(audience) = value.get("audience") {
+        if !audience
+            .as_str()
+            .is_some_and(|value| crate::settings_view::AUDIENCES.contains(&value))
+        {
+            return Err(invalid(
+                "toolDefinitions.audience",
+                "The audience must be user or plugin.",
+            ));
+        }
+    }
     if let Some(icon) = value.get("icon") {
         let icon: UIIcon = serde_json::from_value(icon.clone())
             .map_err(|_| invalid("toolDefinitions.icon", "The icon shape is invalid."))?;

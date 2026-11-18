@@ -104,7 +104,7 @@ pub fn settings_catalog_command(payload: Value) -> Result<Value, CoreError> {
 }
 
 /// Native static page labels and stable identifiers. Hierarchy is supplied once;
-/// search, expansion and ancestor retention are shared projection rules.
+/// search, expansion, folding and ancestor retention are shared projection rules.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct NavigationItem {
@@ -115,6 +115,10 @@ struct NavigationItem {
     expanded: bool,
     #[serde(default)]
     keywords: String,
+    /// Shows at most this many children outside search; the rest fold into one
+    /// overflow row that opens the group's own directory page.
+    #[serde(default)]
+    limit: Option<usize>,
 }
 
 #[derive(Deserialize)]
@@ -124,64 +128,120 @@ struct NavigationRequest {
     query: String,
 }
 
-/// Projects a bounded two-level settings tree; matched descendants retain their
-/// parent and a matched parent shows its children, including dynamic surfaces.
+/// The deepest level a row may sit at: group, kind fold, page.
+const MAX_LEVEL: usize = 2;
+
+struct Navigation<'a> {
+    items: &'a [NavigationItem],
+    query: String,
+    rows: Vec<Value>,
+}
+
+impl<'a> Navigation<'a> {
+    fn matches(&self, item: &NavigationItem) -> bool {
+        !self.query.is_empty()
+            && (item.title.to_lowercase().contains(&self.query)
+                || item.keywords.to_lowercase().contains(&self.query))
+    }
+
+    fn children(&self, id: &str) -> Vec<&'a NavigationItem> {
+        self.items
+            .iter()
+            .filter(|item| item.parent.as_deref() == Some(id))
+            .collect()
+    }
+
+    /// Whether the item, or any item below it, matches the search.
+    fn hit(&self, item: &NavigationItem) -> bool {
+        self.matches(item) || self.children(&item.id).iter().any(|child| self.hit(child))
+    }
+
+    fn emit(&mut self, item: &'a NavigationItem, level: usize, path: &[&'a str], shown: bool) {
+        let searching = !self.query.is_empty();
+        let own = self.matches(item);
+        // A matched item shows everything below it; otherwise only matching branches.
+        if searching && !shown && !self.hit(item) {
+            return;
+        }
+        self.rows.push(json!({
+            "id":item.id,"title":item.title,"group":item.group,
+            "expanded":searching || item.expanded,"level":level,
+            "matched":own,"path":path,
+        }));
+        if item.group && !item.expanded && !searching {
+            return;
+        }
+        let children = self.children(&item.id);
+        let limit = match item.limit {
+            Some(limit) if !searching => limit,
+            _ => children.len(),
+        };
+        let mut below = path.to_vec();
+        below.push(&item.title);
+        for child in children.iter().take(limit) {
+            self.emit(child, level + 1, &below, shown || own);
+        }
+        if children.len() > limit {
+            self.rows.push(json!({
+                "id":item.id,"title":item.title,"group":false,"expanded":false,
+                "level":level + 1,"matched":false,"path":below,"overflow":children.len(),
+            }));
+        }
+    }
+}
+
+/// Projects a bounded settings tree of up to three levels: a matched item keeps its
+/// ancestors and shows its descendants, including dynamic surfaces. Each row carries
+/// `matched` and the ancestor `path`, so a host can list search hits flat with their
+/// location.
 pub fn settings_navigation_command(payload: Value) -> Result<Value, CoreError> {
     let request: NavigationRequest = decode_payload(payload, "plugins.settings.navigation")?;
     Ok(outcome((|| {
         if request.items.len() > MAX_PAGES + 64 || request.query.len() > 1024 {
             return Err(rejected("navigation"));
         }
-        let query = request.query.trim().to_lowercase();
         let mut ids = BTreeSet::new();
         for item in &request.items {
             if item.id.is_empty()
                 || item.id.len() > 256
                 || item.title.len() > 1024
                 || item.keywords.len() > 16384
+                || item
+                    .limit
+                    .is_some_and(|limit| limit == 0 || limit > MAX_PAGES)
                 || !ids.insert(&item.id)
             {
                 return Err(rejected("items"));
             }
         }
-        for item in &request.items {
-            if let Some(parent) = &item.parent {
-                if !request
-                    .items
-                    .iter()
-                    .any(|candidate| &candidate.id == parent && candidate.parent.is_none())
-                {
-                    return Err(rejected("parent"));
-                }
-            }
-        }
-        let matches = |item: &NavigationItem| {
-            item.title.to_lowercase().contains(&query)
-                || item.keywords.to_lowercase().contains(&query)
-        };
-        let row = |item: &NavigationItem, level: usize| json!({"id":item.id,"title":item.title,"group":item.group,"expanded":!query.is_empty() || item.expanded,"level":level});
-        let mut result = Vec::new();
-        for parent in request.items.iter().filter(|item| item.parent.is_none()) {
-            let children: Vec<_> = request
+        let parent_of = |id: &str| {
+            request
                 .items
                 .iter()
-                .filter(|item| item.parent.as_ref() == Some(&parent.id))
-                .collect();
-            let own = matches(parent);
-            if !own && !children.iter().any(|child| matches(child)) {
-                continue;
-            }
-            result.push(row(parent, 0));
-            if !parent.group || parent.expanded || !query.is_empty() {
-                result.extend(
-                    children
-                        .into_iter()
-                        .filter(|child| own || matches(child))
-                        .map(|child| row(child, 1)),
-                );
+                .find(|candidate| candidate.id == id)
+                .map(|candidate| candidate.parent.as_deref())
+        };
+        for item in &request.items {
+            // Walking up must reach a root within MAX_LEVEL steps; this also rules out cycles.
+            let mut current = item.parent.as_deref();
+            let mut depth = 0;
+            while let Some(parent) = current {
+                depth += 1;
+                current = match parent_of(parent) {
+                    Some(next) if depth <= MAX_LEVEL => next,
+                    _ => return Err(rejected("parent")),
+                };
             }
         }
-        Ok(("rows", json!(result)))
+        let mut navigation = Navigation {
+            items: &request.items,
+            query: request.query.trim().to_lowercase(),
+            rows: Vec::new(),
+        };
+        for root in request.items.iter().filter(|item| item.parent.is_none()) {
+            navigation.emit(root, 0, &[], false);
+        }
+        Ok(("rows", json!(navigation.rows)))
     })()))
 }
 
