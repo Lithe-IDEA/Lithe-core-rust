@@ -55,6 +55,12 @@ pub(crate) struct PendingFunctionCall {
     pub(crate) request_id: String,
 }
 
+/// A language-server workspace edit awaiting the native host's response.
+pub(crate) struct PendingApplyEdit {
+    pub(crate) server_id: Value,
+    pub(crate) deadline: Instant,
+}
+
 pub(crate) struct SessionState {
     pub(crate) lifecycle: LspLifecycleState,
     pub(crate) client: LspClientState,
@@ -76,8 +82,8 @@ pub(crate) struct SessionState {
     pub(crate) request_timeout: Duration,
     pub(crate) shutdown_timeout: Duration,
     pub(crate) terminal_event_emitted: bool,
-    /// Deadline cancellations awaiting the outbound worker, never written by the monitor.
-    pub(crate) deadline_cancellations: Vec<String>,
+    /// Deadline messages awaiting the outbound worker, never written by the monitor.
+    pub(crate) deadline_messages: Vec<String>,
     /// Bounds an outbound maintenance write independently of caller deadlines.
     pub(crate) maintenance_write_deadline: Option<Instant>,
     /// Policy and waiting requests of a plugin-owned language server; `None`
@@ -92,7 +98,7 @@ pub(crate) struct SessionState {
     pub(crate) next_host_request_id: u64,
     /// Server-initiated `workspace/applyEdit` requests awaiting `lsp.applyEditResponse`,
     /// keyed by the opaque `applyEditId` exposed to the host.
-    pub(crate) apply_edit_requests: BTreeMap<String, Value>,
+    pub(crate) apply_edit_requests: BTreeMap<String, PendingApplyEdit>,
     pub(crate) next_apply_edit_id: u64,
     /// Trace is opt-in and serialized with protocol writes through outbound_order.
     pub(crate) detailed_diagnostics: bool,

@@ -84,13 +84,7 @@ pub fn client_initialize_for_plugin(
                     "inlayHint": {
                         "dynamicRegistration": true,
                         "resolveSupport": {
-                            "properties": [
-                                "tooltip",
-                                "textEdits",
-                                "label.tooltip",
-                                "label.location",
-                                "label.command"
-                            ]
+                            "properties": ["tooltip", "textEdits"]
                         }
                     },
                     "semanticTokens": {

@@ -198,6 +198,7 @@
         ]
       }
     },
+    "expectedDocumentVersions": { "/workspace/main.rs": 1 },
     "rejectedResourceRequest": {
       "label": "Create file",
       "edit": {

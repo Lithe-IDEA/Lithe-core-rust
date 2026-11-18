@@ -523,7 +523,7 @@ impl RuntimeSession {
         let outbound_order = self.lock_outbound_order()?;
         let message = {
             let mut state = self.lock_state()?;
-            let server_id = state
+            let pending = state
                 .apply_edit_requests
                 .remove(&response.apply_edit_id)
                 .ok_or_else(|| {
@@ -547,7 +547,7 @@ impl RuntimeSession {
                         json!(lithe_plugin_rpc::bounded_host_message(reason));
                 }
             }
-            json_rpc_result(&server_id, payload)?
+            json_rpc_result(&pending.server_id, payload)?
         };
         self.send_messages_or_fail(&outbound_order, vec![message], "applyEditResponse")
     }

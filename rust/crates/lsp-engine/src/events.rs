@@ -200,6 +200,15 @@ pub(crate) fn push_semantic_tokens_refresh_event(
 }
 
 pub(crate) fn push_inlay_hints_refresh_event(session: &RuntimeSession, state: &mut SessionState) {
+    // One pending refresh covers every repeat until the host drains it.
+    if session.log_identity.role != SessionRole::LanguageServer
+        || state
+            .events
+            .iter()
+            .any(|event| event.kind == "inlayHintsRefresh")
+    {
+        return;
+    }
     let sequence = take_sequence(state);
     enqueue_runtime_event(
         session,
@@ -596,13 +605,13 @@ pub(crate) fn clear_runtime_state(session: &RuntimeSession, state: &mut SessionS
     state.pending.clear();
     state.request_by_operation.clear();
     state.function_by_operation.clear();
-    state.apply_edit_requests.clear();
+    abandon_apply_edits(session, state, None);
     clear_function_registry(session, state);
     state.client.vcs_provider = None;
     state.client.toolchain_providers.clear();
     state.client.keymap_import_providers.clear();
     state.linked_document_paths = LinkedDocumentPaths::default();
-    state.deadline_cancellations.clear();
+    state.deadline_messages.clear();
     state.maintenance_write_deadline = None;
     state.relay_write_deadline = None;
     state.pending_workspace_file_changes.clear();

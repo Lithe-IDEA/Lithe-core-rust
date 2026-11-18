@@ -452,6 +452,7 @@ impl RuntimeSession {
                 } else if event.kind == "notification"
                     && event.method.as_deref() == Some("$/cancelRequest")
                     && cancel_apply_edit_request_locked(
+                        self,
                         &mut state,
                         event.result.as_ref(),
                         &mut outbound,

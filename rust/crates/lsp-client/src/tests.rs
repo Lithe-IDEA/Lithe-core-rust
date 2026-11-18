@@ -2561,6 +2561,10 @@ fn client_editor_actions_signature_help_inlay_hints_and_apply_edit_match_fixture
         resolve_hint_wire["params"]["position"]["character"],
         json!(8)
     );
+    assert_eq!(
+        resolve_hint_wire["params"]["label"],
+        fixture["inlayHints"]["serverResult"][2]["label"]
+    );
 
     let refreshed = client_apply_server_message(ClientApplyServerMessageRequest {
         state: resolve_hint_req.state,
@@ -2594,6 +2598,10 @@ fn client_editor_actions_signature_help_inlay_hints_and_apply_edit_match_fixture
         accepted_edit.events[0].result.as_ref().unwrap()["label"],
         json!("Apply quick fix")
     );
+    assert_eq!(
+        accepted_edit.events[0].result.as_ref().unwrap()["documentVersions"],
+        fixture["workspaceApplyEdit"]["expectedDocumentVersions"]
+    );
 
     let rejected_edit = client_apply_server_message(ClientApplyServerMessageRequest {
         state: accepted_edit.state,
@@ -2613,4 +2621,58 @@ fn client_editor_actions_signature_help_inlay_hints_and_apply_edit_match_fixture
         reject_reply["result"]["failureReason"],
         fixture["workspaceApplyEdit"]["expectedRejectedFailureReason"]
     );
+}
+
+#[test]
+fn workspace_apply_edit_rejects_stale_versions_and_malformed_text_before_forwarding() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../fixtures/lsp/editor-actions-hints-v1.json"
+    ))
+    .unwrap();
+    let accepted = &fixture["workspaceApplyEdit"]["acceptedRequest"];
+    let uri = "file:///workspace/main.rs";
+    let opened = client_open_document(ClientOpenDocumentRequest {
+        state: LspClientState::default(),
+        uri: uri.to_string(),
+        language_id: "rust".to_string(),
+        text: "fn main() {}\n".to_string(),
+    })
+    .unwrap();
+    let mut stale = accepted.clone();
+    stale["edit"]["documentChanges"][0]["textDocument"]["version"] = json!(2);
+    let mut missing_text = accepted.clone();
+    missing_text["edit"]["documentChanges"][0]["edits"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("newText");
+    let mut missing_position = accepted.clone();
+    missing_position["edit"]["documentChanges"][0]["edits"][0]["range"]["start"] =
+        json!({ "line": 0 });
+    let mut annotated = accepted.clone();
+    annotated["edit"]["documentChanges"][0]["edits"][0]["annotationId"] = json!("approval");
+    let mut repeated = accepted.clone();
+    let repeated_target = repeated["edit"]["documentChanges"][0].clone();
+    repeated["edit"]["documentChanges"]
+        .as_array_mut()
+        .unwrap()
+        .push(repeated_target);
+    for params in [stale, missing_text, missing_position, annotated, repeated] {
+        let response = client_apply_server_message(ClientApplyServerMessageRequest {
+            state: opened.state.clone(),
+            message: json!({
+                "jsonrpc": "2.0",
+                "id": "edit-rejected",
+                "method": "workspace/applyEdit",
+                "params": params
+            })
+            .to_string(),
+        })
+        .unwrap();
+        assert!(
+            response.events.is_empty(),
+            "unexpected host edit for {params}"
+        );
+        let wire: Value = serde_json::from_str(&response.messages[0]).unwrap();
+        assert_eq!(wire["result"]["applied"], json!(false));
+    }
 }

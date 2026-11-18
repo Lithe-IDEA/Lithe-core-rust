@@ -438,6 +438,9 @@ fn inlay_hint_resolve_json(hint: Option<&Value>) -> Result<Value, CoreError> {
             "This LSP request requires an inlay hint.",
         )
     })?;
+    // A normalized hint's display label may be shortened or assembled from
+    // parts. Resolve must use the server's original position, label and data.
+    let hint = hint.get("resolvePayload").unwrap_or(hint);
     let object = hint.as_object().ok_or_else(|| {
         CoreError::new(
             ErrorCode::InvalidRequest,

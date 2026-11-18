@@ -249,7 +249,7 @@ impl LspEngine {
                 request_timeout,
                 shutdown_timeout,
                 terminal_event_emitted: false,
-                deadline_cancellations: Vec::new(),
+                deadline_messages: Vec::new(),
                 maintenance_write_deadline: None,
                 plugin_server,
                 relay_write_deadline: None,

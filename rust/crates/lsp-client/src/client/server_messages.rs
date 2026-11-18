@@ -42,7 +42,7 @@ pub fn client_apply_server_message_for_plugin(
                     // silently drops every published diagnostic on Windows.
                     // Match through the normalized form and publish under the
                     // document's own canonical URI.
-                    let document = open_document_for_published_uri(&state.open_documents, uri);
+                    let document = open_document_for_server_uri(&state.open_documents, uri);
                     let Some(document) = document else {
                         return Ok(client_response(state, responses, events));
                     };
@@ -223,7 +223,7 @@ pub fn client_apply_server_message_for_plugin(
                         }),
                     )?);
                 } else {
-                    match parse_workspace_apply_edit(message.get("params")) {
+                    match parse_workspace_apply_edit(message.get("params"), &state.open_documents) {
                         Err(invalid) => {
                             responses.push(json_rpc_error(id, -32602, invalid)?);
                         }
@@ -553,7 +553,11 @@ pub fn client_apply_server_message_for_plugin(
                 message.get("result"),
             )
         } else {
-            lsp_feature_result_for_method(pending.as_deref(), message.get("result"))
+            lsp_feature_result_for_method(
+                pending.as_deref(),
+                message.get("result"),
+                &state.open_documents,
+            )
         };
         events.push(LspClientEvent {
             kind: if message.get("error").is_some() {
@@ -583,7 +587,7 @@ pub fn client_apply_server_message_for_plugin(
 /// lowercases the drive letter. A raw map lookup therefore misses even though
 /// the document is open. Comparison preserves URI component boundaries and
 /// folds the Windows drive letter while keeping Unix paths case-sensitive.
-fn open_document_for_published_uri<'a>(
+pub(super) fn open_document_for_server_uri<'a>(
     documents: &'a std::collections::BTreeMap<String, LspClientDocument>,
     uri: &str,
 ) -> Option<&'a LspClientDocument> {

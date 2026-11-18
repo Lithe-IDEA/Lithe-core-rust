@@ -6236,9 +6236,10 @@ fn session_signature_help_inlay_hints_refresh_and_workspace_apply_edit_round_tri
         "method": "workspace/inlayHint/refresh"
     }));
     harness.await_event(|event| event.kind == "inlayHintsRefresh");
-    assert!(harness.server.messages().iter().any(|msg| {
-        msg.get("id") == Some(&json!("refresh-hints-1")) && msg.get("result") == Some(&Value::Null)
-    }));
+    assert_eq!(
+        harness.server.await_response("refresh-hints-1").unwrap()["result"],
+        Value::Null
+    );
 
     // Server-initiated workspace/applyEdit -> host applyEditResponse round-trip.
     harness.server.send(json!({
@@ -6291,24 +6292,101 @@ fn session_signature_help_inlay_hints_refresh_and_workspace_apply_edit_round_tri
         }
     }));
     let second_seq = apply_event.sequence;
-    harness.await_event(|event| event.kind == "workspaceApplyEdit" && event.sequence > second_seq);
+    let pending_id = harness
+        .await_event(|event| event.kind == "workspaceApplyEdit" && event.sequence > second_seq)
+        .result
+        .as_ref()
+        .unwrap()["applyEditId"]
+        .as_str()
+        .unwrap()
+        .to_string();
     harness.server.send(json!({
         "jsonrpc": "2.0",
         "method": "$/cancelRequest",
         "params": { "id": "srv-apply-2" }
     }));
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while Instant::now() < deadline {
-        if harness.server.messages().iter().any(|msg| {
-            msg.get("id") == Some(&json!("srv-apply-2"))
-                && msg.pointer("/error/code") == Some(&json!(-32800))
-        }) {
-            break;
-        }
-        thread::sleep(Duration::from_millis(2));
-    }
-    assert!(harness.server.messages().iter().any(|msg| {
-        msg.get("id") == Some(&json!("srv-apply-2"))
-            && msg.pointer("/error/code") == Some(&json!(-32800))
-    }));
+    let cancelled = harness.await_event(|event| event.kind == "workspaceApplyEditCancelled");
+    assert_eq!(cancelled.result, Some(json!({ "applyEditId": pending_id })));
+    assert_eq!(
+        harness.server.await_response("srv-apply-2").unwrap()["error"]["code"],
+        json!(-32800)
+    );
+    assert!(harness
+        .session()
+        .apply_edit_response(ApplyEditResponseRequest {
+            session_id: harness.session_id.clone(),
+            apply_edit_id: pending_id,
+            applied: true,
+            failure_reason: None,
+        })
+        .is_err());
+}
+
+#[test]
+fn workspace_apply_edit_revokes_queued_expired_and_stopping_requests() {
+    let mut harness = Harness::ready();
+    let session = harness.session();
+    let send_edit = |id| {
+        session
+            .handle_server_message(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "method": "workspace/applyEdit",
+                    "params": { "edit": { "changes": {} } }
+                })
+                .to_string(),
+            )
+            .unwrap();
+    };
+    send_edit("queued-edit");
+    session
+        .handle_server_message(
+            json!({
+                "jsonrpc": "2.0",
+                "method": "$/cancelRequest",
+                "params": { "id": "queued-edit" }
+            })
+            .to_string(),
+        )
+        .unwrap();
+    assert_eq!(
+        harness.server.await_response("queued-edit").unwrap()["error"]["code"],
+        json!(-32800)
+    );
+    assert!(!session
+        .poll_events()
+        .unwrap()
+        .iter()
+        .any(|event| event.kind.starts_with("workspaceApplyEdit")));
+
+    send_edit("expiring-edit");
+    let request = harness.await_event(|event| event.kind == "workspaceApplyEdit");
+    let request_id = request.result.as_ref().unwrap()["applyEditId"].clone();
+    session.expire_deadlines_at(Instant::now() + Duration::from_secs(60));
+    assert_eq!(
+        harness.server.await_response("expiring-edit").unwrap()["result"]["applied"],
+        json!(false)
+    );
+    assert_eq!(
+        harness
+            .await_event(|event| event.kind == "workspaceApplyEditCancelled")
+            .result,
+        Some(json!({ "applyEditId": request_id }))
+    );
+
+    send_edit("stopping-edit");
+    session.stop().unwrap();
+    assert_eq!(
+        harness.server.await_response("stopping-edit").unwrap()["result"],
+        json!({
+            "applied": false,
+            "failureReason": "Language server session is shutting down."
+        })
+    );
+    assert!(!session
+        .poll_events()
+        .unwrap()
+        .iter()
+        .any(|event| event.kind.starts_with("workspaceApplyEdit")));
 }

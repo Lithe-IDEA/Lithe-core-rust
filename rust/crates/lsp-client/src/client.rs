@@ -14,6 +14,7 @@ mod requests;
 mod results;
 mod server_messages;
 mod validation;
+mod workspace_edits;
 
 pub use capabilities::*;
 pub(crate) use diagnostics::*;
@@ -23,6 +24,7 @@ pub(crate) use requests::*;
 pub(crate) use results::*;
 pub use server_messages::*;
 pub(crate) use validation::*;
+use workspace_edits::{parse_bounded_text_edit, parse_workspace_apply_edit, WorkspaceEdit};
 
 #[cfg(test)]
 mod semantic_tests {
@@ -207,6 +209,7 @@ mod formatting_and_completion_tests {
                 "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
                 "newText": "x"
             }])),
+            &Default::default(),
         )
         .unwrap();
         assert_eq!(result["edits"][0]["newText"], "x");
@@ -222,6 +225,7 @@ mod formatting_and_completion_tests {
             let result = lsp_feature_result_for_method(
                 Some("textDocument/documentSymbol"),
                 Some(&case["serverResult"]),
+                &Default::default(),
             )
             .unwrap();
             assert_eq!(result, case["expected"], "case {}", case["name"]);
@@ -277,6 +281,7 @@ mod formatting_and_completion_tests {
         let result = lsp_feature_result_for_method(
             Some("textDocument/completion"),
             Some(&json!({"isIncomplete": true, "items": [{"label": "a"}]})),
+            &Default::default(),
         )
         .unwrap();
         assert_eq!(result["isIncomplete"], true);

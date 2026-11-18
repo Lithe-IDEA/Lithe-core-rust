@@ -1,10 +1,14 @@
 //! Parsing feature results into Core shapes.
 
 use super::*;
+use std::borrow::Cow;
+use std::collections::BTreeMap;
+use std::io::{self, Write};
 
 pub(crate) fn lsp_feature_result_for_method(
     method: Option<&str>,
     result: Option<&Value>,
+    open_documents: &BTreeMap<String, LspClientDocument>,
 ) -> Option<Value> {
     let result = result?;
     match method {
@@ -56,9 +60,9 @@ pub(crate) fn lsp_feature_result_for_method(
             "lenses": parse_code_lenses(result)
         })),
         Some("textDocument/codeAction") => Some(json!({
-            "actions": parse_code_actions(result)
+            "actions": parse_code_actions(result, open_documents)
         })),
-        Some("codeAction/resolve") => parse_code_action(result).map(|action| {
+        Some("codeAction/resolve") => parse_code_action(result, open_documents).map(|action| {
             json!({
                 "action": action
             })
@@ -219,10 +223,11 @@ const MAX_INLAY_HINTS_PER_VIEWPORT: usize = 512;
 const MAX_INLAY_HINTS_PER_LINE: usize = 8;
 const MAX_INLAY_HINT_LABEL_CHARS: usize = 48;
 const MAX_INLAY_HINT_TOOLTIP_BYTES: usize = 2048;
+const MAX_INLAY_HINT_RESOLVE_BYTES: usize = 16 * 1024;
+const MAX_INLAY_HINT_TEXT_EDITS: usize = 16;
 
 const MAX_CODE_ACTIONS: usize = 256;
 const MAX_CODE_ACTION_TITLE_BYTES: usize = 512;
-const MAX_APPLY_EDIT_LABEL_BYTES: usize = 256;
 
 fn parse_signature_help(result: &Value) -> Option<Value> {
     if result.is_null() {
@@ -268,22 +273,24 @@ struct LabelBoundary {
 fn normalize_single_line_with_boundaries(
     raw: &str,
     max_chars: usize,
-) -> (String, Vec<LabelBoundary>) {
+) -> (String, Vec<LabelBoundary>, bool) {
     let mut normalized = String::new();
     let mut boundaries = Vec::new();
     let mut chars = raw.char_indices().peekable();
     let mut raw_u16 = 0_usize;
     let mut norm_u16 = 0_usize;
     let mut emitted_chars = 0_usize;
-    let mut truncated = false;
-    let char_limit = if raw.chars().count() > max_chars {
-        truncated = true;
+    let truncated = raw.chars().nth(max_chars).is_some();
+    let char_limit = if truncated {
         max_chars.saturating_sub(1)
     } else {
         max_chars
     };
 
     while let Some((_, ch)) = chars.next() {
+        if emitted_chars == char_limit {
+            break;
+        }
         boundaries.push(LabelBoundary {
             raw_u16,
             norm_byte: normalized.len(),
@@ -298,11 +305,9 @@ fn normalize_single_line_with_boundaries(
                 norm_u16,
             });
             raw_u16 += 1;
-            if emitted_chars < char_limit {
-                normalized.push(' ');
-                norm_u16 += 1;
-                emitted_chars += 1;
-            }
+            normalized.push(' ');
+            norm_u16 += 1;
+            emitted_chars += 1;
             continue;
         }
         raw_u16 += ch.len_utf16();
@@ -311,11 +316,9 @@ fn normalize_single_line_with_boundaries(
         } else {
             ch
         };
-        if emitted_chars < char_limit {
-            normalized.push(out_ch);
-            norm_u16 += out_ch.len_utf16();
-            emitted_chars += 1;
-        }
+        normalized.push(out_ch);
+        norm_u16 += out_ch.len_utf16();
+        emitted_chars += 1;
     }
     boundaries.push(LabelBoundary {
         raw_u16,
@@ -325,7 +328,7 @@ fn normalize_single_line_with_boundaries(
     if truncated {
         normalized.push('…');
     }
-    (normalized, boundaries)
+    (normalized, boundaries, truncated)
 }
 
 fn parse_signature_information(
@@ -333,7 +336,7 @@ fn parse_signature_information(
     fallback_active_param: Option<u64>,
 ) -> Option<Value> {
     let raw_label = signature.get("label")?.as_str()?;
-    let (label, boundaries) =
+    let (label, boundaries, label_truncated) =
         normalize_single_line_with_boundaries(raw_label, MAX_SIGNATURE_LABEL_CHARS);
     if label.trim().is_empty() {
         return None;
@@ -344,9 +347,13 @@ fn parse_signature_information(
     let mut search_from_byte = 0_usize;
     if let Some(raw_params) = signature.get("parameters").and_then(Value::as_array) {
         for param in raw_params.iter().take(MAX_PARAMETERS) {
-            if let Some(parsed) =
-                parse_parameter_information(param, &label, &boundaries, &mut search_from_byte)
-            {
+            if let Some(parsed) = parse_parameter_information(
+                param,
+                &label,
+                &boundaries,
+                label_truncated,
+                &mut search_from_byte,
+            ) {
                 parameters.push(parsed);
             }
         }
@@ -375,6 +382,7 @@ fn parse_parameter_information(
     param: &Value,
     signature_label: &str,
     boundaries: &[LabelBoundary],
+    label_truncated: bool,
     search_from_byte: &mut usize,
 ) -> Option<Value> {
     let label_field = param.get("label")?;
@@ -385,28 +393,33 @@ fn parse_parameter_information(
             if start_u16 > end_u16 {
                 return None;
             }
-            let start_idx = boundaries
-                .binary_search_by_key(&start_u16, |b| b.raw_u16)
-                .ok()?;
-            let end_idx = boundaries
-                .binary_search_by_key(&end_u16, |b| b.raw_u16)
-                .ok()?;
-            let start_b = boundaries[start_idx].norm_byte;
-            let end_b = boundaries[end_idx].norm_byte;
-            let start_norm_u16 = boundaries[start_idx].norm_u16;
-            let end_norm_u16 = boundaries[end_idx].norm_u16;
-            if start_b < end_b && end_b <= signature_label.len() {
+            let last = boundaries.last()?.raw_u16;
+            let boundary = |position| {
+                boundaries
+                    .binary_search_by_key(&position, |b| b.raw_u16)
+                    .ok()
+                    .map(|index| boundaries[index])
+            };
+            let start = boundary(start_u16.min(last));
+            let end = boundary(end_u16.min(last));
+            if !label_truncated && end_u16 > last {
+                return None;
+            }
+            let (start, end) = (start?, end?);
+            let start_b = start.norm_byte;
+            let end_b = end.norm_byte;
+            if start_b < end_b {
                 *search_from_byte = end_b;
                 (
                     signature_label[start_b..end_b].to_string(),
-                    Some((start_norm_u16, end_norm_u16, start_b, end_b)),
+                    Some((start.norm_u16, end.norm_u16, start_b, end_b)),
                 )
             } else {
                 (String::new(), None)
             }
         }
         Value::String(raw_sub) => {
-            let (norm_sub, _) = normalize_single_line_with_boundaries(raw_sub, 128);
+            let (norm_sub, _, _) = normalize_single_line_with_boundaries(raw_sub, 128);
             if norm_sub.is_empty() {
                 return None;
             }
@@ -468,7 +481,7 @@ fn bounded_documentation(value: Option<&Value>, max_bytes: usize) -> (Option<Str
     (Some(truncate_utf8_bytes(trimmed, max_bytes)), is_markdown)
 }
 
-fn truncate_utf8_bytes(text: &str, max_bytes: usize) -> String {
+pub(super) fn truncate_utf8_bytes(text: &str, max_bytes: usize) -> String {
     if text.len() <= max_bytes {
         return text.to_string();
     }
@@ -490,21 +503,29 @@ fn parse_inlay_hints(result: &Value) -> Vec<LspInlayHintResponse> {
     let Some(values) = result.as_array() else {
         return Vec::new();
     };
-    let mut hints: Vec<LspInlayHintResponse> = values.iter().filter_map(parse_inlay_hint).collect();
-    hints.sort_by_key(|hint| (hint.position.line, hint.position.utf16_column));
+    let mut hints: Vec<_> = values
+        .iter()
+        .filter_map(|hint| {
+            let position = parse_lsp_position(hint.get("position")?)?;
+            (position.line >= 0 && position.utf16_column >= 0).then_some((position, hint))
+        })
+        .collect();
+    hints.sort_by_key(|(position, _)| (position.line, position.utf16_column));
     let mut culled = Vec::with_capacity(hints.len().min(MAX_INLAY_HINTS_PER_VIEWPORT));
     let mut current_line: Option<i64> = None;
     let mut line_count = 0_usize;
-    for hint in hints {
-        if current_line == Some(hint.position.line) {
-            if line_count >= MAX_INLAY_HINTS_PER_LINE {
-                continue;
-            }
-            line_count += 1;
-        } else {
-            current_line = Some(hint.position.line);
-            line_count = 1;
+    for (position, raw_hint) in hints {
+        if current_line != Some(position.line) {
+            current_line = Some(position.line);
+            line_count = 0;
         }
+        if line_count >= MAX_INLAY_HINTS_PER_LINE {
+            continue;
+        }
+        let Some(hint) = parse_inlay_hint(raw_hint) else {
+            continue;
+        };
+        line_count += 1;
         culled.push(hint);
         if culled.len() >= MAX_INLAY_HINTS_PER_VIEWPORT {
             break;
@@ -515,15 +536,35 @@ fn parse_inlay_hints(result: &Value) -> Vec<LspInlayHintResponse> {
 
 fn parse_inlay_hint(hint: &Value) -> Option<LspInlayHintResponse> {
     let raw_label = parse_inlay_hint_label(hint.get("label")?)?;
-    let (label, _) = normalize_single_line_with_boundaries(&raw_label, MAX_INLAY_HINT_LABEL_CHARS);
+    let (label, _, _) =
+        normalize_single_line_with_boundaries(&raw_label, MAX_INLAY_HINT_LABEL_CHARS);
     if label.trim().is_empty() {
         return None;
     }
     let tooltip = completion_documentation(hint.get("tooltip"))
         .map(|text| truncate_utf8_bytes(text.trim(), MAX_INLAY_HINT_TOOLTIP_BYTES))
         .filter(|text| !text.is_empty());
+    let resolve_payload = bounded_inlay_resolve_payload(hint);
+    let position = parse_lsp_position(hint.get("position")?)?;
+    if position.line < 0 || position.utf16_column < 0 {
+        return None;
+    }
+    let text_edits = hint
+        .get("textEdits")
+        .and_then(Value::as_array)
+        .filter(|edits| edits.len() <= MAX_INLAY_HINT_TEXT_EDITS)
+        .and_then(|edits| {
+            let mut bytes = 0;
+            edits
+                .iter()
+                .map(|edit| {
+                    parse_bounded_text_edit(edit, &mut bytes, MAX_INLAY_HINT_RESOLVE_BYTES).ok()
+                })
+                .collect::<Option<Vec<_>>>()
+        })
+        .unwrap_or_default();
     Some(LspInlayHintResponse {
-        position: parse_lsp_position(hint.get("position")?)?,
+        position,
         label,
         kind: hint.get("kind").and_then(Value::as_i64),
         tooltip,
@@ -535,27 +576,49 @@ fn parse_inlay_hint(hint: &Value) -> Option<LspInlayHintResponse> {
             .get("paddingRight")
             .and_then(Value::as_bool)
             .unwrap_or(false),
-        text_edits: hint
-            .get("textEdits")
-            .and_then(Value::as_array)
-            .map(|edits| edits.iter().filter_map(parse_lsp_text_edit_value).collect())
-            .unwrap_or_default(),
-        data: hint.get("data").filter(|value| !value.is_null()).cloned(),
+        text_edits,
+        data: resolve_payload
+            .as_ref()
+            .and_then(|payload| payload.get("data"))
+            .filter(|value| !value.is_null())
+            .cloned(),
+        resolve_payload,
     })
 }
 
-fn parse_inlay_hint_label(value: &Value) -> Option<String> {
+fn parse_inlay_hint_label(value: &Value) -> Option<Cow<'_, str>> {
     match value {
-        Value::String(label) => Some(label.clone()),
+        Value::String(label) => Some(Cow::Borrowed(label)),
         Value::Array(parts) => {
             let label = parts
                 .iter()
                 .filter_map(|part| part.get("value").and_then(Value::as_str))
+                .flat_map(str::chars)
+                .take(MAX_INLAY_HINT_LABEL_CHARS + 1)
                 .collect::<String>();
-            (!label.is_empty()).then_some(label)
+            (!label.is_empty()).then_some(Cow::Owned(label))
         }
         _ => None,
     }
+}
+
+fn bounded_inlay_resolve_payload(hint: &Value) -> Option<Value> {
+    struct ByteBudget(usize);
+    impl Write for ByteBudget {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.0 = self
+                .0
+                .checked_sub(bytes.len())
+                .ok_or(io::ErrorKind::FileTooLarge)?;
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    serde_json::to_writer(ByteBudget(MAX_INLAY_HINT_RESOLVE_BYTES), hint).ok()?;
+    Some(hint.clone())
 }
 
 /// Normalizes a `textDocument/documentSymbol` result into a unified tree.
@@ -751,11 +814,17 @@ fn parse_locations(result: &Value) -> Vec<Value> {
         .collect()
 }
 
-fn parse_code_actions(result: &Value) -> Vec<Value> {
+fn parse_code_actions(
+    result: &Value,
+    open_documents: &BTreeMap<String, LspClientDocument>,
+) -> Vec<Value> {
     let Some(values) = result.as_array() else {
         return Vec::new();
     };
-    let mut actions: Vec<Value> = values.iter().filter_map(parse_code_action).collect();
+    let mut actions: Vec<Value> = values
+        .iter()
+        .filter_map(|action| parse_code_action(action, open_documents))
+        .collect();
     actions.sort_by_key(|action| {
         let preferred = action
             .get("isPreferred")
@@ -788,7 +857,10 @@ fn code_action_group(kind: Option<&str>) -> &'static str {
     }
 }
 
-fn parse_code_action(action: &Value) -> Option<Value> {
+fn parse_code_action(
+    action: &Value,
+    open_documents: &BTreeMap<String, LspClientDocument>,
+) -> Option<Value> {
     if action.get("disabled").is_some_and(|value| !value.is_null()) {
         return None;
     }
@@ -815,6 +887,12 @@ fn parse_code_action(action: &Value) -> Option<Value> {
     } else {
         action.get("command").and_then(parse_lsp_command)
     };
+    // A code action must be applied as a unit. Never expose only the supported
+    // subset of a malformed or partly unsupported WorkspaceEdit.
+    let edit = match action.get("edit").filter(|edit| !edit.is_null()) {
+        Some(edit) => Some(WorkspaceEdit::parse(edit, open_documents).ok()?),
+        None => None,
+    };
     Some(json!({
         "title": title,
         "kind": kind,
@@ -823,9 +901,7 @@ fn parse_code_action(action: &Value) -> Option<Value> {
             .get("isPreferred")
             .and_then(Value::as_bool)
             .unwrap_or(false),
-        "edit": action.get("edit").filter(|edit| !edit.is_null()).map(|edit| json!({
-            "changes": parse_workspace_edit(edit)
-        })),
+        "edit": edit,
         "command": command,
         "data": action.get("data").cloned().unwrap_or(Value::Null)
     }))
@@ -841,98 +917,6 @@ fn parse_lsp_command(value: &Value) -> Option<Value> {
             .cloned()
             .unwrap_or_default()
     }))
-}
-
-/// Validates and normalizes server-initiated `workspace/applyEdit` parameters.
-///
-/// Outer `Err` rejects malformed JSON-RPC parameters (`-32602`). Inner `Err`
-/// reports a valid `ApplyWorkspaceEditParams` that carries unsupported resource
-/// operations or non-file URIs so the client replies `{ applied: false, failureReason }`.
-pub(crate) fn parse_workspace_apply_edit(
-    params: Option<&Value>,
-) -> Result<Result<Value, &'static str>, &'static str> {
-    let params = params
-        .and_then(Value::as_object)
-        .ok_or("Invalid workspace/applyEdit parameters")?;
-    let edit = params
-        .get("edit")
-        .and_then(Value::as_object)
-        .ok_or("workspace/applyEdit requires an edit object")?;
-    let label = params
-        .get("label")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|label| !label.is_empty())
-        .map(|label| truncate_utf8_bytes(label, MAX_APPLY_EDIT_LABEL_BYTES));
-
-    let mut changes: serde_json::Map<String, Value> = serde_json::Map::new();
-    if let Some(entries) = edit.get("changes") {
-        let Some(entries) = entries.as_object() else {
-            return Ok(Err("Workspace edit changes must be an object."));
-        };
-        for (uri, edits) in entries {
-            let Some(path) = file_path_for_uri(uri) else {
-                return Ok(Err("Workspace edit targets a non-file URI."));
-            };
-            let Some(raw_edits) = edits.as_array() else {
-                return Ok(Err("Workspace text edits must be an array."));
-            };
-            let mut parsed = Vec::with_capacity(raw_edits.len());
-            for item in raw_edits {
-                if item.get("snippet").is_some() {
-                    return Ok(Err("Snippet workspace edits are not supported."));
-                }
-                let Some(edit_value) = parse_lsp_text_edit_value(item) else {
-                    return Ok(Err("Workspace text edit is malformed."));
-                };
-                parsed.push(edit_value);
-            }
-            append_file_edits(&mut changes, path, parsed);
-        }
-    }
-    if let Some(document_changes) = edit.get("documentChanges") {
-        let Some(document_changes) = document_changes.as_array() else {
-            return Ok(Err("Workspace documentChanges must be an array."));
-        };
-        for change in document_changes {
-            let Some(change_obj) = change.as_object() else {
-                return Ok(Err("Workspace documentChange entry must be an object."));
-            };
-            if change_obj.get("kind").is_some() {
-                return Ok(Err(
-                    "Resource create, rename, and delete operations are not supported.",
-                ));
-            }
-            let Some(uri) = change_obj
-                .get("textDocument")
-                .and_then(|document| document.get("uri"))
-                .and_then(Value::as_str)
-            else {
-                return Ok(Err("Workspace documentChange requires a textDocument URI."));
-            };
-            let Some(path) = file_path_for_uri(uri) else {
-                return Ok(Err("Workspace edit targets a non-file URI."));
-            };
-            let Some(raw_edits) = change_obj.get("edits").and_then(Value::as_array) else {
-                return Ok(Err("Workspace documentChange requires an edits array."));
-            };
-            let mut parsed = Vec::with_capacity(raw_edits.len());
-            for item in raw_edits {
-                if item.get("snippet").is_some() {
-                    return Ok(Err("Snippet workspace edits are not supported."));
-                }
-                let Some(edit_value) = parse_lsp_text_edit_value(item) else {
-                    return Ok(Err("Workspace text edit is malformed."));
-                };
-                parsed.push(edit_value);
-            }
-            append_file_edits(&mut changes, path, parsed);
-        }
-    }
-    Ok(Ok(json!({
-        "label": label,
-        "changes": changes
-    })))
 }
 
 fn append_file_edits(

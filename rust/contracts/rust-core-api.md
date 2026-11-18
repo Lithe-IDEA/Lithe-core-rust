@@ -3463,7 +3463,9 @@ to single-line bounded text (512 bytes), each action carries a deterministic
 `group` (`"quickfix"`, `"refactor"`, `"source"`, or `"other"`), and Core sorts
 actions stably with `isPreferred` first and then `quickfix`, `refactor`, `source`,
 `other` (up to 256 actions). `resolveCodeAction` strips Core-only `group` before
-sending `codeAction/resolve`. A platform's display severity or marker projection is
+sending `codeAction/resolve`. A code action with an unsupported or stale workspace
+edit is omitted. Normalized edits preserve the optional `documentVersions` map
+described below. A platform's display severity or marker projection is
 not a diagnostic request model. Non-LSP markers may request actions with a range
 and an empty diagnostic context. The round-trip fixtures are
 `rust/fixtures/lsp/diagnostic-code-actions-v1.json` and
@@ -3500,7 +3502,7 @@ typed events. Hosts should use `waitEvents` so idle sessions do not poll.
 Event types
 include `stateChanged`, `featuresChanged`, `diagnostics`,
 `requestCompleted`, `requestProgress`, `functionsChanged`, `hostRequest`,
-`workspaceApplyEdit`, `inlayHintsRefresh`, `semanticTokensRefresh`,
+`workspaceApplyEdit`, `workspaceApplyEditCancelled`, `inlayHintsRefresh`, `semanticTokensRefresh`,
 `serverInfoChanged`, and `log`. Every request completes at
 most once with either `result` or a structured runtime error containing
 provider/session, stage, optional method/document/request, stable code, and
@@ -5606,19 +5608,31 @@ Operation `inlayHints` (`textDocument/inlayHint`) sorts hints stably by
 (with `…`), caps tooltips at 2048 bytes, and keeps at most 8 hints per line and
 512 hints per viewport request. When the server advertises `inlayHintProvider.resolveProvider`,
 `featuresChanged` includes `inlayHintResolve` and `resolveInlayHint` (`inlayHint/resolve`)
-resolves a single hint (`{ hint }`). Core advertises `workspace.inlayHint.refreshSupport`
+resolves a single hint (`{ hint }`). Pass back the normalized hint with its optional
+`resolvePayload` for this operation. Core uses that bounded original hint (at most 16 KiB)
+to keep the language server's original label parts, position and data. Hints that
+exceed the resolve limit are displayable without a resolve payload. Core advertises `workspace.inlayHint.refreshSupport`
 and forwards `workspace/inlayHint/refresh` as the `inlayHintsRefresh` event after
-acknowledging the request with JSON-RPC `null`.
+acknowledging the request with JSON-RPC `null`. Repeated refreshes coalesce until
+the host drains the queued event.
 
 When a language server sends `workspace/applyEdit`, Core validates its edit payload,
-immediately replies `{ applied: false, failureReason }` for non-file URIs, snippet
-edits, or `create`/`rename`/`delete` resource operations, and otherwise emits a
-`workspaceApplyEdit` runtime event with `result: { applyEditId, label, changes }`
-(mapping target file paths to UTF-16 text edits). After validating workspace
-boundaries and applying or rejecting the edit via `lsp.planWorkspaceEdit` and
-`lsp.applyTextEdits`, the host answers with `lsp.applyEditResponse`
-(`{ sessionId, applyEditId, applied, failureReason? }`). If the server cancels the
-pending request or the session shuts down first, Core settles the JSON-RPC call cleanly.
+immediately replies `{ applied: false, failureReason }` for stale versioned targets,
+invalid positions or replacement text, non-file URIs, snippet or annotated
+edits, or `create`/`rename`/`delete` resource operations. The valid payload is
+bounded to 256 target files, 4096 edits and 4 MiB of replacement text. Numeric
+versions must match the session's current open documents. Core preserves them in
+`documentVersions`, keyed by the same target paths as `changes`. The event is
+`workspaceApplyEdit` with `result: { applyEditId, label, changes, documentVersions }`.
+The native host rechecks the supplied versions against the synchronized editor
+snapshots and validates workspace boundaries. It applies or rejects the edit
+using `lsp.planWorkspaceEdit` and `lsp.applyTextEdits`, then answers with
+`lsp.applyEditResponse` (`{ sessionId, applyEditId, applied, failureReason? }`).
+Eight requests per session may await the host within the session request timeout.
+If cancelled or expired before delivery, Core removes the queued edit. After
+delivery, `workspaceApplyEditCancelled` carries `result: { applyEditId }` and the
+host stops pending work for that ID. The server receives cancellation, timeout,
+or shutdown settlement without waiting for a late host response.
 
 Operation `documentSymbols` (`textDocument/documentSymbol`) needs only the
 document `uri` and is offered, as the `documentSymbols` feature, when the server

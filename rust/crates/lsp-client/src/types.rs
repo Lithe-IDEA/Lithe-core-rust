@@ -22,6 +22,9 @@ pub struct LspInlayHintResponse {
     pub(crate) padding_right: bool,
     pub(crate) text_edits: Vec<Value>,
     pub(crate) data: Option<Value>,
+    /// Bounded original LSP object for a later inlayHint/resolve request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) resolve_payload: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]
