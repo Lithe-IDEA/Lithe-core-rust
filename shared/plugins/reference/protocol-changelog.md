@@ -39,6 +39,7 @@
 | `backend` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `buildModelInputs` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `buildProviders` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
+| `buildProviders` | 1 | 2026-11-18 | [#89](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/89) |
 | `buildSystems` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `commandInstallers` | 0 | 2026-11-15 | [#53](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/53) |
 | `debugAdapters` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
@@ -66,6 +67,7 @@
 | --- | --- | --- | --- |
 | `litheFunctions`（`backend`） | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `litheBuild`（`buildProviders`） | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
+| `litheBuild`（`buildProviders`） | 1 | 2026-11-18 | [#89](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/89) |
 | `litheVcs`（`vcsProviders`） | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `litheToolchains`（`toolchainProviders`） | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `litheKeymapImport`（`keymapImportProviders`） | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
@@ -138,6 +140,7 @@
 
 | PR | 修改人 | API 编号 | 协议 / 能力 | 改了什么 |
 | --- | --- | --- | --- | --- |
+| [#89](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/89) | [@1lck](https://github.com/1lck) | — | **`buildProviders` 1**、**`litheBuild` 1** | 按源文件找运行入口（[1lck/Lithe-IDEA#2104](https://github.com/1lck/Lithe-IDEA/issues/2104)）：运行声明可写 `entrypoints: true`（只能是提供者的 `application`，不写 `fromTargets`、`fromTasks`、`arguments`、`extension`、`debug`），它不对应任何目标，宿主不按目标列出它。新提供者方法 `lithe/build/runEntrypoints`（参数多一个工作区相对路径 `file`）返回 `litheRunEntrypoints` 0 文档，列出这个文件里可运行的入口 `{run, name, entrypoint, project}`，最多 64 个；Core 新增 `build.runEntrypointsPlan` 和 `build.decodeRunEntrypoints` 校验。`lithe/build/prepareRun` 对入口运行不带 `target`，必须带 `launchOptions.entrypoint`。宿主提供 `litheBuild` 版本 `[0, 1]`，三个 SDK 回答宿主提供的最新版本，Java/Node SDK 新增 `onRunEntrypoints`/`build.runEntrypoints`。用入口运行的插件声明 `buildProviders: 1`，只支持 0 的宿主不会安装；其他插件不受影响。新增 fixture `build-provider-run-entrypoints.plugin.json`、`build-run-entrypoints.json`。没有新增宿主方法或通知。 |
 | [#85](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/85) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | — | 插件清单 `schemaVersion` 0 内的补充 | 清单新增可选字段 `repository`（[1lck/Lithe-IDEA#2100](https://github.com/1lck/Lithe-IDEA/issues/2100)）：值是插件源码仓库的 GitHub 地址 `https://github.com/<作者>/<仓库>`，格式不对时以 `plugin.manifest.invalid`（字段 `repository`）拒绝。项目里由插件提供的 Run 配置改存 `.lithe/run/plugin/<插件 ID>.toml`（共享）和 `<插件 ID>.local.toml`（本机），文件头 `[plugin]` 记录插件 ID、名称、作者、仓库、版本、版本要求（默认 `>=保存时的版本`）、`pluginAPIVersion` 和用到的能力，作者和仓库取自 `repository`，用来区分同名插件；插件没有安装、仓库不一致或版本不满足要求时，这些配置在 Run 列表里显示为不可用并说明原因，不会让整个列表读取失败。Core 自带的脚本和程序运行（shell、PowerShell、Windows 批处理、可执行文件）不依赖任何插件。没写 `repository` 的插件照常安装，Run 文件里不记作者和仓库、也不比对仓库；清单格式和能力版本不变，没有新增宿主方法或通知。 |
 
 ### 2026-11-17
