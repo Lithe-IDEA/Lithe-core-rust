@@ -122,6 +122,14 @@
 | 不覆盖 | 构建系统和执行提供者通过 `invocation.executables` 解析的可执行文件 |
 | 安装审查 | 每个安装都是审查里的程序（`kind: "commandInstaller"`），改了要运行的内容需要重新批准 |
 
+### 独立于插件版本的受管运行时
+
+[`managedRuntimes`](../../contract/v1/README.md#managed-runtimes) 0 为固定归档提供安装前准备与缓存复用。清单声明 `resolve` 后端函数和 `dependencies`，每个依赖固定版本、平台、HTTPS URL、SHA-256、解压格式与布局；可选 `tool` 只供本插件语言服务器会话使用。权限 `runtimes.install` 和全部下载来源参与正常安装审查。
+
+宿主把显式配置、工具发现信息和已缓存候选交给插件函数；函数检查兼容性，返回完整划分 `{runtimes:[{id,home,version}],missing:[id]}`。宿主仅下载未满足项，在暂存目录校验摘要、安全解压，再交插件检查，完整成功后原子发布。外部安装只读复用，无效的显式配置须报错。缓存键不含插件版本，依赖未变的插件更新不重复下载；缺失状态可在启动前修复。插件后端及其自身运行时必须随包提供。
+
+Core 的 `plugins.managedRuntimes.plan` 选择准确平台并生成缓存键，`plugins.managedRuntimes.decodeResolution` 校验应答身份和路径；它们没有文件或网络 I/O。语言服务器启动可收到只读 `runtimes: {id:{home,version}}` 映射。平台宿主负责下载、文件锁、完整性和原子发布，不判断特定工具的版本；全局与项目工具链不随之改变。该能力需要配套宿主接入并声明后才能安装使用。
+
 ### 本机文档
 
 `.lithe/toolchains/local.json` 的 `version` 为 `1`，`toolchains.resolvePins` / `editPins` / `editPinSources` 校验并按条件更新目录级固定 `{home, version, provider}`，不授予项目代码执行权限。本机应用存储目录下的 `toolchains/global.json`（经 `toolchains.catalogState` / `editCatalog` 管理）保存本机注册的 SDK 目录、全局默认以及显式信任的工作区根路径 `trustedWorkspaces`（绝不写进工作区 `.lithe/`）。
@@ -294,6 +302,14 @@ A `systemCommand` launch names only a bare command (such as `dlv` or `gopls`), a
 | Later launches | The host looks for the plugin's `systemCommand` launches in its managed command directory and the recorded default directories as well as on `PATH` |
 | Not covered | Executables of build systems and execution providers resolved through `invocation.executables` |
 | Install review | Every installer is a reviewed program (`kind: "commandInstaller"`); a change to what it runs needs approval again |
+
+### Managed runtimes independent of plugin version
+
+[`managedRuntimes`](../../contract/v1/README.md#managed-runtimes) 0 provides install preflight and reuse of pinned archives. A manifest declares a `resolve` backend function and `dependencies`; each dependency pins a version, exact platform, HTTPS URL, SHA-256, archive format and layout. An optional `tool` binding serves only this plugin's language-server session. `runtimes.install` and every download origin participate in normal install review.
+
+The host supplies effective settings, discovered tools and cached candidates to the plugin function, which qualifies compatibility and returns the complete partition `{runtimes:[{id,home,version}],missing:[id]}`. The host downloads only missing items, verifies bytes and safe extraction in staging, and asks the plugin to qualify them before atomic publication of the complete set. External installations are reused read-only; invalid explicit settings are errors. Cache keys omit plugin version, so unchanged dependencies survive updates without downloads. Missing state can be repaired before launch. The backend and its own runtime must be packaged.
+
+Core's `plugins.managedRuntimes.plan` selects the exact platform and generates cache identities; `plugins.managedRuntimes.decodeResolution` validates reply identity and paths. Neither performs file or network I/O. Server launch may receive a read-only `runtimes: {id:{home,version}}` map. Native hosts own downloads, locking, integrity and atomic publication without tool-specific rules; global and project toolchains stay independent. A companion host must implement and advertise the capability before plugins can require it.
 
 ### Local document
 

@@ -54,6 +54,8 @@ LSP（Language Server Protocol，语言服务器协议）让编辑器通过独�
 成熟后端提供。不要为了“接上 LSP”再复制一套工程模型。LSP 支持的具体功能仍取决于服务器
 能力与宿主支持；安装服务器不会自动带来构建、测试、DAP 调试或自定义界面。
 
+大型依赖还可使用 [`managedRuntimes`](../contract/v1/README.md#managed-runtimes)。插件后端先检查显式配置、已缓存和外部安装，仅报告未满足的依赖；宿主在安装审查通过后下载固定归档、校验并原子准备，跨插件版本复用。后端和它自己的运行时仍随包提供，项目的编译工具链不受影响。下文 Lua 模板演示随包分发方案。
+
 ### 2. 跑通原版模板，再改成自己的插件
 
 本地需要 Git、Node.js 22+、`tar`、`zip` 和 `unzip`。打包工具使用 Node.js，
@@ -426,7 +428,7 @@ print(greet("Lithe"))
 | 编辑、保存、关闭/重开文件 | 文档同步和诊断正常，没有重复会话 |
 | 快速切换两个项目/工作区 | 旧结果不串到新项目，索引与锁不互相占用 |
 | 服务器异常退出或初始化失败 | 宿主能显示可定位的失败；恢复操作不会留下重复进程 |
-| 缺少 Node.js/Go/Java 或版本不足 | 给出可操作的运行时错误，不在启动时自行下载 |
+| 缺少 Node.js/Go/Java 或版本不足 | 给出可操作的运行时错误；已声明 `managedRuntimes` 的依赖由宿主准备，插件不自行下载 |
 | 修改默认会重启服务器的设置 | 新会话使用新值，旧进程退出 |
 | 禁用插件、关闭工作区、退出 Lithe | 相应会话与进程被停止，启动器/辅助子进程不残留 |
 | 卸载与重新安装 | 卸载先停用，再删除包和宿主管理的插件状态；自定义缓存有明确说明 |
@@ -534,6 +536,8 @@ Ending use:        disable / close workspace → host stops sessions and process
 Pick a mature language server whose license allows redistribution. Project import, dependency resolution, and symbol and module models should come from
 the language's mature backend wherever possible. Do not duplicate a project model just to "hook up LSP". What LSP features you get still depends on the server's
 capabilities and on host support; installing a server does not bring build, test, DAP debugging, or custom UI.
+
+Large dependencies may also use [`managedRuntimes`](../contract/v1/README.md#managed-runtimes). The plugin backend qualifies explicit settings, cached homes and external installations, reporting only unmet dependencies. After install approval the host downloads pinned archives, verifies and atomically prepares them, reusing them across plugin versions. The backend and its own runtime still ship in the package; project toolchains remain independent. The Lua example below demonstrates packaging dependencies.
 
 ### 2. Run the original template, then make it your own plugin
 
@@ -909,7 +913,7 @@ not guarantees you get by declaring something.
 | Edit, save, close and reopen files | Document sync and diagnostics work, with no duplicate sessions |
 | Switch quickly between two projects or workspaces | Old results do not leak into the new project; indexes and locks do not collide |
 | The server exits unexpectedly or fails to initialize | The host shows a failure you can trace; recovery leaves no duplicate processes |
-| Node.js, Go, or Java missing or too old | An actionable runtime error, with no download at launch |
+| Node.js, Go, or Java missing or too old | An actionable runtime error; the host prepares declared managed runtimes, while plugins do not download them themselves |
 | Change a setting whose default restarts the server | New sessions use the new value, and the old process exits |
 | Disable the plugin, close the workspace, quit Lithe | The sessions and processes stop, with no launcher or helper child left behind |
 | Uninstall and reinstall | Uninstall deactivates first, then removes the package and host-managed plugin state; custom caches are documented |
