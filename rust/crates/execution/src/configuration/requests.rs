@@ -134,6 +134,11 @@ pub struct UpdateOptionsRequest {
     /// into the local layer instead of patching one configuration.
     #[serde(default)]
     pub toolchain: Option<ToolchainPaths>,
+    /// IDs of the built-in process runs to start first, in order. Omission
+    /// keeps the saved steps; an empty list removes them from this layer and,
+    /// in the local layer, also hides the project's.
+    #[serde(default)]
+    pub before_launch: Option<Vec<String>>,
     /// Host-owned local layer used to resolve the configuration first. A
     /// local edit is refused while it is set: only files can be changed.
     #[serde(default)]
@@ -159,6 +164,10 @@ pub struct CreateUserConfigurationRequest {
     /// A typed selector, never a cached executable or resolved launch payload.
     #[serde(default)]
     pub build: Option<BuildProviderRunReference>,
+    /// The provider entrypoint an entrypoint run starts, saved as
+    /// `extensions.build-run.entrypoint`; it is part of the entry's identity.
+    #[serde(default)]
+    pub entrypoint: Option<String>,
     /// The installed plugins, whose identity a written plugin document records.
     #[serde(default)]
     pub plugins: Option<Vec<InstalledPlugin>>,

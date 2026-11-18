@@ -5,10 +5,11 @@ use super::support::temporary_root;
 use crate::build::{
     build_check_tool_version_command, build_decode_dependencies_command,
     build_decode_diagnostics_command, build_decode_model_command,
-    build_decode_run_preparation_command, build_decode_test_discovery_command,
-    build_decode_test_results_command, build_dependency_plan_command, build_detect_command,
-    build_invocation_plan_command, build_model_plan_command, build_prepare_run_plan_command,
-    build_resolve_options_command, build_sync_fingerprint_command, build_task_plan_command,
+    build_decode_run_entrypoints_command, build_decode_run_preparation_command,
+    build_decode_test_discovery_command, build_decode_test_results_command,
+    build_dependency_plan_command, build_detect_command, build_invocation_plan_command,
+    build_model_plan_command, build_prepare_run_plan_command, build_resolve_options_command,
+    build_run_entrypoints_plan_command, build_sync_fingerprint_command, build_task_plan_command,
     build_test_discovery_plan_command, build_test_plan_command,
 };
 use crate::protocol::ErrorCode;
@@ -2317,6 +2318,122 @@ fn provider_test_discovery_is_bounded_deterministic_and_runnable() {
     let mut missing_filter = manifest;
     missing_filter["buildSystems"][0]["test"]["filters"] = json!(["suite"]);
     assert_eq!(validate(missing_filter)["status"], "rejected");
+}
+
+/// buildProviders 1: a provider names the entrypoints of a file, each of which an
+/// entrypoint run starts in its project without a target. Malformed answers are
+/// refused whole, and a manifest needs buildProviders 1 to declare such a run.
+#[test]
+fn provider_run_entrypoints_are_found_by_file_and_start_without_a_target() {
+    let manifest: Value = serde_json::from_str(contract_file!(
+        "fixtures/build-providers/build-provider-run-entrypoints.plugin.json"
+    ))
+    .unwrap();
+    let fixture: Value = serde_json::from_str(contract_file!(
+        "fixtures/build-providers/build-run-entrypoints.json"
+    ))
+    .unwrap();
+    assert_eq!(validate(manifest.clone())["status"], "ok");
+    let mut old = manifest.clone();
+    old["requires"]["buildProviders"] = json!(0);
+    let refused = validate(old);
+    assert_eq!(
+        refused["error"]["field"], "requires.buildProviders",
+        "{refused}"
+    );
+    for (field, value) in [
+        ("fromTargets", json!({"tags":["application"]})),
+        ("execution", json!("service")),
+        ("source", json!("command")),
+    ] {
+        let mut invalid = manifest.clone();
+        invalid["buildSystems"][0]["run"][1][field] = value;
+        assert_eq!(validate(invalid)["status"], "rejected", "{field}");
+    }
+
+    let plan = |request: Value| {
+        build_run_entrypoints_plan_command::<Manifest>(
+            json!({"manifest":manifest,"buildSystemID":"gradle","request":request}),
+        )
+        .unwrap()
+    };
+    let planned = plan(fixture["plan"].clone());
+    assert_eq!(planned["status"], "ok", "{planned}");
+    let provider = &planned["plan"]["provider"];
+    assert_eq!(provider["method"], "lithe/build/runEntrypoints");
+    assert_eq!(provider["params"]["file"], fixture["plan"]["file"]);
+    assert_eq!(planned["plan"]["decoder"], "litheRunEntrypoints");
+    for file in ["../outside/Tool.java", "/abs/Tool.java", "."] {
+        let mut request = fixture["plan"].clone();
+        request["file"] = json!(file);
+        assert_eq!(plan(request)["status"], "rejected", "{file}");
+    }
+    let mut by_project = fixture["plan"].clone();
+    by_project["project"] = json!({"name":"app","path":"app"});
+    assert_eq!(plan(by_project)["status"], "rejected");
+
+    let decode = |result: Value| {
+        build_decode_run_entrypoints_command::<Manifest>(json!({"manifest":manifest,
+            "buildSystemID":"gradle","request":{"root":".","result":result}}))
+        .unwrap()
+    };
+    let decoded = decode(fixture["result"].clone());
+    assert_eq!(decoded["status"], "ok", "{decoded}");
+    assert_eq!(
+        decoded["entrypoints"]["entrypoints"],
+        fixture["entrypoints"]
+    );
+    let mut repeated = fixture["result"].clone();
+    repeated["entrypoints"]
+        .as_array_mut()
+        .unwrap()
+        .push(fixture["result"]["entrypoints"][0].clone());
+    assert_eq!(decode(repeated), decoded);
+    let entry = |run: &str, name: &str, entrypoint: &str, path: &str| {
+        json!({"format":"litheRunEntrypoints","version":0,"entrypoints":[
+            {"run":run,"name":name,"entrypoint":entrypoint,"project":{"name":"app","path":path}}]})
+    };
+    for invalid in [
+        json!({"format":"litheRunEntrypoints","version":1,"entrypoints":[]}),
+        json!({"format":"litheRunEntrypoints","version":0,"entrypoints":vec![fixture["entrypoints"][0].clone();65]}),
+        entry("application", "Tool", "example.Tool", "app"),
+        entry("main", " ", "example.Tool", "app"),
+        entry("main", "Tool", "", "app"),
+        entry("main", "Tool", "bad\u{0}", "app"),
+        entry("main", "Tool", "example.Tool", "../escape"),
+    ] {
+        let rejected = decode(invalid);
+        assert_eq!(
+            rejected["error"]["code"], "plugin.build.invalidOutput",
+            "{rejected}"
+        );
+    }
+
+    let prepare = |request: Value| {
+        build_prepare_run_plan_command::<Manifest>(
+            json!({"manifest":manifest,"buildSystemID":"gradle","request":request}),
+        )
+        .unwrap()
+    };
+    let prepared = prepare(fixture["prepareRun"].clone());
+    assert_eq!(prepared["status"], "ok", "{prepared}");
+    let params = &prepared["plan"]["provider"]["params"];
+    assert_eq!(params["run"], "main");
+    assert!(params.get("target").is_none(), "{params}");
+    assert_eq!(params["launchOptions"]["entrypoint"], "example.Tool");
+    let mut without_entrypoint = fixture["prepareRun"].clone();
+    without_entrypoint["launchOptions"]
+        .as_object_mut()
+        .unwrap()
+        .remove("entrypoint");
+    assert_eq!(prepare(without_entrypoint)["status"], "rejected");
+    let mut with_target = fixture["prepareRun"].clone();
+    with_target["target"] = json!({"name":"Main","path":"app","tags":["application"]});
+    assert_eq!(prepare(with_target)["status"], "rejected");
+    let mut target_run = fixture["prepareRun"].clone();
+    target_run["run"] = json!("application");
+    target_run.as_object_mut().unwrap().remove("launchOptions");
+    assert_eq!(prepare(target_run)["status"], "rejected");
 }
 
 /// Preparation is a typed provider request, never an empty argv configuration.

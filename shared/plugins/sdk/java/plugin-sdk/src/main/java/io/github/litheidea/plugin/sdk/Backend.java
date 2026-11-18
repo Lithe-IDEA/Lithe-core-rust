@@ -190,10 +190,13 @@ public final class Backend {
         formats.put(Protocol.BUILD_MODEL, "litheBuildModel");
         formats.put(Protocol.BUILD_DEPENDENCIES, "litheDependencies");
         formats.put(Protocol.BUILD_DISCOVER_TESTS, "litheTestDiscovery");
+        formats.put(Protocol.BUILD_RUN_ENTRYPOINTS, "litheRunEntrypoints");
         BUILD_FORMATS = Collections.unmodifiableMap(formats);
     }
 
     private volatile boolean logging;
+    /** The negotiated build protocol version, the newest the host offered; -1 before. */
+    private volatile int buildVersion = -1;
     private boolean loggingReady;
     private final List<Map<String, Object>> earlyDiagnostics = new ArrayList<>();
     private final java.util.Set<String> quietSuccess = new java.util.HashSet<>();
@@ -325,6 +328,14 @@ public final class Backend {
     /** Prepares a portable application launch. */
     public Backend onPrepareRun(Handler handler) {
         return declareBuild(Protocol.BUILD_PREPARE_RUN, handler);
+    }
+
+    /**
+     * Names the entrypoints of one source file that an entrypoint run starts
+     * ({@code buildProviders} 1), with the format stamped.
+     */
+    public Backend onRunEntrypoints(Handler handler) {
+        return declareBuild(Protocol.BUILD_RUN_ENTRYPOINTS, handler);
     }
 
     /**
@@ -803,9 +814,15 @@ public final class Backend {
                         "The backend requires litheLogging version " + Protocol.LOGGING_VERSION + "."));
                 return;
             }
+            buildVersion = -1;
+            for (int version = Protocol.BUILD_VERSION; version >= 0 && buildVersion < 0; version--) {
+                if (offers(offered.get("litheBuild"), version)) {
+                    buildVersion = version;
+                }
+            }
             agreed = new Negotiated(
                     offers(offered.get("litheFunctions"), Protocol.FUNCTIONS_VERSION),
-                    !buildHandlers.isEmpty() && offers(offered.get("litheBuild"), Protocol.BUILD_VERSION));
+                    !buildHandlers.isEmpty() && buildVersion >= 0);
             negotiated = agreed;
             hooks = new ArrayList<>(initializeHooks);
         }
@@ -852,7 +869,7 @@ public final class Backend {
                     }
                 }
                 if (agreed.build()) {
-                    experimental.put("litheBuild", singleton("version", Protocol.BUILD_VERSION));
+                    experimental.put("litheBuild", singleton("version", buildVersion));
                 }
                 if (agreed.functions()) {
                     List<Object> offered = new ArrayList<>();

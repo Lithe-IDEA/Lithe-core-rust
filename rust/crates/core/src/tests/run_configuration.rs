@@ -1739,12 +1739,29 @@ fn built_in_process_runs_are_created_edited_moved_and_deleted_through_the_editor
         .iter()
         .map(|entry| entry["provider"].as_str().unwrap())
         .collect();
-    let mut expected = vec!["process.shell", "process.powershell"];
-    if cfg!(windows) {
-        expected.push("process.batch");
+    // Every platform creates every kind; only batch says it does not run
+    // outside Windows.
+    assert_eq!(
+        providers,
+        [
+            "process.shell",
+            "process.powershell",
+            "process.batch",
+            "process.executable"
+        ]
+    );
+    for entry in types["data"]["types"].as_array().unwrap() {
+        let unavailable = entry["provider"] == "process.batch" && !cfg!(windows);
+        assert_eq!(
+            entry["availability"]["code"],
+            if unavailable {
+                serde_json::json!("unsupportedPlatform")
+            } else {
+                Value::Null
+            },
+            "{entry}"
+        );
     }
-    expected.push("process.executable");
-    assert_eq!(providers, expected);
 
     // A new editor shows the automatic values the typed script implies.
     let form = call(
@@ -1926,10 +1943,11 @@ fn built_in_process_runs_are_created_edited_moved_and_deleted_through_the_editor
     assert_eq!(again["ok"], false);
 }
 
-/// Batch scripts run only on Windows: elsewhere they are left out of the
-/// list with a diagnostic, and their editor is not offered.
+/// Batch scripts run only on Windows. Elsewhere a saved one stays listed as
+/// unavailable, so a project shared with Windows keeps it, and it can still be
+/// created, edited and saved; launching it is refused.
 #[test]
-fn batch_runs_are_unavailable_outside_windows() {
+fn batch_runs_are_editable_but_unavailable_outside_windows() {
     if cfg!(windows) {
         return;
     }
@@ -1943,22 +1961,44 @@ fn batch_runs_are_unavailable_outside_windows() {
             "extensions":{"process":{"script":"setup.cmd"}}
         }]}),
     );
+    fs::write(root.join("setup.cmd"), "@echo off\r\necho setup\r\n").unwrap();
     let resolved = run_config_command("runConfig.resolve", serde_json::json!({"root":root}));
     assert_eq!(resolved["ok"], true, "{resolved}");
-    assert!(resolved["data"]["configurations"]
-        .as_array()
-        .unwrap()
-        .is_empty());
-    assert_eq!(
-        resolved["data"]["diagnostics"][0]["code"],
-        "unsupportedPlatform"
-    );
+    let listed = &resolved["data"]["configurations"][0];
+    assert_eq!(listed["id"], "user:setup", "{resolved}");
+    assert_eq!(listed["availability"]["status"], "unavailable");
+    assert_eq!(listed["availability"]["code"], "unsupportedPlatform");
+    assert_eq!(resolved["data"]["diagnostics"], serde_json::json!([]));
+
     let form = run_config_command(
+        "runConfig.editorForm",
+        serde_json::json!({"root":root,"configurationId":"user:setup"}),
+    );
+    assert_eq!(form["ok"], true, "{form}");
+    assert_eq!(form["data"]["provider"], "process.batch");
+    assert_eq!(form["data"]["values"]["script"], "setup.cmd");
+    assert_eq!(form["data"]["availability"]["code"], "unsupportedPlatform");
+    let new = run_config_command(
         "runConfig.editorForm",
         serde_json::json!({"root":root,"provider":"process.batch"}),
     );
-    assert_eq!(form["ok"], false);
-    assert_eq!(form["error"]["code"], "not_supported", "{form}");
+    assert_eq!(new["ok"], true, "{new}");
+    assert_eq!(new["data"]["availability"]["code"], "unsupportedPlatform");
+
+    let mut values = form["data"]["values"].clone();
+    values["scriptOptions"] = serde_json::json!("--fast");
+    let saved = run_config_command(
+        "runConfig.saveConfiguration",
+        serde_json::json!({"root":root,"provider":"process.batch","configurationId":"user:setup","values":values}),
+    );
+    assert_eq!(saved["ok"], true, "{saved}");
+    assert_eq!(saved["data"]["status"], "saved", "{saved}");
+
+    let plan = run_config_command(
+        "runConfig.createLaunchPlan",
+        serde_json::json!({"root":root,"configurationId":"user:setup"}),
+    );
+    assert_eq!(plan["ok"], false, "{plan}");
 }
 
 /// A saved run whose working directory was removed stays listed as unavailable,
@@ -2053,7 +2093,8 @@ fn powershell_and_program_editors_store_their_own_choices() {
             "program",
             "programArguments",
             "workingDirectory",
-            "environment"
+            "environment",
+            "beforeLaunch"
         ]
     );
     let save_program = |program: &str| {
@@ -2076,4 +2117,65 @@ fn powershell_and_program_editors_store_their_own_choices() {
         save_program("./missing")["data"]["errors"],
         serde_json::json!([{"field":"program","code":"notFound"}])
     );
+}
+
+/// An entrypoint run (`buildProviders` 1) is saved without a target, with the
+/// entrypoint it starts; each entrypoint is its own configuration, saving the
+/// same one again reuses it, and the launch inputs carry the entrypoint.
+#[test]
+fn entrypoint_runs_are_saved_per_entrypoint_without_a_target() {
+    let root = temporary_root("saved-entrypoint-run");
+    let _cleanup = Cleanup(root.clone());
+    fs::create_dir_all(root.join("app")).unwrap();
+    let plugin_path = ".lithe/run/plugin/dev.example.gradle.local.toml";
+    let reference = serde_json::json!({
+        "pluginID": "dev.example.gradle", "buildSystemID": "gradle", "root": "app",
+        "run": "main", "projectID": "project-id", "userArguments": []
+    });
+    let save = |name: &str, entrypoint: &str| {
+        run_config_command(
+            "runConfig.createUserConfiguration",
+            serde_json::json!({"root":root,"scope":"local","type":"buildProvider","name":name,
+                "build":reference,"entrypoint":entrypoint}),
+        )
+    };
+    let tool = save("Tool", "example.Tool");
+    assert_eq!(tool["ok"], true, "{tool}");
+    let document = changed_run_document(&tool["data"], plugin_path).unwrap();
+    let saved = &document["configurations"][0];
+    assert_eq!(
+        saved["extensions"]["build-run"]["entrypoint"],
+        "example.Tool"
+    );
+    assert!(
+        saved["extensions"]["build"]
+            .get("targetID")
+            .is_none_or(|id| id == ""),
+        "{saved}"
+    );
+    apply_run_changes(&root, &tool["data"]);
+
+    let again = save("Tool", "example.Tool");
+    assert_eq!(again["data"]["id"], tool["data"]["id"]);
+    let other = save("Other", "example.Other");
+    assert_eq!(other["ok"], true, "{other}");
+    assert_ne!(other["data"]["id"], tool["data"]["id"]);
+    apply_run_changes(&root, &other["data"]);
+
+    let resolved = run_config_command("runConfig.resolve", serde_json::json!({"root":root}));
+    assert_eq!(resolved["ok"], true, "{resolved}");
+    assert_eq!(
+        resolved["data"]["configurations"].as_array().unwrap().len(),
+        2
+    );
+    let inputs = run_config_command(
+        "runConfig.providerLaunchInputs",
+        serde_json::json!({"root":root,"configurationId":tool["data"]["id"],"providerRoot":"app"}),
+    );
+    assert_eq!(inputs["ok"], true, "{inputs}");
+    assert_eq!(
+        inputs["data"]["launchOptions"]["entrypoint"],
+        "example.Tool"
+    );
+    assert_eq!(save("Bad", "bad\u{0}")["ok"], false);
 }

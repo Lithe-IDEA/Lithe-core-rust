@@ -57,17 +57,6 @@ pub(crate) fn resolve_layers(
     }
     let global_toolchain = local.get("toolchain").cloned();
     let platform = Platform::HOST;
-    configurations.retain(|configuration| {
-        let supported = super::process::supported_on(&configuration.provider, platform);
-        if !supported {
-            diagnostics.push(json!({
-                "id": configuration.id,
-                "code": "unsupportedPlatform",
-                "message": format!("{} runs only on Windows", configuration.provider)
-            }));
-        }
-        supported
-    });
     for configuration in &mut configurations {
         configuration.plugin = layers
             .plugin_dependency(&configuration.id)
@@ -116,6 +105,13 @@ pub(crate) fn resolve_layers(
                 "message": "Run configuration is disabled"
             }));
             continue;
+        }
+        // A built-in kind this platform cannot run, such as a batch script
+        // outside Windows, stays listed and editable but does not start.
+        if let Some(availability) =
+            super::process::provider_availability(&configuration.provider, platform)
+        {
+            configuration.availability.get_or_insert(availability);
         }
         if !project_directory_exists(root, &configuration.cwd) {
             let message = format!("Working directory does not exist: {}", configuration.cwd);

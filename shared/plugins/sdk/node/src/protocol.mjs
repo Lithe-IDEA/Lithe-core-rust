@@ -6,7 +6,8 @@
 
 /** The protocol versions this SDK speaks. */
 export const FUNCTIONS_VERSION = 0;
-export const BUILD_VERSION = 0;
+/** The newest build protocol version (buildProviders 1 adds lithe/build/runEntrypoints); every earlier one is spoken too. */
+export const BUILD_VERSION = 1;
 export const VCS_VERSION = 0;
 export const LOGGING_VERSION = 0;
 export const KEYMAP_IMPORT_VERSION = 0;
@@ -26,6 +27,7 @@ export const METHODS = Object.freeze({
   buildExecute: 'lithe/build/execute',
   buildTest: 'lithe/build/test',
   buildDiscoverTests: 'lithe/build/discoverTests',
+  buildRunEntrypoints: 'lithe/build/runEntrypoints',
   buildPrepareRun: 'lithe/build/prepareRun',
   buildPrepareDebug: 'lithe/build/prepareDebug',
   buildProgress: 'lithe/build/progress',

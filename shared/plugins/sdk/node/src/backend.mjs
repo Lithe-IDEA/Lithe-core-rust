@@ -42,6 +42,7 @@ const BUILD_FORMATS = Object.freeze({
   [METHODS.buildModel]: 'litheBuildModel',
   [METHODS.buildDependencies]: 'litheDependencies',
   [METHODS.buildDiscoverTests]: 'litheTestDiscovery',
+  [METHODS.buildRunEntrypoints]: 'litheRunEntrypoints',
 });
 
 /** Host notifications the SDK routes itself; see `onCommand`, `onContextsChanged`, and `host.subscribe`. */
@@ -133,6 +134,7 @@ class Backend {
       execute: (handler) => this.#declareBuild(METHODS.buildExecute, handler),
       test: (handler) => this.#declareBuild(METHODS.buildTest, handler),
       discoverTests: (handler) => this.#declareBuild(METHODS.buildDiscoverTests, handler),
+      runEntrypoints: (handler) => this.#declareBuild(METHODS.buildRunEntrypoints, handler),
       /** Prepares a plan; the application itself belongs to the host. */
       prepareRun: (handler) => this.#declareBuild(METHODS.buildPrepareRun, handler),
       prepareDebug: (handler) => this.#declareBuild(METHODS.buildPrepareDebug, handler),
@@ -574,7 +576,12 @@ class Backend {
       this.#respond(id, undefined, { code: ERROR_CODES.invalidRequest, message: `The backend requires litheLogging version ${LOGGING_VERSION}.` });
       return;
     }
-    this.#buildVersion = this.#buildHandlers.size > 0 && offers(offered.litheBuild, BUILD_VERSION) ? BUILD_VERSION : null;
+    // The newest build protocol version the host offers; each one adds to the one before.
+    let buildVersion = null;
+    for (let version = BUILD_VERSION; version >= 0 && buildVersion === null; version -= 1) {
+      if (offers(offered.litheBuild, version)) buildVersion = version;
+    }
+    this.#buildVersion = this.#buildHandlers.size > 0 ? buildVersion : null;
     this.#functionsVersion = offers(offered.litheFunctions, FUNCTIONS_VERSION) ? FUNCTIONS_VERSION : null;
     this.#negotiated = Object.freeze({
       functions: this.#functionsVersion !== null,

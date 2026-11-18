@@ -472,6 +472,10 @@ pub enum BuildCommand {
     TestDiscoveryPlan,
     /// Validates provider-owned test selectors (`build.decodeTestDiscovery`).
     DecodeTestDiscovery,
+    /// Asks a provider for the entrypoints of a file (`build.runEntrypointsPlan`).
+    RunEntrypointsPlan,
+    /// Validates the entrypoints a provider found (`build.decodeRunEntrypoints`).
+    DecodeRunEntrypoints,
     /// Expands the command that prints a project's dependencies (`build.dependencyPlan`).
     DependencyPlan,
     /// Normalizes a build model and derives its run entries (`build.decodeModel`).
@@ -740,6 +744,8 @@ pub enum RunConfigCommand {
     SaveConfiguration,
     /// Removes a user-authored run configuration (`runConfig.deleteConfiguration`).
     DeleteConfiguration,
+    /// Expands the steps run before a configuration starts (`runConfig.beforeLaunch`).
+    BeforeLaunch,
     /// Produces the process plan for one configuration (`runConfig.createLaunchPlan`).
     CreateLaunchPlan,
     /// Resolves user choices for a provider-owned launch (`runConfig.providerLaunchInputs`).
@@ -1175,6 +1181,8 @@ impl CoreCommand {
             "build.decodeRunPreparation" => Some(Self::Build(BuildCommand::DecodeRunPreparation)),
             "build.testDiscoveryPlan" => Some(Self::Build(BuildCommand::TestDiscoveryPlan)),
             "build.decodeTestDiscovery" => Some(Self::Build(BuildCommand::DecodeTestDiscovery)),
+            "build.runEntrypointsPlan" => Some(Self::Build(BuildCommand::RunEntrypointsPlan)),
+            "build.decodeRunEntrypoints" => Some(Self::Build(BuildCommand::DecodeRunEntrypoints)),
             "build.dependencyPlan" => Some(Self::Build(BuildCommand::DependencyPlan)),
             "build.decodeModel" => Some(Self::Build(BuildCommand::DecodeModel)),
             "build.decodeTestResults" => Some(Self::Build(BuildCommand::DecodeTestResults)),
@@ -1427,6 +1435,7 @@ impl CoreCommand {
             "runConfig.deleteConfiguration" => {
                 Some(Self::RunConfig(RunConfigCommand::DeleteConfiguration))
             }
+            "runConfig.beforeLaunch" => Some(Self::RunConfig(RunConfigCommand::BeforeLaunch)),
             "runConfig.createLaunchPlan" => {
                 Some(Self::RunConfig(RunConfigCommand::CreateLaunchPlan))
             }

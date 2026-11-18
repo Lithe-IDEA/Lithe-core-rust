@@ -19,6 +19,7 @@ pub(crate) const OPERATIONS: &[&str] = &[
     "lithe/build/discoverTests",
     "lithe/build/prepareRun",
     "lithe/build/prepareDebug",
+    "lithe/build/runEntrypoints",
     "lithe/vcs/status",
     "lithe/vcs/baseContent",
     "lithe/vcs/history",

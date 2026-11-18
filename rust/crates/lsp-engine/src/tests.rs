@@ -3211,7 +3211,7 @@ fn build_requests_need_a_negotiated_protocol_version() {
         .expect("initialize should have been written");
     assert_eq!(
         initialize["params"]["capabilities"]["experimental"]["litheBuild"],
-        json!({ "versions": [0] })
+        json!({ "versions": [0, 1] })
     );
 
     let error = build_request(&harness, "lithe/build/model", json!({}), None)
@@ -3229,11 +3229,11 @@ fn build_requests_need_a_negotiated_protocol_version() {
 #[test]
 fn a_reply_naming_an_unoffered_version_negotiates_nothing() {
     let harness = plugin_backend(json!({
-        "litheBuild": { "version": 1 },
+        "litheBuild": { "version": 2 },
         "litheFunctions": { "version": 1, "functions": [{ "id": "snapshot.refresh" }] }
     }));
     let error = build_request(&harness, "lithe/build/model", json!({}), None)
-        .expect_err("version 1 was not offered");
+        .expect_err("version 2 was not offered");
     assert!(matches!(error.code, ErrorCode::NotSupported));
     let error = invoke(&harness, FUNCTION_PLUGIN, "snapshot.refresh", None)
         .expect_err("version 1 was not offered");
@@ -4059,7 +4059,7 @@ fn a_plugin_function_is_routed_to_its_plugin_and_returns_its_result() {
     assert_eq!(
         initialize["params"]["capabilities"]["experimental"],
         json!({
-            "litheBuild": { "versions": [0] },
+            "litheBuild": { "versions": [0, 1] },
             "litheFunctions": { "versions": [0] },
             "litheLogging": { "versions": [0] },
             "litheVcs": { "versions": [0] }

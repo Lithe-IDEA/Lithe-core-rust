@@ -3214,9 +3214,30 @@
                 "additionalProperties": {
                   "type": "string"
                 }
+              },
+              "entrypoints": {
+                "description": "buildProviders 1: a provider application that starts an entrypoint lithe/build/runEntrypoints names in a source file, in its project and without a target. Requires source provider; refuses fromTargets, fromTasks, arguments, extension, debug and a service or task execution.",
+                "type": "boolean"
               }
             },
+            "if": { "required": ["entrypoints"], "properties": { "entrypoints": { "const": true } } },
+            "then": { "not": { "anyOf": [ { "required": ["fromTargets"] }, { "required": ["fromTasks"] } ] } },
             "oneOf": [
+              {
+                "required": [
+                  "entrypoints"
+                ],
+                "properties": {
+                  "entrypoints": { "const": true },
+                  "source": { "const": "provider" }
+                },
+                "not": {
+                  "anyOf": [
+                    { "required": ["fromTargets"] },
+                    { "required": ["fromTasks"] }
+                  ]
+                }
+              },
               {
                 "required": [
                   "fromTargets"

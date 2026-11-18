@@ -19,8 +19,9 @@ pub struct BuildProviderRunReference {
     /// Opaque project identity reported by the build model.
     #[serde(rename = "projectID")]
     pub project_id: String,
-    /// Opaque target identity reported by the build model.
-    #[serde(rename = "targetID")]
+    /// Opaque target identity reported by the build model; empty for an
+    /// entrypoint run, which starts an entrypoint in the project instead.
+    #[serde(rename = "targetID", default)]
     pub target_id: String,
     /// Omitted older references are applications; the current declaration must match at launch.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -59,9 +60,10 @@ impl BuildProviderRunReference {
             || !identifier(&self.plugin_id)
             || !identifier(&self.build_system_id)
             || !identifier(&self.run)
+            || self.project_id.is_empty()
             || [&self.project_id, &self.target_id]
                 .iter()
-                .any(|id| id.is_empty() || id.len() > 2048 || id.contains('\0'))
+                .any(|id| id.len() > 2048 || id.contains('\0'))
             || self.user_arguments.len() > 64
             || self
                 .user_arguments
@@ -197,6 +199,11 @@ pub struct RunConfiguration {
     /// Provider-specific payload keyed by namespace, such as `build`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub extensions: BTreeMap<String, Value>,
+    /// Built-in process runs started in order before this one, each of which
+    /// must exit with 0 first (`runConfig.beforeLaunch`). A layer replaces the
+    /// whole list, so an empty list clears the steps of a lower layer.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub before_launch: Vec<super::BeforeLaunchStep>,
     /// Hidden from the resolved list; set by a user or when the working directory is missing.
     #[serde(default)]
     pub disabled: bool,

@@ -7,6 +7,7 @@
 //! know, and sends back value keys it does not know unchanged, so a later
 //! Core can add fields without a host change.
 
+use super::before_launch::{check_edit, steps_of, Resolved};
 use super::process::{self, FieldError, Kind, ProcessOptions};
 use super::*;
 
@@ -18,13 +19,20 @@ const FORM_VERSION: u32 = 1;
 /// Request for the configuration kinds a user can create on this platform.
 pub struct ConfigurationTypesRequest {}
 
-/// The kinds of configuration a user can create here, in display order.
-/// Batch scripts are listed only on Windows.
+/// The kinds of configuration a user can create, in display order. Every
+/// platform creates and edits every kind, so a project shared with Windows
+/// keeps its batch scripts editable elsewhere; a kind this platform cannot
+/// run carries the `availability` its configurations resolve with.
 pub fn configuration_types(_request: ConfigurationTypesRequest) -> Result<Value, CoreError> {
     let types = Kind::ALL
         .into_iter()
-        .filter(|kind| kind.supported_on(Platform::HOST))
-        .map(|kind| json!({ "provider": kind.provider() }))
+        .map(|kind| {
+            let mut item = json!({ "provider": kind.provider() });
+            if let Some(availability) = process::platform_availability(kind, Platform::HOST) {
+                item["availability"] = json!(availability);
+            }
+            item
+        })
         .collect::<Vec<_>>();
     Ok(json!({ "types": types }))
 }
@@ -50,9 +58,9 @@ pub struct EditorFormRequest {
 /// The fields, values and automatic values of a process run editor.
 pub fn editor_form(request: EditorFormRequest) -> Result<Value, CoreError> {
     let root = existing_root(&request.root)?;
+    let layers = read_layers(&root, None, None)?;
     let (kind, mut values) = match request.configuration_id.as_deref() {
         Some(id) => {
-            let layers = read_layers(&root, None, None)?;
             let saved = SavedEntry::find(&layers, id)?;
             let kind = saved.kind()?;
             if request
@@ -74,13 +82,19 @@ pub fn editor_form(request: EditorFormRequest) -> Result<Value, CoreError> {
     };
     values.extend(request.values.unwrap_or_default());
     let draft = Draft::read(kind, &values)?;
-    Ok(json!({
+    let candidates =
+        Resolved::read(&root, &layers)?.candidates(request.configuration_id.as_deref());
+    let mut form = json!({
         "formVersion": FORM_VERSION,
         "provider": kind.provider(),
         "configurationId": request.configuration_id,
         "values": values,
-        "fields": fields(kind, &root, &draft),
-    }))
+        "fields": fields(kind, &root, &draft, candidates),
+    });
+    if let Some(availability) = process::platform_availability(kind, Platform::HOST) {
+        form["availability"] = json!(availability);
+    }
+    Ok(form)
 }
 
 #[derive(Debug, Deserialize)]
@@ -126,14 +140,17 @@ pub fn save_configuration(request: SaveConfigurationRequest) -> Result<Value, Co
         None => None,
     };
     let draft = Draft::read(kind, &request.values)?;
-    let (stored, errors) = draft.store(&root);
-    if !errors.is_empty() {
-        return Ok(json!({ "status": "invalid", "errors": errors }));
-    }
+    let (stored, mut errors) = draft.store(&root);
     let id = match &saved {
         Some(saved) => saved.id.clone(),
         None => unique_user_configuration_id(&stored.name, &existing_ids(&root, &layers)),
     };
+    if let Some(code) = check_edit(&root, &layers, &id, &draft.before_launch)? {
+        errors.push(FieldError::new("beforeLaunch", code));
+    }
+    if !errors.is_empty() {
+        return Ok(json!({ "status": "invalid", "errors": errors }));
+    }
     let mut entry = saved
         .as_ref()
         .map(|saved| saved.merged.clone())
@@ -165,6 +182,11 @@ pub fn save_configuration(request: SaveConfigurationRequest) -> Result<Value, Co
         object,
         "env",
         (!stored.environment.is_empty()).then(|| json!(stored.environment)),
+    );
+    set_or_remove(
+        object,
+        "beforeLaunch",
+        (!draft.before_launch.is_empty()).then(|| json!(steps_of(&draft.before_launch))),
     );
     let extensions = object
         .entry("extensions")
@@ -266,22 +288,16 @@ pub fn delete_configuration(request: DeleteConfigurationRequest) -> Result<Value
     Ok(json!({ "changes": changes }))
 }
 
-/// The kind of `provider` when this platform can create it.
+/// The built-in kind of `provider`. Every platform creates and edits every
+/// kind, also one it cannot run.
 fn creatable_kind(provider: &str) -> Result<Kind, CoreError> {
-    let kind = Kind::from_provider(provider).ok_or_else(|| {
+    Kind::from_provider(provider).ok_or_else(|| {
         CoreError::new(
             ErrorCode::NotSupported,
             "Only built-in process runs have an editor form",
         )
         .with_details(provider)
-    })?;
-    if !kind.supported_on(Platform::HOST) {
-        return Err(CoreError::new(
-            ErrorCode::NotSupported,
-            "Batch scripts run only on Windows",
-        ));
-    }
-    Ok(kind)
+    })
 }
 
 /// Removes configuration `id` from a layer document; whether it was there.
@@ -374,6 +390,14 @@ impl SavedEntry {
                 .map(|(name, value)| json!({ "name": name, "value": value }))
                 .collect::<Vec<_>>()),
         );
+        values.insert(
+            "beforeLaunch".into(),
+            json!(configuration
+                .before_launch
+                .iter()
+                .map(|step| step.configuration.clone())
+                .collect::<Vec<_>>()),
+        );
         if kind.runs_script() {
             let text = options.script().is_none() && options.text.is_some();
             values.insert("source".into(), json!(if text { "text" } else { "file" }));
@@ -419,6 +443,7 @@ fn default_values(kind: Kind) -> serde_json::Map<String, Value> {
     values.insert(kind.arguments_field().into(), json!(""));
     values.insert("workingDirectory".into(), json!("."));
     values.insert("environment".into(), json!([]));
+    values.insert("beforeLaunch".into(), json!([]));
     if kind.runs_script() {
         values.insert("interpreter".into(), json!(""));
         values.insert("interpreterArguments".into(), json!(""));
@@ -437,7 +462,7 @@ fn argument_text(arguments: &[String]) -> String {
 }
 
 /// The fields of `kind`'s editor, with automatic values for `draft`.
-fn fields(kind: Kind, root: &Path, draft: &Draft) -> Vec<Value> {
+fn fields(kind: Kind, root: &Path, draft: &Draft, candidates: Vec<Value>) -> Vec<Value> {
     let platform = Platform::HOST;
     let options = draft.options();
     let mut fields = vec![
@@ -496,6 +521,7 @@ fn fields(kind: Kind, root: &Path, draft: &Draft) -> Vec<Value> {
             field("environment", "environment"),
         ]);
     }
+    fields.push(field("beforeLaunch", "beforeLaunch").candidates(candidates));
     fields.into_iter().map(|field| field.0).collect()
 }
 
@@ -536,6 +562,12 @@ impl Field {
         self
     }
 
+    /// The run configurations a `beforeLaunch` field may name, `{id, name}`.
+    fn candidates(mut self, candidates: Vec<Value>) -> Self {
+        self.0["candidates"] = json!(candidates);
+        self
+    }
+
     /// A short explanation key, such as `windowsOnly`.
     fn note(mut self, note: &str) -> Self {
         self.0["note"] = json!(note);
@@ -564,6 +596,8 @@ struct Draft {
     interpreter: String,
     interpreter_arguments: String,
     execution_policy_bypass: bool,
+    /// The configurations started before this one, by ID.
+    before_launch: Vec<String>,
 }
 
 /// Checked values, in the form they are saved.
@@ -619,6 +653,11 @@ impl Draft {
             interpreter: text("interpreter")?,
             interpreter_arguments: text("interpreterArguments")?,
             execution_policy_bypass: flag("executionPolicyBypass", true)?,
+            before_launch: match values.get("beforeLaunch") {
+                None | Some(Value::Null) => Vec::new(),
+                Some(value) => serde_json::from_value::<Vec<String>>(value.clone())
+                    .map_err(|_| invalid_value("beforeLaunch"))?,
+            },
         })
     }
 
@@ -741,6 +780,7 @@ impl Draft {
                 "process".to_string(),
                 serde_json::to_value(&stored.options).expect("process options encode"),
             )]),
+            before_launch: Vec::new(),
             disabled: false,
             source: None,
             plugin: None,

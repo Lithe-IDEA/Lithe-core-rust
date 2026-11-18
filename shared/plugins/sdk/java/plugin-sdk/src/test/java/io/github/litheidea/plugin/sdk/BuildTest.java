@@ -32,16 +32,19 @@ class BuildTest {
 
     @Test
     void versionZeroAdmitsEveryTypedMethod() {
-        List<String> methods = Arrays.asList("execute", "test", "discoverTests", "prepareRun", "prepareDebug");
+        List<String> methods = Arrays.asList("execute", "test", "discoverTests", "prepareRun", "prepareDebug", "runEntrypoints");
         List<Map<String, Object>> replies = Arrays.asList(map("exitCode", 0, "output", "built\n"),
                 map("exitCode", 2, "output", "test failed\n"),
-                map("tests", Arrays.asList(map("suite", "Suite", "case", "exact # [case]"))), LAUNCH, map("program", "app/bin/main", "arguments", Arrays.asList("a b"), "workingDirectory", "app", "environment", map()));
+                map("tests", Arrays.asList(map("suite", "Suite", "case", "exact # [case]"))), LAUNCH, map("program", "app/bin/main", "arguments", Arrays.asList("a b"), "workingDirectory", "app", "environment", map()),
+                map("entrypoints", Arrays.asList(map("run", "main", "name", "Tool", "entrypoint", "example.Tool",
+                        "project", map("name", "app", "path", "app")))));
         Backend backend = Backend.create(null, null)
                 .onExecute((params, context) -> replies.get(0))
                 .onTest((params, context) -> replies.get(1))
                 .onDiscoverTests((params, context) -> replies.get(2))
                 .onPrepareRun((params, context) -> replies.get(3))
-                .onPrepareDebug((params, context) -> replies.get(4));
+                .onPrepareDebug((params, context) -> replies.get(4))
+                .onRunEntrypoints((params, context) -> replies.get(5));
         TestHost host = new TestHost(backend);
         try {
             Map<String, Object> result = Json.object(host.initialize(offered(0, 99)).get("result"));
@@ -53,6 +56,7 @@ class BuildTest {
                 // Compare JSON-normalized numeric types, as seen on the wire.
                 Map<String, Object> expected = Json.object(Json.parse(Json.stringify(replies.get(index))));
                 if (index == 2) { expected.put("format", "litheTestDiscovery"); expected.put("version", 0L); }
+                if (index == 5) { expected.put("format", "litheRunEntrypoints"); expected.put("version", 0L); }
                 assertEquals(expected, response.get("result"));
             }
         } finally { host.close(); }
@@ -77,16 +81,18 @@ class BuildTest {
     }
 
     @Test
-    void negotiationRequiresTheHostToOfferVersionZeroAsAnInteger() {
-        for (Object[] versions : new Object[][] {{0}, {99, 0, 1}}) {
+    void negotiationAnswersTheNewestOfferedVersionAsAnInteger() {
+        for (Object[][] row : new Object[][][] {{{0}, {0L}}, {{99, 0, 1}, {1L}}, {{1, 4, 3, 2}, {1L}}}) {
             Backend backend = Backend.create(null, null).onExecute((params, context) -> map("exitCode", 0, "output", ""));
             TestHost host = new TestHost(backend);
             try {
-                host.initialize(offered(versions));
+                Map<String, Object> result = Json.object(host.initialize(offered(row[0])).get("result"));
+                Map<String, Object> experimental = Json.object(Json.object(result.get("capabilities")).get("experimental"));
                 assertTrue(backend.negotiated().build());
+                assertEquals(row[1][0], Json.object(experimental.get("litheBuild")).get("version"));
             } finally { host.close(); }
         }
-        for (Object[] versions : new Object[][] {{1, 4, 3, 2}, {99, "0", false}, {}}) {
+        for (Object[] versions : new Object[][] {{4, 3, 2}, {99, "0", false}, {}}) {
             Backend backend = Backend.create(null, null).onExecute((params, context) -> map("exitCode", 0, "output", ""));
             TestHost host = new TestHost(backend);
             try {

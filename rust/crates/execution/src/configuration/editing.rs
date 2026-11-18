@@ -193,6 +193,29 @@ fn update_configuration_options(
             request.working_directory.trim(),
         )?)
     };
+    if let Some(ids) = &request.before_launch {
+        if let Some(code) =
+            super::before_launch::check_edit(root, layers, &request.configuration_id, ids)?
+        {
+            return Err(CoreError::new(
+                ErrorCode::InvalidRequest,
+                "A step before launch cannot run",
+            )
+            .with_details(format!("beforeLaunch: {code}")));
+        }
+    }
+    // An empty local list must still hide a list the project names.
+    let project_names_steps = layers.project.document["configurations"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .any(|item| {
+            item["id"] == request.configuration_id
+                && item["beforeLaunch"]
+                    .as_array()
+                    .is_some_and(|steps| !steps.is_empty())
+        });
+    let local_layer = request.scope == "local";
     let configurations = document["configurations"]
         .as_array_mut()
         .ok_or_else(|| CoreError::new(ErrorCode::ParseFailed, "configurations must be an array"))?;
@@ -204,6 +227,13 @@ fn update_configuration_options(
         patch["cwd"] = json!(working_directory);
     }
     patch["args"] = json!(split_arguments(&request.arguments));
+    let mut drop_steps = false;
+    match request.before_launch.as_deref() {
+        None => {}
+        Some([]) if local_layer && project_names_steps => patch["beforeLaunch"] = json!([]),
+        Some([]) => drop_steps = true,
+        Some(ids) => patch["beforeLaunch"] = json!(super::before_launch::steps_of(ids)),
+    }
     if provider == "build.provider" {
         if let Some(options) = &request.provider_run_options {
             patch["extensions"] = json!({"build-run":options});
@@ -221,6 +251,9 @@ fn update_configuration_options(
         })?;
         if working_directory.is_none() {
             target.remove("cwd");
+        }
+        if drop_steps {
+            target.remove("beforeLaunch");
         }
         for (key, value) in patch.as_object_mut().expect("patch is an object") {
             if key == "extensions" {
@@ -284,6 +317,14 @@ fn create_build_provider_configuration(
     let mut document = layers.local.document.clone();
     let mut ids = existing_ids(root, &layers);
     ids.extend(configuration_ids(&document)?.into_keys());
+    // An entrypoint run's configurations differ only by the entrypoint they start.
+    let entrypoint = request.entrypoint.as_deref().unwrap_or_default();
+    if entrypoint.len() > 4096 || entrypoint.contains('\0') {
+        return Err(CoreError::new(
+            ErrorCode::InvalidRequest,
+            "Invalid run entrypoint",
+        ));
+    }
     let encoded = serde_json::to_value(reference).expect("reference encodes");
     let mut identity = encoded.clone();
     identity.as_object_mut().unwrap().remove("userArguments");
@@ -300,7 +341,10 @@ fn create_build_provider_configuration(
             object.remove("userArguments");
             object.remove("execution");
         }
-        saved == identity
+        let saved_entrypoint = item["extensions"]["build-run"]["entrypoint"]
+            .as_str()
+            .unwrap_or_default();
+        saved == identity && saved_entrypoint == entrypoint
     });
     let id = existing
         .and_then(|index| items[index]["id"].as_str())
@@ -337,6 +381,19 @@ fn create_build_provider_configuration(
             )
         })?;
     extensions.insert("build".to_string(), encoded);
+    if !entrypoint.is_empty() {
+        let options = extensions
+            .entry("build-run")
+            .or_insert_with(|| json!({}))
+            .as_object_mut()
+            .ok_or_else(|| {
+                CoreError::new(
+                    ErrorCode::ParseFailed,
+                    "Run configuration build-run options must be an object",
+                )
+            })?;
+        options.insert("entrypoint".to_string(), json!(entrypoint));
+    }
     let typed: RunConfiguration = serde_json::from_value(configuration.clone())
         .map_err(|_| CoreError::new(ErrorCode::ParseFailed, "Invalid saved run configuration"))?;
     validate_configuration(&typed)?;
