@@ -5,12 +5,52 @@
 
 use super::manifest::{BuildSystemDeclaration, OptionDeclaration, OptionKind};
 use super::template::{self, Values};
-use lithe_plugin_model::Validation;
+use lithe_plugin_model::{PluginRejection, Validation};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 const FINGERPRINT_DOMAIN: &str = "lithe.build.options/1";
+
+/// Model-supplied facts for `choicesFromModel` options: available values,
+/// values active when the option is unset, and per-option exclusion prefixes.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct ModelOptionFacts<'a> {
+    pub(crate) values: Option<&'a BTreeMap<String, Vec<String>>>,
+    pub(crate) defaults: Option<&'a BTreeMap<String, Vec<String>>>,
+    pub(crate) exclude_prefixes: Option<&'a BTreeMap<String, String>>,
+}
+
+/// Choices the tool observed when it produced a model, scoped to its invocation.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct ModelOptionSelection {
+    pub(crate) fingerprint: String,
+    pub(crate) active_choices: BTreeMap<String, Vec<String>>,
+}
+
+impl ModelOptionSelection {
+    /// A model can answer only for the option values used to load it.
+    pub(crate) fn matching_choices(
+        &self,
+        build_system: &BuildSystemDeclaration,
+        resolved: &ResolvedOptions,
+    ) -> Option<&BTreeMap<String, Vec<String>>> {
+        (self.fingerprint == fingerprint(build_system, resolved)).then_some(&self.active_choices)
+    }
+}
+
+/// One choice of a select option as resolved for display and editing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ResolvedChoice {
+    pub(crate) value: String,
+    pub(crate) title: Option<String>,
+    pub(crate) from_model: bool,
+    pub(crate) custom: bool,
+    pub(crate) default_active: bool,
+    pub(crate) checked: bool,
+}
 
 /// Effective option values of one request, by option ID. Options with no
 /// effective value contribute nothing and are absent.
@@ -28,12 +68,41 @@ pub(crate) struct ResolvedOptions {
     pub(crate) dropped: Vec<String>,
 }
 
+/// Effective exclusion prefix of `option`, preferring the declaration's own.
+pub(crate) fn effective_exclude_prefix<'a>(
+    option: &'a OptionDeclaration,
+    facts: &ModelOptionFacts<'a>,
+) -> Option<&'a str> {
+    option.exclude_prefix.as_deref().or_else(|| {
+        facts
+            .exclude_prefixes
+            .and_then(|prefixes| prefixes.get(&option.id).map(String::as_str))
+            .filter(|prefix| option.is_valid_exclude_prefix(prefix))
+    })
+}
+
 /// Checks stored values against the declaration. `model_values` are the
 /// model's `optionValues`, or `None` when no model is loaded yet.
 pub(crate) fn resolve(
     build_system: &BuildSystemDeclaration,
     stored: &BTreeMap<String, Value>,
     model_values: Option<&BTreeMap<String, Vec<String>>>,
+) -> ResolvedOptions {
+    resolve_with_facts(
+        build_system,
+        stored,
+        ModelOptionFacts {
+            values: model_values,
+            ..ModelOptionFacts::default()
+        },
+    )
+}
+
+/// Checks stored values against the declaration and full model option facts.
+pub(crate) fn resolve_with_facts(
+    build_system: &BuildSystemDeclaration,
+    stored: &BTreeMap<String, Value>,
+    facts: ModelOptionFacts<'_>,
 ) -> ResolvedOptions {
     let mut resolved = ResolvedOptions::default();
     for id in stored.keys() {
@@ -42,11 +111,13 @@ pub(crate) fn resolve(
         }
     }
     for option in &build_system.options {
-        let known =
-            model_values.map(|values| values.get(&option.id).map(Vec::as_slice).unwrap_or(&[]));
+        let known = facts
+            .values
+            .map(|values| values.get(&option.id).map(Vec::as_slice).unwrap_or(&[]));
+        let exclude_prefix = effective_exclude_prefix(option, &facts);
         let user = stored
             .get(&option.id)
-            .map(|value| accepted(option, value, known));
+            .map(|value| accepted(option, value, known, exclude_prefix));
         let value = match user {
             Some(Some((value, discarded))) => {
                 resolved.chosen.push(option.id.clone());
@@ -85,18 +156,19 @@ fn accepted(
     option: &OptionDeclaration,
     value: &Value,
     known: Option<&[String]>,
+    exclude_prefix: Option<&str>,
 ) -> Option<(Value, bool)> {
     match (option.kind, value) {
         (OptionKind::Boolean, Value::Bool(_)) => Some((value.clone(), false)),
         (OptionKind::SingleSelect, Value::String(text)) => option
-            .accepts_value(text, known)
+            .accepts_value_with_prefix(text, known, exclude_prefix)
             .then(|| (value.clone(), false)),
         (OptionKind::MultiSelect, Value::Array(items)) => {
             let mut values = Vec::new();
             let mut discarded = false;
             for item in items {
                 let text = item.as_str()?;
-                if option.accepts_value(text, known) {
+                if option.accepts_value_with_prefix(text, known, exclude_prefix) {
                     values.push(text.to_string());
                 } else {
                     discarded = true;
@@ -104,6 +176,19 @@ fn accepted(
             }
             if discarded && values.is_empty() {
                 return None;
+            }
+            if let Some(prefix) = exclude_prefix {
+                let positives: BTreeSet<String> = values
+                    .iter()
+                    .filter(|item| !item.starts_with(prefix))
+                    .cloned()
+                    .collect();
+                let before = values.len();
+                values.retain(|item| {
+                    item.strip_prefix(prefix)
+                        .is_none_or(|rest| !positives.contains(rest))
+                });
+                discarded |= values.len() != before;
             }
             values.sort();
             values.dedup();
@@ -201,37 +286,214 @@ pub(crate) fn fingerprint(
     format!("{:x}", hasher.finalize())
 }
 
-/// The `build.resolveOptions` view: every option with its effective value,
-/// where the value came from, and the choices the UI should offer.
-pub(crate) fn describe(
+/// Positive choice values that are active when `option` has no user override:
+/// the declaration's `default`, else the model's `optionDefaults`.
+pub(crate) fn default_choice_set(
+    option: &OptionDeclaration,
+    facts: &ModelOptionFacts<'_>,
+) -> BTreeSet<String> {
+    let mut defaults = BTreeSet::new();
+    match (&option.kind, &option.default) {
+        (OptionKind::SingleSelect, Some(Value::String(value))) if !value.is_empty() => {
+            defaults.insert(value.clone());
+            return defaults;
+        }
+        (OptionKind::MultiSelect, Some(Value::Array(items))) => {
+            for item in items.iter().filter_map(Value::as_str) {
+                defaults.insert(item.to_string());
+            }
+            return defaults;
+        }
+        _ => {}
+    }
+    if option.choices_from_model {
+        let exclude_prefix = effective_exclude_prefix(option, facts);
+        let known = facts
+            .values
+            .and_then(|values| values.get(&option.id).map(Vec::as_slice));
+        if let Some(values) = facts.defaults.and_then(|map| map.get(&option.id)) {
+            for value in values {
+                if option.accepts_positive_value(value, known, exclude_prefix)
+                    && known.is_none_or(|list| list.iter().any(|item| item == value))
+                {
+                    defaults.insert(value.clone());
+                }
+            }
+        }
+    }
+    defaults
+}
+
+/// Ordered choices of `option`, with whether each is active by default and
+/// currently checked.
+pub(crate) fn choice_state(
+    option: &OptionDeclaration,
+    resolved: &ResolvedOptions,
+    facts: &ModelOptionFacts<'_>,
+    active: Option<&[String]>,
+) -> Vec<ResolvedChoice> {
+    let exclude_prefix = effective_exclude_prefix(option, facts);
+    let defaults = default_choice_set(option, facts);
+    let chosen = resolved.chosen.contains(&option.id);
+    let stored_positives: BTreeSet<&str> = resolved
+        .chosen_values
+        .get(&option.id)
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .filter(|value| !exclude_prefix.is_some_and(|prefix| value.starts_with(prefix)))
+        .collect();
+    let active = active.map(|choices| choices.iter().map(String::as_str).collect::<BTreeSet<_>>());
+    let is_checked = |value: &str| {
+        if option.kind != OptionKind::MultiSelect {
+            return false;
+        }
+        if let Some(active) = &active {
+            active.contains(value)
+        } else if chosen {
+            stored_positives.contains(value)
+        } else {
+            defaults.contains(value)
+        }
+    };
+
+    let mut seen = BTreeSet::new();
+    let mut choices = Vec::new();
+    for declared in &option.choices {
+        if seen.insert(declared.value.clone()) {
+            choices.push(ResolvedChoice {
+                checked: is_checked(&declared.value),
+                default_active: defaults.contains(&declared.value),
+                value: declared.value.clone(),
+                title: declared.title.clone(),
+                from_model: false,
+                custom: false,
+            });
+        }
+    }
+    if option.choices_from_model {
+        for value in facts
+            .values
+            .and_then(|values| values.get(&option.id))
+            .into_iter()
+            .flatten()
+        {
+            if exclude_prefix.is_some_and(|prefix| value.starts_with(prefix)) {
+                continue;
+            }
+            if seen.insert(value.clone()) {
+                choices.push(ResolvedChoice {
+                    checked: is_checked(value),
+                    default_active: defaults.contains(value),
+                    value: value.clone(),
+                    title: None,
+                    from_model: true,
+                    custom: false,
+                });
+            }
+        }
+    }
+    if option.kind == OptionKind::MultiSelect && option.allow_custom {
+        for value in &stored_positives {
+            if seen.insert((*value).to_string()) {
+                choices.push(ResolvedChoice {
+                    value: (*value).to_string(),
+                    title: None,
+                    from_model: false,
+                    custom: true,
+                    default_active: false,
+                    checked: is_checked(value),
+                });
+            }
+        }
+    }
+    choices
+}
+
+/// Turns the positive choices the user checked for a `multiSelect` option into
+/// the stored JSON value. Callers can require an explicit override to preserve
+/// inheritance and sibling selections even when the checked set is the default.
+pub(crate) fn encode_selected_choices(
+    option: &OptionDeclaration,
+    selected: &[String],
+    keep_override: bool,
+    facts: &ModelOptionFacts<'_>,
+) -> Validation<Value> {
+    if option.kind != OptionKind::MultiSelect {
+        return Err(PluginRejection::new(
+            "plugin.build.invalidOption",
+            "selectedChoices applies to multiSelect options only",
+        ));
+    }
+    let exclude_prefix = effective_exclude_prefix(option, facts);
+    let known = facts
+        .values
+        .map(|values| values.get(&option.id).map(Vec::as_slice).unwrap_or(&[]));
+    let mut checked = Vec::with_capacity(selected.len());
+    for value in selected {
+        if !option.accepts_positive_value(value, known, exclude_prefix) {
+            return Err(PluginRejection::new(
+                "plugin.build.invalidOption",
+                "The option value is not accepted by its declaration",
+            ));
+        }
+        checked.push(value.clone());
+    }
+    checked.sort();
+    checked.dedup();
+    let defaults: Vec<String> = default_choice_set(option, facts).into_iter().collect();
+    if !keep_override && checked == defaults {
+        return Ok(Value::Null);
+    }
+    let mut items = checked.clone();
+    if let Some(prefix) = exclude_prefix {
+        for default in &defaults {
+            if checked.binary_search(default).is_err() {
+                items.push(format!("{prefix}{default}"));
+            }
+        }
+    }
+    items.sort();
+    items.dedup();
+    Ok(json!(items))
+}
+
+/// The `build.resolveOptions` view with model defaults and exclusion prefixes.
+pub(crate) fn describe_with_facts(
     build_system: &BuildSystemDeclaration,
     resolved: &ResolvedOptions,
-    model_values: Option<&BTreeMap<String, Vec<String>>>,
+    facts: ModelOptionFacts<'_>,
+    selection: Option<&ModelOptionSelection>,
 ) -> Value {
+    let active = selection.and_then(|selection| selection.matching_choices(build_system, resolved));
     let options: Vec<Value> = build_system
         .options
         .iter()
         .map(|option| {
-            let mut choices: Vec<Value> = option
-                .choices
+            let active = active.and_then(|choices| choices.get(&option.id).map(Vec::as_slice));
+            let resolved_choices = choice_state(option, resolved, &facts, active);
+            let choices: Vec<Value> = resolved_choices
                 .iter()
-                .map(|choice| json!({ "value": choice.value, "title": choice.title }))
+                .map(|choice| {
+                    let mut entry = if choice.from_model {
+                        json!({ "value": choice.value, "fromModel": true })
+                    } else if choice.custom {
+                        json!({ "value": choice.value, "custom": true })
+                    } else {
+                        json!({ "value": choice.value, "title": choice.title })
+                    };
+                    if choice.default_active {
+                        entry["defaultActive"] = json!(true);
+                    }
+                    entry
+                })
                 .collect();
-            if option.choices_from_model {
-                let declared: Vec<&String> =
-                    option.choices.iter().map(|choice| &choice.value).collect();
-                for value in model_values
-                    .and_then(|values| values.get(&option.id))
-                    .into_iter()
-                    .flatten()
-                    .filter(|value| !declared.contains(value))
-                {
-                    choices.push(json!({ "value": value, "fromModel": true }));
-                }
-            }
+            let defaults = default_choice_set(option, &facts);
+            let exclude_prefix = effective_exclude_prefix(option, &facts);
             let source = if resolved.chosen.contains(&option.id) {
                 "user"
-            } else if option.default.is_some() {
+            } else if option.default.is_some() || !defaults.is_empty() {
                 "default"
             } else {
                 "unset"
@@ -256,7 +518,7 @@ pub(crate) fn describe(
                         _ => Value::Null,
                     })
             };
-            let mut value = json!({
+            let mut entry = json!({
                 "id": option.id,
                 "displayName": option.display_name,
                 "kind": option.kind,
@@ -265,10 +527,23 @@ pub(crate) fn describe(
                 "choices": choices,
                 "allowCustom": option.allow_custom,
             });
-            if option.scope == super::manifest::OptionScope::Instance {
-                value["scope"] = json!("instance");
+            if option.kind == OptionKind::MultiSelect
+                && (active.is_some()
+                    || !defaults.is_empty()
+                    || exclude_prefix.is_some()
+                    || resolved_choices.iter().any(|choice| choice.custom))
+            {
+                let selected: Vec<&str> = resolved_choices
+                    .iter()
+                    .filter(|choice| choice.checked)
+                    .map(|choice| choice.value.as_str())
+                    .collect();
+                entry["selectedChoices"] = json!(selected);
             }
-            value
+            if option.scope == super::manifest::OptionScope::Instance {
+                entry["scope"] = json!("instance");
+            }
+            entry
         })
         .collect();
     json!({

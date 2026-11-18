@@ -2649,6 +2649,31 @@
               }
             }
           }
+        },
+        "optionDefaults": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "each",
+              "value"
+            ],
+            "properties": {
+              "each": {
+                "type": "string"
+              },
+              "where": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/buildPredicate"
+                }
+              },
+              "value": {
+                "$ref": "#/$defs/buildFieldSpec"
+              }
+            }
+          }
         }
       }
     },
@@ -2894,6 +2919,12 @@
               "separator": {
                 "type": "string",
                 "minLength": 1
+              },
+              "excludePrefix": {
+                "description": "multiSelect only: 1-4 printable characters free of separator that turn a default choice off when prefixed to its value (such as '-' in '-P -dev').",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4
               },
               "arguments": {
                 "type": "array",

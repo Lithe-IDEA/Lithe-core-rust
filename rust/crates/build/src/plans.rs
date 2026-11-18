@@ -308,15 +308,15 @@ impl<'a> PlanContext<'a> {
                 ))
             }
         }
-        Self::with_model_options(build_system, base, None)
+        Self::with_model_options(build_system, base, options::ModelOptionFacts::default())
     }
 
     fn with_model_options(
         build_system: &'a BuildSystemDeclaration,
         base: &PlanBase,
-        model_values: Option<&BTreeMap<String, Vec<String>>>,
+        facts: options::ModelOptionFacts<'_>,
     ) -> Validation<Self> {
-        let resolved = options::resolve(build_system, &base.options, model_values);
+        let resolved = options::resolve_with_facts(build_system, &base.options, facts);
         let contribution = options::contribution(build_system, &resolved)?;
         let fingerprint = options::fingerprint(build_system, &resolved);
         Ok(Self {
@@ -1039,7 +1039,15 @@ pub(crate) fn run_entries(
         plugin_directory: None,
         workspace_state_directory: None,
     };
-    let context = PlanContext::with_model_options(build_system, &base, Some(&model.option_values))?;
+    let context = PlanContext::with_model_options(
+        build_system,
+        &base,
+        options::ModelOptionFacts {
+            values: Some(&model.option_values),
+            defaults: Some(&model.option_defaults),
+            exclude_prefixes: Some(&model.option_exclude_prefixes),
+        },
+    )?;
     let projects: BTreeMap<&str, &ModelProject> = model
         .projects
         .iter()
