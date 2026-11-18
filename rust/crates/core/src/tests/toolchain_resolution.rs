@@ -254,6 +254,29 @@ fn toolchain_resolution_valid_pin_does_not_depend_on_provider_availability() {
 }
 
 #[test]
+fn toolchain_resolution_review_keeps_pin_when_project_paths_exceed_the_native_limit() {
+    let mut value = input();
+    installation(&mut value, HOME, "21.0.4");
+    value["local"] = local_pins();
+    let definition = &mut value["registry"]["plugins"][0]["manifest"]["toolDefinitions"][0];
+    let runner = "long-but-valid-fixture-wrapper";
+    definition["wrappers"] = json!([{"path":runner,"platforms":["macos"]}]);
+    definition["executables"].as_array_mut().unwrap().insert(
+        1,
+        json!({"id":"wrapper","kind":"projectFile","path":runner,"platforms":["macos"]}),
+    );
+    // The root is within the native path budget, but appending the optional layout is not.
+    let root = format!("/{}fixture", "sample-project/".repeat(272));
+    value["workspaceRoot"] = json!(root);
+    value["filesystem"].as_array_mut().unwrap()[0] = fact(&root, "directory", false);
+
+    let result = resolve(&value);
+    assert_eq!(result["outcome"]["selection"]["home"], HOME);
+    assert_eq!(result["outcome"]["selection"]["layer"], "pinned");
+    assert_eq!(result["projectCandidates"], json!([]));
+}
+
+#[test]
 fn toolchain_resolution_optional_provider_timeout_keeps_shell_fallback_visible() {
     let mut value = input();
     installation(&mut value, HOME, "21.0.4");
@@ -1089,6 +1112,83 @@ fn toolchain_resolution_wrapper_requires_action_and_never_invents_installation_h
     assert!(selection["environment"].get("JAVA_HOME").is_none());
     assert_eq!(selection["environment"]["LITHE_JAVA_PATH"], wrapper);
     assert_eq!(selection["pathPrepend"], json!([]));
+}
+
+#[test]
+fn toolchain_resolution_review_reports_the_first_project_failure_and_still_falls_back() {
+    let mut value = input();
+    let definition = &mut value["registry"]["plugins"][0]["manifest"]["toolDefinitions"][0];
+    definition["wrappers"] = json!([{"path":"fixture-wrapper","platforms":["macos"]}]);
+    definition["executables"].as_array_mut().unwrap().splice(
+        1..1,
+        [
+            json!({"id":"wrapper","kind":"projectFile","path":"fixture-wrapper","platforms":["macos"]}),
+            json!({"id":"env","kind":"projectFile","projectKind":"environment","home":"env","path":"env/bin/java","platforms":["macos","linux"]}),
+        ],
+    );
+    let executable = format!("{WORKSPACE}/env/bin/java");
+    value["projectCodeAllowed"] = json!(true);
+    value["filesystem"].as_array_mut().unwrap().extend([
+        fact(&format!("{WORKSPACE}/fixture-wrapper"), "file", false),
+        fact(&format!("{WORKSPACE}/env"), "directory", false),
+        fact(&format!("{WORKSPACE}/env/bin"), "directory", false),
+        fact(&executable, "file", true),
+    ]);
+
+    let skipped = resolve(&value);
+    assert_eq!(skipped["outcome"]["reason"]["code"], "notExecutable");
+    assert_eq!(skipped["projectCandidates"][0]["reason"], "notExecutable");
+    assert_eq!(skipped["projectCandidates"][1]["reason"], "probeFailed");
+
+    value["probes"] = json!([{
+        "executable":executable,
+        "output":"openjdk version \"21.0.4\"",
+        "exitCode":0
+    }]);
+    assert_eq!(
+        resolve(&value)["outcome"]["selection"]["executable"],
+        executable
+    );
+}
+
+#[test]
+fn toolchain_resolution_review_subdirectory_masks_wrappers_at_filesystem_roots() {
+    for (platform, root) in [
+        ("macos", "/"),
+        ("windows", "C:/"),
+        ("windows", "//server/share/"),
+    ] {
+        let mut value = input();
+        let definition = &mut value["registry"]["plugins"][0]["manifest"]["toolDefinitions"][0];
+        let runner = "fixture-wrapper";
+        definition["wrappers"] = json!([{"path":runner,"platforms":[platform]}]);
+        definition["executables"].as_array_mut().unwrap().insert(
+            1,
+            json!({"id":"wrapper","kind":"projectFile","path":runner,"platforms":[platform]}),
+        );
+        value["platform"] = json!(platform);
+        value["workspaceRoot"] = json!(root);
+        value["directory"] = json!("sub");
+        value["projectCodeAllowed"] = json!(true);
+        let child = format!("{root}sub");
+        let executable = format!("{child}/{runner}");
+        value["filesystem"] = json!([
+            fact(root, "directory", false),
+            fact(&format!("{root}{runner}"), "file", true),
+            fact(&child, "directory", false),
+            fact(&executable, "file", false)
+        ]);
+        let result = resolve(&value);
+        assert_eq!(
+            result["outcome"]["reason"]["code"], "notExecutable",
+            "{root}"
+        );
+        assert_eq!(
+            result["projectCandidates"],
+            json!([{"candidateID":"wrapper","projectKind":"wrapper","path":executable,"reason":"notExecutable"}]),
+            "{root}"
+        );
+    }
 }
 
 #[test]

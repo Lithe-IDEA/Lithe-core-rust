@@ -7093,3 +7093,9 @@ existing precedence remains fixed consumer choice, project override, global defa
 automatic discovery. Clearing the global default exposes live automatic selection without
 removing manual registrations. Each new consumer resolves fresh facts and probes; already
 running processes retain their launch-time environment.
+
+When no candidate resolves, `toolchains.resolve` reports the first failure in resolution
+order. A nearer directory masks the project root even when the workspace is a filesystem
+root. Optional project discovery omits paths outside the supported native bounds, so a
+usable pin still resolves. Both project and external installations can omit `pathPrepend`
+directories explicitly observed as missing.

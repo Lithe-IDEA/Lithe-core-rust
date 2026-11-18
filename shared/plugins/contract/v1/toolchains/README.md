@@ -341,8 +341,8 @@ Manual pin-only installations are not automatic candidates.
 
 Outcome is `resolved` with `{home,executable,version,provider,layer,projectCode,
 environment,pathPrepend}`, `skip` with a reason, or `terminalFailure` with a reason
-(when every candidate skips without resolving, `skip.reason` retains the highest-layer
-candidate's skip reason, or `notFound` when every layer was empty).
+(when every candidate skips without resolving, `skip.reason` retains the first
+failure in resolution order, or `notFound` when every layer was empty).
 Output also carries `operationID`, `tool`, `directory`, `trace`, `projectCandidates`,
 `unmet` and `conflicts`.
 Wrapper homes may be `null`; home exports/PATH are then omitted. Project code
@@ -352,9 +352,10 @@ and is never passively probed; when `projectCodeAllowed` is `false` or omitted, 
 For `projectKind: "environment"` (with `home`, such as `.venv`), `home`, every
 intermediate parent directory between `home` and `path` (such as `.venv/bin` or
 `.venv/Scripts`), `requires` markers inside `home`, and existing `pathPrepend`
-directories must canonically stay within the workspace root and `home` (`pathPrepend`
-entries attested as `missing` are omitted, while unobserved or escaping directories fail
-closed with `unsafePath`); the leaf executable `path` may be a regular executable file or
+directories must canonically stay within the workspace root and `home`. For any
+installation with a home, `pathPrepend` omits directories observed as `missing`.
+Unobserved directories or directories whose canonical paths escape the home fail
+with `unsafePath`. The leaf executable `path` may be a regular executable file or
 a single-hop or multi-hop symbolic link to a regular executable file inside or outside
 the workspace (both `path` and its resolved `canonicalPath` attested as `file` with
 `executable: true`), requires a version probe on the lexical `path`, and
@@ -366,6 +367,8 @@ must remain inside the workspace root; links escaping the workspace fail closed 
 `projectCandidates` lists present nearest-ancestor `projectFile` candidates as
 `{candidateID,projectKind,path,home?,executable?,version?,reason?}`, emitting
 `executable` only after `projectCodeAllowed: true` and containment/executable checks pass.
+An optional layout whose joined native path is outside the supported path bounds is
+omitted from discovery. A usable pin can still resolve in that snapshot.
 Each candidate builds a fresh environment, so rejected exports cannot leak into its
 successor.
 
@@ -446,7 +449,9 @@ contributes such a target. This candidate report itself grants no authority.
 - `selected` is the automatic-layer home, or `null`; equal highest versions
   in different homes leave it `null` and add an `automatic` entry to `conflicts`.
 
-A first call without `probes` returns every checked executable as `probeFailed`.
+A first call without `probes` reports `probeFailed` for checked executables
+that require a version. A wrapper can resolve without a version unless the
+caller supplies a minimum.
 The host runs only those executables with the definition's probe arguments,
 then calls again with their `{executable,output,exitCode}`. External homes inside a
 workspace root and untrusted `projectFile` candidates are refused before any probe,

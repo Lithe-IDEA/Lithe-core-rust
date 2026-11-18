@@ -145,19 +145,8 @@ pub(crate) fn resolve(input: &Value, validate_manifest: ManifestValidator) -> Va
             Vec::new()
         } else {
             let mut file_choices =
-                collect_project_file_choices(&snapshot, &candidates, &root, directory)?;
-            file_choices.sort_by_key(|value| {
-                (
-                    std::cmp::Reverse(value.anchor.split('/').count()),
-                    value.category,
-                )
-            });
-            if let Some(nearest) = file_choices
-                .first()
-                .map(|value| value.anchor.split('/').count())
-            {
-                file_choices.retain(|value| value.anchor.split('/').count() == nearest);
-            }
+                collect_project_file_choices(&snapshot, &candidates, &root, directory);
+            keep_nearest_project_choices(&mut file_choices);
             file_choices
                 .iter()
                 .map(|choice| project_candidate_row(&snapshot, choice))
@@ -375,7 +364,7 @@ pub(crate) fn resolve(input: &Value, validate_manifest: ManifestValidator) -> Va
             (_, "project") if !project_done => {
                 project_done = true;
                 let mut choices =
-                    collect_project_file_choices(&snapshot, &candidates, &root, directory)?;
+                    collect_project_file_choices(&snapshot, &candidates, &root, directory);
                 if candidates
                     .iter()
                     .any(|value| value["kind"] == "toolchain" && value["scope"] == "project")
@@ -400,30 +389,18 @@ pub(crate) fn resolve(input: &Value, validate_manifest: ManifestValidator) -> Va
                         });
                     }
                 }
-                choices.sort_by_key(|value| {
-                    (
-                        std::cmp::Reverse(value.anchor.split('/').count()),
-                        value.category,
-                    )
-                });
                 // The nearest declaration masks inherited declarations even when unmet.
-                if let Some(nearest) = choices.first().map(|value| value.anchor.split('/').count())
-                {
-                    choices.retain(|value| value.anchor.split('/').count() == nearest);
-                }
+                keep_nearest_project_choices(&mut choices);
                 project_candidates = choices
                     .iter()
                     .filter(|choice| choice.candidate)
                     .map(|choice| project_candidate_row(&snapshot, choice))
                     .collect();
                 while let Some(first) = choices.first() {
-                    let depth = first.anchor.split('/').count();
                     let category = first.category;
                     let count = choices
                         .iter()
-                        .take_while(|value| {
-                            value.anchor.split('/').count() == depth && value.category == category
-                        })
+                        .take_while(|value| value.category == category)
                         .count();
                     let mut group: Vec<_> = choices.drain(..count).collect();
                     let native_sources: BTreeSet<_> = group
@@ -470,7 +447,7 @@ pub(crate) fn resolve(input: &Value, validate_manifest: ManifestValidator) -> Va
                             .filter_map(|value| value.value["provider"].as_str())
                             .collect();
                         conflicts.push(json!({"scope":"project","providers":providers,"action":"chooseProvider"}));
-                        failure = Some(reason("providerConflict", tool));
+                        failure.get_or_insert_with(|| reason("providerConflict", tool));
                         break;
                     }
                     for choice in &group {
@@ -489,7 +466,7 @@ pub(crate) fn resolve(input: &Value, validate_manifest: ManifestValidator) -> Va
                                 if code == "requestedNotInstalled" && !unmet.contains(&why) {
                                     unmet.push(why.clone());
                                 }
-                                failure = Some(why);
+                                failure.get_or_insert(why);
                             }
                         }
                     }

@@ -11,6 +11,24 @@ pub(crate) struct ProjectChoice {
     pub(crate) candidate: bool,
 }
 
+impl ProjectChoice {
+    fn depth(&self) -> usize {
+        // Native roots can end in a separator without contributing a directory.
+        self.anchor
+            .split('/')
+            .filter(|part| !part.is_empty())
+            .count()
+    }
+}
+
+/// Keeps the nearest declaring directory and orders its candidates by category.
+pub(crate) fn keep_nearest_project_choices(choices: &mut Vec<ProjectChoice>) {
+    choices.sort_by_key(|choice| (std::cmp::Reverse(choice.depth()), choice.category));
+    if let Some(nearest) = choices.first().map(ProjectChoice::depth) {
+        choices.retain(|choice| choice.depth() == nearest);
+    }
+}
+
 pub(crate) fn ancestors(directory: &str) -> Vec<&str> {
     let mut result = vec![directory];
     let mut current = directory;
@@ -22,30 +40,35 @@ pub(crate) fn ancestors(directory: &str) -> Vec<&str> {
 }
 
 /// Collects `projectFile` candidates present along `ancestors(directory)` without
-/// probing or granting execution authority.
+/// probing or granting execution authority. Layouts that cannot be represented
+/// within the native path rules cannot identify a candidate in this snapshot.
 pub(crate) fn collect_project_file_choices(
     snapshot: &Snapshot<'_>,
     candidates: &[&Value],
     root: &str,
     directory: &str,
-) -> Validation<Vec<ProjectChoice>> {
+) -> Vec<ProjectChoice> {
     let mut choices = Vec::new();
+    let directories = ancestors(directory);
     for source in candidates {
         if source["kind"] != "projectFile" {
             continue;
         }
-        for ancestor in ancestors(directory) {
+        for &ancestor in &directories {
             let anchor = if ancestor == "." {
                 root.to_owned()
+            } else if let Some(anchor) = paths::join(root, ancestor, snapshot.platform) {
+                anchor
             } else {
-                paths::join(root, ancestor, snapshot.platform).ok_or_else(|| reject("directory"))?
+                continue;
             };
-            let native = paths::join(
+            let Some(native) = paths::join(
                 &anchor,
                 source["path"].as_str().unwrap_or(""),
                 snapshot.platform,
-            )
-            .ok_or_else(|| reject("projectFile"))?;
+            ) else {
+                continue;
+            };
             if snapshot.fact(&native, "file").is_err() {
                 continue;
             }
@@ -65,12 +88,14 @@ pub(crate) fn collect_project_file_choices(
             let mut value = (*source).clone();
             value["nativePath"] = json!(native);
             if let Some(home) = source["home"].as_str() {
-                value["nativeHome"] = json!(if home == "." {
+                let native_home = if home == "." {
                     anchor.clone()
+                } else if let Some(home) = paths::join(&anchor, home, snapshot.platform) {
+                    home
                 } else {
-                    paths::join(&anchor, home, snapshot.platform)
-                        .ok_or_else(|| reject("projectFile.home"))?
-                });
+                    continue;
+                };
+                value["nativeHome"] = json!(native_home);
             }
             choices.push(ProjectChoice {
                 anchor,
@@ -85,7 +110,7 @@ pub(crate) fn collect_project_file_choices(
             });
         }
     }
-    Ok(choices)
+    choices
 }
 
 /// Validates authorization, directory containment, marker containment, executable

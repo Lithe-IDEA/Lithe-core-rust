@@ -167,7 +167,7 @@ pub(crate) fn candidates(input: &Value, validate_manifest: ManifestValidator) ->
     let project = if root.is_empty() {
         Vec::new()
     } else {
-        collect_project_file_choices(&snapshot, &applicable_candidates, &root, ".")?
+        collect_project_file_choices(&snapshot, &applicable_candidates, &root, ".")
             .iter()
             .map(|choice| project_candidate_row(&snapshot, choice))
             .collect()
