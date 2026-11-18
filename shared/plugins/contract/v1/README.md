@@ -182,7 +182,7 @@ symbolic links. A host treats an installed package as read-only.
 | `buildSystems` | Project-level build tools. |
 | `commandInstallers` | How the host installs a bare command a `systemCommand` launch needs; requires `commandInstallers: 0` and `commands.install`; see [Command installers](#command-installers). |
 | `managedRuntimes` | Pinned dependencies qualified by a packaged backend and installed in host-owned storage independent of plugin version; requires `managedRuntimes: 0` and `runtimes.install`; see [Managed runtimes](#managed-runtimes). |
-| `toolDefinitions` | Plugin-owned tool policy ([Core foundation](toolchains/README.md)); requires `toolDefinitions: 0`; a host may offer read-only discovery and resolve Build and run tools. |
+| `toolDefinitions` | Plugin-owned tool policy ([Core foundation](toolchains/README.md)); requires `toolDefinitions: 0`, or `1` when a definition sets the settings-list `category` or `audience`; a host may offer read-only discovery and resolve Build and run tools. |
 | `toolchainProviders` | Backend fact-provider declarations ([Core foundation](toolchains/README.md)); requires `toolchainProviders: 0`, `backend: 0` and `toolchains.provide`. |
 | `keymapImportProviders` | Independent shortcut import providers; requires `keymapImportProviders: 0`, `backend: 0` and `keymaps.provide`. A host provides access to explicitly selected sources. |
 | `pluginFunctions` | [Functions the plugin exports to, and calls from, other plugins](#cross-plugin-calls); requires `pluginFunctions: 0` and `backend: 0`, and grants no permission. A host that advertises this capability relays the calls. |

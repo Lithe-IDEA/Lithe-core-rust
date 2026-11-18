@@ -88,5 +88,8 @@ pub(super) fn dispatch(
                 lithe_plugin_manifest::validated_manifest_json,
             )
         }),
+        ToolchainsCommand::SettingsView => {
+            plugin_response(id, payload, crate::toolchain::settings_view_command)
+        }
     }
 }

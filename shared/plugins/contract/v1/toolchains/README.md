@@ -28,13 +28,24 @@ contribution. Executable candidate sets keep their strict source types; the
 does not gain definition-owned candidate fields (see
 [Executable resolution](../README.md#executable-resolution)).
 
-Definitions own IDs, labels/icons, `executableLayouts`, ordered `executables`,
+Definitions own IDs, labels/icons, optional display `category` and `audience`,
+`executableLayouts`, ordered `executables`,
 `version`, `homeLayouts`, `discovery`, `homeVariable`, `commands`, `wrappers`,
 `exports`, `pathPrepend` and argv `launch`. Counts, relative paths, bounded globs,
 platforms, templates and version expressions are validated recursively; unknown
 fields fail closed. Candidate graph ordering reuses the existing shared graph
 validator and cannot cross layer barriers. This slice does not support a
 definition candidate of `kind: runtime`, or `toolchainConsumers`.
+
+`category` places the tool in one settings group: `runtime` (runtimes and SDKs),
+`build`, `package` (package managers), `debug` (debuggers and profilers), `lint`
+(checkers and formatters) or `other`; it defaults to `other`. `audience` is
+`user` (the default) or `plugin` for a runtime a plugin only runs for itself,
+such as the JVM behind a language server. Both change only where the settings
+list shows the tool; resolution, pins and launches ignore them. Other values
+reject the manifest. They are `toolDefinitions` version 1: a manifest that sets
+either requires `toolDefinitions: 1`, and a host that supports only version 0
+does not install it. Definitions without them keep requiring `0`.
 
 `version` is `{arguments, pattern}`. `arguments` lists one to eight distinct
 literal words of at most 64 bytes. The first is a flag (`-version`,
@@ -122,6 +133,7 @@ are not a substitute for that adapter. These commands perform no native I/O.
 | `toolchains.instantiateLaunch` | `{registry,tool,executable,home?,entry?,runtimeArguments,arguments}` | `launch` |
 | `toolchains.discoveryPlan` | `{registry,platform}` | `plan` |
 | `toolchains.candidates` | Captured discovery input described below | `candidates` |
+| `toolchains.settingsView` | `{tools,query,issueLimit?}` described below | `view` |
 
 Every `registry` input is the raw `{plugins:[{manifest}]}` request of the enabled
 plugins, not a previously normalized result. Core revalidates complete production
@@ -458,6 +470,48 @@ workspace root and untrusted `projectFile` candidates are refused before any pro
 so a project program is never run passively to read its version. The desktop host
 bounds probes by count, concurrency and total time, and reports skipped work as
 diagnostics rather than a missing tool.
+
+## Settings list
+
+`settingsView` projects the settings list of every enabled tool, so a host never
+classifies resolver reasons, filters, groups, sorts or counts by itself. It reads
+facts the host already holds and performs no resolution. Input:
+
+- `tools` (at most 20,000) are `{id,displayName,pluginID,pluginName?,category?,
+  audience?,reason?,pinned?,changed?,terms?}`. `category` and `audience` come
+  from the registry definition. `reason` is the stable code the resolver returned
+  for the effective layer, absent when an installation applies. `pinned` marks a
+  manually chosen installation, `changed` an edit that is not applied yet.
+  `terms` (at most 16) is further searchable text such as versions and paths.
+  IDs are unique.
+- `query` is `{text?,filter?,groupBy?,collapsed?,expanded?}`. `filter` is `all`
+  (default), `problems`, `pinned` or `changed`; `groupBy` is `category`
+  (default), `plugin` or `none`. `collapsed` and `expanded` list group keys the
+  user toggled.
+- `issueLimit` (default 5, at most 50) bounds `issues`.
+
+Each tool has a status. No `reason` is `ok`. `projectCodeRequiresAction`,
+`ambiguousInstallation` and `probeFailed` are `warning`: the user clears them by
+trusting the project, choosing an installation or probing again. Any other
+reason is `error`. The output `view` is `{rows,issues,counts}`:
+
+- `rows` is the list to render, top to bottom. A group row is
+  `{kind:"group",key,count,problems,collapsed}` with `category`, `audience` or
+  `pluginID` and `title`; a tool row is `{kind:"tool",index,status}`, where
+  `index` points into `tools`. Grouping by category uses keys `category:<name>`
+  in the order listed above, and puts every `audience: plugin` tool last under
+  `audience:plugin`. Grouping by plugin uses `plugin:<pluginID>`, ordered by
+  plugin name. Inside a group, and in the `none` list, errors come first, then
+  warnings, then the rest, each by name.
+- A group is collapsed when the user collapsed it; otherwise `audience:plugin`
+  starts collapsed, and so does every plugin group when there are more than 40.
+  While `text` or a filter other than `all` applies, no group is collapsed, so a
+  match is never hidden.
+- `issues` lists the first problems in the same order as `{index,status}`.
+- `counts` is `{total,matched,problems,errors,warnings,pinned,changed}`. Only
+  `matched` depends on the query.
+
+## Fixtures and acceptance vectors
 
 Production-shape examples are [tool-definition.plugin.json](../fixtures/toolchains/tool-definition.plugin.json)
 and [toolchain-provider.plugin.json](../fixtures/toolchains/toolchain-provider.plugin.json).

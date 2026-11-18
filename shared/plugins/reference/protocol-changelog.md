@@ -16,6 +16,8 @@
 
 - `managedRuntimes` 0（API-23）：新增固定 HTTPS 归档与 SHA-256、平台选择、与插件版本无关的缓存身份，以及插件后端对外部/暂存依赖的资格检查契约。新增权限 `runtimes.install`、审查程序 `managedRuntime`、Core 命令 `plugins.managedRuntimes.plan` 与 `plugins.managedRuntimes.decodeResolution`；正常语言服务器启动可接收只读 `runtimes` 映射。原生 `lsp.startServer` 新增可选 `functionRelayEnabled`（默认 true），准备会话设为 false 隔离跨插件调用但保留宿主直接调用。无新增宿主 RPC 或 SDK 版本。实现见 [#96](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/96)（lithe-support[bot]）；合入日期在合并后补入下方时间线。宿主须先发布对应能力，插件才可要求它。
 
+- **`toolDefinitions` 1**（API-23、API-19）：工具定义新增只影响显示位置的 `category`（`runtime`、`build`、`package`、`debug`、`lint`、`other`，默认 `other`）和 `audience`（`user` 默认，`plugin` 表示插件自用的运行时）；用到任一字段的插件声明 `toolDefinitions: 1`，只支持 0 的宿主不会安装，其他插件继续写 0。新增 Core 命令 `toolchains.settingsView`：按宿主已有的解析原因、固定和未应用状态给设置页工具列表分类（`error`、`warning`、`ok`）、筛选、分组、折叠和计数，最多 20,000 个工具。`plugins.settings.navigation` 支持三级、每项可选 `limit`（超出的子项折叠成一行“全部 N 个”）以及每行的 `matched` 与 `path`。清单 schema 的 `requires.buildProviders` 补上 #89 已支持的版本 1。没有新增宿主方法、通知或 SDK 版本。实现见待开的 Core PR；合入日期在合并后补入下方时间线。宿主须先声明 `toolDefinitions` 1，插件才可要求它。
+
 ## 按协议查首次出现
 
 所有版本都从 `0` 开始。以后一个 PR 给某个能力加版本 `1` 时，在对应的表里为它加一行。

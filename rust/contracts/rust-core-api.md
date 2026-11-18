@@ -511,6 +511,7 @@ or removing a command fails until the table changes in the same commit.
 | `toolchains.discoveryPlan` | Return platform-filtered definition-owned scan declarations, layouts, probes, PATH entries, login-shell home variables, project-file candidates and budgets; never scans native directories |
 | `toolchains.candidates` | List one tool's root project-file candidates, login-shell homes (declared `environment` variables and, from the optional `commandHomes`, declared commands found on the PATH) and host-scanned installations with checked executables, versions or skip reasons, and the automatic-layer choice; never starts a probe. A shell home that checks out is also an `installations` entry with provider `host:shell`, once per canonical home, so a picker can offer every home the resolver may run; `selected` remains the automatic layer's own choice |
 | `toolchains.instantiateLaunch` | Expand an enabled tool definition's `launch` template for a selected executable, entry, runtime arguments and arguments; a part the template cannot carry is `plugin.toolchain.launchMismatch`; performs no I/O |
+| `toolchains.settingsView` | Project the settings list of every enabled tool from host-held facts: classify each resolver reason as `error`, `warning` or `ok`, filter by text and by problems, pins or pending edits, group by definition category (plugin-only runtimes last), plugin or nothing, apply default and user folding, and return rows, the first issues and counts; performs no resolution or I/O |
 | `run.decodeStart` | Validate a plugin backend's `lithe/host/run/start` params against its manifest and the workspace, and return the normalized start with temporary-file paths substituted |
 | `debug.decodeBackendConfiguration` | Validate a plugin backend's `lithe/host/debug/start` params against its manifest and return the qualified adapter, request, label and configuration |
 | `outputLinks.match` | Find the links plugin `outputLinkMatchers` declare in Run or Test console lines, as UTF-16 ranges with candidate paths or a backend function to resolve them, and the web addresses the lines print, as `url` links the host opens in the browser |
@@ -7133,11 +7134,14 @@ Names come from enabled language/build declarations, with opaque ID fallback.
 section titles translated when the state is. Catalog contributor sections keep
 the manifest headings.
 
-`plugins.settings.navigation` accepts at most 576 two-level `items` (512 contributed pages plus 64 host entries) with stable
-`id`, `title`, nullable `parent`, `group`, `expanded`, optional `keywords`, plus
-`query` (at most 1024 bytes). It returns `rows` containing id/title/group/expanded/level.
-Search retains ancestors and expands matching groups; ordering follows input.
-Duplicate IDs, invalid parents and excessive input are rejected.
+`plugins.settings.navigation` accepts at most 576 `items` (512 contributed pages plus 64 host entries), up to three levels
+deep, with stable `id`, `title`, nullable `parent`, `group`, `expanded`, optional `keywords` and optional `limit`
+(1–512), plus `query` (at most 1024 bytes). It returns `rows` containing id/title/group/expanded/level, `matched`
+(the row itself matches the query) and `path` (ancestor titles, root first). Outside search, an item with `limit`
+shows that many children followed by one overflow row `{id,title,level,path,overflow}` that carries the item's own
+ID and the total child count, so the host can open the item's directory page. Search retains ancestors, shows every
+descendant of a matched item and ignores `limit`; ordering follows input. Duplicate IDs, a parent chain that is
+missing, cyclic or deeper than three levels, a zero limit and excessive input are rejected.
 
 `plugins.settings.delivery` accepts `scope` (global/project), native equality
 facts `samePreferences`, `sameWorkspace`, `sameVersion`, current `enabled`, and

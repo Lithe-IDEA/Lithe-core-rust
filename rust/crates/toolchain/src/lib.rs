@@ -11,6 +11,7 @@ pub mod pins;
 pub mod preferences;
 pub mod query;
 mod resolution;
+pub mod settings_view;
 
 use lithe_plugin_model::{PluginRejection, Validation};
 use lithe_protocol::CoreError;
@@ -66,6 +67,11 @@ pub fn decode_reply_command(
         |input| query::decode(input, validate_manifest),
         "snapshot",
     )
+}
+
+/// Projects the settings list of every enabled tool: status, filter, groups and counts.
+pub fn settings_view_command(input: Value) -> Result<Value, CoreError> {
+    command(input, settings_view::settings_view, "view")
 }
 
 /// Builds the error reply for a query that timed out or found no backend.

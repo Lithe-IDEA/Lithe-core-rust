@@ -9,7 +9,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 清单字段 | `toolDefinitions[]`（工具定义）、`toolchainProviders[]`（工具链提供者）、顶层 `requiresTools`（启动时引用的工具定义 ID） |
-| 能力 | `toolDefinitions` 0；`toolchainProviders` 0（还需要 `backend` 0） |
+| 能力 | `toolDefinitions` 0（用到 `category`、`audience` 时为 1）；`toolchainProviders` 0（还需要 `backend` 0） |
 | 协议 | 工具链提供者协议 `litheToolchains`，版本 `0`：宿主通过 `toolchains/query` 向提供者的后端查询。协商见[契约](../../contract/v1/toolchains/README.md#provider-backend-negotiation) |
 | API 编号 | [API-23](../api-catalog.md#现在能用的-api)：工具链与受管进程（部分完成） |
 | 权限 | 工具定义不需要权限；提供者需要 `backend.launch` 和 `toolchains.provide` |
@@ -51,6 +51,10 @@
 - 注册表的输出带 `conflicts: [{tool, pluginIDs}]`：每个被争用的工具一条，按 `tool` 排序，`pluginIDs` 是所有定义它的插件 ID（也排序）。宿主应当告诉用户是哪些插件在争用。
 - 同一个插件 ID 在一批输入里重复出现，仍然拒绝整批，不会替换先前登记的归属。
 
+### 设置页里的分组
+
+工具定义可以写 `category`，决定它在设置页「工具链」列表里归哪一组：`runtime`（运行时与 SDK）、`build`（构建工具）、`package`（包管理器）、`debug`（调试与分析）、`lint`（检查与格式化）、`other`（其他，默认）。插件只给自己用的运行时（例如语言服务器背后的 JVM）写 `audience: "plugin"`，它们单独放在最后一组，默认折叠；默认是 `user`。这两个字段只影响显示位置，不影响解析、固定和启动。写别的值会拒绝整个清单。它们属于 `toolDefinitions` 版本 1：用到任一字段的插件声明 `toolDefinitions: 1`，只支持 0 的宿主不会安装；不用它们的插件继续写 `0`。
+
 ### Core 命令
 
 所有命令都只处理 UTF-8 JSON，输入上限 4 MiB，不做任何本机 I/O。成功返回 `{status: "ok", <键>: 值}`，拒绝返回 `{status: "rejected", error: {code, message, field?}}`。
@@ -66,6 +70,7 @@
 | `toolchains.instantiateLaunch` | `{registry, tool, executable, home?, entry?, runtimeArguments, arguments}` | `launch` | 按工具定义的 `launch` 模板，为宿主选中的可执行文件展开启动参数，返回 `{executable, arguments, versionArguments}`；见“按工具定义 ID 启动进程” |
 | `toolchains.discoveryPlan` | `{registry, platform}` | `plan` | 每个工具的扫描计划、声明它的提供者、登录 shell 变量和平台过滤后的 `projectFiles`；最多 256 个根目录、4096 个条目、64 层祖先 |
 | `toolchains.candidates` | 设置页的发现输入 | `candidates` | 设置页显示的根级项目候选、登录 shell 和自动层：`{tool, project, shell, installations, skipped, selected, conflicts}`；未授权项目候选不给出待探测 `executable`，已授权且安全校验通过后首次调用把待探测可执行文件列为 `probeFailed`，宿主运行探针后再调用一次 |
+| `toolchains.settingsView` | `{tools, query, issueLimit?}` | `view` | 设置页工具列表的投影：按解析原因给每个工具定出 `error`、`warning`、`ok`，按文字和“需要处理 / 已手动指定 / 未应用”筛选，按种类、插件或不分组，返回要显示的行 `rows`、前几项问题 `issues` 和计数 `counts`；最多 20,000 个工具。宿主不自己分类、排序或计数，见[Settings list](../../contract/v1/toolchains/README.md#settings-list) |
 
 ### 提供者应答的限制
 
@@ -153,7 +158,7 @@ Core 的 `plugins.managedRuntimes.plan` 选择准确平台并生成缓存键，`
 | [Plugin-owned toolchains (Core foundation)](../../contract/v1/README.md#plugin-owned-toolchains-core-foundation) | 契约总入口里的工具链说明和当前宿主状态 |
 | [Manifest admission and registry](../../contract/v1/toolchains/README.md#manifest-admission-and-registry) | 能力和权限要求、定义字段、提供者字段、ID 规则（短 ID 与限定 ID） |
 | [Two installation routes](../../contract/v1/toolchains/README.md#two-installation-routes) | 声明式发现和提供者查询 |
-| [Commands and envelopes](../../contract/v1/toolchains/README.md#commands-and-envelopes) | 九个 Core 命令、返回格式、注册表限制、`conflicts` |
+| [Commands and envelopes](../../contract/v1/toolchains/README.md#commands-and-envelopes) | 十个 Core 命令、返回格式、注册表限制、`conflicts` |
 | [Launching a tool definition](../../contract/v1/toolchains/README.md#launching-a-tool-definition) | `toolchains.instantiateLaunch`：按定义的 `launch` 模板展开启动参数、`launchMismatch` |
 | [Tool references](../../contract/v1/README.md#tool-references) | 清单 `requiresTools`、引用位置、启动计划的各部分、`plugin.host.toolUnresolved` |
 | [Run and debug sessions](../../contract/v1/README.md#run-and-debug-sessions) | `run/start` 的 `process.executable`：`{kind: "tool"}` 或 `{kind: "packaged"}` |
@@ -161,6 +166,7 @@ Core 的 `plugins.managedRuntimes.plan` 选择准确平台并生成缓存键，`
 | [Error replies](../../contract/v1/toolchains/README.md#error-replies) | 错误回复的格式，以及 11 个稳定失败码的数字码对照 |
 | [Pins and snapshot resolution](../../contract/v1/toolchains/README.md#pins-and-snapshot-resolution) | `local.json`、`resolve`、四层选择、`checkVersion`、`discoveryPlan` |
 | [Settings candidates](../../contract/v1/toolchains/README.md#settings-candidates) | `candidates` 和两次调用的探测流程 |
+| [Settings list](../../contract/v1/toolchains/README.md#settings-list) | `settingsView`：状态分类、筛选、分组、折叠默认值和计数 |
 | [Executable resolution](../../contract/v1/README.md#executable-resolution) | 可执行文件候选的排序和严格选择 |
 | [Command installers](../../contract/v1/README.md#command-installers) | `commandInstallers[]` 的字段、两个目标、三个 Core 命令和宿主步骤 |
 | [Provider backend negotiation](../../contract/v1/toolchains/README.md#provider-backend-negotiation) | `litheToolchains` 协商、`lsp.toolchainRequest`、超时 |
@@ -232,6 +238,10 @@ A requirement with no installation stays "unmet", with its reason, even when a l
 - The registry returns `conflicts: [{tool, pluginIDs}]`: one entry per contested tool, sorted by `tool`, with every defining plugin ID, sorted. A host should tell the user which plugins contest the tool.
 - A plugin ID repeated within one input still rejects the whole batch, without replacing earlier owners.
 
+### Groups on the settings page
+
+A tool definition may set `category` to choose its group in the settings page's Toolchains list: `runtime` (runtimes and SDKs), `build` (build tools), `package` (package managers), `debug` (debuggers and profilers), `lint` (checkers and formatters) or `other` (the default). A runtime a plugin only runs for itself, such as the JVM behind a language server, sets `audience: "plugin"`; such tools sit in their own last group, collapsed by default. The default is `user`. Both fields only change where the tool is shown, never resolution, pins or launches. Any other value rejects the whole manifest. They are `toolDefinitions` version 1: a plugin that sets either declares `toolDefinitions: 1`, and a host that supports only 0 does not install it; plugins that do not use them keep `0`.
+
 ### Core commands
 
 Every command accepts UTF-8 JSON, has a 4 MiB input budget, and performs no native I/O. Success is `{status: "ok", <key>: value}`; refusal is `{status: "rejected", error: {code, message, field?}}`.
@@ -247,6 +257,7 @@ Every command accepts UTF-8 JSON, has a 4 MiB input budget, and performs no nati
 | `toolchains.instantiateLaunch` | `{registry, tool, executable, home?, entry?, runtimeArguments, arguments}` | `launch` | Expands the definition's `launch` template for the executable the host selected, returning `{executable, arguments, versionArguments}`; see "Launching a process by tool-definition ID" |
 | `toolchains.discoveryPlan` | `{registry, platform}` | `plan` | Each tool's scan plan, the providers that declare it, login-shell variables, and platform-filtered `projectFiles`. Limits: 256 roots, 4096 entries, 64 ancestors |
 | `toolchains.candidates` | The settings page's discovery input | `candidates` | Root project candidates, login-shell homes, and the automatic layer shown on a settings page: `{tool, project, shell, installations, skipped, selected, conflicts}`. Untrusted project candidates emit no `executable` to probe; once trusted and checked, the first call lists executables to probe as `probeFailed`, and the host runs the probes and calls again |
+| `toolchains.settingsView` | `{tools, query, issueLimit?}` | `view` | Projects the settings page's tool list: classifies each tool as `error`, `warning` or `ok` from its resolver reason, filters by text and by "needs attention / chosen manually / not applied", groups by category, plugin or nothing, and returns the rows to show (`rows`), the first problems (`issues`) and `counts`. At most 20,000 tools. The host does not classify, sort or count by itself; see [Settings list](../../contract/v1/toolchains/README.md#settings-list) |
 
 ### Limits on provider replies
 
@@ -334,7 +345,7 @@ Core's `plugins.managedRuntimes.plan` selects the exact platform and generates c
 | [Plugin-owned toolchains (Core foundation)](../../contract/v1/README.md#plugin-owned-toolchains-core-foundation) | The toolchain overview in the contract entry point and the current host status |
 | [Manifest admission and registry](../../contract/v1/toolchains/README.md#manifest-admission-and-registry) | Capability and permission requirements, definition and provider fields, ID rules (short and qualified IDs) |
 | [Two installation routes](../../contract/v1/toolchains/README.md#two-installation-routes) | Declarative discovery and provider query |
-| [Commands and envelopes](../../contract/v1/toolchains/README.md#commands-and-envelopes) | The nine Core commands, return shapes, registry limits, `conflicts` |
+| [Commands and envelopes](../../contract/v1/toolchains/README.md#commands-and-envelopes) | The ten Core commands, return shapes, registry limits, `conflicts` |
 | [Launching a tool definition](../../contract/v1/toolchains/README.md#launching-a-tool-definition) | `toolchains.instantiateLaunch`: expanding the launch template, `launchMismatch` |
 | [Tool references](../../contract/v1/README.md#tool-references) | The manifest's `requiresTools`, reference sites, the parts of a launch plan, `plugin.host.toolUnresolved` |
 | [Run and debug sessions](../../contract/v1/README.md#run-and-debug-sessions) | `process.executable` of `run/start`: `{kind: "tool"}` or `{kind: "packaged"}` |
@@ -342,6 +353,7 @@ Core's `plugins.managedRuntimes.plan` selects the exact platform and generates c
 | [Error replies](../../contract/v1/toolchains/README.md#error-replies) | The error reply format and the numeric codes of the 11 stable failure codes |
 | [Pins and snapshot resolution](../../contract/v1/toolchains/README.md#pins-and-snapshot-resolution) | `local.json`, `resolve`, the four layers, `checkVersion`, `discoveryPlan` |
 | [Settings candidates](../../contract/v1/toolchains/README.md#settings-candidates) | `candidates` and its two-call probe flow |
+| [Settings list](../../contract/v1/toolchains/README.md#settings-list) | `settingsView`: status classes, filters, groups, default folding and counts |
 | [Executable resolution](../../contract/v1/README.md#executable-resolution) | Ordering and strict selection of executable candidates |
 | [Command installers](../../contract/v1/README.md#command-installers) | The fields of `commandInstallers[]`, the two targets, the three Core commands and the host steps |
 | [Provider backend negotiation](../../contract/v1/toolchains/README.md#provider-backend-negotiation) | `litheToolchains` negotiation, `lsp.toolchainRequest`, timeouts |
