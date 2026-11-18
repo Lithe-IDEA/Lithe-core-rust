@@ -14,7 +14,7 @@
 
 ## 待合入
 
-- `ui` 0、`settings` 0 内的替换（API-13、API-19、API-37）：插件视图取代宿主绘制的原生 UI 文档。插件后端的视图函数（经已有的 `lithe/function/invoke` 调用）按事件（`open`、`close`、`click`、`change`、`select`、`activate`、`viewport`、`settings`）返回界面树或补丁：宿主控件（行、分区、文字、输入框、下拉、分段、开关、按钮、键值、表格、横幅、绑定设置的设置行、显示插件工具解析结果的工具行）、树和画布节点（可带圆角的矩形、路径、文字、图片、可点击分组及悬停/按下/选中状态），新 schema [`plugin-ui.schema.json`](../contract/v1/plugin-ui.schema.json) 取代 `native-ui.schema.json`，原生 UI 文档的 `schemaVersion` 一并删除。Core 新增命令 `plugins.ui.applyResult`：按清单、界面（工具窗口或设置区域）和上一版视图校验每个结果，返回新视图和是否变化，超出预算或违反界面规则以 `plugin.ui.invalidView`（带 `field`）拒绝。清单新增 `settingRegions`（最多 16 个）：插件在语言、构建系统或编译器页（不写 `page` 时为插件自己的设置标签）放搜索关键词、插件视图或两者，设置搜索按关键词找到页面；`l10n/<语言>.json` 新增 `settingRegions.<id>.keywords`，翻译的关键词追加在声明的后面、忽略大小写去重。fixture `fixtures/ui/view-panel.plugin.json`、`fixtures/ui/view-results.json`，`fixtures/settings/` 补设置区域与中文关键词。Node、Rust、Java 三个 SDK 新增 `view(id, handler)`：把参数读成视图事件（不合法时 `sdk.view.invalidEvent`，处理函数不会运行），把返回的整个视图、补丁或“没有变化”写成结果；Node SDK 的 `index.d.ts` 给出界面节点、画布节点和补丁的类型。没有新增版本号、宿主方法、通知或 SDK 版本；这一版插件不能主动推送视图。实现见 [#104](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/104)。
+目前没有。
 
 ## 按协议查首次出现
 

@@ -7223,13 +7223,12 @@ Without `language`, sections keep the manifest headings and no report is
 returned.
 
 `plugins.settings.navigation` accepts at most 576 `items` (512 contributed pages plus 64 host entries), up to three levels
-deep, with stable `id`, `title`, nullable `parent`, `group`, `expanded`, optional `keywords` and optional `limit`
-(1–512), plus `query` (at most 1024 bytes). It returns `rows` containing id/title/group/expanded/level, `matched`
-(the row itself matches the query) and `path` (ancestor titles, root first). Outside search, an item with `limit`
-shows that many children followed by one overflow row `{id,title,level,path,overflow}` that carries the item's own
-ID and the total child count, so the host can open the item's directory page. Search retains ancestors, shows every
-descendant of a matched item and ignores `limit`; ordering follows input. Duplicate IDs, a parent chain that is
-missing, cyclic or deeper than three levels, a zero limit and excessive input are rejected.
+deep, with stable `id`, `title`, nullable `parent`, `group`, `expanded` and optional `keywords`, plus `query` (at
+most 1024 bytes). It returns `rows` containing id/title/group/expanded/level, `matched` (the row itself matches the
+query) and `path` (ancestor titles, root first). Outside search, a collapsed group hides its children. Search
+retains ancestors and shows every descendant of a matched item; ordering follows input. Unknown fields are an
+`invalid_request`. Duplicate IDs, a parent chain that is missing, cyclic or deeper than three levels and excessive
+input are rejected.
 
 `plugins.settings.delivery` accepts `scope` (global/project), native equality
 facts `samePreferences`, `sameWorkspace`, `sameVersion`, current `enabled`, and
