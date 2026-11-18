@@ -1,0 +1,427 @@
+{
+  "version": 1,
+  "description": "git.workspaceBranchPlan plans a checkout or a new branch chosen on a common branch across every repository of a workspace, as IntelliJ IDEA's GitBranchOperation runs it: steps run in request order and stop at the first failure; undoing the steps that already ran runs each step's rollback, the last step first. A checkout skips the repositories already on the local branch. Undoing a checkout checks the previous local branch out again, and a remote branch checkout keeps the local branch it created or moved; undoing a new branch checks the previous branch out again when the action switched to it, then deletes the new branch. A step whose repository was detached or unborn before it switched HEAD has rollback null.",
+  "cases": [
+    {
+      "name": "checkoutSkipsTheRepositoriesAlreadyOnTheBranch",
+      "request": {
+        "operation": "checkout",
+        "reference": "refs/heads/dev",
+        "repositories": [
+          {
+            "id": "backend",
+            "references": [
+              {"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": true, "upstreamShortName": "origin/main", "ahead": 0, "behind": 0},
+              {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": "origin/dev", "ahead": 0, "behind": 0},
+              {"fullName": "refs/remotes/origin/dev", "shortName": "origin/dev", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/remotes/origin/main", "shortName": "origin/main", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}
+            ]
+          },
+          {
+            "id": "frontend",
+            "references": [
+              {"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": "origin/main", "ahead": 0, "behind": 0},
+              {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": true, "upstreamShortName": "origin/dev", "ahead": 0, "behind": 0},
+              {"fullName": "refs/remotes/origin/dev", "shortName": "origin/dev", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/remotes/origin/main", "shortName": "origin/main", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}
+            ]
+          },
+          {
+            "id": "shared",
+            "references": [
+              {"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/remotes/origin/dev", "shortName": "origin/dev", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/remotes/origin/main", "shortName": "origin/main", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}
+            ]
+          }
+        ]
+      },
+      "response": {
+        "steps": [
+          {
+            "repository": "backend",
+            "reference": {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local"},
+            "rollback": [{"operation": "checkout", "reference": {"fullName": "refs/heads/main", "shortName": "main", "kind": "local"}}]
+          },
+          {"repository": "shared", "reference": {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local"}, "rollback": null}
+        ],
+        "skipped": ["frontend"]
+      }
+    },
+    {
+      "name": "checkoutOfARemoteBranchRunsInEveryRepository",
+      "request": {
+        "operation": "checkout",
+        "reference": "refs/remotes/origin/dev",
+        "repositories": [
+          {
+            "id": "backend",
+            "references": [
+              {"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": true, "upstreamShortName": "origin/main", "ahead": 0, "behind": 0},
+              {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": "origin/dev", "ahead": 0, "behind": 0},
+              {"fullName": "refs/remotes/origin/dev", "shortName": "origin/dev", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/remotes/origin/main", "shortName": "origin/main", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}
+            ]
+          },
+          {
+            "id": "frontend",
+            "references": [
+              {"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": "origin/main", "ahead": 0, "behind": 0},
+              {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": true, "upstreamShortName": "origin/dev", "ahead": 0, "behind": 0},
+              {"fullName": "refs/remotes/origin/dev", "shortName": "origin/dev", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/remotes/origin/main", "shortName": "origin/main", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}
+            ]
+          },
+          {
+            "id": "shared",
+            "references": [
+              {"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/remotes/origin/dev", "shortName": "origin/dev", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/remotes/origin/main", "shortName": "origin/main", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}
+            ]
+          }
+        ]
+      },
+      "response": {
+        "steps": [
+          {
+            "repository": "backend",
+            "reference": {"fullName": "refs/remotes/origin/dev", "shortName": "origin/dev", "kind": "remote"},
+            "rollback": [{"operation": "checkout", "reference": {"fullName": "refs/heads/main", "shortName": "main", "kind": "local"}}]
+          },
+          {
+            "repository": "frontend",
+            "reference": {"fullName": "refs/remotes/origin/dev", "shortName": "origin/dev", "kind": "remote"},
+            "rollback": [{"operation": "checkout", "reference": {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local"}}]
+          },
+          {"repository": "shared", "reference": {"fullName": "refs/remotes/origin/dev", "shortName": "origin/dev", "kind": "remote"}, "rollback": null}
+        ],
+        "skipped": []
+      }
+    },
+    {
+      "name": "checkoutWhereEveryRepositoryIsOnTheBranchHasNoStep",
+      "request": {
+        "operation": "checkout",
+        "reference": "refs/heads/main",
+        "repositories": [
+          {
+            "id": "a",
+            "references": [{"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": true, "upstreamShortName": null, "ahead": 0, "behind": 0}]
+          },
+          {
+            "id": "b",
+            "references": [{"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": true, "upstreamShortName": null, "ahead": 0, "behind": 0}]
+          }
+        ]
+      },
+      "response": {"steps": [], "skipped": ["a", "b"]}
+    },
+    {
+      "name": "newBranchThatSwitchesReturnsAndDeletesOnRollback",
+      "request": {
+        "operation": "createBranch",
+        "reference": "refs/heads/main",
+        "name": "feature/login",
+        "checkout": true,
+        "repositories": [
+          {
+            "id": "backend",
+            "references": [
+              {"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": true, "upstreamShortName": "origin/main", "ahead": 0, "behind": 0},
+              {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": "origin/dev", "ahead": 0, "behind": 0},
+              {"fullName": "refs/remotes/origin/dev", "shortName": "origin/dev", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/remotes/origin/main", "shortName": "origin/main", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}
+            ]
+          },
+          {
+            "id": "frontend",
+            "references": [
+              {"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": "origin/main", "ahead": 0, "behind": 0},
+              {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": true, "upstreamShortName": "origin/dev", "ahead": 0, "behind": 0},
+              {"fullName": "refs/remotes/origin/dev", "shortName": "origin/dev", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/remotes/origin/main", "shortName": "origin/main", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}
+            ]
+          },
+          {
+            "id": "shared",
+            "references": [
+              {"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/remotes/origin/dev", "shortName": "origin/dev", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/remotes/origin/main", "shortName": "origin/main", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}
+            ]
+          }
+        ]
+      },
+      "response": {
+        "steps": [
+          {
+            "repository": "backend",
+            "reference": {"fullName": "refs/heads/main", "shortName": "main", "kind": "local"},
+            "rollback": [
+              {"operation": "checkout", "reference": {"fullName": "refs/heads/main", "shortName": "main", "kind": "local"}},
+              {"operation": "deleteBranch", "reference": {"fullName": "refs/heads/feature/login", "shortName": "feature/login", "kind": "local"}}
+            ]
+          },
+          {
+            "repository": "frontend",
+            "reference": {"fullName": "refs/heads/main", "shortName": "main", "kind": "local"},
+            "rollback": [
+              {"operation": "checkout", "reference": {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local"}},
+              {"operation": "deleteBranch", "reference": {"fullName": "refs/heads/feature/login", "shortName": "feature/login", "kind": "local"}}
+            ]
+          },
+          {"repository": "shared", "reference": {"fullName": "refs/heads/main", "shortName": "main", "kind": "local"}, "rollback": null}
+        ],
+        "skipped": []
+      }
+    },
+    {
+      "name": "newBranchThatStaysOnlyDeletesOnRollback",
+      "request": {
+        "operation": "createBranch",
+        "reference": "refs/remotes/origin/main",
+        "name": "feature/login",
+        "repositories": [
+          {
+            "id": "backend",
+            "references": [
+              {"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": true, "upstreamShortName": "origin/main", "ahead": 0, "behind": 0},
+              {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": "origin/dev", "ahead": 0, "behind": 0},
+              {"fullName": "refs/remotes/origin/dev", "shortName": "origin/dev", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/remotes/origin/main", "shortName": "origin/main", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}
+            ]
+          },
+          {
+            "id": "frontend",
+            "references": [
+              {"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": "origin/main", "ahead": 0, "behind": 0},
+              {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": true, "upstreamShortName": "origin/dev", "ahead": 0, "behind": 0},
+              {"fullName": "refs/remotes/origin/dev", "shortName": "origin/dev", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/remotes/origin/main", "shortName": "origin/main", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}
+            ]
+          },
+          {
+            "id": "shared",
+            "references": [
+              {"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/remotes/origin/dev", "shortName": "origin/dev", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/remotes/origin/main", "shortName": "origin/main", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}
+            ]
+          }
+        ]
+      },
+      "response": {
+        "steps": [
+          {
+            "repository": "backend",
+            "reference": {"fullName": "refs/remotes/origin/main", "shortName": "origin/main", "kind": "remote"},
+            "rollback": [{"operation": "deleteBranch", "reference": {"fullName": "refs/heads/feature/login", "shortName": "feature/login", "kind": "local"}}]
+          },
+          {
+            "repository": "frontend",
+            "reference": {"fullName": "refs/remotes/origin/main", "shortName": "origin/main", "kind": "remote"},
+            "rollback": [{"operation": "deleteBranch", "reference": {"fullName": "refs/heads/feature/login", "shortName": "feature/login", "kind": "local"}}]
+          },
+          {
+            "repository": "shared",
+            "reference": {"fullName": "refs/remotes/origin/main", "shortName": "origin/main", "kind": "remote"},
+            "rollback": [{"operation": "deleteBranch", "reference": {"fullName": "refs/heads/feature/login", "shortName": "feature/login", "kind": "local"}}]
+          }
+        ],
+        "skipped": []
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "unknownField",
+      "request": {
+        "operation": "checkout",
+        "reference": "refs/heads/main",
+        "repositories": [
+          {
+            "id": "a",
+            "references": [{"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}]
+          }
+        ],
+        "extra": true
+      }
+    },
+    {
+      "name": "unknownOperation",
+      "request": {
+        "operation": "merge",
+        "reference": "refs/heads/main",
+        "repositories": [
+          {
+            "id": "a",
+            "references": [{"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}]
+          }
+        ]
+      }
+    },
+    {
+      "name": "missingReference",
+      "request": {
+        "operation": "checkout",
+        "repositories": [
+          {
+            "id": "a",
+            "references": [{"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}]
+          }
+        ]
+      }
+    },
+    {"name": "noRepository", "request": {"operation": "checkout", "reference": "refs/heads/main", "repositories": []}},
+    {
+      "name": "branchOneRepositoryLacks",
+      "request": {
+        "operation": "checkout",
+        "reference": "refs/heads/dev",
+        "repositories": [
+          {
+            "id": "a",
+            "references": [{"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}]
+          },
+          {
+            "id": "b",
+            "references": [{"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}]
+          }
+        ]
+      }
+    },
+    {
+      "name": "tag",
+      "request": {
+        "operation": "checkout",
+        "reference": "refs/tags/v1",
+        "repositories": [{"id": "a", "references": [{"fullName": "refs/tags/v1", "shortName": "v1", "kind": "tag", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}]}]
+      }
+    },
+    {
+      "name": "checkoutWithName",
+      "request": {
+        "operation": "checkout",
+        "reference": "refs/heads/main",
+        "name": "x",
+        "repositories": [
+          {
+            "id": "a",
+            "references": [{"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}]
+          }
+        ]
+      }
+    },
+    {
+      "name": "checkoutWithCheckout",
+      "request": {
+        "operation": "checkout",
+        "reference": "refs/heads/main",
+        "checkout": true,
+        "repositories": [
+          {
+            "id": "a",
+            "references": [{"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}]
+          }
+        ]
+      }
+    },
+    {
+      "name": "newBranchWithoutName",
+      "request": {
+        "operation": "createBranch",
+        "reference": "refs/heads/main",
+        "repositories": [
+          {
+            "id": "a",
+            "references": [{"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}]
+          }
+        ]
+      }
+    },
+    {
+      "name": "newBranchWithEmptyName",
+      "request": {
+        "operation": "createBranch",
+        "reference": "refs/heads/main",
+        "name": "",
+        "repositories": [
+          {
+            "id": "a",
+            "references": [{"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}]
+          }
+        ]
+      }
+    },
+    {
+      "name": "newBranchNameWithNul",
+      "request": {
+        "operation": "createBranch",
+        "reference": "refs/heads/main",
+        "name": "x\u0000",
+        "repositories": [
+          {
+            "id": "a",
+            "references": [{"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}]
+          }
+        ]
+      }
+    },
+    {
+      "name": "newBranchOneRepositoryHas",
+      "request": {
+        "operation": "createBranch",
+        "reference": "refs/heads/main",
+        "name": "dev",
+        "repositories": [
+          {
+            "id": "a",
+            "references": [{"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}]
+          },
+          {
+            "id": "b",
+            "references": [
+              {"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalidReferences",
+      "request": {
+        "operation": "checkout",
+        "reference": "refs/heads/main",
+        "repositories": [
+          {
+            "id": "a",
+            "references": [{"fullName": "refs/heads/main", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}]
+          }
+        ]
+      }
+    },
+    {
+      "name": "repeatedId",
+      "request": {
+        "operation": "checkout",
+        "reference": "refs/heads/main",
+        "repositories": [
+          {
+            "id": "a",
+            "references": [{"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}]
+          },
+          {
+            "id": "a",
+            "references": [{"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}]
+          }
+        ]
+      }
+    }
+  ]
+}

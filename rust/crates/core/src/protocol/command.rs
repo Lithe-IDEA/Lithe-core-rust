@@ -877,6 +877,11 @@ pub enum GitCommand {
     WorkspaceChangeGroups,
     /// Interleaves the loaded histories of workspace repositories (`git.workspaceHistoryMerge`).
     WorkspaceHistoryMerge,
+    /// Finds the branches every workspace repository has (`git.workspaceCommonReferences`).
+    WorkspaceCommonReferences,
+    /// Plans a branch action on a common branch across workspace repositories
+    /// (`git.workspaceBranchPlan`).
+    WorkspaceBranchPlan,
     /// Plans a branch Update or Pull from collected facts (`git.updatePlan`).
     UpdatePlan,
     /// Plans history refresh windows, page merges, and selection retention (`git.historyWindow`).
@@ -1526,6 +1531,10 @@ impl CoreCommand {
             }
             "git.workspaceChangeGroups" => Some(Self::Git(GitCommand::WorkspaceChangeGroups)),
             "git.workspaceHistoryMerge" => Some(Self::Git(GitCommand::WorkspaceHistoryMerge)),
+            "git.workspaceCommonReferences" => {
+                Some(Self::Git(GitCommand::WorkspaceCommonReferences))
+            }
+            "git.workspaceBranchPlan" => Some(Self::Git(GitCommand::WorkspaceBranchPlan)),
             "git.updatePlan" => Some(Self::Git(GitCommand::UpdatePlan)),
             "git.historyWindow" => Some(Self::Git(GitCommand::HistoryWindow)),
             "git.graphProjection" => Some(Self::Git(GitCommand::GraphProjection)),

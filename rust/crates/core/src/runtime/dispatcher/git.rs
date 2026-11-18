@@ -449,6 +449,12 @@ pub(super) fn dispatch(command: GitCommand, id: Option<String>, payload: Value) 
         GitCommand::WorkspaceHistoryMerge => {
             plugin_response(id, payload, lithe_git::workspace_history_merge_command)
         }
+        GitCommand::WorkspaceCommonReferences => {
+            plugin_response(id, payload, lithe_git::workspace_common_references_command)
+        }
+        GitCommand::WorkspaceBranchPlan => {
+            plugin_response(id, payload, lithe_git::workspace_branch_plan_command)
+        }
         GitCommand::UpdatePlan => plugin_response(id, payload, lithe_git::update_plan_command),
         GitCommand::HistoryWindow => {
             plugin_response(id, payload, lithe_git::history_window_command)

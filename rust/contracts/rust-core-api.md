@@ -796,6 +796,8 @@ or removing a command fails until the table changes in the same commit.
 | `git.workspaceRepositorySelection` | Choose the workspace repository, or the set of repositories, a view acts on and the others it lists for switching, from discovery entries and the previous pick |
 | `git.workspaceChangeGroups` | Group every workspace repository's status changes, plan each group's and the workspace line's staging, and report what a listed ancestor records for a submodule |
 | `git.workspaceHistoryMerge` | Interleave the loaded history pages of several workspace repositories into one stable newest-first list with collision-safe commit keys, and name the repositories whose next page it waits on |
+| `git.workspaceCommonReferences` | List the local and remote branches every workspace repository has, from each repository's `git.references` entries, in the same entry shape |
+| `git.workspaceBranchPlan` | Plan a checkout or a new branch on a common branch across workspace repositories: the writes in order, the repositories skipped, and what undoes each write |
 | `git.updatePlan` | Route a branch Update and gate a Pull from facts the host collected: blockers, strategy default, whether to ask, and the expected checkout |
 | `git.historyWindow` | Plan a history refresh window, page merge, and selection retention over commit identities |
 | `git.graphProjection` | Project a loaded history window into commit-graph lanes, color IDs, routes, print elements, and labels, optionally filtered |
@@ -1832,12 +1834,18 @@ commit. `rust/fixtures/git/history-window-v1.json` defines the rules.
 `git.graphProjection` is a pure projection of one loaded history window; it never
 starts Git. The request is `{ "commits": [{ "hash", "parentHashes", "decorations" }],
 "remoteNames"?, "repositoryCommits"?, "visibleHashes"?, "displayMode"?,
-"currentBranch"? }`: `commits` are in Git's child-before-parent order, `remoteNames`
+"currentBranch"?, "checkedOutHeads"? }`: `commits` are in Git's child-before-parent order, `remoteNames`
 are the remote short names that type a bare remote-tracking decoration,
 `repositoryCommits` is the complete repository window that fixes the permanent layout
 (ignored unless it is unique and covers every scoped commit), `visibleHashes` applies
 a filter (omit it to show every commit), `displayMode` is `compact` (default) or
-`expanded`, and `currentBranch` asks for the ancestry of that local branch. Hosts call
+`expanded`, and `currentBranch` asks for the ancestry of that local branch. A log that
+lists the commits of several repositories (`git.workspaceHistoryMerge`) sends
+`checkedOutHeads: true` instead: the ancestry starts at every commit decorated as a
+checked-out branch (`HEAD -> name`), the current branch of each repository, as IDEA's
+current-branch highlighter reads the branch of each commit's own root; a detached `HEAD`
+starts none, even on a commit that also carries a branch. A request with both
+`currentBranch` and `checkedOutHeads: true` fails with `invalid_request`. Hosts call
 it once per loaded window, never per commit, and recompute the whole window when a page
 is appended or the history refreshes; lanes depend on every loaded edge, and a head
 fragment's color ID is the wrapping 32-bit hash `h = 31 * h + unit` over the UTF-16
@@ -2146,6 +2154,65 @@ the bound of `git.graphProjection`, are accepted. An invalid or repeated `id`, a
 hexadecimal digits, a commit repeated within one repository, a missing
 `complete`, or an unknown field fails with `invalid_request`. See
 `rust/fixtures/git/workspace-history-merge-v1.json`.
+
+`git.workspaceCommonReferences` is pure. It accepts `{ repositories }`, the
+repositories a branch popup lists in its order, each `{ id, references }`: `id` is
+the `workspace.repositories` ID and `references` is the `references` list of that
+repository's `git.references` answer, passed back unchanged. Core reads
+`fullName`, `shortName`, `kind`, `isCurrent`, `upstreamShortName`, `ahead`, and
+`behind`; the last four default to `false`, `null`, and `0`, and other fields are
+ignored. The response is `{ local, remote }`, as IntelliJ IDEA's Common Local
+Branches and Common Remote Branches: the local and remote branches every
+repository has, matched by `fullName`, in the first repository's order, as
+`git.references` entries a popup draws with the rows it draws for one
+repository. Tags are not listed. A common local branch has `isCurrent` when every
+repository has it checked out; its `upstreamShortName` is the remote branch every
+repository tracks with it, `null` when one tracks nothing or they track
+different branches; its `ahead` and `behind` add up every repository's counts
+against that repository's own upstream, as IDEA marks a common branch with
+incoming or outgoing commits when any repository has them. `peelsToCommit` is
+`true`. One repository lists its own branches; an empty list has none. At most
+10,000 repositories and 1,000,000 references across the request are accepted.
+An invalid or repeated `id`, a missing `references`, an unknown `kind`, a
+`shortName` or `fullName` that is empty, holds NUL, or is longer than 4,096
+bytes, a `fullName` that is not `shortName` under its kind's namespace
+(`refs/heads/`, `refs/remotes/`, `refs/tags/`), a `fullName` listed twice in one
+repository, an empty or NUL-containing `upstreamShortName`, more than one
+current reference or a current one that is not a local branch, or an unknown
+field outside the entries fails with `invalid_request`. See
+`rust/fixtures/git/workspace-common-references-v1.json`.
+
+`git.workspaceBranchPlan` is pure and plans an action chosen on a common branch
+across every repository, as IDEA's `GitBranchOperation` runs it. It accepts
+`{ operation, reference, name?, checkout?, repositories }`: `operation` is
+`checkout` or `createBranch`, `reference` the `fullName` of the common local or
+remote branch, `name` the new branch's name for `createBranch` as
+`git.branchNamePreview` cleaned it, `checkout` (default `false`) whether
+`createBranch` switches to the new branch, and `repositories` the entries
+`git.workspaceCommonReferences` takes, in the order the action runs. The
+response is `{ steps, skipped }`. Each step is `{ repository, reference,
+rollback }`: `repository` is the ID, `reference` that repository's
+`{ fullName, shortName, kind }` of the common branch, which is the
+`gitReference` of the step's `git.write` (`checkout`, or `createBranch` with
+`name` and `checkout`). Hosts run the steps in order and stop at the first
+that fails. To undo the steps that already ran, as IDEA offers after a partial
+failure, they run each step's `rollback`, the last step first, the actions of one
+rollback in order; each action is `{ operation, reference }` with `operation`
+`checkout` or `deleteBranch`, the `git.write` operation to run with that
+`gitReference`. A checkout lists in `skipped` the repositories already on the
+local branch and plans no step for them; undoing it checks the previous local
+branch out again, and undoing a remote branch checkout keeps the local branch it
+created or moved, because the plan does not read the remotes that name it.
+Undoing a new branch checks the previous branch out again when `checkout` is set,
+then deletes the new branch. `rollback` is `null` when the repository's HEAD was
+detached or unborn before a step that switches it, so nothing returns it. The
+`repositories` validation of `git.workspaceCommonReferences` applies; an empty
+list, a `reference` that one repository lacks or that is a tag, a `createBranch`
+without a non-empty, NUL-free `name` of at most 4,096 bytes or whose
+`refs/heads/<name>` a repository already has, a `checkout` with `name` or
+`checkout: true`, an unknown `operation`, or an unknown field outside the
+entries fails with `invalid_request`. See
+`rust/fixtures/git/workspace-branch-plan-v1.json`.
 
 `git.workspaceChangeGroups` is pure and validates `repositories` the same way;
 each entry also carries `changes`, the `git.status` changes read for that

@@ -3846,6 +3846,7 @@
     {"name":"missingCommits","request":{}},
     {"name":"unknownField","request":{"commits":[],"extra":true}},
     {"name":"commitWithoutHash","request":{"commits":[{"parentHashes":[]}]}},
-    {"name":"badDisplayMode","request":{"commits":[],"displayMode":"wide"}}
+    {"name":"badDisplayMode","request":{"commits":[],"displayMode":"wide"}},
+    {"name":"currentBranchWithCheckedOutHeads","request":{"commits":[],"currentBranch":"main","checkedOutHeads":true}}
   ]
 }
