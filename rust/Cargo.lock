@@ -1310,6 +1310,8 @@ dependencies = [
  "lithe-vcs",
  "serde",
  "serde_json",
+ "sha2",
+ "url",
 ]
 
 [[package]]
