@@ -535,6 +535,8 @@ or removing a command fails until the table changes in the same commit.
 | `build.decodeRunPreparation` | Validate portable launch data before the native Run host starts a process |
 | `build.testDiscoveryPlan` | Plan opt-in Provider test discovery for an instance |
 | `build.decodeTestDiscovery` | Validate, deduplicate and order Provider test selectors |
+| `build.runEntrypointsPlan` | Plan a Provider request for the run entrypoints of one source file (`buildProviders` 1) |
+| `build.decodeRunEntrypoints` | Validate and deduplicate the run entrypoints a Provider named |
 | `build.dependencyPlan` | Expand the command that prints a project's dependency tree, or the request a build provider answers |
 | `build.decodeModel` | Decode model output or a provider result into projects, targets, tasks, content roots, option values, and run entries |
 | `build.decodeTestResults` | Decode a test run's reports and output into per-case results and a summary |
@@ -3672,7 +3674,11 @@ and Core preserves them unchanged.
 
 Provider applications can be explicitly saved with `runConfig.createUserConfiguration`
 using `{root,scope:"local",name,type:"buildProvider",build:{pluginID,buildSystemID,
-root,run,projectID,targetID,userArguments?,execution?}}`. Core upserts the existing local
+root,run,projectID,targetID,userArguments?,execution?},entrypoint?}`. An entrypoint run
+(`buildProviders` 1) has an empty `targetID` and names `entrypoint`, the opaque
+`launchOptions.entrypoint` a provider found with `build.decodeRunEntrypoints`; Core saves it as
+`extensions.build-run.entrypoint`, and the entrypoint is part of the selector identity, so each
+entrypoint is its own configuration. Core upserts the existing local
 reference by selector identity and retains its existing ID (new references use `user:` IDs), unrelated configurations
 and project toolchain defaults. `extensions.build` in Run v2 holds the typed
 reference; optional execution is application/service/task and must match the current
@@ -4989,7 +4995,9 @@ and the directories are absolute host paths used only as substitution text.
 | `build.testPlan` | plan fields plus `project?`, `target?`, `suite?`, `case?`, `userArguments?`, `projects?` (the model's project directories) | command plan or `provider: {method: "lithe/build/test", params}`, plus `results`: `null`, `{ decoder, reports }` with workspace-relative globs (for the selected project, or for the root and every listed project when none is selected), or command-only `{ decoder: "hostIntegration" }`. Command filters that templates cannot place, such as a case without its suite when the tool only addresses `Suite#case`, are `plugin.build.invalidSelection`; Provider filters remain separate typed values and must be declared supported |
 | `build.testDiscoveryPlan` | common plan fields plus `refresh?`, `tool?`; no project/output file | `plan.provider` for `lithe/build/discoverTests`, only with `test.discovery: true`, using the same effective options and effect metadata |
 | `build.decodeTestDiscovery` | common plan fields plus canonical `result` | `discovery.tests` with validated `{id, suite, case, project?, target?}` selectors; bounded at 10,000 items/32 MiB, deterministic and exactly runnable; malformed replies reject in full |
-| `build.prepareRunPlan` | common plan fields, `run`, required `project`/`target`, `userArguments?`, `launchOptions?`, `workspaceRoot?` (required for an explicit launch cwd); no output file | `plan.provider` for `lithe/build/prepareRun`, selected declaration/tags/paths/options validated; typed launch options must match the run's declared execution kind, and a service or task run requires them |
+| `build.runEntrypointsPlan` | common plan fields plus `file` (workspace-relative, inside the instance), `refresh?`, `tool?`; no project/output file | `plan.provider` for `lithe/build/runEntrypoints` with `file`, only when a run declares `entrypoints: true`; decoder `litheRunEntrypoints` |
+| `build.decodeRunEntrypoints` | common plan fields plus canonical `result` | `entrypoints.entrypoints`: `[{run, name, entrypoint, project:{name, path}}]` in the provider's order without exact duplicates; at most 64; each names an entrypoint run, a 1–256 byte name, a 1–4,096 byte entrypoint and a project inside the instance; malformed replies reject in full with `plugin.build.invalidOutput` |
+| `build.prepareRunPlan` | common plan fields, `run`, required `project`, `target` (required for a target run, refused for an entrypoint run), `userArguments?`, `launchOptions?`, `workspaceRoot?` (required for an explicit launch cwd); no output file | `plan.provider` for `lithe/build/prepareRun`, selected declaration/tags/paths/options validated; typed launch options must match the run's declared execution kind, a service or task run requires them, and an entrypoint run requires `launchOptions.entrypoint` and sends no `target` |
 | `build.decodeRunPreparation` | `workspaceRoot`, instance `root`, raw `result`, same optional `launchOptions` | `launch` with portable `{executable:{kind,value},arguments,workingDirectory,environment}`; bounded strings and workspace directory containment, `plugin.build.invalidOutput` on invalid result |
 | `build.prepareDebugPlan` | same selected fields as `build.prepareRunPlan`; run declares same-plugin `debug.adapter` | `plan.provider` for `lithe/build/prepareDebug`; no cross-package reference, and launch options are refused: they apply only to running a target |
 | `build.decodeDebugPreparation` | `workspaceRoot`, instance `root`, selected `run`, raw `result` | `preparation` with declaration-owned `adapter`, normalized `root`, `program`, `arguments`, `workingDirectory`, `environment`; program is an existing regular file contained in the instance after canonicalization |

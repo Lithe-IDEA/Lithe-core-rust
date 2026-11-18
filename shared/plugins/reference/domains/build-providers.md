@@ -15,7 +15,7 @@
 | --- | --- |
 | 清单字段 | `buildSystems[].provider`，以及各声明里的 `source: "provider"` |
 | 能力版本 | `buildProviders` `0`；任何 `buildSystems[].provider` 都要同时有 `buildSystems: 0` 和 `buildProviders: 0`，不论它自己启动进程还是共用语言服务器；只用模板的构建插件不写 `buildProviders`。`requires` 必须恰好列出清单用到的能力；启动进程是基础契约，不是能力，不写 `requires.serverProcess`。见[版本对照](../capabilities-and-versions.md#能力版本requires) |
-| 协议 | `litheBuild` `0`：宿主在 `initialize` 里提供 `capabilities.experimental.litheBuild: {"versions": [0]}`，提供者回答 `{"version": 0}`。协议没有自己的版本，就是 `buildProviders` 的版本，见[进程协议版本](../capabilities-and-versions.md#进程协议版本) |
+| 协议 | `litheBuild` `0` 和 `1`：宿主在 `initialize` 里提供 `capabilities.experimental.litheBuild: {"versions": [0, 1]}`，提供者回答自己支持的最新版本，例如 `{"version": 1}`；版本 `1` 只多了 `lithe/build/runEntrypoints`。协议没有自己的版本，就是 `buildProviders` 的版本，见[进程协议版本](../capabilities-and-versions.md#进程协议版本) |
 | API 编号 | [API-29](../api-catalog.md#现在能用的-api)：构建、任务、测试、运行准备 |
 | 权限 | `process.build`；自有进程的提供者加 `languageServer.launch`；原生调试准备加 `debug.launch` |
 | 激活事件 | `onBuildSystem:<id>`；提供者在第一次由用户操作触发的构建请求时启动 |
@@ -34,7 +34,7 @@
 
 ### 提供者能做什么
 
-所有功能都属于 `buildProviders` `0`，用同一个 `litheBuild` 协议。一次会话里能用到哪些，取决于清单声明了哪个来源，以及宿主实现了哪些。
+除运行入口属于 `buildProviders` `1` 外，所有功能都属于 `buildProviders` `0`，用同一个 `litheBuild` 协议。一次会话里能用到哪些，取决于清单声明了哪个来源，以及宿主实现了哪些。
 
 | 功能 | 清单里的声明 | 方法 | 契约章节 | 示例（在 `fixtures/build-providers/`，另有说明的除外） |
 | --- | --- | --- | --- | --- |
@@ -44,6 +44,7 @@
 | 测试发现 | provider 测试声明 `discovery: true`，同时需要 `suite` 和 `case` 过滤器 | `lithe/build/discoverTests` | [Test discovery](../../contract/v1/README.md#test-discovery) | `build-test-discovery.json` |
 | 运行准备 | `run[].source: "provider"`，用 `fromTargets.tags`；`execution` 为 `application`（默认）、`service` 或 `task` | `lithe/build/prepareRun` | [Provider run preparation](../../contract/v1/README.md#provider-run-preparation) | `build-provider-run-preparation`、`build-run-preparation.json` |
 | 类型化运行选项 | 服务和任务的准备带 `launchOptions`（`execution`、`runtimeArguments`、`arguments`、`environment`，可选 `entrypoint`、`workingDirectory`） | 扩展 `lithe/build/prepareRun` | [Typed run options and service/task preparation](../../contract/v1/README.md#typed-run-options-and-servicetask-preparation) | `build-provider-run-options`、`build-run-options.json` |
+| 运行入口（`buildProviders` 1） | 运行声明 `entrypoints: true`，不写 `fromTargets`；`requires` 写 `buildProviders: 1` | `lithe/build/runEntrypoints`（按源文件回答可运行的入口）；准备时 `lithe/build/prepareRun` 不带 `target`、带 `launchOptions.entrypoint` | [Run entrypoints](../../contract/v1/README.md#run-entrypoints-buildproviders-1) | `build-provider-run-entrypoints`、`build-run-entrypoints.json` |
 | 注册表连接调试 | 服务运行声明 `debug: {"configurationType": "…"}`，由宿主选择已启用、声明了该类型且支持 `attach` 的调试适配器 | 沿用 `lithe/build/prepareRun` | [Registry connection debugging](../../contract/v1/README.md#registry-connection-debugging) | `build-connection-debug-options.json`（没有单独的清单示例） |
 | 原生调试准备 | 运行声明 `debug: {"adapter": "native"}`；`requires` 要有 `debugAdapters: 0`，并申请 `debug.launch`；适配器必须是本插件自己声明的 | `lithe/build/prepareDebug` | [Native debug preparation](../../contract/v1/README.md#native-debug-preparation) | `build-provider-debug-preparation`、`build-debug-preparation.json` |
 | 只读模型输入 | 消费者声明 `modelInputs`（最多 8 个槽），`requires` 要有 `buildModelInputs: 0` 和 `buildProviders: 0`；生产者声明 `modelSharing` | 沿用模型、依赖和各计划请求，快照在 `params.modelInputs` | [Optional read-only model inputs](../../contract/v1/README.md#optional-read-only-model-inputs) | `build-systems/build-model-producer`、`build-systems/build-model-consumer` |
@@ -58,7 +59,7 @@
 
 ### 协商与隔离
 
-- 宿主发 `capabilities.experimental.litheBuild: {"versions": [0]}`，提供者回答自己选的 `{"version": 0}`。提供者没有回答版本，或回答了宿主没给出的版本，就不用于构建请求；共享形式的提供者仍然服务它的语言。双方都忽略这些对象和请求参数、结果里不认识的字段，所以任何一方都可以增加可选数据；只有对方不能忽略的改动，才会给 `buildProviders` 版本 `1`，协议随之变化。
+- 宿主发 `capabilities.experimental.litheBuild: {"versions": [0, 1]}`，提供者回答自己选的版本，例如 `{"version": 1}`。提供者没有回答版本，或回答了宿主没给出的版本，就不用于构建请求；共享形式的提供者仍然服务它的语言。双方都忽略这些对象和请求参数、结果里不认识的字段，所以任何一方都可以增加可选数据；只有对方不能忽略的改动，才会给 `buildProviders` 版本 `1`，协议随之变化。
 - 一个插件、一个构建系统、一个工作区一个进程。两个插件从不共享进程，宿主也从不在进程之间转发消息；每个进程只经自己的标准输入输出与宿主说 JSON-RPC。共享形式只复用同一插件的语言服务器会话。
 - 提供者在第一次构建请求时启动（只有用户操作才会发出），在工作区关闭、插件停用，或者包被替换、回滚、卸载之前停止。插件设置改变后，下一次请求重启它，所以启动参数总是反映当前值；退出的提供者由下一次请求重新启动。
 - 安装时拒绝这样的包：提供者的启动指向不存在的文件、包外路径或经符号链接的路径，或者打包的可执行文件和运行时不是常规可执行文件。
@@ -134,7 +135,7 @@ Some build tools expose their project model only through their own API (the Grad
 | --- | --- |
 | Manifest fields | `buildSystems[].provider`, and `source: "provider"` in individual declarations |
 | Capability versions | `buildProviders` `0`; every `buildSystems[].provider` needs both `buildSystems: 0` and `buildProviders: 0`, whether it starts its own process or shares a language server; a template-only build plugin omits `buildProviders`. `requires` must list exactly the capabilities the manifest uses; process start is base contract, not a capability, so do not write `requires.serverProcess`. See [versions](../capabilities-and-versions.md#capability-versions-requires) |
-| Protocols | `litheBuild` `0`: the host offers `capabilities.experimental.litheBuild: {"versions": [0]}` in `initialize`, and the provider answers `{"version": 0}`. The protocol has no version of its own: it is the version of `buildProviders`; see [process protocol versions](../capabilities-and-versions.md#process-protocol-versions) |
+| Protocols | `litheBuild` `0` and `1`: the host offers `capabilities.experimental.litheBuild: {"versions": [0, 1]}` in `initialize`, and the provider answers the newest version it speaks, such as `{"version": 1}`; version `1` only adds `lithe/build/runEntrypoints`. The protocol has no version of its own: it is the version of `buildProviders`; see [process protocol versions](../capabilities-and-versions.md#process-protocol-versions) |
 | API IDs | [API-29](../api-catalog.md#apis-usable-now): build, tasks, tests, run preparation |
 | Permissions | `process.build`; `languageServer.launch` for an own-process provider; `debug.launch` for native debug preparation |
 | Activation events | `onBuildSystem:<id>`; a provider starts on the first build request, which only a user action sends |
@@ -153,7 +154,7 @@ Detection never starts a provider: an instance with a `provider` source only rep
 
 ### What a provider can do
 
-Every feature belongs to `buildProviders` `0` and uses the same `litheBuild` protocol. Which of them a session uses depends on the sources the manifest declares and on what the host implements.
+Every feature but run entrypoints, which belong to `buildProviders` `1`, belongs to `buildProviders` `0`, and all use the same `litheBuild` protocol. Which of them a session uses depends on the sources the manifest declares and on what the host implements.
 
 | Feature | Declared in the manifest | Methods | Contract section | Example (in `fixtures/build-providers/` unless noted) |
 | --- | --- | --- | --- | --- |
@@ -163,6 +164,7 @@ Every feature belongs to `buildProviders` `0` and uses the same `litheBuild` pro
 | Test discovery | A provider test declares `discovery: true`, which needs both `suite` and `case` filters | `lithe/build/discoverTests` | [Test discovery](../../contract/v1/README.md#test-discovery) | `build-test-discovery.json` |
 | Run preparation | `run[].source: "provider"` with `fromTargets.tags`; `execution` is `application` (default), `service`, or `task` | `lithe/build/prepareRun` | [Provider run preparation](../../contract/v1/README.md#provider-run-preparation) | `build-provider-run-preparation`, `build-run-preparation.json` |
 | Typed run options | Service and task preparation carry `launchOptions` (`execution`, `runtimeArguments`, `arguments`, `environment`, optional `entrypoint` and `workingDirectory`) | Extends `lithe/build/prepareRun` | [Typed run options and service/task preparation](../../contract/v1/README.md#typed-run-options-and-servicetask-preparation) | `build-provider-run-options`, `build-run-options.json` |
+| Run entrypoints (`buildProviders` 1) | A run declares `entrypoints: true` instead of `fromTargets`; `requires` lists `buildProviders: 1` | `lithe/build/runEntrypoints` (the runnable entrypoints of one source file); preparation sends `lithe/build/prepareRun` without `target` and with `launchOptions.entrypoint` | [Run entrypoints](../../contract/v1/README.md#run-entrypoints-buildproviders-1) | `build-provider-run-entrypoints`, `build-run-entrypoints.json` |
 | Registry connection debugging | A service run declares `debug: {"configurationType": "…"}`, and the host picks an enabled debug adapter that advertises the type and supports `attach` | The same `lithe/build/prepareRun` | [Registry connection debugging](../../contract/v1/README.md#registry-connection-debugging) | `build-connection-debug-options.json` (no manifest example of its own) |
 | Native debug preparation | A run declares `debug: {"adapter": "native"}`; `requires` needs `debugAdapters: 0`, the plugin requests `debug.launch`, and the adapter must be one the plugin declares itself | `lithe/build/prepareDebug` | [Native debug preparation](../../contract/v1/README.md#native-debug-preparation) | `build-provider-debug-preparation`, `build-debug-preparation.json` |
 | Read-only model inputs | A consumer declares `modelInputs` (at most 8 slots), and `requires` needs `buildModelInputs: 0` and `buildProviders: 0`; a producer declares `modelSharing` | The model, dependency, and plan requests; the snapshot is in `params.modelInputs` | [Optional read-only model inputs](../../contract/v1/README.md#optional-read-only-model-inputs) | `build-systems/build-model-producer`, `build-systems/build-model-consumer` |
@@ -177,7 +179,7 @@ Every feature belongs to `buildProviders` `0` and uses the same `litheBuild` pro
 
 ### Negotiation and isolation
 
-- The host sends `capabilities.experimental.litheBuild: {"versions": [0]}`, and the provider answers the `{"version": 0}` it chose. A provider that answers no version, or one the host did not offer, is not used for build requests; a shared provider still serves its language. Both sides ignore fields they do not know in these objects and in request params and results, so either side can add optional data; only a change the other side must not ignore gives `buildProviders` version `1`, and the protocol moves with it.
+- The host sends `capabilities.experimental.litheBuild: {"versions": [0, 1]}`, and the provider answers the version it chose, such as `{"version": 1}`. A provider that answers no version, or one the host did not offer, is not used for build requests; a shared provider still serves its language. Both sides ignore fields they do not know in these objects and in request params and results, so either side can add optional data; only a change the other side must not ignore gives `buildProviders` version `1`, and the protocol moves with it.
 - One process per plugin, build system, and workspace. Two plugins never share a process, and the host never relays messages between processes; each speaks JSON-RPC only with the host, over its own stdio. The shared form reuses a language server session of the same plugin only.
 - A provider starts on the first build request, which only a user action sends, and stops when its workspace closes, its plugin is disabled, or before its package is replaced, rolled back, or uninstalled. A change of the plugin's settings restarts it on the next request, so its launch arguments always reflect the current values; a provider that exits is started again by the next request.
 - Installation refuses a package whose provider launch points at a missing file, a path outside the package or through a symbolic link, or a packaged executable or runtime that is not a regular executable file.

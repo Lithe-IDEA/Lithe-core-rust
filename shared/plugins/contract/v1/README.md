@@ -895,7 +895,7 @@ per capability.
    `buildProviders`, `litheFunctions` from `backend`, `litheVcs` from
    `vcsProviders`, the toolchain provider protocol from `toolchainProviders`,
    `litheKeymapImport` from `keymapImportProviders`, and `litheLogging` from
-   `pluginAPIVersion`. All of them are `0`.
+   `pluginAPIVersion`. `litheBuild` is at `1`; all the others are `0`.
 3. **A host declares a capability version when it can serve every form of
    it.** See [Host capabilities](#host-capabilities).
 4. **A future change gives one capability version `1`.** The manifest section
@@ -916,7 +916,7 @@ The other versioned documents start at `0` too:
 | Plugin manifest ([schema](plugin-manifest.schema.json)); it names the file format, and any other value is `plugin.schema.unsupported` | `schemaVersion` | `0` |
 | Native UI document ([schema](native-ui.schema.json)) | `schemaVersion` | `0` |
 | Marketplace index ([schema](plugin-index.schema.json)) | `schemaVersion` | `0` |
-| Canonical build documents (`litheBuildModel`, `litheDependencies`, `litheTestResults`, `litheTestDiscovery`, `litheBuildConfiguration`, `litheConfigurationEdit`) and the `modelInputs` snapshot | `version` | `0` |
+| Canonical build documents (`litheBuildModel`, `litheDependencies`, `litheTestResults`, `litheTestDiscovery`, `litheRunEntrypoints`, `litheBuildConfiguration`, `litheConfigurationEdit`) and the `modelInputs` snapshot | `version` | `0` |
 | `plugins.editorActions.decode` request | `version` | `0` (required; Core accepts only `0`, otherwise `Unsupported editor action validation version.`) |
 | Plugin web bridge | `window.lithe.version` (`bridgeVersion`) | `0` |
 | `backend` member of a launch plan | `version` | the manifest's `requires.backend` |
@@ -1894,9 +1894,11 @@ same invocation resolver; explicit invalid tool/runtime selection is a failure,
 never permission for independent discovery. It must reject stale project facts
 rather than guess a target.
 
-The host offers `litheBuild.versions: [0]`: the protocol's version is the version
-of `buildProviders` the manifest requires, and the provider answers
-`{ "version": 0 }`. Unsupported negotiation fails explicitly. Task execution and
+The host offers the `litheBuild` versions it implements, `[0, 1]` today: the
+protocol's version is a version of `buildProviders`, and the provider answers
+the newest one it speaks, such as `{ "version": 1 }`. Version 1 adds
+`lithe/build/runEntrypoints` (see [Run entrypoints](#run-entrypoints-buildproviders-1))
+and changes nothing of version 0. Unsupported negotiation fails explicitly. Task execution and
 its progress notification belong to this protocol with `lithe/build/model` and
 `lithe/build/dependencies`.
 
@@ -2076,6 +2078,48 @@ an override the original instance containment rule still applies. Other
 launch result validation and cancellation/stale-result behavior are unchanged.
 Canonical fixtures: `fixtures/build-providers/build-provider-run-options.plugin.json` and
 `fixtures/build-providers/build-run-options.json`.
+
+#### Run entrypoints (`buildProviders` 1)
+
+A provider run may declare `entrypoints: true` instead of `fromTargets`. It is
+an application that starts an entrypoint the provider names, such as a class
+with a `main` method, in one of its projects. It requires `source: "provider"`
+and `buildProviders` 1 in `requires`; `fromTargets`, `fromTasks`, `arguments`,
+`extension`, `debug`, and a `service` or `task` execution are refused. It
+applies to no target, so the host never lists it per target: the user starts
+it from a source file.
+
+`build.runEntrypointsPlan` takes the common plan fields, optional `refresh`
+and `tool`, and `file`, a workspace-relative file inside the instance root.
+`project` and an output file are refused. It returns a request for
+`lithe/build/runEntrypoints` whose params carry `file` beside the effective
+options. The method uses the bounded request lifecycle of
+`lithe/build/discoverTests`, without execution progress. The provider reads the
+file and answers:
+
+```json
+{"format":"litheRunEntrypoints","version":0,"entrypoints":[
+  {"run":"main","name":"Tool","entrypoint":"example.Tool",
+   "project":{"name":"app","path":"app"}}]}
+```
+
+`run` names an entrypoint run, `name` is the display name (1–256 bytes, no
+control characters), `entrypoint` is the opaque `launchOptions.entrypoint`
+(1–4,096 bytes, no NUL), and `project` is a typed selection with a
+workspace-relative path inside the instance. There are at most 64 entries,
+in the provider's order, most relevant first. An empty list means the file
+holds no entrypoint. The host passes the answer to `build.decodeRunEntrypoints`
+with the plan's configuration; Core returns `entrypoints` without exact
+duplicates and refuses a malformed answer whole with
+`plugin.build.invalidOutput`.
+
+The host saves an answer as an ordinary provider run reference with an empty
+`targetID` and `extensions.build-run.entrypoint`, then prepares it with
+`build.prepareRunPlan`: an entrypoint run takes `project`, no `target`, and
+requires `launchOptions.entrypoint`; a target run still requires its target.
+The provider receives `lithe/build/prepareRun` without `target`. Canonical
+fixtures: `fixtures/build-providers/build-provider-run-entrypoints.plugin.json`
+and `fixtures/build-providers/build-run-entrypoints.json`.
 
 #### Registry connection debugging
 
@@ -2449,18 +2493,19 @@ The manifest only says how to start the provider and which sources use it.
 Everything else is negotiated in the LSP `initialize` exchange, so a provider
 can add optional data:
 
-- The host sends `capabilities.experimental.litheBuild: { "versions": [0] }`.
-  The protocol has no version of its own: it is the version of `buildProviders`
-  the manifest requires. It is the two requests above with the params and result
+- The host sends `capabilities.experimental.litheBuild: { "versions": [0, 1] }`,
+  the `buildProviders` versions it implements. The protocol has no version of
+  its own: it is a version of `buildProviders`, and version 1 only adds
+  `lithe/build/runEntrypoints`. It is the two requests above with the params and result
   formats of this section, together with the typed requests of the sections
   before it: task and test execution, test discovery, run preparation, native
   debug preparation, source-backed native configuration, inline test reports,
   opaque semantic test selectors, typed run options, and registry connection
-  debugging. Read-only model inputs travel in the plan requests. A host presents
+  debugging, and, from version 1, run entrypoints. Read-only model inputs travel in the plan requests. A host presents
   the features it implements; a provider must not depend on a host calling any
   of them.
-- The provider answers `capabilities.experimental.litheBuild: { "version": 0 }`
-  with the version it chose from that list. A provider that answers no
+- The provider answers `capabilities.experimental.litheBuild: { "version": 1 }`
+  with the version it chose from that list, the newest it speaks. A provider that answers no
   version, or one the host did not offer, is not used for build requests; a
   shared provider still serves its language.
 - Both sides ignore fields they do not know in these objects and in request

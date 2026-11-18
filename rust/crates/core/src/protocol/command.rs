@@ -472,6 +472,10 @@ pub enum BuildCommand {
     TestDiscoveryPlan,
     /// Validates provider-owned test selectors (`build.decodeTestDiscovery`).
     DecodeTestDiscovery,
+    /// Asks a provider for the entrypoints of a file (`build.runEntrypointsPlan`).
+    RunEntrypointsPlan,
+    /// Validates the entrypoints a provider found (`build.decodeRunEntrypoints`).
+    DecodeRunEntrypoints,
     /// Expands the command that prints a project's dependencies (`build.dependencyPlan`).
     DependencyPlan,
     /// Normalizes a build model and derives its run entries (`build.decodeModel`).
@@ -1177,6 +1181,8 @@ impl CoreCommand {
             "build.decodeRunPreparation" => Some(Self::Build(BuildCommand::DecodeRunPreparation)),
             "build.testDiscoveryPlan" => Some(Self::Build(BuildCommand::TestDiscoveryPlan)),
             "build.decodeTestDiscovery" => Some(Self::Build(BuildCommand::DecodeTestDiscovery)),
+            "build.runEntrypointsPlan" => Some(Self::Build(BuildCommand::RunEntrypointsPlan)),
+            "build.decodeRunEntrypoints" => Some(Self::Build(BuildCommand::DecodeRunEntrypoints)),
             "build.dependencyPlan" => Some(Self::Build(BuildCommand::DependencyPlan)),
             "build.decodeModel" => Some(Self::Build(BuildCommand::DecodeModel)),
             "build.decodeTestResults" => Some(Self::Build(BuildCommand::DecodeTestResults)),

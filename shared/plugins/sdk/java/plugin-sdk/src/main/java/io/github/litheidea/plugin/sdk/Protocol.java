@@ -14,7 +14,12 @@ import java.util.regex.Pattern;
 public final class Protocol {
     /** The version of each protocol this SDK speaks; the host offers it in {@code initialize}. */
     public static final int FUNCTIONS_VERSION = 0;
-    public static final int BUILD_VERSION = 0;
+    /**
+     * The newest build protocol version ({@code buildProviders} 1 adds
+     * {@code lithe/build/runEntrypoints}). The SDK also speaks every earlier
+     * version and answers the newest one the host offers.
+     */
+    public static final int BUILD_VERSION = 1;
     public static final int LOGGING_VERSION = 0;
     public static final int KEYMAP_IMPORT_VERSION = 0;
 
@@ -34,6 +39,7 @@ public final class Protocol {
     public static final String BUILD_DISCOVER_TESTS = "lithe/build/discoverTests";
     public static final String BUILD_PREPARE_DEBUG = "lithe/build/prepareDebug";
     public static final String BUILD_PREPARE_RUN = "lithe/build/prepareRun";
+    public static final String BUILD_RUN_ENTRYPOINTS = "lithe/build/runEntrypoints";
     public static final String BUILD_PROGRESS = "lithe/build/progress";
 
     /**

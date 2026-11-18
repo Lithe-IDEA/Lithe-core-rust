@@ -12,6 +12,7 @@ const methods = [
   ['test', { exitCode: 2, output: 'test failed\n' }],
   ['discoverTests', { tests: [{ suite: 'Suite', case: 'exact # [case]' }] }],
   ['prepareRun', launch],
+  ['runEntrypoints', { entrypoints: [{ run: 'main', name: 'Tool', entrypoint: 'example.Tool', project: { name: 'app', path: 'app' } }] }],
   ['prepareDebug', { program: 'app/bin/main', arguments: [], workingDirectory: 'app', environment: {} }],
 ];
 
@@ -25,22 +26,21 @@ test('the build protocol answers version 0 and routes each of its typed methods'
   assert.equal(backend.buildVersion, 0);
   for (const [method, reply] of methods) {
     const response = await host.request(`lithe/build/${method}`, { operationID: `wire-${method}` });
-    assert.deepEqual(response.result, method === 'discoverTests'
-      ? { ...reply, format: 'litheTestDiscovery', version: 0 } : reply);
+    const format = { discoverTests: 'litheTestDiscovery', runEntrypoints: 'litheRunEntrypoints' }[method];
+    assert.deepEqual(response.result, format ? { ...reply, format, version: 0 } : reply);
   }
 });
 
-test('build negotiation needs the host to offer version 0', { timeout: 15000 }, async (t) => {
-  for (const versions of [[0], [99, 0], [1, 4], [99, '0', true], []]) {
+test('build negotiation answers the newest version the host offers', { timeout: 15000 }, async (t) => {
+  for (const [versions, chosen] of [[[0], 0], [[99, 0], 0], [[1, 4], 1], [[0, 1], 1], [[4, 2], null], [[99, '0', true], null], [[], null]]) {
     const backend = createBackend();
     backend.build.execute(() => ({ exitCode: 0, output: '' }));
     const host = new TestHost(backend);
     t.after(() => host.close());
-    const offered = versions.includes(0);
     const response = await host.initialize({ litheBuild: { versions } });
-    assert.equal(backend.buildVersion, offered ? 0 : null, JSON.stringify(versions));
+    assert.equal(backend.buildVersion, chosen, JSON.stringify(versions));
     assert.deepEqual(response.result.capabilities.experimental,
-      offered ? { litheLogging: { version: 0 }, litheBuild: { version: 0 } } : { litheLogging: { version: 0 } });
+      chosen !== null ? { litheLogging: { version: 0 }, litheBuild: { version: chosen } } : { litheLogging: { version: 0 } });
     await host.close();
   }
 });
