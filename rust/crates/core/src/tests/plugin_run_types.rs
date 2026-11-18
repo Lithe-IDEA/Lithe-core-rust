@@ -438,6 +438,24 @@ fn saved_declared_runs_expand_into_the_types_command_line() {
         json!({ "configurationId": id, "instances": instances }),
     );
     assert_eq!(foreign["data"]["status"], "rejected", "{foreign}");
+    // A value edited by hand that the type does not offer is named by field.
+    let path = root.join(local);
+    let saved_text = fs::read_to_string(&path).unwrap();
+    let edited = saved_text.replace("runKind = \"package\"", "runKind = \"module\"");
+    assert_ne!(edited, saved_text, "{saved_text}");
+    fs::write(&path, edited).unwrap();
+    let wrong = plan(
+        &root,
+        manifest(),
+        json!({ "configurationId": id, "instances": instances }),
+    );
+    assert_eq!(wrong["data"]["status"], "rejected", "{wrong}");
+    assert_eq!(
+        wrong["data"]["error"]["code"],
+        "plugin.build.invalidRunConfiguration"
+    );
+    assert_eq!(wrong["data"]["error"]["field"], "values.runKind", "{wrong}");
+    fs::write(&path, saved_text).unwrap();
     // A working directory in no instance needs a single instance.
     let outside = plan(
         &root,
