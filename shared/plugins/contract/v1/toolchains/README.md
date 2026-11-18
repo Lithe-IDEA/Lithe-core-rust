@@ -507,7 +507,10 @@ reason is `error`. The output `view` is `{rows,issues,counts}`:
   starts collapsed, and so does every plugin group when there are more than 40.
   While `text` or a filter other than `all` applies, no group is collapsed, so a
   match is never hidden.
-- `issues` lists the first problems in the same order as `{index,status}`.
+- `issues` lists the first problems of every tool, whatever the query, as
+  `{index,status,group?}`: errors first, then warnings, each by name. `group` is
+  the key of the group the tool is listed under when the query groups, so a host
+  that opens the tool can open its group.
 - `counts` is `{total,matched,problems,errors,warnings,pinned,changed}`. Only
   `matched` depends on the query.
 
