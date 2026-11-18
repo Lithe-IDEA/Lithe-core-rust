@@ -165,12 +165,7 @@ pub(crate) fn feature_names_from_capabilities(capabilities: &Value) -> Vec<Strin
     {
         insert_unique(&mut values, "codeActionResolve");
     }
-    if capabilities
-        .get("inlayHintProvider")
-        .and_then(|value| value.get("resolveProvider"))
-        .and_then(Value::as_bool)
-        == Some(true)
-    {
+    if inlay_hint_registration_resolves(capabilities.get("inlayHintProvider")) {
         insert_unique(&mut values, "inlayHintResolve");
     }
     if crate::build_provider::negotiated(capabilities) {
@@ -202,6 +197,14 @@ pub(crate) fn apply_dynamic_registration(state: &mut LspClientState, message: &V
         return;
     };
     for registration in registrations {
+        if registration.get("method").and_then(Value::as_str) == Some("textDocument/inlayHint") {
+            if let Some(id) = registration.get("id").and_then(Value::as_str) {
+                let resolve = inlay_hint_registration_resolves(registration.get("registerOptions"));
+                state.inlay_hint_providers.insert(id.to_string(), resolve);
+                update_inlay_hint_features(state);
+            }
+            continue;
+        }
         if registration.get("method").and_then(Value::as_str) == Some("textDocument/semanticTokens")
         {
             if let (Some(id), Some(options)) = (
@@ -263,10 +266,6 @@ pub(crate) fn apply_dynamic_registration(state: &mut LspClientState, message: &V
             {
                 insert_unique(&mut state.server_capabilities, "codeActionResolve");
             }
-            if registration.get("method").and_then(Value::as_str) == Some("textDocument/inlayHint")
-            {
-                insert_unique(&mut state.server_capabilities, "inlayHintResolve");
-            }
         }
     }
 }
@@ -316,15 +315,41 @@ pub(crate) fn apply_dynamic_unregistration(state: &mut LspClientState, message: 
             continue;
         }
         if unregistration.get("method").and_then(Value::as_str) == Some("textDocument/inlayHint") {
-            state
-                .server_capabilities
-                .retain(|existing| existing != "inlayHintResolve");
+            if let Some(id) = unregistration.get("id").and_then(Value::as_str) {
+                if state.inlay_hint_providers.remove(id).is_some() {
+                    update_inlay_hint_features(state);
+                }
+            }
+            continue;
         }
         if let Some(feature) = unregistration
             .get("method")
             .and_then(Value::as_str)
             .and_then(feature_name_for_method)
         {
+            state
+                .server_capabilities
+                .retain(|existing| existing != feature);
+        }
+    }
+}
+
+/// Reads resolve support from either static or dynamic inlay hint options.
+pub(crate) fn inlay_hint_registration_resolves(options: Option<&Value>) -> bool {
+    options.and_then(|options| options.get("resolveProvider")) == Some(&Value::Bool(true))
+}
+
+fn update_inlay_hint_features(state: &mut LspClientState) {
+    for (feature, enabled) in [
+        ("inlayHints", !state.inlay_hint_providers.is_empty()),
+        (
+            "inlayHintResolve",
+            state.inlay_hint_providers.values().any(|resolve| *resolve),
+        ),
+    ] {
+        if enabled {
+            insert_unique(&mut state.server_capabilities, feature);
+        } else {
             state
                 .server_capabilities
                 .retain(|existing| existing != feature);

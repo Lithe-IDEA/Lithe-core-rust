@@ -5601,12 +5601,16 @@ result). Its normalized result is `{ signatureHelp: null }` when no signature is
 documentation). Each parameter is normalized from either a substring label or
 UTF-16 `[start, end]` offsets into
 `{ label, utf16Start, utf16End, byteStart, byteEnd, documentation, isMarkdown }`,
-and `activeSignature` / `activeParameter` are clamped into range.
+and the original `activeSignature` / `activeParameter` selections are mapped to
+the retained entries. Missing or out-of-range indices select the first retained
+entry when one exists. The legacy top-level `activeParameter` is used only for
+the active signature when that signature has no `activeParameter` of its own.
 
 Operation `inlayHints` (`textDocument/inlayHint`) sorts hints stably by
 `(line, utf16Column)`, trims labels to single-line text of at most 48 characters
 (with `…`), caps tooltips at 2048 bytes, and keeps at most 8 hints per line and
-512 hints per viewport request. When the server advertises `inlayHintProvider.resolveProvider`,
+512 hints per viewport request. When a static or dynamically registered provider
+advertises `resolveProvider`,
 `featuresChanged` includes `inlayHintResolve` and `resolveInlayHint` (`inlayHint/resolve`)
 resolves a single hint (`{ hint }`). Pass back the normalized hint with its optional
 `resolvePayload` for this operation. Core uses that bounded original hint (at most 16 KiB)

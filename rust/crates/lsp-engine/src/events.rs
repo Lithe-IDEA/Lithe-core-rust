@@ -600,6 +600,7 @@ pub(crate) fn clear_runtime_state(session: &RuntimeSession, state: &mut SessionS
     state.client.server_capabilities.clear();
     state.client.completion_providers.clear();
     state.client.signature_help_providers.clear();
+    state.client.inlay_hint_providers.clear();
     state.client.open_documents.clear();
     state.client.pending_requests.clear();
     state.pending.clear();

@@ -107,7 +107,7 @@
           "label": "add(int, int) -> int",
           "documentation": "Adds two integers.",
           "isMarkdown": false,
-          "activeParameter": 1,
+          "activeParameter": 0,
           "parameters": [
             {
               "label": "int",
@@ -133,7 +133,7 @@
           "label": "日志(🧪 msg: str, 值: i32)",
           "documentation": "记录结构化日志",
           "isMarkdown": true,
-          "activeParameter": 1,
+          "activeParameter": 0,
           "parameters": [
             {
               "label": "🧪 msg: str",
@@ -156,8 +156,8 @@
           ]
         }
       ],
-      "activeSignature": 1,
-      "activeParameter": 1
+      "activeSignature": 0,
+      "activeParameter": 0
     }
   },
   "inlayHints": {

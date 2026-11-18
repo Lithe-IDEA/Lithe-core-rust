@@ -127,6 +127,10 @@ pub struct LspClientState {
     /// capability under the empty id, dynamic registrations under their own ids.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub signature_help_providers: BTreeMap<String, Value>,
+    /// Inlay hint registrations and their resolve support, keyed by registration id.
+    /// The static capability uses the empty id if the server provided no id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub inlay_hint_providers: BTreeMap<String, bool>,
     /// Full semantic-token registrations, including the server-owned legends.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub semantic_token_providers: BTreeMap<String, Value>,
@@ -197,6 +201,7 @@ impl Default for LspClientState {
             server_capabilities: Vec::new(),
             completion_providers: BTreeMap::new(),
             signature_help_providers: BTreeMap::new(),
+            inlay_hint_providers: BTreeMap::new(),
             semantic_token_providers: BTreeMap::new(),
             text_document_sync: LspTextDocumentSyncKind::Full,
             text_document_save_include_text: None,

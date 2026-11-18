@@ -238,20 +238,27 @@ fn parse_signature_help(result: &Value) -> Option<Value> {
         return None;
     }
     let fallback_active_param = result.get("activeParameter").and_then(Value::as_u64);
+    let requested_active = result.get("activeSignature").and_then(Value::as_u64);
     let mut signatures = Vec::with_capacity(raw_signatures.len().min(MAX_SIGNATURES));
-    for signature in raw_signatures.iter().take(MAX_SIGNATURES) {
-        if let Some(parsed) = parse_signature_information(signature, fallback_active_param) {
+    let mut active_signature = 0;
+    let mut active_fallback = None;
+    for (index, signature) in raw_signatures.iter().take(MAX_SIGNATURES).enumerate() {
+        if let Some((parsed, fallback)) =
+            parse_signature_information(signature, fallback_active_param)
+        {
+            if signatures.is_empty() || requested_active == Some(index as u64) {
+                active_signature = signatures.len();
+                active_fallback = fallback;
+            }
             signatures.push(parsed);
         }
     }
     if signatures.is_empty() {
         return None;
     }
-    let requested_active = result
-        .get("activeSignature")
-        .and_then(Value::as_u64)
-        .unwrap_or(0) as usize;
-    let active_signature = requested_active.min(signatures.len() - 1);
+    if let Some(active_parameter) = active_fallback {
+        signatures[active_signature]["activeParameter"] = json!(active_parameter);
+    }
     let active_parameter = signatures[active_signature]
         .get("activeParameter")
         .cloned()
@@ -334,7 +341,7 @@ fn normalize_single_line_with_boundaries(
 fn parse_signature_information(
     signature: &Value,
     fallback_active_param: Option<u64>,
-) -> Option<Value> {
+) -> Option<(Value, Option<usize>)> {
     let raw_label = signature.get("label")?.as_str()?;
     let (label, boundaries, label_truncated) =
         normalize_single_line_with_boundaries(raw_label, MAX_SIGNATURE_LABEL_CHARS);
@@ -343,10 +350,16 @@ fn parse_signature_information(
     }
     let (documentation, is_markdown) =
         bounded_documentation(signature.get("documentation"), MAX_SIGNATURE_DOC_BYTES);
+    let active_field = signature.get("activeParameter");
+    let requested = match active_field {
+        Some(value) => value.as_u64(),
+        None => fallback_active_param,
+    };
     let mut parameters = Vec::new();
+    let mut selected = 0;
     let mut search_from_byte = 0_usize;
     if let Some(raw_params) = signature.get("parameters").and_then(Value::as_array) {
-        for param in raw_params.iter().take(MAX_PARAMETERS) {
+        for (index, param) in raw_params.iter().take(MAX_PARAMETERS).enumerate() {
             if let Some(parsed) = parse_parameter_information(
                 param,
                 &label,
@@ -354,28 +367,30 @@ fn parse_signature_information(
                 label_truncated,
                 &mut search_from_byte,
             ) {
+                if requested == Some(index as u64) {
+                    selected = parameters.len();
+                }
                 parameters.push(parsed);
             }
         }
     }
-    let active_parameter =
-        if parameters.is_empty() || signature.get("activeParameter").is_some_and(Value::is_null) {
-            None
-        } else {
-            let raw_active = signature
-                .get("activeParameter")
-                .and_then(Value::as_u64)
-                .or(fallback_active_param)
-                .unwrap_or(0) as usize;
-            Some(raw_active.min(parameters.len() - 1))
-        };
-    Some(json!({
-        "label": label,
-        "documentation": documentation,
-        "isMarkdown": is_markdown,
-        "parameters": parameters,
-        "activeParameter": active_parameter
-    }))
+    let has_active_parameter = !parameters.is_empty() && !active_field.is_some_and(Value::is_null);
+    // The legacy top-level index only belongs to the active signature.
+    let default_parameter = if active_field.is_none() { 0 } else { selected };
+    let active_parameter = has_active_parameter.then_some(default_parameter);
+    let fallback_parameter =
+        (has_active_parameter && active_field.is_none() && fallback_active_param.is_some())
+            .then_some(selected);
+    Some((
+        json!({
+            "label": label,
+            "documentation": documentation,
+            "isMarkdown": is_markdown,
+            "parameters": parameters,
+            "activeParameter": active_parameter
+        }),
+        fallback_parameter,
+    ))
 }
 
 fn parse_parameter_information(

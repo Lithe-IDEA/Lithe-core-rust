@@ -2306,6 +2306,104 @@ fn client_completion_rejects_invalid_trigger_context() {
 }
 
 #[test]
+fn inlay_hint_capabilities_track_independent_provider_registrations() {
+    for static_provider in [false, true] {
+        let initialized = client_initialize(ClientInitializeRequest {
+            state: LspClientState::default(),
+            root_uri: "file:///workspace".into(),
+            process_id: None,
+            initialization_options: None,
+        })
+        .unwrap();
+        let initialize: Value = serde_json::from_str(&initialized.messages[0]).unwrap();
+        let mut state = client_apply_server_message(ClientApplyServerMessageRequest {
+            state: initialized.state,
+            message: json!({"jsonrpc": "2.0", "id": initialize["id"], "result": {
+                "capabilities": {"inlayHintProvider": static_provider}
+            }})
+            .to_string(),
+        })
+        .unwrap()
+        .state;
+        let apply = |state, id, method, params| {
+            client_apply_server_message(ClientApplyServerMessageRequest {
+                state,
+                message: json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params})
+                    .to_string(),
+            })
+            .unwrap()
+            .state
+        };
+        state = apply(
+            state,
+            2,
+            "client/registerCapability",
+            json!({"registrations": [
+                {"id": "basic", "method": "textDocument/inlayHint"},
+                {"id": "resolve", "method": "textDocument/inlayHint", "registerOptions": {"resolveProvider": true}}
+            ]}),
+        );
+        let assert_features = |state: &LspClientState, hints, resolve| {
+            assert_eq!(
+                state.server_capabilities.iter().any(|f| f == "inlayHints"),
+                hints
+            );
+            assert_eq!(
+                state
+                    .server_capabilities
+                    .iter()
+                    .any(|f| f == "inlayHintResolve"),
+                resolve
+            );
+        };
+        assert_features(&state, true, true);
+        for (id, provider, enabled, resolve) in [
+            (3, "unregistered-id", true, true),
+            (4, "resolve", true, false),
+            (5, "basic", static_provider, false),
+        ] {
+            state = apply(
+                state,
+                id,
+                "client/unregisterCapability",
+                json!({"unregisterations": [
+                    {"id": provider, "method": "textDocument/inlayHint"}
+                ]}),
+            );
+            assert_features(&state, enabled, resolve);
+        }
+    }
+}
+
+#[test]
+fn signature_help_preserves_selected_indices_when_entries_are_filtered() {
+    let result = json!({
+        "activeSignature": 1,
+        "activeParameter": 2,
+        "signatures": [
+            {"label": " "},
+            {"label": "selected(a, c)", "parameters": [
+                {"label": "a"}, {"label": [5, 1]}, {"label": "c"}
+            ]},
+            {"label": "other(x, y, z)", "parameters": [
+                {"label": "x"}, {"label": "y"}, {"label": "z"}
+            ]}
+        ]
+    });
+    let normalized = lsp_feature_result_for_method(
+        Some("textDocument/signatureHelp"),
+        Some(&result),
+        &Default::default(),
+    )
+    .unwrap();
+    let help = &normalized["signatureHelp"];
+    assert_eq!(help["activeSignature"], 0);
+    assert_eq!(help["activeParameter"], 1);
+    assert_eq!(help["signatures"][0]["parameters"][1]["label"], "c");
+    assert_eq!(help["signatures"][1]["activeParameter"], 0);
+}
+
+#[test]
 fn client_editor_actions_signature_help_inlay_hints_and_apply_edit_match_fixture() {
     let fixture: Value = serde_json::from_str(include_str!(
         "../../../fixtures/lsp/editor-actions-hints-v1.json"

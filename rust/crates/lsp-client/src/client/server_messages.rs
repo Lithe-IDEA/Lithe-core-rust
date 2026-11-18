@@ -519,6 +519,20 @@ pub fn client_apply_server_message_for_plugin(
                 }
                 if let Some(options) = result
                     .get("capabilities")
+                    .and_then(|capabilities| capabilities.get("inlayHintProvider"))
+                    .filter(|options| options.is_object() || **options == Value::Bool(true))
+                {
+                    let id = options
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default();
+                    state.inlay_hint_providers.insert(
+                        id.to_string(),
+                        inlay_hint_registration_resolves(Some(options)),
+                    );
+                }
+                if let Some(options) = result
+                    .get("capabilities")
                     .and_then(|c| c.get("semanticTokensProvider"))
                 {
                     if semantic_token_legend(options).is_some() {
@@ -538,6 +552,7 @@ pub fn client_apply_server_message_for_plugin(
             state.semantic_token_providers.clear();
             state.completion_providers.clear();
             state.signature_help_providers.clear();
+            state.inlay_hint_providers.clear();
             state.text_document_sync = LspTextDocumentSyncKind::Full;
             state.open_documents.clear();
             state.diagnostics.clear();
