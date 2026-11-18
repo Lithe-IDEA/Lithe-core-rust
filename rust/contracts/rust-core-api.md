@@ -497,17 +497,17 @@ or removing a command fails until the table changes in the same commit.
 | `toolchains.failureReply` | Build the JSON-RPC error reply for a query that missed its deadline or found no backend, so the host passes it to `toolchains.decodeReply` like a provider's own error; cancellation has none |
 | `toolchains.resolvePins` | Validate a captured local document and find the nearest ancestor directory pin, retaining dormant and legacy entries without probing or writing |
 | `toolchains.editPins` | Apply one bounded batch of directory pin edits to a captured local document without writing native files |
-| `toolchains.catalogState` | Validate machine-wide SDK registrations without a project |
-| `toolchains.editCatalog` | Merge confirmed machine-wide SDK registrations and defaults |
+| `toolchains.catalogState` | Validate machine-wide SDK registrations and optional workspace project-code trust without a project |
+| `toolchains.editCatalog` | Merge confirmed machine-wide SDK registrations, defaults and explicit workspace project-code trust |
 | `toolchains.pinStoragePlan` | Declare bounded workspace-native pin and ignore sources |
 | `toolchains.decodePinDocument` | Validate a complete native source or supply the absent-source default |
 | `toolchains.editPinSources` | Plan deterministic pin and Git ignore source edits without native I/O |
 | `toolchains.resolveConsumerPreferences` | Validate an inert consumer preference document and resolve one tool's explicit Run, consumer, directory or workspace choice while keeping workspace/consumer inheritance symbolic; no native files or launch authority |
 | `toolchains.editConsumerPreferences` | Edit or reset one exact consumer/directory tool preference; return the document and effective input without native writes |
-| `toolchains.resolve` | Resolve the fixed/project/global/automatic layers from one generation-bound snapshot, retaining unmet requirements, unavailable providers with their cause, conflicts and terminal fixed-value failures |
+| `toolchains.resolve` | Resolve the fixed/project/global/automatic layers from one generation-bound snapshot, retaining nearest project candidates, unmet requirements, unavailable providers with their cause, conflicts and terminal fixed-value failures |
 | `toolchains.checkVersion` | Match captured output with an enabled plugin definition's version expression and compare generic numeric components with an optional minimum; never starts a probe |
-| `toolchains.discoveryPlan` | Return platform-filtered definition-owned scan declarations, layouts, probes, PATH entries, login-shell home variables and budgets; never scans native directories |
-| `toolchains.candidates` | List one tool's login-shell homes (declared `environment` variables and, from the optional `commandHomes`, declared commands found on the PATH) and host-scanned installations with checked executables, versions or skip reasons, and the automatic-layer choice; never starts a probe. A shell home that checks out is also an `installations` entry with provider `host:shell`, once per canonical home, so a picker can offer every home the resolver may run; `selected` remains the automatic layer's own choice |
+| `toolchains.discoveryPlan` | Return platform-filtered definition-owned scan declarations, layouts, probes, PATH entries, login-shell home variables, project-file candidates and budgets; never scans native directories |
+| `toolchains.candidates` | List one tool's root project-file candidates, login-shell homes (declared `environment` variables and, from the optional `commandHomes`, declared commands found on the PATH) and host-scanned installations with checked executables, versions or skip reasons, and the automatic-layer choice; never starts a probe. A shell home that checks out is also an `installations` entry with provider `host:shell`, once per canonical home, so a picker can offer every home the resolver may run; `selected` remains the automatic layer's own choice |
 | `toolchains.instantiateLaunch` | Expand an enabled tool definition's `launch` template for a selected executable, entry, runtime arguments and arguments; a part the template cannot carry is `plugin.toolchain.launchMismatch`; performs no I/O |
 | `run.decodeStart` | Validate a plugin backend's `lithe/host/run/start` params against its manifest and the workspace, and return the normalized start with temporary-file paths substituted |
 | `debug.decodeBackendConfiguration` | Validate a plugin backend's `lithe/host/debug/start` params against its manifest and return the qualified adapter, request, label and configuration |
@@ -7050,15 +7050,22 @@ must not infer executable names from opaque runtime IDs.
 
 ### Global SDK registrations without an open project
 
-`toolchains.catalogState` accepts `{document:string|null,platform,filesystemCaseSensitive?}`
-and returns `{status:"ok",state:{document,storage:{relativePath:"toolchains/global.json",maximumBytes:262144}}}`.
+`toolchains.catalogState` accepts `{document:string|null,platform,filesystemCaseSensitive?,workspaceRoot?}`
+and returns `{status:"ok",state:{document,storage:{relativePath:"toolchains/global.json",maximumBytes:262144},projectCodeAllowed?}}`.
+When `workspaceRoot` is supplied, `projectCodeAllowed` reports whether that normalized workspace
+root is in the machine-local `trustedWorkspaces` list (`false` when `workspaceRoot` is `""`);
+when `workspaceRoot` is omitted, `projectCodeAllowed` is omitted.
 Native clients resolve the relative path below their platform user-preference directory,
 never below a workspace, SDK, installed package or application bundle. Reading an absent
 source returns `{version:1,tools:{}}` and must not create a directory or file.
 
-`toolchains.editCatalog` accepts the same source fields and a nonempty `edits` array of
-`{tool,homes:[absoluteHome],defaultHome:string|null}`. Each edit replaces only that tool's
-registrations and default; other tools, including dormant plugins, remain intact. At most
+`toolchains.editCatalog` accepts `{document:string|null,platform,filesystemCaseSensitive?,edits?,workspaceTrust?}`,
+where at least one of a nonempty `edits` array of `{tool,homes:[absoluteHome],defaultHome:string|null}`
+or `workspaceTrust:{workspace,trusted}` is required. Each tool edit replaces only that tool's
+registrations and default; other tools, dormant plugins and `trustedWorkspaces` remain intact.
+`workspaceTrust` grants or revokes machine-local `projectCodeAllowed` trust for one normalized
+workspace root (at most 256 distinct workspaces), preserving `tools`; revoking trust on an absent
+document returns `changed:false,document:null` and creates no file. At most
 64 tools and 32 distinct homes per tool are accepted. Native platform path normalization
 and case identity apply before deduplication. A selected default is registered if needed;
 null clears only the default. Empty registrations plus null remove the tool entry.

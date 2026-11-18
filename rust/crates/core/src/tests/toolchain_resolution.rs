@@ -1174,3 +1174,573 @@ fn global_toolchain_mode_refuses_project_pins_and_ignores_project_executables() 
     let rejected = resolve_command(value, validated_manifest_json).unwrap();
     assert_eq!(rejected["status"], "rejected", "{rejected}");
 }
+
+#[test]
+fn toolchain_discovery_plan_exposes_platform_filtered_project_files() {
+    let mut value = input();
+    let definition = &mut value["registry"]["plugins"][0]["manifest"]["toolDefinitions"][0];
+    definition["executableLayouts"] = json!([
+        {"path":"bin/java","platforms":["macos","linux"]},
+        {"path":"Scripts/java.exe","platforms":["windows"]},
+        {"path":"bin/java.exe","platforms":["windows"]}
+    ]);
+    definition["wrappers"] = json!([
+        {"path":"mvnw","requires":[".mvn/wrapper/maven-wrapper.properties"],"platforms":["macos","linux"]},
+        {"path":"mvnw.cmd","platforms":["windows"]}
+    ]);
+    definition["executables"] = json!([
+        {"id":"pinned","kind":"setting","settingID":"executable","layer":"project"},
+        {"id":"wrapper-unix","kind":"projectFile","path":"mvnw","requires":[".mvn/wrapper/maven-wrapper.properties"],"platforms":["macos","linux"]},
+        {"id":"wrapper-win","kind":"projectFile","path":"mvnw.cmd","platforms":["windows"]},
+        {"id":"venv-unix","kind":"projectFile","projectKind":"environment","home":".venv","path":".venv/bin/java","requires":[".venv/pyvenv.cfg"],"platforms":["macos","linux"]},
+        {"id":"venv-win","kind":"projectFile","projectKind":"environment","home":".venv","path":".venv/Scripts/java.exe","requires":[".venv/pyvenv.cfg"],"platforms":["windows"]},
+        {"id":"shell","kind":"command","command":"java"},
+        {"id":"home","kind":"environment","variable":"JAVA_HOME","path":"bin/java","platforms":["macos","linux"]},
+        {"id":"home-windows","kind":"environment","variable":"JAVA_HOME","path":"bin/java.exe","platforms":["windows"]}
+    ]);
+    let macos = discovery_plan_command(
+        json!({"registry":value["registry"],"platform":"macos"}),
+        validated_manifest_json,
+    )
+    .unwrap();
+    assert_eq!(macos["status"], "ok", "{macos}");
+    assert_eq!(
+        macos["plan"]["tools"][0]["projectFiles"],
+        json!([
+            {"id":"wrapper-unix","projectKind":"wrapper","path":"mvnw","requires":[".mvn/wrapper/maven-wrapper.properties"]},
+            {"id":"venv-unix","projectKind":"environment","home":".venv","path":".venv/bin/java","requires":[".venv/pyvenv.cfg"]}
+        ])
+    );
+    let windows = discovery_plan_command(
+        json!({"registry":value["registry"],"platform":"windows"}),
+        validated_manifest_json,
+    )
+    .unwrap();
+    assert_eq!(windows["status"], "ok", "{windows}");
+    assert_eq!(
+        windows["plan"]["tools"][0]["projectFiles"],
+        json!([
+            {"id":"wrapper-win","projectKind":"wrapper","path":"mvnw.cmd","requires":[]},
+            {"id":"venv-win","projectKind":"environment","home":".venv","path":".venv/Scripts/java.exe","requires":[".venv/pyvenv.cfg"]}
+        ])
+    );
+}
+
+#[test]
+fn toolchain_resolution_project_environment_allows_symlinked_interpreter_and_preserves_lexical_path(
+) {
+    // Covers Unix single-hop and multi-hop interpreter links (resolved to an external base
+    // interpreter) and Windows copied or linked `.venv\Scripts` interpreters.
+    for (platform, workspace, venv_rel_exec, external_target, extra_missing_prepend) in [
+        (
+            "macos",
+            WORKSPACE,
+            "bin/java",
+            "/opt/lithe-fixtures/uv/runtime/21.0.4/bin/java-real",
+            "Scripts",
+        ),
+        (
+            "linux",
+            WORKSPACE,
+            "bin/java",
+            "/usr/lib/lithe-fixtures/runtime/bin/java21",
+            "Scripts",
+        ),
+        (
+            "windows",
+            "C:/Projects/sample",
+            "Scripts/java.exe",
+            "C:/Projects/sample/.venv/Scripts/java.exe",
+            "bin",
+        ),
+        (
+            "windows",
+            "C:/Projects/sample",
+            "Scripts/java.exe",
+            "C:/Users/dev/AppData/Local/uv/runtime/21.0.4/java.exe",
+            "bin",
+        ),
+    ] {
+        let mut value = input();
+        value["platform"] = json!(platform);
+        value["workspaceRoot"] = json!(workspace);
+        let definition = &mut value["registry"]["plugins"][0]["manifest"]["toolDefinitions"][0];
+        definition["executableLayouts"] = json!([
+            {"path":"bin/java","platforms":["macos","linux"]},
+            {"path":"Scripts/java.exe","platforms":["windows"]},
+            {"path":"bin/java.exe","platforms":["windows"]}
+        ]);
+        definition["pathPrepend"] = json!(["${home}/bin", "${home}/Scripts"]);
+        definition["executables"].as_array_mut().unwrap().insert(
+            1,
+            json!({
+                "id":"venv",
+                "kind":"projectFile",
+                "projectKind":"environment",
+                "home":".venv",
+                "path":format!(".venv/{venv_rel_exec}"),
+                "requires":[".venv/pyvenv.cfg"],
+                "platforms":[platform]
+            }),
+        );
+        let home = format!("{workspace}/.venv");
+        let parent_dir = if platform == "windows" {
+            format!("{home}/Scripts")
+        } else {
+            format!("{home}/bin")
+        };
+        let lexical_exec = format!("{home}/{venv_rel_exec}");
+        let cfg_marker = format!("{home}/pyvenv.cfg");
+        let missing_prepend = format!("{home}/{extra_missing_prepend}");
+        value["filesystem"] = json!([
+            fact(workspace, "directory", false),
+            fact(&home, "directory", false),
+            fact(&parent_dir, "directory", false),
+            fact(&cfg_marker, "file", false),
+            {"path":missing_prepend,"canonicalPath":missing_prepend,"kind":"missing"},
+            {"path":lexical_exec,"canonicalPath":external_target,"kind":"file","executable":true}
+        ]);
+
+        // Before workspace trust is granted, no probe target is emitted and resolution skips.
+        let untrusted = resolve(&value);
+        assert_eq!(untrusted["outcome"]["kind"], "skip", "{platform}");
+        assert_eq!(
+            untrusted["outcome"]["reason"]["code"], "projectCodeRequiresAction",
+            "{platform}"
+        );
+        assert_eq!(
+            untrusted["projectCandidates"],
+            json!([{
+                "candidateID":"venv",
+                "projectKind":"environment",
+                "path":lexical_exec,
+                "home":home,
+                "reason":"projectCodeRequiresAction"
+            }]),
+            "{platform}"
+        );
+
+        // Once trusted, the first pass without probes requests probing the lexical interpreter.
+        value["projectCodeAllowed"] = json!(true);
+        let unprobed = resolve(&value);
+        assert_eq!(unprobed["outcome"]["kind"], "skip", "{platform}");
+        assert_eq!(
+            unprobed["projectCandidates"],
+            json!([{
+                "candidateID":"venv",
+                "projectKind":"environment",
+                "path":lexical_exec,
+                "home":home,
+                "executable":lexical_exec,
+                "reason":"probeFailed"
+            }]),
+            "{platform}"
+        );
+
+        // With the probe result on the lexical path, selection keeps the lexical executable
+        // so virtual environments resolve pyvenv.cfg and sys.prefix.
+        value["probes"] = json!([{
+            "executable":lexical_exec,
+            "output":"openjdk version \"21.0.4\"",
+            "exitCode":0
+        }]);
+        let resolved = resolve(&value);
+        assert_eq!(resolved["outcome"]["kind"], "resolved", "{platform}");
+        let selection = &resolved["outcome"]["selection"];
+        assert_eq!(selection["executable"], lexical_exec, "{platform}");
+        assert_eq!(selection["home"], home, "{platform}");
+        assert_eq!(selection["version"], "21.0.4", "{platform}");
+        assert_eq!(selection["layer"], "project", "{platform}");
+        assert_eq!(selection["provider"], "host:project", "{platform}");
+        assert_eq!(selection["projectCode"], true, "{platform}");
+        assert_eq!(
+            selection["environment"],
+            json!({"JAVA_HOME":home,"LITHE_JAVA_PATH":lexical_exec}),
+            "{platform}"
+        );
+        assert_eq!(selection["pathPrepend"], json!([parent_dir]), "{platform}");
+    }
+}
+
+#[test]
+fn toolchain_resolution_project_environment_rejects_escaping_parent_or_marker_or_non_executable_target(
+) {
+    let setup_venv = |platform: &str, workspace: &str, rel_dir: &str, rel_exe: &str| {
+        let mut value = input();
+        value["platform"] = json!(platform);
+        value["workspaceRoot"] = json!(workspace);
+        value["projectCodeAllowed"] = json!(true);
+        let definition = &mut value["registry"]["plugins"][0]["manifest"]["toolDefinitions"][0];
+        definition["executableLayouts"] = json!([
+            {"path":format!("{rel_dir}/{rel_exe}"),"platforms":[platform]},
+            {"path":"bin/java","platforms":["macos","linux"]},
+            {"path":"bin/java.exe","platforms":["windows"]}
+        ]);
+        definition["pathPrepend"] = json!([format!("${{home}}/{rel_dir}")]);
+        definition["executables"].as_array_mut().unwrap().insert(
+            1,
+            json!({
+                "id":"venv",
+                "kind":"projectFile",
+                "projectKind":"environment",
+                "home":".venv",
+                "path":format!(".venv/{rel_dir}/{rel_exe}"),
+                "requires":[".venv/pyvenv.cfg"],
+                "platforms":[platform]
+            }),
+        );
+        value
+    };
+
+    for (platform, workspace, outside, rel_dir, rel_exe) in [
+        (
+            "macos",
+            WORKSPACE,
+            "/opt/lithe-fixtures/outside",
+            "bin",
+            "java",
+        ),
+        (
+            "windows",
+            "C:/Projects/sample",
+            "C:/Outside",
+            "Scripts",
+            "java.exe",
+        ),
+    ] {
+        let home = format!("{workspace}/.venv");
+        let bin = format!("{home}/{rel_dir}");
+        let exe = format!("{bin}/{rel_exe}");
+        let cfg = format!("{home}/pyvenv.cfg");
+        let external_interp = format!("{outside}/runtime/{rel_exe}");
+
+        // 1. Intermediate `bin` / `Scripts` parent directory escapes `.venv` (outside workspace or sibling dir).
+        for escaped_bin in [format!("{outside}/{rel_dir}"), format!("{workspace}/other")] {
+            let mut value = setup_venv(platform, workspace, rel_dir, rel_exe);
+            value["filesystem"] = json!([
+                fact(workspace, "directory", false),
+                fact(&home, "directory", false),
+                {"path":bin,"canonicalPath":escaped_bin,"kind":"directory"},
+                fact(&cfg, "file", false),
+                {"path":exe,"canonicalPath":external_interp,"kind":"file","executable":true}
+            ]);
+            let result = resolve(&value);
+            assert_eq!(result["outcome"]["kind"], "skip", "{platform}");
+            assert_eq!(result["outcome"]["reason"]["code"], "unsafePath");
+            assert!(result["projectCandidates"][0].get("executable").is_none());
+        }
+
+        // 2. `requires` marker escapes workspace via symlink.
+        let mut value = setup_venv(platform, workspace, rel_dir, rel_exe);
+        value["filesystem"] = json!([
+            fact(workspace, "directory", false),
+            fact(&home, "directory", false),
+            fact(&bin, "directory", false),
+            {"path":cfg,"canonicalPath":format!("{outside}/pyvenv.cfg"),"kind":"file","executable":false},
+            {"path":exe,"canonicalPath":external_interp,"kind":"file","executable":true}
+        ]);
+        let result = resolve(&value);
+        assert_eq!(result["outcome"]["kind"], "skip", "{platform}");
+        assert_eq!(result["outcome"]["reason"]["code"], "unsafePath");
+
+        // 3. Executable symlink points to a non-executable file.
+        let mut value = setup_venv(platform, workspace, rel_dir, rel_exe);
+        value["filesystem"] = json!([
+            fact(workspace, "directory", false),
+            fact(&home, "directory", false),
+            fact(&bin, "directory", false),
+            fact(&cfg, "file", false),
+            {"path":exe,"canonicalPath":external_interp,"kind":"file","executable":false}
+        ]);
+        let result = resolve(&value);
+        assert_eq!(result["outcome"]["kind"], "skip", "{platform}");
+        assert_eq!(result["outcome"]["reason"]["code"], "notExecutable");
+        assert!(result["projectCandidates"][0].get("executable").is_none());
+
+        // 4. Environment root `.venv` itself escapes via symlink (outside workspace or sibling dir).
+        for escaped_home in [format!("{outside}/venv"), format!("{workspace}/other")] {
+            let mut value = setup_venv(platform, workspace, rel_dir, rel_exe);
+            value["filesystem"] = json!([
+                fact(workspace, "directory", false),
+                {"path":home,"canonicalPath":escaped_home,"kind":"directory"},
+                fact(&bin, "directory", false),
+                fact(&cfg, "file", false),
+                {"path":exe,"canonicalPath":external_interp,"kind":"file","executable":true}
+            ]);
+            let result = resolve(&value);
+            assert_eq!(result["outcome"]["kind"], "skip", "{platform}");
+            assert_eq!(result["outcome"]["reason"]["code"], "unsafePath");
+            assert!(result["projectCandidates"][0].get("executable").is_none());
+        }
+
+        // 5. Unobserved intermediate `bin` / `Scripts` directory fails closed as `unsafePath`.
+        let mut value = setup_venv(platform, workspace, rel_dir, rel_exe);
+        value["filesystem"] = json!([
+            fact(workspace, "directory", false),
+            fact(&home, "directory", false),
+            fact(&cfg, "file", false),
+            {"path":exe,"canonicalPath":external_interp,"kind":"file","executable":true}
+        ]);
+        let result = resolve(&value);
+        assert_eq!(result["outcome"]["kind"], "skip", "{platform}");
+        assert_eq!(result["outcome"]["reason"]["code"], "unsafePath");
+        assert!(result["projectCandidates"][0].get("executable").is_none());
+
+        // 6. Escaping `pathPrepend` directory fails closed before probing (`executable` omitted).
+        let mut value = setup_venv(platform, workspace, rel_dir, rel_exe);
+        value["registry"]["plugins"][0]["manifest"]["toolDefinitions"][0]["pathPrepend"] =
+            json!([format!("${{home}}/{rel_dir}"), "${home}/extra"]);
+        let extra = format!("{home}/extra");
+        value["filesystem"] = json!([
+            fact(workspace, "directory", false),
+            fact(&home, "directory", false),
+            fact(&bin, "directory", false),
+            {"path":extra,"canonicalPath":format!("{outside}/extra"),"kind":"directory"},
+            fact(&cfg, "file", false),
+            {"path":exe,"canonicalPath":external_interp,"kind":"file","executable":true}
+        ]);
+        let result = resolve(&value);
+        assert_eq!(result["outcome"]["kind"], "skip", "{platform}");
+        assert_eq!(result["outcome"]["reason"]["code"], "unsafePath");
+        assert!(result["projectCandidates"][0].get("executable").is_none());
+    }
+}
+
+#[test]
+fn toolchain_resolution_wrapper_allows_workspace_internal_link_but_rejects_external_link() {
+    for (platform, workspace, outside, wrapper_name) in [
+        ("macos", WORKSPACE, "/opt/lithe-fixtures/outside", "mvnw"),
+        ("windows", "C:/Projects/sample", "C:/Outside", "mvnw.cmd"),
+    ] {
+        let mut value = input();
+        value["platform"] = json!(platform);
+        value["workspaceRoot"] = json!(workspace);
+        value["directory"] = json!("sub");
+        value["projectCodeAllowed"] = json!(true);
+        let definition = &mut value["registry"]["plugins"][0]["manifest"]["toolDefinitions"][0];
+        definition["launch"] = json!(["${executable}", "${arguments}"]);
+        definition["wrappers"] = json!([{"path":wrapper_name,"platforms":[platform]}]);
+        definition["executables"].as_array_mut().unwrap().insert(
+            1,
+            json!({"id":"wrapper","kind":"projectFile","path":wrapper_name,"platforms":[platform]}),
+        );
+        let sub = format!("{workspace}/sub");
+        let sub_wrapper = format!("{sub}/{wrapper_name}");
+        let root_wrapper = format!("{workspace}/{wrapper_name}");
+
+        // Workspace-internal link (e.g., `sub/mvnw -> ../mvnw`) resolves and preserves `sub/mvnw`.
+        value["filesystem"] = json!([
+            fact(workspace, "directory", false),
+            fact(&sub, "directory", false),
+            fact(&root_wrapper, "file", true),
+            {"path":sub_wrapper,"canonicalPath":root_wrapper,"kind":"file","executable":true}
+        ]);
+        let internal = resolve(&value);
+        assert_eq!(internal["outcome"]["kind"], "resolved", "{platform}");
+        assert_eq!(internal["outcome"]["selection"]["executable"], sub_wrapper);
+
+        // Link escaping workspace (`sub/mvnw -> /opt/.../mvnw`) is rejected as `unsafePath`.
+        value["filesystem"] = json!([
+            fact(workspace, "directory", false),
+            fact(&sub, "directory", false),
+            {"path":sub_wrapper,"canonicalPath":format!("{outside}/{wrapper_name}"),"kind":"file","executable":true}
+        ]);
+        let external = resolve(&value);
+        assert_eq!(external["outcome"]["kind"], "skip", "{platform}");
+        assert_eq!(external["outcome"]["reason"]["code"], "unsafePath");
+    }
+}
+
+#[test]
+fn toolchain_candidates_and_multi_hop_environment_links_use_synthetic_tool_definition() {
+    let synthetic_manifest = json!({
+        "schemaVersion": 0,
+        "id": "dev.lithe.test.runtime-support",
+        "displayName": "Synthetic Runtime",
+        "version": "0.1.0",
+        "pluginAPIVersion": 0,
+        "vendor": {"id": "dev.lithe.test", "displayName": "Test", "signatureRequirement": "publisherPackage"},
+        "permissions": [],
+        "requires": {"toolDefinitions": 0},
+        "toolDefinitions": [{
+            "id": "dev.lithe.test.runtime-support:vm",
+            "displayName": "Synthetic VM",
+            "executableLayouts": [
+                {"path": "bin/vm3", "platforms": ["macos", "linux"]},
+                {"path": "bin/vm", "platforms": ["macos", "linux"]},
+                {"path": "Scripts/vm.exe", "platforms": ["windows"]},
+                {"path": "vm.exe", "platforms": ["windows"]}
+            ],
+            "executables": [
+                {"id": "pinned", "kind": "setting", "settingID": "executable", "layer": "project"},
+                {"id": "venv-unix-3", "kind": "projectFile", "projectKind": "environment", "home": ".venv", "path": ".venv/bin/vm3", "requires": [".venv/env.cfg"], "platforms": ["macos", "linux"]},
+                {"id": "venv-unix", "kind": "projectFile", "projectKind": "environment", "home": ".venv", "path": ".venv/bin/vm", "requires": [".venv/env.cfg"], "platforms": ["macos", "linux"]},
+                {"id": "venv-win", "kind": "projectFile", "projectKind": "environment", "home": ".venv", "path": ".venv/Scripts/vm.exe", "requires": [".venv/env.cfg"], "platforms": ["windows"]},
+                {"id": "global", "kind": "setting", "settingID": "executable", "layer": "global"},
+                {"id": "shell", "kind": "command", "command": "vm"},
+                {"id": "installed", "kind": "toolchain", "scope": "installed"}
+            ],
+            "version": {"arguments": ["--version"], "pattern": "SyntheticVM ([0-9]+\\.[0-9]+\\.[0-9]+)"},
+            "commands": ["vm"],
+            "exports": [
+                {"name": "SYNTHETIC_VM_HOME", "value": "${home}"},
+                {"name": "SYNTHETIC_VM_EXEC", "value": "${executable}"}
+            ],
+            "pathPrepend": ["${home}/bin", "${home}/Scripts"],
+            "launch": ["${executable}", "${runtimeArguments}", "${entry}", "${arguments}"]
+        }]
+    });
+
+    for (platform, workspace, rel_dir, primary, hop, base_exec, missing_dir, sys_home, sys_exec) in [
+        (
+            "macos",
+            "/opt/lithe-fixtures/synthetic-ws",
+            "bin",
+            "vm3",
+            Some("vm"),
+            "/opt/lithe-fixtures/base-vm/3.12.7/bin/vm-real",
+            "Scripts",
+            "/opt/lithe-fixtures/system-vm/3.11.9",
+            "/opt/lithe-fixtures/system-vm/3.11.9/bin/vm3",
+        ),
+        (
+            "linux",
+            "/opt/lithe-fixtures/synthetic-ws",
+            "bin",
+            "vm3",
+            Some("vm"),
+            "/usr/lib/lithe-fixtures/base-vm/3.12.7/bin/vm-real",
+            "Scripts",
+            "/usr/lib/lithe-fixtures/system-vm/3.11.9",
+            "/usr/lib/lithe-fixtures/system-vm/3.11.9/bin/vm3",
+        ),
+        (
+            "windows",
+            "C:/Projects/synthetic-ws",
+            "Scripts",
+            "vm.exe",
+            None,
+            "C:/Projects/synthetic-ws/.venv/Scripts/vm.exe",
+            "bin",
+            "C:/ProgramData/SyntheticVM/3.11.9",
+            "C:/ProgramData/SyntheticVM/3.11.9/vm.exe",
+        ),
+    ] {
+        let home = format!("{workspace}/.venv");
+        let dir = format!("{home}/{rel_dir}");
+        let lexical_primary = format!("{dir}/{primary}");
+        let marker = format!("{home}/env.cfg");
+        let missing = format!("{home}/{missing_dir}");
+
+        let mut fs = vec![
+            fact(workspace, "directory", false),
+            fact(&home, "directory", false),
+            fact(&dir, "directory", false),
+            fact(&marker, "file", false),
+            json!({"path": missing, "canonicalPath": missing, "kind": "missing"}),
+            json!({"path": lexical_primary, "canonicalPath": base_exec, "kind": "file", "executable": true}),
+            fact(sys_home, "directory", false),
+            fact(sys_exec, "file", true),
+            json!({"path": format!("{sys_home}/Scripts"), "canonicalPath": format!("{sys_home}/Scripts"), "kind": "missing"}),
+        ];
+        if platform != "windows" {
+            fs.push(fact(&format!("{sys_home}/bin"), "directory", false));
+        } else {
+            fs.push(json!({"path": format!("{sys_home}/bin"), "canonicalPath": format!("{sys_home}/bin"), "kind": "missing"}));
+        }
+        if let Some(second_link) = hop {
+            let lexical_hop = format!("{dir}/{second_link}");
+            // Multi-hop symlink chain in `.venv/bin` (`vm -> vm3 -> base_exec`), plus explicit base target fact.
+            fs.push(json!({"path": lexical_hop, "canonicalPath": base_exec, "kind": "file", "executable": true}));
+            fs.push(fact(base_exec, "file", true));
+        }
+
+        let registry = json!({"plugins": [{"manifest": synthetic_manifest}]});
+        let mut cand_req = json!({
+            "registry": registry,
+            "tool": "dev.lithe.test.runtime-support:vm",
+            "platform": platform,
+            "workspaceRoot": workspace,
+            "filesystem": fs,
+            "probes": [{"executable": sys_exec, "output": "SyntheticVM 3.11.9", "exitCode": 0}],
+            "systemInstallations": [{"tool": "dev.lithe.test.runtime-support:vm", "home": sys_home}],
+            "projectCodeAllowed": false
+        });
+
+        // 1. Untrusted `candidates`: `project` reports `projectCodeRequiresAction` without `executable`.
+        let untrusted_res = candidates_command(cand_req.clone(), validated_manifest_json).unwrap();
+        assert_eq!(untrusted_res["status"], "ok", "{untrusted_res}");
+        let untrusted_cand = untrusted_res["candidates"].clone();
+        assert_eq!(
+            untrusted_cand["project"][0]["reason"], "projectCodeRequiresAction",
+            "{platform}"
+        );
+        assert!(
+            untrusted_cand["project"][0].get("executable").is_none(),
+            "{platform}"
+        );
+        assert_eq!(untrusted_cand["installations"].as_array().unwrap().len(), 1);
+        assert_eq!(untrusted_cand["installations"][0]["home"], sys_home);
+
+        // 2. Trusted `candidates` before probing `.venv`: emits lexical `executable` with `probeFailed`.
+        cand_req["projectCodeAllowed"] = json!(true);
+        let unprobed_cand = candidates_command(cand_req.clone(), validated_manifest_json).unwrap()
+            ["candidates"]
+            .clone();
+        assert_eq!(
+            unprobed_cand["project"][0]["executable"], lexical_primary,
+            "{platform}"
+        );
+        assert_eq!(
+            unprobed_cand["project"][0]["reason"], "probeFailed",
+            "{platform}"
+        );
+
+        // 3. Trusted `candidates` after probing lexical paths: reports `version`, never mixes `.venv` into `installations`.
+        let mut probes = vec![
+            json!({"executable": sys_exec, "output": "SyntheticVM 3.11.9", "exitCode": 0}),
+            json!({"executable": lexical_primary, "output": "SyntheticVM 3.12.7", "exitCode": 0}),
+        ];
+        if let Some(second_link) = hop {
+            probes.push(json!({"executable": format!("{dir}/{second_link}"), "output": "SyntheticVM 3.12.7", "exitCode": 0}));
+        }
+        cand_req["probes"] = json!(probes);
+        let probed_cand = candidates_command(cand_req.clone(), validated_manifest_json).unwrap()
+            ["candidates"]
+            .clone();
+        assert_eq!(probed_cand["project"][0]["version"], "3.12.7", "{platform}");
+        assert!(probed_cand["project"][0].get("reason").is_none());
+        assert_eq!(probed_cand["installations"].as_array().unwrap().len(), 1);
+
+        // 4. Full resolution selects `.venv` over `installed` and preserves the lexical interpreter path.
+        let resolved = resolve(&json!({
+            "registry": registry,
+            "operationID": "synth-1",
+            "generation": 1,
+            "context": {"contextID": "ctx-1", "generation": 1},
+            "tool": "dev.lithe.test.runtime-support:vm",
+            "directory": ".",
+            "platform": platform,
+            "workspaceRoot": workspace,
+            "filesystem": fs,
+            "probes": probes,
+            "queries": [],
+            "systemInstallations": [{"tool": "dev.lithe.test.runtime-support:vm", "home": sys_home}],
+            "environment": {},
+            "commandHomes": {},
+            "projectCodeAllowed": true
+        }));
+        assert_eq!(resolved["outcome"]["kind"], "resolved", "{platform}");
+        let selection = &resolved["outcome"]["selection"];
+        assert_eq!(selection["executable"], lexical_primary, "{platform}");
+        assert_eq!(selection["home"], home, "{platform}");
+        assert_eq!(selection["version"], "3.12.7", "{platform}");
+        assert_eq!(selection["layer"], "project", "{platform}");
+        assert_eq!(
+            selection["environment"],
+            json!({"SYNTHETIC_VM_HOME": home, "SYNTHETIC_VM_EXEC": lexical_primary}),
+            "{platform}"
+        );
+        assert_eq!(selection["pathPrepend"], json!([dir]), "{platform}");
+    }
+}

@@ -36,7 +36,7 @@
 | 层 | 规则 |
 | --- | --- |
 | 固定（pin） | 最近的祖先目录的固定；只按完整路径段匹配，前缀相似的兄弟目录不继承 |
-| 项目 | 最近的声明目录；同一深度 wrapper > 环境变量 > 声明；同一来源里原生读取器优先于兼容读取器。离得近的项目要求遮住更上层的要求 |
+| 项目 | 最近的声明目录；同一深度 wrapper > 项目环境（如 `.venv`） > 提供者声明；同一来源里原生读取器优先于兼容读取器。离得近的项目要求遮住更上层的要求。项目候选必须经本机显式信任（`projectCodeAllowed: true`），否则跳过且不运行探针；项目环境的根目录、中间父目录（如 `bin`/`Scripts`）、环境内 `requires` 标记与存在的 `pathPrepend` 目录不得软链逃逸环境或工作区，而叶子可执行文件允许是指向工作区内或工作区外常规可执行文件的单跳/多跳符号链接，校验通过后保留字面路径（如 `<root>/.venv/bin/python`）；wrapper 链接目标仍必须留在工作区根之内 |
 | 全局 | Lithe 的全局默认 > 没有歧义（或用户已选）的提供者全局默认 > 登录 shell |
 | 自动 | 已安装、满足最低版本的最高版本。只用于固定的安装不参与自动选择。不同主目录有相同最高版本时算冲突，要求用户选择 |
 
@@ -61,11 +61,11 @@
 | `toolchains.decodeReply` | 查询请求、提供者应答、宿主观察到的文件系统事实 | `snapshot` | 校验一次 `toolchains/query` 应答，得到 `{installations, statements, watch, diagnostics}` |
 | `toolchains.failureReply` | `{params, code}` | `reply` | 查询没有应答时生成对应的 JSON-RPC 错误；`code` 只能是 `plugin.toolchain.timeout` 或 `plugin.toolchain.providerUnavailable` |
 | `toolchains.resolvePins` | `{document, directory, tool}` | `resolution` | 在 `local.json` 里找最近的固定，返回 `{pin, sourceDirectory}` |
-| `toolchains.resolve` | 某个目录的完整解析输入 | `resolution` | 走四层选择，结果是 `resolved`、`skip` 或 `terminalFailure`，附带 `trace`、`unmet`、`conflicts` |
+| `toolchains.resolve` | 某个目录的完整解析输入 | `resolution` | 走四层选择，结果是 `resolved`、`skip` 或 `terminalFailure`，附带 `trace`、`projectCandidates`、`unmet`、`conflicts` |
 | `toolchains.checkVersion` | `{registry, tool, output, minimumVersion?}` | `version` | 用定义的版本正则取版本并比较；最多 8 段数字、64 字节，不解释别名 |
 | `toolchains.instantiateLaunch` | `{registry, tool, executable, home?, entry?, runtimeArguments, arguments}` | `launch` | 按工具定义的 `launch` 模板，为宿主选中的可执行文件展开启动参数，返回 `{executable, arguments, versionArguments}`；见“按工具定义 ID 启动进程” |
-| `toolchains.discoveryPlan` | `{registry, platform}` | `plan` | 每个工具的扫描计划和声明它的提供者；最多 256 个根目录、4096 个条目、64 层祖先 |
-| `toolchains.candidates` | 设置页的发现输入 | `candidates` | 设置页显示的全局层和自动层：`{tool, shell, installations, skipped, selected, conflicts}`；第一次调用把待探测的可执行文件列为 `probeFailed`，宿主运行探针后再调用一次 |
+| `toolchains.discoveryPlan` | `{registry, platform}` | `plan` | 每个工具的扫描计划、声明它的提供者、登录 shell 变量和平台过滤后的 `projectFiles`；最多 256 个根目录、4096 个条目、64 层祖先 |
+| `toolchains.candidates` | 设置页的发现输入 | `candidates` | 设置页显示的根级项目候选、登录 shell 和自动层：`{tool, project, shell, installations, skipped, selected, conflicts}`；未授权项目候选不给出待探测 `executable`，已授权且安全校验通过后首次调用把待探测可执行文件列为 `probeFailed`，宿主运行探针后再调用一次 |
 
 ### 提供者应答的限制
 
@@ -124,17 +124,17 @@
 
 ### 本机文档
 
-`.lithe/toolchains/local.json` 的 `version` 仍为 `1`，这是 Core 当前校验的格式。`toolchains.resolvePins` 校验 `{version: 1, toolchains, pins?}`，`pins` 按目录记录 `{home, version, provider}`。这个文档只读取，不授予执行权限，也不写文件；保存固定尚未实现。
+`.lithe/toolchains/local.json` 的 `version` 为 `1`，`toolchains.resolvePins` / `editPins` / `editPinSources` 校验并按条件更新目录级固定 `{home, version, provider}`，不授予项目代码执行权限。本机应用存储目录下的 `toolchains/global.json`（经 `toolchains.catalogState` / `editCatalog` 管理）保存本机注册的 SDK 目录、全局默认以及显式信任的工作区根路径 `trustedWorkspaces`（绝不写进工作区 `.lithe/`）。
 
 ### 桌面端现状
 
 | 用途 | Lithe 桌面端 |
 | --- | --- |
-| 工具定义（`toolDefinitions`） | 已声明。设置页的发现结果，以及构建和运行选择工具，都通过共享 Core 解析器完成 |
+| 工具定义（`toolDefinitions`） | 已声明（macOS、Windows、Linux）。设置页发现、项目环境信任、目录固定保存，以及构建、运行、调试、语言服务器和新建项目选择工具，都通过共享 Core 解析器完成 |
 | 工具链提供者（`toolchainProviders`） | 未声明。提供者查询路线不可用，需要它的插件不会被提供安装 |
-| 安装缺失的命令（`commandInstallers`） | 未声明 |
-| 语言服务器的 `{kind: "tool"}` 启动应答 | 启动时被拒绝，因为工具还没有经过工具链注册表解析（见[语言](languages.md)） |
-| 保存固定（pin）、`toolchainConsumers`、通用运行时启动、提供者热激活 | 契约尚未提供 |
+| 安装缺失的命令（`commandInstallers`） | 已声明。插件管理页展示工具、命令行、网络与目标目录，用户确认后安装到受管目录或工具默认目录 |
+| 语言服务器的 `{kind: "tool"}` 启动 | 按工作区工具链四层选择解析后启动（见[语言](languages.md)） |
+| `toolchainConsumers`、提供者热激活 | 契约尚未提供 |
 
 `toolchains.provide` 可以影响某个已定义工具启动哪个程序，但不授权替换任意命令、安装软件、访问网络或执行工作区代码。
 
@@ -209,7 +209,7 @@ The first argument of the version probe `version.arguments` is a flag (`-version
 | Layer | Rule |
 | --- | --- |
 | Fixed (pin) | The nearest ancestor directory's pin. Matched by whole path segments only; a sibling with a similar prefix does not inherit it |
-| Project | The nearest declaring directory; at the same depth, wrapper > environment variable > declaration; within one source, the native reader beats the compatible reader. A nearer project requirement masks a higher one |
+| Project | The nearest declaring directory; at the same depth, wrapper > project environment (such as `.venv`) > provider declaration; within one source, the native reader beats the compatible reader. A nearer project requirement masks a higher one. Project candidates require explicit machine-local workspace trust (`projectCodeAllowed: true`) and are never passively probed; for a project environment, `home`, intermediate parent directories (`bin` / `Scripts`), in-home `requires` markers, and existing `pathPrepend` directories must remain canonically inside `home` and the workspace, while the leaf executable may be a single-hop or multi-hop symbolic link to a regular executable inside or outside the workspace and preserves its lexical `executable` path (such as `<root>/.venv/bin/python`); wrapper targets must remain inside the workspace root |
 | Global | Lithe's global default > an unambiguous (or user-chosen) provider global default > the login shell |
 | Automatic | The highest installed version that meets the minimum. Installations added only as pins never take part in automatic selection. Equal highest versions in different homes are a conflict that the user must resolve |
 
@@ -234,11 +234,11 @@ Every command accepts UTF-8 JSON, has a 4 MiB input budget, and performs no nati
 | `toolchains.decodeReply` | The query request, the provider's reply, and the host's observed filesystem facts | `snapshot` | Validates one `toolchains/query` reply and returns `{installations, statements, watch, diagnostics}` |
 | `toolchains.failureReply` | `{params, code}` | `reply` | Builds the JSON-RPC error when a query gets no reply. `code` is `plugin.toolchain.timeout` or `plugin.toolchain.providerUnavailable` |
 | `toolchains.resolvePins` | `{document, directory, tool}` | `resolution` | Finds the nearest pin in `local.json`; returns `{pin, sourceDirectory}` |
-| `toolchains.resolve` | The full resolution input for one directory | `resolution` | Runs the four layers. The result is `resolved`, `skip`, or `terminalFailure`, with `trace`, `unmet`, and `conflicts` |
+| `toolchains.resolve` | The full resolution input for one directory | `resolution` | Runs the four layers. The result is `resolved`, `skip`, or `terminalFailure`, with `trace`, `projectCandidates`, `unmet`, and `conflicts` |
 | `toolchains.checkVersion` | `{registry, tool, output, minimumVersion?}` | `version` | Reads the version with the definition's regular expression and compares it. At most 8 numeric parts and 64 bytes; aliases are not interpreted |
 | `toolchains.instantiateLaunch` | `{registry, tool, executable, home?, entry?, runtimeArguments, arguments}` | `launch` | Expands the definition's `launch` template for the executable the host selected, returning `{executable, arguments, versionArguments}`; see "Launching a process by tool-definition ID" |
-| `toolchains.discoveryPlan` | `{registry, platform}` | `plan` | Each tool's scan plan and the providers that declare it. Limits: 256 roots, 4096 entries, 64 ancestors |
-| `toolchains.candidates` | The settings page's discovery input | `candidates` | The global and automatic layers shown on a settings page: `{tool, shell, installations, skipped, selected, conflicts}`. The first call lists executables to probe as `probeFailed`; the host runs the probes and calls again |
+| `toolchains.discoveryPlan` | `{registry, platform}` | `plan` | Each tool's scan plan, the providers that declare it, login-shell variables, and platform-filtered `projectFiles`. Limits: 256 roots, 4096 entries, 64 ancestors |
+| `toolchains.candidates` | The settings page's discovery input | `candidates` | Root project candidates, login-shell homes, and the automatic layer shown on a settings page: `{tool, project, shell, installations, skipped, selected, conflicts}`. Untrusted project candidates emit no `executable` to probe; once trusted and checked, the first call lists executables to probe as `probeFailed`, and the host runs the probes and calls again |
 
 ### Limits on provider replies
 
@@ -297,17 +297,17 @@ A `systemCommand` launch names only a bare command (such as `dlv` or `gopls`), a
 
 ### Local document
 
-`.lithe/toolchains/local.json` keeps `version` `1`, which is the format Core validates today. `toolchains.resolvePins` validates `{version: 1, toolchains, pins?}`, where `pins` maps directory keys to `{home, version, provider}`. The document is read, not written; it grants no execution authority; saving pins is not implemented.
+`.lithe/toolchains/local.json` keeps `version` `1`; `toolchains.resolvePins`, `editPins`, and `editPinSources` validate and conditionally update directory pins `{home, version, provider}`, granting no execution authority over project code. Machine-local `toolchains/global.json` under the application preference directory (managed through `toolchains.catalogState` and `editCatalog`) stores registered SDK homes, global defaults, and explicitly trusted workspace roots `trustedWorkspaces` (never written inside `.lithe/`).
 
 ### Desktop status
 
 | Use | Lithe desktop |
 | --- | --- |
-| Tool definitions (`toolDefinitions`) | Declared. Settings discovery results, and Build and Run tool selection, go through the shared Core resolver |
+| Tool definitions (`toolDefinitions`) | Declared (macOS, Windows, and Linux). Settings discovery, workspace project-environment trust, saving pins, and Build, Run, Debug, language-server, and project-generator tool selection all go through the shared Core resolver |
 | Toolchain providers (`toolchainProviders`) | Not declared. The provider query route is unavailable, and a plugin that needs it is not offered for installation |
-| Installing missing commands (`commandInstallers`) | Not declared |
-| Language server `{kind: "tool"}` launch answer | Refused at start, because the tool is not yet resolved through the toolchain registry (see [Languages](languages.md)) |
-| Saving pins, `toolchainConsumers`, generic runtime launches, live provider activation | Not provided by the contract yet |
+| Installing missing commands (`commandInstallers`) | Declared. Plugin management displays the tool, command line, network use, and target directory, and installs into the managed directory or tool default directory after user confirmation |
+| Language server `{kind: "tool"}` launch | Resolved through the workspace's four toolchain layers and started (see [Languages](languages.md)) |
+| `toolchainConsumers`, live provider activation | Not provided by the contract yet |
 
 `toolchains.provide` can influence which program a defined tool launches. It does not grant arbitrary command replacement, installation, network access, or execution of workspace code.
 

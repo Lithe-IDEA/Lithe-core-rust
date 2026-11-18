@@ -1,21 +1,20 @@
 # Plugin-owned toolchains: Core foundation
 
-**Status: shared Core implemented; the macOS settings pages run both routes
-read-only.** Core validates data and resolves captured facts; it does not launch
-providers, probe programs, parse manager files, watch paths, write pins, or
-download tools. The macOS settings host expands `discoveryPlan` scans, starts or
-reuses each enabled provider's plugin backend, sends `toolchains/query` through
-`lsp.toolchainRequest`, passes every raw reply with native facts to `decodeReply`,
+**Status: shared Core implemented; the desktop client (macOS, Windows, and
+Linux) declares `toolDefinitions` and runs declarative discovery, project
+candidates, version probes, directory pins, global SDK registrations, and
+explicit workspace project-code trust.** Core validates data and resolves
+captured facts; it does not launch providers, probe programs, parse manager
+files, watch paths, write pins, or download tools. A host that declares
+`toolDefinitions` expands `discoveryPlan` scans and project-file candidates,
 runs the definition's version probe on executables Core returns from
-`candidates`, and shows the result. Any change to a watched input reloads the
-whole snapshot. Nothing is saved by these pages. A separate fresh-resolution
-adapter serves macOS Build and Provider Run; settings detections are never used
-as launch permits. Language-server consumers resolve their tools with their
-own adapters. Windows has no
-toolchain adapter and does not advertise `toolDefinitions` or
-`toolchainProviders`, so Core refuses packages that require them there.
-Consumer migration, the native query lifecycle and cache, pin saving and
-version-manager plugins are not specified yet. The manifest shape is
+`candidates` or `resolve`, and renders or launches the selected installation;
+settings detections are never used as launch permits. A host that also declares
+`toolchainProviders` starts or reuses each enabled provider's plugin backend,
+sends `toolchains/query` through `lsp.toolchainRequest`, and passes every raw
+reply with native facts to `decodeReply` (the desktop client does not declare
+`toolchainProviders` yet, so packages requiring it are not offered for
+installation there). The manifest shape is
 [plugin-manifest.schema.json](../plugin-manifest.schema.json).
 
 ## Manifest admission and registry
@@ -295,7 +294,9 @@ platform,workspaceRoot,filesystem}` and accepts `workspaceRoots`,
 `systemInstallations`, `globalDefault`, `environment`, `commandHomes`,
 `projectCodeAllowed`, `providerChoices` and `fixed`. `local` defaults to an empty
 document. Probes are host observations `{executable,output,exitCode}` keyed by the
-canonical executable a selection reports; system installations are `{tool,home}`.
+executable a selection reports (canonical for external installations, lexical for
+`fixed:{executable}` and `projectFile` candidates); system installations are
+`{tool,home}`.
 Shell environment home variables and `commandHomes` come from the native login-shell
 adapter, not command-name guessing. An environment candidate selects only through
 its declared `path` layout.
@@ -339,15 +340,34 @@ Conflicts require explicit choices, never plugin-ID or home-path precedence.
 Manual pin-only installations are not automatic candidates.
 
 Outcome is `resolved` with `{home,executable,version,provider,layer,projectCode,
-environment,pathPrepend}`, `skip` with a reason, or `terminalFailure` with a reason.
-Output also carries operation/tool/directory, `trace`, `unmet` and `conflicts`.
+environment,pathPrepend}`, `skip` with a reason, or `terminalFailure` with a reason
+(when every candidate skips without resolving, `skip.reason` retains the highest-layer
+candidate's skip reason, or `notFound` when every layer was empty).
+Output also carries `operationID`, `tool`, `directory`, `trace`, `projectCandidates`,
+`unmet` and `conflicts`.
 Wrapper homes may be `null`; home exports/PATH are then omitted. Project code
-requires an explicit consumer authorization snapshot and is never passively
-probed. This foundation rejects project programs or environment homes whose
-canonical identity differs from their declared lexical identity;
-complete native link-chain validation, including common venv interpreter links,
-is deferred rather than silently treated as safe. Each candidate builds a fresh
-environment, so rejected exports cannot leak into its successor.
+requires an explicit machine-local authorization snapshot (`projectCodeAllowed: true`)
+and is never passively probed; when `projectCodeAllowed` is `false` or omitted, every
+`projectFile` candidate skips with `projectCodeRequiresAction` and emits no probe target.
+For `projectKind: "environment"` (with `home`, such as `.venv`), `home`, every
+intermediate parent directory between `home` and `path` (such as `.venv/bin` or
+`.venv/Scripts`), `requires` markers inside `home`, and existing `pathPrepend`
+directories must canonically stay within the workspace root and `home` (`pathPrepend`
+entries attested as `missing` are omitted, while unobserved or escaping directories fail
+closed with `unsafePath`); the leaf executable `path` may be a regular executable file or
+a single-hop or multi-hop symbolic link to a regular executable file inside or outside
+the workspace (both `path` and its resolved `canonicalPath` attested as `file` with
+`executable: true`), requires a version probe on the lexical `path`, and
+`selection.executable` (plus `${executable}` exports) preserves the lexical `path` so
+virtual environments retain their environment root (`pyvenv.cfg` / `sys.prefix`). For
+`projectKind: "wrapper"` (no `home`), the resolved `canonicalPath` and `requires` markers
+must remain inside the workspace root; links escaping the workspace fail closed with
+`unsafePath`, while workspace-internal links preserve the lexical wrapper `path`.
+`projectCandidates` lists present nearest-ancestor `projectFile` candidates as
+`{candidateID,projectKind,path,home?,executable?,version?,reason?}`, emitting
+`executable` only after `projectCodeAllowed: true` and containment/executable checks pass.
+Each candidate builds a fresh environment, so rejected exports cannot leak into its
+successor.
 
 `checkVersion` returns `{satisfied,version}` from the definition's first regex
 capture. Numeric dotted components (at most eight unsigned 32-bit parts, 64 bytes)
@@ -355,9 +375,11 @@ compare with trailing zeros ignored; aliases and tool-specific version syntax ar
 not interpreted. No match gives `version:null,satisfied:false`. `discoveryPlan`
 returns `{tools,limits}`. Each tool carries platform-filtered `scans`, the sorted
 qualified `providers` that declare it, and the definition's `homeLayouts`,
-`executableLayouts`, `version` probe, `pathPrepend` templates and `environment`
+`executableLayouts`, `version` probe, `pathPrepend` templates, `environment`
 login-shell home variables (`{variable,path}` from its platform-applicable
-`environment` candidates). It neither scans, queries nor executes them; limits
+`environment` candidates), and platform-filtered `projectFiles`
+(`{id?,projectKind,path,home?,requires}` from its platform-applicable `projectFile`
+candidates). It neither scans, queries nor executes them; limits
 are 256 roots, 4096 entries and 64 ancestors for the host adapter.
 
 ## Launching a tool definition
@@ -390,25 +412,33 @@ expanded argv.
 
 ## Settings candidates
 
-`candidates` reports what a settings page shows for one tool's global and
-automatic layers without resolving a directory. It requires `{registry,tool,
-platform,workspaceRoot,filesystem}` and accepts `workspaceRoots`,
-`filesystemCaseSensitive`, `minimumVersion`, `probes`, `systemInstallations`,
-`providerInstallations`, `environment`, `fixed` and `projectCodeAllowed`, with the same meaning and checks as in
-`resolve`. `providerInstallations` (at most 512) are `{tool,home,provider}` rows a
-host copies from `decodeReply` snapshots; `provider` must name a registry provider
-`pluginID:providerID` declaring the tool, and the row keeps that attribution when
-a scan reports the same canonical home. The output is
-`{tool,shell,installations,skipped,selected,conflicts}`:
+`candidates` reports what a settings page shows for one tool's root project
+candidates, login-shell homes and automatic layer without resolving a nested
+directory. It requires `{registry,tool,platform,workspaceRoot,filesystem}` and
+accepts `global`, `workspaceRoots`, `filesystemCaseSensitive`, `minimumVersion`,
+`probes`, `systemInstallations`, `providerInstallations`, `environment`,
+`commandHomes`, `fixed` and `projectCodeAllowed`, with the same meaning and
+checks as in `resolve`. `providerInstallations` (at most 512) are
+`{tool,home,provider}` rows a host copies from `decodeReply` snapshots;
+`provider` must name a registry provider `pluginID:providerID` declaring the
+tool, and the row keeps that attribution when a scan reports the same canonical
+home. The output is `{tool,project,shell,installations,skipped,selected,conflicts}`:
 A checked `fixed` choice without a version contributes a `probeFailed` skipped row
 with its executable for the native probe. An unauthorized workspace program never
 contributes such a target. This candidate report itself grants no authority.
 
-
-- `shell` lists each declared home variable present in `environment` as
-  `{candidateID,variable,home,executable?,version?|reason?}`, checked through
-  the candidate's own `path` layout.
-- `installations` are eligible host-scanned homes `{home,executable,version,
+- `project` lists `projectFile` candidates present at `workspaceRoot` (empty when
+  `global: true`) as `{candidateID,projectKind,path,home?,executable?,version?,
+  reason?}`. When `projectCodeAllowed` is not `true`, `reason` is
+  `projectCodeRequiresAction` and `executable` is omitted so the host never probes
+  workspace code; once trusted and containment checks pass, `executable` carries
+  the lexical path to probe and `project` stays separate from `installations`.
+- `shell` lists each declared home variable present in `environment` and each
+  declared command present in `commandHomes` as
+  `{candidateID,variable?|command?,home,executable?,version?|reason?}`. A shell
+  home that checks out is also offered once per canonical home in `installations`
+  with provider `host:shell`.
+- `installations` are eligible installations `{home,executable,version,
   provider}`, highest version first, with the canonical home Core checked.
 - `skipped` lists homes that failed a check as `{home,provider,reason,
   executable?}`; reasons are stable codes such as `unsafePath`, `probeFailed`
@@ -418,10 +448,11 @@ contributes such a target. This candidate report itself grants no authority.
 
 A first call without `probes` returns every checked executable as `probeFailed`.
 The host runs only those executables with the definition's probe arguments,
-then calls again with their `{executable,output,exitCode}`. Homes inside a
-workspace root are refused before any probe, so a project program is never run
-to read its version. The macOS host bounds probes by count, concurrency and
-total time, and reports skipped work as diagnostics rather than a missing tool.
+then calls again with their `{executable,output,exitCode}`. External homes inside a
+workspace root and untrusted `projectFile` candidates are refused before any probe,
+so a project program is never run passively to read its version. The desktop host
+bounds probes by count, concurrency and total time, and reports skipped work as
+diagnostics rather than a missing tool.
 
 Production-shape examples are [tool-definition.plugin.json](../fixtures/toolchains/tool-definition.plugin.json)
 and [toolchain-provider.plugin.json](../fixtures/toolchains/toolchain-provider.plugin.json).

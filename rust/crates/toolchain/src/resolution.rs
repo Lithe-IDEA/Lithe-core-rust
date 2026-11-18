@@ -91,6 +91,7 @@ pub(crate) fn resolve(input: &Value, validate_manifest: ManifestValidator) -> Va
             vec![],
             vec![],
             vec![],
+            vec![],
         ));
     };
     let generation = input["generation"]
@@ -118,6 +119,7 @@ pub(crate) fn resolve(input: &Value, validate_manifest: ManifestValidator) -> Va
                 vec![json!({"candidateID":"consumerFixed","layer":"pinned","state":"resolved"})],
                 vec![],
                 vec![],
+                vec![],
             ),
             Err(code) => output(
                 input,
@@ -127,11 +129,40 @@ pub(crate) fn resolve(input: &Value, validate_manifest: ManifestValidator) -> Va
                 ],
                 vec![],
                 vec![],
+                vec![],
             ),
         });
     }
+    let candidates: Vec<_> = definition["executables"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|value| applicable(value, platform))
+        .collect();
     // A failed optional provider must never revoke a usable explicit fixed value.
     if let Some(home) = pin["pin"]["home"].as_str() {
+        let project_candidates = if input["global"] == true {
+            Vec::new()
+        } else {
+            let mut file_choices =
+                collect_project_file_choices(&snapshot, &candidates, &root, directory)?;
+            file_choices.sort_by_key(|value| {
+                (
+                    std::cmp::Reverse(value.anchor.split('/').count()),
+                    value.category,
+                )
+            });
+            if let Some(nearest) = file_choices
+                .first()
+                .map(|value| value.anchor.split('/').count())
+            {
+                file_choices.retain(|value| value.anchor.split('/').count() == nearest);
+            }
+            file_choices
+                .iter()
+                .map(|choice| project_candidate_row(&snapshot, choice))
+                .collect()
+        };
         let result = snapshot.selection(
             home,
             pin["pin"]["provider"].as_str().unwrap_or(""),
@@ -142,6 +173,7 @@ pub(crate) fn resolve(input: &Value, validate_manifest: ManifestValidator) -> Va
                 input,
                 json!({"kind":"resolved","selection":selection}),
                 vec![json!({"candidateID":"pinned","layer":"pinned","state":"resolved"})],
+                project_candidates,
                 vec![],
                 vec![],
             ),
@@ -151,6 +183,7 @@ pub(crate) fn resolve(input: &Value, validate_manifest: ManifestValidator) -> Va
                 vec![
                     json!({"candidateID":"pinned","layer":"pinned","state":"terminalFailure","reason":reason(code,tool)}),
                 ],
+                project_candidates,
                 vec![],
                 vec![],
             ),
@@ -252,15 +285,11 @@ pub(crate) fn resolve(input: &Value, validate_manifest: ManifestValidator) -> Va
         );
     }
     installations.extend(system_installations(input, tool)?);
-    let candidates: Vec<_> = definition["executables"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter(|value| applicable(value, platform))
-        .collect();
     let mut trace_rows = Vec::new();
+    let mut project_candidates = Vec::new();
     let mut conflicts = Vec::new();
     let mut outcome = None;
+    let mut first_failure = None;
     let mut project_done = false;
     if let Some(default) = input.get("globalDefault").filter(|value| !value.is_null()) {
         fields(default, &["home"])?;
@@ -345,61 +374,8 @@ pub(crate) fn resolve(input: &Value, validate_manifest: ManifestValidator) -> Va
             }
             (_, "project") if !project_done => {
                 project_done = true;
-                let mut choices = Vec::new();
-                for source in &candidates {
-                    if source["kind"] != "projectFile" {
-                        continue;
-                    }
-                    for ancestor in ancestors(directory) {
-                        let anchor = if ancestor == "." {
-                            root.clone()
-                        } else {
-                            paths::join(&root, ancestor, platform)
-                                .ok_or_else(|| reject("directory"))?
-                        };
-                        let native =
-                            paths::join(&anchor, source["path"].as_str().unwrap_or(""), platform)
-                                .ok_or_else(|| reject("projectFile"))?;
-                        if snapshot.fact(&native, "file").is_err() {
-                            continue;
-                        }
-                        let markers =
-                            source["requires"]
-                                .as_array()
-                                .into_iter()
-                                .flatten()
-                                .all(|marker| {
-                                    marker
-                                        .as_str()
-                                        .and_then(|marker| paths::join(&anchor, marker, platform))
-                                        .is_some_and(|path| snapshot.fact(&path, "file").is_ok())
-                                });
-                        if !markers {
-                            continue;
-                        }
-                        let mut value = (*source).clone();
-                        value["nativePath"] = json!(native);
-                        if let Some(home) = source["home"].as_str() {
-                            value["nativeHome"] = json!(if home == "." {
-                                anchor.clone()
-                            } else {
-                                paths::join(&anchor, home, platform)
-                                    .ok_or_else(|| reject("projectFile.home"))?
-                            });
-                        }
-                        choices.push(ProjectChoice {
-                            anchor,
-                            category: if source["projectKind"] == "environment" {
-                                1
-                            } else {
-                                0
-                            },
-                            native: true,
-                            value,
-                            candidate: true,
-                        });
-                    }
-                }
+                let mut choices =
+                    collect_project_file_choices(&snapshot, &candidates, &root, directory)?;
                 if candidates
                     .iter()
                     .any(|value| value["kind"] == "toolchain" && value["scope"] == "project")
@@ -435,6 +411,11 @@ pub(crate) fn resolve(input: &Value, validate_manifest: ManifestValidator) -> Va
                 {
                     choices.retain(|value| value.anchor.split('/').count() == nearest);
                 }
+                project_candidates = choices
+                    .iter()
+                    .filter(|choice| choice.candidate)
+                    .map(|choice| project_candidate_row(&snapshot, choice))
+                    .collect();
                 while let Some(first) = choices.first() {
                     let depth = first.anchor.split('/').count();
                     let category = first.category;
@@ -624,6 +605,8 @@ pub(crate) fn resolve(input: &Value, validate_manifest: ManifestValidator) -> Va
             );
             if terminal {
                 outcome = Some(json!({"kind":"terminalFailure","reason":why}));
+            } else if first_failure.is_none() {
+                first_failure = Some(why);
             }
         } else {
             trace(&mut trace_rows, id, layer, "empty", None);
@@ -640,8 +623,14 @@ pub(crate) fn resolve(input: &Value, validate_manifest: ManifestValidator) -> Va
     }
     Ok(output(
         input,
-        outcome.unwrap_or_else(|| json!({"kind":"skip","reason":reason("notFound",tool)})),
+        outcome.unwrap_or_else(|| {
+            json!({
+                "kind": "skip",
+                "reason": first_failure.unwrap_or_else(|| reason("notFound", tool))
+            })
+        }),
         trace_rows,
+        project_candidates,
         unmet,
         conflicts,
     ))

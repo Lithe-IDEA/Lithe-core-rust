@@ -9,7 +9,7 @@
 
 时间线的两列这样读：
 
-- **API 编号**：这个 PR 涉及的 API-01–44 规划编号，来自 [API 实施计划](https://github.com/1lck/Lithe-IDEA/blob/preview/docs/development/macos-plugin-api-plan.md)，和协议版本、能力版本分开记录。— 表示没有改到具体 API，例如清单、市场、包信任、SDK 或契约文档整理。
+- **API 编号**：这个 PR 涉及的 API-01–44 规划编号，来自 [API 实施计划](https://github.com/1lck/Lithe-IDEA/blob/main/docs/development/macos-plugin-api-plan.md)，和协议版本、能力版本分开记录。— 表示没有改到具体 API，例如清单、市场、包信任、SDK 或契约文档整理。
 - **协议 / 能力**：**加粗**的是这个 PR 新增的版本号；没有加粗的，是同一版本内的补充、宿主接入或说明修正。
 
 ## 按协议查首次出现
@@ -140,6 +140,7 @@
 
 | PR | 修改人 | API 编号 | 协议 / 能力 | 改了什么 |
 | --- | --- | --- | --- | --- |
+| 待填 PR | [@Mucheen](https://github.com/Mucheen) | API-23 | `toolDefinitions` 0 内的补充 | 项目内工具环境解释器符号链接链校验与项目候选返回（[1lck/Lithe-IDEA#2122](https://github.com/1lck/Lithe-IDEA/issues/2122)）：`projectCodeAllowed != true` 时所有 `projectFile` 候选仍以 `projectCodeRequiresAction` 跳过且不返回探针目标；`projectKind: "environment"`（如 `.venv`）要求 `home`、到可执行文件之间的父目录（如 `.venv/bin`、`.venv/Scripts`）、环境内 `requires` 标记以及实际存在的 `pathPrepend` 目录规范化后留在工作区和 `home` 内（记为 `missing` 的跨平台 `pathPrepend` 子目录忽略，未观察到或软链逃逸以 `unsafePath` 拒绝），叶子可执行文件允许是指向工作区内或工作区外常规可执行文件的单跳或多跳符号链接，探测与选中结果均保留字面 `executable` 路径；`wrapper` 仍要求链接目标留在工作区根内。`toolchains.discoveryPlan` 的每个工具新增平台过滤后的 `projectFiles`；`toolchains.candidates` 新增根级 `project` 候选列表；`toolchains.resolve` 新增 `projectCandidates`，且所有层跳过时保留最高层跳过原因。`toolchains.catalogState` / `editCatalog` 支持在本机 `toolchains/global.json` 维护规范化的 `trustedWorkspaces` 并查询 `projectCodeAllowed`。同步更新过时宿主能力对照说明；清单格式和能力版本不变，没有新增插件 RPC 方法或通知。 |
 | [#89](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/89) | [@1lck](https://github.com/1lck) | — | **`buildProviders` 1**、**`litheBuild` 1** | 按源文件找运行入口（[1lck/Lithe-IDEA#2104](https://github.com/1lck/Lithe-IDEA/issues/2104)）：运行声明可写 `entrypoints: true`（只能是提供者的 `application`，不写 `fromTargets`、`fromTasks`、`arguments`、`extension`、`debug`），它不对应任何目标，宿主不按目标列出它。新提供者方法 `lithe/build/runEntrypoints`（参数多一个工作区相对路径 `file`）返回 `litheRunEntrypoints` 0 文档，列出这个文件里可运行的入口 `{run, name, entrypoint, project}`，最多 64 个；Core 新增 `build.runEntrypointsPlan` 和 `build.decodeRunEntrypoints` 校验。`lithe/build/prepareRun` 对入口运行不带 `target`，必须带 `launchOptions.entrypoint`。宿主提供 `litheBuild` 版本 `[0, 1]`，三个 SDK 回答宿主提供的最新版本，Java/Node SDK 新增 `onRunEntrypoints`/`build.runEntrypoints`。用入口运行的插件声明 `buildProviders: 1`，只支持 0 的宿主不会安装；其他插件不受影响。新增 fixture `build-provider-run-entrypoints.plugin.json`、`build-run-entrypoints.json`。没有新增宿主方法或通知。 |
 | [#85](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/85) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | — | 插件清单 `schemaVersion` 0 内的补充 | 清单新增可选字段 `repository`（[1lck/Lithe-IDEA#2100](https://github.com/1lck/Lithe-IDEA/issues/2100)）：值是插件源码仓库的 GitHub 地址 `https://github.com/<作者>/<仓库>`，格式不对时以 `plugin.manifest.invalid`（字段 `repository`）拒绝。项目里由插件提供的 Run 配置改存 `.lithe/run/plugin/<插件 ID>.toml`（共享）和 `<插件 ID>.local.toml`（本机），文件头 `[plugin]` 记录插件 ID、名称、作者、仓库、版本、版本要求（默认 `>=保存时的版本`）、`pluginAPIVersion` 和用到的能力，作者和仓库取自 `repository`，用来区分同名插件；插件没有安装、仓库不一致或版本不满足要求时，这些配置在 Run 列表里显示为不可用并说明原因，不会让整个列表读取失败。Core 自带的脚本和程序运行（shell、PowerShell、Windows 批处理、可执行文件）不依赖任何插件。没写 `repository` 的插件照常安装，Run 文件里不记作者和仓库、也不比对仓库；清单格式和能力版本不变，没有新增宿主方法或通知。 |
 
@@ -201,7 +202,7 @@
 修改 `shared/plugins/contract/v1/`、`rust/crates/plugin-model/src/capabilities.rs` 或 `rust/crates/plugin-rpc/src/` 的 Core PR，在**同一个 PR** 里更新本页：
 
 1. 把这个 PR 补到时间线最上面（按合入日期分组）：PR、修改人、API 编号、协议 / 能力、改了什么。新增的版本号要加粗，并写进“按协议查首次出现”里对应的表：例如给 `buildProviders` 加版本 `1`，就在能力表里为它加一行，并在进程协议表里同步 `litheBuild`。一个 PR 只给一个能力加一个版本。
-2. “API 编号”填这个 PR 涉及的全部 API-01–44 编号，取自 PR 描述里的“原计划编号”。PR 没写时按 [API 实施计划](https://github.com/1lck/Lithe-IDEA/blob/preview/docs/development/macos-plugin-api-plan.md) 判断，不要自编新号；不属于任何编号的写 —。
+2. “API 编号”填这个 PR 涉及的全部 API-01–44 编号，取自 PR 描述里的“原计划编号”。PR 没写时按 [API 实施计划](https://github.com/1lck/Lithe-IDEA/blob/main/docs/development/macos-plugin-api-plan.md) 判断，不要自编新号；不属于任何编号的写 —。
 3. PR 新增或修改了宿主方法或通知时，每个方法在“宿主方法（按 API 编号）”表里加一行，写明 API 编号、协议、日期和 PR；同时在 [API 总表](api-catalog.md#已公开的宿主方法)的中英两张方法表里各加一行，写明用途、权限和协议。同一个 API 下的方法分几个 PR 加入时，各自登记自己的 PR。
 4. “修改人”填 PR 作者的 GitHub 账号，写成 `[@账号](https://github.com/账号)`。账号可以这样查：
 
