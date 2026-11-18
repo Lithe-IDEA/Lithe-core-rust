@@ -214,6 +214,34 @@ pub fn build_decode_test_discovery_command<M: BuildManifest>(
     )
 }
 
+/// `build.runEntrypointsPlan`: asks the provider which entrypoints a file holds.
+pub fn build_run_entrypoints_plan_command<M: BuildManifest>(
+    payload: Value,
+) -> Result<Value, CoreError> {
+    with_build_system::<M, _>(
+        payload,
+        "build.runEntrypointsPlan",
+        "plan",
+        |build_system, request: &super::run_entrypoints::RunEntrypointsPlanRequest| {
+            super::run_entrypoints::plan(build_system, request)
+        },
+    )
+}
+
+/// `build.decodeRunEntrypoints`: the entrypoints the host may save and start.
+pub fn build_decode_run_entrypoints_command<M: BuildManifest>(
+    payload: Value,
+) -> Result<Value, CoreError> {
+    with_build_system::<M, _>(
+        payload,
+        "build.decodeRunEntrypoints",
+        "entrypoints",
+        |build_system, request: &super::run_entrypoints::DecodeRunEntrypointsRequest| {
+            super::run_entrypoints::decode(build_system, request)
+        },
+    )
+}
+
 /// `build.prepareRunPlan`: validates a provider-owned target launch request.
 pub fn build_prepare_run_plan_command<M: BuildManifest>(
     payload: Value,

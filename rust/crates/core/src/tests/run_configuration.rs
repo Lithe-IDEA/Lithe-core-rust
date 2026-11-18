@@ -2077,3 +2077,64 @@ fn powershell_and_program_editors_store_their_own_choices() {
         serde_json::json!([{"field":"program","code":"notFound"}])
     );
 }
+
+/// An entrypoint run (`buildProviders` 1) is saved without a target, with the
+/// entrypoint it starts; each entrypoint is its own configuration, saving the
+/// same one again reuses it, and the launch inputs carry the entrypoint.
+#[test]
+fn entrypoint_runs_are_saved_per_entrypoint_without_a_target() {
+    let root = temporary_root("saved-entrypoint-run");
+    let _cleanup = Cleanup(root.clone());
+    fs::create_dir_all(root.join("app")).unwrap();
+    let plugin_path = ".lithe/run/plugin/dev.example.gradle.local.toml";
+    let reference = serde_json::json!({
+        "pluginID": "dev.example.gradle", "buildSystemID": "gradle", "root": "app",
+        "run": "main", "projectID": "project-id", "userArguments": []
+    });
+    let save = |name: &str, entrypoint: &str| {
+        run_config_command(
+            "runConfig.createUserConfiguration",
+            serde_json::json!({"root":root,"scope":"local","type":"buildProvider","name":name,
+                "build":reference,"entrypoint":entrypoint}),
+        )
+    };
+    let tool = save("Tool", "example.Tool");
+    assert_eq!(tool["ok"], true, "{tool}");
+    let document = changed_run_document(&tool["data"], plugin_path).unwrap();
+    let saved = &document["configurations"][0];
+    assert_eq!(
+        saved["extensions"]["build-run"]["entrypoint"],
+        "example.Tool"
+    );
+    assert!(
+        saved["extensions"]["build"]
+            .get("targetID")
+            .is_none_or(|id| id == ""),
+        "{saved}"
+    );
+    apply_run_changes(&root, &tool["data"]);
+
+    let again = save("Tool", "example.Tool");
+    assert_eq!(again["data"]["id"], tool["data"]["id"]);
+    let other = save("Other", "example.Other");
+    assert_eq!(other["ok"], true, "{other}");
+    assert_ne!(other["data"]["id"], tool["data"]["id"]);
+    apply_run_changes(&root, &other["data"]);
+
+    let resolved = run_config_command("runConfig.resolve", serde_json::json!({"root":root}));
+    assert_eq!(resolved["ok"], true, "{resolved}");
+    assert_eq!(
+        resolved["data"]["configurations"].as_array().unwrap().len(),
+        2
+    );
+    let inputs = run_config_command(
+        "runConfig.providerLaunchInputs",
+        serde_json::json!({"root":root,"configurationId":tool["data"]["id"],"providerRoot":"app"}),
+    );
+    assert_eq!(inputs["ok"], true, "{inputs}");
+    assert_eq!(
+        inputs["data"]["launchOptions"]["entrypoint"],
+        "example.Tool"
+    );
+    assert_eq!(save("Bad", "bad\u{0}")["ok"], false);
+}

@@ -159,7 +159,9 @@ pub(crate) struct PrepareRunRequest {
     #[serde(flatten)]
     pub(crate) base: OutputPlanRequest,
     pub(crate) run: String,
-    pub(crate) target: SelectedEntity,
+    /// The target of a target run; an entrypoint run has none.
+    #[serde(default)]
+    pub(crate) target: Option<SelectedEntity>,
     #[serde(default)]
     pub(crate) user_arguments: Vec<String>,
     #[serde(default)]
@@ -219,21 +221,37 @@ pub(crate) fn plan(
         .as_ref()
         .ok_or_else(|| plans::invalid_selection("A run target needs its project."))?;
     let project = plans::selection(project, &context.root, None, "project")?;
-    let target = plans::selection(
-        &request.target,
-        &context.root,
-        Some(&project.path),
-        "target",
-    )?;
-    if !declaration
-        .from_targets
-        .as_ref()
-        .is_some_and(|from| target.tags.iter().any(|tag| from.tags.contains(tag)))
-    {
-        return Err(plans::invalid_selection(
-            "This run does not apply to the selected target.",
-        ));
-    }
+    let target = if declaration.entrypoints {
+        // An entrypoint run starts the provider's entrypoint in the project; it
+        // has no target, and without an entrypoint there is nothing to start.
+        if request.target.is_some()
+            || !request
+                .launch_options
+                .as_ref()
+                .is_some_and(|options| options.entrypoint.is_some())
+        {
+            return Err(plans::invalid_selection(
+                "An entrypoint run needs an entrypoint and no target.",
+            ));
+        }
+        None
+    } else {
+        let target = request
+            .target
+            .as_ref()
+            .ok_or_else(|| plans::invalid_selection("A target run needs its target."))?;
+        let target = plans::selection(target, &context.root, Some(&project.path), "target")?;
+        if !declaration
+            .from_targets
+            .as_ref()
+            .is_some_and(|from| target.tags.iter().any(|tag| from.tags.contains(tag)))
+        {
+            return Err(plans::invalid_selection(
+                "This run does not apply to the selected target.",
+            ));
+        }
+        Some(target)
+    };
     plans::check_argument_limits(&request.user_arguments)?;
     let mut params = plans::provider_hints(&request.base)?;
     params.insert("run".to_string(), json!(declaration.id));
@@ -241,7 +259,8 @@ pub(crate) fn plan(
     if let Some(options) = &request.launch_options {
         params.insert("launchOptions".to_string(), json!(options));
     }
-    for (name, selected) in [("project", project), ("target", target)] {
+    for (name, selected) in [("project", Some(project)), ("target", target)] {
+        let Some(selected) = selected else { continue };
         params.insert(
             name.to_string(),
             json!({"name":selected.name,"path":selected.path,

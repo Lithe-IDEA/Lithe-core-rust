@@ -13,6 +13,7 @@ public final class Diagnostics {
             "initialize", "shutdown", "notification", "function-call", "result-encoding",
             "lithe/build/model", "lithe/build/dependencies", "lithe/build/execute", "lithe/build/test",
             "lithe/build/discoverTests", "lithe/build/prepareRun", "lithe/build/prepareDebug",
+            "lithe/build/runEntrypoints",
             "lithe/vcs/status", "lithe/vcs/baseContent", "lithe/vcs/history", "lithe/vcs/fileHistory",
             "lithe/vcs/annotate", "lithe/vcs/checkin", "lithe/vcs/rollback", "lithe/vcs/update",
             "lithe/vcs/fileOperation", "lithe/vcs/resolve", "lithe/vcs/cleanup",

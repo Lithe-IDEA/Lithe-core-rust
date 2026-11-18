@@ -45,6 +45,8 @@ pub(crate) const PREPARE_DEBUG_METHOD: &str = "lithe/build/prepareDebug";
 pub const TEST_METHOD: &str = "lithe/build/test";
 /// Returns exact selectors; decoding remains a separate Core command.
 pub(crate) const DISCOVER_TESTS_METHOD: &str = "lithe/build/discoverTests";
+/// `buildProviders` 1: the entrypoints of one source file; Core decodes them separately.
+pub(crate) const RUN_ENTRYPOINTS_METHOD: &str = "lithe/build/runEntrypoints";
 /// Progress never uses caller-chosen host operation IDs.
 pub(crate) const PROGRESS_METHOD: &str = "lithe/build/progress";
 
@@ -71,6 +73,7 @@ pub fn is_build_method(method: &str) -> bool {
     MODEL_METHODS.contains(&method)
         || is_execution_method(method)
         || method == DISCOVER_TESTS_METHOD
+        || method == RUN_ENTRYPOINTS_METHOD
         || method == PREPARE_RUN_METHOD
         || method == PREPARE_DEBUG_METHOD
         || method == CONFIGURATION_METHOD
@@ -164,7 +167,7 @@ mod tests {
         assert!(!negotiated(
             &json!({ "experimental": { "litheBuild": {} } })
         ));
-        assert!(!negotiated(
+        assert!(negotiated(
             &json!({ "experimental": { "litheBuild": { "version": 1 } } })
         ));
         assert!(!negotiated(
@@ -179,10 +182,10 @@ mod tests {
     }
 
     #[test]
-    fn the_host_offers_only_version_zero() {
+    fn the_host_offers_every_build_provider_version() {
         assert_eq!(
             client_experimental_capabilities(),
-            json!({ "litheBuild": { "versions": [0] } })
+            json!({ "litheBuild": { "versions": [0, 1] } })
         );
     }
 
@@ -194,6 +197,7 @@ mod tests {
             "lithe/build/execute",
             "lithe/build/test",
             "lithe/build/discoverTests",
+            "lithe/build/runEntrypoints",
             "lithe/build/prepareRun",
             "lithe/build/prepareDebug",
             "lithe/build/configuration",

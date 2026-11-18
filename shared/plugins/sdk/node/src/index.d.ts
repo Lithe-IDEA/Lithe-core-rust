@@ -471,6 +471,12 @@ export interface BuildTestDiscovery {
   version?: 0;
   tests: { suite: string; case: string; project?: BuildSelection; target?: BuildSelection }[];
 }
+/** buildProviders 1: the entrypoints of one source file an entrypoint run starts. */
+export interface BuildRunEntrypoints {
+  format?: 'litheRunEntrypoints';
+  version?: 0;
+  entrypoints: { run: string; name: string; entrypoint: string; project: BuildSelection }[];
+}
 export interface BuildRunPreparation {
   executable: { kind: 'toolchain' | 'command'; value: string };
   arguments: string[];
@@ -479,6 +485,7 @@ export interface BuildRunPreparation {
 }
 export type BuildExecutionHandler = (params: BuildExecutionParams, context: BuildContext) => BuildExecutionResult | Promise<BuildExecutionResult>;
 export type BuildTestHandler = (params: BuildTestParams, context: BuildContext) => BuildExecutionResult | Promise<BuildExecutionResult>;
+export type BuildRunEntrypointsHandler = (params: BuildRequestParams & { file: string }, context: RequestContext) => BuildRunEntrypoints | Promise<BuildRunEntrypoints>;
 export type BuildDiscoveryHandler = (params: BuildRequestParams, context: RequestContext) => BuildTestDiscovery | Promise<BuildTestDiscovery>;
 export interface BuildDebugPreparation {
   program: string;
@@ -569,6 +576,8 @@ export interface Backend {
     test(handler: BuildTestHandler): Backend;
     discoverTests(handler: BuildDiscoveryHandler): Backend;
     prepareRun(handler: BuildRunHandler): Backend;
+    /** buildProviders 1: answers lithe/build/runEntrypoints with the format stamped. */
+    runEntrypoints(handler: BuildRunEntrypointsHandler): Backend;
     prepareDebug(handler: BuildDebugHandler): Backend;
   };
   vcs(id: string, handlers: VcsHandlers, traits?: VcsTraits): Backend;
