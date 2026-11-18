@@ -134,6 +134,11 @@ pub struct UpdateOptionsRequest {
     /// into the local layer instead of patching one configuration.
     #[serde(default)]
     pub toolchain: Option<ToolchainPaths>,
+    /// IDs of the built-in process runs to start first, in order. Omission
+    /// keeps the saved steps; an empty list removes them from this layer and,
+    /// in the local layer, also hides the project's.
+    #[serde(default)]
+    pub before_launch: Option<Vec<String>>,
     /// Host-owned local layer used to resolve the configuration first. A
     /// local edit is refused while it is set: only files can be changed.
     #[serde(default)]
