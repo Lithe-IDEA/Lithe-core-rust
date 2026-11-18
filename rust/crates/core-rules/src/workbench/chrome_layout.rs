@@ -14,8 +14,10 @@
 //! invents items: it drops saved placements of items the catalog no longer lists, and puts catalog
 //! items the saved state does not mention yet at the end of their default zone, so a saved layout
 //! survives added and removed buttons. Items never leave their surface: a stripe button cannot move
-//! into the status bar. Fixed chrome, such as the status bar path or the project and branch
-//! switchers, is not part of the model.
+//! into the status bar. The one exception is a title bar item the catalog marks
+//! `also_on_tool_stripes`: it may also sit in the six stripe zones and come back to the title bar,
+//! and it keeps the title bar rules there, so it opens no panel and cannot be hidden. Fixed chrome,
+//! such as the status bar path or the project and branch switchers, is not part of the model.
 //!
 //! Each stripe zone owns one panel slot, so at most one panel item per zone is open. Opening a
 //! panel closes the other open panel of its zone, and moving an open panel takes its open state
@@ -29,7 +31,8 @@
 //! and its place in the zone order, so showing it again puts the button back where it was. Hiding
 //! closes the item's panel; a host may still open the panel of a hidden item, from a shortcut or a
 //! command, and the item stays hidden. Where the host lists hidden items for the user to restore
-//! is presentation. Title bar and status bar items cannot be hidden.
+//! is presentation. Title bar and status bar items cannot be hidden, not even a title bar item
+//! that sits on a stripe.
 
 use crate::{RuleError, RuleErrorCode};
 use serde::{Deserialize, Serialize};
@@ -132,7 +135,8 @@ impl Zone {
 pub struct CatalogItem {
     /// Stable host identifier, persisted in placements.
     pub id: String,
-    /// Zone of the default layout. Its surface is the only surface the item may sit in.
+    /// Zone of the default layout. The item may sit in the zones of this surface only, unless
+    /// `also_on_tool_stripes` adds the stripe zones.
     pub default_zone: Zone,
     /// The button opens a tool panel in its zone's panel slot. Only stripe items can.
     #[serde(default)]
@@ -140,6 +144,10 @@ pub struct CatalogItem {
     /// The panel is open in the default layout. Requires `panel`.
     #[serde(default)]
     pub open_by_default: bool,
+    /// The item may also sit in the six tool stripe zones. Only title bar items can; on a stripe
+    /// the item still opens no panel and cannot be hidden.
+    #[serde(default)]
+    pub also_on_tool_stripes: bool,
 }
 
 /// Zone of one item. The order of placements with the same zone is the display order.
@@ -191,7 +199,8 @@ pub enum Action {
     Move {
         /// Item to move.
         id: String,
-        /// Target zone; must belong to the item's surface.
+        /// Target zone; must belong to the item's surface, or be a stripe zone for an item marked
+        /// `also_on_tool_stripes`.
         zone: Zone,
         /// Item the moved one is inserted in front of.
         #[serde(default)]
@@ -260,9 +269,10 @@ pub fn reduce_json(payload: Value) -> Result<Value, RuleError> {
 /// Applies `action` to `state` after repairing `state` against `catalog`.
 ///
 /// Fails with `invalid_request` when the catalog is malformed (empty or repeated identifiers, a
-/// panel outside the stripes, a default-open item that is not a panel), or when the action names
-/// an unknown item, moves an item to another surface, opens an item that is not a panel, or hides
-/// an item that is not on a tool stripe.
+/// panel outside the stripes, a default-open item that is not a panel, `also_on_tool_stripes` on an
+/// item outside the title bar), or when the action names an unknown item, moves an item to a zone
+/// it may not sit in, opens an item that is not a panel, or hides an item whose default zone is not
+/// on a tool stripe.
 pub fn reduce(
     catalog: &[CatalogItem],
     state: State,
@@ -319,6 +329,12 @@ fn catalog_index(catalog: &[CatalogItem]) -> Result<HashMap<&str, usize>, RuleEr
         if item.open_by_default && !item.panel {
             return Err(
                 invalid("Only panel items can be open by default").with_details(item.id.clone())
+            );
+        }
+        if item.also_on_tool_stripes && item.default_zone.surface() != Surface::TitleBar {
+            return Err(
+                invalid("Only title bar items can also sit on the tool stripes")
+                    .with_details(item.id.clone()),
             );
         }
         if index.insert(item.id.as_str(), position).is_some() {
@@ -378,7 +394,7 @@ impl Layout {
             let Some(&item) = index.get(placement.id.as_str()) else {
                 continue;
             };
-            if placed[item] || placement.zone.surface() != catalog[item].default_zone.surface() {
+            if placed[item] || !allowed(&catalog[item], placement.zone) {
                 continue;
             }
             placed[item] = true;
@@ -418,8 +434,8 @@ impl Layout {
         zone: Zone,
         before: Option<usize>,
     ) -> Result<(), RuleError> {
-        if zone.surface() != catalog[item].default_zone.surface() {
-            return Err(invalid("Chrome item cannot leave its surface")
+        if !allowed(&catalog[item], zone) {
+            return Err(invalid("Chrome item cannot sit in that zone")
                 .with_details(catalog[item].id.clone()));
         }
         if before == Some(item) && self.zone_of[item] == zone {
@@ -508,8 +524,17 @@ impl Layout {
     }
 }
 
+/// The item may sit in `zone`: a zone of its default surface, or a stripe zone when the catalog
+/// marks it `also_on_tool_stripes`.
+fn allowed(item: &CatalogItem, zone: Zone) -> bool {
+    let surface = zone.surface();
+    surface == item.default_zone.surface()
+        || (item.also_on_tool_stripes && surface == Surface::ToolStripe)
+}
+
 /// Only tool stripe buttons can be hidden: the title bar and status bar have no place that
-/// lists hidden items.
+/// lists hidden items. A title bar item that sits on a stripe keeps this rule, so it never
+/// disappears from both places.
 fn hideable(item: &CatalogItem) -> bool {
     item.default_zone.surface() == Surface::ToolStripe
 }
@@ -524,7 +549,18 @@ mod tests {
             default_zone: zone,
             panel,
             open_by_default: open,
+            also_on_tool_stripes: false,
         }
+    }
+
+    /// The test catalog plus a title bar item that may also sit on the stripes.
+    fn catalog_with_settings() -> Vec<CatalogItem> {
+        let mut catalog = catalog();
+        catalog.push(CatalogItem {
+            also_on_tool_stripes: true,
+            ..item("settings", Zone::TitleTrailing, false, false)
+        });
+        catalog
     }
 
     fn catalog() -> Vec<CatalogItem> {
@@ -882,8 +918,153 @@ mod tests {
             ],
             vec![item("a", Zone::TitleTrailing, true, false)],
             vec![item("a", Zone::LeftTop, false, true)],
+            vec![CatalogItem {
+                also_on_tool_stripes: true,
+                ..item("a", Zone::LeftTop, false, false)
+            }],
+            vec![CatalogItem {
+                also_on_tool_stripes: true,
+                ..item("a", Zone::StatusTrailing, false, false)
+            }],
         ] {
             assert!(reduce(&broken, State::default(), Action::Normalize).is_err());
         }
+    }
+
+    #[test]
+    fn a_title_item_marked_for_the_stripes_moves_onto_them_and_back() {
+        let catalog = catalog_with_settings();
+        let reduce_ok =
+            |state: State, action: Action| reduce(&catalog, state, action).unwrap().state;
+        let defaults = reduce_ok(State::default(), Action::Reset);
+        assert_eq!(
+            ids(&defaults, Zone::TitleTrailing),
+            ["run", "search", "settings"]
+        );
+        let state = reduce_ok(
+            defaults.clone(),
+            Action::Move {
+                id: "settings".into(),
+                zone: Zone::LeftTop,
+                before: Some("commit".into()),
+            },
+        );
+        assert_eq!(
+            ids(&state, Zone::LeftTop),
+            ["project", "settings", "commit"]
+        );
+        assert_eq!(ids(&state, Zone::TitleTrailing), ["run", "search"]);
+        assert_eq!(state.open, defaults.open);
+        let again = reduce(&catalog, state.clone(), Action::Normalize).unwrap();
+        assert!(!again.changed);
+        let state = reduce_ok(
+            state,
+            Action::Move {
+                id: "settings".into(),
+                zone: Zone::BottomRight,
+                before: None,
+            },
+        );
+        assert_eq!(ids(&state, Zone::BottomRight), ["update", "settings"]);
+        let back = reduce_ok(
+            state,
+            Action::Move {
+                id: "settings".into(),
+                zone: Zone::TitleTrailing,
+                before: Some("run".into()),
+            },
+        );
+        assert_eq!(
+            ids(&back, Zone::TitleTrailing),
+            ["settings", "run", "search"]
+        );
+        assert_eq!(ids(&back, Zone::BottomRight), ["update"]);
+    }
+
+    #[test]
+    fn a_title_item_on_a_stripe_keeps_the_title_bar_rules() {
+        let catalog = catalog_with_settings();
+        let on_stripe = reduce(
+            &catalog,
+            State::default(),
+            Action::Move {
+                id: "settings".into(),
+                zone: Zone::RightTop,
+                before: None,
+            },
+        )
+        .unwrap()
+        .state;
+        for action in [
+            Action::Move {
+                id: "settings".into(),
+                zone: Zone::StatusTrailing,
+                before: None,
+            },
+            Action::SetHidden {
+                id: "settings".into(),
+                hidden: true,
+            },
+            Action::Toggle {
+                id: "settings".into(),
+            },
+            // Unmarked title bar items still stay in the title bar.
+            Action::Move {
+                id: "search".into(),
+                zone: Zone::RightTop,
+                before: None,
+            },
+        ] {
+            let error = reduce(&catalog, on_stripe.clone(), action).unwrap_err();
+            assert_eq!(error.code, RuleErrorCode::InvalidRequest);
+        }
+    }
+
+    #[test]
+    fn normalize_keeps_a_marked_title_item_on_its_stripe_and_drops_foreign_ones() {
+        let saved = State {
+            placements: vec![
+                Placement {
+                    id: "settings".into(),
+                    zone: Zone::RightTop,
+                },
+                Placement {
+                    id: "run".into(),
+                    zone: Zone::RightTop,
+                },
+            ],
+            open: Vec::new(),
+            hidden: vec!["settings".into()],
+        };
+        let state = reduce(&catalog_with_settings(), saved, Action::Normalize)
+            .unwrap()
+            .state;
+        assert_eq!(ids(&state, Zone::RightTop), ["settings", "notifications"]);
+        assert_eq!(ids(&state, Zone::TitleTrailing), ["run", "search"]);
+        assert!(state.hidden.is_empty());
+    }
+
+    #[test]
+    fn the_stripe_flag_decodes_from_the_wire_and_defaults_to_off() {
+        let request = serde_json::json!({
+            "catalog": [
+                {"id": "settings", "defaultZone": "titleTrailing", "alsoOnToolStripes": true},
+                {"id": "search", "defaultZone": "titleTrailing"},
+            ],
+            "action": {"kind": "move", "id": "settings", "zone": "leftTop"},
+        });
+        let answer = reduce_json(request).unwrap();
+        assert_eq!(
+            answer["state"]["placements"],
+            serde_json::json!([
+                {"id": "settings", "zone": "leftTop"},
+                {"id": "search", "zone": "titleTrailing"},
+            ])
+        );
+        let refused = serde_json::json!({
+            "catalog": [{"id": "search", "defaultZone": "titleTrailing"}],
+            "action": {"kind": "move", "id": "search", "zone": "leftTop"},
+        });
+        assert!(reduce_json(refused).is_err());
     }
 }
