@@ -462,6 +462,8 @@ or removing a command fails until the table changes in the same commit.
 | `plugins.commandInstallers.requirements` | List each `systemCommand` launch of a plugin with its commands and the installer that provides each |
 | `plugins.commandInstallers.plan` | Expand one command installer for the target the user chose |
 | `plugins.commandInstallers.defaultDirectory` | Read where a `toolDefault` installation puts its commands from the output of its directory probes |
+| `plugins.managedRuntimes.plan` | Validate pinned dependencies and select exact platform artifacts with plugin-version-independent cache identities |
+| `plugins.managedRuntimes.decodeResolution` | Validate a plugin resolver's complete partition of qualified native homes and missing dependency IDs |
 | `plugins.contentProviders.decode` | Bound the answer of a plugin content provider function and return the document text |
 | `debug.adapters.startArguments` | Check one debug start against a plugin's `debugAdapters[]` entry and return its DAP launch arguments |
 | `debug.validateAdapterEndpoint` | Validate an IDE-to-DAP TCP endpoint and classify whether remote consent is required; performs no DNS or network I/O |
@@ -3124,6 +3126,9 @@ optional `pluginId` of the plugin that owns the process, its optional
 `workspaceConfiguration` (an object, plugin-owned sessions only), its
 optional `hostServices` (the launch plan's `backend.hostServices`;
 plugin-owned sessions only; legacy service grants or full public host-method names Core defines),
+optional `functionRelayEnabled` (defaults to `true`; `false` keeps direct
+host-to-session function calls but excludes the session from incoming and outgoing
+cross-plugin routing, including the corresponding host service grants),
 its optional `hostOptions` (plugin-owned sessions only; `editor:{actionIcons,
 actionSourceBytes, providerTypes}` declares the icons, collector source bound and
 provider types the host implements, reported through `lithe/host/getCapabilities`
@@ -4631,7 +4636,8 @@ function, timeoutMilliseconds }` (30000 when absent) and `resolveParams` is the
 params the host sends to that backend function, `{ serverID, platform: { os,
 arch }, stateDirectory, workspaceStateDirectory, logDirectory,
 temporaryDirectory, settings }`; the host adds `context` and, when the plugin
-declares tool definitions, `tools`. The request must carry all four of
+declares tool definitions, `tools`, and after managed-runtime preparation the
+optional read-only `runtimes: {<id>:{home,version}}` map. The request must carry all four of
 `stateDirectory`, `workspaceStateDirectory`, `logDirectory`, and
 `temporaryDirectory`, and the plan lists them in `requiredDirectories`. Every language-server plan carries a `sessionPolicy`
 (`serverID`, `requestMethods`, `commands`, `serializedCommands`,
@@ -4688,6 +4694,33 @@ runs on. Refusals are `plugin.commandInstaller.unknown`,
 `plugin.commandInstaller.directoryInvalid` and
 `plugin.commandInstaller.probeOutputsInvalid`; the golden cases are
 `shared/plugins/contract/v1/fixtures/command-installers/command-installer-plans.json`.
+
+The `plugins.managedRuntimes.*` commands implement
+[Managed runtimes](../../shared/plugins/contract/v1/README.md#managed-runtimes).
+`plan` accepts `{manifest, platform:{os,arch}}` and returns
+`{status:"ok", plan:{resolve, dependencies:[{id,version,tool?,os,arch,url,
+sha256,archive,stripPrefix,home,executable,cacheKey}]}}`. The resolver is
+`{function,timeoutMilliseconds}`. No declaration produces an empty dependencies
+array without a resolver. Targets are exact (`macos|windows|linux`,
+`arm64|x86_64`); `cacheKey` is an opaque lowercase SHA-256 of the normalized
+selected dependency identity, excluding plugin version. A host uses it as given.
+`decodeResolution` accepts `{manifest, platform:{os,arch}, result}` and returns
+`{status:"ok", resolution:{runtimes:[{id,home,version}],missing:[id]}}` with
+both arrays sorted by ID. The arrays must partition every declared ID exactly
+once; homes are bounded absolute paths for the supplied OS. Neither command
+performs I/O or decides tool-specific compatibility. Refusals are
+`plugin.managedRuntime.unavailable` for unsupported targets or absent artifacts,
+`plugin.managedRuntime.invalidResolution` for hook output, and standard
+manifest errors for declarations. The inert shared fixture is
+`rust/fixtures/plugins/managed-runtimes.json`.
+
+Hosts run the approved packaged resolver before install/update publication and
+again for missing-state repair. Hooks qualify external and staged homes; native
+adapters own downloads, hashing, safe extraction, process locks, integrity and
+atomic publication. A backend-resolved server launch may receive the host-added
+read-only `runtimes: {<id>:{home,version}}` map, and a declared tool binding is
+selected only for that plugin's server session. This does not change project
+toolchains or add an arbitrary absolute executable kind.
 
 `plugins.contentProviders.decode` accepts `{ result }`, the value a plugin
 function returned for a document of its content scheme, and returns
