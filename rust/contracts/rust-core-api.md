@@ -713,7 +713,7 @@ or removing a command fails until the table changes in the same commit.
 | `runConfig.updateToolPreferences` | Replace only generic preferences in the local layer, preserving legacy defaults and unrelated metadata |
 | `runConfig.saveEditorChanges` | Prepare the file changes of the local and optional project layers for one editor save |
 | `runConfig.createUserConfiguration` | Validate a typed user configuration and return the file changes that save it |
-| `runConfig.configurationTypes` | List the built-in run configuration types this platform can create |
+| `runConfig.configurationTypes` | List the built-in run configuration types a user can create, with the availability of a kind this platform cannot run |
 | `runConfig.editorForm` | Describe the editor fields and current values of a built-in run configuration |
 | `runConfig.saveConfiguration` | Validate an editor form's values and return field errors or the file changes that save it |
 | `runConfig.deleteConfiguration` | Return the file changes that delete a saved user configuration |
@@ -3644,14 +3644,16 @@ build run references). A saved configuration that cannot run carries
 `availability: {status: "unavailable", code, message}` instead of being
 dropped: `pluginMissing`, `pluginRepositoryMismatch` (the installed plugin
 comes from another repository), `pluginVersionUnsupported`,
-`invalidConfiguration` (it fails validation, also reported as a diagnostic) or
-`missingWorkingDirectory` (its working directory is gone; a generated entry
-whose directory is gone is left out instead, with the same diagnostic).
+`invalidConfiguration` (it fails validation, also reported as a diagnostic),
+`unsupportedPlatform` (a built-in kind this platform cannot run, such as a
+batch script outside Windows) or `missingWorkingDirectory` (its working
+directory is gone; a generated entry whose directory is gone is left out
+instead, with the same diagnostic).
 Omitting `plugins` skips the plugin checks. Hosts show unavailable entries with
 their message and do not start them; `runConfig.createLaunchPlan` and
-`runConfig.providerLaunchInputs` refuse them. Entries of a built-in type the
-platform cannot run, such as a batch script outside Windows, are left out with
-the diagnostic `unsupportedPlatform`; their saved text is kept.
+`runConfig.providerLaunchInputs` refuse them. An `unsupportedPlatform` entry
+stays editable, so a project shared with Windows keeps its batch scripts
+listed and editable elsewhere.
 
 Each configuration carries a `category` of `project` or `infrastructure`.
 `infrastructure` marks the external services the project runs against, such as
@@ -3841,16 +3843,20 @@ becomes `bash -e`), else `bash`, both looked up on `PATH`. PowerShell uses
 `pwsh` outside Windows and `powershell` on Windows, with `-NoLogo -NoProfile`;
 batch uses `cmd /d`. A chosen interpreter drops the automatic arguments.
 
-`runConfig.configurationTypes` accepts `{}` and returns `{types: [{provider}]}`,
-the kinds a user can create on this platform in display order; batch is listed
-only on Windows.
+`runConfig.configurationTypes` accepts `{}` and returns `{types: [{provider,
+availability?}]}`, every kind a user can create, in display order. Every
+platform creates and edits every kind; a kind this platform cannot run carries
+the `availability` its configurations resolve with (`unsupportedPlatform` for
+batch outside Windows), so hosts can say so before the user saves one.
 
 `runConfig.editorForm` accepts `{root, provider?, configurationId?, values?}`
 and describes the editor of a new configuration of `provider` or of the saved
 `configurationId` (its provider must match `provider` when both are given).
 `values` holds the open editor's unsaved values; they replace the saved ones so
 automatic values follow the edit. It returns `{formVersion, provider,
-configurationId, values, fields}`. `formVersion` is `1`; a host refuses a newer
+configurationId, values, fields, availability?}`. `availability` is present
+when this platform cannot run the kind, as in `runConfig.configurationTypes`;
+the form still edits and saves it. `formVersion` is `1`; a host refuses a newer
 one. `values` maps field IDs to the current values. `fields` is the ordered list
 of `{id, kind, required?, placement?, automatic?, options?, visibleWhen?,
 note?}`:
@@ -3872,7 +3878,7 @@ later Core adds fields without a host change. Script kinds show `name`,
 shows `name`, `storeAsProjectFile`, `program`, `programArguments`,
 `workingDirectory` and `environment`. An empty name saves the automatic name,
 the script or program file name. A saved entry that is not a built-in process
-run, or a batch run outside Windows, is `not_supported`.
+run is `not_supported`.
 
 `runConfig.saveConfiguration` accepts `{root, provider, configurationId?,
 values, plugins?}`. It replies `{status: "invalid", errors: [{field, code}]}`
