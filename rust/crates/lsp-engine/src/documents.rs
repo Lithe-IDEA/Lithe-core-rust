@@ -367,7 +367,11 @@ fn is_stale_sensitive_method(method: &str) -> bool {
         method,
         "textDocument/completion"
             | "textDocument/hover"
+            | "textDocument/signatureHelp"
+            | "textDocument/codeAction"
+            | "codeAction/resolve"
             | "textDocument/inlayHint"
+            | "inlayHint/resolve"
             | "textDocument/foldingRange"
             | "textDocument/codeLens"
             | "codeLens/resolve"

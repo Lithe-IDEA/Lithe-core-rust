@@ -120,6 +120,10 @@ pub struct LspClientState {
     /// trigger and commit characters are read from them.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub completion_providers: BTreeMap<String, Value>,
+    /// `signatureHelpProvider` options by registration id: the static
+    /// capability under the empty id, dynamic registrations under their own ids.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub signature_help_providers: BTreeMap<String, Value>,
     /// Full semantic-token registrations, including the server-owned legends.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub semantic_token_providers: BTreeMap<String, Value>,
@@ -189,6 +193,7 @@ impl Default for LspClientState {
             shutdown_requested: false,
             server_capabilities: Vec::new(),
             completion_providers: BTreeMap::new(),
+            signature_help_providers: BTreeMap::new(),
             semantic_token_providers: BTreeMap::new(),
             text_document_sync: LspTextDocumentSyncKind::Full,
             text_document_save_include_text: None,
@@ -331,7 +336,7 @@ pub struct ClientShutdownRequest {
     pub state: LspClientState,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 /// Generic feature request translated into one provider-neutral JSON-RPC call.
 pub struct ClientFeatureRequest {
@@ -357,15 +362,25 @@ pub struct ClientFeatureRequest {
     /// Diagnostics in `range`, sent as the `codeAction` context.
     #[serde(default)]
     pub diagnostics: Vec<LspClientDiagnostic>,
+    /// Optional `codeAction` filter and trigger context (`only`, `triggerKind`).
+    #[serde(default)]
+    pub code_action_context: Option<Value>,
     /// LSP completion trigger context; validated by the shared request mapper.
     #[serde(default)]
     pub completion_context: Option<Value>,
+    /// LSP signature-help trigger context (`triggerKind`, `triggerCharacter`,
+    /// `isRetrigger`, `activeSignatureHelp`).
+    #[serde(default)]
+    pub signature_help_context: Option<Value>,
     /// Item to complete for `completionItem/resolve`.
     #[serde(default)]
     pub completion_item: Option<Value>,
     /// Action to complete for `codeAction/resolve`.
     #[serde(default)]
     pub code_action: Option<Value>,
+    /// Hint to complete for `inlayHint/resolve`.
+    #[serde(default)]
+    pub inlay_hint: Option<Value>,
     /// Command to run for `workspace/executeCommand`.
     #[serde(default)]
     pub command: Option<Value>,

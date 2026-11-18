@@ -66,6 +66,7 @@ pub(crate) fn cancel_host_request_locked(
             error: None,
             capabilities: None,
             completion_options: None,
+            signature_help_options: None,
             server_info: None,
             level: None,
             message: None,
@@ -129,6 +130,105 @@ pub(crate) fn forward_host_request_locked(
             error: None,
             capabilities: None,
             completion_options: None,
+            signature_help_options: None,
+            server_info: None,
+            level: None,
+            message: None,
+            detail: None,
+        },
+    );
+    Ok(Vec::new())
+}
+
+const MAX_PENDING_APPLY_EDIT_REQUESTS: usize = 32;
+
+/// Cancels a pending server-initiated `workspace/applyEdit` request on `$/cancelRequest`.
+pub(crate) fn cancel_apply_edit_request_locked(
+    state: &mut SessionState,
+    params: Option<&Value>,
+    outbound: &mut Vec<String>,
+) -> Result<bool, CoreError> {
+    let Some(server_id) = params.and_then(|params| params.get("id")) else {
+        return Ok(false);
+    };
+    let Some(apply_edit_id) = state
+        .apply_edit_requests
+        .iter()
+        .find(|(_, pending)| *pending == server_id)
+        .map(|(apply_edit_id, _)| apply_edit_id.clone())
+    else {
+        return Ok(false);
+    };
+    let server_id = state
+        .apply_edit_requests
+        .remove(&apply_edit_id)
+        .unwrap_or(Value::Null);
+    outbound.push(json_rpc_error(&server_id, -32800, "Request cancelled")?);
+    Ok(true)
+}
+
+/// Forwards a validated `workspace/applyEdit` request from the language server
+/// to the host as `workspaceApplyEdit`, or declines it immediately when the
+/// session is not ready or has reached the pending apply-edit cap.
+pub(crate) fn forward_apply_edit_locked(
+    session: &RuntimeSession,
+    state: &mut SessionState,
+    request: Value,
+) -> Result<Vec<String>, CoreError> {
+    let server_id = request.get("id").cloned().unwrap_or(Value::Null);
+    if state.lifecycle != LspLifecycleState::Ready || !state.client.initialized {
+        return Ok(vec![json_rpc_result(
+            &server_id,
+            json!({
+                "applied": false,
+                "failureReason": "Language server session is not ready."
+            }),
+        )?]);
+    }
+    if state.apply_edit_requests.len() >= MAX_PENDING_APPLY_EDIT_REQUESTS {
+        return Ok(vec![json_rpc_result(
+            &server_id,
+            json!({
+                "applied": false,
+                "failureReason": "Too many workspace edits are awaiting application."
+            }),
+        )?]);
+    }
+    let apply_edit_id = format!("apply-edit-{}", state.next_apply_edit_id);
+    state.next_apply_edit_id += 1;
+    state
+        .apply_edit_requests
+        .insert(apply_edit_id.clone(), server_id);
+    let sequence = take_sequence(state);
+    enqueue_runtime_event(
+        session,
+        state,
+        LspRuntimeEvent {
+            kind: "workspaceApplyEdit".to_string(),
+            channel: None,
+            plugin_id: None,
+            role: None,
+            event: None,
+            fields: None,
+            catalog_level: None,
+            sequence,
+            provider_id: session.provider_id.clone(),
+            session_id: session.id.clone(),
+            state: None,
+            operation_id: None,
+            method: Some("workspace/applyEdit".to_string()),
+            uri: None,
+            version: None,
+            diagnostics: None,
+            result: Some(json!({
+                "applyEditId": apply_edit_id,
+                "label": request.get("label").cloned().unwrap_or(Value::Null),
+                "changes": request.get("changes").cloned().unwrap_or_else(|| json!({})),
+            })),
+            error: None,
+            capabilities: None,
+            completion_options: None,
+            signature_help_options: None,
             server_info: None,
             level: None,
             message: None,

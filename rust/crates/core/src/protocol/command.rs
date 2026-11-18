@@ -703,6 +703,8 @@ pub enum LspCommand {
     ConfigureFunctionRelay,
     /// Answers a plugin backend's host-service request (`lsp.hostResponse`).
     HostResponse,
+    /// Answers a language server's `workspace/applyEdit` request (`lsp.applyEditResponse`).
+    ApplyEditResponse,
     /// Sends a plugin backend one host notification (`lsp.hostNotify`).
     HostNotify,
     /// Sends a plugin-owned language server one request of its backend (`lsp.pluginServerRequest`).
@@ -1426,6 +1428,7 @@ impl CoreCommand {
             "lsp.functionProvider" => Some(Self::Lsp(LspCommand::FunctionProvider)),
             "lsp.configureFunctionRelay" => Some(Self::Lsp(LspCommand::ConfigureFunctionRelay)),
             "lsp.hostResponse" => Some(Self::Lsp(LspCommand::HostResponse)),
+            "lsp.applyEditResponse" => Some(Self::Lsp(LspCommand::ApplyEditResponse)),
             "lsp.hostNotify" => Some(Self::Lsp(LspCommand::HostNotify)),
             "lsp.pluginServerRequest" => Some(Self::Lsp(LspCommand::PluginServerRequest)),
             "lsp.pluginServerNotify" => Some(Self::Lsp(LspCommand::PluginServerNotify)),
@@ -1743,6 +1746,7 @@ mod tests {
             "lsp.functionRequest",
             "lsp.configureFunctionRelay",
             "lsp.hostResponse",
+            "lsp.applyEditResponse",
             "lsp.hostNotify",
             "lsp.pluginServerRequest",
             "lsp.pluginServerNotify",

@@ -189,6 +189,8 @@ pub enum LspSemanticOperation {
     Completion,
     /// `textDocument/hover`.
     Hover,
+    /// `textDocument/signatureHelp`.
+    SignatureHelp,
     /// `textDocument/definition`.
     Definition,
     /// `textDocument/declaration`.
@@ -217,6 +219,8 @@ pub enum LspSemanticOperation {
     ExecuteCommand,
     /// `textDocument/inlayHint`.
     InlayHints,
+    /// `inlayHint/resolve` for a previously returned inlay hint.
+    ResolveInlayHint,
     /// `textDocument/foldingRange`.
     FoldingRanges,
     /// `textDocument/documentLink`: clickable ranges such as URLs and file references.
@@ -250,13 +254,23 @@ pub struct SemanticRequest {
     pub(crate) range: Option<LspRange>,
     #[serde(default)]
     pub(crate) diagnostics: Vec<LspClientDiagnostic>,
+    /// Optional LSP `CodeActionContext` filter and trigger kind (`only`, `triggerKind`).
+    #[serde(default)]
+    pub code_action_context: Option<Value>,
     /// LSP completion trigger context; validated by the shared request mapper.
     #[serde(default)]
     pub completion_context: Option<Value>,
+    /// Optional LSP `SignatureHelpContext` (`triggerKind`, `triggerCharacter`,
+    /// `isRetrigger`, `activeSignatureHelp`).
+    #[serde(default)]
+    pub signature_help_context: Option<Value>,
     #[serde(default)]
     pub(crate) completion_item: Option<Value>,
     #[serde(default)]
     pub(crate) code_action: Option<Value>,
+    /// Normalized or raw hint payload for `resolveInlayHint`.
+    #[serde(default)]
+    pub inlay_hint: Option<Value>,
     #[serde(default)]
     pub(crate) command: Option<Value>,
     /// Optional LSP `FormattingOptions` (`tabSize`, `insertSpaces`, ...) for
@@ -577,6 +591,10 @@ pub struct LspRuntimeEvent {
     /// `{ triggerCharacters, allCommitCharacters }`, from `completionProvider`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub completion_options: Option<Value>,
+    /// On `featuresChanged` while `signatureHelp` is offered: the session's
+    /// `{ triggerCharacters, retriggerCharacters }`, from `signatureHelpProvider`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature_help_options: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) server_info: Option<LspServerInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -664,4 +682,19 @@ pub struct SetDetailedDiagnosticsRequest {
     pub session_id: String,
     /// True sends verbose tracing, false sends off; default sessions start disabled.
     pub enabled: bool,
+}
+
+/// Host outcome answering one `workspaceApplyEdit` runtime event (`lsp.applyEditResponse`).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ApplyEditResponseRequest {
+    /// Session that emitted the `workspaceApplyEdit` event.
+    pub session_id: String,
+    /// Opaque `applyEditId` from the `workspaceApplyEdit` event result.
+    pub apply_edit_id: String,
+    /// Whether the host validated and applied every target in the edit.
+    pub applied: bool,
+    /// Optional bounded technical reason reported to the language server when `applied` is false.
+    #[serde(default)]
+    pub failure_reason: Option<String>,
 }

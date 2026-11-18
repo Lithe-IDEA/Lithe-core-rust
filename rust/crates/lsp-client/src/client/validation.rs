@@ -77,6 +77,7 @@ pub(crate) fn validate_lsp_method(method: &str) -> Result<(), CoreError> {
     match method {
         "textDocument/completion"
         | "textDocument/hover"
+        | "textDocument/signatureHelp"
         | "textDocument/definition"
         | "textDocument/declaration"
         | "textDocument/typeDefinition"
@@ -87,6 +88,7 @@ pub(crate) fn validate_lsp_method(method: &str) -> Result<(), CoreError> {
         | "textDocument/rangeFormatting"
         | "textDocument/documentSymbol"
         | "textDocument/inlayHint"
+        | "inlayHint/resolve"
         | "textDocument/semanticTokens/full"
         | "textDocument/foldingRange"
         | "textDocument/documentLink"

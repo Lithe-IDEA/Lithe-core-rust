@@ -255,6 +255,8 @@ impl LspEngine {
                 relay_write_deadline: None,
                 host_requests: BTreeMap::new(),
                 next_host_request_id: 1,
+                apply_edit_requests: BTreeMap::new(),
+                next_apply_edit_id: 1,
                 detailed_diagnostics: false,
                 requested_diagnostics: false,
                 rejected_plugin_diagnostics: false,

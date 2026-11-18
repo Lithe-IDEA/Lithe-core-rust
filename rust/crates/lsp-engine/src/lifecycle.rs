@@ -26,6 +26,7 @@ impl RuntimeSession {
                 None,
             );
             clear_function_registry(self, &mut state);
+            state.apply_edit_requests.clear();
             clear_runtime_diagnostics(self, &mut state);
             transition_locked(self, &mut state, LspLifecycleState::Stopping, None);
             plugin_operations::abandon(&self.startup_attempt);
@@ -790,6 +791,7 @@ pub(crate) fn push_cleanup_fact(
             error: Some(error),
             capabilities: None,
             completion_options: None,
+            signature_help_options: None,
             server_info: None,
             level: Some("warning".to_string()),
             message: Some("Engine process cleanup failed".to_string()),
@@ -836,6 +838,7 @@ pub(crate) fn transition_locked(
             error,
             capabilities: None,
             completion_options: None,
+            signature_help_options: None,
             server_info: None,
             level: None,
             message: None,

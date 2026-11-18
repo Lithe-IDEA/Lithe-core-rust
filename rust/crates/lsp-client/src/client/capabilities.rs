@@ -82,6 +82,12 @@ pub(crate) fn feature_names_from_capabilities(capabilities: &Value) -> Vec<Strin
     add_capability(
         &mut values,
         capabilities,
+        "signatureHelpProvider",
+        "signatureHelp",
+    );
+    add_capability(
+        &mut values,
+        capabilities,
         "completionProvider",
         "completion",
     );
@@ -159,6 +165,14 @@ pub(crate) fn feature_names_from_capabilities(capabilities: &Value) -> Vec<Strin
     {
         insert_unique(&mut values, "codeActionResolve");
     }
+    if capabilities
+        .get("inlayHintProvider")
+        .and_then(|value| value.get("resolveProvider"))
+        .and_then(Value::as_bool)
+        == Some(true)
+    {
+        insert_unique(&mut values, "inlayHintResolve");
+    }
     if crate::build_provider::negotiated(capabilities) {
         insert_unique(&mut values, crate::build_provider::BUILD_PROVIDER_FEATURE);
     }
@@ -215,6 +229,19 @@ pub(crate) fn apply_dynamic_registration(state: &mut LspClientState, message: &V
                     .insert(id.to_string(), options.clone());
             }
         }
+        if registration.get("method").and_then(Value::as_str) == Some("textDocument/signatureHelp")
+        {
+            if let Some(id) = registration.get("id").and_then(Value::as_str) {
+                let options = registration
+                    .get("registerOptions")
+                    .filter(|options| options.is_object())
+                    .cloned()
+                    .unwrap_or_else(|| json!({}));
+                state
+                    .signature_help_providers
+                    .insert(id.to_string(), options);
+            }
+        }
         if let Some(feature) = registration
             .get("method")
             .and_then(Value::as_str)
@@ -235,6 +262,10 @@ pub(crate) fn apply_dynamic_registration(state: &mut LspClientState, message: &V
             if registration.get("method").and_then(Value::as_str) == Some("textDocument/codeAction")
             {
                 insert_unique(&mut state.server_capabilities, "codeActionResolve");
+            }
+            if registration.get("method").and_then(Value::as_str) == Some("textDocument/inlayHint")
+            {
+                insert_unique(&mut state.server_capabilities, "inlayHintResolve");
             }
         }
     }
@@ -271,6 +302,24 @@ pub(crate) fn apply_dynamic_unregistration(state: &mut LspClientState, message: 
                 state.completion_providers.remove(id);
             }
         }
+        if unregistration.get("method").and_then(Value::as_str)
+            == Some("textDocument/signatureHelp")
+        {
+            if let Some(id) = unregistration.get("id").and_then(Value::as_str) {
+                state.signature_help_providers.remove(id);
+            }
+            if state.signature_help_providers.is_empty() {
+                state
+                    .server_capabilities
+                    .retain(|existing| existing != "signatureHelp");
+            }
+            continue;
+        }
+        if unregistration.get("method").and_then(Value::as_str) == Some("textDocument/inlayHint") {
+            state
+                .server_capabilities
+                .retain(|existing| existing != "inlayHintResolve");
+        }
         if let Some(feature) = unregistration
             .get("method")
             .and_then(Value::as_str)
@@ -281,6 +330,42 @@ pub(crate) fn apply_dynamic_unregistration(state: &mut LspClientState, message: 
                 .retain(|existing| existing != feature);
         }
     }
+}
+
+/// Signature-help trigger and retrigger characters the session's providers declared.
+///
+/// Returns `{ "triggerCharacters": [...], "retriggerCharacters": [...] }`, each
+/// list the de-duplicated union over the static capability and dynamic
+/// registrations in registration order, or `None` while the session offers no
+/// `signatureHelp`. Entries that are not non-empty strings are dropped.
+pub fn signature_help_options(state: &LspClientState) -> Option<Value> {
+    if !state
+        .server_capabilities
+        .iter()
+        .any(|feature| feature == "signatureHelp")
+    {
+        return None;
+    }
+    let collect = |key: &str| {
+        let mut values: Vec<String> = Vec::new();
+        for options in state.signature_help_providers.values() {
+            for value in options
+                .get(key)
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .filter(|value| !value.is_empty())
+            {
+                insert_unique(&mut values, value);
+            }
+        }
+        values
+    };
+    Some(json!({
+        "triggerCharacters": collect("triggerCharacters"),
+        "retriggerCharacters": collect("retriggerCharacters"),
+    }))
 }
 
 /// Completion trigger and all-commit characters the session's providers declared.
@@ -327,6 +412,7 @@ pub(crate) fn feature_name_for_method(method: &str) -> Option<&'static str> {
         "textDocument/implementation" => Some("implementation"),
         "textDocument/references" => Some("references"),
         "textDocument/hover" => Some("hover"),
+        "textDocument/signatureHelp" => Some("signatureHelp"),
         "textDocument/completion" => Some("completion"),
         "textDocument/rename" => Some("rename"),
         "textDocument/formatting" => Some("formatting"),

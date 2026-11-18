@@ -372,6 +372,21 @@ pub(super) fn dispatch(command: LspCommand, id: Option<String>, payload: Value) 
                 Err(error) => CoreResponse::failure(id, error),
             }
         }
+        LspCommand::ApplyEditResponse => {
+            match serde_json::from_value::<lithe_lsp_engine::ApplyEditResponseRequest>(payload)
+                .map_err(|error| {
+                    CoreError::new(
+                        ErrorCode::InvalidRequest,
+                        "Invalid workspace apply-edit response",
+                    )
+                    .with_details(error.to_string())
+                })
+                .and_then(lithe_lsp_engine::apply_edit_response)
+            {
+                Ok(()) => CoreResponse::success(id, json!({})),
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
         LspCommand::HostNotify => {
             match serde_json::from_value::<lithe_lsp_engine::PluginHostNotification>(payload)
                 .map_err(|error| {

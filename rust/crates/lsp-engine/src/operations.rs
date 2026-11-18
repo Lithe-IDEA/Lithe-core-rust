@@ -514,6 +514,44 @@ impl RuntimeSession {
         self.send_messages_or_fail(&outbound_order, vec![message], "hostResponse")
     }
 
+    /// Sends the language server the host's answer to one `workspaceApplyEdit`
+    /// runtime event (`lsp.applyEditResponse`).
+    pub(crate) fn apply_edit_response(
+        &self,
+        response: ApplyEditResponseRequest,
+    ) -> Result<(), CoreError> {
+        let outbound_order = self.lock_outbound_order()?;
+        let message = {
+            let mut state = self.lock_state()?;
+            let server_id = state
+                .apply_edit_requests
+                .remove(&response.apply_edit_id)
+                .ok_or_else(|| {
+                    CoreError::new(
+                        ErrorCode::InvalidRequest,
+                        "No workspace/applyEdit request with this ID is waiting for an answer.",
+                    )
+                })?;
+            if response.applied {
+                state.hover_cache.clear();
+            }
+            let mut payload = json!({ "applied": response.applied });
+            if !response.applied {
+                if let Some(reason) = response
+                    .failure_reason
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|reason| !reason.is_empty())
+                {
+                    payload["failureReason"] =
+                        json!(lithe_plugin_rpc::bounded_host_message(reason));
+                }
+            }
+            json_rpc_result(&server_id, payload)?
+        };
+        self.send_messages_or_fail(&outbound_order, vec![message], "applyEditResponse")
+    }
+
     /// Writes one host notification to a ready plugin-owned backend.
     /// Returns `false`, writing nothing, when the backend negotiated no
     /// plugin-function protocol version.
@@ -782,9 +820,12 @@ impl RuntimeSession {
                         query: request.query,
                         range: request.range,
                         diagnostics: request.diagnostics,
+                        code_action_context: request.code_action_context,
                         completion_context: request.completion_context,
+                        signature_help_context: request.signature_help_context,
                         completion_item: request.completion_item,
                         code_action: request.code_action,
+                        inlay_hint: request.inlay_hint,
                         command: request.command,
                         formatting_options: request.formatting_options,
                         include_declaration: request.include_declaration,
@@ -910,6 +951,7 @@ pub(crate) fn semantic_method(operation: LspSemanticOperation) -> &'static str {
     match operation {
         LspSemanticOperation::Completion => "textDocument/completion",
         LspSemanticOperation::Hover => "textDocument/hover",
+        LspSemanticOperation::SignatureHelp => "textDocument/signatureHelp",
         LspSemanticOperation::Definition => "textDocument/definition",
         LspSemanticOperation::Declaration => "textDocument/declaration",
         LspSemanticOperation::TypeDefinition => "textDocument/typeDefinition",
@@ -924,6 +966,7 @@ pub(crate) fn semantic_method(operation: LspSemanticOperation) -> &'static str {
         LspSemanticOperation::ResolveCodeAction => "codeAction/resolve",
         LspSemanticOperation::ExecuteCommand => "workspace/executeCommand",
         LspSemanticOperation::InlayHints => "textDocument/inlayHint",
+        LspSemanticOperation::ResolveInlayHint => "inlayHint/resolve",
         LspSemanticOperation::FoldingRanges => "textDocument/foldingRange",
         LspSemanticOperation::DocumentLinks => "textDocument/documentLink",
         LspSemanticOperation::WorkspaceSymbols => "workspace/symbol",
@@ -936,6 +979,7 @@ fn semantic_capability(operation: LspSemanticOperation) -> Option<&'static str> 
     match operation {
         LspSemanticOperation::Completion => Some("completion"),
         LspSemanticOperation::Hover => Some("hover"),
+        LspSemanticOperation::SignatureHelp => Some("signatureHelp"),
         LspSemanticOperation::Definition => Some("definition"),
         LspSemanticOperation::Declaration => Some("declaration"),
         LspSemanticOperation::TypeDefinition => Some("typeDefinition"),
@@ -950,6 +994,7 @@ fn semantic_capability(operation: LspSemanticOperation) -> Option<&'static str> 
         LspSemanticOperation::ResolveCodeAction => Some("codeActionResolve"),
         LspSemanticOperation::ExecuteCommand => Some("executeCommand"),
         LspSemanticOperation::InlayHints => Some("inlayHints"),
+        LspSemanticOperation::ResolveInlayHint => Some("inlayHintResolve"),
         LspSemanticOperation::FoldingRanges => Some("foldingRanges"),
         LspSemanticOperation::DocumentLinks => Some("documentLinks"),
         LspSemanticOperation::WorkspaceSymbols => Some("workspaceSymbols"),

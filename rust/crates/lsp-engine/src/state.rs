@@ -90,6 +90,10 @@ pub(crate) struct SessionState {
     /// the opaque ID the host sees, with the backend's own JSON-RPC ID.
     pub(crate) host_requests: BTreeMap<String, Value>,
     pub(crate) next_host_request_id: u64,
+    /// Server-initiated `workspace/applyEdit` requests awaiting `lsp.applyEditResponse`,
+    /// keyed by the opaque `applyEditId` exposed to the host.
+    pub(crate) apply_edit_requests: BTreeMap<String, Value>,
+    pub(crate) next_apply_edit_id: u64,
     /// Trace is opt-in and serialized with protocol writes through outbound_order.
     pub(crate) detailed_diagnostics: bool,
     /// Desired trace setting retained until the initialize handshake permits notifications.

@@ -111,6 +111,7 @@ pub(crate) fn enqueue_request_completed(
             error,
             capabilities: None,
             completion_options: None,
+            signature_help_options: None,
             server_info: None,
             level: None,
             message: None,
@@ -151,6 +152,7 @@ pub(crate) fn push_diagnostics_event(
             error: None,
             capabilities: None,
             completion_options: None,
+            signature_help_options: None,
             server_info: None,
             level: None,
             message: None,
@@ -188,6 +190,42 @@ pub(crate) fn push_semantic_tokens_refresh_event(
             error: None,
             capabilities: None,
             completion_options: None,
+            signature_help_options: None,
+            server_info: None,
+            level: None,
+            message: None,
+            detail: None,
+        },
+    );
+}
+
+pub(crate) fn push_inlay_hints_refresh_event(session: &RuntimeSession, state: &mut SessionState) {
+    let sequence = take_sequence(state);
+    enqueue_runtime_event(
+        session,
+        state,
+        LspRuntimeEvent {
+            kind: "inlayHintsRefresh".to_string(),
+            channel: None,
+            plugin_id: None,
+            role: None,
+            event: None,
+            fields: None,
+            catalog_level: None,
+            sequence,
+            provider_id: session.provider_id.clone(),
+            session_id: session.id.clone(),
+            state: None,
+            operation_id: None,
+            method: None,
+            uri: None,
+            version: None,
+            diagnostics: None,
+            result: None,
+            error: None,
+            capabilities: None,
+            completion_options: None,
+            signature_help_options: None,
             server_info: None,
             level: None,
             message: None,
@@ -202,6 +240,7 @@ pub(crate) fn push_features_event(
     capabilities: Vec<String>,
 ) {
     let completion_options = lithe_lsp_client::completion_options(&state.client);
+    let signature_help_options = lithe_lsp_client::signature_help_options(&state.client);
     let sequence = take_sequence(state);
     enqueue_runtime_event(
         session,
@@ -227,6 +266,7 @@ pub(crate) fn push_features_event(
             error: None,
             capabilities: Some(capabilities),
             completion_options,
+            signature_help_options,
             server_info: None,
             level: None,
             message: None,
@@ -265,6 +305,7 @@ pub(crate) fn push_server_info_event(
             error: None,
             capabilities: None,
             completion_options: None,
+            signature_help_options: None,
             server_info: Some(info),
             level: None,
             message: None,
@@ -393,6 +434,7 @@ pub(crate) fn push_classified_log_event(
             error,
             capabilities: None,
             completion_options: None,
+            signature_help_options: None,
             server_info: None,
             level: Some(level.to_string()),
             message: Some(message.to_string()),
@@ -548,11 +590,13 @@ pub(crate) fn clear_runtime_state(session: &RuntimeSession, state: &mut SessionS
     state.client.shutdown_requested = false;
     state.client.server_capabilities.clear();
     state.client.completion_providers.clear();
+    state.client.signature_help_providers.clear();
     state.client.open_documents.clear();
     state.client.pending_requests.clear();
     state.pending.clear();
     state.request_by_operation.clear();
     state.function_by_operation.clear();
+    state.apply_edit_requests.clear();
     clear_function_registry(session, state);
     state.client.vcs_provider = None;
     state.client.toolchain_providers.clear();

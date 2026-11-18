@@ -58,6 +58,17 @@ pub fn client_initialize_for_plugin(
                         "dynamicRegistration": true,
                         "contentFormat": ["markdown", "plaintext"]
                     },
+                    "signatureHelp": {
+                        "dynamicRegistration": true,
+                        "signatureInformation": {
+                            "documentationFormat": ["markdown", "plaintext"],
+                            "parameterInformation": {
+                                "labelOffsetSupport": true
+                            },
+                            "activeParameterSupport": true
+                        },
+                        "contextSupport": true
+                    },
                     "definition": { "dynamicRegistration": true },
                     "declaration": { "dynamicRegistration": true },
                     "typeDefinition": { "dynamicRegistration": true },
@@ -70,7 +81,18 @@ pub fn client_initialize_for_plugin(
                         "dynamicRegistration": true,
                         "hierarchicalDocumentSymbolSupport": true
                     },
-                    "inlayHint": { "dynamicRegistration": true },
+                    "inlayHint": {
+                        "dynamicRegistration": true,
+                        "resolveSupport": {
+                            "properties": [
+                                "tooltip",
+                                "textEdits",
+                                "label.tooltip",
+                                "label.location",
+                                "label.command"
+                            ]
+                        }
+                    },
                     "semanticTokens": {
                         "dynamicRegistration": true,
                         "requests": { "full": true, "range": false },
@@ -110,7 +132,9 @@ pub fn client_initialize_for_plugin(
                         }
                     }
                 },
-                "workspace": { "semanticTokens": { "refreshSupport": true },
+                "workspace": {
+                    "semanticTokens": { "refreshSupport": true },
+                    "inlayHint": { "refreshSupport": true },
                     "applyEdit": true,
                     "configuration": true,
                     "workspaceFolders": true,

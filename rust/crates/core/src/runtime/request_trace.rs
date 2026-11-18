@@ -185,6 +185,7 @@ pub(crate) fn is_hot(method: &str) -> bool {
                 | "lsp.waitEvents"
                 | "lsp.cancelOperation"
                 | "lsp.hostResponse"
+                | "lsp.applyEditResponse"
                 | "lsp.hostNotify"
                 | "debug.receive"
                 | "debug.transport.handle"

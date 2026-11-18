@@ -351,9 +351,12 @@ impl Harness {
                     new_name: None,
                     range: None,
                     diagnostics: Vec::new(),
+                    code_action_context: None,
                     completion_context: None,
+                    signature_help_context: None,
                     completion_item: None,
                     code_action: None,
+                    inlay_hint: None,
                     command: None,
                     formatting_options: None,
                     include_declaration: None,
@@ -2294,9 +2297,12 @@ fn dynamic_capability_registration_and_unregistration_change_availability() {
                 new_name: None,
                 range: None,
                 diagnostics: Vec::new(),
+                code_action_context: None,
                 completion_context: None,
+                signature_help_context: None,
                 completion_item: None,
                 code_action: None,
+                inlay_hint: None,
                 command: None,
                 formatting_options: None,
                 include_declaration: None,
@@ -2363,9 +2369,12 @@ fn dynamic_capability_registration_and_unregistration_change_availability() {
                     new_name: None,
                     range: None,
                     diagnostics: Vec::new(),
+                    code_action_context: None,
                     completion_context: None,
+                    signature_help_context: None,
                     completion_item: None,
                     code_action: None,
+                    inlay_hint: None,
                     command: None,
                     formatting_options: None,
                     include_declaration: None,
@@ -2495,9 +2504,12 @@ fn workspace_execute_command_does_not_require_an_open_document() {
                 new_name: None,
                 range: None,
                 diagnostics: Vec::new(),
+                code_action_context: None,
                 completion_context: None,
+                signature_help_context: None,
                 completion_item: None,
                 code_action: None,
+                inlay_hint: None,
                 command: Some(json!({
                     "title": "Apply fix",
                     "command": "source.fix",
@@ -5994,9 +6006,12 @@ fn anything_that_can_change_what_the_server_knows_forgets_kept_hovers() {
                             new_name: None,
                             range: None,
                             diagnostics: Vec::new(),
+                            code_action_context: None,
                             completion_context: None,
+                            signature_help_context: None,
                             completion_item: None,
                             code_action: None,
+                            inlay_hint: None,
                             command: Some(json!({ "title": "Fix", "command": "source.fix" })),
                             formatting_options: None,
                             include_declaration: None,
@@ -6108,4 +6123,192 @@ fn an_edit_to_the_hovered_document_asks_again_at_its_new_version() {
     harness.answer_hover(1, 6, main_hover());
     harness.sync(HOVER_URI, "package main\nfunc main() { println() }\n");
     harness.hover_asks_server(1, 6, "an edit changes the hovered text");
+}
+
+#[test]
+fn session_signature_help_inlay_hints_refresh_and_workspace_apply_edit_round_trip() {
+    let mut harness = Harness::start(|_| {});
+    harness.server.complete_initialize(json!({
+        "signatureHelpProvider": {
+            "triggerCharacters": ["("],
+            "retriggerCharacters": [","]
+        },
+        "inlayHintProvider": { "resolveProvider": true },
+        "codeActionProvider": { "resolveProvider": true }
+    }));
+    harness.await_state(LspLifecycleState::Ready);
+
+    let initial_features = harness
+        .await_event(|event| event.kind == "featuresChanged")
+        .clone();
+    let capabilities = initial_features.capabilities.as_ref().unwrap();
+    assert!(capabilities.contains(&"signatureHelp".to_string()));
+    assert!(capabilities.contains(&"inlayHints".to_string()));
+    assert!(capabilities.contains(&"inlayHintResolve".to_string()));
+    assert_eq!(
+        initial_features.signature_help_options,
+        Some(json!({
+            "triggerCharacters": ["("],
+            "retriggerCharacters": [","]
+        }))
+    );
+
+    // Dynamic registration adding a trigger character re-emits featuresChanged.
+    let initial_seq = initial_features.sequence;
+    harness.server.send(json!({
+        "jsonrpc": "2.0",
+        "id": "reg-sig-1",
+        "method": "client/registerCapability",
+        "params": {
+            "registrations": [{
+                "id": "sig-extra",
+                "method": "textDocument/signatureHelp",
+                "registerOptions": {
+                    "triggerCharacters": ["<"]
+                }
+            }]
+        }
+    }));
+    let updated_features = harness
+        .await_event(|event| event.kind == "featuresChanged" && event.sequence > initial_seq)
+        .clone();
+    assert_eq!(
+        updated_features.signature_help_options,
+        Some(json!({
+            "triggerCharacters": ["(", "<"],
+            "retriggerCharacters": [","]
+        }))
+    );
+
+    let uri = "file:///workspace/main.go";
+    harness.sync(uri, "package main\nfunc main() { add(1, 2) }\n");
+
+    // Stale cancellation on document edit for signatureHelp.
+    let stale_op = harness.request_at(LspSemanticOperation::SignatureHelp, uri, 1, 18);
+    let _stale_req_id = harness
+        .server
+        .await_request("textDocument/signatureHelp")
+        .unwrap();
+    harness.sync(uri, "package main\nfunc main() { add(10, 2) }\n");
+    let stale_done = harness
+        .await_event(|event| {
+            event.kind == "requestCompleted" && event.operation_id.as_deref() == Some(&stale_op)
+        })
+        .clone();
+    assert_eq!(
+        stale_done.error.as_ref().map(|err| err.code.as_str()),
+        Some("staleDocumentVersion")
+    );
+
+    // Normal signatureHelp completion.
+    let sig_op = harness.request_at(LspSemanticOperation::SignatureHelp, uri, 1, 19);
+    let sig_req_id = harness
+        .server
+        .await_request_at("textDocument/signatureHelp", 1)
+        .unwrap();
+    harness.server.send(json!({
+        "jsonrpc": "2.0",
+        "id": sig_req_id,
+        "result": {
+            "signatures": [{
+                "label": "add(a int, b int)",
+                "parameters": [{ "label": [4, 9] }, { "label": [11, 16] }]
+            }],
+            "activeSignature": 0,
+            "activeParameter": 0
+        }
+    }));
+    let sig_done = harness
+        .await_event(|event| {
+            event.kind == "requestCompleted" && event.operation_id.as_deref() == Some(&sig_op)
+        })
+        .clone();
+    assert_eq!(
+        sig_done.result.as_ref().unwrap()["signatureHelp"]["signatures"][0]["parameters"][0]
+            ["label"],
+        json!("a int")
+    );
+
+    // workspace/inlayHint/refresh emits inlayHintsRefresh and replies null.
+    harness.server.send(json!({
+        "jsonrpc": "2.0",
+        "id": "refresh-hints-1",
+        "method": "workspace/inlayHint/refresh"
+    }));
+    harness.await_event(|event| event.kind == "inlayHintsRefresh");
+    assert!(harness.server.messages().iter().any(|msg| {
+        msg.get("id") == Some(&json!("refresh-hints-1")) && msg.get("result") == Some(&Value::Null)
+    }));
+
+    // Server-initiated workspace/applyEdit -> host applyEditResponse round-trip.
+    harness.server.send(json!({
+        "jsonrpc": "2.0",
+        "id": "srv-apply-1",
+        "method": "workspace/applyEdit",
+        "params": {
+            "label": "Add import",
+            "edit": {
+                "changes": {
+                    "file:///workspace/main.go": [{
+                        "range": {
+                            "start": { "line": 0, "character": 12 },
+                            "end": { "line": 0, "character": 12 }
+                        },
+                        "newText": "\nimport \"fmt\""
+                    }]
+                }
+            }
+        }
+    }));
+    let apply_event = harness
+        .await_event(|event| event.kind == "workspaceApplyEdit")
+        .clone();
+    let apply_edit_id = apply_event.result.as_ref().unwrap()["applyEditId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    harness
+        .session()
+        .apply_edit_response(ApplyEditResponseRequest {
+            session_id: harness.session_id.clone(),
+            apply_edit_id,
+            applied: true,
+            failure_reason: None,
+        })
+        .unwrap();
+    assert!(harness.server.messages().iter().any(|msg| {
+        msg.get("id") == Some(&json!("srv-apply-1"))
+            && msg.get("result") == Some(&json!({ "applied": true }))
+    }));
+
+    // Server $/cancelRequest cancels a pending workspace/applyEdit with -32800.
+    harness.server.send(json!({
+        "jsonrpc": "2.0",
+        "id": "srv-apply-2",
+        "method": "workspace/applyEdit",
+        "params": {
+            "edit": { "changes": {} }
+        }
+    }));
+    let second_seq = apply_event.sequence;
+    harness.await_event(|event| event.kind == "workspaceApplyEdit" && event.sequence > second_seq);
+    harness.server.send(json!({
+        "jsonrpc": "2.0",
+        "method": "$/cancelRequest",
+        "params": { "id": "srv-apply-2" }
+    }));
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline {
+        if harness.server.messages().iter().any(|msg| {
+            msg.get("id") == Some(&json!("srv-apply-2"))
+                && msg.pointer("/error/code") == Some(&json!(-32800))
+        }) {
+            break;
+        }
+        thread::sleep(Duration::from_millis(2));
+    }
+    assert!(harness.server.messages().iter().any(|msg| {
+        msg.get("id") == Some(&json!("srv-apply-2"))
+            && msg.pointer("/error/code") == Some(&json!(-32800))
+    }));
 }

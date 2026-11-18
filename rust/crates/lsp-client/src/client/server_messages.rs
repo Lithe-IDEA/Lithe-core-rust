@@ -197,6 +197,61 @@ pub fn client_apply_server_message_for_plugin(
                     error: None,
                 });
             }
+            "workspace/inlayHint/refresh" => {
+                if let Some(id) = request_id {
+                    responses.push(json_rpc_result(id, Value::Null)?);
+                }
+                events.push(LspClientEvent {
+                    kind: "inlayHintsRefresh".to_string(),
+                    request_id: None,
+                    method: Some(method.to_string()),
+                    uri: None,
+                    version: None,
+                    diagnostics: None,
+                    result: None,
+                    error: None,
+                });
+            }
+            "workspace/applyEdit" if request_id.is_some() => {
+                let id = request_id.expect("guarded above");
+                if state.shutdown_requested {
+                    responses.push(json_rpc_result(
+                        id,
+                        json!({
+                            "applied": false,
+                            "failureReason": "Language server session is shutting down."
+                        }),
+                    )?);
+                } else {
+                    match parse_workspace_apply_edit(message.get("params")) {
+                        Err(invalid) => {
+                            responses.push(json_rpc_error(id, -32602, invalid)?);
+                        }
+                        Ok(Err(reason)) => {
+                            responses.push(json_rpc_result(
+                                id,
+                                json!({
+                                    "applied": false,
+                                    "failureReason": reason
+                                }),
+                            )?);
+                        }
+                        Ok(Ok(mut payload)) => {
+                            payload["id"] = id.clone();
+                            events.push(LspClientEvent {
+                                kind: "workspaceApplyEdit".to_string(),
+                                request_id: None,
+                                method: Some(method.to_string()),
+                                uri: None,
+                                version: None,
+                                diagnostics: None,
+                                result: Some(payload),
+                                error: None,
+                            });
+                        }
+                    }
+                }
+            }
             "workspace/configuration" => {
                 if let Some(id) = request_id {
                     let item_count = message
@@ -446,6 +501,22 @@ pub fn client_apply_server_message_for_plugin(
                         .completion_providers
                         .insert(String::new(), options.clone());
                 }
+                match result
+                    .get("capabilities")
+                    .and_then(|c| c.get("signatureHelpProvider"))
+                {
+                    Some(Value::Bool(true)) => {
+                        state
+                            .signature_help_providers
+                            .insert(String::new(), json!({}));
+                    }
+                    Some(options) if options.is_object() => {
+                        state
+                            .signature_help_providers
+                            .insert(String::new(), options.clone());
+                    }
+                    _ => {}
+                }
                 if let Some(options) = result
                     .get("capabilities")
                     .and_then(|c| c.get("semanticTokensProvider"))
@@ -466,6 +537,7 @@ pub fn client_apply_server_message_for_plugin(
             state.server_capabilities.clear();
             state.semantic_token_providers.clear();
             state.completion_providers.clear();
+            state.signature_help_providers.clear();
             state.text_document_sync = LspTextDocumentSyncKind::Full;
             state.open_documents.clear();
             state.diagnostics.clear();

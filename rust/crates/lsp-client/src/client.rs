@@ -134,6 +134,7 @@ mod formatting_and_completion_tests {
             command: None,
             formatting_options: options,
             include_declaration: None,
+            ..Default::default()
         }
     }
 

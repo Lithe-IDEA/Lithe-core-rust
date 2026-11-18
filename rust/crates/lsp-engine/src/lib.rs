@@ -1,8 +1,8 @@
 //! Stateful language-server sessions coordinating client state and child processes.
 
 use lithe_lsp_client::{
-    client_apply_server_message_for_plugin, client_initialize_for_plugin, json_rpc_error_with_code,
-    json_rpc_error_with_data, json_rpc_notification, json_rpc_result,
+    client_apply_server_message_for_plugin, client_initialize_for_plugin, json_rpc_error,
+    json_rpc_error_with_code, json_rpc_error_with_data, json_rpc_notification, json_rpc_result,
 };
 mod logging;
 mod scan_settings;
@@ -250,6 +250,14 @@ pub fn plugin_host_response(request: PluginHostResponse) -> Result<(), CoreError
     engine()
         .session(&request.session_id)?
         .host_response(request)
+}
+
+/// Answers one server-initiated `workspaceApplyEdit` event with whether the host
+/// applied the workspace edit.
+pub fn apply_edit_response(request: ApplyEditResponseRequest) -> Result<(), CoreError> {
+    engine()
+        .session(&request.session_id)?
+        .apply_edit_response(request)
 }
 
 /// Sends one host notification to a plugin backend.
