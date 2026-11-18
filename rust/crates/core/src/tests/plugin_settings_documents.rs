@@ -380,7 +380,7 @@ fn build_tree(languages: usize) -> Vec<Value> {
     let mut items = vec![
         json!({"id":"build","title":"Build","parent":null,"group":true,"expanded":true}),
         json!({"id":"toolchains","title":"Toolchains","parent":"build","group":false,"expanded":false}),
-        json!({"id":"kind:language","title":"Languages","parent":"build","group":true,"expanded":true,"limit":6}),
+        json!({"id":"kind:language","title":"Languages","parent":"build","group":true,"expanded":true}),
     ];
     for index in 0..languages {
         items.push(json!({"id":format!("language:{index}"),"title":format!("Language {index}"),"parent":"kind:language","group":false,"expanded":false,"keywords":if index == 9 {"cargo"} else {""}}));
@@ -397,19 +397,16 @@ fn navigation_rows(items: Vec<Value>, query: &str) -> Vec<Value> {
     response["data"]["rows"].as_array().unwrap().clone()
 }
 
-/// A kind fold under a group shows its first `limit` pages and one overflow row
-/// that counts every page; search ignores the limit and lists hits with their path.
+/// An expanded kind under a group lists every page at the third level with its
+/// path; search lists hits with their path.
 #[test]
-fn settings_navigation_folds_a_third_level_behind_an_overflow_row() {
+fn settings_navigation_lists_a_third_level_and_search_hits_with_their_path() {
     let rows = navigation_rows(build_tree(12), "");
-    assert_eq!(rows.len(), 3 + 6 + 1);
+    assert_eq!(rows.len(), 3 + 12);
     assert_eq!(rows[2]["level"], 1);
     assert_eq!(rows[3]["level"], 2);
-    let overflow = &rows[9];
-    assert_eq!(overflow["id"], "kind:language");
-    assert_eq!(overflow["overflow"], 12);
-    assert_eq!(overflow["level"], 2);
-    assert_eq!(overflow["path"], json!(["Build", "Languages"]));
+    assert_eq!(rows[14]["id"], "language:11");
+    assert_eq!(rows[14]["path"], json!(["Build", "Languages"]));
     assert!(rows.iter().all(|row| row["matched"] == false));
 
     let rows = navigation_rows(build_tree(12), "CARGO");
@@ -419,28 +416,35 @@ fn settings_navigation_folds_a_third_level_behind_an_overflow_row() {
     assert_eq!(rows[2]["path"], json!(["Build", "Languages"]));
     assert_eq!(rows[0]["matched"], false);
 
-    // A matched fold shows every page below it, still without the limit.
+    // A matched kind shows every page below it.
     let rows = navigation_rows(build_tree(12), "languages");
     assert_eq!(rows.len(), 2 + 12);
-    assert!(rows.iter().all(|row| row.get("overflow").is_none()));
 }
 
 #[test]
-fn settings_navigation_rejects_a_fourth_level_cycles_and_empty_limits() {
+fn settings_navigation_rejects_a_fourth_level_cycles_and_unknown_fields() {
     let mut deep = build_tree(1);
     deep.push(json!({"id":"too-deep","title":"Deep","parent":"language:0","group":false,"expanded":false}));
     let mut cycle = build_tree(0);
     cycle.push(json!({"id":"a","title":"A","parent":"b","group":false,"expanded":false}));
     cycle.push(json!({"id":"b","title":"B","parent":"a","group":false,"expanded":false}));
-    let mut empty = build_tree(1);
-    empty[2]["limit"] = json!(0);
-    for items in [deep, cycle, empty] {
+    for items in [deep, cycle] {
         let response = execute(
             "plugins.settings.navigation",
             json!({"items":items,"query":""}),
         );
         assert_eq!(response["data"]["status"], "rejected", "{response}");
     }
+
+    // Fields the projection does not read, such as the removed `limit`, are an
+    // invalid request rather than silently ignored.
+    let mut unknown = build_tree(1);
+    unknown[2]["limit"] = json!(6);
+    let response = execute(
+        "plugins.settings.navigation",
+        json!({"items":unknown,"query":""}),
+    );
+    assert_eq!(response["error"]["code"], "invalid_request", "{response}");
 }
 
 fn contract_settings_file(name: &str) -> String {
