@@ -56,7 +56,7 @@
     },
     "runTypeReference": {
       "type": "object",
-      "description": "A configuration of a run configuration type a build system declares (buildSystems[].runConfigurationTypes).",
+      "description": "A configuration of a run configuration type a build system declares (buildSystems[].runConfigurationTypes), or a before-launch task step of a task it declares (buildSystems[].beforeLaunchTasks).",
       "required": ["pluginID", "buildSystemID", "type"],
       "properties": {
         "pluginID": { "$ref": "#/$defs/runTypeIdentifier" },
@@ -258,14 +258,28 @@
         "beforeLaunch": {
           "type": "array",
           "maxItems": 16,
-          "description": "Built-in process runs started in order before this one; each must exit with 0 first. A layer replaces the whole list.",
+          "description": "Steps started in order before this one: built-in process runs and tasks installed plugins declare; each must exit with 0 first. A layer replaces the whole list.",
           "items": {
-            "type": "object",
-            "required": ["configuration"],
-            "properties": {
-              "configuration": { "type": "string", "minLength": 1, "maxLength": 256 }
-            },
-            "additionalProperties": false
+            "oneOf": [
+              {
+                "type": "object",
+                "description": "A built-in process run of the same project to start first.",
+                "required": ["configuration"],
+                "properties": {
+                  "configuration": { "type": "string", "minLength": 1, "maxLength": 256 }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "description": "A task a plugin declares, run in this configuration's working directory.",
+                "required": ["task"],
+                "properties": {
+                  "task": { "$ref": "#/$defs/runTypeReference" }
+                },
+                "additionalProperties": false
+              }
+            ]
           }
         },
         "disabled": { "type": "boolean" },

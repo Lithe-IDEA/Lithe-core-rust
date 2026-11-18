@@ -1,10 +1,14 @@
 //! `runConfigurationTypes`: kinds of run configuration a build system adds to
-//! the Run/Debug Configurations dialog.
+//! the Run/Debug Configurations dialog, and `beforeLaunchTasks`: kinds of step
+//! a configuration runs before it starts.
 //!
 //! A type is data only: the fields its editor shows and the argv template
 //! those fields fill. The host draws the fields Core describes, Core checks
 //! and stores the values, and a run expands the template with them, so a
 //! plugin adds a configuration kind such as `Go Build` without a backend.
+//! A before-launch task is declared the same way; it runs to completion in
+//! the owning configuration's working directory and takes no program
+//! arguments, so it has neither an `execution` nor `${userArguments}`.
 
 use super::*;
 
@@ -14,7 +18,8 @@ const MAX_FIELD_ARGUMENTS: usize = 8;
 /// Longest description of a type or a field.
 const MAX_DESCRIPTION: usize = 512;
 
-/// One kind of run configuration the user can create.
+/// One kind of run configuration the user can create, or one kind of
+/// before-launch task.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct RunTypeDeclaration {
@@ -91,6 +96,25 @@ pub(crate) enum RunFieldKind {
     Arguments,
 }
 
+/// Which list of a build system a declaration belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RunTypeRole {
+    /// `runConfigurationTypes`: a configuration the user creates and runs.
+    Configuration,
+    /// `beforeLaunchTasks`: a step of another configuration's Before Launch list.
+    BeforeLaunchTask,
+}
+
+impl RunTypeRole {
+    /// The manifest key of the list.
+    pub(crate) fn key(self) -> &'static str {
+        match self {
+            Self::Configuration => "runConfigurationTypes",
+            Self::BeforeLaunchTask => "beforeLaunchTasks",
+        }
+    }
+}
+
 impl RunFieldKind {
     /// Whether another field can be shown depending on this one's value.
     fn controls_visibility(self) -> bool {
@@ -113,9 +137,23 @@ impl BuildSystemDeclaration {
         !self.run_configuration_types.is_empty()
     }
 
-    /// The run configuration type `id`.
-    pub(crate) fn run_type(&self, id: &str) -> Option<&RunTypeDeclaration> {
-        self.run_configuration_types
+    /// Whether the build system adds before-launch tasks, which
+    /// `beforeLaunchTasks` introduced.
+    pub fn has_before_launch_tasks(&self) -> bool {
+        !self.before_launch_tasks.is_empty()
+    }
+
+    /// The declarations of one list.
+    pub(crate) fn run_types(&self, role: RunTypeRole) -> &[RunTypeDeclaration] {
+        match role {
+            RunTypeRole::Configuration => &self.run_configuration_types,
+            RunTypeRole::BeforeLaunchTask => &self.before_launch_tasks,
+        }
+    }
+
+    /// The declaration `id` of one list.
+    pub(crate) fn run_type(&self, role: RunTypeRole, id: &str) -> Option<&RunTypeDeclaration> {
+        self.run_types(role)
             .iter()
             .find(|run_type| run_type.id == id)
     }
@@ -125,22 +163,32 @@ impl BuildSystemDeclaration {
         field: &str,
         options: &BTreeSet<String>,
     ) -> Validation<()> {
-        if self.run_configuration_types.len() > MAX_RUN_TYPES {
-            return Err(invalid(
-                format!("{field}.runConfigurationTypes"),
-                "Too many run configuration types.",
-            ));
-        }
-        let mut ids = BTreeSet::new();
-        for (index, run_type) in self.run_configuration_types.iter().enumerate() {
-            let field = format!("{field}.runConfigurationTypes[{index}]");
-            if !is_entry_identifier(&run_type.id) || !ids.insert(run_type.id.clone()) {
+        for role in [RunTypeRole::Configuration, RunTypeRole::BeforeLaunchTask] {
+            let list = format!("{field}.{}", role.key());
+            let declarations = self.run_types(role);
+            if declarations.len() > MAX_RUN_TYPES {
                 return Err(invalid(
-                    format!("{field}.id"),
-                    "Run configuration type IDs are unique identifiers that start with a letter.",
+                    list,
+                    match role {
+                        RunTypeRole::Configuration => "Too many run configuration types.",
+                        RunTypeRole::BeforeLaunchTask => "Too many before-launch tasks.",
+                    },
                 ));
             }
-            run_type.validate(&field, options)?;
+            let mut ids = BTreeSet::new();
+            for (index, run_type) in declarations.iter().enumerate() {
+                let field = format!("{list}[{index}]");
+                if !is_entry_identifier(&run_type.id) || !ids.insert(run_type.id.clone()) {
+                    return Err(invalid(
+                        format!("{field}.id"),
+                        match role {
+                            RunTypeRole::Configuration => "Run configuration type IDs are unique identifiers that start with a letter.",
+                            RunTypeRole::BeforeLaunchTask => "Before-launch task IDs are unique identifiers that start with a letter.",
+                        },
+                    ));
+                }
+                run_type.validate(&field, options, role)?;
+            }
         }
         Ok(())
     }
@@ -157,7 +205,12 @@ impl RunTypeDeclaration {
         template::user_argument_references(&self.arguments) == 1
     }
 
-    fn validate(&self, field: &str, options: &BTreeSet<String>) -> Validation<()> {
+    fn validate(
+        &self,
+        field: &str,
+        options: &BTreeSet<String>,
+        role: RunTypeRole,
+    ) -> Validation<()> {
         check_text(
             &self.display_name,
             &format!("{field}.displayName"),
@@ -169,11 +222,20 @@ impl RunTypeDeclaration {
         if let Some(icon) = &self.icon {
             icon.validate_at(&format!("{field}.icon"))?;
         }
-        if self.execution == Some(BuildExecution::Service) {
-            return Err(invalid(
-                format!("{field}.execution"),
-                "A run configuration type runs an application or a task.",
-            ));
+        match role {
+            RunTypeRole::Configuration if self.execution == Some(BuildExecution::Service) => {
+                return Err(invalid(
+                    format!("{field}.execution"),
+                    "A run configuration type runs an application or a task.",
+                ));
+            }
+            RunTypeRole::BeforeLaunchTask if self.execution.is_some() => {
+                return Err(invalid(
+                    format!("{field}.execution"),
+                    "A before-launch task always runs to completion; it declares no execution.",
+                ));
+            }
+            _ => {}
         }
         if self.fields.len() > MAX_RUN_FIELDS {
             return Err(invalid(format!("{field}.fields"), "Too many fields."));
@@ -191,9 +253,11 @@ impl RunTypeDeclaration {
         }
         let arguments_field = format!("{field}.arguments");
         check_argument_count(&self.arguments, &arguments_field)?;
+        // A before-launch task has no program arguments field, so its
+        // command line cannot name them.
         let allowed = Allowed {
             root: true,
-            user_arguments: true,
+            user_arguments: role == RunTypeRole::Configuration,
             options: Some(options),
             fields: Some(&ids),
             ..Allowed::none()

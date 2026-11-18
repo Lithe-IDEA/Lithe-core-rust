@@ -71,6 +71,8 @@ const COMMAND_INSTALLER_PLANS: &str =
     contract_file!("fixtures/command-installers/command-installer-plans.json");
 const RUN_CONFIGURATION_TYPES_FIXTURE: &str =
     contract_file!("fixtures/run-configuration-types/run-configuration-types.plugin.json");
+const BEFORE_LAUNCH_TASKS_FIXTURE: &str =
+    contract_file!("fixtures/before-launch-tasks/before-launch-tasks.plugin.json");
 const INVALID_MANIFESTS: &str = contract_file!("fixtures/manifest/invalid-manifests.json");
 const COMMAND_PLANS: &str = contract_file!("fixtures/languages/command-plans.json");
 
@@ -105,6 +107,7 @@ fn fixture(name: &str) -> Value {
         "project-generator-tool-field.plugin.json" => PROJECT_GENERATOR_TOOL_FIXTURE,
         "command-installer.plugin.json" => COMMAND_INSTALLER_FIXTURE,
         "run-configuration-types.plugin.json" => RUN_CONFIGURATION_TYPES_FIXTURE,
+        "before-launch-tasks.plugin.json" => BEFORE_LAUNCH_TASKS_FIXTURE,
         other => panic!("unknown fixture {other}"),
     };
     serde_json::from_str(source).expect("fixture manifest is JSON")
@@ -138,6 +141,7 @@ fn contract_fixtures_and_official_plugins_validate() {
         PROJECT_GENERATOR_TOOL_FIXTURE,
         COMMAND_INSTALLER_FIXTURE,
         RUN_CONFIGURATION_TYPES_FIXTURE,
+        BEFORE_LAUNCH_TASKS_FIXTURE,
     ] {
         let outcome = validate(serde_json::from_str(source).unwrap());
         assert_eq!(outcome["status"], "ok", "{outcome}");

@@ -224,6 +224,12 @@ impl BuildSystemDeclaration {
                 &run_type.arguments,
             ));
         }
+        for (index, task) in self.before_launch_tasks.iter().enumerate() {
+            lists.push((
+                format!("{field}.beforeLaunchTasks[{index}].arguments"),
+                &task.arguments,
+            ));
+        }
         if let Some(test) = &self.test {
             lists.push((format!("{field}.test.arguments"), &test.arguments));
         }

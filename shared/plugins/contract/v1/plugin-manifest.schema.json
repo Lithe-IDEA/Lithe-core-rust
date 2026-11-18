@@ -10,6 +10,7 @@
     {"if": {"required": ["outputLinkMatchers"]}, "then": {"properties": {"requires": {"required": ["outputLinkMatchers"]}}}},
     {"if": {"required": ["toolDefinitions"]}, "then": {"properties": {"requires": {"required": ["toolDefinitions"]}}}},
     {"if": {"required": ["buildSystems"], "properties": {"buildSystems": {"contains": {"required": ["runConfigurationTypes"]}}}}, "then": {"properties": {"requires": {"required": ["runConfigurationTypes"]}}}},
+    {"if": {"required": ["buildSystems"], "properties": {"buildSystems": {"contains": {"required": ["beforeLaunchTasks"]}}}}, "then": {"properties": {"requires": {"required": ["beforeLaunchTasks"]}}}},
     {"if": {"required": ["commandInstallers"]}, "then": {"required": ["permissions"], "properties": {"requires": {"required": ["commandInstallers"]}, "permissions": {"contains": {"const": "commands.install"}}}}},
     {"if": {"required": ["managedRuntimes"]}, "then": {"required": ["backend", "permissions"], "properties": {"requires": {"required": ["managedRuntimes", "backend"]}, "permissions": {"allOf": [{"contains": {"const": "runtimes.install"}}, {"contains": {"const": "backend.launch"}}]}}}},
     {"if": {"required": ["toolchainProviders"]}, "then": {"required": ["backend"], "properties": {"requires": {"required": ["toolchainProviders", "backend"]}, "permissions": {"allOf": [{"contains": {"const": "toolchains.provide"}}, {"contains": {"const": "backend.launch"}}]}}}},
@@ -30,6 +31,7 @@
       "additionalProperties": false,
       "properties": {
         "backend": { "description": "Required exactly when backend is present: the plugin's own process. It serves its web pages, may also start on onWorkspaceOpen or a plugin command, receives workspace contexts through the litheFunctions protocol, and may be granted workspace.metadata.", "enum": [0] },
+        "beforeLaunchTasks": { "description": "Required exactly when any buildSystems[].beforeLaunchTasks is non-empty: kinds of step a run configuration's Before Launch list runs first, offered in its Add New Task menu, drawn from declared fields and run through a declared command line. Needs buildSystems.", "enum": [0] },
         "buildModelInputs": {"description": "Optional public model sharing between already enabled workspace plugins; no installation, private function, or process authority. Required exactly when modelSharing or modelInputs is used. Consumers require buildProviders. A producer cannot also consume inputs.", "enum": [0]},
         "buildProviders": { "description": "Required exactly when any buildSystems[].provider is present, including own-process and shared language-server providers. Declares host support for Provider orchestration (task execution, test execution and discovery, run preparation, native debug preparation, optional read-only model inputs, non-sensitive native configuration sources, inline test reports, opaque semantic test selectors, typed run options and service/task preparation, registry-selected adapters and host-owned connection targets for service debugging), independent of declarative buildSystems.", "enum": [0] },
         "buildSystems": { "description": "Declarative build detection, models, and command plans, including the executable setting adapter, instance-scoped options, and declarative preparation roles; does not imply buildProviders support.", "enum": [0] },
@@ -2788,6 +2790,28 @@
         }
       }
     },
+    "beforeLaunchTask": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "displayName", "arguments"],
+      "description": "One kind of before-launch step. It is declared like a run configuration type with the same rules (task IDs are unique within the build system, every field that passes a value is named exactly once as ${field:<id>} in arguments, visibleWhen names an earlier field), except that a task always runs to completion and has no program arguments: it declares no execution and its arguments do not use ${userArguments}.",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "maxLength": 64 },
+        "displayName": { "$ref": "#/$defs/runConfigurationText" },
+        "description": { "$ref": "#/$defs/runConfigurationDescription" },
+        "icon": { "description": "Icon of the task in the Add New Task menu and the Before Launch list; display only.", "$ref": "#/$defs/uiIcon" },
+        "fields": {
+          "description": "The fields of the task's form, in display order.",
+          "type": "array",
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/runConfigurationField" }
+        },
+        "arguments": {
+          "description": "The command line after the global arguments: build argument templates that may also use ${field:<id>} for a field's arguments.",
+          "$ref": "#/$defs/buildArgumentList"
+        }
+      }
+    },
     "runConfigurationField": {
       "type": "object",
       "additionalProperties": false,
@@ -3265,6 +3289,13 @@
           "minItems": 1,
           "maxItems": 16,
           "items": { "$ref": "#/$defs/runConfigurationType" }
+        },
+        "beforeLaunchTasks": {
+          "description": "requires.beforeLaunchTasks: kinds of step a run configuration's Before Launch list runs first, such as running one command of the build tool. Core draws the declared fields in the Add New Task form, checks and saves their values in the step, and expands arguments with them and the instance's options, in the working directory of the configuration whose list names the step.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/beforeLaunchTask" }
         },
         "run": {
           "type": "array",

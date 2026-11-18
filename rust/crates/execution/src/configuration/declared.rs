@@ -9,6 +9,12 @@
 //! saved entry. A saved entry keeps the plugin, build system, kind and field
 //! values in `extensions.build`; its arguments, working directory and
 //! environment are the top-level keys every run has.
+//!
+//! A build system declares kinds of before-launch task the same way
+//! (`buildSystems[].beforeLaunchTasks`). A task is a step of another
+//! configuration's Before Launch list, so it has no entry of its own: the
+//! step keeps the same reference, and a task runs in the working directory
+//! of the configuration whose list names it, without program arguments.
 
 use super::process::{self, FieldError};
 use super::*;
@@ -128,18 +134,32 @@ fn invalid_reference() -> CoreError {
     )
 }
 
-/// A kind of run configuration a plugin declares, checked by the build crate.
+/// Which list of its build system a declared kind comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeclaredRole {
+    /// `runConfigurationTypes`: a configuration the user creates.
+    Configuration,
+    /// `beforeLaunchTasks`: a step of a configuration's Before Launch list.
+    BeforeLaunchTask,
+}
+
+/// A kind of run configuration or of before-launch task a plugin declares,
+/// checked by the build crate.
 #[derive(Debug, Clone)]
 pub struct DeclaredRunType {
-    /// Its identity.
+    /// Its identity. A configuration kind and a task kind of one build
+    /// system may share an ID; [`role`](Self::role) tells them apart.
     pub key: RunTypeKey,
+    /// The list it comes from.
+    pub role: DeclaredRole,
     /// Shown in the + menu and as the default name of a new configuration.
     pub display_name: String,
     /// One sentence on what the kind runs.
     pub description: Option<String>,
     /// The plugin's `UIIcon`, passed to the host unchanged.
     pub icon: Option<Value>,
-    /// How a started configuration behaves; never `service` or `group`.
+    /// How a started configuration behaves; never `service` or `group`, and
+    /// always `task` for a before-launch task.
     pub execution: Execution,
     /// Whether its command line takes the user's program arguments; the
     /// editor shows the program arguments field only then.
@@ -413,11 +433,16 @@ impl DeclaredRunType {
                 DeclaredFieldKind::Arguments => {
                     let arguments =
                         super::launch::split_arguments(value.as_str().unwrap_or_default());
-                    match process::arguments_limit_error(
-                        &arguments,
-                        MAX_VALUE_ARGUMENTS,
-                        MAX_VALUE_BYTES,
-                    ) {
+                    let error = if arguments.is_empty() && field.required {
+                        Some("required")
+                    } else {
+                        process::arguments_limit_error(
+                            &arguments,
+                            MAX_VALUE_ARGUMENTS,
+                            MAX_VALUE_BYTES,
+                        )
+                    };
+                    match error {
                         Some(code) => {
                             errors.push(FieldError::new(key, code));
                             None
@@ -493,6 +518,9 @@ impl DeclaredRunType {
                         .map(|item| item.as_str().map(str::to_string))
                         .collect::<Option<Vec<_>>>()
                         .ok_or_else(|| error("invalidValue"))?;
+                    if arguments.is_empty() && field.required {
+                        return Err(error("required"));
+                    }
                     (!arguments.is_empty()).then_some(DeclaredValue::Arguments(arguments))
                 }
                 (
@@ -530,6 +558,73 @@ impl DeclaredRunType {
         Ok(launch)
     }
 
+    /// A one-line description of what a task step with the saved `values`
+    /// runs, for the Before Launch list and its confirmation: the shown
+    /// values in field order, a checked checkbox by its title.
+    pub(super) fn summary(&self, values: &Map<String, Value>) -> String {
+        let mut words = Vec::new();
+        for field in &self.fields {
+            if !self.visible(field, values) {
+                continue;
+            }
+            let value = values
+                .get(&field.id)
+                .cloned()
+                .unwrap_or_else(|| field.initial());
+            match (field.kind, &value) {
+                (DeclaredFieldKind::Checkbox, Value::Bool(true)) => words.push(field.title.clone()),
+                (DeclaredFieldKind::Arguments, Value::Array(_)) => {
+                    let text = field.editor_value(value.clone());
+                    if let Some(text) = text.as_str().filter(|text| !text.is_empty()) {
+                        words.push(text.to_string());
+                    }
+                }
+                (DeclaredFieldKind::Choice, Value::String(choice)) => words.push(
+                    field
+                        .choices
+                        .iter()
+                        .find(|known| &known.value == choice)
+                        .and_then(|known| known.title.clone())
+                        .unwrap_or_else(|| choice.clone()),
+                ),
+                (_, Value::String(text)) if !text.is_empty() => words.push(text.clone()),
+                _ => {}
+            }
+        }
+        words.join(" ")
+    }
+
+    /// A kind of before-launch task in the `tasks` of a `beforeLaunch`
+    /// editor field: `{runType, displayName, description, icon, fields,
+    /// values}`, the fields of its form and the values of a new step.
+    pub(super) fn task_kind_item(&self) -> Value {
+        let mut item = json!({
+            "runType": self.key,
+            "displayName": self.display_name,
+            "fields": self.editor_fields(),
+            "values": self.default_values(),
+        });
+        if let Some(description) = &self.description {
+            item["description"] = json!(description);
+        }
+        if let Some(icon) = &self.icon {
+            item["icon"] = icon.clone();
+        }
+        item
+    }
+
+    /// A task step of this kind as the `beforeLaunch` editor value holds it:
+    /// `{task, name, summary, values}`, the saved reference with the editor
+    /// values of its fields.
+    pub(super) fn task_step_item(&self, reference: &RunTypeReference) -> Value {
+        json!({
+            "task": reference,
+            "name": self.display_name,
+            "summary": self.summary(&reference.values),
+            "values": self.saved_values(reference),
+        })
+    }
+
     /// The entry of this kind in `runConfig.configurationTypes`.
     pub(super) fn type_item(&self) -> Value {
         let mut item = json!({
@@ -548,33 +643,60 @@ impl DeclaredRunType {
     }
 }
 
-/// The declared kind `key` among `types`; `NotSupported` when no installed
-/// plugin declares it, such as after the plugin was removed.
+/// The declared configuration kind `key` among `types`; `NotSupported` when
+/// no installed plugin declares it, such as after the plugin was removed.
 pub(super) fn declared<'a>(
     types: &'a [DeclaredRunType],
     key: &RunTypeKey,
 ) -> Result<&'a DeclaredRunType, CoreError> {
-    types.iter().find(|item| &item.key == key).ok_or_else(|| {
-        CoreError::new(
-            ErrorCode::NotSupported,
-            "No installed plugin declares this run configuration type",
-        )
-        .with_details(format!(
-            "{}/{}/{}",
-            key.plugin_id, key.build_system_id, key.type_id
-        ))
-    })
+    declared_as(
+        types,
+        key,
+        DeclaredRole::Configuration,
+        "No installed plugin declares this run configuration type",
+    )
 }
 
-/// What a launch of a saved `build.run-type` entry uses besides the plugin's
-/// declaration.
+/// The declared before-launch task kind `key` among `types`; `NotSupported`
+/// when no installed plugin declares it.
+pub(super) fn declared_task<'a>(
+    types: &'a [DeclaredRunType],
+    key: &RunTypeKey,
+) -> Result<&'a DeclaredRunType, CoreError> {
+    declared_as(
+        types,
+        key,
+        DeclaredRole::BeforeLaunchTask,
+        "No installed plugin declares this before-launch task",
+    )
+}
+
+fn declared_as<'a>(
+    types: &'a [DeclaredRunType],
+    key: &RunTypeKey,
+    role: DeclaredRole,
+    message: &'static str,
+) -> Result<&'a DeclaredRunType, CoreError> {
+    types
+        .iter()
+        .find(|item| item.role == role && &item.key == key)
+        .ok_or_else(|| {
+            CoreError::new(ErrorCode::NotSupported, message).with_details(format!(
+                "{}/{}/{}",
+                key.plugin_id, key.build_system_id, key.type_id
+            ))
+        })
+}
+
+/// What a launch of a saved `build.run-type` entry, or of a before-launch
+/// task, uses besides the plugin's declaration.
 #[derive(Debug, Clone)]
 pub struct DeclaredLaunch {
     /// Canonical workspace root, which relative paths are resolved against.
     pub root: PathBuf,
     /// The kind and the saved field values.
     pub reference: RunTypeReference,
-    /// The user's program arguments.
+    /// The user's program arguments; none for a task.
     pub arguments: Vec<String>,
     /// Workspace-relative working directory; `.` is the workspace root.
     pub working_directory: String,
@@ -611,6 +733,30 @@ pub fn declared_launch(
     })
 }
 
+/// What a launch of the before-launch task `task` uses, as
+/// `runConfig.beforeLaunch` returned the step: it runs in
+/// `working_directory` of the workspace `root`, a directory inside the
+/// project, without program arguments or an environment of its own.
+pub fn declared_task_launch(
+    root: &str,
+    task: RunTypeReference,
+    working_directory: &str,
+) -> Result<DeclaredLaunch, CoreError> {
+    let root = existing_root(root)?;
+    task.validate()?;
+    let working_directory = match working_directory.trim() {
+        "" | "." => ".".to_string(),
+        directory => normalize_working_directory(&root, directory)?,
+    };
+    Ok(DeclaredLaunch {
+        root,
+        reference: task,
+        arguments: Vec::new(),
+        working_directory,
+        environment: BTreeMap::new(),
+    })
+}
+
 /// Checks a saved `build.run-type` entry: a valid reference, an execution
 /// that is a process, and no keys only other providers use.
 pub(crate) fn validate(configuration: &RunConfiguration) -> Result<(), CoreError> {
@@ -643,6 +789,7 @@ mod tests {
                 build_system_id: "tool".into(),
                 type_id: "check".into(),
             },
+            role: DeclaredRole::Configuration,
             display_name: "Tool Check".into(),
             description: None,
             icon: None,

@@ -6,7 +6,7 @@
 
 `buildSystems` 用数据描述一个项目级构建工具（Cargo、Go、Gradle、Maven 等）：怎么识别项目根目录、找哪个可执行文件、怎么得到项目模型、有哪些任务和运行入口、哪些文件变化要重新同步。所有构建工具共用同一套模型和命令：Core 校验声明、检测实例、解码模型、展开每一条命令行，宿主只执行 Core 规划好的进程并把输出交回。所以社区插件加一个构建工具不需要改宿主，宿主代码也不按构建系统 ID 分支。模型需要程序计算时，再加一个[构建提供者](build-providers.md)。
 
-> **宿主支持。** Lithe 桌面端声明 `buildSystems` 和 `buildProviders`（版本都是 `0`）：构建窗口发现构建实例、加载提供者模型、解析 Core 返回的有序可执行文件候选，并运行命令任务和提供者任务。桌面端也声明 `runConfigurationTypes` `0`（[1lck/Lithe-IDEA#2148](https://github.com/1lck/Lithe-IDEA/pull/2148)）：运行/调试配置对话框在内置类型之后列出插件类型，按 Core 描述的表单和插件翻译编辑，存到 `.lithe/run/plugin/<插件 ID>.toml`，按 Core 为检测到的实例规划的命令运行；插件类型不能调试。桌面端不声明 `buildModelInputs`、`executionProviders` 和 `toolchainProviders`：`requires` 里有其中任何一个的插件不会被提供安装，所以 `modelSharing` 和 `modelInputs` 在桌面端用不上。
+> **宿主支持。** Lithe 桌面端声明 `buildSystems` 和 `buildProviders`（版本都是 `0`）：构建窗口发现构建实例、加载提供者模型、解析 Core 返回的有序可执行文件候选，并运行命令任务和提供者任务。桌面端也声明 `runConfigurationTypes` `0`（[1lck/Lithe-IDEA#2148](https://github.com/1lck/Lithe-IDEA/pull/2148)）：运行/调试配置对话框在内置类型之后列出插件类型，按 Core 描述的表单和插件翻译编辑，存到 `.lithe/run/plugin/<插件 ID>.toml`，按 Core 为检测到的实例规划的命令运行；插件类型不能调试。桌面端还没有声明 `beforeLaunchTasks` `0`，声明它的插件暂时不会被提供安装。桌面端不声明 `buildModelInputs`、`executionProviders` 和 `toolchainProviders`：`requires` 里有其中任何一个的插件不会被提供安装，所以 `modelSharing` 和 `modelInputs` 在桌面端用不上。
 > 构建系统的实例级选项（`scope: "instance"`）和项目任务的 `preparation`，桌面端尚未呈现：插件照常安装，这部分没有界面，也不会被调用。构建提供者的运行准备、测试、调试准备、模型输入、原生配置、内联测试报告和运行时调试同样尚未呈现，见[构建提供者](build-providers.md)。
 > 宿主只呈现它实现的功能，插件不得依赖宿主一定会调用其中任何一个。该注释还写到系统命令的工具发现目前只读 `PATH`，依赖项目工具链或用户覆盖的计划会被拒绝，它是否也约束可执行文件候选里的 `setting` 和 `toolchain` 来源，注释没有说明；依赖这两种来源前，先在桌面端实际试一遍。说明见 [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/preview/desktop/internal/pluginhost/pluginhost.go)；各能力的对照见[能力与协议版本对照](../capabilities-and-versions.md#能力版本requires)。
 > 对契约有疑问，请到 [Lithe-core-rust 的 Issues](https://github.com/Lithe-IDEA/Lithe-core-rust/issues) 反馈。
@@ -14,7 +14,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 清单字段 | `buildSystems[]`：`id`、`displayName`、`icon`、`detection`、`invocation`、`options`、`model`、`provider`、`tasks`、`run`、`test`、`diagnostics`、`dependencies`、`sync`、`layout`、`hostIntegration`，以及可选的 `modelSharing`、`modelInputs`（见下文）和 `configuration`（原生配置，见[构建提供者](build-providers.md)） |
-| 能力版本 | `buildSystems` `0`。不带 `provider` 的构建系统只需要它；带 `provider` 还要 `buildProviders: 0`；`modelSharing`、`modelInputs` 另需 `buildModelInputs: 0`（消费者还需要 `buildProviders: 0`）；`runConfigurationTypes` 另需 `runConfigurationTypes: 0`；可执行文件候选用 `setting` 来源时还要 `settings: 0`（见 `build-tool-path`）。可执行文件解析本身是基础契约，不是能力，不需要在 `requires` 里声明。`requires` 必须恰好列出清单用到的能力，见[版本对照](../capabilities-and-versions.md#能力版本requires) |
+| 能力版本 | `buildSystems` `0`。不带 `provider` 的构建系统只需要它；带 `provider` 还要 `buildProviders: 0`；`modelSharing`、`modelInputs` 另需 `buildModelInputs: 0`（消费者还需要 `buildProviders: 0`）；`runConfigurationTypes` 另需 `runConfigurationTypes: 0`；`beforeLaunchTasks` 另需 `beforeLaunchTasks: 0`；可执行文件候选用 `setting` 来源时还要 `settings: 0`（见 `build-tool-path`）。可执行文件解析本身是基础契约，不是能力，不需要在 `requires` 里声明。`requires` 必须恰好列出清单用到的能力，见[版本对照](../capabilities-and-versions.md#能力版本requires) |
 | 协议 | 没有进程协议；`model.source: "provider"` 时走 [`litheBuild`](build-providers.md) |
 | API 编号 | [API-29](../api-catalog.md#现在能用的-api)：构建、任务、测试、运行准备 |
 | 权限 | `process.build` |
@@ -35,6 +35,7 @@
 | `provider` | 没有命令能打印模型时，由[构建提供者](build-providers.md)回答模型和依赖请求 |
 | `tasks`、`run`、`test` | 任务目录、从模型目标或任务生成的运行入口、测试的范围、过滤器和结果文件 |
 | `runConfigurationTypes` | 用户可以在运行/调试配置对话框里新建的配置类型（如 Go Build、Go Test）：字段、默认值、显示条件和命令行模板；宿主按字段画编辑器，Core 校验值并展开命令行，见[运行配置类型](../../contract/v1/README.md#run-configuration-types) |
+| `beforeLaunchTasks` | 运行配置“启动前”列表里“添加新任务”菜单提供的任务（如“运行 Go 命令”）：声明方式同运行配置类型，但没有 `execution` 和程序参数；任务在拥有该列表的配置的工作目录里运行，见[启动前任务](../../contract/v1/README.md#before-launch-tasks) |
 | `diagnostics`、`dependencies` | 诊断的行匹配或 `litheDiagnostics`；依赖列表或依赖树的来源 |
 | `sync`、`layout` | 哪些文件变化会让模型过期；每个项目要作为 `excluded` 内容根加入的目录；`layout.hiddenDirectoryNames` 是插件启用期间所有工作区在任意层级隐藏的目录名（如依赖、缓存和构建输出目录），项目树、搜索、文件事件、本地历史、运行发现、构建探测和仓库发现都会跳过 |
 
@@ -72,6 +73,7 @@
 | [Declarative project preparation](../../contract/v1/README.md#declarative-project-preparation) | 运行前准备任务 |
 | [Executable resolution](../../contract/v1/README.md#executable-resolution) | 可执行文件候选、排序、严格选择 |
 | [Run configuration types](../../contract/v1/README.md#run-configuration-types) | 插件声明的运行配置类型、字段、保存位置和 `build.runConfigurationPlan` |
+| [Before-launch tasks](../../contract/v1/README.md#before-launch-tasks) | 插件声明的启动前任务、步骤的保存形式、工作目录和 `build.beforeLaunchTaskPlan` |
 | [Host integrations](../../contract/v1/README.md#host-integrations) | 构建系统的宿主集成（保留字段，Core 不实现） |
 | [Commands](../../contract/v1/README.md#commands) | `build.*` Core 命令：检测、规划、解码、同步指纹 |
 
@@ -105,7 +107,7 @@
 
 `buildSystems` describes a project-level build tool (Cargo, Go, Gradle, Maven, …) as data: how to recognize a project root, which executable to use, how to get the project model, which tasks and run entries exist, and which file changes require a re-sync. Every build tool shares the same model and commands: Core validates the declaration, detects instances, decodes the model, and expands every command line; the host only runs the processes Core planned and passes their output back. A community plugin therefore adds a build tool without any host change, and no host code branches on a build-system ID. When the model must be computed by a program, add a [build provider](build-providers.md).
 
-> **Host support.** The Lithe desktop declares `buildSystems` and `buildProviders` (both version `0`): the Build window detects build instances, loads provider models, resolves the ordered executable candidates Core returns, and runs command and provider tasks. It also declares `runConfigurationTypes` `0` ([1lck/Lithe-IDEA#2148](https://github.com/1lck/Lithe-IDEA/pull/2148)): the Run/Debug Configurations dialog lists plugin types after the built-in ones, edits them with the form Core describes in the plugin's translation, saves them to `.lithe/run/plugin/<plugin ID>.toml`, and runs them with the command Core plans for the detected instance; a plugin type has no debugger. The desktop does not declare `buildModelInputs`, `executionProviders` or `toolchainProviders`: a plugin whose `requires` lists any of them is not offered for installation, so `modelSharing` and `modelInputs` are unusable there.
+> **Host support.** The Lithe desktop declares `buildSystems` and `buildProviders` (both version `0`): the Build window detects build instances, loads provider models, resolves the ordered executable candidates Core returns, and runs command and provider tasks. It also declares `runConfigurationTypes` `0` ([1lck/Lithe-IDEA#2148](https://github.com/1lck/Lithe-IDEA/pull/2148)): the Run/Debug Configurations dialog lists plugin types after the built-in ones, edits them with the form Core describes in the plugin's translation, saves them to `.lithe/run/plugin/<plugin ID>.toml`, and runs them with the command Core plans for the detected instance; a plugin type has no debugger. The desktop does not declare `beforeLaunchTasks` `0` yet, so a plugin that declares it is not offered for installation. The desktop does not declare `buildModelInputs`, `executionProviders` or `toolchainProviders`: a plugin whose `requires` lists any of them is not offered for installation, so `modelSharing` and `modelInputs` are unusable there.
 > Build-system instance options (`scope: "instance"`) and project-task `preparation` are not presented on the desktop yet: the plugin installs, and that part has no surface and is never called. Build-provider run preparation, tests, debug preparation, model inputs, native configuration, inline test reports and runtime debug are not presented either; see [Build providers](build-providers.md).
 > A host presents the features it implements; a plugin must not depend on a host calling any of them. The same comment says tool discovery for system commands reads `PATH` only and that a plan depending on a project toolchain or a user override is refused. It does not say whether that also limits the `setting` and `toolchain` sources of executable candidates, so try those two on the desktop before relying on them. See [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/preview/desktop/internal/pluginhost/pluginhost.go); the per-capability comparison is in [Capabilities and protocol versions](../capabilities-and-versions.md#capability-versions-requires).
 > Questions about the contract go to [Lithe-core-rust Issues](https://github.com/Lithe-IDEA/Lithe-core-rust/issues).
@@ -113,7 +115,7 @@
 | Item | Value |
 | --- | --- |
 | Manifest fields | `buildSystems[]`: `id`, `displayName`, `icon`, `detection`, `invocation`, `options`, `model`, `provider`, `tasks`, `run`, `test`, `diagnostics`, `dependencies`, `sync`, `layout`, `hostIntegration`, plus the optional `modelSharing`, `modelInputs` (below) and `configuration` (native configuration, see [Build providers](build-providers.md)) |
-| Capability versions | `buildSystems` `0`. A build system without `provider` needs only it; with `provider` it also needs `buildProviders: 0`; `modelSharing` and `modelInputs` also need `buildModelInputs: 0` (a consumer also needs `buildProviders: 0`); `runConfigurationTypes` also needs `runConfigurationTypes: 0`; a `setting` executable source also needs `settings: 0` (see `build-tool-path`). Executable resolution itself is base contract, not a capability, and is not declared in `requires`. `requires` must list exactly the capabilities the manifest uses; see [versions](../capabilities-and-versions.md#capability-versions-requires) |
+| Capability versions | `buildSystems` `0`. A build system without `provider` needs only it; with `provider` it also needs `buildProviders: 0`; `modelSharing` and `modelInputs` also need `buildModelInputs: 0` (a consumer also needs `buildProviders: 0`); `runConfigurationTypes` also needs `runConfigurationTypes: 0`; `beforeLaunchTasks` also needs `beforeLaunchTasks: 0`; a `setting` executable source also needs `settings: 0` (see `build-tool-path`). Executable resolution itself is base contract, not a capability, and is not declared in `requires`. `requires` must list exactly the capabilities the manifest uses; see [versions](../capabilities-and-versions.md#capability-versions-requires) |
 | Protocols | No process protocol; `model.source: "provider"` uses [`litheBuild`](build-providers.md) |
 | API IDs | [API-29](../api-catalog.md#apis-usable-now): build, tasks, tests, run preparation |
 | Permissions | `process.build` |
@@ -134,6 +136,7 @@ IDs of build systems, tasks, and run entries start with a lowercase letter and u
 | `provider` | The [build provider](build-providers.md) that answers model and dependency requests when no command prints them |
 | `tasks`, `run`, `test` | The task catalog, run entries generated from model targets or tasks, and the scopes, filters, and result files of tests |
 | `runConfigurationTypes` | Configuration types a user can create in the Run/Debug Configurations dialog (such as Go Build and Go Test): fields, defaults, visibility conditions, and the command-line template; the host draws the editor from the fields and Core validates the values and expands the command line, see [Run configuration types](../../contract/v1/README.md#run-configuration-types) |
+| `beforeLaunchTasks` | Tasks the Add New Task menu of a run configuration's Before Launch list offers (such as Run Go Command): declared like run configuration types, without an `execution` or program arguments; a task runs in the working directory of the configuration whose list names it, see [Before-launch tasks](../../contract/v1/README.md#before-launch-tasks) |
 | `diagnostics`, `dependencies` | Line matchers or `litheDiagnostics` for diagnostics; the source of the dependency list or tree |
 | `sync`, `layout` | Which file changes make the model stale; directories added to every project as `excluded` content roots; `layout.hiddenDirectoryNames`, folder names such as dependency, cache and build output folders that every workspace hides at any depth while the plugin is enabled: the project tree, search, file events, Local History, run discovery, build detection and repository discovery skip them |
 
@@ -171,6 +174,7 @@ A build system's `hostIntegration` and a language server's `hostIntegration` are
 | [Declarative project preparation](../../contract/v1/README.md#declarative-project-preparation) | Tasks that run before a launch |
 | [Executable resolution](../../contract/v1/README.md#executable-resolution) | Executable candidates, ordering, strict selection |
 | [Run configuration types](../../contract/v1/README.md#run-configuration-types) | Plugin-declared run configuration types, their fields, storage, and `build.runConfigurationPlan` |
+| [Before-launch tasks](../../contract/v1/README.md#before-launch-tasks) | Plugin-declared before-launch tasks, how a step is saved, its working directory, and `build.beforeLaunchTaskPlan` |
 | [Host integrations](../../contract/v1/README.md#host-integrations) | Host integrations for build systems (reserved; Core implements none) |
 | [Commands](../../contract/v1/README.md#commands) | `build.*` Core commands: detection, plans, decoding, sync fingerprints |
 

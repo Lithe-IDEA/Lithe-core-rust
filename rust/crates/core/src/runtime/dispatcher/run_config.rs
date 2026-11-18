@@ -115,18 +115,18 @@ pub(super) fn dispatch(
                 ),
             }
         }
-        RunConfigCommand::UpdateOptions => {
-            match serde_json::from_value::<crate::execution::UpdateOptionsRequest>(payload)
-                .map_err(|error| {
-                    CoreError::new(ErrorCode::InvalidRequest, "Invalid run options request")
-                        .with_details(error.to_string())
-                })
-                .and_then(crate::execution::update_options)
-            {
-                Ok(data) => CoreResponse::success(id, data),
-                Err(error) => CoreResponse::failure(id, error),
-            }
-        }
+        RunConfigCommand::UpdateOptions => respond(
+            id,
+            with_run_types(
+                payload,
+                "Invalid run options request",
+                false,
+                |mut request: crate::execution::UpdateOptionsRequest, run_types| {
+                    request.run_types = run_types;
+                    crate::execution::update_options(request)
+                },
+            ),
+        ),
         RunConfigCommand::UpdateToolPreferences => {
             match serde_json::from_value::<crate::execution::UpdateToolPreferencesRequest>(payload)
                 .map_err(|error| {
@@ -142,21 +142,18 @@ pub(super) fn dispatch(
                 Err(error) => CoreResponse::failure(id, error),
             }
         }
-        RunConfigCommand::SaveEditorChanges => {
-            match serde_json::from_value::<crate::execution::UpdateOptionsRequest>(payload)
-                .map_err(|error| {
-                    CoreError::new(
-                        ErrorCode::InvalidRequest,
-                        "Invalid run configuration editor request",
-                    )
-                    .with_details(error.to_string())
-                })
-                .and_then(crate::execution::save_editor_changes)
-            {
-                Ok(data) => CoreResponse::success(id, data),
-                Err(error) => CoreResponse::failure(id, error),
-            }
-        }
+        RunConfigCommand::SaveEditorChanges => respond(
+            id,
+            with_run_types(
+                payload,
+                "Invalid run configuration editor request",
+                false,
+                |mut request: crate::execution::UpdateOptionsRequest, run_types| {
+                    request.run_types = run_types;
+                    crate::execution::save_editor_changes(request)
+                },
+            ),
+        ),
         RunConfigCommand::CreateUserConfiguration => {
             match serde_json::from_value::<crate::execution::CreateUserConfigurationRequest>(
                 payload,
@@ -210,21 +207,42 @@ pub(super) fn dispatch(
                 },
             ),
         ),
-        RunConfigCommand::BeforeLaunch => {
-            match serde_json::from_value::<crate::execution::BeforeLaunchRequest>(payload)
-                .map_err(|error| {
-                    CoreError::new(
-                        ErrorCode::InvalidRequest,
-                        "Invalid run configuration before launch request",
-                    )
-                    .with_details(error.to_string())
-                })
-                .and_then(crate::execution::before_launch)
-            {
-                Ok(data) => CoreResponse::success(id, data),
-                Err(error) => CoreResponse::failure(id, error),
-            }
-        }
+        RunConfigCommand::BeforeLaunch => respond(
+            id,
+            with_run_types(
+                payload,
+                "Invalid run configuration before launch request",
+                false,
+                |mut request: crate::execution::BeforeLaunchRequest, run_types| {
+                    request.run_types = run_types;
+                    crate::execution::before_launch(request)
+                },
+            ),
+        ),
+        RunConfigCommand::CheckBeforeLaunchTask => respond(
+            id,
+            with_run_types(
+                payload,
+                "Invalid before-launch task request",
+                false,
+                |mut request: crate::execution::CheckBeforeLaunchTaskRequest, run_types| {
+                    request.run_types = run_types;
+                    crate::execution::check_before_launch_task(request)
+                },
+            ),
+        ),
+        RunConfigCommand::BeforeLaunchField => respond(
+            id,
+            with_run_types(
+                payload,
+                "Invalid before-launch field request",
+                false,
+                |mut request: crate::execution::BeforeLaunchFieldRequest, run_types| {
+                    request.run_types = run_types;
+                    crate::execution::before_launch_field(request)
+                },
+            ),
+        ),
         RunConfigCommand::DeleteConfiguration => {
             match serde_json::from_value::<crate::execution::DeleteConfigurationRequest>(payload)
                 .map_err(|error| {
@@ -307,8 +325,8 @@ fn respond(id: Option<String>, result: Result<Value, CoreError>) -> CoreResponse
     }
 }
 
-/// Runs an editor command that offers the run configuration types installed
-/// plugins declare. The payload's `runTypePlugins` (`{language, plugins:
+/// Runs a command that needs the run configuration types and before-launch
+/// tasks installed plugins declare. The payload's `runTypePlugins` (`{language, plugins:
 /// [{manifest, localizations}]}`) is taken out and checked by the build
 /// crate; the rest is the command's request. With `report`, the answer
 /// carries the plugins' translation reports as `localizations`, so the host

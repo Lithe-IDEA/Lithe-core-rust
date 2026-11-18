@@ -454,6 +454,8 @@ pub enum BuildCommand {
     TaskPlan,
     /// Expands a saved configuration of a declared run configuration type into an argv plan (`build.runConfigurationPlan`).
     RunConfigurationPlan,
+    /// Expands a before-launch task a build system declares into an argv plan (`build.beforeLaunchTaskPlan`).
+    BeforeLaunchTaskPlan,
     /// Expands a build test run and its result location (`build.testPlan`).
     TestPlan,
     /// Plans typed provider run preparation (`build.prepareRunPlan`).
@@ -756,6 +758,10 @@ pub enum RunConfigCommand {
     Arrange,
     /// Expands the steps run before a configuration starts (`runConfig.beforeLaunch`).
     BeforeLaunch,
+    /// Checks the values of a plugin task step before launch (`runConfig.checkBeforeLaunchTask`).
+    CheckBeforeLaunchTask,
+    /// Reads the Before Launch list of a saved configuration for an editor (`runConfig.beforeLaunchField`).
+    BeforeLaunchField,
     /// Produces the process plan for one configuration (`runConfig.createLaunchPlan`).
     CreateLaunchPlan,
     /// Resolves user choices for a provider-owned launch (`runConfig.providerLaunchInputs`).
@@ -1187,6 +1193,7 @@ impl CoreCommand {
             "build.modelPlan" => Some(Self::Build(BuildCommand::ModelPlan)),
             "build.taskPlan" => Some(Self::Build(BuildCommand::TaskPlan)),
             "build.runConfigurationPlan" => Some(Self::Build(BuildCommand::RunConfigurationPlan)),
+            "build.beforeLaunchTaskPlan" => Some(Self::Build(BuildCommand::BeforeLaunchTaskPlan)),
             "build.testPlan" => Some(Self::Build(BuildCommand::TestPlan)),
             "build.prepareDebugPlan" => Some(Self::Build(BuildCommand::PrepareDebugPlan)),
             "build.decodeDebugPreparation" => {
@@ -1462,6 +1469,12 @@ impl CoreCommand {
             }
             "runConfig.arrange" => Some(Self::RunConfig(RunConfigCommand::Arrange)),
             "runConfig.beforeLaunch" => Some(Self::RunConfig(RunConfigCommand::BeforeLaunch)),
+            "runConfig.checkBeforeLaunchTask" => {
+                Some(Self::RunConfig(RunConfigCommand::CheckBeforeLaunchTask))
+            }
+            "runConfig.beforeLaunchField" => {
+                Some(Self::RunConfig(RunConfigCommand::BeforeLaunchField))
+            }
             "runConfig.createLaunchPlan" => {
                 Some(Self::RunConfig(RunConfigCommand::CreateLaunchPlan))
             }

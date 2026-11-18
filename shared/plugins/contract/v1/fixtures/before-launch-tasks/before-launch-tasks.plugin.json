@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 0,
+  "id": "dev.lithe.fixture.before-launch-tasks",
+  "displayName": "Before-Launch Tasks Fixture",
+  "version": "0.1.0",
+  "pluginAPIVersion": 0,
+  "requires": { "buildSystems": 0, "beforeLaunchTasks": 0 },
+  "vendor": {
+    "id": "org.example",
+    "displayName": "Example",
+    "signatureRequirement": "publisherPackage"
+  },
+  "permissions": ["process.build"],
+  "activationEvents": ["onBuildSystem:go"],
+  "languages": [],
+  "buildSystems": [
+    {
+      "id": "go",
+      "displayName": "Go Modules",
+      "detection": { "markers": ["go.mod"] },
+      "invocation": {
+        "executables": [{ "kind": "runtime", "runtime": "go" }],
+        "runtimeDependencies": [{ "id": "go", "minimumVersion": "1.21" }]
+      },
+      "options": [
+        { "id": "tags", "displayName": "Build Tags", "kind": "text", "arguments": ["-tags", "${value}"] }
+      ],
+      "beforeLaunchTasks": [
+        {
+          "id": "command",
+          "displayName": "Run Go Command",
+          "description": "Runs one go command, such as generate ./..., in the configuration's working directory.",
+          "icon": { "host": "run" },
+          "fields": [
+            {
+              "id": "command",
+              "title": "Command",
+              "kind": "arguments",
+              "required": true,
+              "placeholder": "generate ./..."
+            }
+          ],
+          "arguments": ["${field:command}"]
+        },
+        {
+          "id": "generate",
+          "displayName": "Go Generate",
+          "fields": [
+            {
+              "id": "verbose",
+              "title": "Print files",
+              "kind": "checkbox",
+              "arguments": ["-v"]
+            },
+            {
+              "id": "package",
+              "title": "Package",
+              "kind": "text",
+              "default": "./..."
+            }
+          ],
+          "arguments": ["generate", "${optionArguments}", "${field:verbose}", "${field:package}"]
+        }
+      ]
+    }
+  ]
+}

@@ -193,10 +193,21 @@ fn update_configuration_options(
             request.working_directory.trim(),
         )?)
     };
-    if let Some(ids) = &request.before_launch {
-        if let Some(code) =
-            super::before_launch::check_edit(root, layers, &request.configuration_id, ids)?
-        {
+    let steps =
+        match &request.before_launch {
+            None => None,
+            Some(items) => Some(super::before_launch::steps_from_editor(items).ok_or_else(
+                || CoreError::new(ErrorCode::InvalidRequest, "Invalid steps before launch"),
+            )?),
+        };
+    if let Some(steps) = &steps {
+        if let Some(code) = super::before_launch::check_edit(
+            root,
+            layers,
+            &request.configuration_id,
+            steps,
+            &request.run_types,
+        )? {
             return Err(CoreError::new(
                 ErrorCode::InvalidRequest,
                 "A step before launch cannot run",
@@ -228,11 +239,11 @@ fn update_configuration_options(
     }
     patch["args"] = json!(split_arguments(&request.arguments));
     let mut drop_steps = false;
-    match request.before_launch.as_deref() {
+    match steps.as_deref() {
         None => {}
         Some([]) if local_layer && project_names_steps => patch["beforeLaunch"] = json!([]),
         Some([]) => drop_steps = true,
-        Some(ids) => patch["beforeLaunch"] = json!(super::before_launch::steps_of(ids)),
+        Some(steps) => patch["beforeLaunch"] = json!(steps),
     }
     if provider == "build.provider" {
         if let Some(options) = &request.provider_run_options {
