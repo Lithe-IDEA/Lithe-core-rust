@@ -16,6 +16,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+mod before_launch;
 mod document;
 mod editing;
 mod form;
@@ -30,6 +31,7 @@ mod resolve;
 mod storage;
 mod validation;
 
+pub use before_launch::{before_launch, BeforeLaunchRequest, BeforeLaunchStep};
 pub use document::*;
 pub use editing::*;
 pub use form::{

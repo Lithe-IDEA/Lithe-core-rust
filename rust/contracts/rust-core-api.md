@@ -715,6 +715,7 @@ or removing a command fails until the table changes in the same commit.
 | `runConfig.editorForm` | Describe the editor fields and current values of a built-in run configuration |
 | `runConfig.saveConfiguration` | Validate an editor form's values and return field errors or the file changes that save it |
 | `runConfig.deleteConfiguration` | Return the file changes that delete a saved user configuration |
+| `runConfig.beforeLaunch` | Expand the built-in process runs a configuration starts first, and say whether the user must confirm them |
 | `runConfig.createLaunchPlan` | Project one effective configuration into a platform-neutral Run or Debug plan |
 | `runConfig.providerLaunchInputs` | Resolve user choices for a provider-owned launch |
 | `git.status` | Resolve the repository, current branch, and working-tree changes |
@@ -3890,6 +3891,57 @@ extension namespaces the editor does not show are kept.
 `runConfig.deleteConfiguration` accepts `{root, configurationId, plugins?}` and
 returns `{changes}` that remove the saved `user:` configuration from every layer.
 Generated entries cannot be deleted.
+
+#### Steps before launch
+
+A configuration of any provider may name `beforeLaunch`, an ordered list of at
+most 16 `{configuration}` steps. Each step is the ID of a built-in process run
+of the same project, which starts and must exit with 0 before the next step,
+and the configuration itself, starts (IntelliJ IDEA's "Before launch: Run
+Another Configuration"). A shell script that compiles a module or a program
+that generates sources is saved as a process run and named as a step, so a step
+has the interpreter, arguments, working directory, environment and launch plan
+a process run already has. A layer replaces the whole list: an empty list in the
+local layer hides the steps the project layer names. A step that names the
+configuration itself makes the configuration unavailable
+(`invalidConfiguration`); a step whose target is missing or cannot run is
+reported when the configuration starts, so the list still resolves.
+
+`runConfig.beforeLaunch` accepts `{root, configurationId, localDocument?}` and
+replies `{status: "ok", steps, confirmation}` or `{status: "rejected", refusal:
+{code, configurationId}}`. `steps` are the runs to start, in order, each
+`{configurationId, name, summary}`; `summary` is one line naming what it starts
+(the program or script and its arguments) for the confirmation. A step whose run
+names steps of its own starts them first, as starting that run alone would; at
+most 32 steps are expanded. `refusal.code` is `notFound` (no such
+configuration), `notAllowed` (not a built-in process run), `unavailable` (the
+run cannot start, see its `availability`), `cycle` (a step leads back to a
+configuration being started) or `tooLong`; `configurationId` names the step.
+
+`confirmation` is `{fingerprint}` when the project layer names any of the
+expanded lists, and `null` otherwise. Those steps run code from the repository
+that nobody chose on this machine, so the host asks the user before running
+them, showing each step's name and summary, and remembers the fingerprint per
+project in its own storage, never in the project. The fingerprint is a SHA-256
+over the lists and the definitions of the runs they start, so changing either
+asks again; it does not cover the contents of a script file a step runs. A list
+the local layer names, including one that starts runs the project defines, was
+chosen on this machine and needs no confirmation. The host runs each step
+through `runConfig.createLaunchPlan`, writes its output to the console of the
+configuration that starts, stops it with that configuration, and does not start
+the configuration when a step fails or is stopped. Run and Debug both run the
+steps.
+
+`runConfig.editorForm` adds a `beforeLaunch` field to every process run with
+`candidates: [{id, name}]`, the runnable process runs other than the edited one;
+its value is the list of IDs. `runConfig.saveConfiguration` checks it like
+`runConfig.beforeLaunch` and reports `{field: "beforeLaunch", code}` with
+`notFound`, `notAllowed`, `unavailable`, `conflict` (a cycle) or `tooLong`.
+`runConfig.updateOptions` and `runConfig.saveEditorChanges` accept an optional
+`beforeLaunch` list of IDs for any configuration: omission keeps the saved
+steps, an empty list removes them from the edited layer (and in the local layer
+hides the project's), and a list that cannot run is `invalid_request` with
+`beforeLaunch: <code>` in the details.
 
 `runConfig.createLaunchPlan` accepts `root`, `configurationId`, optional
 `localDocument` and optional `inlineScriptBase`. It resolves the configuration

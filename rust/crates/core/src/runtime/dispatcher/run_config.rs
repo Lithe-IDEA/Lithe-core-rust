@@ -217,6 +217,21 @@ pub(super) fn dispatch(
                 Err(error) => CoreResponse::failure(id, error),
             }
         }
+        RunConfigCommand::BeforeLaunch => {
+            match serde_json::from_value::<crate::execution::BeforeLaunchRequest>(payload)
+                .map_err(|error| {
+                    CoreError::new(
+                        ErrorCode::InvalidRequest,
+                        "Invalid run configuration before launch request",
+                    )
+                    .with_details(error.to_string())
+                })
+                .and_then(crate::execution::before_launch)
+            {
+                Ok(data) => CoreResponse::success(id, data),
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
         RunConfigCommand::DeleteConfiguration => {
             match serde_json::from_value::<crate::execution::DeleteConfigurationRequest>(payload)
                 .map_err(|error| {

@@ -2093,7 +2093,8 @@ fn powershell_and_program_editors_store_their_own_choices() {
             "program",
             "programArguments",
             "workingDirectory",
-            "environment"
+            "environment",
+            "beforeLaunch"
         ]
     );
     let save_program = |program: &str| {
