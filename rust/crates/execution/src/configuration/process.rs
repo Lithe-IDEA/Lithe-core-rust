@@ -86,6 +86,19 @@ impl Kind {
         }
     }
 
+    /// The family of shell that runs scripts of the kind, which an editor's
+    /// interpreter field names so a host can offer the installed shells of
+    /// that family: `posix` (sh, bash, zsh and the like), `powershell`
+    /// (Windows PowerShell and `pwsh`) or `cmd`. A program has no interpreter.
+    pub(crate) fn shell_family(self) -> Option<&'static str> {
+        match self {
+            Self::Shell => Some("posix"),
+            Self::PowerShell => Some("powershell"),
+            Self::Batch => Some("cmd"),
+            Self::Executable => None,
+        }
+    }
+
     /// File name suffix of the temporary file an inline script is run from;
     /// PowerShell runs only `.ps1` files and `cmd` only `.cmd` or `.bat`.
     fn script_suffix(self) -> &'static str {
