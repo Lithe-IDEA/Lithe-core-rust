@@ -104,7 +104,7 @@ Core 只把 `localhost`、`127.0.0.0/8`、`::1` 判为本机；其他主机都�
 
 | 宿主 | 现状 |
 | --- | --- |
-| Lithe 桌面端 | 声明 `debugAdapters`：stdio 适配器，以及通过本机回环 TCP 连接插件语言服务器里的适配器；`launch` 和 `attach`（远程主机在用户确认后）、参数和环境绑定、`features` 和 `defaults`。后端发起的 `debug/start`、`run/start` 属于宿主服务，由后端通过 `getCapabilities` 在运行时发现，不在能力表里。构建提供者的原生调试准备和运行时调试在桌面端尚未呈现。细节见[桌面端源码](https://github.com/1lck/Lithe-IDEA/blob/preview/desktop/internal/pluginhost/pluginhost.go) |
+| Lithe 桌面端 | 声明 `debugAdapters`：stdio 适配器，以及通过本机回环 TCP 连接插件语言服务器里的适配器；`launch` 和 `attach`（远程主机在用户确认后）、参数和环境绑定、`features` 和 `defaults`。后端发起的 `debug/start`、`run/start` 属于宿主服务，由后端通过 `getCapabilities` 在运行时发现，不在能力表里。构建提供者的原生调试准备和运行时调试在桌面端尚未呈现。细节见[桌面端源码](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go) |
 
 ### 契约章节
 
@@ -243,7 +243,7 @@ The other rules of `run/start`, `run/stop`, and `run/didExit` are in [Plugin bac
 
 | Host | Status |
 | --- | --- |
-| Lithe desktop | Declares `debugAdapters`: stdio adapters and adapters inside the plugin's language server over loopback TCP; `launch` and `attach` (a remote host after the user confirms it), argument and environment bindings, `features`, and `defaults`. The backend-started `debug/start` and `run/start` are host services a backend discovers at runtime through `getCapabilities`, not through the capability table. A build provider's native debug preparation and runtime debug are not presented on the desktop yet. Details are in the [desktop source](https://github.com/1lck/Lithe-IDEA/blob/preview/desktop/internal/pluginhost/pluginhost.go) |
+| Lithe desktop | Declares `debugAdapters`: stdio adapters and adapters inside the plugin's language server over loopback TCP; `launch` and `attach` (a remote host after the user confirms it), argument and environment bindings, `features`, and `defaults`. The backend-started `debug/start` and `run/start` are host services a backend discovers at runtime through `getCapabilities`, not through the capability table. A build provider's native debug preparation and runtime debug are not presented on the desktop yet. Details are in the [desktop source](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go) |
 
 ### Contract sections
 

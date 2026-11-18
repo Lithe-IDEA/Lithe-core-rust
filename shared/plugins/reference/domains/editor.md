@@ -61,7 +61,7 @@
 
 | 宿主 | 现状 |
 | --- | --- |
-| Lithe 桌面端 | 声明 `backend`。后端能调用的方法以 `getCapabilities` 的返回为准，它只列出权限允许、且宿主注册了处理器的方法。桌面端提供文档、编辑器读写和打开定位、`browser/openExternal`（仅 HTTP 和 HTTPS）、内容 Provider、编辑器动作和语言功能 Provider；不提供 `preview/openHTML`。能力清单见[桌面端源码](https://github.com/1lck/Lithe-IDEA/blob/preview/desktop/internal/pluginhost/pluginhost.go) |
+| Lithe 桌面端 | 声明 `backend`。后端能调用的方法以 `getCapabilities` 的返回为准，它只列出权限允许、且宿主注册了处理器的方法。桌面端提供文档、编辑器读写和打开定位、`browser/openExternal`（仅 HTTP 和 HTTPS）、内容 Provider、编辑器动作和语言功能 Provider；不提供 `preview/openHTML`。能力清单见[桌面端源码](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go) |
 
 ### 契约章节
 
@@ -150,7 +150,7 @@ A language server may hand out documents that have no file (such as the decompil
 
 | Host | Status |
 | --- | --- |
-| Lithe desktop | Declares `backend`. The methods a backend can call are whatever `getCapabilities` returns, which lists only methods the permissions allow and the host has registered a handler for. The desktop provides documents, editor reads and edits, open and reveal, `browser/openExternal` (HTTP and HTTPS only), content providers, editor actions, and language-feature providers; it does not provide `preview/openHTML`. The capability list is in the [desktop source](https://github.com/1lck/Lithe-IDEA/blob/preview/desktop/internal/pluginhost/pluginhost.go) |
+| Lithe desktop | Declares `backend`. The methods a backend can call are whatever `getCapabilities` returns, which lists only methods the permissions allow and the host has registered a handler for. The desktop provides documents, editor reads and edits, open and reveal, `browser/openExternal` (HTTP and HTTPS only), content providers, editor actions, and language-feature providers; it does not provide `preview/openHTML`. The capability list is in the [desktop source](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go) |
 
 ### Contract sections
 

@@ -11,7 +11,7 @@
 
 本文和契约、SDK 一样放在 Core 仓库的 `shared/plugins/` 下，只有这一份来源，随 Core 的同一次改动更新；
 你不需要克隆 Lithe 主仓库。清单字段、版本和错误码以[插件契约](../contract/v1/README.md)为准；
-宿主能运行什么，以 Lithe 桌面端的[声明与说明](https://github.com/1lck/Lithe-IDEA/blob/preview/desktop/internal/pluginhost/pluginhost.go)
+宿主能运行什么，以 Lithe 桌面端的[声明与说明](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go)
 （`Declared()` 及其上方的注释）为准。目前唯一的宿主是 Lithe 桌面端，下文的“宿主”都指它。对本文有疑问，请到
 [Lithe-core-rust 的 Issues](https://github.com/Lithe-IDEA/Lithe-core-rust/issues) 反馈。
 
@@ -493,7 +493,7 @@ installation and activation, daily operation, shutdown, upgrade, and uninstall. 
 
 This page lives in `shared/plugins/` of the Core repository, next to the contract and the SDKs. It has one source and changes in the same
 change as Core; you do not need to clone the Lithe repository. Manifest fields, versions, and error codes follow the [plugin contract](../contract/v1/README.md);
-what the host can run follows the Lithe desktop's [declaration and its comment](https://github.com/1lck/Lithe-IDEA/blob/preview/desktop/internal/pluginhost/pluginhost.go)
+what the host can run follows the Lithe desktop's [declaration and its comment](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go)
 (`Declared()` and the comment above it). The only host today is the Lithe desktop, and "the host" below means it. For questions about this page, open an issue in
 [Lithe-core-rust](https://github.com/Lithe-IDEA/Lithe-core-rust/issues).
 

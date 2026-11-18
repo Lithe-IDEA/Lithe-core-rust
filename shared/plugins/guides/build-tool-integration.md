@@ -13,7 +13,7 @@ LSP 服务器负责语言分析，构建工具负责项目导入、编译、依�
 > 但不能在桌面端安装和运行。要在桌面端运行固定命令或构建任务，用第 5 节的构建系统。
 > 桌面端的 Build 窗口检测构建实例、加载提供者模型、解析可执行文件候选并运行命令任务和提供者任务；构建提供者的运行准备、测试、
 > 调试准备、模型输入、原生配置、内联测试报告、运行时调试，以及构建系统的实例选项和任务准备尚未呈现。
-> 完整声明和说明见 [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/preview/desktop/internal/pluginhost/pluginhost.go)
+> 完整声明和说明见 [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go)
 > 中 `Declared()` 上方的注释，各能力的对照见[能力与协议版本对照](../reference/capabilities-and-versions.md)。
 > 对本文有疑问，请到 [Lithe-core-rust 的 Issues](https://github.com/Lithe-IDEA/Lithe-core-rust/issues) 反馈。
 
@@ -231,7 +231,7 @@ Finish the [LSP plugin lifecycle tutorial](lsp-plugin-lifecycle.md) first, then 
 > To run a fixed command or a build task on the desktop, use the build system of section 5.
 > The desktop's Build window detects build instances, loads provider models, resolves executable candidates, and runs command tasks and provider tasks; build-provider run preparation, tests,
 > debug preparation, model inputs, native configuration, inline test reports, runtime debugging, and build-system instance options and task preparations are not presented yet.
-> The full declarations and notes are in the comment above `Declared()` in [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/preview/desktop/internal/pluginhost/pluginhost.go);
+> The full declarations and notes are in the comment above `Declared()` in [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go);
 > for a per-capability comparison see the [capability and protocol versions](../reference/capabilities-and-versions.md).
 > Questions about this guide go to [Lithe-core-rust Issues](https://github.com/Lithe-IDEA/Lithe-core-rust/issues).
 

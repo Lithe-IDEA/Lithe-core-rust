@@ -109,7 +109,7 @@
 
 | 宿主 | 现状 |
 | --- | --- |
-| Lithe 桌面端 | 预置 Lithe Store 为第三方来源；调用 `validateIndex` 和 `installReview` 时传入自己声明的能力，所以需要它没有声明的能力（`buildModelInputs`、`executionProviders`、`keymapImportProviders`、`packageTrust`、`toolchainProviders`、`vcsProviders`）的插件版本不会被提供安装。能力清单见[桌面端源码](https://github.com/1lck/Lithe-IDEA/blob/preview/desktop/internal/pluginhost/pluginhost.go) |
+| Lithe 桌面端 | 预置 Lithe Store 为第三方来源；调用 `validateIndex` 和 `installReview` 时传入自己声明的能力，所以需要它没有声明的能力（`buildModelInputs`、`executionProviders`、`keymapImportProviders`、`packageTrust`、`toolchainProviders`、`vcsProviders`）的插件版本不会被提供安装。能力清单见[桌面端源码](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go) |
 
 ### 契约章节
 
@@ -246,7 +246,7 @@ When several sources list the same ID, the user chooses the source at install ti
 
 | Host | Status |
 | --- | --- |
-| Lithe desktop | Presets Lithe Store as a third-party source and passes the capabilities it declares to `validateIndex` and `installReview`, so a plugin version that needs a capability it does not declare (`buildModelInputs`, `executionProviders`, `keymapImportProviders`, `packageTrust`, `toolchainProviders`, `vcsProviders`) is not offered for installation. The capability list is in the [desktop source](https://github.com/1lck/Lithe-IDEA/blob/preview/desktop/internal/pluginhost/pluginhost.go) |
+| Lithe desktop | Presets Lithe Store as a third-party source and passes the capabilities it declares to `validateIndex` and `installReview`, so a plugin version that needs a capability it does not declare (`buildModelInputs`, `executionProviders`, `keymapImportProviders`, `packageTrust`, `toolchainProviders`, `vcsProviders`) is not offered for installation. The capability list is in the [desktop source](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go) |
 
 ### Contract sections
 

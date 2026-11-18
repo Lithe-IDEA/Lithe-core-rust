@@ -49,7 +49,7 @@ Lithe 桌面端声明下列能力，版本都是 `0`：`backend`、`buildProvide
 
 桌面端**未声明** `buildModelInputs`、`executionProviders`、`keymapImportProviders`、`packageTrust`、`toolchainProviders`、`vcsProviders`。需要这些能力的插件在安装审查时以 `plugin.api.unsupported` 被拒绝，不会被提供安装。
 
-声明了能力不等于每个功能都可见。桌面端已呈现和未呈现的细节见 [`desktop/internal/pluginhost/pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/preview/desktop/internal/pluginhost/pluginhost.go) 中 `Declared()` 上方的注释，各功能页也会注明。
+声明了能力不等于每个功能都可见。桌面端已呈现和未呈现的细节见 [`desktop/internal/pluginhost/pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go) 中 `Declared()` 上方的注释，各功能页也会注明。
 
 ### 权限与激活事件
 
@@ -161,7 +161,7 @@ The Lithe desktop host declares these capabilities, each at version `0`: `backen
 
 The desktop host does **not** declare `buildModelInputs`, `executionProviders`, `keymapImportProviders`, `packageTrust`, `toolchainProviders`, or `vcsProviders`. A plugin that needs one of them is refused at install review with `plugin.api.unsupported` and is not offered for installation.
 
-Declaring a capability does not mean every feature of it is visible. What the desktop host presents and what it does not is described in the comment above `Declared()` in [`desktop/internal/pluginhost/pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/preview/desktop/internal/pluginhost/pluginhost.go), and each domain page says so where it matters.
+Declaring a capability does not mean every feature of it is visible. What the desktop host presents and what it does not is described in the comment above `Declared()` in [`desktop/internal/pluginhost/pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go), and each domain page says so where it matters.
 
 ### Permissions and activation events
 

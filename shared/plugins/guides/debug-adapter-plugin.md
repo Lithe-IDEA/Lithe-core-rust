@@ -13,7 +13,7 @@
 [发布社区插件](https://github.com/Lithe-IDEA/Lithe-store/blob/main/docs/publishing.md)。
 
 > **宿主支持。** 调试适配器由 Lithe 桌面端实现，支持 stdio 和插件语言服务器内的回环 TCP 两种传输。宿主提供哪些能力，以
-> 桌面端的[能力声明](https://github.com/1lck/Lithe-IDEA/blob/preview/desktop/internal/pluginhost/pluginhost.go)（`Declared()` 上方注释）为准；
+> 桌面端的[能力声明](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go)（`Declared()` 上方注释）为准；
 > 能力版本见[版本说明](../reference/capabilities-and-versions.md)。
 
 ### 1. 插件和宿主各自负责什么
@@ -212,7 +212,7 @@ The normative field definitions are in the [contract](../contract/v1/README.md#d
 [Publishing community plugins](https://github.com/Lithe-IDEA/Lithe-store/blob/main/docs/publishing.md).
 
 > **Host support.** Debug adapters are implemented by the Lithe desktop app, over stdio and over loopback TCP inside a plugin's language server. Which capabilities the host offers is decided by its
-> [capability declaration](https://github.com/1lck/Lithe-IDEA/blob/preview/desktop/internal/pluginhost/pluginhost.go) (the comment above `Declared()`); for capability versions, see the [version notes](../reference/capabilities-and-versions.md).
+> [capability declaration](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go) (the comment above `Declared()`); for capability versions, see the [version notes](../reference/capabilities-and-versions.md).
 
 ### 1. What the plugin and the host each own
 
