@@ -11,7 +11,8 @@ platform. It speaks the LSP base protocol on stdio and implements, from the
 next to the SDK and changes with it:
 
 - **`litheFunctions`**: plugin functions with progress, cancellation, and
-  registration at runtime.
+  registration at runtime, and the [view functions](#plugin-views) that draw
+  a plugin's tool windows and settings regions.
 - **Host services**: the plugin's own credentials, kept by the host in the
   platform's secret store, workspace contexts, files,
   documents, editors, preview, the browser, window messages, commands, and
@@ -97,6 +98,45 @@ From the root of this repository,
 with the scenario in
 [`sdk/e2e/plugin_sdk/backend.rs`](../e2e/plugin_sdk/backend.rs).
 
+## Plugin views
+
+A tool window or settings region whose manifest entry has
+`view: { function }` is drawn by that backend function
+([Plugin views](../../contract/v1/README.md#plugin-views)). Declare it with
+`backend.view(id, handler)`. The handler gets a `view::ViewEvent`: `kind`,
+`instance`, `surface`, `language`, the `effective` and `draft` setting
+values, and the fields of that event. Params that are not a view event fail
+the call with `sdk.view.invalidEvent` before the handler runs; an optional
+field that is `null` counts as absent. The handler answers a
+`view::ViewResult`:
+
+- `View(nodes)`: a whole view. The first answer after `Open` must be one.
+- `Patches(patches)`: edits to the view the host is drawing, built with
+  `view::Patch`.
+- `Unchanged`: nothing changed. The SDK answers `{}`.
+
+Nodes stay `serde_json` values shaped as
+[`plugin-ui.schema.json`](../../contract/v1/plugin-ui.schema.json) describes.
+Core checks every answer, and the host draws nothing that Core refused. Return
+view text in `event.language`.
+
+```rust
+use lithe_plugin_sdk::view::{Patch, ViewEventKind, ViewResult};
+
+backend.view("explorer.draw", |event, _context| {
+    Ok(match (event.kind, event.node.as_deref()) {
+        (ViewEventKind::Open, _) => ViewResult::View(vec![json!({ "type": "row", "children": [
+            { "type": "label", "text": "Modules" },
+            { "type": "button", "id": "refresh", "text": "Refresh" },
+        ] })]),
+        (ViewEventKind::Click, Some("refresh")) => {
+            ViewResult::Patches(vec![Patch::set("refresh", json!({ "enabled": false }))])
+        }
+        _ => ViewResult::Unchanged,
+    })
+})?;
+```
+
 ## Getting the SDK
 
 The SDK is released from this repository, tagged `sdk-rust-v<version>`; the
@@ -136,6 +176,7 @@ fallback and no plugin-owned file writer.
 | --- | --- |
 | `Backend::new(name).version(version)` | Creates the backend; `name` and `version` are reported as `serverInfo`, and `name` prefixes log lines. |
 | `backend.function(id, handler)` | Declares a function offered in `initialize`. |
+| `backend.view(id, handler)` | Declares a view function; see [Plugin views](#plugin-views). |
 | `backend.on_initialize(hook)` | Runs before the `initialize` answer with an `Initialize`: the host's `params()`, `functions_version()` (`Some(0)` when the host offered `litheFunctions`, otherwise `None`), `root_path()` (the plugin's `${stateDir}`), and `function(id, handler)` to add functions that depend on state found at startup. An error refuses `initialize`. |
 | `backend.on_shutdown(hook)` | Runs on `shutdown`, after running calls were cancelled. |
 | `backend.handle()` | A clonable `BackendHandle` for other threads. |

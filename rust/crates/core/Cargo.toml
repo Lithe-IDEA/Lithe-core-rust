@@ -40,7 +40,7 @@ lithe-plugin-manifest = { path = "../plugin-manifest" }
 lithe-plugin-lifecycle = { path = "../plugin-lifecycle" }
 lithe-plugin-marketplace = { path = "../plugin-marketplace" }
 lithe-plugin-model = { path = "../plugin-model" }
-lithe-plugin-native-ui = { path = "../plugin-native-ui" }
+lithe-plugin-ui = { path = "../plugin-ui" }
 lithe-plugin-output-links = { path = "../plugin-output-links" }
 lithe-plugin-rpc = { path = "../plugin-rpc" }
 lithe-plugin-web-content = { path = "../plugin-web-content" }

@@ -5,8 +5,8 @@
 
 use super::localization::shown_section;
 use super::{
-    resolve, SettingAction, SettingDeclaration, SettingEffect, SettingLayers, SettingScope,
-    SettingsLocalization,
+    resolve, SettingDeclaration, SettingEffect, SettingLayers, SettingScope, SettingsLocalization,
+    SettingsSurface,
 };
 use crate::names::is_plugin_id;
 use crate::rejection::{PluginRejection, Validation};
@@ -69,15 +69,17 @@ fn read_document(content: Option<&str>, field: &str) -> Validation<Document> {
 /// Projects declared rows and raw launch layers from complete native documents.
 /// Unknown settings remain in storage but are not sent across the UI boundary.
 /// `localization` translates the text rows, actions and section headings show;
-/// IDs, values, grouping and order stay those of the manifest.
+/// IDs, values, grouping and order stay those of the manifest. The state also
+/// carries the region the plugin placed on its own Settings tab, if any.
 pub fn document_state(
     plugin: &str,
-    declarations: &[SettingDeclaration],
-    actions: &[SettingAction],
+    surface: SettingsSurface<'_>,
     global: Option<&str>,
     project: Option<&str>,
     localization: Option<&SettingsLocalization>,
 ) -> Validation<Value> {
+    let declarations = surface.settings;
+    let actions = surface.actions;
     let global = read_document(global, "globalDocument")?;
     let project = read_document(project, "projectDocument")?;
     let empty = BTreeMap::new();
@@ -170,13 +172,15 @@ pub fn document_state(
             )
         })
         .collect();
-    Ok(
-        json!({"pluginID":plugin, "rows":rows, "actions":shown_actions, "sections":sections,
-        "pages":super::page_sections(declarations, actions, localization),
+    let mut state = json!({"pluginID":plugin, "rows":rows, "actions":shown_actions, "sections":sections,
+        "pages":super::page_sections(surface, localization),
         "editors":{"global":global_editor,"project":project_editor},
         "settings":declared_values(global), "projectSettings":declared_values(project),
-        "storage":{"globalRelativePath":"plugin-settings.json", "projectRelativePath":".lithe/plugin-settings.json", "maximumBytes":MAX_DOCUMENT_BYTES, "readRequired":!declarations.is_empty()}}),
-    )
+        "storage":{"globalRelativePath":"plugin-settings.json", "projectRelativePath":".lithe/plugin-settings.json", "maximumBytes":MAX_DOCUMENT_BYTES, "readRequired":!declarations.is_empty()}});
+    if let Some(region) = super::pages::shown_region(surface, None, localization) {
+        state["region"] = region;
+    }
+    Ok(state)
 }
 
 /// Widget input for an already validated resolved value or reset value.

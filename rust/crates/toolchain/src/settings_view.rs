@@ -459,7 +459,10 @@ mod tests {
             .iter()
             .map(|issue| issue["group"].as_str().unwrap_or_default())
             .collect();
-        assert_eq!(groups, ["category:runtime", "audience:plugin", "category:build"]);
+        assert_eq!(
+            groups,
+            ["category:runtime", "audience:plugin", "category:build"]
+        );
         let flat = view(sample(), json!({"groupBy":"none"}));
         assert!(flat["issues"][0].get("group").is_none());
     }

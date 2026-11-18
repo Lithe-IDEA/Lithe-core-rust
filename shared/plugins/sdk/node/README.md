@@ -15,9 +15,11 @@ repository next to the SDK and changes with it:
   that Lithe invokes for the same plugin, with progress, cancellation, and
   registration at runtime; host services such as credentials; workspace
   contexts, capability discovery, host notifications, and the public
-  document, file, editor, and window methods; and calls between plugins,
-  relayed by Core. See [Host services](#host-services) and
-  [Calling other plugins](#calling-other-plugins).
+  document, file, editor, and window methods; calls between plugins,
+  relayed by Core; and the view functions that draw a plugin's tool windows
+  and settings regions. See [Host services](#host-services),
+  [Calling other plugins](#calling-other-plugins), and
+  [Plugin views](#plugin-views).
 - **`litheVcs`**: typed `lithe/vcs/*` requests, for a plugin's
   `vcsProviders` entry, from the
   [VCS provider contract](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/contracts/vcs-provider-v1.md).
@@ -125,6 +127,41 @@ toy VCS that keeps revisions in a JSON file.
 [`sdk/e2e/plugin_sdk_node.rs`](../e2e/plugin_sdk_node.rs) drives every
 operation through a real Core session.
 
+## Plugin views
+
+A tool window or settings region whose manifest entry has
+`view: { function }` is drawn by that backend function
+([Plugin views](../../contract/v1/README.md#plugin-views)). Declare it with
+`backend.view(id, handler)`. The handler gets the view event (`event`,
+`instance`, `surface`, `language`, `settings`, and the fields of that event).
+Params that are not a view event fail the call with `sdk.view.invalidEvent`
+before the handler runs; an optional field that is `null` counts as absent.
+The handler returns one of three answers:
+
+- `{ view }`: a whole view. The first answer after `open` must be one.
+- `{ patches }`: edits to the view the host is drawing.
+- nothing, when nothing changed. The SDK then answers `{}`.
+
+Nodes are plain objects shaped as
+[`plugin-ui.schema.json`](../../contract/v1/plugin-ui.schema.json) describes;
+`index.d.ts` types them as `ViewNode`, `CanvasNode` and `ViewPatch`. Core
+checks every answer, and the host draws nothing that Core refused. Return view
+text in `event.language`.
+
+```js
+backend.view('explorer.draw', (event) => {
+  if (event.event === 'open') {
+    return { view: [{ type: 'row', children: [
+      { type: 'label', text: 'Modules' },
+      { type: 'button', id: 'refresh', text: 'Refresh' },
+    ] }] };
+  }
+  if (event.event === 'click' && event.node === 'refresh') {
+    return { patches: [{ op: 'set', id: 'refresh', fields: { enabled: false } }] };
+  }
+});
+```
+
 ## Getting the SDK
 
 The SDK is released from this repository, tagged `sdk-node-v<version>`; the
@@ -174,6 +211,7 @@ stderr fallback and no plugin-owned file writer.
 | `backend.onHostNotification(method, handler)` | A `lithe/host/*` notification a later host adds. Unknown ones are ignored. |
 | `backend.vcs(id, handlers, traits?)` | Implements the typed VCS requests; see [A VCS provider](#a-vcs-provider). `litheVcs` is answered only when the host offers it. |
 | `backend.function(id, handler)` | Declares a function offered in `initialize`. |
+| `backend.view(id, handler)` | Declares a view function; see [Plugin views](#plugin-views). |
 | `backend.registerFunction(id, handler)`, `backend.unregisterFunction(id)` | Adds or withdraws a function. Called before the `initialize` answer (for example from `onInitialize`), they change the initial list; later they send `lithe/function/register` / `unregister`. Withdrawing revokes running calls. |
 | `backend.onInitialize(hook)`, `backend.onShutdown(hook)` | Lifecycle hooks. `onInitialize` receives the `initialize` params and what was negotiated. |
 | `backend.onRequest(method, handler)`, `backend.onNotification(method, handler)` | Ordinary LSP methods, such as `textDocument/hover` for a language server. Lifecycle and `lithe/*` methods are reserved. |

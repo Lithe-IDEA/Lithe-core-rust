@@ -60,8 +60,8 @@ pub const SETTINGS: &str = "settings";
 /// Source-backed workspace editors returned by settings actions, including
 /// compiler pages and guarded native staging receipts.
 pub const SOURCE_SETTINGS: &str = "sourceSettings";
-/// `ui`: tool windows with text, web, or host-rendered native content, and
-/// commands.
+/// `ui`: tool windows with text, web, or plugin view content, plugin views in
+/// settings regions, and commands.
 pub const UI: &str = "ui";
 /// Declarative build detection, models, and command plans.
 pub const BUILD_SYSTEMS: &str = "buildSystems";

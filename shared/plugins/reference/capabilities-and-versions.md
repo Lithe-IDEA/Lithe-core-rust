@@ -44,10 +44,10 @@ Core 列以本仓库 `main` 上的 Core 源码为准（[`capabilities.rs`](https
 | `packageTrust` `0` | `vendor.bundledSignatureRequirement`：随宿主发布的发布者签名插件副本按来源信任 | ✅ | 未声明 | [包信任](domains/package-trust.md)、[Trust](../contract/v1/README.md#trust) |
 | `languageServers` `0` | `languageServers[]`（启动字段按[启动进程](../contract/v1/README.md#process-start)），包括[`workspaceConfiguration`](../contract/v1/README.md#workspace-configuration)、[`indexingExclusions`](../contract/v1/README.md#indexing-exclusions)和[插件自有服务器的会话字段](../contract/v1/README.md#plugin-owned-sessions) | ✅ | ✅¹ | [语言](domains/languages.md)、[Language servers](../contract/v1/README.md#language-servers) |
 | `executionProviders` `0` | `executionProviders[]`：用声明的命令运行和发现测试 | ✅ | 未声明 | [语言](domains/languages.md)、[Execution providers](../contract/v1/README.md#execution-providers) |
-| `settings` `0` | `settings[]` 与 `settingActions[]`，含[放置位置、作用域、生效方式、页面按钮](../contract/v1/README.md#placement-scope-effect-and-page-buttons) | ✅ | ✅ | [插件设置](domains/settings.md)、[Plugin settings](../contract/v1/README.md#plugin-settings) |
+| `settings` `0` | `settings[]`、`settingActions[]` 与 [`settingRegions[]`](../contract/v1/README.md#settings-regions)（设置页上的搜索关键词和插件视图），含[放置位置、作用域、生效方式、页面按钮](../contract/v1/README.md#placement-scope-effect-and-page-buttons) | ✅ | ✅¹ | [插件设置](domains/settings.md)、[Plugin settings](../contract/v1/README.md#plugin-settings) |
 | `sourceSettings` `0` | 真实配置来源表单、编译器页、私有暂存与显式保存 | ✅ | ✅ | [Source-backed settings editors](../contract/v1/README.md#source-backed-settings-editors) |
 | `sourceSettings` `1` | 在 `0` 之上加：模块列表布局 `sidebar`（来源可用 `parent` 嵌套）、字段 `section`（标签页或小标题）、有序类型化条目列表 `entryList`（添加菜单、文件/目录选择器、可选项、按条目的属性列） | ✅ | ✅ | [Entry lists](../contract/v1/README.md#source-backed-settings-editors) |
-| `ui` `0` | [`ui`](../contract/v1/README.md#host-owned-workbench-ui)：文本、[包内网页](../contract/v1/README.md#web-content)和[原生控件](../contract/v1/README.md#host-rendered-native-content)的工具窗口、命令，以及[不打开工具窗口的后端命令](../contract/v1/README.md#backend-only-commands) | ✅ | ✅¹ | [界面](domains/ui.md) |
+| `ui` `0` | [`ui`](../contract/v1/README.md#host-owned-workbench-ui)：文本、[包内网页](../contract/v1/README.md#web-content)和[插件视图](../contract/v1/README.md#plugin-views)的工具窗口、设置区域里的插件视图、命令，以及[不打开工具窗口的后端命令](../contract/v1/README.md#backend-only-commands)；视图函数的结果由 Core 命令 `plugins.ui.applyResult` 校验，形状见 [`plugin-ui.schema.json`](../contract/v1/plugin-ui.schema.json) | ✅ | ✅¹ | [界面](domains/ui.md) |
 | `buildSystems` `0` | 不带 `provider` 的 [`buildSystems[]`](../contract/v1/README.md#build-systems)：检测、选项、项目模型、任务、运行入口、测试、诊断、依赖、同步和[声明式项目准备](../contract/v1/README.md#declarative-project-preparation) | ✅ | ✅¹ | [声明式构建系统](domains/build-systems.md) |
 | `buildProviders` `0` | `buildSystems[].provider`：[构建提供者](../contract/v1/README.md#build-providers)，可以是自有进程或共享语言服务器；说 `litheBuild`，包含任务执行、测试执行与发现、运行准备、原生调试准备、原生配置、内联测试报告、语义测试选择器、类型化运行选项和注册表连接调试 | ✅ | ✅¹ | [构建提供者](domains/build-providers.md) |
 | `buildProviders` `1` | 在 `0` 之上加：运行声明 `entrypoints: true`（入口运行，不需要目标），提供者用 `lithe/build/runEntrypoints` 回答一个源文件里可运行的入口，宿主把它保存为运行配置并按入口启动 | ✅ | ✅ | [Run entrypoints](../contract/v1/README.md#run-entrypoints-buildproviders-1) |
@@ -74,6 +74,7 @@ Core 列以本仓库 `main` 上的 Core 源码为准（[`capabilities.rs`](https
 - 构建提供者的调试准备、模型输入、原生配置、内联测试报告和运行期调试；构建系统的实例选项和任务准备。
 - 插件声明的运行配置类型只能运行，不能调试。
 - 不属于任何工具窗口的 `ui` 命令。
+- 工具窗口和设置区域里的[插件视图](../contract/v1/README.md#plugin-views)，以及 `settingRegions` 的搜索关键词。
 - VCS 提供者的逐行追溯（annotation）、文件历史、文件操作、元数据监听、认证、历史提交差异、项目树与编辑器行号栏状态，以及 `lithe/vcs/execution` 控制台输出。
 - 后端宿主服务：工作区文件与搜索（`workspace/readDirectory`、`stat`、`readFile`、`watch`、`findFiles`、`findText`）和 `preview/openHTML` 尚未注册，请求这些权限的插件被拒绝。运行期以 `lithe/host/getCapabilities` 的返回为准，见 [API 总表](api-catalog.md)。
 
@@ -99,7 +100,6 @@ Core 列以本仓库 `main` 上的 Core 源码为准（[`capabilities.rs`](https
 
 | 版本 | 内容 | Core | Lithe 桌面端 | 详见 |
 | --- | --- | --- | --- | --- |
-| 原生 UI 文档 `schemaVersion` `0` | 宿主渲染的原生控件文档 | ✅ | ✅（随 `ui`） | [`native-ui.schema.json`](../contract/v1/native-ui.schema.json) |
 | 市场索引 `schemaVersion` `0` | 市场来源的索引文件 | ✅ | ✅ | [`plugin-index.schema.json`](../contract/v1/plugin-index.schema.json)、[插件市场](domains/marketplace.md) |
 | 构建模型 `litheBuildModel`、依赖树 `litheDependencies`、测试结果 `litheTestResults`、测试发现 `litheTestDiscovery` 的 `version` `0` | 规范构建文档 | ✅ | ✅¹ | [Model and outputs](../contract/v1/README.md#model-and-outputs)、[Test discovery](../contract/v1/README.md#test-discovery) |
 | 原生构建配置 `litheBuildConfiguration`、`litheConfigurationEdit` 的 `version` `0` | 基于真实来源的原生配置文档 | ✅ | 尚未呈现¹ | [Optional native configuration](../contract/v1/README.md#optional-native-configuration) |
@@ -158,10 +158,10 @@ Each row is one capability. `requires` lists **exactly** the capabilities a mani
 | `packageTrust` `0` | `vendor.bundledSignatureRequirement`: origin-scoped trust for a host-sealed bundled copy of a publisher-signed plugin | ✅ | Not declared | [Package trust](domains/package-trust.md), [Trust](../contract/v1/README.md#trust) |
 | `languageServers` `0` | `languageServers[]` (launch fields as in [Process start](../contract/v1/README.md#process-start)), including [`workspaceConfiguration`](../contract/v1/README.md#workspace-configuration), [`indexingExclusions`](../contract/v1/README.md#indexing-exclusions) and the [session fields for a plugin's own server](../contract/v1/README.md#plugin-owned-sessions) | ✅ | ✅¹ | [Languages](domains/languages.md), [Language servers](../contract/v1/README.md#language-servers) |
 | `executionProviders` `0` | `executionProviders[]`: run and discover tests through the declared commands | ✅ | Not declared | [Languages](domains/languages.md), [Execution providers](../contract/v1/README.md#execution-providers) |
-| `settings` `0` | `settings[]` and `settingActions[]`, with [placement, scope, effect, and page buttons](../contract/v1/README.md#placement-scope-effect-and-page-buttons) | ✅ | ✅ | [Plugin settings](domains/settings.md), [Plugin settings](../contract/v1/README.md#plugin-settings) |
+| `settings` `0` | `settings[]`, `settingActions[]`, and [`settingRegions[]`](../contract/v1/README.md#settings-regions) (search keywords and plugin views on settings pages), with [placement, scope, effect, and page buttons](../contract/v1/README.md#placement-scope-effect-and-page-buttons) | ✅ | ✅¹ | [Plugin settings](domains/settings.md), [Plugin settings](../contract/v1/README.md#plugin-settings) |
 | `sourceSettings` `0` | Native source forms, compiler pages, private staging and explicit Save | ✅ | ✅ | [Source-backed settings editors](../contract/v1/README.md#source-backed-settings-editors) |
 | `sourceSettings` `1` | Adds to `0`: the `sidebar` module-list layout with sources nested by `parent`, field `section`s shown as tabs or subheadings, and ordered typed `entryList`s with an add menu, file and folder pickers, offered choices and per-entry attribute columns | ✅ | ✅ | [Entry lists](../contract/v1/README.md#source-backed-settings-editors) |
-| `ui` `0` | [`ui`](../contract/v1/README.md#host-owned-workbench-ui): text, [web](../contract/v1/README.md#web-content), and [native](../contract/v1/README.md#host-rendered-native-content) tool windows, commands, and [backend-only commands](../contract/v1/README.md#backend-only-commands) without a tool window | ✅ | ✅¹ | [UI](domains/ui.md) |
+| `ui` `0` | [`ui`](../contract/v1/README.md#host-owned-workbench-ui): text, [web](../contract/v1/README.md#web-content), and [plugin view](../contract/v1/README.md#plugin-views) tool windows, plugin views in settings regions, commands, and [backend-only commands](../contract/v1/README.md#backend-only-commands) without a tool window; the Core command `plugins.ui.applyResult` checks view function results, shaped as in [`plugin-ui.schema.json`](../contract/v1/plugin-ui.schema.json) | ✅ | ✅¹ | [UI](domains/ui.md) |
 | `buildSystems` `0` | [`buildSystems[]`](../contract/v1/README.md#build-systems) without `provider`: detection, options, project model, tasks, run entries, tests, diagnostics, dependencies, sync, and [declarative preparation](../contract/v1/README.md#declarative-project-preparation) | ✅ | ✅¹ | [Declarative build systems](domains/build-systems.md) |
 | `buildProviders` `0` | `buildSystems[].provider`: [build providers](../contract/v1/README.md#build-providers), in their own process or a shared language server; they speak `litheBuild`, which covers task execution, test execution and discovery, run preparation, native debug preparation, native configuration, inline test reports, semantic test selectors, typed run options, and registry connection debugging | ✅ | ✅¹ | [Build providers](domains/build-providers.md) |
 | `buildProviders` `1` | Adds to `0`: run declarations with `entrypoints: true` (entrypoint runs, without a target); the provider answers `lithe/build/runEntrypoints` with the runnable entrypoints of one source file, which the host saves as run configurations and starts | ✅ | ✅ | [Run entrypoints](../contract/v1/README.md#run-entrypoints-buildproviders-1) |
@@ -188,6 +188,7 @@ Each row is one capability. `requires` lists **exactly** the capabilities a mani
 - For build providers: debug preparation, model inputs, native configuration, inline test reports, and runtime debugging; for build systems: instance options and task preparations.
 - Run configuration types a plugin declares run but cannot be debugged.
 - `ui` commands that belong to no tool window.
+- [Plugin views](../contract/v1/README.md#plugin-views) in tool windows and settings regions, and the search keywords of `settingRegions`.
 - For VCS providers: annotation, file history, file operations, metadata watching, authentication, history entry diffs, status in the project tree and the editor gutter, and `lithe/vcs/execution` console output.
 - Backend host services: the workspace file and search methods (`workspace/readDirectory`, `stat`, `readFile`, `watch`, `findFiles`, `findText`) and `preview/openHTML` are not registered, so a plugin that asks for one of those permissions is refused. At runtime, the reply of `lithe/host/getCapabilities` is authoritative; see the [API catalog](api-catalog.md).
 
@@ -213,7 +214,6 @@ These protocols are negotiated when a process starts and never appear in the man
 
 | Version | Content | Core | Lithe desktop | See |
 | --- | --- | --- | --- | --- |
-| Native UI document `schemaVersion` `0` | The document of host-rendered native controls | ✅ | ✅ (with `ui`) | [`native-ui.schema.json`](../contract/v1/native-ui.schema.json) |
 | Marketplace index `schemaVersion` `0` | The index file of a marketplace source | ✅ | ✅ | [`plugin-index.schema.json`](../contract/v1/plugin-index.schema.json), [Marketplace](domains/marketplace.md) |
 | `version` `0` of the build model `litheBuildModel`, dependency tree `litheDependencies`, test results `litheTestResults`, and test discovery `litheTestDiscovery` | Canonical build documents | ✅ | ✅¹ | [Model and outputs](../contract/v1/README.md#model-and-outputs), [Test discovery](../contract/v1/README.md#test-discovery) |
 | `version` `0` of the native build configuration `litheBuildConfiguration` and `litheConfigurationEdit` | Source-backed native configuration documents | ✅ | Not presented yet¹ | [Optional native configuration](../contract/v1/README.md#optional-native-configuration) |

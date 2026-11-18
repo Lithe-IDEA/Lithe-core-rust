@@ -56,6 +56,20 @@
       "rejected": [{ "path": "l10n/zh.json", "field": "settingActions.clean" }]
     },
     {
+      "name": "unknown settings region",
+      "language": "zh",
+      "files": { "l10n/zh.json": { "settingRegions": { "plt": { "keywords": ["缓存"] } } } },
+      "applied": null,
+      "rejected": [{ "path": "l10n/zh.json", "field": "settingRegions.plt" }]
+    },
+    {
+      "name": "region keyword with surrounding spaces",
+      "language": "zh",
+      "files": { "l10n/zh.json": { "settingRegions": { "otp": { "keywords": [" 虚拟机"] } } } },
+      "applied": null,
+      "rejected": [{ "path": "l10n/zh.json", "field": "settingRegions.otp.keywords" }]
+    },
+    {
       "name": "empty title",
       "language": "zh",
       "files": { "l10n/zh.json": { "settings": { "checks": { "title": " " } } } },

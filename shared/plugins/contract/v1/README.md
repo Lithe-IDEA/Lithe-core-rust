@@ -12,7 +12,7 @@ This directory is the cross-platform source of truth:
 | Path | Purpose |
 | --- | --- |
 | `plugin-manifest.schema.json` | JSON shape of `plugin.json` |
-| `native-ui.schema.json` | JSON shape of native UI documents rendered by the host |
+| `plugin-ui.schema.json` | JSON shape of what a [plugin view](#plugin-views) function returns: whole views and patches the host draws |
 | `plugin-index.schema.json` | JSON shape of a marketplace source index |
 | `plugin-l10n.schema.json` | JSON shape of a plugin's translation file `l10n/<language>.json` |
 | `fixtures/` | Valid example manifests and golden cases, one folder per contract area (below). Manifests are named after the capability they exercise rather than a published plugin. Case files name their base manifest by file name, so file names are unique across the folders |
@@ -24,7 +24,7 @@ This directory is the cross-platform source of truth:
 | `fixtures/languages/` | Language support: packaged, system-command, and host-integration language servers, `node-runtime` for a runtime launch, and `language-grammar` with `grammars/`; `command-plans.json` holds golden run/test command expansions and language-server launch plans; `language-server-backend-launch.plugin.json` is a language server whose backend resolves the launch and a session policy, and `language-server-launch-resolution.json` holds its golden first-step plans and decoded answers |
 | `fixtures/backend/` | Plugin backends (`backend`, `backend-workspace`, `command-backend`, `terminal-backend`); cross-plugin calls (`plugin-functions-exporter`, `plugin-functions-caller`); `function-protocol.json` holds golden plugin-function negotiation, registration, invocation, outcome, progress, and refusal cases, `plugin-logging.json` the golden `litheLogging` negotiation and notifications |
 | `fixtures/editor/` | Editor actions served by a backend: `editor-actions.plugin.json`, icons, alternatives and click results in `editor-actions.json`; editor providers in `editor-providers.plugin.json` with registration and result cases in `editor-providers.json` |
-| `fixtures/ui/` | Native controls, forms, and panels, and a web panel |
+| `fixtures/ui/` | `view-panel.plugin.json`: a [plugin view](#plugin-views) in a tool window and in a settings region, with golden `plugins.ui.applyResult` cases in `view-results.json`; `web-panel.plugin.json`: a web panel |
 | `fixtures/settings/` | Plugin settings; `l10n/zh-Hans.json` translates `settings.plugin.json`, and `localization-cases.json` holds golden translation choices and rejections |
 | `fixtures/build-systems/` | Build systems (`build-*`: static file, command output, instance options, model producer and consumer, tool path, toolchains); `build-plans.json` holds golden build-system plans and decoded outputs |
 | `fixtures/run-configuration-types/` | `run-configuration-types.plugin.json`: Go Build and Go Test kinds of run configuration with choice, text, file, directory, arguments and checkbox fields, and `l10n/zh-Hans.json` translating them |
@@ -693,6 +693,37 @@ skipping a stored value the declaration no longer accepts.
 `plugins.declarative.resolveSettings` returns each effective value with
 its `source` (`project`, `global`, or `default`).
 
+#### Settings regions
+
+`settingRegions` (at most 16, unique `id`s, at most one per page) gives a
+plugin a part of a settings page that the host cannot describe with declared
+rows: search keywords, a [plugin view](#plugin-views), or both. A region sits
+on its `page` (as for settings, plus `{ "compilerID": … }` for a compiler
+page), or on the plugin's own Settings tab when it names no page. Fixture:
+`fixtures/settings/settings.plugin.json`.
+
+```json
+"settingRegions": [
+  { "id": "plt", "page": { "languageID": "elixir" },
+    "keywords": ["PLT", "dialyzer cache"], "view": { "function": "settings.plt" } }
+]
+```
+
+| Field | Meaning |
+| --- | --- |
+| `id` | Starts with a lowercase letter, then letters and digits. View events name it as `settingRegionID`. |
+| `page` | The page the region appears on; the plugin's own Settings tab when absent |
+| `keywords` | 1–32 distinct words (ignoring case) of 1–64 characters without line breaks or surrounding spaces. Settings search finds the page by them in addition to the page title and the declared rows, and opens the page at this plugin's part. |
+| `view` | `{function}`: the plugin view drawn between the page header and the plugin's declared rows on that page |
+
+A region declares `keywords`, `view`, or both. Keywords alone need no
+backend; a view needs what [plugin views](#plugin-views) need. Translations
+may add keywords for other languages, and the page projection lists the
+declared keywords followed by the translated ones that differ, so the page is
+found in both languages. Declaring regions counts as using `settings`. A
+region never stores values: its bound controls edit the same draft as the
+declared rows.
+
 #### Source-backed settings editors
 
 An action may declare `sourceEditor: {"editFunction":"compiler.prepareSettings"}` and require `sourceSettings: 0` (or `1`, below)
@@ -807,7 +838,8 @@ in `fixtures/settings/localization-cases.json`.
     "checks": { "title": "检查项", "options": { "format": "格式检查" } }
   },
   "sections": { "Server": "服务器" },
-  "settingActions": { "rebuildPlt": { "title": "重建 PLT" } }
+  "settingActions": { "rebuildPlt": { "title": "重建 PLT" } },
+  "settingRegions": { "plt": { "keywords": ["PLT 缓存"] } }
 }
 ```
 
@@ -816,6 +848,7 @@ in `fixtures/settings/localization-cases.json`.
 | `settings.<id>` | The setting's `title`, `description`, `placeholder`, and `unit`; `options.<value>` is the title of an `enum` or `multiSelect` option |
 | `sections.<heading>` | A section heading, named exactly as `section` writes it |
 | `settingActions.<id>` | The action's `title` and `description` |
+| `settingRegions.<id>` | `keywords`: 1–32 search words added to the region's declared ones. The view's own text is not translated here: each view event carries the interface language. |
 | `runConfigurationTypes.<buildSystemID>.<typeID>` | A [run configuration type](#run-configuration-types)'s `displayName` and `description`, and `fields.<id>` with a field's `title`, `description`, `placeholder`, and `options.<value>`; refused as `plugin.build.invalidLocalization` |
 | `beforeLaunchTasks.<buildSystemID>.<taskID>` | A [before-launch task](#before-launch-tasks)'s text, shaped like `runConfigurationTypes`; refused as `plugin.build.invalidLocalization` |
 
@@ -830,13 +863,15 @@ Core refuses a whole file, never part of it, with
 `plugin.settings.invalidLocalization` when:
 
 - it is not a JSON object, is larger than 1 MiB, repeats a key, or holds `null`;
-- an entry under `settings`, `sections`, or `settingActions` has a field this
-  format does not define;
-- it names a setting, option value, heading, or action the manifest does not
-  declare, gives `options` to a setting without options, or translates a field
+- an entry under `settings`, `sections`, `settingActions`, or `settingRegions`
+  has a field this format does not define;
+- it names a setting, option value, heading, action, or region the manifest
+  does not declare, gives `options` to a setting without options, or translates a field
   the manifest leaves out;
 - a title, placeholder, unit, or heading is empty or longer than 120
-  characters, or a description is empty or longer than 480.
+  characters, or a description is empty or longer than 480;
+- a region's `keywords` break the rules of
+  [declared keywords](#settings-regions).
 
 The host then tries the next candidate and finally shows the manifest text, so
 a broken translation never hides a setting; it logs the refusal for the
@@ -918,7 +953,6 @@ The other versioned documents start at `0` too:
 | Document | Version field | Value |
 | --- | --- | --- |
 | Plugin manifest ([schema](plugin-manifest.schema.json)); it names the file format, and any other value is `plugin.schema.unsupported` | `schemaVersion` | `0` |
-| Native UI document ([schema](native-ui.schema.json)) | `schemaVersion` | `0` |
 | Marketplace index ([schema](plugin-index.schema.json)) | `schemaVersion` | `0` |
 | Canonical build documents (`litheBuildModel`, `litheDependencies`, `litheTestResults`, `litheTestDiscovery`, `litheRunEntrypoints`, `litheBuildConfiguration`, `litheConfigurationEdit`) and the `modelInputs` snapshot | `version` | `0` |
 | `plugins.editorActions.decode` request | `version` | `0` (required; Core accepts only `0`, otherwise `Unsupported editor action validation version.`) |
@@ -966,7 +1000,7 @@ belongs to one capability:
 | `languageServers` | [`languageServers[]`](#language-servers) apart from their launch fields, including [`workspaceConfiguration`](#workspace-configuration) and the [session fields](#plugin-owned-sessions) | — | Starts the server as [Process start](#process-start) says, delivers its workspace configuration, and serves its plugin-owned sessions. |
 | `executionProviders` | [`executionProviders[]`](#execution-providers) | — | Runs and discovers tests through the declared commands. |
 | `settings` | [`settings[]` and `settingActions[]`](#plugin-settings) with [placement, scope, effect and page buttons](#placement-scope-effect-and-page-buttons) | — | Shows the declared settings pages and applies their effects. |
-| `ui` | [`ui`](#host-owned-workbench-ui): text, [web](#web-content) and [native](#host-rendered-native-content) tool windows, commands, and [backend-only commands](#backend-only-commands) | — | Renders every kind of window and command, and serves the web bridge. |
+| `ui` | [`ui`](#host-owned-workbench-ui): text, [web](#web-content) and [plugin view](#plugin-views) tool windows, views in [settings regions](#settings-regions), commands, and [backend-only commands](#backend-only-commands) | — | Renders every kind of window and command, serves the web bridge, and draws plugin views through `plugins.ui.applyResult`. |
 | `buildSystems` | [`buildSystems[]`](#build-systems) without `provider`: detection, options, project model, tasks, run entries, tests, diagnostics, dependencies, sync, and [declarative preparation](#declarative-project-preparation) | — | Detects projects, loads the model, and runs the declared commands. |
 | `buildProviders` | `buildSystems[].provider`, including own-process and shared language-server providers | `litheBuild` | Starts the provider and speaks `litheBuild` with workspace-owned sessions. |
 | `runConfigurationTypes` | [`buildSystems[].runConfigurationTypes`](#run-configuration-types) | — | Lists the types in the Run/Debug Configurations dialog, draws their editors, and runs their saved configurations through `build.runConfigurationPlan`. |
@@ -4851,7 +4885,7 @@ and the UI cases in `fixtures/manifest/invalid-manifests.json`.
 - Titles are at most 256 UTF-8 bytes and window text at most 65536 UTF-8 bytes.
   Text is displayed literally; it is never evaluated as HTML or a script.
   A window shows exactly one of `text`, [`web`](#web-content) and
-  [`native`](#host-rendered-native-content).
+  [`view`](#plugin-views).
 - Declare `onView:<window-id>` and `onCommand:<command-id>` for every window and
   command, plus `ui.contribute`. The existing permission and activation error
   codes apply. IDs and presentation order are normalized deterministically.
@@ -5054,107 +5088,221 @@ Lithe 桌面端动作的可见、可用、勾选和激活中状态由宿主计�
 仍可取消显示。多个窗口同时请求同一插件模块时只构造一次；禁用或关闭会取消
 并清理在途激活，旧的菜单或命令引用不能重新调用已禁用的贡献。
 
-### Host-rendered native content
+### Plugin views
 
-A tool window whose sole body is `native` is rendered by the host from a
-declarative document; the manifest requires `ui: 0`. The independently
-versioned [native schema](native-ui.schema.json) (`schemaVersion` 0) has no
-style, script, HTML or host-action fields. The host renders every control with
-its shared theme.
+A plugin view is content a plugin draws through one backend function: the
+body of a tool window, or a [settings region](#settings-regions) on a settings
+page. The plugin returns a view, an array of nodes, and the host draws it.
+Host-control nodes (rows, sections, labels, inputs, buttons, tables, trees)
+carry meaning only; every host draws them with its own native controls and
+theme. A `canvas` node carries a bounded vector scene that the host keeps and
+draws natively each frame, so a plugin can design a distinctive page, such as
+a dependency graph or a build board, without a web view and without a
+round trip per frame. Fixtures: [`view-panel.plugin.json`](fixtures/ui/view-panel.plugin.json)
+declares both surfaces, and [`view-results.json`](fixtures/ui/view-results.json)
+holds golden `plugins.ui.applyResult` cases.
 
-See [native-panel.plugin.json](fixtures/ui/native-panel.plugin.json) and the runnable
-[Node SDK Sample Explorer](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/shared/plugins/sdk/node/examples/sample-build/plugin.json).
-`native.kind` is `tree`, `list` or `form`; `nodes` contains literal `id`, `label` and
-optional `children`. IDs are stable, case-sensitive ASCII letters/digits plus
-`._-` (1–128 bytes). The component, initial nodes and actions have distinct IDs.
-The entire node set is limited to 2000 nodes and depth 16 (root depth 0); labels
-are nonblank and at most 1024 UTF-8 bytes. Lists reject nested children.
+```json
+"settingRegions": [
+  { "id": "overview", "keywords": ["module graph", "dependencies"],
+    "view": { "function": "settings.overview" } }
+],
+"ui": { "toolWindows": [
+  { "id": "dev.lithe.fixture.view-panel.explorer", "title": "Module Explorer",
+    "placement": "right", "view": { "function": "explorer.draw" } }
+] }
+```
 
-A `form` declares `nodes: []`, an empty `contextMenu`, at most 32 `controls`
-and 16 `buttons`; at least one control or button is required.
-Tree/list panels cannot contain controls. Each control has a unique `id`, literal
-`label` (1–256 UTF-8 bytes), `kind`, initial `value`, optional `enabled` (default
-true), and optional `onCommit` referencing a declared `invoke` action that does
-not require a selection. An optional literal `info` (1–1024 UTF-8 bytes) renders the shared information
-icon beside the label; tooltip timing, pinning, accessibility and styling are host-owned.
+`view: {function}` names a private [plugin function](#plugin-functions) of the
+plugin's own [backend](#plugin-backend) (letters and digits in dot-separated
+segments, at most 128 characters). A manifest with a view needs `backend`,
+`requires.ui: 0`, the `ui.contribute` permission, and, for a settings region,
+`requires.settings: 0`. A tool window still declares `onView:<id>`; a settings
+region starts the backend when its page opens. Results are described by
+[`plugin-ui.schema.json`](plugin-ui.schema.json); the rules JSON Schema cannot
+express are listed below and enforced by Core.
 
-- `input` / `search`: string `value` (at most 1024 UTF-8 bytes), optional `placeholder`
-  (at most 256 UTF-8 bytes), no options. Uses the IDE settings text-field owner.
-- `select`: string `value` equal to one of 1–128 unique `options: [{id,label}]`;
-  option IDs use the standard identifier rule, labels are 1–256 UTF-8 bytes.
-  No placeholder. Uses `LitheSettingsSelect`, including its popup and keyboard behavior.
-- `segmented`: string value and 1–8 options, using the same option contract and
-  the shared segmented selector; no placeholder.
-- `editor`: string value up to 8192 UTF-8 bytes, optional `rows` (2–12, default 4),
-  no placeholder/options/onCommit. Reuses the shared multiline editor; Enter inserts
-  a newline and form buttons submit its current value.
-- `stepper`: finite numeric value, required `minimum`, `maximum` and positive
-  `step`; bounds and step are limited to ±1e9/1e9, and value must fit the range.
-  No placeholder/options. Uses the shared settings stepper and bound behavior.
-- `checkbox`: boolean `value`, no options or placeholder. Uses `LitheSettingsCheckbox`.
+#### Events
 
-Forms may declare `layout: {"columns":12}` (1–12 columns). Each control may
-provide `span` (1–columns); omitted span fills a row. Controls pack in declaration
-order, wrapping before a span would exceed the row. Without layout, the form
-retains its original single-column presentation and must omit span. Layout is
-form-only. Gaps, alignment and breakpoints remain host-owned; plugins cannot
-supply pixels, CSS or gap values. Reflow preserves the same controls, local values and focus.
+The host calls the view function through `lithe/function/invoke` once per
+event, with these params:
 
-Buttons reference an existing non-selection action through `action`, have stable
-`id`, literal `label`, optional `primary`, `enabled` and `info`.
-Text actions reuse the host's shared natural-width button style and 6pt action
-spacing; a narrow action group falls back to vertical stacking.
-`buttons[].width` (`content`/`fill`) and `buttons[].span` are accepted but do
-not change button width or action-group layout.
-Grid spans continue to apply to value controls. The declaration cannot override
-button colors, fonts, chrome, padding or fixed/max widths.
+| Field | Meaning |
+| --- | --- |
+| `event` | `open`, `close`, `click`, `change`, `select`, `activate`, `viewport`, or `settings` (below) |
+| `instance` | Host-chosen string naming this showing of the view. A new `open` gets a new instance; the same tool window open in two workspaces has two. |
+| `surface` | `{toolWindowID}` or `{settingRegionID}`: the declaration being drawn |
+| `language` | Interface language tag, such as `en` or `zh-Hans`. View text is plugin content; the backend returns it in this language. |
+| `settings` | `{effective, draft}`: the plugin's setting values by ID. `effective` is what is saved and in force; `draft` holds the values changed in the open settings window but not yet applied, and is `{}` in a tool window. |
+| `node` | `click`, `change`, `select`, `activate`: the ID of the node the user acted on |
+| `canvas` | `click` inside a canvas and `viewport`: the canvas ID; `node` is then the canvas group's ID |
+| `value` | `change`: the control's new value: a string, or a boolean for `toggle`. For a control bound to a setting it is the new draft value, typed as the setting stores it, so a number for an `integer` setting. |
+| `setting` | `change` of a control bound to a setting: the setting ID |
+| `item` | `select`, `activate`: the tree item ID; `node` is the tree's ID |
+| `viewport` | `viewport`: `{x, y, width, height}`, the visible part of the canvas in view-box coordinates |
 
-Input/search editing saves local values without executing plugin code; Return commits.
-Selectors, segmented selectors, steppers and checkboxes commit after a changed value. Omit `onCommit` to keep
-a field local. Commits pass **all** current fields as `params.values` (strings,
-booleans and numbers keyed by stable control ID), together with `selectedID: null`.
-The subsequent form source call also receives `{values}` and returns `{nodes: []}`.
-Disabled fields still contribute their values; they cannot edit or commit.
-A pending call disables all fields. Values use the existing 64 KiB per-plugin,
-per-window, per-workspace state store; removed fields, invalid types and removed
-options are discarded when restoring. Provider replies never overwrite local
-fields. Form declarations and choices are static.
-See [native-form.plugin.json](fixtures/ui/native-form.plugin.json) for acceptance.
+| Event | Sent when | Result |
+| --- | --- | --- |
+| `open` | The view becomes visible | A whole view |
+| `close` | The view is hidden, its page or window closes, or the plugin is disabled, updated, or removed | Ignored |
+| `click` | A `button` without `action` is pressed, or a canvas group with `on: ["click"]` is clicked, or focused and activated with Enter or Space | Any |
+| `change` | A `textField` commits on Enter, focus loss, or submit; a `select`, `segmented`, or `toggle` changes | Any |
+| `select`, `activate` | A tree item is selected; double-clicked or activated with Return | Any |
+| `viewport` | 400 ms after a pan or zoom stops, only for a canvas whose `on` lists `viewport` | Any |
+| `settings` | `effective` or `draft` changes: the user edits a declared row or a bound control, applies, cancels, or a value changes elsewhere | Any |
 
-An optional `source` names this plugin's `buildSystemID` and a function returning
-`{ nodes: [...] }`. The source uses the existing provider transport; it adds no
-backend, provider registry, or process protocol. There must be exactly one
-detected instance of that build system in the workspace; zero or multiple
-matches produce an error instead of silently targeting a different root.
-Static panels omit `source` and declare empty actions and placements.
+Hovering, pressing, keyboard focus and focus rings, tooltips, tree expansion,
+scrolling, panning, zooming, and typing never reach the plugin. A text field
+does not call the backend per keystroke. The host sends one event at a time
+per instance, in order, and may merge waiting `viewport` or `settings` events
+into the latest one. A view changes only in answer to an event; this version
+has no way for a plugin to push a view on its own.
 
-`actions` declares at most 64 independent handlers with `id`, literal `title`,
-`kind` (`refresh` or `invoke`) and `requiresSelection`. A refresh reloads the
-source and cannot require selection or name a function. An invoke names a
-`function` and receives `{ selectedID: string | null }` (forms also include `values`). Invocations return an
-optional `{ message }`, then the host reloads the source. `toolbar` and
-`contextMenu` contain distinct references to declared action IDs in display
-order. Toolbar actions are icon-only and appear when the pointer enters the whole
-panel, like the host hide control; keyboard and accessibility focus also reveal them.
-An optional `icon: {"host":"search"}` reuses the host icon vocabulary (including
-`reset`); native actions do not load custom package icons. Without an icon, refresh
-uses the refresh icon and invoke uses the generic run icon. The literal title is
-the tooltip and accessibility name. A context-menu action selects its clicked row before running; selecting
-a row alone never starts a provider function. These are panel-local actions;
-they do not turn `ui.commands` into arbitrary function handlers.
+#### Results and patches
 
-The host allows one operation per panel, disables actions while busy, and
-shows loading, empty, failure and success feedback. A source reply is at most
-1 MiB and follows the same node limits; invalid data preserves the last valid
-rows. Selection and expansion use stable IDs and the existing per-plugin,
-window and workspace state store (at most 64 KiB). Arrow keys move selection,
-expand/collapse nodes and select a parent; hidden/reopened panels restore state.
-Provider calls retain existing consent, scope checks, timeout and cancellation.
-Hiding a native panel cancels its pending operation. Disable, package replacement
-and workspace close synchronously invalidate it through the existing shared
-plugin-page lifecycle; late replies cannot publish. All state is outside the
-installed package and application bundle.
+The function returns `{view}` (a whole view), `{patches}` (edits to the drawn
+view), or `{}` (nothing changed). The first result of an instance returns a
+view. Before drawing anything, the host passes the result to Core's
+`plugins.ui.applyResult` with the manifest, the surface, and the view it drew
+last ([Rust Core API](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/contracts/rust-core-api.md#plugin-views)).
+Core checks the result, applies the patches to a copy, and returns the
+complete next view, or refuses the whole result with `plugin.ui.invalidView`
+and the JSON path of the first offending value. Hosts only render; they keep
+no validator or patch engine of their own.
 
-A refresh loads the complete node set. Lazy child data sources, multi-instance
-selectors, global function commands and native renderer factories are not part
-of the native schema.
+At most 512 patches apply in order. Each is addressed by node `id` within the
+host controls, within one canvas scene (`canvas`), or within one tree's items
+(`tree`), never both:
+
+| `op` | Fields | Effect |
+| --- | --- | --- |
+| `set` | `id`, `fields` | Merges `fields` into the node; a `null` field removes it. `type` and `id` cannot change. |
+| `replace` | `id`, `node` | Swaps the node, with its subtree, for `node` |
+| `remove` | `id` | Deletes the node and its subtree |
+| `insert` | `node`, optional `parent` and `index` | Adds `node` to the children of `parent`, or to the top level, at `index` or at the end |
+
+A patch whose target is missing refuses the whole result, and the patched
+view must pass every rule a whole view does.
+
+#### Host controls
+
+| `type` | Fields | Notes |
+| --- | --- | --- |
+| `row` | `children` | Children side by side |
+| `section` | `title`, `info`, `children` | A titled group |
+| `label` | `text`, `tone`, `style` (`title`, `strong`, `body`, `caption`, `mono`), `width` | `width` reserves that many characters (1–120) |
+| `textField` | `id`, `label`, `info`, `value` or `setting`, `placeholder`, `width` (`fill` or 1–120 characters), `mono`, `enabled` | Binds a `text`, `file`, `directory`, or `integer` setting |
+| `select` | `id`, `label`, `info`, `value` and 1–128 `options` `{value, label}`, or `setting`, `enabled` | Binds an `enum` setting, which supplies the options; `value` is one of the options |
+| `segmented` | As `select`, with 2–8 options | Binds an `enum` setting with 2–8 options |
+| `toggle` | `id`, `label`, `info`, `value` or `setting`, `enabled` | Binds a `boolean` setting |
+| `button` | `id`, `text`, `tone` (`primary`), `enabled`, `icon`, `action` | Sends `click`; with `action`, runs that [setting action](#placement-scope-effect-and-page-buttons) through the host's confirmation flow instead |
+| `keyValue` | 1–64 `items` `{label, value, tone}` | Label and value pairs |
+| `table` | 1–16 `columns` `{title, align}`, up to 256 `rows` | Read-only; each row has one single-line cell per column |
+| `banner` | `text`, `tone` | A message across the view |
+| `setting` | `setting` | The host's own row for a declared setting, exactly as the page draws it |
+| `tool` | `tool` | The host's row for a tool the plugin defines (`toolDefinitions`) or requires (`requiresTools`), as the toolchain pages draw it |
+| `tree` | `id`, `label`, `items` `{id, label, icon, detail, expanded, children}` | An outline; sends `select` and `activate` |
+| `canvas` | Below | A vector scene |
+
+`tone` is `secondary`, `muted`, `accent`, `success`, `warning`, or `error`;
+`icon` names a [host icon](#ui-icons). Host controls take no colors, fonts,
+sizes, or coordinates, so the host keeps light and dark themes, scaling,
+accessibility, and input methods consistent. Labels, titles, options, and
+placeholders are single-line text of at most 120 characters, tree labels and
+details at most 240, body text and values at most 1024, and `info` at most
+480. `info` draws the host's ⓘ beside a label or heading.
+
+Some nodes belong to one surface. `setting`, `tool`, controls with `setting`,
+and buttons with `action` appear only in settings regions; `tree` appears
+only in tool windows. A control shows either its own `value` or a declared
+`setting`, never both. A bound control edits the settings window's draft,
+which the host's Apply commits and Cancel discards, exactly as for the
+declared rows; a region never stores values of its own. Writing a tool's own
+configuration, such as a build file, stays a setting action of the plugin and
+follows [source-backed settings](#source-backed-settings-editors).
+
+#### Canvas
+
+```json
+{ "type": "canvas", "id": "graph", "label": "Module graph", "height": 360,
+  "viewBox": [0, 0, 1200, 640], "pan": true, "zoom": [0.4, 3], "on": ["viewport"],
+  "nodes": [
+    { "type": "path", "id": "edge", "d": "M190 20C234 20 216 80 260 80", "stroke": "$line", "width": 1.5 },
+    { "type": "group", "id": "guava", "x": 260, "y": 60, "w": 190, "h": 40,
+      "on": ["click"], "label": "guava 31.1, not used", "tooltip": "Replaced by 33.0",
+      "states": { "hover": { "fill": "$hover" }, "pressed": { "scale": 0.97 } },
+      "children": [
+        { "type": "rect", "x": 0, "y": 0, "w": 190, "h": 40, "radius": 8,
+          "fill": { "light": "#fdf0ef", "dark": "#3a2726" }, "stroke": "$error", "dash": [4, 3] },
+        { "type": "text", "x": 12, "y": 26, "style": "strong", "maxWidth": 168,
+          "runs": [{ "text": "guava" }, { "text": "  31.1", "color": "$error" }] }
+      ] }
+  ] }
+```
+
+A canvas draws its `nodes` in order, in `viewBox` coordinates
+(`[x, y, width, height]`) scaled to the width of the view and `height` points
+tall (1–2000). `label` is the scene's accessible name. `pan` lets the user
+drag the empty area, and `zoom` is the `[minimum, maximum]` range around 1
+(0.05–20); the host draws the zoom buttons. The scroll wheel scrolls the page;
+⌘ or Ctrl with the wheel, or a pinch, zooms.
+
+| `type` | Fields |
+| --- | --- |
+| `rect` | `x`, `y`, `w`, `h`, `radius`, `fill`, `stroke`, `width`, `dash`, `shadow`, `opacity` |
+| `path` | `d` (SVG path data, at most 8192 bytes), `bounds` `[x, y, width, height]`, `fill`, `stroke`, `width`, `dash`, `cap`, `rule` (`nonzero`, `evenodd`), `opacity` |
+| `text` | `x`, `y`, `text` or up to 64 `runs` `{text, color}`, `style` (`title`, `strong`, `body`, `caption`, `display`, `mono`, `monoSmall`), `align`, `color`, `maxWidth`, `opacity` |
+| `image` | `x`, `y`, `w`, `h`, `src`: a PNG path inside the plugin package |
+| `group` | `x`, `y`, `scale`, `w`, `h`, `radius`, `clip`, `children`, `on` (`click`), `label`, `tooltip`, `states` (`hover`, `pressed`, `selected`), `selected`, `opacity`, `shadow`, `hidden` |
+
+- Text uses the host's interface and monospace fonts at the named style; a
+  plugin cannot choose a font. Text longer than `maxWidth` ends with an ellipsis.
+- A color is `#RRGGBB`, `#RRGGBBAA`, a theme token (`$text`, `$textSecondary`,
+  `$textMuted`, `$accent`, `$success`, `$warning`, `$error`, `$surface`,
+  `$background`, `$sidebar`, `$line`, `$hover`, `$selection`, `$badge`), a
+  `{light, dark}` pair, or `{linear: [[offset, color], …], angle}` with 2–8
+  stops. Tokens and pairs follow the theme; a fixed color is for content that
+  shows a color itself, such as a color-scheme preview.
+- A group with `on: ["click"]` is a control and needs `id`, `w` and `h` (its
+  hit area), and `label`, read by screen readers. Tab moves between clickable
+  groups. The host draws `states` without a round trip: `fill`, `stroke`,
+  `width`, and `shadow` paint the group's `w` × `h` area with its `radius`
+  behind the children, and `scale` and `opacity` apply to the whole group.
+- `shadow` is an elevation step 1–3 mapped to the host's shadows. Coordinates
+  and sizes are within ±1,000,000. Blur, filters, blend modes, radial
+  gradients, custom fonts, animation, and text input are not part of a canvas;
+  input uses host controls beside it.
+- Canvas text is not searched. A settings region names its words in
+  [`keywords`](#settings-regions).
+
+#### Budgets and identifiers
+
+| Limit | Value |
+| --- | --- |
+| One view, as JSON | 3 MiB |
+| Host-control nodes | 512 |
+| Nesting of nodes, tree items, or canvas groups | 16 levels |
+| Items of one tree | 2000 |
+| Canvases of one view | 8 |
+| Nodes of one canvas | 2000 |
+| One canvas scene, as JSON | 256 KiB |
+| Patches of one result | 512 |
+
+Node, tree item, and canvas node IDs are 1–64 letters, digits, `.`, `_`, or
+`-`, starting with a letter or digit, and unique among the host controls, the
+items of one tree, and the nodes of one canvas. Fields are omitted rather
+than sent as `null`.
+
+#### Lifecycle and failure
+
+The host sends `open` when the view becomes visible and `close` when it goes
+away; it cancels a pending call on close, on disable, update, or removal of
+the plugin, and when the workspace closes, and drops late replies. Each call
+has a 2 second timeout. A failed, timed-out, or refused call leaves the last
+view drawn and shows the error in the view's own frame, with a Retry action;
+the rest of the window stays usable. A settings region without a drawn view
+falls back to the plugin's declared setting rows on that page, which can still
+be edited. The host owns the frame, clipping, scrolling, and every popup; a
+view cannot open dialogs, send notifications, or change anything outside its
+frame. View state lives in the backend and the host's memory, never in the
+installed package or application bundle.

@@ -185,5 +185,17 @@
       },
       "confirm": true
     }
+  ],
+  "settingRegions": [
+    {
+      "id": "otp",
+      "page": {
+        "languageID": "elixir"
+      },
+      "keywords": [
+        "OTP",
+        "BEAM"
+      ]
+    }
   ]
 }

@@ -105,6 +105,14 @@ impl DeclarativePluginManifest {
                 required.insert(PERMISSION_UI_WEB);
             }
         }
+        // A settings region that draws a view contributes UI like a window.
+        if self
+            .setting_regions
+            .iter()
+            .any(|region| region.view.is_some())
+        {
+            required.insert(PERMISSION_UI);
+        }
         // A provider process of its own is a server process like a language
         // server, so it needs the same consent.
         if !self.language_servers.is_empty()

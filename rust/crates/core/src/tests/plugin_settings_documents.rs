@@ -532,6 +532,80 @@ fn settings_state_shows_packaged_translation_and_keeps_manifest_identity() {
         .find(|page| page["key"] == "language:elixir")
         .unwrap();
     assert_eq!(section_titles(&elixir["sections"]), ["", "服务器"]);
+    // Translated keywords follow the manifest ones, so either language finds
+    // the page; a keyword both name appears once.
+    assert_eq!(
+        elixir["region"],
+        json!({"id": "otp", "keywords": ["OTP", "BEAM", "虚拟机"]})
+    );
+    assert_eq!(state["region"], Value::Null);
+    let english = english["pages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|page| page["key"] == "language:elixir")
+        .unwrap();
+    assert_eq!(english["region"]["keywords"], json!(["OTP", "BEAM"]));
+}
+
+/// The settings catalog shows each contributor's region and, with an
+/// interface language, translates headings and keywords the same way the
+/// settings state does.
+#[test]
+fn settings_catalog_carries_regions_and_translates_them() {
+    let declared = manifest();
+    let owner = json!({"pluginID": declared["id"], "version": declared["version"]});
+    let contributor = |response: &Value| {
+        assert_eq!(response["data"]["status"], "ok", "{response}");
+        response["data"]["pages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|page| page["key"] == "language:elixir")
+            .unwrap()["contributors"][0]
+            .clone()
+    };
+    let plain = contributor(&execute(
+        "plugins.settings.catalog",
+        json!({"plugins": [{"manifest": declared, "owner": owner, "enabled": true}]}),
+    ));
+    assert_eq!(section_titles(&plain["sections"]), ["", "Server"]);
+    assert_eq!(
+        plain["region"],
+        json!({"id": "otp", "keywords": ["OTP", "BEAM"]})
+    );
+    assert_eq!(plain["localization"], Value::Null);
+
+    let text = contract_settings_file("l10n/zh-Hans.json");
+    let translated = contributor(&execute(
+        "plugins.settings.catalog",
+        json!({"language": "zh-Hans", "plugins": [{
+            "manifest": declared, "owner": owner, "enabled": true,
+            "localizations": {"l10n/zh-Hans.json": text}
+        }]}),
+    ));
+    assert_eq!(section_titles(&translated["sections"]), ["", "服务器"]);
+    assert_eq!(
+        translated["region"]["keywords"],
+        json!(["OTP", "BEAM", "虚拟机"])
+    );
+    assert_eq!(translated["localization"]["applied"], "l10n/zh-Hans.json");
+
+    let unread = contributor(&execute(
+        "plugins.settings.catalog",
+        json!({"language": "zh-Hans", "plugins": [{"manifest": declared, "owner": owner, "enabled": true}]}),
+    ));
+    assert_eq!(unread["localization"]["readRequired"], true);
+
+    let refused = execute(
+        "plugins.settings.catalog",
+        json!({"language": "zh-Hans", "plugins": [{
+            "manifest": declared, "owner": owner, "enabled": true,
+            "localizations": {"l10n/en.json": "{}"}
+        }]}),
+    );
+    assert_eq!(refused["ok"], false, "{refused}");
+    assert_eq!(refused["error"]["code"], "invalid_request");
 }
 
 #[test]

@@ -9,6 +9,7 @@ impl DeclarativePluginManifest {
     /// launch templates may refer to.
     pub(crate) fn validate_settings(&mut self) -> Validation<DeclaredSettings> {
         self.validate_setting_actions()?;
+        self.validate_setting_regions()?;
         if self.settings.is_empty() {
             return Ok(DeclaredSettings::default());
         }
@@ -87,6 +88,36 @@ impl DeclarativePluginManifest {
         self.setting_actions
             .sort_by(|left, right| left.id.cmp(&right.id));
         Ok(())
+    }
+
+    /// Checks the plugin-owned page regions and sorts them by ID. A region
+    /// that draws a view needs the backend that draws it.
+    fn validate_setting_regions(&mut self) -> Validation<()> {
+        lithe_plugin_model::settings::validate_regions(&self.setting_regions, "settingRegions")?;
+        if self.backend.is_none() {
+            if let Some(index) = self
+                .setting_regions
+                .iter()
+                .position(|region| region.view.is_some())
+            {
+                return Err(invalid(
+                    format!("settingRegions[{index}].view"),
+                    "A view is drawn by the plugin backend; declare one.",
+                ));
+            }
+        }
+        self.setting_regions
+            .sort_by(|left, right| left.id.cmp(&right.id));
+        Ok(())
+    }
+
+    /// The plugin's whole settings contribution.
+    pub(crate) fn settings_surface(&self) -> SettingsSurface<'_> {
+        SettingsSurface {
+            settings: &self.settings,
+            actions: &self.setting_actions,
+            regions: &self.setting_regions,
+        }
     }
 }
 
@@ -193,13 +224,13 @@ pub fn settings_state_command(payload: Value) -> Result<Value, CoreError> {
                     "The manifest does not match the captured installed package identity.",
                 ));
             }
-            let (translation, report) = localization.as_ref().map_or((None, Value::Null), |request| {
-                request.select(&manifest.settings, &manifest.setting_actions)
-            });
+            let surface = manifest.settings_surface();
+            let (translation, report) = localization
+                .as_ref()
+                .map_or((None, Value::Null), |request| request.select(surface));
             lithe_plugin_model::settings::document_state(
                 &manifest.id,
-                &manifest.settings,
-                &manifest.setting_actions,
+                surface,
                 payload.global_document.as_deref(),
                 payload.project_document.as_deref(),
                 translation.as_ref(),

@@ -33,6 +33,7 @@ import {
   VCS_REQUIRED_OPERATIONS,
   VCS_VERSION,
 } from './protocol.mjs';
+import { checkViewEvent } from './view.mjs';
 
 /** The `version` every build result document carries. */
 const BUILD_DOCUMENT_VERSION = 0;
@@ -184,6 +185,23 @@ class Backend {
     this.#checkNewFunction(id, handler);
     this.#functions.set(id, handler);
     return this;
+  }
+
+  /**
+   * Declares the view function a tool window or settings region names in
+   * `view.function`. Its params are the view event; it returns `{view}`,
+   * `{patches}`, or nothing, which answers `{}` (nothing changed). Params
+   * that are not a view event fail the call with `sdk.view.invalidEvent`
+   * before the handler runs.
+   *
+   * @param {string} id
+   * @param {(event: object, context: object) => unknown} handler
+   */
+  view(id, handler) {
+    const answer = typeof handler === 'function'
+      ? async (params, context) => (await handler(checkViewEvent(params), context)) ?? {}
+      : handler;
+    return this.function(id, answer);
   }
 
   /** Declares an independent typed shortcut import provider. */

@@ -18,5 +18,13 @@
     "rebuildPlt": {
       "title": "重建 PLT"
     }
+  },
+  "settingRegions": {
+    "otp": {
+      "keywords": [
+        "虚拟机",
+        "BEAM"
+      ]
+    }
   }
 }

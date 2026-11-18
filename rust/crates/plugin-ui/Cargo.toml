@@ -1,0 +1,10 @@
+[package]
+name = "lithe-plugin-ui"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Plugin views: host-control nodes and canvas scenes checked and patched by Core"
+
+[dependencies]
+lithe-plugin-model = { path = "../plugin-model" }
+serde_json = { version = "1.0", features = ["preserve_order"] }

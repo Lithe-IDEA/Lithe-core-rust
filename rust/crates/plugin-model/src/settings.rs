@@ -23,6 +23,10 @@ pub use localization::{
 };
 mod pages;
 pub use pages::page_sections;
+mod regions;
+pub use regions::{
+    validate_regions, SettingRegion, MAX_KEYWORD_CHARS, MAX_REGION_KEYWORDS, MAX_SETTING_REGIONS,
+};
 pub mod sources;
 
 use crate::rejection::{invalid, PluginRejection, Validation};
@@ -33,6 +37,19 @@ use std::collections::{BTreeMap, BTreeSet};
 
 /// Most settings one plugin may declare, so its pages stay pages.
 pub const MAX_SETTINGS: usize = 32;
+
+/// Everything one plugin contributes to settings pages: the stored options,
+/// the buttons, and the plugin-owned regions. Projections and translations
+/// read the three together so a page appears for whichever one names it.
+#[derive(Debug, Clone, Copy)]
+pub struct SettingsSurface<'a> {
+    /// Declared options.
+    pub settings: &'a [SettingDeclaration],
+    /// Declared buttons.
+    pub actions: &'a [SettingAction],
+    /// Declared regions.
+    pub regions: &'a [SettingRegion],
+}
 
 /// A whole number within a declared range.
 const SETTING_INTEGER: &str = "integer";
@@ -515,6 +532,17 @@ impl SettingDeclaration {
 
     fn offers(&self, value: &str) -> bool {
         self.options.iter().any(|option| option.value == value)
+    }
+
+    /// The declared kind: `integer`, `enum`, `boolean`, `multiSelect`,
+    /// `text`, `file` or `directory`.
+    pub fn kind(&self) -> &str {
+        &self.kind
+    }
+
+    /// Option values of an enum or multiSelect setting, in display order.
+    pub fn option_values(&self) -> impl Iterator<Item = &str> {
+        self.options.iter().map(|option| option.value.as_str())
     }
 
     /// Checks the declaration against the `settings` capability contract.

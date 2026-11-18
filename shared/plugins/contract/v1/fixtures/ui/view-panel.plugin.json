@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 0,
+  "id": "dev.lithe.fixture.view-panel",
+  "displayName": "View Panel",
+  "version": "1.0.0",
+  "pluginAPIVersion": 0,
+  "requires": {
+    "backend": 0,
+    "settings": 0,
+    "ui": 0
+  },
+  "requiresTools": [
+    "node"
+  ],
+  "vendor": {
+    "id": "org.example",
+    "displayName": "Example",
+    "signatureRequirement": "publisherPackage"
+  },
+  "permissions": [
+    "backend.launch",
+    "ui.contribute"
+  ],
+  "activationEvents": [
+    "onView:dev.lithe.fixture.view-panel.explorer"
+  ],
+  "languages": [],
+  "settings": [
+    {
+      "id": "offline",
+      "type": "boolean",
+      "title": "Offline",
+      "default": false
+    },
+    {
+      "id": "layout",
+      "type": "enum",
+      "title": "Layout",
+      "default": "tree",
+      "options": [
+        {
+          "value": "tree",
+          "title": "Tree"
+        },
+        {
+          "value": "flat",
+          "title": "Flat"
+        }
+      ]
+    }
+  ],
+  "settingActions": [
+    {
+      "id": "reindex",
+      "title": "Reindex",
+      "function": "index.rebuild"
+    }
+  ],
+  "settingRegions": [
+    {
+      "id": "overview",
+      "keywords": [
+        "module graph",
+        "dependencies"
+      ],
+      "view": {
+        "function": "settings.overview"
+      }
+    }
+  ],
+  "ui": {
+    "toolWindows": [
+      {
+        "id": "dev.lithe.fixture.view-panel.explorer",
+        "title": "Module Explorer",
+        "placement": "right",
+        "order": 300,
+        "view": {
+          "function": "explorer.draw"
+        },
+        "icon": {
+          "host": "plugin"
+        }
+      }
+    ]
+  },
+  "backend": {
+    "launch": {
+      "kind": "packaged",
+      "path": "bin/backend"
+    }
+  }
+}

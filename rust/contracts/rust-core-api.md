@@ -445,7 +445,7 @@ or removing a command fails until the table changes in the same commit.
 | `ai.inlineEdit.plan` | Plan a credential-free inline edit request |
 | `ai.inlineEdit.decode` | Decode the replacement text of an inline edit response |
 | `plugins.declarative.validate` | Validate and normalize a declarative plugin manifest |
-| `plugins.nativeUI.validateData` | Validate native plugin UI data with declaration identity and node budgets |
+| `plugins.ui.applyResult` | Check a backend result for a plugin view and return the whole view to draw |
 | `plugins.web.open` | Register a plugin page for a web tool window |
 | `plugins.web.close` | Forget a plugin page and lists its calls to cancel |
 | `plugins.web.resource` | Decide how a plugin page request is served |
@@ -4953,6 +4953,12 @@ Success returns `{ status: "ok", state }`. The state contains:
   the manifest's section title (the empty heading first), so a translation
   changes only the shown `title`. References are zero-based indices
   into `rows` and `actions`; declaration order is retained within each section.
+- `region`: present when the plugin placed a settings region on its own
+  Settings tab: `{ id, keywords, view? }`. `keywords` are the manifest
+  keywords followed by the translated ones that differ, so both languages
+  find the page. `view` is `{ function }`; the host calls it and draws each
+  result through `plugins.ui.applyResult`. Each entry of `pages` carries the
+  region placed on that page in the same shape.
 - `editors`: `{ global, project }`, each an array in exactly `rows` order.
   Every entry contains `value`, `resetValue`, `source`, `editable`, `overridden`
   and `invalidStored`, plus `input`/`resetInput` native-control projections.
@@ -6224,21 +6230,33 @@ registered in Core for their lifetime:
   `build.runChanged` and returns `{ message }`, `null` when the page is
   closed or the progress is for a call that ended or has no page ID.
 
-### Native plugin UI data
+### Plugin views
 
-`plugins.nativeUI.validateData` accepts `{ ui, data }`, where `ui` is the
-validated native declaration (`schemaVersion` 0) and `data` is a provider's `{ nodes }`
-reply. It returns `{ status: "ok", nodes }` or
-`{ status: "rejected", error: { code: "plugin.ui.invalidData", message } }`.
-Malformed envelopes remain Core `invalid_request` failures. The operation uses
-the same identity, literal label, nesting and node budgets as manifest validation
-and rejects data above 1 MiB. Form declarations validate bounded input/select/checkbox
-controls (including search/editor/segmented/stepper), typed scalar defaults, choices,
-info, button action references/width policies and onCommit references; form source replies
-require empty nodes. Hosts inject this typed operation into their
-presentation feature; views never call the C ABI. Windows can reuse validation
-when it later adds a native renderer; Core support does not make Windows
-advertise native plugin content.
+`plugins.ui.applyResult` accepts `{ manifest, surface, view?, result }`.
+`surface` names exactly one declared place that draws a view:
+`{ toolWindowID }` for a tool window whose body is `view`, or
+`{ settingRegionID }` for a settings region with a `view`. `view` is the
+view the host drew last and is absent before the first result. `result` is
+what the plugin's view function returned: `{ view }` (a whole view),
+`{ patches }` (edits to `view`) or `{}` (nothing changed).
+
+It returns `{ status: "ok", view: { view, changed } }`, where `view` is the
+complete checked view to draw and `changed` tells whether it differs from
+the one drawn, or `{ status: "rejected", error: { code:
+"plugin.ui.invalidView", message, field } }`, where `field` is the JSON path
+of the first problem (`result.view[0].type`, `result.patches[1].id`, or
+`view[...]` for a patched view). After a refusal the host keeps drawing the
+previous view. Malformed envelopes remain Core `invalid_request` failures.
+
+Core checks the node vocabulary, the budgets, which nodes each surface
+allows, and every reference to the manifest: bound controls and setting rows
+name declared settings of a type the control edits, setting-action buttons
+name declared setting actions, and tool rows name tools the plugin defines
+or requires. Patches apply in order to a copy of `view`; a patch whose target
+is missing refuses the whole result. Hosts call this operation for every
+result and only render; they keep no second validator or patch engine. The
+vocabulary and budgets are in the plugin contract README and
+`plugin-ui.schema.json`.
 
 ### Workspace indexing policy
 
@@ -7186,16 +7204,23 @@ This is an internal desktop command, not a new public plugin host method.
 
 Internal desktop commands reuse the validated settings manifest. They do not
 add plugin RPCs or admit capabilities. `plugins.settings.catalog` accepts up to
-64 `{manifest, owner: {pluginID, version}, enabled}` records. It validates all
+64 `{manifest, owner: {pluginID, version}, enabled, localizations?}` records
+and an optional `language`. It validates all
 identities, rejects duplicates and returns deterministic `pages` (up to 512),
-with stable `key`, `kind` (`language` or `buildSystem`), opaque `id`, display
-`title`, and plugin-ID ordered `contributors` (`pluginID`, `version`, `title`,
-`sections`). Sections reference indices in the complete settingsState rows and
-actions. Only enabled contributors create pages; action-only pages are valid.
+with stable `key`, `kind` (`language`, `buildSystem` or `compiler`), opaque
+`id`, display `title`, and plugin-ID ordered `contributors` (`pluginID`,
+`version`, `title`, `sections`, `region?`, `localization?`). Sections reference
+indices in the complete settingsState rows and actions. Only enabled
+contributors create pages; action-only and region-only pages are valid.
 Names come from enabled language/build declarations, with opaque ID fallback.
-`settingsState.pages` supplies the same per-plugin placement projections, with
-section titles translated when the state is. Catalog contributor sections keep
-the manifest headings.
+`settingsState.pages` supplies the same per-plugin placement projections.
+`region` is the settings region the contributor placed on the page
+(`{ id, keywords, view? }`, as in settingsState); hosts add its keywords to
+the page's search terms. With `language`, each record's `localizations`
+follows the settingsState rules: section titles are translated, translated
+region keywords are appended, and `localization` is that plugin's report.
+Without `language`, sections keep the manifest headings and no report is
+returned.
 
 `plugins.settings.navigation` accepts at most 576 `items` (512 contributed pages plus 64 host entries), up to three levels
 deep, with stable `id`, `title`, nullable `parent`, `group`, `expanded`, optional `keywords` and optional `limit`

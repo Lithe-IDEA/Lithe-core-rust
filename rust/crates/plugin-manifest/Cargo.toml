@@ -15,7 +15,7 @@ lithe-plugin-grammar = { path = "../plugin-grammar" }
 lithe-plugin-keymap-import = { path = "../plugin-keymap-import" }
 lithe-plugin-language-servers = { path = "../plugin-language-servers" }
 lithe-plugin-model = { path = "../plugin-model" }
-lithe-plugin-native-ui = { path = "../plugin-native-ui" }
+lithe-plugin-ui = { path = "../plugin-ui" }
 lithe-plugin-output-links = { path = "../plugin-output-links" }
 lithe-plugin-rpc = { path = "../plugin-rpc" }
 lithe-project-generators = { path = "../project-generators" }

@@ -59,7 +59,7 @@ pub enum CoreCommand {
     SearchActions,
     /// AI commit, pull request and inline edit planning run by `lithe-ai` (`ai.*`).
     Ai(AiCommand),
-    /// Plugin manifests, native UI and web content, plugin settings, installed
+    /// Plugin manifests, plugin views and web content, plugin settings, installed
     /// plugins and the marketplace (`plugins.*`).
     Plugins(PluginsCommand),
     /// Debug adapters, transports, sessions, breakpoints and inspection (`debug.*`).
@@ -206,8 +206,8 @@ pub enum AiCommand {
 pub enum PluginsCommand {
     /// Validates and normalizes a declarative plugin manifest (`plugins.declarative.validate`).
     DeclarativeValidate,
-    /// Validates native plugin UI data with declaration identity and node budgets.
-    NativeUIValidateData,
+    /// Checks what a backend returned for a plugin view and gives the whole view to draw (`plugins.ui.applyResult`).
+    UIApplyResult,
     /// Registers a plugin page for a web tool window (`plugins.web.open`).
     WebOpen,
     /// Forgets a plugin page and lists its calls to cancel (`plugins.web.close`).
@@ -1040,9 +1040,7 @@ impl CoreCommand {
             "plugins.declarative.validate" => {
                 Some(Self::Plugins(PluginsCommand::DeclarativeValidate))
             }
-            "plugins.nativeUI.validateData" => {
-                Some(Self::Plugins(PluginsCommand::NativeUIValidateData))
-            }
+            "plugins.ui.applyResult" => Some(Self::Plugins(PluginsCommand::UIApplyResult)),
             "plugins.web.open" => Some(Self::Plugins(PluginsCommand::WebOpen)),
             "plugins.web.close" => Some(Self::Plugins(PluginsCommand::WebClose)),
             "plugins.web.resource" => Some(Self::Plugins(PluginsCommand::WebResource)),

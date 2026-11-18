@@ -48,6 +48,12 @@ public final class Backend {
         Object handle(Map<String, Object> params, CallContext context) throws Exception;
     }
 
+    /** Answers one call to a view function; null means nothing changed. */
+    @FunctionalInterface
+    public interface ViewHandler {
+        ViewResult handle(ViewEvent event, CallContext context) throws Exception;
+    }
+
     /** Answers an independently negotiated shortcut import request. */
     @FunctionalInterface
     public interface KeymapImportHandler {
@@ -354,6 +360,21 @@ public final class Backend {
             functions.put(id, handler);
         }
         return this;
+    }
+
+    /**
+     * Declares the view function a tool window or settings region names in
+     * {@code view.function}: a plugin function whose params are a
+     * {@link ViewEvent}. The SDK answers the handler's {@link ViewResult}, and
+     * {@code {}} when it returns null. Params that are not a view event fail
+     * the call before the handler runs.
+     */
+    public Backend view(String id, ViewHandler handler) {
+        Handler answer = handler == null ? null : (params, context) -> {
+            ViewResult result = handler.handle(ViewEvent.parse(params), context);
+            return (result == null ? ViewResult.unchanged() : result).toJson();
+        };
+        return function(id, answer);
     }
 
     /** Declares a shortcut import provider before initialization. */

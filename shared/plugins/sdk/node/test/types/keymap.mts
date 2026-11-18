@@ -1,4 +1,5 @@
-import { createBackend } from '../../src/index.mjs';
+// Check the shortcut import declarations the way a plugin uses them.
+import { createBackend } from '@lithe/plugin-sdk';
 
 createBackend().keymapImportProvider('example', async (snapshot, context) => {
   context.throwIfCancelled();

@@ -538,6 +538,161 @@ export interface VcsTraits {
   staging?: boolean;
 }
 
+// Plugin views (`ui` 0, `settings` 0): the params a view function receives and
+// the result it returns. contract/v1/plugin-ui.schema.json is the authority;
+// Core's plugins.ui.applyResult enforces the rules a type cannot express.
+
+export type ViewEventKind = 'open' | 'close' | 'click' | 'change' | 'select' | 'activate' | 'viewport' | 'settings';
+
+/** Params of one call to a view function. */
+export interface ViewEvent {
+  event: ViewEventKind;
+  /** Host-chosen; each `open` starts a new instance. */
+  instance: string;
+  /** The declaration being drawn. */
+  surface: { toolWindowID: string } | { settingRegionID: string };
+  /** Interface language tag, such as `en` or `zh-Hans`; return view text in it. */
+  language: string;
+  /** Setting values by ID. `draft` holds the open settings window's unapplied changes; `{}` in a tool window. */
+  settings: { effective: JsonObject; draft: JsonObject };
+  /** `click`, `change`, `select`, `activate`: the node acted on; the group's ID inside a canvas, the tree's ID for an item. */
+  node?: string;
+  /** A click inside a canvas, and `viewport`: the canvas ID. */
+  canvas?: string;
+  /** `change`: a string, a boolean for `toggle`; for a bound control, the new draft value as the setting stores it. */
+  value?: string | number | boolean;
+  /** `change` of a control bound to a setting: the setting ID. */
+  setting?: string;
+  /** `select`, `activate`: the tree item ID. */
+  item?: string;
+  /** `viewport`: the visible part of the canvas, in view-box coordinates. */
+  viewport?: { x: number; y: number; width: number; height: number };
+}
+
+/** A whole view, a batch of patches, or `{}` when nothing changed. The first result after `open` is a view. */
+export type ViewResult =
+  | { view: ViewNode[]; patches?: never }
+  | { patches: ViewPatch[]; view?: never }
+  | { view?: never; patches?: never };
+/** `undefined` and `null` answer `{}`. */
+export type ViewHandler = (event: ViewEvent, context: FunctionContext) =>
+  ViewResult | null | undefined | Promise<ViewResult | null | undefined>;
+
+export type ViewTone = 'secondary' | 'muted' | 'accent' | 'success' | 'warning' | 'error';
+export interface ViewOption { value: string; label: string }
+
+/** Host controls carry meaning only; the host draws them with its own controls. */
+export type ViewNode =
+  | { type: 'row'; id?: string; children: ViewNode[] }
+  | { type: 'section'; id?: string; title?: string; info?: string; children: ViewNode[] }
+  | { type: 'label'; id?: string; text: string; tone?: ViewTone; style?: 'title' | 'strong' | 'body' | 'caption' | 'mono'; width?: number; info?: string }
+  | ViewTextField
+  | ViewChoice
+  | ViewToggle
+  | ViewButton
+  | { type: 'keyValue'; id?: string; items: Array<{ label: string; value: string; tone?: ViewTone }> }
+  | { type: 'table'; id?: string; columns: Array<{ title: string; align?: 'start' | 'center' | 'end' }>; rows: string[][] }
+  | { type: 'banner'; id?: string; text: string; tone: ViewTone }
+  /** settings only: the host's row for a declared setting. */
+  | { type: 'setting'; id?: string; setting: string }
+  /** settings only: the host's row for a tool the plugin defines or requires. */
+  | { type: 'tool'; id?: string; tool: string }
+  /** tool windows only. */
+  | { type: 'tree'; id: string; label?: string; items: ViewTreeItem[] }
+  | ViewCanvas;
+
+/** A control shows its own `value` or edits a declared `setting` (settings only), never both. */
+type ViewBinding<Value> = { value?: Value; setting?: never } | { setting: string; value?: never };
+export type ViewTextField = { type: 'textField'; id: string; label?: string; info?: string; placeholder?: string; width?: 'fill' | number; mono?: boolean; enabled?: boolean } & ViewBinding<string>;
+/** An enum setting supplies the options. `segmented` takes 2 to 8. */
+export type ViewChoice = { type: 'select' | 'segmented'; id: string; label?: string; info?: string; enabled?: boolean }
+  & ({ options: ViewOption[]; value?: string; setting?: never } | { setting: string; options?: never; value?: never });
+export type ViewToggle = { type: 'toggle'; id: string; label: string; info?: string; enabled?: boolean } & ViewBinding<boolean>;
+export interface ViewButton {
+  type: 'button';
+  id: string;
+  text: string;
+  tone?: 'primary';
+  enabled?: boolean;
+  /** settings only: a settingActions[] ID, run through the host's confirmation flow instead of sending `click`. */
+  action?: string;
+  /** A host icon name. */
+  icon?: string;
+}
+
+export interface ViewTreeItem {
+  id: string;
+  label: string;
+  icon?: string;
+  detail?: string;
+  expanded?: boolean;
+  children?: ViewTreeItem[];
+}
+
+/** `#RRGGBB`, `#RRGGBBAA`, or a theme token. */
+export type ViewPlainColor = `#${string}` | '$text' | '$textSecondary' | '$textMuted' | '$accent' | '$success' | '$warning'
+  | '$error' | '$surface' | '$background' | '$sidebar' | '$line' | '$hover' | '$selection' | '$badge';
+export type ViewColor = ViewPlainColor | { light: ViewPlainColor; dark: ViewPlainColor }
+  | { linear: Array<[offset: number, color: ViewPlainColor]>; angle?: number };
+
+/** A vector scene the host keeps and draws natively; hover, press, pan and zoom never reach the plugin. */
+export interface ViewCanvas {
+  type: 'canvas';
+  id: string;
+  /** Accessible name of the scene. */
+  label: string;
+  height: number;
+  viewBox: [x: number, y: number, width: number, height: number];
+  pan?: boolean;
+  zoom?: [minimum: number, maximum: number];
+  on?: ['viewport'];
+  nodes: CanvasNode[];
+}
+
+export interface CanvasState { fill?: ViewColor; stroke?: ViewColor; width?: number; shadow?: 1 | 2 | 3; scale?: number; opacity?: number }
+interface CanvasGroupBase {
+  type: 'group';
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
+  radius?: number;
+  clip?: boolean;
+  scale?: number;
+  children: CanvasNode[];
+  tooltip?: string;
+  states?: { hover?: CanvasState; pressed?: CanvasState; selected?: CanvasState };
+  selected?: boolean;
+  opacity?: number;
+  shadow?: 1 | 2 | 3;
+  hidden?: boolean;
+}
+/** A group with `on: ['click']` is a control: `id`, `w`, `h` (its hit area) and `label` are required. */
+export type CanvasGroup = (CanvasGroupBase & { id?: string; label?: string; on?: never })
+  | (CanvasGroupBase & { id: string; w: number; h: number; label: string; on: ['click'] });
+export type CanvasText = { type: 'text'; id?: string; x: number; y: number; style?: 'title' | 'strong' | 'body' | 'caption' | 'display' | 'mono' | 'monoSmall'; align?: 'start' | 'center' | 'end'; color?: ViewColor; maxWidth?: number; opacity?: number }
+  & ({ text: string; runs?: never } | { runs: Array<{ text: string; color?: ViewColor }>; text?: never });
+
+export type CanvasNode =
+  | { type: 'rect'; id?: string; x: number; y: number; w: number; h: number; radius?: number; fill?: ViewColor; stroke?: ViewColor; width?: number; dash?: number[]; shadow?: 1 | 2 | 3; opacity?: number }
+  /** SVG path data; `bounds` lets the host skip it outside the visible area. */
+  | { type: 'path'; id?: string; d: string; bounds?: [x: number, y: number, width: number, height: number]; fill?: ViewColor; stroke?: ViewColor; width?: number; dash?: number[]; cap?: 'butt' | 'round' | 'square'; rule?: 'nonzero' | 'evenodd'; opacity?: number }
+  | CanvasText
+  /** `src`: a PNG path inside the plugin package. */
+  | { type: 'image'; id?: string; x: number; y: number; w: number; h: number; src: string; opacity?: number }
+  | CanvasGroup;
+
+/** Addresses the host controls by default, one canvas scene with `canvas`, or one tree's items with `tree`. */
+type ViewPatchTarget = { canvas?: string; tree?: never } | { tree?: string; canvas?: never };
+export type ViewPatch = ViewPatchTarget & (
+  /** Merges fields; a `null` field removes it. `type` and `id` stay. */
+  | { op: 'set'; id: string; fields: { [field: string]: unknown } }
+  | { op: 'replace'; id: string; node: ViewNode | CanvasNode | ViewTreeItem }
+  | { op: 'remove'; id: string }
+  /** At `index` of `parent`'s children, or of the top level, or at the end. */
+  | { op: 'insert'; parent?: string; index?: number; node: ViewNode | CanvasNode | ViewTreeItem }
+);
+
 export interface Negotiated {
   functions: boolean;
   build: boolean;
@@ -582,6 +737,14 @@ export interface Backend {
   };
   vcs(id: string, handlers: VcsHandlers, traits?: VcsTraits): Backend;
   function(id: string, handler: FunctionHandler): Backend;
+  /**
+   * Declares the view function a tool window or settings region names in
+   * `view.function`: a plugin function whose params are a {@link ViewEvent}.
+   * Params that are not a view event fail the call with
+   * `sdk.view.invalidEvent` before the handler runs; an optional field that
+   * is `null` counts as absent.
+   */
+  view(id: string, handler: ViewHandler): Backend;
   /** Declares an independent shortcut import provider before initialize. */
   keymapImportProvider(id: string, handler: KeymapImportHandler): Backend;
   registerFunction(id: string, handler: FunctionHandler): Promise<void>;
