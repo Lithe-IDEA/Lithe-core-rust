@@ -9,7 +9,7 @@
 这些入口都属于 `buildProviders`（版本 `0`）：清单要求 `requires.buildProviders: 0`，进程协议 `litheBuild` 的版本就是 `buildProviders` 的版本。Node.js SDK 0.5.0 和 Java SDK 0.5.0 实现了全部入口；Rust SDK 0.4.0 没有构建提供者接口。能力定义见[构建提供者](../reference/domains/build-providers.md)，字段和错误码以[契约](../contract/v1/README.md#build-providers)为准。
 
 > **宿主支持。** Lithe 桌面端声明 `buildSystems` 和 `buildProviders`：构建窗口发现构建实例、加载提供者模型、解析可执行文件候选并运行任务。构建提供者的运行准备、测试、调试准备、model inputs、原生配置、内联测试报告和运行时调试，桌面端尚未呈现，见
-> [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/preview/desktop/internal/pluginhost/pluginhost.go) 中 `Declared()` 上方的注释。下文的入口因此由 Core 与 SDK 的端到端测试验证，插件作者在桌面端界面里暂时看不到测试、运行和调试这几类入口的效果。
+> [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go) 中 `Declared()` 上方的注释。下文的入口因此由 Core 与 SDK 的端到端测试验证，插件作者在桌面端界面里暂时看不到测试、运行和调试这几类入口的效果。
 
 ### 选择入口
 
@@ -107,7 +107,7 @@ A plugin can provide only a workspace backend and create no web page. Users buil
 These entry points all belong to `buildProviders` (version `0`): the manifest requires `requires.buildProviders: 0`, and the version of the `litheBuild` process protocol is the version of `buildProviders`. Node.js SDK 0.5.0 and Java SDK 0.5.0 implement every entry point; Rust SDK 0.4.0 has no build-provider interface. For the capability see [Build providers](../reference/domains/build-providers.md); the [contract](../contract/v1/README.md#build-providers) is normative for fields and error codes.
 
 > **Host support.** The Lithe desktop declares `buildSystems` and `buildProviders`: the Build window detects build instances, loads provider models, resolves executable candidates, and runs tasks. Build-provider run preparation, tests, debug preparation, model inputs, native configuration, inline test reports, and runtime debugging are not presented on the desktop yet; see the comment above `Declared()` in
-> [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/preview/desktop/internal/pluginhost/pluginhost.go). The entry points below are therefore verified by the Core and SDK end-to-end tests, and a plugin author cannot yet see the effect of the test, run, and debug entry points in the desktop UI.
+> [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go). The entry points below are therefore verified by the Core and SDK end-to-end tests, and a plugin author cannot yet see the effect of the test, run, and debug entry points in the desktop UI.
 
 ### Choosing an entry point
 

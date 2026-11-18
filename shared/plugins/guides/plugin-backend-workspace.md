@@ -9,7 +9,7 @@
 字段与错误码的权威定义在[契约](../contract/v1/README.md#backend-lifecycle-and-workspace-contexts)，这里只讲怎么用、为什么这样设计。
 
 > **宿主支持。** Lithe 桌面端声明 `backend` 和 `pluginFunctions`（版本都是 `0`），所以本篇的函数协议、宿主服务和跨插件调用都在桌面端运行。宿主只授予它实现了的服务：一次会话能调用哪些方法，以运行时 `lithe/host/getCapabilities` 的 `services` 为准，不要按文档假定（第 5 节、第 10 节）。桌面端的声明和说明见
-> [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/preview/desktop/internal/pluginhost/pluginhost.go) 中 `Declared()` 上方的注释。
+> [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go) 中 `Declared()` 上方的注释。
 > 三个官方 SDK 都实现了本篇的协议：Node.js SDK 0.5.0、Java SDK 0.5.0 和 Rust SDK 0.4.0
 > （见各自 README 的 Host services：[Node.js](../sdk/node/README.md#host-services)、[Java](../sdk/java/README.md#host-services)、
 > [Rust](../sdk/rust/README.md#host-services)；发布页：[sdk-node-v0.5.0](https://github.com/Lithe-IDEA/Lithe-core-rust/releases/tag/sdk-node-v0.5.0)、
@@ -332,7 +332,7 @@ This guide is for authors writing a plugin backend (`backend`): start without a 
 The [contract](../contract/v1/README.md#backend-lifecycle-and-workspace-contexts) is normative for fields and error codes; this guide covers how to use them and why they are designed this way.
 
 > **Host support.** The Lithe desktop declares `backend` and `pluginFunctions` (both version `0`), so the function protocol, host services, and cross-plugin calls in this guide run there. The host grants only the services it implements: which methods a session can call is decided by `services` in the run-time `lithe/host/getCapabilities` answer, so do not assume it from this document (sections 5 and 10). The desktop's declarations and notes are in the comment above `Declared()` in
-> [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/preview/desktop/internal/pluginhost/pluginhost.go).
+> [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go).
 > All three official SDKs implement the protocol in this guide: Node.js SDK 0.5.0, Java SDK 0.5.0, and Rust SDK 0.4.0
 > (see Host services in each README: [Node.js](../sdk/node/README.md#host-services), [Java](../sdk/java/README.md#host-services),
 > [Rust](../sdk/rust/README.md#host-services); release pages: [sdk-node-v0.5.0](https://github.com/Lithe-IDEA/Lithe-core-rust/releases/tag/sdk-node-v0.5.0),

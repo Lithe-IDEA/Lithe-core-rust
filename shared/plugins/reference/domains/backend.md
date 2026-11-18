@@ -9,7 +9,7 @@
 > **宿主支持。** Lithe 桌面端声明 `backend` 和 `pluginFunctions`（版本都是 `0`）。一次会话能调用哪些宿主方法，以运行时 `lithe/host/getCapabilities` 返回的 `services` 为准，不要按本页假定。
 > 桌面端的 `Declared()` 注释列出了已注册的后端宿主服务：工作区上下文（`workspace/listContexts`、`getContext`、`getFolders` 和 `workspace/didChangeContexts`）、`subscriptions/dispose`、`languageServer/*`、跨插件调用中转、`credentials/*`、`documents/list` 与 `getSnapshot`、`editor/getActive`、`getSelections`、`open`、`reveal`、`insertText`、`replaceSelections`、`applyEdits`、`window/*`、`browser/openExternal`（只接受 HTTP(S) 地址）、`terminal/*` 和 `documents/registerContentProvider`；与窗口绑定的方法在窗口附着后才注册。
 > 工作区文件与搜索（`workspace/readDirectory`、`stat`、`readFile`、`watch`、`findFiles`、`findText`）、`preview/openHTML`、`editor/registerActions` 和 `editor/registerProviders` 没有注册，申请对应权限的插件会被拒绝。Run 与调试会话方法（`run/start`、`run/stop`、`debug/start`）是否可用，同样以 `getCapabilities` 为准。
-> 说明见 [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/preview/desktop/internal/pluginhost/pluginhost.go) 中 `Declared()` 上方的注释；各能力的对照见[能力与协议版本对照](../capabilities-and-versions.md)。
+> 说明见 [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go) 中 `Declared()` 上方的注释；各能力的对照见[能力与协议版本对照](../capabilities-and-versions.md)。
 > 对契约有疑问，请到 [Lithe-core-rust 的 Issues](https://github.com/Lithe-IDEA/Lithe-core-rust/issues) 反馈。
 
 | 项目 | 内容 |
@@ -229,7 +229,7 @@ A plugin backend is the plugin's own long-lived process. It runs what a web page
 > **Host support.** The Lithe desktop declares `backend` and `pluginFunctions` (both version `0`). Which host methods a session may call is decided by `services` in the run-time `lithe/host/getCapabilities` answer; do not assume it from this page.
 > The comment above `Declared()` in the desktop lists the backend host services it registers: workspace contexts (`workspace/listContexts`, `getContext`, `getFolders`, and `workspace/didChangeContexts`), `subscriptions/dispose`, `languageServer/*`, the cross-plugin call relay, `credentials/*`, `documents/list` and `getSnapshot`, `editor/getActive`, `getSelections`, `open`, `reveal`, `insertText`, `replaceSelections`, `applyEdits`, `window/*`, `browser/openExternal` (HTTP(S) addresses only), `terminal/*`, and `documents/registerContentProvider`; methods bound to a window are registered once the window attaches.
 > Workspace files and search (`workspace/readDirectory`, `stat`, `readFile`, `watch`, `findFiles`, `findText`), `preview/openHTML`, `editor/registerActions`, and `editor/registerProviders` are not registered, and a plugin that asks for those permissions is refused. Whether the Run and debug session methods (`run/start`, `run/stop`, `debug/start`) are available is likewise decided by `getCapabilities`.
-> See the comment above `Declared()` in [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/preview/desktop/internal/pluginhost/pluginhost.go); for a per-capability comparison see the [capability and protocol versions](../capabilities-and-versions.md).
+> See the comment above `Declared()` in [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go); for a per-capability comparison see the [capability and protocol versions](../capabilities-and-versions.md).
 > Questions about the contract go to [Lithe-core-rust Issues](https://github.com/Lithe-IDEA/Lithe-core-rust/issues).
 
 | Item | Value |

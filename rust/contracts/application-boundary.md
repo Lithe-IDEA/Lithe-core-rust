@@ -3,7 +3,7 @@
 The application boundary describes product behavior that the desktop clients
 consume through the C ABI. It does not describe widgets, threads, processes,
 or operating-system APIs. It defines the cross-platform contract; current
-product scope and setup are documented in [`README.md`](https://github.com/1lck/Lithe-IDEA/blob/preview/README.md); the
+product scope and setup are documented in [`README.md`](https://github.com/1lck/Lithe-IDEA/blob/main/README.md); the
 verification scripts are the executable source of boundary checks.
 
 ## Data Rules
@@ -35,14 +35,14 @@ and [the inert fixture](../fixtures/plugins/settings-sources.json).
 
 ## Shared built-in translations
 
-[Shared i18n](https://github.com/1lck/Lithe-IDEA/blob/preview/shared/i18n/README.md) owns migrated semantic keys, typed named parameters,
+[Shared i18n](https://github.com/1lck/Lithe-IDEA/blob/main/shared/i18n/README.md) owns migrated semantic keys, typed named parameters,
 locale registration, platform scopes and documented platform wording overrides.
 Build-time generation supplies native macOS string tables and the Windows catalog;
 no runtime JSON loading, package download or write to installed resources occurs.
 The locale registry preserves each platform's persisted identifiers and default
 language. Explicit fallback chains resolve shared entries during generation;
 all existing platform catalogs and presentation-owned bilingual copy use this source. Translation coverage is not a
-capability claim. [Format fixtures](https://github.com/1lck/Lithe-IDEA/blob/preview/shared/i18n/fixtures/format-v1.json) bind generation
+capability claim. [Format fixtures](https://github.com/1lck/Lithe-IDEA/blob/main/shared/i18n/fixtures/format-v1.json) bind generation
 to native positional formatting, literal percent signs and unmodified argument data.
 
 ## Feature Contracts
@@ -277,7 +277,7 @@ server advertises them during initialize or dynamic registration. The shared
 core owns JSON-RPC state, stdio, process lifecycle, and normalized results;
 platform adapters own executable and provider-resource discovery. Detailed
 invariants are documented in
-[`.agents/notes/implemented/architecture/2026-09-13-language-tooling-and-lsp-runtime-ownership.md`](https://github.com/1lck/Lithe-IDEA/blob/preview/.agents/notes/implemented/architecture/2026-09-13-language-tooling-and-lsp-runtime-ownership.md).
+[`.agents/notes/implemented/architecture/2026-09-13-language-tooling-and-lsp-runtime-ownership.md`](https://github.com/1lck/Lithe-IDEA/blob/main/.agents/notes/implemented/architecture/2026-09-13-language-tooling-and-lsp-runtime-ownership.md).
 
 Session lifecycle is a single discriminated state, never a set of booleans.
 Capability negotiation is separately `unknown` or `known`; a known capability

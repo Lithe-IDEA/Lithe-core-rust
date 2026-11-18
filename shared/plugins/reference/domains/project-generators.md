@@ -7,7 +7,7 @@
 插件可以在宿主的"新建项目"窗口里加入口：某种语言的普通项目，或框架、脚手架生成器。窗口归宿主：入口列表和搜索、项目名称和位置、"创建 Git 仓库"选项、空项目、"创建"按钮。生成器只声明自己的字段、结果需要的语言和构建系统、生成项目的步骤。Core 计算表单和生成计划，宿主执行，宿主代码不按生成器 ID 分支。
 
 > **宿主支持。** Lithe 桌面端声明 `projectGenerators`（版本 `0`）：新建项目窗口列出生成器、通过 Core 计算它们的表单、用共享的工具发现为 `tool` 字段列出安装，并在暂存目录里执行生成计划。宿主源码 `Declared()` 上方注释的"尚未呈现"清单里没有项目生成器。
-> 对契约有疑问，请到 [Lithe-core-rust 的 Issues](https://github.com/Lithe-IDEA/Lithe-core-rust/issues) 反馈；说明见 [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/preview/desktop/internal/pluginhost/pluginhost.go)。
+> 对契约有疑问，请到 [Lithe-core-rust 的 Issues](https://github.com/Lithe-IDEA/Lithe-core-rust/issues) 反馈；说明见 [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go)。
 
 | 项目 | 内容 |
 | --- | --- |
@@ -91,7 +91,7 @@
 A plugin can add entries to the host's New Project window: a plain project of a language, or a framework or scaffolding generator. The window belongs to the host: the entry list and its search, the project name and location, the "create Git repository" option, the empty project, and the Create button. A generator declares only its own fields, the languages and build systems the result needs, and the steps that produce it. Core computes the form and the generation plan, the host executes it, and no host code branches on a generator ID.
 
 > **Host support.** The Lithe desktop declares `projectGenerators` (version `0`): the New Project window lists generators, evaluates their forms through Core, lists installations for `tool` fields through the shared tool discovery, and runs the generation plan in a staging directory. The "not presented yet" list in the comment above `Declared()` in the host source does not include project generators.
-> Questions about the contract go to [Lithe-core-rust Issues](https://github.com/Lithe-IDEA/Lithe-core-rust/issues); see [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/preview/desktop/internal/pluginhost/pluginhost.go) for the host's own description.
+> Questions about the contract go to [Lithe-core-rust Issues](https://github.com/Lithe-IDEA/Lithe-core-rust/issues); see [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go) for the host's own description.
 
 | Item | Value |
 | --- | --- |

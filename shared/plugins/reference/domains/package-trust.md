@@ -78,7 +78,7 @@ file=<token(path)>=<sha256>      # 每个文件一行，按路径排序
 
 | 宿主 | 现状 |
 | --- | --- |
-| Lithe 桌面端 | 未声明 `packageTrust`。要求它的插件（例如带 `vendor.bundledSignatureRequirement` 的官方副本）不会被提供安装，`validate` 和 `installReview` 也拒绝它们。其他宿主能力见桌面端的[能力清单](https://github.com/1lck/Lithe-IDEA/blob/preview/desktop/internal/pluginhost/pluginhost.go) |
+| Lithe 桌面端 | 未声明 `packageTrust`。要求它的插件（例如带 `vendor.bundledSignatureRequirement` 的官方副本）不会被提供安装，`validate` 和 `installReview` 也拒绝它们。其他宿主能力见桌面端的[能力清单](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go) |
 
 ### 契约章节
 
@@ -179,7 +179,7 @@ file=<token(path)>=<sha256>      # one line per file, sorted by path
 
 | Host | Status |
 | --- | --- |
-| Lithe desktop | Does not declare `packageTrust`. Plugins that require it (for example an official copy with `vendor.bundledSignatureRequirement`) are not offered for installation, and `validate` and `installReview` refuse them. The rest of the host's capabilities are listed in the desktop [capability list](https://github.com/1lck/Lithe-IDEA/blob/preview/desktop/internal/pluginhost/pluginhost.go) |
+| Lithe desktop | Does not declare `packageTrust`. Plugins that require it (for example an official copy with `vendor.bundledSignatureRequirement`) are not offered for installation, and `validate` and `installReview` refuse them. The rest of the host's capabilities are listed in the desktop [capability list](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go) |
 
 ### Contract sections
 
