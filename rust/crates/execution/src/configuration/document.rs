@@ -161,6 +161,10 @@ pub struct RunConfiguration {
     pub id: String,
     /// Display name shown in the Run list.
     pub name: String,
+    /// Folder the entry is listed in within its kind; display only, launching
+    /// ignores it (`runConfig.arrange`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<String>,
     /// Open namespaced discriminator, e.g. `build.provider`.
     /// Deliberately not an enum: new ecosystems must not require a contract change.
     pub provider: String,
@@ -207,6 +211,10 @@ pub struct RunConfiguration {
     /// Hidden from the resolved list; set by a user or when the working directory is missing.
     #[serde(default)]
     pub disabled: bool,
+    /// Starting the configuration while it runs starts another instance
+    /// beside it instead of stopping the running one first. Off by default.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub allow_multiple_instances: bool,
     /// Layer the resolved entry last took a value from: `generated`,
     /// `project` or `local`. Computed by resolution; never read from a layer.
     #[serde(default, skip_serializing_if = "Option::is_none")]

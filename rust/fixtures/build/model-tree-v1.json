@@ -43,8 +43,26 @@
               "kind": "command",
               "command": "nested"
             }
+          ],
+          "globalArguments": [
+            "${optionArguments:profiles}"
           ]
         },
+        "options": [
+          {
+            "id": "profiles",
+            "displayName": "Profiles",
+            "kind": "multiSelect",
+            "choicesFromModel": true,
+            "allowCustom": true,
+            "presentation": "tree",
+            "excludePrefix": "-",
+            "arguments": [
+              "-P",
+              "${value}"
+            ]
+          }
+        ],
         "model": {
           "source": "command",
           "arguments": [
@@ -1910,6 +1928,210 @@
                     "matched": true
                   }
                 ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "Tree options list model choices, defaults and excluded defaults at the top",
+      "buildSystemID": "nested",
+      "request": {
+        "model": {
+          "projects": [
+            {
+              "id": "nested:app",
+              "path": ".",
+              "name": "app",
+              "properties": {}
+            }
+          ],
+          "targets": [],
+          "tasks": [],
+          "optionValues": {
+            "profiles": [
+              "dev",
+              "prod",
+              "release"
+            ]
+          },
+          "optionDefaults": {
+            "profiles": [
+              "dev"
+            ]
+          }
+        },
+        "options": {
+          "profiles": [
+            "-dev",
+            "prod"
+          ]
+        }
+      },
+      "expected": {
+        "project": {
+          "kind": "project",
+          "key": "p\u001fnested:app",
+          "label": "app",
+          "projectID": "nested:app"
+        },
+        "nodes": [
+          {
+            "kind": "option",
+            "key": "o\u001fprofiles",
+            "label": "Profiles",
+            "detail": "prod",
+            "optionID": "profiles",
+            "children": [
+              {
+                "kind": "optionChoice",
+                "key": "o\u001fprofiles\u001fdev",
+                "label": "dev",
+                "optionID": "profiles",
+                "optionValue": "dev",
+                "defaultActive": true
+              },
+              {
+                "kind": "optionChoice",
+                "key": "o\u001fprofiles\u001fprod",
+                "label": "prod",
+                "optionID": "profiles",
+                "optionValue": "prod",
+                "checked": true
+              },
+              {
+                "kind": "optionChoice",
+                "key": "o\u001fprofiles\u001frelease",
+                "label": "release",
+                "optionID": "profiles",
+                "optionValue": "release"
+              }
+            ]
+          },
+          {
+            "kind": "folder",
+            "key": "p\u001fnested:app\u001fc\u001fLifecycle",
+            "label": "Lifecycle",
+            "children": [
+              {
+                "kind": "task",
+                "key": "p\u001fnested:app\u001fc\u001fLifecycle\u001ft\u001fclean",
+                "label": "clean",
+                "tooltip": "Deletes the build outputs.",
+                "projectID": "nested:app",
+                "taskID": "clean"
+              },
+              {
+                "kind": "task",
+                "key": "p\u001fnested:app\u001fc\u001fLifecycle\u001ft\u001fpackage",
+                "label": "package",
+                "projectID": "nested:app",
+                "taskID": "package"
+              }
+            ]
+          },
+          {
+            "kind": "folder",
+            "key": "p\u001fnested:app\u001fg\u001fverification",
+            "group": "verification",
+            "children": [
+              {
+                "kind": "task",
+                "key": "p\u001fnested:app\u001fg\u001fverification\u001ft\u001fcheck",
+                "label": "Check",
+                "projectID": "nested:app",
+                "taskID": "check"
+              }
+            ]
+          },
+          {
+            "kind": "folder",
+            "key": "p\u001fnested:app\u001fg\u001fother",
+            "group": "other",
+            "children": [
+              {
+                "kind": "task",
+                "key": "p\u001fnested:app\u001fg\u001fother\u001ft\u001fgoal",
+                "label": "Run Goal…",
+                "taskID": "goal"
+              }
+            ]
+          },
+          {
+            "kind": "folder",
+            "key": "p\u001fnested:app\u001fg\u001fdocumentation",
+            "group": "documentation",
+            "children": [
+              {
+                "kind": "task",
+                "key": "p\u001fnested:app\u001fg\u001fdocumentation\u001ft\u001freport",
+                "label": "Report",
+                "taskID": "report"
+              }
+            ]
+          },
+          {
+            "kind": "dependencies",
+            "key": "p\u001fnested:app\u001fdependencies",
+            "projectID": "nested:app"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Filtering a tree option choice opens the option folder onto the match",
+      "buildSystemID": "nested",
+      "request": {
+        "model": {
+          "projects": [
+            {
+              "id": "nested:app",
+              "path": ".",
+              "name": "app",
+              "properties": {}
+            }
+          ],
+          "targets": [],
+          "tasks": [],
+          "optionValues": {
+            "profiles": [
+              "dev",
+              "prod"
+            ]
+          },
+          "optionDefaults": {
+            "profiles": [
+              "dev"
+            ]
+          }
+        },
+        "query": "dev"
+      },
+      "expected": {
+        "project": {
+          "kind": "project",
+          "key": "p\u001fnested:app",
+          "label": "app",
+          "projectID": "nested:app"
+        },
+        "nodes": [
+          {
+            "kind": "option",
+            "key": "o\u001fprofiles",
+            "label": "Profiles",
+            "detail": "dev",
+            "optionID": "profiles",
+            "children": [
+              {
+                "kind": "optionChoice",
+                "key": "o\u001fprofiles\u001fdev",
+                "label": "dev",
+                "optionID": "profiles",
+                "optionValue": "dev",
+                "checked": true,
+                "defaultActive": true,
+                "matched": true
               }
             ]
           }

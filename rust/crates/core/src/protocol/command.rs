@@ -448,6 +448,8 @@ pub enum BuildCommand {
     ModelPlan,
     /// Expands one build task into an argv plan (`build.taskPlan`).
     TaskPlan,
+    /// Expands a saved configuration of a declared run configuration type into an argv plan (`build.runConfigurationPlan`).
+    RunConfigurationPlan,
     /// Expands a build test run and its result location (`build.testPlan`).
     TestPlan,
     /// Plans typed provider run preparation (`build.prepareRunPlan`).
@@ -738,12 +740,16 @@ pub enum RunConfigCommand {
     CreateUserConfiguration,
     /// Lists the configuration kinds a user can create (`runConfig.configurationTypes`).
     ConfigurationTypes,
-    /// Describes the editor of a built-in process run (`runConfig.editorForm`).
+    /// Describes the editor of a built-in process run or a declared type (`runConfig.editorForm`).
     EditorForm,
-    /// Checks and saves a built-in process run editor (`runConfig.saveConfiguration`).
+    /// Checks and saves a built-in process run or declared type editor (`runConfig.saveConfiguration`).
     SaveConfiguration,
     /// Removes a user-authored run configuration (`runConfig.deleteConfiguration`).
     DeleteConfiguration,
+    /// Saves a copy of a configuration under a new name (`runConfig.copyConfiguration`).
+    CopyConfiguration,
+    /// Moves configurations between folders and saves the list order (`runConfig.arrange`).
+    Arrange,
     /// Expands the steps run before a configuration starts (`runConfig.beforeLaunch`).
     BeforeLaunch,
     /// Produces the process plan for one configuration (`runConfig.createLaunchPlan`).
@@ -877,6 +883,11 @@ pub enum GitCommand {
     WorkspaceChangeGroups,
     /// Interleaves the loaded histories of workspace repositories (`git.workspaceHistoryMerge`).
     WorkspaceHistoryMerge,
+    /// Finds the branches every workspace repository has (`git.workspaceCommonReferences`).
+    WorkspaceCommonReferences,
+    /// Plans a branch action on a common branch across workspace repositories
+    /// (`git.workspaceBranchPlan`).
+    WorkspaceBranchPlan,
     /// Plans a branch Update or Pull from collected facts (`git.updatePlan`).
     UpdatePlan,
     /// Plans history refresh windows, page merges, and selection retention (`git.historyWindow`).
@@ -1165,6 +1176,7 @@ impl CoreCommand {
             "build.resolveOptions" => Some(Self::Build(BuildCommand::ResolveOptions)),
             "build.modelPlan" => Some(Self::Build(BuildCommand::ModelPlan)),
             "build.taskPlan" => Some(Self::Build(BuildCommand::TaskPlan)),
+            "build.runConfigurationPlan" => Some(Self::Build(BuildCommand::RunConfigurationPlan)),
             "build.testPlan" => Some(Self::Build(BuildCommand::TestPlan)),
             "build.prepareDebugPlan" => Some(Self::Build(BuildCommand::PrepareDebugPlan)),
             "build.decodeDebugPreparation" => {
@@ -1435,6 +1447,10 @@ impl CoreCommand {
             "runConfig.deleteConfiguration" => {
                 Some(Self::RunConfig(RunConfigCommand::DeleteConfiguration))
             }
+            "runConfig.copyConfiguration" => {
+                Some(Self::RunConfig(RunConfigCommand::CopyConfiguration))
+            }
+            "runConfig.arrange" => Some(Self::RunConfig(RunConfigCommand::Arrange)),
             "runConfig.beforeLaunch" => Some(Self::RunConfig(RunConfigCommand::BeforeLaunch)),
             "runConfig.createLaunchPlan" => {
                 Some(Self::RunConfig(RunConfigCommand::CreateLaunchPlan))
@@ -1526,6 +1542,10 @@ impl CoreCommand {
             }
             "git.workspaceChangeGroups" => Some(Self::Git(GitCommand::WorkspaceChangeGroups)),
             "git.workspaceHistoryMerge" => Some(Self::Git(GitCommand::WorkspaceHistoryMerge)),
+            "git.workspaceCommonReferences" => {
+                Some(Self::Git(GitCommand::WorkspaceCommonReferences))
+            }
+            "git.workspaceBranchPlan" => Some(Self::Git(GitCommand::WorkspaceBranchPlan)),
             "git.updatePlan" => Some(Self::Git(GitCommand::UpdatePlan)),
             "git.historyWindow" => Some(Self::Git(GitCommand::HistoryWindow)),
             "git.graphProjection" => Some(Self::Git(GitCommand::GraphProjection)),

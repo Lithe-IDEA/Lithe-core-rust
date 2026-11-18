@@ -71,8 +71,9 @@ struct ActionText {
 }
 
 /// A written key always carries a value: `null` is rejected rather than
-/// read as "not translated", so a broken export cannot pass silently.
-fn present<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
+/// read as "not translated", so a broken export cannot pass silently. Other
+/// surfaces that read a translation file use it for their keys too.
+pub fn present<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
     deserializer: D,
 ) -> Result<Option<T>, D::Error> {
     T::deserialize(deserializer).map(Some)
@@ -221,6 +222,15 @@ impl<'a> LocalizationRequest<'a> {
         declarations: &[SettingDeclaration],
         actions: &[SettingAction],
     ) -> (Option<SettingsLocalization>, Value) {
+        self.select_with(|text| decode(text, declarations, actions))
+    }
+
+    /// [`Self::select`] for another surface: `decode` checks one file
+    /// against what that surface translates.
+    pub fn select_with<T>(
+        &self,
+        decode: impl Fn(&str) -> Result<T, PluginRejection>,
+    ) -> (Option<T>, Value) {
         let mut chosen = None;
         let mut applied = Value::Null;
         let mut rejected = Vec::new();
@@ -228,7 +238,7 @@ impl<'a> LocalizationRequest<'a> {
             let Some(text) = self.files.and_then(|files| files.get(path)) else {
                 continue;
             };
-            match decode(text, declarations, actions) {
+            match decode(text) {
                 Ok(localization) if chosen.is_none() => {
                     chosen = Some(localization);
                     applied = json!(path);
@@ -253,9 +263,34 @@ fn rejection(field: impl Into<String>, message: impl Into<String>) -> PluginReje
     PluginRejection::at(INVALID_LOCALIZATION, field, message)
 }
 
-/// A rejection of the file as a whole.
-fn file_rejection(message: impl Into<String>) -> PluginRejection {
-    PluginRejection::new(INVALID_LOCALIZATION, message)
+/// Parses one translation file into the part a surface reads, refusing it
+/// whole with `code` when it is too large, not JSON with unique keys, or not
+/// in the l10n format.
+pub fn parse_localization_file<T: for<'de> Deserialize<'de>>(
+    text: &str,
+    code: &'static str,
+) -> Result<T, PluginRejection> {
+    if text.len() > MAX_LOCALIZATION_BYTES {
+        return Err(PluginRejection::new(
+            code,
+            "The translation file is larger than 1 MiB.",
+        ));
+    }
+    let checked = parse_unique_json(text).map_err(|_| {
+        PluginRejection::new(code, "The translation file is not JSON with unique keys.")
+    })?;
+    if !checked.is_object() {
+        return Err(PluginRejection::new(
+            code,
+            "The translation file is not a JSON object.",
+        ));
+    }
+    serde_json::from_value(checked).map_err(|error| {
+        PluginRejection::new(
+            code,
+            format!("The translation file does not match the l10n format: {error}."),
+        )
+    })
 }
 
 /// Parses and checks one translation file against the declarations it
@@ -265,19 +300,7 @@ fn decode(
     declarations: &[SettingDeclaration],
     actions: &[SettingAction],
 ) -> Result<SettingsLocalization, PluginRejection> {
-    if text.len() > MAX_LOCALIZATION_BYTES {
-        return Err(file_rejection("The translation file is larger than 1 MiB."));
-    }
-    let checked = parse_unique_json(text)
-        .map_err(|_| file_rejection("The translation file is not JSON with unique keys."))?;
-    if !checked.is_object() {
-        return Err(file_rejection("The translation file is not a JSON object."));
-    }
-    let file: LocalizationFile = serde_json::from_value(checked).map_err(|error| {
-        file_rejection(format!(
-            "The translation file does not match the l10n format: {error}."
-        ))
-    })?;
+    let file: LocalizationFile = parse_localization_file(text, INVALID_LOCALIZATION)?;
     let mut localization = SettingsLocalization::default();
     for (id, text) in file.settings.0 {
         let field = format!("settings.{id}");

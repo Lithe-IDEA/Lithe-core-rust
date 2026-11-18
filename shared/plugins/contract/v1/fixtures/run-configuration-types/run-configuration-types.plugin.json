@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 0,
+  "id": "dev.lithe.fixture.run-configuration-types",
+  "displayName": "Run Configuration Types Fixture",
+  "version": "0.1.0",
+  "pluginAPIVersion": 0,
+  "requires": { "buildSystems": 0, "runConfigurationTypes": 0 },
+  "vendor": {
+    "id": "org.example",
+    "displayName": "Example",
+    "signatureRequirement": "publisherPackage"
+  },
+  "permissions": ["process.build"],
+  "activationEvents": ["onBuildSystem:go"],
+  "languages": [],
+  "buildSystems": [
+    {
+      "id": "go",
+      "displayName": "Go Modules",
+      "detection": { "markers": ["go.mod"] },
+      "invocation": {
+        "executables": [{ "kind": "runtime", "runtime": "go" }],
+        "runtimeDependencies": [{ "id": "go", "minimumVersion": "1.21" }]
+      },
+      "options": [
+        { "id": "tags", "displayName": "Build Tags", "kind": "text", "arguments": ["-tags", "${value}"] }
+      ],
+      "runConfigurationTypes": [
+        {
+          "id": "build",
+          "displayName": "Go Build",
+          "description": "Builds and runs a Go package, file or directory.",
+          "icon": { "host": "run" },
+          "fields": [
+            {
+              "id": "runKind",
+              "title": "Run kind",
+              "kind": "choice",
+              "choices": [
+                { "value": "package", "title": "Package" },
+                { "value": "file", "title": "File" },
+                { "value": "directory", "title": "Directory" }
+              ],
+              "default": "package"
+            },
+            {
+              "id": "package",
+              "title": "Package path",
+              "kind": "text",
+              "placeholder": "example.com/app/cmd/server",
+              "required": true,
+              "visibleWhen": { "field": "runKind", "equals": "package" }
+            },
+            {
+              "id": "file",
+              "title": "Files",
+              "kind": "file",
+              "required": true,
+              "visibleWhen": { "field": "runKind", "equals": "file" }
+            },
+            {
+              "id": "directory",
+              "title": "Directory",
+              "kind": "directory",
+              "required": true,
+              "visibleWhen": { "field": "runKind", "equals": "directory" }
+            },
+            {
+              "id": "goToolArguments",
+              "title": "Go tool arguments",
+              "kind": "arguments",
+              "description": "Passed to go run before the package."
+            },
+            {
+              "id": "race",
+              "title": "Race detector",
+              "kind": "checkbox",
+              "arguments": ["-race"]
+            },
+            {
+              "id": "output",
+              "title": "Output name",
+              "kind": "text",
+              "arguments": ["-o", "${value}"]
+            }
+          ],
+          "arguments": [
+            "run",
+            "${optionArguments}",
+            "${field:goToolArguments}",
+            "${field:race}",
+            "${field:output}",
+            "${field:package}",
+            "${field:file}",
+            "${field:directory}",
+            "${userArguments}"
+          ]
+        },
+        {
+          "id": "test",
+          "displayName": "Go Test",
+          "execution": "task",
+          "fields": [
+            {
+              "id": "package",
+              "title": "Package",
+              "kind": "text",
+              "default": "./..."
+            },
+            {
+              "id": "pattern",
+              "title": "Pattern",
+              "kind": "text",
+              "arguments": ["-run=${value}"]
+            }
+          ],
+          "arguments": ["test", "${optionArguments}", "${field:pattern}", "${field:package}"]
+        }
+      ]
+    }
+  ]
+}

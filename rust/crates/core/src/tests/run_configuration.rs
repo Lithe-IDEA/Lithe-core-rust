@@ -1787,6 +1787,32 @@ fn built_in_process_runs_are_created_edited_moved_and_deleted_through_the_editor
     assert!(field(&form, "executionPolicyBypass").is_null());
     assert!(field(&form, "program").is_null());
 
+    // The interpreter field names the family of shell that runs the kind, so a
+    // host can offer the installed shells of it; a program has no interpreter.
+    for (provider, family) in [
+        ("process.shell", "posix"),
+        ("process.powershell", "powershell"),
+        ("process.batch", "cmd"),
+    ] {
+        let form = call(
+            "runConfig.editorForm",
+            serde_json::json!({"root":root,"provider":provider}),
+        );
+        assert_eq!(form["ok"], true, "{form}");
+        assert_eq!(
+            field(&form, "interpreter")["shellFamily"],
+            family,
+            "{provider}"
+        );
+    }
+    let program = call(
+        "runConfig.editorForm",
+        serde_json::json!({"root":root,"provider":"process.executable"}),
+    );
+    assert_eq!(program["ok"], true, "{program}");
+    assert!(field(&program, "interpreter").is_null());
+    assert!(field(&program, "program")["shellFamily"].is_null());
+
     // Wrong values come back by field and change nothing.
     let invalid = call(
         "runConfig.saveConfiguration",
@@ -2090,6 +2116,7 @@ fn powershell_and_program_editors_store_their_own_choices() {
         [
             "name",
             "storeAsProjectFile",
+            "allowMultipleInstances",
             "program",
             "programArguments",
             "workingDirectory",

@@ -15,9 +15,11 @@
 //! themselves. Nothing here reads a file or starts a process.
 
 use super::manifest::{
-    BuildSystemDeclaration, DependenciesSource, Scope, TaskDeclaration, TaskGroup,
+    BuildSystemDeclaration, DependenciesSource, OptionPresentation, Scope, TaskDeclaration,
+    TaskGroup,
 };
 use super::model::{MAX_ITEMS, MAX_PROJECTS};
+use super::options::{self, ModelOptionFacts};
 use lithe_plugin_model::Validation;
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -39,6 +41,9 @@ const KEY_SEPARATOR: char = '\u{1f}';
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct ModelTreeRequest {
     model: TreeModel,
+    /// Stored option values of the instance, for `presentation: "tree"` options.
+    #[serde(default)]
+    options: BTreeMap<String, Value>,
     /// Case-insensitive filter; empty or blank keeps every node.
     #[serde(default, deserialize_with = "query")]
     query: String,
@@ -59,6 +64,14 @@ struct TreeModel {
     targets: Vec<TreeTarget>,
     #[serde(default, deserialize_with = "items")]
     tasks: Vec<TreeTask>,
+    #[serde(default)]
+    option_values: BTreeMap<String, Vec<String>>,
+    #[serde(default)]
+    option_defaults: BTreeMap<String, Vec<String>>,
+    #[serde(default)]
+    option_exclude_prefixes: BTreeMap<String, String>,
+    #[serde(default)]
+    option_selection: Option<options::ModelOptionSelection>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -121,6 +134,10 @@ struct ModelTree {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 enum NodeKind {
+    /// A `multiSelect` option with `presentation: "tree"`, such as build profiles.
+    Option,
+    /// One toggleable choice under an `Option` node.
+    OptionChoice,
     Project,
     /// A category heading of the plugin, or a task group.
     Folder,
@@ -157,6 +174,18 @@ struct TreeNode {
     /// A declared task's ID or a model task's ID.
     #[serde(rename = "taskID", skip_serializing_if = "String::is_empty")]
     task_id: String,
+    /// The declared option an `option` or `optionChoice` node belongs to.
+    #[serde(rename = "optionID", skip_serializing_if = "String::is_empty")]
+    option_id: String,
+    /// The choice value an `optionChoice` node toggles.
+    #[serde(rename = "optionValue", skip_serializing_if = "String::is_empty")]
+    option_value: String,
+    /// True on an `optionChoice` node that is currently active.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    checked: bool,
+    /// True on an `optionChoice` node that is active when the option is unset.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    default_active: bool,
     /// True on a node the query matches itself, so the host opens the nodes
     /// on the way to it and shows the match as the user left it.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -177,12 +206,23 @@ impl TreeNode {
             project_id: String::new(),
             target_id: String::new(),
             task_id: String::new(),
+            option_id: String::new(),
+            option_value: String::new(),
+            checked: false,
+            default_active: false,
             matched: false,
             children: Vec::new(),
         }
     }
 
     fn matches(&self, query: &str) -> bool {
+        // An option node's detail summarizes its checked children; matching it
+        // there would keep the folder closed instead of opening onto the child.
+        if self.kind == NodeKind::Option {
+            return [&self.label, &self.tooltip]
+                .iter()
+                .any(|text| text.to_lowercase().contains(query));
+        }
         [&self.label, &self.detail, &self.tooltip]
             .iter()
             .any(|text| text.to_lowercase().contains(query))
@@ -199,13 +239,15 @@ pub(crate) fn model_tree(
         left: MAX_NODES,
         truncated: false,
     };
-    let (mut project, nodes) = match index.roots.as_slice() {
+    let mut nodes = tree_option_nodes(build_system, request, &mut budget);
+    let (mut project, contents) = match index.roots.as_slice() {
         &[root] => (
             index.project_node(root, &mut budget),
             index.contents(Some(root), true, &mut budget),
         ),
         _ => (None, index.contents(None, true, &mut budget)),
     };
+    nodes.extend(contents);
     let query = request.query.trim().to_lowercase();
     if let Some(node) = project.as_mut() {
         node.matched = !query.is_empty() && node.matches(&query);
@@ -221,6 +263,77 @@ pub(crate) fn model_tree(
         truncated: budget.truncated,
     };
     Ok(serde_json::to_value(tree).expect("a model tree serializes"))
+}
+
+/// Checklist nodes at the top of the tree for `presentation: "tree"` options
+/// that currently offer at least one choice.
+fn tree_option_nodes(
+    build_system: &BuildSystemDeclaration,
+    request: &ModelTreeRequest,
+    budget: &mut Budget,
+) -> Vec<TreeNode> {
+    if !build_system
+        .options
+        .iter()
+        .any(|option| option.presentation == Some(OptionPresentation::Tree))
+    {
+        return Vec::new();
+    }
+    let facts = ModelOptionFacts {
+        values: Some(&request.model.option_values),
+        defaults: Some(&request.model.option_defaults),
+        exclude_prefixes: Some(&request.model.option_exclude_prefixes),
+    };
+    let resolved = options::resolve_with_facts(build_system, &request.options, facts);
+    let active = request
+        .model
+        .option_selection
+        .as_ref()
+        .and_then(|selection| selection.matching_choices(build_system, &resolved));
+    let mut nodes = Vec::new();
+    for option in build_system
+        .options
+        .iter()
+        .filter(|option| option.presentation == Some(OptionPresentation::Tree))
+    {
+        let active = active.and_then(|choices| choices.get(&option.id).map(Vec::as_slice));
+        let choices = options::choice_state(option, &resolved, &facts, active);
+        if choices.is_empty() {
+            continue;
+        }
+        if !budget.take() {
+            break;
+        }
+        let key = format!("o{KEY_SEPARATOR}{}", option.id);
+        let mut parent = TreeNode::new(NodeKind::Option, key.clone());
+        parent.label = option.display_name.clone();
+        parent.option_id = option.id.clone();
+        let active: Vec<&str> = choices
+            .iter()
+            .filter(|choice| choice.checked)
+            .map(|choice| choice.title.as_deref().unwrap_or(choice.value.as_str()))
+            .collect();
+        if !active.is_empty() {
+            parent.detail = active.join(", ");
+        }
+        for choice in choices {
+            if !budget.take() {
+                break;
+            }
+            let mut item = TreeNode::new(
+                NodeKind::OptionChoice,
+                format!("{key}{KEY_SEPARATOR}{}", choice.value),
+            );
+            item.label = choice.title.unwrap_or_else(|| choice.value.clone());
+            item.option_id = option.id.clone();
+            item.option_value = choice.value;
+            item.checked = choice.checked;
+            item.default_active = choice.default_active;
+            parent.children.push(item);
+        }
+        nodes.push(parent);
+    }
+    nodes
 }
 
 /// Keeps the nodes that match `query`, marked and each with its whole

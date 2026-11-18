@@ -1,0 +1,22 @@
+{
+  "runConfigurationTypes": {
+    "go": {
+      "build": {
+        "displayName": "Go 构建",
+        "description": "构建并运行一个 Go 包、文件或目录。",
+        "fields": {
+          "runKind": {
+            "title": "运行种类",
+            "options": { "package": "软件包", "file": "文件", "directory": "目录" }
+          },
+          "package": { "title": "软件包路径" },
+          "goToolArguments": { "title": "Go 工具实参", "description": "放在软件包之前传给 go run。" },
+          "race": { "title": "竞态检测" }
+        }
+      },
+      "test": {
+        "displayName": "Go 测试"
+      }
+    }
+  }
+}

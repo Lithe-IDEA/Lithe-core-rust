@@ -15,11 +15,12 @@ use super::outputs::{
     DecodeTestResultsRequest, SyncFingerprintRequest,
 };
 use super::plans::{self, OutputPlanRequest, TaskPlanRequest, TestPlanRequest};
+use super::run_types::{self, RunConfigurationPlanRequest};
 use super::test_discovery::{self, DecodeTestDiscoveryRequest};
 use super::tree::{self, ModelTreeRequest};
 use super::BuildManifest;
 use lithe_plugin_model::{decode_payload, outcome, PluginRejection, Validation};
-use lithe_protocol::CoreError;
+use lithe_protocol::{CoreError, ErrorCode};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::Value;
@@ -31,9 +32,11 @@ struct BuildPayload<T> {
     manifest: Value,
     #[serde(rename = "buildSystemID")]
     build_system_id: String,
-    /// Routing identity for plans that otherwise contain only relative paths.
+    /// Routing identity for plans that otherwise contain only relative
+    /// paths; the workspace whose saved run configurations
+    /// `build.runConfigurationPlan` reads.
     #[serde(default, rename = "workspaceRoot")]
-    _workspace_root: Option<String>,
+    workspace_root: Option<String>,
     request: T,
 }
 
@@ -43,10 +46,26 @@ struct ResolveOptionsRequest {
     /// Stored option values by option ID.
     #[serde(default)]
     options: BTreeMap<String, Value>,
+    /// Lower-priority instance options when editing per-run overrides.
+    #[serde(default)]
+    inherited_options: BTreeMap<String, Value>,
+    /// Positive choices checked in an option editor, encoded into `options`
+    /// before resolution.
+    #[serde(default)]
+    selected_choices: BTreeMap<String, Vec<String>>,
     /// The loaded model's `optionValues`; absent before a model exists, so
     /// values only the model can confirm are kept rather than dropped.
     #[serde(default)]
     model_values: Option<BTreeMap<String, Vec<String>>>,
+    /// The loaded model's `optionDefaults`.
+    #[serde(default)]
+    model_defaults: Option<BTreeMap<String, Vec<String>>>,
+    /// The loaded model's `optionExcludePrefixes`.
+    #[serde(default)]
+    model_exclude_prefixes: Option<BTreeMap<String, String>>,
+    /// The loaded model's observed choices, valid for its option fingerprint.
+    #[serde(default)]
+    model_selection: Option<options::ModelOptionSelection>,
 }
 
 fn with_build_system<M: BuildManifest, T: DeserializeOwned>(
@@ -69,20 +88,61 @@ fn with_manifest<M: BuildManifest, T: DeserializeOwned>(
     let payload: BuildPayload<T> = decode_payload(payload, command)?;
     Ok(outcome(M::validate(payload.manifest).and_then(
         |manifest| {
-            let build_system = manifest
-                .build_systems()
-                .iter()
-                .find(|build_system| build_system.id == payload.build_system_id)
-                .ok_or_else(|| {
-                    PluginRejection::new(
-                        "plugin.build.unavailable",
-                        format!(
-                            "The plugin declares no build system {}.",
-                            payload.build_system_id
-                        ),
-                    )
-                })?;
+            let build_system = find_build_system(&manifest, &payload.build_system_id)?;
             run(build_system, &payload.request, &manifest).map(|value| (key, value))
+        },
+    )))
+}
+
+fn find_build_system<'m, M: BuildManifest>(
+    manifest: &'m M,
+    id: &str,
+) -> Validation<&'m BuildSystemDeclaration> {
+    manifest
+        .build_systems()
+        .iter()
+        .find(|build_system| build_system.id == id)
+        .ok_or_else(|| {
+            PluginRejection::new(
+                "plugin.build.unavailable",
+                format!("The plugin declares no build system {id}."),
+            )
+        })
+}
+
+/// `build.runConfigurationPlan`: the argv plan of a saved configuration of a
+/// run configuration type the build system declares. It reads the saved
+/// configuration from `workspaceRoot`, which it requires; a configuration
+/// that is missing, disabled, unavailable or of another provider fails the
+/// call, and values the type cannot run are rejected.
+pub fn build_run_configuration_plan_command<M: BuildManifest>(
+    payload: Value,
+) -> Result<Value, CoreError> {
+    let command = "build.runConfigurationPlan";
+    let payload: BuildPayload<RunConfigurationPlanRequest> = decode_payload(payload, command)?;
+    let workspace_root = payload.workspace_root.as_deref().ok_or_else(|| {
+        CoreError::new(
+            ErrorCode::InvalidRequest,
+            "build.runConfigurationPlan needs workspaceRoot",
+        )
+    })?;
+    let request = &payload.request;
+    let launch = lithe_execution::declared_launch(
+        workspace_root,
+        &request.configuration_id,
+        request.local_document.clone(),
+    )?;
+    Ok(outcome(M::validate(payload.manifest).and_then(
+        |manifest| {
+            let build_system = find_build_system(&manifest, &payload.build_system_id)?;
+            run_types::run_configuration_plan(
+                manifest.id(),
+                build_system,
+                &launch,
+                request,
+                &launch.root,
+            )
+            .map(|plan| ("plan", plan))
         },
     )))
 }
@@ -130,15 +190,35 @@ pub fn build_resolve_options_command<M: BuildManifest>(payload: Value) -> Result
         "build.resolveOptions",
         "options",
         |build_system, request: &ResolveOptionsRequest| {
-            let resolved = options::resolve(
-                build_system,
-                &request.options,
-                request.model_values.as_ref(),
-            );
-            Ok(options::describe(
+            let facts = options::ModelOptionFacts {
+                values: request.model_values.as_ref(),
+                defaults: request.model_defaults.as_ref(),
+                exclude_prefixes: request.model_exclude_prefixes.as_ref(),
+            };
+            let mut stored = request.inherited_options.clone();
+            stored.extend(request.options.clone());
+            for (id, selected) in &request.selected_choices {
+                let option = build_system.option(id).ok_or_else(|| {
+                    PluginRejection::new("plugin.build.invalidOption", "Unknown declared option")
+                })?;
+                let encoded = options::encode_selected_choices(
+                    option,
+                    selected,
+                    request.inherited_options.contains_key(id),
+                    &facts,
+                )?;
+                if encoded.is_null() {
+                    stored.remove(id);
+                } else {
+                    stored.insert(id.clone(), encoded);
+                }
+            }
+            let resolved = options::resolve_with_facts(build_system, &stored, facts);
+            Ok(options::describe_with_facts(
                 build_system,
                 &resolved,
-                request.model_values.as_ref(),
+                facts,
+                request.model_selection.as_ref(),
             ))
         },
     )

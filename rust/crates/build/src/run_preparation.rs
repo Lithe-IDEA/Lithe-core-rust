@@ -162,6 +162,9 @@ pub(crate) struct PrepareRunRequest {
     /// The target of a target run; an entrypoint run has none.
     #[serde(default)]
     pub(crate) target: Option<SelectedEntity>,
+    /// Per-run preferences take precedence over the instance's build options.
+    #[serde(default)]
+    pub(crate) option_overrides: BTreeMap<String, Value>,
     #[serde(default)]
     pub(crate) user_arguments: Vec<String>,
     #[serde(default)]
@@ -214,7 +217,9 @@ pub(crate) fn plan(
             "Provider run preparation does not use an output file.",
         ));
     }
-    let context = plans::PlanContext::new(build_system, &request.base.base)?;
+    let mut base = request.base.base.clone();
+    base.options.extend(request.option_overrides.clone());
+    let context = plans::PlanContext::new(build_system, &base)?;
     let project = request
         .base
         .project

@@ -308,15 +308,15 @@ impl<'a> PlanContext<'a> {
                 ))
             }
         }
-        Self::with_model_options(build_system, base, None)
+        Self::with_model_options(build_system, base, options::ModelOptionFacts::default())
     }
 
     fn with_model_options(
         build_system: &'a BuildSystemDeclaration,
         base: &PlanBase,
-        model_values: Option<&BTreeMap<String, Vec<String>>>,
+        facts: options::ModelOptionFacts<'_>,
     ) -> Validation<Self> {
-        let resolved = options::resolve(build_system, &base.options, model_values);
+        let resolved = options::resolve_with_facts(build_system, &base.options, facts);
         let contribution = options::contribution(build_system, &resolved)?;
         let fingerprint = options::fingerprint(build_system, &resolved);
         Ok(Self {
@@ -334,7 +334,7 @@ impl<'a> PlanContext<'a> {
         })
     }
 
-    fn values<'v>(&'v self, user_arguments: &'v [String]) -> Values<'v> {
+    pub(crate) fn values<'v>(&'v self, user_arguments: &'v [String]) -> Values<'v> {
         Values {
             root: &self.root,
             option_arguments: &self.contribution.arguments,
@@ -436,7 +436,10 @@ fn declared_provider(build_system: &BuildSystemDeclaration) -> Validation<&Provi
         .ok_or_else(|| unavailable(build_system, "a provider"))
 }
 
-fn check_user_arguments(arguments: &[String], declared: &[BuildArgument]) -> Validation<()> {
+pub(crate) fn check_user_arguments(
+    arguments: &[String],
+    declared: &[BuildArgument],
+) -> Validation<()> {
     if arguments.is_empty() {
         return Ok(());
     }
@@ -1039,7 +1042,15 @@ pub(crate) fn run_entries(
         plugin_directory: None,
         workspace_state_directory: None,
     };
-    let context = PlanContext::with_model_options(build_system, &base, Some(&model.option_values))?;
+    let context = PlanContext::with_model_options(
+        build_system,
+        &base,
+        options::ModelOptionFacts {
+            values: Some(&model.option_values),
+            defaults: Some(&model.option_defaults),
+            exclude_prefixes: Some(&model.option_exclude_prefixes),
+        },
+    )?;
     let projects: BTreeMap<&str, &ModelProject> = model
         .projects
         .iter()

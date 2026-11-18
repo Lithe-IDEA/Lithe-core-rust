@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "manifest": {
+    "schemaVersion": 0,
+    "id": "dev.lithe.test.build-option-edit",
+    "displayName": "Build Option Fixture",
+    "version": "0.1.0",
+    "pluginAPIVersion": 0,
+    "requires": { "buildSystems": 0 },
+    "vendor": { "id": "org.example", "displayName": "Example", "signatureRequirement": "publisherPackage" },
+    "permissions": ["process.build"],
+    "activationEvents": ["onBuildSystem:fixture"],
+    "languages": [],
+    "buildSystems": [
+      {
+        "id": "fixture",
+        "displayName": "Build Fixture",
+        "detection": { "markers": ["fixture.toml"] },
+        "invocation": {
+          "executables": [{ "kind": "command", "command": "fixture-tool" }],
+          "globalArguments": ["${optionArguments:profiles}"]
+        },
+        "options": [
+          {
+            "id": "profiles",
+            "displayName": "Profiles",
+            "kind": "multiSelect",
+            "choicesFromModel": true,
+            "presentation": "tree",
+            "arguments": ["--profiles", "${value}"]
+          }
+        ],
+        "model": {
+          "source": "command",
+          "arguments": ["model"],
+          "decoder": "litheBuildModel",
+          "executesProjectCode": false,
+          "mayUseNetwork": false
+        },
+        "run": [
+          {
+            "id": "launch",
+            "fromTargets": { "tags": ["launchable"] },
+            "arguments": ["launch"]
+          }
+        ]
+      }
+    ]
+  },
+  "restoreDefault": {
+    "request": {
+      "document": { "version": 1, "systems": {} },
+      "local": {
+        "version": 1,
+        "document": {
+          "version": 1,
+          "systems": { "fixture": { "options": { "profiles": ["qa", "-dev"] } } }
+        },
+        "emptySelections": { "fixture": { "c": ["profiles"] } }
+      },
+      "root": "a",
+      "optionID": "profiles",
+      "selectedChoices": ["dev"],
+      "modelValues": { "profiles": ["dev", "prod"] },
+      "modelDefaults": { "profiles": ["dev"] },
+      "modelExcludePrefixes": { "profiles": "-" }
+    },
+    "expectedStoredChoices": ["qa", "dev"],
+    "expectedSelectedChoices": ["dev"],
+    "expectedEmptySelections": { "fixture": { "c": ["profiles"] } }
+  }
+}

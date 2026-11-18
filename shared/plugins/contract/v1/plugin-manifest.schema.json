@@ -9,6 +9,7 @@
   "allOf": [
     {"if": {"required": ["outputLinkMatchers"]}, "then": {"properties": {"requires": {"required": ["outputLinkMatchers"]}}}},
     {"if": {"required": ["toolDefinitions"]}, "then": {"properties": {"requires": {"required": ["toolDefinitions"]}}}},
+    {"if": {"required": ["buildSystems"], "properties": {"buildSystems": {"contains": {"required": ["runConfigurationTypes"]}}}}, "then": {"properties": {"requires": {"required": ["runConfigurationTypes"]}}}},
     {"if": {"required": ["commandInstallers"]}, "then": {"required": ["permissions"], "properties": {"requires": {"required": ["commandInstallers"]}, "permissions": {"contains": {"const": "commands.install"}}}}},
     {"if": {"required": ["toolchainProviders"]}, "then": {"required": ["backend"], "properties": {"requires": {"required": ["toolchainProviders", "backend"]}, "permissions": {"allOf": [{"contains": {"const": "toolchains.provide"}}, {"contains": {"const": "backend.launch"}}]}}}},
     {"if": {"required": ["pluginFunctions"]}, "then": {"required": ["backend"], "properties": {"requires": {"required": ["pluginFunctions", "backend"]}}}},
@@ -39,6 +40,7 @@
         "outputLinkMatchers": { "description": "Required exactly when outputLinkMatchers is non-empty.", "enum": [0] },
         "packageTrust": { "description": "Required exactly when vendor.bundledSignatureRequirement is present.", "enum": [0] },
         "projectGenerators": { "description": "Entries of the New Project window: fields, requirements, and steps, with tool fields that pick tool installations.", "enum": [0] },
+        "runConfigurationTypes": { "description": "Required exactly when any buildSystems[].runConfigurationTypes is non-empty: kinds of run configuration the user creates in the Run/Debug Configurations dialog, drawn from declared fields and run through a declared command line. Needs buildSystems.", "enum": [0] },
         "settings": { "description": "Required exactly when settings or settingActions is non-empty. Covers integer, enum, boolean, multiSelect, text, file, and directory options, scope, effect, page, section, and settingActions.", "enum": [0] },
         "sourceSettings": { "description": "Required exactly when a setting action declares sourceEditor. Native-source settings projection, compiler placement, confirmed staging and read-back. Version 1 adds sidebar groups, nested sources, field sections and entry lists.", "enum": [0, 1] },
         "toolDefinitions": { "enum": [0] },
@@ -2649,6 +2651,31 @@
               }
             }
           }
+        },
+        "optionDefaults": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "each",
+              "value"
+            ],
+            "properties": {
+              "each": {
+                "type": "string"
+              },
+              "where": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/buildPredicate"
+                }
+              },
+              "value": {
+                "$ref": "#/$defs/buildFieldSpec"
+              }
+            }
+          }
         }
       }
     },
@@ -2686,6 +2713,83 @@
         }
       }
     },
+    "runConfigurationType": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "displayName", "arguments"],
+      "description": "One kind of run configuration. Rules JSON Schema cannot express are in README.md: type IDs are unique within the build system, every field that passes a value is named exactly once as ${field:<id>} in arguments, ${userArguments} appears at most once, and visibleWhen names an earlier field.",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "maxLength": 64 },
+        "displayName": { "$ref": "#/$defs/runConfigurationText" },
+        "description": { "$ref": "#/$defs/runConfigurationDescription" },
+        "icon": { "description": "Icon of the type in the dialog's + menu and list; display only.", "$ref": "#/$defs/uiIcon" },
+        "execution": { "description": "How the started process behaves; application by default.", "enum": ["application", "task"] },
+        "fields": {
+          "description": "The editor's fields, in display order, between the header and the program arguments.",
+          "type": "array",
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/runConfigurationField" }
+        },
+        "arguments": {
+          "description": "The command line after the global arguments: build argument templates that may also use ${field:<id>} for a field's arguments and ${userArguments} for the program arguments, which the editor shows only when it appears.",
+          "$ref": "#/$defs/buildArgumentList"
+        }
+      }
+    },
+    "runConfigurationField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "kind"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$", "maxLength": 120 },
+        "title": { "$ref": "#/$defs/runConfigurationText" },
+        "kind": { "enum": ["text", "choice", "checkbox", "file", "directory", "arguments"] },
+        "description": { "$ref": "#/$defs/runConfigurationDescription" },
+        "placeholder": { "$ref": "#/$defs/runConfigurationText" },
+        "choices": {
+          "description": "choice only, and required there: the values in display order.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["value"],
+            "properties": {
+              "value": { "type": "string", "minLength": 1, "maxLength": 256 },
+              "title": { "$ref": "#/$defs/runConfigurationText" }
+            }
+          }
+        },
+        "default": {
+          "description": "The value of a new configuration: a string for text and choice, a boolean for checkbox, a list of strings for arguments. File and directory fields have none.",
+          "oneOf": [
+            { "type": "string", "maxLength": 256 },
+            { "type": "boolean" },
+            { "type": "array", "maxItems": 64, "items": { "type": "string", "minLength": 1, "maxLength": 256 } }
+          ]
+        },
+        "required": { "description": "A visible text, file, directory or arguments field may not be left empty.", "type": "boolean" },
+        "visibleWhen": {
+          "description": "The field is shown, saved and passed only while an earlier choice or checkbox field holds equals.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["field", "equals"],
+          "properties": {
+            "field": { "type": "string" },
+            "equals": { "type": ["string", "boolean"] }
+          }
+        },
+        "arguments": {
+          "description": "Templates that pass the value, ${value} standing for it, such as [\"-o\", \"${value}\"]; without them a value is one argument. A checkbox needs them and passes them while checked; an arguments field has none.",
+          "type": "array",
+          "maxItems": 8,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "runConfigurationText": { "type": "string", "minLength": 1, "maxLength": 120, "pattern": "\\S" },
+    "runConfigurationDescription": { "type": "string", "minLength": 1, "maxLength": 512, "pattern": "\\S" },
     "buildSystem": {
       "type": "object",
       "additionalProperties": false,
@@ -2895,6 +2999,12 @@
                 "type": "string",
                 "minLength": 1
               },
+              "excludePrefix": {
+                "description": "multiSelect only: 1-4 printable characters free of separator that turn a default choice off when prefixed to its value (such as '-' in '-P -dev').",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4
+              },
               "arguments": {
                 "type": "array",
                 "items": {
@@ -3096,6 +3206,13 @@
             }
           },
           "maxItems": 128
+        },
+        "runConfigurationTypes": {
+          "description": "requires.runConfigurationTypes: kinds of run configuration the user creates in the Run/Debug Configurations dialog. Core draws the declared fields, checks and saves their values, and expands arguments with them, the instance's options and the program arguments.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/runConfigurationType" }
         },
         "run": {
           "type": "array",

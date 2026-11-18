@@ -25,6 +25,9 @@ pub(crate) struct OptionDeclaration {
     /// Joins multi-select values in `${value}`; `,` by default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) separator: Option<String>,
+    /// Prefix on a stored multi-select item that turns a default choice off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) exclude_prefix: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) arguments: Vec<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -77,14 +80,31 @@ impl OptionDeclaration {
         )
     }
 
-    /// Whether a single value is acceptable, given the model's values for a
-    /// `choicesFromModel` option (`None` while no model is loaded, in which
-    /// case model choices cannot be checked and are accepted).
-    pub(crate) fn accepts_value(&self, value: &str, model_values: Option<&[String]>) -> bool {
+    /// Whether `prefix` is a valid exclusion prefix for this option.
+    pub(crate) fn is_valid_exclude_prefix(&self, prefix: &str) -> bool {
+        let separator = self.separator();
+        self.kind == OptionKind::MultiSelect
+            && !prefix.is_empty()
+            && prefix.len() <= 4
+            && !prefix.chars().any(char::is_control)
+            && !prefix.contains(separator)
+            && !separator.contains(prefix)
+    }
+
+    /// Whether a positive (non-excluded) choice value is acceptable.
+    pub(crate) fn accepts_positive_value(
+        &self,
+        value: &str,
+        model_values: Option<&[String]>,
+        exclude_prefix: Option<&str>,
+    ) -> bool {
         if !is_option_value(value) {
             return false;
         }
-        if self.kind == OptionKind::MultiSelect && value.contains(self.separator()) {
+        if self.kind == OptionKind::MultiSelect
+            && (value.contains(self.separator())
+                || exclude_prefix.is_some_and(|prefix| value.starts_with(prefix)))
+        {
             return false;
         }
         if !self.is_select() || self.allow_custom {
@@ -95,6 +115,32 @@ impl OptionDeclaration {
         }
         self.choices_from_model
             && model_values.is_none_or(|values| values.iter().any(|known| known == value))
+    }
+
+    /// Whether a stored value (positive or excluded) is acceptable under an
+    /// effective exclusion prefix.
+    pub(crate) fn accepts_value_with_prefix(
+        &self,
+        value: &str,
+        model_values: Option<&[String]>,
+        exclude_prefix: Option<&str>,
+    ) -> bool {
+        let effective = self.exclude_prefix.as_deref().or(exclude_prefix);
+        if self.kind == OptionKind::MultiSelect {
+            if let Some(prefix) = effective {
+                if let Some(rest) = value.strip_prefix(prefix) {
+                    return self.accepts_positive_value(rest, model_values, Some(prefix));
+                }
+            }
+        }
+        self.accepts_positive_value(value, model_values, effective)
+    }
+
+    /// Whether a single value is acceptable, given the model's values for a
+    /// `choicesFromModel` option (`None` while no model is loaded, in which
+    /// case model choices cannot be checked and are accepted).
+    pub(crate) fn accepts_value(&self, value: &str, model_values: Option<&[String]>) -> bool {
+        self.accepts_value_with_prefix(value, model_values, None)
     }
 }
 
@@ -172,6 +218,12 @@ impl BuildSystemDeclaration {
         for (index, run) in self.run.iter().enumerate() {
             lists.push((format!("{field}.run[{index}].arguments"), &run.arguments));
         }
+        for (index, run_type) in self.run_configuration_types.iter().enumerate() {
+            lists.push((
+                format!("{field}.runConfigurationTypes[{index}].arguments"),
+                &run_type.arguments,
+            ));
+        }
         if let Some(test) = &self.test {
             lists.push((format!("{field}.test.arguments"), &test.arguments));
         }
@@ -233,6 +285,14 @@ impl OptionDeclaration {
                 ));
             }
         }
+        if let Some(prefix) = &self.exclude_prefix {
+            if !self.is_valid_exclude_prefix(prefix) {
+                return Err(invalid(
+                    format!("{field}.excludePrefix"),
+                    "Only multiSelect options take an excludePrefix of 1-4 printable characters free of the separator.",
+                ));
+            }
+        }
         if self.choices.len() > MAX_CHOICES {
             return Err(invalid(format!("{field}.choices"), "Too many choices."));
         }
@@ -240,11 +300,15 @@ impl OptionDeclaration {
         for (index, choice) in self.choices.iter().enumerate() {
             let bad_value = !is_option_value(&choice.value)
                 || (self.kind == OptionKind::MultiSelect
-                    && choice.value.contains(self.separator()));
+                    && (choice.value.contains(self.separator())
+                        || self
+                            .exclude_prefix
+                            .as_deref()
+                            .is_some_and(|prefix| choice.value.starts_with(prefix))));
             if bad_value || !values.insert(choice.value.clone()) {
                 return Err(invalid(
                     format!("{field}.choices[{index}].value"),
-                    "Choice values are unique, printable, and free of the separator.",
+                    "Choice values are unique, printable, and free of the separator and excludePrefix.",
                 ));
             }
             if let Some(title) = &choice.title {

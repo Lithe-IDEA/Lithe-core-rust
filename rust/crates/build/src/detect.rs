@@ -119,14 +119,18 @@ fn instance(
         "modelSource": model_source_name(declaration.model.as_ref()),
     });
     let mut model_values = None;
+    let mut model_defaults = None;
+    let mut model_exclude_prefixes = None;
     if matches!(declaration.model, Some(ModelSource::Static { .. })) {
         let source = source_marker(declaration, workspace, root);
         match read_model(declaration, workspace, root, None, None, None).and_then(|model| {
             let value = model_value(declaration, &model, root, stored, source.as_deref())?;
-            Ok((model.option_values, value))
+            Ok((model, value))
         }) {
-            Ok((values, value)) => {
-                model_values = Some(values);
+            Ok((model, value)) => {
+                model_values = Some(model.option_values);
+                model_defaults = Some(model.option_defaults);
+                model_exclude_prefixes = Some(model.option_exclude_prefixes);
                 instance["model"] = value;
             }
             Err(error) => {
@@ -134,7 +138,15 @@ fn instance(
             }
         }
     }
-    let resolved = options::resolve(declaration, stored, model_values.as_ref());
+    let resolved = options::resolve_with_facts(
+        declaration,
+        stored,
+        options::ModelOptionFacts {
+            values: model_values.as_ref(),
+            defaults: model_defaults.as_ref(),
+            exclude_prefixes: model_exclude_prefixes.as_ref(),
+        },
+    );
     // Hosts must not recreate scope/default/root merging when handing this
     // exact instance to a provider. Explicit empty selections remain chosen.
     instance["options"] = json!(resolved.chosen_values);

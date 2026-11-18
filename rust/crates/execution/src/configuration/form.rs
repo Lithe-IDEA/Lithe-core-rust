@@ -1,4 +1,4 @@
-//! The editor of built-in process runs, described as data.
+//! The editor of user-authored runs, described as data.
 //!
 //! Core decides which fields a configuration kind has, their current and
 //! automatic values, and how saved values are checked and stored; the host
@@ -6,25 +6,39 @@
 //! draws fields in the order given, skips a field whose `kind` it does not
 //! know, and sends back value keys it does not know unchanged, so a later
 //! Core can add fields without a host change.
+//!
+//! The kinds are the built-in process runs and the kinds installed plugins
+//! declare (`build.run-type`). The host passes the declared kinds with each
+//! request, already checked and localized; a configuration whose plugin is
+//! gone cannot be edited until the plugin is back.
 
 use super::before_launch::{check_edit, steps_of, Resolved};
+use super::declared::{declared, DeclaredRunType, RunTypeKey, RunTypeReference, RUN_TYPE_PROVIDER};
 use super::process::{self, FieldError, Kind, ProcessOptions};
 use super::*;
 
 /// Version of the editor form description; a host refuses a newer one.
 const FORM_VERSION: u32 = 1;
 
+/// The editor field of the program arguments of a declared kind.
+const DECLARED_ARGUMENTS_FIELD: &str = "programArguments";
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 /// Request for the configuration kinds a user can create on this platform.
-pub struct ConfigurationTypesRequest {}
+pub struct ConfigurationTypesRequest {
+    /// The kinds installed plugins declare, set by the dispatcher.
+    #[serde(skip)]
+    pub run_types: Vec<DeclaredRunType>,
+}
 
-/// The kinds of configuration a user can create, in display order. Every
-/// platform creates and edits every kind, so a project shared with Windows
-/// keeps its batch scripts editable elsewhere; a kind this platform cannot
-/// run carries the `availability` its configurations resolve with.
-pub fn configuration_types(_request: ConfigurationTypesRequest) -> Result<Value, CoreError> {
-    let types = Kind::ALL
+/// The kinds of configuration a user can create, in display order: the
+/// built-in process runs, then the kinds installed plugins declare. Every
+/// platform creates and edits every built-in kind, so a project shared with
+/// Windows keeps its batch scripts editable elsewhere; a kind this platform
+/// cannot run carries the `availability` its configurations resolve with.
+pub fn configuration_types(request: ConfigurationTypesRequest) -> Result<Value, CoreError> {
+    let mut types = Kind::ALL
         .into_iter()
         .map(|kind| {
             let mut item = json!({ "provider": kind.provider() });
@@ -34,18 +48,22 @@ pub fn configuration_types(_request: ConfigurationTypesRequest) -> Result<Value,
             item
         })
         .collect::<Vec<_>>();
+    types.extend(request.run_types.iter().map(DeclaredRunType::type_item));
     Ok(json!({ "types": types }))
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-/// Request for the editor of a new or saved process run.
+/// Request for the editor of a new or saved user-authored run.
 pub struct EditorFormRequest {
     /// Canonical workspace root.
     pub root: String,
     /// Provider of a new configuration, such as `process.shell`.
     #[serde(default)]
     pub provider: Option<String>,
+    /// The declared kind of a new `build.run-type` configuration.
+    #[serde(default)]
+    pub run_type: Option<RunTypeKey>,
     /// Saved configuration to edit; its provider wins over `provider`.
     #[serde(default)]
     pub configuration_id: Option<String>,
@@ -53,58 +71,80 @@ pub struct EditorFormRequest {
     /// values, so automatic values follow the edit.
     #[serde(default)]
     pub values: Option<serde_json::Map<String, Value>>,
+    /// The kinds installed plugins declare, set by the dispatcher.
+    #[serde(skip)]
+    pub run_types: Vec<DeclaredRunType>,
 }
 
-/// The fields, values and automatic values of a process run editor.
+/// The fields, values and automatic values of a run editor.
 pub fn editor_form(request: EditorFormRequest) -> Result<Value, CoreError> {
     let root = existing_root(&request.root)?;
     let layers = read_layers(&root, None, None)?;
-    let (kind, mut values) = match request.configuration_id.as_deref() {
+    let run_types = &request.run_types;
+    let (editor, mut values) = match request.configuration_id.as_deref() {
         Some(id) => {
             let saved = SavedEntry::find(&layers, id)?;
-            let kind = saved.kind()?;
-            if request
-                .provider
-                .as_deref()
-                .is_some_and(|provider| provider != kind.provider())
+            let editor = saved.editor(run_types)?;
+            if request.provider.is_some()
+                && !Editor::new(
+                    request.provider.as_deref().unwrap_or_default(),
+                    request.run_type.as_ref(),
+                    run_types,
+                )?
+                .same(editor)
             {
-                return Err(CoreError::new(
-                    ErrorCode::InvalidRequest,
-                    "Run configuration has a different provider",
-                ));
+                return Err(different_provider());
             }
-            (kind, saved.values(kind)?)
+            (editor, saved.values(editor)?)
         }
         None => {
-            let kind = creatable_kind(request.provider.as_deref().unwrap_or_default())?;
-            (kind, default_values(kind))
+            let editor = Editor::new(
+                request.provider.as_deref().unwrap_or_default(),
+                request.run_type.as_ref(),
+                run_types,
+            )?;
+            (editor, editor.default_values())
         }
     };
     values.extend(request.values.unwrap_or_default());
-    let draft = Draft::read(kind, &values)?;
     let candidates =
         Resolved::read(&root, &layers)?.candidates(request.configuration_id.as_deref());
+    let fields = match editor {
+        Editor::Process(kind) => fields(kind, &root, &Draft::read(kind, &values)?, candidates),
+        Editor::Declared(run_type) => {
+            Common::read(&values, DECLARED_ARGUMENTS_FIELD)?;
+            declared_fields(run_type, candidates)
+        }
+    };
     let mut form = json!({
         "formVersion": FORM_VERSION,
-        "provider": kind.provider(),
+        "provider": editor.provider(),
         "configurationId": request.configuration_id,
         "values": values,
-        "fields": fields(kind, &root, &draft, candidates),
+        "fields": fields,
     });
-    if let Some(availability) = process::platform_availability(kind, Platform::HOST) {
-        form["availability"] = json!(availability);
+    match editor {
+        Editor::Process(kind) => {
+            if let Some(availability) = process::platform_availability(kind, Platform::HOST) {
+                form["availability"] = json!(availability);
+            }
+        }
+        Editor::Declared(run_type) => form["runType"] = json!(run_type.key),
     }
     Ok(form)
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-/// Request to save the values of a process run editor.
+/// Request to save the values of a run editor.
 pub struct SaveConfigurationRequest {
     /// Canonical workspace root.
     pub root: String,
     /// Provider of the configuration, such as `process.shell`.
     pub provider: String,
+    /// The declared kind of a `build.run-type` configuration.
+    #[serde(default)]
+    pub run_type: Option<RunTypeKey>,
     /// Saved configuration the values replace; absent creates one.
     #[serde(default)]
     pub configuration_id: Option<String>,
@@ -113,6 +153,9 @@ pub struct SaveConfigurationRequest {
     /// The installed plugins, whose identity a written plugin document records.
     #[serde(default)]
     pub plugins: Option<Vec<InstalledPlugin>>,
+    /// The kinds installed plugins declare, set by the dispatcher.
+    #[serde(skip)]
+    pub run_types: Vec<DeclaredRunType>,
 }
 
 /// Checks the editor's values and returns the changes that save them.
@@ -120,32 +163,60 @@ pub struct SaveConfigurationRequest {
 /// Replies `{status: "invalid", errors: [{field, code}]}` when a value is
 /// wrong, else `{status: "saved", id, changes}`. The entry is saved whole in
 /// the project layer when `storeAsProjectFile` is set and in the local layer
-/// otherwise, and removed from the other layer, so it lives in one file.
+/// otherwise, and removed from the other layer, so it lives in one file; an
+/// entry of a declared kind goes to its plugin's document of that layer.
 /// Keys and extension namespaces the editor does not show are kept.
 pub fn save_configuration(request: SaveConfigurationRequest) -> Result<Value, CoreError> {
     let root = existing_root(&request.root)?;
-    let kind = creatable_kind(&request.provider)?;
+    let run_types = &request.run_types;
+    let editor = Editor::new(&request.provider, request.run_type.as_ref(), run_types)?;
     let layers = read_layers(&root, None, None)?;
     let saved = match request.configuration_id.as_deref() {
         Some(id) => {
             let saved = SavedEntry::find(&layers, id)?;
-            if saved.kind()? != kind {
-                return Err(CoreError::new(
-                    ErrorCode::InvalidRequest,
-                    "Run configuration has a different provider",
-                ));
+            if !saved.editor(run_types)?.same(editor) {
+                return Err(different_provider());
             }
             Some(saved)
         }
         None => None,
     };
-    let draft = Draft::read(kind, &request.values)?;
-    let (stored, mut errors) = draft.store(&root);
+    let common = Common::read(&request.values, editor.arguments_field())?;
+    let (stored, extension, mut errors) = match editor {
+        Editor::Process(kind) => {
+            let (stored, errors) = Draft::read(kind, &request.values)?.store(&root);
+            (stored.common, Extension::Process(stored.options), errors)
+        }
+        Editor::Declared(run_type) => {
+            let (values, mut errors) = run_type.store(&root, &request.values)?;
+            let mut stored = common.store(&root, Some(run_type.display_name.clone()), &mut errors);
+            if !run_type.takes_arguments {
+                // A kind without program arguments keeps none, whatever an
+                // older editor sent.
+                stored.arguments.clear();
+            }
+            let reference = RunTypeReference {
+                plugin_id: run_type.key.plugin_id.clone(),
+                build_system_id: run_type.key.build_system_id.clone(),
+                type_id: run_type.key.type_id.clone(),
+                values,
+            };
+            let draft = stored.configuration(RUN_TYPE_PROVIDER, "build", json!(reference));
+            for error in process::name_error(&stored.name).into_iter().chain(
+                process::arguments_and_environment_errors(&draft, DECLARED_ARGUMENTS_FIELD),
+            ) {
+                if !errors.iter().any(|known| known.field == error.field) {
+                    errors.push(error);
+                }
+            }
+            (stored, Extension::Declared(reference), errors)
+        }
+    };
     let id = match &saved {
         Some(saved) => saved.id.clone(),
         None => unique_user_configuration_id(&stored.name, &existing_ids(&root, &layers)),
     };
-    if let Some(code) = check_edit(&root, &layers, &id, &draft.before_launch)? {
+    if let Some(code) = check_edit(&root, &layers, &id, &common.before_launch)? {
         errors.push(FieldError::new("beforeLaunch", code));
     }
     if !errors.is_empty() {
@@ -166,8 +237,15 @@ pub fn save_configuration(request: SaveConfigurationRequest) -> Result<Value, Co
     }
     object.insert("id".into(), json!(id));
     object.insert("name".into(), json!(stored.name));
-    object.insert("provider".into(), json!(kind.provider()));
+    object.insert("provider".into(), json!(editor.provider()));
     object.insert("confidence".into(), json!("declared"));
+    if let Editor::Declared(run_type) = editor {
+        set_or_remove(
+            object,
+            "execution",
+            (run_type.execution != Execution::default()).then(|| json!(run_type.execution)),
+        );
+    }
     set_or_remove(
         object,
         "args",
@@ -186,7 +264,12 @@ pub fn save_configuration(request: SaveConfigurationRequest) -> Result<Value, Co
     set_or_remove(
         object,
         "beforeLaunch",
-        (!draft.before_launch.is_empty()).then(|| json!(steps_of(&draft.before_launch))),
+        (!common.before_launch.is_empty()).then(|| json!(steps_of(&common.before_launch))),
+    );
+    set_or_remove(
+        object,
+        "allowMultipleInstances",
+        stored.multiple.then(|| json!(true)),
     );
     let extensions = object
         .entry("extensions")
@@ -198,17 +281,26 @@ pub fn save_configuration(request: SaveConfigurationRequest) -> Result<Value, Co
                 "Run configuration extensions must be an object",
             )
         })?;
-    let mut options = stored.options;
-    if let Some(previous) = extensions.get("process") {
-        // A later release's keys survive an edit made with this one.
-        options.other = serde_json::from_value::<ProcessOptions>(previous.clone())
-            .map(|previous| previous.other)
-            .unwrap_or_default();
+    match extension {
+        Extension::Process(mut options) => {
+            if let Some(previous) = extensions.get("process") {
+                // A later release's keys survive an edit made with this one.
+                options.other = serde_json::from_value::<ProcessOptions>(previous.clone())
+                    .map(|previous| previous.other)
+                    .unwrap_or_default();
+            }
+            extensions.insert(
+                "process".into(),
+                serde_json::to_value(options).expect("process options encode"),
+            );
+        }
+        Extension::Declared(reference) => {
+            extensions.insert(
+                "build".into(),
+                serde_json::to_value(reference).expect("run type references encode"),
+            );
+        }
     }
-    extensions.insert(
-        "process".into(),
-        serde_json::to_value(options).expect("process options encode"),
-    );
     let typed: RunConfiguration = serde_json::from_value(entry.clone())
         .map_err(|_| CoreError::new(ErrorCode::ParseFailed, "Invalid saved run configuration"))?;
     validate_configuration(&typed)?;
@@ -242,6 +334,12 @@ pub fn save_configuration(request: SaveConfigurationRequest) -> Result<Value, Co
         );
     }
     Ok(json!({ "status": "saved", "id": id, "changes": changes }))
+}
+
+/// The provider-owned part of a saved entry.
+enum Extension {
+    Process(ProcessOptions),
+    Declared(RunTypeReference),
 }
 
 #[derive(Debug, Deserialize)]
@@ -288,16 +386,79 @@ pub fn delete_configuration(request: DeleteConfigurationRequest) -> Result<Value
     Ok(json!({ "changes": changes }))
 }
 
-/// The built-in kind of `provider`. Every platform creates and edits every
-/// kind, also one it cannot run.
-fn creatable_kind(provider: &str) -> Result<Kind, CoreError> {
-    Kind::from_provider(provider).ok_or_else(|| {
-        CoreError::new(
-            ErrorCode::NotSupported,
-            "Only built-in process runs have an editor form",
-        )
-        .with_details(provider)
-    })
+/// What an editor edits: a built-in process kind, or a kind an installed
+/// plugin declares.
+#[derive(Clone, Copy)]
+enum Editor<'a> {
+    Process(Kind),
+    Declared(&'a DeclaredRunType),
+}
+
+impl<'a> Editor<'a> {
+    /// The kind of `provider`, and for `build.run-type` the declared kind
+    /// `run_type`. Every platform creates and edits every built-in kind,
+    /// also one it cannot run.
+    fn new(
+        provider: &str,
+        run_type: Option<&RunTypeKey>,
+        run_types: &'a [DeclaredRunType],
+    ) -> Result<Self, CoreError> {
+        match (provider, run_type) {
+            (RUN_TYPE_PROVIDER, Some(key)) => Ok(Self::Declared(declared(run_types, key)?)),
+            (RUN_TYPE_PROVIDER, None) | (_, Some(_)) => Err(CoreError::new(
+                ErrorCode::InvalidRequest,
+                "A run configuration type is named with the build.run-type provider only",
+            )),
+            (provider, None) => Kind::from_provider(provider)
+                .map(Self::Process)
+                .ok_or_else(|| {
+                    CoreError::new(
+                        ErrorCode::NotSupported,
+                        "Only built-in process runs and declared run configuration types have an editor form",
+                    )
+                    .with_details(provider)
+                }),
+        }
+    }
+
+    fn provider(self) -> &'static str {
+        match self {
+            Self::Process(kind) => kind.provider(),
+            Self::Declared(_) => RUN_TYPE_PROVIDER,
+        }
+    }
+
+    fn arguments_field(self) -> &'static str {
+        match self {
+            Self::Process(kind) => kind.arguments_field(),
+            Self::Declared(_) => DECLARED_ARGUMENTS_FIELD,
+        }
+    }
+
+    fn same(self, other: Editor<'_>) -> bool {
+        match (self, other) {
+            (Self::Process(left), Editor::Process(right)) => left == right,
+            (Self::Declared(left), Editor::Declared(right)) => left.key == right.key,
+            _ => false,
+        }
+    }
+
+    /// Values of a new configuration.
+    fn default_values(self) -> serde_json::Map<String, Value> {
+        let mut values = common_default_values(self.arguments_field());
+        match self {
+            Self::Process(kind) => values.extend(process_default_values(kind)),
+            Self::Declared(run_type) => values.extend(run_type.default_values()),
+        }
+        values
+    }
+}
+
+fn different_provider() -> CoreError {
+    CoreError::new(
+        ErrorCode::InvalidRequest,
+        "Run configuration has a different provider",
+    )
 }
 
 /// Removes configuration `id` from a layer document; whether it was there.
@@ -365,20 +526,29 @@ impl SavedEntry {
             .map_err(|_| CoreError::new(ErrorCode::ParseFailed, "Invalid saved run configuration"))
     }
 
-    fn kind(&self) -> Result<Kind, CoreError> {
+    /// The editor of the saved entry; a declared kind no installed plugin
+    /// declares has none.
+    fn editor<'a>(&self, run_types: &'a [DeclaredRunType]) -> Result<Editor<'a>, CoreError> {
         let configuration = self.configuration()?;
-        creatable_kind(&configuration.provider)
+        if configuration.provider == RUN_TYPE_PROVIDER {
+            let reference = RunTypeReference::of(&configuration)?;
+            return Editor::new(RUN_TYPE_PROVIDER, Some(&reference.key()), run_types);
+        }
+        Editor::new(&configuration.provider, None, run_types)
     }
 
     /// The editor values of the saved entry.
-    fn values(&self, kind: Kind) -> Result<serde_json::Map<String, Value>, CoreError> {
+    fn values(&self, editor: Editor<'_>) -> Result<serde_json::Map<String, Value>, CoreError> {
         let configuration = self.configuration()?;
-        let options = ProcessOptions::of(&configuration)?;
-        let mut values = default_values(kind);
+        let mut values = editor.default_values();
         values.insert("name".into(), json!(configuration.name));
         values.insert("storeAsProjectFile".into(), json!(self.in_project));
         values.insert(
-            kind.arguments_field().into(),
+            "allowMultipleInstances".into(),
+            json!(configuration.allow_multiple_instances),
+        );
+        values.insert(
+            editor.arguments_field().into(),
             json!(argument_text(&configuration.args)),
         );
         values.insert("workingDirectory".into(), json!(configuration.cwd));
@@ -398,6 +568,14 @@ impl SavedEntry {
                 .map(|step| step.configuration.clone())
                 .collect::<Vec<_>>()),
         );
+        let kind = match editor {
+            Editor::Process(kind) => kind,
+            Editor::Declared(run_type) => {
+                values.extend(run_type.saved_values(&RunTypeReference::of(&configuration)?));
+                return Ok(values);
+            }
+        };
+        let options = ProcessOptions::of(&configuration)?;
         if kind.runs_script() {
             let text = options.script().is_none() && options.text.is_some();
             values.insert("source".into(), json!(if text { "text" } else { "file" }));
@@ -428,25 +606,30 @@ impl SavedEntry {
     }
 }
 
-/// Values of a new configuration of `kind`.
-fn default_values(kind: Kind) -> serde_json::Map<String, Value> {
+/// Values of the fields every editable run has, for a new configuration.
+fn common_default_values(arguments_field: &str) -> serde_json::Map<String, Value> {
     let mut values = serde_json::Map::new();
     values.insert("name".into(), json!(""));
     values.insert("storeAsProjectFile".into(), json!(false));
+    values.insert("allowMultipleInstances".into(), json!(false));
+    values.insert(arguments_field.into(), json!(""));
+    values.insert("workingDirectory".into(), json!("."));
+    values.insert("environment".into(), json!([]));
+    values.insert("beforeLaunch".into(), json!([]));
+    values
+}
+
+/// Values of the fields of a new process run of `kind` beyond the common ones.
+fn process_default_values(kind: Kind) -> serde_json::Map<String, Value> {
+    let mut values = serde_json::Map::new();
     if kind.runs_script() {
         values.insert("source".into(), json!("file"));
         values.insert("script".into(), json!(""));
         values.insert("text".into(), json!(""));
-    } else {
-        values.insert("program".into(), json!(""));
-    }
-    values.insert(kind.arguments_field().into(), json!(""));
-    values.insert("workingDirectory".into(), json!("."));
-    values.insert("environment".into(), json!([]));
-    values.insert("beforeLaunch".into(), json!([]));
-    if kind.runs_script() {
         values.insert("interpreter".into(), json!(""));
         values.insert("interpreterArguments".into(), json!(""));
+    } else {
+        values.insert("program".into(), json!(""));
     }
     if kind == Kind::PowerShell {
         values.insert("executionPolicyBypass".into(), json!(true));
@@ -454,24 +637,30 @@ fn default_values(kind: Kind) -> serde_json::Map<String, Value> {
     values
 }
 
-fn argument_text(arguments: &[String]) -> String {
+pub(super) fn argument_text(arguments: &[String]) -> String {
     crate::format_argument_text(crate::ArgumentTextRequest {
         argument_lists: vec![arguments.to_vec()],
     })
     .remove(0)
 }
 
+/// The fields at the top of every editor.
+fn header_fields(automatic_name: Option<String>) -> Vec<Field> {
+    vec![
+        field("name", "text")
+            .required()
+            .header()
+            .automatic(automatic_name),
+        field("storeAsProjectFile", "checkbox").header(),
+        field("allowMultipleInstances", "checkbox").header(),
+    ]
+}
+
 /// The fields of `kind`'s editor, with automatic values for `draft`.
 fn fields(kind: Kind, root: &Path, draft: &Draft, candidates: Vec<Value>) -> Vec<Value> {
     let platform = Platform::HOST;
     let options = draft.options();
-    let mut fields = vec![
-        field("name", "text")
-            .required()
-            .header()
-            .automatic(process::default_name(&options)),
-        field("storeAsProjectFile", "checkbox").header(),
-    ];
+    let mut fields = header_fields(process::default_name(&options));
     if kind.runs_script() {
         let shebang = match draft.source {
             Source::File => options
@@ -506,7 +695,8 @@ fn fields(kind: Kind, root: &Path, draft: &Draft, candidates: Vec<Value>) -> Vec
             field("workingDirectory", "directory"),
             field("environment", "environment"),
             field("interpreter", "executable")
-                .automatic(Some(automatic.executable.text().to_string())),
+                .automatic(Some(automatic.executable.text().to_string()))
+                .shell_family(kind.shell_family()),
             field("interpreterArguments", "arguments")
                 .automatic(Some(argument_text(&effective.arguments))),
         ]);
@@ -523,6 +713,28 @@ fn fields(kind: Kind, root: &Path, draft: &Draft, candidates: Vec<Value>) -> Vec
     }
     fields.push(field("beforeLaunch", "beforeLaunch").candidates(candidates));
     fields.into_iter().map(|field| field.0).collect()
+}
+
+/// The fields of a declared kind's editor: the header, the kind's own
+/// fields, then the fields every run has.
+fn declared_fields(run_type: &DeclaredRunType, candidates: Vec<Value>) -> Vec<Value> {
+    let mut fields = header_fields(Some(run_type.display_name.clone()))
+        .into_iter()
+        .map(|field| field.0)
+        .collect::<Vec<_>>();
+    fields.extend(run_type.editor_fields());
+    if run_type.takes_arguments {
+        fields.push(field(DECLARED_ARGUMENTS_FIELD, "arguments").0);
+    }
+    fields.extend(
+        [
+            field("workingDirectory", "directory"),
+            field("environment", "environment"),
+            field("beforeLaunch", "beforeLaunch").candidates(candidates),
+        ]
+        .map(|field| field.0),
+    );
+    fields
 }
 
 /// One field description being built.
@@ -548,6 +760,15 @@ impl Field {
     fn automatic(mut self, value: Option<String>) -> Self {
         if let Some(value) = value.filter(|value| !value.is_empty()) {
             self.0["automatic"] = json!(value);
+        }
+        self
+    }
+
+    /// The family of shell an `executable` field takes, such as `posix`, so
+    /// a host can offer the installed shells of that family as choices.
+    fn shell_family(mut self, family: Option<&str>) -> Self {
+        if let Some(family) = family {
+            self.0["shellFamily"] = json!(family);
         }
         self
     }
@@ -581,56 +802,55 @@ enum Source {
     Text,
 }
 
-/// Editor values read into their types, before they are checked.
-struct Draft {
-    kind: Kind,
+/// A text editor value; absent is empty.
+fn text_value(values: &serde_json::Map<String, Value>, key: &str) -> Result<String, CoreError> {
+    match values.get(key) {
+        None | Some(Value::Null) => Ok(String::new()),
+        Some(Value::String(value)) => Ok(value.clone()),
+        Some(_) => Err(invalid_value(key)),
+    }
+}
+
+/// A checkbox editor value; absent is `default`.
+fn flag_value(
+    values: &serde_json::Map<String, Value>,
+    key: &str,
+    default: bool,
+) -> Result<bool, CoreError> {
+    match values.get(key) {
+        None | Some(Value::Null) => Ok(default),
+        Some(Value::Bool(value)) => Ok(*value),
+        Some(_) => Err(invalid_value(key)),
+    }
+}
+
+/// Editor values of the fields every editable run has, before they are checked.
+struct Common {
     name: String,
     project: bool,
-    source: Source,
-    script: String,
-    text: String,
-    program: String,
+    multiple: bool,
     arguments: String,
     working_directory: String,
     environment: Vec<(String, String)>,
-    interpreter: String,
-    interpreter_arguments: String,
-    execution_policy_bypass: bool,
     /// The configurations started before this one, by ID.
     before_launch: Vec<String>,
 }
 
-/// Checked values, in the form they are saved.
-struct Stored {
+/// The fields every editable run has, in the form they are saved.
+struct StoredCommon {
     name: String,
     project: bool,
+    multiple: bool,
     arguments: Vec<String>,
     working_directory: String,
     environment: BTreeMap<String, String>,
-    options: ProcessOptions,
 }
 
-impl Draft {
-    fn read(kind: Kind, values: &serde_json::Map<String, Value>) -> Result<Self, CoreError> {
-        let text = |key: &str| -> Result<String, CoreError> {
-            match values.get(key) {
-                None | Some(Value::Null) => Ok(String::new()),
-                Some(Value::String(value)) => Ok(value.clone()),
-                Some(_) => Err(invalid_value(key)),
-            }
-        };
-        let flag = |key: &str, default: bool| -> Result<bool, CoreError> {
-            match values.get(key) {
-                None | Some(Value::Null) => Ok(default),
-                Some(Value::Bool(value)) => Ok(*value),
-                Some(_) => Err(invalid_value(key)),
-            }
-        };
-        let source = match text("source")?.as_str() {
-            "" | "file" => Source::File,
-            "text" => Source::Text,
-            _ => return Err(invalid_value("source")),
-        };
+impl Common {
+    fn read(
+        values: &serde_json::Map<String, Value>,
+        arguments_field: &str,
+    ) -> Result<Self, CoreError> {
         let environment = match values.get("environment") {
             None | Some(Value::Null) => Vec::new(),
             Some(value) => serde_json::from_value::<Vec<EnvironmentRow>>(value.clone())
@@ -640,24 +860,138 @@ impl Draft {
                 .collect(),
         };
         Ok(Self {
-            kind,
-            name: text("name")?,
-            project: flag("storeAsProjectFile", false)?,
-            source,
-            script: text("script")?,
-            text: text("text")?,
-            program: text("program")?,
-            arguments: text(kind.arguments_field())?,
-            working_directory: text("workingDirectory")?,
+            name: text_value(values, "name")?,
+            project: flag_value(values, "storeAsProjectFile", false)?,
+            multiple: flag_value(values, "allowMultipleInstances", false)?,
+            arguments: text_value(values, arguments_field)?,
+            working_directory: text_value(values, "workingDirectory")?,
             environment,
-            interpreter: text("interpreter")?,
-            interpreter_arguments: text("interpreterArguments")?,
-            execution_policy_bypass: flag("executionPolicyBypass", true)?,
             before_launch: match values.get("beforeLaunch") {
                 None | Some(Value::Null) => Vec::new(),
                 Some(value) => serde_json::from_value::<Vec<String>>(value.clone())
                     .map_err(|_| invalid_value("beforeLaunch"))?,
             },
+        })
+    }
+
+    /// The values in their saved form; a wrong value is added to `errors`.
+    /// An empty name takes `automatic_name`.
+    fn store(
+        &self,
+        root: &Path,
+        automatic_name: Option<String>,
+        errors: &mut Vec<FieldError>,
+    ) -> StoredCommon {
+        let working_directory = match self.working_directory.trim() {
+            "" | "." => ".".to_string(),
+            value => normalize_working_directory(root, value).unwrap_or_else(|_| {
+                let target = process::file_path(root, value, Platform::HOST);
+                let code = if target.is_dir() {
+                    "outsideProject"
+                } else {
+                    "notFound"
+                };
+                errors.push(FieldError::new("workingDirectory", code));
+                ".".to_string()
+            }),
+        };
+        let mut environment = BTreeMap::new();
+        for (name, value) in &self.environment {
+            let name = name.trim();
+            if name.is_empty() && value.is_empty() {
+                continue;
+            }
+            if environment
+                .insert(name.to_string(), value.clone())
+                .is_some()
+            {
+                errors.push(FieldError::new("environment", "duplicate"));
+            }
+        }
+        let name = match self.name.trim() {
+            "" => automatic_name.unwrap_or_default(),
+            name => name.to_string(),
+        };
+        if name.is_empty() {
+            errors.push(FieldError::new("name", "required"));
+        }
+        StoredCommon {
+            name,
+            project: self.project,
+            multiple: self.multiple,
+            arguments: super::launch::split_arguments(&self.arguments),
+            working_directory,
+            environment,
+        }
+    }
+}
+
+impl StoredCommon {
+    /// A configuration of these values with one extension, to run the
+    /// checks a launch makes before it is saved.
+    fn configuration(&self, provider: &str, namespace: &str, extension: Value) -> RunConfiguration {
+        RunConfiguration {
+            id: "user:draft".into(),
+            name: self.name.clone(),
+            folder: None,
+            provider: provider.into(),
+            execution: Execution::default(),
+            category: Default::default(),
+            command: None,
+            args: self.arguments.clone(),
+            cwd: self.working_directory.clone(),
+            env: self.environment.clone(),
+            confidence: Confidence::Declared,
+            toolchains: BTreeMap::new(),
+            debug: None,
+            members: Vec::new(),
+            extensions: BTreeMap::from([(namespace.to_string(), extension)]),
+            before_launch: Vec::new(),
+            disabled: false,
+            allow_multiple_instances: self.multiple,
+            source: None,
+            plugin: None,
+            availability: None,
+        }
+    }
+}
+
+/// Editor values of a process run read into their types, before they are checked.
+struct Draft {
+    kind: Kind,
+    common: Common,
+    source: Source,
+    script: String,
+    text: String,
+    program: String,
+    interpreter: String,
+    interpreter_arguments: String,
+    execution_policy_bypass: bool,
+}
+
+/// Checked values of a process run, in the form they are saved.
+struct Stored {
+    common: StoredCommon,
+    options: ProcessOptions,
+}
+
+impl Draft {
+    fn read(kind: Kind, values: &serde_json::Map<String, Value>) -> Result<Self, CoreError> {
+        let source = match text_value(values, "source")?.as_str() {
+            "" | "file" => Source::File,
+            "text" => Source::Text,
+            _ => return Err(invalid_value("source")),
+        };
+        Ok(Self {
+            kind,
+            common: Common::read(values, kind.arguments_field())?,
+            source,
+            script: text_value(values, "script")?,
+            text: text_value(values, "text")?,
+            program: text_value(values, "program")?,
+            interpreter: text_value(values, "interpreter")?,
+            interpreter_arguments: text_value(values, "interpreterArguments")?,
+            execution_policy_bypass: flag_value(values, "executionPolicyBypass", true)?,
         })
     }
 
@@ -717,75 +1051,18 @@ impl Draft {
                 },
             }
         }
-        let working_directory = match self.working_directory.trim() {
-            "" | "." => ".".to_string(),
-            value => normalize_working_directory(root, value).unwrap_or_else(|_| {
-                let target = process::file_path(root, value, Platform::HOST);
-                let code = if target.is_dir() {
-                    "outsideProject"
-                } else {
-                    "notFound"
-                };
-                errors.push(FieldError::new("workingDirectory", code));
-                ".".to_string()
-            }),
-        };
-        let mut environment = BTreeMap::new();
-        for (name, value) in &self.environment {
-            let name = name.trim();
-            if name.is_empty() && value.is_empty() {
-                continue;
-            }
-            if environment
-                .insert(name.to_string(), value.clone())
-                .is_some()
-            {
-                errors.push(FieldError::new("environment", "duplicate"));
-            }
-        }
-        let name = match self.name.trim() {
-            "" => process::default_name(&options).unwrap_or_default(),
-            name => name.to_string(),
-        };
-        if name.is_empty() {
-            errors.push(FieldError::new("name", "required"));
-        }
-        let stored = Stored {
-            name,
-            project: self.project,
-            arguments: super::launch::split_arguments(&self.arguments),
-            working_directory,
-            environment,
-            options,
-        };
+        let common = self
+            .common
+            .store(root, process::default_name(&options), &mut errors);
         // The saved entry must pass the same checks a launch makes; report
         // the ones the steps above do not, such as lengths and characters.
         // A missing value is left to the steps above, which name the field
         // of the chosen source: an empty text is not also a missing script.
-        let configuration = RunConfiguration {
-            id: "user:draft".into(),
-            name: stored.name.clone(),
-            provider: self.kind.provider().into(),
-            execution: Execution::default(),
-            category: Default::default(),
-            command: None,
-            args: stored.arguments.clone(),
-            cwd: stored.working_directory.clone(),
-            env: stored.environment.clone(),
-            confidence: Confidence::Declared,
-            toolchains: BTreeMap::new(),
-            debug: None,
-            members: Vec::new(),
-            extensions: BTreeMap::from([(
-                "process".to_string(),
-                serde_json::to_value(&stored.options).expect("process options encode"),
-            )]),
-            before_launch: Vec::new(),
-            disabled: false,
-            source: None,
-            plugin: None,
-            availability: None,
-        };
+        let configuration = common.configuration(
+            self.kind.provider(),
+            "process",
+            serde_json::to_value(&options).expect("process options encode"),
+        );
         if let Ok(found) = process::field_errors(&configuration, Platform::HOST) {
             for error in found {
                 if error.code != "required"
@@ -795,7 +1072,7 @@ impl Draft {
                 }
             }
         }
-        (stored, errors)
+        (Stored { common, options }, errors)
     }
 }
 
@@ -808,13 +1085,31 @@ struct EnvironmentRow {
     value: String,
 }
 
-fn invalid_value(field: &str) -> CoreError {
+pub(super) fn invalid_value(field: &str) -> CoreError {
     CoreError::new(ErrorCode::InvalidRequest, "Invalid editor value").with_details(field)
 }
 
 /// A script file as saved: project-relative with `/` when it is inside the
 /// project, else absolute.
-fn stored_file(root: &Path, value: &str, keep_dot: bool) -> Result<String, &'static str> {
+pub(super) fn stored_file(
+    root: &Path,
+    value: &str,
+    keep_dot: bool,
+) -> Result<String, &'static str> {
+    stored_path(root, value, keep_dot, false)
+}
+
+/// A directory as saved, like [`stored_file`]; the project itself is `.`.
+pub(super) fn stored_directory(root: &Path, value: &str) -> Result<String, &'static str> {
+    stored_path(root, value, false, true)
+}
+
+fn stored_path(
+    root: &Path,
+    value: &str,
+    keep_dot: bool,
+    directory: bool,
+) -> Result<String, &'static str> {
     if let Some(code) = process::text_error(value, 4096) {
         return Err(code);
     }
@@ -825,13 +1120,16 @@ fn stored_file(root: &Path, value: &str, keep_dot: bool) -> Result<String, &'sta
     } else {
         root.join(value)
     };
-    if !path.is_file() {
+    if (directory && !path.is_dir()) || (!directory && !path.is_file()) {
         return Err("notFound");
     }
     let canonical = fs::canonicalize(&path).map_err(|_| "notFound")?;
     let canonical_root = fs::canonicalize(root).map_err(|_| "notFound")?;
     if let Ok(relative) = canonical.strip_prefix(&canonical_root) {
         let relative = slash_separated_path(relative, platform);
+        if relative.is_empty() {
+            return Ok(".".to_string());
+        }
         // `./tool` keeps a project program from reading as a `PATH` name.
         return Ok(if keep_dot && !relative.contains('/') {
             format!("./{relative}")

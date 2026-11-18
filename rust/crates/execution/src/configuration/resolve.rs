@@ -67,7 +67,12 @@ pub(crate) fn resolve_layers(
                     .get("build")
                     .and_then(|build| build.get("pluginID"))
                     .and_then(Value::as_str)
-                    .filter(|id| configuration.provider == "build.provider" && is_plugin_id(id))
+                    .filter(|id| {
+                        matches!(
+                            configuration.provider.as_str(),
+                            "build.provider" | super::declared::RUN_TYPE_PROVIDER
+                        ) && is_plugin_id(id)
+                    })
                     .map(PluginDependency::named)
             });
         if !generated_ids.contains_key(&configuration.id) {
@@ -133,6 +138,8 @@ pub(crate) fn resolve_layers(
         }
     }
     configurations.retain(|configuration| !configuration.disabled);
+    let arrangement = Arrangement::read(local, &mut diagnostics);
+    arrangement.apply(&mut configurations);
     let runnable = |id: &str| {
         configurations
             .iter()
@@ -163,6 +170,7 @@ pub(crate) fn resolve_layers(
         "configurations": configurations,
         "diagnostics": diagnostics,
         "defaultRunConfiguration": default_run_configuration,
+        "sortAlphabetically": arrangement.sort_alphabetically,
         "toolchain": global_toolchain,
         "localToolchains": local_toolchains
     }))

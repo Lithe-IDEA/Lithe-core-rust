@@ -188,6 +188,13 @@ pub(crate) fn model_value(
     let mut value =
         serde_json::to_value(model).map_err(|error| decode::invalid_output(error.to_string()))?;
     value["run"] = json!(run);
+    if !model.option_active_choices.is_empty() {
+        let resolved = options::resolve(build_system, options, None);
+        value["optionSelection"] = json!({
+            "fingerprint": options::fingerprint(build_system, &resolved),
+            "activeChoices": model.option_active_choices,
+        });
+    }
     Ok(value)
 }
 

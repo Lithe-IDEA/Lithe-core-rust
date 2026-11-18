@@ -70,6 +70,9 @@ pub const BUILD_SYSTEMS: &str = "buildSystems";
 pub const BUILD_PROVIDERS: &str = "buildProviders";
 /// Optional public model snapshots between enabled build providers.
 pub const BUILD_MODEL_INPUTS: &str = "buildModelInputs";
+/// `buildSystems[].runConfigurationTypes`: kinds of run configuration whose
+/// editor fields and command line the plugin declares.
+pub const RUN_CONFIGURATION_TYPES: &str = "runConfigurationTypes";
 /// `vcsProviders[]`: version control systems implemented by a plugin
 /// process; see `lithe_vcs`.
 pub const VCS_PROVIDERS: &str = "vcsProviders";
@@ -125,6 +128,7 @@ pub const SUPPORTED_CAPABILITIES: &[(&str, &[u32])] = &[
     (PACKAGE_TRUST, &[0]),
     (PLUGIN_FUNCTIONS, &[0]),
     (PROJECT_GENERATORS, &[0]),
+    (RUN_CONFIGURATION_TYPES, &[0]),
     (SETTINGS, &[0]),
     (SOURCE_SETTINGS, &[0, 1]),
     (TOOL_DEFINITIONS, &[0]),

@@ -56,6 +56,7 @@ pub(super) fn configurations(runs: &[ProviderRunConfiguration]) -> Vec<RunConfig
         .map(|run| RunConfiguration {
             id: run.reference.generated_id(),
             name: run.name.clone(),
+            folder: None,
             provider: "build.provider".to_string(),
             execution: run.reference.execution.unwrap_or_default(),
             category: RunCategory::Project,
@@ -75,6 +76,7 @@ pub(super) fn configurations(runs: &[ProviderRunConfiguration]) -> Vec<RunConfig
             .collect(),
             before_launch: Vec::new(),
             disabled: false,
+            allow_multiple_instances: false,
             source: None,
             plugin: None,
             availability: None,

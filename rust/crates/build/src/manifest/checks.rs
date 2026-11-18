@@ -29,7 +29,7 @@ fn program(build_system: &BuildSystemDeclaration) -> Value {
         .options
         .iter()
         .map(|option| {
-            json!({
+            let mut review = json!({
                 "id": option.id,
                 "kind": option.kind,
                 "default": option.default,
@@ -39,7 +39,11 @@ fn program(build_system: &BuildSystemDeclaration) -> Value {
                 "separator": option.separator(),
                 "arguments": option.arguments,
                 "environment": option.environment,
-            })
+            });
+            if let Some(prefix) = &option.exclude_prefix {
+                review["excludePrefix"] = json!(prefix);
+            }
+            review
         })
         .collect();
     let tasks: Vec<Value> = build_system
@@ -66,6 +70,25 @@ fn program(build_system: &BuildSystemDeclaration) -> Value {
         Some(DependenciesSource::Command { arguments, .. }) => json!({ "arguments": arguments }),
         _ => Value::Null,
     };
+    let run_types: Vec<Value> = build_system
+        .run_configuration_types
+        .iter()
+        .map(|run_type| {
+            json!({
+                "id": run_type.id,
+                "execution": run_type.execution(),
+                "arguments": run_type.arguments,
+                "fields": run_type.fields.iter().map(|field| json!({
+                    "id": field.id,
+                    "kind": field.kind,
+                    "default": field.default,
+                    "choices": field.choices.iter().map(|choice| &choice.value).collect::<Vec<_>>(),
+                    "visibleWhen": field.visible_when,
+                    "arguments": field.arguments,
+                })).collect::<Vec<_>>(),
+            })
+        })
+        .collect();
     let mut program = json!({
         "kind": "buildSystem",
         "buildSystemID": build_system.id,
@@ -84,6 +107,10 @@ fn program(build_system: &BuildSystemDeclaration) -> Value {
         "model": model,
         "dependencies": dependencies,
     });
+    // Absent while empty, so a plugin without types keeps its review.
+    if !run_types.is_empty() {
+        program["runConfigurationTypes"] = json!(run_types);
+    }
     // Build requests reaching a language server change what that process
     // is asked to do, so the shared form is part of this entry.
     if let Some(ProviderDeclaration::LanguageServer(shared)) = &build_system.provider {

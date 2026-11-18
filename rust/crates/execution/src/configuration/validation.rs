@@ -62,6 +62,16 @@ pub(crate) fn validate_configuration(configuration: &RunConfiguration) -> Result
             "Run configuration id and name are required",
         ));
     }
+    if configuration
+        .folder
+        .as_deref()
+        .is_some_and(|folder| !valid_folder(folder))
+    {
+        return Err(CoreError::new(
+            ErrorCode::InvalidRequest,
+            "Invalid run configuration folder",
+        ));
+    }
     super::before_launch::validate_shape(configuration)?;
     if !valid_provider(&configuration.provider) {
         return Err(CoreError::new(
@@ -98,6 +108,9 @@ pub(crate) fn validate_configuration(configuration: &RunConfiguration) -> Result
                 "Build provider configurations cannot store commands, tool bindings or debug adapters",
             ));
         }
+    }
+    if configuration.provider == super::declared::RUN_TYPE_PROVIDER {
+        super::declared::validate(configuration)?;
     }
     if super::process::is_process_provider(&configuration.provider) {
         super::process::validate(configuration, Platform::HOST)?;

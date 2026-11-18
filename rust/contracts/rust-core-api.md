@@ -523,6 +523,7 @@ or removing a command fails until the table changes in the same commit.
 | `build.resolveOptions` | Check stored build options against the declaration and return effective values, choices, and the fingerprint |
 | `build.modelPlan` | Expand the command that prints a command-sourced build model, or the request a build provider answers |
 | `build.taskPlan` | Expand one declared or model task for a workspace, project, or target |
+| `build.runConfigurationPlan` | Expand a saved configuration of a declared run configuration type into an argv plan |
 | `build.testPlan` | Plan a test run for a scope, suite, or case and say where its reports will be |
 | `build.prepareDebugPlan` | Plan same-plugin native debug preparation |
 | `build.decodeDebugPreparation` | Validate an existing instance-contained native debug program and bounded process facts |
@@ -713,10 +714,12 @@ or removing a command fails until the table changes in the same commit.
 | `runConfig.updateToolPreferences` | Replace only generic preferences in the local layer, preserving legacy defaults and unrelated metadata |
 | `runConfig.saveEditorChanges` | Prepare the file changes of the local and optional project layers for one editor save |
 | `runConfig.createUserConfiguration` | Validate a typed user configuration and return the file changes that save it |
-| `runConfig.configurationTypes` | List the built-in run configuration types a user can create, with the availability of a kind this platform cannot run |
-| `runConfig.editorForm` | Describe the editor fields and current values of a built-in run configuration |
+| `runConfig.configurationTypes` | List the run configuration types a user can create, built-in and plugin-declared, with the availability of a kind this platform cannot run |
+| `runConfig.editorForm` | Describe the editor fields and current values of a built-in or plugin-declared run configuration |
 | `runConfig.saveConfiguration` | Validate an editor form's values and return field errors or the file changes that save it |
 | `runConfig.deleteConfiguration` | Return the file changes that delete a saved user configuration |
+| `runConfig.copyConfiguration` | Return the file changes that save a copy of any configuration under a new name |
+| `runConfig.arrange` | Return the file changes that move configurations between folders and save the list order |
 | `runConfig.beforeLaunch` | Expand the built-in process runs a configuration starts first, and say whether the user must confirm them |
 | `runConfig.createLaunchPlan` | Project one effective configuration into a platform-neutral Run or Debug plan |
 | `runConfig.providerLaunchInputs` | Resolve user choices for a provider-owned launch |
@@ -796,6 +799,8 @@ or removing a command fails until the table changes in the same commit.
 | `git.workspaceRepositorySelection` | Choose the workspace repository, or the set of repositories, a view acts on and the others it lists for switching, from discovery entries and the previous pick |
 | `git.workspaceChangeGroups` | Group every workspace repository's status changes, plan each group's and the workspace line's staging, and report what a listed ancestor records for a submodule |
 | `git.workspaceHistoryMerge` | Interleave the loaded history pages of several workspace repositories into one stable newest-first list with collision-safe commit keys, and name the repositories whose next page it waits on |
+| `git.workspaceCommonReferences` | List the local and remote branches every workspace repository has, from each repository's `git.references` entries, in the same entry shape |
+| `git.workspaceBranchPlan` | Plan a checkout or a new branch on a common branch across workspace repositories: the writes in order, the repositories skipped, and what undoes each write |
 | `git.updatePlan` | Route a branch Update and gate a Pull from facts the host collected: blockers, strategy default, whether to ask, and the expected checkout |
 | `git.historyWindow` | Plan a history refresh window, page merge, and selection retention over commit identities |
 | `git.graphProjection` | Project a loaded history window into commit-graph lanes, color IDs, routes, print elements, and labels, optionally filtered |
@@ -1832,12 +1837,18 @@ commit. `rust/fixtures/git/history-window-v1.json` defines the rules.
 `git.graphProjection` is a pure projection of one loaded history window; it never
 starts Git. The request is `{ "commits": [{ "hash", "parentHashes", "decorations" }],
 "remoteNames"?, "repositoryCommits"?, "visibleHashes"?, "displayMode"?,
-"currentBranch"? }`: `commits` are in Git's child-before-parent order, `remoteNames`
+"currentBranch"?, "checkedOutHeads"? }`: `commits` are in Git's child-before-parent order, `remoteNames`
 are the remote short names that type a bare remote-tracking decoration,
 `repositoryCommits` is the complete repository window that fixes the permanent layout
 (ignored unless it is unique and covers every scoped commit), `visibleHashes` applies
 a filter (omit it to show every commit), `displayMode` is `compact` (default) or
-`expanded`, and `currentBranch` asks for the ancestry of that local branch. Hosts call
+`expanded`, and `currentBranch` asks for the ancestry of that local branch. A log that
+lists the commits of several repositories (`git.workspaceHistoryMerge`) sends
+`checkedOutHeads: true` instead: the ancestry starts at every commit decorated as a
+checked-out branch (`HEAD -> name`), the current branch of each repository, as IDEA's
+current-branch highlighter reads the branch of each commit's own root; a detached `HEAD`
+starts none, even on a commit that also carries a branch. A request with both
+`currentBranch` and `checkedOutHeads: true` fails with `invalid_request`. Hosts call
 it once per loaded window, never per commit, and recompute the whole window when a page
 is appended or the history refreshes; lanes depend on every loaded edge, and a head
 fragment's color ID is the wrapping 32-bit hash `h = 31 * h + unit` over the UTF-16
@@ -2146,6 +2157,65 @@ the bound of `git.graphProjection`, are accepted. An invalid or repeated `id`, a
 hexadecimal digits, a commit repeated within one repository, a missing
 `complete`, or an unknown field fails with `invalid_request`. See
 `rust/fixtures/git/workspace-history-merge-v1.json`.
+
+`git.workspaceCommonReferences` is pure. It accepts `{ repositories }`, the
+repositories a branch popup lists in its order, each `{ id, references }`: `id` is
+the `workspace.repositories` ID and `references` is the `references` list of that
+repository's `git.references` answer, passed back unchanged. Core reads
+`fullName`, `shortName`, `kind`, `isCurrent`, `upstreamShortName`, `ahead`, and
+`behind`; the last four default to `false`, `null`, and `0`, and other fields are
+ignored. The response is `{ local, remote }`, as IntelliJ IDEA's Common Local
+Branches and Common Remote Branches: the local and remote branches every
+repository has, matched by `fullName`, in the first repository's order, as
+`git.references` entries a popup draws with the rows it draws for one
+repository. Tags are not listed. A common local branch has `isCurrent` when every
+repository has it checked out; its `upstreamShortName` is the remote branch every
+repository tracks with it, `null` when one tracks nothing or they track
+different branches; its `ahead` and `behind` add up every repository's counts
+against that repository's own upstream, as IDEA marks a common branch with
+incoming or outgoing commits when any repository has them. `peelsToCommit` is
+`true`. One repository lists its own branches; an empty list has none. At most
+10,000 repositories and 1,000,000 references across the request are accepted.
+An invalid or repeated `id`, a missing `references`, an unknown `kind`, a
+`shortName` or `fullName` that is empty, holds NUL, or is longer than 4,096
+bytes, a `fullName` that is not `shortName` under its kind's namespace
+(`refs/heads/`, `refs/remotes/`, `refs/tags/`), a `fullName` listed twice in one
+repository, an empty or NUL-containing `upstreamShortName`, more than one
+current reference or a current one that is not a local branch, or an unknown
+field outside the entries fails with `invalid_request`. See
+`rust/fixtures/git/workspace-common-references-v1.json`.
+
+`git.workspaceBranchPlan` is pure and plans an action chosen on a common branch
+across every repository, as IDEA's `GitBranchOperation` runs it. It accepts
+`{ operation, reference, name?, checkout?, repositories }`: `operation` is
+`checkout` or `createBranch`, `reference` the `fullName` of the common local or
+remote branch, `name` the new branch's name for `createBranch` as
+`git.branchNamePreview` cleaned it, `checkout` (default `false`) whether
+`createBranch` switches to the new branch, and `repositories` the entries
+`git.workspaceCommonReferences` takes, in the order the action runs. The
+response is `{ steps, skipped }`. Each step is `{ repository, reference,
+rollback }`: `repository` is the ID, `reference` that repository's
+`{ fullName, shortName, kind }` of the common branch, which is the
+`gitReference` of the step's `git.write` (`checkout`, or `createBranch` with
+`name` and `checkout`). Hosts run the steps in order and stop at the first
+that fails. To undo the steps that already ran, as IDEA offers after a partial
+failure, they run each step's `rollback`, the last step first, the actions of one
+rollback in order; each action is `{ operation, reference }` with `operation`
+`checkout` or `deleteBranch`, the `git.write` operation to run with that
+`gitReference`. A checkout lists in `skipped` the repositories already on the
+local branch and plans no step for them; undoing it checks the previous local
+branch out again, and undoing a remote branch checkout keeps the local branch it
+created or moved, because the plan does not read the remotes that name it.
+Undoing a new branch checks the previous branch out again when `checkout` is set,
+then deletes the new branch. `rollback` is `null` when the repository's HEAD was
+detached or unborn before a step that switches it, so nothing returns it. The
+`repositories` validation of `git.workspaceCommonReferences` applies; an empty
+list, a `reference` that one repository lacks or that is a tag, a `createBranch`
+without a non-empty, NUL-free `name` of at most 4,096 bytes or whose
+`refs/heads/<name>` a repository already has, a `checkout` with `name` or
+`checkout: true`, an unknown `operation`, or an unknown field outside the
+entries fails with `invalid_request`. See
+`rust/fixtures/git/workspace-branch-plan-v1.json`.
 
 `git.workspaceChangeGroups` is pure and validates `repositories` the same way;
 each entry also carries `changes`, the `git.status` changes read for that
@@ -3843,15 +3913,19 @@ becomes `bash -e`), else `bash`, both looked up on `PATH`. PowerShell uses
 `pwsh` outside Windows and `powershell` on Windows, with `-NoLogo -NoProfile`;
 batch uses `cmd /d`. A chosen interpreter drops the automatic arguments.
 
-`runConfig.configurationTypes` accepts `{}` and returns `{types: [{provider,
-availability?}]}`, every kind a user can create, in display order. Every
-platform creates and edits every kind; a kind this platform cannot run carries
-the `availability` its configurations resolve with (`unsupportedPlatform` for
-batch outside Windows), so hosts can say so before the user saves one.
+`runConfig.configurationTypes` accepts `{runTypePlugins?}` and returns
+`{types: [{provider, availability?}], localizations?}`, every kind a user can
+create, in display order: the built-in process runs, then the types installed
+plugins declare (see [Plugin-declared types](#plugin-declared-types)). Every
+platform creates and edits every built-in kind; a kind this platform cannot run
+carries the `availability` its configurations resolve with
+(`unsupportedPlatform` for batch outside Windows), so hosts can say so before
+the user saves one.
 
-`runConfig.editorForm` accepts `{root, provider?, configurationId?, values?}`
-and describes the editor of a new configuration of `provider` or of the saved
-`configurationId` (its provider must match `provider` when both are given).
+`runConfig.editorForm` accepts `{root, provider?, runType?, configurationId?,
+values?, runTypePlugins?}` and describes the editor of a new configuration of
+`provider` (with `runType` for a declared type) or of the saved
+`configurationId` (its provider and type must match when both are given).
 `values` holds the open editor's unsaved values; they replace the saved ones so
 automatic values follow the edit. It returns `{formVersion, provider,
 configurationId, values, fields, availability?}`. `availability` is present
@@ -3859,7 +3933,7 @@ when this platform cannot run the kind, as in `runConfig.configurationTypes`;
 the form still edits and saves it. `formVersion` is `1`; a host refuses a newer
 one. `values` maps field IDs to the current values. `fields` is the ordered list
 of `{id, kind, required?, placement?, automatic?, options?, visibleWhen?,
-note?}`:
+note?, shellFamily?, label?, description?, placeholder?, optionLabels?}`:
 
 | Attribute | Meaning |
 | --- | --- |
@@ -3868,20 +3942,30 @@ note?}`:
 | `automatic` | The value used while the field is empty, shown as its placeholder |
 | `visibleWhen` | `{field, equals}`: shown only while that field has that value |
 | `note` | An explanation key; `windowsOnly` says the field matters only on Windows |
+| `label`, `description`, `placeholder` | Text a plugin declared for its field, already translated; built-in fields have none and hosts label them from the field ID |
+| `optionLabels` | On a declared `choice` field, the display title of each value that has one |
+| `shellFamily` | On an `executable` field, the family of shell it takes: `posix` (sh, bash, zsh and the like), `powershell` (Windows PowerShell and `pwsh`) or `cmd`. A host that finds the installed shells may offer those of the family as choices beside the automatic value and a path of the user's own; the value is still a program name or path. The `interpreter` field of each script kind has it |
 
 Hosts draw the fields in order, skip a field whose `kind` they do not know and
 send back every value they received, including keys they do not show, so a
-later Core adds fields without a host change. Script kinds show `name`,
-`storeAsProjectFile`, `source` (`file` or `text`), `script`, `text`,
+later Core adds fields without a host change. Every editor starts with the
+header fields `name`, `storeAsProjectFile` and `allowMultipleInstances`.
+Script kinds then show `source` (`file` or `text`), `script`, `text`,
 `scriptOptions`, `workingDirectory`, `environment`, `interpreter`,
 `interpreterArguments` and, for PowerShell, `executionPolicyBypass`; a program
-shows `name`, `storeAsProjectFile`, `program`, `programArguments`,
-`workingDirectory` and `environment`. An empty name saves the automatic name,
-the script or program file name. A saved entry that is not a built-in process
-run is `not_supported`.
+shows `program`, `programArguments`, `workingDirectory` and `environment`. An
+empty name saves the automatic name, the script or program file name. A saved
+entry that is neither a built-in process run nor of a declared type is
+`not_supported`.
 
-`runConfig.saveConfiguration` accepts `{root, provider, configurationId?,
-values, plugins?}`. It replies `{status: "invalid", errors: [{field, code}]}`
+`allowMultipleInstances` (IntelliJ IDEA's "Allow multiple instances") is saved
+on the configuration only when `true` and resolved like any other key. While a
+configuration runs, starting it again stops the running process first; with
+`allowMultipleInstances` the host starts another process beside it and keeps a
+console for each.
+
+`runConfig.saveConfiguration` accepts `{root, provider, runType?,
+configurationId?, values, plugins?, runTypePlugins?}`. It replies `{status: "invalid", errors: [{field, code}]}`
 when a value is wrong, else `{status: "saved", id, changes}`. `code` is
 `required`, `conflict`, `notAllowed`, `tooLong`, `invalidCharacter`,
 `invalidPath`, `notFound`, `outsideProject` (a working directory outside the
@@ -3897,6 +3981,89 @@ extension namespaces the editor does not show are kept.
 `runConfig.deleteConfiguration` accepts `{root, configurationId, plugins?}` and
 returns `{changes}` that remove the saved `user:` configuration from every layer.
 Generated entries cannot be deleted.
+
+`runConfig.copyConfiguration` accepts `{root, configurationId, name, plugins?}`
+and replies `{id, changes}`: the copy's new `user:` ID and the changes that
+save it. The copy is the resolved configuration with every saved choice, its
+folder included, under the new ID and `name` (trimmed, 1 to 256 bytes). It is
+saved in the project layer when the original is a user configuration defined
+there without a local override, and in the local layer otherwise, so local
+choices never reach the team. A saved `build.provider` run supersedes the
+generated run with the same selector, so copying a generated one also saves the
+original whole in the local layer under its own ID; both stay listed, and the
+original stops following later name changes of the build model.
+
+#### Plugin-declared types
+
+A build system may declare run configuration types
+(`buildSystems[].runConfigurationTypes` in the plugin contract): data only,
+the fields of the editor and the command line the values make, so a plugin
+adds a kind such as Go Build without a backend. The editor commands take the
+installed plugins as `runTypePlugins: {language?, plugins: [{manifest,
+localizations?}]}`, in the order their types are listed. A manifest that does
+not validate adds nothing. With a `language`, `runConfig.configurationTypes`
+and `runConfig.editorForm` return `localizations`, one report per plugin that
+declares a type, shaped as the report of `plugins.settings`: the host reads
+the `readRequired` candidates from the package and sends them back as
+`localizations` (package-relative path to text), and Core applies the first
+one that fits. A file that does not fit is reported as
+`plugin.build.invalidLocalization` and the manifest's wording is kept.
+
+A declared type is listed as `{provider: "build.run-type", runType:
+{pluginID, buildSystemID, type}, displayName, execution, description?,
+icon?}`, with translated text. Its editor shows the header fields, the
+declared fields as `field:<id>` with their translated `label`, `description`,
+`placeholder` and `optionLabels`, then `programArguments` when the type's
+arguments take `${userArguments}`, `workingDirectory`, `environment` and
+`beforeLaunch`. A declared field's `kind` is `text`, `choice`, `checkbox`,
+`file`, `directory` or `arguments`; its `visibleWhen` names another
+`field:<id>`. The form of a declared type carries `runType` instead of
+`availability`. A type no installed plugin declares, such as after the plugin
+was removed, is `not_supported` in the editor; its saved configurations stay
+in the run files.
+
+Saving checks the visible declared fields (`required`, `notFound`,
+`tooLong`, `invalidCharacter` and the path codes, keyed `field:<id>`) and
+saves the entry with provider `build.run-type` in the plugin's document of
+the chosen layer (`.lithe/run/plugin/<pluginID>.toml` or
+`<pluginID>.local.toml`). It keeps `extensions.build: {pluginID,
+buildSystemID, type, values}`, the visible fields' values by declared field
+ID (a string, a boolean, or the list of arguments of an `arguments` field;
+files and directories project-relative inside the project), with the
+program arguments, working directory and environment in `args`, `cwd` and
+`env`, and the type's `execution` (`application` or `task`). `runConfig.resolve` lists it
+with the plugin it needs. `build.runConfigurationPlan` expands it into the
+argv plan the host starts like a task plan.
+
+#### Folders and order
+
+A configuration may name a `folder`, the folder it is listed in within its
+kind (IntelliJ IDEA's `folderName`): 1 to 256 bytes, without surrounding
+whitespace or control characters. A folder is display metadata saved in the
+configuration, so a project configuration carries its folder to the team, and
+a local entry `{id, folder}` overrides it like any other key; launching
+ignores it. An invalid folder makes the configuration unavailable
+(`invalidConfiguration`).
+
+The order of the list and whether it is sorted by name are this machine's
+choice, saved only in the local Lithe document under `arrangement:
+{sortAlphabetically?: boolean, order?: string[]}`. The default sorts by name,
+ignoring case. `runConfig.resolve` returns the configurations in the order the
+list shows them and adds `sortAlphabetically`: by name when sorted, otherwise in
+the saved `order`, with the configurations it does not name after it by name;
+IDs that no longer resolve are skipped. A malformed `arrangement` is ignored
+and reported as the `invalidArrangement` diagnostic.
+
+`runConfig.arrange` accepts `{root, folders?, order?, sortAlphabetically?,
+plugins?}` and returns `{changes}`. `folders` maps configuration IDs to the
+folder each moves to, or `null` to take it out of its folder; each ID must
+resolve. The folder is written to the layer that defines the configuration:
+the project layer for a configuration saved there, otherwise the local layer,
+where a generated configuration gets a sparse `{id, folder}` entry, and the
+other layer's folder for it is removed. `order` replaces the whole saved order
+(at most 4,096 IDs, repeats dropped) and `sortAlphabetically` the sort choice;
+an omitted field keeps the saved value, and saving the defaults removes
+`arrangement`. Nothing to change returns no changes.
 
 #### Steps before launch
 
@@ -4986,33 +5153,47 @@ and the directories are absolute host paths used only as substitution text.
 | `build.detect` | `{ workspaceRoot, plugins: [{ manifest }], options?: { <buildSystemID>: { <optionID>: value } }, instanceOptions?: { <buildSystemID>: { <root>: { <optionID>: value } } }, instanceDefaults?: { <buildSystemID>: { <optionID>: value } }, emptySelections?: { <buildSystemID>: { <root>: [optionID] } }, ignoredPaths?: [pattern] }` | `detection`: `{ instances, rejected: [{ index, error }], shadowed: [{ pluginID, buildSystemID, by }] }`; each instance is `{ id, pluginID, buildSystemID, displayName, root, markers, modelSource, optionFingerprint, options, droppedOptions }` plus `model` or `modelError` for `static` and `hostIntegration` sources; a `provider` source has neither. `options` contains accepted stored values after Core scope/root merging, including explicit empty selections; `droppedOptions` names rejected stored values without rewriting the source document. The scan does not enter a directory `ignoredPaths` names; omitted (or `null`), it is Core's default `[".*"]`, every directory whose name starts with a dot, and `[]` ignores nothing beyond the shared scan policy. Hosts pass `storage.ignoredPaths.patterns` from `build.resolveStoredOptions`. An unusable list rejects with `plugin.build.invalidIgnoredPath` (see `build.editIgnoredPaths`). |
 | `build.projectOptions` | `{ document }`, host-read persisted v1 Build options, without a manifest | `document`: validated storage with version 1, systems and optional `ignoredPaths`; options, instance defaults, root values, explicit empty selections and saved custom choices are retained. Missing system fields normalize to empty maps; malformed, unsupported or oversized documents reject with `plugin.build.invalidOptionsDocument`. This pure operation never reads or writes a file and does not replace declared option resolution. |
 | `build.resolveStoredOptions` | `{ document, local: { version: 1, document, emptySelections?: { <systemID>: { <root>: [optionID] } } } }`, without a manifest | `storage: { document, local, emptySelections, ignoredPaths: { patterns, source } }`: checked team/local merge; local values override matching keys, unrelated systems/roots/choices stay intact. `ignoredPaths` is the list `build.detect` uses: a local list replaces the team's whole (`source: "local"`), then the team's (`"team"`), then Core's default `[".*"]` (`"default"`). No filesystem I/O. Local documents are machine/workspace preferences, not team files or plugin-native configuration. Their storage syntax is [build-local-options-v1.schema.json](build-local-options-v1.schema.json), with additional cross-field membership and byte limits checked by Core. |
-| `build.editStoredOption` | `{ document, local, root, optionID, value, modelValues? }` in the standard manifest/build-system envelope | `edit: { local, options }`: changes one declared local preference. `null` removes the local override and restores team/declaration inheritance. Invalid or partially accepted edits reject before persistence. Workspace multi-selections preserve sibling-only values; explicit per-root empty markers apply only to workspace multi-select declarations. Platforms compare both native source revisions, atomically write only the local document and read back. |
+| `build.editStoredOption` | `{ document, local, root, optionID, value?, selectedChoices?, modelValues?, modelDefaults?, modelExcludePrefixes?, modelSelection? }` in the standard manifest/build-system envelope | `edit: { local, options }`: changes one declared local preference. Pass exactly one of raw `value` or positive `selectedChoices` for a multi-select. Explicit `value: null` removes the local override. When the checked set equals the defaults, Core clears the local override only if the edited root would inherit those defaults and sibling-only selections and empty markers would survive. See [the option edit fixture](../fixtures/build/option-edit-v1.json). Invalid or partially accepted edits reject before persistence. Workspace multi-selections preserve sibling-only values; explicit per-root empty markers apply only to workspace multi-select declarations. Platforms compare both native source revisions, atomically write only the local document and read back. |
 | `build.editIgnoredPaths` | `{ document, local, patterns: [pattern] \| null }`, without a manifest; `patterns` is required | `edit: { local, ignoredPaths: { patterns, source } }`: the local document with its `ignoredPaths` replaced, or removed for `null` so the team list or the default applies again; `[]` is kept as an explicit choice to ignore nothing. A pattern uses `.gitignore` syntax relative to the workspace root and names directories only: as in one ignore file the last matching pattern decides, `!pattern` keeps a directory even if Git ignores it (the shared scan policy's caches and build outputs stay pruned), a pattern with a `/` before its end is anchored at the root and any other matches a directory name at any depth. At most 256 patterns of at most 1024 bytes; an empty or whitespace-padded entry, a comment, a lone `!`, a control character or an unparsable glob rejects with `plugin.build.invalidIgnoredPath` at `ignoredPaths[<index>]`, the first entry not accepted (`ignoredPaths` when they cannot be compiled together). The team document is only read; an unusable list stored in either document makes it `plugin.build.invalidOptionsDocument`. Platforms publish the local document as for `build.editStoredOption`. |
 | `build.invocationPlan` | `{ root, platform: "macos" \| "linux" \| "windows" }` | `invocation`: `{ buildSystemID, root, executables, environmentInputs, runtimeDependencies, version, minimumVersion }` with project-file paths joined to `root`; every runtime dependency with a known probe, host-managed ones included, carries `version: { arguments }` |
 | `build.checkToolVersion` | `{ runtime?, output }` | `version`: `{ satisfied, version? }`; `runtime` checks that runtime dependency instead of the tool |
 | `build.resolveModelInputs` | `{revision, sources: [{manifest, instances: [{buildSystemID, root, state, model?, options?}]}]}` from installed enabled current-workspace sources | `modelInputs`: version 1 public snapshot with exact optional producer slots, state, normalized projects/targets/content roots, configuration fingerprint and explicitly shared options; no tasks/run/settings/private functions; see the [plugin contract](https://github.com/1lck/Lithe-IDEA/blob/preview/shared/plugins/contract/v1/README.md#optional-read-only-model-inputs) |
-| `build.resolveOptions` | `{ options, modelValues? }` | `options`: `{ options: [{ id, displayName, kind, scope?, value, source, choices, allowCustom }], dropped, fingerprint }` |
+| `build.resolveOptions` | `{ options?, inheritedOptions?, selectedChoices?, modelValues?, modelDefaults?, modelExcludePrefixes?, modelSelection? }` | `options`: `{ options: [{ id, displayName, kind, scope?, value, selectedChoices?, source, choices: [{ value, title?, fromModel?, custom?, defaultActive? }], allowCustom }], dropped, fingerprint }` |
 | `build.configurationPlan` | plan fields and optional host-selected `tool` | `plan.provider` for `lithe/build/configuration`; no mutation, project or output-file parameters |
 | `build.decodeConfiguration` | `{ result }` | `configuration`: bounded `litheBuildConfiguration` v1 native sources/fields; see the plugin contract |
 | `build.configurationEditPlan` | `{ root, options?, workspaceStateDirectory, outputFile, snapshot, edits: { sourceID, revision, values }, tool? }` | Provider request `lithe/build/editConfiguration`; existing private staging only, no document bytes |
 | `build.decodeConfigurationEdit` | `{ snapshot, edits, result }` | `edit: { sourceID, revision, changed }`; validates bounded receipt and exact draft/source identity; native adapter verifies staged hash and publishes atomically |
 | `build.modelPlan`, `build.dependencyPlan` | plan fields plus `project?` (dependencies), `outputFile?`, and for provider sources `refresh?` (boolean) and `tool?: { executable }` (absolute path) | `plan`: `{ buildSystemID, root, arguments, environment, workingDirectory, execution, optionFingerprint, output, decoder, executesProjectCode, mayUseNetwork }`; for a `provider` source `{ buildSystemID, root, provider: { method, params }, decoder, executesProjectCode, mayUseNetwork, optionFingerprint }`, where `method` is `lithe/build/model` or `lithe/build/dependencies` and `params` is `{ buildSystemID, root, options, optionArguments, environment, project?, refresh?, tool? }`; `refresh` appears only when `true` and `tool` only when the host sent it |
 | `build.taskPlan` | plan fields plus `task`, `project?`, `target?`, `modelTask?`, `userArguments?` | command `plan` with `arguments`, `environment`, `workingDirectory`, `execution`, and `optionFingerprint`; a provider task instead returns `provider: {method: "lithe/build/execute", params}` with effective options, selected task/entities, user arguments and effect metadata |
+| `build.runConfigurationPlan` | `manifest`, `buildSystemID`, required `workspaceRoot`, and `request: {configurationId, localDocument?, instances: [{root, options?, modelInputs?}], pluginDirectory?, workspaceStateDirectory?}` | `plan` as `build.taskPlan` returns it plus `runType: {pluginID, buildSystemID, type}`: the global arguments, then the type's `arguments` with the saved field values, the instance's options and the configuration's program arguments, at the configuration's working directory, with its environment over the options'. The instance is the deepest one whose root holds the working directory, or the only one; `plugin.build.invalidSelection` when several exist and none holds it or the configuration belongs to another plugin or build system, `plugin.build.unavailable` when the type is no longer declared, `plugin.build.invalidRunConfiguration` with `field: values.<fieldID>` when a saved value no longer fits. A configuration that is missing, disabled, unavailable or of another provider fails the call |
 | `build.testPlan` | plan fields plus `project?`, `target?`, `suite?`, `case?`, `userArguments?`, `projects?` (the model's project directories) | command plan or `provider: {method: "lithe/build/test", params}`, plus `results`: `null`, `{ decoder, reports }` with workspace-relative globs (for the selected project, or for the root and every listed project when none is selected), or command-only `{ decoder: "hostIntegration" }`. Command filters that templates cannot place, such as a case without its suite when the tool only addresses `Suite#case`, are `plugin.build.invalidSelection`; Provider filters remain separate typed values and must be declared supported |
 | `build.testDiscoveryPlan` | common plan fields plus `refresh?`, `tool?`; no project/output file | `plan.provider` for `lithe/build/discoverTests`, only with `test.discovery: true`, using the same effective options and effect metadata |
 | `build.decodeTestDiscovery` | common plan fields plus canonical `result` | `discovery.tests` with validated `{id, suite, case, project?, target?}` selectors; bounded at 10,000 items/32 MiB, deterministic and exactly runnable; malformed replies reject in full |
 | `build.runEntrypointsPlan` | common plan fields plus `file` (workspace-relative, inside the instance), `refresh?`, `tool?`; no project/output file | `plan.provider` for `lithe/build/runEntrypoints` with `file`, only when a run declares `entrypoints: true`; decoder `litheRunEntrypoints` |
 | `build.decodeRunEntrypoints` | common plan fields plus canonical `result` | `entrypoints.entrypoints`: `[{run, name, entrypoint, project:{name, path}}]` in the provider's order without exact duplicates; at most 64; each names an entrypoint run, a 1–256 byte name, a 1–4,096 byte entrypoint and a project inside the instance; malformed replies reject in full with `plugin.build.invalidOutput` |
-| `build.prepareRunPlan` | common plan fields, `run`, required `project`, `target` (required for a target run, refused for an entrypoint run), `userArguments?`, `launchOptions?`, `workspaceRoot?` (required for an explicit launch cwd); no output file | `plan.provider` for `lithe/build/prepareRun`, selected declaration/tags/paths/options validated; typed launch options must match the run's declared execution kind, a service or task run requires them, and an entrypoint run requires `launchOptions.entrypoint` and sends no `target` |
+| `build.prepareRunPlan` | common plan fields, `run`, required `project`, `target` (required for a target run, refused for an entrypoint run), `userArguments?`, `optionOverrides?`, `launchOptions?`, `workspaceRoot?` (required for an explicit launch cwd); no output file | `plan.provider` for `lithe/build/prepareRun`, selected declaration/tags/paths/options validated; typed launch options must match the run's declared execution kind, a service or task run requires them, and an entrypoint run requires `launchOptions.entrypoint` and sends no `target` |
 | `build.decodeRunPreparation` | `workspaceRoot`, instance `root`, raw `result`, same optional `launchOptions` | `launch` with portable `{executable:{kind,value},arguments,workingDirectory,environment}`; bounded strings and workspace directory containment, `plugin.build.invalidOutput` on invalid result |
 | `build.prepareDebugPlan` | same selected fields as `build.prepareRunPlan`; run declares same-plugin `debug.adapter` | `plan.provider` for `lithe/build/prepareDebug`; no cross-package reference, and launch options are refused: they apply only to running a target |
 | `build.decodeDebugPreparation` | `workspaceRoot`, instance `root`, selected `run`, raw `result` | `preparation` with declaration-owned `adapter`, normalized `root`, `program`, `arguments`, `workingDirectory`, `environment`; program is an existing regular file contained in the instance after canonicalization |
-| `build.decodeModel` | `{ workspaceRoot, root, output?, outputFile?, result?, options? }`; `result` is the provider's JSON answer | `model`: `{ projects, targets, tasks, contentRoots, optionValues, run }`; `run` entries carry `buildSystem: { id, root, projectID, targetID?, optionFingerprint }` |
+| `build.decodeModel` | `{ workspaceRoot, root, output?, outputFile?, result?, options? }`; `result` is the provider's JSON answer | `model`: `{ projects, targets, tasks, contentRoots, optionValues, optionDefaults?, optionExcludePrefixes?, optionSelection?, run }`; `run` entries carry `buildSystem: { id, root, projectID, targetID?, optionFingerprint }` |
 | `build.decodeTestResults` | `{ workspaceRoot, root, project?, projects?, output, notBeforeMillis?, suite? }`; without `project` the reports of the root and every listed model project are read | `results`: `{ tests: [{ suite, case, status, message?, durationMillis?, path?, line?, invocations }], summary: { total, passed, failed, errors, skipped }, success }`; repeated invocations of one case merge into the most severe status |
 | `build.decodeDiagnostics` | `{ workspaceRoot, root, output }` | `diagnostics`: `[{ path, line, column?, severity, message }]`, deduplicated, inside the workspace only |
 | `build.decodeDependencies` | `{ workspaceRoot, root, project?, output?, outputFile?, result? }` | `dependencies`: `{ project, dependencies: [{ name, group?, version?, scope?, properties?, children }], truncated }` |
 | `build.syncFingerprint` | `{ workspaceRoot, root, projects, options? }` | `sync`: `{ fingerprint, watch }` |
-| `build.modelTree` | `{ model: { projects, targets, tasks }, query?, groupHeadings?: { <group>: heading } }`; `model` is a `build.decodeModel` result, other model fields are ignored | `tree`: `{ project?, nodes, truncated? }`; see below |
+| `build.modelTree` | `{ model: { projects, targets, tasks, optionValues?, optionDefaults?, optionExcludePrefixes?, optionSelection? }, options?, query?, groupHeadings?: { <group>: heading } }`; `model` is a `build.decodeModel` result, other model fields are ignored | `tree`: `{ project?, nodes, truncated? }`; see below |
+
+When the plugin reports actual active choices, `build.decodeModel` returns
+`optionSelection: { fingerprint, activeChoices: { <optionID>: [...] } }`.
+Hosts pass this snapshot as `modelSelection` when resolving or editing options
+and in the tree's `model`. Core uses observed choices only when the fingerprint
+matches the effective invocation options. An explicit empty array represents
+no active choices. Without a matching snapshot the checked state is derived
+from the stored options and declared or model defaults. The defaults and
+normalized invocation value remain distinct from the tool's observed choices.
+To edit per-run build options, pass instance options as `inheritedOptions` and
+explicit run choices as `options`. Each run choice replaces its inherited key.
+`build.prepareRunPlan` applies the same precedence using instance `options`
+and `optionOverrides` returned by `runConfig.providerLaunchInputs`.
 
 Invocation candidates also include `{ kind: "toolchain", toolchainID, root }`.
 Hosts resolve them through the same canonical project/subproject
@@ -5077,10 +5258,13 @@ themselves. It reads no file and starts no process.
   matches, keeps everything; the matching `project` then carries
   `matched: true`.
 - A node is `{ kind, key, label?, detail?, tooltip?, group?, projectID?,
-  targetID?, taskID?, matched?, children? }`, `kind` one of `project`,
+  targetID?, taskID?, optionID?, optionValue?, checked?, defaultActive?,
+  matched?, children? }`, `kind` one of `option`, `optionChoice`, `project`,
   `folder`, `task`, `targets`, `target`, `dependencies`, `tests`. `key` is
   opaque, unique in the instance and stable across reloads and filters, so
-  hosts remember open nodes by it. `projectID` and `targetID` are what a task
+  hosts remember open nodes by it. Each `presentation: "tree"` option with at
+  least one choice adds an `option` node at the top of `nodes` (whose `detail`
+  summarizes the checked choices) with `optionChoice` children. `projectID` and `targetID` are what a task
   runs on (absent: the whole instance); `taskID` is a declared task's ID or a
   model task's ID. `targets`, `dependencies` and `tests` nodes have no label.
 - The model may hold at most 2,000 projects and 10,000 targets and 10,000
