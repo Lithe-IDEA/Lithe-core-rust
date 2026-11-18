@@ -228,8 +228,9 @@ fn present(value: Option<&str>) -> Option<&str> {
 /// One invalid value of a process run, named by its editor field.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct FieldError {
-    /// Editor field id, such as `script` or `workingDirectory`.
-    pub(crate) field: &'static str,
+    /// Editor field id, such as `script`, `workingDirectory` or, for a
+    /// plugin-declared field, `field:<id>`.
+    pub(crate) field: std::borrow::Cow<'static, str>,
     /// Why the value is invalid: `required`, `conflict`, `notAllowed`,
     /// `tooLong`, `invalidCharacter`, `invalidPath`, `notFound`,
     /// `outsideProject` or `invalidName`.
@@ -237,8 +238,14 @@ pub(crate) struct FieldError {
 }
 
 impl FieldError {
-    pub(crate) fn new(field: &'static str, code: &'static str) -> Self {
-        Self { field, code }
+    pub(crate) fn new(
+        field: impl Into<std::borrow::Cow<'static, str>>,
+        code: &'static str,
+    ) -> Self {
+        Self {
+            field: field.into(),
+            code,
+        }
     }
 }
 
@@ -286,10 +293,7 @@ pub(crate) fn field_errors(
         ));
     }
     let options = ProcessOptions::of(configuration)?;
-    let mut errors = Vec::new();
-    if let Some(code) = text_error(&configuration.name, MAXIMUM_NAME_BYTES) {
-        errors.push(FieldError::new("name", code));
-    }
+    let mut errors: Vec<FieldError> = name_error(&configuration.name).into_iter().collect();
     if kind.runs_script() {
         match (options.script(), options.text()) {
             (Some(_), Some(_)) => errors.push(FieldError::new("source", "conflict")),
@@ -330,7 +334,27 @@ pub(crate) fn field_errors(
     if !options.execution_policy_bypass && kind != Kind::PowerShell {
         errors.push(FieldError::new("executionPolicyBypass", "notAllowed"));
     }
-    errors.extend(arguments_error(kind.arguments_field(), &configuration.args));
+    errors.extend(arguments_and_environment_errors(
+        configuration,
+        kind.arguments_field(),
+    ));
+    Ok(errors)
+}
+
+/// The error of a configuration name that is too long or holds NUL.
+pub(crate) fn name_error(name: &str) -> Option<FieldError> {
+    text_error(name, MAXIMUM_NAME_BYTES).map(|code| FieldError::new("name", code))
+}
+
+/// The errors of the arguments, named by `arguments_field`, and the
+/// environment every editable run has.
+pub(crate) fn arguments_and_environment_errors(
+    configuration: &RunConfiguration,
+    arguments_field: &'static str,
+) -> Vec<FieldError> {
+    let mut errors: Vec<FieldError> = arguments_error(arguments_field, &configuration.args)
+        .into_iter()
+        .collect();
     if configuration
         .env
         .iter()
@@ -338,7 +362,7 @@ pub(crate) fn field_errors(
     {
         errors.push(FieldError::new("environment", "invalidName"));
     }
-    Ok(errors)
+    errors
 }
 
 pub(crate) fn text_error(value: &str, maximum: usize) -> Option<&'static str> {
@@ -370,13 +394,23 @@ fn program_error(field: &'static str, value: &str, platform: Platform) -> Option
 }
 
 fn arguments_error(field: &'static str, arguments: &[String]) -> Option<FieldError> {
-    if arguments.len() > MAXIMUM_ARGUMENTS {
-        return Some(FieldError::new(field, "tooLong"));
+    arguments_limit_error(arguments, MAXIMUM_ARGUMENTS, MAXIMUM_ARGUMENT_BYTES)
+        .map(|code| FieldError::new(field, code))
+}
+
+/// `tooLong` when there are more than `count` arguments or one is longer
+/// than `bytes`, `invalidCharacter` when one holds NUL.
+pub(crate) fn arguments_limit_error(
+    arguments: &[String],
+    count: usize,
+    bytes: usize,
+) -> Option<&'static str> {
+    if arguments.len() > count {
+        return Some("tooLong");
     }
     arguments
         .iter()
-        .find_map(|argument| text_error(argument, MAXIMUM_ARGUMENT_BYTES))
-        .map(|code| FieldError::new(field, code))
+        .find_map(|argument| text_error(argument, bytes))
 }
 
 /// Whether a program value is a path rather than a name looked up on `PATH`.

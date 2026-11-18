@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 mod arrangement;
 mod before_launch;
 mod copying;
+mod declared;
 mod document;
 mod editing;
 mod form;
@@ -37,6 +38,11 @@ pub use arrangement::{arrange, ArrangeRequest};
 pub(crate) use arrangement::{valid_folder, Arrangement};
 pub use before_launch::{before_launch, BeforeLaunchRequest, BeforeLaunchStep};
 pub use copying::{copy_configuration, CopyConfigurationRequest};
+pub use declared::{
+    declared_launch, DeclaredChoice, DeclaredCondition, DeclaredField, DeclaredFieldKind,
+    DeclaredLaunch, DeclaredRunType, DeclaredValue, DeclaredValueError, RunTypeKey,
+    RunTypeReference, RUN_TYPE_PROVIDER,
+};
 pub use document::*;
 pub use editing::*;
 pub use form::{

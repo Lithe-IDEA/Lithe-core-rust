@@ -109,6 +109,9 @@ pub(crate) fn validate_configuration(configuration: &RunConfiguration) -> Result
             ));
         }
     }
+    if configuration.provider == super::declared::RUN_TYPE_PROVIDER {
+        super::declared::validate(configuration)?;
+    }
     if super::process::is_process_provider(&configuration.provider) {
         super::process::validate(configuration, Platform::HOST)?;
     }

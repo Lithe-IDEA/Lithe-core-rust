@@ -14,7 +14,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 清单字段 | `buildSystems[]`：`id`、`displayName`、`icon`、`detection`、`invocation`、`options`、`model`、`provider`、`tasks`、`run`、`test`、`diagnostics`、`dependencies`、`sync`、`layout`、`hostIntegration`，以及可选的 `modelSharing`、`modelInputs`（见下文）和 `configuration`（原生配置，见[构建提供者](build-providers.md)） |
-| 能力版本 | `buildSystems` `0`。不带 `provider` 的构建系统只需要它；带 `provider` 还要 `buildProviders: 0`；`modelSharing`、`modelInputs` 另需 `buildModelInputs: 0`（消费者还需要 `buildProviders: 0`）；可执行文件候选用 `setting` 来源时还要 `settings: 0`（见 `build-tool-path`）。可执行文件解析本身是基础契约，不是能力，不需要在 `requires` 里声明。`requires` 必须恰好列出清单用到的能力，见[版本对照](../capabilities-and-versions.md#能力版本requires) |
+| 能力版本 | `buildSystems` `0`。不带 `provider` 的构建系统只需要它；带 `provider` 还要 `buildProviders: 0`；`modelSharing`、`modelInputs` 另需 `buildModelInputs: 0`（消费者还需要 `buildProviders: 0`）；`runConfigurationTypes` 另需 `runConfigurationTypes: 0`；可执行文件候选用 `setting` 来源时还要 `settings: 0`（见 `build-tool-path`）。可执行文件解析本身是基础契约，不是能力，不需要在 `requires` 里声明。`requires` 必须恰好列出清单用到的能力，见[版本对照](../capabilities-and-versions.md#能力版本requires) |
 | 协议 | 没有进程协议；`model.source: "provider"` 时走 [`litheBuild`](build-providers.md) |
 | API 编号 | [API-29](../api-catalog.md#现在能用的-api)：构建、任务、测试、运行准备 |
 | 权限 | `process.build` |
@@ -34,6 +34,7 @@
 | `model` | 怎么得到项目模型，见下表 |
 | `provider` | 没有命令能打印模型时，由[构建提供者](build-providers.md)回答模型和依赖请求 |
 | `tasks`、`run`、`test` | 任务目录、从模型目标或任务生成的运行入口、测试的范围、过滤器和结果文件 |
+| `runConfigurationTypes` | 用户可以在运行/调试配置对话框里新建的配置类型（如 Go Build、Go Test）：字段、默认值、显示条件和命令行模板；宿主按字段画编辑器，Core 校验值并展开命令行，见[运行配置类型](../../contract/v1/README.md#run-configuration-types) |
 | `diagnostics`、`dependencies` | 诊断的行匹配或 `litheDiagnostics`；依赖列表或依赖树的来源 |
 | `sync`、`layout` | 哪些文件变化会让模型过期；每个项目要作为 `excluded` 内容根加入的目录；`layout.hiddenDirectoryNames` 是插件启用期间所有工作区在任意层级隐藏的目录名（如依赖、缓存和构建输出目录），项目树、搜索、文件事件、本地历史、运行发现、构建探测和仓库发现都会跳过 |
 
@@ -70,6 +71,7 @@
 | [Optional read-only model inputs](../../contract/v1/README.md#optional-read-only-model-inputs) | 插件之间共享只读模型 |
 | [Declarative project preparation](../../contract/v1/README.md#declarative-project-preparation) | 运行前准备任务 |
 | [Executable resolution](../../contract/v1/README.md#executable-resolution) | 可执行文件候选、排序、严格选择 |
+| [Run configuration types](../../contract/v1/README.md#run-configuration-types) | 插件声明的运行配置类型、字段、保存位置和 `build.runConfigurationPlan` |
 | [Host integrations](../../contract/v1/README.md#host-integrations) | 构建系统的宿主集成（保留字段，Core 不实现） |
 | [Commands](../../contract/v1/README.md#commands) | `build.*` Core 命令：检测、规划、解码、同步指纹 |
 
@@ -111,7 +113,7 @@
 | Item | Value |
 | --- | --- |
 | Manifest fields | `buildSystems[]`: `id`, `displayName`, `icon`, `detection`, `invocation`, `options`, `model`, `provider`, `tasks`, `run`, `test`, `diagnostics`, `dependencies`, `sync`, `layout`, `hostIntegration`, plus the optional `modelSharing`, `modelInputs` (below) and `configuration` (native configuration, see [Build providers](build-providers.md)) |
-| Capability versions | `buildSystems` `0`. A build system without `provider` needs only it; with `provider` it also needs `buildProviders: 0`; `modelSharing` and `modelInputs` also need `buildModelInputs: 0` (a consumer also needs `buildProviders: 0`); a `setting` executable source also needs `settings: 0` (see `build-tool-path`). Executable resolution itself is base contract, not a capability, and is not declared in `requires`. `requires` must list exactly the capabilities the manifest uses; see [versions](../capabilities-and-versions.md#capability-versions-requires) |
+| Capability versions | `buildSystems` `0`. A build system without `provider` needs only it; with `provider` it also needs `buildProviders: 0`; `modelSharing` and `modelInputs` also need `buildModelInputs: 0` (a consumer also needs `buildProviders: 0`); `runConfigurationTypes` also needs `runConfigurationTypes: 0`; a `setting` executable source also needs `settings: 0` (see `build-tool-path`). Executable resolution itself is base contract, not a capability, and is not declared in `requires`. `requires` must list exactly the capabilities the manifest uses; see [versions](../capabilities-and-versions.md#capability-versions-requires) |
 | Protocols | No process protocol; `model.source: "provider"` uses [`litheBuild`](build-providers.md) |
 | API IDs | [API-29](../api-catalog.md#apis-usable-now): build, tasks, tests, run preparation |
 | Permissions | `process.build` |
@@ -131,6 +133,7 @@ IDs of build systems, tasks, and run entries start with a lowercase letter and u
 | `model` | How the project model is obtained; see the table below |
 | `provider` | The [build provider](build-providers.md) that answers model and dependency requests when no command prints them |
 | `tasks`, `run`, `test` | The task catalog, run entries generated from model targets or tasks, and the scopes, filters, and result files of tests |
+| `runConfigurationTypes` | Configuration types a user can create in the Run/Debug Configurations dialog (such as Go Build and Go Test): fields, defaults, visibility conditions, and the command-line template; the host draws the editor from the fields and Core validates the values and expands the command line, see [Run configuration types](../../contract/v1/README.md#run-configuration-types) |
 | `diagnostics`, `dependencies` | Line matchers or `litheDiagnostics` for diagnostics; the source of the dependency list or tree |
 | `sync`, `layout` | Which file changes make the model stale; directories added to every project as `excluded` content roots; `layout.hiddenDirectoryNames`, folder names such as dependency, cache and build output folders that every workspace hides at any depth while the plugin is enabled: the project tree, search, file events, Local History, run discovery, build detection and repository discovery skip them |
 
@@ -167,6 +170,7 @@ A build system's `hostIntegration` and a language server's `hostIntegration` are
 | [Optional read-only model inputs](../../contract/v1/README.md#optional-read-only-model-inputs) | Sharing read-only models between plugins |
 | [Declarative project preparation](../../contract/v1/README.md#declarative-project-preparation) | Tasks that run before a launch |
 | [Executable resolution](../../contract/v1/README.md#executable-resolution) | Executable candidates, ordering, strict selection |
+| [Run configuration types](../../contract/v1/README.md#run-configuration-types) | Plugin-declared run configuration types, their fields, storage, and `build.runConfigurationPlan` |
 | [Host integrations](../../contract/v1/README.md#host-integrations) | Host integrations for build systems (reserved; Core implements none) |
 | [Commands](../../contract/v1/README.md#commands) | `build.*` Core commands: detection, plans, decoding, sync fingerprints |
 

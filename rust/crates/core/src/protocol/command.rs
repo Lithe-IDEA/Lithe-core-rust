@@ -448,6 +448,8 @@ pub enum BuildCommand {
     ModelPlan,
     /// Expands one build task into an argv plan (`build.taskPlan`).
     TaskPlan,
+    /// Expands a saved configuration of a declared run configuration type into an argv plan (`build.runConfigurationPlan`).
+    RunConfigurationPlan,
     /// Expands a build test run and its result location (`build.testPlan`).
     TestPlan,
     /// Plans typed provider run preparation (`build.prepareRunPlan`).
@@ -738,9 +740,9 @@ pub enum RunConfigCommand {
     CreateUserConfiguration,
     /// Lists the configuration kinds a user can create (`runConfig.configurationTypes`).
     ConfigurationTypes,
-    /// Describes the editor of a built-in process run (`runConfig.editorForm`).
+    /// Describes the editor of a built-in process run or a declared type (`runConfig.editorForm`).
     EditorForm,
-    /// Checks and saves a built-in process run editor (`runConfig.saveConfiguration`).
+    /// Checks and saves a built-in process run or declared type editor (`runConfig.saveConfiguration`).
     SaveConfiguration,
     /// Removes a user-authored run configuration (`runConfig.deleteConfiguration`).
     DeleteConfiguration,
@@ -1174,6 +1176,7 @@ impl CoreCommand {
             "build.resolveOptions" => Some(Self::Build(BuildCommand::ResolveOptions)),
             "build.modelPlan" => Some(Self::Build(BuildCommand::ModelPlan)),
             "build.taskPlan" => Some(Self::Build(BuildCommand::TaskPlan)),
+            "build.runConfigurationPlan" => Some(Self::Build(BuildCommand::RunConfigurationPlan)),
             "build.testPlan" => Some(Self::Build(BuildCommand::TestPlan)),
             "build.prepareDebugPlan" => Some(Self::Build(BuildCommand::PrepareDebugPlan)),
             "build.decodeDebugPreparation" => {

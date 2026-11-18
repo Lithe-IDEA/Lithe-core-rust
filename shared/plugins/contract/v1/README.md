@@ -27,6 +27,7 @@ This directory is the cross-platform source of truth:
 | `fixtures/ui/` | Native controls, forms, and panels, and a web panel |
 | `fixtures/settings/` | Plugin settings; `l10n/zh-Hans.json` translates `settings.plugin.json`, and `localization-cases.json` holds golden translation choices and rejections |
 | `fixtures/build-systems/` | Build systems (`build-*`: static file, command output, instance options, model producer and consumer, tool path, toolchains); `build-plans.json` holds golden build-system plans and decoded outputs |
+| `fixtures/run-configuration-types/` | `run-configuration-types.plugin.json`: Go Build and Go Test kinds of run configuration with choice, text, file, directory, arguments and checkbox fields, and `l10n/zh-Hans.json` translating them |
 | `fixtures/build-providers/` | Build providers (`build-provider*`) and the golden cases of their configuration, run options, run and debug preparation, execution, and test protocols |
 | `fixtures/debug-adapters/` | Debug adapters (standalone, served by a language server, remote attach, and `debug-adapter-features` with declared features and defaults), `debug-adapter-rejections.json`, and `debug-start.json`: what `debug.decodeBackendConfiguration` returns for each `debug/start` case |
 | `fixtures/run/` | Run sessions and console links: `tool-reference-launch` names its runtimes by tool-definition ID and declares output link matchers; `run-start.json` holds what `run.decodeStart` returns for each case, including the rejections, and `output-link-matchers.json` the golden matches and resolutions |
@@ -814,6 +815,7 @@ in `fixtures/settings/localization-cases.json`.
 | `settings.<id>` | The setting's `title`, `description`, `placeholder`, and `unit`; `options.<value>` is the title of an `enum` or `multiSelect` option |
 | `sections.<heading>` | A section heading, named exactly as `section` writes it |
 | `settingActions.<id>` | The action's `title` and `description` |
+| `runConfigurationTypes.<buildSystemID>.<typeID>` | A [run configuration type](#run-configuration-types)'s `displayName` and `description`, and `fields.<id>` with a field's `title`, `description`, `placeholder`, and `options.<value>`; refused as `plugin.build.invalidLocalization` |
 
 Every member is optional, and text a file leaves out stays as `plugin.json`
 writes it. IDs, option values and their order, stored values, and the grouping
@@ -965,6 +967,7 @@ belongs to one capability:
 | `ui` | [`ui`](#host-owned-workbench-ui): text, [web](#web-content) and [native](#host-rendered-native-content) tool windows, commands, and [backend-only commands](#backend-only-commands) | — | Renders every kind of window and command, and serves the web bridge. |
 | `buildSystems` | [`buildSystems[]`](#build-systems) without `provider`: detection, options, project model, tasks, run entries, tests, diagnostics, dependencies, sync, and [declarative preparation](#declarative-project-preparation) | — | Detects projects, loads the model, and runs the declared commands. |
 | `buildProviders` | `buildSystems[].provider`, including own-process and shared language-server providers | `litheBuild` | Starts the provider and speaks `litheBuild` with workspace-owned sessions. |
+| `runConfigurationTypes` | [`buildSystems[].runConfigurationTypes`](#run-configuration-types) | — | Lists the types in the Run/Debug Configurations dialog, draws their editors, and runs their saved configurations through `build.runConfigurationPlan`. |
 | `buildModelInputs` | `buildSystems[].modelSharing` and `modelInputs`: [optional read-only model inputs](#optional-read-only-model-inputs) | — | Supplies the model snapshot between enabled workspace plugins. |
 | `vcsProviders` | [`vcsProviders[]`](#vcs-providers) | `litheVcs` | Starts the provider and speaks `litheVcs`. |
 | `debugAdapters` | [`debugAdapters[]`](#debug-adapters) | — | Starts the adapter and applies its [declared features and defaults](#adapter-features-and-defaults). |
@@ -1732,6 +1735,7 @@ declaration are relative, use `/`, and stay inside their base directory
 | `model` | `static` (a `toml` file read during detection, no process), `command` (a command whose output Core decodes; it states `executesProjectCode` and `mayUseNetwork`), or `provider`. |
 | `tasks` | The task catalog. `scopes` say what a task runs on (`workspace`, `project`, `target`); `targetTags` restrict targets; `requiresUserArguments` makes the host ask for arguments. A `fromModel` task is the template for tasks the model lists. |
 | `run` | Run entries from model targets (`fromTargets.tags`, with `arguments`) or model tasks (`fromTasks`, reusing the template task's arguments). |
+| `runConfigurationTypes` | Kinds of run configuration the user creates in the Run/Debug Configurations dialog, from declared fields and a command line; see [Run configuration types](#run-configuration-types). |
 | `test` | How tests run: `scopes`, `targetTags`, the `filters` (`suite`, `case`) it can select, and `results` (`junitXml` or `litheTestResults` report globs relative to the project). A workspace run reads the globs under the root and every model project. A requested filter must reach the command line through a template whose conditions hold; a `case` guarded by `suiteSelected` therefore needs its suite. |
 | `diagnostics` | `lineMatcher` patterns with capture-group numbers, or `litheDiagnostics` lines. |
 | `dependencies` | A command (with `scopes`) whose output Core decodes, as a flat list through a `map` or as a tree from `litheDependencies`; or `provider` (with `scopes`, `workspace` and `project` only). |
@@ -1819,9 +1823,10 @@ one condition or a list that must all hold: `projectSelected`,
 | `${task.name}`, `${task.property:<key>}` | `fromModel` tasks |
 | `${test.suite}`, `${test.case}`, `${test.case:regex}` (regex-escaped) | `test.arguments`, guarded by `suiteSelected` / `caseSelected` |
 | `${optionArguments}`, `${optionArguments:<id>}` | every command list; a whole argument that expands to all options, or one option |
-| `${userArguments}` | tasks and tests; a whole argument. A task with `requiresUserArguments` must pass it |
+| `${userArguments}` | tasks, tests and run configuration types; a whole argument. A task with `requiresUserArguments` must pass it |
 | `${pluginDir}`, `${workspaceStateDir}`, `${outputFile}` | model and dependency commands; `${outputFile}` exactly when `output` is `outputFile` |
-| `${value}` | option `arguments` and `environment` |
+| `${value}` | option `arguments` and `environment`, and the `arguments` of a run configuration field |
+| `${field:<id>}` | the `arguments` of a [run configuration type](#run-configuration-types); a whole argument that expands to one field's arguments |
 
 Each option's arguments are emitted once per command line: reference them
 either in `globalArguments` or in the command's list, and only once within a
@@ -2451,6 +2456,109 @@ identity through cancellation/configuration changes, and only then resolve and
 launch the program. Per-run option/tool overrides are ephemeral host inputs to the
 existing validated plan; they never mutate saved build defaults or claim that
 the persistent model reflects a different configuration.
+
+### Run configuration types
+
+`runConfigurationTypes` adds kinds of run configuration to the Run/Debug
+Configurations dialog, as IntelliJ IDEA's Go plugin adds Go Build and Go
+Test. A type is data only: the fields of its editor and the command line
+their values make. Core draws the editor, checks and saves the values, and
+expands the command line, so a type needs no backend and the host has no
+code for any type. A build system that declares types needs
+`runConfigurationTypes: 0` in `requires` beside `buildSystems: 0`. Fixture:
+`fixtures/run-configuration-types/`, translated by its `l10n/zh-Hans.json`.
+
+```json
+"runConfigurationTypes": [{
+  "id": "build",
+  "displayName": "Go Build",
+  "icon": { "host": "run" },
+  "fields": [
+    { "id": "runKind", "title": "Run kind", "kind": "choice", "default": "package",
+      "choices": [{ "value": "package", "title": "Package" }, { "value": "file", "title": "File" }] },
+    { "id": "package", "title": "Package path", "kind": "text", "required": true,
+      "visibleWhen": { "field": "runKind", "equals": "package" } },
+    { "id": "file", "title": "Files", "kind": "file", "required": true,
+      "visibleWhen": { "field": "runKind", "equals": "file" } },
+    { "id": "race", "title": "Race detector", "kind": "checkbox", "arguments": ["-race"] },
+    { "id": "output", "title": "Output name", "kind": "text", "arguments": ["-o", "${value}"] }
+  ],
+  "arguments": ["run", "${optionArguments}", "${field:race}", "${field:output}",
+                "${field:package}", "${field:file}", "${userArguments}"]
+}]
+```
+
+| Field | Meaning |
+| --- | --- |
+| `id` | Unique within the build system, like a task ID; saved in every configuration of the type, so renaming it orphans them |
+| `displayName`, `description` | Shown in the dialog's `+` menu and as the editor's automatic name; at most 120 and 512 bytes |
+| `icon` | A [UI icon](#ui-icons) for the menu and the list; display only |
+| `execution` | `application` (default) or `task`, as for a task; `service` is refused |
+| `fields` | At most 16, in display order between the editor's header and the program arguments |
+| `arguments` | The command line after `globalArguments`. Besides `${root}` and `${optionArguments}` it takes `${field:<id>}`, a whole argument that expands to the arguments of one field, and `${userArguments}`, the program arguments. The editor shows its program arguments field only when `${userArguments}` appears, and it appears at most once. Conditions (`when`) are refused |
+
+A field has an `id` (camelCase, unique in the type), a `title`, a `kind`, and
+optional `description`, `placeholder`, `default`, `required`, `visibleWhen`
+and `arguments`:
+
+| `kind` | Value | Passed as |
+| --- | --- | --- |
+| `text` | One line | The value as one argument, or its `arguments` with `${value}` |
+| `choice` | One of `choices` (`{value, title?}`, at most 64, required) | As `text` |
+| `checkbox` | On or off | Its `arguments` (required, no `${value}`) while it is on, nothing while off |
+| `file`, `directory` | A path the user picks; saved project-relative inside the project, passed absolute | As `text` |
+| `arguments` | Text the user types, split like program arguments | The arguments themselves; `arguments` is refused |
+
+- `default` is the value of a new configuration: a string for `text` and
+  `choice`, a boolean for `checkbox`, a list of strings for `arguments`.
+  `file` and `directory` have none, since a plugin cannot know a path on the
+  user's machine. A `choice` starts with its first choice and a `checkbox`
+  off when they have none.
+- `required` refuses an empty visible `text`, `file`, `directory` or
+  `arguments` field; a `choice` or `checkbox` always holds a value, so
+  `required` on one is refused.
+- `visibleWhen: {field, equals}` names an earlier `choice` or `checkbox`
+  field and one of its values. A hidden field is not shown, saved, checked or
+  passed, so the Go Build fields above pass exactly one of the package and
+  the file.
+- Every field is named exactly once as `${field:<id>}` in the type's
+  `arguments`, except a field that declares no `arguments` and only controls
+  the visibility of others, such as `runKind`.
+
+An unknown, misplaced or repeated variable, or a field the command line
+never names, is `plugin.template.invalid`; any other mistake is
+`plugin.manifest.invalid`, with `field` naming it.
+
+Every editor also has the fields every configuration has: the name, *Store
+as project file*, *Allow multiple instances*, the working directory, the
+environment variables and the steps before launch. *Allow multiple
+instances* is off by default: starting a running configuration again stops
+the running process first; with it on, the host starts another process
+beside it. A configuration is saved with provider `build.run-type` in
+`.lithe/run/plugin/<pluginID>.toml` (project) or
+`<pluginID>.local.toml` (this machine) and keeps the type and the visible
+fields' values in `extensions.build`, so removing the plugin keeps the
+configuration, which needs the plugin again to edit or run.
+
+To run one, the host calls `build.runConfigurationPlan` with the manifest,
+the build system, `workspaceRoot`, the configuration ID and the detected
+instances of the build system with their stored options. Core picks the
+deepest instance whose root holds the configuration's working directory (or
+the only instance) and returns a task plan: the global arguments, then the
+type's `arguments` with the field values, the instance's options and the
+program arguments, at the configuration's working directory, with its
+environment over the options'. The host starts it like any build command. A
+saved value that no longer fits the type, such as a choice the plugin
+removed, is `plugin.build.invalidRunConfiguration` with `field:
+"values.<fieldID>"`; a type the plugin no longer declares is
+`plugin.build.unavailable`.
+
+The type's text is translated in the package's `l10n/<language>.json` under
+`runConfigurationTypes.<buildSystemID>.<typeID>`: `displayName`,
+`description`, and `fields.<fieldID>` with `title`, `description`,
+`placeholder` and `options.<value>`, chosen and checked as in
+[Translations](#translations). A file that does not fit is refused whole
+with `plugin.build.invalidLocalization`, and the manifest's text is shown.
 
 ### Build providers
 
@@ -4417,6 +4525,8 @@ command payload is a Core `invalid_request` failure instead.
 | `plugin.build.unavailable` | Core | The plugin declares no such build system, or the build system does not declare the requested operation |
 | `plugin.build.invalidSelection` | Core | A build request selects a scope, target, filter, or argument the declaration does not allow, or misses a required path |
 | `plugin.build.invalidOutput` | Core | Build-tool output or a report does not fit its decoder |
+| `plugin.build.invalidRunConfiguration` | Core | A saved configuration of a [run configuration type](#run-configuration-types) holds a value the type no longer accepts; `field` is `values.<fieldID>` |
+| `plugin.build.invalidLocalization` | Core | The `runConfigurationTypes` part of a [translation file](#translations) does not fit the declarations; the host shows the next candidate or the manifest text |
 | `plugin.launch.invalidRequest` | Core | A launch plan request has an unusable directory or an unknown architecture |
 | `plugin.launch.notBackend` | Core | `decodeLaunch` named a language server that the plugin backend does not launch |
 | `plugin.launch.invalidResult` | Core | A [backend-resolved launch](#backend-resolved-launch) answer is malformed, unknown in a field, or over a bound |

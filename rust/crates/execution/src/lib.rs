@@ -15,6 +15,7 @@ pub use configuration::*;
 pub use context_selection::{select_context_configuration, ContextSelectionRequest};
 pub use scan::{scan_ignoring, DirectoryContext};
 pub use title_action::{decide_title_action, TitleActionRequest};
+pub use types::Execution;
 
 pub mod workspace_scan;
 pub use workspace_scan::IgnoredPaths;

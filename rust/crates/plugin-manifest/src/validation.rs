@@ -351,6 +351,12 @@ impl DeclarativePluginManifest {
                     system.model_sharing.is_some() || !system.model_inputs.is_empty()
                 }),
             ),
+            (
+                capabilities::RUN_CONFIGURATION_TYPES,
+                self.build_systems
+                    .iter()
+                    .any(|system| system.has_run_configuration_types()),
+            ),
             (capabilities::VCS_PROVIDERS, !self.vcs_providers.is_empty()),
             (
                 capabilities::DEBUG_ADAPTERS,

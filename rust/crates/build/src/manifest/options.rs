@@ -218,6 +218,12 @@ impl BuildSystemDeclaration {
         for (index, run) in self.run.iter().enumerate() {
             lists.push((format!("{field}.run[{index}].arguments"), &run.arguments));
         }
+        for (index, run_type) in self.run_configuration_types.iter().enumerate() {
+            lists.push((
+                format!("{field}.runConfigurationTypes[{index}].arguments"),
+                &run_type.arguments,
+            ));
+        }
         if let Some(test) = &self.test {
             lists.push((format!("{field}.test.arguments"), &test.arguments));
         }

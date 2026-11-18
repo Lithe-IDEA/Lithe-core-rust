@@ -2116,6 +2116,7 @@ fn powershell_and_program_editors_store_their_own_choices() {
         [
             "name",
             "storeAsProjectFile",
+            "allowMultipleInstances",
             "program",
             "programArguments",
             "workingDirectory",
