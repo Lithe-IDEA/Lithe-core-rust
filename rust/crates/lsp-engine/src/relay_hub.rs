@@ -87,6 +87,15 @@ impl RelayHub {
     ) -> Result<Vec<String>, CoreError> {
         let rpc_id = request.get("id").cloned().unwrap_or(Value::Null);
         let params = request.get("params").unwrap_or(&Value::Null);
+        if !session.function_relay_enabled {
+            return Ok(vec![reply_message(
+                &rpc_id,
+                &Err(RelayFailure::new(
+                    codes::HOST_UNAVAILABLE,
+                    "This session is isolated from cross-plugin function routing.",
+                )),
+            )?]);
+        }
         // Only a plugin's own session can negotiate the protocol, so a
         // session without a plugin should never get here.
         let Some(caller_plugin) = session.plugin_id.as_deref() else {
@@ -477,7 +486,9 @@ fn find_provider(
         let sessions = sessions.lock().unwrap_or_else(PoisonError::into_inner);
         let candidates: Vec<Arc<RuntimeSession>> = sessions
             .values()
-            .filter(|session| session.plugin_id.as_deref() == Some(plugin_id))
+            .filter(|session| {
+                session.function_relay_enabled && session.plugin_id.as_deref() == Some(plugin_id)
+            })
             .cloned()
             .collect();
         let caller_root = sessions
@@ -631,6 +642,9 @@ pub(super) fn observe_lifecycle(session: &RuntimeSession, lifecycle: LspLifecycl
 
 /// Tells the relay that `session` may now serve functions it did not before.
 pub(super) fn observe_functions_changed(session: &RuntimeSession) {
+    if !session.function_relay_enabled {
+        return;
+    }
     if let Some(plugin_id) = session.plugin_id.as_deref() {
         session.relay.provider_changed(plugin_id);
     }

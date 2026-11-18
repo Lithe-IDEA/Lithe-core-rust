@@ -59,6 +59,10 @@ const PERMISSION_DEBUG_START: &str = "debug.start";
 /// launches need with one of its required tools.
 const PERMISSION_COMMAND_INSTALL: &str = "commands.install";
 
+/// Downloading and installing the manifest's pinned runtime archives after
+/// approval of the plugin installation or update.
+const PERMISSION_RUNTIME_INSTALL: &str = "runtimes.install";
+
 const KNOWN_PERMISSIONS: &[&str] = &[
     PERMISSION_BACKEND,
     PERMISSION_BUILD,
@@ -71,6 +75,7 @@ const KNOWN_PERMISSIONS: &[&str] = &[
     PERMISSION_KEYMAP_SOURCES,
     PERMISSION_PROJECT_GENERATE,
     PERMISSION_RUN,
+    PERMISSION_RUNTIME_INSTALL,
     PERMISSION_TEST,
     PERMISSION_TOOLCHAINS,
     PERMISSION_UI,
@@ -176,6 +181,18 @@ impl DeclarativePluginManifest {
             return Err(invalid(
                 "permissions",
                 "commands.install is used by a command installer; declare one or remove the permission.",
+            ));
+        }
+        if self.managed_runtimes.is_some() {
+            required.insert(PERMISSION_RUNTIME_INSTALL);
+        } else if self
+            .permissions
+            .iter()
+            .any(|p| p == PERMISSION_RUNTIME_INSTALL)
+        {
+            return Err(invalid(
+                "permissions",
+                "runtimes.install requires managedRuntimes.",
             ));
         }
         if self.backend.is_some() {

@@ -35,6 +35,7 @@ mod command_installers;
 mod commands;
 mod declarations;
 mod launch;
+mod managed_runtimes;
 mod manifest;
 mod permissions;
 mod provider_launch;
@@ -52,6 +53,7 @@ pub use command_installers::{
 };
 pub use commands::*;
 pub use launch::*;
+pub use managed_runtimes::{managed_runtime_plan_command, managed_runtime_resolution_command};
 pub use manifest::*;
 use permissions::*;
 pub use provider_launch::*;

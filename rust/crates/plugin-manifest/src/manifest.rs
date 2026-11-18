@@ -66,6 +66,10 @@ pub struct DeclarativePluginManifest {
     /// launches need; see `command_installers`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) command_installers: Vec<crate::command_installers::CommandInstallerDeclaration>,
+    /// Pinned runtime archives managed outside the installed package, with a
+    /// backend resolver that owns tool-specific discovery and validation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) managed_runtimes: Option<crate::managed_runtimes::ManagedRuntimes>,
     /// Entries of the New Project window. The shape and its validation live
     /// in `lithe_project_generators`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -462,6 +466,9 @@ impl DeclarativePluginManifest {
         }
         for installer in &self.command_installers {
             programs.push(crate::command_installers::programs(installer));
+        }
+        if let Some(runtimes) = &self.managed_runtimes {
+            programs.extend(runtimes.programs());
         }
         // Order by kind, then language or tool, then the full serialized
         // value as a total tie-breaker; duplicates (two servers needing the

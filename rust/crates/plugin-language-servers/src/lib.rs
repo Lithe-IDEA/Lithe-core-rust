@@ -347,9 +347,9 @@ fn is_within(path: &str, directory: &str) -> bool {
     }
 }
 
-/// Params of the launch function, apart from `context` and `tools`, which
-/// the host attaches: the server, the machine, the writable directories,
-/// and the plugin's effective settings.
+/// Params of the launch function, apart from `context`, `tools`, and the
+/// optional read-only `runtimes` map, which the host attaches: the server,
+/// the machine, the writable directories, and the plugin's effective settings.
 pub fn resolve_params(
     server_id: &str,
     architecture: &str,

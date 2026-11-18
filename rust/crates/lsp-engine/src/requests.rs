@@ -38,6 +38,11 @@ pub struct StartServerRequest {
     /// host-owned servers leave it out.
     #[serde(default)]
     pub plugin_id: Option<String>,
+    /// Whether this session participates in cross-plugin function routing.
+    /// False isolates an approved preparation backend before its package is
+    /// committed; direct host calls to this session's private functions remain.
+    #[serde(default = "default_function_relay_enabled")]
+    pub function_relay_enabled: bool,
     /// Declarative `languageServer/start` attempt the host began; Core records its
     /// result. Absent for v1 hosts and SDK-owned backend processes.
     #[serde(default)]
@@ -618,6 +623,10 @@ pub struct LspRuntimeError {
     /// failure's details. Only `lsp.pluginServerRequest` sets it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<Value>,
+}
+
+fn default_function_relay_enabled() -> bool {
+    true
 }
 
 fn default_initialize_timeout() -> u64 {

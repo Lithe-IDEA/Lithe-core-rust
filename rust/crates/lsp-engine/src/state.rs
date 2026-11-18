@@ -111,6 +111,9 @@ pub(crate) struct RuntimeSession {
     pub(crate) provider_id: String,
     /// Plugin that owns the process, if any; see `StartServerRequest::plugin_id`.
     pub(crate) plugin_id: Option<String>,
+    /// Native preparation sessions can serve host calls but never enter the
+    /// installed-plugin function relay, even when their owner IDs are equal.
+    pub(crate) function_relay_enabled: bool,
     pub(crate) log_identity: SessionLogIdentity,
     /// Fixed workspace host, inherited by protocol workers; never a global selection.
     pub(crate) workspace_host: Option<lithe_workspace::Host>,

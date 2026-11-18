@@ -99,6 +99,7 @@ impl Fixture {
         request.plugin_id = Some(launch.plugin_id.to_string());
         request.root_uri = launch.root_uri.to_string();
         request.host_services = launch.host_services.clone();
+        request.function_relay_enabled = launch.function_relay_enabled;
         let started = self
             .engine
             .start_server(request)
@@ -135,6 +136,7 @@ struct Launch {
     root_uri: &'static str,
     functions: Vec<&'static str>,
     host_services: Vec<String>,
+    function_relay_enabled: bool,
 }
 
 impl Launch {
@@ -146,6 +148,7 @@ impl Launch {
             root_uri: "file:///workspace",
             functions: Vec::new(),
             host_services: vec!["functions".to_string()],
+            function_relay_enabled: true,
         }
     }
 
@@ -161,6 +164,11 @@ impl Launch {
 
     fn without_grant(mut self) -> Self {
         self.host_services.clear();
+        self
+    }
+
+    fn without_relay(mut self) -> Self {
+        self.function_relay_enabled = false;
         self
     }
 
@@ -511,6 +519,55 @@ fn a_call_the_host_starts_carries_no_caller() {
 
     let (_, received) = go.await_invoke();
     assert!(received.get("caller").is_none(), "{received}");
+}
+
+#[test]
+fn preparation_session_is_private_even_when_its_plugin_has_an_installed_backend() {
+    const OWNER: &str = "dev.lithe.fixture.runtime-owner";
+    const CALLER: &str = "dev.lithe.fixture.runtime-caller";
+    let fixture = Fixture::new();
+    let private = fixture.start(Launch::new(OWNER).serving(&[FORMAT]).without_relay());
+    let installed = fixture.start(Launch::new(OWNER).serving(&[FORMAT]).at("file:///other"));
+    let caller = fixture.start(Launch::new(CALLER));
+    fixture.configure(snapshot(
+        vec![
+            plugin(CALLER, &[], &[(FORMAT, 1)]),
+            plugin(OWNER, &[(FORMAT, 1)], &[(FORMAT, 1)]),
+        ],
+        "local",
+    ));
+
+    // The private session shares the caller's root and was registered first.
+    // Neither affinity is allowed to route a call to a staged package.
+    caller.call("installed-call", OWNER, FORMAT);
+    let (wire_id, _) = installed.await_invoke();
+    installed.answer(&wire_id, json!({"installed":true}));
+    assert_eq!(
+        caller.reply("installed-call")["result"]["value"],
+        json!({"installed":true})
+    );
+    private.assert_not_invoked();
+
+    for (id, method, params) in [
+        (
+            "private-providers",
+            PROVIDERS,
+            json!({"functionID": FORMAT}),
+        ),
+        ("private-call", INVOKE, call_params(OWNER, FORMAT)),
+    ] {
+        private.ask(id, method, params);
+        assert_error(&private.reply(id), "plugin.host.permissionDenied", -32010);
+    }
+    private.ask(
+        "private-capabilities",
+        "lithe/host/getCapabilities",
+        json!({}),
+    );
+    assert!(private.reply("private-capabilities")["result"].is_object());
+    private.host_call("qualification", OWNER, FORMAT).unwrap();
+    let (_, received) = private.await_invoke();
+    assert!(received.get("caller").is_none());
 }
 
 #[test]
