@@ -5245,24 +5245,34 @@ A canvas draws its `nodes` in order, in `viewBox` coordinates
 tall (1–2000). `label` is the scene's accessible name. `pan` lets the user
 drag the empty area, and `zoom` is the `[minimum, maximum]` range around 1
 (0.05–20); the host draws the zoom buttons. The scroll wheel scrolls the page;
-⌘ or Ctrl with the wheel, or a pinch, zooms.
+⌘ or Ctrl with the wheel zooms, and so does a pinch on a host that reports one.
 
 | `type` | Fields |
 | --- | --- |
 | `rect` | `x`, `y`, `w`, `h`, `radius`, `fill`, `stroke`, `width`, `dash`, `shadow`, `opacity` |
 | `path` | `d` (SVG path data, at most 8192 bytes), `bounds` `[x, y, width, height]`, `fill`, `stroke`, `width`, `dash`, `cap`, `rule` (`nonzero`, `evenodd`), `opacity` |
 | `text` | `x`, `y`, `text` or up to 64 `runs` `{text, color}`, `style` (`title`, `strong`, `body`, `caption`, `display`, `mono`, `monoSmall`), `align`, `color`, `maxWidth`, `opacity` |
-| `image` | `x`, `y`, `w`, `h`, `src`: a PNG path inside the plugin package |
+| `image` | `x`, `y`, `w`, `h`, `src`: a PNG path inside the plugin package, `opacity` |
 | `group` | `x`, `y`, `scale`, `w`, `h`, `radius`, `clip`, `children`, `on` (`click`), `label`, `tooltip`, `states` (`hover`, `pressed`, `selected`), `selected`, `opacity`, `shadow`, `hidden` |
 
-- Text uses the host's interface and monospace fonts at the named style; a
-  plugin cannot choose a font. Text longer than `maxWidth` ends with an ellipsis.
+- Text is one line with its baseline at `y`. `align` puts the line's start
+  (the default), middle, or end at `x`. Text uses the host's interface and
+  monospace fonts at the named style; a plugin cannot choose a font. Text
+  longer than `maxWidth` ends with an ellipsis.
 - A color is `#RRGGBB`, `#RRGGBBAA`, a theme token (`$text`, `$textSecondary`,
   `$textMuted`, `$accent`, `$success`, `$warning`, `$error`, `$surface`,
   `$background`, `$sidebar`, `$line`, `$hover`, `$selection`, `$badge`), a
   `{light, dark}` pair, or `{linear: [[offset, color], …], angle}` with 2–8
   stops. Tokens and pairs follow the theme; a fixed color is for content that
   shows a color itself, such as a color-scheme preview.
+- A gradient's `angle` is in degrees clockwise from pointing up, as in CSS
+  `linear-gradient`: 0 runs upward, 90 to the right, and 180, the default,
+  downward. Its line passes through the middle of the shape (a path's
+  `bounds`, or the box of its points) and is as long as it takes for the
+  corners the angle points at to take the first and the last stop.
+- A group's `x` and `y` place its origin, and `scale` scales what is inside
+  it: its `children`, `w`, `h`, and `radius` are in the group's own
+  coordinates.
 - A group with `on: ["click"]` is a control and needs `id`, `w` and `h` (its
   hit area), and `label`, read by screen readers. Tab moves between clickable
   groups. The host draws `states` without a round trip: `fill`, `stroke`,
@@ -5272,6 +5282,12 @@ drag the empty area, and `zoom` is the `[minimum, maximum]` range around 1
   and sizes are within ±1,000,000. Blur, filters, blend modes, radial
   gradients, custom fonts, animation, and text input are not part of a canvas;
   input uses host controls beside it.
+- An `image` is read from the installed package the way its icons are: the
+  path stays inside the package, through real directories, to a regular PNG
+  file within the limits below. The host loads it off the window thread the
+  first time a scene draws it and keeps it until the view closes. Until then,
+  and for a file that is missing, too large, or cannot be decoded, the scene
+  draws without it; the host logs a failure once.
 - Canvas text is not searched. A settings region names its words in
   [`keywords`](#settings-regions).
 
@@ -5286,6 +5302,7 @@ drag the empty area, and `zoom` is the `[minimum, maximum]` range around 1
 | Canvases of one view | 8 |
 | Nodes of one canvas | 2000 |
 | One canvas scene, as JSON | 256 KiB |
+| One canvas image file | 256 KiB, at most 1024 × 1024 pixels |
 | Patches of one result | 512 |
 
 Node, tree item, and canvas node IDs are 1–64 letters, digits, `.`, `_`, or
