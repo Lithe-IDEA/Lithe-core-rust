@@ -54,6 +54,33 @@
       "type": "string",
       "pattern": "^(?!/)(?!.*(^|/)\\.\\.(?:/|$)).*$"
     },
+    "runTypeReference": {
+      "type": "object",
+      "description": "A configuration of a run configuration type a build system declares (buildSystems[].runConfigurationTypes).",
+      "required": ["pluginID", "buildSystemID", "type"],
+      "properties": {
+        "pluginID": { "$ref": "#/$defs/runTypeIdentifier" },
+        "buildSystemID": { "$ref": "#/$defs/runTypeIdentifier" },
+        "type": { "$ref": "#/$defs/runTypeIdentifier" },
+        "values": {
+          "type": "object",
+          "description": "Field values by declared field ID; hidden fields are not saved.",
+          "maxProperties": 16,
+          "propertyNames": { "$ref": "#/$defs/runTypeIdentifier" },
+          "additionalProperties": {
+            "oneOf": [
+              { "type": "boolean" },
+              { "type": "string", "maxLength": 4096 },
+              { "type": "array", "maxItems": 64, "items": { "type": "string", "maxLength": 4096 } }
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "runTypeIdentifier": {
+      "type": "string", "minLength": 1, "maxLength": 200, "pattern": "^[A-Za-z0-9._-]+$"
+    },
     "buildProviderReference": {
       "type": "object",
       "required": [
@@ -242,6 +269,10 @@
           }
         },
         "disabled": { "type": "boolean" },
+        "allowMultipleInstances": {
+          "type": "boolean",
+          "description": "Starting the configuration while it runs starts another instance beside it instead of stopping the running one."
+        },
         "source": { "type": "string" }
       },
       "additionalProperties": false,
@@ -260,6 +291,22 @@
                 "build": { "$ref": "#/$defs/buildProviderReference" },
                 "build-run": { "$ref": "#/$defs/buildProviderRunOptions" }
               }
+            }
+          }
+        }
+      }, {
+        "if": { "properties": { "provider": { "const": "build.run-type" } } },
+        "then": {
+          "required": ["extensions"],
+          "properties": {
+            "execution": { "enum": ["application", "task"] },
+            "command": false,
+            "toolchains": { "maxProperties": 0 },
+            "debug": false,
+            "members": { "maxItems": 0 },
+            "extensions": {
+              "required": ["build"],
+              "properties": { "build": { "$ref": "#/$defs/runTypeReference" } }
             }
           }
         }

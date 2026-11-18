@@ -145,6 +145,9 @@ pub(crate) enum Variable {
     OptionArguments(Option<String>),
     /// Arguments the user typed. Whole-argument.
     UserArguments,
+    /// Arguments of one field of a run configuration type, from the value the
+    /// user entered. Whole-argument: expands to zero or more elements.
+    Field(String),
     PluginDir,
     WorkspaceStateDir,
     OutputFile,
@@ -154,6 +157,7 @@ const PROJECT_PROPERTY: &str = "project.property:";
 const TARGET_PROPERTY: &str = "target.property:";
 const TASK_PROPERTY: &str = "task.property:";
 const OPTION_ARGUMENTS: &str = "optionArguments:";
+const FIELD: &str = "field:";
 /// Longest property key a template may name.
 const MAX_PROPERTY_KEY: usize = 64;
 
@@ -186,6 +190,8 @@ impl Variable {
                     Self::TargetProperty(key)
                 } else if let Some(key) = property(TASK_PROPERTY) {
                     Self::TaskProperty(key)
+                } else if let Some(id) = name.strip_prefix(FIELD) {
+                    Self::Field(Some(id).filter(|id| is_setting_identifier(id))?.to_string())
                 } else {
                     let id = name
                         .strip_prefix(OPTION_ARGUMENTS)
@@ -197,7 +203,10 @@ impl Variable {
     }
 
     fn is_whole_argument(&self) -> bool {
-        matches!(self, Self::OptionArguments(_) | Self::UserArguments)
+        matches!(
+            self,
+            Self::OptionArguments(_) | Self::UserArguments | Self::Field(_)
+        )
     }
 }
 
@@ -238,6 +247,9 @@ pub(crate) struct Allowed<'a> {
     pub(crate) conditions: bool,
     /// Declared option IDs, or `None` when option arguments are not allowed.
     pub(crate) options: Option<&'a BTreeSet<String>>,
+    /// Field IDs of the run configuration type whose arguments these are, or
+    /// `None` outside a run configuration type.
+    pub(crate) fields: Option<&'a BTreeSet<String>>,
 }
 
 impl Allowed<'_> {
@@ -254,6 +266,7 @@ impl Allowed<'_> {
             host_directories: false,
             conditions: false,
             options: None,
+            fields: None,
         }
     }
 }
@@ -332,7 +345,7 @@ fn validate_element(
         if variable.is_whole_argument() && parts.len() != 1 {
             return Err(invalid_template(
                 field,
-                "${optionArguments} and ${userArguments} must be a whole argument.",
+                "${optionArguments}, ${userArguments}, and ${field:...} must be a whole argument.",
             ));
         }
         let unavailable = || {
@@ -391,6 +404,17 @@ fn validate_element(
             {
                 return Err(unavailable())
             }
+            Variable::Field(id) => {
+                let Some(fields) = allowed.fields else {
+                    return Err(unavailable());
+                };
+                if !fields.contains(id) {
+                    return Err(invalid_template(
+                        field,
+                        format!("${{field:{id}}} names an undeclared field."),
+                    ));
+                }
+            }
             Variable::OptionArguments(id) => {
                 let Some(options) = allowed.options else {
                     return Err(unavailable());
@@ -427,6 +451,28 @@ pub(crate) fn option_references(arguments: &[BuildArgument]) -> (bool, BTreeSet<
         }
     }
     (all, named)
+}
+
+/// How many times a list of templates names each run configuration field.
+pub(crate) fn field_references(arguments: &[BuildArgument]) -> BTreeMap<String, usize> {
+    let mut references = BTreeMap::new();
+    for argument in arguments {
+        for part in parse(argument.value()).unwrap_or_default() {
+            if let TemplatePart::Variable(Variable::Field(id)) = part {
+                *references.entry(id).or_insert(0) += 1;
+            }
+        }
+    }
+    references
+}
+
+/// How many times a list of templates names `${userArguments}`.
+pub(crate) fn user_argument_references(arguments: &[BuildArgument]) -> usize {
+    arguments
+        .iter()
+        .flat_map(|argument| parse(argument.value()).unwrap_or_default())
+        .filter(|part| matches!(part, TemplatePart::Variable(Variable::UserArguments)))
+        .count()
 }
 
 /// Whether one list could emit an option's arguments twice: two references
@@ -515,6 +561,8 @@ pub(crate) struct Values<'a> {
     /// Expanded arguments per option, in declaration order.
     pub(crate) option_arguments: &'a [(String, Vec<String>)],
     pub(crate) user_arguments: &'a [String],
+    /// Expanded arguments per run configuration type field, by field ID.
+    pub(crate) field_arguments: &'a [(String, Vec<String>)],
     pub(crate) plugin_dir: Option<&'a str>,
     pub(crate) workspace_state_dir: Option<&'a str>,
     pub(crate) output_file: Option<&'a str>,
@@ -551,6 +599,14 @@ pub(crate) fn expand(arguments: &[BuildArgument], values: &Values<'_>) -> Valida
                         .option_arguments
                         .iter()
                         .find(|(option, _)| option == id)
+                    {
+                        result.extend(expanded.iter().cloned());
+                    }
+                    continue;
+                }
+                Variable::Field(id) => {
+                    if let Some((_, expanded)) =
+                        values.field_arguments.iter().find(|(field, _)| field == id)
                     {
                         result.extend(expanded.iter().cloned());
                     }
@@ -654,6 +710,8 @@ fn substitute(variable: &Variable, values: &Values<'_>) -> Validation<String> {
             .to_string(),
         // Whole-argument variables never reach here: validation rejects them
         // inside a longer element and `expand` handles them alone.
-        Variable::OptionArguments(_) | Variable::UserArguments => String::new(),
+        Variable::OptionArguments(_) | Variable::UserArguments | Variable::Field(_) => {
+            String::new()
+        }
     })
 }

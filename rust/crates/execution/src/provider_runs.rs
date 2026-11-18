@@ -76,6 +76,7 @@ pub(super) fn configurations(runs: &[ProviderRunConfiguration]) -> Vec<RunConfig
             .collect(),
             before_launch: Vec::new(),
             disabled: false,
+            allow_multiple_instances: false,
             source: None,
             plugin: None,
             availability: None,

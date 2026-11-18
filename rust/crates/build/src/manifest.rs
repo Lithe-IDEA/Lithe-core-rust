@@ -33,6 +33,7 @@ mod model;
 mod options;
 mod provider;
 mod run;
+mod run_types;
 mod tasks;
 mod testing;
 
@@ -45,6 +46,7 @@ pub(crate) use model::*;
 pub(crate) use options::*;
 pub use provider::*;
 pub(crate) use run::*;
+pub(crate) use run_types::*;
 pub(crate) use tasks::*;
 pub(crate) use testing::*;
 
@@ -101,6 +103,10 @@ pub struct BuildSystemDeclaration {
     pub(crate) tasks: Vec<TaskDeclaration>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) run: Vec<RunDeclaration>,
+    /// Kinds of run configuration the user creates in the Run/Debug
+    /// Configurations dialog; `runConfigurationTypes` 0.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) run_configuration_types: Vec<RunTypeDeclaration>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) test: Option<TestDeclaration>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -215,6 +221,7 @@ impl BuildSystemDeclaration {
         let model_templates = self.validate_tasks(field, &option_ids)?;
         self.validate_model(field, &option_ids)?;
         self.validate_run(field, &option_ids, &model_templates)?;
+        self.validate_run_types(field, &option_ids)?;
         self.validate_test(field, &option_ids)?;
         self.validate_diagnostics(field)?;
         self.validate_dependencies(field, &option_ids)?;

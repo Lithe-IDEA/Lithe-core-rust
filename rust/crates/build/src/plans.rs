@@ -334,7 +334,7 @@ impl<'a> PlanContext<'a> {
         })
     }
 
-    fn values<'v>(&'v self, user_arguments: &'v [String]) -> Values<'v> {
+    pub(crate) fn values<'v>(&'v self, user_arguments: &'v [String]) -> Values<'v> {
         Values {
             root: &self.root,
             option_arguments: &self.contribution.arguments,
@@ -436,7 +436,10 @@ fn declared_provider(build_system: &BuildSystemDeclaration) -> Validation<&Provi
         .ok_or_else(|| unavailable(build_system, "a provider"))
 }
 
-fn check_user_arguments(arguments: &[String], declared: &[BuildArgument]) -> Validation<()> {
+pub(crate) fn check_user_arguments(
+    arguments: &[String],
+    declared: &[BuildArgument],
+) -> Validation<()> {
     if arguments.is_empty() {
         return Ok(());
     }
