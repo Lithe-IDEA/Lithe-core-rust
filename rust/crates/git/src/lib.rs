@@ -127,6 +127,7 @@ pub use rollback::{rollback_plan_command, rollback_prepare_command};
 pub use shelf::shelf_command;
 pub use update_plan::command as update_plan_command;
 pub use workspace_repositories::{
+    branch_plan_command as workspace_branch_plan_command,
     change_groups_command as workspace_change_groups_command,
     common_references_command as workspace_common_references_command,
     history_merge_command as workspace_history_merge_command,

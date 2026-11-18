@@ -80,6 +80,10 @@ fn selection_change_groups_and_history_merge_match_their_shared_fixtures() {
         "git.workspaceCommonReferences",
         include_str!("../../../../fixtures/git/workspace-common-references-v1.json"),
     );
+    check_fixture(
+        "git.workspaceBranchPlan",
+        include_str!("../../../../fixtures/git/workspace-branch-plan-v1.json"),
+    );
 }
 
 /// Discovery entries with the status each repository reports, as hosts send them.
@@ -242,4 +246,111 @@ fn history_pages_pass_through_to_the_history_merge() {
         .collect::<Vec<_>>();
     assert_eq!(order, [(0, 0), (1, 0), (0, 1)], "{merged}");
     assert_eq!(merged["pending"], json!([]), "{merged}");
+}
+
+/// The `references` of `root`'s `git.references` answer, unchanged, as one repository entry.
+fn repository_references(root: &Path, id: &str) -> Value {
+    let references = data("git.references", json!({"root": root}))["references"].clone();
+    json!({"id": id, "references": references})
+}
+
+/// The branch `root` has checked out.
+fn current_branch(root: &Path) -> String {
+    let result = data(
+        "git.command",
+        json!({"root": root, "arguments": ["branch", "--show-current"]}),
+    );
+    result["stdout"].as_str().unwrap().trim().to_owned()
+}
+
+/// Runs one plan `git.write` with the reference the plan names.
+fn write(root: &Path, operation: &Value, reference: &Value) {
+    let result = data(
+        "git.write",
+        json!({"root": root, "operation": operation, "gitReference": reference}),
+    );
+    assert_eq!(result["exitCode"], 0, "{operation} {reference}: {result}");
+}
+
+#[test]
+fn references_pass_through_to_common_branches_and_the_branch_plan() {
+    let folder = Folder(temporary_root("workspace-common-references"));
+    let backend = folder.0.join("backend");
+    let frontend = folder.0.join("frontend");
+    for root in [&backend, &frontend] {
+        init(root);
+        commit_at(root, "initial", "2026-01-01T10:00:00+00:00");
+        git(root, &["branch", "-M", "main"]);
+        git(root, &["branch", "dev"]);
+    }
+    git(&backend, &["branch", "backend-only"]);
+    git(&backend, &["tag", "v1"]);
+    git(&frontend, &["switch", "-q", "dev"]);
+
+    let repositories = json!([
+        repository_references(&backend, "backend"),
+        repository_references(&frontend, "frontend")
+    ]);
+    let common = data(
+        "git.workspaceCommonReferences",
+        json!({"repositories": repositories}),
+    );
+    let names = common["local"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|reference| reference["shortName"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(names, ["dev", "main"], "{common}");
+    assert!(
+        common["local"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|reference| reference["isCurrent"] == false),
+        "{common}"
+    );
+
+    // The plan's references are the ones git.write takes; a rollback returns each repository.
+    let plan = data(
+        "git.workspaceBranchPlan",
+        json!({"operation": "checkout", "reference": "refs/heads/dev", "repositories": repositories}),
+    );
+    assert_eq!(plan["skipped"], json!(["frontend"]), "{plan}");
+    let step = &plan["steps"][0];
+    assert_eq!(step["repository"], "backend", "{plan}");
+    write(&backend, &json!("checkout"), &step["reference"]);
+    assert_eq!(current_branch(&backend), "dev");
+    for action in step["rollback"].as_array().unwrap() {
+        write(&backend, &action["operation"], &action["reference"]);
+    }
+    assert_eq!(current_branch(&backend), "main");
+
+    let plan = data(
+        "git.workspaceBranchPlan",
+        json!({"operation": "createBranch", "reference": "refs/heads/main", "name": "feature",
+               "checkout": true, "repositories": repositories}),
+    );
+    for (root, step) in [&backend, &frontend]
+        .into_iter()
+        .zip(plan["steps"].as_array().unwrap())
+    {
+        let result = data(
+            "git.write",
+            json!({"root": root, "operation": "createBranch", "gitReference": step["reference"],
+                   "name": "feature", "checkout": true}),
+        );
+        assert_eq!(result["exitCode"], 0, "{result}");
+        assert_eq!(current_branch(root), "feature");
+        for action in step["rollback"].as_array().unwrap() {
+            write(root, &action["operation"], &action["reference"]);
+        }
+    }
+    assert_eq!(current_branch(&backend), "main");
+    assert_eq!(current_branch(&frontend), "dev");
+    let branches = data(
+        "git.command",
+        json!({"root": frontend, "arguments": ["branch", "--list", "feature"]}),
+    );
+    assert_eq!(branches["stdout"], "", "{branches}");
 }

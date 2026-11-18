@@ -759,16 +759,15 @@ fn current_branch_ancestry_follows_every_merge_parent_and_never_guesses() {
 #[test]
 fn checked_out_heads_walk_the_current_branch_of_every_repository() {
     // A log of two repositories: each one's checked-out branch starts its own walk; a branch that
-    // is not checked out and a detached HEAD start none.
+    // is not checked out and a detached HEAD start none, even where the HEAD commit carries a branch.
     let mut request = new_request(vec![
         commit("a2@alpha", &["a1@alpha"], "HEAD -> main"),
         commit("b3", &["b2"], "feature"),
         commit("b2", &["b1"], "HEAD -> develop, origin/develop"),
         commit("a1@alpha", &[], ""),
         commit("b1", &[], ""),
-        commit("c1", &[], "HEAD"),
+        commit("c1", &[], "HEAD, topic"),
     ]);
-    request.current_branch = Some("feature".to_string());
     request.checked_out_heads = true;
     assert_eq!(
         project(&request, COMPACT).current_branch_hashes,

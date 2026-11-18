@@ -59,7 +59,8 @@ struct Request {
     /// When true, the response lists the commits reachable from every commit Git decorates as a
     /// checked-out branch (`HEAD -> name`), in place of `current_branch`: the current branch of
     /// each repository of a log that lists several, as IntelliJ's highlighter reads the current
-    /// branch of each commit's own root. A detached `HEAD` starts no walk.
+    /// branch of each commit's own root. A detached `HEAD` starts no walk. Combined with
+    /// `current_branch` the request is invalid.
     #[serde(default)]
     checked_out_heads: bool,
 }
@@ -245,7 +246,8 @@ pub struct GraphProjection {
 /// Projects one loaded history window in a single call. The request carries the
 /// scoped `commits`, optional `repositoryCommits` that fix the permanent layout,
 /// optional `visibleHashes` for a filtered graph, `remoteNames`, `displayMode`
-/// (`compact` or `expanded`), and an optional `currentBranch`.
+/// (`compact` or `expanded`), and either an optional `currentBranch` or
+/// `checkedOutHeads`.
 pub fn command(payload: Value) -> Result<Value, CoreError> {
     let request: Request = serde_json::from_value(payload).map_err(|error| {
         CoreError::new(ErrorCode::InvalidRequest, "Invalid Git graph request")
@@ -261,6 +263,14 @@ pub fn command(payload: Value) -> Result<Value, CoreError> {
         return Err(CoreError::new(
             ErrorCode::InvalidRequest,
             "Too many commits to project",
+        ));
+    }
+    if request.checked_out_heads && request.current_branch.is_some() {
+        // A log walks one repository's branch or every repository's own; both would let
+        // one silently win.
+        return Err(CoreError::new(
+            ErrorCode::InvalidRequest,
+            "currentBranch and checkedOutHeads cannot be combined",
         ));
     }
     serde_json::to_value(project(&request, request.display_mode.options())).map_err(|error| {
@@ -283,6 +293,12 @@ fn label(title: &str, kind: GraphLabelKind) -> GraphLabel {
     }
 }
 
+/// The branch a `HEAD -> name` decoration says is checked out; `None` for every other
+/// decoration, a detached `HEAD` included.
+fn checked_out_branch(decoration: &str) -> Option<&str> {
+    decoration.trim().strip_prefix("HEAD -> ").map(local_name)
+}
+
 fn parse_labels(decorations: &str, remote_names: &HashSet<&str>) -> Vec<GraphLabel> {
     let mut labels = Vec::new();
     for value in decorations.split(',') {
@@ -292,9 +308,9 @@ fn parse_labels(decorations: &str, remote_names: &HashSet<&str>) -> Vec<GraphLab
         }
         if raw == "HEAD" {
             labels.push(label("HEAD", GraphLabelKind::Head));
-        } else if let Some(branch) = raw.strip_prefix("HEAD -> ") {
+        } else if let Some(branch) = checked_out_branch(raw) {
             labels.push(label("HEAD", GraphLabelKind::Head));
-            labels.push(label(local_name(branch), GraphLabelKind::Branch));
+            labels.push(label(branch, GraphLabelKind::Branch));
         } else if let Some(tag) = raw.strip_prefix("tag: ") {
             labels.push(label(tag, GraphLabelKind::Tag));
         } else if let Some(tag) = raw.strip_prefix("refs/tags/") {
@@ -914,7 +930,7 @@ fn project(request: &Request, options: DisplayOptions) -> GraphProjection {
             commit
                 .decorations
                 .split(',')
-                .any(|value| value.trim().starts_with("HEAD -> "))
+                .any(|value| checked_out_branch(value).is_some())
         });
     } else if let Some(branch) = &request.current_branch {
         projection.current_branch_hashes = current_branch_hashes(request, branch);

@@ -1,8 +1,8 @@
 //! Workspace repository projections against their shared fixtures.
 
 use super::{
-    change_groups_command, common_references_command, history_merge_command, selection_command,
-    MAX_REPOSITORIES,
+    branch_plan_command, change_groups_command, common_references_command, history_merge_command,
+    selection_command, MAX_REPOSITORIES,
 };
 use lithe_protocol::CoreError;
 use serde_json::{json, Value};
@@ -39,6 +39,14 @@ fn common_references_match_the_shared_fixture() {
     check_fixture(
         include_str!("../../../../fixtures/git/workspace-common-references-v1.json"),
         common_references_command,
+    );
+}
+
+#[test]
+fn branch_plan_matches_the_shared_fixture() {
+    check_fixture(
+        include_str!("../../../../fixtures/git/workspace-branch-plan-v1.json"),
+        branch_plan_command,
     );
 }
 
@@ -142,4 +150,32 @@ fn a_repository_at_a_filesystem_root_still_parents_nested_repositories() {
     ]}))
     .unwrap();
     assert_eq!(response["groups"][1]["parentReference"], "unchanged");
+}
+
+#[test]
+fn reference_lists_past_the_repository_bound_are_rejected() {
+    let repositories = (0..=MAX_REPOSITORIES)
+        .map(|index| json!({"id": format!("r{index}"), "references": []}))
+        .collect::<Vec<_>>();
+    assert!(common_references_command(json!({ "repositories": repositories })).is_err());
+    let plan = json!({"operation": "checkout", "reference": "refs/heads/main",
+        "repositories": json!(repositories)});
+    assert!(branch_plan_command(plan).is_err());
+}
+
+#[test]
+fn reference_lists_past_the_reference_bound_are_rejected() {
+    use super::common_references::{validate_bounded, RepositoryReferences};
+    let repository = |id: &str| -> RepositoryReferences {
+        serde_json::from_value(json!({"id": id, "references": [
+            {"fullName": "refs/heads/main", "shortName": "main", "kind": "local"},
+            {"fullName": "refs/remotes/origin/main", "shortName": "origin/main", "kind": "remote"}
+        ]}))
+        .unwrap()
+    };
+    // The bound counts every repository's references together, not each one's.
+    let repositories = [repository("a"), repository("b")];
+    assert!(validate_bounded(&repositories, 4).is_ok());
+    assert!(validate_bounded(&repositories, 3).is_err());
+    assert_eq!(super::common_references::MAX_REFERENCES, 1_000_000);
 }

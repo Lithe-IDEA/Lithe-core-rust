@@ -1,45 +1,86 @@
 {
   "version": 1,
-  "description": "git.workspaceCommonReferences lists the local and remote branches every repository of a workspace has, as IntelliJ IDEA lists its Common Local Branches and Common Remote Branches, in the first repository's order. current is the branch every repository has checked out, null when they differ or one is detached; a common local branch is current when it is that branch. A common local branch's upstream is the remote branch every repository tracks with it, null when one tracks nothing or they track different branches.",
+  "description": "git.workspaceCommonReferences lists the local and remote branches every repository of a workspace has, as IntelliJ IDEA lists its Common Local Branches and Common Remote Branches. Each repository passes its git.references entries unchanged; the common branches come back in the same entry shape, in the first repository's order, without tags. A common local branch isCurrent when every repository has it checked out; its upstreamShortName is the remote branch every repository tracks with it, null when one tracks nothing or they track different branches; its ahead and behind add up every repository's counts.",
   "cases": [
     {
       "name": "branchesEveryRepositoryHasInTheFirstOrder",
       "request": {
         "repositories": [
-          {"id": "backend", "current": "dev", "local": [
-            {"name": "main", "upstream": "origin/main"},
-            {"name": "dev", "upstream": "origin/dev"},
-            {"name": "feature/login"}
-          ], "remote": ["origin/dev", "origin/main", "origin/feature/login"]},
-          {"id": "frontend", "current": "dev", "local": [
-            {"name": "dev", "upstream": "origin/dev"},
-            {"name": "main", "upstream": "origin/main"}
-          ], "remote": ["origin/main", "origin/dev"]}
+          {
+            "id": "backend",
+            "references": [
+              {"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": "origin/main", "ahead": 1, "behind": 0},
+              {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": true, "upstreamShortName": "origin/dev", "ahead": 2, "behind": 1},
+              {"fullName": "refs/heads/feature/login", "shortName": "feature/login", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/remotes/origin/dev", "shortName": "origin/dev", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/remotes/origin/main", "shortName": "origin/main", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {
+                "fullName": "refs/remotes/origin/feature/login",
+                "shortName": "origin/feature/login",
+                "kind": "remote",
+                "peelsToCommit": true,
+                "isCurrent": false,
+                "upstreamShortName": null,
+                "ahead": 0,
+                "behind": 0
+              },
+              {"fullName": "refs/tags/v1.0", "shortName": "v1.0", "kind": "tag", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}
+            ]
+          },
+          {
+            "id": "frontend",
+            "references": [
+              {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": true, "upstreamShortName": "origin/dev", "ahead": 0, "behind": 3},
+              {"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": "origin/main", "ahead": 0, "behind": 4},
+              {"fullName": "refs/remotes/origin/main", "shortName": "origin/main", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/remotes/origin/dev", "shortName": "origin/dev", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/tags/v1.0", "shortName": "v1.0", "kind": "tag", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}
+            ]
+          }
         ]
       },
       "response": {
-        "current": "dev",
         "local": [
-          {"name": "main", "upstream": "origin/main", "current": false},
-          {"name": "dev", "upstream": "origin/dev", "current": true}
+          {"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": "origin/main", "ahead": 1, "behind": 4},
+          {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": true, "upstreamShortName": "origin/dev", "ahead": 2, "behind": 4}
         ],
-        "remote": ["origin/dev", "origin/main"]
+        "remote": [
+          {"fullName": "refs/remotes/origin/dev", "shortName": "origin/dev", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+          {"fullName": "refs/remotes/origin/main", "shortName": "origin/main", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}
+        ]
       }
     },
     {
-      "name": "differentCheckoutsHaveNoCommonCurrentBranch",
+      "name": "differentCheckoutsHaveNoCurrentCommonBranch",
       "request": {
         "repositories": [
-          {"id": "backend", "current": "main", "local": [{"name": "main"}, {"name": "dev"}]},
-          {"id": "frontend", "current": "dev", "local": [{"name": "main"}, {"name": "dev"}]},
-          {"id": "shared", "local": [{"name": "dev"}, {"name": "main"}]}
+          {
+            "id": "backend",
+            "references": [
+              {"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": true, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}
+            ]
+          },
+          {
+            "id": "frontend",
+            "references": [
+              {"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": true, "upstreamShortName": null, "ahead": 0, "behind": 0}
+            ]
+          },
+          {
+            "id": "shared",
+            "references": [
+              {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}
+            ]
+          }
         ]
       },
       "response": {
-        "current": null,
         "local": [
-          {"name": "main", "upstream": null, "current": false},
-          {"name": "dev", "upstream": null, "current": false}
+          {"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+          {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}
         ],
         "remote": []
       }
@@ -48,46 +89,213 @@
       "name": "anUpstreamOneRepositoryLacksOrTracksElsewhereIsNotCommon",
       "request": {
         "repositories": [
-          {"id": "backend", "local": [{"name": "main", "upstream": "origin/main"}, {"name": "dev", "upstream": "origin/dev"}]},
-          {"id": "frontend", "local": [{"name": "main"}, {"name": "dev", "upstream": "upstream/dev"}]},
-          {"id": "shared", "local": [{"name": "main", "upstream": "origin/main"}, {"name": "dev", "upstream": "origin/dev"}]}
+          {
+            "id": "backend",
+            "references": [
+              {"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": "origin/main", "ahead": 0, "behind": 0},
+              {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": "origin/dev", "ahead": 1, "behind": 0}
+            ]
+          },
+          {
+            "id": "frontend",
+            "references": [
+              {"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": "upstream/dev", "ahead": 2, "behind": 0}
+            ]
+          },
+          {
+            "id": "shared",
+            "references": [
+              {"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": "origin/main", "ahead": 0, "behind": 0},
+              {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": "origin/dev", "ahead": 0, "behind": 0}
+            ]
+          }
         ]
       },
       "response": {
-        "current": null,
         "local": [
-          {"name": "main", "upstream": null, "current": false},
-          {"name": "dev", "upstream": null, "current": false}
+          {"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+          {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 3, "behind": 0}
         ],
         "remote": []
       }
     },
     {
-      "name": "oneRepositoryListsItsOwnBranches",
+      "name": "oneRepositoryListsItsOwnBranchesAndIgnoresFieldsCoreDoesNotRead",
       "request": {
         "repositories": [
-          {"id": ".", "current": "main", "local": [{"name": "main", "upstream": "origin/main"}], "remote": ["origin/main"]}
+          {
+            "id": ".",
+            "references": [
+              {
+                "fullName": "refs/heads/main",
+                "shortName": "main",
+                "kind": "local",
+                "peelsToCommit": false,
+                "isCurrent": true,
+                "upstreamShortName": "origin/main",
+                "ahead": 0,
+                "behind": 0,
+                "extra": "ignored"
+              },
+              {"fullName": "refs/remotes/origin/main", "shortName": "origin/main", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/tags/nightly", "shortName": "nightly", "kind": "tag", "peelsToCommit": false, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}
+            ]
+          }
         ]
       },
       "response": {
-        "current": "main",
-        "local": [{"name": "main", "upstream": "origin/main", "current": true}],
-        "remote": ["origin/main"]
+        "local": [{"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": true, "upstreamShortName": "origin/main", "ahead": 0, "behind": 0}],
+        "remote": [{"fullName": "refs/remotes/origin/main", "shortName": "origin/main", "kind": "remote", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}]
       }
     },
     {
-      "name": "noRepositoryHasNoCommonBranch",
-      "request": {"repositories": []},
-      "response": {"current": null, "local": [], "remote": []}
-    }
+      "name": "entriesWithoutCountsCountNothing",
+      "request": {
+        "repositories": [
+          {"id": "a", "references": [{"fullName": "refs/heads/main", "shortName": "main", "kind": "local"}]},
+          {"id": "b", "references": [{"fullName": "refs/heads/main", "shortName": "main", "kind": "local"}]}
+        ]
+      },
+      "response": {"local": [{"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}], "remote": []}
+    },
+    {"name": "noRepositoryHasNoCommonBranch", "request": {"repositories": []}, "response": {"local": [], "remote": []}}
   ],
   "invalid": [
-    {"name": "repeatedId", "request": {"repositories": [{"id": "a"}, {"id": "a"}]}},
-    {"name": "absoluteId", "request": {"repositories": [{"id": "/a"}]}},
-    {"name": "emptyBranchName", "request": {"repositories": [{"id": "a", "local": [{"name": ""}]}]}},
-    {"name": "repeatedLocalBranch", "request": {"repositories": [{"id": "a", "local": [{"name": "main"}, {"name": "main"}]}]}},
-    {"name": "repeatedRemoteBranch", "request": {"repositories": [{"id": "a", "remote": ["origin/main", "origin/main"]}]}},
-    {"name": "emptyCurrentBranch", "request": {"repositories": [{"id": "a", "current": ""}]}},
-    {"name": "unknownField", "request": {"repositories": [{"id": "a", "tags": []}]}}
+    {"name": "unknownField", "request": {"repositories": [], "extra": true}},
+    {"name": "unknownRepositoryField", "request": {"repositories": [{"id": "a", "references": [], "current": "main"}]}},
+    {"name": "missingReferences", "request": {"repositories": [{"id": "a"}]}},
+    {"name": "emptyId", "request": {"repositories": [{"id": "", "references": []}]}},
+    {"name": "absoluteId", "request": {"repositories": [{"id": "/a", "references": []}]}},
+    {"name": "repeatedId", "request": {"repositories": [{"id": "a", "references": []}, {"id": "a", "references": []}]}},
+    {
+      "name": "unknownKind",
+      "request": {
+        "repositories": [
+          {
+            "id": "a",
+            "references": [{"fullName": "refs/heads/main", "shortName": "main", "kind": "note", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}]
+          }
+        ]
+      }
+    },
+    {"name": "missingFullName", "request": {"repositories": [{"id": "a", "references": [{"shortName": "main", "kind": "local"}]}]}},
+    {"name": "emptyShortName", "request": {"repositories": [{"id": "a", "references": [{"fullName": "refs/heads/", "shortName": "", "kind": "local"}]}]}},
+    {
+      "name": "nameWithNul",
+      "request": {
+        "repositories": [
+          {
+            "id": "a",
+            "references": [{"fullName": "refs/heads/ma\u0000in", "shortName": "ma\u0000in", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}]
+          }
+        ]
+      }
+    },
+    {
+      "name": "nameLongerThan4096Bytes",
+      "request": {
+        "repositories": [
+          {
+            "id": "a",
+            "references": [
+              {
+                "fullName": "refs/heads/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "shortName": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "kind": "local",
+                "peelsToCommit": true,
+                "isCurrent": false,
+                "upstreamShortName": null,
+                "ahead": 0,
+                "behind": 0
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "fullNameOutsideItsKindsNamespace",
+      "request": {
+        "repositories": [
+          {
+            "id": "a",
+            "references": [{"fullName": "refs/remotes/origin/main", "shortName": "origin/main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}]
+          }
+        ]
+      }
+    },
+    {
+      "name": "fullNameThatIsNotTheShortName",
+      "request": {
+        "repositories": [
+          {
+            "id": "a",
+            "references": [{"fullName": "refs/heads/main", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}]
+          }
+        ]
+      }
+    },
+    {
+      "name": "repeatedReference",
+      "request": {
+        "repositories": [
+          {
+            "id": "a",
+            "references": [
+              {"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": null, "ahead": 0, "behind": 0}
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "emptyUpstream",
+      "request": {
+        "repositories": [
+          {
+            "id": "a",
+            "references": [{"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": "", "ahead": 0, "behind": 0}]
+          }
+        ]
+      }
+    },
+    {
+      "name": "upstreamWithNul",
+      "request": {
+        "repositories": [
+          {
+            "id": "a",
+            "references": [{"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": false, "upstreamShortName": "origin/ma\u0000in", "ahead": 0, "behind": 0}]
+          }
+        ]
+      }
+    },
+    {
+      "name": "twoCurrentBranches",
+      "request": {
+        "repositories": [
+          {
+            "id": "a",
+            "references": [
+              {"fullName": "refs/heads/main", "shortName": "main", "kind": "local", "peelsToCommit": true, "isCurrent": true, "upstreamShortName": null, "ahead": 0, "behind": 0},
+              {"fullName": "refs/heads/dev", "shortName": "dev", "kind": "local", "peelsToCommit": true, "isCurrent": true, "upstreamShortName": null, "ahead": 0, "behind": 0}
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "currentRemoteBranch",
+      "request": {
+        "repositories": [
+          {
+            "id": "a",
+            "references": [{"fullName": "refs/remotes/origin/main", "shortName": "origin/main", "kind": "remote", "peelsToCommit": true, "isCurrent": true, "upstreamShortName": null, "ahead": 0, "behind": 0}]
+          }
+        ]
+      }
+    }
   ]
 }

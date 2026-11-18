@@ -6,9 +6,11 @@
 //! nested ones. Hosts pass those discovery entries back unchanged, together with
 //! what they read from each repository, and Core decides which repositories a
 //! view acts on, how the repositories' changes group and stage, how their
-//! histories interleave in one log, and which branches they all have. Views keep drawing, folding, and the native
+//! histories interleave in one log, which branches they all have, and how a
+//! branch action runs across them. Views keep drawing, folding, and the native
 //! Git reads and writes the plans name.
 
+mod branch_plan;
 mod change_groups;
 mod common_references;
 mod history_merge;
@@ -16,6 +18,7 @@ mod selection;
 #[cfg(test)]
 mod tests;
 
+pub use branch_plan::command as branch_plan_command;
 pub use change_groups::command as change_groups_command;
 pub use common_references::command as common_references_command;
 pub use history_merge::command as history_merge_command;
