@@ -200,9 +200,17 @@ pub struct RunConfiguration {
     /// Hidden from the resolved list; set by a user or when the working directory is missing.
     #[serde(default)]
     pub disabled: bool,
-    /// Workspace-relative manifest or source file that produced the configuration.
+    /// Layer the resolved entry last took a value from: `generated`,
+    /// `project` or `local`. Computed by resolution; never read from a layer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    /// Plugin the entry needs, from its plugin document or its build run.
+    /// Computed by resolution; absent for built-in configurations.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin: Option<PluginDependency>,
+    /// Why the entry cannot run; absent when it can. Computed by resolution.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub availability: Option<Availability>,
 }
 
 fn dot() -> String {

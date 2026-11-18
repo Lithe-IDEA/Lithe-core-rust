@@ -19,8 +19,9 @@
     }
   },
   "expected": {
-    "localDocument": "string",
-    "projectDocument": "string",
-    "toolchainDocument": "string"
+    "changedPaths": [
+      ".lithe/run/configurations.yaml",
+      ".lithe/toolchains/local.json"
+    ]
   }
 }

@@ -3,7 +3,12 @@
 use super::*;
 
 pub(crate) fn validate_version_value(document: &Value) -> Result<(), CoreError> {
-    let version = document.get("version").and_then(Value::as_u64).unwrap_or(0) as u32;
+    // An out-of-range version must not wrap into a supported one.
+    let version = document
+        .get("version")
+        .and_then(Value::as_u64)
+        .and_then(|version| u32::try_from(version).ok())
+        .unwrap_or(0);
     validate_version(version)?;
     validate_tool_preferences(document)
 }
@@ -42,7 +47,11 @@ pub fn validate_sidecar_version(version: u32) -> Result<(), CoreError> {
 }
 
 pub(crate) fn validate_sidecar_version_value(document: &Value) -> Result<(), CoreError> {
-    let version = document.get("version").and_then(Value::as_u64).unwrap_or(0) as u32;
+    let version = document
+        .get("version")
+        .and_then(Value::as_u64)
+        .and_then(|version| u32::try_from(version).ok())
+        .unwrap_or(0);
     validate_sidecar_version(version)
 }
 
@@ -88,6 +97,9 @@ pub(crate) fn validate_configuration(configuration: &RunConfiguration) -> Result
                 "Build provider configurations cannot store commands, tool bindings or debug adapters",
             ));
         }
+    }
+    if super::process::is_process_provider(&configuration.provider) {
+        super::process::validate(configuration, Platform::HOST)?;
     }
     if invalid_native_relative_path(&configuration.cwd, Platform::HOST) {
         return Err(CoreError::new(

@@ -172,6 +172,66 @@ pub(super) fn dispatch(
                 Err(error) => CoreResponse::failure(id, error),
             }
         }
+        RunConfigCommand::ConfigurationTypes => {
+            match serde_json::from_value::<crate::execution::ConfigurationTypesRequest>(payload)
+                .map_err(|error| {
+                    CoreError::new(
+                        ErrorCode::InvalidRequest,
+                        "Invalid configuration types request",
+                    )
+                    .with_details(error.to_string())
+                })
+                .and_then(crate::execution::configuration_types)
+            {
+                Ok(data) => CoreResponse::success(id, data),
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
+        RunConfigCommand::EditorForm => {
+            match serde_json::from_value::<crate::execution::EditorFormRequest>(payload)
+                .map_err(|error| {
+                    CoreError::new(
+                        ErrorCode::InvalidRequest,
+                        "Invalid run configuration form request",
+                    )
+                    .with_details(error.to_string())
+                })
+                .and_then(crate::execution::editor_form)
+            {
+                Ok(data) => CoreResponse::success(id, data),
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
+        RunConfigCommand::SaveConfiguration => {
+            match serde_json::from_value::<crate::execution::SaveConfigurationRequest>(payload)
+                .map_err(|error| {
+                    CoreError::new(
+                        ErrorCode::InvalidRequest,
+                        "Invalid run configuration save request",
+                    )
+                    .with_details(error.to_string())
+                })
+                .and_then(crate::execution::save_configuration)
+            {
+                Ok(data) => CoreResponse::success(id, data),
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
+        RunConfigCommand::DeleteConfiguration => {
+            match serde_json::from_value::<crate::execution::DeleteConfigurationRequest>(payload)
+                .map_err(|error| {
+                    CoreError::new(
+                        ErrorCode::InvalidRequest,
+                        "Invalid run configuration delete request",
+                    )
+                    .with_details(error.to_string())
+                })
+                .and_then(crate::execution::delete_configuration)
+            {
+                Ok(data) => CoreResponse::success(id, data),
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
         RunConfigCommand::ProviderLaunchInputs => {
             match serde_json::from_value::<crate::execution::ProviderLaunchInputsRequest>(payload)
                 .map_err(|error| {

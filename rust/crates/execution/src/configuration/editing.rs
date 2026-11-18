@@ -1,103 +1,128 @@
 //! Writing user changes back to the configuration documents.
+//!
+//! Every command here reads the saved layers from the workspace and returns
+//! the [`FileChange`]s that make them hold the edit; the host applies them.
 
 use super::*;
 
-/// Produces a Run-document replacement without materializing legacy defaults.
+/// Replaces the generic tool preferences in the local layer.
 pub fn update_tool_preferences(request: UpdateToolPreferencesRequest) -> Result<Value, CoreError> {
-    let mut document = request.local_document;
-    // A preference edit must not trigger legacy Run migration or silently
-    // narrow an unknown 64-bit version into a supported document version.
-    if !matches!(document["version"].as_u64(), Some(1 | 2)) {
-        return Err(CoreError::new(
-            ErrorCode::NotSupported,
-            "Unsupported run configuration version",
-        ));
-    }
-    configuration_ids(&document)?;
-    validate_tool_preferences(&document)?;
+    let root = existing_root(&request.root)?;
     lithe_toolchain::preferences::validate(&request.preferences)
         .map_err(|error| CoreError::new(ErrorCode::InvalidRequest, error.message))?;
-    let object = document
-        .as_object_mut()
-        .ok_or_else(|| CoreError::new(ErrorCode::InvalidRequest, "Invalid local Run document"))?;
-    let toolchain = object.entry("toolchain").or_insert_with(|| json!({}));
-    let toolchain = toolchain.as_object_mut().ok_or_else(|| {
-        CoreError::new(ErrorCode::InvalidRequest, "Invalid local tool preferences")
-    })?;
-    toolchain.insert("preferences".into(), request.preferences);
-    Ok(json!({"document":serde_json::to_string_pretty(&document).expect("validated Run document")}))
+    let layers = read_layers(&root, None, None)?;
+    let document = update_toolchain_document(
+        &layers,
+        ToolchainPaths {
+            runtime_executable_paths: BTreeMap::new(),
+            preferences: Some(request.preferences),
+        },
+    )?;
+    let changes = layers
+        .local
+        .changes(&document, &write_context(&root, None).context())?;
+    Ok(json!({ "changes": changes }))
 }
 
 /// Persists editable configuration options in the requested ownership layer.
 pub fn update_options(mut request: UpdateOptionsRequest) -> Result<Value, CoreError> {
     let root = existing_root(&request.root)?;
+    let scope = Scope::parse(&request.scope)?;
+    let layers = read_layers(&root, None, request.local_document.take())?;
+    let plugins = request.plugins.take();
+    let writing = write_context(&root, plugins.as_deref());
     if let Some(toolchain) = request.toolchain.take() {
-        if request.scope != "local" {
+        if scope != Scope::Local {
             return Err(CoreError::new(
                 ErrorCode::InvalidRequest,
                 "Toolchain paths can only be saved in the local layer",
             ));
         }
-        let document = update_toolchain_document(&root, request.local_document, toolchain)?;
-        return Ok(json!({
-            "document": serde_json::to_string_pretty(&document).expect("document should encode")
-        }));
+        let document = update_toolchain_document(&layers, toolchain)?;
+        let changes = layers.local.changes(&document, &writing.context())?;
+        return Ok(json!({ "changes": changes }));
     }
-    let document = update_configuration_options(&root, request)?;
-    Ok(json!({
-        "document": serde_json::to_string_pretty(&document).expect("document should encode")
-    }))
+    let base = layers.layer(scope).document.clone();
+    let document = update_configuration_options(&root, &layers, base, &request)?;
+    let changes = layers.layer(scope).changes(&document, &writing.context())?;
+    Ok(json!({ "changes": changes }))
 }
 
-/// Produces every document needed to save the run-configuration editor as one operation.
+/// Produces every change needed to save the run-configuration editor as one operation.
 pub fn save_editor_changes(mut request: UpdateOptionsRequest) -> Result<Value, CoreError> {
     let root = existing_root(&request.root)?;
+    let scope = Scope::parse(&request.scope)?;
     let toolchain = request.toolchain.take().ok_or_else(|| {
         CoreError::new(
             ErrorCode::InvalidRequest,
             "Run configuration editor changes require a project toolchain",
         )
     })?;
-    let toolchain_document =
+    let layers = read_layers(&root, None, request.local_document.take())?;
+    let plugins = request.plugins.take();
+    let writing = write_context(&root, plugins.as_deref());
+    let toolchain_change =
         update_local_toolchains_document(&root, &toolchain.runtime_executable_paths)?;
-    let mut local_document =
-        update_toolchain_document(&root, request.local_document.take(), toolchain)?;
-    request.local_document = Some(local_document.clone());
-    let scope = request.scope.clone();
-    let options_document = update_configuration_options(&root, request)?;
-    let project_document = if scope == "project" {
-        Some(serde_json::to_string_pretty(&options_document).expect("document should encode"))
+    let mut local_document = update_toolchain_document(&layers, toolchain)?;
+    let mut changes = Vec::new();
+    if scope == Scope::Project {
+        let base = layers.project.document.clone();
+        let document = update_configuration_options(&root, &layers, base, &request)?;
+        changes.extend(layers.project.changes(&document, &writing.context())?);
     } else {
-        local_document = options_document;
-        None
-    };
-    Ok(json!({
-        "localDocument": serde_json::to_string_pretty(&local_document).expect("document should encode"),
-        "projectDocument": project_document,
-        "toolchainDocument": toolchain_document.map(|document| {
-            serde_json::to_string_pretty(&document).expect("document should encode")
-        })
-    }))
+        local_document = update_configuration_options(&root, &layers, local_document, &request)?;
+    }
+    changes.extend(layers.local.changes(&local_document, &writing.context())?);
+    changes.extend(toolchain_change);
+    Ok(json!({ "changes": changes }))
+}
+
+/// The generated layer and installed plugins an edit places entries with.
+pub(crate) struct Writing<'a> {
+    generated: Option<std::sync::Arc<RunConfigurationDocument>>,
+    installed: Option<&'a [InstalledPlugin]>,
+}
+
+impl Writing<'_> {
+    pub(crate) fn context(&self) -> WriteContext<'_> {
+        WriteContext {
+            generated: self.generated.as_deref(),
+            installed: self.installed,
+        }
+    }
+}
+
+pub(crate) fn write_context<'a>(
+    root: &Path,
+    installed: Option<&'a [InstalledPlugin]>,
+) -> Writing<'a> {
+    Writing {
+        generated: generated_layer::get(root),
+        installed,
+    }
 }
 
 /// Replaces only the generic preferences. Other document-level toolchain
 /// fields belong to whichever host or plugin wrote them, so a Run editor save
 /// must not reset them.
 fn update_toolchain_document(
-    root: &Path,
-    local_document: Option<Value>,
+    layers: &Layers,
     toolchain: ToolchainPaths,
 ) -> Result<Value, CoreError> {
-    let mut document = local_layer_document(root, local_document)?;
-    validate_version_value(&document)?;
-    let mut saved = document["toolchain"]
-        .as_object()
-        .cloned()
-        .unwrap_or_default();
-    if let Some(preferences) = toolchain.preferences {
-        saved.insert("preferences".to_string(), preferences);
-    }
-    document["toolchain"] = Value::Object(saved);
+    let mut document = layers.local.document.clone();
+    let Some(preferences) = toolchain.preferences else {
+        return Ok(document);
+    };
+    let saved = document
+        .as_object_mut()
+        .expect("validated layers are objects")
+        .entry("toolchain")
+        .or_insert_with(|| json!({}))
+        .as_object_mut()
+        .ok_or_else(|| {
+            CoreError::new(ErrorCode::InvalidRequest, "Invalid local tool preferences")
+        })?;
+    saved.insert("preferences".to_string(), preferences);
     validate_tool_preferences(&document)?;
     Ok(document)
 }
@@ -105,22 +130,18 @@ fn update_toolchain_document(
 fn update_local_toolchains_document(
     root: &Path,
     runtime_executable_paths: &BTreeMap<String, String>,
-) -> Result<Option<Value>, CoreError> {
+) -> Result<Option<FileChange>, CoreError> {
     if runtime_executable_paths.is_empty() {
         return Ok(None);
     }
-    let mut document = read_local_toolchains(root)?
-        .unwrap_or_else(|| json!({"version": SIDECAR_VERSION, "toolchains": {}}));
-    validate_sidecar_version_value(&document)?;
+    let (mut document, sha256) = match read_local_toolchains_file(root)? {
+        Some((document, sha256)) => (document, Some(sha256)),
+        None => (json!({"version": SIDECAR_VERSION, "toolchains": {}}), None),
+    };
     let toolchains = document
         .get_mut("toolchains")
         .and_then(Value::as_object_mut)
-        .ok_or_else(|| {
-            CoreError::new(
-                ErrorCode::ParseFailed,
-                "Local toolchains must contain a toolchains object",
-            )
-        })?;
+        .expect("validated local toolchains hold a toolchains object");
     for (id, executable_path) in runtime_executable_paths {
         if executable_path.trim().is_empty() {
             toolchains.remove(id);
@@ -128,19 +149,22 @@ fn update_local_toolchains_document(
             toolchains.insert(id.clone(), json!({ "executable": executable_path.trim() }));
         }
     }
-    Ok(Some(document))
+    Ok(Some(super::storage::json_file_change(
+        "toolchains/local.json",
+        sha256,
+        &document,
+    )))
 }
 
+/// Applies the editor's options for one configuration to `document`, a
+/// layer's document, and returns it.
 fn update_configuration_options(
     root: &Path,
-    request: UpdateOptionsRequest,
+    layers: &Layers,
+    mut document: Value,
+    request: &UpdateOptionsRequest,
 ) -> Result<Value, CoreError> {
-    let relative = scope_document(&request.scope)?;
-    let resolved = resolve(ResolveRequest {
-        team_document: None,
-        root: request.root.clone(),
-        local_document: request.local_document.clone(),
-    })?;
+    let resolved = resolve_layers(root, layers, None)?;
     let provider = resolved["configurations"]
         .as_array()
         .and_then(|items| {
@@ -169,13 +193,6 @@ fn update_configuration_options(
             request.working_directory.trim(),
         )?)
     };
-    let mut document = if request.scope == "local" {
-        local_layer_document(root, request.local_document)?
-    } else {
-        read_document_value(root, relative)?
-            .unwrap_or_else(|| json!({"version": VERSION, "configurations": []}))
-    };
-    validate_version_value(&document)?;
     let configurations = document["configurations"]
         .as_array_mut()
         .ok_or_else(|| CoreError::new(ErrorCode::ParseFailed, "configurations must be an array"))?;
@@ -224,11 +241,17 @@ fn update_configuration_options(
     Ok(document)
 }
 
-/// Only explicit provider references make an ungenerated workspace runnable.
-pub(crate) fn has_saved_build_run(document: &Value) -> bool {
-    document["configurations"]
-        .as_array()
-        .is_some_and(|items| items.iter().any(crate::provider_runs::is_explicit))
+/// Saved entries that run without a generated layer make an ungenerated
+/// workspace runnable: explicit provider references and built-in process runs.
+pub(crate) fn has_saved_runnable(document: &Value) -> bool {
+    document["configurations"].as_array().is_some_and(|items| {
+        items.iter().any(|item| {
+            crate::provider_runs::is_explicit(item)
+                || item["provider"]
+                    .as_str()
+                    .is_some_and(super::process::is_process_provider)
+        })
+    })
 }
 
 /// Upserts a local reference while preserving unrelated settings and stable IDs.
@@ -257,16 +280,10 @@ fn create_build_provider_configuration(
             "Invalid run configuration name",
         ));
     }
-    let mut document = read_document_value(root, "run/local.json")?
-        .unwrap_or_else(|| json!({"version":VERSION,"configurations":[]}));
-    validate_version_value(&document)?;
-    let mut ids: std::collections::BTreeSet<String> =
-        configuration_ids(&document)?.into_keys().collect();
-    ids.extend(generated_ids(root));
-    if let Some(other) = read_document_value(root, "run/configurations.json")? {
-        validate_version_value(&other)?;
-        ids.extend(configuration_ids(&other)?.into_keys());
-    }
+    let layers = read_layers(root, None, None)?;
+    let mut document = layers.local.document.clone();
+    let mut ids = existing_ids(root, &layers);
+    ids.extend(configuration_ids(&document)?.into_keys());
     let encoded = serde_json::to_value(reference).expect("reference encodes");
     let mut identity = encoded.clone();
     identity.as_object_mut().unwrap().remove("userArguments");
@@ -329,9 +346,20 @@ fn create_build_provider_configuration(
         items.push(configuration);
     }
     items.sort_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));
-    Ok(
-        json!({"id":id,"document":serde_json::to_string_pretty(&document).expect("document encodes")}),
-    )
+    let writing = write_context(root, request.plugins.as_deref());
+    let changes = layers.local.changes(&document, &writing.context())?;
+    Ok(json!({"id": id, "changes": changes}))
+}
+
+/// Every id a new user configuration must not reuse.
+pub(crate) fn existing_ids(root: &Path, layers: &Layers) -> BTreeSet<String> {
+    let mut ids = generated_ids(root);
+    for document in [&layers.project.document, &layers.local.document] {
+        if let Ok(saved) = configuration_ids(document) {
+            ids.extend(saved.into_keys());
+        }
+    }
+    ids
 }
 
 /// Creates a user configuration while preserving stable IDs in existing layers.
@@ -351,10 +379,7 @@ pub fn create_user_configuration(
     ))
 }
 
-fn unique_user_configuration_id(
-    name: &str,
-    existing_ids: &std::collections::BTreeSet<String>,
-) -> String {
+pub(crate) fn unique_user_configuration_id(name: &str, existing_ids: &BTreeSet<String>) -> String {
     let mut slug = String::new();
     let mut separator = false;
     for character in name.to_lowercase().chars() {

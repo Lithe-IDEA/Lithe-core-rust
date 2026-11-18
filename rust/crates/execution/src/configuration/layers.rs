@@ -1,33 +1,6 @@
-//! Reading the configuration layers and normalizing their directories.
+//! Reading the sidecar documents and normalizing configuration directories.
 
 use super::*;
-
-pub(crate) fn local_layer_document(
-    root: &Path,
-    provided: Option<Value>,
-) -> Result<Value, CoreError> {
-    if let Some(mut document) = provided {
-        // A host-owned local layer may still carry the v1 shape, mirroring the
-        // migration applied to the on-disk document below.
-        migrate_document_value(&mut document);
-        validate_version_value(&document)?;
-        configuration_ids(&document)?;
-        return Ok(document);
-    }
-    Ok(read_document_value(root, "run/local.json")?
-        .unwrap_or_else(|| json!({"version": VERSION, "configurations": []})))
-}
-
-pub(crate) fn scope_document(scope: &str) -> Result<&'static str, CoreError> {
-    match scope {
-        "local" => Ok("run/local.json"),
-        "project" => Ok("run/configurations.json"),
-        _ => Err(CoreError::new(
-            ErrorCode::InvalidRequest,
-            "Run configuration scope must be local or project",
-        )),
-    }
-}
 
 /// Validates the literal value of a `cwd` override before it is persisted.
 ///
@@ -103,32 +76,23 @@ pub(crate) fn project_directory_exists(root: &Path, value: &str) -> bool {
     canonical_target.is_dir() && canonical_target.starts_with(canonical_root)
 }
 
-pub(crate) fn read_document_value(root: &Path, relative: &str) -> Result<Option<Value>, CoreError> {
-    let path = root.join(".lithe").join(relative);
-    if !path.exists() {
+/// Reads a sidecar document below `.lithe`, such as `project.json`, with the
+/// hash of its bytes. Sidecars keep their own schema and are never migrated.
+pub(crate) fn read_sidecar(
+    root: &Path,
+    relative: &str,
+) -> Result<Option<(Value, String)>, CoreError> {
+    let Some((text, sha256)) = super::storage::read_file(root, relative)? else {
         return Ok(None);
-    }
-    let text = fs::read_to_string(&path).map_err(|e| {
-        CoreError::new(
-            ErrorCode::PermissionDenied,
-            "Could not read run configuration",
-        )
-        .with_details(e.to_string())
-    })?;
-    let mut value: Value = serde_json::from_str(&text).map_err(|e| {
+    };
+    let value = serde_json::from_str(&text).map_err(|e| {
         CoreError::new(
             ErrorCode::ParseFailed,
             format!("Configuration JSON is invalid: .lithe/{relative}"),
         )
         .with_details(e.to_string())
     })?;
-    // Only run/* documents carry the run-configuration schema. project.json and
-    // the toolchain files share the .lithe root and a version field, but their
-    // schema is unrelated -- migrating them would bump a version they never own.
-    if relative.starts_with("run/") {
-        migrate_document_value(&mut value);
-    }
-    Ok(Some(value))
+    Ok(Some((value, sha256)))
 }
 
 /// Ids of the configurations this session generated for `root`; a user
@@ -157,7 +121,14 @@ pub(crate) fn existing_root(value: &str) -> Result<PathBuf, CoreError> {
 }
 
 pub(crate) fn read_local_toolchains(root: &Path) -> Result<Option<Value>, CoreError> {
-    let Some(document) = read_document_value(root, "toolchains/local.json")? else {
+    Ok(read_local_toolchains_file(root)?.map(|(document, _)| document))
+}
+
+/// The local toolchains document with the hash of its bytes, validated.
+pub(crate) fn read_local_toolchains_file(
+    root: &Path,
+) -> Result<Option<(Value, String)>, CoreError> {
+    let Some((document, sha256)) = read_sidecar(root, "toolchains/local.json")? else {
         return Ok(None);
     };
     validate_sidecar_version_value(&document)?;
@@ -171,5 +142,5 @@ pub(crate) fn read_local_toolchains(root: &Path) -> Result<Option<Value>, CoreEr
             "Local toolchains must contain a toolchains object",
         ));
     }
-    Ok(Some(document))
+    Ok(Some((document, sha256)))
 }

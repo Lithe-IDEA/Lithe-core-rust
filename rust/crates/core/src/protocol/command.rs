@@ -732,6 +732,14 @@ pub enum RunConfigCommand {
     SaveEditorChanges,
     /// Adds a user-authored run configuration (`runConfig.createUserConfiguration`).
     CreateUserConfiguration,
+    /// Lists the configuration kinds a user can create (`runConfig.configurationTypes`).
+    ConfigurationTypes,
+    /// Describes the editor of a built-in process run (`runConfig.editorForm`).
+    EditorForm,
+    /// Checks and saves a built-in process run editor (`runConfig.saveConfiguration`).
+    SaveConfiguration,
+    /// Removes a user-authored run configuration (`runConfig.deleteConfiguration`).
+    DeleteConfiguration,
     /// Produces the process plan for one configuration (`runConfig.createLaunchPlan`).
     CreateLaunchPlan,
     /// Resolves user choices for a provider-owned launch (`runConfig.providerLaunchInputs`).
@@ -1408,6 +1416,16 @@ impl CoreCommand {
             }
             "runConfig.createUserConfiguration" => {
                 Some(Self::RunConfig(RunConfigCommand::CreateUserConfiguration))
+            }
+            "runConfig.configurationTypes" => {
+                Some(Self::RunConfig(RunConfigCommand::ConfigurationTypes))
+            }
+            "runConfig.editorForm" => Some(Self::RunConfig(RunConfigCommand::EditorForm)),
+            "runConfig.saveConfiguration" => {
+                Some(Self::RunConfig(RunConfigCommand::SaveConfiguration))
+            }
+            "runConfig.deleteConfiguration" => {
+                Some(Self::RunConfig(RunConfigCommand::DeleteConfiguration))
             }
             "runConfig.createLaunchPlan" => {
                 Some(Self::RunConfig(RunConfigCommand::CreateLaunchPlan))

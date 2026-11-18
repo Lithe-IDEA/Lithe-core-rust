@@ -28,8 +28,8 @@ mod version;
 pub use icon::UIIcon;
 pub use manifest::PluginManifest;
 pub use names::{
-    is_bare_command, is_environment_name, is_function_id, is_identifier, is_language_tag,
-    is_local_tool_id, is_official_namespace, is_plugin_id, is_safe_relative_path,
+    github_repository, is_bare_command, is_environment_name, is_function_id, is_identifier,
+    is_language_tag, is_local_tool_id, is_official_namespace, is_plugin_id, is_safe_relative_path,
     is_semantic_version, is_tool_id, is_tool_namespace, sorted_unique, MAX_FUNCTION_ID_BYTES,
     OFFICIAL_PLUGIN_NAMESPACE,
 };
@@ -37,4 +37,6 @@ pub use rejection::{
     decode_payload, invalid, invalid_template, outcome, PluginRejection, Validation,
 };
 pub use template::{parse_template_with, regex_literal, TemplatePart};
-pub use version::{validate_minimum_version, version_components, PluginVersion};
+pub use version::{
+    validate_minimum_version, version_components, PluginVersion, PluginVersionRequirement,
+};

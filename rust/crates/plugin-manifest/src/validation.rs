@@ -85,6 +85,14 @@ impl DeclarativePluginManifest {
         if self.vendor.id.trim().is_empty() || self.vendor.display_name.trim().is_empty() {
             return Err(invalid("vendor", "The plugin vendor is incomplete."));
         }
+        if let Some(repository) = &self.repository {
+            if lithe_plugin_model::github_repository(repository).is_none() {
+                return Err(invalid(
+                    "repository",
+                    "The plugin repository must be https://github.com/<owner>/<name>.",
+                ));
+            }
+        }
         if self.vendor.signature_requirement == SignatureRequirement::None
             && is_official_namespace(&self.id)
         {
