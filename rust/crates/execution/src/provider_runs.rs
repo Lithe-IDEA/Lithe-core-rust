@@ -73,6 +73,7 @@ pub(super) fn configurations(runs: &[ProviderRunConfiguration]) -> Vec<RunConfig
             )]
             .into_iter()
             .collect(),
+            before_launch: Vec::new(),
             disabled: false,
             source: None,
             plugin: None,

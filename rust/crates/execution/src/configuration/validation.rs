@@ -62,6 +62,7 @@ pub(crate) fn validate_configuration(configuration: &RunConfiguration) -> Result
             "Run configuration id and name are required",
         ));
     }
+    super::before_launch::validate_shape(configuration)?;
     if !valid_provider(&configuration.provider) {
         return Err(CoreError::new(
             ErrorCode::NotSupported,

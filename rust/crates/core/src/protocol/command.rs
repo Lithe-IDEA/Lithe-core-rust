@@ -740,6 +740,8 @@ pub enum RunConfigCommand {
     SaveConfiguration,
     /// Removes a user-authored run configuration (`runConfig.deleteConfiguration`).
     DeleteConfiguration,
+    /// Expands the steps run before a configuration starts (`runConfig.beforeLaunch`).
+    BeforeLaunch,
     /// Produces the process plan for one configuration (`runConfig.createLaunchPlan`).
     CreateLaunchPlan,
     /// Resolves user choices for a provider-owned launch (`runConfig.providerLaunchInputs`).
@@ -1432,6 +1434,7 @@ impl CoreCommand {
             "runConfig.deleteConfiguration" => {
                 Some(Self::RunConfig(RunConfigCommand::DeleteConfiguration))
             }
+            "runConfig.beforeLaunch" => Some(Self::RunConfig(RunConfigCommand::BeforeLaunch)),
             "runConfig.createLaunchPlan" => {
                 Some(Self::RunConfig(RunConfigCommand::CreateLaunchPlan))
             }

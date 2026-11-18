@@ -211,6 +211,19 @@
           "propertyNames": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
           "additionalProperties": { "type": "object" }
         },
+        "beforeLaunch": {
+          "type": "array",
+          "maxItems": 16,
+          "description": "Built-in process runs started in order before this one; each must exit with 0 first. A layer replaces the whole list.",
+          "items": {
+            "type": "object",
+            "required": ["configuration"],
+            "properties": {
+              "configuration": { "type": "string", "minLength": 1, "maxLength": 256 }
+            },
+            "additionalProperties": false
+          }
+        },
         "disabled": { "type": "boolean" },
         "source": { "type": "string" }
       },
