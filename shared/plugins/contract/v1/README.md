@@ -1938,7 +1938,7 @@ declaration are relative, use `/`, and stay inside their base directory
 | `detection` | `markers` are file names; a directory holding one is a candidate root. Core searches at most 6 levels below the workspace root and skips the folders hidden by default (Core's own and the names enabled plugins declare, see `layout`), plus directories Git ignores: the rules come from the `.gitignore` files inside the workspace and the `info/exclude` of each repository whose root lies in it, not from directories above the workspace root, `core.excludesFile` or the index, so a tracked manifest below an ignored directory is not a candidate. Detection also skips the workspace's ignored paths, a Build option the user edits (`.gitignore` patterns stored in the team or machine-local Build options): by default every directory whose name starts with a dot, such as `.claude/worktrees`, and the user can list more or bring one back with `!`. `nesting: "outermost"` folds deeper candidates into the outer instance (Gradle builds, Maven reactors); `"separate"` (default) keeps each (Cargo packages). `priority` (0–100, default 50) decides between plugins declaring the same ID; ties go to the smaller plugin ID. |
 | `invocation` | `executables` in preference order: `projectFile` (a wrapper inside the root, with `requires` files; always runs project code), `environment` (a path below a variable listed in `environmentInputs`), `command` (a bare name found on `PATH`), `runtime` (a declared runtime dependency itself). `platforms` limits a candidate. `globalArguments` precede every command. `version` probes the executable with literal `arguments` and a `pattern` whose first group is the version; `minimumVersion` needs a probe. |
 | `runtimeDependencies` | Core knows no runtime by name; `node` and `go` follow the same rules as any other ID. A runtime without `executables` names the [tool definition](toolchains/README.md) with the same ID, so its `id` must be a valid tool-definition ID and it declares only `minimumVersion`: `build.invocationPlan` returns it with `version: null` and the single candidate `{ "kind": "toolchain", "toolchainID": <id>, "root": <root> }`, whose resolution checks `minimumVersion`, and `build.checkToolVersion` for it is `plugin.build.unavailable` because Core reads no version. Any other runtime describes its own `executables` and `version` probe, so the runtime list is open; a runtime whose only candidate is a `toolchain` candidate may omit the probe, since the definition checks the version. |
-| `options` | Build dimensions the user chooses: `boolean`, `singleSelect`, `multiSelect`, `text`, `file`, `directory`. Each contributes `arguments` and `environment` (with `${value}`) when it has a value. Choices are declared, come from the model (`choicesFromModel`, with optional `optionDefaults` for choices the tool activates when unset), or are free (`allowCustom`); a `multiSelect` option may set `excludePrefix` (or report `optionExcludePrefixes` in `litheBuildModel`) so unchecking a default choice passes `<prefix><choice>`. |
+| `options` | Build dimensions the user chooses: `boolean`, `singleSelect`, `multiSelect`, `text`, `file`, `directory`. Each contributes `arguments` and `environment` (with `${value}`) when it has a value. Choices are declared, come from the model (`choicesFromModel`, with optional `optionDefaults` for choices the tool activates when unset), or are free (`allowCustom`). A `text`, `file` or `directory` option may also get the value the tool uses while it is unset from the model's `optionDefaults` (Maven's user settings file, its local repository); `build.resolveOptions` returns it as `implicitValue` for display only, and it contributes no argument. `description` (1-512 characters) says what the option does, for the host's info icon; a `multiSelect` option may set `excludePrefix` (or report `optionExcludePrefixes` in `litheBuildModel`) so unchecking a default choice passes `<prefix><choice>`. |
 | `provider` | The process that answers model and dependency requests when no command prints them; see [Build providers](#build-providers). |
 | `model` | `static` (a `toml` file read during detection, no process), `command` (a command whose output Core decodes; it states `executesProjectCode` and `mayUseNetwork`), or `provider`. |
 | `tasks` | The task catalog. `scopes` say what a task runs on (`workspace`, `project`, `target`); `targetTags` restrict targets; `requiresUserArguments` makes the host ask for arguments. A `fromModel` task is the template for tasks the model lists. |
@@ -2116,7 +2116,10 @@ for this invocation, including values activated outside the IDE's saved
 options. Use an empty array if the tool reports that none are active. Omit the
 entry when the tool cannot observe the active set. Report baseline defaults in
 `optionDefaults`; Core restricts both sets to the available `optionValues` and
-ties the observed set to the option fingerprint of the model load.
+ties the observed set to the option fingerprint of the model load. For a
+`text`, `file` or `directory` option, `optionDefaults: { <optionID>: [value] }`
+is the value the tool uses while the option is unset; Core keeps the first
+value and passes nothing for it.
 
 Unknown fields in canonical documents are ignored, so a script may add fields
 without a new version. Output that does not fit its decoder is `plugin.build.invalidOutput`.
@@ -2984,7 +2987,9 @@ manifest, the build-system ID, and a request, and revalidate the manifest
 every time. `build.detect` walks the workspace once for all enabled plugins
 and returns instances, with the model of `static` sources. `build.invocationPlan` and `build.checkToolVersion` resolve the
 executable; `build.resolveOptions` checks stored option values and returns
-the configuration fingerprint; `build.modelPlan`, `build.taskPlan`,
+each option's value, `source` (`user`, `default` or `unset`), choices,
+`description`, and, for an unset `text`, `file` or `directory` option, the
+`implicitValue` the loaded model reported, with the configuration fingerprint; `build.modelPlan`, `build.taskPlan`,
 `build.testPlan`, and `build.dependencyPlan` return argv plans, or provider
 requests for a provider source;
 `build.decodeModel`, `build.decodeTestResults`, `build.decodeDiagnostics`,

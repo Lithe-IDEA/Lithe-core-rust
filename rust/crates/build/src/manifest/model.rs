@@ -212,6 +212,14 @@ impl BuildSystemDeclaration {
             .filter(|option| option.choices_from_model)
             .map(|option| option.id.clone())
             .collect();
+        // `optionDefaults` also reports the value a text, file or directory
+        // option has when the user leaves it unset.
+        let default_options: BTreeSet<String> = self
+            .options
+            .iter()
+            .filter(|option| option.choices_from_model || option.is_text_like())
+            .map(|option| option.id.clone())
+            .collect();
         match &self.model {
             None => {
                 if !model_options.is_empty() {
@@ -227,7 +235,7 @@ impl BuildSystemDeclaration {
                         "The model file must be relative to the build-system root.",
                     ));
                 }
-                map.validate(&format!("{field}.map"), &model_options)
+                map.validate(&format!("{field}.map"), &model_options, &default_options)
             }
             Some(ModelSource::Command {
                 arguments,
@@ -258,7 +266,9 @@ impl BuildSystemDeclaration {
                         format!("{field}.map"),
                         "A model command with a generic format needs a map.",
                     )),
-                    (_, Some(map)) => map.validate(&format!("{field}.map"), &model_options),
+                    (_, Some(map)) => {
+                        map.validate(&format!("{field}.map"), &model_options, &default_options)
+                    }
                 }
             }
             Some(ModelSource::Provider) => Ok(()),
@@ -286,7 +296,12 @@ pub(crate) fn check_output_channel(
 }
 
 impl ModelMap {
-    fn validate(&self, field: &str, model_options: &BTreeSet<String>) -> Validation<()> {
+    fn validate(
+        &self,
+        field: &str,
+        model_options: &BTreeSet<String>,
+        default_options: &BTreeSet<String>,
+    ) -> Validation<()> {
         if self.projects.is_empty() {
             return Err(invalid(
                 format!("{field}.projects"),
@@ -327,10 +342,10 @@ impl ModelMap {
         }
         for (id, rule) in &self.option_defaults {
             let field = format!("{field}.optionDefaults.{id}");
-            if !model_options.contains(id) {
+            if !default_options.contains(id) {
                 return Err(invalid(
                     field,
-                    "optionDefaults may only fill options declared with choicesFromModel.",
+                    "optionDefaults may only fill choicesFromModel, text, file and directory options.",
                 ));
             }
             select::validate(&rule.each, &format!("{field}.each"), false)?;

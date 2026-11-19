@@ -3447,6 +3447,124 @@ fn model_option_defaults_and_exclusions_round_trip_through_storage_and_plans() {
     assert_eq!(after_restore["source"], "default");
 }
 
+/// A model reports what the tool uses for a text, file or directory option
+/// the user left unset (Maven's user settings file and local repository), as
+/// IDEA shows the effective path greyed out until the user overrides it. The
+/// value is display only: it contributes no argument, and a user value or a
+/// declared default replaces it.
+#[test]
+fn model_reports_the_implicit_value_of_unset_path_options() {
+    let workspace = TemporaryWorkspace::new("model-implicit-values");
+    let mut manifest = option_edit_fixture()["manifest"].clone();
+    manifest["buildSystems"][0]["options"]
+        .as_array_mut()
+        .unwrap()
+        .extend([
+            json!({"id": "settingsFile", "displayName": "User settings file", "kind": "file",
+                "description": "The settings.xml passed with -s.",
+                "arguments": ["-s", "${value}"]}),
+            json!({"id": "localRepository", "displayName": "Local repository", "kind": "directory",
+                "arguments": ["-Dmaven.repo.local=${value}"]}),
+            json!({"id": "threads", "displayName": "Threads", "kind": "text", "default": "1",
+                "arguments": ["-T", "${value}"]}),
+            json!({"id": "offline", "displayName": "Offline", "kind": "boolean",
+                "arguments": ["-o"]}),
+        ]);
+    let canonical = json!({
+        "format": "litheBuildModel",
+        "version": 0,
+        "projects": [{"path": ".", "name": "demo"}],
+        "optionValues": {"profiles": ["dev"]},
+        "optionDefaults": {
+            "settingsFile": ["/home/me/.m2/settings.xml", "/ignored/second.xml"],
+            "localRepository": ["/home/me/.m2/repository"],
+            "threads": ["4"],
+            "offline": ["true"]
+        }
+    });
+    let decoded = build_decode_model_command::<Manifest>(json!({
+        "manifest": manifest,
+        "buildSystemID": "fixture",
+        "request": {"workspaceRoot": workspace.root(), "root": ".", "output": canonical.to_string()}
+    }))
+    .unwrap();
+    assert_eq!(decoded["status"], "ok", "{decoded}");
+    let defaults = &decoded["model"]["optionDefaults"];
+    // The tool has one value: the first reported is kept. A boolean option has
+    // no implicit value to report.
+    assert_eq!(
+        defaults["settingsFile"],
+        json!(["/home/me/.m2/settings.xml"]),
+        "{defaults}"
+    );
+    assert_eq!(
+        defaults["localRepository"],
+        json!(["/home/me/.m2/repository"])
+    );
+    assert!(defaults.get("offline").is_none(), "{defaults}");
+
+    let resolve = |options: Value| {
+        let resolved = build_resolve_options_command::<Manifest>(json!({
+            "manifest": manifest,
+            "buildSystemID": "fixture",
+            "request": {"options": options, "modelValues": decoded["model"]["optionValues"],
+                "modelDefaults": defaults}
+        }))
+        .unwrap();
+        resolved["options"]["options"].as_array().unwrap().clone()
+    };
+    let by_id = |options: &[Value], id: &str| {
+        options
+            .iter()
+            .find(|option| option["id"] == id)
+            .unwrap()
+            .clone()
+    };
+    let unset = resolve(json!({}));
+    let settings = by_id(&unset, "settingsFile");
+    assert_eq!(settings["source"], "unset", "{settings}");
+    assert_eq!(settings["value"], Value::Null);
+    assert_eq!(settings["implicitValue"], "/home/me/.m2/settings.xml");
+    assert_eq!(settings["description"], "The settings.xml passed with -s.");
+    assert_eq!(
+        by_id(&unset, "localRepository")["implicitValue"],
+        "/home/me/.m2/repository"
+    );
+    // A declared default is the effective value, so the model's is not shown.
+    let threads = by_id(&unset, "threads");
+    assert_eq!(threads["source"], "default");
+    assert!(threads.get("implicitValue").is_none(), "{threads}");
+    assert!(by_id(&unset, "offline").get("implicitValue").is_none());
+
+    let overridden = resolve(json!({"settingsFile": "/work/settings.xml"}));
+    let settings = by_id(&overridden, "settingsFile");
+    assert_eq!(settings["source"], "user");
+    assert_eq!(settings["value"], "/work/settings.xml");
+    assert!(settings.get("implicitValue").is_none(), "{settings}");
+}
+
+/// A model map may fill `optionDefaults` for choicesFromModel, text, file and
+/// directory options only: a boolean or a declared select has no value the
+/// tool picks on its own.
+#[test]
+fn model_map_option_defaults_name_choice_or_text_options() {
+    let mut manifest = fixture("build-static-file.plugin.json");
+    let system = &mut manifest["buildSystems"][0];
+    system["options"].as_array_mut().unwrap().extend([
+        json!({"id": "settingsFile", "displayName": "Settings", "kind": "file", "arguments": ["-s", "${value}"]}),
+        json!({"id": "goOffline", "displayName": "Offline", "kind": "boolean", "arguments": ["-o"]}),
+    ]);
+    system["model"]["map"]["optionDefaults"] =
+        json!({"settingsFile": {"each": "/package", "value": "/settings"}});
+    let accepted = validate(manifest.clone());
+    assert_eq!(accepted["status"], "ok", "{accepted}");
+
+    manifest["buildSystems"][0]["model"]["map"]["optionDefaults"] =
+        json!({"goOffline": {"each": "/package", "value": "/offline"}});
+    let refused = validate(manifest);
+    assert_eq!(refused["status"], "rejected", "{refused}");
+}
+
 fn option_edit_fixture() -> Value {
     serde_json::from_str(include_str!(
         "../../../../fixtures/build/option-edit-v1.json"
