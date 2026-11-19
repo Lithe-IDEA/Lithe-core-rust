@@ -542,7 +542,7 @@ export interface VcsTraits {
 // the result it returns. contract/v1/plugin-ui.schema.json is the authority;
 // Core's plugins.ui.applyResult enforces the rules a type cannot express.
 
-export type ViewEventKind = 'open' | 'close' | 'click' | 'change' | 'select' | 'activate' | 'viewport' | 'settings';
+export type ViewEventKind = 'open' | 'close' | 'click' | 'change' | 'select' | 'activate' | 'viewport' | 'resize' | 'settings';
 
 /** Params of one call to a view function. */
 export interface ViewEvent {
@@ -567,6 +567,12 @@ export interface ViewEvent {
   item?: string;
   /** `viewport`: the visible part of the canvas, in view-box coordinates. */
   viewport?: { x: number; y: number; width: number; height: number };
+  /**
+   * The width in points the host lays the view out in, on every event from a
+   * host that reports it; `resize` sends the new width. List `resize` in a
+   * canvas's `on` only when it is present: a host without it may refuse the canvas.
+   */
+  width?: number;
 }
 
 /** A whole view, a batch of patches, or `{}` when nothing changed. The first result after `open` is a view. */
@@ -645,7 +651,7 @@ export interface ViewCanvas {
   viewBox: [x: number, y: number, width: number, height: number];
   pan?: boolean;
   zoom?: [minimum: number, maximum: number];
-  on?: ['viewport'];
+  on?: Array<'viewport' | 'resize'>;
   nodes: CanvasNode[];
 }
 

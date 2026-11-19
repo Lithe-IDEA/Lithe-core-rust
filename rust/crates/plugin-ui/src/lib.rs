@@ -204,7 +204,7 @@ mod tests {
                 ]}
             ]},
             {"type":"canvas","id":"graph","label":"Module graph","height":200,"viewBox":[0,0,400,200],
-             "pan":true,"zoom":[0.5,4],"on":["viewport"],"nodes":[
+             "pan":true,"zoom":[0.5,4],"on":["viewport","resize"],"nodes":[
                 {"type":"rect","x":0,"y":0,"w":400,"h":200,"radius":8,"fill":{"linear":[[0,"#1E1F22"],[1,"$surface"]],"angle":90}},
                 {"type":"path","d":"M 10 10 L 390 190","stroke":{"light":"#3574F0","dark":"#548AF7"},"width":2,"dash":[4,2],"cap":"round"},
                 {"type":"group","id":"node.core","x":40,"y":40,"w":120,"h":48,"radius":6,"on":["click"],
@@ -424,6 +424,14 @@ mod tests {
         }
         let bad_box = json!([{"type":"canvas","id":"c","label":"C","height":10,"viewBox":[0,0,0,10],"nodes":[]}]);
         assert_eq!(field(&context, bad_box), "view[0].viewBox");
+        let on = |events: serde_json::Value| {
+            json!([{"type":"canvas","id":"c","label":"C","height":10,"viewBox":[0,0,10,10],"on":events,"nodes":[]}])
+        };
+        assert_eq!(field(&context, on(json!(["click"]))), "view[0].on[0]");
+        assert_eq!(
+            field(&context, on(json!(["resize", "resize"]))),
+            "view[0].on[1]"
+        );
     }
 
     #[test]

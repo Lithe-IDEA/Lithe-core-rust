@@ -32,7 +32,8 @@ class ViewTest {
     void readsEveryFieldTheHostSends() {
         ViewEvent parsed = ViewEvent.parse(event(
                 "node", "otp", "setting", "otpRelease", "value", "27",
-                "viewport", map("x", 0L, "y", 10.5, "width", 1200L, "height", 640L)));
+                "viewport", map("x", 0L, "y", 10.5, "width", 1200L, "height", 640L),
+                "width", 612L));
         assertEquals(ViewEvent.Kind.CHANGE, parsed.kind());
         assertEquals("otp", parsed.settingRegionId());
         assertNull(parsed.toolWindowId());
@@ -43,13 +44,18 @@ class ViewTest {
         assertEquals("27", parsed.value());
         assertEquals(10.5, parsed.viewport().y());
         assertEquals(1200.0, parsed.viewport().width());
+        assertEquals(612.0, parsed.width());
         assertNull(parsed.item());
         assertThrows(UnsupportedOperationException.class, () -> parsed.draft().put("otpRelease", "28"));
         // An optional field sent as null counts as absent.
-        ViewEvent absent = ViewEvent.parse(event("node", null, "value", null, "viewport", null));
+        ViewEvent absent = ViewEvent.parse(event("node", null, "value", null, "viewport", null, "width", null));
         assertNull(absent.node());
         assertNull(absent.value());
         assertNull(absent.viewport());
+        assertNull(absent.width());
+        ViewEvent resize = ViewEvent.parse(event("event", "resize", "width", 340L));
+        assertEquals(ViewEvent.Kind.RESIZE, resize.kind());
+        assertEquals(340.0, resize.width());
     }
 
     @Test
@@ -65,7 +71,8 @@ class ViewTest {
                 noDraft,
                 event("node", 3L),
                 event("value", Arrays.asList("a")),
-                event("viewport", map("x", 0L)));
+                event("viewport", map("x", 0L)),
+                event("width", "wide"));
         for (Map<String, Object> params : cases) {
             PluginSdkError error = assertThrows(PluginSdkError.class, () -> ViewEvent.parse(params), String.valueOf(params));
             assertEquals("sdk.view.invalidEvent", error.code());

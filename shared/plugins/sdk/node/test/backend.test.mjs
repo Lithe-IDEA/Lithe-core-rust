@@ -127,7 +127,7 @@ test('a view function gets the view event and answers {} when it returns nothing
   // An optional field sent as null counts as absent.
   const absent = await host.request('lithe/function/invoke', {
     functionID: 'explorer.draw', operationID: 'op-3',
-    params: { event: 'change', node: null, value: null, viewport: null, ...base },
+    params: { event: 'change', node: null, value: null, viewport: null, width: null, ...base },
   });
   assert.deepEqual(absent.result, {});
   // Params that are not a view event never reach the handler.
@@ -150,8 +150,10 @@ test('a view event without its required shape is refused', () => {
     settings: { effective: { otpRelease: '26' }, draft: { otpRelease: '27' } },
     ...extra,
   });
-  const parsed = event({ setting: 'otpRelease', value: 27, viewport: { x: 0, y: 10.5, width: 1200, height: 640 } });
+  const parsed = event({ setting: 'otpRelease', value: 27, viewport: { x: 0, y: 10.5, width: 1200, height: 640 }, width: 612 });
   assert.equal(checkViewEvent(parsed), parsed);
+  const resize = event({ event: 'resize', width: 340 });
+  assert.equal(checkViewEvent(resize), resize);
   for (const params of [
     null,
     [],
@@ -164,6 +166,7 @@ test('a view event without its required shape is refused', () => {
     event({ node: 3 }),
     event({ value: ['a'] }),
     event({ viewport: { x: 0 } }),
+    event({ width: 'wide' }),
   ]) {
     assert.throws(() => checkViewEvent(params), (error) => error.code === 'sdk.view.invalidEvent', JSON.stringify(params));
   }

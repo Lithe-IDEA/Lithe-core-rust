@@ -86,6 +86,7 @@
 - `keywords`：1–32 个，忽略大小写互不相同，每个 1–64 个字符、不换行、首尾没有空白。设置搜索除了页面标题和声明的行，也按这些词找到页面，并打开到这个插件的部分。
 - `view`：`{function}`，插件后端的视图函数，画在页面标题和插件声明的行之间。视图可以放宿主控件、画布，也可以用绑定控件编辑本插件的设置（和声明的行改的是同一份草稿）、放本插件按钮和显示本插件工具解析结果的工具行，但不能放树。需要 `backend`、`ui` 0 和 `ui.contribute` 权限；页面打开时宿主启动后端。
 - 只写关键词的区域不需要后端。区域本身不保存任何值。声明区域也算使用了 `settings`。
+- 区域里的画布要跟随窗口宽度时，按事件里的 `width` 排版：`viewBox` 的宽度就设成 `width`，`height` 取在这个宽度下画出来需要的高度，并在画布的 `on` 里写 `resize`。用户调整窗口大小、停下 400 ms 后，宿主发 `resize` 和新的 `width`，插件按新宽度返回重新排版的场景，场景始终一个单位一个点。不写 `pan` 时，宿主在答复到达前按[画布](../../contract/v1/README.md#canvas)的规则显示整个 `viewBox`，不会放大到裁掉下半部分。事件里没有 `width` 的旧宿主不发 `resize`，也可能拒绝写了它的画布，所以这时不写 `resize`，按固定宽度排版：桌面端窗口最小时，语言页的区域约 610 点宽，构建系统页和编译器页右侧详情里的区域约 340 点宽。
 
 ### 两层保存与生效顺序
 
@@ -238,6 +239,7 @@ Content that declared rows cannot draw goes in `settingRegions` (at most 16, uni
 - `keywords`: 1–32, distinct ignoring case, each 1–64 characters without line breaks or surrounding spaces. Settings search finds the page by them in addition to the page title and the declared rows, and opens the page at this plugin's part.
 - `view`: `{function}`, a view function of the plugin's backend, drawn between the page header and the plugin's declared rows. The view may hold host controls and canvases, edit the plugin's own settings through bound controls (the same draft the declared rows edit), show the plugin's buttons and tool rows with how its tools resolve, but no tree. It needs `backend`, `ui` 0, and the `ui.contribute` permission; the host starts the backend when the page opens.
 - A region with keywords only needs no backend. A region stores no values. Declaring regions counts as using `settings`.
+- A canvas in a region that follows the window lays itself out for the event's `width`: its `viewBox` is `width` wide, its `height` is what the scene needs at that width, and its `on` lists `resize`. Once the user stops resizing the window for 400 ms, the host sends `resize` with the new `width`, and the plugin answers the scene laid out again, so it always draws at one point a unit. Without `pan`, the host shows the whole `viewBox` until the answer arrives (see [canvas](../../contract/v1/README.md#canvas)), never scaled up so far that its bottom is cut off. An older host sends no `width` and no `resize` and may refuse a canvas that lists it, so without `width` a plugin leaves `resize` out and lays the scene out for a fixed width: in Lithe desktop's smallest window a region is about 610 points wide on a language page and about 340 in the detail pane of a build system or compiler page.
 
 ### Two layers and their order
 

@@ -98,7 +98,7 @@ pub(crate) fn check(walk: &mut Walk<'_>, value: &Value, path: &str) -> Checked<(
             ));
         }
     }
-    events(map, path, &["viewport"])?;
+    events(map, path, &["viewport", "resize"])?;
     let nodes = map
         .get("nodes")
         .ok_or_else(|| fail(at(path, "nodes"), "Required."))?;
