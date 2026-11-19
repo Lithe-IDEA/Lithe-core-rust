@@ -1,0 +1,12 @@
+{
+  "directory": ".",
+  "global": true,
+  "workspaceRoot": "",
+  "context": null,
+  "queryScope": {
+    "workspace": null,
+    "context": null
+  },
+  "expectedLayer": "automatic",
+  "expectedProvider": "dev.lithe.fixture.java-support:installs"
+}

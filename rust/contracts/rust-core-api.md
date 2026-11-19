@@ -7455,8 +7455,10 @@ resource does not affect code signatures or update deltas.
 `workspaceRoot:""`, allowing discovery and inspection before a project is open. Global mode
 requires an empty local pin document, never selects project wrappers, project environments,
 project settings or project provider statements, and does not require a fictitious workspace
-filesystem fact. Additional `workspaceRoots` remain exclusion roots. Normal requests still
-require the real project root. Native callers supply registered homes as ordinary
+filesystem fact. Global resolution can consume `queries` with `directory:"."`, outer
+`context:null`, and explicit `workspace:null, context:null` in each query's params.
+Additional `workspaceRoots` remain exclusion roots. Normal requests still require
+queries bound to the real project root and directory. Native callers supply registered homes as ordinary
 `systemInstallations` and the current catalog default as `globalDefault:{home}`; the
 existing precedence remains fixed consumer choice, project override, global default, then
 automatic discovery. Clearing the global default exposes live automatic selection without
