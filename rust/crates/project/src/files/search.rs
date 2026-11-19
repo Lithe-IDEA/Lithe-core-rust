@@ -42,7 +42,7 @@ pub fn search_text_batch(request: SearchTextBatchRequest) -> Result<serde_json::
         if file.text.contains('\0') {
             continue;
         }
-        let lines: Vec<_> = file.text.split('\n').collect();
+        let lines: Vec<_> = file.text.split('\n').map(line_content).collect();
         let mut matches = Vec::new();
         for (index, line) in lines.iter().enumerate() {
             if !matcher.matches(line) {
@@ -179,7 +179,7 @@ pub(crate) fn search_with_index(
         let Some(text) = read_searchable_text(&file) else {
             continue;
         };
-        for (index, line) in text.split('\n').enumerate() {
+        for (index, line) in text.split('\n').map(line_content).enumerate() {
             lithe_protocol::cancellation::check()?;
             if matcher.matches(line) {
                 let (preview, content_match_ranges, preview_ranges) =

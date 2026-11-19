@@ -310,13 +310,40 @@ fn original_ranges_for_lowercase_matches(
     result
 }
 
+/// The text search and the search index read from a file: plain text up to
+/// [`MAX_SEARCH_FILE_SIZE`] in any encoding the editor detects when it opens
+/// the file (BOM-marked UTF-8 or UTF-16, UTF-8, then GBK or GB18030).
 pub(crate) fn read_searchable_text(path: &Path) -> Option<String> {
+    let metadata = fs::metadata(path).ok()?;
+    if !metadata.is_file() || metadata.len() > MAX_SEARCH_FILE_SIZE {
+        return None;
+    }
+    let bytes = fs::read(path).ok()?;
+    // Outside UTF-16 a zero byte decodes to U+0000, which plain text excludes,
+    // so binary files are rejected before any decoding is attempted.
+    if !encoding::starts_with_utf16_bom(&bytes) && bytes.contains(&0) {
+        return None;
+    }
+    let text = encoding::decode_detected_text(bytes).ok()?;
+    is_plain_text(&text).then_some(text)
+}
+
+/// The text replacement may rewrite: strict UTF-8 plain text up to
+/// [`MAX_FILE_SIZE`]. Replacement returns the whole new text, which hosts
+/// write back as UTF-8, so a file in another encoding is never offered.
+pub(crate) fn read_replaceable_text(path: &Path) -> Option<String> {
     let metadata = fs::metadata(path).ok()?;
     if !metadata.is_file() || metadata.len() > MAX_FILE_SIZE {
         return None;
     }
     let text = fs::read_to_string(path).ok()?;
     is_plain_text(&text).then_some(text)
+}
+
+/// `line` without the carriage return that ends a CRLF line, so `$`, word
+/// boundaries and match ranges are the same on CRLF and LF files.
+pub(crate) fn line_content(line: &str) -> &str {
+    line.strip_suffix('\r').unwrap_or(line)
 }
 
 /// Whether `text` has no NUL or other control characters besides tab, line feed, vertical tab, form feed and carriage return.

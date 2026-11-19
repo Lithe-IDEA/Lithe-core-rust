@@ -2309,6 +2309,17 @@ need separate buckets may also provide `maxFileResults` and
 `maxContentResults`; each category is capped independently and the total cap
 still applies.
 
+Content search and its index read every file the desktop editor opens as text:
+files up to 16 MiB, decoded with `file.read`'s automatic detection (BOM-marked
+UTF-8 or UTF-16, UTF-8, then GBK or GB18030). Files containing a NUL byte outside
+UTF-16, or other control characters after decoding, are binary and skipped.
+Lines are split on `\n` and a CRLF line's `\r` is not part of its text, so `$`,
+whole words, `sourceLine` and the ranges are the same on CRLF and LF files.
+`workspace.replacePreview` reads only strict UTF-8 files up to 2 MiB, because
+hosts write `replacementText` back as UTF-8; it keeps each CRLF line's `\r` in
+`replacementText`. A file search finds in another encoding, or above 2 MiB, is
+therefore absent from the preview.
+
 Search index enumeration skips inaccessible or vanished descendant directories,
 logging workspace-relative diagnostic paths without discarding unrelated results.
 Workspace-root failures, cancellation, deadlines, and other errors still propagate.

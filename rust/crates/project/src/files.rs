@@ -49,7 +49,13 @@ pub use snapshot::*;
 pub use text_io::*;
 pub use visibility::*;
 
+/// Largest file replacement rewrites, and the largest provider snapshot that
+/// batch text search accepts.
 const MAX_FILE_SIZE: u64 = 2 * 1024 * 1024;
+
+/// Largest file whose text search reads and indexes. It is the desktop
+/// editor's open limit, so every content match opens at its line.
+const MAX_SEARCH_FILE_SIZE: u64 = 16 * 1024 * 1024;
 
 const MAX_OPEN_FILE_SIZE: u64 = 32 * 1024 * 1024;
 
