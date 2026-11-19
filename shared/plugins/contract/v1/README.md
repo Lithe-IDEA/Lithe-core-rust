@@ -143,7 +143,7 @@ previous one. Errors never disclose absolute paths.
 
 A host that advertises `keymapImportProviders` 0 implements the scoped reader.
 A host advertises the capability only with the complete import workflow. The official Node,
-Java and Rust SDKs implement `litheKeymapImport` 0.
+Java, Rust and Go SDKs implement `litheKeymapImport` 0.
 
 ## Package layout
 
@@ -4774,10 +4774,22 @@ used as a Git dependency pinned by the tag. It enforces the same rules: on Unix 
 points stdout at stderr so only protocol frames reach the host, and a panic
 ends only its call, reported like any unexpected failure.
 
+[`sdk/go`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/shared/plugins/sdk/go/README.md) is the Go SDK for
+[plugin backends](#plugin-backend), which ship as packaged executables. It
+implements this protocol with its host services and `litheKeymapImport`, but
+neither build nor VCS providers. It needs Go 1.22 or newer, uses only the
+standard library, and is released as Go module tags
+(`shared/plugins/sdk/go/v<version>`) that plugins pin through `go.sum`. It
+enforces the same rules: on Unix it moves the protocol to a duplicate of the
+stdout descriptor and points stdout at stderr so only protocol frames reach the
+host, and a panic in a handler ends only that call, reported like any
+unexpected failure.
+
 The Node.js and Java SDKs each have a sample build provider
 (`sdk/*/examples/sample-build`) that answers one end-to-end scenario driven
-through a real Core session; the Rust SDK's sample backend
-(`sdk/rust/examples/sample-backend`) answers a plugin backend scenario in which
+through a real Core session; the Rust and Go SDKs' sample backends
+(`sdk/rust/examples/sample-backend`, `sdk/go/examples/sample-backend`) answer
+the same plugin backend scenario, in which
 the test plays the host: it serves the credential requests and the
 workspace, file watch and window requests, delivers a command and a context
 change, and checks that cancellation reaches the host. That repository runs

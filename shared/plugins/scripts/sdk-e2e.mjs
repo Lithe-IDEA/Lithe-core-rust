@@ -6,14 +6,17 @@
 // The scenario files are Cargo integration tests of lithe-core, declared in
 // rust/crates/core/Cargo.toml behind the `plugin-sdk-e2e` feature, so a plain
 // `cargo test` skips them. This script builds the sample backends and then
-// runs those tests, which exercise the Node.js, Java and Rust SDKs, the native
-// build workflows and shortcut import against Core at this working tree.
+// runs those tests, which exercise the Node.js, Java, Rust and Go SDKs, the
+// native build workflows and shortcut import against Core at this working
+// tree.
 //
 // The Node.js sample runs on the node running this script. The Java sample
 // runs on LITHE_PLUGIN_SDK_JAVA_RUNTIME, or `java` on PATH, and is built with
 // Maven unless LITHE_PLUGIN_SDK_JAVA_SAMPLE names a built sample-build.jar.
 // The Rust sample backend is built with Cargo unless
-// LITHE_PLUGIN_SDK_RUST_SAMPLE names a built sample-backend executable.
+// LITHE_PLUGIN_SDK_RUST_SAMPLE names a built sample-backend executable, and
+// the Go sample backend with `go` on PATH unless LITHE_PLUGIN_SDK_GO_SAMPLE
+// names one.
 import { spawn } from 'node:child_process';
 import { access } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -22,7 +25,7 @@ import { dirname, join, resolve } from 'node:path';
 /** shared/plugins: the SDKs, their samples and the contract. */
 const plugins = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const repository = resolve(plugins, '..', '..');
-const tests = ['plugin_sdk_node', 'plugin_sdk_java', 'plugin_sdk_rust', 'plugin_sdk_build'];
+const tests = ['plugin_sdk_node', 'plugin_sdk_java', 'plugin_sdk_rust', 'plugin_sdk_go', 'plugin_sdk_build'];
 
 function run(command, args, options = {}) {
   return new Promise((resolvePromise, reject) => {
@@ -77,10 +80,21 @@ async function rustSample() {
   return executable;
 }
 
+/** Builds the Go sample backend from the current SDK sources unless it is given. */
+async function goSample() {
+  if (process.env.LITHE_PLUGIN_SDK_GO_SAMPLE) return resolve(process.env.LITHE_PLUGIN_SDK_GO_SAMPLE);
+  const module = join(plugins, 'sdk/go');
+  const executable = join(module, 'bin', process.platform === 'win32' ? 'sample-backend.exe' : 'sample-backend');
+  await run(await which('go'), ['build', '-o', executable, './examples/sample-backend'], { cwd: module });
+  await access(executable);
+  return executable;
+}
+
 async function main() {
   const java = process.env.LITHE_PLUGIN_SDK_JAVA_RUNTIME || await which('java');
   const { jar, nativeJar } = await javaSamples();
   const rust = await rustSample();
+  const go = await goSample();
   await run('cargo', ['test', '--locked', '--manifest-path', join(repository, 'rust/Cargo.toml'),
     '-p', 'lithe-core', '--features', 'plugin-sdk-e2e', ...tests.flatMap(test => ['--test', test])], {
     env: {
@@ -91,6 +105,7 @@ async function main() {
       LITHE_PLUGIN_SDK_JAVA_SAMPLE: jar,
       LITHE_PLUGIN_SDK_JAVA_NATIVE_SAMPLE: nativeJar,
       LITHE_PLUGIN_SDK_RUST_SAMPLE: rust,
+      LITHE_PLUGIN_SDK_GO_SAMPLE: go,
     },
   });
 }

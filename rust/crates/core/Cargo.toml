@@ -92,6 +92,11 @@ path = "../../../shared/plugins/sdk/e2e/plugin_sdk_rust.rs"
 required-features = ["plugin-sdk-e2e"]
 
 [[test]]
+name = "plugin_sdk_go"
+path = "../../../shared/plugins/sdk/e2e/plugin_sdk_go.rs"
+required-features = ["plugin-sdk-e2e"]
+
+[[test]]
 name = "plugin_sdk_build"
 path = "../../../shared/plugins/sdk/e2e/plugin_sdk_build.rs"
 required-features = ["plugin-sdk-e2e"]

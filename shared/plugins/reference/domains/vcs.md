@@ -15,7 +15,7 @@
 | 权限 | `process.vcs`、`languageServer.launch` |
 | 激活事件 | `onVcsRoot:<id>`；根目录检测只看标记文件，不启动进程，找到该 VCS 的根目录后才启动提供者。目录标记（如 `.svn`）是 VCS 元数据，插件启用期间所有工作区都会隐藏，Search Everywhere 也不列出其中的文件名 |
 | Lithe 桌面端 | 未声明 `vcsProviders`，安装时拒绝需要它的包 |
-| 官方 SDK | [Node SDK](../../sdk/node/README.md#a-vcs-provider) 0.5.0 实现 `litheVcs` 0；Java、Rust SDK 不实现 |
+| 官方 SDK | [Node SDK](../../sdk/node/README.md#a-vcs-provider) 0.5.0 实现 `litheVcs` 0；Java、Rust、Go SDK 不实现 |
 
 ### 能力与操作
 
@@ -69,7 +69,7 @@ A plugin can implement a provider for a version control system other than Git (S
 | Permissions | `process.vcs`, `languageServer.launch` |
 | Activation events | `onVcsRoot:<id>`; root detection reads marker files only and starts no process, and a provider starts only after a root of its VCS is found. Directory markers, such as `.svn`, are VCS metadata: every workspace hides them while the plugin is enabled, and Search Everywhere never lists their file names |
 | Lithe desktop | Does not declare `vcsProviders`; packages that require it are refused before installation |
-| Official SDKs | The [Node SDK](../../sdk/node/README.md#a-vcs-provider) 0.5.0 implements `litheVcs` 0; the Java and Rust SDKs do not |
+| Official SDKs | The [Node SDK](../../sdk/node/README.md#a-vcs-provider) 0.5.0 implements `litheVcs` 0; the Java, Rust, and Go SDKs do not |
 
 ### Capabilities and operations
 

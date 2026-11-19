@@ -113,7 +113,7 @@ Core 列以本仓库 `main` 上的 Core 源码为准（[`capabilities.rs`](https
 
 ### 官方 SDK
 
-Node.js SDK 0.5.0、Java SDK 0.5.0 和 Rust SDK 0.4.0 说的是版本 `0` 的协议；`main` 上的 SDK 源码另外支持 `litheBuild` `1`（`lithe/build/runEntrypoints`），回答宿主提供的最新版本，随下一次 SDK 发布提供；各 SDK 封装哪些协议见契约的 [Official backend SDK](../contract/v1/README.md#official-backend-sdk) 和各自的 [Node.js](../sdk/node/README.md)、[Java](../sdk/java/README.md)、[Rust](../sdk/rust/README.md) README。下载地址在 [Lithe-core-rust 的 Releases](https://github.com/Lithe-IDEA/Lithe-core-rust/releases)。
+Node.js SDK 0.5.0、Java SDK 0.5.0、Rust SDK 0.4.0 和还没发布的 Go SDK 说的是版本 `0` 的协议；`main` 上的 Node.js 和 Java SDK 源码另外支持 `litheBuild` `1`（`lithe/build/runEntrypoints`），回答宿主提供的最新版本，随下一次 SDK 发布提供；各 SDK 封装哪些协议见契约的 [Official backend SDK](../contract/v1/README.md#official-backend-sdk) 和各自的 [Node.js](../sdk/node/README.md)、[Java](../sdk/java/README.md)、[Rust](../sdk/rust/README.md)、[Go](../sdk/go/README.md) README。Node.js、Java、Rust 的下载地址在 [Lithe-core-rust 的 Releases](https://github.com/Lithe-IDEA/Lithe-core-rust/releases)；Go SDK 不放 Releases，用 `go get` 按模块标签 `shared/plugins/sdk/go/v<版本>` 获取。新插件优先用 Rust 或 Go SDK，理由见[插件开发总览](../README.md)。
 
 ---
 
@@ -228,4 +228,4 @@ The `version` of an exported or called plugin function (1 to 1000) is not a cont
 
 ### Official SDKs
 
-Node.js SDK 0.5.0, Java SDK 0.5.0, and Rust SDK 0.4.0 speak the version `0` protocols; the SDK sources on `main` also speak `litheBuild` `1` (`lithe/build/runEntrypoints`) and answer the newest version the host offers, which the next SDK release ships; which protocols each SDK wraps is in the contract's [Official backend SDK](../contract/v1/README.md#official-backend-sdk) and in the [Node.js](../sdk/node/README.md), [Java](../sdk/java/README.md), and [Rust](../sdk/rust/README.md) READMEs. Downloads are on the [Lithe-core-rust Releases](https://github.com/Lithe-IDEA/Lithe-core-rust/releases) page.
+Node.js SDK 0.5.0, Java SDK 0.5.0, Rust SDK 0.4.0, and the unreleased Go SDK speak the version `0` protocols; the Node.js and Java SDK sources on `main` also speak `litheBuild` `1` (`lithe/build/runEntrypoints`) and answer the newest version the host offers, which the next SDK release ships; which protocols each SDK wraps is in the contract's [Official backend SDK](../contract/v1/README.md#official-backend-sdk) and in the [Node.js](../sdk/node/README.md), [Java](../sdk/java/README.md), [Rust](../sdk/rust/README.md), and [Go](../sdk/go/README.md) READMEs. Node.js, Java, and Rust downloads are on the [Lithe-core-rust Releases](https://github.com/Lithe-IDEA/Lithe-core-rust/releases) page; the Go SDK is not on Releases and is fetched with `go get` by module tag `shared/plugins/sdk/go/v<version>`. New plugins should prefer the Rust or Go SDK; see the [plugin overview](../README.md) for why.

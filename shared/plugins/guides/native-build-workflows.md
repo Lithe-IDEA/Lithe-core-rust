@@ -6,7 +6,7 @@
 
 插件可以只提供工作区后端，不创建网页。用户从原生工具窗口执行构建、发现与运行测试、准备应用启动；宿主继续管理工作区、取消、输出和应用进程。
 
-这些入口都属于 `buildProviders`（版本 `0`）：清单要求 `requires.buildProviders: 0`，进程协议 `litheBuild` 的版本就是 `buildProviders` 的版本。Node.js SDK 0.5.0 和 Java SDK 0.5.0 实现了全部入口；Rust SDK 0.4.0 没有构建提供者接口。能力定义见[构建提供者](../reference/domains/build-providers.md)，字段和错误码以[契约](../contract/v1/README.md#build-providers)为准。
+这些入口都属于 `buildProviders`（版本 `0`）：清单要求 `requires.buildProviders: 0`，进程协议 `litheBuild` 的版本就是 `buildProviders` 的版本。Node.js SDK 0.5.0 和 Java SDK 0.5.0 实现了全部入口；Rust SDK 0.4.0 和 Go SDK 没有构建提供者接口。能力定义见[构建提供者](../reference/domains/build-providers.md)，字段和错误码以[契约](../contract/v1/README.md#build-providers)为准。
 
 > **宿主支持。** Lithe 桌面端声明 `buildSystems` 和 `buildProviders`：构建窗口发现构建实例、加载提供者模型、解析可执行文件候选并运行任务。构建提供者的运行准备、测试、调试准备、model inputs、原生配置、内联测试报告和运行时调试，桌面端尚未呈现，见
 > [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go) 中 `Declared()` 上方的注释。下文的入口因此由 Core 与 SDK 的端到端测试验证，插件作者在桌面端界面里暂时看不到测试、运行和调试这几类入口的效果。
@@ -82,7 +82,7 @@ node --test shared/plugins/scripts/*.test.mjs
 node shared/plugins/scripts/sdk-e2e.mjs
 ```
 
-`sdk-e2e.mjs` 先构建三个 SDK 的示例后端，再用 `cargo test -p lithe-core --features plugin-sdk-e2e` 运行 `plugin_sdk_node`、`plugin_sdk_java`、`plugin_sdk_rust` 和 `plugin_sdk_build`，被测对象是当前工作树里的 Core，所以改 Core 与改 SDK 或契约可以在同一个 PR 里一起验证。运行需要 Rust、Node.js 20.3 或更高版本、Java（用 `LITHE_PLUGIN_SDK_JAVA_RUNTIME` 指定，或放在 `PATH` 上的 `java`）和 Maven。
+`sdk-e2e.mjs` 先构建四个 SDK 的示例后端，再用 `cargo test -p lithe-core --features plugin-sdk-e2e` 运行 `plugin_sdk_node`、`plugin_sdk_java`、`plugin_sdk_rust`、`plugin_sdk_go` 和 `plugin_sdk_build`，被测对象是当前工作树里的 Core，所以改 Core 与改 SDK 或契约可以在同一个 PR 里一起验证。运行需要 Rust、Node.js 20.3 或更高版本、Go 1.22 或更高版本、Java（用 `LITHE_PLUGIN_SDK_JAVA_RUNTIME` 指定，或放在 `PATH` 上的 `java`）和 Maven。
 
 这些测试通过真实 Core 规划与解码，覆盖构建非零退出码、精确筛选、运行前构建、准备计划、进度、取消后的工具清理、并行工作区隔离，以及包含 SDK 和 JAR 的完整包文件不变。它们不代替原生界面、真实 Maven/JDT 工程或桌面端实机验证。
 
@@ -104,7 +104,7 @@ node shared/plugins/scripts/sdk-e2e.mjs
 
 A plugin can provide only a workspace backend and create no web page. Users build, discover and run tests, and prepare application launches from native tool windows; the host keeps managing the workspace, cancellation, output, and application processes.
 
-These entry points all belong to `buildProviders` (version `0`): the manifest requires `requires.buildProviders: 0`, and the version of the `litheBuild` process protocol is the version of `buildProviders`. Node.js SDK 0.5.0 and Java SDK 0.5.0 implement every entry point; Rust SDK 0.4.0 has no build-provider interface. For the capability see [Build providers](../reference/domains/build-providers.md); the [contract](../contract/v1/README.md#build-providers) is normative for fields and error codes.
+These entry points all belong to `buildProviders` (version `0`): the manifest requires `requires.buildProviders: 0`, and the version of the `litheBuild` process protocol is the version of `buildProviders`. Node.js SDK 0.5.0 and Java SDK 0.5.0 implement every entry point; Rust SDK 0.4.0 and the Go SDK have no build-provider interface. For the capability see [Build providers](../reference/domains/build-providers.md); the [contract](../contract/v1/README.md#build-providers) is normative for fields and error codes.
 
 > **Host support.** The Lithe desktop declares `buildSystems` and `buildProviders`: the Build window detects build instances, loads provider models, resolves executable candidates, and runs tasks. Build-provider run preparation, tests, debug preparation, model inputs, native configuration, inline test reports, and runtime debugging are not presented on the desktop yet; see the comment above `Declared()` in
 > [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go). The entry points below are therefore verified by the Core and SDK end-to-end tests, and a plugin author cannot yet see the effect of the test, run, and debug entry points in the desktop UI.
@@ -180,7 +180,7 @@ node --test shared/plugins/scripts/*.test.mjs
 node shared/plugins/scripts/sdk-e2e.mjs
 ```
 
-`sdk-e2e.mjs` first builds the three SDKs' sample backends, then runs `plugin_sdk_node`, `plugin_sdk_java`, `plugin_sdk_rust`, and `plugin_sdk_build` with `cargo test -p lithe-core --features plugin-sdk-e2e`. The code under test is the Core in the working tree, so a change to Core and a change to an SDK or the contract are verified together in one PR. It needs Rust, Node.js 20.3 or newer, Java (set with `LITHE_PLUGIN_SDK_JAVA_RUNTIME`, or `java` on `PATH`), and Maven.
+`sdk-e2e.mjs` first builds the four SDKs' sample backends, then runs `plugin_sdk_node`, `plugin_sdk_java`, `plugin_sdk_rust`, `plugin_sdk_go`, and `plugin_sdk_build` with `cargo test -p lithe-core --features plugin-sdk-e2e`. The code under test is the Core in the working tree, so a change to Core and a change to an SDK or the contract are verified together in one PR. It needs Rust, Node.js 20.3 or newer, Go 1.22 or newer, Java (set with `LITHE_PLUGIN_SDK_JAVA_RUNTIME`, or `java` on `PATH`), and Maven.
 
 These tests plan and decode through a real Core and cover a non-zero build exit code, exact filtering, build before run, preparation plans, progress, tool cleanup after cancellation, isolation between parallel workspaces, and an unchanged complete package including the SDK and JAR. They do not replace verification of the native UI, real Maven/JDT projects, or the desktop on a real machine.
 

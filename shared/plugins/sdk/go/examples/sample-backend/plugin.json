@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 0,
+  "id": "org.example.sample-backend",
+  "displayName": "Sample Backend",
+  "version": "0.1.0",
+  "pluginAPIVersion": 0,
+  "requires": { "backend": 0, "ui": 0 },
+  "vendor": {
+    "id": "org.example",
+    "displayName": "Example",
+    "signatureRequirement": "publisherPackage"
+  },
+  "permissions": [
+    "backend.launch",
+    "terminal.create",
+    "credentials.store",
+    "ui.contribute",
+    "ui.web",
+    "window.messages",
+    "workspace.files.watch",
+    "workspace.metadata"
+  ],
+  "activationEvents": [
+    "onView:org.example.sample-backend.notes",
+    "onCommand:org.example.sample-backend.greet"
+  ],
+  "languages": [],
+  "ui": {
+    "toolWindows": [
+      {
+        "id": "org.example.sample-backend.notes",
+        "title": "Sample Notes",
+        "placement": "right",
+        "web": { "entry": "ui/index.html" }
+      }
+    ],
+    "commands": [
+      {
+        "id": "org.example.sample-backend.greet",
+        "title": "Greet from Sample Backend",
+        "toolWindowID": "org.example.sample-backend.notes",
+        "placements": ["commandPalette"]
+      }
+    ]
+  },
+  "backend": {
+    "launch": { "kind": "packaged", "path": "bin/sample-backend" },
+    "arguments": ["--state", "${stateDir}"]
+  }
+}

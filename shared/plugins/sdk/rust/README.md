@@ -492,6 +492,6 @@ The unit tests drive a session through in-process pipes with a scripted
 host; `plugin-sdk/tests/host_services.rs` checks the host services against the
 contract's fixture. The end-to-end check builds the sample, installs it as a
 package, and runs it through a real Core session of this checkout. It needs
-Rust, Node.js 20.3 or newer, Java (`LITHE_PLUGIN_SDK_JAVA_RUNTIME` or `java` on
-`PATH`) and Maven; `LITHE_PLUGIN_SDK_RUST_SAMPLE` names an already built
+Rust, Node.js 20.3 or newer, Go 1.22 or newer, Java
+(`LITHE_PLUGIN_SDK_JAVA_RUNTIME` or `java` on `PATH`) and Maven; `LITHE_PLUGIN_SDK_RUST_SAMPLE` names an already built
 `sample-backend`.

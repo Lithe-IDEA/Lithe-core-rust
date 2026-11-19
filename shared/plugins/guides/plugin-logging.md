@@ -4,11 +4,11 @@
 
 ## 中文
 
-插件使用 `litheLogging` 0 与 `lithe/log` 发送受限的操作事实，由宿主的共享事件目录、脱敏、队列和文件写入器落盘。三个 SDK 不提供自由文本 `log` 接口，也没有 stderr 回退。插件无需实现日志文件格式、文件轮转、脱敏器或后台写入线程。
+插件使用 `litheLogging` 0 与 `lithe/log` 发送受限的操作事实，由宿主的共享事件目录、脱敏、队列和文件写入器落盘。官方 SDK 都不提供自由文本 `log` 接口，也没有 stderr 回退。插件无需实现日志文件格式、文件轮转、脱敏器或后台写入线程。
 
 宿主必须在 initialize 中提供 `capabilities.experimental.litheLogging.versions: [0]`，SDK 回复 `capabilities.experimental.litheLogging.version: 0`。缺少协议时，SDK 拒绝初始化；不自动退回其他日志方式。初始化尚未协商时的失败只通过原有 RPC 错误与宿主进程生命周期记录，不能提前发送未协商的日志通知。
 
-本文的 API 由 Node.js SDK 0.5.0、Java SDK 0.5.0 和 Rust SDK 0.4.0 提供，发布标签分别为 `sdk-node-v0.5.0`、`sdk-java-v0.5.0` 和 `sdk-rust-v0.4.0`。插件在构建输入中锁定对应的 release tag 与 SHA-256，不要引用开发机的绝对 path 依赖。这些 SDK 要求宿主提供 `litheLogging` 0；在提供它的 Lithe 稳定版发布之前，用这些 SDK 构建的插件把 GitHub Release 标为预发布。
+本文的 API 由 Node.js SDK 0.5.0、Java SDK 0.5.0、Rust SDK 0.4.0 和 Go SDK 提供，前三个的发布标签分别为 `sdk-node-v0.5.0`、`sdk-java-v0.5.0` 和 `sdk-rust-v0.4.0`；Go SDK 的版本是模块标签 `shared/plugins/sdk/go/v<版本>`，目前还没有打过标签。插件在构建输入中锁定对应的 release tag 与 SHA-256（Go 由 `go.sum` 锁定），不要引用开发机的绝对 path 依赖。这些 SDK 要求宿主提供 `litheLogging` 0；在提供它的 Lithe 稳定版发布之前，用这些 SDK 构建的插件把 GitHub Release 标为预发布。
 
 ### 每种事实与级别
 
@@ -21,11 +21,11 @@
 
 `operationFinished` 和 `operationFailed` 必须有单调时钟计算的 `durationMs`。失败、降级、恢复使用受控的 `code`；成功没有 `code`。可选 `count` 与 `durationMs` 都是 0…9007199254740991 的整数。API 不接受原始 message、stack、request、URL、SQL、命令输出或字段字典。
 
-`operation` 只接受本 SDK 已注册的函数 ID 或封闭协议操作，超过 64 字节的已注册函数 ID 统一为 `function-call`。公开的协议操作包括 initialize/shutdown/notification/function-call/result-encoding、SDK 已知的 `lithe/build/*` 与 `lithe/vcs/*` 方法，以及快捷键导入请求 `lithe/keymap/import`（三种 SDK 自动上报其终态）；任意用户文本即使字符合法也不接受。`code` 是最长 64 字节的 ASCII 类别标识，不是错误正文。
+`operation` 只接受本 SDK 已注册的函数 ID 或封闭协议操作，超过 64 字节的已注册函数 ID 统一为 `function-call`。公开的协议操作包括 initialize/shutdown/notification/function-call/result-encoding、SDK 已知的 `lithe/build/*` 与 `lithe/vcs/*` 方法，以及快捷键导入请求 `lithe/keymap/import`（实现它的 SDK 自动上报其终态）；任意用户文本即使字符合法也不接受。`code` 是最长 64 字节的 ASCII 类别标识，不是错误正文。
 
 通道由宿主从已校验的安装插件 ID 得到 `plugins/<plugin>/host`，插件不能更改通道或拼接路径。上下文诊断优先携带宿主原始 `operationID`，缺少合法值时沿用当前请求原始 JSON-RPC ID（安全字符串或整数的十进制字符串），wire 名为 `operationId`，只保留最长 128 字节的受控 ASCII 标识；无真实身份时省略。通知没有请求 ID，不生成回退身份。后台共享任务可以使用 backend/handle 的无 op 诊断，不能伪造一个操作 ID。
 
-### 三个 SDK 的用法
+### 各 SDK 的用法
 
 ```js
 backend.function('project.refresh', async (params, context) => {
@@ -51,13 +51,27 @@ handle.diagnostics().recovered("query.run", "connection_restored", None)?;
 backend.suppress_success_diagnostics("query.inspect")?;
 ```
 
-`degraded`、`recovered` 的 operation 必须已注册，静态示例需要放到实际的注册完成之后。Rust 的返回错误只表达调用参数非法；协议写入复用现有 writer，诊断传输失败不会把已经成功的用户操作改成失败。没有额外 writer 或后台队列。
+```go
+if err := call.Diagnostics().Degraded("query.run", "rows_truncated", 1); err != nil {
+	return nil, err
+}
+if err := handle.Diagnostics().Recovered("query.run", "connection_restored"); err != nil {
+	return err
+}
+if err := backend.SuppressSuccessDiagnostics("query.inspect"); err != nil {
+	return err
+}
+```
 
-混合用户操作和高频读取的单个入口可以在当前调用上使用 `context.suppressSuccessDiagnostics()`（Rust 为 `context.suppress_success_diagnostics()`）；该决定只影响本次成功事实，不影响其他调用与失败。
+`degraded`、`recovered` 的 operation 必须已注册，静态示例需要放到实际的注册完成之后。Rust 和 Go 返回的错误只表示调用参数非法；协议写入复用现有 writer，诊断传输失败不会把已经成功的用户操作改成失败。没有额外 writer 或后台队列。
 
-SDK 在函数与受管 build/VCS 请求的结果边界自动发送一次终态，通知在 RPC 响应之前发送，宿主才能关联仍活动的请求。不要在处理函数里先发送失败再返回或抛出同一次失败。取消不产生失败事件，正常缺失的收尾对象不应产生 WARN。高频只读、预览、统计与轮询通过 `suppressSuccessDiagnostics` / `suppress_success_diagnostics` 关闭成功事实；失败与真正降级仍保留。
+混合用户操作和高频读取的单个入口可以在当前调用上使用 `context.suppressSuccessDiagnostics()`（Rust 为 `context.suppress_success_diagnostics()`，Go 为 `call.SuppressSuccessDiagnostics()`）；该决定只影响本次成功事实，不影响其他调用与失败。
+
+SDK 在函数与受管 build/VCS 请求的结果边界自动发送一次终态，通知在 RPC 响应之前发送，宿主才能关联仍活动的请求。不要在处理函数里先发送失败再返回或抛出同一次失败。取消不产生失败事件，正常缺失的收尾对象不应产生 WARN。高频只读、预览、统计与轮询通过 `suppressSuccessDiagnostics` / `suppress_success_diagnostics` / `SuppressSuccessDiagnostics` 关闭成功事实；失败与真正降级仍保留。
 
 Rust SDK 用一次安装的 panic hook 包装器，仅在线程处于 SDK 拥有的 catch 边界时屏蔽原始 payload 输出，随后发送固定 `panic` 类别。其他线程和边界外的 panic 继续执行原 hook。不要把用户内容放进 panic，插件也不要在 SDK 启动后替换该 hook 来恢复正文输出。
+
+Go SDK 在函数调用、快捷键导入调用、通知与命令处理函数、`OnInitialize` 和 `OnShutdown` 外层 `recover`：不输出 panic 的值，只发送固定的 `panic` 类别。插件自己启动的 goroutine 不在这个边界内，其中未恢复的 panic 按 Go 的默认行为打印并结束后端进程。
 
 ### 上游诊断与文件位置
 
@@ -86,11 +100,11 @@ Rust SDK 用一次安装的 panic hook 包装器，仅在线程处于 SDK 拥有
 
 ## English
 
-Plugins use `litheLogging` 0 and `lithe/log` to send restricted operation facts. The host's shared event catalog, redaction, queue, and file writer persist them. The three SDKs offer no free-text `log` interface and have no stderr fallback. A plugin does not implement the log file format, file rotation, a redactor, or a background writer thread.
+Plugins use `litheLogging` 0 and `lithe/log` to send restricted operation facts. The host's shared event catalog, redaction, queue, and file writer persist them. None of the official SDKs offers a free-text `log` interface and have no stderr fallback. A plugin does not implement the log file format, file rotation, a redactor, or a background writer thread.
 
 The host must offer `capabilities.experimental.litheLogging.versions: [0]` in initialize, and the SDK replies with `capabilities.experimental.litheLogging.version: 0`. When the protocol is missing, the SDK refuses to initialize; it does not fall back to another logging path. A failure before initialization has negotiated logging is recorded only through the existing RPC error and the host's process lifecycle; the plugin must not send a log notification before negotiation.
 
-The APIs in this guide are provided by Node.js SDK 0.5.0, Java SDK 0.5.0, and Rust SDK 0.4.0, with release tags `sdk-node-v0.5.0`, `sdk-java-v0.5.0`, and `sdk-rust-v0.4.0`. Pin the matching release tag and SHA-256 in your build inputs; do not depend on an absolute path on a development machine. These SDKs require the host to offer `litheLogging` 0; until a stable Lithe release offers it, mark the GitHub Release of a plugin built with these SDKs as a prerelease.
+The APIs in this guide are provided by Node.js SDK 0.5.0, Java SDK 0.5.0, Rust SDK 0.4.0, and the Go SDK. The first three have release tags `sdk-node-v0.5.0`, `sdk-java-v0.5.0`, and `sdk-rust-v0.4.0`; the Go SDK's versions are the module tags `shared/plugins/sdk/go/v<version>`, and none has been pushed yet. Pin the matching release tag and SHA-256 in your build inputs (for Go, `go.sum` pins it); do not depend on an absolute path on a development machine. These SDKs require the host to offer `litheLogging` 0; until a stable Lithe release offers it, mark the GitHub Release of a plugin built with these SDKs as a prerelease.
 
 ### Facts and levels
 
@@ -103,11 +117,11 @@ The APIs in this guide are provided by Node.js SDK 0.5.0, Java SDK 0.5.0, and Ru
 
 `operationFinished` and `operationFailed` must carry a `durationMs` measured with a monotonic clock. Failure, degradation, and recovery use a controlled `code`; success has no `code`. The optional `count` and `durationMs` are integers from 0 to 9007199254740991. The API does not accept raw messages, stacks, requests, URLs, SQL, command output, or field dictionaries.
 
-`operation` accepts only function IDs registered with this SDK or closed protocol operations; a registered function ID longer than 64 bytes is reported as `function-call`. The public protocol operations are initialize, shutdown, notification, function-call, and result-encoding, the `lithe/build/*` and `lithe/vcs/*` methods the SDK knows, and the shortcut import request `lithe/keymap/import` (all three SDKs report its end state automatically). Arbitrary user text is not accepted even when its characters are valid. `code` is an ASCII category identifier of at most 64 bytes, not an error message.
+`operation` accepts only function IDs registered with this SDK or closed protocol operations; a registered function ID longer than 64 bytes is reported as `function-call`. The public protocol operations are initialize, shutdown, notification, function-call, and result-encoding, the `lithe/build/*` and `lithe/vcs/*` methods the SDK knows, and the shortcut import request `lithe/keymap/import` (every SDK that implements it reports its end state automatically). Arbitrary user text is not accepted even when its characters are valid. `code` is an ASCII category identifier of at most 64 bytes, not an error message.
 
 The host derives the channel `plugins/<plugin>/host` from the validated installed plugin ID; the plugin cannot change the channel or build a path. Contextual diagnostics carry the host's original `operationID` first; without a valid one they reuse the current request's original JSON-RPC ID (a safe string, or an integer as a decimal string). The wire name is `operationId`, and only a controlled ASCII identifier of at most 128 bytes is kept; it is omitted when there is no real identity. Notifications have no request ID, and no fallback identity is generated for them. Shared background work can use the backend or handle diagnostics without an operation, but must not invent an operation ID.
 
-### Using the three SDKs
+### Using each SDK
 
 ```js
 backend.function('project.refresh', async (params, context) => {
@@ -133,13 +147,27 @@ handle.diagnostics().recovered("query.run", "connection_restored", None)?;
 backend.suppress_success_diagnostics("query.inspect")?;
 ```
 
-The operation passed to `degraded` and `recovered` must be registered, so put static examples after registration has actually finished. A Rust error return means only that the call's arguments are invalid. Protocol writes reuse the existing writer, and a failed diagnostic send never turns a successful user operation into a failure. There is no extra writer or background queue.
+```go
+if err := call.Diagnostics().Degraded("query.run", "rows_truncated", 1); err != nil {
+	return nil, err
+}
+if err := handle.Diagnostics().Recovered("query.run", "connection_restored"); err != nil {
+	return err
+}
+if err := backend.SuppressSuccessDiagnostics("query.inspect"); err != nil {
+	return err
+}
+```
 
-A single entry point that mixes user operations with high-frequency reads can call `context.suppressSuccessDiagnostics()` (in Rust, `context.suppress_success_diagnostics()`) for the current call. That decision affects only this call's success fact, not other calls or failures.
+The operation passed to `degraded` and `recovered` must be registered, so put static examples after registration has actually finished. A Rust or Go error return means only that the call's arguments are invalid. Protocol writes reuse the existing writer, and a failed diagnostic send never turns a successful user operation into a failure. There is no extra writer or background queue.
 
-The SDK sends one end state automatically at the result boundary of functions and managed build and VCS requests. The notification goes out before the RPC response so the host can relate it to the still-active request. Do not send a failure from a handler and then return or throw the same failure. Cancellation produces no failure event, and a normally absent cleanup object should not produce a WARN. High-frequency reads, previews, statistics, and polling turn off success facts with `suppressSuccessDiagnostics` / `suppress_success_diagnostics`; failures and real degradations are kept.
+A single entry point that mixes user operations with high-frequency reads can call `context.suppressSuccessDiagnostics()` (in Rust, `context.suppress_success_diagnostics()`; in Go, `call.SuppressSuccessDiagnostics()`) for the current call. That decision affects only this call's success fact, not other calls or failures.
+
+The SDK sends one end state automatically at the result boundary of functions and managed build and VCS requests. The notification goes out before the RPC response so the host can relate it to the still-active request. Do not send a failure from a handler and then return or throw the same failure. Cancellation produces no failure event, and a normally absent cleanup object should not produce a WARN. High-frequency reads, previews, statistics, and polling turn off success facts with `suppressSuccessDiagnostics` / `suppress_success_diagnostics` / `SuppressSuccessDiagnostics`; failures and real degradations are kept.
 
 The Rust SDK installs a panic hook wrapper once. It suppresses the raw payload output only while the thread is inside a catch boundary the SDK owns, and then sends the fixed `panic` category. Panics on other threads and outside the boundary still run the original hook. Do not put user content in a panic, and do not replace the hook after the SDK starts to restore message output.
+
+The Go SDK wraps function calls, shortcut import calls, notification and command handlers, `OnInitialize`, and `OnShutdown` in `recover`: it prints nothing of the panic value and sends only the fixed `panic` category. Goroutines the plugin starts itself are outside that boundary; an unrecovered panic there prints and ends the backend process, as Go always does.
 
 ### Upstream diagnostics and file locations
 
