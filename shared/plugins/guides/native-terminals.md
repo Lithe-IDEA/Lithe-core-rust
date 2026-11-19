@@ -4,7 +4,7 @@
 
 ## 中文
 
-这些 SDK 封装随 Node.js SDK 0.5.0、Java SDK 0.5.0 和 Rust SDK 0.4.0 提供，并且需要宿主声明终端方法。契约和 SDK 都在 Core 仓库的 `shared/plugins/` 中，规则见[原生终端契约](../contract/v1/README.md#plugin-owned-native-terminals)。
+这些 SDK 封装随 Node.js SDK 0.5.0、Java SDK 0.5.0 和 Rust SDK 0.4.0 提供，Go SDK 也有（还没有发布标签），并且需要宿主声明终端方法。契约和 SDK 都在 Core 仓库的 `shared/plugins/` 中，规则见[原生终端契约](../contract/v1/README.md#plugin-owned-native-terminals)。
 
 交互式客户端请使用宿主的集成终端。声明 `requires.backend: 2` 和权限 `terminal.create`；网页调用自己后端的函数，后端带着该函数的工作区上下文调用宿主。插件不需要实现终端模拟器，不需要通过插件函数转发按键，也不需要成为构建或运行提供者。
 
@@ -60,6 +60,47 @@ terminal.dispose(workspace, id)?;
 
 Rust 还提供 `terminal.on_exit(workspace,id)`，返回 SDK 已有的 `Subscription`，用有界的 `recv_timeout` 接收，并显式调用 `dispose`。
 
+### Go 示例
+
+```go
+workspace := call.WorkspaceContext()
+if workspace == nil {
+	return nil, lithe.NewPluginError("example.noWorkspace", "Open a workspace first.")
+}
+host := call.Host()
+if supported, err := host.Supports("lithe/host/terminal/reopen"); err != nil {
+	return nil, err
+} else if !supported {
+	return nil, lithe.NewPluginError("example.unavailable", "This host has no native terminal API.")
+}
+terminal := host.Terminal()
+answer, err := terminal.Create(*workspace, map[string]any{
+	"executable": "example-client", "arguments": []string{"--interactive"},
+	"retainedContextBytes": 4096,
+})
+if err != nil {
+	return nil, err
+}
+var opened struct {
+	TerminalID string `json:"terminalID"`
+}
+if err := json.Unmarshal(answer, &opened); err != nil || opened.TerminalID == "" {
+	return nil, errors.New("host returned no terminalID")
+}
+id := opened.TerminalID
+if _, err := terminal.Close(*workspace, id, 4096); err != nil {
+	return nil, err
+}
+if _, err := terminal.Reopen(*workspace, id); err != nil {
+	return nil, err
+}
+if _, err := terminal.Dispose(*workspace, id); err != nil {
+	return nil, err
+}
+```
+
+Go 还提供 `terminal.OnExit(workspace, id)`，返回 SDK 已有的 `*Subscription`，用有界的 `RecvTimeout` 接收，并显式调用 `Dispose`。
+
 ### Java 接口
 
 `host.terminal()` 提供 `create(context,params)`、`show(context,params)`、`close(context,params)`、`reopen(context,params)`、`dispose(context,params)` 和 `onExit(context,params)`。参数是普通的 JSON Map。前五个返回 `CompletableFuture<Map<String,Object>>`（show 和 dispose 返回 null）；`onExit` 返回 `CompletableFuture<Subscription>`。上下文、取消、宿主失败和订阅路由与其他协议 3 方法使用同一通道。
@@ -74,7 +115,7 @@ Rust 还提供 `terminal.on_exit(workspace,id)`，返回 SDK 已有的 `Subscrip
 
 `dispose` 忘掉句柄、启动设置和历史；会话仍在运行时先关闭它。每个插件最多保留 8 个句柄（包括已关闭的），所以不会再 reopen 的句柄要 dispose。后端或会话重启、插件停用或更新、关闭或替换工作区，也会释放这些句柄。上下文和历史只在内存中，从不写入已安装的插件包。
 
-Rust 示例的 `terminal.cycle` 函数和 Core 端到端场景覆盖协议的往返。该场景由测试提供宿主应答；真实的原生 PTY 输入、输出和历史由宿主自己的测试验证。
+Rust 和 Go 示例的 `terminal.cycle` 函数和 Core 端到端场景覆盖协议的往返。该场景由测试提供宿主应答；真实的原生 PTY 输入、输出和历史由宿主自己的测试验证。
 
 终端生命周期场景在 Core 仓库根目录运行，对象是当前工作树的 Core：
 
@@ -89,7 +130,7 @@ node shared/plugins/scripts/sdk-e2e.mjs
 ## English
 
 These SDK wrappers ship from Node.js SDK 0.5.0, Java SDK 0.5.0, and Rust SDK
-0.4.0, and require a host that advertises the terminal methods. The contract and the SDKs live in the
+0.4.0, are in the Go SDK too (not tagged yet), and require a host that advertises the terminal methods. The contract and the SDKs live in the
 Core repository under `shared/plugins/`. See the
 [native terminal contract](../contract/v1/README.md#plugin-owned-native-terminals).
 
@@ -162,6 +203,48 @@ terminal.dispose(workspace, id)?;
 Rust also exposes `terminal.on_exit(workspace,id)` as an existing SDK
 `Subscription`, with bounded `recv_timeout` and explicit `dispose`.
 
+### Go
+
+```go
+workspace := call.WorkspaceContext()
+if workspace == nil {
+	return nil, lithe.NewPluginError("example.noWorkspace", "Open a workspace first.")
+}
+host := call.Host()
+if supported, err := host.Supports("lithe/host/terminal/reopen"); err != nil {
+	return nil, err
+} else if !supported {
+	return nil, lithe.NewPluginError("example.unavailable", "This host has no native terminal API.")
+}
+terminal := host.Terminal()
+answer, err := terminal.Create(*workspace, map[string]any{
+	"executable": "example-client", "arguments": []string{"--interactive"},
+	"retainedContextBytes": 4096,
+})
+if err != nil {
+	return nil, err
+}
+var opened struct {
+	TerminalID string `json:"terminalID"`
+}
+if err := json.Unmarshal(answer, &opened); err != nil || opened.TerminalID == "" {
+	return nil, errors.New("host returned no terminalID")
+}
+id := opened.TerminalID
+if _, err := terminal.Close(*workspace, id, 4096); err != nil {
+	return nil, err
+}
+if _, err := terminal.Reopen(*workspace, id); err != nil {
+	return nil, err
+}
+if _, err := terminal.Dispose(*workspace, id); err != nil {
+	return nil, err
+}
+```
+
+Go also exposes `terminal.OnExit(workspace, id)` as an existing SDK
+`*Subscription`, with bounded `RecvTimeout` and explicit `Dispose`.
+
 ### Java
 
 `host.terminal()` exposes `create(context,params)`, `show(context,params)`,
@@ -204,7 +287,7 @@ handles that will not be reopened. A backend/session restart, plugin disable or
 update, and closing/replacing the workspace also release them. Context and
 history are in-memory only and never written to the installed package.
 
-The Rust sample's `terminal.cycle` function and Core end-to-end scenario exercise
+The Rust and Go samples' `terminal.cycle` functions and Core end-to-end scenario exercise
 the protocol roundtrip. That scenario supplies host responses; the host's own
 tests verify actual native PTY input and output/history.
 

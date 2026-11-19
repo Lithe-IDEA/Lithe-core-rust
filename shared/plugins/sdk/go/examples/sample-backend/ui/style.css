@@ -1,0 +1,3 @@
+body { font: var(--lithe-font-body, 13px system-ui); color: var(--lithe-text, CanvasText); background: transparent; margin: 12px; }
+form { display: grid; gap: 6px; margin-bottom: 16px; }
+label { display: grid; gap: 2px; }
