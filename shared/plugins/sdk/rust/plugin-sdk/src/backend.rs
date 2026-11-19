@@ -7,6 +7,7 @@
 //! Contract: `contract/v1/README.md` ("Plugin backend", "Plugin functions",
 //! and "Host services").
 
+use crate::build::{self, BuildContext};
 use crate::diagnostics::{Diagnostics, OPERATIONS};
 use crate::error::{
     cancelled_response, internal_response, response_error, sdk_codes, Cancelled, FunctionError,
@@ -17,8 +18,8 @@ use crate::host::{Channel, Credentials, Host, Outcome, Outgoing, WorkspaceContex
 use crate::panic_boundary::catch as catch_unwind;
 use crate::protocol::{
     bounded_text, error_codes, is_command_id, is_function_id, is_parent_operation_id, methods,
-    offers, FUNCTIONS_VERSION, KEYMAP_IMPORT_VERSION, LOGGING_VERSION, MAX_FUNCTIONS,
-    MAX_MESSAGE_BYTES, MAX_RESULT_BYTES,
+    offers, BUILD_VERSION, FUNCTIONS_VERSION, KEYMAP_IMPORT_VERSION, LOGGING_VERSION,
+    MAX_BUILD_RESULT_BYTES, MAX_FUNCTIONS, MAX_MESSAGE_BYTES, MAX_RESULT_BYTES,
 };
 use crate::toolchains::{self, ToolchainQuery, ToolchainQueryError, ToolchainQueryResult};
 use crate::view::{ViewEvent, ViewResult};
@@ -35,6 +36,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 type Handler = Arc<dyn Fn(Value, &Context) -> Result<Value, FunctionError> + Send + Sync>;
+type BuildHandler = Arc<dyn Fn(Value, &BuildContext) -> Result<Value, FunctionError> + Send + Sync>;
 type InitializeHook = Box<dyn FnMut(&mut Initialize) -> Result<(), FunctionError> + Send>;
 type ShutdownHook = Box<dyn FnMut() + Send>;
 type CommandHandler =
@@ -72,6 +74,11 @@ pub(crate) struct State {
     selected_keymap_providers: BTreeSet<String>,
     toolchain_providers: BTreeMap<String, ToolchainHandler>,
     selected_toolchain_providers: BTreeSet<String>,
+    /// Build-provider handlers, by wire method.
+    build_handlers: BTreeMap<&'static str, BuildHandler>,
+    /// The negotiated `litheBuild` version, when the backend has build
+    /// handlers and the host offered one it speaks.
+    build_version: Option<u64>,
     pub(crate) logging: bool,
     pub(crate) logging_ready: bool,
     pub(crate) early_diagnostics: Vec<Value>,
@@ -163,6 +170,8 @@ impl Backend {
                     selected_keymap_providers: BTreeSet::new(),
                     toolchain_providers: BTreeMap::new(),
                     selected_toolchain_providers: BTreeSet::new(),
+                    build_handlers: BTreeMap::new(),
+                    build_version: None,
                     logging: false,
                     logging_ready: false,
                     early_diagnostics: Vec::new(),
@@ -312,6 +321,92 @@ impl Backend {
             .insert(id.to_string(), Arc::new(handler));
         drop(state);
         Ok(self)
+    }
+
+    /// Answers `lithe/build/model` with the build model: projects,
+    /// targets, and their facts. Return the plain document; the SDK adds its
+    /// `format` (`litheBuildModel`) and `version`.
+    ///
+    /// A backend with any build handler negotiates `litheBuild` and becomes a
+    /// build provider. Each request runs on a thread of its own; a later
+    /// handler for the same request replaces the earlier one.
+    pub fn build_model<F>(&mut self, handler: F) -> &mut Self
+    where
+        F: Fn(Value, &BuildContext) -> Result<Value, FunctionError> + Send + Sync + 'static,
+    {
+        self.build(methods::BUILD_MODEL, handler)
+    }
+
+    /// Answers `lithe/build/dependencies` with a `litheDependencies` document.
+    pub fn build_dependencies<F>(&mut self, handler: F) -> &mut Self
+    where
+        F: Fn(Value, &BuildContext) -> Result<Value, FunctionError> + Send + Sync + 'static,
+    {
+        self.build(methods::BUILD_DEPENDENCIES, handler)
+    }
+
+    /// Answers `lithe/build/execute` for a task with `source: provider`:
+    /// `{ exitCode, output }`, where `output` is the complete tool output.
+    pub fn build_execute<F>(&mut self, handler: F) -> &mut Self
+    where
+        F: Fn(Value, &BuildContext) -> Result<Value, FunctionError> + Send + Sync + 'static,
+    {
+        self.build(methods::BUILD_EXECUTE, handler)
+    }
+
+    /// Answers `lithe/build/test` like [`build_execute`](Self::build_execute).
+    pub fn build_test<F>(&mut self, handler: F) -> &mut Self
+    where
+        F: Fn(Value, &BuildContext) -> Result<Value, FunctionError> + Send + Sync + 'static,
+    {
+        self.build(methods::BUILD_TEST, handler)
+    }
+
+    /// Answers `lithe/build/discoverTests` with a `litheTestDiscovery` document.
+    pub fn build_discover_tests<F>(&mut self, handler: F) -> &mut Self
+    where
+        F: Fn(Value, &BuildContext) -> Result<Value, FunctionError> + Send + Sync + 'static,
+    {
+        self.build(methods::BUILD_DISCOVER_TESTS, handler)
+    }
+
+    /// Answers `lithe/build/runEntrypoints` with a `litheRunEntrypoints`
+    /// document. Only a host that negotiated `litheBuild` version 1 sends it.
+    pub fn build_run_entrypoints<F>(&mut self, handler: F) -> &mut Self
+    where
+        F: Fn(Value, &BuildContext) -> Result<Value, FunctionError> + Send + Sync + 'static,
+    {
+        self.build(methods::BUILD_RUN_ENTRYPOINTS, handler)
+    }
+
+    /// Answers `lithe/build/prepareRun` with a portable launch plan:
+    /// `{ executable: { kind, value }, arguments, workingDirectory,
+    /// environment }`.
+    pub fn build_prepare_run<F>(&mut self, handler: F) -> &mut Self
+    where
+        F: Fn(Value, &BuildContext) -> Result<Value, FunctionError> + Send + Sync + 'static,
+    {
+        self.build(methods::BUILD_PREPARE_RUN, handler)
+    }
+
+    /// Answers `lithe/build/prepareDebug` with exactly the native target facts
+    /// `{ program, arguments, workingDirectory, environment }`; the adapter
+    /// and its DAP arguments come from the manifest.
+    pub fn build_prepare_debug<F>(&mut self, handler: F) -> &mut Self
+    where
+        F: Fn(Value, &BuildContext) -> Result<Value, FunctionError> + Send + Sync + 'static,
+    {
+        self.build(methods::BUILD_PREPARE_DEBUG, handler)
+    }
+
+    fn build<F>(&mut self, method: &'static str, handler: F) -> &mut Self
+    where
+        F: Fn(Value, &BuildContext) -> Result<Value, FunctionError> + Send + Sync + 'static,
+    {
+        lock(&self.shared.state)
+            .build_handlers
+            .insert(method, Arc::new(handler));
+        self
     }
 
     /// Runs before the `initialize` answer. A hook may read the host's
@@ -499,13 +594,18 @@ impl Backend {
                 Phase::Ready if method == toolchains::METHOD => {
                     Shared::invoke_toolchain(&self.shared, id, params)
                 }
-                Phase::Ready => self.shared.respond(
-                    &id,
-                    Err(rpc_error(
-                        error_codes::METHOD_NOT_FOUND,
-                        "Unsupported method.",
-                    )),
-                ),
+                Phase::Ready => match self.shared.build_handler(method) {
+                    Some(handler) => {
+                        Shared::invoke_build(&self.shared, id, method, params, handler)
+                    }
+                    None => self.shared.respond(
+                        &id,
+                        Err(rpc_error(
+                            error_codes::METHOD_NOT_FOUND,
+                            "Unsupported method.",
+                        )),
+                    ),
+                },
                 Phase::Idle | Phase::Listening | Phase::Initializing => self.shared.respond(
                     &id,
                     Err(rpc_error(
@@ -622,9 +722,19 @@ impl Backend {
             FUNCTIONS_VERSION,
         )
         .then_some(FUNCTIONS_VERSION);
+        // The newest build version the host offers; each one adds to the one before.
+        let build_offer = params.pointer("/capabilities/experimental/litheBuild");
+        let build_version = (!lock(&self.shared.state).build_handlers.is_empty())
+            .then(|| {
+                (0..=BUILD_VERSION)
+                    .rev()
+                    .find(|version| offers(build_offer, *version))
+            })
+            .flatten();
         let mut initialize = Initialize {
             params,
             functions_version,
+            build_version,
             existing: lock(&self.shared.state).functions.keys().cloned().collect(),
             added: BTreeMap::new(),
         };
@@ -644,8 +754,12 @@ impl Backend {
         let mut state = lock(&self.shared.state);
         state.functions.extend(initialize.added);
         state.functions_version = functions_version;
+        state.build_version = build_version;
         let mut experimental = Map::new();
         experimental.insert("litheLogging".into(), json!({ "version": LOGGING_VERSION }));
+        if let Some(version) = build_version {
+            experimental.insert("litheBuild".into(), json!({ "version": version }));
+        }
         if let Some(offer) = keymap_offer {
             if offers(Some(&offer), KEYMAP_IMPORT_VERSION) {
                 if let Some(providers) = offer
@@ -930,8 +1044,13 @@ impl Shared {
                 let outcome = catch_unwind(AssertUnwindSafe(|| handler(call_params, &context)));
                 ended.cancel();
                 // Facts name the wire method Core registered, not the per-provider call id.
-                let answer =
-                    worker.function_answer(&context, KEYMAP_IMPORT_METHOD, outcome, started);
+                let answer = worker.function_answer(
+                    &context,
+                    KEYMAP_IMPORT_METHOD,
+                    outcome,
+                    started,
+                    MAX_RESULT_BYTES,
+                );
                 lock(&worker.state).incoming.remove(&thread_key);
                 worker.respond(&thread_id, answer);
             });
@@ -1121,14 +1240,122 @@ impl Shared {
                 let outcome = catch_unwind(AssertUnwindSafe(|| handler(call_params, &context)));
                 context.reporting.store(false, Ordering::SeqCst);
                 ended.cancel();
-                let answer =
-                    worker.function_answer(&context, &context.function_id, outcome, started);
+                let answer = worker.function_answer(
+                    &context,
+                    &context.function_id,
+                    outcome,
+                    started,
+                    MAX_RESULT_BYTES,
+                );
                 lock(&worker.state).incoming.remove(&thread_key);
                 worker.respond(&thread_id, answer);
             });
         if spawned.is_err() {
             lock(&shared.state).incoming.remove(&key);
             shared.failed("function-call", "worker_start_failed");
+            shared.respond(&id, Err(internal_response()));
+        }
+    }
+
+    /// The handler for a build request, when the session negotiated a
+    /// `litheBuild` version that has it.
+    fn build_handler(&self, method: &str) -> Option<BuildHandler> {
+        let state = lock(&self.state);
+        let version = state.build_version?;
+        (version >= build::introduced_in(method))
+            .then(|| state.build_handlers.get(method).cloned())
+            .flatten()
+    }
+
+    /// One `lithe/build/*` request, on a thread of its own, answered like a
+    /// function call: its terminal fact names the wire method.
+    fn invoke_build(
+        shared: &Arc<Self>,
+        id: Value,
+        method: &str,
+        params: Value,
+        handler: BuildHandler,
+    ) {
+        let progressing = build::reports_progress(method);
+        if !params.is_object() || (progressing && !params["operationID"].is_string()) {
+            return shared.respond(
+                &id,
+                Err(rpc_error(
+                    error_codes::INVALID_PARAMS,
+                    "A build request needs object params and its wire operationID.",
+                )),
+            );
+        }
+        let method = method.to_string();
+        let key = request_key(&id);
+        let cancellation = Cancellation::new();
+        lock(&shared.state).incoming.insert(
+            key.clone(),
+            Running {
+                function_id: method.clone(),
+                cancellation: cancellation.clone(),
+            },
+        );
+        let operation_id = if progressing {
+            params["operationID"].clone()
+        } else {
+            Value::Null
+        };
+        let worker = Arc::clone(shared);
+        let thread_key = key.clone();
+        let thread_id = id.clone();
+        let thread_method = method.clone();
+        let spawned = thread::Builder::new()
+            .name(format!(
+                "lithe-build-{}",
+                method.trim_start_matches("lithe/build/")
+            ))
+            .spawn(move || {
+                let method = thread_method;
+                let ended = Cancellation::new();
+                let diagnostic_operation_id =
+                    crate::diagnostics::request_operation_id(&operation_id, &thread_id);
+                let context = BuildContext::new(
+                    Context {
+                        shared: Arc::clone(&worker),
+                        function_id: method.clone(),
+                        operation_id,
+                        diagnostic_operation_id,
+                        host: Host::new(
+                            Arc::clone(&worker),
+                            vec![cancellation.clone(), ended.clone()],
+                        ),
+                        cancellation,
+                        workspace_context: None,
+                        caller: None,
+                        reporting: AtomicBool::new(true),
+                        quiet_success: AtomicBool::new(false),
+                    },
+                    &method,
+                );
+                let started = Instant::now();
+                let outcome =
+                    catch_unwind(AssertUnwindSafe(|| handler(params, &context))).map(|answer| {
+                        answer.and_then(|value| {
+                            build::result(&method, value)
+                                .ok_or_else(|| FunctionError::internal("invalid_build_result"))
+                        })
+                    });
+                context.context.reporting.store(false, Ordering::SeqCst);
+                ended.cancel();
+                let answer = worker.function_answer(
+                    &context.context,
+                    &method,
+                    outcome,
+                    started,
+                    MAX_BUILD_RESULT_BYTES,
+                );
+                lock(&worker.state).incoming.remove(&thread_key);
+                worker.respond(&thread_id, answer);
+            });
+        if spawned.is_err() {
+            lock(&shared.state).incoming.remove(&key);
+            shared.failed(&method, "worker_start_failed");
             shared.respond(&id, Err(internal_response()));
         }
     }
@@ -1142,13 +1369,14 @@ impl Shared {
         function: &str,
         outcome: Result<Result<Value, FunctionError>, Box<dyn Any + Send>>,
         started: Instant,
+        limit: usize,
     ) -> Answer {
         let cancelled = context.cancellation.is_cancelled();
         match outcome {
             _ if cancelled => Err(cancelled_response()),
             Ok(Ok(value)) => {
                 let size = serde_json::to_vec(&value).map_or(usize::MAX, |bytes| bytes.len());
-                if size > MAX_RESULT_BYTES {
+                if size > limit {
                     context.diagnostics().terminal(
                         function,
                         Some(&FunctionError::internal("result_limit")),
@@ -1227,6 +1455,7 @@ fn failure_kind(error: &FunctionError) -> &'static str {
 pub struct Initialize {
     params: Value,
     functions_version: Option<u64>,
+    build_version: Option<u64>,
     existing: Vec<String>,
     added: BTreeMap<String, Handler>,
 }
@@ -1241,6 +1470,12 @@ impl Initialize {
     /// `None` when the host did not offer it.
     pub fn functions_version(&self) -> Option<u64> {
         self.functions_version
+    }
+
+    /// The `litheBuild` version the backend will answer, or `None` when it
+    /// has no build handlers or the host offered no version it speaks.
+    pub fn build_version(&self) -> Option<u64> {
+        self.build_version
     }
 
     /// The `rootUri` as a path. For a plugin backend this is the plugin's
@@ -1306,15 +1541,15 @@ fn file_uri_path(uri: &str) -> Option<PathBuf> {
 
 /// One running function call.
 pub struct Context {
-    shared: Arc<Shared>,
+    pub(crate) shared: Arc<Shared>,
     function_id: String,
-    operation_id: Value,
+    pub(crate) operation_id: Value,
     diagnostic_operation_id: Option<String>,
     cancellation: Cancellation,
     host: Host,
     workspace_context: Option<WorkspaceContext>,
     caller: Option<Caller>,
-    reporting: AtomicBool,
+    pub(crate) reporting: AtomicBool,
     quiet_success: AtomicBool,
 }
 
@@ -1569,6 +1804,13 @@ impl BackendHandle {
     /// `initialize` or when the host did not offer it.
     pub fn functions_version(&self) -> Option<u64> {
         self.shared.functions_version()
+    }
+
+    /// The negotiated `litheBuild` version; `None` before `initialize`, when
+    /// the backend has no build handlers, or when the host offered no
+    /// version it speaks.
+    pub fn build_version(&self) -> Option<u64> {
+        lock(&self.shared.state).build_version
     }
 
     /// IDs of the functions the backend currently serves, sorted.

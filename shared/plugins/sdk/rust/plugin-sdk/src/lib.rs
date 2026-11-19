@@ -16,7 +16,10 @@
 //!   calls to the functions other plugins export through Core's relay
 //!   ([`Functions`]) with the [`Caller`] of a function called that way;
 //! - **`litheKeymapImport`**: shortcut import providers;
-//! - **`litheToolchains`**: [toolchain discovery providers](toolchains).
+//! - **`litheToolchains`**: [toolchain discovery providers](toolchains);
+//! - **`litheBuild`**: a build provider's typed `lithe/build/*` requests,
+//!   declared with [`Backend::build_model`] and its siblings and answered
+//!   with a [`BuildContext`] for progress, output, and cancellation.
 //!
 //! The SDK requires `litheLogging` at initialization.
 //!
@@ -31,6 +34,7 @@
 //! See [`Backend`] for a minimal backend.
 
 mod backend;
+mod build;
 mod diagnostics;
 mod error;
 mod framing;
@@ -45,6 +49,7 @@ pub use backend::{
     Backend, BackendHandle, Caller, Cancellation, Context, Initialize, KeymapImportRequest,
     KeymapSourceFile,
 };
+pub use build::BuildContext;
 pub use diagnostics::Diagnostics;
 pub use error::{
     sdk_codes, Cancelled, FunctionError, PluginError, SdkError, HOST_ERROR_CODES, RELAY_ERROR_CODES,

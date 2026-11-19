@@ -33,11 +33,11 @@ required; declare it as the runtime's `minimumVersion`.
 
 ## What the Lithe desktop serves
 
-The Lithe desktop declares `backend`, `pluginFunctions`, `buildProviders` and
-`buildSystems` (all version 0), so the function, host-service and build
-protocols below run there. It does not declare `vcsProviders`,
-`keymapImportProviders` or `buildModelInputs`: a plugin whose manifest requires
-one of them is not offered for installation there. The Core end-to-end tests
+The Lithe desktop declares `backend`, `pluginFunctions`, `buildSystems` and
+`vcsProviders` (version 0) and `buildProviders` (versions 0 and 1), so the
+function, host-service, build and VCS protocols below run there. It does not
+declare `keymapImportProviders` or `buildModelInputs`: a plugin whose manifest
+requires one of them is not offered for installation there. The Core end-to-end tests
 still drive those protocols. Which host services a session may call is reported
 at run time; see [Host services](#host-services).
 

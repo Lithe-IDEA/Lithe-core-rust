@@ -6,22 +6,22 @@
 
 插件可以只提供工作区后端，不创建网页。用户从原生工具窗口执行构建、发现与运行测试、准备应用启动；宿主继续管理工作区、取消、输出和应用进程。
 
-这些入口都属于 `buildProviders`（版本 `0`）：清单要求 `requires.buildProviders: 0`，进程协议 `litheBuild` 的版本就是 `buildProviders` 的版本。Node.js SDK 0.5.0 和 Java SDK 0.5.0 实现了全部入口；Rust SDK 0.4.0 和 Go SDK 没有构建提供者接口。能力定义见[构建提供者](../reference/domains/build-providers.md)，字段和错误码以[契约](../contract/v1/README.md#build-providers)为准。
+这些入口都属于 `buildProviders`（版本 `0`）：清单要求 `requires.buildProviders: 0`，进程协议 `litheBuild` 的版本就是 `buildProviders` 的版本。Node.js SDK 0.5.0 和 Java SDK 0.5.0 实现了全部入口；`main` 上的 Rust SDK 源码也实现了全部入口，随下一次 Rust SDK 发布提供（0.4.0 没有）；Go SDK 没有构建提供者接口。能力定义见[构建提供者](../reference/domains/build-providers.md)，字段和错误码以[契约](../contract/v1/README.md#build-providers)为准。
 
-> **宿主支持。** Lithe 桌面端声明 `buildSystems` 和 `buildProviders`：构建窗口发现构建实例、加载提供者模型、解析可执行文件候选并运行任务。构建提供者的运行准备、测试、调试准备、model inputs、原生配置、内联测试报告和运行时调试，桌面端尚未呈现，见
-> [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go) 中 `Declared()` 上方的注释。下文的入口因此由 Core 与 SDK 的端到端测试验证，插件作者在桌面端界面里暂时看不到测试、运行和调试这几类入口的效果。
+> **宿主支持。** Lithe 桌面端声明 `buildSystems` 和 `buildProviders`（版本 `0` 和 `1`）：构建窗口发现构建实例、加载提供者模型、解析可执行文件候选、运行命令任务和提供者任务、准备应用启动，并发现和运行提供者测试；运行声明了 `debug.adapter` 时，构建窗口里目标的“调试”和标题栏对提供者运行配置的“调试”先让提供者准备程序，再用这个运行指定的本插件适配器启动调试；“运行当前文件”向版本 `1` 的提供者询问文件里的入口。model inputs、原生配置、内联测试报告和运行时调试，桌面端尚未呈现，见
+> [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go) 中 `Declared()` 上方的注释。
 
 ### 选择入口
 
-| 工作 | Node.js SDK | Java SDK | 清单里的声明 |
-| --- | --- | --- | --- |
-| 执行有界任务 | `backend.build.execute` | `onExecute` | 任务 `source: "provider"` |
-| 运行精确测试 | `backend.build.test` | `onTest` | `test.source: "provider"` |
-| 发现可运行的用例 | `backend.build.discoverTests` | `onDiscoverTests` | `test.discovery: true` |
-| 准备应用启动 | `backend.build.prepareRun` | `onPrepareRun` | `run[].source: "provider"` |
-| 准备原生程序调试 | `backend.build.prepareDebug` | `onPrepareDebug` | `run[].debug: {"adapter": "native"}` |
+| 工作 | Node.js SDK | Java SDK | Rust SDK | 清单里的声明 |
+| --- | --- | --- | --- | --- |
+| 执行有界任务 | `backend.build.execute` | `onExecute` | `build_execute` | 任务 `source: "provider"` |
+| 运行精确测试 | `backend.build.test` | `onTest` | `build_test` | `test.source: "provider"` |
+| 发现可运行的用例 | `backend.build.discoverTests` | `onDiscoverTests` | `build_discover_tests` | `test.discovery: true` |
+| 准备应用启动 | `backend.build.prepareRun` | `onPrepareRun` | `build_prepare_run` | `run[].source: "provider"` |
+| 准备原生程序调试 | `backend.build.prepareDebug` | `onPrepareDebug` | `build_prepare_debug` | `run[].debug: {"adapter": "native"}` |
 
-安装时检查清单的能力版本；启动时 SDK 只在注册了构建处理器、且宿主提供了 `litheBuild` 版本 `0` 时才协商构建协议。没有协商成功时，构建方法在进入处理器之前被拒绝；不会改发私有函数，也不会展开成另一条宿主命令。Node.js 用 `backend.buildVersion` 查看结果（协商到为 `0`，否则为 `null`），Java 用 `backend.negotiated().buildVersion()`。
+安装时检查清单的能力版本；启动时 SDK 只在注册了构建处理器、且宿主提供了 `litheBuild` 版本 `0` 时才协商构建协议。没有协商成功时，构建方法在进入处理器之前被拒绝；不会改发私有函数，也不会展开成另一条宿主命令。Node.js 用 `backend.buildVersion` 查看结果（协商到为 `0`，否则为 `null`），Java 用 `backend.negotiated().buildVersion()`，Rust 用 `BackendHandle::build_version()` 或 `Initialize::build_version()`（协商到的版本，否则为 `None`）。
 
 处理器必须在 `listen` 前注册。模型、依赖和测试发现回复由 SDK 补齐对应的 `format` 和 `version: 0`；执行回复是 `{ exitCode, output }`，启动准备回复是完整的可移植计划。Core 继续检查选择器、工作区路径和大小限制。
 
@@ -104,22 +104,22 @@ node shared/plugins/scripts/sdk-e2e.mjs
 
 A plugin can provide only a workspace backend and create no web page. Users build, discover and run tests, and prepare application launches from native tool windows; the host keeps managing the workspace, cancellation, output, and application processes.
 
-These entry points all belong to `buildProviders` (version `0`): the manifest requires `requires.buildProviders: 0`, and the version of the `litheBuild` process protocol is the version of `buildProviders`. Node.js SDK 0.5.0 and Java SDK 0.5.0 implement every entry point; Rust SDK 0.4.0 and the Go SDK have no build-provider interface. For the capability see [Build providers](../reference/domains/build-providers.md); the [contract](../contract/v1/README.md#build-providers) is normative for fields and error codes.
+These entry points all belong to `buildProviders` (version `0`): the manifest requires `requires.buildProviders: 0`, and the version of the `litheBuild` process protocol is the version of `buildProviders`. Node.js SDK 0.5.0 and Java SDK 0.5.0 implement every entry point; the Rust SDK source on `main` implements them too, shipping in the next Rust SDK release (0.4.0 does not); the Go SDK has no build-provider interface. For the capability see [Build providers](../reference/domains/build-providers.md); the [contract](../contract/v1/README.md#build-providers) is normative for fields and error codes.
 
-> **Host support.** The Lithe desktop declares `buildSystems` and `buildProviders`: the Build window detects build instances, loads provider models, resolves executable candidates, and runs tasks. Build-provider run preparation, tests, debug preparation, model inputs, native configuration, inline test reports, and runtime debugging are not presented on the desktop yet; see the comment above `Declared()` in
-> [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go). The entry points below are therefore verified by the Core and SDK end-to-end tests, and a plugin author cannot yet see the effect of the test, run, and debug entry points in the desktop UI.
+> **Host support.** The Lithe desktop declares `buildSystems` and `buildProviders` (versions `0` and `1`): the Build window detects build instances, loads provider models, resolves executable candidates, runs command and provider tasks, prepares application launches, and discovers and runs provider tests; for a run that declares `debug.adapter`, Debug on a Build window target or on a provider run configuration in the title bar has the provider prepare the program and then starts the plugin's own adapter that the run names; Run on Current File asks providers of version `1` for a file's entrypoints. Model inputs, native configuration, inline test reports, and runtime debugging are not presented on the desktop yet; see the comment above `Declared()` in
+> [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go).
 
 ### Choosing an entry point
 
-| Work | Node.js SDK | Java SDK | Manifest declaration |
-| --- | --- | --- | --- |
-| Execute a bounded task | `backend.build.execute` | `onExecute` | task `source: "provider"` |
-| Run exact tests | `backend.build.test` | `onTest` | `test.source: "provider"` |
-| Discover runnable cases | `backend.build.discoverTests` | `onDiscoverTests` | `test.discovery: true` |
-| Prepare an application launch | `backend.build.prepareRun` | `onPrepareRun` | `run[].source: "provider"` |
-| Prepare native program debugging | `backend.build.prepareDebug` | `onPrepareDebug` | `run[].debug: {"adapter": "native"}` |
+| Work | Node.js SDK | Java SDK | Rust SDK | Manifest declaration |
+| --- | --- | --- | --- | --- |
+| Execute a bounded task | `backend.build.execute` | `onExecute` | `build_execute` | task `source: "provider"` |
+| Run exact tests | `backend.build.test` | `onTest` | `build_test` | `test.source: "provider"` |
+| Discover runnable cases | `backend.build.discoverTests` | `onDiscoverTests` | `build_discover_tests` | `test.discovery: true` |
+| Prepare an application launch | `backend.build.prepareRun` | `onPrepareRun` | `build_prepare_run` | `run[].source: "provider"` |
+| Prepare native program debugging | `backend.build.prepareDebug` | `onPrepareDebug` | `build_prepare_debug` | `run[].debug: {"adapter": "native"}` |
 
-The manifest's capability versions are checked at install time; at startup the SDK negotiates the build protocol only when build handlers are registered and the host offers `litheBuild` version `0`. Without a negotiated protocol, a build method is rejected before it reaches the handler; it is never rerouted to a private function or expanded into a different host command. Read the result with `backend.buildVersion` in Node.js (`0` when negotiated, otherwise `null`) or `backend.negotiated().buildVersion()` in Java.
+The manifest's capability versions are checked at install time; at startup the SDK negotiates the build protocol only when build handlers are registered and the host offers `litheBuild` version `0`. Without a negotiated protocol, a build method is rejected before it reaches the handler; it is never rerouted to a private function or expanded into a different host command. Read the result with `backend.buildVersion` in Node.js (`0` when negotiated, otherwise `null`), `backend.negotiated().buildVersion()` in Java, or `BackendHandle::build_version()` or `Initialize::build_version()` in Rust (the negotiated version, otherwise `None`).
 
 Register handlers before `listen`. For model, dependency, and test discovery replies, the SDK fills in the matching `format` and `version: 0`; an execution reply is `{ exitCode, output }`, and a launch preparation reply is a complete portable plan. Core still checks selectors, workspace paths, and size limits.
 
