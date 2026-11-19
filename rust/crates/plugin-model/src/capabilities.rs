@@ -135,7 +135,7 @@ pub const SUPPORTED_CAPABILITIES: &[(&str, &[u32])] = &[
     (KEYMAP_IMPORT_PROVIDERS, &[0]),
     (LANGUAGE_SERVERS, &[0]),
     (LANGUAGES, &[0]),
-    (MANAGED_RUNTIMES, &[0]),
+    (MANAGED_RUNTIMES, &[0, 1]),
     (OUTPUT_LINK_MATCHERS, &[0]),
     (PACKAGE_TRUST, &[0]),
     (PLUGIN_FUNCTIONS, &[0]),

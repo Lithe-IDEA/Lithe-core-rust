@@ -10,6 +10,7 @@ use url::Url;
 
 const MAX_DEPENDENCIES: usize = 16;
 const MAX_ARTIFACTS: usize = 6;
+const MAX_MIRRORS: usize = 8;
 const DEFAULT_RESOLVE_TIMEOUT: u64 = 30_000;
 const MAX_RESOLVE_TIMEOUT: u64 = 120_000;
 const MAX_PATH_BYTES: usize = 4096;
@@ -55,6 +56,9 @@ struct RuntimeArtifact {
     os: String,
     arch: String,
     url: String,
+    /// Optional fallback HTTPS URLs serving the exact same pinned SHA-256 archive.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    mirrors: Vec<String>,
     sha256: String,
     /// zip or tar.gz; the host never infers a format from a URL suffix.
     archive: String,
@@ -159,6 +163,11 @@ impl DeclarativePluginManifest {
                 "A managed runtime set contains from 1 to 16 dependencies.",
             ));
         }
+        let managed_runtimes_version = self
+            .requires
+            .get(capabilities::MANAGED_RUNTIMES)
+            .copied()
+            .unwrap_or(0);
         let tool_ids: BTreeSet<&str> = self
             .tool_definitions
             .iter()
@@ -229,6 +238,49 @@ impl DeclarativePluginManifest {
                         format!("{field}.url"),
                         "Runtime archive URLs use HTTPS without credentials or fragments.",
                     ));
+                }
+                if !artifact.mirrors.is_empty() {
+                    if managed_runtimes_version < 1 {
+                        return Err(invalid(
+                            "requires.managedRuntimes",
+                            "Managed runtime mirror URLs require requires.managedRuntimes >= 1.",
+                        ));
+                    }
+                    if artifact.mirrors.len() > MAX_MIRRORS {
+                        return Err(invalid(
+                            format!("{field}.mirrors"),
+                            "A runtime artifact declares at most 8 mirror URLs.",
+                        ));
+                    }
+                    let mut seen_urls = BTreeSet::new();
+                    seen_urls.insert(artifact.url.as_str());
+                    for (mirror_index, mirror) in artifact.mirrors.iter().enumerate() {
+                        let mirror_field = format!("{field}.mirrors[{mirror_index}]");
+                        let parsed = Url::parse(mirror).map_err(|_| {
+                            invalid(
+                                mirror_field.clone(),
+                                "A runtime mirror needs an HTTPS URL.",
+                            )
+                        })?;
+                        if !bounded_text(mirror, 4096)
+                            || parsed.scheme() != "https"
+                            || parsed.host_str().is_none()
+                            || !parsed.username().is_empty()
+                            || parsed.password().is_some()
+                            || parsed.fragment().is_some()
+                        {
+                            return Err(invalid(
+                                mirror_field,
+                                "Runtime mirror URLs use HTTPS without credentials or fragments.",
+                            ));
+                        }
+                        if !seen_urls.insert(mirror.as_str()) {
+                            return Err(invalid(
+                                mirror_field,
+                                "Runtime mirror URLs must be unique and differ from the primary URL.",
+                            ));
+                        }
+                    }
                 }
                 if artifact.sha256.len() != 64
                     || !artifact.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
@@ -319,9 +371,12 @@ impl ManagedRuntimes {
                 selected["tool"] = json!(tool);
             }
             // Serialize this explicitly constructed object, not input field order.
-            // Package versions are absent, so a plugin-only update reuses bytes.
+            // Package versions and mirrors are absent, so mirror additions reuse bytes.
             let identity = Sha256::digest(selected.to_string().as_bytes());
             selected["cacheKey"] = json!(format!("{identity:x}"));
+            if !artifact.mirrors.is_empty() {
+                selected["mirrors"] = json!(artifact.mirrors);
+            }
             dependencies.push(selected);
         }
         Ok(json!({"resolve": self.resolve, "dependencies": dependencies}))

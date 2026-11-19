@@ -249,3 +249,78 @@ fn review_programs_include_every_origin_digest_and_resolver() {
         programs
     );
 }
+
+#[test]
+fn mirrors_require_version_1_preserve_cache_key_and_reject_invalid_urls() {
+    let base_manifest = fixture()["manifest"].clone();
+    let base_plan = plan(base_manifest.clone());
+    assert_eq!(base_plan["status"], "ok", "{base_plan}");
+    let base_cache_key = base_plan["plan"]["dependencies"][0]["cacheKey"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Declaring mirrors with managedRuntimes: 0 is rejected.
+    let mut v0_with_mirrors = base_manifest.clone();
+    v0_with_mirrors["managedRuntimes"]["dependencies"][0]["artifacts"][0]["mirrors"] =
+        json!(["https://mirror.example.org/engine.tar.gz"]);
+    assert_eq!(plan(v0_with_mirrors)["status"], "rejected");
+
+    // With managedRuntimes: 1, mirrors appear in the plan without changing cacheKey.
+    let mut v1 = base_manifest.clone();
+    v1["requires"]["managedRuntimes"] = json!(1);
+    let linux_index = v1["managedRuntimes"]["dependencies"][0]["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|artifact| artifact["os"] == "linux")
+        .unwrap();
+    v1["managedRuntimes"]["dependencies"][0]["artifacts"][linux_index]["mirrors"] = json!([
+        "https://mirror1.example.org/engine.tar.gz",
+        "https://mirror2.example.org/engine.tar.gz"
+    ]);
+    let v1_plan = plan(v1.clone());
+    assert_eq!(v1_plan["status"], "ok", "{v1_plan}");
+    assert_eq!(
+        v1_plan["plan"]["dependencies"][0]["cacheKey"].as_str(),
+        Some(base_cache_key.as_str())
+    );
+    assert_eq!(
+        v1_plan["plan"]["dependencies"][0]["mirrors"],
+        json!([
+            "https://mirror1.example.org/engine.tar.gz",
+            "https://mirror2.example.org/engine.tar.gz"
+        ])
+    );
+
+    // Non-HTTPS, credentials, duplicates, or >8 mirrors are rejected.
+    let primary = v1["managedRuntimes"]["dependencies"][0]["artifacts"][linux_index]["url"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    for bad in [
+        json!(["http://mirror.example.org/engine.tar.gz"]),
+        json!(["https://user:pass@mirror.example.org/engine.tar.gz"]),
+        json!(["https://mirror.example.org/engine.tar.gz#frag"]),
+        json!([primary]),
+        json!([
+            "https://mirror.example.org/engine.tar.gz",
+            "https://mirror.example.org/engine.tar.gz"
+        ]),
+        json!([
+            "https://m1.example.org/e",
+            "https://m2.example.org/e",
+            "https://m3.example.org/e",
+            "https://m4.example.org/e",
+            "https://m5.example.org/e",
+            "https://m6.example.org/e",
+            "https://m7.example.org/e",
+            "https://m8.example.org/e",
+            "https://m9.example.org/e"
+        ]),
+    ] {
+        let mut invalid_manifest = v1.clone();
+        invalid_manifest["managedRuntimes"]["dependencies"][0]["artifacts"][linux_index]["mirrors"] = bad;
+        assert_eq!(plan(invalid_manifest)["status"], "rejected");
+    }
+}
