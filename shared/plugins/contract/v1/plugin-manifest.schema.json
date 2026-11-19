@@ -41,7 +41,7 @@
         "executionProviders": { "enum": [0] },
         "languageServers": { "description": "Required exactly when languageServers is non-empty. Covers languageServers[].workspaceConfiguration and the session fields requestMethods, commands, serializedCommands, forwardNotifications, state, and remote.", "enum": [0] },
         "languages": { "description": "Required exactly when languages is non-empty. Covers languages[].grammar, a TextMate grammar, and languages[].configuration.", "enum": [0] },
-        "managedRuntimes": { "description": "Required exactly when managedRuntimes is present: approved pinned runtime archives, plugin-owned qualification and host-owned installation outside versioned packages.", "enum": [0] },
+        "managedRuntimes": { "description": "Required exactly when managedRuntimes is present: approved pinned runtime archives, plugin-owned qualification and host-owned installation outside versioned packages. Version 1 adds optional artifact mirror URLs.", "enum": [0, 1] },
         "outputLinkMatchers": { "description": "Required exactly when outputLinkMatchers is non-empty.", "enum": [0] },
         "packageTrust": { "description": "Required exactly when vendor.bundledSignatureRequirement is present.", "enum": [0] },
         "projectGenerators": { "description": "Entries of the New Project window: fields, requirements, and steps, with tool fields that pick tool installations.", "enum": [0] },
@@ -1030,6 +1030,13 @@
         "os": { "enum": ["macos", "windows", "linux"] },
         "arch": { "enum": ["arm64", "x86_64"] },
         "url": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^https://", "description": "HTTPS without credentials or fragments; semantic URL validation is performed by Core." },
+        "mirrors": {
+          "type": "array",
+          "maxItems": 8,
+          "uniqueItems": true,
+          "description": "Optional fallback HTTPS URLs serving the exact same pinned SHA-256 archive. Requires managedRuntimes 1.",
+          "items": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^https://" }
+        },
         "sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
         "archive": { "enum": ["zip", "tar.gz"] },
         "stripPrefix": { "$ref": "#/$defs/managedRuntimePath", "default": "" },
