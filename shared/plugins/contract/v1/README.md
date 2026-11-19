@@ -5241,11 +5241,23 @@ follows [source-backed settings](#source-backed-settings-editors).
 ```
 
 A canvas draws its `nodes` in order, in `viewBox` coordinates
-(`[x, y, width, height]`) scaled to the width of the view and `height` points
+(`[x, y, width, height]`), in an area as wide as the view and `height` points
 tall (1–2000). `label` is the scene's accessible name. `pan` lets the user
 drag the empty area, and `zoom` is the `[minimum, maximum]` range around 1
 (0.05–20); the host draws the zoom buttons. The scroll wheel scrolls the page;
 ⌘ or Ctrl with the wheel zooms, and so does a pinch on a host that reports one.
+
+At zoom 1 the host scales the `viewBox` in one of two ways:
+
+- **Without `pan`**, the whole `viewBox` shows: it is scaled to the width of
+  the view, but no taller than `height`, and starts at the area's top-left
+  corner. A scene whose `viewBox` is as wide as the view is at its narrowest
+  and `height` tall therefore draws at one point a unit there, and keeps that
+  size, whole, in a wider view, with the area's trailing part left empty. In a
+  narrower view it shrinks to the width and leaves the area's bottom empty.
+- **With `pan`**, the `viewBox`'s width fills the view and its top edge is at
+  the area's top; the user pans to the parts below the area. Zoomed out until
+  the `viewBox` is narrower than the area, it is centered across it.
 
 | `type` | Fields |
 | --- | --- |

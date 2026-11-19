@@ -14,7 +14,7 @@
 
 ## 待合入
 
-- `ui` 0、`settings` 0 内的说明补充（API-13、API-19）：契约 README 写明画布 `image` 节点怎样读取：路径留在插件包内、经过真实目录、指向普通 PNG 文件，单个文件最多 256 KiB、每边最多 1024 像素（预算表新增一行）；宿主在场景第一次画到它时于窗口线程外读取，保留到视图关闭，读到之前或读取失败时场景不画它，失败只记一次日志。`image` 节点的字段表补上 `opacity`。文字是一行，基线在 `y`，`align` 把行首（默认）、中点或行尾放在 `x`；渐变 `angle` 与 CSS `linear-gradient` 一致（0 向上、90 向右、默认 180 向下），渐变线穿过形状中心；分组的 `x`、`y` 放置原点，`scale` 缩放内部，`children`、`w`、`h`、`radius` 都在分组自己的坐标里；捏合缩放只在宿主能上报捏合时可用。fixture `fixtures/ui/view-results.json` 的文字基线移到卡片中间。[能力与协议版本对照](capabilities-and-versions.md)删掉“插件视图尚未在桌面端绘制”的脚注，`domains/ui.md`、`domains/settings.md` 的桌面端一行改为已呈现插件视图、设置区域和包内翻译 `l10n/`（[1lck/Lithe-IDEA#2181](https://github.com/1lck/Lithe-IDEA/issues/2181)）。没有新增版本号、宿主方法、通知或 SDK 版本。实现见 [#105](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/105)。
+- `ui` 0 内的说明修正（API-13、API-19）：契约 README 写明画布在缩放 1 时怎样放 `viewBox`。不写 `pan` 的画布显示整个 `viewBox`：按视图宽度缩放，但不超过 `height`，从区域左上角开始，所以 `viewBox` 和视图最窄时一样宽、和 `height` 一样高的场景在那里一个单位一个点，视图变宽时大小不变、完整显示，右边留空；视图更窄时按宽度缩小，下方留空。写了 `pan` 的画布不变：`viewBox` 的宽度占满视图、上边对齐区域顶部，缩小到比区域窄时水平居中。以前的说明只有“按视图宽度缩放、`height` 点高”，在更宽的窗口里会裁掉场景下半部分。`plugin-ui.schema.json` 的 canvas 说明同步；`domains/settings.md` 中英两段补充区域画布的设计宽度：桌面端窗口最小时语言页的区域约 610 点，构建系统页和编译器页右侧详情里约 340 点（[1lck/Lithe-IDEA#2181](https://github.com/1lck/Lithe-IDEA/issues/2181)）。没有新增版本号、宿主方法、通知或 SDK 版本。
 
 ## 按协议查首次出现
 
@@ -143,6 +143,12 @@
 | API-23 | `run/start`：`temporaryFiles` 增加 `{name, base64}` 字节文件 | 0 | 2026-11-13 | [#23](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/23) |
 
 ## 时间线（新的在上）
+
+### 2026-11-19
+
+| PR | 修改人 | API 编号 | 协议 / 能力 | 改了什么 |
+| --- | --- | --- | --- | --- |
+| [#105](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/105) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | API-13、API-19 | `ui` 0、`settings` 0 内的说明补充 | 契约 README 写明画布 `image` 节点怎样读取：路径留在插件包内、经过真实目录、指向普通 PNG 文件，单个文件最多 256 KiB、每边最多 1024 像素（预算表新增一行）；宿主在场景第一次画到它时于窗口线程外读取，保留到视图关闭，读到之前或读取失败时场景不画它，失败只记一次日志。`image` 节点的字段表补上 `opacity`。文字是一行，基线在 `y`，`align` 把行首（默认）、中点或行尾放在 `x`；渐变 `angle` 与 CSS `linear-gradient` 一致（0 向上、90 向右、默认 180 向下），渐变线穿过形状中心；分组的 `x`、`y` 放置原点，`scale` 缩放内部，`children`、`w`、`h`、`radius` 都在分组自己的坐标里；捏合缩放只在宿主能上报捏合时可用。fixture `fixtures/ui/view-results.json` 的文字基线移到卡片中间。[能力与协议版本对照](capabilities-and-versions.md)删掉“插件视图尚未在桌面端绘制”的脚注，`domains/ui.md`、`domains/settings.md` 的桌面端一行改为已呈现插件视图、设置区域和包内翻译 `l10n/`（[1lck/Lithe-IDEA#2181](https://github.com/1lck/Lithe-IDEA/issues/2181)）。没有新增版本号、宿主方法、通知或 SDK 版本。 |
 
 ### 2026-11-18
 

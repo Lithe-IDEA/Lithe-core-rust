@@ -341,7 +341,7 @@
       }
     },
     "canvas": {
-      "description": "A vector scene the host draws natively in view-box coordinates, scaled to the view width. Pan, zoom, hover states and tooltips stay in the host; viewport sends viewport events after the user pans or zooms. Canvas text is not searchable; a settings region names its words in keywords.",
+      "description": "A vector scene the host draws natively in view-box coordinates, in an area as wide as the view and height points tall. Without pan, the whole view box shows at zoom 1, scaled to the view width but no taller than height, from the top-left corner; with pan, its width fills the view. Pan, zoom, hover states and tooltips stay in the host; viewport sends viewport events after the user pans or zooms. Canvas text is not searchable; a settings region names its words in keywords.",
       "type": "object",
       "additionalProperties": false,
       "required": ["type", "id", "label", "height", "viewBox", "nodes"],

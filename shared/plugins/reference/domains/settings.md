@@ -86,6 +86,7 @@
 - `keywords`：1–32 个，忽略大小写互不相同，每个 1–64 个字符、不换行、首尾没有空白。设置搜索除了页面标题和声明的行，也按这些词找到页面，并打开到这个插件的部分。
 - `view`：`{function}`，插件后端的视图函数，画在页面标题和插件声明的行之间。视图可以放宿主控件、画布，也可以用绑定控件编辑本插件的设置（和声明的行改的是同一份草稿）、放本插件按钮和显示本插件工具解析结果的工具行，但不能放树。需要 `backend`、`ui` 0 和 `ui.contribute` 权限；页面打开时宿主启动后端。
 - 只写关键词的区域不需要后端。区域本身不保存任何值。声明区域也算使用了 `settings`。
+- 区域里的画布通常不写 `pan`：这时宿主按[画布](../../contract/v1/README.md#plugin-views)的规则显示整个 `viewBox`，所以把 `viewBox` 的宽度设成区域最窄时的宽度、高度设成 `height`，场景在那里就是一个单位一个点，窗口变宽时大小不变、完整显示。桌面端窗口最小时，语言页的区域约 610 点宽，构建系统页和编译器页右侧详情里的区域约 340 点宽。
 
 ### 两层保存与生效顺序
 
@@ -238,6 +239,7 @@ Content that declared rows cannot draw goes in `settingRegions` (at most 16, uni
 - `keywords`: 1–32, distinct ignoring case, each 1–64 characters without line breaks or surrounding spaces. Settings search finds the page by them in addition to the page title and the declared rows, and opens the page at this plugin's part.
 - `view`: `{function}`, a view function of the plugin's backend, drawn between the page header and the plugin's declared rows. The view may hold host controls and canvases, edit the plugin's own settings through bound controls (the same draft the declared rows edit), show the plugin's buttons and tool rows with how its tools resolve, but no tree. It needs `backend`, `ui` 0, and the `ui.contribute` permission; the host starts the backend when the page opens.
 - A region with keywords only needs no backend. A region stores no values. Declaring regions counts as using `settings`.
+- A canvas in a region usually has no `pan`, so the host shows its whole `viewBox` (see [canvas](../../contract/v1/README.md#plugin-views)): give the `viewBox` the region's narrowest width and `height`, and the scene draws at one point a unit there and keeps that size, whole, as the window widens. In Lithe desktop's smallest window a region is about 610 points wide on a language page and about 340 in the detail pane of a build system or compiler page.
 
 ### Two layers and their order
 
