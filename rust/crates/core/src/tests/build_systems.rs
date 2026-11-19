@@ -283,6 +283,49 @@ fn resolved_tool_environment_reaches_providers_with_option_precedence_and_bounde
 }
 
 #[test]
+fn detection_names_saved_options_the_build_system_no_longer_declares() {
+    let workspace = TemporaryWorkspace::new("build-dropped-options");
+    workspace
+        .write(
+            "a/Cargo.toml",
+            "[package]\nname = \"a\"\nversion = \"1.0.0\"\n",
+        )
+        .write("a/src/main.rs", "fn main() {}\n");
+    let manifest = fixture("build-instance-options.plugin.json");
+    let detect = |options: Value, instances: Value, defaults: Value| {
+        let result = build_detect_command::<Manifest>(json!({
+            "workspaceRoot": workspace.root(), "plugins": [{"manifest": manifest.clone()}],
+            "options": {"cargo": options},
+            "instanceOptions": {"cargo": {"a": instances}},
+            "instanceDefaults": {"cargo": defaults}
+        }))
+        .unwrap();
+        assert_eq!(result["status"], "ok", "{result}");
+        instance(&result["detection"], "cargo:a").clone()
+    };
+    let kept = detect(
+        json!({"offline": true}),
+        json!({"settingsFile": "/fixture/a.xml"}),
+        json!({}),
+    );
+    let dropped = detect(
+        json!({"offline": true, "javaHome": "/jdk/21"}),
+        json!({"settingsFile": "/fixture/a.xml", "oldInstance": "x"}),
+        json!({"oldDefault": ["y"]}),
+    );
+    assert_eq!(kept["droppedOptions"], json!([]));
+    assert_eq!(
+        dropped["droppedOptions"],
+        json!(["javaHome", "oldDefault", "oldInstance"])
+    );
+    // The values are named, never applied: options, model and fingerprint
+    // are those of the instance without them.
+    assert_eq!(dropped["options"], kept["options"]);
+    assert_eq!(dropped["model"], kept["model"]);
+    assert_eq!(dropped["optionFingerprint"], kept["optionFingerprint"]);
+}
+
+#[test]
 fn instance_options_drive_static_run_entries_without_crossing_roots_or_scopes() {
     let workspace = TemporaryWorkspace::new("build-instance-options");
     for root in ["a", "b", "c"] {

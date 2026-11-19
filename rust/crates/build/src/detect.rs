@@ -279,6 +279,20 @@ pub(crate) fn detect<M: BuildManifest>(request: DetectRequest) -> Validation<Val
                         values.insert(option.id.clone(), json!([]));
                     }
                 }
+                // A value saved for an option the build system no longer
+                // declares (a plugin update dropped it) is passed on too: it
+                // contributes nothing, and option resolution names it in the
+                // instance's droppedOptions so the host can show and clear it.
+                let defaults = request.instance_defaults.get(&owner.declaration.id);
+                for (id, value) in stored
+                    .iter()
+                    .chain(local.into_iter().flatten())
+                    .chain(defaults.into_iter().flatten())
+                {
+                    if owner.declaration.option(id).is_none() {
+                        values.entry(id.clone()).or_insert_with(|| value.clone());
+                    }
+                }
                 instances.push(instance(owner, &workspace, &root, markers, &values));
             }
         }
