@@ -88,6 +88,47 @@ fn negotiates_only_offered_providers_and_echoes_query_identity() {
 }
 
 #[test]
+fn reply_budget_includes_the_json_rpc_envelope() {
+    const LIMIT: usize = 1024 * 1024;
+    let empty_reply = json!({
+        "jsonrpc": "2.0", "id": "ok", "result": {
+            "operationID": "query-1", "generation": 3, "providerID": "fixture",
+            "installations": [], "statements": [], "watch": ["/fixture/"]
+        }
+    });
+    let watch_path = format!(
+        "/fixture/{}",
+        "x".repeat(LIMIT - empty_reply.to_string().len())
+    );
+    let mut backend = Backend::new("test-backend");
+    backend
+        .toolchain_provider("fixture", move |_, _| {
+            Ok(ToolchainQueryResult {
+                watch: vec![watch_path.clone()],
+                ..ToolchainQueryResult::default()
+            })
+        })
+        .unwrap();
+    let mut host = Host::start(backend);
+    initialize(&mut host, json!(["fixture"]), 0);
+
+    host.request("ok", "toolchains/query", query("fixture"));
+    let at_limit = host.answer("ok").0;
+    assert!(at_limit.get("result").is_some());
+    assert_eq!(at_limit.to_string().len(), LIMIT);
+
+    // The same result with a longer request ID crosses the reply limit.
+    host.request("big", "toolchains/query", query("fixture"));
+    let over_limit = host.answer("big").0;
+    assert_eq!(over_limit["error"]["code"], -32075);
+    assert_eq!(
+        over_limit["error"]["data"],
+        json!({"code": "plugin.toolchain.limitExceeded", "operationID": "query-1", "providerID": "fixture"})
+    );
+    finish(host);
+}
+
+#[test]
 fn declines_an_unoffered_protocol_version() {
     let mut backend = Backend::new("test-backend");
     backend

@@ -47,6 +47,10 @@ type ToolchainHandler = Arc<
 >;
 type Answer = Result<Value, Value>;
 
+fn success_response(id: &Value, result: Value) -> Value {
+    json!({ "jsonrpc": "2.0", "id": id, "result": result })
+}
+
 /// Host request for one selected shortcut source; also the operation its diagnostic facts name.
 const KEYMAP_IMPORT_METHOD: &str = "lithe/keymap/import";
 
@@ -841,7 +845,7 @@ impl Shared {
 
     fn respond(&self, id: &Value, answer: Answer) {
         self.write(&match answer {
-            Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
+            Ok(result) => success_response(id, result),
             Err(error) => json!({ "jsonrpc": "2.0", "id": id, "error": error }),
         });
     }
@@ -1007,21 +1011,28 @@ impl Shared {
                     .unwrap_or(Err(ToolchainQueryError::ProviderUnavailable))
                     .and_then(|facts| query.answer(facts))
                     .and_then(|result| {
-                        if serde_json::to_vec(&result).map_or(usize::MAX, |bytes| bytes.len())
-                            > MAX_RESULT_BYTES
+                        // Core counts the complete response, including its JSON-RPC ID.
+                        let response = success_response(&thread_id, result);
+                        if serde_json::to_vec(&response).map_or(usize::MAX, |bytes| bytes.len())
+                            > toolchains::MAX_REPLY_BYTES
                         {
                             Err(ToolchainQueryError::LimitExceeded)
                         } else {
-                            Ok(result)
+                            Ok(response)
                         }
                     });
                 lock(&worker.state).incoming.remove(&thread_key);
-                let answer = cancellation
+                match cancellation
                     .check()
                     .map_err(ToolchainQueryError::from)
                     .and(outcome)
-                    .map_err(|error| error.response(&query.operation_id, &query.provider_id));
-                worker.respond(&thread_id, answer);
+                {
+                    Ok(response) => worker.write(&response),
+                    Err(error) => worker.respond(
+                        &thread_id,
+                        Err(error.response(&query.operation_id, &query.provider_id)),
+                    ),
+                }
             });
         if spawned.is_err() {
             lock(&shared.state).incoming.remove(&key);

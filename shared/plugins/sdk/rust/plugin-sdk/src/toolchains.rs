@@ -9,6 +9,7 @@ pub(crate) const CAPABILITY: &str = "litheToolchains";
 pub(crate) const VERSION: u64 = 0;
 pub(crate) const MAX_PROVIDERS: usize = 8;
 pub(crate) const MAX_RUNNING_QUERIES: usize = 8;
+pub(crate) const MAX_REPLY_BYTES: usize = 1024 * 1024;
 const MAX_INSTALLATIONS: usize = 512;
 const MAX_STATEMENTS: usize = 256;
 const MAX_WATCH_PATHS: usize = 256;
