@@ -62,5 +62,66 @@
         }
       ]
     }
+  },
+  "completeCounts": {
+    "files": {
+      "a.txt": "needle needle\nneedle\n",
+      "b.txt": "absent\n"
+    },
+    "request": {
+      "query": "needle",
+      "countOnly": true,
+      "countPaths": [
+        "a.txt",
+        "b.txt"
+      ],
+      "textOverrides": {
+        "b.txt": "needle needle needle\n"
+      }
+    },
+    "expected": {
+      "files": 2,
+      "lines": 3,
+      "occurrences": 6,
+      "fileOccurrences": {
+        "a.txt": 3,
+        "b.txt": 3
+      }
+    }
+  },
+  "languageDiscovery": {
+    "files": {
+      "src/one.Example": "source",
+      "Exampleproject": "marker"
+    },
+    "request": {
+      "query": "",
+      "languageSources": [
+        {
+          "languageId": "example-language",
+          "fileExtensions": [
+            ".example"
+          ]
+        },
+        {
+          "languageId": "project-language",
+          "fileNames": [
+            "Exampleproject"
+          ]
+        },
+        {
+          "languageId": "unrelated",
+          "fileExtensions": [
+            ".other"
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "languages": [
+        "example-language",
+        "project-language"
+      ]
+    }
   }
 }

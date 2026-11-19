@@ -43,6 +43,25 @@ pub(crate) fn safe_relative_path(root: &Path, value: &str) -> Result<PathBuf, Co
     Ok(canonical)
 }
 
+/// Shares unsaved snapshots with internal aliases without copying their contents.
+pub(crate) fn canonical_text_overrides<'a>(
+    root: &Path,
+    overrides: impl IntoIterator<Item = (&'a String, &'a String)>,
+    follow_links: bool,
+) -> HashMap<PathBuf, &'a str> {
+    let mut result = HashMap::new();
+    if follow_links {
+        let mut paths: Vec<_> = overrides.into_iter().collect();
+        paths.sort_by_key(|(path, _)| *path);
+        for (path, text) in paths {
+            if let Ok(canonical) = safe_relative_path(root, path) {
+                result.entry(canonical).or_insert(text.as_str());
+            }
+        }
+    }
+    result
+}
+
 pub(crate) fn writable_relative_path(root: &Path, value: &str) -> Result<PathBuf, CoreError> {
     let path = root.join(relative_request_path(value)?.as_ref());
     if let Some(parent) = path.parent() {

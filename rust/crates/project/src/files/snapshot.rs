@@ -62,7 +62,8 @@ pub fn list_directories(
     request: DirectoryListingRequest,
 ) -> Result<DirectoryListingResponse, CoreError> {
     let root = existing_root(&request.root)?;
-    let rules = VisibilityRules::new(request.hidden_directory_names, request.hidden_file_patterns);
+    let rules = VisibilityRules::new(request.hidden_directory_names, request.hidden_file_patterns)
+        .with_search_visibility(false, true, &[]);
     let mut directories = Vec::new();
     for relative in request.paths {
         lithe_protocol::cancellation::check()?;
@@ -81,6 +82,8 @@ pub fn list_directories(
             }
             Err(error) => return Err(error),
         };
+        let linked =
+            directory != fs::canonicalize(&directory).unwrap_or_else(|_| directory.clone());
         let children = listing
             .children
             .into_iter()
@@ -101,6 +104,7 @@ pub fn list_directories(
         directories.push(DirectoryListing {
             path: relative_path(&directory, &root),
             children,
+            linked,
             nested_worktrees: listing
                 .nested_worktrees
                 .iter()
@@ -111,8 +115,7 @@ pub fn list_directories(
     Ok(DirectoryListingResponse { directories })
 }
 
-/// Resolves a requested directory without following symlinks, so a listing
-/// never reaches outside the workspace or into a directory scans skip.
+/// Resolves internal aliases without leaving the root, bypassing exclusions or entering cycles.
 fn listable_directory(root: &Path, relative: &str, rules: &VisibilityRules) -> Option<PathBuf> {
     if relative.is_empty() {
         return Some(root.to_path_buf());
@@ -123,9 +126,23 @@ fn listable_directory(root: &Path, relative: &str, rules: &VisibilityRules) -> O
         return None;
     }
     let mut current = root.to_path_buf();
-    for component in relative.split('/') {
+    for component in relative
+        .split('/')
+        .filter(|component| !component.is_empty())
+    {
+        let entry = fs::read_dir(&current)
+            .ok()?
+            .filter_map(Result::ok)
+            .find(|entry| entry.file_name() == component)?;
+        visible_child(
+            entry,
+            root,
+            rules,
+            &mut Vec::new(),
+            fs::canonicalize(&current).ok()? != current,
+        )?;
         current.push(component);
-        let metadata = fs::symlink_metadata(&current).ok()?;
+        let metadata = fs::metadata(&current).ok()?;
         if !metadata.is_dir() || rules.is_hidden(&relative_path(&current, root), true) {
             return None;
         }

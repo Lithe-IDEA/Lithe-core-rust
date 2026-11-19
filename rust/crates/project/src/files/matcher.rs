@@ -123,6 +123,40 @@ pub(crate) struct Matcher {
 }
 
 impl Matcher {
+    /// Counts occurrences without constructing replacement text.
+    pub(crate) fn occurrence_count(&self, text: &str) -> usize {
+        if let Some(regex) = &self.regex {
+            regex.find_iter(text).count()
+        } else {
+            let haystack = if self.case_sensitive {
+                std::borrow::Cow::Borrowed(text)
+            } else {
+                std::borrow::Cow::Owned(text.to_lowercase())
+            };
+            let needle = if self.case_sensitive {
+                std::borrow::Cow::Borrowed(self.plain_query.as_str())
+            } else {
+                std::borrow::Cow::Owned(self.plain_query.to_lowercase())
+            };
+            if needle.is_empty() {
+                return 0;
+            }
+            haystack
+                .match_indices(needle.as_ref())
+                .filter(|(start, matched)| {
+                    !self.whole_words
+                        || (!haystack[..*start]
+                            .chars()
+                            .next_back()
+                            .is_some_and(is_word_character)
+                            && !haystack[*start + matched.len()..]
+                                .chars()
+                                .next()
+                                .is_some_and(is_word_character))
+                })
+                .count()
+        }
+    }
     /// Projects original byte ranges into the editor's UTF-16 coordinate space.
     pub(crate) fn content_ranges(&self, text: &str) -> Vec<crate::contracts::SearchNameRange> {
         let ranges = if let Some(regex) = &self.regex {

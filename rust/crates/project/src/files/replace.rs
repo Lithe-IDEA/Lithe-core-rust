@@ -67,8 +67,13 @@ pub fn replace_preview(
         request.hidden_file_patterns.clone(),
     )
     .with_workspace_roots(&root, &request.workspace_roots)
-    .with_search_options(request.max_file_bytes, request.include_ignored)?;
-    let shared_index = search_index::get_or_build(&root, &rules)?;
+    .with_search_options(request.max_file_bytes, request.include_ignored)?
+    .with_search_visibility(
+        request.include_generated,
+        request.follow_symlinks,
+        &request.hidden_directory_names,
+    );
+    let shared_index = search_index::get_for_text(&root, &rules)?;
     let index = shared_index
         .read()
         .map_err(|_| CoreError::new(ErrorCode::Unknown, "Search index lock was poisoned"))?;
@@ -78,7 +83,12 @@ pub fn replace_preview(
         request.whole_words,
         request.regular_expression,
     )?;
-    let candidate_ids = index.candidate_ids(&query, request.regular_expression);
+    let aliases = canonical_text_overrides(&root, &request.text_overrides, request.follow_symlinks);
+    let candidate_ids = if aliases.is_empty() {
+        index.candidate_ids(&query, request.regular_expression)
+    } else {
+        index.all_file_ids()
+    };
     let candidate_set = candidate_ids.iter().copied().collect::<HashSet<_>>();
     let mut paths = if request.paths.is_empty() {
         candidate_ids
@@ -108,6 +118,7 @@ pub fn replace_preview(
     drop(index);
     let masks = parse_file_mask(&request.file_mask);
     let mut files = Vec::new();
+    let mut canonical_files = HashSet::new();
     for path in paths {
         lithe_protocol::cancellation::check()?;
         let relative = safe_relative_path_string(&path)?;
@@ -120,6 +131,9 @@ pub fn replace_preview(
         let Ok(file) = safe_relative_path(&root, &relative) else {
             continue;
         };
+        if !canonical_files.insert(file.clone()) {
+            continue;
+        }
         if rules.is_delegated(&file)
             || indexing_policy
                 .as_ref()
@@ -130,8 +144,13 @@ pub fn replace_preview(
         {
             continue;
         }
-        let (text, source_identity) = if let Some(text) = request.text_overrides.get(&relative) {
-            (text.clone(), None)
+        let snapshot = request
+            .text_overrides
+            .get(&relative)
+            .map(String::as_str)
+            .or_else(|| aliases.get(&file).copied());
+        let (text, source_identity) = if let Some(text) = snapshot {
+            (text.to_owned(), None)
         } else {
             let Some(bytes) = read_searchable_bytes(&file, rules.max_file_bytes) else {
                 continue;

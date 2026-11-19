@@ -47,6 +47,8 @@ pub struct DirectoryListingResponse {
 #[serde(rename_all = "camelCase")]
 /// One directory's children, each without its own children.
 pub struct DirectoryListing {
+    /// This listing is reached through a workspace-internal alias and needs refresh on target events.
+    pub linked: bool,
     /// Normalized workspace-relative path; empty for the root.
     pub path: String,
     /// Directories first, then case-insensitive names, as in snapshots.

@@ -749,6 +749,7 @@ fn ignored_rule(rules: &HistoryIgnoreRules, relative_path: &str) -> Option<Histo
                     delegated_roots: Vec::new(),
                     max_file_bytes: crate::files::MAX_SEARCH_FILE_SIZE,
                     include_ignored: false,
+                    follow_symlinks: false,
                 }
                 .is_hidden(relative_path, false)
         });

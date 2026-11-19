@@ -16,6 +16,8 @@ pub struct VisibilityRules {
     pub(crate) max_file_bytes: u64,
     /// Git visibility can be widened for a search without changing project policy.
     pub(crate) include_ignored: bool,
+    /// Search traversal follows workspace-internal links only when explicitly requested.
+    pub(crate) follow_symlinks: bool,
 }
 
 impl VisibilityRules {
@@ -28,6 +30,7 @@ impl VisibilityRules {
             delegated_roots: Vec::new(),
             max_file_bytes: MAX_SEARCH_FILE_SIZE,
             include_ignored: false,
+            follow_symlinks: false,
         }
     }
 
@@ -46,6 +49,28 @@ impl VisibilityRules {
         }
         self.include_ignored = include_ignored;
         Ok(self)
+    }
+
+    /// Widens only query-local generated-folder and internal-link visibility.
+    pub(crate) fn with_search_visibility(
+        mut self,
+        generated: bool,
+        links: bool,
+        explicit: &[String],
+    ) -> Self {
+        if generated {
+            let names = plugin_generated_directories();
+            self.hidden_directories.retain(|name| {
+                explicit
+                    .iter()
+                    .any(|value| value.eq_ignore_ascii_case(name))
+                    || !names
+                        .iter()
+                        .any(|generated| generated.eq_ignore_ascii_case(name))
+            });
+        }
+        self.follow_symlinks = links;
+        self
     }
 
     /// Binds scan ownership to the caller's workspace without changing directory browsing.
@@ -123,10 +148,12 @@ pub(crate) fn visible_children(
         }
     });
     let mut nested_worktrees = Vec::new();
+    let linked_parent =
+        rules.follow_symlinks && fs::canonicalize(path).is_ok_and(|canonical| canonical != path);
     let mut children = fs::read_dir(path)
         .map_err(CoreError::from)?
         .filter_map(Result::ok)
-        .filter_map(|entry| visible_child(entry, root, rules, &mut nested_worktrees))
+        .filter_map(|entry| visible_child(entry, root, rules, &mut nested_worktrees, linked_parent))
         .collect::<Vec<_>>();
     match order {
         // Siblings follow IDEA's Project view: directories first, then natural file-name
@@ -172,36 +199,75 @@ pub(crate) fn directory_is_visibly_empty(
     root: &Path,
     rules: &VisibilityRules,
 ) -> bool {
+    let linked_parent =
+        rules.follow_symlinks && fs::canonicalize(path).is_ok_and(|canonical| canonical != path);
     let Ok(mut entries) = fs::read_dir(path) else {
         return false;
     };
     !entries.any(|entry| match entry {
-        Ok(entry) => visible_child(entry, root, rules, &mut Vec::new()).is_some(),
+        Ok(entry) => visible_child(entry, root, rules, &mut Vec::new(), linked_parent).is_some(),
         Err(_) => true,
     })
 }
 
 /// Applies the same visibility boundary to full listings and leaf probes.
-fn visible_child(
+pub(super) fn visible_child(
     entry: fs::DirEntry,
     root: &Path,
     rules: &VisibilityRules,
     nested_worktrees: &mut Vec<PathBuf>,
+    linked_parent: bool,
 ) -> Option<(PathBuf, bool)> {
     let child_path = entry.path();
     // Both native and remote readDir already supplied the non-following type;
     // re-statting every file would cost one network round trip per entry.
     let file_type = entry.file_type().ok()?;
-    if file_type.is_symlink()
-        || rules.is_hidden(&relative_path(&child_path, root), file_type.is_dir())
-    {
+    let is_directory = if file_type.is_symlink() || linked_parent {
+        if !rules.follow_symlinks {
+            return None;
+        }
+        let target = fs::canonicalize(&child_path).ok()?;
+        let metadata = fs::metadata(&target).ok()?;
+        if !target.starts_with(root)
+            || rules.is_hidden(&relative_path(&target, root), metadata.is_dir())
+            || rules.is_delegated(&target)
+            || crate::indexing::context(root)
+                .map(|policy| {
+                    policy.search_reason(
+                        &relative_path(&target, root),
+                        metadata.is_dir(),
+                        rules.include_ignored,
+                    )
+                })
+                .transpose()
+                .ok()?
+                .flatten()
+                .is_some()
+        {
+            return None;
+        }
+        if metadata.is_dir() {
+            // Keep aliases in results, but never descend back into a canonical ancestor.
+            let mut ancestor = child_path.parent();
+            while let Some(parent) = ancestor.filter(|parent| parent.starts_with(root)) {
+                if fs::canonicalize(parent).ok()? == target {
+                    return None;
+                }
+                ancestor = parent.parent();
+            }
+        }
+        metadata.is_dir()
+    } else {
+        file_type.is_dir()
+    };
+    if rules.is_hidden(&relative_path(&child_path, root), is_directory) {
         return None;
     }
-    if file_type.is_dir() && is_nested_linked_worktree(&child_path) {
+    if is_directory && is_nested_linked_worktree(&child_path) {
         nested_worktrees.push(child_path);
         return None;
     }
-    Some((child_path, file_type.is_dir()))
+    Some((child_path, is_directory))
 }
 
 /// A `.git` pointer file is a single `gitdir:` line; anything larger is not one.

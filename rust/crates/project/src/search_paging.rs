@@ -21,6 +21,15 @@ pub struct SearchPageRequest {
     /// Returns `{ matches, nextCursor }` pages for a Find in Files query.
     #[serde(default)]
     project_page: bool,
+    /// Scans counts without returning source lines, independently of interactive pages.
+    #[serde(default)]
+    count_only: bool,
+    /// Only these loaded file headings receive per-file totals (at most 200).
+    #[serde(default)]
+    count_paths: Vec<String>,
+    /// Requests provider discovery against workspace names without opening files.
+    #[serde(default)]
+    language_sources: Option<Vec<crate::search_languages::SearchLanguageSource>>,
 }
 
 #[derive(Serialize)]
@@ -122,6 +131,12 @@ impl SearchPage {
 
 /// Workspace search keeps its original literal semantics for synchronous consumers.
 pub fn project_search_page(request: SearchPageRequest) -> Result<serde_json::Value, CoreError> {
+    if let Some(sources) = request.language_sources {
+        return crate::search_languages::search_languages(request.search, sources);
+    }
+    if request.count_only {
+        return super::files::search_counts(request.search, &request.count_paths);
+    }
     if !request.project_page {
         return super::files::search(request.search)
             .map(|response| serde_json::to_value(response).unwrap());
