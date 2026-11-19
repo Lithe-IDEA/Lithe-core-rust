@@ -499,7 +499,7 @@ impl Backend {
                     &id,
                     Err(rpc_error(
                         error_codes::METHOD_NOT_FOUND,
-                        format!("Unsupported method: {method}"),
+                        "Unsupported method.",
                     )),
                 ),
                 Phase::Idle | Phase::Listening | Phase::Initializing => self.shared.respond(
@@ -1076,7 +1076,7 @@ impl Shared {
                 &id,
                 Err(rpc_error(
                     error_codes::INVALID_PARAMS,
-                    format!("Function {function_id} is not registered."),
+                    "The requested function is not registered.",
                 )),
             );
         };
