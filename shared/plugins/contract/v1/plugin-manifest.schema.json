@@ -2750,6 +2750,7 @@
           }
         },
         "optionDefaults": {
+          "description": "What the tool uses while an option is unset: choices of a choicesFromModel option it activates, or the one value of a text, file or directory option (the first reported wins). The latter is display only and contributes no argument.",
           "type": "object",
           "additionalProperties": {
             "type": "object",
@@ -3069,6 +3070,12 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 120
+              },
+              "description": {
+                "description": "What the option does, shown by the host next to it (an info icon); display only.",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
               },
               "kind": {
                 "enum": [

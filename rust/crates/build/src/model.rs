@@ -38,7 +38,9 @@ pub(crate) struct BuildModel {
     pub(crate) content_roots: Vec<ModelContentRoot>,
     /// Values the model offers for `choicesFromModel` options.
     pub(crate) option_values: BTreeMap<String, Vec<String>>,
-    /// Subset of `option_values` the build tool activates when the option is unset.
+    /// What the build tool uses when an option is unset: the subset of
+    /// `option_values` it activates, or the one value of a text, file or
+    /// directory option.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub(crate) option_defaults: BTreeMap<String, Vec<String>>,
     /// Per-option prefix a `litheBuildModel` script supplies to turn a default choice off.
@@ -346,17 +348,25 @@ impl<'a> ModelBuilder<'a> {
         }
     }
 
+    /// Records a value the tool uses while `option` is unset: a choice it
+    /// activates, or the one value of a text, file or directory option (the
+    /// first reported wins, as the tool has only one).
     fn add_option_default(&mut self, option: &str, value: &str) {
-        let accepted = self
-            .build_system
-            .option(option)
-            .is_some_and(|declaration| declaration.choices_from_model)
-            && super::manifest::is_option_value(value);
-        if accepted {
+        let Some(declaration) = self.build_system.option(option) else {
+            return;
+        };
+        if !super::manifest::is_option_value(value) {
+            return;
+        }
+        if declaration.choices_from_model {
             let values = self.option_defaults.entry(option.to_string()).or_default();
             if values.len() < MAX_ITEMS {
                 values.insert(value.to_string());
             }
+        } else if declaration.is_text_like() {
+            self.option_defaults
+                .entry(option.to_string())
+                .or_insert_with(|| BTreeSet::from([value.to_string()]));
         }
     }
 
@@ -477,6 +487,13 @@ impl<'a> ModelBuilder<'a> {
             .option_defaults
             .into_iter()
             .filter_map(|(id, defaults)| {
+                if self
+                    .build_system
+                    .option(&id)
+                    .is_some_and(|option| option.is_text_like())
+                {
+                    return Some((id, defaults.into_iter().collect()));
+                }
                 let known = model.option_values.get(&id)?;
                 let kept: Vec<String> = defaults
                     .into_iter()

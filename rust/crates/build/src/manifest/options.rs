@@ -8,6 +8,9 @@ use super::*;
 pub(crate) struct OptionDeclaration {
     pub(crate) id: String,
     pub(crate) display_name: String,
+    /// What the option does, for the host's ⓘ next to it; display only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) description: Option<String>,
     pub(crate) kind: OptionKind,
     /// Instance values belong to one detected root, never to its siblings.
     #[serde(default, skip_serializing_if = "OptionScope::is_workspace")]
@@ -71,6 +74,15 @@ pub(crate) enum OptionPresentation {
 impl OptionDeclaration {
     pub(crate) fn separator(&self) -> &str {
         self.separator.as_deref().unwrap_or(DEFAULT_SEPARATOR)
+    }
+
+    /// Whether the option holds one free value (`text`, `file`, `directory`),
+    /// whose unset value the model may report as the tool's own.
+    pub(crate) fn is_text_like(&self) -> bool {
+        matches!(
+            self.kind,
+            OptionKind::Text | OptionKind::File | OptionKind::Directory
+        )
     }
 
     pub(crate) fn is_select(&self) -> bool {
@@ -272,6 +284,9 @@ impl OptionDeclaration {
             &format!("{field}.displayName"),
             "display name",
         )?;
+        if let Some(description) = &self.description {
+            super::run_types::check_description(description, &format!("{field}.description"))?;
+        }
         let select = self.is_select();
         if !select && (!self.choices.is_empty() || self.choices_from_model || self.allow_custom) {
             return Err(invalid(

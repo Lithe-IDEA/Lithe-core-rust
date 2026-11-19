@@ -543,6 +543,22 @@ pub(crate) fn describe_with_facts(
             if option.scope == super::manifest::OptionScope::Instance {
                 entry["scope"] = json!("instance");
             }
+            if let Some(description) = &option.description {
+                entry["description"] = json!(description);
+            }
+            if source == "unset" && option.is_text_like() {
+                // What the tool uses while the option is unset, as the model
+                // reported it (Maven's user settings file, its local
+                // repository). Display only: it contributes no argument, so
+                // the tool keeps deciding when its own configuration changes.
+                if let Some(value) = facts
+                    .defaults
+                    .and_then(|map| map.get(&option.id))
+                    .and_then(|values| values.first())
+                {
+                    entry["implicitValue"] = json!(value);
+                }
+            }
             entry
         })
         .collect();
