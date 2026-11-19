@@ -3450,8 +3450,8 @@ fn model_option_defaults_and_exclusions_round_trip_through_storage_and_plans() {
 /// A model reports what the tool uses for a text, file or directory option
 /// the user left unset (Maven's user settings file and local repository), as
 /// IDEA shows the effective path greyed out until the user overrides it. The
-/// value is display only: it contributes no argument, and a user value or a
-/// declared default replaces it.
+/// value is display only: it contributes no argument, it stays beside a user
+/// value as what removing it returns to, and a declared default replaces it.
 #[test]
 fn model_reports_the_implicit_value_of_unset_path_options() {
     let workspace = TemporaryWorkspace::new("model-implicit-values");
@@ -3540,7 +3540,8 @@ fn model_reports_the_implicit_value_of_unset_path_options() {
     let settings = by_id(&overridden, "settingsFile");
     assert_eq!(settings["source"], "user");
     assert_eq!(settings["value"], "/work/settings.xml");
-    assert!(settings.get("implicitValue").is_none(), "{settings}");
+    // What removing the override returns to stays shown beside it.
+    assert_eq!(settings["implicitValue"], "/home/me/.m2/settings.xml");
 }
 
 /// A model map may fill `optionDefaults` for choicesFromModel, text, file and
