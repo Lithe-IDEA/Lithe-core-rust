@@ -13,10 +13,10 @@
 //!   (`files.nextChange`), answers its command with a message in the window
 //!   it ran in, and lists the open workspaces when they change.
 
+use lithe_plugin_sdk::toolchains::{ToolchainQueryError, ToolchainQueryResult};
 use lithe_plugin_sdk::{
     BackendHandle, Cancelled, Context, FunctionError, PluginError, SdkError, Value,
 };
-use lithe_plugin_sdk::toolchains::{ToolchainQueryError, ToolchainQueryResult};
 use serde_json::json;
 use std::fs;
 use std::path::{Path, PathBuf};
