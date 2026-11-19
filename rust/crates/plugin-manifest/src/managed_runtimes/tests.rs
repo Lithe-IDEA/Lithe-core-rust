@@ -320,7 +320,8 @@ fn mirrors_require_version_1_preserve_cache_key_and_reject_invalid_urls() {
         ]),
     ] {
         let mut invalid_manifest = v1.clone();
-        invalid_manifest["managedRuntimes"]["dependencies"][0]["artifacts"][linux_index]["mirrors"] = bad;
+        invalid_manifest["managedRuntimes"]["dependencies"][0]["artifacts"][linux_index]
+            ["mirrors"] = bad;
         assert_eq!(plan(invalid_manifest)["status"], "rejected");
     }
 }
