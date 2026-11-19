@@ -25,6 +25,7 @@ mod invocation;
 mod manifest;
 mod model;
 mod model_inputs;
+mod option_text;
 mod options;
 mod outputs;
 mod plans;
@@ -46,6 +47,7 @@ pub use manifest::{
     activation_event, programs, validate_declarations, BuildSystemDeclaration, DeclarationContext,
     ProviderProcess,
 };
+pub use option_text::build_localize_options_command;
 pub use project_options::project_options_command;
 pub use run_start::run_decode_start_command;
 pub use run_types::{declared_run_types, RunTypePlugin, RunTypePlugins};

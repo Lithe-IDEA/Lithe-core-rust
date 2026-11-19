@@ -12,6 +12,11 @@ pub(super) fn dispatch(command: BuildCommand, id: Option<String>, payload: Value
         BuildCommand::Detect => {
             plugin_response(id, payload, crate::build::build_detect_command::<Manifest>)
         }
+        BuildCommand::LocalizeOptions => plugin_response(
+            id,
+            payload,
+            crate::build::build_localize_options_command::<Manifest>,
+        ),
         BuildCommand::ProjectOptions => {
             plugin_response(id, payload, crate::build::project_options_command)
         }

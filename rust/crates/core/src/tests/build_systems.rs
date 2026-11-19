@@ -3566,6 +3566,120 @@ fn model_map_option_defaults_name_choice_or_text_options() {
     assert_eq!(refused["status"], "rejected", "{refused}");
 }
 
+/// A plugin's translation file names its build options in the interface
+/// language: Core names the files to read, then returns the manifest with
+/// the option text replaced, so every surface that reads the manifest shows
+/// it. A file that names an undeclared option or adds text the manifest
+/// lacks is refused whole, and the manifest keeps its wording.
+#[test]
+fn build_option_text_is_translated_in_the_manifest() {
+    use crate::build::build_localize_options_command;
+    let mut manifest = option_edit_fixture()["manifest"].clone();
+    manifest["buildSystems"][0]["options"]
+        .as_array_mut()
+        .unwrap()
+        .extend([
+            json!({"id": "settingsFile", "displayName": "Settings File", "kind": "file",
+                "description": "The user settings file passed with -s.",
+                "arguments": ["-s", "${value}"]}),
+            json!({"id": "checksums", "displayName": "Checksums", "kind": "singleSelect",
+                "choices": [{"value": "warn", "title": "Warn"}, {"value": "fail", "title": "Fail"}],
+                "arguments": ["--checksums=${value}"]}),
+        ]);
+    let localize = |localizations: Option<Value>| {
+        let mut plugin = json!({"manifest": manifest});
+        if let Some(files) = localizations {
+            plugin["localizations"] = files;
+        }
+        build_localize_options_command::<Manifest>(
+            json!({"language": "zh-Hans", "plugins": [plugin]}),
+        )
+        .unwrap()
+    };
+    let option = |result: &Value, id: &str| {
+        result["manifests"][0]["buildSystems"][0]["options"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|option| option["id"] == id)
+            .unwrap()
+            .clone()
+    };
+
+    let first = localize(None);
+    let report = &first["localizations"][0];
+    assert_eq!(
+        report["pluginID"], "dev.lithe.test.build-option-edit",
+        "{first}"
+    );
+    assert_eq!(report["readRequired"], true);
+    assert_eq!(
+        first["manifests"][0], manifest,
+        "nothing is translated before the files are read"
+    );
+    let path = report["candidates"][0].as_str().unwrap().to_string();
+
+    let file = json!({"buildOptions": {"fixture": {
+        "settingsFile": {"displayName": "用户设置文件", "description": "用 -s 传入的用户设置文件。"},
+        "checksums": {"displayName": "校验和", "choices": {"fail": "失败"}}
+    }}});
+    let translated = localize(Some(json!({ &path: file.to_string() })));
+    assert_eq!(
+        translated["localizations"][0]["applied"],
+        json!(path),
+        "{translated}"
+    );
+    let settings = option(&translated, "settingsFile");
+    assert_eq!(settings["displayName"], "用户设置文件");
+    assert_eq!(settings["description"], "用 -s 传入的用户设置文件。");
+    let checksums = option(&translated, "checksums");
+    assert_eq!(checksums["displayName"], "校验和");
+    assert_eq!(
+        checksums["choices"],
+        json!([{"value": "warn", "title": "Warn"}, {"value": "fail", "title": "失败"}])
+    );
+    // The translated manifest is still a valid manifest with the same options.
+    let validated = validate(translated["manifests"][0].clone());
+    assert_eq!(validated["status"], "ok", "{validated}");
+
+    for (broken, what) in [
+        (
+            json!({"buildOptions": {"fixture": {"unknown": {"displayName": "x"}}}}),
+            "an undeclared option",
+        ),
+        (
+            json!({"buildOptions": {"fixture": {"profiles": {"description": "x"}}}}),
+            "text the manifest lacks",
+        ),
+        (
+            json!({"buildOptions": {"fixture": {"checksums": {"choices": {"skip": "x"}}}}}),
+            "an undeclared choice",
+        ),
+        (
+            json!({"buildOptions": {"other": {"profiles": {"displayName": "x"}}}}),
+            "an undeclared build system",
+        ),
+    ] {
+        let refused = localize(Some(json!({ &path: broken.to_string() })));
+        let report = &refused["localizations"][0];
+        assert_eq!(report["applied"], Value::Null, "{what}: {refused}");
+        assert_eq!(
+            report["rejected"][0]["error"]["code"], "plugin.build.invalidLocalization",
+            "{what}"
+        );
+        assert_eq!(
+            refused["manifests"][0], manifest,
+            "{what} changed the manifest"
+        );
+    }
+
+    // Without a language the manifests come back as sent and nothing is read.
+    let plain =
+        build_localize_options_command::<Manifest>(json!({"plugins": [{"manifest": manifest}]}))
+            .unwrap();
+    assert_eq!(plain, json!({"manifests": [manifest], "localizations": []}));
+}
+
 fn option_edit_fixture() -> Value {
     serde_json::from_str(include_str!(
         "../../../../fixtures/build/option-edit-v1.json"
