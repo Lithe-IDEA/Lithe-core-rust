@@ -457,8 +457,12 @@ pub fn run_sample_scenario(sample: &Sample) {
     let mut session = Session::start(&plugin_id, runtime, &arguments, &workspace);
     assert_eq!(session.functions(), ["snapshot.read", "workspace.build"]);
 
-    // Typed build requests: Core plans them and decodes the answers.
-    let build = |operation: &str, request: Value| {
+    // Typed build requests: Core plans them and decodes the answers. The fixture workspace is
+    // the test's own, so it is trusted: a plan that runs the workspace's code needs that.
+    let build = |operation: &str, mut request: Value| {
+        if operation.ends_with("Plan") {
+            request["projectCodeAllowed"] = json!(true);
+        }
         core(
             operation,
             json!({ "manifest": manifest, "buildSystemID": BUILD_SYSTEM, "request": request }),
