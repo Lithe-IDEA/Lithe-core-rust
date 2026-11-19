@@ -9,7 +9,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 清单字段 | `languages`、`languageServers`、`executionProviders`、`outputLinkMatchers` |
-| 能力 | `languages`、`languageServers`、`executionProviders`、`outputLinkMatchers`，版本都是 `0`。`languageServers` 的后端启动方式需要 `backend`；会话、输出链接的 `resolve`、内容提供者都需要 `backend` |
+| 能力 | `languages`、`languageServers`、`executionProviders`、`outputLinkMatchers`，均有版本 `0`。`languages` 版本 `1` 增加首行匹配。`languageServers` 的后端启动方式需要 `backend`；会话、输出链接的 `resolve`、内容提供者都需要 `backend` |
 | 协议 | LSP。后端驱动服务器用的 `languageServer/*` 宿主方法和通知见下文，它们属于插件后端的 `litheFunctions` 协议（见[插件后端](backend.md)） |
 | API 编号 | [API-25](../api-catalog.md#现在能用的-api)：语言、语法、LSP。[API-12](../api-catalog.md#现在能用的-api)：按 URI scheme 提供的只读文档（`documents/registerContentProvider`）。[API-20](../api-catalog.md#现在能用的-api)：语言服务器按工作区的状态目录及其回收。[API-22](../api-catalog.md#现在能用的-api)：语言服务器的准备状态（`languageServer/setStatus`）和 Run、测试控制台输出里的链接。插件函数提供的编辑器语言功能见[编辑器](editor.md) |
 | 权限 | `languageServer.launch`；`executionProviders` 声明 `run`、`test` 时加 `process.run`、`process.test`；`languageServer.request`（服务器列出 `requestMethods` 或 `forwardNotifications` 时才可声明，需要 `backend`）；`documents.contentProvider`（需要 `backend`） |
@@ -19,6 +19,8 @@
 ### 语言与语法（`languages`）
 
 `languages[]` 的 `id`、`fileExtensions`、`fileNames`、`projectFileNames` 和 `dependencies` 的规则见[契约的 Languages 一节](../../contract/v1/README.md#languages)。语法和编辑器配置是纯数据：宿主从包里读取，编辑器直接应用，不启动任何进程。只有语法的插件不需要语言服务器、后端或激活事件。
+
+无后缀文件可用 `firstLineMatch` 声明开头的特征，例如脚本的 shebang。将 `requires.languages` 设为 `1`，并在 `languages[]` 里填写 Rust 正则表达式。文件的既有语言关联优先，编辑器只检查至多 1024 字节的完整首行。[契约示例](../../contract/v1/README.md#first-line-matching-languages-1)
 
 ```json
 {
@@ -285,7 +287,7 @@ Languages let Lithe recognize a language: identify its files, highlight them wit
 | Item | Value |
 | --- | --- |
 | Manifest fields | `languages`, `languageServers`, `executionProviders`, `outputLinkMatchers` |
-| Capabilities | `languages`, `languageServers`, `executionProviders`, `outputLinkMatchers`, each at version `0`. A `languageServers` backend launch needs `backend`; sessions, a matcher's `resolve`, and content providers need `backend` too |
+| Capabilities | `languages`, `languageServers`, `executionProviders`, `outputLinkMatchers`, all support version `0`. `languages` version `1` adds first-line matching. A `languageServers` backend launch needs `backend`; sessions, a matcher's `resolve`, and content providers need `backend` too |
 | Protocols | LSP. The `languageServer/*` host methods and notifications below belong to the plugin backend's `litheFunctions` protocol (see [Plugin backend](backend.md)) |
 | API IDs | [API-25](../api-catalog.md#apis-usable-now): languages, grammars, LSP. [API-12](../api-catalog.md#apis-usable-now): read-only documents by URI scheme (`documents/registerContentProvider`). [API-20](../api-catalog.md#apis-usable-now): per-workspace state directories of language servers, and their pruning. [API-22](../api-catalog.md#apis-usable-now): language server preparation status (`languageServer/setStatus`) and links in Run and Test output. Editor language features supplied by plugin functions are in [Editor](editor.md) |
 | Permissions | `languageServer.launch`; `process.run`, `process.test` when an execution provider declares `run` or `test`; `languageServer.request` (only when a server lists `requestMethods` or `forwardNotifications`; needs `backend`); `documents.contentProvider` (needs `backend`) |
@@ -295,6 +297,11 @@ Languages let Lithe recognize a language: identify its files, highlight them wit
 ### Languages and grammars (`languages`)
 
 The rules for `id`, `fileExtensions`, `fileNames`, `projectFileNames`, and `dependencies` are in [the contract's Languages section](../../contract/v1/README.md#languages). A grammar and editor configuration are pure data: the host reads them from the package and the editor applies them without starting any process. A plugin with only grammars needs no language server, backend, or activation event.
+
+For extensionless documents set `requires.languages` to `1` and declare a
+`firstLineMatch` Rust regex, for example to recognize a shebang. Existing file
+associations take priority. The editor checks a complete first line of up to
+1024 UTF-8 bytes. [Contract example](../../contract/v1/README.md#first-line-matching-languages-1)
 
 ```json
 {

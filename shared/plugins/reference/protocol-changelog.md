@@ -14,6 +14,8 @@
 
 ## 待合入
 
+- [首行语言识别](https://github.com/Lithe-IDEA/Lithe-core-rust/compare/main...codex/2122-first-line-language)，[@Mucheen](https://github.com/Mucheen)，**`languages` 1**（API-25）：`languages[].firstLineMatch` 让插件识别无路径关联的无后缀文档。Core 校验并匹配完整首行，保留原有路径和用户关联优先级。见 [1lck/Lithe-IDEA#2122](https://github.com/1lck/Lithe-IDEA/issues/2122)。
+
 - [#112](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/112)，[@Mucheen](https://github.com/Mucheen)，**`buildSystems` 1**（API-29）：清单新增 `buildSystems[].test.discoveryCommand`，已有测试运行可以独立采用命令或 provider。命令使用现有构建工具，把 `litheTestDiscovery` v0 写到宿主提供的 `${outputFile}`。Core 的 `build.testDiscoveryPlan`、`build.decodeTestDiscovery` 和测试树兼容两种发现来源，检查每条选择器可原样运行，命令尝试沿用 `lithe/build/discoverTests` 的结构化终态。没有新增宿主方法、通知或 SDK 版本。见 [1lck/Lithe-IDEA#2122](https://github.com/1lck/Lithe-IDEA/issues/2122)。
 
 ## 按协议查首次出现
@@ -52,6 +54,7 @@
 | `keymapImportProviders` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `languageServers` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `languages` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
+| `languages` | 1 | 待合入 | [首行语言识别](https://github.com/Lithe-IDEA/Lithe-core-rust/compare/main...codex/2122-first-line-language) |
 | `outputLinkMatchers` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `packageTrust` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `pluginFunctions` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |

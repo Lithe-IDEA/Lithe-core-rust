@@ -70,6 +70,8 @@ pub enum CoreCommand {
     Toolchains(ToolchainsCommand),
     /// Validates a plugin backend's Run start request (`run.decodeStart`).
     RunDecodeStart,
+    /// Selects a plugin language from an extensionless document's first line.
+    LanguagesMatchFirstLine,
     /// Finds the output links plugin matchers declare in console lines (`outputLinks.match`).
     OutputLinksMatch,
     /// Checks a plugin function's answer to an output link (`outputLinks.decodeResolution`).
@@ -1189,6 +1191,7 @@ impl CoreCommand {
             "debug.decodeBackendConfiguration" => {
                 Some(Self::Debug(DebugCommand::DecodeBackendConfiguration))
             }
+            "languages.matchFirstLine" => Some(Self::LanguagesMatchFirstLine),
             "outputLinks.match" => Some(Self::OutputLinksMatch),
             "outputLinks.decodeResolution" => Some(Self::OutputLinksDecodeResolution),
             "build.detect" => Some(Self::Build(BuildCommand::Detect)),
@@ -1853,6 +1856,7 @@ mod tests {
             "toolchains.instantiateLaunch",
             "run.decodeStart",
             "debug.decodeBackendConfiguration",
+            "languages.matchFirstLine",
             "outputLinks.match",
             "outputLinks.decodeResolution",
             "outputStyle.decode",

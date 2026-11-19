@@ -379,3 +379,143 @@ fn configuration_only_contribution_decodes_without_grammar() {
     assert!(result["language"]["grammar"].is_null());
     assert_eq!(result["language"]["configuration"]["lineComment"], "#");
 }
+
+#[test]
+fn first_line_only_language_requires_a_compatible_manifest_and_host() {
+    let mut plugin = manifest(contract_file!("fixtures/languages/first-line.plugin.json"));
+    plugin["languages"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("configuration");
+    let validate = |plugin: &Value, versions: &[u32]| {
+        validate_command(json!({ "manifest": plugin, "hostCapabilities": {"languages": versions} }))
+            .unwrap()
+    };
+    let outcome = validate(&plugin, &[0, 1]);
+    assert_eq!(outcome["status"], "ok", "{outcome}");
+    assert_eq!(
+        outcome["plugin"]["languages"][0]["firstLineMatch"],
+        plugin["languages"][0]["firstLineMatch"]
+    );
+
+    let unsupported = validate(&plugin, &[0]);
+    assert_eq!(unsupported["status"], "rejected");
+    assert_eq!(unsupported["error"]["field"], "requires.languages");
+    let mut downgraded = plugin;
+    downgraded["requires"]["languages"] = json!(0);
+    let invalid = validate(&downgraded, &[0, 1]);
+    assert_eq!(
+        invalid["error"]["code"], "plugin.manifest.invalid",
+        "{invalid}"
+    );
+    assert_eq!(invalid["error"]["field"], "requires.languages");
+
+    let legacy = validate(&manifest(GRAMMAR_PLUGIN), &[0, 1]);
+    assert_eq!(legacy["status"], "ok", "{legacy}");
+    assert!(legacy["plugin"]["languages"][0]
+        .get("firstLineMatch")
+        .is_none());
+}
+
+#[test]
+fn first_line_languages_reject_invalid_and_unbounded_patterns_at_installation() {
+    let mut plugin = manifest(contract_file!("fixtures/languages/first-line.plugin.json"));
+    for pattern in [
+        "".into(),
+        "a*".into(),
+        "[".into(),
+        "(a)\\1".into(),
+        "a{10000000}".into(),
+        "é".repeat(257),
+    ] {
+        plugin["languages"][0]["firstLineMatch"] = json!(pattern);
+        let outcome = validate_command(json!({"manifest": plugin})).unwrap();
+        assert_eq!(
+            outcome["error"]["field"], "languages[0].firstLineMatch",
+            "{outcome}"
+        );
+    }
+    plugin["languages"][0]["firstLineMatch"] = Value::Null;
+    assert_eq!(
+        validate_command(json!({"manifest": plugin})).unwrap()["status"],
+        "rejected"
+    );
+}
+
+#[test]
+fn first_line_matching_keeps_registered_priority_and_never_reads_past_the_line() {
+    let plugin = manifest(contract_file!("fixtures/languages/first-line.plugin.json"));
+    let specific =
+        json!({"languageID":"sample", "firstLineMatch": plugin["languages"][0]["firstLineMatch"]});
+    let generic = json!({"languageID":"other", "firstLineMatch": "#!"});
+    let choose = |line: &str, candidates: &[Value]| {
+        let response = lithe_plugin_manifest::match_first_line(
+            json!({"firstLine":line, "candidates":candidates}),
+        )
+        .unwrap();
+        response["languageID"].clone()
+    };
+    for line in [
+        "#!/opt/tools/sample",
+        "#! /usr/bin/env sample3",
+        "#!/usr/bin/env -S sample3 -f",
+    ] {
+        assert_eq!(choose(line, &[specific.clone(), generic.clone()]), "sample");
+        assert_eq!(choose(line, &[generic.clone(), specific.clone()]), "other");
+    }
+    for line in [
+        "x#!/opt/tools/sample",
+        "#!/opt/tools/sample-extra",
+        "#!/opt/tools/sample\0",
+        "\n#!/opt/tools/sample",
+        "#!/opt/tools/sample\r",
+    ] {
+        assert_eq!(choose(line, std::slice::from_ref(&specific)), Value::Null);
+    }
+    assert_eq!(
+        choose(
+            &format!("#!{}", "é".repeat(511)),
+            std::slice::from_ref(&generic)
+        ),
+        "other"
+    );
+    assert_eq!(
+        choose(
+            &format!("#!{}x", "é".repeat(511)),
+            std::slice::from_ref(&generic)
+        ),
+        Value::Null
+    );
+    assert_eq!(choose("#!/opt/tools/sample", &[]), Value::Null);
+    // A word boundary alone may match at the start of nonempty text but claims no bytes.
+    assert_eq!(
+        choose(
+            "word",
+            &[json!({"languageID":"other","firstLineMatch":"\\b"})]
+        ),
+        Value::Null
+    );
+}
+
+#[test]
+fn first_line_matching_validates_the_whole_candidate_batch() {
+    let entry = json!({"languageID":"sample","firstLineMatch":"#!"});
+    let call = |candidates: Vec<Value>| {
+        lithe_plugin_manifest::match_first_line(json!({"firstLine":"#!", "candidates":candidates}))
+    };
+    assert_eq!(
+        call(vec![entry.clone(); 64]).unwrap()["languageID"],
+        "sample"
+    );
+    assert!(call(vec![entry.clone(); 65]).is_err());
+    assert!(call(vec![
+        entry.clone(),
+        json!({"languageID":"UPPER","firstLineMatch":"#!"})
+    ])
+    .is_err());
+    assert!(call(vec![
+        entry,
+        json!({"languageID":"rest","firstLineMatch":"("})
+    ])
+    .is_err());
+}

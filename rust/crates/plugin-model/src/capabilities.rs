@@ -42,7 +42,8 @@ use std::collections::{BTreeMap, BTreeSet};
 pub const SUPPORTED_PLUGIN_API_VERSIONS: &[u32] = &[0];
 
 /// `languages[]`: file types and project markers, a TextMate `grammar`, and an
-/// editing `configuration`; see `lithe_plugin_grammar`.
+/// editing `configuration`; see `lithe_plugin_grammar`. Version 1 adds the
+/// optional `firstLineMatch` pattern for extensionless documents.
 pub const LANGUAGES: &str = "languages";
 /// `languageServers[]`: the launch, `workspaceConfiguration`, and the session
 /// fields a plugin backend uses to talk to its own server (`requestMethods`,
@@ -135,7 +136,7 @@ pub const SUPPORTED_CAPABILITIES: &[(&str, &[u32])] = &[
     (EXECUTION_PROVIDERS, &[0]),
     (KEYMAP_IMPORT_PROVIDERS, &[0]),
     (LANGUAGE_SERVERS, &[0]),
-    (LANGUAGES, &[0]),
+    (LANGUAGES, &[0, 1]),
     (MANAGED_RUNTIMES, &[0, 1]),
     (OUTPUT_LINK_MATCHERS, &[0]),
     (PACKAGE_TRUST, &[0]),

@@ -41,6 +41,7 @@ Core 列以本仓库 `main` 上的 Core 源码为准（[`capabilities.rs`](https
 | 版本 | 内容 | Core | Lithe 桌面端 | 详见 |
 | --- | --- | --- | --- | --- |
 | `languages` `0` | `languages[]`：语言 ID、文件扩展名，以及包内 TextMate [`grammar` 与 `configuration`](../contract/v1/README.md#grammars-and-editor-configuration)；宿主从包里读取并在编辑器里应用，不启动进程 | ✅ | ✅ | [语言](domains/languages.md) |
+| `languages` `1` | 无路径或用户关联的无后缀文件可通过 `firstLineMatch` 匹配首行 | ✅ | 配套宿主接入后声明 | [契约](../contract/v1/README.md#first-line-matching-languages-1) |
 | `packageTrust` `0` | `vendor.bundledSignatureRequirement`：随宿主发布的发布者签名插件副本按来源信任 | ✅ | 未声明 | [包信任](domains/package-trust.md)、[Trust](../contract/v1/README.md#trust) |
 | `languageServers` `0` | `languageServers[]`（启动字段按[启动进程](../contract/v1/README.md#process-start)），包括[`workspaceConfiguration`](../contract/v1/README.md#workspace-configuration)、[`indexingExclusions`](../contract/v1/README.md#indexing-exclusions)和[插件自有服务器的会话字段](../contract/v1/README.md#plugin-owned-sessions) | ✅ | ✅¹ | [语言](domains/languages.md)、[Language servers](../contract/v1/README.md#language-servers) |
 | `executionProviders` `0` | `executionProviders[]`：用声明的命令运行和发现测试 | ✅ | 未声明 | [语言](domains/languages.md)、[Execution providers](../contract/v1/README.md#execution-providers) |
@@ -156,6 +157,7 @@ Each row is one capability. `requires` lists **exactly** the capabilities a mani
 | Version | Content | Core | Lithe desktop | See |
 | --- | --- | --- | --- | --- |
 | `languages` `0` | `languages[]`: language IDs, file extensions, and packaged TextMate [`grammar` and `configuration`](../contract/v1/README.md#grammars-and-editor-configuration); the host reads them from the package and applies them in the editor without starting a process | ✅ | ✅ | [Languages](domains/languages.md) |
+| `languages` `1` | `firstLineMatch` recognizes unassociated extensionless files by their first line | ✅ | Requires corresponding host support | [Contract](../contract/v1/README.md#first-line-matching-languages-1) |
 | `packageTrust` `0` | `vendor.bundledSignatureRequirement`: origin-scoped trust for a host-sealed bundled copy of a publisher-signed plugin | ✅ | Not declared | [Package trust](domains/package-trust.md), [Trust](../contract/v1/README.md#trust) |
 | `languageServers` `0` | `languageServers[]` (launch fields as in [Process start](../contract/v1/README.md#process-start)), including [`workspaceConfiguration`](../contract/v1/README.md#workspace-configuration), [`indexingExclusions`](../contract/v1/README.md#indexing-exclusions) and the [session fields for a plugin's own server](../contract/v1/README.md#plugin-owned-sessions) | ✅ | ✅¹ | [Languages](domains/languages.md), [Language servers](../contract/v1/README.md#language-servers) |
 | `executionProviders` `0` | `executionProviders[]`: run and discover tests through the declared commands | ✅ | Not declared | [Languages](domains/languages.md), [Execution providers](../contract/v1/README.md#execution-providers) |

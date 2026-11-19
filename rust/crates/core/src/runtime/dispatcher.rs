@@ -197,6 +197,9 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             parsed.payload,
             crate::build::run_decode_start_command::<Manifest>,
         ),
+        CoreCommand::LanguagesMatchFirstLine => {
+            plugin_response(id, parsed.payload, lithe_plugin_manifest::match_first_line)
+        }
         CoreCommand::OutputLinksMatch => {
             plugin_response(id, parsed.payload, lithe_plugin_output_links::match_lines)
         }

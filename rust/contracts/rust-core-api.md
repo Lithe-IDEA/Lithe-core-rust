@@ -485,6 +485,7 @@ or removing a command fails until the table changes in the same commit.
 | `plugins.installed.lifecycle` | Report installed plugins' enablement and plan confirming an install, enabling, disabling or uninstalling one |
 | `plugins.declarative.editSettings` | Validate one atomic setting edit batch and return replacement text while preserving unrelated plugins and dormant values |
 | `plugins.declarative.workspaceConfiguration` | Expand a language server's `workspaceConfiguration` with the merged setting values |
+| `languages.matchFirstLine` | Select the first matching registered language for an extensionless document |
 | `plugins.declarative.decodeGrammar` | Validate independent static editor resources |
 | `plugins.editorActions.decode` | Validate independent action registration, collection or click results |
 | `plugins.hostApi.describe` | Describe backend host methods and their required grants from Core's method table |
@@ -5174,6 +5175,18 @@ what settles two plugins that choices made before the rule both enable. A
 order, forgets the choice if there is one and removes the state, so a later
 installation starts as a first one. Shared cases are in
 `rust/fixtures/plugins/installed-lifecycle.json`.
+
+`languages.matchFirstLine` accepts `{firstLine, candidates:[{languageID,
+firstLineMatch}]}` and returns `{languageID}`, with `null` for no match. The
+host calls it after existing explicit, file-name and extension associations
+fail for a dotless basename. Send only the complete first decoded line minus
+its terminator. Empty input, CR, LF, NUL and lines over 1024 UTF-8 bytes produce
+no match. Never send a truncated prefix. Supply the enabled declarations in
+registry precedence order, in batches of up to 64, stopping on the first match.
+The result preserves the winning ID unchanged. A malformed batch, language ID
+or pattern is an `invalid_request`. Core retains only bounded compiled
+declarations and performs no I/O. See the [first-line pattern
+contract](../../shared/plugins/contract/v1/README.md#first-line-matching-languages-1).
 
 `plugins.declarative.decodeGrammar` accepts `{ manifest, languageID, grammar }`,
 where `grammar` is the text the host read from the language's `grammar.path`

@@ -3,6 +3,13 @@
 
 use super::*;
 
+pub(crate) fn is_language_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"+-_".contains(&byte)
+        })
+}
+
 impl LanguageDeclaration {
     pub(crate) fn normalize(&mut self, index: usize) -> Validation<()> {
         let field = format!("languages[{index}]");
@@ -12,15 +19,7 @@ impl LanguageDeclaration {
         if let Some(configuration) = &self.configuration {
             configuration.validate(&format!("{field}.configuration"))?;
         }
-        let id = self.id.trim().to_lowercase();
-        if id.is_empty()
-            || id != self.id
-            || !id.chars().all(|character| {
-                character.is_ascii_lowercase()
-                    || character.is_ascii_digit()
-                    || "+-_".contains(character)
-            })
-        {
+        if !is_language_id(&self.id) {
             return Err(invalid(
                 format!("{field}.id"),
                 "The language ID must be lowercase.",
@@ -35,9 +34,13 @@ impl LanguageDeclaration {
         self.file_extensions = normalized_extensions(&self.file_extensions);
         self.file_names = normalized_names(&self.file_names);
         self.project_file_names = normalized_names(&self.project_file_names);
+        if let Some(pattern) = &self.first_line_match {
+            first_line::validate_pattern(pattern, &format!("{field}.firstLineMatch"))?;
+        }
         if self.file_extensions.is_empty()
             && self.file_names.is_empty()
             && self.project_file_names.is_empty()
+            && self.first_line_match.is_none()
         {
             return Err(invalid(
                 field,

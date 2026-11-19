@@ -196,11 +196,31 @@ declare it (see [Versioning](#versioning)).
 ### Languages
 
 `id` is lowercase (`[a-z0-9+_-]`). `fileExtensions`, `fileNames`, and
-`projectFileNames` are matched case-insensitively; at least one must be
-present. A leading dot is optional only in `fileExtensions` (`.php` equals
+`projectFileNames` are matched case-insensitively. Each language declares at
+least one file name, project marker, extension, or first-line pattern. A leading dot is optional only in `fileExtensions` (`.php` equals
 `php`). In complete file names, project markers, and management file names it
 is part of the name, so `.toolrc` and `.env.example` stay hidden-file names. Optional `dependencies` lists `managementFileNames`,
 `projectDependencyPaths`, and `projectBinaryPaths` relative to the project.
+
+#### First-line matching (languages 1)
+
+An extensionless script can identify its language with a shebang. Other formats
+can declare a signature at the start of the file. Set `requires.languages` to
+`1` and supply `languages[].firstLineMatch`, a Rust regular expression of
+1–512 UTF-8 bytes. For example, `"firstLineMatch": "^#! */opt/tools/sample(?: |$)"`
+matches the interpreter followed by a space or the end of the line. A language
+can declare the pattern alone or alongside file names and extensions. Hosts
+that only implement `languages: 0` reject plugins requiring version 1.
+
+The editor tries this fallback only for a text document whose basename
+contains no dot, after all existing user and path associations. It matches the
+complete decoded first line, excluding its terminator. Empty lines, lines
+longer than 1024 UTF-8 bytes and lines containing NUL are ineligible. Core
+accepts a match only at the start of the line and only when it consumes text.
+Patterns cannot match empty input. The regex compiler and its DFA cache each
+have a 256 KiB size limit. Among matching enabled languages the host's existing
+registration priority wins. The result is the registered language ID for
+editing and language services. Matching reads text and starts no process.
 
 #### Grammars and editor configuration
 

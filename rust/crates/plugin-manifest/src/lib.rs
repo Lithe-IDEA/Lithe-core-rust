@@ -34,6 +34,7 @@ use std::collections::{BTreeMap, BTreeSet};
 mod command_installers;
 mod commands;
 mod declarations;
+mod first_line;
 mod launch;
 mod managed_runtimes;
 mod manifest;
@@ -53,6 +54,7 @@ pub use command_installers::{
     command_installer_requirements_command,
 };
 pub use commands::*;
+pub use first_line::match_first_line;
 pub use launch::*;
 pub use managed_runtimes::{managed_runtime_plan_command, managed_runtime_resolution_command};
 pub use manifest::*;

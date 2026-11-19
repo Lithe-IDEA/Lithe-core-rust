@@ -1308,6 +1308,7 @@ dependencies = [
  "lithe-protocol",
  "lithe-toolchain",
  "lithe-vcs",
+ "regex",
  "serde",
  "serde_json",
  "sha2",

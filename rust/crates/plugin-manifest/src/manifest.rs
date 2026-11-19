@@ -230,6 +230,13 @@ pub(crate) struct LanguageDeclaration {
     pub(crate) file_names: Vec<String>,
     #[serde(default)]
     pub(crate) project_file_names: Vec<String>,
+    /// Optional prefix expression for unassociated extensionless documents (languages 1).
+    #[serde(
+        default,
+        deserialize_with = "crate::first_line::present_pattern",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) first_line_match: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) dependencies: Option<DependencyDeclaration>,
     /// Syntax highlighting from a package file; see `lithe_plugin_grammar`.
