@@ -58,6 +58,7 @@ struct IndexKey {
     policy_revision: u64,
     max_file_bytes: u64,
     include_ignored: bool,
+    follow_symlinks: bool,
 }
 
 type SharedIndex = Arc<RwLock<WorkspaceSearchIndex>>;
@@ -83,6 +84,7 @@ fn key(root: &Path, rules: &VisibilityRules) -> IndexKey {
         policy_revision: super::indexing::context(root).map_or(0, |policy| policy.revision),
         max_file_bytes: rules.max_file_bytes,
         include_ignored: rules.include_ignored,
+        follow_symlinks: rules.follow_symlinks,
     }
 }
 
@@ -158,9 +160,10 @@ pub(crate) fn invalidate_root(root: &Path) {
 
 pub(crate) fn update_cached_file(root: &Path, path: &Path) {
     let entries = {
-        let Ok(indexes) = cache().lock() else {
+        let Ok(mut indexes) = cache().lock() else {
             return;
         };
+        indexes.retain(|key, _| key.host != workspace::identity_key(root) || !key.follow_symlinks);
         indexes
             .iter()
             .filter(|(key, _)| key.host == workspace::identity_key(root))
@@ -191,6 +194,7 @@ pub(crate) fn update_cached_file(root: &Path, path: &Path) {
             delegated_roots: cache_key.delegated_roots,
             max_file_bytes: cache_key.max_file_bytes,
             include_ignored: cache_key.include_ignored,
+            follow_symlinks: cache_key.follow_symlinks,
         };
         let excluded = match super::indexing::context(root) {
             Some(policy) => policy
@@ -241,6 +245,11 @@ pub(crate) fn update_paths(
         if cache_key.policy_revision != revision {
             return UpdateOutcome::RequiresRebuild;
         }
+        // One physical change can affect several lexical aliases. Re-enumerate
+        // link-aware inventories rather than leaving an alias's children stale.
+        if cache_key.follow_symlinks {
+            return UpdateOutcome::RequiresRebuild;
+        }
         let Ok(slot) = slot.lock() else {
             return UpdateOutcome::RequiresRebuild;
         };
@@ -256,6 +265,7 @@ pub(crate) fn update_paths(
             delegated_roots: cache_key.delegated_roots,
             max_file_bytes: cache_key.max_file_bytes,
             include_ignored: cache_key.include_ignored,
+            follow_symlinks: cache_key.follow_symlinks,
         };
         for value in paths {
             let Some(absolute) = normalized_update_path(root, value) else {
@@ -589,6 +599,46 @@ mod tests {
     use std::fs;
 
     #[test]
+    fn project_pages_search_cold_files_without_building_content_postings() {
+        let root = crate::test_support::temporary_root("project-page-cold-index");
+        fs::create_dir_all(&root).unwrap();
+        let root = root.canonicalize().unwrap();
+        struct Cleanup(PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                invalidate_root(&self.0);
+                fs::remove_dir_all(&self.0).unwrap();
+            }
+        }
+        let _cleanup = Cleanup(root.clone());
+        fs::write(
+            root.join("a.txt"),
+            "needle first\nneedle second\nneedle third\n",
+        )
+        .unwrap();
+        let result = crate::project_search_page(
+            serde_json::from_value(serde_json::json!({
+                "root": root, "query": "needle", "projectPage": true, "pageSize": 2
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(result["matches"].as_array().unwrap().len(), 2);
+        assert!(result["nextCursor"].is_string());
+        let indexes = cache().lock().unwrap();
+        let entries: Vec<_> = indexes.iter().filter(|(key, _)| key.root == root).collect();
+        assert!(!entries.is_empty());
+        assert!(entries.iter().all(|(key, _)| key.names_only));
+        for (_, slot) in entries {
+            let slot = slot.lock().unwrap();
+            assert_eq!(
+                slot.as_ref().unwrap().read().unwrap().stats().posting_count,
+                0
+            );
+        }
+    }
+
+    #[test]
     fn names_and_cold_text_do_not_wait_for_content_build_and_invalidation_discards_its_slot() {
         let root = crate::test_support::temporary_root("independent-search-sources");
         fs::create_dir_all(&root).unwrap();
@@ -607,6 +657,7 @@ mod tests {
             delegated_roots: Vec::new(),
             max_file_bytes: crate::files::MAX_SEARCH_FILE_SIZE,
             include_ignored: false,
+            follow_symlinks: false,
         };
         let slot = Arc::new(std::sync::Mutex::new(None));
         cache()
@@ -622,6 +673,7 @@ mod tests {
             delegated_roots: Vec::new(),
             max_file_bytes: crate::files::MAX_SEARCH_FILE_SIZE,
             include_ignored: false,
+            follow_symlinks: false,
         };
         let worker = std::thread::spawn(move || {
             let names = get_names(&worker_root, &worker_rules).unwrap();
@@ -745,6 +797,7 @@ mod tests {
             delegated_roots: Vec::new(),
             max_file_bytes: crate::files::MAX_SEARCH_FILE_SIZE,
             include_ignored: false,
+            follow_symlinks: false,
             hidden_file_patterns: vec![],
         };
         let mut paths = Vec::new();
@@ -822,6 +875,7 @@ mod tests {
             delegated_roots: Vec::new(),
             max_file_bytes: crate::files::MAX_SEARCH_FILE_SIZE,
             include_ignored: false,
+            follow_symlinks: false,
             hidden_file_patterns: vec![],
         };
         let mut paths = Vec::new();
@@ -867,6 +921,7 @@ mod tests {
             delegated_roots: Vec::new(),
             max_file_bytes: crate::files::MAX_SEARCH_FILE_SIZE,
             include_ignored: false,
+            follow_symlinks: false,
             hidden_file_patterns: fixture["hiddenFilePatterns"]
                 .as_array()
                 .unwrap()
@@ -939,6 +994,7 @@ mod tests {
                 delegated_roots: Vec::new(),
                 max_file_bytes: crate::files::MAX_SEARCH_FILE_SIZE,
                 include_ignored: false,
+                follow_symlinks: false,
                 hidden_file_patterns: vec![format!("exclude-{index}/")],
             };
             let content = get_or_build(&root, &rules).unwrap();

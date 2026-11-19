@@ -41,7 +41,12 @@ pub(crate) fn search_everywhere_with_page(
         request.hidden_file_patterns.clone(),
     )
     .with_workspace_roots(&root, &request.workspace_roots)
-    .with_search_options(request.max_file_bytes, request.include_ignored)?;
+    .with_search_options(request.max_file_bytes, request.include_ignored)?
+    .with_search_visibility(
+        request.include_generated,
+        request.follow_symlinks,
+        &request.hidden_directory_names,
+    );
     let matcher = Matcher::new(
         &query,
         request.case_sensitive,
@@ -95,9 +100,13 @@ pub(crate) fn search_everywhere_with_page(
                 .hidden_directories
                 .iter()
                 .filter(|name| {
-                    !generated
+                    request
+                        .hidden_directory_names
                         .iter()
-                        .any(|generated| generated.eq_ignore_ascii_case(name))
+                        .any(|explicit| explicit.eq_ignore_ascii_case(name))
+                        || !generated
+                            .iter()
+                            .any(|generated| generated.eq_ignore_ascii_case(name))
                 })
                 .cloned()
                 .collect(),
@@ -105,6 +114,7 @@ pub(crate) fn search_everywhere_with_page(
             delegated_roots: rules.delegated_roots.clone(),
             max_file_bytes: rules.max_file_bytes,
             include_ignored: rules.include_ignored,
+            follow_symlinks: rules.follow_symlinks,
         };
         let names = search_index::get_names(&root, &name_rules)?;
         let names = names

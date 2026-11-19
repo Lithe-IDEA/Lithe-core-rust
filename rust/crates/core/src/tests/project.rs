@@ -2381,13 +2381,15 @@ fn file_encoding_options_are_optional_and_validated() {
         serde_json::json!({"root": root, "path": "a.txt", "encoding": "ebcdic"}),
     );
     assert_eq!(unknown["error"]["code"], "invalid_request");
-    // Invalid bytes fail automatic detection but are repaired on an explicit reopen.
-    fs::write(root.join("bad.txt"), [0x41, 0xFF, 0xFE, 0x42, 0x81]).unwrap();
+    // Legacy bytes use the lossless Windows-1252 fallback; explicit UTF-8 repairs them.
+    fs::write(root.join("bad.txt"), b"caf\xE9").unwrap();
     let auto = call(
         "file.read",
         serde_json::json!({"root": root, "path": "bad.txt"}),
     );
-    assert_eq!(auto["error"]["code"], "parse_failed");
+    assert_eq!(auto["data"]["encoding"], "windows-1252", "{auto}");
+    assert_eq!(auto["data"]["text"], "café", "{auto}");
+    assert_eq!(auto["data"]["lossy"], false, "{auto}");
     let lossy = call(
         "file.read",
         serde_json::json!({"root": root, "path": "bad.txt", "encoding": "utf-8"}),
@@ -2616,7 +2618,7 @@ fn search_reads_every_encoding_and_size_the_editor_opens() {
     assert_eq!(search("binaryToken417", false), Vec::new());
     assert_eq!(search("binary[T]oken417", true), Vec::new());
 
-    // Replacement writes UTF-8 back, so it must not offer the files that are not UTF-8.
+    // Replacement preserves the source encoding, so every searchable encoding is offered.
     let replacement = run_project_command(
         "workspace.replacePreview",
         serde_json::json!({"root": root, "query": "Token417", "replacement": "Mark",
@@ -2629,10 +2631,17 @@ fn search_reads_every_encoding_and_size_the_editor_opens() {
         .iter()
         .map(|file| file["path"].as_str().expect("path should be text"))
         .collect::<Vec<_>>();
-    assert!(replaced.contains(&"plain.txt"), "{replacement}");
-    for path in ["gbk.txt", "utf16-le.txt", "utf16-be.txt", "data.bin"] {
-        assert!(!replaced.contains(&path), "{path}: {replacement}");
+    for path in [
+        "plain.txt",
+        "gbk.txt",
+        "utf16-le.txt",
+        "utf16-be.txt",
+        "large.log",
+    ] {
+        assert!(replaced.contains(&path), "{path}: {replacement}");
     }
+    assert!(!replaced.contains(&"data.bin"), "{replacement}");
+    assert!(!replaced.contains(&"huge.log"), "{replacement}");
 }
 
 #[test]

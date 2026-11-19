@@ -85,6 +85,78 @@ fn changing_file_budget_rebuilds_postings_and_replacement_reads_the_same_text() 
 }
 
 #[test]
+fn complete_counts_include_occurrences_outside_the_first_page_and_unsaved_text() {
+    let workspace = Workspace::new();
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../../fixtures/search/idea-search-v1.json")).unwrap();
+    let case = &fixture["completeCounts"];
+    for (path, text) in case["files"].as_object().unwrap() {
+        workspace.write(path, text.as_str().unwrap());
+    }
+    assert_eq!(workspace.page(case["request"].clone()), case["expected"]);
+}
+
+#[cfg(unix)]
+#[test]
+fn search_follows_internal_links_without_cycles_or_external_targets() {
+    let workspace = Workspace::new();
+    let outside = Workspace::new();
+    workspace.write("source/a.txt", "needle\n");
+    workspace.write("source/private/secret.txt", "needle\n");
+    crate::indexing::configure(
+        serde_json::from_value(
+            json!({"root":workspace.0,"manualExcludedDirectories":["source/private"],"includedDirectories":[],"gitIgnoreEnabled":false}),
+        )
+        .unwrap(),
+        |_| Ok(()),
+    )
+    .unwrap();
+    outside.write("private.txt", "needle\n");
+    std::os::unix::fs::symlink(workspace.0.join("source"), workspace.0.join("alias")).unwrap();
+    std::os::unix::fs::symlink(&workspace.0, workspace.0.join("source/loop")).unwrap();
+    std::os::unix::fs::symlink(&outside.0, workspace.0.join("outside")).unwrap();
+    let page = workspace.page(json!({"query":"needle", "followSymlinks":true}));
+    let paths: Vec<_> = page["matches"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["path"].as_str().unwrap())
+        .collect();
+    assert_eq!(paths, ["alias/a.txt", "source/a.txt"]);
+    let listing = files::list_directories(
+        serde_json::from_value(
+            json!({"root":workspace.0,"paths":["", "alias", "source/loop", "outside"]}),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(listing.directories.len(), 2);
+    assert_eq!(listing.directories[1].path, "alias");
+    assert!(listing.directories[1].linked);
+    assert_eq!(listing.directories[1].children[0].path, "alias/a.txt");
+    let ordinary = workspace.page(json!({"query":"needle"}));
+    assert_eq!(ordinary["matches"].as_array().unwrap().len(), 1);
+    let unsaved = json!({"query":"unsaved", "followSymlinks":true,
+        "textOverrides":{"source/a.txt":"unsaved unsaved\n"}});
+    assert_eq!(
+        workspace.page(unsaved.clone())["matches"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    let mut counts = unsaved.clone();
+    counts["countOnly"] = json!(true);
+    assert_eq!(workspace.page(counts)["occurrences"], 4);
+    let mut replacement = unsaved;
+    replacement["root"] = json!(workspace.0);
+    replacement["replacement"] = json!("edited");
+    let preview = files::replace_preview(serde_json::from_value(replacement).unwrap()).unwrap();
+    assert_eq!(preview.files.len(), 1);
+    assert_eq!(preview.files[0].replacement_text, "edited edited\n");
+}
+
+#[test]
 fn idea_name_queries_and_line_suffix_find_real_paths() {
     let workspace = Workspace::new();
     workspace.write(
@@ -149,4 +221,16 @@ fn search_preferences_and_presentation_follow_the_shared_fixture() {
         crate::search_presentation(serde_json::from_value(case["request"].clone()).unwrap())
             .unwrap();
     assert_eq!(serde_json::to_value(actual).unwrap(), case["expected"]);
+}
+
+#[test]
+fn provider_discovery_uses_real_names_without_opening_source_files() {
+    let workspace = Workspace::new();
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../../fixtures/search/idea-search-v1.json")).unwrap();
+    let case = &fixture["languageDiscovery"];
+    for (path, text) in case["files"].as_object().unwrap() {
+        workspace.write(path, text.as_str().unwrap());
+    }
+    assert_eq!(workspace.page(case["request"].clone()), case["expected"]);
 }

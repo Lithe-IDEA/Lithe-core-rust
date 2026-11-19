@@ -24,6 +24,7 @@ mod name_matching;
 pub mod name_ranking;
 pub mod recent_projects;
 mod search_index;
+mod search_languages;
 mod search_paging;
 mod search_preferences;
 mod search_presentation;

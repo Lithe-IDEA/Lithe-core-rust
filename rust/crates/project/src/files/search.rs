@@ -67,6 +67,100 @@ pub fn search(request: SearchRequest) -> Result<SearchResponse, CoreError> {
     search_with_page(request, None)
 }
 
+/// Counts every matching occurrence without retaining previews or delaying a result page.
+pub fn search_counts(
+    mut request: SearchRequest,
+    count_paths: &[String],
+) -> Result<serde_json::Value, CoreError> {
+    parse_search_scope(
+        &request.scope_expression,
+        &mut request.scope_paths,
+        &mut request.include_path_patterns,
+        &mut request.exclude_path_patterns,
+    )?;
+    let root = existing_root(&request.root)?;
+    let rules = VisibilityRules::new(
+        request.hidden_directory_names.clone(),
+        request.hidden_file_patterns.clone(),
+    )
+    .with_workspace_roots(&root, &request.workspace_roots)
+    .with_search_options(request.max_file_bytes, request.include_ignored)?
+    .with_search_visibility(
+        request.include_generated,
+        request.follow_symlinks,
+        &request.hidden_directory_names,
+    );
+    let index = search_index::get_for_text(&root, &rules)?;
+    let index = index
+        .read()
+        .map_err(|_| CoreError::new(ErrorCode::Unknown, "Search index lock was poisoned"))?;
+    let matcher = Matcher::new(
+        request.query.trim(),
+        request.case_sensitive,
+        request.whole_words,
+        request.regular_expression,
+    )?;
+    let masks = parse_file_mask(&request.file_mask);
+    let filters = SearchPathFilters::new(
+        &request.include_path_patterns,
+        &request.exclude_path_patterns,
+        &request.path_filter_prefix,
+    )?;
+    let mut file_occurrences = std::collections::BTreeMap::new();
+    let aliases = canonical_text_overrides(&root, &request.text_overrides, request.follow_symlinks);
+    let (mut files, mut lines, mut occurrences) = (0usize, 0usize, 0usize);
+    if count_paths.len() > 200 {
+        return Err(CoreError::new(
+            ErrorCode::InvalidRequest,
+            "Too many file count paths",
+        ));
+    }
+    if !request.query.trim().is_empty() {
+        for id in index.all_file_ids() {
+            lithe_protocol::cancellation::check()?;
+            let Some(file) = index.file(id) else { continue };
+            let path = &file.path;
+            if !scope_allows(&request.scope_paths, path)
+                || !file_mask_allows(&masks, path)
+                || !filters.allows(path)
+            {
+                continue;
+            }
+            let Ok(absolute) = safe_relative_path(&root, path) else {
+                continue;
+            };
+            let text = request
+                .text_overrides
+                .get(path)
+                .map(String::as_str)
+                .or_else(|| aliases.get(&absolute).copied())
+                .map(str::to_owned)
+                .or_else(|| read_searchable_text_limit(&absolute, rules.max_file_bytes));
+            let Some(text) = text else { continue };
+            let mut count = 0;
+            for line in text.split('\n').map(line_content) {
+                lithe_protocol::cancellation::check()?;
+                let n = matcher.occurrence_count(line);
+                lines += usize::from(n > 0);
+                count += n;
+            }
+            if count > 0 {
+                files += 1;
+                occurrences += count;
+                if count_paths.contains(path) {
+                    file_occurrences.insert(path.clone(), count);
+                }
+            }
+        }
+    }
+    if let Some(policy) = crate::indexing::context(&root) {
+        policy.check()?;
+    }
+    Ok(
+        serde_json::json!({"files":files, "lines":lines, "occurrences":occurrences, "fileOccurrences":file_occurrences}),
+    )
+}
+
 /// Continues a content query inside the matcher, before applying its page budget.
 pub(crate) fn search_with_page(
     mut request: SearchRequest,
@@ -92,8 +186,19 @@ pub(crate) fn search_with_page(
         request.hidden_file_patterns.clone(),
     )
     .with_workspace_roots(&root, &request.workspace_roots)
-    .with_search_options(request.max_file_bytes, request.include_ignored)?;
-    let index = search_index::get_or_build(&root, &rules)?;
+    .with_search_options(request.max_file_bytes, request.include_ignored)?
+    .with_search_visibility(
+        request.include_generated,
+        request.follow_symlinks,
+        &request.hidden_directory_names,
+    );
+    // Interactive pages must not build trigrams for every file before the first
+    // result. Reuse warmed postings, or read candidates from the names inventory.
+    let index = if page.is_some() {
+        search_index::get_for_text(&root, &rules)?
+    } else {
+        search_index::get_or_build(&root, &rules)?
+    };
     let index = index
         .read()
         .map_err(|_| CoreError::new(ErrorCode::Unknown, "Search index lock was poisoned"))?;
@@ -170,7 +275,13 @@ pub(crate) fn search_with_index(
     }
 
     let mut content_matches = 0;
-    let mut candidates = index.candidate_ids(query, request.regular_expression);
+    let aliases = canonical_text_overrides(root, &request.text_overrides, request.follow_symlinks);
+    let mut candidates = if aliases.is_empty() {
+        index.candidate_ids(query, request.regular_expression)
+    } else {
+        // An alias may have no disk posting for a word present only in its editor snapshot.
+        index.all_file_ids()
+    };
     for path in request.text_overrides.keys() {
         if let Some(id) = index.id_for_path(path) {
             if !candidates.contains(&id) {
@@ -197,13 +308,21 @@ pub(crate) fn search_with_index(
         {
             continue;
         }
-        let file = root.join(path);
-        let text = request.text_overrides.get(path).cloned().or_else(|| {
-            read_searchable_text_limit(
-                &file,
-                request.max_file_bytes.unwrap_or(MAX_SEARCH_FILE_SIZE),
-            )
-        });
+        let Ok(file) = safe_relative_path(root, path) else {
+            continue;
+        };
+        let text = request
+            .text_overrides
+            .get(path)
+            .map(String::as_str)
+            .or_else(|| aliases.get(&file).copied())
+            .map(str::to_owned)
+            .or_else(|| {
+                read_searchable_text_limit(
+                    &file,
+                    request.max_file_bytes.unwrap_or(MAX_SEARCH_FILE_SIZE),
+                )
+            });
         let Some(text) = text else { continue };
         for (index, line) in text.split('\n').map(line_content).enumerate() {
             lithe_protocol::cancellation::check()?;

@@ -49,6 +49,12 @@ pub struct DirectoryListingRequest {
 #[serde(rename_all = "camelCase")]
 /// Bounded file, content, and symbol search options.
 pub struct SearchRequest {
+    /// Includes plugin-declared generated folders for this query, retaining manual exclusions.
+    #[serde(default)]
+    pub include_generated: bool,
+    /// Follows only links whose canonical targets stay inside the workspace.
+    #[serde(default)]
+    pub follow_symlinks: bool,
     /// Comma-separated project paths and include/exclude globs; parsed only by Core.
     #[serde(default)]
     pub scope_expression: String,
@@ -190,6 +196,12 @@ pub struct SearchIndexStatusResponse {
 #[serde(rename_all = "camelCase")]
 /// Search and replacement options used to produce a non-mutating preview.
 pub struct ReplacementPreviewRequest {
+    /// Uses the same request-local generated-folder visibility as search.
+    #[serde(default)]
+    pub include_generated: bool,
+    /// Follows only workspace-internal links; previews deduplicate canonical files.
+    #[serde(default)]
+    pub follow_symlinks: bool,
     /// Same request-local path and glob expression used by content search.
     #[serde(default)]
     pub scope_expression: String,

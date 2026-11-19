@@ -568,7 +568,7 @@ or removing a command fails until the table changes in the same commit.
 | `workspace.configureIndexing` | Install a process-local, canonical-root indexing policy before workspace consumers run; returns a monotonic revision, effective directory reasons and Git failure state; see `rust/fixtures/workspace/indexing-policy-v1.json` |
 | `workspace.refreshIndexing` | Refresh external Git decisions for a live `root`, `ownerId`, `revision` lease without changing preferences or release tokens; returns lazy `IndexingStatus` |
 | `workspace.filterChanges` | Filter an array of workspace-relative paths, or `{ paths, hiddenFilePatterns }` whose `!` entries turn default exclusions off, against Core's default hidden folders and patterns, including the folders enabled plugins declare; preserve order, spelling, and the empty root path. Native event loss bypasses filtering. Hosts relativize to the most specific explicit watch root and retain explicitly watched files |
-| `workspace.listDirectories` | Return one visible level of children for each requested workspace-relative directory (`""` is the root); missing, hidden, symlinked, or nested-worktree paths are omitted, and each listing reports the nested worktrees it left out. Child directories have `children: []` only when a shallow probe proves them visibly empty; otherwise children remain omitted (unloaded), with no recursive tree allocation. Children list directories first, then names in IDEA's natural file-name order (digit runs compare by value, case-insensitive, `-` next to `_`; fixture `rust/fixtures/workspace/file-name-order-v1.json`) |
+| `workspace.listDirectories` | Return one visible level of children for each requested workspace-relative directory (`""` is the root); missing, hidden, external/cyclic symlink, or nested-worktree paths are omitted; workspace-internal aliases are browsable and each listing reports `linked: true` when reached through an alias, and each listing reports the nested worktrees it left out. Child directories have `children: []` only when a shallow probe proves them visibly empty; otherwise children remain omitted (unloaded), with no recursive tree allocation. Children list directories first, then names in IDEA's natural file-name order (digit runs compare by value, case-insensitive, `-` next to `_`; fixture `rust/fixtures/workspace/file-name-order-v1.json`) |
 | `workspace.orderEntries` | Order natively enumerated directory siblings |
 | `workspace.projectTree.rows` | Say which loaded project tree nodes show as rows, keep the selection on a row that shows, and find the row the top of the view was on, without reading the disk (from `lithe-project-tree`) |
 | `workspace.rowSelection.reduce` | Apply one plain, Cmd/Ctrl or Shift click, or the end of a batch, to the multi-selection of rows of workspace paths and return what a batch acts on (from `lithe-row-selection`) |
@@ -2332,7 +2332,41 @@ Without `projectPage`, its original capped literal-search response is unchanged.
 Project pages use path/line continuation inside matching, including across pages
 within one file; options and immutable `textOverrides` bind the cursor. There is
 no 200-result total ceiling. Each page observes current files; edits before a
-cursor require a fresh query.
+cursor require a fresh query. Like Search Everywhere text queries, project pages
+reuse ready content postings or search the names-only inventory directly; they
+never synchronously build a full content index before returning the first page.
+
+`workspace.search` with `countOnly: true` scans the same query, scope, decoding,
+visibility and unsaved snapshots independently of the loaded page. It returns
+`{ files, lines, occurrences, fileOccurrences }`: files with at least one content
+match, matching lines, and every non-overlapping occurrence (including zero-width
+regex matches). `countPaths` selects at most 200 loaded paths for per-file totals;
+the map contains only selected matching paths, while the three totals cover the
+entire query. No previews are retained or returned. The host publishes its first
+page before starting this cancellable scan, labels counting/failure distinctly,
+and discards totals when the query, snapshots or watched files change.
+
+`workspace.search` with `languageSources` discovers relevant language providers
+without opening documents. Each source has opaque `languageId`, optional
+`fileExtensions` (with or without a dot) and `fileNames` (including project
+markers). Core matches case-insensitively against the workspace name inventory
+and returns sorted unique `{ languages }`. Sources are limited to 1024, each ID
+to 256 bytes, each source to 1024 selectors and each selector to 1024 bytes.
+The host reads enabled manifests, starts only relevant servers when symbol
+search is requested, and queries their standard `workspace/symbol` capability
+as readiness arrives. Core does not duplicate a language parser or semantic index.
+
+Search, Search Everywhere and replacement accept query-local
+`includeGenerated` and `followSymlinks`. Generated output declarations can be
+included without overriding explicitly hidden names/globs or manual indexing
+exclusions. Internal links retain lexical result paths; canonical targets must
+stay inside the workspace and respect target exclusions and delegated roots.
+Canonical ancestor checks stop cycles. External roots must be opened as workspace
+roots rather than traversed implicitly. Link-aware indexes are rebuilt on native
+file events and invalidated on saves, so a physical target change cannot leave
+an alias stale. Replacement previews deduplicate canonical files to avoid writing
+one file twice. Directory listings expose internal aliases and `linked`; hosts
+refresh expanded linked listings when recursive physical-target events arrive.
 
 Search and replacement accept `scopeExpression`: comma-separated relative paths,
 include globs and `!`-prefixed exclude globs. `scopePaths` remains supported.
