@@ -14,7 +14,7 @@
 
 ## 待合入
 
-- **`buildSystems` 1**（API-29）：清单新增 `buildSystems[].test.discoveryCommand`，已有测试运行可以独立采用命令或 provider。命令使用现有构建工具，把 `litheTestDiscovery` v0 写到宿主提供的 `${outputFile}`。Core 的 `build.testDiscoveryPlan`、`build.decodeTestDiscovery` 和测试树兼容两种发现来源，检查每条选择器可原样运行，命令尝试沿用 `lithe/build/discoverTests` 的结构化终态。没有新增宿主方法、通知或 SDK 版本。见 [1lck/Lithe-IDEA#2122](https://github.com/1lck/Lithe-IDEA/issues/2122)。
+- [#112](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/112)，[@Mucheen](https://github.com/Mucheen)，**`buildSystems` 1**（API-29）：清单新增 `buildSystems[].test.discoveryCommand`，已有测试运行可以独立采用命令或 provider。命令使用现有构建工具，把 `litheTestDiscovery` v0 写到宿主提供的 `${outputFile}`。Core 的 `build.testDiscoveryPlan`、`build.decodeTestDiscovery` 和测试树兼容两种发现来源，检查每条选择器可原样运行，命令尝试沿用 `lithe/build/discoverTests` 的结构化终态。没有新增宿主方法、通知或 SDK 版本。见 [1lck/Lithe-IDEA#2122](https://github.com/1lck/Lithe-IDEA/issues/2122)。
 
 - `ui` 0 内的补充（API-13）：视图事件新增 `width` 和 `resize`，画布可以跟随窗口宽度重新排版。会报告宽度的宿主在每个视图事件里带 `width`（排版视图节点用的宽度，单位为点，至少为 1 的整数，也是顶层画布的宽度），并且量到宽度之后才发 `open`；画布的 `on` 除 `viewport` 外可以写 `resize`，视图里有这样的画布时，宽度停止变化 400 ms 后宿主发 `resize` 和新的 `width`，等待中的 `resize` 可以合并成最新的一个。插件只有在收到带 `width` 的事件后才写 `resize`：不报告宽度的宿主不发 `resize`，它的 Core 也会拒绝写了 `resize` 的画布。契约 README 同时写明画布在缩放 1 时怎样放 `viewBox`：不写 `pan` 时显示整个 `viewBox`，按视图宽度缩放但不超过 `height`，从区域左上角开始；写了 `pan` 时宽度占满视图、上边对齐区域顶部，缩小到比区域窄时水平居中。以前的说明只有“按视图宽度缩放、`height` 点高”，在更宽的窗口里会裁掉场景下半部分。Core 的画布校验接受 `on: ["viewport", "resize"]`，`plugin-ui.schema.json` 的 canvas 说明和 `on` 同步；Rust SDK 新增 `ViewEventKind::Resize` 和 `ViewEvent::width`，Java SDK 新增 `Kind.RESIZE` 和 `width()`，Node SDK 的 `ViewEventKind` 加上 `resize`、`ViewEvent` 加上 `width`、画布 `on` 的类型放宽，三个 SDK 的 README 补充用法；`domains/settings.md` 中英两段说明区域画布怎样按 `width` 排版，以及旧宿主下的固定宽度（语言页约 610 点、构建系统页和编译器页右侧详情约 340 点）（[1lck/Lithe-IDEA#2181](https://github.com/1lck/Lithe-IDEA/issues/2181)）。没有新增能力版本、宿主方法、通知或 SDK 版本，取代 [#107](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/107)。
 
@@ -47,6 +47,7 @@
 | `buildProviders` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `buildProviders` | 1 | 2026-11-18 | [#89](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/89) |
 | `buildSystems` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
+| `buildSystems` | 1 | 待合入 | [#112](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/112) |
 | `commandInstallers` | 0 | 2026-11-15 | [#53](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/53) |
 | `debugAdapters` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `executionProviders` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
