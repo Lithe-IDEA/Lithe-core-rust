@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Sample Notes</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="main.js" defer></script>
+</head>
+<body>
+  <form id="note">
+    <label>Name <input name="name" required pattern="[a-z0-9-]{1,64}"></label>
+    <label>Text <textarea name="text" rows="4"></textarea></label>
+    <button type="submit">Save</button>
+    <button type="button" id="read">Read</button>
+  </form>
+  <form id="secret">
+    <label>Password <input name="secret" type="password"></label>
+    <button type="submit">Remember</button>
+    <button type="button" id="check">Check</button>
+  </form>
+  <p id="status" role="status"></p>
+</body>
+</html>

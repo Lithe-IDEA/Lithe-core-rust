@@ -4,5 +4,6 @@
 node_modules/
 /shared/plugins/sdk/java/**/target/
 /shared/plugins/sdk/rust/target/
+/shared/plugins/sdk/go/bin/
 *.tmp
 .DS_Store

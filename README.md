@@ -24,7 +24,7 @@ node scripts/rust-core/verify-platform-tests.mjs         # 每个测试都在所
 scripts/rust-core/verify-rust-core-comments.sh           # 注释规范
 node scripts/logging/generate-log-events.mjs --check     # 日志事件目录与生成表一致
 node shared/plugins/scripts/verify-docs.mjs              # 契约 $id 与文档链接
-node shared/plugins/scripts/sdk-e2e.mjs                  # 三个 SDK 对当前 Core 的端到端测试
+node shared/plugins/scripts/sdk-e2e.mjs                  # 四个 SDK 对当前 Core 的端到端测试
 ```
 
 修改 `shared/plugins/contract/v1/`、`rust/crates/plugin-model/src/capabilities.rs` 或
@@ -59,7 +59,7 @@ node scripts/rust-core/verify-platform-tests.mjs         # every test runs on a 
 scripts/rust-core/verify-rust-core-comments.sh           # comment rules
 node scripts/logging/generate-log-events.mjs --check     # log event catalog matches the generated table
 node shared/plugins/scripts/verify-docs.mjs              # contract $id values and documentation links
-node shared/plugins/scripts/sdk-e2e.mjs                  # end-to-end tests of the three SDKs against this Core
+node shared/plugins/scripts/sdk-e2e.mjs                  # end-to-end tests of the four SDKs against this Core
 ```
 
 A pull request that changes `shared/plugins/contract/v1/`, `rust/crates/plugin-model/src/capabilities.rs` or `rust/crates/plugin-rpc/src/` updates the [protocol changelog](shared/plugins/reference/protocol-changelog.md) in the same pull request.
