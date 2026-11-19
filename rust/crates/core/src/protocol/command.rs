@@ -553,6 +553,10 @@ pub enum WorkspaceCommand {
     Search,
     /// Searches file paths, contents, and symbols (`workspace.searchEverywhere`).
     SearchEverywhere,
+    /// Resolves user-configured content and replacement budgets (`workspace.searchPreferences`).
+    SearchPreferences,
+    /// Projects loaded search results into collapsible file groups (`workspace.searchPresentation`).
+    SearchPresentation,
     /// Previews replacements without writing files (`workspace.replacePreview`).
     ReplacePreview,
     /// Computes replacement on a supplied snapshot without writing (`workspace.replaceText`).
@@ -1282,6 +1286,12 @@ impl CoreCommand {
             "workspace.search" => Some(Self::Workspace(WorkspaceCommand::Search)),
             "workspace.searchEverywhere" => {
                 Some(Self::Workspace(WorkspaceCommand::SearchEverywhere))
+            }
+            "workspace.searchPreferences" => {
+                Some(Self::Workspace(WorkspaceCommand::SearchPreferences))
+            }
+            "workspace.searchPresentation" => {
+                Some(Self::Workspace(WorkspaceCommand::SearchPresentation))
             }
             "workspace.replacePreview" => Some(Self::Workspace(WorkspaceCommand::ReplacePreview)),
             "workspace.replaceText" => Some(Self::Workspace(WorkspaceCommand::ReplaceText)),

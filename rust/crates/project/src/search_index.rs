@@ -1,8 +1,7 @@
 //! Incremental workspace search indexing with exact final-content matching.
 
 use crate::files::{
-    is_inside_nested_linked_worktree, read_searchable_text, relative_path, visible_children,
-    ChildOrder, VisibilityRules,
+    is_inside_nested_linked_worktree, relative_path, visible_children, ChildOrder, VisibilityRules,
 };
 use lithe_protocol::{CoreError, ErrorCode};
 use lithe_workspace::{self as workspace, fs};
@@ -21,6 +20,7 @@ pub(crate) struct WorkspaceSearchIndex {
     path_to_id: HashMap<String, u32>,
     postings: HashMap<u32, Vec<u32>>,
     names_only: bool,
+    max_file_bytes: u64,
 }
 
 /// Searchable file contents stored under a stable numeric ID.
@@ -56,6 +56,8 @@ struct IndexKey {
     names_only: bool,
     delegated_roots: Vec<PathBuf>,
     policy_revision: u64,
+    max_file_bytes: u64,
+    include_ignored: bool,
 }
 
 type SharedIndex = Arc<RwLock<WorkspaceSearchIndex>>;
@@ -79,6 +81,8 @@ fn key(root: &Path, rules: &VisibilityRules) -> IndexKey {
         names_only: false,
         delegated_roots: rules.delegated_roots.clone(),
         policy_revision: super::indexing::context(root).map_or(0, |policy| policy.revision),
+        max_file_bytes: rules.max_file_bytes,
+        include_ignored: rules.include_ignored,
     }
 }
 
@@ -174,15 +178,6 @@ pub(crate) fn update_cached_file(root: &Path, path: &Path) {
         return;
     }
     let metadata = fs::symlink_metadata(&absolute).ok();
-    if super::indexing::is_excluded(
-        root,
-        &absolute,
-        metadata.as_ref().is_some_and(|m| m.is_dir()),
-    )
-    .unwrap_or(true)
-    {
-        return;
-    }
     let revision = super::indexing::context(root).map_or(0, |policy| policy.revision);
     for (cache_key, slot) in entries {
         if cache_key.policy_revision != revision {
@@ -194,7 +189,22 @@ pub(crate) fn update_cached_file(root: &Path, path: &Path) {
             hidden_directories: cache_key.hidden_directories,
             hidden_file_patterns: cache_key.hidden_file_patterns,
             delegated_roots: cache_key.delegated_roots,
+            max_file_bytes: cache_key.max_file_bytes,
+            include_ignored: cache_key.include_ignored,
         };
+        let excluded = match super::indexing::context(root) {
+            Some(policy) => policy
+                .search_reason(
+                    &relative,
+                    metadata.as_ref().is_some_and(|value| value.is_dir()),
+                    rules.include_ignored,
+                )
+                .map(|reason| reason.is_some()),
+            None => Ok(false),
+        };
+        if excluded.unwrap_or(true) {
+            continue;
+        }
         if rules.is_delegated(&absolute) {
             continue;
         }
@@ -244,6 +254,8 @@ pub(crate) fn update_paths(
             hidden_directories: cache_key.hidden_directories,
             hidden_file_patterns: cache_key.hidden_file_patterns,
             delegated_roots: cache_key.delegated_roots,
+            max_file_bytes: cache_key.max_file_bytes,
+            include_ignored: cache_key.include_ignored,
         };
         for value in paths {
             let Some(absolute) = normalized_update_path(root, value) else {
@@ -258,16 +270,22 @@ pub(crate) fn update_paths(
                 continue;
             }
             let metadata = fs::symlink_metadata(&absolute).ok();
-            if super::indexing::is_excluded(
-                root,
-                &absolute,
-                metadata.as_ref().is_some_and(|m| m.is_dir()),
-            )
-            .unwrap_or(true)
-            {
+            let excluded = match super::indexing::context(root) {
+                Some(policy) => policy
+                    .search_reason(
+                        &relative,
+                        metadata.as_ref().is_some_and(|m| m.is_dir()),
+                        effective_rules.include_ignored,
+                    )
+                    .map(|reason| reason.is_some()),
+                None => Ok(false),
+            };
+            if excluded.unwrap_or(true) {
                 continue;
             }
-            if metadata.as_ref().is_some_and(|value| value.is_dir())
+            if metadata
+                .as_ref()
+                .is_some_and(|value| value.is_dir() || value.file_type().is_symlink())
                 || (metadata.is_none() && index.has_descendant(&relative))
             {
                 return UpdateOutcome::RequiresRebuild;
@@ -292,6 +310,7 @@ impl WorkspaceSearchIndex {
             path_to_id: HashMap::with_capacity(paths.len()),
             postings: HashMap::new(),
             names_only,
+            max_file_bytes: rules.max_file_bytes,
         };
         for path in paths {
             lithe_protocol::cancellation::check()?;
@@ -314,7 +333,7 @@ impl WorkspaceSearchIndex {
         let trigrams = if self.names_only {
             Vec::new()
         } else {
-            read_trigrams(path)
+            read_trigrams(path, self.max_file_bytes)
         };
         let id = self
             .free_ids
@@ -485,7 +504,10 @@ fn collect_files(
         return Ok(());
     }
     if let Some(policy) = policy {
-        if policy.reason(&relative_path(path, root), true)?.is_some() {
+        if policy
+            .search_reason(&relative_path(path, root), true, rules.include_ignored)?
+            .is_some()
+        {
             return Ok(());
         }
     }
@@ -515,7 +537,7 @@ fn collect_files(
         } else {
             if let Some(policy) = policy {
                 if policy
-                    .reason(&relative_path(&child, root), false)?
+                    .search_reason(&relative_path(&child, root), false, rules.include_ignored)?
                     .is_some()
                 {
                     continue;
@@ -527,8 +549,8 @@ fn collect_files(
     Ok(())
 }
 
-fn read_trigrams(path: &Path) -> Vec<u32> {
-    read_searchable_text(path)
+fn read_trigrams(path: &Path, limit: u64) -> Vec<u32> {
+    crate::files::read_searchable_text_limit(path, limit)
         .map(|text| unique_trigrams(&text))
         .unwrap_or_default()
 }
@@ -583,6 +605,8 @@ mod tests {
             hidden_directories: vec![],
             hidden_file_patterns: vec![],
             delegated_roots: Vec::new(),
+            max_file_bytes: crate::files::MAX_SEARCH_FILE_SIZE,
+            include_ignored: false,
         };
         let slot = Arc::new(std::sync::Mutex::new(None));
         cache()
@@ -596,6 +620,8 @@ mod tests {
             hidden_directories: vec![],
             hidden_file_patterns: vec![],
             delegated_roots: Vec::new(),
+            max_file_bytes: crate::files::MAX_SEARCH_FILE_SIZE,
+            include_ignored: false,
         };
         let worker = std::thread::spawn(move || {
             let names = get_names(&worker_root, &worker_rules).unwrap();
@@ -717,6 +743,8 @@ mod tests {
         let rules = VisibilityRules {
             hidden_directories: vec![],
             delegated_roots: Vec::new(),
+            max_file_bytes: crate::files::MAX_SEARCH_FILE_SIZE,
+            include_ignored: false,
             hidden_file_patterns: vec![],
         };
         let mut paths = Vec::new();
@@ -792,6 +820,8 @@ mod tests {
         let rules = VisibilityRules {
             hidden_directories: vec![],
             delegated_roots: Vec::new(),
+            max_file_bytes: crate::files::MAX_SEARCH_FILE_SIZE,
+            include_ignored: false,
             hidden_file_patterns: vec![],
         };
         let mut paths = Vec::new();
@@ -835,6 +865,8 @@ mod tests {
         let rules = VisibilityRules {
             hidden_directories: vec![],
             delegated_roots: Vec::new(),
+            max_file_bytes: crate::files::MAX_SEARCH_FILE_SIZE,
+            include_ignored: false,
             hidden_file_patterns: fixture["hiddenFilePatterns"]
                 .as_array()
                 .unwrap()
@@ -905,6 +937,8 @@ mod tests {
             let rules = VisibilityRules {
                 hidden_directories: vec![],
                 delegated_roots: Vec::new(),
+                max_file_bytes: crate::files::MAX_SEARCH_FILE_SIZE,
+                include_ignored: false,
                 hidden_file_patterns: vec![format!("exclude-{index}/")],
             };
             let content = get_or_build(&root, &rules).unwrap();

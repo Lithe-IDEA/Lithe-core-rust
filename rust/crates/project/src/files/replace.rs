@@ -46,8 +46,16 @@ pub fn replace_text(request: ReplacementTextRequest) -> Result<serde_json::Value
 
 /// Computes per-file replacements without writing any workspace content.
 pub fn replace_preview(
-    request: ReplacementPreviewRequest,
+    mut request: ReplacementPreviewRequest,
 ) -> Result<ReplacementPreviewResponse, CoreError> {
+    let (mut includes, mut excludes) = (Vec::new(), Vec::new());
+    parse_search_scope(
+        &request.scope_expression,
+        &mut request.scope_paths,
+        &mut includes,
+        &mut excludes,
+    )?;
+    let filters = SearchPathFilters::new(&includes, &excludes, "")?;
     let root = existing_root(&request.root)?;
     let indexing_policy = crate::indexing::context(&root);
     let query = request.query.trim().to_string();
@@ -58,7 +66,8 @@ pub fn replace_preview(
         request.hidden_directory_names.clone(),
         request.hidden_file_patterns.clone(),
     )
-    .with_workspace_roots(&root, &request.workspace_roots);
+    .with_workspace_roots(&root, &request.workspace_roots)
+    .with_search_options(request.max_file_bytes, request.include_ignored)?;
     let shared_index = search_index::get_or_build(&root, &rules)?;
     let index = shared_index
         .read()
@@ -71,7 +80,7 @@ pub fn replace_preview(
     )?;
     let candidate_ids = index.candidate_ids(&query, request.regular_expression);
     let candidate_set = candidate_ids.iter().copied().collect::<HashSet<_>>();
-    let paths = if request.paths.is_empty() {
+    let mut paths = if request.paths.is_empty() {
         candidate_ids
             .into_iter()
             .filter_map(|id| index.file(id).map(|file| file.path.clone()))
@@ -91,25 +100,48 @@ pub fn replace_preview(
         }
         paths
     };
+    if request.paths.is_empty() {
+        paths.extend(request.text_overrides.keys().cloned());
+        paths.sort();
+        paths.dedup();
+    }
     drop(index);
     let masks = parse_file_mask(&request.file_mask);
     let mut files = Vec::new();
     for path in paths {
         lithe_protocol::cancellation::check()?;
         let relative = safe_relative_path_string(&path)?;
-        if !file_mask_allows(&masks, &relative) {
+        if !scope_allows(&request.scope_paths, &relative)
+            || !file_mask_allows(&masks, &relative)
+            || !filters.allows(&relative)
+        {
             continue;
         }
-        let file = root.join(&relative);
-        if rules.is_delegated(&file) || crate::indexing::is_excluded(&root, &file, false)? {
+        let Ok(file) = safe_relative_path(&root, &relative) else {
+            continue;
+        };
+        if rules.is_delegated(&file)
+            || indexing_policy
+                .as_ref()
+                .map(|policy| policy.search_reason(&relative, false, request.include_ignored))
+                .transpose()?
+                .flatten()
+                .is_some()
+        {
             continue;
         }
-        let text = request
-            .text_overrides
-            .get(&relative)
-            .cloned()
-            .or_else(|| read_replaceable_text(&file));
-        let Some(text) = text else { continue };
+        let (text, source_identity) = if let Some(text) = request.text_overrides.get(&relative) {
+            (text.clone(), None)
+        } else {
+            let Some(bytes) = read_searchable_bytes(&file, rules.max_file_bytes) else {
+                continue;
+            };
+            let identity = encoding::bytes_identity(&bytes);
+            let Some(text) = searchable_bytes_text(bytes) else {
+                continue;
+            };
+            (text, Some(identity))
+        };
         let mut matches = Vec::new();
         let mut replaced_lines = Vec::new();
         for (index, raw_line) in text.split('\n').enumerate() {
@@ -134,6 +166,7 @@ pub fn replace_preview(
                 path: relative,
                 matches,
                 replacement_text: replaced_lines.join("\n"),
+                source_identity,
             });
         }
     }

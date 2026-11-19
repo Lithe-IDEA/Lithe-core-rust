@@ -747,6 +747,8 @@ fn ignored_rule(rules: &HistoryIgnoreRules, relative_path: &str) -> Option<Histo
                     hidden_directories: Vec::new(),
                     hidden_file_patterns: vec![pattern.to_string()],
                     delegated_roots: Vec::new(),
+                    max_file_bytes: crate::files::MAX_SEARCH_FILE_SIZE,
+                    include_ignored: false,
                 }
                 .is_hidden(relative_path, false)
         });

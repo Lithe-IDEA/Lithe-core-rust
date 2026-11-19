@@ -12,6 +12,10 @@ pub struct VisibilityRules {
     pub(crate) hidden_file_patterns: Vec<String>,
     /// Canonical nested roots delegated by this request, never by the global policy registry.
     pub(crate) delegated_roots: Vec<PathBuf>,
+    /// Request-local text budget; changing it invalidates the content index.
+    pub(crate) max_file_bytes: u64,
+    /// Git visibility can be widened for a search without changing project policy.
+    pub(crate) include_ignored: bool,
 }
 
 impl VisibilityRules {
@@ -22,7 +26,26 @@ impl VisibilityRules {
             hidden_directories: rules.hidden_directories,
             hidden_file_patterns: rules.hidden_file_patterns,
             delegated_roots: Vec::new(),
+            max_file_bytes: MAX_SEARCH_FILE_SIZE,
+            include_ignored: false,
         }
+    }
+
+    /// Adds search-only budgets without changing project-tree visibility.
+    pub(crate) fn with_search_options(
+        mut self,
+        bytes: Option<u64>,
+        include_ignored: bool,
+    ) -> Result<Self, CoreError> {
+        self.max_file_bytes = bytes.unwrap_or(MAX_SEARCH_FILE_SIZE);
+        if self.max_file_bytes == 0 || self.max_file_bytes > MAX_OPEN_FILE_SIZE {
+            return Err(CoreError::new(
+                ErrorCode::InvalidRequest,
+                "Search file budget is outside the supported range",
+            ));
+        }
+        self.include_ignored = include_ignored;
+        Ok(self)
     }
 
     /// Binds scan ownership to the caller's workspace without changing directory browsing.

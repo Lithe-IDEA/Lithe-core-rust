@@ -1,0 +1,66 @@
+{
+  "preferences": [
+    {
+      "request": {},
+      "expected": {
+        "maxFileBytes": 16777216,
+        "replacementMaxFileBytes": 16777216,
+        "maximumFileBytes": 67108864
+      }
+    },
+    {
+      "request": {
+        "maxFileBytes": 33554432
+      },
+      "expected": {
+        "maxFileBytes": 33554432,
+        "replacementMaxFileBytes": 33554432,
+        "maximumFileBytes": 67108864
+      }
+    }
+  ],
+  "invalidPreferences": [
+    {
+      "maxFileBytes": 0
+    },
+    {
+      "maxFileBytes": 67108865
+    },
+    {
+      "replacementMaxFileBytes": 0
+    }
+  ],
+  "presentation": {
+    "request": {
+      "paths": [
+        "b.txt",
+        "a.txt",
+        "a.txt"
+      ],
+      "collapsed": [
+        "a.txt"
+      ]
+    },
+    "expected": {
+      "files": 2,
+      "lines": 3,
+      "rows": [
+        {
+          "path": "a.txt",
+          "count": 2,
+          "matchIndex": null
+        },
+        {
+          "path": "b.txt",
+          "count": 1,
+          "matchIndex": null
+        },
+        {
+          "path": "b.txt",
+          "count": 0,
+          "matchIndex": 0
+        }
+      ]
+    }
+  }
+}

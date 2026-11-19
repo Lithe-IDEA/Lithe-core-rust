@@ -64,6 +64,20 @@ pub fn search_text_batch(request: SearchTextBatchRequest) -> Result<serde_json::
 
 /// Searches visible file paths and current file contents using the shared index.
 pub fn search(request: SearchRequest) -> Result<SearchResponse, CoreError> {
+    search_with_page(request, None)
+}
+
+/// Continues a content query inside the matcher, before applying its page budget.
+pub(crate) fn search_with_page(
+    mut request: SearchRequest,
+    page: Option<&SearchPage>,
+) -> Result<SearchResponse, CoreError> {
+    parse_search_scope(
+        &request.scope_expression,
+        &mut request.scope_paths,
+        &mut request.include_path_patterns,
+        &mut request.exclude_path_patterns,
+    )?;
     let root = existing_root(&request.root)?;
     let indexing_policy = crate::indexing::context(&root);
     let query = request.query.trim().to_string();
@@ -77,12 +91,13 @@ pub fn search(request: SearchRequest) -> Result<SearchResponse, CoreError> {
         request.hidden_directory_names.clone(),
         request.hidden_file_patterns.clone(),
     )
-    .with_workspace_roots(&root, &request.workspace_roots);
+    .with_workspace_roots(&root, &request.workspace_roots)
+    .with_search_options(request.max_file_bytes, request.include_ignored)?;
     let index = search_index::get_or_build(&root, &rules)?;
     let index = index
         .read()
         .map_err(|_| CoreError::new(ErrorCode::Unknown, "Search index lock was poisoned"))?;
-    let result = search_with_index(&root, &request, &query, &index, None)?;
+    let result = search_with_index(&root, &request, &query, &index, page)?;
     if let Some(policy) = &indexing_policy {
         policy.check()?;
     }
@@ -156,6 +171,13 @@ pub(crate) fn search_with_index(
 
     let mut content_matches = 0;
     let mut candidates = index.candidate_ids(query, request.regular_expression);
+    for path in request.text_overrides.keys() {
+        if let Some(id) = index.id_for_path(path) {
+            if !candidates.contains(&id) {
+                candidates.push(id);
+            }
+        }
+    }
     if page.is_some() {
         candidates.sort_by_key(|id| index.file(*id).map(|file| file.path.as_str()));
     }
@@ -176,9 +198,13 @@ pub(crate) fn search_with_index(
             continue;
         }
         let file = root.join(path);
-        let Some(text) = read_searchable_text(&file) else {
-            continue;
-        };
+        let text = request.text_overrides.get(path).cloned().or_else(|| {
+            read_searchable_text_limit(
+                &file,
+                request.max_file_bytes.unwrap_or(MAX_SEARCH_FILE_SIZE),
+            )
+        });
+        let Some(text) = text else { continue };
         for (index, line) in text.split('\n').map(line_content).enumerate() {
             lithe_protocol::cancellation::check()?;
             if matcher.matches(line) {
@@ -247,7 +273,8 @@ pub fn warm_search_index(
 ) -> Result<SearchIndexStatusResponse, CoreError> {
     let root = existing_root(&request.root)?;
     let rules = VisibilityRules::new(request.hidden_directory_names, request.hidden_file_patterns)
-        .with_workspace_roots(&root, &request.workspace_roots);
+        .with_workspace_roots(&root, &request.workspace_roots)
+        .with_search_options(request.max_file_bytes, request.include_ignored)?;
     let index = search_index::get_or_build(&root, &rules)?;
     let index = index
         .read()
@@ -270,7 +297,8 @@ pub fn update_search_index(
 ) -> Result<SearchIndexStatusResponse, CoreError> {
     let root = existing_root(&request.root)?;
     let rules = VisibilityRules::new(request.hidden_directory_names, request.hidden_file_patterns)
-        .with_workspace_roots(&root, &request.workspace_roots);
+        .with_workspace_roots(&root, &request.workspace_roots)
+        .with_search_options(request.max_file_bytes, request.include_ignored)?;
     if request.paths.iter().any(|path| {
         path.ends_with(".gitignore")
             || path.contains(".git/")

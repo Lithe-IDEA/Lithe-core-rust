@@ -55,9 +55,9 @@ const MAX_FILE_SIZE: u64 = 2 * 1024 * 1024;
 
 /// Largest file whose text search reads and indexes. It is the desktop
 /// editor's open limit, so every content match opens at its line.
-const MAX_SEARCH_FILE_SIZE: u64 = 16 * 1024 * 1024;
+pub(crate) const MAX_SEARCH_FILE_SIZE: u64 = 16 * 1024 * 1024;
 
-const MAX_OPEN_FILE_SIZE: u64 = 32 * 1024 * 1024;
+pub(crate) const MAX_OPEN_FILE_SIZE: u64 = 64 * 1024 * 1024;
 
 #[cfg(test)]
 mod event_filter_tests {

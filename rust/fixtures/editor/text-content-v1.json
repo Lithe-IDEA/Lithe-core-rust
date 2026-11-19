@@ -39,7 +39,7 @@
     {
       "name": "escape",
       "text": "hello\u001b[31m",
-      "isPlainText": false
+      "isPlainText": true
     },
     {
       "name": "delete",

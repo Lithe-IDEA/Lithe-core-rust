@@ -691,6 +691,25 @@ impl IndexingContext {
         Ok(())
     }
 
+    /// A search may include Git exclusions without bypassing explicit project exclusions.
+    pub(crate) fn search_reason(
+        &self,
+        relative: &str,
+        is_directory: bool,
+        include_ignored: bool,
+    ) -> Result<Option<&'static str>, CoreError> {
+        if include_ignored {
+            self.check()?;
+            return Ok(self
+                .policy
+                .manual_excluded_directories
+                .iter()
+                .any(|dir| contains(dir, relative))
+                .then_some("manual"));
+        }
+        self.reason(relative, is_directory)
+    }
+
     pub(crate) fn reason(
         &self,
         relative: &str,

@@ -176,6 +176,7 @@ pub(crate) fn is_hot(method: &str) -> bool {
             "search.actions"
                 | "workspace.search"
                 | "workspace.searchEverywhere"
+                | "workspace.searchPresentation"
                 | "workspace.replacePreview"
         )
         // Polling loops and message pumps run continuously while a session lives.

@@ -25,6 +25,8 @@ pub mod name_ranking;
 pub mod recent_projects;
 mod search_index;
 mod search_paging;
+mod search_preferences;
+mod search_presentation;
 
 pub use document_lifecycle::*;
 pub use files::*;
@@ -33,7 +35,13 @@ pub use html_preview::*;
 pub use markdown::*;
 pub use markdown_outline::*;
 pub use markdown_reference::*;
-pub use search_paging::{search_page, SearchPageRequest};
+pub use search_paging::{project_search_page, search_page, SearchPageRequest};
+pub use search_preferences::*;
+
+pub use search_presentation::*;
+
+#[cfg(test)]
+mod search_tests;
 
 #[cfg(test)]
 mod test_support {

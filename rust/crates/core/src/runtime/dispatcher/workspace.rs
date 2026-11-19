@@ -4,7 +4,7 @@
 use super::{plugin_response, rules_response};
 use crate::project::{
     self, DirectoryListingRequest, ReplacementPreviewRequest, SearchIndexRequest,
-    SearchIndexUpdateRequest, SearchRequest, WorkspaceSnapshotRequest,
+    SearchIndexUpdateRequest, WorkspaceSnapshotRequest,
 };
 use crate::protocol::{CoreError, CoreResponse, ErrorCode, WorkspaceCommand};
 use lithe_git::{self as git, WorkspaceRepositoriesRequest};
@@ -17,6 +17,33 @@ pub(super) fn dispatch(
     payload: Value,
 ) -> CoreResponse {
     match command {
+        WorkspaceCommand::SearchPresentation => match serde_json::from_value::<
+            project::SearchPresentationRequest,
+        >(payload)
+        .map_err(|_| CoreError::new(ErrorCode::InvalidRequest, "Invalid search presentation"))
+        .and_then(project::search_presentation)
+        {
+            Ok(data) => CoreResponse::success(
+                id,
+                serde_json::to_value(data).expect("search presentation encodes"),
+            ),
+            Err(error) => CoreResponse::failure(id, error),
+        },
+        WorkspaceCommand::SearchPreferences => {
+            match serde_json::from_value::<project::SearchPreferencesRequest>(payload)
+                .map_err(|error| {
+                    CoreError::new(ErrorCode::InvalidRequest, "Invalid search preferences")
+                        .with_details(error.to_string())
+                })
+                .and_then(project::resolve_search_preferences)
+            {
+                Ok(data) => CoreResponse::success(
+                    id,
+                    serde_json::to_value(data).expect("search preferences encode"),
+                ),
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
         WorkspaceCommand::ReleaseIndexing => {
             match serde_json::from_value::<project::indexing::ReleaseIndexingRequest>(payload)
                 .map_err(|error| {
@@ -213,12 +240,12 @@ pub(super) fn dispatch(
             }
         }
         WorkspaceCommand::Search => {
-            match serde_json::from_value::<SearchRequest>(payload)
+            match serde_json::from_value::<project::SearchPageRequest>(payload)
                 .map_err(|error| {
                     CoreError::new(ErrorCode::InvalidRequest, "Invalid search request")
                         .with_details(error.to_string())
                 })
-                .and_then(project::search)
+                .and_then(project::project_search_page)
             {
                 Ok(data) => CoreResponse::success(
                     id,
