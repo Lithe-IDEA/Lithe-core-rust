@@ -333,10 +333,18 @@ pub fn settings_view(input: &Value) -> Validation<Value> {
     problems.sort_by(|left, right| tool_order(tools, &statuses, *left, *right));
     let errors = statuses.iter().filter(|s| **s == Status::Error).count();
     let warnings = statuses.iter().filter(|s| **s == Status::Warning).count();
+    // An issue names the group its tool is listed under, so a host that opens the tool from
+    // the list of issues can open that group without knowing how keys are formed.
     let issues: Vec<Value> = problems
         .iter()
         .take(request.issue_limit.unwrap_or(DEFAULT_ISSUES))
-        .map(|index| json!({"index":index,"status":statuses[*index].name()}))
+        .map(|index| {
+            let mut issue = json!({"index":index,"status":statuses[*index].name()});
+            if query.group_by != "none" {
+                issue["group"] = Value::String(group_of(&tools[*index], &query.group_by).0);
+            }
+            issue
+        })
         .collect();
     Ok(json!({
         "rows":rows,
@@ -445,6 +453,15 @@ mod tests {
             json!({"total":6,"matched":6,"problems":3,"errors":2,"warnings":1,"pinned":1,"changed":1})
         );
         assert_eq!(keys(&result["issues"]), ["1:error", "4:error", "2:warning"]);
+        let groups: Vec<&str> = result["issues"]
+            .as_array()
+            .expect("issues")
+            .iter()
+            .map(|issue| issue["group"].as_str().unwrap_or_default())
+            .collect();
+        assert_eq!(groups, ["category:runtime", "audience:plugin", "category:build"]);
+        let flat = view(sample(), json!({"groupBy":"none"}));
+        assert!(flat["issues"][0].get("group").is_none());
     }
 
     #[test]
