@@ -81,6 +81,22 @@ fn follows_the_lsp_lifecycle() {
 }
 
 #[test]
+fn unknown_request_names_are_not_reflected_in_errors() {
+    let mut host = Host::start(echo_backend());
+    host.initialize(json!([0]));
+    const REQUEST_TEXT: &str = "unregistered/fixture-request-text";
+    host.request(1, REQUEST_TEXT, Value::Null);
+    host.invoke(2, REQUEST_TEXT, json!({}));
+    for (id, code) in [(1, -32601), (2, -32602)] {
+        let (reply, notifications) = host.answer(id);
+        assert_eq!(reply["error"]["code"], code);
+        assert!(!reply.to_string().contains(REQUEST_TEXT));
+        assert!(notifications.is_empty(), "{notifications:?}");
+    }
+    host.close();
+}
+
+#[test]
 fn exit_without_shutdown_and_a_broken_frame_end_with_a_failure() {
     let mut host = Host::start(echo_backend());
     host.notify("exit", Value::Null);

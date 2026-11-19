@@ -9,6 +9,14 @@
 mod plugin_sdk;
 
 #[test]
+fn the_rust_sdk_toolchain_provider_negotiates_and_answers_through_core() {
+    let Some(executable) = std::env::var_os("LITHE_PLUGIN_SDK_RUST_SAMPLE") else {
+        return;
+    };
+    plugin_sdk::toolchains::run(&executable.to_string_lossy());
+}
+
+#[test]
 fn the_rust_sdk_import_provider_reads_a_selected_source_through_core() {
     let Some(executable) = std::env::var_os("LITHE_PLUGIN_SDK_RUST_SAMPLE") else {
         return;

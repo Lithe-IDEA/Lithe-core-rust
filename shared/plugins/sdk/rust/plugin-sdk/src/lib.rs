@@ -15,7 +15,8 @@
 //!   subscriptions, the commands and context changes the host notifies, and
 //!   calls to the functions other plugins export through Core's relay
 //!   ([`Functions`]) with the [`Caller`] of a function called that way;
-//! - **`litheKeymapImport`**: shortcut import providers.
+//! - **`litheKeymapImport`**: shortcut import providers;
+//! - **`litheToolchains`**: [toolchain discovery providers](toolchains).
 //!
 //! The SDK requires `litheLogging` at initialization.
 //!
@@ -37,6 +38,7 @@ mod host;
 mod panic_boundary;
 mod protocol;
 mod stdio;
+pub mod toolchains;
 pub mod view;
 
 pub use backend::{

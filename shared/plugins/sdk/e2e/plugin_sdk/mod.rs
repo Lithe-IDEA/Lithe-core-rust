@@ -22,6 +22,7 @@
 pub mod backend;
 pub mod keymap;
 pub mod native_build;
+pub mod toolchains;
 pub mod vcs;
 
 use lithe_core::execute_json;

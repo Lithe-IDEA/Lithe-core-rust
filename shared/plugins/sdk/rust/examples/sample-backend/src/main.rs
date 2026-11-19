@@ -13,6 +13,7 @@
 //!   (`files.nextChange`), answers its command with a message in the window
 //!   it ran in, and lists the open workspaces when they change.
 
+use lithe_plugin_sdk::toolchains::{ToolchainQueryError, ToolchainQueryResult};
 use lithe_plugin_sdk::{
     BackendHandle, Cancelled, Context, FunctionError, PluginError, SdkError, Value,
 };
@@ -45,6 +46,16 @@ fn main() {
         if bytes != b"data" { return Err(FunctionError::internal("Unexpected fixture source")); }
         Ok(json!({"bindings": [{"commandID": "find-next", "keys": [{"key": "f3", "modifiers": []}]}]}))
     }).expect("valid fixture provider");
+
+    backend
+        .toolchain_provider("fixture", |query, cancellation| {
+            cancellation.check()?;
+            if query.tools != ["fixture-runtime"] {
+                return Err(ToolchainQueryError::InvalidParams);
+            }
+            Ok(ToolchainQueryResult::default())
+        })
+        .expect("valid toolchain fixture provider");
 
     let notes = Arc::clone(&state);
     backend
