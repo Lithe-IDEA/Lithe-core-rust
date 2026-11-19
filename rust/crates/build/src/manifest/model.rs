@@ -266,7 +266,9 @@ impl BuildSystemDeclaration {
                         format!("{field}.map"),
                         "A model command with a generic format needs a map.",
                     )),
-                    (_, Some(map)) => map.validate(&format!("{field}.map"), &model_options, &default_options),
+                    (_, Some(map)) => {
+                        map.validate(&format!("{field}.map"), &model_options, &default_options)
+                    }
                 }
             }
             Some(ModelSource::Provider) => Ok(()),

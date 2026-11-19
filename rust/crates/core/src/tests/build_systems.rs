@@ -3492,8 +3492,15 @@ fn model_reports_the_implicit_value_of_unset_path_options() {
     let defaults = &decoded["model"]["optionDefaults"];
     // The tool has one value: the first reported is kept. A boolean option has
     // no implicit value to report.
-    assert_eq!(defaults["settingsFile"], json!(["/home/me/.m2/settings.xml"]), "{defaults}");
-    assert_eq!(defaults["localRepository"], json!(["/home/me/.m2/repository"]));
+    assert_eq!(
+        defaults["settingsFile"],
+        json!(["/home/me/.m2/settings.xml"]),
+        "{defaults}"
+    );
+    assert_eq!(
+        defaults["localRepository"],
+        json!(["/home/me/.m2/repository"])
+    );
     assert!(defaults.get("offline").is_none(), "{defaults}");
 
     let resolve = |options: Value| {
@@ -3507,7 +3514,11 @@ fn model_reports_the_implicit_value_of_unset_path_options() {
         resolved["options"]["options"].as_array().unwrap().clone()
     };
     let by_id = |options: &[Value], id: &str| {
-        options.iter().find(|option| option["id"] == id).unwrap().clone()
+        options
+            .iter()
+            .find(|option| option["id"] == id)
+            .unwrap()
+            .clone()
     };
     let unset = resolve(json!({}));
     let settings = by_id(&unset, "settingsFile");
@@ -3515,7 +3526,10 @@ fn model_reports_the_implicit_value_of_unset_path_options() {
     assert_eq!(settings["value"], Value::Null);
     assert_eq!(settings["implicitValue"], "/home/me/.m2/settings.xml");
     assert_eq!(settings["description"], "The settings.xml passed with -s.");
-    assert_eq!(by_id(&unset, "localRepository")["implicitValue"], "/home/me/.m2/repository");
+    assert_eq!(
+        by_id(&unset, "localRepository")["implicitValue"],
+        "/home/me/.m2/repository"
+    );
     // A declared default is the effective value, so the model's is not shown.
     let threads = by_id(&unset, "threads");
     assert_eq!(threads["source"], "default");
