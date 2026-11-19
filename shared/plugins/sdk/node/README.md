@@ -146,7 +146,11 @@ Nodes are plain objects shaped as
 [`plugin-ui.schema.json`](../../contract/v1/plugin-ui.schema.json) describes;
 `index.d.ts` types them as `ViewNode`, `CanvasNode` and `ViewPatch`. Core
 checks every answer, and the host draws nothing that Core refused. Return view
-text in `event.language`.
+text in `event.language`. A host that reports the view's width sends it as
+`event.width` on every event; a canvas that follows the window lays itself
+out at that width, lists `resize` in its `on`, and answers the `resize` event
+with the scene laid out again
+([Canvas](../../contract/v1/README.md#canvas)).
 
 ```js
 backend.view('explorer.draw', (event) => {

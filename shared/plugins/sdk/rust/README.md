@@ -118,7 +118,11 @@ field that is `null` counts as absent. The handler answers a
 Nodes stay `serde_json` values shaped as
 [`plugin-ui.schema.json`](../../contract/v1/plugin-ui.schema.json) describes.
 Core checks every answer, and the host draws nothing that Core refused. Return
-view text in `event.language`.
+view text in `event.language`. A host that reports the view's width sends
+it as `event.width` on every event; a canvas that follows the window lays
+itself out at that width, lists `resize` in its `on`, and answers
+`ViewEventKind::Resize` with the scene laid out again
+([Canvas](../../contract/v1/README.md#canvas)).
 
 ```rust
 use lithe_plugin_sdk::view::{Patch, ViewEventKind, ViewResult};

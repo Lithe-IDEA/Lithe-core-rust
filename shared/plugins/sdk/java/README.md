@@ -104,7 +104,11 @@ handler answers a `ViewResult`:
 Nodes are plain JSON maps shaped as
 [`plugin-ui.schema.json`](../../contract/v1/plugin-ui.schema.json) describes.
 Core checks every answer, and the host draws nothing that Core refused. Return
-view text in `event.language()`.
+view text in `event.language()`. A host that reports the view's width sends
+it as `event.width()` on every event; a canvas that follows the window lays
+itself out at that width, lists `resize` in its `on`, and answers
+`Kind.RESIZE` with the scene laid out again
+([Canvas](../../contract/v1/README.md#canvas)).
 
 ```java
 backend.view("explorer.draw", (event, context) -> {

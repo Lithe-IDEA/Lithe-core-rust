@@ -14,7 +14,7 @@
 
 ## 待合入
 
-- `ui` 0、`settings` 0 内的说明补充（API-13、API-19）：契约 README 写明画布 `image` 节点怎样读取：路径留在插件包内、经过真实目录、指向普通 PNG 文件，单个文件最多 256 KiB、每边最多 1024 像素（预算表新增一行）；宿主在场景第一次画到它时于窗口线程外读取，保留到视图关闭，读到之前或读取失败时场景不画它，失败只记一次日志。`image` 节点的字段表补上 `opacity`。文字是一行，基线在 `y`，`align` 把行首（默认）、中点或行尾放在 `x`；渐变 `angle` 与 CSS `linear-gradient` 一致（0 向上、90 向右、默认 180 向下），渐变线穿过形状中心；分组的 `x`、`y` 放置原点，`scale` 缩放内部，`children`、`w`、`h`、`radius` 都在分组自己的坐标里；捏合缩放只在宿主能上报捏合时可用。fixture `fixtures/ui/view-results.json` 的文字基线移到卡片中间。[能力与协议版本对照](capabilities-and-versions.md)删掉“插件视图尚未在桌面端绘制”的脚注，`domains/ui.md`、`domains/settings.md` 的桌面端一行改为已呈现插件视图、设置区域和包内翻译 `l10n/`（[1lck/Lithe-IDEA#2181](https://github.com/1lck/Lithe-IDEA/issues/2181)）。没有新增版本号、宿主方法、通知或 SDK 版本。实现见 [#105](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/105)。
+- `ui` 0 内的补充（API-13）：视图事件新增 `width` 和 `resize`，画布可以跟随窗口宽度重新排版。会报告宽度的宿主在每个视图事件里带 `width`（排版视图节点用的宽度，单位为点，至少为 1 的整数，也是顶层画布的宽度），并且量到宽度之后才发 `open`；画布的 `on` 除 `viewport` 外可以写 `resize`，视图里有这样的画布时，宽度停止变化 400 ms 后宿主发 `resize` 和新的 `width`，等待中的 `resize` 可以合并成最新的一个。插件只有在收到带 `width` 的事件后才写 `resize`：不报告宽度的宿主不发 `resize`，它的 Core 也会拒绝写了 `resize` 的画布。契约 README 同时写明画布在缩放 1 时怎样放 `viewBox`：不写 `pan` 时显示整个 `viewBox`，按视图宽度缩放但不超过 `height`，从区域左上角开始；写了 `pan` 时宽度占满视图、上边对齐区域顶部，缩小到比区域窄时水平居中。以前的说明只有“按视图宽度缩放、`height` 点高”，在更宽的窗口里会裁掉场景下半部分。Core 的画布校验接受 `on: ["viewport", "resize"]`，`plugin-ui.schema.json` 的 canvas 说明和 `on` 同步；Rust SDK 新增 `ViewEventKind::Resize` 和 `ViewEvent::width`，Java SDK 新增 `Kind.RESIZE` 和 `width()`，Node SDK 的 `ViewEventKind` 加上 `resize`、`ViewEvent` 加上 `width`、画布 `on` 的类型放宽，三个 SDK 的 README 补充用法；`domains/settings.md` 中英两段说明区域画布怎样按 `width` 排版，以及旧宿主下的固定宽度（语言页约 610 点、构建系统页和编译器页右侧详情约 340 点）（[1lck/Lithe-IDEA#2181](https://github.com/1lck/Lithe-IDEA/issues/2181)）。没有新增能力版本、宿主方法、通知或 SDK 版本，取代 [#107](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/107)。
 
 ## 按协议查首次出现
 
@@ -143,6 +143,12 @@
 | API-23 | `run/start`：`temporaryFiles` 增加 `{name, base64}` 字节文件 | 0 | 2026-11-13 | [#23](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/23) |
 
 ## 时间线（新的在上）
+
+### 2026-11-19
+
+| PR | 修改人 | API 编号 | 协议 / 能力 | 改了什么 |
+| --- | --- | --- | --- | --- |
+| [#105](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/105) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | API-13、API-19 | `ui` 0、`settings` 0 内的说明补充（API-13、API-19） | 契约 README 写明画布 `image` 节点怎样读取：路径留在插件包内、经过真实目录、指向普通 PNG 文件，单个文件最多 256 KiB、每边最多 1024 像素（预算表新增一行）；宿主在场景第一次画到它时于窗口线程外读取，保留到视图关闭，读到之前或读取失败时场景不画它，失败只记一次日志。`image` 节点的字段表补上 `opacity`。文字是一行，基线在 `y`，`align` 把行首（默认）、中点或行尾放在 `x`；渐变 `angle` 与 CSS `linear-gradient` 一致（0 向上、90 向右、默认 180 向下），渐变线穿过形状中心；分组的 `x`、`y` 放置原点，`scale` 缩放内部，`children`、`w`、`h`、`radius` 都在分组自己的坐标里；捏合缩放只在宿主能上报捏合时可用。fixture `fixtures/ui/view-results.json` 的文字基线移到卡片中间。[能力与协议版本对照](capabilities-and-versions.md)删掉“插件视图尚未在桌面端绘制”的脚注，`domains/ui.md`、`domains/settings.md` 的桌面端一行改为已呈现插件视图、设置区域和包内翻译 `l10n/`（[1lck/Lithe-IDEA#2181](https://github.com/1lck/Lithe-IDEA/issues/2181)）。没有新增版本号、宿主方法、通知或 SDK 版本。 |
 
 ### 2026-11-18
 
