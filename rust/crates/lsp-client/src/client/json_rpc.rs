@@ -68,7 +68,8 @@ pub fn json_rpc_error_with_data(
     }))
 }
 
-pub(crate) fn json_rpc_error(id: &Value, code: i64, message: &str) -> Result<String, CoreError> {
+/// Encodes a standard JSON-RPC error response to request `id`.
+pub fn json_rpc_error(id: &Value, code: i64, message: &str) -> Result<String, CoreError> {
     encode_json_rpc(json!({
         "jsonrpc": "2.0",
         "id": id,

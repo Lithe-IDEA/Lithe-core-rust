@@ -26,7 +26,7 @@ impl RuntimeSession {
         } else {
             None
         };
-        let (known_pending, pending_before, old_capabilities, old_completion) = {
+        let (known_pending, pending_before, old_capabilities, old_completion, old_signature_help) = {
             let state = self.lock_state()?;
             let pending = response_id
                 .as_ref()
@@ -38,6 +38,7 @@ impl RuntimeSession {
                 pending,
                 state.client.server_capabilities.clone(),
                 lithe_lsp_client::completion_options(&state.client),
+                lithe_lsp_client::signature_help_options(&state.client),
             )
         };
         // A response whose request has timed out, been cancelled, or belongs
@@ -379,6 +380,14 @@ impl RuntimeSession {
                 }
                 if event.kind == "semanticTokensRefresh" {
                     push_semantic_tokens_refresh_event(self, &mut state);
+                } else if event.kind == "inlayHintsRefresh" {
+                    push_inlay_hints_refresh_event(self, &mut state);
+                } else if event.kind == "workspaceApplyEdit" {
+                    outbound.extend(forward_apply_edit_locked(
+                        self,
+                        &mut state,
+                        event.result.unwrap_or_default(),
+                    )?);
                 } else if event.kind == "functionsChanged" {
                     let result = event.result.unwrap_or_default();
                     let removed: Vec<String> = result
@@ -441,6 +450,16 @@ impl RuntimeSession {
                 {
                     receive_plugin_diagnostic(self, &mut state, event.result.as_ref());
                 } else if event.kind == "notification"
+                    && event.method.as_deref() == Some("$/cancelRequest")
+                    && cancel_apply_edit_request_locked(
+                        self,
+                        &mut state,
+                        event.result.as_ref(),
+                        &mut outbound,
+                    )?
+                {
+                    // The server cancelled one of its pending workspace/applyEdit requests.
+                } else if event.kind == "notification"
                     && self.plugin_id.is_some()
                     && event.method.as_deref() == Some("$/cancelRequest")
                     && cancel_host_request_locked(
@@ -468,7 +487,8 @@ impl RuntimeSession {
                 }
             }
             if (state.client.server_capabilities != old_capabilities
-                || lithe_lsp_client::completion_options(&state.client) != old_completion)
+                || lithe_lsp_client::completion_options(&state.client) != old_completion
+                || lithe_lsp_client::signature_help_options(&state.client) != old_signature_help)
                 && state.lifecycle == LspLifecycleState::Ready
             {
                 let capabilities = state.client.server_capabilities.clone();

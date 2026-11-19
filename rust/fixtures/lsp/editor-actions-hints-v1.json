@@ -1,0 +1,215 @@
+{
+  "schemaVersion": 1,
+  "uri": "file:///workspace/main.rs",
+  "codeActions": {
+    "context": {
+      "only": ["quickfix", "refactor"],
+      "triggerKind": 1
+    },
+    "serverResult": [
+      {
+        "title": "Organize imports",
+        "kind": "source.organizeImports",
+        "command": {
+          "title": "Organize imports",
+          "command": "workspace.organizeImports",
+          "arguments": ["file:///workspace/main.rs"]
+        }
+      },
+      {
+        "title": "Disabled refactor",
+        "kind": "refactor.extract",
+        "disabled": {
+          "reason": "Selection is empty"
+        }
+      },
+      {
+        "title": "Extract\nhelper",
+        "kind": "refactor.extract",
+        "data": {
+          "id": "extract-1"
+        }
+      },
+      {
+        "title": "Remove unused binding",
+        "kind": "quickfix.unused",
+        "edit": {
+          "changes": {
+            "file:///workspace/main.rs": [
+              {
+                "range": {
+                  "start": { "line": 2, "character": 4 },
+                  "end": { "line": 2, "character": 12 }
+                },
+                "newText": "_unused"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "title": "Initialize binding",
+        "kind": "refactor.rewrite",
+        "isPreferred": true,
+        "edit": {
+          "changes": {
+            "file:///workspace/main.rs": [
+              {
+                "range": {
+                  "start": { "line": 2, "character": 12 },
+                  "end": { "line": 2, "character": 12 }
+                },
+                "newText": " = 0"
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "expectedTitlesAndGroups": [
+      { "title": "Initialize binding", "group": "refactor", "isPreferred": true },
+      { "title": "Remove unused binding", "group": "quickfix", "isPreferred": false },
+      { "title": "Extract helper", "group": "refactor", "isPreferred": false },
+      { "title": "Organize imports", "group": "source", "isPreferred": false }
+    ]
+  },
+  "signatureHelp": {
+    "triggerContext": {
+      "triggerKind": 2,
+      "triggerCharacter": "(",
+      "isRetrigger": false
+    },
+    "serverResult": {
+      "signatures": [
+        {
+          "label": "add(int, int) -> int",
+          "documentation": "Adds two integers.",
+          "parameters": [
+            { "label": "int", "documentation": "Left operand" },
+            { "label": "int", "documentation": { "kind": "markdown", "value": "**Right** operand" } }
+          ]
+        },
+        {
+          "label": "日志(🧪 msg: str, 值: i32)",
+          "documentation": { "kind": "markdown", "value": "记录结构化日志" },
+          "parameters": [
+            { "label": [3, 14] },
+            { "label": [16, 22] }
+          ]
+        }
+      ],
+      "activeSignature": 99,
+      "activeParameter": 99
+    },
+    "expectedResult": {
+      "signatures": [
+        {
+          "label": "add(int, int) -> int",
+          "documentation": "Adds two integers.",
+          "isMarkdown": false,
+          "activeParameter": 0,
+          "parameters": [
+            {
+              "label": "int",
+              "utf16Start": 4,
+              "utf16End": 7,
+              "byteStart": 4,
+              "byteEnd": 7,
+              "documentation": "Left operand",
+              "isMarkdown": false
+            },
+            {
+              "label": "int",
+              "utf16Start": 9,
+              "utf16End": 12,
+              "byteStart": 9,
+              "byteEnd": 12,
+              "documentation": "**Right** operand",
+              "isMarkdown": true
+            }
+          ]
+        },
+        {
+          "label": "日志(🧪 msg: str, 值: i32)",
+          "documentation": "记录结构化日志",
+          "isMarkdown": true,
+          "activeParameter": 0,
+          "parameters": [
+            {
+              "label": "🧪 msg: str",
+              "utf16Start": 3,
+              "utf16End": 14,
+              "byteStart": 7,
+              "byteEnd": 20,
+              "documentation": null,
+              "isMarkdown": false
+            },
+            {
+              "label": "值: i32",
+              "utf16Start": 16,
+              "utf16End": 22,
+              "byteStart": 22,
+              "byteEnd": 30,
+              "documentation": null,
+              "isMarkdown": false
+            }
+          ]
+        }
+      ],
+      "activeSignature": 0,
+      "activeParameter": 0
+    }
+  },
+  "inlayHints": {
+    "serverResult": [
+      { "position": { "line": 2, "character": 30 }, "label": ": h9" },
+      { "position": { "line": 2, "character": 2 }, "label": ": h1", "paddingRight": true },
+      { "position": { "line": 1, "character": 8 }, "label": [{ "value": "count" }, { "value": ": usize" }], "kind": 1, "tooltip": { "kind": "markdown", "value": "`usize` parameter" } },
+      { "position": { "line": 2, "character": 6 }, "label": ": h2" },
+      { "position": { "line": 2, "character": 10 }, "label": ": h3" },
+      { "position": { "line": 2, "character": 14 }, "label": ": h4" },
+      { "position": { "line": 2, "character": 18 }, "label": ": h5" },
+      { "position": { "line": 2, "character": 22 }, "label": ": h6" },
+      { "position": { "line": 2, "character": 26 }, "label": ": h7" },
+      { "position": { "line": 2, "character": 28 }, "label": ": very_long_type_name_exceeding_forty_eight_characters_limit" },
+      { "position": { "line": 2, "character": 1 }, "label": "   " }
+    ],
+    "expectedCount": 9,
+    "expectedFirstLabel": "count: usize",
+    "expectedTruncatedEighthOnLine2": ": very_long_type_name_exceeding_forty_eight_cha…"
+  },
+  "workspaceApplyEdit": {
+    "acceptedRequest": {
+      "label": "Apply quick fix",
+      "edit": {
+        "documentChanges": [
+          {
+            "textDocument": { "uri": "file:///workspace/main.rs", "version": 1 },
+            "edits": [
+              {
+                "range": {
+                  "start": { "line": 0, "character": 0 },
+                  "end": { "line": 0, "character": 0 }
+                },
+                "newText": "use std::fmt;\n"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "expectedDocumentVersions": { "/workspace/main.rs": 1 },
+    "rejectedResourceRequest": {
+      "label": "Create file",
+      "edit": {
+        "documentChanges": [
+          {
+            "kind": "create",
+            "uri": "file:///workspace/generated.rs"
+          }
+        ]
+      }
+    },
+    "expectedRejectedFailureReason": "Resource create, rename, and delete operations are not supported."
+  }
+}

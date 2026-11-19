@@ -80,6 +80,12 @@ this lifecycle protection; actual symbol computation remains upstream-owned.
 | Modules | stable IDs, manifests, enabled state, lifecycle snapshots, dependencies, capabilities, and contributions | native factories, processes, timers, PTY/ConPTY, watchers, connections, and UI rendering |
 | Updates | normalized release metadata, state names, validated `stable|autobuild` preference, explicit rolling consent, and stable error codes | update feeds, package verification, download, installation, restart, and native UI |
 
+Language-server workspace edits preserve explicit LSP document versions.
+Core rejects edits for stale or unknown versioned documents. A native host checks
+that its editor snapshots still match those versions before touching files or
+buffers, and stops pending work when Core revokes a delivered request. The
+[Core commands reference](rust-core-api.md#commands) specifies the event and reply shapes.
+
 ### Application update channels
 
 A missing saved channel selects `stable` for Stable and legacy shared-identity builds;

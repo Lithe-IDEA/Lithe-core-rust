@@ -9,6 +9,7 @@ use serde_json::{json, Value};
 struct Stored {
     line_numbers: Option<bool>,
     whitespace: Option<bool>,
+    inlay_hints: Option<bool>,
     cursor_style: Option<String>,
     cursor_blink: Option<bool>,
     auto_save_delay_milliseconds: Option<u64>,
@@ -27,6 +28,7 @@ pub fn resolve_command(payload: Value) -> Result<Value, CoreError> {
     Ok(json!({
         "lineNumbers":stored.line_numbers.unwrap_or(true),
         "whitespace":stored.whitespace.unwrap_or(false),
+        "inlayHints":stored.inlay_hints.unwrap_or(true),
         "cursorStyle":style,
         "cursorBlink":stored.cursor_blink.unwrap_or(true),
         "autoSaveDelayMilliseconds":stored.auto_save_delay_milliseconds.unwrap_or(1500).clamp(250,60_000),
@@ -43,14 +45,16 @@ mod tests {
         let value = resolve_command(json!({})).unwrap();
         assert_eq!(value["lineNumbers"], true);
         assert_eq!(value["whitespace"], false);
+        assert_eq!(value["inlayHints"], true);
         assert_eq!(value["cursorStyle"], "line");
         assert_eq!(value["cursorBlink"], true);
         assert_eq!(value["autoSaveDelayMilliseconds"], 1500);
     }
     #[test]
     fn corrupted_values_are_bounded_without_replacing_valid_choices() {
-        let value = resolve_command(json!({"lineNumbers":false,"cursorStyle":"unknown","cursorBlink":false,"autoSaveDelayMilliseconds":1})).unwrap();
+        let value = resolve_command(json!({"lineNumbers":false,"inlayHints":false,"cursorStyle":"unknown","cursorBlink":false,"autoSaveDelayMilliseconds":1})).unwrap();
         assert_eq!(value["lineNumbers"], false);
+        assert_eq!(value["inlayHints"], false);
         assert_eq!(value["cursorStyle"], "line");
         assert_eq!(value["cursorBlink"], false);
         assert_eq!(value["autoSaveDelayMilliseconds"], 250);

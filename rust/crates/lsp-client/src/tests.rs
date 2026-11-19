@@ -269,6 +269,7 @@ fn client_core_tracks_documents_and_feature_requests() {
         command: None,
         formatting_options: None,
         include_declaration: None,
+        ..Default::default()
     })
     .unwrap();
     assert_eq!(
@@ -310,6 +311,7 @@ fn client_references_request_passes_include_declaration() {
             command: None,
             formatting_options: None,
             include_declaration,
+            ..Default::default()
         })
         .unwrap();
         let message: Value = serde_json::from_str(&requested.messages[0]).unwrap();
@@ -734,6 +736,7 @@ fn client_core_preserves_class_completion_namespace_and_import_edits() {
         command: None,
         formatting_options: None,
         include_declaration: None,
+        ..Default::default()
     })
     .unwrap();
     let completed = client_apply_server_message(ClientApplyServerMessageRequest {
@@ -784,6 +787,7 @@ fn client_core_preserves_class_completion_namespace_and_import_edits() {
         command: None,
         formatting_options: None,
         include_declaration: None,
+        ..Default::default()
     })
     .unwrap();
     let resolved = client_apply_server_message(ClientApplyServerMessageRequest {
@@ -1117,6 +1121,7 @@ fn client_core_shapes_feature_responses_for_host_models() {
         command: None,
         formatting_options: None,
         include_declaration: None,
+        ..Default::default()
     })
     .unwrap();
     let completed = client_apply_server_message(ClientApplyServerMessageRequest {
@@ -1171,6 +1176,7 @@ fn client_core_shapes_feature_responses_for_host_models() {
         command: None,
         formatting_options: None,
         include_declaration: None,
+        ..Default::default()
     })
     .unwrap();
     let renamed = client_apply_server_message(ClientApplyServerMessageRequest {
@@ -1214,6 +1220,7 @@ fn client_core_shapes_feature_responses_for_host_models() {
         command: None,
         formatting_options: None,
         include_declaration: None,
+        ..Default::default()
     })
     .unwrap();
     let formatted = client_apply_server_message(ClientApplyServerMessageRequest {
@@ -1294,6 +1301,7 @@ fn client_core_shapes_feature_responses_for_host_models() {
         command: None,
         formatting_options: None,
         include_declaration: None,
+        ..Default::default()
     })
     .unwrap();
     let code_action_request: Value = serde_json::from_str(&code_actions.messages[0]).unwrap();
@@ -1378,6 +1386,7 @@ fn client_core_shapes_feature_responses_for_host_models() {
         command: None,
         formatting_options: None,
         include_declaration: None,
+        ..Default::default()
     })
     .unwrap();
     let code_action_resolve_request: Value =
@@ -1446,6 +1455,7 @@ fn client_core_shapes_feature_responses_for_host_models() {
         command: None,
         formatting_options: None,
         include_declaration: None,
+        ..Default::default()
     })
     .unwrap();
     let completion_resolve_request: Value =
@@ -1500,6 +1510,7 @@ fn client_core_shapes_feature_responses_for_host_models() {
         })),
         formatting_options: None,
         include_declaration: None,
+        ..Default::default()
     })
     .unwrap();
     let execute_request: Value = serde_json::from_str(&execute_command.messages[0]).unwrap();
@@ -1547,6 +1558,7 @@ fn client_requests_and_normalizes_document_links() {
         command: None,
         formatting_options: None,
         include_declaration: None,
+        ..Default::default()
     })
     .unwrap();
     let request_json: Value = serde_json::from_str(&request.messages[0]).unwrap();
@@ -1610,6 +1622,7 @@ fn client_requests_and_normalizes_workspace_symbols_without_a_document() {
         command: None,
         formatting_options: None,
         include_declaration: None,
+        ..Default::default()
     })
     .unwrap();
     let request_json: Value = serde_json::from_str(&request.messages[0]).unwrap();
@@ -1696,6 +1709,7 @@ fn client_core_requests_and_shapes_inlay_hints_folding_ranges_and_code_lenses() 
         command: None,
         formatting_options: None,
         include_declaration: None,
+        ..Default::default()
     })
     .unwrap();
     let request_json: Value = serde_json::from_str(&inlay_request.messages[0]).unwrap();
@@ -1751,6 +1765,7 @@ fn client_core_requests_and_shapes_inlay_hints_folding_ranges_and_code_lenses() 
         command: None,
         formatting_options: None,
         include_declaration: None,
+        ..Default::default()
     })
     .unwrap();
     let request_json: Value = serde_json::from_str(&folding_request.messages[0]).unwrap();
@@ -1796,6 +1811,7 @@ fn client_core_requests_and_shapes_inlay_hints_folding_ranges_and_code_lenses() 
         command: None,
         formatting_options: None,
         include_declaration: None,
+        ..Default::default()
     })
     .unwrap();
     let code_lens_response = client_apply_server_message(ClientApplyServerMessageRequest {
@@ -1854,6 +1870,7 @@ fn navigation_locations_preserve_uris_without_fabricating_virtual_file_paths() {
         command: None,
         formatting_options: None,
         include_declaration: None,
+        ..Default::default()
     })
     .unwrap();
     let response = client_apply_server_message(ClientApplyServerMessageRequest {
@@ -2285,5 +2302,475 @@ fn client_completion_rejects_invalid_trigger_context() {
             error.message.as_str(),
             "Invalid completion trigger kind" | "Completion trigger character is required"
         ));
+    }
+}
+
+#[test]
+fn inlay_hint_capabilities_track_independent_provider_registrations() {
+    for static_provider in [false, true] {
+        let initialized = client_initialize(ClientInitializeRequest {
+            state: LspClientState::default(),
+            root_uri: "file:///workspace".into(),
+            process_id: None,
+            initialization_options: None,
+        })
+        .unwrap();
+        let initialize: Value = serde_json::from_str(&initialized.messages[0]).unwrap();
+        let mut state = client_apply_server_message(ClientApplyServerMessageRequest {
+            state: initialized.state,
+            message: json!({"jsonrpc": "2.0", "id": initialize["id"], "result": {
+                "capabilities": {"inlayHintProvider": static_provider}
+            }})
+            .to_string(),
+        })
+        .unwrap()
+        .state;
+        let apply = |state, id, method, params| {
+            client_apply_server_message(ClientApplyServerMessageRequest {
+                state,
+                message: json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params})
+                    .to_string(),
+            })
+            .unwrap()
+            .state
+        };
+        state = apply(
+            state,
+            2,
+            "client/registerCapability",
+            json!({"registrations": [
+                {"id": "basic", "method": "textDocument/inlayHint"},
+                {"id": "resolve", "method": "textDocument/inlayHint", "registerOptions": {"resolveProvider": true}}
+            ]}),
+        );
+        let assert_features = |state: &LspClientState, hints, resolve| {
+            assert_eq!(
+                state.server_capabilities.iter().any(|f| f == "inlayHints"),
+                hints
+            );
+            assert_eq!(
+                state
+                    .server_capabilities
+                    .iter()
+                    .any(|f| f == "inlayHintResolve"),
+                resolve
+            );
+        };
+        assert_features(&state, true, true);
+        for (id, provider, enabled, resolve) in [
+            (3, "unregistered-id", true, true),
+            (4, "resolve", true, false),
+            (5, "basic", static_provider, false),
+        ] {
+            state = apply(
+                state,
+                id,
+                "client/unregisterCapability",
+                json!({"unregisterations": [
+                    {"id": provider, "method": "textDocument/inlayHint"}
+                ]}),
+            );
+            assert_features(&state, enabled, resolve);
+        }
+    }
+}
+
+#[test]
+fn signature_help_preserves_selected_indices_when_entries_are_filtered() {
+    let result = json!({
+        "activeSignature": 1,
+        "activeParameter": 2,
+        "signatures": [
+            {"label": " "},
+            {"label": "selected(a, c)", "parameters": [
+                {"label": "a"}, {"label": [5, 1]}, {"label": "c"}
+            ]},
+            {"label": "other(x, y, z)", "parameters": [
+                {"label": "x"}, {"label": "y"}, {"label": "z"}
+            ]}
+        ]
+    });
+    let normalized = lsp_feature_result_for_method(
+        Some("textDocument/signatureHelp"),
+        Some(&result),
+        &Default::default(),
+    )
+    .unwrap();
+    let help = &normalized["signatureHelp"];
+    assert_eq!(help["activeSignature"], 0);
+    assert_eq!(help["activeParameter"], 1);
+    assert_eq!(help["signatures"][0]["parameters"][1]["label"], "c");
+    assert_eq!(help["signatures"][1]["activeParameter"], 0);
+}
+
+#[test]
+fn client_editor_actions_signature_help_inlay_hints_and_apply_edit_match_fixture() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../fixtures/lsp/editor-actions-hints-v1.json"
+    ))
+    .unwrap();
+    let uri = fixture["uri"].as_str().unwrap();
+
+    let initialized = client_initialize(ClientInitializeRequest {
+        state: LspClientState::default(),
+        root_uri: "file:///workspace".into(),
+        process_id: None,
+        initialization_options: None,
+    })
+    .unwrap();
+    let init_req: Value = serde_json::from_str(&initialized.messages[0]).unwrap();
+    assert_eq!(
+        init_req["params"]["capabilities"]["textDocument"]["signatureHelp"]["signatureInformation"]
+            ["parameterInformation"]["labelOffsetSupport"],
+        json!(true)
+    );
+    assert_eq!(
+        init_req["params"]["capabilities"]["textDocument"]["signatureHelp"]["contextSupport"],
+        json!(true)
+    );
+    assert_eq!(
+        init_req["params"]["capabilities"]["workspace"]["inlayHint"]["refreshSupport"],
+        json!(true)
+    );
+
+    let ready = client_apply_server_message(ClientApplyServerMessageRequest {
+        state: initialized.state,
+        message: json!({
+            "jsonrpc": "2.0",
+            "id": init_req["id"],
+            "result": {
+                "capabilities": {
+                    "codeActionProvider": { "resolveProvider": true },
+                    "signatureHelpProvider": {
+                        "triggerCharacters": ["(", ","],
+                        "retriggerCharacters": [","]
+                    },
+                    "inlayHintProvider": { "resolveProvider": true }
+                }
+            }
+        })
+        .to_string(),
+    })
+    .unwrap();
+    assert!(ready
+        .state
+        .server_capabilities
+        .contains(&"signatureHelp".to_string()));
+    assert!(ready
+        .state
+        .server_capabilities
+        .contains(&"inlayHintResolve".to_string()));
+    assert_eq!(
+        signature_help_options(&ready.state),
+        Some(json!({
+            "triggerCharacters": ["(", ","],
+            "retriggerCharacters": [","]
+        }))
+    );
+
+    let opened = client_open_document(ClientOpenDocumentRequest {
+        state: ready.state,
+        uri: uri.to_string(),
+        language_id: "rust".into(),
+        text: "fn main() {}\n".into(),
+    })
+    .unwrap();
+
+    // 1. Code actions: context forwarding, disabled filtering, deterministic group sort, and resolve.
+    let ca_req = client_feature_request(ClientFeatureRequest {
+        state: opened.state,
+        uri: uri.to_string(),
+        method: "textDocument/codeAction".into(),
+        range: Some(LspRange {
+            start: LspPosition {
+                line: 0,
+                utf16_column: 0,
+            },
+            end: LspPosition {
+                line: 0,
+                utf16_column: 5,
+            },
+        }),
+        code_action_context: Some(fixture["codeActions"]["context"].clone()),
+        ..Default::default()
+    })
+    .unwrap();
+    let ca_wire: Value = serde_json::from_str(&ca_req.messages[0]).unwrap();
+    assert_eq!(
+        ca_wire["params"]["context"]["only"],
+        json!(["quickfix", "refactor"])
+    );
+    assert_eq!(ca_wire["params"]["context"]["triggerKind"], json!(1));
+
+    let ca_done = client_apply_server_message(ClientApplyServerMessageRequest {
+        state: ca_req.state,
+        message: json!({
+            "jsonrpc": "2.0",
+            "id": ca_wire["id"],
+            "result": fixture["codeActions"]["serverResult"]
+        })
+        .to_string(),
+    })
+    .unwrap();
+    let actions = ca_done.events[0].result.as_ref().unwrap()["actions"]
+        .as_array()
+        .unwrap();
+    let actual_summary: Vec<Value> = actions
+        .iter()
+        .map(|item| {
+            json!({
+                "title": item["title"],
+                "group": item["group"],
+                "isPreferred": item["isPreferred"]
+            })
+        })
+        .collect();
+    assert_eq!(
+        json!(actual_summary),
+        fixture["codeActions"]["expectedTitlesAndGroups"]
+    );
+
+    let resolve_ca_req = client_feature_request(ClientFeatureRequest {
+        state: ca_done.state,
+        uri: uri.to_string(),
+        method: "codeAction/resolve".into(),
+        code_action: Some(actions[2].clone()),
+        ..Default::default()
+    })
+    .unwrap();
+    let resolve_ca_wire: Value = serde_json::from_str(&resolve_ca_req.messages[0]).unwrap();
+    assert!(resolve_ca_wire["params"].get("group").is_none());
+    assert_eq!(
+        resolve_ca_wire["params"]["data"],
+        json!({ "id": "extract-1" })
+    );
+
+    // 2. Signature help: trigger context, string & UTF-16 [start, end] offsets, clamping, and retrigger round-trip.
+    let sig_req = client_feature_request(ClientFeatureRequest {
+        state: resolve_ca_req.state,
+        uri: uri.to_string(),
+        method: "textDocument/signatureHelp".into(),
+        position: Some(LspPosition {
+            line: 0,
+            utf16_column: 8,
+        }),
+        signature_help_context: Some(fixture["signatureHelp"]["triggerContext"].clone()),
+        ..Default::default()
+    })
+    .unwrap();
+    let sig_wire: Value = serde_json::from_str(&sig_req.messages[0]).unwrap();
+    assert_eq!(sig_wire["params"]["context"]["triggerKind"], json!(2));
+    assert_eq!(
+        sig_wire["params"]["context"]["triggerCharacter"],
+        json!("(")
+    );
+
+    let sig_done = client_apply_server_message(ClientApplyServerMessageRequest {
+        state: sig_req.state,
+        message: json!({
+            "jsonrpc": "2.0",
+            "id": sig_wire["id"],
+            "result": fixture["signatureHelp"]["serverResult"]
+        })
+        .to_string(),
+    })
+    .unwrap();
+    let sig_value = &sig_done.events[0].result.as_ref().unwrap()["signatureHelp"];
+    assert_eq!(sig_value, &fixture["signatureHelp"]["expectedResult"]);
+
+    let retrigger_req = client_feature_request(ClientFeatureRequest {
+        state: sig_done.state,
+        uri: uri.to_string(),
+        method: "textDocument/signatureHelp".into(),
+        position: Some(LspPosition {
+            line: 0,
+            utf16_column: 9,
+        }),
+        signature_help_context: Some(json!({
+            "triggerKind": 3,
+            "isRetrigger": true,
+            "activeSignatureHelp": sig_value
+        })),
+        ..Default::default()
+    })
+    .unwrap();
+    let retrigger_wire: Value = serde_json::from_str(&retrigger_req.messages[0]).unwrap();
+    assert_eq!(
+        retrigger_wire["params"]["context"]["activeSignatureHelp"]["signatures"][1]["parameters"]
+            [0]["label"],
+        json!([3, 14])
+    );
+
+    // 3. Inlay hints: sorting, per-line 8-hint culling, 48-char truncation, resolve, and refresh.
+    let hints_req = client_feature_request(ClientFeatureRequest {
+        state: retrigger_req.state,
+        uri: uri.to_string(),
+        method: "textDocument/inlayHint".into(),
+        range: Some(LspRange {
+            start: LspPosition {
+                line: 0,
+                utf16_column: 0,
+            },
+            end: LspPosition {
+                line: 10,
+                utf16_column: 0,
+            },
+        }),
+        ..Default::default()
+    })
+    .unwrap();
+    let hints_wire: Value = serde_json::from_str(&hints_req.messages[0]).unwrap();
+    let hints_done = client_apply_server_message(ClientApplyServerMessageRequest {
+        state: hints_req.state,
+        message: json!({
+            "jsonrpc": "2.0",
+            "id": hints_wire["id"],
+            "result": fixture["inlayHints"]["serverResult"]
+        })
+        .to_string(),
+    })
+    .unwrap();
+    let hints = hints_done.events[0].result.as_ref().unwrap()["hints"]
+        .as_array()
+        .unwrap();
+    assert_eq!(
+        hints.len(),
+        fixture["inlayHints"]["expectedCount"].as_u64().unwrap() as usize
+    );
+    assert_eq!(
+        hints[0]["label"],
+        fixture["inlayHints"]["expectedFirstLabel"]
+    );
+    assert_eq!(
+        hints[8]["label"],
+        fixture["inlayHints"]["expectedTruncatedEighthOnLine2"]
+    );
+
+    let resolve_hint_req = client_feature_request(ClientFeatureRequest {
+        state: hints_done.state,
+        uri: uri.to_string(),
+        method: "inlayHint/resolve".into(),
+        inlay_hint: Some(hints[0].clone()),
+        ..Default::default()
+    })
+    .unwrap();
+    let resolve_hint_wire: Value = serde_json::from_str(&resolve_hint_req.messages[0]).unwrap();
+    assert_eq!(
+        resolve_hint_wire["params"]["position"]["character"],
+        json!(8)
+    );
+    assert_eq!(
+        resolve_hint_wire["params"]["label"],
+        fixture["inlayHints"]["serverResult"][2]["label"]
+    );
+
+    let refreshed = client_apply_server_message(ClientApplyServerMessageRequest {
+        state: resolve_hint_req.state,
+        message: json!({
+            "jsonrpc": "2.0",
+            "id": "srv-refresh-1",
+            "method": "workspace/inlayHint/refresh"
+        })
+        .to_string(),
+    })
+    .unwrap();
+    assert_eq!(refreshed.events[0].kind, "inlayHintsRefresh");
+    let refresh_reply: Value = serde_json::from_str(&refreshed.messages[0]).unwrap();
+    assert_eq!(refresh_reply["result"], Value::Null);
+
+    // 4. Server-initiated workspace/applyEdit: accepted vs resource operation rejection.
+    let accepted_edit = client_apply_server_message(ClientApplyServerMessageRequest {
+        state: refreshed.state,
+        message: json!({
+            "jsonrpc": "2.0",
+            "id": "srv-edit-1",
+            "method": "workspace/applyEdit",
+            "params": fixture["workspaceApplyEdit"]["acceptedRequest"]
+        })
+        .to_string(),
+    })
+    .unwrap();
+    assert!(accepted_edit.messages.is_empty());
+    assert_eq!(accepted_edit.events[0].kind, "workspaceApplyEdit");
+    assert_eq!(
+        accepted_edit.events[0].result.as_ref().unwrap()["label"],
+        json!("Apply quick fix")
+    );
+    assert_eq!(
+        accepted_edit.events[0].result.as_ref().unwrap()["documentVersions"],
+        fixture["workspaceApplyEdit"]["expectedDocumentVersions"]
+    );
+
+    let rejected_edit = client_apply_server_message(ClientApplyServerMessageRequest {
+        state: accepted_edit.state,
+        message: json!({
+            "jsonrpc": "2.0",
+            "id": "srv-edit-2",
+            "method": "workspace/applyEdit",
+            "params": fixture["workspaceApplyEdit"]["rejectedResourceRequest"]
+        })
+        .to_string(),
+    })
+    .unwrap();
+    assert!(rejected_edit.events.is_empty());
+    let reject_reply: Value = serde_json::from_str(&rejected_edit.messages[0]).unwrap();
+    assert_eq!(reject_reply["result"]["applied"], json!(false));
+    assert_eq!(
+        reject_reply["result"]["failureReason"],
+        fixture["workspaceApplyEdit"]["expectedRejectedFailureReason"]
+    );
+}
+
+#[test]
+fn workspace_apply_edit_rejects_stale_versions_and_malformed_text_before_forwarding() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../fixtures/lsp/editor-actions-hints-v1.json"
+    ))
+    .unwrap();
+    let accepted = &fixture["workspaceApplyEdit"]["acceptedRequest"];
+    let uri = "file:///workspace/main.rs";
+    let opened = client_open_document(ClientOpenDocumentRequest {
+        state: LspClientState::default(),
+        uri: uri.to_string(),
+        language_id: "rust".to_string(),
+        text: "fn main() {}\n".to_string(),
+    })
+    .unwrap();
+    let mut stale = accepted.clone();
+    stale["edit"]["documentChanges"][0]["textDocument"]["version"] = json!(2);
+    let mut missing_text = accepted.clone();
+    missing_text["edit"]["documentChanges"][0]["edits"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("newText");
+    let mut missing_position = accepted.clone();
+    missing_position["edit"]["documentChanges"][0]["edits"][0]["range"]["start"] =
+        json!({ "line": 0 });
+    let mut annotated = accepted.clone();
+    annotated["edit"]["documentChanges"][0]["edits"][0]["annotationId"] = json!("approval");
+    let mut repeated = accepted.clone();
+    let repeated_target = repeated["edit"]["documentChanges"][0].clone();
+    repeated["edit"]["documentChanges"]
+        .as_array_mut()
+        .unwrap()
+        .push(repeated_target);
+    for params in [stale, missing_text, missing_position, annotated, repeated] {
+        let response = client_apply_server_message(ClientApplyServerMessageRequest {
+            state: opened.state.clone(),
+            message: json!({
+                "jsonrpc": "2.0",
+                "id": "edit-rejected",
+                "method": "workspace/applyEdit",
+                "params": params
+            })
+            .to_string(),
+        })
+        .unwrap();
+        assert!(
+            response.events.is_empty(),
+            "unexpected host edit for {params}"
+        );
+        let wire: Value = serde_json::from_str(&response.messages[0]).unwrap();
+        assert_eq!(wire["result"]["applied"], json!(false));
     }
 }

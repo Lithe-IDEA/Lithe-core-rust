@@ -42,7 +42,7 @@ pub fn client_apply_server_message_for_plugin(
                     // silently drops every published diagnostic on Windows.
                     // Match through the normalized form and publish under the
                     // document's own canonical URI.
-                    let document = open_document_for_published_uri(&state.open_documents, uri);
+                    let document = open_document_for_server_uri(&state.open_documents, uri);
                     let Some(document) = document else {
                         return Ok(client_response(state, responses, events));
                     };
@@ -196,6 +196,61 @@ pub fn client_apply_server_message_for_plugin(
                     result: None,
                     error: None,
                 });
+            }
+            "workspace/inlayHint/refresh" => {
+                if let Some(id) = request_id {
+                    responses.push(json_rpc_result(id, Value::Null)?);
+                }
+                events.push(LspClientEvent {
+                    kind: "inlayHintsRefresh".to_string(),
+                    request_id: None,
+                    method: Some(method.to_string()),
+                    uri: None,
+                    version: None,
+                    diagnostics: None,
+                    result: None,
+                    error: None,
+                });
+            }
+            "workspace/applyEdit" if request_id.is_some() => {
+                let id = request_id.expect("guarded above");
+                if state.shutdown_requested {
+                    responses.push(json_rpc_result(
+                        id,
+                        json!({
+                            "applied": false,
+                            "failureReason": "Language server session is shutting down."
+                        }),
+                    )?);
+                } else {
+                    match parse_workspace_apply_edit(message.get("params"), &state.open_documents) {
+                        Err(invalid) => {
+                            responses.push(json_rpc_error(id, -32602, invalid)?);
+                        }
+                        Ok(Err(reason)) => {
+                            responses.push(json_rpc_result(
+                                id,
+                                json!({
+                                    "applied": false,
+                                    "failureReason": reason
+                                }),
+                            )?);
+                        }
+                        Ok(Ok(mut payload)) => {
+                            payload["id"] = id.clone();
+                            events.push(LspClientEvent {
+                                kind: "workspaceApplyEdit".to_string(),
+                                request_id: None,
+                                method: Some(method.to_string()),
+                                uri: None,
+                                version: None,
+                                diagnostics: None,
+                                result: Some(payload),
+                                error: None,
+                            });
+                        }
+                    }
+                }
             }
             "workspace/configuration" => {
                 if let Some(id) = request_id {
@@ -446,6 +501,36 @@ pub fn client_apply_server_message_for_plugin(
                         .completion_providers
                         .insert(String::new(), options.clone());
                 }
+                match result
+                    .get("capabilities")
+                    .and_then(|c| c.get("signatureHelpProvider"))
+                {
+                    Some(Value::Bool(true)) => {
+                        state
+                            .signature_help_providers
+                            .insert(String::new(), json!({}));
+                    }
+                    Some(options) if options.is_object() => {
+                        state
+                            .signature_help_providers
+                            .insert(String::new(), options.clone());
+                    }
+                    _ => {}
+                }
+                if let Some(options) = result
+                    .get("capabilities")
+                    .and_then(|capabilities| capabilities.get("inlayHintProvider"))
+                    .filter(|options| options.is_object() || **options == Value::Bool(true))
+                {
+                    let id = options
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default();
+                    state.inlay_hint_providers.insert(
+                        id.to_string(),
+                        inlay_hint_registration_resolves(Some(options)),
+                    );
+                }
                 if let Some(options) = result
                     .get("capabilities")
                     .and_then(|c| c.get("semanticTokensProvider"))
@@ -466,6 +551,8 @@ pub fn client_apply_server_message_for_plugin(
             state.server_capabilities.clear();
             state.semantic_token_providers.clear();
             state.completion_providers.clear();
+            state.signature_help_providers.clear();
+            state.inlay_hint_providers.clear();
             state.text_document_sync = LspTextDocumentSyncKind::Full;
             state.open_documents.clear();
             state.diagnostics.clear();
@@ -481,7 +568,11 @@ pub fn client_apply_server_message_for_plugin(
                 message.get("result"),
             )
         } else {
-            lsp_feature_result_for_method(pending.as_deref(), message.get("result"))
+            lsp_feature_result_for_method(
+                pending.as_deref(),
+                message.get("result"),
+                &state.open_documents,
+            )
         };
         events.push(LspClientEvent {
             kind: if message.get("error").is_some() {
@@ -511,7 +602,7 @@ pub fn client_apply_server_message_for_plugin(
 /// lowercases the drive letter. A raw map lookup therefore misses even though
 /// the document is open. Comparison preserves URI component boundaries and
 /// folds the Windows drive letter while keeping Unix paths case-sensitive.
-fn open_document_for_published_uri<'a>(
+pub(super) fn open_document_for_server_uri<'a>(
     documents: &'a std::collections::BTreeMap<String, LspClientDocument>,
     uri: &str,
 ) -> Option<&'a LspClientDocument> {

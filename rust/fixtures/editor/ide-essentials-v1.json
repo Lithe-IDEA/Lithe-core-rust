@@ -58,6 +58,7 @@
       "expected": {
         "lineNumbers": true,
         "whitespace": false,
+        "inlayHints": true,
         "cursorStyle": "line",
         "cursorBlink": true,
         "autoSaveDelayMilliseconds": 1500,

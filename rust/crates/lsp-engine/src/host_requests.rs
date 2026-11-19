@@ -1,4 +1,4 @@
-//! Requests a plugin backend sends to the host: forwarding and cancellation.
+//! Reverse requests that a process sends to the host: forwarding and cancellation.
 
 use super::*;
 
@@ -66,6 +66,7 @@ pub(crate) fn cancel_host_request_locked(
             error: None,
             capabilities: None,
             completion_options: None,
+            signature_help_options: None,
             server_info: None,
             level: None,
             message: None,
@@ -129,6 +130,7 @@ pub(crate) fn forward_host_request_locked(
             error: None,
             capabilities: None,
             completion_options: None,
+            signature_help_options: None,
             server_info: None,
             level: None,
             message: None,
@@ -136,4 +138,199 @@ pub(crate) fn forward_host_request_locked(
         },
     );
     Ok(Vec::new())
+}
+
+const MAX_PENDING_APPLY_EDIT_REQUESTS: usize = 8;
+
+/// Cancels a pending server-initiated `workspace/applyEdit` request on `$/cancelRequest`.
+pub(crate) fn cancel_apply_edit_request_locked(
+    session: &RuntimeSession,
+    state: &mut SessionState,
+    params: Option<&Value>,
+    outbound: &mut Vec<String>,
+) -> Result<bool, CoreError> {
+    let Some(server_id) = params.and_then(|params| params.get("id")) else {
+        return Ok(false);
+    };
+    let Some(apply_edit_id) = state
+        .apply_edit_requests
+        .iter()
+        .find(|(_, pending)| &pending.server_id == server_id)
+        .map(|(apply_edit_id, _)| apply_edit_id.clone())
+    else {
+        return Ok(false);
+    };
+    let pending = state
+        .apply_edit_requests
+        .remove(&apply_edit_id)
+        .expect("the apply request was found under the same lock");
+    revoke_apply_edit(session, state, &apply_edit_id);
+    outbound.push(json_rpc_error(
+        &pending.server_id,
+        -32800,
+        "Request cancelled",
+    )?);
+    Ok(true)
+}
+
+/// Removes expired host work and returns the protocol replies for the outbound worker.
+pub(crate) fn expire_apply_edits(
+    session: &RuntimeSession,
+    state: &mut SessionState,
+    now: Instant,
+) -> Vec<String> {
+    let expired: Vec<_> = state
+        .apply_edit_requests
+        .iter()
+        .filter(|(_, request)| now >= request.deadline)
+        .map(|(id, _)| id.clone())
+        .collect();
+    expired
+        .into_iter()
+        .map(|id| {
+            let pending = state
+                .apply_edit_requests
+                .remove(&id)
+                .expect("the apply request was found under the same lock");
+            revoke_apply_edit(session, state, &id);
+            rejected_apply_edit(&pending.server_id, "Workspace edit timed out.")
+        })
+        .collect()
+}
+
+/// Revokes queued and delivered requests. Graceful shutdown sends the replies;
+/// a failed or exited process only needs the event-side cleanup.
+pub(crate) fn abandon_apply_edits(
+    session: &RuntimeSession,
+    state: &mut SessionState,
+    mut outbound: Option<&mut Vec<String>>,
+) {
+    for (id, pending) in std::mem::take(&mut state.apply_edit_requests) {
+        revoke_apply_edit(session, state, &id);
+        if let Some(messages) = outbound.as_deref_mut() {
+            messages.push(rejected_apply_edit(
+                &pending.server_id,
+                "Language server session is shutting down.",
+            ));
+        }
+    }
+}
+
+fn revoke_apply_edit(session: &RuntimeSession, state: &mut SessionState, id: &str) {
+    let queued = state.events.iter().position(|event| {
+        event.kind == "workspaceApplyEdit"
+            && event
+                .result
+                .as_ref()
+                .and_then(|result| result.get("applyEditId"))
+                .and_then(Value::as_str)
+                == Some(id)
+    });
+    if let Some(index) = queued {
+        state.events.remove(index);
+    } else {
+        push_workspace_apply_edit_event(
+            session,
+            state,
+            "workspaceApplyEditCancelled",
+            json!({ "applyEditId": id }),
+        );
+    }
+}
+
+fn rejected_apply_edit(server_id: &Value, reason: &str) -> String {
+    json!({
+        "jsonrpc": "2.0",
+        "id": server_id,
+        "result": { "applied": false, "failureReason": reason }
+    })
+    .to_string()
+}
+
+/// Forwards a validated `workspace/applyEdit` request from the language server
+/// to the host as `workspaceApplyEdit`, or declines it immediately when the
+/// session is not ready or has reached the pending apply-edit cap.
+pub(crate) fn forward_apply_edit_locked(
+    session: &RuntimeSession,
+    state: &mut SessionState,
+    mut request: Value,
+) -> Result<Vec<String>, CoreError> {
+    let fields = request.as_object_mut().ok_or_else(|| {
+        CoreError::new(
+            ErrorCode::InvalidRequest,
+            "Workspace edit event is missing its payload.",
+        )
+    })?;
+    let server_id = fields.remove("id").unwrap_or(Value::Null);
+    if session.log_identity.role != SessionRole::LanguageServer {
+        return Ok(vec![json_rpc_error(
+            &server_id,
+            -32601,
+            "Workspace edits require a language-server session.",
+        )?]);
+    }
+    if state.lifecycle != LspLifecycleState::Ready || !state.client.initialized {
+        return Ok(vec![rejected_apply_edit(
+            &server_id,
+            "Language server session is not ready.",
+        )]);
+    }
+    if state.apply_edit_requests.len() >= MAX_PENDING_APPLY_EDIT_REQUESTS {
+        return Ok(vec![rejected_apply_edit(
+            &server_id,
+            "Too many workspace edits are awaiting application.",
+        )]);
+    }
+    let apply_edit_id = format!("apply-edit-{}", state.next_apply_edit_id);
+    state.next_apply_edit_id += 1;
+    state.apply_edit_requests.insert(
+        apply_edit_id.clone(),
+        PendingApplyEdit {
+            server_id,
+            deadline: Instant::now() + state.request_timeout,
+        },
+    );
+    fields.insert("applyEditId".to_string(), json!(apply_edit_id));
+    push_workspace_apply_edit_event(session, state, "workspaceApplyEdit", request);
+    Ok(Vec::new())
+}
+
+fn push_workspace_apply_edit_event(
+    session: &RuntimeSession,
+    state: &mut SessionState,
+    kind: &str,
+    result: Value,
+) {
+    let sequence = take_sequence(state);
+    enqueue_runtime_event(
+        session,
+        state,
+        LspRuntimeEvent {
+            kind: kind.to_string(),
+            channel: None,
+            plugin_id: None,
+            role: None,
+            event: None,
+            fields: None,
+            catalog_level: None,
+            sequence,
+            provider_id: session.provider_id.clone(),
+            session_id: session.id.clone(),
+            state: None,
+            operation_id: None,
+            method: Some("workspace/applyEdit".to_string()),
+            uri: None,
+            version: None,
+            diagnostics: None,
+            result: Some(result),
+            error: None,
+            capabilities: None,
+            completion_options: None,
+            signature_help_options: None,
+            server_info: None,
+            level: None,
+            message: None,
+            detail: None,
+        },
+    );
 }

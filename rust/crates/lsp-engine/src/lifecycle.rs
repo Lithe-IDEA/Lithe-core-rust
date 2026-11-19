@@ -26,6 +26,8 @@ impl RuntimeSession {
                 None,
             );
             clear_function_registry(self, &mut state);
+            let mut messages = std::mem::take(&mut state.deadline_messages);
+            abandon_apply_edits(self, &mut state, Some(&mut messages));
             clear_runtime_diagnostics(self, &mut state);
             transition_locked(self, &mut state, LspLifecycleState::Stopping, None);
             plugin_operations::abandon(&self.startup_attempt);
@@ -52,7 +54,8 @@ impl RuntimeSession {
                     },
                 );
                 state.client = response.state;
-                (response.messages, false)
+                messages.extend(response.messages);
+                (messages, false)
             } else {
                 state.client.pending_requests.clear();
                 state.pending.clear();
@@ -275,7 +278,7 @@ impl RuntimeSession {
     fn pump_outbound_maintenance(&self) {
         if !self
             .lock_state()
-            .is_ok_and(|state| !state.deadline_cancellations.is_empty())
+            .is_ok_and(|state| !state.deadline_messages.is_empty())
         {
             return;
         }
@@ -285,13 +288,7 @@ impl RuntimeSession {
         let Ok(mut state) = self.lock_state() else {
             return;
         };
-        let messages: Vec<String> = std::mem::take(&mut state.deadline_cancellations)
-            .into_iter()
-            .map(|id| {
-                json!({ "jsonrpc": "2.0", "method": "$/cancelRequest", "params": { "id": id } })
-                    .to_string()
-            })
-            .collect();
+        let messages = std::mem::take(&mut state.deadline_messages);
         if messages.is_empty() {
             return;
         }
@@ -312,7 +309,6 @@ impl RuntimeSession {
     pub(crate) fn expire_deadlines_at(&self, now: Instant) {
         // Relayed calls that no callee runs yet have no session deadline.
         self.relay.expire(now);
-        let mut cancellations = Vec::new();
         let mut initialize_timeout = false;
         let mut shutdown_timeout = false;
         let mut maintenance_write_timeout = false;
@@ -382,8 +378,17 @@ impl RuntimeSession {
                         Some(error),
                     );
                 }
-                cancellations.push(request_id);
+                state.deadline_messages.push(
+                    json!({
+                        "jsonrpc": "2.0",
+                        "method": "$/cancelRequest",
+                        "params": { "id": request_id }
+                    })
+                    .to_string(),
+                );
             }
+            let expired_edits = expire_apply_edits(self, &mut state, now);
+            state.deadline_messages.extend(expired_edits);
             let held_expired = state
                 .plugin_server
                 .as_ref()
@@ -465,16 +470,6 @@ impl RuntimeSession {
             self.kill_process();
         } else if shutdown_timeout {
             self.kill_process();
-        }
-        if !cancellations.is_empty() {
-            if let Ok(mut state) = self.lock_state() {
-                if !matches!(
-                    state.lifecycle,
-                    LspLifecycleState::Stopped | LspLifecycleState::Failed
-                ) {
-                    state.deadline_cancellations.extend(cancellations);
-                }
-            }
         }
     }
 
@@ -790,6 +785,7 @@ pub(crate) fn push_cleanup_fact(
             error: Some(error),
             capabilities: None,
             completion_options: None,
+            signature_help_options: None,
             server_info: None,
             level: Some("warning".to_string()),
             message: Some("Engine process cleanup failed".to_string()),
@@ -836,6 +832,7 @@ pub(crate) fn transition_locked(
             error,
             capabilities: None,
             completion_options: None,
+            signature_help_options: None,
             server_info: None,
             level: None,
             message: None,

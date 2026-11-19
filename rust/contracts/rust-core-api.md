@@ -699,6 +699,7 @@ or removing a command fails until the table changes in the same commit.
 | `lsp.functionProvider` | Select a registered function provider strictly inside one workspace |
 | `lsp.configureFunctionRelay` | Replace the enabled plugins and live workspace contexts Core's plugin-to-plugin function relay checks calls against |
 | `lsp.hostResponse` | Answer one host-service request a plugin backend sent |
+| `lsp.applyEditResponse` | Answer one server-initiated `workspace/applyEdit` request with whether the host applied it |
 | `lsp.hostNotify` | Send one host notification to a plugin backend that negotiated it |
 | `lsp.pluginServerRequest` | Send one request of a plugin backend to the plugin's own language server, under the plugin's declared session policy |
 | `lsp.pluginServerNotify` | Send one notification of a plugin backend to the plugin's own language server |
@@ -3445,21 +3446,30 @@ explicit `plugin.function.*` error.
   callee does not register the function within 30 seconds.
 
 `lsp.request` accepts a semantic `operation` plus
-the operation-specific URI, position, range, diagnostics, item, action, or
+the operation-specific URI, position, range, diagnostics, item, action, hint, or
 command fields, and returns `{ operationId }`. Supported operations include
-completion and resolve, hover, definition/declaration/type-definition, references,
+completion and resolve, hover, signature help (`signatureHelp`), definition/declaration/type-definition, references,
 implementation, rename, formatting, range formatting, document symbols, code actions and resolve, execute command,
-inlay hints, full-document semantic tokens, folding ranges, document links
+inlay hints and resolve (`inlayHints`, `resolveInlayHint`), full-document semantic tokens, folding ranges, document links
 (`documentLinks`, result `{ links: [{ range, target, tooltip }] }`; `target` is null
 until a server supplies it, and entries without a range are dropped), workspace
 symbols (`workspaceSymbols`, see below), code lens, and provider virtual documents.
 For code actions, `diagnostics` contains the original `LspClientDiagnostic`
 objects returned by Core: nullable integer `severity`, `tags`, and
 `relatedInformation` remain intact, and every range uses zero-based `line` /
-`utf16Column` positions. A platform's display severity or marker projection is
+`utf16Column` positions. Optional `codeActionContext` accepts `{ only?: string[], triggerKind?: 1 | 2 }`
+(`1` invoked, `2` automatic). Disabled actions are omitted, titles are normalized
+to single-line bounded text (512 bytes), each action carries a deterministic
+`group` (`"quickfix"`, `"refactor"`, `"source"`, or `"other"`), and Core sorts
+actions stably with `isPreferred` first and then `quickfix`, `refactor`, `source`,
+`other` (up to 256 actions). `resolveCodeAction` strips Core-only `group` before
+sending `codeAction/resolve`. A code action with an unsupported or stale workspace
+edit is omitted. Normalized edits preserve the optional `documentVersions` map
+described below. A platform's display severity or marker projection is
 not a diagnostic request model. Non-LSP markers may request actions with a range
-and an empty diagnostic context. The round-trip fixture is
-`rust/fixtures/lsp/diagnostic-code-actions-v1.json`.
+and an empty diagnostic context. The round-trip fixtures are
+`rust/fixtures/lsp/diagnostic-code-actions-v1.json` and
+`rust/fixtures/lsp/editor-actions-hints-v1.json`.
 
 Deadline cancellations are written by a separate session-owned worker. The
 deadline monitor never writes to stdin. A background write that exceeds
@@ -3492,6 +3502,7 @@ typed events. Hosts should use `waitEvents` so idle sessions do not poll.
 Event types
 include `stateChanged`, `featuresChanged`, `diagnostics`,
 `requestCompleted`, `requestProgress`, `functionsChanged`, `hostRequest`,
+`workspaceApplyEdit`, `workspaceApplyEditCancelled`, `inlayHintsRefresh`, `semanticTokensRefresh`,
 `serverInfoChanged`, and `log`. Every request completes at
 most once with either `result` or a structured runtime error containing
 provider/session, stage, optional method/document/request, stable code, and
@@ -5581,7 +5592,57 @@ The `featuresChanged` event carries `completionOptions:
 `completionProvider` and its dynamic `textDocument/completion` registrations
 (empty arrays when none are declared). The event is re-sent when registrations
 change them. Hosts use it, not a hard-coded list, to send
-`completionContext.triggerKind = 2`.
+`completionContext.triggerKind = 2`. Whenever `signatureHelp` is offered,
+`featuresChanged` likewise carries `signatureHelpOptions:
+{ triggerCharacters: string[], retriggerCharacters: string[] }`, aggregated across
+`signatureHelpProvider` and dynamic `textDocument/signatureHelp` registrations.
+
+Operation `signatureHelp` (`textDocument/signatureHelp`) requires `uri` and
+`position` and accepts optional `signatureHelpContext` (`triggerKind` `1`..`3`,
+one-character `triggerCharacter` when `triggerKind = 2`, `isRetrigger`, and
+`activeSignatureHelp`, which may be a previously normalized Core `SignatureHelp`
+result). Its normalized result is `{ signatureHelp: null }` when no signature is active, or
+`{ signatureHelp: { signatures, activeSignature, activeParameter } }` (capped at 32 signatures,
+128 parameters per signature, 512-character single-line labels, and 2048-byte
+documentation). Each parameter is normalized from either a substring label or
+UTF-16 `[start, end]` offsets into
+`{ label, utf16Start, utf16End, byteStart, byteEnd, documentation, isMarkdown }`,
+and the original `activeSignature` / `activeParameter` selections are mapped to
+the retained entries. Missing or out-of-range indices select the first retained
+entry when one exists. The legacy top-level `activeParameter` is used only for
+the active signature when that signature has no `activeParameter` of its own.
+
+Operation `inlayHints` (`textDocument/inlayHint`) sorts hints stably by
+`(line, utf16Column)`, trims labels to single-line text of at most 48 characters
+(with `…`), caps tooltips at 2048 bytes, and keeps at most 8 hints per line and
+512 hints per viewport request. When a static or dynamically registered provider
+advertises `resolveProvider`,
+`featuresChanged` includes `inlayHintResolve` and `resolveInlayHint` (`inlayHint/resolve`)
+resolves a single hint (`{ hint }`). Pass back the normalized hint with its optional
+`resolvePayload` for this operation. Core uses that bounded original hint (at most 16 KiB)
+to keep the language server's original label parts, position and data. Hints that
+exceed the resolve limit are displayable without a resolve payload. Core advertises `workspace.inlayHint.refreshSupport`
+and forwards `workspace/inlayHint/refresh` as the `inlayHintsRefresh` event after
+acknowledging the request with JSON-RPC `null`. Repeated refreshes coalesce until
+the host drains the queued event.
+
+When a language server sends `workspace/applyEdit`, Core validates its edit payload,
+immediately replies `{ applied: false, failureReason }` for stale versioned targets,
+invalid positions or replacement text, non-file URIs, snippet or annotated
+edits, or `create`/`rename`/`delete` resource operations. The valid payload is
+bounded to 256 target files, 4096 edits and 4 MiB of replacement text. Numeric
+versions must match the session's current open documents. Core preserves them in
+`documentVersions`, keyed by the same target paths as `changes`. The event is
+`workspaceApplyEdit` with `result: { applyEditId, label, changes, documentVersions }`.
+The native host rechecks the supplied versions against the synchronized editor
+snapshots and validates workspace boundaries. It applies or rejects the edit
+using `lsp.planWorkspaceEdit` and `lsp.applyTextEdits`, then answers with
+`lsp.applyEditResponse` (`{ sessionId, applyEditId, applied, failureReason? }`).
+Eight requests per session may await the host within the session request timeout.
+If cancelled or expired before delivery, Core removes the queued edit. After
+delivery, `workspaceApplyEditCancelled` carries `result: { applyEditId }` and the
+host stops pending work for that ID. The server receives cancellation, timeout,
+or shutdown settlement without waiting for a late host response.
 
 Operation `documentSymbols` (`textDocument/documentSymbol`) needs only the
 document `uri` and is offered, as the `documentSymbols` feature, when the server
@@ -7269,10 +7330,10 @@ replacement fails atomically. Invalid requests return `invalid_request` with sta
 `source_too_large`, `source_too_large_or_invalid`, `replacement_too_large`, `too_many_matches`.
 Source, query and replacement are never included in errors or diagnostic logs.
 
-`editor.preferences.resolve` accepts optional `lineNumbers`, `whitespace`, `cursorStyle`
-(`line`, `block`, `underline`), `cursorBlink` and `autoSaveDelayMilliseconds`. It returns
-actual values and minimum/maximum delay. Defaults: true, false, line, true, 1500 ms;
-unknown styles resolve to line and delay clamps to 250–60,000 ms.
+`editor.preferences.resolve` accepts optional `lineNumbers`, `whitespace`, `inlayHints`,
+`cursorStyle` (`line`, `block`, `underline`), `cursorBlink` and `autoSaveDelayMilliseconds`.
+It returns actual values and minimum/maximum delay. Defaults: true, false, true, line,
+true, 1500 ms; unknown styles resolve to line and delay clamps to 250–60,000 ms.
 
 `editor.recent.reduce` accepts `entries`, optional `event:{kind,path,name,line,column}`,
 `query` and `onlyEdited`. It returns bounded `entries` and filtered `results`. Paths are
