@@ -424,9 +424,7 @@ mod tests {
         }
         let bad_box = json!([{"type":"canvas","id":"c","label":"C","height":10,"viewBox":[0,0,0,10],"nodes":[]}]);
         assert_eq!(field(&context, bad_box), "view[0].viewBox");
-        let on = |events: serde_json::Value| {
-            json!([{"type":"canvas","id":"c","label":"C","height":10,"viewBox":[0,0,10,10],"on":events,"nodes":[]}])
-        };
+        let on = |events: serde_json::Value| json!([{"type":"canvas","id":"c","label":"C","height":10,"viewBox":[0,0,10,10],"on":events,"nodes":[]}]);
         assert_eq!(field(&context, on(json!(["click"]))), "view[0].on[0]");
         assert_eq!(
             field(&context, on(json!(["resize", "resize"]))),
