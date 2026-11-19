@@ -546,11 +546,13 @@ pub(crate) fn describe_with_facts(
             if let Some(description) = &option.description {
                 entry["description"] = json!(description);
             }
-            if source == "unset" && option.is_text_like() {
+            if option.default.is_none() && option.is_text_like() {
                 // What the tool uses while the option is unset, as the model
                 // reported it (Maven's user settings file, its local
-                // repository). Display only: it contributes no argument, so
-                // the tool keeps deciding when its own configuration changes.
+                // repository), also while the user overrides it: it is what
+                // removing the override returns to. Display only: it
+                // contributes no argument, so the tool keeps deciding when its
+                // own configuration changes. A declared default replaces it.
                 if let Some(value) = facts
                     .defaults
                     .and_then(|map| map.get(&option.id))

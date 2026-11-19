@@ -2988,8 +2988,10 @@ every time. `build.detect` walks the workspace once for all enabled plugins
 and returns instances, with the model of `static` sources. `build.invocationPlan` and `build.checkToolVersion` resolve the
 executable; `build.resolveOptions` checks stored option values and returns
 each option's value, `source` (`user`, `default` or `unset`), choices,
-`description`, and, for an unset `text`, `file` or `directory` option, the
-`implicitValue` the loaded model reported, with the configuration fingerprint; `build.modelPlan`, `build.taskPlan`,
+`description`, and, for a `text`, `file` or `directory` option without a
+declared `default`, the `implicitValue` the loaded model reported (also while
+the user overrides it, as what removing the value returns to), with the
+configuration fingerprint; `build.modelPlan`, `build.taskPlan`,
 `build.testPlan`, and `build.dependencyPlan` return argv plans, or provider
 requests for a provider source;
 `build.decodeModel`, `build.decodeTestResults`, `build.decodeDiagnostics`,
