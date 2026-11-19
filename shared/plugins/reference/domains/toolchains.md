@@ -65,7 +65,7 @@
 | `toolchains.decodeReply` | 查询请求、提供者应答、宿主观察到的文件系统事实 | `snapshot` | 校验一次 `toolchains/query` 应答，得到 `{installations, statements, watch, diagnostics}` |
 | `toolchains.failureReply` | `{params, code}` | `reply` | 查询没有应答时生成对应的 JSON-RPC 错误；`code` 只能是 `plugin.toolchain.timeout` 或 `plugin.toolchain.providerUnavailable` |
 | `toolchains.resolvePins` | `{document, directory, tool}` | `resolution` | 在 `local.json` 里找最近的固定，返回 `{pin, sourceDirectory}` |
-| `toolchains.resolve` | 某个目录的完整解析输入 | `resolution` | 走四层选择，结果是 `resolved`、`skip` 或 `terminalFailure`，附带 `trace`、`projectCandidates`、`unmet`、`conflicts` |
+| `toolchains.resolve` | 工作区目录或[无工作区的全局解析](../../contract/v1/toolchains/README.md#pins-and-snapshot-resolution) | `resolution` | 走四层选择，结果是 `resolved`、`skip` 或 `terminalFailure`，附带 `trace`、`projectCandidates`、`unmet`、`conflicts` |
 | `toolchains.checkVersion` | `{registry, tool, output, minimumVersion?}` | `version` | 用定义的版本正则取版本并比较；最多 8 段数字、64 字节，不解释别名 |
 | `toolchains.instantiateLaunch` | `{registry, tool, executable, home?, entry?, runtimeArguments, arguments}` | `launch` | 按工具定义的 `launch` 模板，为宿主选中的可执行文件展开启动参数，返回 `{executable, arguments, versionArguments}`；见“按工具定义 ID 启动进程” |
 | `toolchains.discoveryPlan` | `{registry, platform}` | `plan` | 每个工具的扫描计划、声明它的提供者、登录 shell 变量和平台过滤后的 `projectFiles`；最多 256 个根目录、4096 个条目、64 层祖先 |
@@ -252,7 +252,7 @@ Every command accepts UTF-8 JSON, has a 4 MiB input budget, and performs no nati
 | `toolchains.decodeReply` | The query request, the provider's reply, and the host's observed filesystem facts | `snapshot` | Validates one `toolchains/query` reply and returns `{installations, statements, watch, diagnostics}` |
 | `toolchains.failureReply` | `{params, code}` | `reply` | Builds the JSON-RPC error when a query gets no reply. `code` is `plugin.toolchain.timeout` or `plugin.toolchain.providerUnavailable` |
 | `toolchains.resolvePins` | `{document, directory, tool}` | `resolution` | Finds the nearest pin in `local.json`; returns `{pin, sourceDirectory}` |
-| `toolchains.resolve` | The full resolution input for one directory | `resolution` | Runs the four layers. The result is `resolved`, `skip`, or `terminalFailure`, with `trace`, `projectCandidates`, `unmet`, and `conflicts` |
+| `toolchains.resolve` | A workspace directory or [global resolution without a workspace](../../contract/v1/toolchains/README.md#pins-and-snapshot-resolution) | `resolution` | Runs the four layers. The result is `resolved`, `skip`, or `terminalFailure`, with `trace`, `projectCandidates`, `unmet`, and `conflicts` |
 | `toolchains.checkVersion` | `{registry, tool, output, minimumVersion?}` | `version` | Reads the version with the definition's regular expression and compares it. At most 8 numeric parts and 64 bytes; aliases are not interpreted |
 | `toolchains.instantiateLaunch` | `{registry, tool, executable, home?, entry?, runtimeArguments, arguments}` | `launch` | Expands the definition's `launch` template for the executable the host selected, returning `{executable, arguments, versionArguments}`; see "Launching a process by tool-definition ID" |
 | `toolchains.discoveryPlan` | `{registry, platform}` | `plan` | Each tool's scan plan, the providers that declare it, login-shell variables, and platform-filtered `projectFiles`. Limits: 256 roots, 4096 entries, 64 ancestors |
