@@ -92,7 +92,7 @@
 - Core 的 stderr 读取器（`rust/crates/lsp-engine/src/logging.rs`）限制每行 4 KiB、每秒 200 行，之后再走 `text` 的 1 KiB 脱敏规范化。与 v1 相比唯一的兼容变化是从任意 trim 的读取块改为逐行文本：保留行内空格，移除 LF 和末尾 CR，并应用已声明的长度上限和限流。
 - 上游明确给出的严重度通过独立的目录事件保留：`window/logMessage` 和 `window/showMessage` 的 type 1/2/3/4 分别为 ERROR/WARN/INFO/DEBUG，未知类型为 DEBUG。未分类的 stderr 是 DEBUG 排障证据，流名称不表示警告；实际的进程或协议失败由 `*.session.failed` 记录 ERROR，正常关闭仍是生命周期状态。
 - 插件自身使用独立协商的 `litheLogging` 0 和 `lithe/log`，由 Core 把四种受控事实映射到插件目录事件，不能再用 stderr 或任意自由消息代替。协议字段、op、限额和 fixture 以 [插件契约](../../shared/plugins/contract/v1/README.md#structured-plugin-diagnostics) 为准。
-- 声明式贡献没有插件进程，不能发 `lithe/log`。实际执行它的一方通过 `diagnostics.recordPluginOperation` 代记每次尝试的一条终态，事件和通道与 SDK 插件相同：`plugins.operation.finished` 或 `plugins.operation.failed`，写入 `plugins/{plugin}/host`。平台层只上报观察到的阶段和耗时，级别和 `host.*` 失败类别只由 Core 按阶段决定；取消、停止和过期结果不记录。宿主当前代记下表五种贡献，唯一来源是 `rust/crates/diagnostics/src/plugin_operations.rs` 的 `CONTRIBUTIONS`；输入、阶段到类别的对应和 -32064 见 [Rust Core API](../contracts/rust-core-api.md#engine-logging-v2-handoff-pr3)。
+- 声明式贡献没有插件进程，不能发 `lithe/log`。实际执行它的一方通过 `diagnostics.recordPluginOperation` 代记每次尝试的一条终态，事件和通道与 SDK 插件相同：`plugins.operation.finished` 或 `plugins.operation.failed`，写入 `plugins/{plugin}/host`。平台层只上报观察到的阶段和耗时，级别和 `host.*` 失败类别只由 Core 按阶段决定；取消、停止和过期结果不记录。宿主代记下表列出的贡献，唯一来源是 `rust/crates/diagnostics/src/plugin_operations.rs` 的 `CONTRIBUTIONS`；输入、阶段到类别的对应和 -32064 见 [Rust Core API](../contracts/rust-core-api.md#engine-logging-v2-handoff-pr3)。
 
   | operation | 声明来源 | 记录方 | 可能的失败阶段 |
   | --- | --- | --- | --- |
@@ -100,6 +100,7 @@
   | `debugAdapter/start` | `debugAdapters[]` | 桌面宿主；op 为调试会话 ID，用户停止和 Core 拒绝建会话不记录 | resolve、launch、exit、initialize、timeout |
   | `lithe/build/model` | `buildSystems[]` 的命令式模型 | 桌面宿主，op 为加载模型的操作；计划由插件后端提供时由 SDK 记录 | plan、resolve、launch、timeout、exit、decode |
   | `lithe/build/dependencies` | `buildSystems[]` 的命令式依赖树 | 桌面宿主，op 为加载依赖的操作；计划由插件后端提供时由 SDK 记录 | plan、resolve、launch、timeout、exit、decode |
+  | `lithe/build/discoverTests` | `buildSystems[].test.discoveryCommand` | 桌面宿主，op 为发现测试的操作；provider 的请求由 SDK 记录 | plan、resolve、launch、timeout、exit、decode |
   | `commandInstaller/install` | `commandInstallers[]` | 桌面宿主，每次用户确认的安装记一条，op 为这次安装；用户取消不记录；安装正常退出但命令不在目录里记 decode | plan、resolve、launch、timeout、exit、decode |
 
   新增一种声明式贡献时，在同一次改动里给 `CONTRIBUTIONS` 加一行，在执行方开始和结束一次 attempt，并更新本表；不新增事件、通道或错误码。Core 拒绝或无法入队一条代记结果时，桌面宿主记 `app.background.operation_failed`（`operation` 为 `plugin_operation_record`），不重试。

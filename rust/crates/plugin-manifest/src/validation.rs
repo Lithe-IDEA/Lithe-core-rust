@@ -127,6 +127,20 @@ impl DeclarativePluginManifest {
                 "Entrypoint runs need buildProviders 1.",
             ));
         }
+        if self
+            .build_systems
+            .iter()
+            .any(|system| system.has_test_discovery_command())
+            && self
+                .requires
+                .get(capabilities::BUILD_SYSTEMS)
+                .is_none_or(|version| *version < 1)
+        {
+            return Err(invalid(
+                "requires.buildSystems",
+                "Command test discovery needs buildSystems 1.",
+            ));
+        }
         if self.tool_definitions.iter().any(|definition| {
             definition.get("category").is_some() || definition.get("audience").is_some()
         }) && self

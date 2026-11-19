@@ -122,6 +122,9 @@ fn program(build_system: &BuildSystemDeclaration) -> Value {
                 review["source"] = json!("provider");
             }
             if test.discovery { review["discovery"] = json!(true); }
+            if let Some(command) = &test.discovery_command {
+                review["discoveryCommand"] = json!(command);
+            }
             review
         }),
         "model": model,
