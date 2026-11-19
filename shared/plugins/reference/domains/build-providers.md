@@ -6,8 +6,8 @@
 
 有些构建工具只能通过自己的 API 给出项目模型（Gradle Tooling API、BEAM 里的 Mix）。这类插件在 `buildSystems[].provider` 声明一个构建提供者：一个和语言服务器同类的长驻 LSP 基础协议进程，回答 `lithe/build/*` 请求。模型、依赖、任务、测试、运行准备、调试准备、原生配置都可以交给它；宿主仍然负责启动和停止进程、显示界面、运行最终的程序。
 
-> **宿主支持。** Lithe 桌面端声明 `buildSystems` 和 `buildProviders`（版本都是 `0`），不声明 `buildModelInputs`：`requires` 里有它的插件（只读模型输入的生产者和消费者）不会被提供安装。构建窗口发现构建实例、加载提供者模型、解析可执行文件候选并运行命令任务和提供者任务。
-> 构建提供者的运行准备、测试、调试准备、模型输入、原生配置、内联测试报告和运行时调试，桌面端尚未呈现；`Declared()` 上方的同一段注释还写到构建窗口会准备应用目标，具体以该注释为准。
+> **宿主支持。** Lithe 桌面端声明 `buildSystems`（版本 `0`）和 `buildProviders`（版本 `0` 和 `1`），不声明 `buildModelInputs`：`requires` 里有它的插件（只读模型输入的生产者和消费者）不会被提供安装。构建窗口发现构建实例、加载提供者模型、解析可执行文件候选、运行命令任务和提供者任务、准备应用启动和原生程序调试，并发现和运行提供者测试；“运行当前文件”向版本 `1` 的提供者询问文件里的入口。
+> 模型输入、原生配置、内联测试报告和运行时调试，桌面端尚未呈现，以 `Declared()` 上方的注释为准。
 > 宿主只呈现它实现的功能，提供者不得依赖宿主一定会调用其中任何一个。说明见 [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go)；各能力的对照见[能力与协议版本对照](../capabilities-and-versions.md#能力版本requires)。
 > 对契约有疑问，请到 [Lithe-core-rust 的 Issues](https://github.com/Lithe-IDEA/Lithe-core-rust/issues) 反馈。
 
@@ -126,8 +126,8 @@
 
 Some build tools expose their project model only through their own API (the Gradle Tooling API, Mix inside the BEAM). Such a plugin declares a build provider in `buildSystems[].provider`: a long-lived LSP base-protocol process of the same kind as a language server, which answers `lithe/build/*` requests. Models, dependencies, tasks, tests, run preparation, debug preparation, and native configuration can all be handed to it. The host still starts and stops the process, draws the UI, and runs the final program.
 
-> **Host support.** The Lithe desktop declares `buildSystems` and `buildProviders` (both version `0`) and does not declare `buildModelInputs`: a plugin whose `requires` lists it (a producer or consumer of read-only model inputs) is not offered for install. The Build window detects build instances, loads provider models, resolves executable candidates, and runs command tasks and provider tasks.
-> Build-provider run preparation, tests, debug preparation, model inputs, native configuration, inline test reports, and runtime debugging are not presented on the desktop yet; the same comment above `Declared()` also says the Build window prepares application targets, so read that comment for the current state.
+> **Host support.** The Lithe desktop declares `buildSystems` (version `0`) and `buildProviders` (versions `0` and `1`) and does not declare `buildModelInputs`: a plugin whose `requires` lists it (a producer or consumer of read-only model inputs) is not offered for install. The Build window detects build instances, loads provider models, resolves executable candidates, runs command and provider tasks, prepares application launches and native program debugging, and discovers and runs provider tests; Run on Current File asks providers of version `1` for a file's entrypoints.
+> Model inputs, native configuration, inline test reports, and runtime debugging are not presented on the desktop yet; the comment above `Declared()` is authoritative.
 > A host presents the features it implements, and a provider must not depend on a host calling any of them. See [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go); for a per-capability comparison see the [capability and protocol versions](../capabilities-and-versions.md#capability-versions-requires).
 > Questions about the contract go to [Lithe-core-rust Issues](https://github.com/Lithe-IDEA/Lithe-core-rust/issues).
 

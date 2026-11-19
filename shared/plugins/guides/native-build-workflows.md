@@ -8,8 +8,8 @@
 
 这些入口都属于 `buildProviders`（版本 `0`）：清单要求 `requires.buildProviders: 0`，进程协议 `litheBuild` 的版本就是 `buildProviders` 的版本。Node.js SDK 0.5.0 和 Java SDK 0.5.0 实现了全部入口；`main` 上的 Rust SDK 源码也实现了全部入口，随下一次 Rust SDK 发布提供（0.4.0 没有）；Go SDK 没有构建提供者接口。能力定义见[构建提供者](../reference/domains/build-providers.md)，字段和错误码以[契约](../contract/v1/README.md#build-providers)为准。
 
-> **宿主支持。** Lithe 桌面端声明 `buildSystems` 和 `buildProviders`（版本 `0` 和 `1`）：构建窗口发现构建实例、加载提供者模型、解析可执行文件候选、运行命令任务和提供者任务、准备应用启动，并发现和运行提供者测试；“运行当前文件”向版本 `1` 的提供者询问文件里的入口。构建提供者的调试准备、model inputs、原生配置、内联测试报告和运行时调试，桌面端尚未呈现，见
-> [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go) 中 `Declared()` 上方的注释。下文的调试准备入口因此只由 Core 与 SDK 的端到端测试验证，插件作者在桌面端界面里暂时看不到它的效果。
+> **宿主支持。** Lithe 桌面端声明 `buildSystems` 和 `buildProviders`（版本 `0` 和 `1`）：构建窗口发现构建实例、加载提供者模型、解析可执行文件候选、运行命令任务和提供者任务、准备应用启动，并发现和运行提供者测试；运行声明了 `debug.adapter` 时，构建窗口里目标的“调试”和标题栏对提供者运行配置的“调试”先让提供者准备程序，再用这个运行指定的本插件适配器启动调试；“运行当前文件”向版本 `1` 的提供者询问文件里的入口。model inputs、原生配置、内联测试报告和运行时调试，桌面端尚未呈现，见
+> [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go) 中 `Declared()` 上方的注释。
 
 ### 选择入口
 
@@ -106,8 +106,8 @@ A plugin can provide only a workspace backend and create no web page. Users buil
 
 These entry points all belong to `buildProviders` (version `0`): the manifest requires `requires.buildProviders: 0`, and the version of the `litheBuild` process protocol is the version of `buildProviders`. Node.js SDK 0.5.0 and Java SDK 0.5.0 implement every entry point; the Rust SDK source on `main` implements them too, shipping in the next Rust SDK release (0.4.0 does not); the Go SDK has no build-provider interface. For the capability see [Build providers](../reference/domains/build-providers.md); the [contract](../contract/v1/README.md#build-providers) is normative for fields and error codes.
 
-> **Host support.** The Lithe desktop declares `buildSystems` and `buildProviders` (versions `0` and `1`): the Build window detects build instances, loads provider models, resolves executable candidates, runs command and provider tasks, prepares application launches, and discovers and runs provider tests; Run on Current File asks providers of version `1` for a file's entrypoints. Build-provider debug preparation, model inputs, native configuration, inline test reports, and runtime debugging are not presented on the desktop yet; see the comment above `Declared()` in
-> [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go). The debug preparation entry point below is therefore verified only by the Core and SDK end-to-end tests, and a plugin author cannot yet see its effect in the desktop UI.
+> **Host support.** The Lithe desktop declares `buildSystems` and `buildProviders` (versions `0` and `1`): the Build window detects build instances, loads provider models, resolves executable candidates, runs command and provider tasks, prepares application launches, and discovers and runs provider tests; for a run that declares `debug.adapter`, Debug on a Build window target or on a provider run configuration in the title bar has the provider prepare the program and then starts the plugin's own adapter that the run names; Run on Current File asks providers of version `1` for a file's entrypoints. Model inputs, native configuration, inline test reports, and runtime debugging are not presented on the desktop yet; see the comment above `Declared()` in
+> [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go).
 
 ### Choosing an entry point
 

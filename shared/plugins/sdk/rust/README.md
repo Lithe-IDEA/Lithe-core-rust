@@ -38,8 +38,7 @@ This SDK has no VCS provider API; write VCS providers with the
 
 The Lithe desktop declares `backend` and `pluginFunctions` (both version 0) and
 `buildProviders` (versions 0 and 1), so the function, host-service and build
-provider protocols below run there, except that the desktop does not present
-build-provider debug preparation yet. It does not declare
+provider protocols below run there. It does not declare
 `keymapImportProviders`: a plugin whose manifest requires it is not offered for
 installation there, although the Core end-to-end tests still drive the protocol.
 Which host services a session may call is reported at run time; see

@@ -11,8 +11,8 @@ LSP 服务器负责语言分析，构建工具负责项目导入、编译、依�
 > **宿主支持。** 目前唯一的宿主是 Lithe 桌面端，下文的“宿主”都指它。它声明 `buildSystems`、`buildProviders` 和 `debugAdapters`，
 > **不声明 `executionProviders`**：`requires` 里有它的插件（第 2、3 节的运行和测试声明）不会被提供安装，所以这两节的清单按契约是有效的，
 > 但不能在桌面端安装和运行。要在桌面端运行固定命令或构建任务，用第 5 节的构建系统。
-> 桌面端的 Build 窗口检测构建实例、加载提供者模型、解析可执行文件候选并运行命令任务和提供者任务；构建提供者的运行准备、测试、
-> 调试准备、模型输入、原生配置、内联测试报告、运行时调试，以及构建系统的实例选项和任务准备尚未呈现。
+> 桌面端的 Build 窗口检测构建实例、加载提供者模型、解析可执行文件候选、运行命令任务和提供者任务、准备应用启动和原生程序调试，
+> 并发现和运行提供者测试；构建提供者的模型输入、原生配置、内联测试报告、运行时调试，以及构建系统的实例选项和任务准备尚未呈现。
 > 完整声明和说明见 [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go)
 > 中 `Declared()` 上方的注释，各能力的对照见[能力与协议版本对照](../reference/capabilities-and-versions.md)。
 > 对本文有疑问，请到 [Lithe-core-rust 的 Issues](https://github.com/Lithe-IDEA/Lithe-core-rust/issues) 反馈。
@@ -156,7 +156,6 @@ Core 校验声明、检测实例、解码模型、展开命令行；桌面端执
 [构建提供者](../reference/domains/build-providers.md)，用 `litheBuild` 协议回答模型、任务、测试和运行准备请求。
 字段见[构建系统](../reference/domains/build-systems.md)；
 运行原生程序、调试准备和终端见[原生构建工作流](native-build-workflows.md)。
-注意桌面端目前不呈现构建提供者的测试、运行准备和调试准备，见开头的宿主支持。
 
 可以参考实现的插件：
 
@@ -229,8 +228,8 @@ Finish the [LSP plugin lifecycle tutorial](lsp-plugin-lifecycle.md) first, then 
 > and **does not declare `executionProviders`**: a plugin whose `requires` lists it (the run and test declarations of sections 2 and 3) is not offered for install,
 > so the manifests in those two sections are valid under the contract but cannot be installed or run on the desktop.
 > To run a fixed command or a build task on the desktop, use the build system of section 5.
-> The desktop's Build window detects build instances, loads provider models, resolves executable candidates, and runs command tasks and provider tasks; build-provider run preparation, tests,
-> debug preparation, model inputs, native configuration, inline test reports, runtime debugging, and build-system instance options and task preparations are not presented yet.
+> The desktop's Build window detects build instances, loads provider models, resolves executable candidates, runs command and provider tasks, prepares application launches and native program debugging,
+> and discovers and runs provider tests; build-provider model inputs, native configuration, inline test reports, runtime debugging, and build-system instance options and task preparations are not presented yet.
 > The full declarations and notes are in the comment above `Declared()` in [`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go);
 > for a per-capability comparison see the [capability and protocol versions](../reference/capabilities-and-versions.md).
 > Questions about this guide go to [Lithe-core-rust Issues](https://github.com/Lithe-IDEA/Lithe-core-rust/issues).
@@ -384,7 +383,6 @@ When only a program can compute the model (the Gradle Tooling API, for example),
 model, task, test, and run-preparation requests over the `litheBuild` protocol.
 For fields see [build systems](../reference/domains/build-systems.md);
 for running native programs, debug preparation, and terminals see [native build workflows](native-build-workflows.md).
-Note that the desktop does not yet present build-provider tests, run preparation, or debug preparation; see the host support note at the top.
 
 Plugins whose implementation you can read:
 

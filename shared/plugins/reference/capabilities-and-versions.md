@@ -71,9 +71,9 @@ Core 列以本仓库 `main` 上的 Core 源码为准（[`capabilities.rs`](https
 
 ¹ 桌面端声明了这个能力，但其中有些部分还没有界面：对应的部分没有按钮、菜单或窗口，插件照常安装，也不会因此失败。尚未呈现的部分以桌面端源码里 `Declared()` 上方的注释为准（[`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go)）：
 
-- 语言服务器的代码操作（code actions）、签名帮助（signature help）和内嵌提示（inlay hints）尚未呈现，插件的 `foldingRange` 提供者未路由；诊断、补全、悬停、定义、引用、重命名、格式化、文档符号、文档链接和语义高亮均已呈现，`{kind: "tool"}` 启动按工作区工具链解析。
+- 插件的 `foldingRange` 提供者未路由；语言服务器的诊断、补全、悬停、签名帮助、代码操作、内嵌提示、定义、引用、重命名、格式化、文档符号、文档链接和语义高亮均已呈现，`{kind: "tool"}` 启动按工作区工具链解析。
 - `systemCommand` 启动的命令查找只读 `PATH` 和插件已安装的受管命令目录；依赖项目工具链或用户覆盖的启动应使用 `tool` 启动。
-- 构建提供者的调试准备、模型输入、原生配置、内联测试报告和运行期调试；构建系统的实例选项和任务准备。
+- 构建提供者的模型输入、原生配置、内联测试报告和运行期调试；构建系统的实例选项和任务准备。
 - 插件声明的运行配置类型只能运行，不能调试。
 - 不属于任何工具窗口的 `ui` 命令。
 - VCS 提供者的逐行追溯（annotation）、文件历史、文件操作、元数据监听、认证、历史提交差异、项目树与编辑器行号栏状态，以及 `lithe/vcs/execution` 控制台输出。
@@ -186,9 +186,9 @@ Each row is one capability. `requires` lists **exactly** the capabilities a mani
 
 ¹ The desktop client declares this capability, but some of its parts have no surface yet: the missing part has no button, menu, or window, and the plugin installs and does not fail because of it. The notes above `Declared()` in the desktop source are authoritative for what is not presented ([`pluginhost.go`](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go)):
 
-- For language servers: code actions, signature help, and inlay hints have no editor surface yet, and a plugin's `foldingRange` provider is not routed; diagnostics, completion, hover, definition, references, rename, formatting, document symbols, document links, and semantic tokens are presented, and `{kind: "tool"}` launches resolve through the workspace toolchain.
+- For language servers: a plugin's `foldingRange` provider is not routed; diagnostics, completion, hover, signature help, code actions, inlay hints, definition, references, rename, formatting, document symbols, document links, and semantic tokens are presented, and `{kind: "tool"}` launches resolve through the workspace toolchain.
 - Command lookup for `systemCommand` launches reads `PATH` and the plugin's installed command directories only; a launch that depends on a project toolchain or a user override must use a `tool` launch.
-- For build providers: debug preparation, model inputs, native configuration, inline test reports, and runtime debugging; for build systems: instance options and task preparations.
+- For build providers: model inputs, native configuration, inline test reports, and runtime debugging; for build systems: instance options and task preparations.
 - Run configuration types a plugin declares run but cannot be debugged.
 - `ui` commands that belong to no tool window.
 - For VCS providers: annotation, file history, file operations, metadata watching, authentication, history entry diffs, status in the project tree and the editor gutter, and `lithe/vcs/execution` console output.
