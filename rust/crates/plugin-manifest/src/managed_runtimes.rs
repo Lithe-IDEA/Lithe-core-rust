@@ -257,10 +257,7 @@ impl DeclarativePluginManifest {
                     for (mirror_index, mirror) in artifact.mirrors.iter().enumerate() {
                         let mirror_field = format!("{field}.mirrors[{mirror_index}]");
                         let parsed = Url::parse(mirror).map_err(|_| {
-                            invalid(
-                                mirror_field.clone(),
-                                "A runtime mirror needs an HTTPS URL.",
-                            )
+                            invalid(mirror_field.clone(), "A runtime mirror needs an HTTPS URL.")
                         })?;
                         if !bounded_text(mirror, 4096)
                             || parsed.scheme() != "https"
