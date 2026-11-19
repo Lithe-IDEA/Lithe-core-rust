@@ -16,8 +16,6 @@
 
 - [#112](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/112)，[@Mucheen](https://github.com/Mucheen)，**`buildSystems` 1**（API-29）：清单新增 `buildSystems[].test.discoveryCommand`，已有测试运行可以独立采用命令或 provider。命令使用现有构建工具，把 `litheTestDiscovery` v0 写到宿主提供的 `${outputFile}`。Core 的 `build.testDiscoveryPlan`、`build.decodeTestDiscovery` 和测试树兼容两种发现来源，检查每条选择器可原样运行，命令尝试沿用 `lithe/build/discoverTests` 的结构化终态。没有新增宿主方法、通知或 SDK 版本。见 [1lck/Lithe-IDEA#2122](https://github.com/1lck/Lithe-IDEA/issues/2122)。
 
-目前没有。
-
 ## 按协议查首次出现
 
 所有版本都从 `0` 开始。以后一个 PR 给某个能力加版本 `1` 时，在对应的表里为它加一行。
@@ -47,6 +45,7 @@
 | `buildProviders` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `buildProviders` | 1 | 2026-11-18 | [#89](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/89) |
 | `buildSystems` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
+| `buildSystems` | 1 | 待合入 | [#112](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/112) |
 | `commandInstallers` | 0 | 2026-11-15 | [#53](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/53) |
 | `debugAdapters` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `executionProviders` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
