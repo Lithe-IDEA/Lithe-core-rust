@@ -104,7 +104,7 @@ Schema 只检查 JSON 结构。ID 引用、权限、激活事件、模板变量�
 
 只用语言服务器、运行和测试的插件不需要后端。需要构建后端（`buildProviders`）、插件函数，或给插件自己的网页配一个后端进程（`backend`）时，用官方 SDK 写：协议、取消、进程清理和错误处理由 SDK 负责，你只写处理函数。
 
-**新插件优先用 Rust 或 Go SDK。** 两者把后端编译成每个平台各一份的原生可执行文件，用户机器上不需要 Node.js 或 Java 运行时。插件本来就围绕 JVM 工具（例如 Maven、Gradle、Tomcat）时用 Java SDK。构建后端（`buildProviders`）目前只有 Node.js 和 Java SDK 支持，VCS 后端只有 Node.js SDK 支持，这两类后端照旧用它们。
+**新插件优先用 Rust 或 Go SDK。** 两者把后端编译成每个平台各一份的原生可执行文件，用户机器上不需要 Node.js 或 Java 运行时，常驻的后端也不会多占一份 JVM 的内存和启动时间。插件管理的是 JVM 工具（例如 Maven、Gradle、Tomcat）时也一样：后端用 Rust 或 Go 启动这些工具的进程即可。只有后端必须在 JVM 里直接调用 Java 库时，才用 Java SDK。构建后端（`buildProviders`）目前只有 Node.js 和 Java SDK 支持，VCS 后端只有 Node.js SDK 支持，这两类后端照旧用它们。
 
 | SDK | 版本 | 运行时 | Release | 怎么放进插件 |
 | --- | --- | --- | --- | --- |
@@ -324,7 +324,7 @@ A schema checks only JSON structure. Rules such as ID references, permissions, a
 
 A plugin that uses only language servers, run, and test needs no backend. When you need a build backend (`buildProviders`), plugin functions, or a backend process for the plugin's own web page (`backend`), write it with an official SDK: the SDK handles the protocol, cancellation, process cleanup, and errors, and you write only the handlers.
 
-**New plugins should prefer the Rust or Go SDK.** Both compile the backend to one native executable per platform, so users need no Node.js or Java runtime. Use the Java SDK when the plugin is built around JVM tools anyway, such as Maven, Gradle, or Tomcat. Build backends (`buildProviders`) are supported only by the Node.js and Java SDKs today, and VCS backends only by the Node.js SDK, so keep using those for them.
+**New plugins should prefer the Rust or Go SDK.** Both compile the backend to one native executable per platform, so users need no Node.js or Java runtime, and a long-running backend does not cost an extra JVM heap and startup. The same holds when the plugin manages JVM tools such as Maven, Gradle, or Tomcat: a Rust or Go backend starts those tools as processes. Use the Java SDK only when the backend must call Java libraries inside the JVM. Build backends (`buildProviders`) are supported only by the Node.js and Java SDKs today, and VCS backends only by the Node.js SDK, so keep using those for them.
 
 | SDK | Version | Runtime | Release | How it goes into the plugin |
 | --- | --- | --- | --- | --- |
