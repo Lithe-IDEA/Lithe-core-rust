@@ -212,17 +212,27 @@ pub(super) fn edit(system: &BuildSystemDeclaration, request: &EditRequest) -> Va
     }
     let team = project_options::validate(request.document.clone())?;
     let mut local = validate_local(request.local.clone())?;
-    let option = system
-        .options
-        .iter()
-        .find(|option| option.id == request.option_id)
-        .ok_or_else(|| {
-            PluginRejection::new("plugin.build.invalidOption", "Unknown declared option")
-        })?;
     let facts = options::ModelOptionFacts {
         values: request.model_values.as_ref(),
         defaults: request.model_defaults.as_ref(),
         exclude_prefixes: request.model_exclude_prefixes.as_ref(),
+    };
+    let Some(option) = system
+        .options
+        .iter()
+        .find(|option| option.id == request.option_id)
+    else {
+        // A plugin update may drop an option the user had set (detection
+        // reports it in droppedOptions). Its value can only be removed, so
+        // the host can clear what no longer applies.
+        if request.value != Some(Value::Null) || request.selected_choices.is_some() {
+            return Err(PluginRejection::new(
+                "plugin.build.invalidOption",
+                "Unknown declared option",
+            ));
+        }
+        remove_undeclared(&mut local, &system.id, &request.root, &request.option_id);
+        return finish_edit(system, &team, local, request, facts);
     };
     let before = merge(&team, &local);
     let workspace_multi =
@@ -356,6 +366,54 @@ pub(super) fn edit(system: &BuildSystemDeclaration, request: &EditRequest) -> Va
         roots.retain(|_, ids| !ids.is_empty());
     }
     local.empty_selections.retain(|_, roots| !roots.is_empty());
+    finish_edit(system, &team, local, request, facts)
+}
+
+/// Removes the machine-local value of an option the declaration no longer
+/// has, wherever this root reads it: the workspace value, the instance
+/// default, this root's value, and an explicit empty selection.
+fn remove_undeclared(local: &mut Local, system_id: &str, root: &str, option_id: &str) {
+    if let Some(target) = local.document["systems"].get_mut(system_id) {
+        for key in ["options", "instanceDefaults"] {
+            if let Some(values) = target[key].as_object_mut() {
+                values.remove(option_id);
+            }
+        }
+        if let Some(values) = target["instances"]
+            .get_mut(root)
+            .and_then(Value::as_object_mut)
+        {
+            values.remove(option_id);
+        }
+    }
+    if let Some(roots) = local.empty_selections.get_mut(system_id) {
+        for ids in roots.values_mut() {
+            ids.remove(option_id);
+        }
+        roots.retain(|_, ids| !ids.is_empty());
+    }
+    local.empty_selections.retain(|_, roots| !roots.is_empty());
+}
+
+/// Prunes what the edit left empty, checks the local document again, and
+/// describes the options as the edited root now reads them.
+fn finish_edit(
+    system: &BuildSystemDeclaration,
+    team: &Value,
+    mut local: Local,
+    request: &EditRequest,
+    facts: options::ModelOptionFacts<'_>,
+) -> Validation<Value> {
+    if local.document["systems"].get(&system.id).is_none() {
+        let local = validate_local(serde_json::to_value(local).map_err(|_| invalid())?)?;
+        let document = merge(team, &local);
+        let stored = effective(system, &document, &local, &request.root);
+        let resolved = options::resolve_with_facts(system, &stored, facts);
+        return Ok(json!({
+            "local": local,
+            "options": options::describe_with_facts(system, &resolved, facts, request.model_selection.as_ref())
+        }));
+    }
     // A no-op reset must not materialize an empty machine override. Limit
     // pruning to the edited system/root; dormant user data stays untouched.
     let target = &mut local.document["systems"][&system.id];
@@ -384,7 +442,7 @@ pub(super) fn edit(system: &BuildSystemDeclaration, request: &EditRequest) -> Va
     }
     // Revalidate aggregate bounds after insertion, without pruning unrelated data.
     let local = validate_local(serde_json::to_value(local).map_err(|_| invalid())?)?;
-    let document = merge(&team, &local);
+    let document = merge(team, &local);
     let stored = effective(system, &document, &local, &request.root);
     let resolved = options::resolve_with_facts(system, &stored, facts);
     Ok(json!({
