@@ -3680,6 +3680,37 @@ fn build_option_text_is_translated_in_the_manifest() {
     assert_eq!(plain, json!({"manifests": [manifest], "localizations": []}));
 }
 
+/// A plugin update may drop an option the user had set; detection names it
+/// in droppedOptions. Its stored value can be removed, so the host can clear
+/// what no longer applies, but nothing else can be written for it.
+#[test]
+fn a_dropped_option_can_only_be_removed() {
+    use crate::build::build_edit_stored_option_command;
+    let fixture = option_edit_fixture();
+    let local = json!({"version": 1, "document": {"version": 1, "systems": {"fixture": {
+        "options": {"javaHome": "/jdks/21", "profiles": ["dev"]},
+        "instances": {"a": {"javaHome": "/jdks/17"}}
+    }}}});
+    let edit = |value: Value| {
+        build_edit_stored_option_command::<Manifest>(json!({
+            "manifest": fixture["manifest"],
+            "buildSystemID": "fixture",
+            "request": {"document": {"version": 1, "systems": {}}, "local": local,
+                "root": "a", "optionID": "javaHome", "value": value},
+        }))
+        .unwrap()
+    };
+    let removed = edit(Value::Null);
+    assert_eq!(removed["status"], "ok", "{removed}");
+    let system = &removed["edit"]["local"]["document"]["systems"]["fixture"];
+    assert_eq!(system["options"], json!({"profiles": ["dev"]}), "{removed}");
+    assert!(system["instances"].get("a").is_none(), "{removed}");
+
+    let written = edit(json!("/jdks/21"));
+    assert_eq!(written["status"], "rejected", "{written}");
+    assert_eq!(written["error"]["code"], "plugin.build.invalidOption");
+}
+
 fn option_edit_fixture() -> Value {
     serde_json::from_str(include_str!(
         "../../../../fixtures/build/option-edit-v1.json"
