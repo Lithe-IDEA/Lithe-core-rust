@@ -16,7 +16,7 @@
 | 激活事件 | 不需要。提供者由宿主的第一次查询唤起，不需要页面或启动事件 |
 | 后端启动 | 提供者的后端只能是包内可执行文件（`packaged`），或包内运行时（`runtime` 加 `packagedRuntime`），不能依赖需要发现的运行时 |
 | 桌面端 | 声明 `toolDefinitions`；未声明 `toolchainProviders`，见“桌面端现状” |
-| 官方 SDK | 三个官方 SDK 都还没有实现 `litheToolchains`，提供者后端要自己处理 `toolchains/query` |
+| 官方 SDK | [Rust SDK](../../sdk/rust/README.md#toolchain-providers) 提供类型化的 `toolchains/query`、能力协商和取消处理。Node 和 Java 后端自行处理该协议 |
 
 ### 两条安装来源
 
@@ -203,7 +203,7 @@ A plugin can tell Lithe what a tool (a JDK, Maven, Node, Go and so on) looks lik
 | Activation | None needed. The host's first query starts a provider; no page or startup event is needed |
 | Backend launch | The provider's backend must be `packaged`, or `runtime` with `packagedRuntime`, and must not depend on a discovered runtime |
 | Desktop | Declares `toolDefinitions`; does not declare `toolchainProviders`. See "Desktop status" |
-| Official SDKs | None of the three official SDKs implements `litheToolchains` yet; a provider backend handles `toolchains/query` itself |
+| Official SDKs | The [Rust SDK](../../sdk/rust/README.md#toolchain-providers) handles typed `toolchains/query`, negotiation, and cancellation. Node and Java backends handle the protocol directly |
 
 ### Two installation routes
 

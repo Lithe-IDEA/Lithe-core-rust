@@ -70,4 +70,4 @@ jobs:
           asset="lithe-plugin-sdk-rust-$VERSION.crate"
           gh release create "$TAG" "dist/$asset" "dist/$asset.sha256" \
             --title "Rust plugin SDK $VERSION" \
-            --notes "Official Rust plugin SDK $VERSION for Lithe plugin backends. Requires Rust 1.87 or newer and depends only on serde_json and base64. Depend on the tag through Git, or pin the archive by its SHA-256 (\`$asset.sha256\`) and vendor the unpacked crate; see shared/plugins/sdk/rust/README.md."
+            --notes "Official Rust plugin SDK $VERSION for Lithe plugin backends. Requires Rust 1.87 or newer and uses serde, serde_json and base64. Depend on the tag through Git, or pin the archive by its SHA-256 (\`$asset.sha256\`) and vendor the unpacked crate; see shared/plugins/sdk/rust/README.md."

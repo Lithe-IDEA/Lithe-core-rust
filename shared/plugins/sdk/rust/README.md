@@ -20,11 +20,12 @@ next to the SDK and changes with it:
   relayed by Core, with the `Caller` a function called that way sees.
 - **`litheKeymapImport`**: independently negotiated shortcut import providers
   reading only explicitly selected source snapshots.
+- **`litheToolchains`**: [typed toolchain discovery providers](#toolchain-providers).
 - **`litheLogging`**: typed diagnostics, required at initialization; see
   [Logging](#logging).
 
 The SDK owns the wire format, negotiation, cancellation, and error mapping.
-Your code supplies only handlers. It depends on `serde_json` and `base64`, runs
+Your code supplies only handlers. It depends on `serde`, `serde_json` and `base64`, runs
 every call on a thread of its own, and needs Rust 1.87 or newer.
 
 This SDK has no build provider or VCS provider API; write build providers with
@@ -39,6 +40,33 @@ the function and host-service protocols below run there. It does not declare
 installation there, although the Core end-to-end tests still drive the protocol.
 Which host services a session may call is reported at run time; see
 [Host services](#host-services).
+
+## Toolchain providers
+
+Declare the same provider ID in the manifest's
+[`toolchainProviders`](../../contract/v1/toolchains/README.md#provider-backend-negotiation)
+and via `Backend::toolchain_provider`. The host offers the IDs it recognizes at
+initialization. The SDK selects registered IDs in the offer and routes each
+query to that handler:
+
+```rust
+use lithe_plugin_sdk::{toolchains::ToolchainQueryResult, Backend};
+
+let mut backend = Backend::new("version-manager");
+backend.toolchain_provider("manager", |_query, cancellation| {
+    cancellation.check()?;
+    // Read this manager's own data for query.tools and query.workspace.
+    Ok(ToolchainQueryResult::default())
+}).expect("valid provider ID");
+```
+
+Handlers return installations, version statements and watch paths. An empty
+result is valid. Set a statement's `installation` to `None` for an unmet
+requirement. Use `ToolchainQueryError` for a query failure and check the
+cancellation token during potentially long scans. The host observes native
+filesystem facts, and Core validates the returned candidates with those facts.
+The desktop does not yet declare this capability. The Rust SDK end-to-end test
+runs the protocol through Core.
 
 ## Shortcut import providers
 

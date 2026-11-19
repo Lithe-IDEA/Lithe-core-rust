@@ -20,6 +20,7 @@ use crate::protocol::{
     offers, FUNCTIONS_VERSION, KEYMAP_IMPORT_VERSION, LOGGING_VERSION, MAX_FUNCTIONS,
     MAX_MESSAGE_BYTES, MAX_RESULT_BYTES,
 };
+use crate::toolchains::{self, ToolchainQuery, ToolchainQueryError, ToolchainQueryResult};
 use crate::view::{ViewEvent, ViewResult};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde_json::{json, Map, Value};
@@ -39,6 +40,11 @@ type ShutdownHook = Box<dyn FnMut() + Send>;
 type CommandHandler =
     Arc<dyn Fn(&str, Option<WorkspaceContext>) -> Result<(), FunctionError> + Send + Sync>;
 type NotificationHandler = Arc<dyn Fn(Value) -> Result<(), FunctionError> + Send + Sync>;
+type ToolchainHandler = Arc<
+    dyn Fn(&ToolchainQuery, &Cancellation) -> Result<ToolchainQueryResult, ToolchainQueryError>
+        + Send
+        + Sync,
+>;
 type Answer = Result<Value, Value>;
 
 /// Host request for one selected shortcut source; also the operation its diagnostic facts name.
@@ -60,6 +66,8 @@ pub(crate) struct State {
     pub(crate) functions: BTreeMap<String, Handler>,
     keymap_providers: BTreeMap<String, Handler>,
     selected_keymap_providers: BTreeSet<String>,
+    toolchain_providers: BTreeMap<String, ToolchainHandler>,
+    selected_toolchain_providers: BTreeSet<String>,
     pub(crate) logging: bool,
     pub(crate) logging_ready: bool,
     pub(crate) early_diagnostics: Vec<Value>,
@@ -149,6 +157,8 @@ impl Backend {
                     functions: BTreeMap::new(),
                     keymap_providers: BTreeMap::new(),
                     selected_keymap_providers: BTreeSet::new(),
+                    toolchain_providers: BTreeMap::new(),
+                    selected_toolchain_providers: BTreeSet::new(),
                     logging: false,
                     logging_ready: false,
                     early_diagnostics: Vec::new(),
@@ -264,6 +274,38 @@ impl Backend {
                 )
             }),
         );
+        drop(state);
+        Ok(self)
+    }
+
+    /// Registers a provider ID declared in the plugin manifest. The handler
+    /// receives typed inputs and a cancellation token. The SDK echoes the
+    /// query identity in the reply, while Core validates the returned facts.
+    pub fn toolchain_provider<F>(&mut self, id: &str, handler: F) -> Result<&mut Self, SdkError>
+    where
+        F: Fn(&ToolchainQuery, &Cancellation) -> Result<ToolchainQueryResult, ToolchainQueryError>
+            + Send
+            + Sync
+            + 'static,
+    {
+        if !toolchains::provider_id(id) {
+            return Err(SdkError::new(
+                "sdk.toolchain.invalidID",
+                "Invalid toolchain provider ID.",
+            ));
+        }
+        let mut state = lock(&self.shared.state);
+        if state.toolchain_providers.contains_key(id)
+            || state.toolchain_providers.len() >= toolchains::MAX_PROVIDERS
+        {
+            return Err(SdkError::new(
+                "sdk.toolchain.invalidRegistration",
+                "Duplicate provider or provider limit exceeded.",
+            ));
+        }
+        state
+            .toolchain_providers
+            .insert(id.to_string(), Arc::new(handler));
         drop(state);
         Ok(self)
     }
@@ -450,6 +492,9 @@ impl Backend {
                 Phase::Ready if method == KEYMAP_IMPORT_METHOD => {
                     Shared::invoke_keymap(&self.shared, id, &params)
                 }
+                Phase::Ready if method == toolchains::METHOD => {
+                    Shared::invoke_toolchain(&self.shared, id, params)
+                }
                 Phase::Ready => self.shared.respond(
                     &id,
                     Err(rpc_error(
@@ -548,6 +593,9 @@ impl Backend {
         let keymap_offer = params
             .pointer("/capabilities/experimental/litheKeymapImport")
             .cloned();
+        let toolchain_offer = params
+            .pointer("/capabilities/experimental/litheToolchains")
+            .cloned();
         let logging = offers(
             params.pointer("/capabilities/experimental/litheLogging"),
             LOGGING_VERSION,
@@ -616,6 +664,27 @@ impl Backend {
                             }),
                         );
                     }
+                }
+            }
+        }
+        if let Some(offer) =
+            toolchain_offer.filter(|offer| offers(Some(offer), toolchains::VERSION))
+        {
+            if let Some(providers) = offer["providers"]
+                .as_array()
+                .filter(|ids| ids.len() <= toolchains::MAX_PROVIDERS)
+            {
+                state.selected_toolchain_providers = providers
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .filter(|id| state.toolchain_providers.contains_key(*id))
+                    .map(str::to_string)
+                    .collect();
+                if !state.selected_toolchain_providers.is_empty() {
+                    experimental.insert(
+                        toolchains::CAPABILITY.into(),
+                        json!({"version": toolchains::VERSION, "providers": state.selected_toolchain_providers}),
+                    );
                 }
             }
         }
@@ -866,6 +935,100 @@ impl Shared {
             lock(&shared.state).incoming.remove(&key);
             shared.failed(KEYMAP_IMPORT_METHOD, "worker_start_failed");
             shared.respond(&id, Err(internal_response()));
+        }
+    }
+
+    fn invoke_toolchain(shared: &Arc<Self>, id: Value, params: Value) {
+        let query = match ToolchainQuery::parse(&params) {
+            Ok(query) => query,
+            Err(error) => {
+                return shared.respond(
+                    &id,
+                    Err(error.response(
+                        params["operationID"].as_str().unwrap_or_default(),
+                        params["providerID"].as_str().unwrap_or_default(),
+                    )),
+                );
+            }
+        };
+        let key = request_key(&id);
+        let cancellation = Cancellation::new();
+        let handler = {
+            let mut state = lock(&shared.state);
+            let handler = if !state
+                .selected_toolchain_providers
+                .contains(&query.provider_id)
+            {
+                Err(ToolchainQueryError::MethodUnavailable)
+            } else if state.incoming.contains_key(&key) {
+                Err(ToolchainQueryError::InvalidParams)
+            } else {
+                let active = state
+                    .incoming
+                    .values()
+                    .filter(|call| call.function_id == toolchains::METHOD)
+                    .count();
+                if active >= toolchains::MAX_RUNNING_QUERIES {
+                    Err(ToolchainQueryError::LimitExceeded)
+                } else {
+                    Ok(Arc::clone(&state.toolchain_providers[&query.provider_id]))
+                }
+            };
+            if handler.is_ok() {
+                state.incoming.insert(
+                    key.clone(),
+                    Running {
+                        function_id: toolchains::METHOD.to_string(),
+                        cancellation: cancellation.clone(),
+                    },
+                );
+            }
+            handler
+        };
+        let handler = match handler {
+            Ok(handler) => handler,
+            Err(error) => {
+                return shared.respond(
+                    &id,
+                    Err(error.response(&query.operation_id, &query.provider_id)),
+                )
+            }
+        };
+
+        let operation = query.operation_id.clone();
+        let provider = query.provider_id.clone();
+        let worker = Arc::clone(shared);
+        let thread_id = id.clone();
+        let thread_key = key.clone();
+        let spawned = thread::Builder::new()
+            .name("lithe-toolchain-query".into())
+            .spawn(move || {
+                let outcome = catch_unwind(AssertUnwindSafe(|| handler(&query, &cancellation)))
+                    .unwrap_or(Err(ToolchainQueryError::ProviderUnavailable))
+                    .and_then(|facts| query.answer(facts))
+                    .and_then(|result| {
+                        if serde_json::to_vec(&result).map_or(usize::MAX, |bytes| bytes.len())
+                            > MAX_RESULT_BYTES
+                        {
+                            Err(ToolchainQueryError::LimitExceeded)
+                        } else {
+                            Ok(result)
+                        }
+                    });
+                lock(&worker.state).incoming.remove(&thread_key);
+                let answer = cancellation
+                    .check()
+                    .map_err(ToolchainQueryError::from)
+                    .and(outcome)
+                    .map_err(|error| error.response(&query.operation_id, &query.provider_id));
+                worker.respond(&thread_id, answer);
+            });
+        if spawned.is_err() {
+            lock(&shared.state).incoming.remove(&key);
+            shared.respond(
+                &id,
+                Err(ToolchainQueryError::ProviderUnavailable.response(&operation, &provider)),
+            );
         }
     }
 
