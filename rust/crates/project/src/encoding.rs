@@ -270,6 +270,26 @@ pub(crate) fn decode(
     })
 }
 
+/// The text of `bytes` as [`decode`] detects and decodes it without a
+/// requested encoding. Bytes that are already UTF-8 without a byte order mark
+/// become the text without a copy, which is the common case for search.
+pub(crate) fn decode_detected_text(bytes: Vec<u8>) -> Result<String, CoreError> {
+    if bytes.starts_with(&UTF8_BOM) || starts_with_utf16_bom(&bytes) {
+        return decode(&bytes, None).map(|decoded| decoded.text);
+    }
+    match String::from_utf8(bytes) {
+        Ok(text) => Ok(text),
+        Err(error) => decode(error.as_bytes(), None).map(|decoded| decoded.text),
+    }
+}
+
+/// Whether detection reads `bytes` as UTF-16, the only detected encoding
+/// whose text bytes can be zero.
+pub(crate) fn starts_with_utf16_bom(bytes: &[u8]) -> bool {
+    (bytes.starts_with(&UTF16_LE_BOM) && !bytes.starts_with(&UTF32_LE_BOM))
+        || bytes.starts_with(&UTF16_BE_BOM)
+}
+
 /// Encodes `text` for writing.
 ///
 /// `bom` overrides the encoding's own BOM choice for the Unicode encodings;
@@ -415,6 +435,32 @@ mod tests {
     fn utf32_le_bom_is_not_decoded_as_utf16() {
         let bytes = [0xFF, 0xFE, 0x00, 0x00, 0x41, 0x00, 0x00, 0x00];
         assert_ne!(detect(&bytes).ok(), Some(DocumentEncoding::Utf16LeBom));
+        assert!(!starts_with_utf16_bom(&bytes));
+        assert!(starts_with_utf16_bom(&[0xFF, 0xFE, 0x41, 0x00]));
+        assert!(starts_with_utf16_bom(&[0xFE, 0xFF, 0x00, 0x41]));
+    }
+
+    #[test]
+    fn detected_text_is_the_text_of_automatic_decoding() {
+        let samples: [&[u8]; 6] = [
+            b"plain",
+            &[0xEF, 0xBB, 0xBF, b'b', b'o', b'm'],
+            &[0xFF, 0xFE, b'l', 0x00, b'e', 0x00],
+            &[0xFE, 0xFF, 0x00, b'b', 0x00, b'e'],
+            &[0xD6, 0xD0, 0xCE, 0xC4],
+            &[0x81, 0x30, 0x81, 0x30],
+        ];
+        for bytes in samples {
+            assert_eq!(
+                decode_detected_text(bytes.to_vec()).expect("sample should decode"),
+                decode_auto(bytes).text,
+                "{bytes:?}"
+            );
+        }
+        assert!(
+            decode_detected_text(vec![0xFF, 0xFE, 0x00, 0x00, 0x41, 0x00, 0x00, 0x00]).is_err()
+        );
+        assert!(decode_detected_text(vec![b'a', 0xFF]).is_err());
     }
 
     #[test]

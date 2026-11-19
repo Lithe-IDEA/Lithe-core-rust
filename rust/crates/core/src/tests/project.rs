@@ -2506,3 +2506,181 @@ fn shared_workspace_change_fixture() {
     assert_eq!(response["ok"], true, "{response}");
     assert_eq!(response["data"], fixture["expected"]);
 }
+
+/// Runs one Core command and returns its JSON response.
+fn run_project_command(command: &str, payload: Value) -> Value {
+    serde_json::from_str(&execute_json(
+        &serde_json::json!({"id": command, "command": command, "payload": payload}).to_string(),
+    ))
+    .expect("command response should be JSON")
+}
+
+/// The path and untrimmed line of every content match in a `workspace.search` response.
+fn content_matches(response: &Value) -> Vec<(String, String)> {
+    assert_eq!(response["ok"], true, "{response}");
+    response["data"]["matches"]
+        .as_array()
+        .expect("matches should be an array")
+        .iter()
+        .filter(|value| value["kind"] == "content")
+        .map(|value| {
+            (
+                value["path"]
+                    .as_str()
+                    .expect("path should be text")
+                    .to_string(),
+                value["sourceLine"]
+                    .as_str()
+                    .expect("content matches should carry their line")
+                    .to_string(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn search_reads_every_encoding_and_size_the_editor_opens() {
+    // The editor detects BOM-marked UTF-8 and UTF-16, UTF-8, then GBK or GB18030, and
+    // opens files up to 16 MiB; search must find text in every file it can open.
+    let root = temporary_root("search-encodings");
+    let _cleanup = super::support::Cleanup(root.clone());
+    fs::create_dir_all(&root).expect("fixture root should be creatable");
+    // "\u{4E2D}\u{6587} gbkToken417" in GBK: U+4E2D is D6 D0 and U+6587 is CE C4.
+    let mut gbk = vec![0xD6, 0xD0, 0xCE, 0xC4, b' '];
+    gbk.extend_from_slice(b"gbkToken417\n");
+    fs::write(root.join("gbk.txt"), gbk).expect("GBK fixture should be writable");
+    let mut utf16_le = vec![0xFF, 0xFE];
+    utf16_le.extend(
+        "utf16LeToken417\n"
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes),
+    );
+    fs::write(root.join("utf16-le.txt"), utf16_le).expect("UTF-16 LE fixture should be writable");
+    let mut utf16_be = vec![0xFE, 0xFF];
+    utf16_be.extend(
+        "utf16BeToken417\n"
+            .encode_utf16()
+            .flat_map(u16::to_be_bytes),
+    );
+    fs::write(root.join("utf16-be.txt"), utf16_be).expect("UTF-16 BE fixture should be writable");
+    fs::write(root.join("plain.txt"), "plainToken417\n").expect("plain fixture should be writable");
+    // 2.4 MB, above the 2 MiB that both search and the index used to stop at.
+    let large = "filler line of text\n".repeat(120_000) + "largeToken417\n";
+    fs::write(root.join("large.log"), large).expect("large fixture should be writable");
+    // Above the editor's 16 MiB limit, so search never reads it.
+    let huge = "filler line of text\n".repeat(840_000) + "hugeToken417\n";
+    assert!(huge.len() > 16 * 1024 * 1024);
+    fs::write(root.join("huge.log"), huge).expect("huge fixture should be writable");
+    // A NUL byte marks binary content even when the rest is ASCII.
+    fs::write(root.join("data.bin"), b"binaryToken417\0\x01\x02\n")
+        .expect("binary fixture should be writable");
+
+    let search = |query: &str, regular_expression: bool| {
+        content_matches(&run_project_command(
+            "workspace.search",
+            serde_json::json!({
+                "root": root,
+                "query": query,
+                "caseSensitive": true,
+                "regularExpression": regular_expression,
+                "maxResults": 50,
+                "maxFileResults": 0,
+                "includeContentRanges": true
+            }),
+        ))
+    };
+    let found = |path: &str, line: &str| vec![(path.to_string(), line.to_string())];
+    assert_eq!(
+        search("gbkToken417", false),
+        found("gbk.txt", "中文 gbkToken417")
+    );
+    // A query without an ASCII trigram reads every file rather than the index.
+    assert_eq!(search("中文", false), found("gbk.txt", "中文 gbkToken417"));
+    assert_eq!(
+        search("utf16LeToken417", false),
+        found("utf16-le.txt", "utf16LeToken417")
+    );
+    assert_eq!(
+        search("utf16BeToken417", false),
+        found("utf16-be.txt", "utf16BeToken417")
+    );
+    assert_eq!(
+        search("largeToken417", false),
+        found("large.log", "largeToken417")
+    );
+    assert_eq!(
+        search("large[T]oken417", true),
+        found("large.log", "largeToken417")
+    );
+    assert_eq!(search("hugeToken417", false), Vec::new());
+    assert_eq!(search("binaryToken417", false), Vec::new());
+    assert_eq!(search("binary[T]oken417", true), Vec::new());
+
+    // Replacement writes UTF-8 back, so it must not offer the files that are not UTF-8.
+    let replacement = run_project_command(
+        "workspace.replacePreview",
+        serde_json::json!({"root": root, "query": "Token417", "replacement": "Mark",
+            "caseSensitive": true}),
+    );
+    assert_eq!(replacement["ok"], true, "{replacement}");
+    let replaced = replacement["data"]["files"]
+        .as_array()
+        .expect("replacement files should be an array")
+        .iter()
+        .map(|file| file["path"].as_str().expect("path should be text"))
+        .collect::<Vec<_>>();
+    assert!(replaced.contains(&"plain.txt"), "{replacement}");
+    for path in ["gbk.txt", "utf16-le.txt", "utf16-be.txt", "data.bin"] {
+        assert!(!replaced.contains(&path), "{path}: {replacement}");
+    }
+}
+
+#[test]
+fn search_and_replacement_match_line_ends_on_crlf_lines() {
+    // `$` must match before the carriage return of a CRLF line, and replacement must keep it.
+    let root = temporary_root("search-crlf");
+    let _cleanup = super::support::Cleanup(root.clone());
+    fs::create_dir_all(&root).expect("fixture root should be creatable");
+    let text = "crlfToken417\r\nnext\r\n";
+    fs::write(root.join("crlf.txt"), text).expect("CRLF fixture should be writable");
+
+    let response = run_project_command(
+        "workspace.search",
+        serde_json::json!({"root": root, "query": "crlfToken417$", "caseSensitive": true,
+            "regularExpression": true, "maxResults": 20, "maxFileResults": 0,
+            "includeContentRanges": true}),
+    );
+    assert_eq!(
+        content_matches(&response),
+        vec![("crlf.txt".to_string(), "crlfToken417".to_string())]
+    );
+    let found = &response["data"]["matches"][0];
+    assert_eq!(found["line"], 1);
+    assert_eq!(
+        found["contentMatchRanges"],
+        serde_json::json!([{"start": 0, "length": 12}])
+    );
+
+    let replacement = run_project_command(
+        "workspace.replacePreview",
+        serde_json::json!({"root": root, "query": "Token417$", "replacement": "Mark",
+            "caseSensitive": true, "regularExpression": true}),
+    );
+    assert_eq!(replacement["ok"], true, "{replacement}");
+    let file = &replacement["data"]["files"][0];
+    assert_eq!(file["path"], "crlf.txt", "{replacement}");
+    assert_eq!(file["matches"][0]["before"], "crlfToken417");
+    assert_eq!(file["matches"][0]["after"], "crlfMark");
+    assert_eq!(file["replacementText"], "crlfMark\r\nnext\r\n");
+
+    let batch = run_project_command(
+        "workspace.searchTextBatch",
+        serde_json::json!({"query": "crlfToken417$", "regularExpression": true,
+            "contextLines": 1, "files": [{"path": "wsl://fixture/crlf", "text": text}]}),
+    );
+    assert_eq!(batch["ok"], true, "{batch}");
+    let found = &batch["data"]["files"][0]["matches"][0];
+    assert_eq!(found["line"], 1, "{batch}");
+    assert_eq!(found["lineText"], "crlfToken417");
+    assert_eq!(found["contextAfter"], serde_json::json!(["next"]));
+}

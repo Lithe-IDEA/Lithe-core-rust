@@ -108,15 +108,18 @@ pub fn replace_preview(
             .text_overrides
             .get(&relative)
             .cloned()
-            .or_else(|| read_searchable_text(&file));
+            .or_else(|| read_replaceable_text(&file));
         let Some(text) = text else { continue };
         let mut matches = Vec::new();
         let mut replaced_lines = Vec::new();
-        for (index, line) in text.split('\n').enumerate() {
+        for (index, raw_line) in text.split('\n').enumerate() {
             lithe_protocol::cancellation::check()?;
+            // Match without a CRLF line's carriage return, as search does, and put it back.
+            let line = line_content(raw_line);
+            let line_end = &raw_line[line.len()..];
             let (after, occurrence_count) =
                 matcher.replace_with_options(line, &request.replacement, request.preserve_case);
-            replaced_lines.push(after.clone());
+            replaced_lines.push(format!("{after}{line_end}"));
             if occurrence_count > 0 {
                 matches.push(crate::contracts::ReplacementMatch {
                     line: index + 1,
