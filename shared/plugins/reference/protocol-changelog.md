@@ -14,7 +14,7 @@
 
 ## 待合入
 
-- `ui` 0 内的说明修正（API-13、API-19）：契约 README 写明画布在缩放 1 时怎样放 `viewBox`。不写 `pan` 的画布显示整个 `viewBox`：按视图宽度缩放，但不超过 `height`，从区域左上角开始，所以 `viewBox` 和视图最窄时一样宽、和 `height` 一样高的场景在那里一个单位一个点，视图变宽时大小不变、完整显示，右边留空；视图更窄时按宽度缩小，下方留空。写了 `pan` 的画布不变：`viewBox` 的宽度占满视图、上边对齐区域顶部，缩小到比区域窄时水平居中。以前的说明只有“按视图宽度缩放、`height` 点高”，在更宽的窗口里会裁掉场景下半部分。`plugin-ui.schema.json` 的 canvas 说明同步；`domains/settings.md` 中英两段补充区域画布的设计宽度：桌面端窗口最小时语言页的区域约 610 点，构建系统页和编译器页右侧详情里约 340 点（[1lck/Lithe-IDEA#2181](https://github.com/1lck/Lithe-IDEA/issues/2181)）。没有新增版本号、宿主方法、通知或 SDK 版本。
+- `ui` 0 内的说明修正（API-13、API-19）：契约 README 写明画布在缩放 1 时怎样放 `viewBox`。不写 `pan` 的画布显示整个 `viewBox`：按视图宽度缩放，但不超过 `height`，从区域左上角开始，所以 `viewBox` 和视图最窄时一样宽、和 `height` 一样高的场景在那里一个单位一个点，视图变宽时大小不变、完整显示，右边留空；视图更窄时按宽度缩小，下方留空。写了 `pan` 的画布不变：`viewBox` 的宽度占满视图、上边对齐区域顶部，缩小到比区域窄时水平居中。以前的说明只有“按视图宽度缩放、`height` 点高”，在更宽的窗口里会裁掉场景下半部分。`plugin-ui.schema.json` 的 canvas 说明同步；`domains/settings.md` 中英两段补充区域画布的设计宽度：桌面端窗口最小时语言页的区域约 610 点，构建系统页和编译器页右侧详情里约 340 点（[1lck/Lithe-IDEA#2181](https://github.com/1lck/Lithe-IDEA/issues/2181)）。没有新增版本号、宿主方法、通知或 SDK 版本。实现见 [#107](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/107)。
 
 ## 按协议查首次出现
 
