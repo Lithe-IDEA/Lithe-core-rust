@@ -61,6 +61,16 @@
         "propertyNames": { "pattern": "^[a-z][a-z0-9-]*(?![\\s\\S])", "maxLength": 64 },
         "additionalProperties": { "$ref": "#/$defs/runTypeText" }
       }
+    },
+    "buildOptions": {
+      "description": "Text of buildSystems[].options, by build system ID, then option ID. Core applies it to the manifest (build.localizeOptions), so every surface that shows an option shows it translated.",
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]*(?![\\s\\S])", "maxLength": 64 },
+      "additionalProperties": {
+        "type": "object",
+        "propertyNames": { "pattern": "^[a-z][A-Za-z0-9]*(?![\\s\\S])", "maxLength": 120 },
+        "additionalProperties": { "$ref": "#/$defs/optionText" }
+      }
     }
   },
   "$defs": {
@@ -130,6 +140,21 @@
       "minLength": 1,
       "maxLength": 512,
       "pattern": "\\S"
+    },
+    "optionText": {
+      "description": "Each member replaces the field of the same name; plugin.json must have that field.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "displayName": { "$ref": "#/$defs/label" },
+        "description": { "$ref": "#/$defs/runTypeDescription" },
+        "choices": {
+          "description": "Titles of declared choices, by choice value.",
+          "type": "object",
+          "propertyNames": { "minLength": 1, "maxLength": 256 },
+          "additionalProperties": { "$ref": "#/$defs/label" }
+        }
+      }
     },
     "actionText": {
       "description": "Each member replaces the field of the same name; plugin.json must have that field.",

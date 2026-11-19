@@ -436,6 +436,8 @@ pub enum ToolchainsCommand {
 pub enum BuildCommand {
     /// Finds the build-system instances of a workspace (`build.detect`).
     Detect,
+    /// Translates the option text of build plugins' manifests (`build.localizeOptions`).
+    LocalizeOptions,
     /// Validates a native team's persisted Build options (`build.projectOptions`).
     ProjectOptions,
     /// Merges checked team and machine-local Build preferences without I/O.
@@ -1186,6 +1188,7 @@ impl CoreCommand {
             "outputLinks.match" => Some(Self::OutputLinksMatch),
             "outputLinks.decodeResolution" => Some(Self::OutputLinksDecodeResolution),
             "build.detect" => Some(Self::Build(BuildCommand::Detect)),
+            "build.localizeOptions" => Some(Self::Build(BuildCommand::LocalizeOptions)),
             "build.projectOptions" => Some(Self::Build(BuildCommand::ProjectOptions)),
             "build.resolveStoredOptions" => Some(Self::Build(BuildCommand::ResolveStoredOptions)),
             "build.editStoredOption" => Some(Self::Build(BuildCommand::EditStoredOption)),
