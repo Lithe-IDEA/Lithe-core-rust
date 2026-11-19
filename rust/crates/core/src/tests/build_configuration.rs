@@ -37,7 +37,7 @@ fn call(command: fn(Value) -> Result<Value, crate::protocol::CoreError>, request
     command(json!({"manifest":manifest,"buildSystemID":id,"request":request})).unwrap()
 }
 fn edit_request() -> Value {
-    json!({"root":".", "workspaceStateDirectory":native_fixture_path("/fixture/state"), "outputFile":native_fixture_path("/fixture/state/outputs/edit.json"),
+    json!({"root":".", "projectCodeAllowed":true, "workspaceStateDirectory":native_fixture_path("/fixture/state"), "outputFile":native_fixture_path("/fixture/state/outputs/edit.json"),
         "snapshot":snapshot(), "edits":{"sourceID":"user", "revision":snapshot()["sources"][0]["revision"],
             "values":{"localRepository":"/new"}}})
 }
@@ -51,7 +51,7 @@ fn native_configuration_needs_a_provider_host_and_preserves_option_arguments() {
     };
     let plan = call(
         build_configuration_plan_command::<Manifest>,
-        json!({"root":".","options":{"offline":true},"tool":{"executable":executable}}),
+        json!({"root":".","projectCodeAllowed":true,"options":{"offline":true},"tool":{"executable":executable}}),
     );
     assert_eq!(plan["status"], "ok", "{plan}");
     assert_eq!(
@@ -65,7 +65,7 @@ fn native_configuration_needs_a_provider_host_and_preserves_option_arguments() {
     assert_eq!(
         call(
             build_configuration_plan_command::<Manifest>,
-            json!({"root":".","tool":{"executable":"relative/mvn"}})
+            json!({"root":".","projectCodeAllowed":true,"tool":{"executable":"relative/mvn"}})
         )["status"],
         "rejected"
     );

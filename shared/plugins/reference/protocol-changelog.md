@@ -14,6 +14,7 @@
 
 ## 待合入
 
+- [#118](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/118)，[@1lck](https://github.com/1lck)，`buildSystems` 0 内的行为补充（—）：契约新增 [Workspace trust](../contract/v1/README.md#workspace-trust) 一节，取代“Lithe 没有工作区信任状态”的说法。构建计划请求新增 `projectCodeAllowed`；工作区未受信任时，Core 以新错误码 `plugin.build.untrustedWorkspace` 拒绝所有任务、测试、运行、调试准备，以及声明了 `executesProjectCode: true` 的模型、依赖命令和构建提供者请求。声明 `false` 的模型和依赖命令在安全模式下照常加载。插件清单和后端协议都不变；宿主必须在计划请求里传入信任，否则会运行项目代码的计划都会被拒绝。没有新增版本号、宿主方法、通知或 SDK 版本。见 [1lck/Lithe-IDEA#2201](https://github.com/1lck/Lithe-IDEA/issues/2201)。
 - [#112](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/112)，[@Mucheen](https://github.com/Mucheen)，**`buildSystems` 1**（API-29）：清单新增 `buildSystems[].test.discoveryCommand`，已有测试运行可以独立采用命令或 provider。命令使用现有构建工具，把 `litheTestDiscovery` v0 写到宿主提供的 `${outputFile}`。Core 的 `build.testDiscoveryPlan`、`build.decodeTestDiscovery` 和测试树兼容两种发现来源，检查每条选择器可原样运行，命令尝试沿用 `lithe/build/discoverTests` 的结构化终态。没有新增宿主方法、通知或 SDK 版本。见 [1lck/Lithe-IDEA#2122](https://github.com/1lck/Lithe-IDEA/issues/2122)。
 
 ## 按协议查首次出现

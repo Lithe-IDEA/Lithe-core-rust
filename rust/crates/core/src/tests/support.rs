@@ -7,6 +7,26 @@ use std::sync::{
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// `request` in a workspace the user trusts: build plans that run project code
+/// need `projectCodeAllowed`, so tests of other behaviour state it unless they
+/// set it themselves.
+pub(crate) fn trusted(mut request: Value) -> Value {
+    if let Value::Object(object) = &mut request {
+        object
+            .entry("projectCodeAllowed")
+            .or_insert(Value::Bool(true));
+    }
+    request
+}
+
+/// A command payload whose `request` is [`trusted`].
+pub(crate) fn trusted_payload(mut payload: Value) -> Value {
+    if let Some(request) = payload.get_mut("request") {
+        *request = trusted(request.take());
+    }
+    payload
+}
+
 pub(super) fn fixture() -> Value {
     let fixture_path =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/search/basic.json");

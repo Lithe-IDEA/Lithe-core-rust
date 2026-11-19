@@ -1,7 +1,9 @@
-//! Machine-wide SDK registrations and defaults, independent of project pins.
+//! Machine-wide SDK registrations and defaults, independent of project pins,
+//! and the machine-local workspace trust decisions.
 //!
 //! Native adapters validate installations, preserve source identity and publish
-//! edits atomically. This module owns bounds, path identity and document merges.
+//! edits atomically. This module owns bounds, path identity, document merges and
+//! the order in which trust decisions apply to a workspace.
 
 use super::paths;
 use lithe_plugin_model::{is_tool_id, PluginRejection, Validation};
@@ -11,7 +13,8 @@ use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
 const MAX_BYTES: usize = 256 * 1024;
-const MAX_TRUSTED_WORKSPACES: usize = 256;
+/// Bound of each trust list: trusted and distrusted workspaces, and trusted locations.
+const MAX_TRUST_ENTRIES: usize = 256;
 
 #[derive(Clone, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -28,6 +31,25 @@ struct Catalog {
     tools: BTreeMap<String, Entry>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     trusted_workspaces: Vec<String>,
+    /// Workspaces the user chose to keep in safe mode. An explicit decision on a
+    /// workspace wins over a trusted location that contains it. Written only once
+    /// used, so a catalog without decisions stays readable by older hosts.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    distrusted_workspaces: Vec<String>,
+    /// Folders whose every workspace, at any depth, is trusted unless distrusted
+    /// itself.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    trusted_locations: Vec<String>,
+}
+
+/// A workspace's trust: `trusted` allows project code to run, `distrusted` is a
+/// recorded choice of safe mode, and `unknown` means the user was not asked yet.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+enum TrustState {
+    Trusted,
+    Distrusted,
+    Unknown,
 }
 
 #[derive(Deserialize)]
@@ -49,12 +71,17 @@ struct Edit {
     default_home: Option<String>,
 }
 
-/// Explicit machine-local trust mutation for executing tool environments inside one workspace.
+/// Explicit machine-local trust decision on one workspace: `trusted: true` lets
+/// its project code run, `trusted: false` records safe mode. `location` also
+/// trusts the workspace's parent folder, and is refused with `trusted: false` or
+/// when the workspace has no parent to offer.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct WorkspaceTrustEdit {
     workspace: String,
     trusted: bool,
+    #[serde(default)]
+    location: bool,
 }
 
 #[derive(Deserialize)]
@@ -127,22 +154,29 @@ impl Request {
         })
     }
 
-    fn trusted_workspaces(&self, workspaces: &[String]) -> Validation<Vec<String>> {
+    /// Normalizes one trust list, refusing duplicates under the platform's case rules.
+    fn trust_list(&self, entries: &[String], field: &str) -> Validation<Vec<String>> {
+        Ok(self.trust_keys(entries, field)?.into_values().collect())
+    }
+
+    /// One trust list by identity key, so an edit adds or removes a path whatever
+    /// its spelling.
+    fn trust_keys(&self, entries: &[String], field: &str) -> Validation<BTreeMap<String, String>> {
         let case_sensitive = self.case_sensitive()?;
-        if workspaces.len() > MAX_TRUSTED_WORKSPACES {
-            return Err(invalid("trustedWorkspaces"));
+        if entries.len() > MAX_TRUST_ENTRIES {
+            return Err(invalid(field));
         }
         let mut by_key = BTreeMap::new();
-        for workspace in workspaces {
-            let path = paths::normalize(workspace, &self.platform, true)
-                .ok_or_else(|| invalid("trustedWorkspaces"))?;
+        for entry in entries {
+            let path =
+                paths::normalize(entry, &self.platform, true).ok_or_else(|| invalid(field))?;
             let key = paths::normalize(&path, &self.platform, case_sensitive)
-                .ok_or_else(|| invalid("trustedWorkspaces"))?;
+                .ok_or_else(|| invalid(field))?;
             if by_key.insert(key, path).is_some() {
-                return Err(invalid("trustedWorkspaces"));
+                return Err(invalid(field));
             }
         }
-        Ok(by_key.into_values().collect())
+        Ok(by_key)
     }
 
     fn read(&self) -> Validation<Catalog> {
@@ -158,6 +192,8 @@ impl Request {
                 version: 1,
                 tools: BTreeMap::new(),
                 trusted_workspaces: Vec::new(),
+                distrusted_workspaces: Vec::new(),
+                trusted_locations: Vec::new(),
             }
         };
         if catalog.version != 1 || catalog.tools.len() > 64 {
@@ -169,20 +205,61 @@ impl Request {
             }
             *entry = self.entry(&entry.homes, &entry.default_home)?;
         }
-        catalog.trusted_workspaces = self.trusted_workspaces(&catalog.trusted_workspaces)?;
+        catalog.trusted_workspaces =
+            self.trust_list(&catalog.trusted_workspaces, "trustedWorkspaces")?;
+        catalog.distrusted_workspaces =
+            self.trust_list(&catalog.distrusted_workspaces, "distrustedWorkspaces")?;
+        catalog.trusted_locations =
+            self.trust_list(&catalog.trusted_locations, "trustedLocations")?;
         Ok(catalog)
     }
 
-    fn workspace_trusted(&self, catalog: &Catalog, workspace: &str) -> Validation<bool> {
-        if workspace.is_empty() {
-            return Ok(false);
-        }
+    /// The trust of `workspace`, as IntelliJ IDEA orders it: an explicit decision on
+    /// the workspace first, then a trusted location containing it. The matching
+    /// location is returned with a location-derived trust.
+    fn workspace_trust(
+        &self,
+        catalog: &Catalog,
+        workspace: &str,
+    ) -> Validation<(TrustState, Option<String>)> {
         let case_sensitive = self.case_sensitive()?;
         let key = paths::normalize(workspace, &self.platform, case_sensitive)
             .ok_or_else(|| invalid("workspaceRoot"))?;
-        Ok(catalog.trusted_workspaces.iter().any(|entry| {
-            paths::normalize(entry, &self.platform, case_sensitive).as_ref() == Some(&key)
-        }))
+        let names = |entries: &[String]| {
+            entries.iter().any(|entry| {
+                paths::normalize(entry, &self.platform, case_sensitive).as_ref() == Some(&key)
+            })
+        };
+        if names(&catalog.trusted_workspaces) {
+            return Ok((TrustState::Trusted, None));
+        }
+        if names(&catalog.distrusted_workspaces) {
+            return Ok((TrustState::Distrusted, None));
+        }
+        let location = catalog
+            .trusted_locations
+            .iter()
+            .find(|location| paths::within(workspace, location, &self.platform, case_sensitive));
+        Ok(match location {
+            Some(location) => (TrustState::Trusted, Some(location.clone())),
+            None => (TrustState::Unknown, None),
+        })
+    }
+
+    /// The folder a trust prompt may offer to trust with `workspace`: its parent,
+    /// unless the parent is a filesystem root (`/`, a drive or a UNC share), which
+    /// would trust every project on the volume.
+    fn offered_location(&self, workspace: &str) -> Option<String> {
+        let path = paths::normalize(workspace, &self.platform, true)?;
+        let (parent, _) = path.rsplit_once('/')?;
+        let root = parent.is_empty()
+            || (self.platform == "windows"
+                && (parent.len() == 2 && parent.ends_with(':')
+                    || parent.starts_with("//") && parent[2..].split('/').count() <= 2));
+        if root {
+            return None;
+        }
+        paths::normalize(parent, &self.platform, true)
     }
 }
 
@@ -190,11 +267,6 @@ impl Request {
 pub(crate) fn state(input: &Value) -> Validation<Value> {
     let request: Request = serde_json::from_value(input.clone()).map_err(|_| invalid("input"))?;
     let catalog = request.read()?;
-    let project_code_allowed = request
-        .workspace_root
-        .as_deref()
-        .map(|root| request.workspace_trusted(&catalog, root))
-        .transpose()?;
     let mut response = json!({
         "document": catalog,
         "storage": {
@@ -202,13 +274,25 @@ pub(crate) fn state(input: &Value) -> Validation<Value> {
             "maximumBytes": MAX_BYTES
         }
     });
-    if let Some(allowed) = project_code_allowed {
-        response["projectCodeAllowed"] = json!(allowed);
+    // An absent or empty root asks for the catalog only.
+    if let Some(root) = request
+        .workspace_root
+        .as_deref()
+        .filter(|root| !root.is_empty())
+    {
+        let (trust, location) = request.workspace_trust(&catalog, root)?;
+        response["projectCodeAllowed"] = json!(trust == TrustState::Trusted);
+        response["workspaceTrust"] = json!({
+            "state": trust,
+            "location": location,
+            "offeredLocation": request.offered_location(root),
+        });
     }
     Ok(response)
 }
 
-/// Merges confirmed tool edits and explicit machine-local workspace trust, preserving dormant registrations.
+/// Merges confirmed tool edits and one explicit machine-local workspace trust decision,
+/// preserving dormant registrations and the other trust decisions.
 pub(crate) fn edit(input: &Value) -> Validation<Value> {
     let request: EditRequest =
         serde_json::from_value(input.clone()).map_err(|_| invalid("input"))?;
@@ -240,29 +324,49 @@ pub(crate) fn edit(input: &Value) -> Validation<Value> {
         return Err(invalid("tools"));
     }
     if let Some(trust) = request.workspace_trust {
-        let normalized = paths::normalize(&trust.workspace, &source.platform, true)
+        let workspace = [trust.workspace.clone()];
+        let (key, normalized) = source
+            .trust_keys(&workspace, "workspaceTrust.workspace")?
+            .into_iter()
+            .next()
             .ok_or_else(|| invalid("workspaceTrust.workspace"))?;
-        let key = paths::normalize(&normalized, &source.platform, case_sensitive)
-            .ok_or_else(|| invalid("workspaceTrust.workspace"))?;
-        let mut by_key: BTreeMap<String, String> = catalog
-            .trusted_workspaces
-            .iter()
-            .filter_map(|entry| {
-                Some((
-                    paths::normalize(entry, &source.platform, case_sensitive)?,
-                    entry.clone(),
-                ))
-            })
-            .collect();
+        let mut trusted = source.trust_keys(&catalog.trusted_workspaces, "trustedWorkspaces")?;
+        let mut distrusted =
+            source.trust_keys(&catalog.distrusted_workspaces, "distrustedWorkspaces")?;
+        // A decision replaces the other one, so the two lists never name one workspace.
         if trust.trusted {
-            by_key.entry(key).or_insert(normalized);
-            if by_key.len() > MAX_TRUSTED_WORKSPACES {
-                return Err(invalid("trustedWorkspaces"));
-            }
+            distrusted.remove(&key);
+            trusted.insert(key, normalized);
         } else {
-            by_key.remove(&key);
+            if trust.location {
+                return Err(invalid("workspaceTrust.location"));
+            }
+            trusted.remove(&key);
+            distrusted.insert(key, normalized);
         }
-        catalog.trusted_workspaces = by_key.into_values().collect();
+        if trust.location {
+            let location = source
+                .offered_location(&trust.workspace)
+                .ok_or_else(|| invalid("workspaceTrust.location"))?;
+            let mut locations =
+                source.trust_keys(&catalog.trusted_locations, "trustedLocations")?;
+            let key = paths::normalize(&location, &source.platform, case_sensitive)
+                .ok_or_else(|| invalid("workspaceTrust.location"))?;
+            locations.entry(key).or_insert(location);
+            catalog.trusted_locations = locations.into_values().collect();
+        }
+        if [
+            trusted.len(),
+            distrusted.len(),
+            catalog.trusted_locations.len(),
+        ]
+        .iter()
+        .any(|len| *len > MAX_TRUST_ENTRIES)
+        {
+            return Err(invalid("workspaceTrust"));
+        }
+        catalog.trusted_workspaces = trusted.into_values().collect();
+        catalog.distrusted_workspaces = distrusted.into_values().collect();
     }
     let changed = catalog != original;
     let document = if changed {
@@ -345,16 +449,6 @@ mod tests {
                 r"C:\Projects\Other",
             ),
         ] {
-            // Revoking trust on an absent document is a no-op and creates no file.
-            let noop = edit(&json!({
-                "document": null,
-                "platform": platform,
-                "workspaceTrust": {"workspace": workspace, "trusted": false}
-            }))
-            .unwrap();
-            assert_eq!(noop["changed"], false, "{platform}");
-            assert_eq!(noop["document"], Value::Null, "{platform}");
-
             // Granting trust normalizes the path and reports projectCodeAllowed only for that root.
             let trusted = edit(&json!({
                 "document": null,
@@ -416,5 +510,154 @@ mod tests {
                 "{platform}"
             );
         }
+    }
+
+    /// The trust a `state` request reports for `workspace`.
+    fn trust(document: &Value, platform: &str, workspace: &str) -> Value {
+        let state =
+            state(&json!({"document": document, "platform": platform, "workspaceRoot": workspace}))
+                .unwrap();
+        let mut trust = state["workspaceTrust"].clone();
+        trust["projectCodeAllowed"] = state["projectCodeAllowed"].clone();
+        trust
+    }
+
+    // A workspace starts undecided, a choice of safe mode is recorded rather than
+    // forgotten, and trusting it afterwards replaces that choice: the trust prompt asks
+    // only while the state is unknown.
+    #[test]
+    fn a_workspace_moves_between_unknown_distrusted_and_trusted() {
+        for (platform, workspace, spelling) in [
+            ("macos", "/Users/dev/code/app", "/Users/dev/code/app/"),
+            ("windows", r"C:\Code\App", "c:/code/app"),
+        ] {
+            let unknown = trust(&Value::Null, platform, workspace);
+            assert_eq!(unknown["state"], "unknown", "{platform}");
+            assert_eq!(unknown["projectCodeAllowed"], false, "{platform}");
+
+            let distrusted = edit(&json!({
+                "document": null,
+                "platform": platform,
+                "workspaceTrust": {"workspace": workspace, "trusted": false}
+            }))
+            .unwrap();
+            assert_eq!(distrusted["changed"], true, "{platform}");
+            let document = distrusted["document"].clone();
+            let after = trust(&document, platform, spelling);
+            assert_eq!(after["state"], "distrusted", "{platform}");
+            assert_eq!(after["projectCodeAllowed"], false, "{platform}");
+
+            let trusted = edit(&json!({
+                "document": document,
+                "platform": platform,
+                "workspaceTrust": {"workspace": spelling, "trusted": true}
+            }))
+            .unwrap();
+            assert_eq!(
+                trusted["catalog"]["distrustedWorkspaces"],
+                Value::Null,
+                "{platform}"
+            );
+            assert_eq!(
+                trusted["catalog"]["trustedWorkspaces"]
+                    .as_array()
+                    .unwrap()
+                    .len(),
+                1
+            );
+            let after = trust(&trusted["document"], platform, workspace);
+            assert_eq!(after["state"], "trusted", "{platform}");
+            assert_eq!(after["location"], Value::Null, "{platform}");
+            assert_eq!(after["projectCodeAllowed"], true, "{platform}");
+        }
+    }
+
+    // Trusting a location trusts every workspace beneath it, but not a sibling whose
+    // name only starts the same, and a workspace distrusted explicitly stays in safe
+    // mode inside a trusted location, as in IntelliJ IDEA.
+    #[test]
+    fn a_trusted_location_covers_its_workspaces_unless_one_is_distrusted() {
+        for (platform, workspace, nested, sibling, parent) in [
+            (
+                "macos",
+                "/Users/dev/code/app",
+                "/Users/dev/code/libs/util",
+                "/Users/dev/code-old/app",
+                "/Users/dev/code",
+            ),
+            (
+                "windows",
+                r"C:\Code\App",
+                r"C:\code\Libs\Util",
+                r"C:\Code-old\App",
+                "C:/Code",
+            ),
+        ] {
+            let offered = trust(&Value::Null, platform, workspace);
+            assert_eq!(offered["offeredLocation"], parent, "{platform}");
+
+            let trusted = edit(&json!({
+                "document": null,
+                "platform": platform,
+                "workspaceTrust": {"workspace": workspace, "trusted": true, "location": true}
+            }))
+            .unwrap();
+            assert_eq!(
+                trusted["catalog"]["trustedLocations"],
+                json!([parent]),
+                "{platform}"
+            );
+            let document = trusted["document"].clone();
+            let covered = trust(&document, platform, nested);
+            assert_eq!(covered["state"], "trusted", "{platform}");
+            assert_eq!(covered["location"], parent, "{platform}");
+            assert_eq!(
+                trust(&document, platform, sibling)["state"],
+                "unknown",
+                "{platform}"
+            );
+
+            let distrusted = edit(&json!({
+                "document": document,
+                "platform": platform,
+                "workspaceTrust": {"workspace": nested, "trusted": false}
+            }))
+            .unwrap();
+            let after = trust(&distrusted["document"], platform, nested);
+            assert_eq!(after["state"], "distrusted", "{platform}");
+            assert_eq!(after["projectCodeAllowed"], false, "{platform}");
+        }
+    }
+
+    // Trusting the parent of a workspace at the top of a volume would trust every
+    // project on it, so no location is offered and an edit asking for one is refused.
+    #[test]
+    fn a_filesystem_root_is_never_offered_as_a_location() {
+        for (platform, workspace) in [
+            ("macos", "/app"),
+            ("windows", r"D:\App"),
+            ("windows", r"\\server\share\App"),
+        ] {
+            assert_eq!(
+                trust(&Value::Null, platform, workspace)["offeredLocation"],
+                Value::Null,
+                "{workspace}"
+            );
+            assert!(
+                edit(&json!({
+                    "document": null,
+                    "platform": platform,
+                    "workspaceTrust": {"workspace": workspace, "trusted": true, "location": true}
+                }))
+                .is_err(),
+                "{workspace}"
+            );
+        }
+        assert!(edit(&json!({
+            "document": null,
+            "platform": "macos",
+            "workspaceTrust": {"workspace": "/Users/dev/app", "trusted": false, "location": true}
+        }))
+        .is_err());
     }
 }

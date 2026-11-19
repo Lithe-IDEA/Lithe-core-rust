@@ -86,12 +86,12 @@ pub(crate) fn plan(
         .provider
         .as_ref()
         .ok_or_else(|| plans::unavailable(build_system, "a provider"))?;
-    Ok(context.provider_plan(
+    context.provider_plan(
         provider,
         "lithe/build/runEntrypoints",
         "litheRunEntrypoints",
         params,
-    ))
+    )
 }
 
 /// `build.decodeRunEntrypoints`: the entrypoints the host may save and start, in

@@ -111,7 +111,69 @@
             "relativePath": "toolchains/global.json",
             "maximumBytes": 262144
           },
-          "projectCodeAllowed": true
+          "projectCodeAllowed": true,
+          "workspaceTrust": {
+            "state": "trusted",
+            "location": null,
+            "offeredLocation": "c:/projects"
+          }
+        }
+      }
+    },
+    {
+      "name": "workspace-safe-mode-choice-is-recorded",
+      "command": "toolchains.editCatalog",
+      "input": {
+        "document": "{\"version\":1,\"tools\":{},\"trustedWorkspaces\":[\"/Users/dev/app\"]}",
+        "platform": "macos",
+        "workspaceTrust": {
+          "workspace": "/Users/dev/app",
+          "trusted": false
+        }
+      },
+      "expected": {
+        "status": "ok",
+        "edit": {
+          "changed": true,
+          "document": "{\n  \"version\": 1,\n  \"tools\": {},\n  \"distrustedWorkspaces\": [\n    \"/Users/dev/app\"\n  ]\n}\n",
+          "catalog": {
+            "version": 1,
+            "tools": {},
+            "distrustedWorkspaces": [
+              "/Users/dev/app"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "workspace-trusted-location-covers-nested-workspaces",
+      "command": "toolchains.catalogState",
+      "input": {
+        "document": "{\"version\":1,\"tools\":{},\"trustedLocations\":[\"/Users/dev/code\"]}",
+        "platform": "macos",
+        "workspaceRoot": "/Users/dev/code/libs/util"
+      },
+      "expected": {
+        "status": "ok",
+        "state": {
+          "document": {
+            "version": 1,
+            "tools": {},
+            "trustedLocations": [
+              "/Users/dev/code"
+            ]
+          },
+          "storage": {
+            "relativePath": "toolchains/global.json",
+            "maximumBytes": 262144
+          },
+          "projectCodeAllowed": true,
+          "workspaceTrust": {
+            "state": "trusted",
+            "location": "/Users/dev/code",
+            "offeredLocation": "/Users/dev/code/libs"
+          }
         }
       }
     }

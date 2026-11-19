@@ -28,7 +28,7 @@
 - 宿主在上面“激活事件”一行的第一个触发点启动后端；插件被停用、更新、卸载，或宿主退出时结束它。同意来自安装审查，不需要按工作区弹确认；审查里它显示为 `packagedBackend`、`systemCommandBackend` 或 `runtimeBackend`。
 - `onWorkspaceOpen` 不会拖慢打开工作区。宿主在窗口显示后一次启动一个这样的后端；在初始化时限内没有完成 `initialize` 的后端被停止，按普通的服务器启动失败处理。失败或被停用的后端从不阻塞工作区。
 - `workspace.metadata` 权限授予 `workspace` 宿主服务：开放工作区的名称、根目录和 ID、authority 以及插件在该工作区的状态目录；它不读任何文件内容。
-- 激活只取决于插件已安装、已启用且已审查。Lithe 目前没有工作区信任状态：会运行或修改内容的操作，像宿主自己的控件一样按操作询问用户。
+- 激活只取决于插件已安装、已启用且已审查。会运行项目代码的构建操作还要求用户信任这个工作区（见契约的 [Workspace trust](../../contract/v1/README.md#workspace-trust)）；其他会运行或修改内容的操作，像宿主自己的控件一样按操作询问用户。
 - 插件按平台发布一个包，所以包内路径不随 `${arch}` 变化；macOS 的包可以带通用二进制。
 
 ### 协议要点
@@ -248,7 +248,7 @@ A plugin backend is the plugin's own long-lived process. It runs what a web page
 - The host starts the backend on the first trigger in the "Activation" row above, and ends it when the plugin is disabled, updated, or uninstalled, and when the host quits. Consent is the install review, which lists it as `packagedBackend`, `systemCommandBackend`, or `runtimeBackend`; no per-workspace prompt is needed.
 - Starting on `onWorkspaceOpen` never delays opening the workspace. The host starts such backends after the window is shown, one at a time; a backend that does not finish `initialize` within its initialize timeout is stopped and reported like any failed server start. A failed or disabled backend never blocks the workspace.
 - The `workspace.metadata` permission grants the `workspace` host service: the open workspaces' names, root folders and IDs, their authority, and the plugin's per-workspace state directory; it reads no file content.
-- Activation is gated only by the plugin being installed, enabled, and reviewed. Lithe has no workspace trust state at the moment: an operation that runs or changes something asks the user per operation, as the host's own controls do.
+- Activation is gated only by the plugin being installed, enabled, and reviewed. A build operation that runs project code also needs a trusted workspace (see [Workspace trust](../../contract/v1/README.md#workspace-trust) in the contract); any other operation that runs or changes something asks the user per operation, as the host's own controls do.
 - A plugin publishes one archive per platform, so its packaged path does not vary by `${arch}`; a macOS archive may carry a universal binary.
 
 ### Protocol essentials

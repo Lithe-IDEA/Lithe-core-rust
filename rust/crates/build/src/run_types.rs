@@ -452,6 +452,9 @@ pub(crate) struct RunConfigurationPlanRequest {
     /// Absolute writable directory of this plugin for this workspace.
     #[serde(default)]
     pub(crate) workspace_state_directory: Option<String>,
+    /// Whether the user trusts the workspace, as in a task plan.
+    #[serde(default)]
+    pub(crate) project_code_allowed: bool,
 }
 
 /// One detected instance of the build system.
@@ -486,6 +489,9 @@ pub(crate) struct BeforeLaunchTaskPlanRequest {
     /// Absolute writable directory of this plugin for this workspace.
     #[serde(default)]
     pub(crate) workspace_state_directory: Option<String>,
+    /// Whether the user trusts the workspace, as in a task plan.
+    #[serde(default)]
+    pub(crate) project_code_allowed: bool,
 }
 
 /// What a plan takes from its request besides the launch.
@@ -493,6 +499,7 @@ struct PlanSources<'a> {
     instances: &'a [RunTypeInstance],
     plugin_directory: Option<String>,
     workspace_state_directory: Option<String>,
+    project_code_allowed: bool,
 }
 
 /// The wording and identity of one role in a plan.
@@ -549,6 +556,7 @@ pub(crate) fn run_configuration_plan(
             instances: &request.instances,
             plugin_directory: request.plugin_directory.clone(),
             workspace_state_directory: request.workspace_state_directory.clone(),
+            project_code_allowed: request.project_code_allowed,
         },
         workspace_root,
     )
@@ -575,6 +583,7 @@ pub(crate) fn before_launch_task_plan(
             instances: &request.instances,
             plugin_directory: request.plugin_directory.clone(),
             workspace_state_directory: request.workspace_state_directory.clone(),
+            project_code_allowed: request.project_code_allowed,
         },
         workspace_root,
     )
@@ -622,6 +631,7 @@ fn declared_plan(
         options: instance.options.clone(),
         plugin_directory: sources.plugin_directory,
         workspace_state_directory: sources.workspace_state_directory,
+        project_code_allowed: sources.project_code_allowed,
     };
     let context = PlanContext::new(system, &base)?;
     let mut values = context.values(&launch.arguments);

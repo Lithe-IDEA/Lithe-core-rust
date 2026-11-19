@@ -142,7 +142,7 @@ fn ok(command: Command, manifest: Value, build_system: &str, request: Value) -> 
     let outcome = command(json!({
         "manifest": manifest,
         "buildSystemID": build_system,
-        "request": request,
+        "request": super::support::trusted(request),
     }))
     .expect("payload is well formed");
     assert_eq!(outcome["status"], "ok", "{outcome}");

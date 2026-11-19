@@ -55,7 +55,12 @@ pub fn run(sample: &Sample) {
         session.functions().is_empty(),
         "native workflows must not need private functions"
     );
-    let build = |command: &str, request: Value| {
+    // The fixture workspace is the test's own, so it is trusted: a plan that runs the
+    // workspace's code is refused without that.
+    let build = |command: &str, mut request: Value| {
+        if command.ends_with("Plan") {
+            request["projectCodeAllowed"] = json!(true);
+        }
         core(
             command,
             json!({"manifest":manifest,"buildSystemID":BUILD_SYSTEM,"request":request}),
@@ -89,7 +94,7 @@ pub fn run(sample: &Sample) {
     );
     let source_plan = core(
         "build.modelPlan",
-        json!({"manifest":producer,"buildSystemID":"shared-source","request":{"root":root}}),
+        json!({"manifest":producer,"buildSystemID":"shared-source","request":{"root":root,"projectCodeAllowed":true}}),
     );
     assert_eq!(source_plan["status"], "ok", "{source_plan}");
     let source_reply = source_session.build_request("source-model", &source_plan["plan"]);
@@ -120,7 +125,7 @@ pub fn run(sample: &Sample) {
     let input_plan = core(
         "build.modelPlan",
         json!({"manifest":consumer,"buildSystemID":BUILD_SYSTEM,
-        "request":{"root":root,"modelInputs":snapshot}}),
+        "request":{"root":root,"modelInputs":snapshot,"projectCodeAllowed":true}}),
     );
     assert_eq!(input_plan["status"], "ok", "{input_plan}");
     let input_reply = session.build_request("consumer-model", &input_plan["plan"]);
