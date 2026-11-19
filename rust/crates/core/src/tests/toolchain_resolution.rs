@@ -1257,6 +1257,51 @@ fn global_toolchain_discovery_and_defaults_need_no_project_directory() {
 }
 
 #[test]
+fn global_toolchain_resolution_binds_provider_replies_to_their_scope() {
+    let scope: Value = serde_json::from_str(include_str!(
+        "../../../../fixtures/toolchains/global-query-resolution.json"
+    ))
+    .unwrap();
+    let mut value = input();
+    self_provided(&mut value);
+    for field in ["directory", "global", "workspaceRoot", "context"] {
+        value[field] = scope[field].clone();
+    }
+    value["filesystem"] = json!([]);
+    installation(&mut value, HOME, "21.0.4");
+    let mut backend = installs_query(&value, &[(HOME, "21.0.4")]);
+    let workspace_scope = backend["request"]["params"]["workspace"].take();
+    let workspace_context = backend["request"]["params"]["context"].take();
+    for field in ["context", "workspace"] {
+        backend["request"]["params"][field] = scope["queryScope"][field].clone();
+    }
+    value["queries"] = json!([backend]);
+    let selection = &resolve(&value)["outcome"]["selection"];
+    assert_eq!(selection["home"], HOME);
+    assert_eq!(selection["layer"], scope["expectedLayer"]);
+    assert_eq!(selection["provider"], scope["expectedProvider"]);
+
+    let mut with_context = value.clone();
+    with_context["context"] = workspace_context.clone();
+    with_context["queries"][0]["request"]["params"]["context"] = workspace_context;
+    let mut with_workspace = value.clone();
+    with_workspace["queries"][0]["request"]["params"]["workspace"] = workspace_scope;
+    let mut in_workspace = value.clone();
+    in_workspace["global"] = json!(false);
+    in_workspace["workspaceRoot"] = json!(WORKSPACE);
+    in_workspace["filesystem"]
+        .as_array_mut()
+        .unwrap()
+        .push(fact(WORKSPACE, "directory", false));
+    in_workspace["queries"][0]["filesystem"] = in_workspace["filesystem"].clone();
+    for rejected in [with_context, with_workspace, in_workspace] {
+        let result = resolve_command(rejected, validated_manifest_json).unwrap();
+        assert_eq!(result["status"], "rejected", "{result}");
+        assert_eq!(result["error"]["code"], "plugin.toolchain.invalidParams");
+    }
+}
+
+#[test]
 fn global_toolchain_mode_refuses_project_pins_and_ignores_project_executables() {
     let mut value = input();
     value["global"] = json!(true);
