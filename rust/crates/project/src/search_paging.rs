@@ -18,6 +18,9 @@ pub struct SearchPageRequest {
     page_size: Option<usize>,
     cursor: Option<String>,
     result_kinds: Option<Vec<String>>,
+    /// Returns `{ matches, nextCursor }` pages for a Find in Files query.
+    #[serde(default)]
+    project_page: bool,
 }
 
 #[derive(Serialize)]
@@ -117,8 +120,64 @@ impl SearchPage {
     }
 }
 
+/// Workspace search keeps its original literal semantics for synchronous consumers.
+pub fn project_search_page(request: SearchPageRequest) -> Result<serde_json::Value, CoreError> {
+    if !request.project_page {
+        return super::files::search(request.search)
+            .map(|response| serde_json::to_value(response).unwrap());
+    }
+    search_page(request)
+}
+
 /// Executes legacy requests unchanged, or bounded pages with a query-bound continuation.
 pub fn search_page(request: SearchPageRequest) -> Result<serde_json::Value, CoreError> {
+    if request.project_page {
+        let size = request.page_size.unwrap_or(50);
+        if !(1..=200).contains(&size) {
+            return Err(CoreError::new(
+                ErrorCode::InvalidRequest,
+                "Search page size must be between 1 and 200",
+            ));
+        }
+        let identity = lithe_workspace::identity_key(std::path::Path::new(&request.search.root));
+        let fingerprint = format!(
+            "{:x}",
+            Sha256::digest(serde_json::to_vec(&(2, &request.search, size, identity)).unwrap())
+        );
+        let mut page = if let Some(cursor) = request.cursor {
+            if cursor.len() > 65536 {
+                return Err(CoreError::new(
+                    ErrorCode::InvalidRequest,
+                    "Search cursor is too large",
+                ));
+            }
+            let page: SearchPage = serde_json::from_str(&cursor)
+                .map_err(|_| CoreError::new(ErrorCode::InvalidRequest, "Invalid search cursor"))?;
+            if page.fingerprint != fingerprint {
+                return Err(CoreError::new(
+                    ErrorCode::InvalidRequest,
+                    "Search cursor belongs to another query",
+                ));
+            }
+            page
+        } else {
+            SearchPage {
+                fingerprint,
+                after: [None, None, None, None],
+                exhausted: [true, true, true, false],
+            }
+        };
+        let mut search = request.search;
+        search.max_results = size + 1;
+        search.max_file_results = Some(0);
+        search.max_content_results = Some(size + 1);
+        search.include_content_ranges = true;
+        let mut results = super::files::search_with_page(search, Some(&page))?;
+        page.finish("content", &mut results.matches, size);
+        let next_cursor =
+            (!page.exhausted("content")).then(|| serde_json::to_string(&page).unwrap());
+        return Ok(serde_json::json!({"matches": results.matches, "nextCursor": next_cursor}));
+    }
     let Some(size) = request.page_size else {
         return search_everywhere(request.search)
             .map(|response| serde_json::to_value(response).unwrap());

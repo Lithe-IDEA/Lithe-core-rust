@@ -3,9 +3,10 @@
 //! Quick Open on Windows lists remote and WSL workspaces through platform I/O, so Core cannot
 //! walk those roots. The host still sends only candidate names, the query and explicit context
 //! (open and recently visited files); the score, the UTF-16 highlight ranges and the tie-break
-//! order all come from the same matcher that backs `workspace.searchEverywhere`.
+//! order retain contiguous and word-boundary matching. Search Everywhere additionally
+//! allows ordered fragments and arbitrary letter gaps for its workspace names.
 
-use super::name_matching::match_name;
+use super::name_matching::match_ranked_name as match_name;
 use crate::contracts::SearchNameRange;
 use lithe_core_rules::file_names::FileNameKey;
 use lithe_protocol::{CoreError, ErrorCode};

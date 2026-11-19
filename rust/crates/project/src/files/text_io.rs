@@ -153,7 +153,7 @@ fn decode_text(
 
 fn too_large() -> CoreError {
     CoreError::new(ErrorCode::ParseFailed, "File is too large to open")
-        .with_details("The maximum supported file size is 32 MB")
+        .with_details("The file exceeds the supported text boundary")
 }
 
 /// Whether encoding with `selected` and the `bom` override writes a byte order mark.

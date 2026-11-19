@@ -206,6 +206,12 @@ pub(crate) fn bytes_identity(bytes: &[u8]) -> String {
 /// UTF-16 BE BOM, valid UTF-8, then GB18030 narrowed to GBK when the text
 /// re-encodes to the same bytes. Anything else is not guessed.
 fn detect(bytes: &[u8]) -> Result<DocumentEncoding, CoreError> {
+    if bytes.starts_with(&UTF32_LE_BOM) || bytes.starts_with(&[0, 0, 0xFE, 0xFF]) {
+        return Err(CoreError::new(
+            ErrorCode::ParseFailed,
+            "UTF-32 text is not supported",
+        ));
+    }
     if bytes.starts_with(&UTF8_BOM) {
         return Ok(DocumentEncoding::Utf8Bom);
     }
@@ -223,10 +229,17 @@ fn detect(bytes: &[u8]) -> Result<DocumentEncoding, CoreError> {
         (text, errors)
     };
     if had_errors {
-        return Err(
-            CoreError::new(ErrorCode::ParseFailed, "File is not valid UTF-8")
-                .with_details("No BOM was present and the bytes are not valid UTF-8 or GB18030"),
-        );
+        let (text, errors) = WINDOWS_1252.decode_without_bom_handling(bytes);
+        if !errors
+            && encode_bytes(DocumentEncoding::Windows1252, &text)
+                .is_ok_and(|encoded| encoded == bytes)
+        {
+            return Ok(DocumentEncoding::Windows1252);
+        }
+        return Err(CoreError::new(
+            ErrorCode::ParseFailed,
+            "File encoding could not be detected",
+        ));
     }
     // GB18030 is a superset of GBK; keep GB18030 when GBK cannot reproduce the bytes.
     Ok(match encode_bytes(DocumentEncoding::Gbk, &text) {
@@ -460,7 +473,7 @@ mod tests {
         assert!(
             decode_detected_text(vec![0xFF, 0xFE, 0x00, 0x00, 0x41, 0x00, 0x00, 0x00]).is_err()
         );
-        assert!(decode_detected_text(vec![b'a', 0xFF]).is_err());
+        assert_eq!(decode_detected_text(vec![b'a', 0xFF]).unwrap(), "aÿ");
     }
 
     #[test]

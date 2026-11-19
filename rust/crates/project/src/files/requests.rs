@@ -49,9 +49,15 @@ pub struct DirectoryListingRequest {
 #[serde(rename_all = "camelCase")]
 /// Bounded file, content, and symbol search options.
 pub struct SearchRequest {
+    /// Comma-separated project paths and include/exclude globs; parsed only by Core.
+    #[serde(default)]
+    pub scope_expression: String,
     /// Workspace-relative scopes, applied before result caps without changing policy ownership.
     #[serde(default)]
     pub scope_paths: Vec<String>,
+    /// Include Git-ignored files for this request while preserving explicit visibility exclusions.
+    #[serde(default)]
+    pub include_ignored: bool,
     /// Absolute workspace root that bounds every path in the request.
     pub root: String,
     /// Request-local ownership boundaries; omitted roots preserve single-root behavior.
@@ -108,6 +114,12 @@ pub struct SearchRequest {
     /// Include untrimmed lines and UTF-16 ranges for content matches.
     #[serde(default)]
     pub include_content_ranges: bool,
+    /// Maximum source-file bytes read for content matching and replacement previews.
+    #[serde(default)]
+    pub max_file_bytes: Option<u64>,
+    /// Unsaved editor snapshots keyed by workspace-relative path.
+    #[serde(default)]
+    pub text_overrides: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -125,6 +137,12 @@ pub struct SearchIndexRequest {
     /// Hidden-path globs; `!` lines turn default hidden folders back on.
     #[serde(default)]
     pub hidden_file_patterns: Vec<String>,
+    /// Maximum source-file bytes retained in the content index.
+    #[serde(default)]
+    pub max_file_bytes: Option<u64>,
+    /// Include Git-ignored paths in this search index variant.
+    #[serde(default)]
+    pub include_ignored: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -145,6 +163,12 @@ pub struct SearchIndexUpdateRequest {
     /// Hidden-path globs; `!` lines turn default hidden folders back on.
     #[serde(default)]
     pub hidden_file_patterns: Vec<String>,
+    /// Maximum source-file bytes retained in the content index.
+    #[serde(default)]
+    pub max_file_bytes: Option<u64>,
+    /// Include Git-ignored paths in this search index variant.
+    #[serde(default)]
+    pub include_ignored: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -166,6 +190,15 @@ pub struct SearchIndexStatusResponse {
 #[serde(rename_all = "camelCase")]
 /// Search and replacement options used to produce a non-mutating preview.
 pub struct ReplacementPreviewRequest {
+    /// Same request-local path and glob expression used by content search.
+    #[serde(default)]
+    pub scope_expression: String,
+    /// Request-local project-relative search scopes.
+    #[serde(default)]
+    pub scope_paths: Vec<String>,
+    /// Includes Git exclusions without changing the project policy.
+    #[serde(default)]
+    pub include_ignored: bool,
     /// Absolute workspace root that bounds every path in the request.
     pub root: String,
     /// Nested roots are previewed through their own root and policy.
@@ -202,6 +235,9 @@ pub struct ReplacementPreviewRequest {
     /// Hidden-path globs; `!` lines turn default hidden folders back on.
     #[serde(default)]
     pub hidden_file_patterns: Vec<String>,
+    /// Maximum source-file bytes returned as replacement text.
+    #[serde(default)]
+    pub max_file_bytes: Option<u64>,
 }
 
 /// Non-mutating replacement against an already captured text snapshot.

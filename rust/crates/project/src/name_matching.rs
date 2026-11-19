@@ -2,16 +2,82 @@
 
 use crate::contracts::SearchNameRange;
 
+/// Splits a positive, one-based file-name navigation suffix without treating drive colons as positions.
+pub(crate) fn split_location(query: &str) -> (&str, Option<usize>) {
+    let query = query.trim();
+    if let Some((name, line)) = query.rsplit_once(':') {
+        if !name.is_empty() && !line.is_empty() && line.bytes().all(|byte| byte.is_ascii_digit()) {
+            if let Ok(line) = line.parse::<usize>() {
+                if (1..=i32::MAX as usize).contains(&line) {
+                    return (name, Some(line));
+                }
+            }
+        }
+    }
+    (query, None)
+}
+
 /// One match owns both its ranking and the fragments painted by native clients.
 pub(crate) struct NameMatch {
     pub(crate) degree: i32,
     pub(crate) ranges: Vec<SearchNameRange>,
 }
 
-/// Implements case-insensitive contiguous and camel/word-hump matching.
-/// Gaps resume at word starts, not at arbitrary letters inside a word.
+/// Matches ordered fragments, wildcards and abbreviations, preferring contiguous word starts.
 pub(crate) fn match_name(pattern: &str, name: &str) -> Option<NameMatch> {
-    match_fragments(pattern, name).or_else(|| {
+    let parts: Vec<_> = pattern
+        .split(|c: char| c.is_whitespace() || c == '*')
+        .filter(|part| !part.is_empty())
+        .collect();
+    if parts.len() != 1 || parts[0] != pattern {
+        if parts.is_empty() {
+            return pattern.contains('*').then_some(NameMatch {
+                degree: 0,
+                ranges: Vec::new(),
+            });
+        }
+        let mut result = NameMatch {
+            degree: 0,
+            ranges: Vec::new(),
+        };
+        let mut utf16_start = 0;
+        let mut remaining = name;
+        for part in parts {
+            let hit = match_basic(part, remaining, true)?;
+            let end = hit.ranges.last().map(|range| range.start + range.length)?;
+            result.degree += hit.degree / 4;
+            result
+                .ranges
+                .extend(hit.ranges.into_iter().map(|range| SearchNameRange {
+                    start: utf16_start + range.start,
+                    length: range.length,
+                }));
+            let mut units = 0;
+            let boundary = remaining
+                .char_indices()
+                .find_map(|(byte, c)| {
+                    if units == end {
+                        return Some(byte);
+                    }
+                    units += c.len_utf16();
+                    None
+                })
+                .unwrap_or(remaining.len());
+            remaining = &remaining[boundary..];
+            utf16_start += end;
+        }
+        return Some(result);
+    }
+    match_basic(pattern, name, true)
+}
+
+/// Keeps generic candidate ranking stable for non-search lists such as the marketplace.
+pub(crate) fn match_ranked_name(pattern: &str, name: &str) -> Option<NameMatch> {
+    match_basic(pattern, name, false)
+}
+
+fn match_basic(pattern: &str, name: &str, interior_gaps: bool) -> Option<NameMatch> {
+    match_fragments(pattern, name, interior_gaps).or_else(|| {
         if pattern.is_ascii() && name.is_ascii() {
             return None;
         }
@@ -56,7 +122,7 @@ pub(crate) fn match_name(pattern: &str, name: &str) -> Option<NameMatch> {
     })
 }
 
-fn match_fragments(pattern: &str, name: &str) -> Option<NameMatch> {
+fn match_fragments(pattern: &str, name: &str, interior_gaps: bool) -> Option<NameMatch> {
     let needle: Vec<char> = pattern.chars().collect();
     let text: Vec<char> = name.chars().collect();
     let equal = |a: char, b: char| a.to_lowercase().eq(b.to_lowercase());
@@ -127,13 +193,11 @@ fn match_fragments(pattern: &str, name: &str) -> Option<NameMatch> {
                 next[col] = previous[col - 1] + 100;
                 links[row][col] = Some(col - 1);
             }
-            if boundary(col) {
-                if let Some(b) = best {
-                    let score = previous[b] + 20;
-                    if score > next[col] {
-                        next[col] = score;
-                        links[row][col] = Some(b);
-                    }
+            if let Some(b) = best.filter(|_| interior_gaps || boundary(col)) {
+                let score = previous[b] + if boundary(col) { 20 } else { 1 };
+                if score > next[col] {
+                    next[col] = score;
+                    links[row][col] = Some(b);
                 }
             }
         }
@@ -223,6 +287,7 @@ mod tests {
         ] {
             assert!(match_name("name", name).is_some(), "{name}");
         }
+        assert!(match_ranked_name("name", "normalizer.swift").is_none());
         assert!(match_name("name", "normalizer.swift").is_none());
         let hit = match_name("name", "NativeMenu").unwrap();
         assert_eq!(

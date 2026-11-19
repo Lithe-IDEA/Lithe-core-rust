@@ -583,14 +583,16 @@ or removing a command fails until the table changes in the same commit.
 | `workspace.searchIndex.update` | Apply changed paths to the search index |
 | `workspace.searchIndex.invalidate` | Drop a workspace's cached search index |
 | `search.actions` | Match host-localized action text without workspace I/O (from `lithe-core-rules`) |
-| `workspace.search` | Search visible file names and UTF-8 text files |
+| `workspace.search` | Search visible file names and decoded text; optional content-only project pages |
+| `workspace.searchPreferences` | Resolve and validate search/replacement file budgets |
+| `workspace.searchPresentation` | Group loaded result paths and return loaded counts |
 | `workspace.searchEverywhere` | Search file paths, contents, and symbols |
 | `workspace.replacePreview` | Return deterministic replacement lines and complete replacement text |
 | `workspace.replaceText` | Plan replacement against a host-captured text snapshot without writing |
 | `workspace.searchTextBatch` | Search provider-captured text snapshots using workspace matching rules |
 | `file.read` | Read a text file using a workspace-relative path; optional `encoding`, see [File encodings](#file-encodings) |
 | `file.write` | Write a text file using a workspace-relative path; optional `encoding` and `bom` |
-| `text.decode` | Decode `{ bytes }` (standard base64 of bytes the host read) like `file.read`, optional `encoding`; returns `{ text, encoding, hasBom, lossy, identity }` with the same 32 MB, plain-text and detection rules |
+| `text.decode` | Decode `{ bytes }` (standard base64 of bytes the host read) like `file.read`, optional `encoding`; returns `{ text, encoding, hasBom, lossy, identity }` with the same 64 MiB, plain-text and detection rules |
 | `text.encode` | Encode `{ text }` like `file.write`, optional `encoding` and `bom`; returns `{ bytes, encoding, hasBom, identity }` with `bytes` in standard base64. Nothing is written, and an unmappable character fails with `encoding_unmappable` as `file.write` does |
 | `document.lifecycle` | Reduce a shared document save, external-change, or conflict event without reading text or disk |
 | `document.classifyText` | Classify decoded Unicode text independently of its filename |
@@ -2310,16 +2312,43 @@ need separate buckets may also provide `maxFileResults` and
 `maxContentResults`; each category is capped independently and the total cap
 still applies.
 
-Content search and its index read every file the desktop editor opens as text:
-files up to 16 MiB, decoded with `file.read`'s automatic detection (BOM-marked
-UTF-8 or UTF-16, UTF-8, then GBK or GB18030). Files containing a NUL byte outside
-UTF-16, or other control characters after decoding, are binary and skipped.
-Lines are split on `\n` and a CRLF line's `\r` is not part of its text, so `$`,
-whole words, `sourceLine` and the ranges are the same on CRLF and LF files.
-`workspace.replacePreview` reads only strict UTF-8 files up to 2 MiB, because
-hosts write `replacementText` back as UTF-8; it keeps each CRLF line's `\r` in
-`replacementText`. A file search finds in another encoding, or above 2 MiB, is
-therefore absent from the preview.
+Content search, index warming/updating and replacement previews accept optional
+`maxFileBytes` (default 16 MiB, valid 1–64 MiB). Index variants include this budget
+and `includeIgnored`; changing either cannot reuse incompatible postings. Text is
+decoded with `file.read`'s detection. NUL and binary controls are skipped, while
+ANSI escape is allowed as source text. Lines split on `\n`; a CRLF line's `\r`
+is excluded from matching and retained in replacement output.
+
+`workspace.searchPreferences` accepts optional `maxFileBytes` and
+`replacementMaxFileBytes`. It returns those effective byte budgets and
+`maximumFileBytes` (64 MiB). Search defaults to 16 MiB; replacement inherits the
+search budget when absent. Zero or values above the maximum return
+`invalid_request` with `details: invalid_file_budget`. The native settings source
+is owned by the host; resolving preferences performs no writes.
+
+`workspace.search` additionally accepts `projectPage: true`, `pageSize` (1–200,
+default 50) and `cursor`, returning `{ matches, nextCursor }` content-only pages.
+Without `projectPage`, its original capped literal-search response is unchanged.
+Project pages use path/line continuation inside matching, including across pages
+within one file; options and immutable `textOverrides` bind the cursor. There is
+no 200-result total ceiling. Each page observes current files; edits before a
+cursor require a fresh query.
+
+Search and replacement accept `scopeExpression`: comma-separated relative paths,
+include globs and `!`-prefixed exclude globs. `scopePaths` remains supported.
+`includeIgnored: true` bypasses Git ignore exclusions for that request, preserving
+manual exclusions, delegated roots and structural visibility rules. It does not
+make every hidden/generated folder visible. `textOverrides` maps relative paths
+to unsaved Unicode snapshots; they replace disk content and join candidates even
+when disk postings do not match. Queries never persist those snapshots.
+
+`workspace.searchPresentation` accepts `{ paths, collapsed }`, one path per loaded
+matching line, and returns `{ rows, files, lines }`. A heading row has `path`,
+loaded `count`, and `matchIndex: null`; match rows have an index into the supplied
+paths and zero count. Groups sort by path; match indices retain source order.
+Counts describe loaded matching lines, not all occurrences or a complete total
+while a cursor remains. Input is bounded to one million paths of at most 32768
+bytes each. Examples are in `rust/fixtures/search/idea-search-v1.json`.
 
 Search index enumeration skips inaccessible or vanished descendant directories,
 logging workspace-relative diagnostic paths without discarding unrelated results.
@@ -2360,8 +2389,10 @@ matching examples are shared in `rust/fixtures/search/exclusions.json`.
 `workspace.searchEverywhere` uses the same query options and visibility fields,
 and additionally accepts `maxSymbolResults` and optional
 `includeGeneratedFileNames` (default `false`). Ordinary name queries match
-case-insensitive contiguous fragments and camel/word humps, rather than arbitrary
-subsequences. Each file/type/symbol bucket is ranked before its requested cap;
+case-insensitive contiguous fragments, camel/word humps and lower-ranked arbitrary
+letter subsequences. Whitespace and `*` split ordered fragments; this is not full
+glob or IntelliJ MinusculeMatcher equivalence. A positive `:line` suffix on name
+queries returns that one-based target line; content queries keep literal semantics. Each file/type/symbol bucket is ranked before its requested cap;
 the total cap still applies to the file, type, symbol, then content buckets.
 A zero `maxFileResults` skips file-name result collection. Text-only queries use
 a ready content index, or a names-only inventory with the content visibility rules
@@ -2468,7 +2499,11 @@ The shared name/range examples are in `rust/fixtures/search/name-matching.json`.
 query options, optional workspace-relative `paths`, optional `textOverrides`
 keyed by relative path, and visibility fields. It returns `{ "files": [] }`
 where each file contains replacement matches and the complete
-`replacementText` to write. The command never writes files; callers can record
+`replacementText` to write and nullable `sourceIdentity` (SHA-256 of exact disk
+bytes; absent for editor overrides). All automatically decoded text encodings
+are eligible under `maxFileBytes`. Hosts verify that identity and preserve the
+original encoding and BOM through `text.decode`/`text.encode` before a guarded
+write. The command never writes files; callers can record
 history before using `file.write` for the selected files.
 
 `workspace.replaceText` accepts a host-captured `text`, `query`, `replacement`,
@@ -5911,8 +5946,9 @@ the supported ids. Responses always use the stable id.
 `file.read` takes optional `encoding`. Without it Core detects: UTF-8 BOM,
 UTF-16 LE BOM (unless the bytes start with the UTF-32 LE mark `FF FE 00 00`),
 UTF-16 BE BOM, valid UTF-8, then GB18030, reported as `gbk` when the text
-re-encodes to the identical bytes. Detection is strict: bytes valid in none of
-these (or malformed UTF-16, such as a lone surrogate or odd length) return
+re-encodes to the identical bytes, then round-trip Windows-1252. UTF-32 BOMs stay
+unsupported. Detection is strict: bytes valid in none of these (or malformed
+UTF-16, such as a lone surrogate or odd length) return
 `parse_failed`. With an explicit `encoding`, Core decodes through that codec and
 replaces invalid sequences with U+FFFD (`lossy: true`), so a wrong choice is
 visible; this is the "reopen with encoding" path. The result is
@@ -5939,7 +5975,7 @@ including any BOM. Fixture: `rust/fixtures/editor/file-encoding-v1.json`.
 writes the file itself (for example to guard against a file changing between
 its check and its write). `text.decode` takes `{ bytes, encoding? }`, where
 `bytes` is the standard base64 of the exact bytes, and returns `file.read`'s
-result without `path`; detection, `lossy`, `identity`, the 32 MB limit
+result without `path`; detection, `lossy`, `identity`, the 64 MiB limit
 (`parse_failed`) and the plain-text check are identical, and base64 that does not
 decode is `invalid_request`. `text.encode` takes `{ text, encoding?, bom? }`
 and returns `{ bytes, encoding, hasBom, identity }`, with `bytes` the base64 of
@@ -5951,7 +5987,8 @@ needs no temporary file. Both run against the same fixture.
 `document.classifyText` accepts `{ text }` and returns `{ isPlainText }`.
 The input is already decoded Unicode, independent of the filename, language ID,
 or tokenizer availability. Core uses the same control-character policy as
-`file.read`: reject U+0000–U+0008, U+000E–U+001F, and U+007F; allow other scalars,
+`file.read`: reject U+0000–U+0008, U+000E–U+001A, U+001C–U+001F, and U+007F; allow ANSI
+escape U+001B and other scalars,
 including tabs, line breaks, form feed, Chinese, and emoji. The entire decoded
 text is inspected, not an arbitrary byte prefix. A missing or non-string `text`
 returns `invalid_request`. Hosts retain responsibility for size limits, I/O,

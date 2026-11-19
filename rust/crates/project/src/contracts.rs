@@ -136,6 +136,9 @@ pub struct ReplacementFile {
     pub matches: Vec<ReplacementMatch>,
     /// Whole file text after replacement.
     pub replacement_text: String,
+    /// SHA-256 of previewed disk bytes; absent when an editor snapshot supplied the text.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_identity: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

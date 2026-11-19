@@ -13,12 +13,24 @@ pub fn search_everywhere(request: SearchRequest) -> Result<SearchResponse, CoreE
 
 /// Searches one bounded page when a continuation state is supplied.
 pub(crate) fn search_everywhere_with_page(
-    request: SearchRequest,
+    mut request: SearchRequest,
     mut page: Option<&mut SearchPage>,
 ) -> Result<SearchResponse, CoreError> {
+    parse_search_scope(
+        &request.scope_expression,
+        &mut request.scope_paths,
+        &mut request.include_path_patterns,
+        &mut request.exclude_path_patterns,
+    )?;
     let root = existing_root(&request.root)?;
     let indexing_policy = crate::indexing::context(&root);
-    let query = request.query.trim().to_string();
+    let (name_query, target_line) = crate::name_matching::split_location(&request.query);
+    let query = if request.max_content_results == Some(0) || request.max_file_results != Some(0) {
+        name_query.to_string()
+    } else {
+        request.query.trim().to_string()
+    };
+    request.query = query.clone();
     if query.is_empty() {
         return Ok(SearchResponse {
             matches: Vec::new(),
@@ -28,7 +40,8 @@ pub(crate) fn search_everywhere_with_page(
         request.hidden_directory_names.clone(),
         request.hidden_file_patterns.clone(),
     )
-    .with_workspace_roots(&root, &request.workspace_roots);
+    .with_workspace_roots(&root, &request.workspace_roots)
+    .with_search_options(request.max_file_bytes, request.include_ignored)?;
     let matcher = Matcher::new(
         &query,
         request.case_sensitive,
@@ -90,6 +103,8 @@ pub(crate) fn search_everywhere_with_page(
                 .collect(),
             hidden_file_patterns: rules.hidden_file_patterns.clone(),
             delegated_roots: rules.delegated_roots.clone(),
+            max_file_bytes: rules.max_file_bytes,
+            include_ignored: rules.include_ignored,
         };
         let names = search_index::get_names(&root, &name_rules)?;
         let names = names
@@ -108,7 +123,7 @@ pub(crate) fn search_everywhere_with_page(
             let mut result = SearchMatch {
                 kind: "file".to_string(),
                 path: file.path.clone(),
-                line: None,
+                line: target_line,
                 preview: file.path.clone(),
                 symbol_name: None,
                 name_match_ranges: Vec::new(),
