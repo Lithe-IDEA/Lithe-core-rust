@@ -302,7 +302,7 @@ pub fn build_test_plan_command<M: BuildManifest>(payload: Value) -> Result<Value
     )
 }
 
-/// `build.testDiscoveryPlan`: a typed request for provider-owned test discovery.
+/// `build.testDiscoveryPlan`: a command plan or provider request for test discovery.
 pub fn build_test_discovery_plan_command<M: BuildManifest>(
     payload: Value,
 ) -> Result<Value, CoreError> {

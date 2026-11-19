@@ -232,6 +232,12 @@ impl BuildSystemDeclaration {
         }
         if let Some(test) = &self.test {
             lists.push((format!("{field}.test.arguments"), &test.arguments));
+            if let Some(command) = &test.discovery_command {
+                lists.push((
+                    format!("{field}.test.discoveryCommand.arguments"),
+                    &command.arguments,
+                ));
+            }
         }
         if let Some(ModelSource::Command { arguments, .. }) = &self.model {
             lists.push((format!("{field}.model.arguments"), arguments));

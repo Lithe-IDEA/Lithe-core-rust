@@ -478,9 +478,9 @@ pub enum BuildCommand {
     DecodeDebugPreparation,
     /// Validates prepared launch data (`build.decodeRunPreparation`).
     DecodeRunPreparation,
-    /// Plans provider-owned test discovery (`build.testDiscoveryPlan`).
+    /// Plans command or provider test discovery (`build.testDiscoveryPlan`).
     TestDiscoveryPlan,
-    /// Validates provider-owned test selectors (`build.decodeTestDiscovery`).
+    /// Validates discovered test selectors (`build.decodeTestDiscovery`).
     DecodeTestDiscovery,
     /// Asks a provider for the entrypoints of a file (`build.runEntrypointsPlan`).
     RunEntrypointsPlan,

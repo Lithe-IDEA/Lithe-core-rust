@@ -105,6 +105,12 @@ pub static BUILD_MODEL: Contribution = Contribution {
     lifecycle: Lifecycle::CommandRun,
 };
 
+/// `buildSystems[].test.discoveryCommand`: one test discovery command.
+pub static BUILD_TEST_DISCOVERY: Contribution = Contribution {
+    operation: "lithe/build/discoverTests",
+    lifecycle: Lifecycle::CommandRun,
+};
+
 /// `buildSystems[].dependencies` with a command source: one dependency tree load.
 pub static BUILD_DEPENDENCIES: Contribution = Contribution {
     operation: "lithe/build/dependencies",
@@ -125,6 +131,7 @@ pub static CONTRIBUTIONS: &[&Contribution] = &[
     &LANGUAGE_SERVER_START,
     &DEBUG_ADAPTER_START,
     &BUILD_MODEL,
+    &BUILD_TEST_DISCOVERY,
     &BUILD_DEPENDENCIES,
     &COMMAND_INSTALLER_INSTALL,
 ];
@@ -438,6 +445,7 @@ mod tests {
             ("languageServer/start", Lifecycle::ProcessStart),
             ("debugAdapter/start", Lifecycle::ProcessStart),
             ("lithe/build/model", Lifecycle::CommandRun),
+            ("lithe/build/discoverTests", Lifecycle::CommandRun),
             ("lithe/build/dependencies", Lifecycle::CommandRun),
             ("commandInstaller/install", Lifecycle::CommandRun),
         ];

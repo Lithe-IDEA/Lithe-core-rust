@@ -86,6 +86,7 @@
 | [`build-systems/build-static-file.plugin.json`](../../contract/v1/fixtures/build-systems/build-static-file.plugin.json) | `static` 模型（Cargo） |
 | [`build-systems/build-command-stdout.plugin.json`](../../contract/v1/fixtures/build-systems/build-command-stdout.plugin.json) | 命令标准输出模型（Go） |
 | [`build-systems/build-command-output-file.plugin.json`](../../contract/v1/fixtures/build-systems/build-command-output-file.plugin.json) | 命令输出文件模型（Gradle） |
+| [`build-systems/build-command-test-discovery.plugin.json`](../../contract/v1/fixtures/build-systems/build-command-test-discovery.plugin.json) | 命令式测试发现清单，使用 `buildSystems` 1 |
 | [`build-systems/build-instance-options.plugin.json`](../../contract/v1/fixtures/build-systems/build-instance-options.plugin.json) | 按实例保存的选项 |
 | [`build-systems/build-tool-path.plugin.json`](../../contract/v1/fixtures/build-systems/build-tool-path.plugin.json) | 用 `file` 设置选择构建工具 |
 | [`build-systems/build-toolchains.plugin.json`](../../contract/v1/fixtures/build-systems/build-toolchains.plugin.json) | 可执行文件候选和运行时依赖用 `toolchain` 来源 |
@@ -187,6 +188,7 @@ The examples use Cargo, Go, and Gradle as realistic inputs; they are not those p
 | [`build-systems/build-static-file.plugin.json`](../../contract/v1/fixtures/build-systems/build-static-file.plugin.json) | `static` model (Cargo) |
 | [`build-systems/build-command-stdout.plugin.json`](../../contract/v1/fixtures/build-systems/build-command-stdout.plugin.json) | Command stdout model (Go) |
 | [`build-systems/build-command-output-file.plugin.json`](../../contract/v1/fixtures/build-systems/build-command-output-file.plugin.json) | Command output-file model (Gradle) |
+| [`build-systems/build-command-test-discovery.plugin.json`](../../contract/v1/fixtures/build-systems/build-command-test-discovery.plugin.json) | Command test discovery manifest, using `buildSystems` 1 |
 | [`build-systems/build-instance-options.plugin.json`](../../contract/v1/fixtures/build-systems/build-instance-options.plugin.json) | Per-instance options |
 | [`build-systems/build-tool-path.plugin.json`](../../contract/v1/fixtures/build-systems/build-tool-path.plugin.json) | A `file` setting selects the build tool |
 | [`build-systems/build-toolchains.plugin.json`](../../contract/v1/fixtures/build-systems/build-toolchains.plugin.json) | Executable candidates and a runtime dependency with `toolchain` sources |

@@ -580,7 +580,7 @@ impl<'a> Index<'a> {
             .build_system
             .test
             .as_ref()
-            .is_some_and(|test| test.discovery);
+            .is_some_and(|test| test.discovers_tests());
         if instance && discovers_tests && budget.take() {
             let key = format!("{container}{KEY_SEPARATOR}tests");
             nodes.push(TreeNode::new(NodeKind::Tests, key));

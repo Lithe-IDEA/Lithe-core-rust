@@ -66,7 +66,7 @@ fn message_text(value: &str) -> Option<String> {
 }
 
 /// The text a finished command left: its stdout, or the file it wrote.
-fn command_output(
+pub(crate) fn command_output(
     channel: OutputChannel,
     output: Option<&str>,
     output_file: Option<&str>,

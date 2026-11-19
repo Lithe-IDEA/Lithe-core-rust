@@ -33,9 +33,27 @@ pub(crate) struct TestDeclaration {
     /// The provider can enumerate exact selectors for the native test tree.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub(crate) discovery: bool,
+    /// A separate discovery command that writes a canonical selector document.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) discovery_command: Option<TestDiscoveryCommand>,
     pub(crate) arguments: Vec<BuildArgument>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) results: Option<TestResultsSource>,
+}
+
+impl TestDeclaration {
+    pub(crate) fn discovers_tests(&self) -> bool {
+        self.discovery || self.discovery_command.is_some()
+    }
+}
+
+/// Command input plus the effect facts the host needs before launch.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct TestDiscoveryCommand {
+    pub(crate) arguments: Vec<BuildArgument>,
+    pub(crate) executes_project_code: bool,
+    pub(crate) may_use_network: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
@@ -62,6 +80,13 @@ pub(crate) enum TestResultsSource {
 }
 
 impl BuildSystemDeclaration {
+    /// Whether the declaration needs buildSystems 1 for command-based discovery.
+    pub fn has_test_discovery_command(&self) -> bool {
+        self.test
+            .as_ref()
+            .is_some_and(|test| test.discovery_command.is_some())
+    }
+
     pub(crate) fn validate_test(
         &mut self,
         field: &str,
@@ -95,15 +120,38 @@ impl BuildSystemDeclaration {
         test.selector_kinds.sort();
         test.filters.sort();
         test.filters.dedup();
-        if test.discovery
-            && (test.source != TaskSource::Provider
-                || !test.filters.contains(&TestFilter::Suite)
+        if test.discovers_tests()
+            && (!test.filters.contains(&TestFilter::Suite)
                 || !test.filters.contains(&TestFilter::Case))
         {
             return Err(invalid(
                 &field,
-                "Test discovery requires a provider and suite/case filters.",
+                "Test discovery requires suite and case filters.",
             ));
+        }
+        if test.discovery
+            && (test.source != TaskSource::Provider || test.discovery_command.is_some())
+        {
+            return Err(invalid(
+                &field,
+                "Provider test discovery requires provider tests and no discoveryCommand.",
+            ));
+        }
+        if let Some(command) = &test.discovery_command {
+            let field = format!("{field}.discoveryCommand");
+            let arguments = format!("{field}.arguments");
+            check_argument_count(&command.arguments, &arguments)?;
+            template::validate_arguments(
+                &command.arguments,
+                &Allowed {
+                    root: true,
+                    host_directories: true,
+                    options: Some(options),
+                    ..Allowed::none()
+                },
+                &arguments,
+            )?;
+            check_output_channel(OutputChannel::OutputFile, &command.arguments, &field)?;
         }
         if test.source == TaskSource::Provider {
             if !test.arguments.is_empty() {
