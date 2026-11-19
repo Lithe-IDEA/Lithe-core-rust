@@ -20,6 +20,9 @@ next to the SDK and changes with it:
   relayed by Core, with the `Caller` a function called that way sees.
 - **`litheKeymapImport`**: independently negotiated shortcut import providers
   reading only explicitly selected source snapshots.
+- **`litheBuild`**: [typed build provider requests](#build-providers) for a
+  build system whose model, dependencies, tasks, tests, or run and debug
+  preparation come from the plugin's own process.
 - **`litheToolchains`**: [typed toolchain discovery providers](#toolchain-providers).
 - **`litheLogging`**: typed diagnostics, required at initialization; see
   [Logging](#logging).
@@ -28,18 +31,104 @@ The SDK owns the wire format, negotiation, cancellation, and error mapping.
 Your code supplies only handlers. It depends on `serde`, `serde_json` and `base64`, runs
 every call on a thread of its own, and needs Rust 1.87 or newer.
 
-This SDK has no build provider or VCS provider API; write build providers with
-the [Node.js](../node/README.md) or [Java](../java/README.md) SDK, and VCS
-providers with the Node.js SDK.
+This SDK has no VCS provider API; write VCS providers with the
+[Node.js](../node/README.md) SDK.
 
 ## What the Lithe desktop serves
 
-The Lithe desktop declares `backend` and `pluginFunctions` (both version 0), so
-the function and host-service protocols below run there. It does not declare
+The Lithe desktop declares `backend` and `pluginFunctions` (both version 0) and
+`buildProviders` (versions 0 and 1), so the function, host-service and build
+provider protocols below run there, except that the desktop does not present
+build-provider debug preparation yet. It does not declare
 `keymapImportProviders`: a plugin whose manifest requires it is not offered for
 installation there, although the Core end-to-end tests still drive the protocol.
 Which host services a session may call is reported at run time; see
 [Host services](#host-services).
+
+## Build providers
+
+A build system whose `model` or `dependencies` source is `provider` names a
+[build provider](../../contract/v1/README.md#build-providers). Written with
+this SDK, it is a packaged executable with a process of its own: the
+language-server process fields plus `executesProjectCode` and `mayUseNetwork`,
+under the `languageServer.launch` permission (and `process.build`, which every
+build system needs). The host starts one process per
+plugin, build system and workspace, and offers `litheBuild` at initialization.
+The SDK answers the newest offered version it speaks (`0` or `1`) when at least
+one build handler is declared, and does not answer `litheBuild` otherwise:
+
+```json
+"requires": { "buildSystems": 0, "buildProviders": 0 },
+"permissions": ["languageServer.launch", "process.build"],
+"buildSystems": [{
+  "id": "example", "displayName": "Example",
+  "detection": { "markers": ["example.toml"] },
+  "invocation": { "executables": [{ "kind": "command", "command": "example" }] },
+  "model": { "source": "provider" },
+  "provider": {
+    "launch": { "kind": "packaged", "path": "bin/example-build" },
+    "executesProjectCode": true, "mayUseNetwork": false
+  }
+}]
+```
+
+```rust
+use lithe_plugin_sdk::{Backend, PluginError};
+use serde_json::json;
+
+fn main() {
+    let mut backend = Backend::new("example-build").version(env!("CARGO_PKG_VERSION"));
+    backend
+        .build_model(|params, context| {
+            context.check_cancelled()?;
+            let root = params["root"].as_str().unwrap_or(".");
+            Ok(json!({ "buildSystemID": "example", "root": root, "projects": [] }))
+        })
+        .build_prepare_debug(|params, context| {
+            context.progress("Building", None);
+            // Build the target and stream the tool's output with context.output(…);
+            // stop the tool once context.cancellation() fires.
+            let target = params["target"]["name"].as_str().ok_or_else(|| {
+                PluginError::new("example.noTarget", "Select a target to debug.")
+            })?;
+            Ok(json!({ "program": format!("out/{target}"), "arguments": [],
+                "workingDirectory": ".", "environment": {} }))
+        });
+    std::process::exit(backend.listen());
+}
+```
+
+| API | Request |
+| --- | --- |
+| `build_model(handler)`, `build_dependencies(handler)` | `lithe/build/model`, `lithe/build/dependencies` |
+| `build_execute(handler)`, `build_test(handler)` | `lithe/build/execute`, `lithe/build/test`: `{ exitCode, output }` |
+| `build_discover_tests(handler)` | `lithe/build/discoverTests` |
+| `build_run_entrypoints(handler)` | `lithe/build/runEntrypoints`, routed only when the host negotiated `litheBuild` `1` |
+| `build_prepare_run(handler)`, `build_prepare_debug(handler)` | `lithe/build/prepareRun` (a launch plan), `lithe/build/prepareDebug` (exactly `program`, `arguments`, `workingDirectory`, `environment`) |
+| `handle.build_version()`, `Initialize::build_version()` | The negotiated `litheBuild` version, or `None` |
+
+A handler is `Fn(Value, &BuildContext) -> Result<Value, FunctionError>` and
+runs on a thread of its own. The SDK stamps `format` and `version` on the
+model, dependency, test discovery and run entrypoint documents, so a handler
+may return the plain document; a document that names another format or
+version, or a result of another shape, fails as an internal error before Core
+sees it. Core still validates the document's content and workspace
+containment. A result must serialize to at most 32 MiB of JSON.
+`execute`, `test`, `prepareRun` and `prepareDebug` need the wire `operationID`
+Core gives them; a request without it is refused before its handler runs. Only
+they report progress: `progress(message, percentage)` cuts the message to
+4 KiB and the percentage to 100, and `output(text)` streams the tool's output
+in reports of at most 64 KiB, split at character boundaries. The result's
+`output` still carries the complete text. Reports from the other requests,
+after the request ended, or after cancellation are dropped. A build tool
+failure is a result with its exit code. An `Err` fails the request, and for run
+and debug preparation starts nothing: a `PluginError` answers a JSON-RPC error
+with its message and code, which Core reports in the build's own error category
+without forwarding a `pluginErrorCode`; any other error or a panic answers a
+generic internal error, and a cancelled request answers `requestCancelled`.
+Terminal diagnostics are automatic, as for functions. The SDK has no process runner: stop the build
+tool's whole process tree when `cancellation()` fires. `host()` works only when
+the host also negotiated plugin functions with the process.
 
 ## Toolchain providers
 
@@ -220,6 +309,7 @@ fallback and no plugin-owned file writer.
 | `backend.on_contexts_changed(handler)`, `backend.on_host_notification(method, handler)` | Handle `lithe/host/workspace/didChangeContexts` and any other `lithe/host/*` notification a later host adds. |
 | `handle.host()`, `context.host()` | The [host services](#host-services). `handle.host()` is bound to no call. |
 | `handle.credentials()`, `context.credentials()` | Shorthand for `host().credentials()`. |
+| `backend.build_model(handler)` and the other `build_*` methods | Declare the typed build requests; see [Build providers](#build-providers). |
 | `PluginError::new(code, message)` | A failure meant for your own UI. |
 
 A handler is `Fn(Value, &Context) -> Result<Value, FunctionError>`. Its
@@ -491,7 +581,8 @@ panics on any other code.
    blocking driver calls. Lithe has already ended the call when it cancels;
    the SDK answers `requestCancelled` whatever the handler returns.
 5. **No calls back into Lithe's dispatch.** The SDK never sends
-   `lithe/function/invoke` or `lithe/build/*`; Lithe would refuse them as
+   `lithe/function/invoke` or a `lithe/build/*` request (it sends only the
+   `lithe/build/progress` notification); Lithe would refuse them as
    `plugin.function.recursiveCall`. `Host::request` sends only
    `lithe/host/*` and refuses anything else as `sdk.host.method`. To call
    another plugin, use [`host().functions()`](#calling-other-plugins), which

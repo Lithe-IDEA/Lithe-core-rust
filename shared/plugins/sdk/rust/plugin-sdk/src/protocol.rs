@@ -14,6 +14,10 @@ pub const FUNCTIONS_VERSION: u64 = 0;
 pub const LOGGING_VERSION: u64 = 0;
 /// The `litheKeymapImport` version this SDK answers.
 pub const KEYMAP_IMPORT_VERSION: u64 = 0;
+/// The newest `litheBuild` version this SDK answers. The protocol is a
+/// version of `buildProviders`: version 1 adds `lithe/build/runEntrypoints`
+/// and changes nothing of version 0.
+pub const BUILD_VERSION: u64 = 1;
 
 /// Whether an `initialize` offer, `{ "versions": [...] }`, lists `version`.
 pub(crate) fn offers(offer: Option<&Value>, version: u64) -> bool {
@@ -73,6 +77,15 @@ pub(crate) mod methods {
     pub const COMMAND_DID_RUN: &str = "lithe/host/commands/didRun";
     pub const FUNCTIONS_PROVIDERS: &str = "lithe/host/functions/providers";
     pub const FUNCTIONS_INVOKE: &str = "lithe/host/functions/invoke";
+    pub const BUILD_MODEL: &str = "lithe/build/model";
+    pub const BUILD_DEPENDENCIES: &str = "lithe/build/dependencies";
+    pub const BUILD_EXECUTE: &str = "lithe/build/execute";
+    pub const BUILD_TEST: &str = "lithe/build/test";
+    pub const BUILD_DISCOVER_TESTS: &str = "lithe/build/discoverTests";
+    pub const BUILD_RUN_ENTRYPOINTS: &str = "lithe/build/runEntrypoints";
+    pub const BUILD_PREPARE_RUN: &str = "lithe/build/prepareRun";
+    pub const BUILD_PREPARE_DEBUG: &str = "lithe/build/prepareDebug";
+    pub const BUILD_PROGRESS: &str = "lithe/build/progress";
 }
 
 /// JSON-RPC and LSP error codes the SDK answers with.
@@ -92,6 +105,12 @@ const MAX_FUNCTION_ID_BYTES: usize = 128;
 const MAX_PLUGIN_ERROR_CODE_BYTES: usize = 64;
 pub(crate) const MAX_MESSAGE_BYTES: usize = 1024;
 pub(crate) const MAX_RESULT_BYTES: usize = 1 << 20;
+/// A build result document, including the complete `output` of a task or test.
+pub(crate) const MAX_BUILD_RESULT_BYTES: usize = 32 << 20;
+/// The `message` of one `lithe/build/progress` report.
+pub(crate) const MAX_BUILD_MESSAGE_BYTES: usize = 4 * 1024;
+/// The `output` of one `lithe/build/progress` report.
+pub(crate) const MAX_BUILD_OUTPUT_BYTES: usize = 64 * 1024;
 const MAX_CREDENTIAL_KEY_BYTES: usize = 128;
 pub(crate) const MAX_CREDENTIAL_SECRET_BYTES: usize = 16 * 1024;
 /// Host requests a backend may have unanswered at once; later ones wait.
@@ -190,6 +209,11 @@ mod tests {
         assert_eq!(FUNCTIONS_VERSION, 0);
         assert_eq!(LOGGING_VERSION, 0);
         assert_eq!(KEYMAP_IMPORT_VERSION, 0);
+    }
+
+    #[test]
+    fn the_build_protocol_follows_build_providers_one() {
+        assert_eq!(BUILD_VERSION, 1);
     }
 
     #[test]

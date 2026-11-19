@@ -4766,10 +4766,11 @@ mapping, with one difference: on Java 8 it stops only a cancelled tool's
 direct child, and the host's process scope ends the rest.
 
 [`sdk/rust`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/shared/plugins/sdk/rust/README.md) is the SDK for
-[plugin backends](#plugin-backend), which ship as packaged executables. It
-implements this protocol with its host services, but neither build nor VCS
-providers. It needs Rust 1.87 or newer, depends only on `serde_json`, and is
-released (`sdk-rust-v<version>`) as a `.crate` archive with its SHA-256, or
+[plugin backends](#plugin-backend) and own-process
+[build providers](#build-providers), which ship as packaged executables. It
+implements this protocol with its host services and `litheBuild`, but not VCS
+providers. It needs Rust 1.87 or newer, depends only on `serde`, `serde_json`
+and `base64`, and is released (`sdk-rust-v<version>`) as a `.crate` archive with its SHA-256, or
 used as a Git dependency pinned by the tag. It enforces the same rules: on Unix it
 points stdout at stderr so only protocol frames reach the host, and a panic
 ends only its call, reported like any unexpected failure.
