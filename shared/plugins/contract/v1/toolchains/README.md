@@ -315,9 +315,13 @@ its declared `path` layout.
 
 Each query is a complete `decodeReply` input, bound to the resolver's registry,
 generation/context, root/directory, case policy, roots and filesystem snapshot.
-The resolver accepts local workspace queries here; global-only decoder inputs
-are not a substitute for the workspace-bound query round. `providerChoices`
-records explicit project/global provider or automatic-installation choices; it
+Workspace resolution only accepts queries bound to the same workspace and
+directory. With `global:true` and `workspaceRoot:""`, the resolver accepts
+global-only queries with explicit `workspace:null` and `context:null` in the
+request. The resolution has `directory:"."` and `context:null`. Any additional
+`workspaceRoots` still exclude installations inside an open workspace.
+`providerChoices` records explicit project/global provider or
+automatic-installation choices; it
 does not activate providers or bypass their evidence checks.
 Its shape is `{project?:"pluginID:providerID",global?:"pluginID:providerID",
 automatic?:"absolute-installation-home"}`; choices not present in the current
