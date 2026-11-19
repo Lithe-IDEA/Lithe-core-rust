@@ -1339,9 +1339,9 @@ dependencies. Own build providers adapt command/runtime launches through
 their process protocol is unchanged. Language servers, execution providers,
 and other launch forms name a [tool definition](#tool-references) instead of
 declaring a candidate list. Any launch form adapted to this resolver must
-preserve the package-realpath/executable checks, per-operation consent (there
-is no workspace trust state yet), auto-start restrictions, runtime ownership
-and cancellation.
+preserve the package-realpath/executable checks, the
+[workspace trust](#workspace-trust) of the operation, auto-start restrictions,
+runtime ownership and cancellation.
 
 See [`build-tool-path.plugin.json`](fixtures/build-systems/build-tool-path.plugin.json).
 
@@ -2042,6 +2042,31 @@ either in `globalArguments` or in the command's list, and only once within a
 list, except under opposite conditions. An option that no list references
 contributes nothing. Unknown, misplaced, unguarded, or repeated variables are
 `plugin.template.invalid`.
+
+### Workspace trust
+
+Loading, building, testing or running a project can run code from it: build
+scripts, build-tool extensions and plugins, and the program itself. The user
+decides once per workspace, as in IntelliJ IDEA: the host asks when a workspace
+opens whose trust is unknown, and the user trusts it (optionally with every
+project in its parent folder) or keeps it in safe mode. Core stores the
+decision in the machine-local toolchain catalog and reports it as
+`projectCodeAllowed`; the host passes that value with every build plan request.
+
+In a workspace the user has not trusted, Core refuses with
+`plugin.build.untrustedWorkspace` every plan that would run project code:
+
+- every task, test, run configuration, before-launch task, run preparation and
+  debug preparation, since they run the project;
+- a `command` model or dependency source that declares
+  `executesProjectCode: true`;
+- a request to a build provider that declares `executesProjectCode: true`.
+
+A `command` model or dependency source that declares
+`executesProjectCode: false` loads in safe mode, so declare `false` only for a
+command that never runs build scripts or other project code. A `static` model
+needs no process. In safe mode the host leaves automatic loads undone and asks
+the user to trust the workspace before an action the user starts.
 
 ### Model and outputs
 
@@ -3280,9 +3305,10 @@ contexts. `fixtures/backend/backend-workspace.plugin.json` is the example.
   authority, and the plugin's per-workspace state directory; it reads no
   file content.
 - Activation is gated only by the plugin being installed, enabled, and
-  reviewed. Lithe has no workspace trust state at the moment: an operation
-  that runs or changes something asks the user per operation, as the host's
-  own controls do.
+  reviewed. A build operation that runs project code also needs a trusted
+  workspace (see [Workspace trust](#workspace-trust)); any other operation that
+  runs or changes something asks the user per operation, as the host's own
+  controls do.
 
 ## Project generators
 
@@ -4830,6 +4856,7 @@ command payload is a Core `invalid_request` failure instead.
 | `plugin.build.unavailable` | Core | The plugin declares no such build system, or the build system does not declare the requested operation |
 | `plugin.build.invalidSelection` | Core | A build request selects a scope, target, filter, or argument the declaration does not allow, or misses a required path |
 | `plugin.build.invalidOutput` | Core | Build-tool output or a report does not fit its decoder |
+| `plugin.build.untrustedWorkspace` | Core | The plan would run project code and the user has not trusted the workspace; see [Workspace trust](#workspace-trust) |
 | `plugin.build.invalidRunConfiguration` | Core | A saved configuration of a [run configuration type](#run-configuration-types) holds a value the type no longer accepts; `field` is `values.<fieldID>` |
 | `plugin.build.invalidBeforeLaunchTask` | Core | A step of a [before-launch task](#before-launch-tasks) holds a value the task no longer accepts; `field` is `values.<fieldID>` |
 | `plugin.build.invalidLocalization` | Core | The `runConfigurationTypes` or `beforeLaunchTasks` part of a [translation file](#translations) does not fit the declarations; the host shows the next candidate or the manifest text |
@@ -4988,8 +5015,8 @@ Before the page's scripts run, the host defines `window.lithe`:
 result or rejects with `{ code, message }`, and `lithe.on(event, listener)`,
 which returns an unsubscribe function. A page reaches only its own plugin's
 build systems and the open workspace. Requests that run anything ask for the
-same per-operation consent as the host's own controls (Lithe has no workspace
-trust state at the moment), and
+same consent as the host's own controls, including
+[workspace trust](#workspace-trust), and
 their output appears in the host's Build output window.
 
 | Method | Parameters | Result |

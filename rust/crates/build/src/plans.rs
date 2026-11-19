@@ -81,6 +81,26 @@ pub(crate) struct PlanBase {
     /// Absolute writable directory of this plugin for this workspace.
     #[serde(default)]
     pub(crate) workspace_state_directory: Option<String>,
+    /// Whether the user trusts the workspace, from `toolchains.catalogState`.
+    /// Absent means untrusted: a plan that runs project code is then refused
+    /// with [`UNTRUSTED_WORKSPACE`].
+    #[serde(default)]
+    pub(crate) project_code_allowed: bool,
+}
+
+/// Refusal of a plan that would run project code in a workspace the user has
+/// not trusted. The host asks for trust before a user action and leaves an
+/// automatic load undone.
+pub(crate) const UNTRUSTED_WORKSPACE: &str = "plugin.build.untrustedWorkspace";
+
+fn untrusted(build_system: &BuildSystemDeclaration) -> PluginRejection {
+    PluginRejection::new(
+        UNTRUSTED_WORKSPACE,
+        format!(
+            "{} would run project code; the workspace is not trusted.",
+            build_system.display_name
+        ),
+    )
 }
 
 #[derive(Debug, Deserialize)]
@@ -292,6 +312,7 @@ pub(crate) struct PlanContext<'a> {
     model_inputs: Option<Value>,
     plugin_directory: Option<String>,
     workspace_state_directory: Option<String>,
+    project_code_allowed: bool,
 }
 
 fn host_directory(value: &Option<String>, name: &str) -> Validation<Option<String>> {
@@ -347,7 +368,15 @@ impl<'a> PlanContext<'a> {
                 &base.workspace_state_directory,
                 "workspaceStateDirectory",
             )?,
+            project_code_allowed: base.project_code_allowed,
         })
+    }
+
+    /// This context for plans that are only checked and never returned to the
+    /// host, which therefore run nothing and need no trusted workspace.
+    pub(crate) fn validating(mut self) -> Self {
+        self.project_code_allowed = true;
+        self
     }
 
     pub(crate) fn values<'v>(&'v self, user_arguments: &'v [String]) -> Values<'v> {
@@ -380,6 +409,15 @@ impl<'a> PlanContext<'a> {
         execution: BuildExecution,
         extra: Map<String, Value>,
     ) -> Validation<Value> {
+        // A model or dependency command states whether it runs project code; any
+        // other command runs the build tool on the project, so it does.
+        let executes = extra
+            .get("executesProjectCode")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+        if executes && !self.project_code_allowed {
+            return Err(untrusted(self.build_system));
+        }
         let mut plan = json!({
             "buildSystemID": self.build_system.id,
             "root": self.root,
@@ -401,13 +439,21 @@ impl<'a> PlanContext<'a> {
     /// would contribute to a command line, so the provider can hand either
     /// to the tool. `params` already holds the source's own fields and the
     /// host's `refresh` and `tool` hints.
+    ///
+    /// An execution (`execution`) or a run preparation runs the project, so it
+    /// needs a trusted workspace whatever the provider declares; a request that
+    /// only reads the project needs it when the provider runs project code.
     pub(crate) fn provider_plan(
         &self,
         provider: &ProviderDeclaration,
         method: &str,
         decoder: &str,
         mut params: Map<String, Value>,
-    ) -> Value {
+    ) -> Validation<Value> {
+        let runs = matches!(decoder, "execution" | "litheRunPreparation");
+        if (runs || provider.executes_project_code()) && !self.project_code_allowed {
+            return Err(untrusted(self.build_system));
+        }
         let option_arguments: Vec<&String> = self
             .contribution
             .arguments
@@ -432,7 +478,7 @@ impl<'a> PlanContext<'a> {
         if let Some(inputs) = &self.model_inputs {
             params.insert("modelInputs".into(), inputs.clone());
         }
-        json!({
+        Ok(json!({
             "buildSystemID": self.build_system.id,
             "root": self.root,
             "provider": { "method": method, "params": params },
@@ -440,7 +486,7 @@ impl<'a> PlanContext<'a> {
             "executesProjectCode": provider.executes_project_code(),
             "mayUseNetwork": provider.may_use_network(),
             "optionFingerprint": self.fingerprint,
-        })
+        }))
     }
 }
 
@@ -623,12 +669,12 @@ pub(crate) fn task_plan(
                 );
             }
         }
-        return Ok(context.provider_plan(
+        return context.provider_plan(
             declared_provider(build_system)?,
             "lithe/build/execute",
             "execution",
             params,
-        ));
+        );
     }
     context.plan(&declaration.arguments, &values, execution, Map::new())
 }
@@ -678,12 +724,12 @@ pub(crate) fn test_discovery_plan(
             "A provider returns test discovery directly.",
         ));
     }
-    Ok(context.provider_plan(
+    context.provider_plan(
         declared_provider(build_system)?,
         "lithe/build/discoverTests",
         "litheTestDiscovery",
         provider_hints(request)?,
-    ))
+    )
 }
 
 /// Whether a selected target carries one of the declared tags; no tags
@@ -874,7 +920,7 @@ pub(crate) fn test_plan_with_selection(
             "lithe/build/test",
             "execution",
             params,
-        );
+        )?;
         plan.as_object_mut()
             .expect("provider plan is an object")
             .extend(extra);
@@ -915,12 +961,12 @@ pub(crate) fn model_plan(
             ));
         }
         let context = PlanContext::new(build_system, &request.base)?;
-        return Ok(context.provider_plan(
+        return context.provider_plan(
             declared_provider(build_system)?,
             PROVIDER_MODEL_METHOD,
             "litheBuildModel",
             provider_hints(request)?,
-        ));
+        );
     }
     let Some(ModelSource::Command {
         arguments,
@@ -1024,12 +1070,12 @@ pub(crate) fn dependency_plan(
                     |project| json!({ "name": project.name, "path": project.path }),
                 ),
             );
-            Ok(context.provider_plan(
+            context.provider_plan(
                 declared_provider(build_system)?,
                 PROVIDER_DEPENDENCIES_METHOD,
                 "litheDependencies",
                 params,
-            ))
+            )
         }
     }
 }
@@ -1088,6 +1134,9 @@ pub(crate) fn run_entries(
         options: stored_options.clone(),
         plugin_directory: None,
         workspace_state_directory: None,
+        // Entries only expand templates for the run list; starting one asks for
+        // a plan of its own, which checks trust.
+        project_code_allowed: false,
     };
     let context = PlanContext::with_model_options(
         build_system,

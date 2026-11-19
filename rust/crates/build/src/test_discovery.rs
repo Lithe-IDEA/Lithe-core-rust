@@ -49,8 +49,10 @@ pub(crate) fn decode(
         .as_ref()
         .filter(|test| test.discovers_tests())
         .ok_or_else(|| plans::unavailable(build_system, "test discovery"))?;
-    // Validate host context even for a valid empty discovery result.
-    let context = plans::PlanContext::new(build_system, &request.base)?;
+    // Validate host context even for a valid empty discovery result. The test
+    // plans below only check that each selector could run and are never
+    // returned, so they do not need a trusted workspace.
+    let context = plans::PlanContext::new(build_system, &request.base)?.validating();
     let command_result;
     let result = if test.discovery_command.is_some() {
         if request.result.is_some() {

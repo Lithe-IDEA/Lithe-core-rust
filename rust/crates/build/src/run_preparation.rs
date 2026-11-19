@@ -276,12 +276,12 @@ pub(crate) fn plan(
         .provider
         .as_ref()
         .ok_or_else(|| plans::unavailable(build_system, "a provider"))?;
-    Ok(context.provider_plan(
+    context.provider_plan(
         provider,
         "lithe/build/prepareRun",
         "litheRunPreparation",
         params,
-    ))
+    )
 }
 
 /// The platform supplies its writable workspace root, never an installation path.

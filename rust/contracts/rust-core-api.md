@@ -5269,8 +5269,18 @@ Paths in requests are workspace-relative with `/` unless named absolute.
 `root` is the instance root from detection. Selected entities are
 `{ name, path?, tags?, execution?, properties? }` as the decoded model
 returned them. Plan requests share `{ root, options?, pluginDirectory?,
-workspaceStateDirectory?, modelInputs? }`; `options` are the stored values by option ID,
+workspaceStateDirectory?, modelInputs?, projectCodeAllowed? }`; `options` are the stored values by option ID,
 and the directories are absolute host paths used only as substitution text.
+
+`projectCodeAllowed` is the workspace's trust from `toolchains.catalogState`; absent means
+`false`. A plan that would run project code in an untrusted workspace is refused with
+`plugin.build.untrustedWorkspace`: every task, test, run configuration, before-launch task, run
+preparation and debug preparation, since they run the project; a model or dependency command
+that declares `executesProjectCode: true`; and a provider request to a provider that declares
+it. A model or dependency command declaring `executesProjectCode: false` plans without trust.
+Run entries listed from a decoded model and `build.decodeTestDiscovery` need no trust, since
+they return no plan. The host leaves an automatic load undone on this refusal and asks the
+user to trust the workspace before an action the user started.
 
 | Command | Request | Result |
 | --- | --- | --- |
@@ -5289,8 +5299,8 @@ and the directories are absolute host paths used only as substitution text.
 | `build.decodeConfigurationEdit` | `{ snapshot, edits, result }` | `edit: { sourceID, revision, changed }`; validates bounded receipt and exact draft/source identity; native adapter verifies staged hash and publishes atomically |
 | `build.modelPlan`, `build.dependencyPlan` | plan fields plus `project?` (dependencies), `outputFile?`, and for provider sources `refresh?` (boolean) and `tool?: { executable }` (absolute path) | `plan`: `{ buildSystemID, root, arguments, environment, workingDirectory, execution, optionFingerprint, output, decoder, executesProjectCode, mayUseNetwork }`; for a `provider` source `{ buildSystemID, root, provider: { method, params }, decoder, executesProjectCode, mayUseNetwork, optionFingerprint }`, where `method` is `lithe/build/model` or `lithe/build/dependencies` and `params` is `{ buildSystemID, root, options, optionArguments, environment, project?, refresh?, tool? }`; `refresh` appears only when `true` and `tool` only when the host sent it |
 | `build.taskPlan` | plan fields plus `task`, `project?`, `target?`, `modelTask?`, `userArguments?` | command `plan` with `arguments`, `environment`, `workingDirectory`, `execution`, and `optionFingerprint`; a provider task instead returns `provider: {method: "lithe/build/execute", params}` with effective options, selected task/entities, user arguments and effect metadata |
-| `build.runConfigurationPlan` | `manifest`, `buildSystemID`, required `workspaceRoot`, and `request: {configurationId, localDocument?, instances: [{root, options?, modelInputs?}], pluginDirectory?, workspaceStateDirectory?}` | `plan` as `build.taskPlan` returns it plus `runType: {pluginID, buildSystemID, type}`: the global arguments, then the type's `arguments` with the saved field values, the instance's options and the configuration's program arguments, at the configuration's working directory, with its environment over the options'. The instance is the deepest one whose root holds the working directory, or the only one; `plugin.build.invalidSelection` when several exist and none holds it or the configuration belongs to another plugin or build system, `plugin.build.unavailable` when the type is no longer declared, `plugin.build.invalidRunConfiguration` with `field: values.<fieldID>` when a saved value no longer fits. A configuration that is missing, disabled, unavailable or of another provider fails the call |
-| `build.beforeLaunchTaskPlan` | `manifest`, `buildSystemID`, required `workspaceRoot`, and `request: {task, workingDirectory, instances: [{root, options?, modelInputs?}], pluginDirectory?, workspaceStateDirectory?}`, with `task` and `workingDirectory` as `runConfig.beforeLaunch` returned the step | `plan` as `build.taskPlan` returns it plus `beforeLaunchTask: {pluginID, buildSystemID, type}`: the global arguments, then the task's `arguments` with the saved field values and the instance's options, at the step's working directory with the options' environment, as a `task` execution. The instance is chosen as for `build.runConfigurationPlan`; `plugin.build.invalidSelection` when several exist and none holds the working directory or the task belongs to another plugin or build system, `plugin.build.unavailable` when the task is no longer declared, `plugin.build.invalidBeforeLaunchTask` with `field: values.<fieldID>` when a saved value no longer fits. A working directory outside the workspace fails the call |
+| `build.runConfigurationPlan` | `manifest`, `buildSystemID`, required `workspaceRoot`, and `request: {configurationId, localDocument?, instances: [{root, options?, modelInputs?}], pluginDirectory?, workspaceStateDirectory?, projectCodeAllowed?}` | `plan` as `build.taskPlan` returns it plus `runType: {pluginID, buildSystemID, type}`: the global arguments, then the type's `arguments` with the saved field values, the instance's options and the configuration's program arguments, at the configuration's working directory, with its environment over the options'. The instance is the deepest one whose root holds the working directory, or the only one; `plugin.build.invalidSelection` when several exist and none holds it or the configuration belongs to another plugin or build system, `plugin.build.unavailable` when the type is no longer declared, `plugin.build.invalidRunConfiguration` with `field: values.<fieldID>` when a saved value no longer fits. A configuration that is missing, disabled, unavailable or of another provider fails the call |
+| `build.beforeLaunchTaskPlan` | `manifest`, `buildSystemID`, required `workspaceRoot`, and `request: {task, workingDirectory, instances: [{root, options?, modelInputs?}], pluginDirectory?, workspaceStateDirectory?, projectCodeAllowed?}`, with `task` and `workingDirectory` as `runConfig.beforeLaunch` returned the step | `plan` as `build.taskPlan` returns it plus `beforeLaunchTask: {pluginID, buildSystemID, type}`: the global arguments, then the task's `arguments` with the saved field values and the instance's options, at the step's working directory with the options' environment, as a `task` execution. The instance is chosen as for `build.runConfigurationPlan`; `plugin.build.invalidSelection` when several exist and none holds the working directory or the task belongs to another plugin or build system, `plugin.build.unavailable` when the task is no longer declared, `plugin.build.invalidBeforeLaunchTask` with `field: values.<fieldID>` when a saved value no longer fits. A working directory outside the workspace fails the call |
 | `build.testPlan` | plan fields plus `project?`, `target?`, `suite?`, `case?`, `userArguments?`, `projects?` (the model's project directories) | command plan or `provider: {method: "lithe/build/test", params}`, plus `results`: `null`, `{ decoder, reports }` with workspace-relative globs (for the selected project, or for the root and every listed project when none is selected), or command-only `{ decoder: "hostIntegration" }`. Command filters that templates cannot place, such as a case without its suite when the tool only addresses `Suite#case`, are `plugin.build.invalidSelection`; Provider filters remain separate typed values and must be declared supported |
 | `build.testDiscoveryPlan` | Common plan fields, plus a fresh absolute `outputFile` for `test.discoveryCommand`, or optional `refresh` and `tool` for `test.discovery: true`. No project selection. | Command plan with argv, environment, instance working directory, `output: "outputFile"`, `decoder: "litheTestDiscovery"` and effect metadata, or `plan.provider` for `lithe/build/discoverTests` with the effective options. |
 | `build.decodeTestDiscovery` | Original common plan fields plus the same `outputFile` for a completed command or canonical inline `result` for a Provider. | `discovery.tests` with validated `{id, suite, case, project?, target?}` selectors. Bounded at 10,000 items and 32 MiB, deterministic and exactly runnable. Malformed results reject in full with `plugin.build.invalidOutput`. |
@@ -7432,21 +7442,31 @@ must not infer executable names from opaque runtime IDs.
 ### Global SDK registrations without an open project
 
 `toolchains.catalogState` accepts `{document:string|null,platform,filesystemCaseSensitive?,workspaceRoot?}`
-and returns `{status:"ok",state:{document,storage:{relativePath:"toolchains/global.json",maximumBytes:262144},projectCodeAllowed?}}`.
-When `workspaceRoot` is supplied, `projectCodeAllowed` reports whether that normalized workspace
-root is in the machine-local `trustedWorkspaces` list (`false` when `workspaceRoot` is `""`);
-when `workspaceRoot` is omitted, `projectCodeAllowed` is omitted.
+and returns `{status:"ok",state:{document,storage:{relativePath:"toolchains/global.json",maximumBytes:262144},projectCodeAllowed?,workspaceTrust?}}`.
+When a nonempty `workspaceRoot` is supplied, `workspaceTrust` is `{state, location, offeredLocation}`
+and `projectCodeAllowed` is `state == "trusted"`; both are omitted otherwise. The machine-local
+document keeps three lists of normalized absolute paths, at most 256 each: `trustedWorkspaces`,
+`distrustedWorkspaces` (workspaces kept in safe mode) and `trustedLocations` (folders whose every
+workspace at any depth is trusted). As in IntelliJ IDEA, an explicit decision on the workspace
+applies first, then a trusted location containing it: `state` is `trusted`, `distrusted`, or
+`unknown` when the user has not been asked. `location` is the trusted location that trusts the
+workspace, else `null`. `offeredLocation` is the parent folder a trust prompt may offer to trust
+with the workspace, or `null` when that parent is a filesystem root (`/`, a drive, a UNC share).
+The two newer lists are written only once used, so a document without them stays readable by
+hosts that predate them.
 Native clients resolve the relative path below their platform user-preference directory,
 never below a workspace, SDK, installed package or application bundle. Reading an absent
 source returns `{version:1,tools:{}}` and must not create a directory or file.
 
 `toolchains.editCatalog` accepts `{document:string|null,platform,filesystemCaseSensitive?,edits?,workspaceTrust?}`,
 where at least one of a nonempty `edits` array of `{tool,homes:[absoluteHome],defaultHome:string|null}`
-or `workspaceTrust:{workspace,trusted}` is required. Each tool edit replaces only that tool's
-registrations and default; other tools, dormant plugins and `trustedWorkspaces` remain intact.
-`workspaceTrust` grants or revokes machine-local `projectCodeAllowed` trust for one normalized
-workspace root (at most 256 distinct workspaces), preserving `tools`; revoking trust on an absent
-document returns `changed:false,document:null` and creates no file. At most
+or `workspaceTrust:{workspace,trusted,location?}` is required. Each tool edit replaces only that tool's
+registrations and default; other tools, dormant plugins and the trust lists remain intact.
+`workspaceTrust` records one decision on one normalized workspace root, preserving `tools` and
+other decisions: `trusted: true` moves it to `trustedWorkspaces`, `trusted: false` to
+`distrustedWorkspaces` (safe mode), and `location: true` also adds its `offeredLocation` to
+`trustedLocations`; `location` with `trusted: false`, or without an offered location, rejects at
+`workspaceTrust.location`. At most
 64 tools and 32 distinct homes per tool are accepted. Native platform path normalization
 and case identity apply before deduplication. A selected default is registered if needed;
 null clears only the default. Empty registrations plus null remove the tool entry.

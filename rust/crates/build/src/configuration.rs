@@ -126,12 +126,12 @@ pub(crate) fn plan(
         .provider
         .as_ref()
         .ok_or_else(|| plans::unavailable(declaration, "a provider"))?;
-    Ok(context.provider_plan(
+    context.provider_plan(
         provider,
         "lithe/build/configuration",
         "litheBuildConfiguration",
         plans::provider_hints(request)?,
-    ))
+    )
 }
 
 /// Validates all fields before they become a settings form or write binding.
@@ -367,12 +367,12 @@ pub(crate) fn edit_plan(
     params.insert("snapshot".into(), json!(request.snapshot));
     params.insert("edits".into(), json!({"sourceID":request.edits.source_id,"revision":request.edits.revision,"values":request.edits.values}));
     params.insert("outputFile".into(), json!(output));
-    Ok(context.provider_plan(
+    context.provider_plan(
         provider,
         "lithe/build/editConfiguration",
         "litheConfigurationEdit",
         params,
-    ))
+    )
 }
 
 /// Bounded receipt only; private native document bytes stay in staging storage.

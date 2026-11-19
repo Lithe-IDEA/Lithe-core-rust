@@ -64,7 +64,7 @@
 - `onWorkspaceOpen` 不会拖慢打开工作区。宿主在窗口显示之后逐个启动这些后端；`initialize` 超时的后端会被停止，
   并像其他启动失败一样报告，不会挡住工作区。后端失败或被禁用也不会阻塞工作区。
 - 后端在插件被禁用、更新、卸载和宿主退出时结束。
-- 激活只看插件是否已安装、启用、通过审查。Lithe 目前没有工作区信任状态；会运行或修改东西的操作，由宿主逐次询问用户。
+- 激活只看插件是否已安装、启用、通过审查。会运行项目代码的构建操作还要求用户信任这个工作区（见契约的 [Workspace trust](../contract/v1/README.md#workspace-trust)）；其他会运行或修改东西的操作，由宿主逐次询问用户。
 - 后端只服务插件自己：它不回答 `lithe/build/*` 或 VCS 请求。只回答构建请求的后端（不回答 `litheFunctions`）收不到函数请求，函数请求得到 `-32601`。
 
 ### 4. 协商协议
@@ -387,7 +387,7 @@ The manifest only declares. The host reads it to decide whether to install and w
 - `onWorkspaceOpen` does not slow down opening a workspace. The host starts these backends one by one after the window appears; a backend whose `initialize` times out is stopped
   and reported like any other start failure, without blocking the workspace. A failed or disabled backend never blocks the workspace either.
 - The backend ends when the plugin is disabled, updated, or uninstalled, and when the host quits.
-- Activation only checks that the plugin is installed, enabled, and approved in review. Lithe has no workspace trust state yet; the host asks the user each time before an operation runs or changes something.
+- Activation only checks that the plugin is installed, enabled, and approved in review. A build operation that runs project code also needs the user to trust the workspace (see [Workspace trust](../contract/v1/README.md#workspace-trust) in the contract); the host asks the user each time before any other operation runs or changes something.
 - A backend serves only its own plugin: it never answers `lithe/build/*` or VCS requests. A build-only backend (one that does not answer `litheFunctions`) receives no function requests, and those get `-32601`.
 
 ### 4. Negotiating the protocol

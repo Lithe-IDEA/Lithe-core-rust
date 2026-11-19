@@ -116,7 +116,13 @@ fn call(name: &str, manifest: Value, build_system: &str, request: Value) -> Valu
     operation(name)(json!({
         "manifest": manifest,
         "buildSystemID": build_system,
-        "request": request,
+        // Only the plans that run something read workspace trust.
+        "request": match name {
+            "modelPlan" | "taskPlan" | "testPlan" | "dependencyPlan" => {
+                super::support::trusted(request)
+            }
+            _ => request,
+        },
     }))
     .expect("payload is well formed")
 }
@@ -2053,22 +2059,22 @@ fn provider_execution_tasks_are_typed_and_need_a_provider_host() {
         .remove("scopes");
     run["buildSystems"][0]["run"] = json!([{"id":"run", "fromTasks":{"templates":["build"]}}]);
     assert_eq!(validate(run)["status"], "rejected");
-    let escape = build_task_plan_command::<Manifest>(json!({
+    let escape = build_task_plan_command::<Manifest>(super::support::trusted_payload(json!({
         "manifest":manifest, "buildSystemID":"gradle",
         "request":{"root":"app","task":"build","project":{"name":"escape","path":"../escape"}}
-    }))
+    })))
     .unwrap();
     assert_eq!(escape["status"], "rejected");
-    let oversized = build_task_plan_command::<Manifest>(json!({
+    let oversized = build_task_plan_command::<Manifest>(super::support::trusted_payload(json!({
         "manifest":manifest, "buildSystemID":"gradle",
         "request":{"root":".","task":"custom","userArguments":vec!["arg";65]}
-    }))
+    })))
     .unwrap();
     assert_eq!(oversized["status"], "rejected");
-    let result = build_task_plan_command::<Manifest>(json!({
+    let result = build_task_plan_command::<Manifest>(super::support::trusted_payload(json!({
         "manifest": manifest, "buildSystemID":"gradle", "request": {"root":".", "task":"build",
         "project": {"name":"app","path":"app"}, "options":{"offline":true}}
-    }))
+    })))
     .unwrap();
     assert_eq!(result["status"], "ok", "{result}");
     assert!(result["plan"].get("arguments").is_none(), "{result}");
@@ -2080,6 +2086,52 @@ fn provider_execution_tasks_are_typed_and_need_a_provider_host() {
     assert_eq!(
         result["plan"]["provider"]["params"]["options"]["offline"],
         true
+    );
+}
+
+// A provider that only reads the project may answer in an untrusted workspace
+// when it declares it runs no project code, but an execution runs the project
+// whatever the provider declares; a provider that runs project code needs trust
+// even to read the model.
+#[test]
+fn provider_requests_that_run_project_code_need_a_trusted_workspace() {
+    let mut manifest: Value = serde_json::from_str(contract_file!(
+        "fixtures/build-providers/build-provider-execution.plugin.json"
+    ))
+    .unwrap();
+    let request = |manifest: &Value, command: Command, request: Value| {
+        command(json!({"manifest": manifest, "buildSystemID": "gradle", "request": request}))
+            .unwrap()
+    };
+    let untrusted = json!({"root": ".", "projectCodeAllowed": false});
+    let task = json!({"root": ".", "task": "build", "project": {"name": "app", "path": "app"}});
+
+    let model = request(&manifest, operation("modelPlan"), untrusted.clone());
+    assert_eq!(
+        model["error"]["code"], "plugin.build.untrustedWorkspace",
+        "{model}"
+    );
+    let dependencies = request(&manifest, operation("dependencyPlan"), untrusted.clone());
+    assert_eq!(
+        dependencies["error"]["code"], "plugin.build.untrustedWorkspace",
+        "{dependencies}"
+    );
+
+    manifest["buildSystems"][0]["provider"]["executesProjectCode"] = json!(false);
+    let model = request(&manifest, operation("modelPlan"), untrusted);
+    assert_eq!(model["status"], "ok", "{model}");
+    assert_eq!(model["plan"]["executesProjectCode"], false, "{model}");
+    let execution = request(&manifest, operation("taskPlan"), task.clone());
+    assert_eq!(
+        execution["error"]["code"], "plugin.build.untrustedWorkspace",
+        "{execution}"
+    );
+    let mut trusted = task;
+    trusted["projectCodeAllowed"] = json!(true);
+    let execution = request(&manifest, operation("taskPlan"), trusted);
+    assert_eq!(
+        execution["plan"]["provider"]["method"], "lithe/build/execute",
+        "{execution}"
     );
 }
 
@@ -2164,9 +2216,9 @@ fn provider_tests_preserve_filters_and_report_ownership() {
     ))
     .unwrap();
     assert_eq!(validate(manifest.clone())["status"], "ok");
-    let plan = build_test_plan_command::<Manifest>(
+    let plan = build_test_plan_command::<Manifest>(super::support::trusted_payload(
         json!({"manifest": manifest, "buildSystemID":"gradle", "request":fixture["request"]}),
-    )
+    ))
     .unwrap();
     assert_eq!(plan["status"], "ok", "{plan}");
     assert_eq!(plan["plan"]["provider"], fixture["provider"]);
@@ -2185,10 +2237,11 @@ fn provider_tests_preserve_filters_and_report_ownership() {
     );
 
     // A case-only filter is a typed value, not a CLI expression needing a suite.
-    let case_only =
-        build_test_plan_command::<Manifest>(json!({"manifest":manifest,"buildSystemID":"gradle",
-        "request":{"root":".","case":"exact"}}))
-        .unwrap();
+    let case_only = build_test_plan_command::<Manifest>(super::support::trusted_payload(
+        json!({"manifest":manifest,"buildSystemID":"gradle",
+        "request":{"root":".","case":"exact"}}),
+    ))
+    .unwrap();
     assert_eq!(case_only["status"], "ok", "{case_only}");
     for request in [
         json!({"root":"app","project":{"name":"escape","path":"../escape"}}),
@@ -2196,19 +2249,19 @@ fn provider_tests_preserve_filters_and_report_ownership() {
         json!({"root":".","suite":"bad\u{0}filter"}),
         json!({"root":".","userArguments":vec!["arg";65]}),
     ] {
-        let rejected = build_test_plan_command::<Manifest>(
+        let rejected = build_test_plan_command::<Manifest>(super::support::trusted_payload(
             json!({"manifest":manifest,"buildSystemID":"gradle","request":request}),
-        )
+        ))
         .unwrap();
         assert_eq!(rejected["status"], "rejected", "{rejected}");
     }
     let mut unsupported = manifest.clone();
     unsupported["buildSystems"][0]["test"]["filters"] = json!([]);
     assert_eq!(
-        build_test_plan_command::<Manifest>(
+        build_test_plan_command::<Manifest>(super::support::trusted_payload(
             json!({"manifest":unsupported,"buildSystemID":"gradle",
         "request":fixture["request"]})
-        )
+        ))
         .unwrap()["status"],
         "rejected"
     );
@@ -2264,10 +2317,10 @@ fn provider_test_discovery_is_bounded_deterministic_and_runnable() {
         "fixtures/build-providers/build-test-discovery.json"
     ))
     .unwrap();
-    let plan = build_test_discovery_plan_command::<Manifest>(
+    let plan = build_test_discovery_plan_command::<Manifest>(super::support::trusted_payload(
         json!({"manifest":manifest,"buildSystemID":"gradle",
         "request":{"root":".","refresh":true}}),
-    )
+    ))
     .unwrap();
     assert_eq!(plan["status"], "ok", "{plan}");
     assert_eq!(
@@ -2296,9 +2349,9 @@ fn provider_test_discovery_is_bounded_deterministic_and_runnable() {
         let mut request = test.clone();
         request.as_object_mut().unwrap().remove("id");
         request["root"] = json!(".");
-        let runnable = build_test_plan_command::<Manifest>(
+        let runnable = build_test_plan_command::<Manifest>(super::support::trusted_payload(
             json!({"manifest":manifest,"buildSystemID":"gradle","request":request}),
-        )
+        ))
         .unwrap();
         assert_eq!(runnable["status"], "ok", "{runnable}");
     }
@@ -2390,7 +2443,10 @@ fn command_test_discovery_plans_a_file_and_round_trips_exact_selectors() {
     let payload =
         |request: &Value| json!({"manifest":manifest, "buildSystemID":"sample", "request":request});
 
-    let plan = build_test_discovery_plan_command::<Manifest>(payload(&request)).unwrap();
+    let plan = build_test_discovery_plan_command::<Manifest>(super::support::trusted_payload(
+        payload(&request),
+    ))
+    .unwrap();
     assert_eq!(plan["status"], "ok", "{plan}");
     assert_eq!(plan["plan"]["output"], "outputFile");
     assert_eq!(plan["plan"]["decoder"], "litheTestDiscovery");
@@ -2416,8 +2472,10 @@ fn command_test_discovery_plans_a_file_and_round_trips_exact_selectors() {
     ] {
         let mut unsafe_request = request.clone();
         unsafe_request[field] = value;
-        let rejected =
-            build_test_discovery_plan_command::<Manifest>(payload(&unsafe_request)).unwrap();
+        let rejected = build_test_discovery_plan_command::<Manifest>(
+            super::support::trusted_payload(payload(&unsafe_request)),
+        )
+        .unwrap();
         assert_eq!(rejected["error"]["code"], "plugin.build.invalidSelection");
     }
 
@@ -2435,7 +2493,9 @@ fn command_test_discovery_plans_a_file_and_round_trips_exact_selectors() {
     for test in tests {
         let mut run = test.clone();
         run["root"] = json!(".");
-        let plan = build_test_plan_command::<Manifest>(payload(&run)).unwrap();
+        let plan =
+            build_test_plan_command::<Manifest>(super::support::trusted_payload(payload(&run)))
+                .unwrap();
         assert_eq!(plan["status"], "ok", "{plan}");
         let argv = plan["plan"]["arguments"].as_array().unwrap();
         assert!(argv.contains(&json!("--suite=ExampleSuite")), "{argv:?}");
@@ -2536,9 +2596,9 @@ fn provider_run_entrypoints_are_found_by_file_and_start_without_a_target() {
     }
 
     let plan = |request: Value| {
-        build_run_entrypoints_plan_command::<Manifest>(
+        build_run_entrypoints_plan_command::<Manifest>(super::support::trusted_payload(
             json!({"manifest":manifest,"buildSystemID":"gradle","request":request}),
-        )
+        ))
         .unwrap()
     };
     let planned = plan(fixture["plan"].clone());
@@ -2594,9 +2654,9 @@ fn provider_run_entrypoints_are_found_by_file_and_start_without_a_target() {
     }
 
     let prepare = |request: Value| {
-        build_prepare_run_plan_command::<Manifest>(
+        build_prepare_run_plan_command::<Manifest>(super::support::trusted_payload(
             json!({"manifest":manifest,"buildSystemID":"gradle","request":request}),
-        )
+        ))
         .unwrap()
     };
     let prepared = prepare(fixture["prepareRun"].clone());
@@ -2633,9 +2693,9 @@ fn provider_run_preparation_selects_targets_and_validates_launch_data() {
     .unwrap();
     assert_eq!(validate(manifest.clone())["status"], "ok");
     let plan = |request: Value| {
-        build_prepare_run_plan_command::<Manifest>(
+        build_prepare_run_plan_command::<Manifest>(super::support::trusted_payload(
             json!({"manifest":manifest,"buildSystemID":"gradle","request":request}),
-        )
+        ))
         .unwrap()
     };
     let prepared = plan(fixture["request"].clone());
@@ -2755,9 +2815,9 @@ fn provider_debug_preparation_validates_native_target_and_same_plugin_adapter() 
     ))
     .unwrap();
     assert_eq!(validate(manifest.clone())["status"], "ok");
-    let planned = build_prepare_debug_plan_command::<Manifest>(
+    let planned = build_prepare_debug_plan_command::<Manifest>(super::support::trusted_payload(
         json!({"manifest":manifest,"buildSystemID":"gradle","request":run["request"]}),
-    )
+    ))
     .unwrap();
     assert_eq!(
         planned["plan"]["provider"]["method"], "lithe/build/prepareDebug",
@@ -2908,7 +2968,7 @@ fn model_inputs_project_public_facts_and_preserve_configuration_identity() {
         instance["model"]["targets"][0]["tags"],
         json!(["application"])
     );
-    let plan = build_task_plan_command::<Manifest>(json!({"manifest":consumer,"buildSystemID":"gradle","request":{"root":"app","task":"build","modelInputs":snapshot}})).unwrap();
+    let plan = build_task_plan_command::<Manifest>(super::support::trusted_payload(json!({"manifest":consumer,"buildSystemID":"gradle","request":{"root":"app","task":"build","modelInputs":snapshot}}))).unwrap();
     assert_eq!(plan["status"], "ok", "{plan}");
     assert_eq!(plan["plan"]["provider"]["params"]["modelInputs"], *snapshot);
     let mut no_sharing = request.clone();
@@ -3031,7 +3091,7 @@ fn model_inputs_reject_invalid_manifests_models_and_snapshot_smuggling() {
             "unavailablePayload" => snapshot["inputs"][0]["state"] = json!("unavailable"),
             _ => snapshot["revision"] = json!(9007199254740992_u64),
         }
-        let plan = build_task_plan_command::<Manifest>(json!({"manifest":consumer,"buildSystemID":"gradle","request":{"root":"app","task":"build","modelInputs":snapshot}})).unwrap();
+        let plan = build_task_plan_command::<Manifest>(super::support::trusted_payload(json!({"manifest":consumer,"buildSystemID":"gradle","request":{"root":"app","task":"build","modelInputs":snapshot}}))).unwrap();
         assert_eq!(plan["status"], "rejected", "{change}: {plan}");
     }
 }
@@ -3060,9 +3120,9 @@ fn provider_run_options_preserve_argv_and_validate_declared_execution_and_cwd() 
     request["workspaceRoot"] = json!(workspace.root());
     request["launchOptions"] = fixture["launchOptions"].clone();
     let plan = |manifest: Value, request: Value| {
-        build_prepare_run_plan_command::<Manifest>(
+        build_prepare_run_plan_command::<Manifest>(super::support::trusted_payload(
             json!({"manifest":manifest,"buildSystemID":"gradle","request":request}),
-        )
+        ))
     };
     let result = plan(manifest.clone(), request.clone()).unwrap();
     assert_eq!(result["status"], "ok", "{result}");
@@ -3150,9 +3210,9 @@ fn provider_connection_debug_options_require_a_declared_registry_type() {
     request["workspaceRoot"] = json!(workspace.root());
     request["launchOptions"] = fixture["launchOptions"].clone();
     let plan = |manifest: &Value, request: &Value| {
-        build_prepare_run_plan_command::<Manifest>(
+        build_prepare_run_plan_command::<Manifest>(super::support::trusted_payload(
             json!({"manifest":manifest,"buildSystemID":"gradle","request":request}),
-        )
+        ))
     };
     assert_eq!(plan(&manifest, &request).unwrap()["status"], "rejected");
     let runs = manifest["buildSystems"][0]["run"].as_array_mut().unwrap();
@@ -3309,14 +3369,14 @@ fn model_option_defaults_and_exclusions_round_trip_through_storage_and_plans() {
     assert_eq!(after_uncheck["value"], json!(["-dev"]));
     assert_eq!(after_uncheck["selectedChoices"], json!([]));
 
-    let plan = build_model_plan_command::<Manifest>(json!({
+    let plan = build_model_plan_command::<Manifest>(super::support::trusted_payload(json!({
         "manifest": manifest,
         "buildSystemID": "fixture",
         "request": {
             "root": ".",
             "options": {"profiles": ["-dev"]}
         }
-    }))
+    })))
     .unwrap();
     let args: Vec<&str> = plan["plan"]["arguments"]
         .as_array()

@@ -60,7 +60,7 @@ fn plan(root: &std::path::Path, manifest: Value, request: Value) -> Value {
             "manifest": manifest,
             "buildSystemID": "go",
             "workspaceRoot": root,
-            "request": request,
+            "request": super::support::trusted(request),
         }),
     )
 }
