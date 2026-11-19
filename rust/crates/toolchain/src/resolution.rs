@@ -189,18 +189,29 @@ pub(crate) fn resolve(input: &Value, validate_manifest: ManifestValidator) -> Va
         if value["platform"] != platform {
             return Err(reject("queries.platform"));
         }
-        if value["request"]["params"]["workspace"]["root"]
-            .as_str()
-            .and_then(|path| snapshot.key(path).ok())
-            != Some(snapshot.key(&root)?)
-        {
-            return Err(reject("queries.workspace"));
-        }
-        let requested_directory = value["request"]["params"]["workspace"]["directory"]
-            .as_str()
-            .unwrap_or("");
-        if requested_directory != directory {
-            return Err(reject("queries.directory"));
+        let params = &value["request"]["params"];
+        let workspace = &params["workspace"];
+        if input["global"] == true {
+            if !workspace.is_null() {
+                return Err(reject("queries.workspace"));
+            }
+            if !params["context"].is_null() {
+                return Err(reject("queries.context"));
+            }
+            if directory != "." {
+                return Err(reject("queries.directory"));
+            }
+        } else {
+            if workspace["root"]
+                .as_str()
+                .and_then(|path| snapshot.key(path).ok())
+                != Some(snapshot.key(&root)?)
+            {
+                return Err(reject("queries.workspace"));
+            }
+            if workspace["directory"].as_str() != Some(directory) {
+                return Err(reject("queries.directory"));
+            }
         }
         if value["filesystem"] != input["filesystem"] {
             return Err(reject("queries.filesystem"));
@@ -217,7 +228,7 @@ pub(crate) fn resolve(input: &Value, validate_manifest: ManifestValidator) -> Va
         if value["currentGeneration"].as_u64() != Some(generation) {
             return Err(reject("queries.generation"));
         }
-        if value["request"]["params"]["context"] != input["context"] {
+        if params["context"] != input["context"] {
             return Err(reject("queries.context"));
         }
         if !query_providers.insert((
