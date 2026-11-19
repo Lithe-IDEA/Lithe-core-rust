@@ -11,8 +11,8 @@
 use super::decode::{self, join_relative};
 use super::manifest::{
     BuildExecution, BuildSystemDeclaration, DependenciesSource, ExecutableCandidate, ModelSource,
-    OutputChannel, ProviderDeclaration, RunDeclaration, Scope, TaskSource, TestFilter,
-    TestResultsSource, WorkingDirectory,
+    OutputChannel, ProviderDeclaration, RunDeclaration, Scope, TaskSource, TestDeclaration,
+    TestFilter, TestResultsSource, WorkingDirectory,
 };
 use super::model::{entry_id, BuildModel, ModelProject};
 use super::options::{self, OptionContribution};
@@ -106,6 +106,14 @@ pub(crate) struct TaskPlanRequest {
 pub(crate) struct TestPlanRequest {
     #[serde(flatten)]
     pub(crate) base: PlanBase,
+    #[serde(flatten)]
+    pub(crate) run: TestRunRequest,
+}
+
+/// Selection, arguments and report roots of one test run.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TestRunRequest {
     #[serde(default)]
     pub(crate) project: Option<SelectedEntity>,
     #[serde(default)]
@@ -134,7 +142,7 @@ pub(crate) struct OutputPlanRequest {
     pub(crate) base: PlanBase,
     #[serde(default)]
     pub(crate) project: Option<SelectedEntity>,
-    /// Fresh absolute host-owned path, for `"output": "outputFile"`.
+    /// Fresh absolute host-owned path, for `"output": "outputFile"` commands.
     #[serde(default)]
     pub(crate) output_file: Option<String>,
     /// Provider sources only: the user asked to reload, or the host reloads
@@ -216,6 +224,14 @@ pub(crate) struct Selection {
 }
 
 impl Selection {
+    /// Typed test selectors retain the workspace-relative path across round trips.
+    pub(crate) fn test_selector(&self) -> Value {
+        json!({
+            "name": self.name, "path": self.path,
+            "tags": self.tags, "properties": self.properties,
+        })
+    }
+
     fn selected(&self) -> Selected<'_> {
         Selected {
             name: &self.name,
@@ -629,19 +645,39 @@ pub(crate) fn test_discovery_plan(
     build_system: &BuildSystemDeclaration,
     request: &OutputPlanRequest,
 ) -> Validation<Value> {
-    if !build_system
+    let test = build_system
         .test
         .as_ref()
-        .is_some_and(|test| test.discovery)
-    {
-        return Err(unavailable(build_system, "test discovery"));
-    }
-    if request.project.is_some() || request.output_file.is_some() {
+        .filter(|test| test.discovers_tests())
+        .ok_or_else(|| unavailable(build_system, "test discovery"))?;
+    if request.project.is_some() {
         return Err(invalid_selection(
             "Test discovery addresses the whole instance.",
         ));
     }
     let context = PlanContext::new(build_system, &request.base)?;
+    if let Some(command) = &test.discovery_command {
+        let output = OutputChannel::OutputFile;
+        let output_file = output_file(request.output_file.as_deref(), output)?;
+        let mut values = context.values(&[]);
+        values.output_file = output_file.as_deref();
+        return context.plan(
+            &command.arguments,
+            &values,
+            BuildExecution::Task,
+            output_extra(
+                output,
+                json!("litheTestDiscovery"),
+                command.executes_project_code,
+                command.may_use_network,
+            ),
+        );
+    }
+    if request.output_file.is_some() {
+        return Err(invalid_selection(
+            "A provider returns test discovery directly.",
+        ));
+    }
     Ok(context.provider_plan(
         declared_provider(build_system)?,
         "lithe/build/discoverTests",
@@ -650,13 +686,13 @@ pub(crate) fn test_discovery_plan(
     ))
 }
 
-/// `build.testPlan`: the command and where its results will be.
 /// Whether a selected target carries one of the declared tags; no tags
 /// accept every target.
 fn target_matches(target: Option<&Selection>, tags: &[String]) -> bool {
     target.is_none_or(|target| tags.is_empty() || target.tags.iter().any(|tag| tags.contains(tag)))
 }
 
+/// `build.testPlan`: the command and where its results will be.
 pub(crate) fn test_plan(
     build_system: &BuildSystemDeclaration,
     request: &TestPlanRequest,
@@ -666,6 +702,22 @@ pub(crate) fn test_plan(
         .as_ref()
         .ok_or_else(|| unavailable(build_system, "tests"))?;
     let context = PlanContext::new(build_system, &request.base)?;
+    test_plan_with_selection(&context, test, &request.run).map(|(plan, _)| plan)
+}
+
+/// Normalized test selections shared by command and provider plans.
+pub(crate) struct TestSelection {
+    pub(crate) project: Option<Selection>,
+    pub(crate) target: Option<Selection>,
+}
+
+/// Validates and expands the plan before returning its normalized selection.
+pub(crate) fn test_plan_with_selection(
+    context: &PlanContext<'_>,
+    test: &TestDeclaration,
+    request: &TestRunRequest,
+) -> Validation<(Value, TestSelection)> {
+    let build_system = context.build_system;
     if test.source == TaskSource::Provider {
         check_argument_limits(&request.user_arguments)?;
     } else {
@@ -814,13 +866,7 @@ pub(crate) fn test_plan(
         }
         for (name, selected) in [("project", &project), ("target", &target)] {
             if let Some(selected) = selected {
-                params.insert(
-                    name.to_string(),
-                    json!({
-                        "name": selected.name, "path": selected.path,
-                        "tags": selected.tags, "properties": selected.properties
-                    }),
-                );
+                params.insert(name.to_string(), selected.test_selector());
             }
         }
         let mut plan = context.provider_plan(
@@ -832,9 +878,10 @@ pub(crate) fn test_plan(
         plan.as_object_mut()
             .expect("provider plan is an object")
             .extend(extra);
-        return Ok(plan);
+        return Ok((plan, TestSelection { project, target }));
     }
-    context.plan(&test.arguments, &values, BuildExecution::Task, extra)
+    let plan = context.plan(&test.arguments, &values, BuildExecution::Task, extra)?;
+    Ok((plan, TestSelection { project, target }))
 }
 
 fn output_extra(

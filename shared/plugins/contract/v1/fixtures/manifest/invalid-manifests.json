@@ -698,7 +698,7 @@
       "edits": [{ "op": "set", "path": "/requires/buildSystems", "value": 5 }],
       "expectedCode": "plugin.api.unsupported"
     },
-    {"name": "capability version 1 is not defined", "base": "build-static-file.plugin.json", "edits": [{"op": "set", "path": "/requires/buildSystems", "value": 1}], "expectedCode": "plugin.api.unsupported", "expectedField": "requires.buildSystems"},
+    {"name": "capability version 2 is not defined", "base": "build-static-file.plugin.json", "edits": [{"op": "set", "path": "/requires/buildSystems", "value": 2}], "expectedCode": "plugin.api.unsupported", "expectedField": "requires.buildSystems"},
     {
       "name": "used capability missing from requires",
       "base": "build-provider-language-server.plugin.json",

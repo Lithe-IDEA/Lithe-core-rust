@@ -1,0 +1,17 @@
+{
+  "format": "litheTestDiscovery",
+  "version": 0,
+  "tests": [
+    {
+      "suite": "ExampleSuite",
+      "case": "checks spaces # [exact]",
+      "project": { "name": "app", "path": "app" },
+      "target": { "name": "main", "tags": ["runnable"] }
+    },
+    {
+      "suite": "ExampleSuite",
+      "case": "checks spaces # [exact]",
+      "project": { "name": "lib", "path": "lib" }
+    }
+  ]
+}

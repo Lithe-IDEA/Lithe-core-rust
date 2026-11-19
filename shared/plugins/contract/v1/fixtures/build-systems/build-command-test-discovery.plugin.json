@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 0,
+  "id": "dev.lithe.fixture.build-command-test-discovery",
+  "displayName": "Command Test Discovery Fixture",
+  "version": "0.1.0",
+  "pluginAPIVersion": 0,
+  "requires": { "buildSystems": 1 },
+  "vendor": { "id": "org.example", "displayName": "Example", "signatureRequirement": "publisherPackage" },
+  "permissions": ["process.build"],
+  "activationEvents": ["onBuildSystem:sample"],
+  "buildSystems": [
+    {
+      "id": "sample",
+      "displayName": "Sample Build",
+      "detection": { "markers": ["sample.toml"] },
+      "invocation": {
+        "executables": [{ "kind": "command", "command": "sample" }],
+        "globalArguments": ["--plain", "${optionArguments}"]
+      },
+      "options": [
+        { "id": "offline", "displayName": "Offline", "kind": "boolean", "arguments": ["--offline"] }
+      ],
+      "test": {
+        "scopes": ["workspace", "project", "target"],
+        "targetTags": ["runnable"],
+        "filters": ["suite", "case"],
+        "discoveryCommand": {
+          "arguments": ["discover", "${pluginDir}/discover.v1", "--state=${workspaceStateDir}", "${outputFile}"],
+          "executesProjectCode": true,
+          "mayUseNetwork": false
+        },
+        "arguments": [
+          "test",
+          { "value": "--project=${project.path}", "when": "projectSelected" },
+          { "value": "--target=${target.name}", "when": "targetSelected" },
+          { "value": "--suite=${test.suite}", "when": "suiteSelected" },
+          { "value": "--case=${test.case}", "when": ["suiteSelected", "caseSelected"] }
+        ]
+      }
+    }
+  ]
+}

@@ -1,28 +1,32 @@
-//! Normalizes provider-owned test selectors without inferring test semantics.
+//! Normalizes discovered test selectors without inferring test semantics.
 //! Every item must round-trip through the ordinary typed test plan, so discovery
 //! cannot expose an item the declaration is unable to run exactly.
 
 use super::decode::{invalid_output, MAX_OUTPUT_BYTES};
-use super::manifest::BuildSystemDeclaration;
-use super::plans::{self, PlanBase, SelectedEntity, TestPlanRequest};
+use super::manifest::{BuildSystemDeclaration, OutputChannel};
+use super::outputs;
+use super::plans::{self, PlanBase, SelectedEntity, TestRunRequest};
 use lithe_plugin_model::Validation;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
-/// Version of the `litheTestDiscovery` document a provider returns.
+/// Version of the `litheTestDiscovery` document.
 const DISCOVERY_VERSION: u64 = 0;
 
 const MAX_TESTS: usize = 10_000;
 
-/// The plan's configuration and a provider's canonical discovery result.
+/// The plan's configuration and the discovery source's canonical result.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DecodeTestDiscoveryRequest {
     #[serde(flatten)]
     pub(crate) base: PlanBase,
-    pub(crate) result: Value,
+    /// Provider discovery's inline JSON-RPC result.
+    pub(crate) result: Option<Value>,
+    /// The fresh host-owned output path passed to the command plan.
+    pub(crate) output_file: Option<String>,
 }
 
 /// Selectors have no host-generated command or cached upstream project model.
@@ -40,20 +44,44 @@ pub(crate) fn decode(
     build_system: &BuildSystemDeclaration,
     request: &DecodeTestDiscoveryRequest,
 ) -> Validation<Value> {
-    if !build_system
+    let test = build_system
         .test
         .as_ref()
-        .is_some_and(|test| test.discovery)
-    {
-        return Err(plans::unavailable(build_system, "test discovery"));
-    }
+        .filter(|test| test.discovers_tests())
+        .ok_or_else(|| plans::unavailable(build_system, "test discovery"))?;
     // Validate host context even for a valid empty discovery result.
-    plans::PlanContext::new(build_system, &request.base)?;
-    let result = &request.result;
-    if serde_json::to_vec(result).map_or(usize::MAX, |bytes| bytes.len()) > MAX_OUTPUT_BYTES
-        || result["format"] != "litheTestDiscovery"
-        || result["version"] != DISCOVERY_VERSION
-    {
+    let context = plans::PlanContext::new(build_system, &request.base)?;
+    let command_result;
+    let result = if test.discovery_command.is_some() {
+        if request.result.is_some() {
+            return Err(plans::invalid_selection(
+                "Command test discovery reads only outputFile.",
+            ));
+        }
+        let text = outputs::command_output(
+            OutputChannel::OutputFile,
+            None,
+            request.output_file.as_deref(),
+        )?;
+        command_result = serde_json::from_str::<Value>(&text)
+            .map_err(|_| invalid_output("Invalid test discovery document."))?;
+        &command_result
+    } else {
+        if request.output_file.is_some() {
+            return Err(plans::invalid_selection(
+                "A provider returns test discovery directly.",
+            ));
+        }
+        let result = request
+            .result
+            .as_ref()
+            .ok_or_else(|| invalid_output("Invalid test discovery document."))?;
+        if serde_json::to_vec(result).map_or(usize::MAX, |bytes| bytes.len()) > MAX_OUTPUT_BYTES {
+            return Err(invalid_output("Invalid test discovery document."));
+        }
+        result
+    };
+    if result["format"] != "litheTestDiscovery" || result["version"] != DISCOVERY_VERSION {
         return Err(invalid_output("Invalid test discovery document."));
     }
     let tests = result["tests"]
@@ -61,29 +89,27 @@ pub(crate) fn decode(
         .filter(|tests| tests.len() <= MAX_TESTS)
         .ok_or_else(|| invalid_output("Test discovery requires at most 10000 selectors."))?;
     let mut normalized = BTreeMap::new();
-    for test in tests {
-        let selector: Selector = serde_json::from_value(test.clone())
+    for item in tests {
+        let selector: Selector = serde_json::from_value(item.clone())
             .map_err(|_| invalid_output("Invalid test selector."))?;
-        let plan = plans::test_plan(
-            build_system,
-            &TestPlanRequest {
-                selector_kind: None,
-                selectors: Vec::new(),
-                base: request.base.clone(),
-                project: selector.project,
-                target: selector.target,
-                suite: Some(selector.suite),
-                case: Some(selector.case),
-                user_arguments: vec![],
-                projects: vec![],
-            },
-        )
-        .map_err(|_| invalid_output("A discovered selector cannot be run by this declaration."))?;
-        let params = &plan["provider"]["params"];
-        let mut selected = json!({"suite":params["suite"],"case":params["case"]});
-        for field in ["project", "target"] {
-            if let Some(value) = params.get(field) {
-                selected[field] = value.clone();
+        let request = TestRunRequest {
+            selector_kind: None,
+            selectors: Vec::new(),
+            project: selector.project,
+            target: selector.target,
+            suite: Some(selector.suite),
+            case: Some(selector.case),
+            user_arguments: vec![],
+            projects: vec![],
+        };
+        let (_, selection) =
+            plans::test_plan_with_selection(&context, test, &request).map_err(|_| {
+                invalid_output("A discovered selector cannot be run by this declaration.")
+            })?;
+        let mut selected = json!({"suite":request.suite,"case":request.case});
+        for (field, entity) in [("project", selection.project), ("target", selection.target)] {
+            if let Some(entity) = entity {
+                selected[field] = entity.test_selector();
             }
         }
         let key = serde_json::to_string(&selected).expect("selector is JSON");

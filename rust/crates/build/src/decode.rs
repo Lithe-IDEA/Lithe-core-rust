@@ -9,6 +9,7 @@
 use lithe_plugin_model::{PluginRejection, Validation};
 use lithe_workspace::{self as workspace, fs};
 use serde_json::Value;
+use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -62,6 +63,18 @@ fn first_line(text: &str) -> &str {
 
 /// Reads a UTF-8 file up to the output bound.
 pub(crate) fn read_bounded(path: &Path) -> Validation<String> {
+    String::from_utf8(read_file_bytes(path)?)
+        .map_err(|_| invalid_output("The build tool output is not UTF-8."))
+}
+
+/// Bytes of a file up to the output bound, or `None` when it is absent, not
+/// a regular file, or too large.
+pub(crate) fn read_bytes_bounded(path: &Path) -> Option<Vec<u8>> {
+    // Sync fingerprints treat an unreadable input as absent.
+    read_file_bytes(path).ok()
+}
+
+fn read_file_bytes(path: &Path) -> Validation<Vec<u8>> {
     let metadata = fs::metadata(path)
         .map_err(|_| invalid_output("The build tool did not write its output file."))?;
     if !metadata.is_file() || metadata.len() > MAX_OUTPUT_BYTES as u64 {
@@ -69,17 +82,22 @@ pub(crate) fn read_bounded(path: &Path) -> Validation<String> {
             "The build tool output file is missing or too large.",
         ));
     }
-    fs::read_to_string(path).map_err(|_| invalid_output("The build tool output is not UTF-8."))
+    let file = fs::File::open(path)
+        .map_err(|_| invalid_output("The build tool output file could not be opened."))?;
+    read_output(file, metadata.len() as usize)
 }
 
-/// Bytes of a file up to the output bound, or `None` when it is absent, not
-/// a regular file, or too large.
-pub(crate) fn read_bytes_bounded(path: &Path) -> Option<Vec<u8>> {
-    let metadata = fs::metadata(path).ok()?;
-    if !metadata.is_file() || metadata.len() > MAX_OUTPUT_BYTES as u64 {
-        return None;
+fn read_output(reader: impl Read, observed_size: usize) -> Validation<Vec<u8>> {
+    let mut bytes = Vec::with_capacity(observed_size + 1);
+    // The opened file may have grown since the metadata check.
+    reader
+        .take(MAX_OUTPUT_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| invalid_output("The build tool output file could not be read."))?;
+    if bytes.len() > MAX_OUTPUT_BYTES {
+        return Err(invalid_output("The build tool output is too large."));
     }
-    fs::read(path).ok()
+    Ok(bytes)
 }
 
 /// Bounds a host-provided output text before it is parsed line by line.
@@ -427,6 +445,29 @@ fn is_current(path: &Path, not_before_millis: Option<u64>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn output_read_enforces_the_limit_even_if_the_file_grows() {
+        let limit = MAX_OUTPUT_BYTES as u64;
+        let at_limit = std::io::repeat(b'x').take(limit);
+        assert_eq!(
+            read_output(at_limit, MAX_OUTPUT_BYTES).unwrap().len(),
+            MAX_OUTPUT_BYTES
+        );
+
+        // Metadata reported an in-budget size, but the stream contains more.
+        let mut over_limit = std::io::repeat(b'x').take(limit + 2);
+        let rejected = match read_output(&mut over_limit, MAX_OUTPUT_BYTES) {
+            Ok(bytes) => panic!("accepted an oversized output of {} bytes", bytes.len()),
+            Err(error) => error,
+        };
+        assert_eq!(rejected.code, "plugin.build.invalidOutput");
+        assert_eq!(
+            over_limit.limit(),
+            1,
+            "read past the extra byte needed to detect overflow"
+        );
+    }
 
     #[test]
     fn wildcards_match_within_a_segment() {

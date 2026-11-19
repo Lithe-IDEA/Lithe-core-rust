@@ -2320,6 +2320,190 @@ fn provider_test_discovery_is_bounded_deterministic_and_runnable() {
     assert_eq!(validate(missing_filter)["status"], "rejected");
 }
 
+const COMMAND_TEST_DISCOVERY_MANIFEST: &str =
+    contract_file!("fixtures/build-systems/build-command-test-discovery.plugin.json");
+const COMMAND_TEST_DISCOVERY_OUTPUT: &str =
+    contract_file!("fixtures/build-systems/build-command-test-discovery.json");
+
+#[test]
+fn command_test_discovery_requires_host_support_and_reviews_the_command() {
+    let manifest: Value = serde_json::from_str(COMMAND_TEST_DISCOVERY_MANIFEST).unwrap();
+    for (versions, status) in [(json!([0]), "rejected"), (json!([0, 1]), "ok")] {
+        let validated = validate_command(json!({
+            "manifest": manifest, "hostCapabilities": {"buildSystems": versions},
+        }))
+        .unwrap();
+        assert_eq!(validated["status"], status, "{validated}");
+    }
+
+    let review = install_review_command(json!({"manifest":manifest})).unwrap();
+    let program = &review["review"]["programs"][0];
+    assert_eq!(program["kind"], "buildSystem");
+    assert_eq!(
+        program["test"]["discoveryCommand"],
+        manifest["buildSystems"][0]["test"]["discoveryCommand"],
+    );
+
+    let mut old = manifest.clone();
+    old["requires"]["buildSystems"] = json!(0);
+    let refused = validate(old);
+    assert_eq!(refused["error"]["field"], "requires.buildSystems");
+
+    for (field, value) in [
+        ("/test/discovery", json!(true)),
+        ("/test/filters", json!(["suite"])),
+        ("/test/discoveryCommand/arguments", json!(["discover"])),
+        (
+            "/test/discoveryCommand/arguments",
+            json!(["${test.suite}", "${outputFile}"]),
+        ),
+        (
+            "/test/discoveryCommand/arguments",
+            json!(["${optionArguments}", "${outputFile}"]),
+        ),
+    ] {
+        let mut broken = manifest["buildSystems"][0].clone();
+        if field == "/test/discovery" {
+            broken["test"]["discovery"] = value;
+        } else {
+            *broken.pointer_mut(field).unwrap() = value;
+        }
+        let mut invalid = manifest.clone();
+        invalid["buildSystems"][0] = broken;
+        let rejected = validate(invalid);
+        assert_eq!(rejected["status"], "rejected", "{field}: {rejected}");
+    }
+}
+
+#[test]
+fn command_test_discovery_plans_a_file_and_round_trips_exact_selectors() {
+    let manifest: Value = serde_json::from_str(COMMAND_TEST_DISCOVERY_MANIFEST).unwrap();
+    let workspace = TemporaryWorkspace::new("command-test-discovery");
+    let output_file = workspace.0.join("output with spaces.json");
+    let request = json!({
+        "root": ".",
+        "options": {"offline": true},
+        "pluginDirectory": workspace.root(),
+        "workspaceStateDirectory": workspace.root(),
+        "outputFile": output_file,
+    });
+    let payload =
+        |request: &Value| json!({"manifest":manifest, "buildSystemID":"sample", "request":request});
+
+    let plan = build_test_discovery_plan_command::<Manifest>(payload(&request)).unwrap();
+    assert_eq!(plan["status"], "ok", "{plan}");
+    assert_eq!(plan["plan"]["output"], "outputFile");
+    assert_eq!(plan["plan"]["decoder"], "litheTestDiscovery");
+    assert_eq!(plan["plan"]["workingDirectory"], ".");
+    assert_eq!(plan["plan"]["executesProjectCode"], true);
+    assert_eq!(plan["plan"]["mayUseNetwork"], false);
+    assert!(plan["plan"].get("provider").is_none());
+    assert_eq!(
+        plan["plan"]["arguments"],
+        json!([
+            "--plain",
+            "--offline",
+            "discover",
+            format!("{}/discover.v1", workspace.root()),
+            format!("--state={}", workspace.root()),
+            output_file,
+        ]),
+    );
+    for (field, value) in [
+        ("outputFile", json!(null)),
+        ("outputFile", json!("relative-output.json")),
+        ("project", json!({"name":"app","path":"app"})),
+    ] {
+        let mut unsafe_request = request.clone();
+        unsafe_request[field] = value;
+        let rejected =
+            build_test_discovery_plan_command::<Manifest>(payload(&unsafe_request)).unwrap();
+        assert_eq!(rejected["error"]["code"], "plugin.build.invalidSelection");
+    }
+
+    fs::write(&output_file, COMMAND_TEST_DISCOVERY_OUTPUT).unwrap();
+    let discovered = build_decode_test_discovery_command::<Manifest>(payload(&request)).unwrap();
+    assert_eq!(discovered["status"], "ok", "{discovered}");
+    let tests = discovered["discovery"]["tests"].as_array().unwrap();
+    assert_eq!(tests.len(), 2);
+    assert_ne!(tests[0]["id"], tests[1]["id"]);
+    let app = tests
+        .iter()
+        .find(|item| item["project"]["path"] == "app")
+        .unwrap();
+    assert_eq!(app["target"]["path"], "app");
+    for test in tests {
+        let mut run = test.clone();
+        run["root"] = json!(".");
+        let plan = build_test_plan_command::<Manifest>(payload(&run)).unwrap();
+        assert_eq!(plan["status"], "ok", "{plan}");
+        let argv = plan["plan"]["arguments"].as_array().unwrap();
+        assert!(argv.contains(&json!("--suite=ExampleSuite")), "{argv:?}");
+        assert!(
+            argv.contains(&json!("--case=checks spaces # [exact]")),
+            "{argv:?}"
+        );
+    }
+
+    let mut reordered: Value = serde_json::from_str(COMMAND_TEST_DISCOVERY_OUTPUT).unwrap();
+    let tests = reordered["tests"].as_array_mut().unwrap();
+    tests.reverse();
+    tests.push(tests[0].clone());
+    fs::write(&output_file, reordered.to_string()).unwrap();
+    assert_eq!(
+        build_decode_test_discovery_command::<Manifest>(payload(&request)).unwrap(),
+        discovered,
+    );
+
+    let tree =
+        crate::build::build_model_tree_command::<Manifest>(payload(&json!({"model":{}}))).unwrap();
+    assert_eq!(tree["status"], "ok", "{tree}");
+    let nodes = tree["tree"]["nodes"].as_array().unwrap();
+    assert!(nodes.iter().any(|node| node["kind"] == "tests"), "{tree}");
+}
+
+#[test]
+fn command_test_discovery_refuses_malformed_files_and_unrunnable_selectors() {
+    let mut manifest: Value = serde_json::from_str(COMMAND_TEST_DISCOVERY_MANIFEST).unwrap();
+    let workspace = TemporaryWorkspace::new("command-test-discovery-invalid");
+    let output_file = workspace.0.join("output.json");
+    let decode = |manifest: &Value| {
+        build_decode_test_discovery_command::<Manifest>(json!({
+            "manifest": manifest, "buildSystemID": "sample",
+            "request": {"root": ".", "outputFile": output_file},
+        }))
+        .unwrap()
+    };
+    let cases = [
+        b"\xff".as_slice(),
+        br#"{"format":"litheTestDiscovery","version":0,"tests":[{"suite":"ok","case":"ok","project":{"name":"escape","path":"../escape"}}]}"#.as_slice(),
+        br#"{"format":"litheTestDiscovery","version":1,"tests":[]}"#.as_slice(),
+    ];
+    let missing = decode(&manifest);
+    assert_eq!(missing["error"]["code"], "plugin.build.invalidOutput");
+    for bytes in cases {
+        fs::write(&output_file, bytes).unwrap();
+        let rejected = decode(&manifest);
+        assert_eq!(
+            rejected["error"]["code"], "plugin.build.invalidOutput",
+            "{rejected}"
+        );
+    }
+
+    // The declaration may permit suite reruns while lacking an exact case
+    // command. A discovery result must not silently widen to the suite.
+    manifest["buildSystems"][0]["test"]["arguments"]
+        .as_array_mut()
+        .unwrap()
+        .pop();
+    fs::write(&output_file, COMMAND_TEST_DISCOVERY_OUTPUT).unwrap();
+    let rejected = decode(&manifest);
+    assert_eq!(
+        rejected["error"]["code"], "plugin.build.invalidOutput",
+        "{rejected}"
+    );
+}
+
 /// buildProviders 1: a provider names the entrypoints of a file, each of which an
 /// entrypoint run starts in its project without a target. Malformed answers are
 /// refused whole, and a manifest needs buildProviders 1 to declare such a run.

@@ -64,6 +64,7 @@ pub const SOURCE_SETTINGS: &str = "sourceSettings";
 /// settings regions, and commands.
 pub const UI: &str = "ui";
 /// Declarative build detection, models, and command plans.
+/// Version 1 adds command-based test discovery.
 pub const BUILD_SYSTEMS: &str = "buildSystems";
 /// `buildSystems[].provider`, whether it owns or shares a language server process.
 /// Version 1 adds runs with `entrypoints: true`, which start an entrypoint the
@@ -128,7 +129,7 @@ pub const SUPPORTED_CAPABILITIES: &[(&str, &[u32])] = &[
     (BEFORE_LAUNCH_TASKS, &[0]),
     (BUILD_MODEL_INPUTS, &[0]),
     (BUILD_PROVIDERS, &[0, 1]),
-    (BUILD_SYSTEMS, &[0]),
+    (BUILD_SYSTEMS, &[0, 1]),
     (COMMAND_INSTALLERS, &[0]),
     (DEBUG_ADAPTERS, &[0]),
     (EXECUTION_PROVIDERS, &[0]),

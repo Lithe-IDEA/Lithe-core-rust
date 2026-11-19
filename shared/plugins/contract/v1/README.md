@@ -563,8 +563,9 @@ executes the declared work records the same `plugins.operation.finished` and
 declarative plugin writes no logging code. Each start of a `languageServers[]` or
 `debugAdapters[]` entry is one `languageServer/start` or `debugAdapter/start`
 operation, from launch resolution until `initialize` succeeds. Each run of a
-`buildSystems[]` model or dependencies command source is one `lithe/build/model` or
-`lithe/build/dependencies` operation, using the SDK request names. Each
+`buildSystems[]` command source for a model, dependencies, or test discovery
+is one `lithe/build/model`, `lithe/build/dependencies`, or
+`lithe/build/discoverTests` operation, using the SDK request names. Each
 installation of a [command installer](#command-installers) the user confirmed is
 one `commandInstaller/install` operation, from planning the chosen target until
 every provided command is in its directory. A failure carries one `code`:
@@ -1924,7 +1925,7 @@ they are not those plugins. `build-provider` and `build-provider-language-server
 forms of a build provider, and `fixtures/build-systems/build-plans.json` is the golden list
 of plans and decoded outputs every host gets from them.
 
-A build system needs `buildSystems: 0` in `requires`,
+A build system needs `buildSystems: 0` in `requires` (`1` with [command test discovery](#test-discovery)),
 the `process.build` permission,
 and the activation event `onBuildSystem:<id>`. IDs of build systems, tasks,
 and run entries start with a lowercase letter and use lowercase letters,
@@ -1944,7 +1945,7 @@ declaration are relative, use `/`, and stay inside their base directory
 | `run` | Run entries from model targets (`fromTargets.tags`, with `arguments`) or model tasks (`fromTasks`, reusing the template task's arguments). |
 | `runConfigurationTypes` | Kinds of run configuration the user creates in the Run/Debug Configurations dialog, from declared fields and a command line; see [Run configuration types](#run-configuration-types). |
 | `beforeLaunchTasks` | Kinds of step a configuration's Before Launch list runs first, declared like run configuration types; see [Before-launch tasks](#before-launch-tasks). |
-| `test` | How tests run: `scopes`, `targetTags`, the `filters` (`suite`, `case`) it can select, and `results` (`junitXml` or `litheTestResults` report globs relative to the project). A workspace run reads the globs under the root and every model project. A requested filter must reach the command line through a template whose conditions hold; a `case` guarded by `suiteSelected` therefore needs its suite. |
+| `test` | How tests run: `scopes`, `targetTags`, the `filters` (`suite`, `case`) it can select, and `results` (`junitXml` or `litheTestResults` report globs relative to the project). [Test discovery](#test-discovery) is opt-in. A workspace run reads the globs under the root and every model project. A requested filter must reach the command line through a template whose conditions hold; a `case` guarded by `suiteSelected` therefore needs its suite. |
 | `diagnostics` | `lineMatcher` patterns with capture-group numbers, or `litheDiagnostics` lines. |
 | `dependencies` | A command (with `scopes`) whose output Core decodes, as a flat list through a `map` or as a tree from `litheDependencies`; or `provider` (with `scopes`, `workspace` and `project` only). |
 | `sync` | Files whose change makes the model stale, relative to the root and to each project. |
@@ -2187,15 +2188,32 @@ Canonical examples: `fixtures/build-providers/build-provider-tests.plugin.json` 
 
 #### Test discovery
 
-Provider tests may additionally declare `discovery: true`. This requires both
-`suite` and `case` filters: every discovered selector must be exactly runnable.
-`build.testDiscoveryPlan` accepts the common plan fields and optional `refresh`
-and `tool`, returning a request for the whole instance:
-`lithe/build/discoverTests` with its effective options. Project/output-file
-selection is refused. This method uses
-the existing bounded request/cancellation lifecycle, without execution progress.
+A build system can discover exact test selectors for the native test tree. Both
+sources require the `suite` and `case` filters and discover the whole instance.
 
-The provider returns `{ "format": "litheTestDiscovery", "version": 0,
+- **Command.** A plugin that declares `requires.buildSystems: 1` may set
+  `test.discoveryCommand: { arguments, executesProjectCode, mayUseNetwork }`.
+  The command uses the existing `process.build` permission, build tool selection,
+  global arguments, effective options and build-instance working directory.
+  Use `${outputFile}` in the discovery arguments to tell the tool where to write
+  the document. The same template family as a command model also allows
+  `${pluginDir}`, `${workspaceStateDir}`, root and option arguments. The host
+  supplies a fresh absolute file path in its writable workspace state and
+  deletes it when the attempt ends. The command must exit successfully before
+  the host decodes its file. The two effect flags are required and become part
+  of install review and the plan. Discovery runs on request, with a deadline
+  and process-tree cancellation. The test run itself uses the separately
+  declared `test.source` and existing argument or provider contract.
+- **Provider.** Provider tests may declare `test.discovery: true`, using the
+  existing `buildProviders` protocol. `build.testDiscoveryPlan` returns
+  `lithe/build/discoverTests` with the effective options and optional
+  `refresh` and `tool` hints. The provider sends the document as an inline
+  result under the existing bounded request and cancellation lifecycle,
+  without execution progress.
+
+Enable one source. Project selection is refused for both. `outputFile` is
+required for command plans and refused for provider plans. The command writes
+and the provider returns `{ "format": "litheTestDiscovery", "version": 0,
 "tests": [{ "suite", "case", "project"?, "target"? }] }`. Project and target
 are the usual typed selections with workspace-relative paths. There may be at
 most 10,000 items and 32 MiB UTF-8 JSON. Unknown document/item fields are
@@ -2203,7 +2221,8 @@ ignored; malformed selectors, invalid paths/scopes, unsupported versions and
 oversized lists reject the entire result with `plugin.build.invalidOutput`.
 An empty array is a successful discovery with no tests.
 
-The host passes the reply and original plan configuration to
+The host passes the original plan configuration and either the same
+`outputFile` (command) or inline `result` (provider) to
 `build.decodeTestDiscovery`. Core validates every selector through the same
 test-plan rules, deterministically orders the list, collapses exact duplicates,
 and derives an opaque `id` including project/target identity. Equal suite/case
@@ -2211,13 +2230,20 @@ names in sibling modules therefore remain distinct. The returned `discovery`
 contains `tests: [{ id, suite, case, project?, target? }]`. No source parsing,
 framework detection, or second project graph occurs in the host/Core.
 
-Native discovery starts only on a user action, reuses the workspace Provider,
-and is independent of plugin pages. Source edits, configuration changes,
-package changes and workspace teardown revoke the cached list and in-flight
-discovery. A native action must revalidate the selected ID against the current
-list before submitting its exact selectors to `lithe/build/test`; stale
-toolbar selections cannot run. The backend must reject a selector whose facts
-have become stale externally. Canonical example: `fixtures/build-providers/build-test-discovery.json`.
+Native discovery starts only on a user action and is independent of plugin
+pages. A provider request reuses the workspace Provider. Source edits,
+configuration changes, package changes and workspace teardown revoke cached
+selectors and in-flight discovery. Before running a selected item, the host
+revalidates its ID against the current list and plans the exact selectors with
+`build.testPlan`. The selected command or provider must reject a selector
+whose facts have become stale externally. The host records a terminal
+`lithe/build/discoverTests` operation for each command attempt, following the
+existing [declarative logging rules](#structured-plugin-diagnostics).
+
+Canonical examples are
+[`build-command-test-discovery.plugin.json`](fixtures/build-systems/build-command-test-discovery.plugin.json),
+[command output](fixtures/build-systems/build-command-test-discovery.json)
+and [the provider result](fixtures/build-providers/build-test-discovery.json).
 
 ### Provider run preparation
 
@@ -2673,7 +2699,7 @@ Test. A type is data only: the fields of its editor and the command line
 their values make. Core draws the editor, checks and saves the values, and
 expands the command line, so a type needs no backend and the host has no
 code for any type. A build system that declares types needs
-`runConfigurationTypes: 0` in `requires` beside `buildSystems: 0`. Fixture:
+`runConfigurationTypes: 0` in `requires` alongside the required `buildSystems` capability. Fixture:
 `fixtures/run-configuration-types/`, translated by its `l10n/zh-Hans.json`.
 
 ```json
@@ -2776,7 +2802,7 @@ configuration has, as IntelliJ IDEA's Go plugin adds Run Go Command to its
 Configuration; picking one opens a form of the task's fields, and the step
 keeps their values. Before the configuration starts, each step runs and must
 exit with 0. A build system that declares tasks needs `beforeLaunchTasks: 0`
-in `requires` beside `buildSystems: 0`. Fixture:
+in `requires` alongside the required `buildSystems` capability. Fixture:
 `fixtures/before-launch-tasks/`, translated by its `l10n/zh-Hans.json`.
 
 ```json
