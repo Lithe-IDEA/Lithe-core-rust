@@ -104,11 +104,14 @@ Schema 只检查 JSON 结构。ID 引用、权限、激活事件、模板变量�
 
 只用语言服务器、运行和测试的插件不需要后端。需要构建后端（`buildProviders`）、插件函数，或给插件自己的网页配一个后端进程（`backend`）时，用官方 SDK 写：协议、取消、进程清理和错误处理由 SDK 负责，你只写处理函数。
 
+**新插件优先用 Rust 或 Go SDK。** 两者把后端编译成每个平台各一份的原生可执行文件，用户机器上不需要 Node.js 或 Java 运行时。插件本来就围绕 JVM 工具（例如 Maven、Gradle、Tomcat）时用 Java SDK。构建后端（`buildProviders`）目前只有 Node.js 和 Java SDK 支持，VCS 后端只有 Node.js SDK 支持，这两类后端照旧用它们。
+
 | SDK | 版本 | 运行时 | Release | 怎么放进插件 |
 | --- | --- | --- | --- | --- |
+| [Rust](sdk/rust/README.md) | 0.4.0 | Rust 1.87+ | [`sdk-rust-v0.4.0`](https://github.com/Lithe-IDEA/Lithe-core-rust/releases/tag/sdk-rust-v0.4.0)：`lithe-plugin-sdk-rust-0.4.0.crate` 和 `.sha256` | 用 Git 依赖锁定标签（`Cargo.lock` 记录 commit），或解压后作为 `path` 依赖；编译成每个平台各一份的插件后端可执行文件 |
+| [Go](sdk/go/README.md) | 未发布 | Go 1.22+ | Go 模块标签 `shared/plugins/sdk/go/v<版本>`，由 Go 模块代理分发，没有 Release 附件；还没有打过标签 | `go get` 锁定标签或 commit（`go.sum` 记录内容哈希）；编译成每个平台各一份的插件后端可执行文件 |
 | [Node.js](sdk/node/README.md) | 0.5.0 | Node.js 20.3+ | [`sdk-node-v0.5.0`](https://github.com/Lithe-IDEA/Lithe-core-rust/releases/tag/sdk-node-v0.5.0)：`lithe-plugin-sdk-node-0.5.0.tgz` 和 `.sha256` | 解压后把 `package/` 复制进插件包，用相对路径导入 |
 | [Java](sdk/java/README.md) | 0.5.0 | Java 8+ | [`sdk-java-v0.5.0`](https://github.com/Lithe-IDEA/Lithe-core-rust/releases/tag/sdk-java-v0.5.0)：`lithe-plugin-sdk-java-0.5.0.jar` 和 `.sha256` | shade 进后端 JAR |
-| [Rust](sdk/rust/README.md) | 0.4.0 | Rust 1.87+ | [`sdk-rust-v0.4.0`](https://github.com/Lithe-IDEA/Lithe-core-rust/releases/tag/sdk-rust-v0.4.0)：`lithe-plugin-sdk-rust-0.4.0.crate` 和 `.sha256` | 用 Git 依赖锁定标签（`Cargo.lock` 记录 commit），或解压后作为 `path` 依赖；编译成每个平台各一份的插件后端可执行文件 |
 
 Rust 的 Git 依赖这样写：
 
@@ -116,9 +119,15 @@ Rust 的 Git 依赖这样写：
 lithe-plugin-sdk = { git = "https://github.com/Lithe-IDEA/Lithe-core-rust", tag = "sdk-rust-v0.4.0" }
 ```
 
-SDK 的源码都在本目录的 `sdk/` 下，发布在 [Core 仓库的 Releases](https://github.com/Lithe-IDEA/Lithe-core-rust/releases) 里（标签 `sdk-node-v<版本>`、`sdk-java-v<版本>`、`sdk-rust-v<版本>`），不在 npm、Maven 或 crates.io 上。Rust SDK 只实现插件后端（`backend`）：插件函数和宿主服务；构建后端请用 Node.js 或 Java SDK，VCS 后端请用 Node.js SDK。各 SDK 的 README 有 “What the Lithe desktop serves” 一节，说明 Lithe 桌面端提供哪些协议；各协议的版本见[进程协议版本](reference/capabilities-and-versions.md#进程协议版本)。以上三个版本说的是版本 `0` 的协议；已退役的 `lithe-plugin-docs` 仓库发布过更早的 SDK，它们说的是旧协议，Lithe 桌面端不接受用它们写的插件，请只使用 Core 仓库发布的版本。
+Go 这样引入（第一个标签发布前写 `main` 上的 commit，Go 会记成伪版本）：
 
-SDK 与插件后端在构建时下载，并按锁定的 SHA-256（或 Git commit）校验；插件包安装后没有 `npm install` 步骤。独立的大型依赖可声明 [`managedRuntimes`](contract/v1/README.md#managed-runtimes)：宿主在用户批准安装后校验并准备，完整缓存可离线复用；插件自身不能用启动脚本绕过这项声明或自行改写包。
+```sh
+go get github.com/Lithe-IDEA/Lithe-core-rust/shared/plugins/sdk/go@<标签或 commit>
+```
+
+SDK 的源码都在本目录的 `sdk/` 下。Node.js、Java 和 Rust SDK 发布在 [Core 仓库的 Releases](https://github.com/Lithe-IDEA/Lithe-core-rust/releases) 里（标签 `sdk-node-v<版本>`、`sdk-java-v<版本>`、`sdk-rust-v<版本>`），不在 npm、Maven 或 crates.io 上；Go SDK 是本仓库子目录里的 Go 模块，版本就是标签 `shared/plugins/sdk/go/v<版本>`，由 Go 模块代理和校验和数据库分发。Rust 和 Go SDK 只实现插件后端（`backend`）：插件函数和宿主服务；构建后端请用 Node.js 或 Java SDK，VCS 后端请用 Node.js SDK。各 SDK 的 README 有 “What the Lithe desktop serves” 一节，说明 Lithe 桌面端提供哪些协议；各协议的版本见[进程协议版本](reference/capabilities-and-versions.md#进程协议版本)。以上版本说的都是版本 `0` 的协议；已退役的 `lithe-plugin-docs` 仓库发布过更早的 SDK，它们说的是旧协议，Lithe 桌面端不接受用它们写的插件，请只使用 Core 仓库发布的版本。
+
+SDK 与插件后端在构建时下载，并按锁定的 SHA-256（或 Git commit、`go.sum`）校验；插件包安装后没有 `npm install` 步骤。独立的大型依赖可声明 [`managedRuntimes`](contract/v1/README.md#managed-runtimes)：宿主在用户批准安装后校验并准备，完整缓存可离线复用；插件自身不能用启动脚本绕过这项声明或自行改写包。
 
 [Maven 插件](https://github.com/Lithe-IDEA/lithe-plugin-maven) 的 `sdk.lock.json` 是锁定 Java SDK 的现成例子。
 
@@ -141,7 +150,7 @@ SDK 与插件后端在构建时下载，并按锁定的 SHA-256（或 Git commit
 | 教程 | 内容 |
 | --- | --- |
 | [LSP 插件完整生命周期](guides/lsp-plugin-lifecycle.md) | 从 Lua 模板开始：清单、服务器打包、激活、状态目录、停止、升级与卸载 |
-| [插件接入统一日志](guides/plugin-logging.md) | 三 SDK 的安全失败边界、受管诊断通道，以及 `${logDir}` 的本地会话生命周期 |
+| [插件接入统一日志](guides/plugin-logging.md) | 各 SDK 的安全失败边界、受管诊断通道，以及 `${logDir}` 的本地会话生命周期 |
 | [原生构建工作流](guides/native-build-workflows.md) | Node/Java SDK 的构建执行、精确测试、运行准备，以及用真实 Core 做端到端验证 |
 | [构建、运行与测试接入](guides/build-tool-integration.md) | 执行提供者示例、工程后端边界，以及声明式构建系统的现状和已发布示例 |
 | [编写调试适配器插件](guides/debug-adapter-plugin.md) | 从最小清单到启动方式、先编译再调试的 `executable`，以及调试控制台补全 |
@@ -200,11 +209,12 @@ fixture 放在 `fixtures/<功能>/` 下，文件按演示的能力命名，例�
 | `npm run --prefix shared/plugins/sdk/node test:types` | Node.js SDK 的 TypeScript 使用方检查；先运行 `npm ci --prefix shared/plugins/sdk/node --ignore-scripts` 安装开发依赖 |
 | `mvn -B -ntp -f shared/plugins/sdk/java/pom.xml verify` | Java SDK 的单元测试；加 `-Djvm=<java>` 可指定运行测试的 Java（CI 用 Java 8） |
 | `cargo test --locked --manifest-path shared/plugins/sdk/rust/Cargo.toml` | Rust SDK 的单元测试（CI 用 Rust 1.87，另用仓库 `rust-toolchain.toml` 固定的版本跑 `cargo fmt` 和 `cargo clippy`） |
-| `node shared/plugins/scripts/sdk-e2e.mjs` | 端到端测试：先构建三个 SDK 的示例后端，再运行 `cargo test -p lithe-core --features plugin-sdk-e2e` 的 `plugin_sdk_node`、`plugin_sdk_java`、`plugin_sdk_rust` 和 `plugin_sdk_build` 四个测试，对象是**当前工作树的 Core**；总是包含原生构建工作流和快捷键导入场景 |
+| `go -C shared/plugins/sdk/go test -race ./...` | Go SDK 的单元测试；另用 `go -C shared/plugins/sdk/go vet ./...` 和 `gofmt -l shared/plugins/sdk/go` 检查。CI 目前不跑这三条，只在端到端测试里构建 Go 示例 |
+| `node shared/plugins/scripts/sdk-e2e.mjs` | 端到端测试：先构建四个 SDK 的示例后端，再运行 `cargo test -p lithe-core --features plugin-sdk-e2e` 的 `plugin_sdk_node`、`plugin_sdk_java`、`plugin_sdk_rust`、`plugin_sdk_go` 和 `plugin_sdk_build` 五个测试，对象是**当前工作树的 Core**；总是包含原生构建工作流和快捷键导入场景 |
 
-端到端测试需要 Rust、Node.js 20.3+、Java（`LITHE_PLUGIN_SDK_JAVA_RUNTIME` 指定，或 `PATH` 上的 `java`）和 Maven。场景文件在 [`sdk/e2e/`](sdk/e2e)：Node.js 和 Java 跑同一套构建后端场景，Rust 跑插件后端场景（`plugin_sdk/backend.rs`），测试代替宿主应答凭据请求。`LITHE_PLUGIN_SDK_JAVA_SAMPLE`、`LITHE_PLUGIN_SDK_JAVA_NATIVE_SAMPLE` 和 `LITHE_PLUGIN_SDK_RUST_SAMPLE` 可以指定已构建好的示例，跳过构建。
+端到端测试需要 Rust、Go 1.22+（`PATH` 上的 `go`）、Node.js 20.3+、Java（`LITHE_PLUGIN_SDK_JAVA_RUNTIME` 指定，或 `PATH` 上的 `java`）和 Maven。场景文件在 [`sdk/e2e/`](sdk/e2e)：Node.js 和 Java 跑同一套构建后端场景，Rust 和 Go 跑同一套插件后端场景（`plugin_sdk/backend.rs`），测试代替宿主应答凭据请求。`LITHE_PLUGIN_SDK_JAVA_SAMPLE`、`LITHE_PLUGIN_SDK_JAVA_NATIVE_SAMPLE`、`LITHE_PLUGIN_SDK_RUST_SAMPLE` 和 `LITHE_PLUGIN_SDK_GO_SAMPLE` 可以指定已构建好的示例，跳过构建。
 
-发版：先改版本号（Node.js 改 `shared/plugins/sdk/node/package.json`；Java 运行 `mvn -f shared/plugins/sdk/java/pom.xml versions:set -DnewVersion=<版本> -DgenerateBackupPoms=false`，三个 pom 一起改；Rust 改 `shared/plugins/sdk/rust/Cargo.toml` 的 `workspace.package.version` 并更新 `Cargo.lock`），合并后推送对应标签 `sdk-node-v<版本>`、`sdk-java-v<版本>` 或 `sdk-rust-v<版本>`。仓库根的发版工作流 `.github/workflows/plugins-release-{node,java,rust}-sdk.yml` 由标签触发，检查标签和版本一致，测试通过后把包和 `.sha256` 发到 Core 仓库的 Releases。发版后更新本页和各 SDK README 里的版本号。
+发版：先改版本号（Node.js 改 `shared/plugins/sdk/node/package.json`；Java 运行 `mvn -f shared/plugins/sdk/java/pom.xml versions:set -DnewVersion=<版本> -DgenerateBackupPoms=false`，三个 pom 一起改；Rust 改 `shared/plugins/sdk/rust/Cargo.toml` 的 `workspace.package.version` 并更新 `Cargo.lock`），合并后推送对应标签 `sdk-node-v<版本>`、`sdk-java-v<版本>` 或 `sdk-rust-v<版本>`。仓库根的发版工作流 `.github/workflows/plugins-release-{node,java,rust}-sdk.yml` 由标签触发，检查标签和版本一致，测试通过后把包和 `.sha256` 发到 Core 仓库的 Releases。Go SDK 没有版本文件，也没有发版工作流：合并后推送标签 `shared/plugins/sdk/go/v<版本>` 就是发布，Go 模块代理按需从标签取源码；校验和数据库会记住每个版本的内容，所以标签推送后不能移动或删除，版本号也不能重用。发版后更新本页和各 SDK README 里的版本号。
 
 ### 许可证
 
@@ -314,11 +324,14 @@ A schema checks only JSON structure. Rules such as ID references, permissions, a
 
 A plugin that uses only language servers, run, and test needs no backend. When you need a build backend (`buildProviders`), plugin functions, or a backend process for the plugin's own web page (`backend`), write it with an official SDK: the SDK handles the protocol, cancellation, process cleanup, and errors, and you write only the handlers.
 
+**New plugins should prefer the Rust or Go SDK.** Both compile the backend to one native executable per platform, so users need no Node.js or Java runtime. Use the Java SDK when the plugin is built around JVM tools anyway, such as Maven, Gradle, or Tomcat. Build backends (`buildProviders`) are supported only by the Node.js and Java SDKs today, and VCS backends only by the Node.js SDK, so keep using those for them.
+
 | SDK | Version | Runtime | Release | How it goes into the plugin |
 | --- | --- | --- | --- | --- |
+| [Rust](sdk/rust/README.md) | 0.4.0 | Rust 1.87+ | [`sdk-rust-v0.4.0`](https://github.com/Lithe-IDEA/Lithe-core-rust/releases/tag/sdk-rust-v0.4.0): `lithe-plugin-sdk-rust-0.4.0.crate` and `.sha256` | Pin the tag as a Git dependency (`Cargo.lock` records the commit), or unpack it as a `path` dependency; compile one backend executable per platform |
+| [Go](sdk/go/README.md) | Unreleased | Go 1.22+ | Go module tags `shared/plugins/sdk/go/v<version>`, served by the Go module proxy with no Release assets; not tagged yet | Pin a tag or commit with `go get` (`go.sum` records the content hash); compile one backend executable per platform |
 | [Node.js](sdk/node/README.md) | 0.5.0 | Node.js 20.3+ | [`sdk-node-v0.5.0`](https://github.com/Lithe-IDEA/Lithe-core-rust/releases/tag/sdk-node-v0.5.0): `lithe-plugin-sdk-node-0.5.0.tgz` and `.sha256` | Unpack it, copy `package/` into the plugin package, and import it by relative path |
 | [Java](sdk/java/README.md) | 0.5.0 | Java 8+ | [`sdk-java-v0.5.0`](https://github.com/Lithe-IDEA/Lithe-core-rust/releases/tag/sdk-java-v0.5.0): `lithe-plugin-sdk-java-0.5.0.jar` and `.sha256` | Shade it into the backend JAR |
-| [Rust](sdk/rust/README.md) | 0.4.0 | Rust 1.87+ | [`sdk-rust-v0.4.0`](https://github.com/Lithe-IDEA/Lithe-core-rust/releases/tag/sdk-rust-v0.4.0): `lithe-plugin-sdk-rust-0.4.0.crate` and `.sha256` | Pin the tag as a Git dependency (`Cargo.lock` records the commit), or unpack it as a `path` dependency; compile one backend executable per platform |
 
 The Rust Git dependency looks like this:
 
@@ -326,9 +339,15 @@ The Rust Git dependency looks like this:
 lithe-plugin-sdk = { git = "https://github.com/Lithe-IDEA/Lithe-core-rust", tag = "sdk-rust-v0.4.0" }
 ```
 
-All SDK sources live under `sdk/` in this directory and are published in the [Core repository's Releases](https://github.com/Lithe-IDEA/Lithe-core-rust/releases) (tags `sdk-node-v<version>`, `sdk-java-v<version>`, `sdk-rust-v<version>`), not on npm, Maven, or crates.io. The Rust SDK implements only the plugin backend (`backend`): plugin functions and host services; write build backends with the Node.js or Java SDK and VCS backends with the Node.js SDK. Each SDK's README has a "What the Lithe desktop serves" section naming the protocols the Lithe desktop client provides; the version of each protocol is in [Process protocol versions](reference/capabilities-and-versions.md#process-protocol-versions). The three versions above speak the version `0` protocols; the retired `lithe-plugin-docs` repository published earlier SDKs that speak an older protocol, and the Lithe desktop client does not accept plugins written with them, so use only versions released from the Core repository.
+Add the Go SDK like this (until the first tag, name a commit of `main`; Go records it as a pseudo-version):
 
-Download SDKs and plugin backends at build time and verify against the SHA-256 (or Git commit) you pinned. An installed package has no `npm install` step. Large independent dependencies can declare [`managedRuntimes`](contract/v1/README.md#managed-runtimes): the host verifies and prepares them after approved installation, and complete cached sets work offline. Plugin launch scripts must not bypass this declaration or rewrite the package.
+```sh
+go get github.com/Lithe-IDEA/Lithe-core-rust/shared/plugins/sdk/go@<tag or commit>
+```
+
+All SDK sources live under `sdk/` in this directory. The Node.js, Java, and Rust SDKs are published in the [Core repository's Releases](https://github.com/Lithe-IDEA/Lithe-core-rust/releases) (tags `sdk-node-v<version>`, `sdk-java-v<version>`, `sdk-rust-v<version>`), not on npm, Maven, or crates.io; the Go SDK is a Go module in a subdirectory of this repository, its versions are the tags `shared/plugins/sdk/go/v<version>`, and the Go module proxy and checksum database serve it. The Rust and Go SDKs implement only the plugin backend (`backend`): plugin functions and host services; write build backends with the Node.js or Java SDK and VCS backends with the Node.js SDK. Each SDK's README has a "What the Lithe desktop serves" section naming the protocols the Lithe desktop client provides; the version of each protocol is in [Process protocol versions](reference/capabilities-and-versions.md#process-protocol-versions). The versions above all speak the version `0` protocols; the retired `lithe-plugin-docs` repository published earlier SDKs that speak an older protocol, and the Lithe desktop client does not accept plugins written with them, so use only versions released from the Core repository.
+
+Download SDKs and plugin backends at build time and verify against the SHA-256 (or Git commit, or `go.sum`) you pinned. An installed package has no `npm install` step. Large independent dependencies can declare [`managedRuntimes`](contract/v1/README.md#managed-runtimes): the host verifies and prepares them after approved installation, and complete cached sets work offline. Plugin launch scripts must not bypass this declaration or rewrite the package.
 
 The [Maven plugin](https://github.com/Lithe-IDEA/lithe-plugin-maven)'s `sdk.lock.json` is a ready example of pinning the Java SDK.
 
@@ -351,7 +370,7 @@ The example plugins are maintained in their own repositories. Before copying one
 | Guide | Covers |
 | --- | --- |
 | [LSP plugin lifecycle](guides/lsp-plugin-lifecycle.md) | Starting from the Lua template: manifest, server packaging, activation, state directories, shutdown, upgrade, and uninstall |
-| [Plugin logging](guides/plugin-logging.md) | The safe failure boundary of the three SDKs, the managed diagnostics channel, and the local session lifecycle of `${logDir}` |
+| [Plugin logging](guides/plugin-logging.md) | The safe failure boundary of each SDK, the managed diagnostics channel, and the local session lifecycle of `${logDir}` |
 | [Native build workflows](guides/native-build-workflows.md) | Build execution, exact tests, and run preparation in the Node and Java SDKs, and end-to-end verification against a real Core |
 | [Build, run, and test integration](guides/build-tool-integration.md) | Execution provider examples, the project backend boundary, and the current status and published examples of declarative build systems |
 | [Writing a debug adapter plugin](guides/debug-adapter-plugin.md) | From a minimal manifest to launch modes, compile-then-debug `executable`, and debug console completion |
@@ -410,11 +429,12 @@ When a change touches the contract, a capability version, or the plugin function
 | `npm run --prefix shared/plugins/sdk/node test:types` | Node.js SDK TypeScript consumer check; first run `npm ci --prefix shared/plugins/sdk/node --ignore-scripts` to install the development dependencies |
 | `mvn -B -ntp -f shared/plugins/sdk/java/pom.xml verify` | Java SDK unit tests; add `-Djvm=<java>` to choose the Java that runs them (CI uses Java 8) |
 | `cargo test --locked --manifest-path shared/plugins/sdk/rust/Cargo.toml` | Rust SDK unit tests (CI uses Rust 1.87, plus the release `rust-toolchain.toml` pins for `cargo fmt` and `cargo clippy`) |
-| `node shared/plugins/scripts/sdk-e2e.mjs` | End-to-end tests: builds the sample backends of the three SDKs, then runs the four tests `plugin_sdk_node`, `plugin_sdk_java`, `plugin_sdk_rust`, and `plugin_sdk_build` of `cargo test -p lithe-core --features plugin-sdk-e2e` against the **Core in the current working tree**; it always includes the native build workflow and shortcut import scenarios |
+| `go -C shared/plugins/sdk/go test -race ./...` | Go SDK unit tests; also check with `go -C shared/plugins/sdk/go vet ./...` and `gofmt -l shared/plugins/sdk/go`. CI does not run these three yet; it only builds the Go sample in the end-to-end tests |
+| `node shared/plugins/scripts/sdk-e2e.mjs` | End-to-end tests: builds the sample backends of the four SDKs, then runs the five tests `plugin_sdk_node`, `plugin_sdk_java`, `plugin_sdk_rust`, `plugin_sdk_go`, and `plugin_sdk_build` of `cargo test -p lithe-core --features plugin-sdk-e2e` against the **Core in the current working tree**; it always includes the native build workflow and shortcut import scenarios |
 
-The end-to-end tests need Rust, Node.js 20.3+, Java (set `LITHE_PLUGIN_SDK_JAVA_RUNTIME`, or have `java` on `PATH`), and Maven. The scenario files are in [`sdk/e2e/`](sdk/e2e): Node.js and Java run the same build backend scenarios, Rust runs the plugin backend scenario (`plugin_sdk/backend.rs`), and the test answers credential requests in place of the host. `LITHE_PLUGIN_SDK_JAVA_SAMPLE`, `LITHE_PLUGIN_SDK_JAVA_NATIVE_SAMPLE`, and `LITHE_PLUGIN_SDK_RUST_SAMPLE` can point at already built samples to skip building them.
+The end-to-end tests need Rust, Go 1.22+ (`go` on `PATH`), Node.js 20.3+, Java (set `LITHE_PLUGIN_SDK_JAVA_RUNTIME`, or have `java` on `PATH`), and Maven. The scenario files are in [`sdk/e2e/`](sdk/e2e): Node.js and Java run the same build backend scenarios, Rust and Go run the same plugin backend scenario (`plugin_sdk/backend.rs`), and the test answers credential requests in place of the host. `LITHE_PLUGIN_SDK_JAVA_SAMPLE`, `LITHE_PLUGIN_SDK_JAVA_NATIVE_SAMPLE`, `LITHE_PLUGIN_SDK_RUST_SAMPLE`, and `LITHE_PLUGIN_SDK_GO_SAMPLE` can point at already built samples to skip building them.
 
-Releasing: first bump the version (Node.js in `shared/plugins/sdk/node/package.json`; for Java run `mvn -f shared/plugins/sdk/java/pom.xml versions:set -DnewVersion=<version> -DgenerateBackupPoms=false`, which updates all three poms; for Rust change `workspace.package.version` in `shared/plugins/sdk/rust/Cargo.toml` and update `Cargo.lock`), then after merging push the tag `sdk-node-v<version>`, `sdk-java-v<version>`, or `sdk-rust-v<version>`. The release workflows `.github/workflows/plugins-release-{node,java,rust}-sdk.yml` at the repository root start from the tag, check that it matches the version, and, once tests pass, publish the package and its `.sha256` to the Core repository's Releases. After a release, update the version numbers in this page and in each SDK README.
+Releasing: first bump the version (Node.js in `shared/plugins/sdk/node/package.json`; for Java run `mvn -f shared/plugins/sdk/java/pom.xml versions:set -DnewVersion=<version> -DgenerateBackupPoms=false`, which updates all three poms; for Rust change `workspace.package.version` in `shared/plugins/sdk/rust/Cargo.toml` and update `Cargo.lock`), then after merging push the tag `sdk-node-v<version>`, `sdk-java-v<version>`, or `sdk-rust-v<version>`. The release workflows `.github/workflows/plugins-release-{node,java,rust}-sdk.yml` at the repository root start from the tag, check that it matches the version, and, once tests pass, publish the package and its `.sha256` to the Core repository's Releases. The Go SDK has no version file and no release workflow: after merging, pushing the tag `shared/plugins/sdk/go/v<version>` is the release, and the Go module proxy fetches the source from the tag on demand. The checksum database remembers each version's content, so never move or delete a pushed tag or reuse a version. After a release, update the version numbers in this page and in each SDK README.
 
 ### License
 

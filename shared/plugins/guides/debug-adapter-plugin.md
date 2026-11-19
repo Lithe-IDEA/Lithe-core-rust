@@ -166,7 +166,7 @@ Lithe 的调试控制台有输入行和补全弹窗。补全来自适配器的 D
   `process.executable` 只能是清单 `requiresTools` 列出的工具定义 ID，或插件包内的文件。运行结束时宿主发 `run/didExit` 通知。
 
 这三个方法能否调用，以宿主 `getCapabilities` 的返回为准。Lithe 桌面端的能力声明注释把 run 与 debug 服务列为尚未注册，目前不要假定它们可用。
-官方 Node、Java、Rust SDK 还没有 `debug/start`、`run/start`、`run/stop` 的封装，需要时可以用 SDK 的通用宿主请求，以完整方法名调用，
+官方 Node、Java、Rust、Go SDK 还没有 `debug/start`、`run/start`、`run/stop` 的封装，需要时可以用 SDK 的通用宿主请求，以完整方法名调用，
 例如 Node SDK 的 `backend.host.request(method, params?)`，见 [Host services](../sdk/node/README.md#host-services)。
 
 细节见[调试适配器](../reference/domains/debug-adapters.md)和契约的
@@ -364,7 +364,7 @@ A plugin with a backend (`requires.backend`) can decide which debug session to s
   `process.executable` can only be a tool-definition ID listed in the manifest's `requiresTools`, or a file inside the plugin package. The host sends the `run/didExit` notification when the run ends.
 
 Whether these three methods can be called is decided by what the host returns from `getCapabilities`. The Lithe desktop app's capability declaration comment lists the run and debug services as not yet registered, so do not assume they are available.
-The official Node, Java, and Rust SDKs do not wrap `debug/start`, `run/start`, or `run/stop` yet; where needed, call them with the SDK's generic host request using the full method name,
+The official Node, Java, Rust, and Go SDKs do not wrap `debug/start`, `run/start`, or `run/stop` yet; where needed, call them with the SDK's generic host request using the full method name,
 for example `backend.host.request(method, params?)` in the Node SDK, see [Host services](../sdk/node/README.md#host-services).
 
 For details, see [Debug adapters](../reference/domains/debug-adapters.md) and

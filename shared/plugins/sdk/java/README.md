@@ -461,7 +461,7 @@ Run these from the root of this repository:
 ```bash
 mvn -B -ntp -f shared/plugins/sdk/java/pom.xml verify
 
-# End to end: the sample backends of all three SDKs against this checkout's Core.
+# End to end: the sample backends of all four SDKs against this checkout's Core.
 node shared/plugins/scripts/sdk-e2e.mjs
 ```
 
@@ -469,7 +469,7 @@ This builds the SDK and the sample for Java 8 with any newer JDK, then runs
 the JUnit tests. Add `-Djvm=/path/to/java8/bin/java` to run the tests on a
 Java 8 runtime, as CI does.
 
-The end-to-end script needs Rust, Node.js 20.3 or newer, Java
+The end-to-end script needs Rust, Node.js 20.3 or newer, Go 1.22 or newer, Java
 (`LITHE_PLUGIN_SDK_JAVA_RUNTIME` or `java` on `PATH`) and Maven;
 `LITHE_PLUGIN_SDK_JAVA_SAMPLE` and `LITHE_PLUGIN_SDK_JAVA_NATIVE_SAMPLE` name
 already built sample JARs.

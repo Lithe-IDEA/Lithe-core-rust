@@ -237,7 +237,7 @@ shasum -a 256 dist/lua-support-0.3.1-darwin-arm64.zip
 服务器交出的文档没有对应文件（例如反编译的库类）时，用 `documents/registerContentProvider` 提供：用户打开该 scheme 的文档时，
 宿主调用绑定的函数取只读内容（最多 1 MiB，宿主等 30 秒）。每个工作区窗口每个 scheme 只能有一个 provider，用 `subscriptions/dispose` 撤销。
 
-边界：声明 `remote: "unsupported"` 的服务器不在远程工作区启动。官方 Node、Java、Rust SDK 还没有这些方法的专用封装，
+边界：声明 `remote: "unsupported"` 的服务器不在远程工作区启动。官方 Node、Java、Rust、Go SDK 还没有这些方法的专用封装，
 可以用 SDK 的通用宿主请求，以完整方法名调用，例如 Node SDK 的 `backend.host.request(method, params?)`，
 见 [Host services](../sdk/node/README.md#host-services)。桌面端只注册自己实现的宿主服务，
 调用前用 `supports(method)` 确认。
@@ -721,7 +721,7 @@ a server of another plugin returns `plugin.host.foreignContribution`):
 When the server hands out documents that have no file (for example the decompiled source of a library class), serve them with `documents/registerContentProvider`: when the user opens a document of that scheme,
 the host calls the bound function for its read-only content (at most 1 MiB; the host waits 30 seconds). Each workspace window can have one provider per scheme; revoke it with `subscriptions/dispose`.
 
-Limits: a server that declares `remote: "unsupported"` does not start in a remote workspace. The official Node, Java, and Rust SDKs do not wrap these methods yet;
+Limits: a server that declares `remote: "unsupported"` does not start in a remote workspace. The official Node, Java, Rust, and Go SDKs do not wrap these methods yet;
 until they do, call them with the SDK's generic host request using the full method name,
 for example `backend.host.request(method, params?)` in the Node SDK, see [Host services](../sdk/node/README.md#host-services). The desktop registers only the host services it implements,
 so confirm with `supports(method)` before calling.

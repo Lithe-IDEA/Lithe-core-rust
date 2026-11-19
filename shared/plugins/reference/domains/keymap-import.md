@@ -16,7 +16,7 @@
 | 激活事件 | 没有；宿主只在用户发起导入时启动后端 |
 | 后端启动 | 包内可执行文件或包内运行时，不能依赖需要发现的运行时 |
 | Lithe 桌面端 | 未声明 `keymapImportProviders`，也没有读取导入源的实现，安装时拒绝需要它的包 |
-| 官方 SDK | [Node](../../sdk/node/README.md#shortcut-import-providers) 0.5.0、[Java](../../sdk/java/README.md#shortcut-import-providers) 0.5.0、[Rust](../../sdk/rust/README.md#shortcut-import-providers) 0.4.0 均实现 `litheKeymapImport` 0 |
+| 官方 SDK | [Node](../../sdk/node/README.md#shortcut-import-providers) 0.5.0、[Java](../../sdk/java/README.md#shortcut-import-providers) 0.5.0、[Rust](../../sdk/rust/README.md#shortcut-import-providers) 0.4.0、[Go](../../sdk/go/README.md#shortcut-import-providers)（未发布）均实现 `litheKeymapImport` 0 |
 
 ### 声明与读取
 
@@ -65,7 +65,7 @@ A plugin can convert another editor's shortcut configuration into Lithe shortcut
 | Activation events | None; the host starts the backend only when the user starts an import |
 | Backend launch | A packaged executable or packaged runtime, without discovered runtime dependencies |
 | Lithe desktop | Does not declare `keymapImportProviders` and has no import source reader; packages that require it are refused before installation |
-| Official SDKs | [Node](../../sdk/node/README.md#shortcut-import-providers) 0.5.0, [Java](../../sdk/java/README.md#shortcut-import-providers) 0.5.0, and [Rust](../../sdk/rust/README.md#shortcut-import-providers) 0.4.0 implement `litheKeymapImport` 0 |
+| Official SDKs | [Node](../../sdk/node/README.md#shortcut-import-providers) 0.5.0, [Java](../../sdk/java/README.md#shortcut-import-providers) 0.5.0, [Rust](../../sdk/rust/README.md#shortcut-import-providers) 0.4.0, and [Go](../../sdk/go/README.md#shortcut-import-providers) (unreleased) implement `litheKeymapImport` 0 |
 
 ### Declaration and reading
 
