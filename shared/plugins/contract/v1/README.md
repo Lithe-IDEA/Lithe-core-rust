@@ -143,7 +143,7 @@ previous one. Errors never disclose absolute paths.
 
 A host that advertises `keymapImportProviders` 0 implements the scoped reader.
 A host advertises the capability only with the complete import workflow. The official Node,
-Java and Rust SDKs implement `litheKeymapImport` 0.
+Java, Rust and Go SDKs implement `litheKeymapImport` 0.
 
 ## Package layout
 
@@ -4748,10 +4748,22 @@ used as a Git dependency pinned by the tag. It enforces the same rules: on Unix 
 points stdout at stderr so only protocol frames reach the host, and a panic
 ends only its call, reported like any unexpected failure.
 
+[`sdk/go`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/shared/plugins/sdk/go/README.md) is the Go SDK for
+[plugin backends](#plugin-backend), which ship as packaged executables. It
+implements this protocol with its host services and `litheKeymapImport`, but
+neither build nor VCS providers. It needs Go 1.22 or newer, uses only the
+standard library, and is released as Go module tags
+(`shared/plugins/sdk/go/v<version>`) that plugins pin through `go.sum`. It
+enforces the same rules: on Unix it moves the protocol to a duplicate of the
+stdout descriptor and points stdout at stderr so only protocol frames reach the
+host, and a panic in a handler ends only that call, reported like any
+unexpected failure.
+
 The Node.js and Java SDKs each have a sample build provider
 (`sdk/*/examples/sample-build`) that answers one end-to-end scenario driven
-through a real Core session; the Rust SDK's sample backend
-(`sdk/rust/examples/sample-backend`) answers a plugin backend scenario in which
+through a real Core session; the Rust and Go SDKs' sample backends
+(`sdk/rust/examples/sample-backend`, `sdk/go/examples/sample-backend`) answer
+the same plugin backend scenario, in which
 the test plays the host: it serves the credential requests and the
 workspace, file watch and window requests, delivers a command and a context
 change, and checks that cancellation reaches the host. That repository runs
@@ -5129,7 +5141,7 @@ event, with these params:
 
 | Field | Meaning |
 | --- | --- |
-| `event` | `open`, `close`, `click`, `change`, `select`, `activate`, `viewport`, or `settings` (below) |
+| `event` | `open`, `close`, `click`, `change`, `select`, `activate`, `viewport`, `resize`, or `settings` (below) |
 | `instance` | Host-chosen string naming this showing of the view. A new `open` gets a new instance; the same tool window open in two workspaces has two. |
 | `surface` | `{toolWindowID}` or `{settingRegionID}`: the declaration being drawn |
 | `language` | Interface language tag, such as `en` or `zh-Hans`. View text is plugin content; the backend returns it in this language. |
@@ -5140,6 +5152,7 @@ event, with these params:
 | `setting` | `change` of a control bound to a setting: the setting ID |
 | `item` | `select`, `activate`: the tree item ID; `node` is the tree's ID |
 | `viewport` | `viewport`: `{x, y, width, height}`, the visible part of the canvas in view-box coordinates |
+| `width` | Every event, from a host that reports it: the width in points the host lays the view's nodes out in, which is also the width of a canvas at the top level, a whole number of at least 1. A host that reports it sends `open` only once it knows the width. |
 
 | Event | Sent when | Result |
 | --- | --- | --- |
@@ -5149,13 +5162,14 @@ event, with these params:
 | `change` | A `textField` commits on Enter, focus loss, or submit; a `select`, `segmented`, or `toggle` changes | Any |
 | `select`, `activate` | A tree item is selected; double-clicked or activated with Return | Any |
 | `viewport` | 400 ms after a pan or zoom stops, only for a canvas whose `on` lists `viewport` | Any |
+| `resize` | 400 ms after the view's `width` stops changing, only while the drawn view has a canvas whose `on` lists `resize` | Any |
 | `settings` | `effective` or `draft` changes: the user edits a declared row or a bound control, applies, cancels, or a value changes elsewhere | Any |
 
 Hovering, pressing, keyboard focus and focus rings, tooltips, tree expansion,
 scrolling, panning, zooming, and typing never reach the plugin. A text field
 does not call the backend per keystroke. The host sends one event at a time
-per instance, in order, and may merge waiting `viewport` or `settings` events
-into the latest one. A view changes only in answer to an event; this version
+per instance, in order, and may merge waiting `viewport`, `resize`, or
+`settings` events into the latest one. A view changes only in answer to an event; this version
 has no way for a plugin to push a view on its own.
 
 #### Results and patches
@@ -5241,28 +5255,62 @@ follows [source-backed settings](#source-backed-settings-editors).
 ```
 
 A canvas draws its `nodes` in order, in `viewBox` coordinates
-(`[x, y, width, height]`) scaled to the width of the view and `height` points
+(`[x, y, width, height]`), in an area as wide as the view and `height` points
 tall (1–2000). `label` is the scene's accessible name. `pan` lets the user
 drag the empty area, and `zoom` is the `[minimum, maximum]` range around 1
 (0.05–20); the host draws the zoom buttons. The scroll wheel scrolls the page;
-⌘ or Ctrl with the wheel, or a pinch, zooms.
+⌘ or Ctrl with the wheel zooms, and so does a pinch on a host that reports one.
+`on` lists the events the canvas sends: `viewport` and `resize` (see
+[Events](#events)).
+
+At zoom 1 the host scales the `viewBox` in one of two ways:
+
+- **Without `pan`**, the whole `viewBox` shows: it is scaled to the width of
+  the view, but no taller than `height`, and starts at the area's top-left
+  corner. A scene whose `viewBox` is as wide as the view and `height` tall
+  draws at one point a unit. In a wider view it keeps that size, whole, with
+  the area's trailing part left empty; in a narrower one it shrinks to the
+  width and leaves the area's bottom empty.
+- **With `pan`**, the `viewBox`'s width fills the view and its top edge is at
+  the area's top; the user pans to the parts below the area. Zoomed out until
+  the `viewBox` is narrower than the area, it is centered across it.
+
+A scene that follows the window lays itself out for the event's `width`: it
+gives its `viewBox` that width, picks `height` for what it draws there, and
+lists `resize` in `on`, so the host sends `resize` with the new `width` once
+the window stops being resized and the plugin returns the scene laid out
+again. Until the answer arrives the host scales the scene it has, as above. A
+host that does not report `width` sends no `resize` and may refuse a canvas
+that lists it, so a plugin lists `resize` only in answer to an event that
+carried `width`, and otherwise lays the scene out for a width of its own
+choosing.
 
 | `type` | Fields |
 | --- | --- |
 | `rect` | `x`, `y`, `w`, `h`, `radius`, `fill`, `stroke`, `width`, `dash`, `shadow`, `opacity` |
 | `path` | `d` (SVG path data, at most 8192 bytes), `bounds` `[x, y, width, height]`, `fill`, `stroke`, `width`, `dash`, `cap`, `rule` (`nonzero`, `evenodd`), `opacity` |
 | `text` | `x`, `y`, `text` or up to 64 `runs` `{text, color}`, `style` (`title`, `strong`, `body`, `caption`, `display`, `mono`, `monoSmall`), `align`, `color`, `maxWidth`, `opacity` |
-| `image` | `x`, `y`, `w`, `h`, `src`: a PNG path inside the plugin package |
+| `image` | `x`, `y`, `w`, `h`, `src`: a PNG path inside the plugin package, `opacity` |
 | `group` | `x`, `y`, `scale`, `w`, `h`, `radius`, `clip`, `children`, `on` (`click`), `label`, `tooltip`, `states` (`hover`, `pressed`, `selected`), `selected`, `opacity`, `shadow`, `hidden` |
 
-- Text uses the host's interface and monospace fonts at the named style; a
-  plugin cannot choose a font. Text longer than `maxWidth` ends with an ellipsis.
+- Text is one line with its baseline at `y`. `align` puts the line's start
+  (the default), middle, or end at `x`. Text uses the host's interface and
+  monospace fonts at the named style; a plugin cannot choose a font. Text
+  longer than `maxWidth` ends with an ellipsis.
 - A color is `#RRGGBB`, `#RRGGBBAA`, a theme token (`$text`, `$textSecondary`,
   `$textMuted`, `$accent`, `$success`, `$warning`, `$error`, `$surface`,
   `$background`, `$sidebar`, `$line`, `$hover`, `$selection`, `$badge`), a
   `{light, dark}` pair, or `{linear: [[offset, color], …], angle}` with 2–8
   stops. Tokens and pairs follow the theme; a fixed color is for content that
   shows a color itself, such as a color-scheme preview.
+- A gradient's `angle` is in degrees clockwise from pointing up, as in CSS
+  `linear-gradient`: 0 runs upward, 90 to the right, and 180, the default,
+  downward. Its line passes through the middle of the shape (a path's
+  `bounds`, or the box of its points) and is as long as it takes for the
+  corners the angle points at to take the first and the last stop.
+- A group's `x` and `y` place its origin, and `scale` scales what is inside
+  it: its `children`, `w`, `h`, and `radius` are in the group's own
+  coordinates.
 - A group with `on: ["click"]` is a control and needs `id`, `w` and `h` (its
   hit area), and `label`, read by screen readers. Tab moves between clickable
   groups. The host draws `states` without a round trip: `fill`, `stroke`,
@@ -5272,6 +5320,12 @@ drag the empty area, and `zoom` is the `[minimum, maximum]` range around 1
   and sizes are within ±1,000,000. Blur, filters, blend modes, radial
   gradients, custom fonts, animation, and text input are not part of a canvas;
   input uses host controls beside it.
+- An `image` is read from the installed package the way its icons are: the
+  path stays inside the package, through real directories, to a regular PNG
+  file within the limits below. The host loads it off the window thread the
+  first time a scene draws it and keeps it until the view closes. Until then,
+  and for a file that is missing, too large, or cannot be decoded, the scene
+  draws without it; the host logs a failure once.
 - Canvas text is not searched. A settings region names its words in
   [`keywords`](#settings-regions).
 
@@ -5286,6 +5340,7 @@ drag the empty area, and `zoom` is the `[minimum, maximum]` range around 1
 | Canvases of one view | 8 |
 | Nodes of one canvas | 2000 |
 | One canvas scene, as JSON | 256 KiB |
+| One canvas image file | 256 KiB, at most 1024 × 1024 pixels |
 | Patches of one result | 512 |
 
 Node, tree item, and canvas node IDs are 1–64 letters, digits, `.`, `_`, or

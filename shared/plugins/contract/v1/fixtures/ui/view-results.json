@@ -22,7 +22,7 @@
             {"type": "rect", "x": 0, "y": 0, "w": 320, "h": 160, "radius": 8, "fill": "$surface"},
             {"type": "group", "id": "node.core", "x": 20, "y": 20, "w": 120, "h": 40, "radius": 6,
              "on": ["click"], "label": "core module", "states": {"hover": {"fill": "$hover"}}, "children": [
-              {"type": "text", "x": 60, "y": 20, "text": "core", "style": "strong", "align": "center"}
+              {"type": "text", "x": 60, "y": 25, "text": "core", "style": "strong", "align": "center"}
             ]}
           ]}
         ]

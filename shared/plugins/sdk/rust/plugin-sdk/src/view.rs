@@ -26,6 +26,9 @@ pub enum ViewEventKind {
     Select,
     Activate,
     Viewport,
+    /// The view's width stopped changing, for a view with a canvas whose
+    /// `on` lists `resize`; [`ViewEvent::width`] is the new width.
+    Resize,
     /// The effective or draft setting values changed.
     Settings,
 }
@@ -40,6 +43,7 @@ impl ViewEventKind {
             "select" => Self::Select,
             "activate" => Self::Activate,
             "viewport" => Self::Viewport,
+            "resize" => Self::Resize,
             "settings" => Self::Settings,
             _ => return None,
         })
@@ -87,6 +91,10 @@ pub struct ViewEvent {
     /// A select or activate event: the tree item ID.
     pub item: Option<String>,
     pub viewport: Option<Viewport>,
+    /// The width in points the host lays the view out in, on every event
+    /// from a host that reports it. List `resize` in a canvas's `on` only
+    /// when it is present: a host without it may refuse the canvas.
+    pub width: Option<f64>,
 }
 
 impl ViewEvent {
@@ -146,6 +154,10 @@ impl ViewEvent {
                 })
             }
         };
+        let width = match object.get("width") {
+            None | Some(Value::Null) => None,
+            Some(width) => Some(width.as_f64().ok_or_else(invalid)?),
+        };
         let value = match object.get("value") {
             None | Some(Value::Null) => None,
             Some(value @ (Value::String(_) | Value::Bool(_) | Value::Number(_))) => {
@@ -166,6 +178,7 @@ impl ViewEvent {
             setting: optional("setting")?,
             item: optional("item")?,
             viewport,
+            width,
         })
     }
 }
@@ -290,6 +303,7 @@ mod tests {
         let parsed = ViewEvent::parse(&event(json!({
             "node": "otp", "setting": "otpRelease", "value": "27",
             "viewport": { "x": 0, "y": 10.5, "width": 1200, "height": 640 },
+            "width": 612,
         })))
         .unwrap();
         assert_eq!(parsed.kind, ViewEventKind::Change);
@@ -299,15 +313,21 @@ mod tests {
         assert_eq!(parsed.setting.as_deref(), Some("otpRelease"));
         assert_eq!(parsed.value, Some(json!("27")));
         assert_eq!(parsed.viewport.unwrap().y, 10.5);
+        assert_eq!(parsed.width, Some(612.0));
         assert_eq!(parsed.item, None);
         // An optional field sent as null counts as absent.
         let absent = ViewEvent::parse(&event(
-            json!({ "node": null, "value": null, "viewport": null }),
+            json!({ "node": null, "value": null, "viewport": null, "width": null }),
         ))
         .unwrap();
         assert_eq!(
-            (absent.node, absent.value, absent.viewport),
-            (None, None, None)
+            (absent.node, absent.value, absent.viewport, absent.width),
+            (None, None, None, None)
+        );
+        let resize = ViewEvent::parse(&event(json!({ "event": "resize", "width": 340 }))).unwrap();
+        assert_eq!(
+            (resize.kind, resize.width),
+            (ViewEventKind::Resize, Some(340.0))
         );
     }
 
@@ -323,6 +343,7 @@ mod tests {
             event(json!({ "node": 3 })),
             event(json!({ "value": ["a"] })),
             event(json!({ "viewport": { "x": 0 } })),
+            event(json!({ "width": "wide" })),
         ] {
             let error = ViewEvent::parse(&params).unwrap_err();
             assert_eq!(error.code(), INVALID_EVENT, "{params}");

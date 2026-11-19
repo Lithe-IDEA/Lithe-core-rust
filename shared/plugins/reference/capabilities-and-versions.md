@@ -56,7 +56,8 @@ Core 列以本仓库 `main` 上的 Core 源码为准（[`capabilities.rs`](https
 | `beforeLaunchTasks` `0` | `buildSystems[].beforeLaunchTasks`：插件声明的启动前任务（如“运行 Go 命令”），列在运行配置“启动前”的“添加新任务”菜单里；宿主按声明的字段画任务表单，Core 用 `runConfig.checkBeforeLaunchTask` 校验值、`build.beforeLaunchTaskPlan` 在拥有这个步骤列表的配置的工作目录里展开命令行 | ✅ | ✅ | [Before-launch tasks](../contract/v1/README.md#before-launch-tasks) |
 | `vcsProviders` `0` | [`vcsProviders[]`](../contract/v1/README.md#vcs-providers)；说 `litheVcs` | ✅ | ✅¹ | [版本控制提供者](domains/vcs.md) |
 | `debugAdapters` `0` | [`debugAdapters[]`](../contract/v1/README.md#debug-adapters)：独立适配器、语言服务器内的适配器、[远程附加](../contract/v1/README.md#remote-attach)、参数和环境变量、[`features` 与 `defaults`](../contract/v1/README.md#adapter-features-and-defaults) | ✅ | ✅ | [调试适配器](domains/debug-adapters.md) |
-| `managedRuntimes` `0` | 固定归档、插件后端资格检查、跨版本缓存与安装前准备；权限 `runtimes.install` | ✅ | 配套宿主接入后声明 | [Managed runtimes](../contract/v1/README.md#managed-runtimes) |
+| `managedRuntimes` `0` | 固定归档、插件后端资格检查、跨版本缓存与安装前准备；权限 `runtimes.install` | ✅ | ✅ | [Managed runtimes](../contract/v1/README.md#managed-runtimes) |
+| `managedRuntimes` `1` | 在 `0` 基础上允许每个平台归档声明最多 8 个 HTTPS `mirrors` 镜像地址，不改变 `cacheKey` | ✅ | 配套宿主接入后声明 | [Managed runtimes](../contract/v1/README.md#managed-runtimes) |
 | `commandInstallers` `0` | [`commandInstallers[]`](../contract/v1/README.md#command-installers)：用插件已依赖的工具安装 `systemCommand` 启动缺的裸命令，装到 Lithe 管理的目录（`managed`）或工具默认位置（`toolDefault`），用户确认后才运行 | ✅ | ✅ | [工具链](domains/toolchains.md#安装缺失的命令) |
 | `outputLinkMatchers` `0` | [`outputLinkMatchers[]`](../contract/v1/README.md#output-link-matchers)：插件声明的匹配规则让 Run 和测试控制台的输出出现链接；Core 负责匹配，`resolve` 函数在点击时才调用 | ✅ | ✅ | [语言](domains/languages.md) |
 | `projectGenerators` `0` | [`projectGenerators[]`](../contract/v1/README.md#project-generators)：新建项目窗口里的条目，含 [`tool` 字段](../contract/v1/README.md#tool-fields) | ✅ | ✅ | [项目生成器](domains/project-generators.md) |
@@ -74,7 +75,6 @@ Core 列以本仓库 `main` 上的 Core 源码为准（[`capabilities.rs`](https
 - 构建提供者的调试准备、模型输入、原生配置、内联测试报告和运行期调试；构建系统的实例选项和任务准备。
 - 插件声明的运行配置类型只能运行，不能调试。
 - 不属于任何工具窗口的 `ui` 命令。
-- 工具窗口和设置区域里的[插件视图](../contract/v1/README.md#plugin-views)，以及 `settingRegions` 的搜索关键词。
 - VCS 提供者的逐行追溯（annotation）、文件历史、文件操作、元数据监听、认证、历史提交差异、项目树与编辑器行号栏状态，以及 `lithe/vcs/execution` 控制台输出。
 - 后端宿主服务：工作区文件与搜索（`workspace/readDirectory`、`stat`、`readFile`、`watch`、`findFiles`、`findText`）和 `preview/openHTML` 尚未注册，请求这些权限的插件被拒绝。运行期以 `lithe/host/getCapabilities` 的返回为准，见 [API 总表](api-catalog.md)。
 
@@ -112,7 +112,7 @@ Core 列以本仓库 `main` 上的 Core 源码为准（[`capabilities.rs`](https
 
 ### 官方 SDK
 
-Node.js SDK 0.5.0、Java SDK 0.5.0 和 Rust SDK 0.4.0 说的是版本 `0` 的协议；`main` 上的 SDK 源码另外支持 `litheBuild` `1`（`lithe/build/runEntrypoints`），回答宿主提供的最新版本，随下一次 SDK 发布提供；各 SDK 封装哪些协议见契约的 [Official backend SDK](../contract/v1/README.md#official-backend-sdk) 和各自的 [Node.js](../sdk/node/README.md)、[Java](../sdk/java/README.md)、[Rust](../sdk/rust/README.md) README。下载地址在 [Lithe-core-rust 的 Releases](https://github.com/Lithe-IDEA/Lithe-core-rust/releases)。
+Node.js SDK 0.5.0、Java SDK 0.5.0、Rust SDK 0.4.0 和还没发布的 Go SDK 说的是版本 `0` 的协议；`main` 上的 Node.js 和 Java SDK 源码另外支持 `litheBuild` `1`（`lithe/build/runEntrypoints`），回答宿主提供的最新版本，随下一次 SDK 发布提供；各 SDK 封装哪些协议见契约的 [Official backend SDK](../contract/v1/README.md#official-backend-sdk) 和各自的 [Node.js](../sdk/node/README.md)、[Java](../sdk/java/README.md)、[Rust](../sdk/rust/README.md)、[Go](../sdk/go/README.md) README。Node.js、Java、Rust 的下载地址在 [Lithe-core-rust 的 Releases](https://github.com/Lithe-IDEA/Lithe-core-rust/releases)；Go SDK 不放 Releases，用 `go get` 按模块标签 `shared/plugins/sdk/go/v<版本>` 获取。新插件优先用 Rust 或 Go SDK，理由见[插件开发总览](../README.md)。
 
 ---
 
@@ -170,7 +170,8 @@ Each row is one capability. `requires` lists **exactly** the capabilities a mani
 | `beforeLaunchTasks` `0` | `buildSystems[].beforeLaunchTasks`: before-launch tasks a plugin declares (such as Run Go Command), listed in the Add New Task menu of a run configuration's Before Launch list; the host draws the task's form from the declared fields, Core checks the values with `runConfig.checkBeforeLaunchTask` and expands the command line with `build.beforeLaunchTaskPlan` in the working directory of the configuration whose list names the step | ✅ | ✅ | [Before-launch tasks](../contract/v1/README.md#before-launch-tasks) |
 | `vcsProviders` `0` | [`vcsProviders[]`](../contract/v1/README.md#vcs-providers); they speak `litheVcs` | ✅ | ✅¹ | [VCS providers](domains/vcs.md) |
 | `debugAdapters` `0` | [`debugAdapters[]`](../contract/v1/README.md#debug-adapters): standalone adapters, adapters inside a language server, [remote attach](../contract/v1/README.md#remote-attach), arguments and environment, [`features` and `defaults`](../contract/v1/README.md#adapter-features-and-defaults) | ✅ | ✅ | [Debug adapters](domains/debug-adapters.md) |
-| `managedRuntimes` `0` | Pinned archives, plugin-owned qualification, version-independent cache and install preflight; permission `runtimes.install` | ✅ | Declared with companion host integration | [Managed runtimes](../contract/v1/README.md#managed-runtimes) |
+| `managedRuntimes` `0` | Pinned archives, plugin-owned qualification, version-independent cache and install preflight; permission `runtimes.install` | ✅ | ✅ | [Managed runtimes](../contract/v1/README.md#managed-runtimes) |
+| `managedRuntimes` `1` | Extends `0` with up to 8 optional HTTPS `mirrors` URLs per platform artifact without changing `cacheKey` | ✅ | Declared with companion host integration | [Managed runtimes](../contract/v1/README.md#managed-runtimes) |
 | `commandInstallers` `0` | [`commandInstallers[]`](../contract/v1/README.md#command-installers): install a bare command a `systemCommand` launch lacks with a tool the plugin already requires, into a directory Lithe manages (`managed`) or the tool's default location (`toolDefault`), only after the user confirms | ✅ | ✅ | [Toolchains](domains/toolchains.md#installing-missing-commands) |
 | `outputLinkMatchers` `0` | [`outputLinkMatchers[]`](../contract/v1/README.md#output-link-matchers): plugin-declared patterns that turn Run and Test console output into links; Core does the matching, and the `resolve` function is called only on click | ✅ | ✅ | [Languages](domains/languages.md) |
 | `projectGenerators` `0` | [`projectGenerators[]`](../contract/v1/README.md#project-generators): entries of the New Project window, including [`tool` fields](../contract/v1/README.md#tool-fields) | ✅ | ✅ | [Project generators](domains/project-generators.md) |
@@ -188,7 +189,6 @@ Each row is one capability. `requires` lists **exactly** the capabilities a mani
 - For build providers: debug preparation, model inputs, native configuration, inline test reports, and runtime debugging; for build systems: instance options and task preparations.
 - Run configuration types a plugin declares run but cannot be debugged.
 - `ui` commands that belong to no tool window.
-- [Plugin views](../contract/v1/README.md#plugin-views) in tool windows and settings regions, and the search keywords of `settingRegions`.
 - For VCS providers: annotation, file history, file operations, metadata watching, authentication, history entry diffs, status in the project tree and the editor gutter, and `lithe/vcs/execution` console output.
 - Backend host services: the workspace file and search methods (`workspace/readDirectory`, `stat`, `readFile`, `watch`, `findFiles`, `findText`) and `preview/openHTML` are not registered, so a plugin that asks for one of those permissions is refused. At runtime, the reply of `lithe/host/getCapabilities` is authoritative; see the [API catalog](api-catalog.md).
 
@@ -226,4 +226,4 @@ The `version` of an exported or called plugin function (1 to 1000) is not a cont
 
 ### Official SDKs
 
-Node.js SDK 0.5.0, Java SDK 0.5.0, and Rust SDK 0.4.0 speak the version `0` protocols; the SDK sources on `main` also speak `litheBuild` `1` (`lithe/build/runEntrypoints`) and answer the newest version the host offers, which the next SDK release ships; which protocols each SDK wraps is in the contract's [Official backend SDK](../contract/v1/README.md#official-backend-sdk) and in the [Node.js](../sdk/node/README.md), [Java](../sdk/java/README.md), and [Rust](../sdk/rust/README.md) READMEs. Downloads are on the [Lithe-core-rust Releases](https://github.com/Lithe-IDEA/Lithe-core-rust/releases) page.
+Node.js SDK 0.5.0, Java SDK 0.5.0, Rust SDK 0.4.0, and the unreleased Go SDK speak the version `0` protocols; the Node.js and Java SDK sources on `main` also speak `litheBuild` `1` (`lithe/build/runEntrypoints`) and answer the newest version the host offers, which the next SDK release ships; which protocols each SDK wraps is in the contract's [Official backend SDK](../contract/v1/README.md#official-backend-sdk) and in the [Node.js](../sdk/node/README.md), [Java](../sdk/java/README.md), [Rust](../sdk/rust/README.md), and [Go](../sdk/go/README.md) READMEs. Node.js, Java, and Rust downloads are on the [Lithe-core-rust Releases](https://github.com/Lithe-IDEA/Lithe-core-rust/releases) page; the Go SDK is not on Releases and is fetched with `go get` by module tag `shared/plugins/sdk/go/v<version>`. New plugins should prefer the Rust or Go SDK; see the [plugin overview](../README.md) for why.

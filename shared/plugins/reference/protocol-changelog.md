@@ -14,7 +14,7 @@
 
 ## 待合入
 
-目前没有。
+- 官方 SDK 新增 Go（—）：Go 插件后端 SDK 放在 `shared/plugins/sdk/go`，模块路径 `github.com/Lithe-IDEA/Lithe-core-rust/shared/plugins/sdk/go`，需要 Go 1.22 或更高版本，只用标准库，按模块标签 `shared/plugins/sdk/go/v<版本>` 发布（还没有推送标签）。它实现函数协议和宿主服务（凭据、工作区、文档与编辑器、预览、浏览器、窗口消息、`functions/providers` 与 `functions/invoke`、原生终端、订阅）、插件视图 `View(id, handler)` 和 `litheKeymapImport` 0，不实现构建和 VCS 提供者。契约 README 的 Official backend SDK 加上 `sdk/go` 一段：在 Unix 上把协议移到 stdout 的副本、stdout 指向 stderr，处理函数 panic 只结束这一次调用。Go 示例后端和 Rust 示例后端跑同一个插件后端场景，`sdk-e2e.mjs` 新增 `plugin_sdk_go`。插件总览、日志指南和各参考页列出 Go SDK，并推荐新插件优先用 Rust 或 Go SDK（构建后端照旧用 Node.js 或 Java SDK，VCS 后端用 Node.js SDK）。没有新增版本号、宿主方法、通知或协议字段。
 
 ## 按协议查首次出现
 
@@ -27,7 +27,7 @@
 | 插件 API 版本 `pluginAPIVersion` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | 插件清单 `schemaVersion` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | 市场索引 `schemaVersion` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
-| 原生 UI 文档 `schemaVersion`（已删除：`ui` 0 内改为插件视图，视图结果不带版本号，见待合入） | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
+| 原生 UI 文档 `schemaVersion`（已删除：`ui` 0 内改为插件视图，视图结果不带版本号，见 [#104](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/104)） | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `litheBuildModel`、`litheDependencies`、`litheTestResults`、`litheTestDiscovery`、`litheBuildConfiguration`、`litheConfigurationEdit` 和 `modelInputs` 快照的 `version` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `plugins.editorActions.decode` 请求的 `version` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | 插件网页桥 `window.lithe.version` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
@@ -57,6 +57,7 @@
 | `projectGenerators` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `beforeLaunchTasks` | 0 | 2026-11-18 | [#97](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/97) |
 | `managedRuntimes` | 0 | 2026-11-18 | [#96](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/96) |
+| `managedRuntimes` | 1 | 2026-11-19 | [#108](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/108) |
 | `runConfigurationTypes` | 0 | 2026-11-18 | [#94](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/94) |
 | `sourceSettings` | 0 | 2026-11-15 | [#57](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/57) |
 | `sourceSettings` | 1 | 2026-11-17 | [#79](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/79) |
@@ -144,10 +145,19 @@
 
 ## 时间线（新的在上）
 
+### 2026-11-19
+
+| PR | 修改人 | API 编号 | 协议 / 能力 | 改了什么 |
+| --- | --- | --- | --- | --- |
+| [#109](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/109) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | API-13 | `ui` 0 内的补充（API-13） | 视图事件新增 `width` 和 `resize`，画布可以跟随窗口宽度重新排版。会报告宽度的宿主在每个视图事件里带 `width`（排版视图节点用的宽度，单位为点，至少为 1 的整数，也是顶层画布的宽度），并且量到宽度之后才发 `open`；画布的 `on` 除 `viewport` 外可以写 `resize`，视图里有这样的画布时，宽度停止变化 400 ms 后宿主发 `resize` 和新的 `width`，等待中的 `resize` 可以合并成最新的一个。插件只有在收到带 `width` 的事件后才写 `resize`：不报告宽度的宿主不发 `resize`，它的 Core 也会拒绝写了 `resize` 的画布。契约 README 同时写明画布在缩放 1 时怎样放 `viewBox`：不写 `pan` 时显示整个 `viewBox`，按视图宽度缩放但不超过 `height`，从区域左上角开始；写了 `pan` 时宽度占满视图、上边对齐区域顶部，缩小到比区域窄时水平居中。以前的说明只有“按视图宽度缩放、`height` 点高”，在更宽的窗口里会裁掉场景下半部分。Core 的画布校验接受 `on: ["viewport", "resize"]`，`plugin-ui.schema.json` 的 canvas 说明和 `on` 同步；Rust SDK 新增 `ViewEventKind::Resize` 和 `ViewEvent::width`，Java SDK 新增 `Kind.RESIZE` 和 `width()`，Node SDK 的 `ViewEventKind` 加上 `resize`、`ViewEvent` 加上 `width`、画布 `on` 的类型放宽，三个 SDK 的 README 补充用法；`domains/settings.md` 中英两段说明区域画布怎样按 `width` 排版，以及旧宿主下的固定宽度（语言页约 610 点、构建系统页和编译器页右侧详情约 340 点）（[1lck/Lithe-IDEA#2181](https://github.com/1lck/Lithe-IDEA/issues/2181)）。没有新增能力版本、宿主方法、通知或 SDK 版本，取代 [#107](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/107)。 |
+| [#108](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/108) | [@1lck](https://github.com/1lck) | API-23 | **`managedRuntimes` 1** | 受管运行时的每个平台归档可以写 `mirrors`：最多 8 个备用 HTTPS 地址，提供与 `url` 同一个 SHA-256 固定的归档，不改变 `cacheKey`。Core 要求镜像地址不带凭据和片段、彼此不同且不同于 `url`；写了 `mirrors` 却没有声明 `managedRuntimes: 1` 的清单被拒绝，其他插件继续写 0。清单 schema 的 `requires.managedRuntimes` 加上版本 1、平台归档加上 `mirrors`；[能力与协议版本对照](capabilities-and-versions.md)把 `managedRuntimes` 0 的桌面端一列改为 ✅，新增版本 1 一行。没有新增宿主方法、通知或 SDK 版本。宿主须先声明 `managedRuntimes` 1，插件才可要求它。 |
+| [#105](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/105) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | API-13、API-19 | `ui` 0、`settings` 0 内的说明补充（API-13、API-19） | 契约 README 写明画布 `image` 节点怎样读取：路径留在插件包内、经过真实目录、指向普通 PNG 文件，单个文件最多 256 KiB、每边最多 1024 像素（预算表新增一行）；宿主在场景第一次画到它时于窗口线程外读取，保留到视图关闭，读到之前或读取失败时场景不画它，失败只记一次日志。`image` 节点的字段表补上 `opacity`。文字是一行，基线在 `y`，`align` 把行首（默认）、中点或行尾放在 `x`；渐变 `angle` 与 CSS `linear-gradient` 一致（0 向上、90 向右、默认 180 向下），渐变线穿过形状中心；分组的 `x`、`y` 放置原点，`scale` 缩放内部，`children`、`w`、`h`、`radius` 都在分组自己的坐标里；捏合缩放只在宿主能上报捏合时可用。fixture `fixtures/ui/view-results.json` 的文字基线移到卡片中间。[能力与协议版本对照](capabilities-and-versions.md)删掉“插件视图尚未在桌面端绘制”的脚注，`domains/ui.md`、`domains/settings.md` 的桌面端一行改为已呈现插件视图、设置区域和包内翻译 `l10n/`（[1lck/Lithe-IDEA#2181](https://github.com/1lck/Lithe-IDEA/issues/2181)）。没有新增版本号、宿主方法、通知或 SDK 版本。 |
+
 ### 2026-11-18
 
 | PR | 修改人 | API 编号 | 协议 / 能力 | 改了什么 |
 | --- | --- | --- | --- | --- |
+| [#104](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/104) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | API-13、API-19、API-37 | `ui` 0、`settings` 0 内的替换 | 插件视图取代宿主绘制的原生 UI 文档。插件后端的视图函数（经已有的 `lithe/function/invoke` 调用）按事件（`open`、`close`、`click`、`change`、`select`、`activate`、`viewport`、`settings`）返回界面树或补丁：宿主控件（行、分区、文字、输入框、下拉、分段、开关、按钮、键值、表格、横幅、绑定设置的设置行、显示插件工具解析结果的工具行）、树和画布节点（可带圆角的矩形、路径、文字、图片、可点击分组及悬停/按下/选中状态），新 schema [`plugin-ui.schema.json`](../contract/v1/plugin-ui.schema.json) 取代 `native-ui.schema.json`，原生 UI 文档的 `schemaVersion` 一并删除。Core 新增命令 `plugins.ui.applyResult`：按清单、界面（工具窗口或设置区域）和上一版视图校验每个结果，返回新视图和是否变化，超出预算或违反界面规则以 `plugin.ui.invalidView`（带 `field`）拒绝。清单新增 `settingRegions`（最多 16 个）：插件在语言、构建系统或编译器页（不写 `page` 时为插件自己的设置标签）放搜索关键词、插件视图或两者，设置搜索按关键词找到页面；`l10n/<语言>.json` 新增 `settingRegions.<id>.keywords`，翻译的关键词追加在声明的后面、忽略大小写去重。fixture `fixtures/ui/view-panel.plugin.json`、`fixtures/ui/view-results.json`，`fixtures/settings/` 补设置区域与中文关键词。Node、Rust、Java 三个 SDK 新增 `view(id, handler)`：把参数读成视图事件（不合法时 `sdk.view.invalidEvent`，处理函数不会运行），把返回的整个视图、补丁或“没有变化”写成结果；Node SDK 的 `index.d.ts` 给出界面节点、画布节点和补丁的类型。没有新增版本号、宿主方法、通知或 SDK 版本；这一版插件不能主动推送视图。 |
 | [#102](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/102) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | API-23、API-19 | `toolDefinitions` 1 内的补充 | `toolchains.settingsView` 的 `issues` 每项改为 `{index,status,group?}`：查询分组时 `group` 是工具所在分组的键，宿主从问题列表打开这个工具时可以一并展开它的分组，不必自己拼分组键；契约 README 同时写明 `issues` 一直不受查询影响、先错误后警告并各按名称排序。没有新增版本号、宿主方法、通知或 SDK 版本。 |
 | [#99](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/99) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | API-23、API-19 | **`toolDefinitions` 1** | 工具定义新增只影响显示位置的 `category`（`runtime`、`build`、`package`、`debug`、`lint`、`other`，默认 `other`）和 `audience`（`user` 默认，`plugin` 表示插件自用的运行时）；用到任一字段的插件声明 `toolDefinitions: 1`，只支持 0 的宿主不会安装，其他插件继续写 0。新增 Core 命令 `toolchains.settingsView`：按宿主已有的解析原因、固定和未应用状态给设置页工具列表分类（`error`、`warning`、`ok`）、筛选、分组、折叠和计数，最多 20,000 个工具。`plugins.settings.navigation` 支持三级、每项可选 `limit`（超出的子项折叠成一行“全部 N 个”）以及每行的 `matched` 与 `path`。清单 schema 的 `requires.buildProviders` 补上 #89 已支持的版本 1。没有新增宿主方法、通知或 SDK 版本。宿主须先声明 `toolDefinitions` 1，插件才可要求它。 |
 | [#97](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/97) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | API-29 | **`beforeLaunchTasks` 0** | 运行配置“启动前”的插件任务（对标 IntelliJ IDEA 的“添加新任务”，[1lck/Lithe-IDEA#2100](https://github.com/1lck/Lithe-IDEA/issues/2100)）：构建系统新增 `beforeLaunchTasks`（最多 16 个），声明方式和 `runConfigurationTypes` 相同（`id`、`displayName`、可选 `description`、`icon`、最多 16 个 `fields` 和 `arguments` 模板），但任务总是运行到结束，不能写 `execution`，`arguments` 不能用 `${userArguments}`；任务 ID 与类型 ID 各自唯一。运行配置的 `beforeLaunch` 步骤除 `{configuration}` 外新增 `{task: {pluginID, buildSystemID, type, values}}`，任务在拥有这个步骤列表的配置的工作目录里运行，不带程序参数和环境变量；步骤对象不允许出现别的键。Core 新增命令 `runConfig.checkBeforeLaunchTask`（校验“添加新任务”小表单的值，返回要放进字段值的步骤）、`runConfig.beforeLaunchField`（给不用 `runConfig.editorForm` 的编辑器，例如构建运行的编辑器，返回已保存配置的 `beforeLaunch` 字段）和 `build.beforeLaunchTaskPlan`（把任务步骤展开成 argv 计划）；`runConfig.editorForm` 的 `beforeLaunch` 字段新增 `tasks`（已安装插件声明的任务种类及其表单），字段值里的任务步骤是 `{task, name, summary, values}`，插件已卸载的是 `{task, name, summary, missing: true}`；`runConfig.beforeLaunch`、`runConfig.updateOptions`、`runConfig.saveEditorChanges` 新增请求字段 `runTypePlugins`，`runConfig.beforeLaunch` 的任务步骤返回 `{task, name, summary, workingDirectory}`，拒绝码新增 `taskNotDeclared` 和 `invalidTaskValues`（带 `task`），确认指纹也覆盖任务及其值和工作目录。`runConfigurationTypes` 的必填 `arguments` 字段留空现在会被拒绝（以前没有执行 `required`）。语言文件新增 `beforeLaunchTasks.<构建系统 ID>.<任务 ID>`；保存的值不合法时是 `plugin.build.invalidBeforeLaunchTask`（字段 `values.<id>`）。新增 fixture `before-launch-tasks/`。用到它的插件声明 `beforeLaunchTasks: 0`，不认识它的宿主不会安装。没有新增宿主方法或通知。 |

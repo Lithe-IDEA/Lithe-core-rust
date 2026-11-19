@@ -9,6 +9,11 @@ backend.view('explorer.draw', (event, context) => {
   void draft;
   void context.operationID;
   if ('settingRegionID' in event.surface) return {};
+  // A scene that follows the window lays itself out at the reported width.
+  const width: number = event.width ?? 610;
+  if (event.event === 'resize') {
+    return { view: [{ type: 'canvas', id: 'fit', label: 'Fit', height: 120, viewBox: [0, 0, width, 120], on: ['resize'], nodes: [] }] };
+  }
   if (event.event === 'open') {
     const graph: CanvasNode[] = [
       { type: 'path', id: 'edge', d: 'M190 20C234 20 216 80 260 80', stroke: '$line', width: 1.5 },

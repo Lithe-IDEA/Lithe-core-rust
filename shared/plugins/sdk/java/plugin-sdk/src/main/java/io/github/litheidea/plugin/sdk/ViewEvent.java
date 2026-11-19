@@ -28,6 +28,11 @@ public final class ViewEvent {
         SELECT("select"),
         ACTIVATE("activate"),
         VIEWPORT("viewport"),
+        /**
+         * The view's width stopped changing, for a view with a canvas whose
+         * {@code on} lists {@code resize}; {@link ViewEvent#width()} is the new width.
+         */
+        RESIZE("resize"),
         /** The effective or draft setting values changed. */
         SETTINGS("settings");
 
@@ -96,6 +101,7 @@ public final class ViewEvent {
     private final String setting;
     private final String item;
     private final Viewport viewport;
+    private final Double width;
 
     private ViewEvent(Map<String, Object> params) {
         kind = Kind.parse(required(params, "event"));
@@ -128,6 +134,7 @@ public final class ViewEvent {
             Map<String, Object> area = object(box);
             viewport = new Viewport(number(area, "x"), number(area, "y"), number(area, "width"), number(area, "height"));
         }
+        width = params.get("width") == null ? null : number(params, "width");
     }
 
     /**
@@ -211,6 +218,15 @@ public final class ViewEvent {
     /** A viewport event: the visible part of the canvas; or null. */
     public Viewport viewport() {
         return viewport;
+    }
+
+    /**
+     * The width in points the host lays the view out in, on every event from a
+     * host that reports it; or null. List {@code resize} in a canvas's
+     * {@code on} only when it is present: a host without it may refuse the canvas.
+     */
+    public Double width() {
+        return width;
     }
 
     private static PluginSdkError invalid() {

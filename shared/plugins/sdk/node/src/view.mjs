@@ -4,7 +4,7 @@
 
 import { PluginSdkError } from './errors.mjs';
 
-const KINDS = new Set(['open', 'close', 'click', 'change', 'select', 'activate', 'viewport', 'settings']);
+const KINDS = new Set(['open', 'close', 'click', 'change', 'select', 'activate', 'viewport', 'resize', 'settings']);
 const OPTIONAL_TEXT = ['node', 'canvas', 'setting', 'item'];
 
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -20,7 +20,7 @@ export function checkViewEvent(params) {
   const invalid = () => new PluginSdkError('sdk.view.invalidEvent', 'Invalid view event.');
   if (!isObject(params) || !KINDS.has(params.event)) throw invalid();
   if (typeof params.instance !== 'string' || typeof params.language !== 'string') throw invalid();
-  const { surface, settings, value, viewport } = params;
+  const { surface, settings, value, viewport, width } = params;
   if (!isObject(surface) || !isOptionalText(surface.toolWindowID) || !isOptionalText(surface.settingRegionID)
       || isAbsent(surface.toolWindowID) === isAbsent(surface.settingRegionID)) {
     throw invalid();
@@ -32,5 +32,6 @@ export function checkViewEvent(params) {
       && ['x', 'y', 'width', 'height'].every((key) => typeof viewport[key] === 'number'))) {
     throw invalid();
   }
+  if (!isAbsent(width) && typeof width !== 'number') throw invalid();
   return params;
 }

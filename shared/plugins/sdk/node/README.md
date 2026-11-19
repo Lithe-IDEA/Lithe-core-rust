@@ -146,7 +146,11 @@ Nodes are plain objects shaped as
 [`plugin-ui.schema.json`](../../contract/v1/plugin-ui.schema.json) describes;
 `index.d.ts` types them as `ViewNode`, `CanvasNode` and `ViewPatch`. Core
 checks every answer, and the host draws nothing that Core refused. Return view
-text in `event.language`.
+text in `event.language`. A host that reports the view's width sends it as
+`event.width` on every event; a canvas that follows the window lays itself
+out at that width, lists `resize` in its `on`, and answers the `resize` event
+with the scene laid out again
+([Canvas](../../contract/v1/README.md#canvas)).
 
 ```js
 backend.view('explorer.draw', (event) => {
@@ -524,11 +528,11 @@ node --test shared/plugins/sdk/node/test/*.test.mjs
 npm ci --prefix shared/plugins/sdk/node --ignore-scripts
 npm run --prefix shared/plugins/sdk/node test:types
 
-# End to end: the sample backends of all three SDKs against this checkout's Core.
+# End to end: the sample backends of all four SDKs against this checkout's Core.
 node shared/plugins/scripts/sdk-e2e.mjs
 ```
 
 The tests use a bounded in-memory host (`test/harness.mjs`), which plugin
 authors can copy to test their own backends without starting Lithe. The
-end-to-end script needs Rust, Node.js 20.3 or newer, Java
+end-to-end script needs Rust, Node.js 20.3 or newer, Go 1.22 or newer, Java
 (`LITHE_PLUGIN_SDK_JAVA_RUNTIME` or `java` on `PATH`) and Maven.
