@@ -13,7 +13,11 @@
 //! A writer thread owns the outgoing stream. Requests queue their frames for
 //! it, so a peer that stops reading blocks only that thread, and every request
 //! still ends at its own deadline.
+//!
+//! The session records its lifecycle in a [`ConnectionLog`]: the handshake
+//! outcome, a stream that ends without a shutdown request, and the release.
 
+use crate::client::connection_log::{ConnectionKind, ConnectionLog};
 use crate::client::transport::{TransportChain, TransportError};
 use crate::protocol::frame::{read_frame, skip_preamble, write_frame};
 use crate::protocol::methods::{
@@ -183,6 +187,10 @@ pub struct ConnectOptions {
     pub session_token: Option<SessionToken>,
     /// When event delivery starts.
     pub resume: ResumeMode,
+    /// Log of an attempt the caller began before the session, for example
+    /// to record the launch over its own SSH connection. `None` begins a new
+    /// one for this session.
+    pub log: Option<ConnectionLog>,
 }
 
 /// When event delivery starts after the handshake.
@@ -208,7 +216,17 @@ impl Default for ConnectOptions {
             idle_timeout: None,
             session_token: None,
             resume: ResumeMode::Immediately { after_seq: None },
+            log: None,
         }
+    }
+}
+
+impl ConnectOptions {
+    /// The caller's log, or a new one for a connection of `kind`.
+    fn log_or_begin(&self, kind: ConnectionKind) -> ConnectionLog {
+        self.log
+            .clone()
+            .unwrap_or_else(|| ConnectionLog::begin(kind))
     }
 }
 
@@ -327,6 +345,7 @@ pub struct RemoteSession {
     child: Mutex<Option<Child>>,
     stderr_tail: Arc<Mutex<VecDeque<u8>>>,
     hello: Option<HelloResult>,
+    log: ConnectionLog,
 }
 
 /// An owned request waiter. Dropping it withdraws unsent work and ignores late
@@ -389,26 +408,24 @@ impl RemoteSession {
         server_command: &[String],
         options: &ConnectOptions,
     ) -> Result<(Self, Receiver<Event>), ClientError> {
-        let command = chain
-            .command(server_command)
-            .map_err(ClientError::Transport)?;
-        let (program, arguments) = command
-            .split_first()
-            .ok_or_else(|| ClientError::Protocol("empty server command".into()))?;
-        let mut child = Command::new(program)
-            .args(arguments)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(ClientError::Spawn)?;
+        let log = options.log_or_begin(ConnectionKind::Command);
+        let mut child = spawn(chain, server_command).inspect_err(|error| {
+            log.connect_failed("connect", &error.failure_category(), "remote")
+        })?;
         let stdin = child.stdin.take().expect("stdin is piped");
         let stdout = child.stdout.take().expect("stdout is piped");
         let stderr_tail = Arc::new(Mutex::new(VecDeque::new()));
         if let Some(stderr) = child.stderr.take() {
             keep_tail(stderr, Arc::clone(&stderr_tail));
         }
-        Self::establish(stdout, Box::new(stdin), Some(child), stderr_tail, options)
+        Self::establish(
+            stdout,
+            Box::new(stdin),
+            Some(child),
+            stderr_tail,
+            options,
+            log,
+        )
     }
 
     /// Uses existing streams, for example an in-process server in tests.
@@ -417,15 +434,34 @@ impl RemoteSession {
         writer: impl Write + Send + 'static,
         options: &ConnectOptions,
     ) -> Result<(Self, Receiver<Event>), ClientError> {
-        Self::establish(reader, Box::new(writer), None, Arc::default(), options)
+        let log = options.log_or_begin(ConnectionKind::Streams);
+        Self::establish(reader, Box::new(writer), None, Arc::default(), options, log)
     }
 
+    /// Completes the handshake and records its outcome in `log`.
     fn establish(
         reader: impl Read + Send + 'static,
         writer: Box<dyn Write + Send>,
         child: Option<Child>,
         stderr_tail: Arc<Mutex<VecDeque<u8>>>,
         options: &ConnectOptions,
+        log: ConnectionLog,
+    ) -> Result<(Self, Receiver<Event>), ClientError> {
+        let result = Self::handshake(reader, writer, child, stderr_tail, options, log.clone());
+        match &result {
+            Ok((session, _)) => log.connected(session.hello()),
+            Err(error) => log.connect_failed("handshake", &error.failure_category(), "remote"),
+        }
+        result
+    }
+
+    fn handshake(
+        reader: impl Read + Send + 'static,
+        writer: Box<dyn Write + Send>,
+        child: Option<Child>,
+        stderr_tail: Arc<Mutex<VecDeque<u8>>>,
+        options: &ConnectOptions,
+        log: ConnectionLog,
     ) -> Result<(Self, Receiver<Event>), ClientError> {
         let deadline = Instant::now() + options.handshake_timeout;
         let pending = Arc::new(Mutex::new(Pending::default()));
@@ -451,6 +487,7 @@ impl RemoteSession {
                 outgoing: Arc::clone(&outgoing),
                 next_request: Arc::clone(&next_request),
                 last_seq: Arc::clone(&last_seq),
+                log: log.clone(),
             };
             thread::Builder::new()
                 .name("remote-reader".into())
@@ -467,6 +504,7 @@ impl RemoteSession {
             child: Mutex::new(child),
             stderr_tail,
             hello: None,
+            log,
         };
 
         match ready.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
@@ -535,6 +573,12 @@ impl RemoteSession {
         self.hello.as_ref().expect("set by establish")
     }
 
+    /// Lifecycle log of this connection; port forwards and the caller record
+    /// into it under the same `connection` id.
+    pub fn connection_log(&self) -> &ConnectionLog {
+        &self.log
+    }
+
     /// Returns a resource id that is unused in this session, also across
     /// reconnections.
     pub fn allocate_id(&self) -> u64 {
@@ -594,6 +638,11 @@ impl RemoteSession {
         timeout: Duration,
     ) -> Result<PendingRequest, ClientError> {
         let deadline = Instant::now() + timeout;
+        if method == methods::SERVER_SHUTDOWN {
+            // Marked before sending, so the stream ending afterwards is not an
+            // interruption.
+            self.log.shutdown_requested();
+        }
         let id = self.next_request.fetch_add(1, Ordering::Relaxed) + 1;
         let (reply_sender, reply) = mpsc::sync_channel(1);
         {
@@ -669,6 +718,13 @@ impl RemoteSession {
 
 impl Drop for RemoteSession {
     fn drop(&mut self) {
+        // Released before the stream closes, so the end of the stream that
+        // closing causes is not recorded as an interruption.
+        let persistent = self
+            .hello
+            .as_ref()
+            .is_some_and(|hello| hello.session.persistent);
+        self.log.released(persistent);
         // The writer thread then drops standard input, which is the server's
         // disconnect signal. A writer blocked on a peer that stopped reading
         // is released when the transport is killed below.
@@ -698,6 +754,33 @@ struct ReaderContext {
     outgoing: Arc<Outgoing>,
     next_request: Arc<AtomicU64>,
     last_seq: Arc<AtomicU64>,
+    log: ConnectionLog,
+}
+
+/// Starts the transport command of `chain`.
+fn spawn(chain: &TransportChain, server_command: &[String]) -> Result<Child, ClientError> {
+    let command = chain
+        .command(server_command)
+        .map_err(ClientError::Transport)?;
+    let (program, arguments) = command
+        .split_first()
+        .ok_or_else(|| ClientError::Protocol("empty server command".into()))?;
+    Command::new(program)
+        .args(arguments)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(ClientError::Spawn)
+}
+
+/// Log token for why the server stream ended; never peer bytes.
+fn stream_end_cause(error: &FrameError) -> String {
+    match error {
+        FrameError::UnexpectedEof => "eof".into(),
+        FrameError::Io(error) => format!("{:?}", error.kind()),
+        FrameError::TooLarge(_) | FrameError::PreambleNotFound { .. } => "protocol".into(),
+    }
 }
 
 fn read_loop(
@@ -712,6 +795,7 @@ fn read_loop(
         outgoing,
         next_request,
         last_seq,
+        log,
     } = context;
     let mut reader = BufReader::new(reader);
     if let Err(error) = skip_preamble(&mut reader, PREAMBLE_NOISE_LIMIT) {
@@ -723,7 +807,12 @@ fn read_loop(
     // log-exempt: User cancellation: the connecting caller already ended the handshake and no longer waits for the ready notification.
     let _ = ready.send(Ok(()));
     let mut acknowledged = 0;
-    while let Ok(Some(frame)) = read_frame(&mut reader) {
+    let cause = loop {
+        let frame = match read_frame(&mut reader) {
+            Ok(Some(frame)) => frame,
+            Ok(None) => break "eof".to_owned(),
+            Err(error) => break stream_end_cause(&error),
+        };
         match serde_json::from_slice::<Message>(&frame) {
             Ok(Message::Response { id, result, error }) => {
                 let waiter = lock(&pending).waiting.remove(&id);
@@ -738,7 +827,7 @@ fn read_loop(
             }
             Ok(Message::Event { event, params, seq }) => {
                 if !route(&routes, &events, Event { event, params, seq }) {
-                    break;
+                    break "overflow".to_owned();
                 }
                 if let Some(seq) = seq {
                     last_seq.store(seq, Ordering::Release);
@@ -749,9 +838,12 @@ fn read_loop(
                     }
                 }
             }
-            Ok(Message::Request { .. }) | Err(_) => break,
+            Ok(Message::Request { .. }) | Err(_) => break "protocol".to_owned(),
         }
-    }
+    };
+    // Recorded before waiting requests fail, so an owner that drops the
+    // session on that failure finds the session already marked lost.
+    log.stream_ended(&cause);
     close(&pending);
     // Ending every subscription tells consumers the stream is gone.
     lock(&routes).clear();

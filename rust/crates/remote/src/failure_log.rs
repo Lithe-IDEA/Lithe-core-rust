@@ -1,14 +1,35 @@
-//! Injected scalar failure facts; the owning Core supplies the only log writer.
+//! Injected scalar log facts; the owning Core supplies the only log writer.
+//!
+//! Two families cross this hook: failure facts (`stage` plus a fixed error
+//! summary and stable category) and connection lifecycle facts from
+//! [`crate::client::connection_log`]. Both carry only controlled vocabulary,
+//! counts and durations, never hosts, user names, paths, prompts, answers or
+//! session tokens.
 
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
 
-/// Complete catalog surface emitted by this adapter.
+/// Failure facts emitted by this adapter. Every one accepts exactly `stage`
+/// and `error`; the forward failures also accept an optional `connection`.
 pub const EVENTS: &[&str] = &[
     "remote.client.operation_failed",
     "remote.forward.accept_failed",
     "remote.forward.connection_failed",
+];
+
+/// Connection lifecycle facts emitted through the same hook (S34). Each has
+/// its own fields; see `rust/logging/events/remote.json`.
+pub const LIFECYCLE_EVENTS: &[&str] = &[
+    "remote.connection.connect.started",
+    "remote.connection.connect.finished",
+    "remote.connection.connect.failed",
+    "remote.connection.shell_started",
+    "remote.server.deploy_finished",
+    "remote.connection.interrupted",
+    "remote.connection.cleaned",
+    "remote.forward.started",
+    "remote.forward.removed",
 ];
 
 /// Borrowed scalar fields; callers supply only fixed summaries and stable categories.
@@ -48,26 +69,50 @@ pub fn uninstalled_count() -> u64 {
 }
 /// No error display text is accepted: only caller-controlled categories cross the hook.
 pub(crate) fn failed(event: &str, stage: &'static str, code: &str, domain: &'static str) {
-    HOOK.failed(event, stage, code, domain);
+    HOOK.failed(event, None, stage, code, domain);
+}
+/// Like [`failed`], for failure events that also accept the random
+/// `connection` log id of the session they belong to.
+pub(crate) fn failed_for(
+    event: &str,
+    connection: &str,
+    stage: &'static str,
+    code: &str,
+    domain: &'static str,
+) {
+    HOOK.failed(event, Some(connection), stage, code, domain);
+}
+/// Emits one lifecycle fact. Callers build every field from controlled
+/// vocabulary, counts and durations.
+pub(crate) fn record(event: &str, fields: Fields<'_>) {
+    HOOK.emit(event, fields);
 }
 impl Hook {
-    fn failed(&self, event: &str, stage: &'static str, code: &str, domain: &'static str) {
-        self.emit(
-            event,
-            &[
-                ("stage", json!(stage)),
-                ("error", json!("Helper operation failed")),
-                ("error_code", json!(code)),
-                ("error_domain", json!(domain)),
-            ],
-        );
+    fn failed(
+        &self,
+        event: &str,
+        connection: Option<&str>,
+        stage: &'static str,
+        code: &str,
+        domain: &'static str,
+    ) {
+        let mut fields = vec![
+            ("stage", json!(stage)),
+            ("error", json!("Helper operation failed")),
+            ("error_code", json!(code)),
+            ("error_domain", json!(domain)),
+        ];
+        if let Some(connection) = connection {
+            fields.push(("connection", json!(connection)));
+        }
+        self.emit(event, &fields);
     }
     fn teardown<T>(&self, event: &str, stage: &'static str, result: std::io::Result<T>) {
         match result {
             Ok(_) => {}
             // log-exempt: Expected absence: the peer already disconnected, so no connection is left to close or write to.
             Err(error) if disconnected_io(error.kind()) => {}
-            Err(error) => self.failed(event, stage, &format!("{:?}", error.kind()), "io"),
+            Err(error) => self.failed(event, None, stage, &format!("{:?}", error.kind()), "io"),
         }
     }
 }

@@ -1466,6 +1466,7 @@ version = "0.1.0"
 dependencies = [
  "base64",
  "libc",
+ "lithe-diagnostics",
  "serde",
  "serde_json",
  "sha2",

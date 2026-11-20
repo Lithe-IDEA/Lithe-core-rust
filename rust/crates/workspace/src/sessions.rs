@@ -12,7 +12,9 @@ use lithe_git_host::ProcessTree;
 use lithe_protocol::{CoreError, ErrorCode};
 use lithe_remote::client::launch::{launch, launch_command, LaunchError, Launched};
 use lithe_remote::client::session::{ClientError, ConnectOptions};
-use lithe_remote::client::{Hop, RemoteSession, ServerArtifact, ServerTarget, TransportChain};
+use lithe_remote::client::{
+    ConnectionKind, ConnectionLog, Hop, RemoteSession, ServerArtifact, ServerTarget, TransportChain,
+};
 use lithe_remote::protocol::methods;
 use lithe_request_context::events as execution_events;
 use serde::{Deserialize, Serialize};
@@ -226,9 +228,49 @@ pub fn connect(request: ConnectRequest) -> Result<ConnectResult, CoreError> {
 }
 
 /// `ssh_program` replaces the `ssh` found on `PATH`; tests use a stand-in.
+///
+/// The attempt is recorded in a [`ConnectionLog`]. The launch and the
+/// handshake record the failures they see themselves; this records what only
+/// the SSH process shows (authentication, host key, network), cancellation
+/// and local errors, as stable categories without diagnostics or host names.
 pub(crate) fn connect_with(
     request: ConnectRequest,
     ssh_program: Option<&str>,
+) -> Result<ConnectResult, CoreError> {
+    let log = ConnectionLog::begin(ConnectionKind::Ssh);
+    let result = connect_logged(request, ssh_program, &log);
+    match &result {
+        Ok(result) => {
+            if let Some((stage, code)) = failure_of(result.status) {
+                log.connect_failed(stage, code, "remote");
+            }
+        }
+        Err(error) if matches!(error.code, ErrorCode::Cancelled) => log.connect_cancelled(),
+        Err(error) => {
+            let code = serde_json::to_value(&error.code).unwrap_or_default();
+            log.connect_failed("connect", code.as_str().unwrap_or("unknown"), "core");
+        }
+    }
+    result
+}
+
+/// Log stage and category of an attempt that ended with `status`, or `None`
+/// when it connected. Each status has its own category.
+pub(crate) fn failure_of(status: ProbeStatus) -> Option<(&'static str, &'static str)> {
+    match status {
+        ProbeStatus::Connected => None,
+        ProbeStatus::UnsupportedPlatform => Some(("probe", "unsupported-platform")),
+        ProbeStatus::AuthenticationFailed => Some(("authentication", "authentication-failed")),
+        ProbeStatus::HostKeyRejected => Some(("authentication", "host-key-rejected")),
+        ProbeStatus::Unreachable => Some(("network", "unreachable")),
+        ProbeStatus::Failed => Some(("connect", "failed")),
+    }
+}
+
+fn connect_logged(
+    request: ConnectRequest,
+    ssh_program: Option<&str>,
+    log: &ConnectionLog,
 ) -> Result<ConnectResult, CoreError> {
     // Only the build for the host's platform is read and hashed, once the
     // probe reports it; here the target names are just validated.
@@ -310,8 +352,9 @@ pub(crate) fn connect_with(
     // this thread keeps relaying prompts and observing cancellation. Killing
     // the tree ends the helper's reads.
     let (finished, launched) = mpsc::channel();
+    let launch_log = log.clone();
     std::thread::spawn(move || {
-        let result = launch(&mut output, &mut input, |report| {
+        let artifact_for = |report: &lithe_remote::client::bootstrap::ProbeReport| {
             let target = report.target()?;
             let (_, path) = servers.iter().find(|(known, _)| *known == target)?;
             match ServerArtifact::from_file(target, path.clone().into(), server_version.clone()) {
@@ -323,7 +366,8 @@ pub(crate) fn connect_with(
                     None
                 }
             }
-        });
+        };
+        let result = launch(&mut output, &mut input, artifact_for, &launch_log);
         // log-exempt: User cancellation: abandon drops the launch receiver before killing the SSH tree.
         let _ = finished.send((result, output, input));
     });
@@ -478,6 +522,7 @@ pub(crate) fn connect_with(
     };
     let options = ConnectOptions {
         handshake_timeout: HANDSHAKE_TIMEOUT,
+        log: Some(log.clone()),
         ..ConnectOptions::default()
     };
     let (session, events) = match RemoteSession::from_streams(output, input, &options) {
