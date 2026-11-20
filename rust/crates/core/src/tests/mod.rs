@@ -15,6 +15,7 @@ mod execution_commands;
 mod file_name_order;
 mod file_operations;
 mod git;
+mod git_branch_delete;
 mod git_change_targets;
 mod git_changed_file_groups;
 mod git_diff_blocks;

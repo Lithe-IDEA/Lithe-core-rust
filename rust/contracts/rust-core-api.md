@@ -923,8 +923,9 @@ shows, top to bottom; the empty path is the workspace root. `selection` is
 `{ selected?, marked?, anchor? }`: the selected row, the paths marked for a batch
 (returned in path order) and the path a Shift click extends from. `action.kind` is
 `choose { path }` (a plain click: select the row, drop the marks and the anchor),
-`toggle { path }` (Cmd or Ctrl: mark or unmark the row, select it and make it the
-anchor), `extend { path }` (Shift: mark every row from the anchor, else from the
+`toggle { path }` (Cmd or Ctrl: when there are neither marks nor an anchor, first
+include the non-root selected row if it is visible; then toggle the clicked row,
+select it and make it the anchor), `extend { path }` (Shift: mark every row from the anchor, else from the
 selected row, else the clicked row alone, to the clicked row, keep the other marks
 and select it) or `clear` (a batch is over: drop the marks and the anchor, keep the
 selected row). The root is never marked: `toggle` and `extend` on it change nothing,
@@ -1826,8 +1827,19 @@ and `message`; the tagger identity and timestamp are intentionally not
 preserved. Deletion supplies the observed unpeeled object ID to `update-ref`,
 so a concurrent force-update fails atomically instead of deleting new state and
 returning a stale recovery target. `deleteBranch` applies the same expected-OID
-guard after checking the branch is fully merged and not checked out, then
-on success, carries a structured `branchDeletion` record —
+guard after checking the branch is fully merged and not checked out. An unmerged
+branch returns `operationError.code: git_branch_not_merged`; its `details` is a
+JSON string `{ "name": string, "expectedTarget": string }` containing the exact
+branch tip. Hosts must offer a separate explicit destructive confirmation before
+retrying `deleteBranch` with `force: true` and that `expectedTarget`. Force only
+bypasses merge validation: the current branch and any branch checked out in a
+worktree remain protected. `expectedTarget` must be a full 40- or 64-digit hex
+object ID and is mandatory with force (`invalid_request` otherwise). A changed
+target returns `git_branch_changed`; hosts must discard the old confirmation and
+ask the user to restart deletion. Even after validation, the atomic expected-OID
+guard prevents deleting a concurrent update. Omitted `force` retains ordinary safe
+deletion. The compatibility fixture is `rust/fixtures/git/branch-delete-v1.json`.
+On success, deletion carries a structured `branchDeletion` record —
 `{ "name": string, "deletedTarget": string }` — so hosts can offer to
 recreate the branch at its previous commit; a missing branch fails with
 `The branch '<name>' does not exist`. If the ref deletion succeeds but branch

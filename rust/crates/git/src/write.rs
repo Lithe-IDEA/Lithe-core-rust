@@ -289,7 +289,12 @@ fn write_with_trace(request: GitWriteRequest) -> Result<GitCommandResponse, Core
                     "The current branch cannot be deleted",
                 ));
             }
-            return delete_branch(&root, &branch);
+            return delete_branch(
+                &root,
+                &branch,
+                request.force,
+                request.expected_target.as_deref(),
+            );
         }
         "merge" => {
             let reference = write_request_reference(&root, &request)?;

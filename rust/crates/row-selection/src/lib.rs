@@ -3,8 +3,9 @@
 //!
 //! A selection has three parts: the selected row, which the keyboard moves and a plain click
 //! sets; the rows a Cmd or Ctrl click or a Shift click marked for a batch; and the anchor, the
-//! row a Shift click extends from. A Cmd or Ctrl click marks or unmarks one row and makes it
-//! the anchor. A Shift click marks every row from the anchor, or from the selected row when
+//! row a Shift click extends from. The first Cmd or Ctrl click preserves the visible selected
+//! row before toggling the clicked row and making it the anchor. Later clicks toggle one row.
+//! A Shift click marks every row from the anchor, or from the selected row when
 //! there is no anchor, to the clicked one, and leaves the marks it does not cover. A plain
 //! click selects its row and drops the marks and the anchor. The empty path is the workspace
 //! root, which is never marked: a batch on the whole workspace is never what a click meant.
@@ -159,6 +160,13 @@ fn apply(rows: &[String], selection: &mut Selection, action: Action) -> Option<&
             }
             if path.is_empty() {
                 return None;
+            }
+            if selection.marked.is_empty() && selection.anchor.is_none() {
+                if let Some(selected) = selection.selected.as_ref() {
+                    if !selected.is_empty() && row(selected).is_some() {
+                        selection.marked.insert(selected.clone());
+                    }
+                }
             }
             if !selection.marked.remove(&path) {
                 selection.marked.insert(path.clone());

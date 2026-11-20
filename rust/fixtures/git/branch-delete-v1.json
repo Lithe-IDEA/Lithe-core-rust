@@ -1,0 +1,8 @@
+{
+  "protocolVersion": 1,
+  "operation": "deleteBranch",
+  "unmergedCode": "git_branch_not_merged",
+  "changedCode": "git_branch_changed",
+  "review": {"name": "backup/before-strip-trailers", "expectedTarget": "0123456789abcdef0123456789abcdef01234567"},
+  "forceRequiresExpectedTarget": true
+}

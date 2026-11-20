@@ -2804,7 +2804,7 @@ fn git_write_records_the_deleted_branch_target() {
     assert_eq!(unmerged["ok"], true, "{unmerged:?}");
     assert_eq!(
         unmerged["data"]["operationError"]["code"],
-        "invalid_request"
+        "git_branch_not_merged"
     );
     assert_eq!(
         unmerged["data"]["operationError"]["message"],

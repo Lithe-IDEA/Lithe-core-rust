@@ -174,9 +174,24 @@ pub(crate) fn delete_tag(root: &str, value: Option<&str>) -> Result<GitCommandRe
 }
 
 /// Deletes one local branch and returns a structured deletion record so the
-/// host can offer a restore. The commit is resolved before the deletion
-/// because `git branch -d` diagnostics are localized prose.
-pub(crate) fn delete_branch(root: &str, branch: &str) -> Result<GitCommandResponse, CoreError> {
+/// host can offer a restore. Forced deletion requires a reviewed exact target and
+/// skips only merge validation; checked-out branches remain protected.
+pub(crate) fn delete_branch(
+    root: &str,
+    branch: &str,
+    force: bool,
+    expected_target: Option<&str>,
+) -> Result<GitCommandResponse, CoreError> {
+    if force && expected_target.is_none()
+        || expected_target.is_some_and(|value| {
+            !matches!(value.len(), 40 | 64) || !value.bytes().all(|byte| byte.is_ascii_hexdigit())
+        })
+    {
+        return Err(CoreError::new(
+            ErrorCode::InvalidRequest,
+            "Forced branch deletion requires a reviewed full object ID in expectedTarget",
+        ));
+    }
     let reference = format!("refs/heads/{branch}");
     let target = resolve_ref_object(root, &reference)?.ok_or_else(|| {
         CoreError::new(
@@ -184,7 +199,13 @@ pub(crate) fn delete_branch(root: &str, branch: &str) -> Result<GitCommandRespon
             format!("The branch '{branch}' does not exist"),
         )
     })?;
-    ensure_branch_is_safely_deletable(root, branch, &reference, &target)?;
+    if expected_target.is_some_and(|expected| expected != target) {
+        return Err(CoreError::new(
+            ErrorCode::GitBranchChanged,
+            format!("The branch '{branch}' changed since deletion was reviewed"),
+        ));
+    }
+    ensure_branch_is_safely_deletable(root, branch, &reference, &target, force)?;
     let mut result = delete_ref_if_unchanged(root, &reference, &target)?;
     if result.exit_code == 0 {
         result.branch_deletion = Some(GitBranchDeletionResponse {
@@ -251,12 +272,14 @@ fn delete_ref_if_unchanged(
 
 /// Preserves `git branch -d` safety before the atomic ref mutation: a branch
 /// must not be checked out in any worktree and must be merged into its valid
-/// upstream, or into HEAD when it has no usable upstream.
+/// upstream, or into HEAD when it has no usable upstream. An explicit forced
+/// retry bypasses the merge check only, after checking every worktree.
 fn ensure_branch_is_safely_deletable(
     root: &str,
     branch: &str,
     reference: &str,
     target: &str,
+    force: bool,
 ) -> Result<(), CoreError> {
     let worktrees = execute_git(
         root,
@@ -278,6 +301,10 @@ fn ensure_branch_is_safely_deletable(
             ErrorCode::InvalidRequest,
             format!("The branch '{branch}' is checked out in a worktree"),
         ));
+    }
+
+    if force {
+        return Ok(());
     }
 
     let upstream = execute_git(
@@ -316,9 +343,10 @@ fn ensure_branch_is_safely_deletable(
     match merged.exit_code {
         0 => Ok(()),
         1 => Err(CoreError::new(
-            ErrorCode::InvalidRequest,
+            ErrorCode::GitBranchNotMerged,
             format!("The branch '{branch}' is not fully merged"),
-        )),
+        )
+        .with_details(serde_json::json!({"name": branch, "expectedTarget": target}).to_string())),
         _ => Err(CoreError::new(
             ErrorCode::ProcessFailed,
             format!("Could not verify whether branch '{branch}' is merged"),

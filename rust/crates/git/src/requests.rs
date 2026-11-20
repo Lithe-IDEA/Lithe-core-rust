@@ -312,6 +312,10 @@ pub struct GitWriteRequest {
     /// Omission preserves interactive Pull compatibility.
     #[serde(default)]
     pub expected_branch: Option<String>,
+    /// Exact full object ID reviewed for `deleteBranch`; mandatory with `force`.
+    /// Core refuses a changed target instead of deleting commits the user did not review.
+    #[serde(default)]
+    pub expected_target: Option<String>,
     #[serde(default)]
     pub(crate) include_untracked: bool,
     #[serde(default)]
@@ -338,6 +342,7 @@ pub struct GitWriteRequest {
     /// Exact child commits to record; requires expected_commit_state.
     #[serde(default)]
     pub gitlink_updates: Vec<GitCommitGitlink>,
+    /// Explicitly discard checkout/worktree changes, or bypass only the branch merge check.
     #[serde(default)]
     pub(crate) force: bool,
     /// Tag scope for push: `none`, `all`, or `reachable`.
