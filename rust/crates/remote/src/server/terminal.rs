@@ -298,6 +298,12 @@ impl TerminalTable {
         }
     }
 
+    /// Whether no terminal's shell, nor any member of its session, may still
+    /// be running; see [`crate::server::process::ProcessTable::is_empty`].
+    pub(crate) fn is_empty(&self) -> bool {
+        self.registry.lock().is_empty()
+    }
+
     pub(crate) fn terminate_all(&self, grace: std::time::Duration) {
         terminate_groups(
             &self.registry,

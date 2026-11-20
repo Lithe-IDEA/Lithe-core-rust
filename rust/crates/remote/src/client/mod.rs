@@ -2,10 +2,11 @@
 //!
 //! - [`transport`] turns a chain of hops (SSH, container exec) into the local
 //!   command line that runs a program at the end of the chain.
-//! - [`bootstrap`] makes sure a matching `lithe-remote-server` is installed at
-//!   the end of the chain, uploading it through the same chain if needed.
+//! - [`bootstrap`] probes the platform at the end of the chain and describes
+//!   the local server builds that can run there.
 //! - [`launch`] probes, installs and starts the server over one connection,
-//!   so a host that asks for a password asks only once.
+//!   so a host that asks for a password asks only once. The host itself
+//!   verifies the installed binary and its directories.
 //! - [`session`] starts the server, exchanges protocol messages with it and
 //!   routes each resource's events to its subscriber.
 //! - [`api`] offers typed operations and resource handles on a session.
@@ -18,14 +19,15 @@
 
 pub mod api;
 pub mod bootstrap;
-pub mod command;
+#[cfg(all(test, unix))]
+mod command;
 pub mod forward;
 pub mod launch;
 pub mod session;
 pub mod transport;
 
 pub use api::{SpawnSpec, TerminalSpec, WriteOptions};
-pub use bootstrap::{Bootstrapper, InstallLocation, ServerArtifact, ServerTarget};
+pub use bootstrap::{ServerArtifact, ServerTarget};
 pub use forward::PortForward;
 pub use session::{ClientError, ConnectOptions, Event, RemoteSession, ResumeMode};
 pub use transport::{ContainerEngine, ContainerHop, Hop, SshHop, TransportChain, TransportError};

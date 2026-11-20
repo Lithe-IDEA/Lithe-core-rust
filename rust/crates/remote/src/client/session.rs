@@ -17,7 +17,7 @@
 use crate::client::transport::{TransportChain, TransportError};
 use crate::protocol::frame::{read_frame, skip_preamble, write_frame};
 use crate::protocol::methods::{
-    self, AckParams, HelloParams, HelloResult, ResumeParams, ResumeResult,
+    self, AckParams, HelloParams, HelloResult, ResumeParams, ResumeResult, SessionToken,
 };
 use crate::protocol::{FrameError, Message, RemoteError, PROTOCOL_VERSION};
 use serde::de::DeserializeOwned;
@@ -174,8 +174,13 @@ pub struct ConnectOptions {
     pub client_name: String,
     /// Bounds transport start-up, the preamble and `server.hello` together.
     pub handshake_timeout: Duration,
-    /// How long a persistent session keeps running without a client.
+    /// How long a persistent session without a client and without running
+    /// processes or terminals stays alive.
     pub idle_timeout: Option<Duration>,
+    /// Token from an earlier connection's [`HelloResult`], required to
+    /// reattach to a persistent session that already had a client. A wrong
+    /// or missing token fails the handshake with `INVALID_SESSION_TOKEN`.
+    pub session_token: Option<SessionToken>,
     /// When event delivery starts.
     pub resume: ResumeMode,
 }
@@ -201,6 +206,7 @@ impl Default for ConnectOptions {
             client_name: "lithe".into(),
             handshake_timeout: Duration::from_secs(30),
             idle_timeout: None,
+            session_token: None,
             resume: ResumeMode::Immediately { after_seq: None },
         }
     }
@@ -491,6 +497,7 @@ impl RemoteSession {
                 protocol_version: PROTOCOL_VERSION,
                 client_name: options.client_name.clone(),
                 idle_timeout_seconds: options.idle_timeout.map(|timeout| timeout.as_secs()),
+                session_token: options.session_token.clone(),
             },
             deadline.saturating_duration_since(Instant::now()),
         )?;

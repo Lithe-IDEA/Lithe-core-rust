@@ -304,6 +304,13 @@ impl ProcessTable {
         }
     }
 
+    /// Whether no started process, nor any member of its session, may still
+    /// be running. A session is forgotten only after [`Self::reap`] found it
+    /// empty, so background children of an exited leader count as running.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.registry.lock().is_empty()
+    }
+
     /// Ends every owned session: `SIGTERM`, a bounded grace period, then
     /// `SIGKILL` for sessions that still have members.
     pub(crate) fn terminate_all(&self, grace: Duration) {

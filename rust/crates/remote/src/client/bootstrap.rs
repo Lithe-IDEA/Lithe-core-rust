@@ -1,24 +1,18 @@
-//! Installing `lithe-remote-server` at the end of a transport chain.
+//! What the client learns before installing `lithe-remote-server` at the end
+//! of a transport chain: the host's platform, facts about the host, and the
+//! local server builds that can run there.
 //!
 //! The client always uploads the server itself instead of letting the remote
 //! download it, because many SSH hosts and containers have no internet access.
-//! The upload goes through the same chain as the session, so it works for
-//! every kind of hop without extra file-transfer tooling.
-//!
-//! Installed binaries are reused only when they report the exact SHA-256 of
-//! the artifact this client ships. Each version lives in its own directory, so
-//! clients of different releases can share a host.
+//! [`crate::client::launch`] probes, installs and starts the server over one
+//! connection and reuses this module's probe script and parser, which the
+//! standalone probe also runs. Each version lives in its own install
+//! directory, so clients of different releases can share a host.
 
-use crate::client::command::{self, CommandOutput};
-use crate::client::transport::{TransportChain, TransportError};
-use crate::protocol::methods::ServerIdentity;
-use crate::protocol::PROTOCOL_VERSION;
 use sha2::{Digest, Sha256};
-use std::fmt;
 use std::fs::File;
 use std::io;
 use std::path::PathBuf;
-use std::time::Duration;
 
 const PROBE_BEGIN: &str = "LITHE-PROBE-BEGIN";
 const PROBE_END: &str = "LITHE-PROBE-END";
@@ -51,18 +45,6 @@ macro_rules! host_details_script {
     };
 }
 pub(crate) use host_details_script;
-
-/// Receives the binary on standard input. It is written under a temporary
-/// name and renamed into place, so a broken upload never leaves a truncated
-/// executable that a later identity check could run. `umask 077` keeps other
-/// users on a shared host from replacing it.
-const INSTALL_SCRIPT: &str = "umask 077 && mkdir -p \"$1\" && cat > \"$1/.upload.$$\" && chmod 700 \"$1/.upload.$$\" && mv -f \"$1/.upload.$$\" \"$1/lithe-remote-server\"";
-
-/// Runs the binary passed as `$0` with `--identity`.
-const IDENTITY_SCRIPT: &str = "exec \"$0\" --identity";
-
-/// File name of the server executable inside its install directory.
-pub const SERVER_EXECUTABLE: &str = "lithe-remote-server";
 
 /// Hex digits of the SHA-256 used in the install directory name. Sixteen
 /// keep paths short while making accidental collisions between builds of the
@@ -119,7 +101,7 @@ pub struct ServerArtifact {
     pub path: PathBuf,
     /// Server version, the first part of the install directory name.
     pub version: String,
-    /// Lowercase hex SHA-256 of the binary; the installed server must report it.
+    /// Lowercase hex SHA-256 of the binary; the host must compute the same hash.
     pub sha256: String,
 }
 
@@ -136,270 +118,8 @@ impl ServerArtifact {
             target,
             path,
             version: version.into(),
-            sha256: hasher
-                .finalize()
-                .iter()
-                .map(|byte| format!("{byte:02x}"))
-                .collect(),
+            sha256: crate::protocol::methods::encode_hex(&hasher.finalize()),
         })
-    }
-}
-
-/// Where the server is installed on the remote.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum InstallLocation {
-    /// `$HOME/.lithe-server`, the default.
-    Home,
-    /// An explicit private directory, for hosts with a read-only home or for
-    /// tests. It must not be writable by other users.
-    Directory(String),
-}
-
-/// Result of probing the end of a chain.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct HostProbe {
-    /// Platform at the end of the chain.
-    pub target: ServerTarget,
-    /// `$HOME` when it is an absolute path.
-    pub home: Option<String>,
-}
-
-/// An installed, verified server.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct InstalledServer {
-    /// Absolute path of the executable on the remote.
-    pub path: String,
-    /// Platform the installed binary runs on.
-    pub target: ServerTarget,
-    /// Whether this call uploaded it.
-    pub uploaded: bool,
-}
-
-impl InstalledServer {
-    /// Command line of a session that ends with the connection.
-    pub fn stdio_command(&self) -> Vec<String> {
-        vec![self.path.clone(), "--stdio".into()]
-    }
-
-    /// Command line of the persistent session `key`, which survives a
-    /// dropped connection. `key` must be 1–64 characters from
-    /// `[A-Za-z0-9._-]`, for example a hash of the workspace path.
-    pub fn connect_command(&self, key: &str) -> Vec<String> {
-        vec![self.path.clone(), "--connect".into(), key.into()]
-    }
-}
-
-/// Why probing or installing the server failed.
-#[derive(Debug)]
-pub enum BootstrapError {
-    /// The transport chain could not be turned into a command line.
-    Transport(TransportError),
-    /// A local command could not run or exceeded its deadline.
-    Command(io::Error),
-    /// The chain did not reach a POSIX shell. `stderr` usually explains why,
-    /// for example an SSH authentication failure.
-    ProbeFailed {
-        /// Standard error of the probe command.
-        stderr: String,
-    },
-    /// The remote's `uname` names a platform with no server build.
-    UnsupportedPlatform {
-        /// `uname -s` of the remote.
-        system: String,
-        /// `uname -m` of the remote.
-        machine: String,
-    },
-    /// This client ships no server for the remote's platform.
-    NoArtifact(ServerTarget),
-    /// The remote reported no home directory and no explicit location was set.
-    NoInstallLocation,
-    /// The upload or the rename into place failed.
-    InstallFailed {
-        /// Standard error of the install command.
-        stderr: String,
-    },
-    /// The installed binary did not report the uploaded artifact's identity.
-    VerificationFailed {
-        /// SHA-256 of the uploaded artifact.
-        expected: String,
-        /// SHA-256 the binary reported, or `None` when it reported none.
-        found: Option<String>,
-    },
-}
-
-impl fmt::Display for BootstrapError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Transport(error) => error.fmt(formatter),
-            Self::Command(error) => write!(formatter, "connection command failed: {error}"),
-            Self::ProbeFailed { stderr } => {
-                write!(formatter, "cannot reach a shell on the remote: {stderr}")
-            }
-            Self::UnsupportedPlatform { system, machine } => {
-                write!(
-                    formatter,
-                    "remote platform {system} {machine} is not supported"
-                )
-            }
-            Self::NoArtifact(target) => write!(
-                formatter,
-                "no remote server is available for {}",
-                target.rust_target()
-            ),
-            Self::NoInstallLocation => formatter.write_str("the remote user has no home directory"),
-            Self::InstallFailed { stderr } => {
-                write!(formatter, "installing the remote server failed: {stderr}")
-            }
-            Self::VerificationFailed { expected, found } => write!(
-                formatter,
-                "installed remote server reports {} instead of {expected}",
-                found.as_deref().unwrap_or("no identity")
-            ),
-        }
-    }
-}
-
-impl std::error::Error for BootstrapError {}
-
-impl From<TransportError> for BootstrapError {
-    fn from(error: TransportError) -> Self {
-        Self::Transport(error)
-    }
-}
-
-/// Probes the end of a chain and installs the server there.
-pub struct Bootstrapper {
-    /// Chain that reaches the remote.
-    pub chain: TransportChain,
-    /// Directory the server is installed under.
-    pub location: InstallLocation,
-    /// Deadline for each probe or identity command.
-    pub command_timeout: Duration,
-    /// Deadline for the upload, which moves several megabytes.
-    pub upload_timeout: Duration,
-}
-
-impl Bootstrapper {
-    /// Targets `$HOME/.lithe-server`, with a 30 s deadline per command and 300 s
-    /// for the upload.
-    pub fn new(chain: TransportChain) -> Self {
-        Self {
-            chain,
-            location: InstallLocation::Home,
-            command_timeout: Duration::from_secs(30),
-            upload_timeout: Duration::from_secs(300),
-        }
-    }
-
-    /// Reports the platform and home directory at the end of the chain.
-    pub fn probe(&self) -> Result<HostProbe, BootstrapError> {
-        let argv = probe_command();
-        let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
-        let output = self.run(&argv, None, self.command_timeout)?;
-        let Some(report) = parse_probe(&output.stdout) else {
-            return Err(BootstrapError::ProbeFailed {
-                stderr: output.stderr_text(),
-            });
-        };
-        let target = report
-            .target()
-            .ok_or_else(|| BootstrapError::UnsupportedPlatform {
-                system: report.system.clone(),
-                machine: report.machine.clone(),
-            })?;
-        Ok(HostProbe {
-            target,
-            home: report.home,
-        })
-    }
-
-    /// Returns a verified server, uploading `artifact_for(target)` when the
-    /// remote has no binary with the same identity.
-    pub fn ensure_installed(
-        &self,
-        artifact_for: impl Fn(ServerTarget) -> Option<ServerArtifact>,
-    ) -> Result<InstalledServer, BootstrapError> {
-        let probe = self.probe()?;
-        let artifact =
-            artifact_for(probe.target).ok_or(BootstrapError::NoArtifact(probe.target))?;
-        let root = match &self.location {
-            InstallLocation::Directory(directory) => directory.trim_end_matches('/').to_owned(),
-            InstallLocation::Home => format!(
-                "{}/.lithe-server",
-                probe
-                    .home
-                    .as_deref()
-                    .ok_or(BootstrapError::NoInstallLocation)?
-                    .trim_end_matches('/')
-            ),
-        };
-        let directory = format!(
-            "{root}/bin/{}-{}",
-            artifact.version,
-            &artifact.sha256[..INSTALL_HASH_PREFIX.min(artifact.sha256.len())]
-        );
-        let path = format!("{directory}/{SERVER_EXECUTABLE}");
-        let installed = |uploaded| InstalledServer {
-            path: path.clone(),
-            target: probe.target,
-            uploaded,
-        };
-
-        if self.identity(&path)?.as_deref() == Some(artifact.sha256.as_str()) {
-            return Ok(installed(false));
-        }
-        let binary = std::fs::read(&artifact.path).map_err(BootstrapError::Command)?;
-        let output = self.run(
-            &["sh", "-c", INSTALL_SCRIPT, "sh", &directory],
-            Some(&binary),
-            self.upload_timeout,
-        )?;
-        if !output.success() {
-            return Err(BootstrapError::InstallFailed {
-                stderr: output.stderr_text(),
-            });
-        }
-        match self.identity(&path)? {
-            Some(found) if found == artifact.sha256 => Ok(installed(true)),
-            found => Err(BootstrapError::VerificationFailed {
-                expected: artifact.sha256,
-                found,
-            }),
-        }
-    }
-
-    /// SHA-256 reported by the binary at `path`, or `None` when it is absent,
-    /// does not run, or speaks another protocol version.
-    fn identity(&self, path: &str) -> Result<Option<String>, BootstrapError> {
-        // Run through `sh` so that a missing binary is an ordinary non-zero
-        // exit on every chain, including the local one, where executing a
-        // missing path directly would fail before any process starts.
-        let output = self.run(
-            &["sh", "-c", IDENTITY_SCRIPT, path],
-            None,
-            self.command_timeout,
-        )?;
-        if !output.success() {
-            return Ok(None);
-        }
-        let text = String::from_utf8_lossy(&output.stdout);
-        Ok(text
-            .lines()
-            .rev()
-            .find_map(|line| serde_json::from_str::<ServerIdentity>(line).ok())
-            .filter(|identity| identity.protocol_version == PROTOCOL_VERSION)
-            .map(|identity| identity.sha256))
-    }
-
-    fn run(
-        &self,
-        argv: &[&str],
-        stdin: Option<&[u8]>,
-        timeout: Duration,
-    ) -> Result<CommandOutput, BootstrapError> {
-        let argv: Vec<String> = argv.iter().map(|argument| argument.to_string()).collect();
-        let command = self.chain.command(&argv)?;
-        command::run(&command, stdin, timeout).map_err(BootstrapError::Command)
     }
 }
 
@@ -504,7 +224,7 @@ impl ProbeReport {
 
 /// Command that reports the remote platform. Callers that run it with their
 /// own process handling, for example to answer SSH prompts, pass it to
-/// [`TransportChain::command`] and read the output with [`parse_probe`].
+/// [`crate::client::TransportChain::command`] and read the output with [`parse_probe`].
 pub fn probe_command() -> Vec<String> {
     vec!["sh".into(), "-c".into(), PROBE_SCRIPT.into()]
 }

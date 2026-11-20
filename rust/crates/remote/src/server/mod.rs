@@ -52,7 +52,7 @@ use std::io::{self, Read, Write};
 /// started, ends when the client disconnects or calls `server.shutdown`.
 pub fn serve_stdio(input: impl Read, output: impl Write + Send + 'static) -> io::Result<()> {
     let session = session::Session::new(false)?;
-    let result = connection::serve(&session, input, output).map(|_| ());
+    let result = connection::serve(&session, input, output, || {}).map(|_| ());
     session.terminate_all();
     result
 }
@@ -66,11 +66,7 @@ pub fn identity() -> io::Result<ServerIdentity> {
     Ok(ServerIdentity {
         server_version: env!("CARGO_PKG_VERSION").into(),
         protocol_version: PROTOCOL_VERSION,
-        sha256: hasher
-            .finalize()
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect(),
+        sha256: crate::protocol::methods::encode_hex(&hasher.finalize()),
     })
 }
 

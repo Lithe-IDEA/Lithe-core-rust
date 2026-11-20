@@ -5,12 +5,23 @@
 //! the daemon first if none runs, and then copies bytes between its standard
 //! streams and the socket. When SSH drops, only the proxy dies: the daemon
 //! keeps terminals and builds running, buffers their events, and hands them
-//! to the next connection. A daemon without clients ends its session after
-//! the idle timeout the client requested.
+//! to the next connection. A daemon whose session has no client and no
+//! running process or terminal ends it after the idle timeout the client
+//! requested; running programs end only through `server.shutdown` or the
+//! user stopping them.
 //!
 //! The socket lives in a directory only the user can access, and the daemon
 //! also verifies the peer's user id, so other users on a shared host cannot
-//! attach to a session.
+//! attach to a session. Within the account, a session that had a client
+//! admits only connections presenting its token, and a refused connection
+//! does not disconnect the attached client.
+//!
+//! The daemon's standard error is its log, `log/<name>.log` in the state
+//! directory: mode 0600, never opened through a symbolic link, and holding
+//! lifecycle diagnostics only, never file contents, program output or
+//! tokens. Once it reaches [`LOG_ROTATE_BYTES`] it moves to `<name>.log.1`,
+//! replacing the previous one, both when a proxy starts a daemon and while
+//! the daemon runs.
 
 use crate::server::connection::{self, Ended};
 use crate::server::platform;
@@ -18,7 +29,8 @@ use crate::server::session::Session;
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
-use std::os::fd::AsRawFd;
+use std::mem::ManuallyDrop;
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd};
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::os::unix::process::CommandExt;
@@ -46,6 +58,11 @@ const DAEMON_START_POLL: Duration = Duration::from_millis(20);
 /// Longest wait for a connection before the daemon re-checks its idle
 /// deadline and shutdown flag. A connection ends the wait immediately.
 const IDLE_CHECK_INTERVAL: Duration = Duration::from_millis(200);
+
+/// Size at which a daemon log moves aside. A connection adds a few lines, so
+/// this holds months of diagnostics while the log and its one predecessor
+/// stay within about 2 MiB of the user's home directory.
+const LOG_ROTATE_BYTES: u64 = 1024 * 1024;
 
 /// Socket paths are limited to about 104 bytes on macOS and 108 on Linux.
 const MAX_SOCKET_PATH_BYTES: usize = 100;
@@ -128,7 +145,7 @@ fn daemon_name(key: &str, executable_sha256: &str) -> String {
     digest.update(key.as_bytes());
     digest.update([0]);
     digest.update(executable_sha256.as_bytes());
-    format!("{:x}", digest.finalize())[..32].to_owned()
+    crate::protocol::methods::encode_hex(&digest.finalize()[..16])
 }
 
 /// Creates `path` with mode 0700, or verifies an existing one is a real
@@ -215,11 +232,8 @@ fn startup_lock(path: &Path, deadline: Instant) -> io::Result<File> {
 }
 
 fn start_daemon(options: &PersistentOptions, paths: &Paths) -> io::Result<()> {
-    let log = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .mode(0o600)
-        .open(&paths.log)?;
+    rotate_log(&paths.log, LOG_ROTATE_BYTES)?;
+    let log = open_log(&paths.log)?;
     let mut command = Command::new(std::env::current_exe()?);
     command.arg("--daemon").arg(&options.key);
     if let Some(directory) = &options.state_directory {
@@ -243,6 +257,68 @@ fn start_daemon(options: &PersistentOptions, paths: &Paths) -> io::Result<()> {
     // The daemon is not waited for: it outlives this proxy and is adopted by
     // init when the proxy exits.
     command.spawn().map(|_| ())
+}
+
+/// Opens a daemon log for appending. A file an earlier run or the user left
+/// with wider permissions becomes private again, and a symbolic link in its
+/// place is refused instead of followed.
+fn open_log(path: &Path) -> io::Result<File> {
+    let file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)?;
+    file.set_permissions(fs::Permissions::from_mode(0o600))?;
+    Ok(file)
+}
+
+fn rotated_log(path: &Path) -> PathBuf {
+    let mut rotated = path.as_os_str().to_owned();
+    rotated.push(".1");
+    PathBuf::from(rotated)
+}
+
+/// Moves the log at `path` to `<path>.1`, replacing an older one, once it
+/// holds `limit` bytes. Returns whether it moved the file.
+fn rotate_log(path: &Path, limit: u64) -> io::Result<bool> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.len() >= limit => {
+            fs::rename(path, rotated_log(path))?;
+            Ok(true)
+        }
+        Ok(_) => Ok(false),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
+/// Keeps a running daemon's log bounded. Once the file `target` writes to is
+/// the log at `path` and holds `limit` bytes, that file moves aside and
+/// `target` keeps its descriptor number but refers to a fresh log. A
+/// `target` that is another file, such as the terminal of a `--daemon`
+/// started by hand or a log a newer proxy already rotated, is left alone.
+fn bound_log(path: &Path, target: BorrowedFd<'_>, limit: u64) -> io::Result<()> {
+    // SAFETY: the borrowed descriptor stays open for this call, and
+    // ManuallyDrop keeps the temporary File from closing it.
+    let current = ManuallyDrop::new(unsafe { File::from_raw_fd(target.as_raw_fd()) });
+    let current = current.metadata()?;
+    let on_disk = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    if (current.dev(), current.ino()) != (on_disk.dev(), on_disk.ino()) || on_disk.len() < limit {
+        return Ok(());
+    }
+    fs::rename(path, rotated_log(path))?;
+    let fresh = open_log(path)?;
+    // SAFETY: both descriptors are open; dup2 atomically repoints `target`,
+    // so a concurrent write lands in either the old or the fresh file.
+    if unsafe { libc::dup2(fresh.as_raw_fd(), target.as_raw_fd()) } == -1 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
 }
 
 fn wait_for_socket(socket: &Path, deadline: Instant) -> io::Result<UnixStream> {
@@ -327,6 +403,7 @@ pub fn run_daemon(options: &PersistentOptions) -> io::Result<()> {
     let current: Arc<Mutex<Option<(u64, UnixStream)>>> = Arc::new(Mutex::new(None));
     let mut next_connection: u64 = 0;
     let mut idle_since = Instant::now();
+    let mut log_rotation_failed = false;
 
     while !shutdown.load(Ordering::Acquire) {
         match listener.accept() {
@@ -336,15 +413,9 @@ pub fn run_daemon(options: &PersistentOptions) -> io::Result<()> {
                     continue;
                 }
                 stream.set_nonblocking(false)?;
-                // A new connection replaces the current one. The old one may
-                // be half-dead after a network change and not yet noticed.
                 next_connection += 1;
                 let connection_id = next_connection;
-                if let Some((_, previous)) =
-                    crate::server::lock(&current).replace((connection_id, stream.try_clone()?))
-                {
-                    let _ = previous.shutdown(std::net::Shutdown::Both);
-                }
+                let replacement = stream.try_clone()?;
                 let current = Arc::clone(&current);
                 attached.fetch_add(1, Ordering::AcqRel);
                 let session = Arc::clone(&session);
@@ -361,7 +432,22 @@ pub fn run_daemon(options: &PersistentOptions) -> io::Result<()> {
                                 return;
                             }
                         };
-                        let ended = connection::serve(&session, input, stream);
+                        // An admitted client replaces the attached one, which
+                        // may be half-dead after a network change and not yet
+                        // noticed. A connection the session refuses leaves it
+                        // alone, and its copy closes with the unused closure.
+                        let attach = {
+                            let current = Arc::clone(&current);
+                            move || {
+                                if let Some((_, previous)) = crate::server::lock(&current)
+                                    .replace((connection_id, replacement))
+                                {
+                                    // log-exempt: Expected absence: the replaced client may already have disconnected, which is why it is being replaced.
+                                    let _ = previous.shutdown(std::net::Shutdown::Both);
+                                }
+                            }
+                        };
+                        let ended = connection::serve(&session, input, stream, attach);
                         // The copy kept for replacement is the last open
                         // descriptor of this socket. Closing it delivers
                         // end-of-file to the proxy, which would otherwise
@@ -380,10 +466,20 @@ pub fn run_daemon(options: &PersistentOptions) -> io::Result<()> {
                     })?;
             }
             Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                if attached.load(Ordering::Acquire) > 0 {
+                if attached.load(Ordering::Acquire) > 0 || session.keeps_programs() {
                     idle_since = Instant::now();
                 } else if idle_since.elapsed() >= session.idle_timeout() {
                     break;
+                }
+                // Reported once per failure streak: the check repeats every
+                // interval, and a failure that persists would flood the log.
+                match bound_log(&paths.log, io::stderr().as_fd(), LOG_ROTATE_BYTES) {
+                    Ok(()) => log_rotation_failed = false,
+                    Err(error) if !log_rotation_failed => {
+                        eprintln!("lithe-remote-server: cannot rotate the log: {error}");
+                        log_rotation_failed = true;
+                    }
+                    Err(_) => {}
                 }
                 wait_for_connection(&listener, IDLE_CHECK_INTERVAL);
             }
@@ -485,5 +581,104 @@ mod identity_tests {
             .join(format!("lithe-server-{}", u32::MAX))
             .join(format!("{old}.sock"));
         assert!(fallback.as_os_str().len() <= MAX_SOCKET_PATH_BYTES);
+    }
+}
+
+#[cfg(test)]
+mod log_tests {
+    use super::*;
+
+    /// Directory removed on drop, also after a failed assertion.
+    struct Scratch(PathBuf);
+
+    impl Scratch {
+        fn new(label: &str) -> Self {
+            let path = std::env::temp_dir()
+                .join(format!("lithe-daemon-log-{label}-{}", std::process::id()));
+            // log-exempt: Expected absence: a previous run of this test usually left nothing behind.
+            let _ = fs::remove_dir_all(&path);
+            fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            // log-exempt: Expected absence: the directory may already be gone when a test removed it.
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn mode(path: &Path) -> u32 {
+        fs::symlink_metadata(path).unwrap().mode() & 0o777
+    }
+
+    #[test]
+    fn logs_move_aside_by_size_and_stay_private() {
+        let scratch = Scratch::new("rotate");
+        let path = scratch.0.join("daemon.log");
+        fs::write(&path, b"old entry\n").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+
+        assert!(!rotate_log(&path, 1024).unwrap(), "rotated below the limit");
+        drop(open_log(&path).unwrap());
+        assert_eq!(mode(&path), 0o600, "a wider log stayed readable to others");
+
+        assert!(rotate_log(&path, 4).unwrap());
+        assert_eq!(fs::read(rotated_log(&path)).unwrap(), b"old entry\n");
+        assert!(!path.exists());
+        assert!(!rotate_log(&path, 4).unwrap(), "rotated a missing log");
+
+        fs::write(&path, b"second\n").unwrap();
+        assert!(rotate_log(&path, 4).unwrap());
+        assert_eq!(
+            fs::read(rotated_log(&path)).unwrap(),
+            b"second\n",
+            "the older rotated log was not replaced"
+        );
+        drop(open_log(&path).unwrap());
+        assert_eq!(mode(&path), 0o600);
+        assert_eq!(fs::read(&path).unwrap(), b"");
+    }
+
+    #[test]
+    fn a_running_daemon_repoints_its_full_log_at_a_fresh_file() {
+        let scratch = Scratch::new("bound");
+        let path = scratch.0.join("daemon.log");
+        let mut target = open_log(&path).unwrap();
+        target.write_all(b"before\n").unwrap();
+
+        bound_log(&path, target.as_fd(), 1024).unwrap();
+        assert!(!rotated_log(&path).exists(), "rotated below the limit");
+
+        bound_log(&path, target.as_fd(), 4).unwrap();
+        target.write_all(b"after\n").unwrap();
+        assert_eq!(fs::read(rotated_log(&path)).unwrap(), b"before\n");
+        assert_eq!(fs::read(&path).unwrap(), b"after\n");
+        assert_eq!(mode(&path), 0o600);
+    }
+
+    #[test]
+    fn descriptors_that_are_not_the_log_are_left_alone() {
+        let scratch = Scratch::new("foreign");
+        let path = scratch.0.join("daemon.log");
+        fs::write(&path, b"daemon entries\n").unwrap();
+        let mut other = open_log(&scratch.0.join("other.log")).unwrap();
+        other.write_all(b"other entries\n").unwrap();
+
+        bound_log(&path, other.as_fd(), 1).unwrap();
+        assert!(!rotated_log(&path).exists());
+        assert_eq!(fs::read(&path).unwrap(), b"daemon entries\n");
+    }
+
+    #[test]
+    fn the_log_is_never_opened_through_a_symbolic_link() {
+        let scratch = Scratch::new("link");
+        let elsewhere = scratch.0.join("elsewhere");
+        let path = scratch.0.join("daemon.log");
+        std::os::unix::fs::symlink(&elsewhere, &path).unwrap();
+
+        assert!(open_log(&path).is_err());
+        assert!(!elsewhere.exists(), "the link's target was created");
     }
 }

@@ -3,9 +3,14 @@
 mod support;
 
 use lithe_remote::client::api::{ProcessEvent, TerminalEvent};
+use lithe_remote::client::session::ClientError;
 use lithe_remote::client::{SpawnSpec, TerminalSpec};
-use lithe_remote::protocol::methods::{self, OutputStream, ProcessExitEvent, ProcessOutputEvent};
+use lithe_remote::protocol::methods::{
+    self, OutputStream, ProcessExitEvent, ProcessOutputEvent, SessionToken,
+};
+use lithe_remote::protocol::ErrorCode;
 use std::collections::BTreeMap;
+use std::os::unix::fs::PermissionsExt;
 use std::time::{Duration, Instant};
 use support::{wait_until_gone, Daemon, TempDir, STEP_TIMEOUT};
 
@@ -224,51 +229,224 @@ fn resuming_after_a_lost_connection_delivers_every_event_exactly_once() {
     assert!(daemon.wait_until_stopped());
 }
 
-// A session nobody returns to must not keep processes running forever.
+// A session nobody returns to ends once nothing runs in it, so a host does
+// not keep daemons for clients that are gone. Finished programs do not
+// count.
 #[test]
 fn idle_sessions_end_after_their_timeout() {
     let daemon = Daemon::new("idle");
     let (session, _events) = daemon.connect(Some(Duration::from_secs(1)));
-    let pid = session
+    let process = session
         .spawn(SpawnSpec {
-            argv: argv(&["sleep", "60"]),
+            argv: argv(&["true"]),
             ..SpawnSpec::default()
         })
-        .unwrap()
-        .pid;
+        .unwrap();
+    process.wait(STEP_TIMEOUT).unwrap();
+    drop(process);
     drop(session);
     assert!(
         daemon.wait_until_stopped(),
         "the idle daemon did not stop\n{}",
         daemon.log()
     );
-    assert!(wait_until_gone(pid), "process {pid} outlived its session");
 }
 
-// Two proxies racing to start the daemon end up in one daemon. A session
-// has one client at a time: the later connection replaces the earlier one,
-// whose handshake may then fail, which is the documented outcome.
+/// Shell script that runs past a one-second idle timeout, then marks that
+/// it is still running and waits for the test to release it.
+fn outlast_idle_timeout(marker: &str, release: &str) -> String {
+    format!("sleep 2; : > '{marker}'; while [ ! -e '{release}' ]; do sleep 0.05; done")
+}
+
+/// Polls for a file a remote program creates. The program runs on its own
+/// clock in another process while no client is connected, so there is no
+/// event to wait on.
+fn wait_for_file(path: &str) -> bool {
+    let deadline = Instant::now() + STEP_TIMEOUT;
+    while Instant::now() < deadline {
+        if std::path::Path::new(path).exists() {
+            return true;
+        }
+        // test-stability: allow(rust-real-sleep) reason: the file is written by a program in another process while no client is connected, so nothing can be waited on; the loop has a monotonic deadline.
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    false
+}
+
+// The idle timeout applies only while nothing runs: a build left running
+// keeps its session past the timeout, and the session ends after it.
+#[test]
+fn running_processes_keep_an_idle_session_alive() {
+    let daemon = Daemon::new("kept-process");
+    let gate = TempDir::new("kept-process-gate");
+    let (marker, release) = (gate.join("marker"), gate.join("release"));
+    let (session, _events) = daemon.connect(Some(Duration::from_secs(1)));
+    let process = session
+        .spawn(SpawnSpec {
+            argv: argv(&["sh", "-c", &outlast_idle_timeout(&marker, &release)]),
+            ..SpawnSpec::default()
+        })
+        .unwrap();
+    let process_id = process.id;
+    drop(process);
+    drop(session);
+    assert!(
+        wait_for_file(&marker),
+        "the session ended while its process ran\n{}",
+        daemon.log()
+    );
+
+    // The process still waits for the release, so the session is alive
+    // however long the steps above took.
+    let (session, _events) = daemon.connect_deferred();
+    assert!(session.hello().session.resumed);
+    assert!(session
+        .state()
+        .unwrap()
+        .processes
+        .iter()
+        .any(|running| running.process_id == process_id));
+    drop(session);
+    std::fs::write(&release, b"").unwrap();
+    assert!(
+        daemon.wait_until_stopped(),
+        "the session outlived its last process\n{}",
+        daemon.log()
+    );
+}
+
+// An open terminal counts as running, so a shell left open with no output
+// keeps its session past the idle timeout too.
+#[test]
+fn open_terminals_keep_an_idle_session_alive() {
+    let daemon = Daemon::new("kept-terminal");
+    let gate = TempDir::new("kept-terminal-gate");
+    let (marker, release) = (gate.join("marker"), gate.join("release"));
+    let (session, _events) = daemon.connect(Some(Duration::from_secs(1)));
+    let terminal = session
+        .open_terminal(TerminalSpec {
+            argv: Some(argv(&[
+                "sh",
+                "-c",
+                &outlast_idle_timeout(&marker, &release),
+            ])),
+            cwd: None,
+            env: BTreeMap::new(),
+            columns: 80,
+            rows: 24,
+        })
+        .unwrap();
+    let terminal_id = terminal.id;
+    drop(terminal);
+    drop(session);
+    assert!(
+        wait_for_file(&marker),
+        "the session ended while its terminal was open\n{}",
+        daemon.log()
+    );
+
+    let (session, _events) = daemon.connect_deferred();
+    assert!(session.hello().session.resumed);
+    assert!(session
+        .state()
+        .unwrap()
+        .terminals
+        .iter()
+        .any(|running| running.terminal_id == terminal_id));
+    drop(session);
+    std::fs::write(&release, b"").unwrap();
+    assert!(
+        daemon.wait_until_stopped(),
+        "the session outlived its last terminal\n{}",
+        daemon.log()
+    );
+}
+
+// Within the account, only the session's own client may reattach: another
+// program cannot take over a session, and its attempt does not disconnect
+// the attached client. The token never reaches the log, which stays
+// private.
+#[test]
+fn reattaching_needs_the_token_the_session_issued() {
+    let daemon = Daemon::new("token");
+    let (owner, _events) = daemon.connect(None);
+    let token = owner
+        .hello()
+        .session
+        .session_token
+        .clone()
+        .expect("persistent sessions issue a token");
+    assert_eq!(token.as_str().len(), 32, "128 bits in hexadecimal");
+    assert!(token.as_str().bytes().all(|byte| byte.is_ascii_hexdigit()));
+    assert!(
+        !format!("{token:?}").contains(token.as_str()),
+        "debug output reveals the token"
+    );
+
+    for presented in [
+        None,
+        Some(SessionToken::new("0".repeat(32))),
+        Some(SessionToken::new(&token.as_str()[..16])),
+    ] {
+        let mut options = support::options();
+        options.session_token = presented;
+        match daemon.try_connect(&options) {
+            Err(ClientError::Remote(error)) => {
+                assert_eq!(error.code, ErrorCode::InvalidSessionToken)
+            }
+            Err(error) => panic!("unexpected failure: {error}\n{}", daemon.log()),
+            Ok(_) => panic!("a client without the session's token was admitted"),
+        }
+        assert!(
+            owner.ping().is_ok(),
+            "a refused client disconnected the owner\n{}",
+            daemon.log()
+        );
+    }
+    drop(owner);
+
+    let (session, _events) = daemon.connect(None);
+    assert!(session.hello().session.resumed);
+    assert_eq!(session.hello().session.session_token.as_ref(), Some(&token));
+    let log = daemon.log();
+    assert!(
+        log.contains("refused a client"),
+        "refusals are not diagnosed\n{log}"
+    );
+    assert!(!log.contains(token.as_str()), "the log contains the token");
+    for entry in std::fs::read_dir(daemon.state.path().join("log")).unwrap() {
+        let metadata = entry.unwrap().metadata().unwrap();
+        assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
+    }
+    session.shutdown(STEP_TIMEOUT);
+    assert!(daemon.wait_until_stopped());
+}
+
+// Two proxies racing to start the daemon end up in one daemon. The session
+// admits whichever client says hello first; the other has no token and is
+// refused without disturbing it.
 #[test]
 fn concurrent_connections_share_one_daemon() {
     let daemon = Daemon::new("race");
-    let attempt = || {
-        lithe_remote::client::RemoteSession::connect(
-            &lithe_remote::client::TransportChain::local(),
-            &daemon.command(),
-            &support::options(),
-        )
-    };
+    let attempt = || daemon.try_connect(&support::options());
     let results = std::thread::scope(|scope| {
         let first = scope.spawn(attempt);
         let second = scope.spawn(attempt);
         [first.join().unwrap(), second.join().unwrap()]
     });
-    let survivor = results
-        .into_iter()
-        .filter_map(Result::ok)
-        .map(|(session, _events)| session)
-        .find(|session| session.ping().is_ok())
-        .unwrap_or_else(|| panic!("no connection survived\n{}", daemon.log()));
+    let mut admitted = Vec::new();
+    for result in results {
+        match result {
+            Ok((session, _events)) => admitted.push(session),
+            Err(ClientError::Remote(error)) => {
+                assert_eq!(error.code, ErrorCode::InvalidSessionToken)
+            }
+            Err(error) => panic!("unexpected failure: {error}\n{}", daemon.log()),
+        }
+    }
+    assert_eq!(admitted.len(), 1, "{}", daemon.log());
+    let survivor = admitted.pop().unwrap();
+    assert!(survivor.ping().is_ok());
     let process = survivor
         .spawn(SpawnSpec {
             argv: argv(&["sh", "-c", "printf shared"]),

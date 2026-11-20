@@ -76,6 +76,10 @@ impl Message {
 pub enum ErrorCode {
     /// The peers do not share a protocol version.
     ProtocolMismatch,
+    /// `server.hello` reached a persistent session that already had a client
+    /// without that session's token, or with a different one. The server
+    /// closes the connection.
+    InvalidSessionToken,
     /// The message was malformed, sent before `server.hello`, or had invalid
     /// parameters.
     InvalidRequest,

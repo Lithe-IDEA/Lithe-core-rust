@@ -3,11 +3,13 @@
 
 #![allow(dead_code)]
 
-use lithe_remote::client::session::{ConnectOptions, Event};
+use lithe_remote::client::session::{ClientError, ConnectOptions, Event};
 use lithe_remote::client::{RemoteSession, TransportChain};
+use lithe_remote::protocol::methods::SessionToken;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Receiver;
+use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 pub const SERVER: &str = env!("CARGO_BIN_EXE_lithe-remote-server");
@@ -106,13 +108,25 @@ impl Drop for TempDir {
 
 /// A persistent session's daemon, killed on drop so a failed test never
 /// leaves it running. The state directory holds its socket, lock and log.
+///
+/// Like the app, it keeps the token the session issued and presents it when
+/// reconnecting, so the tests reattach as the session's owner.
 pub struct Daemon {
     pub key: String,
     pub state: TempDir,
+    /// `NAME=value` pairs the server starts with, through `env`.
+    environment: Vec<String>,
+    token: Mutex<Option<SessionToken>>,
 }
 
 impl Daemon {
     pub fn new(label: &str) -> Self {
+        Self::with_environment(label, &[])
+    }
+
+    /// A daemon whose server starts with extra environment variables, such
+    /// as its own `HOME`, while the test process's environment stays as is.
+    pub fn with_environment(label: &str, variables: &[(&str, &str)]) -> Self {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         Self {
             key: format!(
@@ -121,17 +135,33 @@ impl Daemon {
                 COUNTER.fetch_add(1, Ordering::Relaxed)
             ),
             state: TempDir::new(label),
+            environment: variables
+                .iter()
+                .map(|(name, value)| format!("{name}={value}"))
+                .collect(),
+            token: Mutex::new(None),
         }
     }
 
+    /// Token of the session this daemon serves, from the latest handshake.
+    pub fn token(&self) -> Option<SessionToken> {
+        self.token.lock().unwrap().clone()
+    }
+
     pub fn command(&self) -> Vec<String> {
-        vec![
+        let mut command = Vec::new();
+        if !self.environment.is_empty() {
+            command.push("env".into());
+            command.extend(self.environment.iter().cloned());
+        }
+        command.extend([
             SERVER.into(),
             "--connect".into(),
             self.key.clone(),
             "--state-dir".into(),
             self.state.str().into(),
-        ]
+        ]);
+        command
     }
 
     pub fn connect(&self, idle_timeout: Option<Duration>) -> (RemoteSession, Receiver<Event>) {
@@ -148,10 +178,27 @@ impl Daemon {
         self.connect_with(&options)
     }
 
+    /// Connects with `options`, adding the remembered token when they carry
+    /// none, and remembers the token the session reports.
     pub fn connect_with(&self, options: &ConnectOptions) -> (RemoteSession, Receiver<Event>) {
-        RemoteSession::connect(&TransportChain::local(), &self.command(), options).unwrap_or_else(
-            |error| panic!("connect to the persistent session: {error}\n{}", self.log()),
-        )
+        let mut options = options.clone();
+        if options.session_token.is_none() {
+            options.session_token = self.token();
+        }
+        let (session, events) = self.try_connect(&options).unwrap_or_else(|error| {
+            panic!("connect to the persistent session: {error}\n{}", self.log())
+        });
+        *self.token.lock().unwrap() = session.hello().session.session_token.clone();
+        (session, events)
+    }
+
+    /// Connects with exactly `options`, as a client other than the
+    /// session's owner would.
+    pub fn try_connect(
+        &self,
+        options: &ConnectOptions,
+    ) -> Result<(RemoteSession, Receiver<Event>), ClientError> {
+        RemoteSession::connect(&TransportChain::local(), &self.command(), options)
     }
 
     fn lock_path(&self) -> Option<PathBuf> {

@@ -177,10 +177,8 @@ fn lost_client_snapshot_is_released_when_the_stdio_session_ends() {
 #[test]
 fn persistent_disconnect_retains_snapshot_until_explicit_shutdown() {
     let home = TempDir::new("persistent-run-home");
-    let daemon = support::Daemon::new("persistent-run");
-    let mut command = vec!["env".into(), format!("HOME={}", home.str())];
-    command.extend(daemon.command());
-    let (session, _) = support::connect_command(&command);
+    let daemon = support::Daemon::with_environment("persistent-run", &[("HOME", home.str())]);
+    let (session, _) = daemon.connect(None);
     let allocated = session
         .request_value(
             methods::FS_CREATE_RUN_DIRECTORY,
@@ -191,7 +189,7 @@ fn persistent_disconnect_retains_snapshot_until_explicit_shutdown() {
     let path = Path::new(allocated["path"].as_str().unwrap());
     std::fs::write(path.join("plugin"), b"approved bytes").unwrap();
     drop(session);
-    let (replacement, _) = support::connect_command(&command);
+    let (replacement, _) = daemon.connect(None);
     assert_eq!(
         std::fs::read(path.join("plugin")).unwrap(),
         b"approved bytes"
@@ -220,17 +218,8 @@ fn persistent_disconnect_retains_snapshot_until_explicit_shutdown() {
 #[test]
 fn abandoned_desktop_snapshot_is_reclaimed_after_persistent_session_expiry() {
     let home = TempDir::new("expired-run-home");
-    let daemon = support::Daemon::new("expired-run");
-    let mut command = vec!["env".into(), format!("HOME={}", home.str())];
-    command.extend(daemon.command());
-    let mut options = support::options();
-    options.idle_timeout = Some(std::time::Duration::from_secs(1));
-    let (session, _) = lithe_remote::client::RemoteSession::connect(
-        &lithe_remote::client::TransportChain::local(),
-        &command,
-        &options,
-    )
-    .unwrap();
+    let daemon = support::Daemon::with_environment("expired-run", &[("HOME", home.str())]);
+    let (session, _) = daemon.connect(Some(std::time::Duration::from_secs(1)));
     let allocated = session
         .request_value(
             methods::FS_CREATE_RUN_DIRECTORY,
