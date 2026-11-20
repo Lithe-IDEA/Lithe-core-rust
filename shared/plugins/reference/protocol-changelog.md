@@ -14,6 +14,7 @@
 
 ## 待合入
 
+- [#139](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/139)，[@1lck](https://github.com/1lck)，**`buildSystems` 2**（API-29）：构建提供者的 `application` 运行声明（含 `entrypoints: true`）可以通过 `debug.configurationType` 复用已注册的连接调试器。`lithe/build/prepareRun` 复用原有 `launchOptions.debug`，入口运行仍不带 `target`。已有服务运行声明继续适用旧版本。没有新增 RPC 方法、通知或 SDK 版本。
 - [#135](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/135)，[@xiaoyumuxi](https://github.com/xiaoyumuxi)，`toolDefinitions` 0 内的行为修正（API-23）：外部安装的 `executableLayouts` 文件链接到另一个文件名时，`toolchains.candidates` 的待探针路径和 `toolchains.resolve` 的 `executable` 改为规范主目录下的布局路径，不再是链接目标。rustup 把 `cargo`、`rust-analyzer` 链接到自身、按启动时的名字决定运行哪个工具，以前 Core 返回 `rustup`，版本探针失败。链接目标的类型、可执行位和越界检查不变；同名链接仍返回规范路径。没有新增字段、版本号、宿主方法、通知或 SDK 版本。
 
 ## 按协议查首次出现
@@ -47,6 +48,7 @@
 | `buildProviders` | 1 | 2026-11-18 | [#89](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/89) |
 | `buildSystems` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `buildSystems` | 1 | 2026-11-19 | [#112](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/112) |
+| `buildSystems` | 2 | 待合入 | [#139](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/139) |
 | `commandInstallers` | 0 | 2026-11-15 | [#53](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/53) |
 | `commandInstallers` | 1 | 2026-11-20 | [#133](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/133) |
 | `debugAdapters` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
