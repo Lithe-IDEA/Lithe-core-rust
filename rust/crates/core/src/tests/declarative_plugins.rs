@@ -67,6 +67,8 @@ const PROJECT_GENERATOR_TOOL_FIXTURE: &str =
     contract_file!("fixtures/project-generators/project-generator-tool-field.plugin.json");
 const COMMAND_INSTALLER_FIXTURE: &str =
     contract_file!("fixtures/command-installers/command-installer.plugin.json");
+const COMMAND_INSTALLER_DOWNLOAD_FIXTURE: &str =
+    contract_file!("fixtures/command-installers/command-installer-download.plugin.json");
 const COMMAND_INSTALLER_PLANS: &str =
     contract_file!("fixtures/command-installers/command-installer-plans.json");
 const RUN_CONFIGURATION_TYPES_FIXTURE: &str =
@@ -106,6 +108,7 @@ fn fixture(name: &str) -> Value {
         "project-generator.plugin.json" => PROJECT_GENERATOR_FIXTURE,
         "project-generator-tool-field.plugin.json" => PROJECT_GENERATOR_TOOL_FIXTURE,
         "command-installer.plugin.json" => COMMAND_INSTALLER_FIXTURE,
+        "command-installer-download.plugin.json" => COMMAND_INSTALLER_DOWNLOAD_FIXTURE,
         "run-configuration-types.plugin.json" => RUN_CONFIGURATION_TYPES_FIXTURE,
         "before-launch-tasks.plugin.json" => BEFORE_LAUNCH_TASKS_FIXTURE,
         other => panic!("unknown fixture {other}"),
@@ -140,6 +143,7 @@ fn contract_fixtures_and_official_plugins_validate() {
         EDITOR_PROVIDERS_FIXTURE,
         PROJECT_GENERATOR_TOOL_FIXTURE,
         COMMAND_INSTALLER_FIXTURE,
+        COMMAND_INSTALLER_DOWNLOAD_FIXTURE,
         RUN_CONFIGURATION_TYPES_FIXTURE,
         BEFORE_LAUNCH_TASKS_FIXTURE,
     ] {
@@ -279,7 +283,8 @@ fn command_installer_fixtures_match_on_this_host() {
     for case in plans["cases"].as_array().unwrap() {
         let name = case["name"].as_str().unwrap();
         let specific = &case["platforms"][platform];
-        let mut payload = json!({ "manifest": fixture("command-installer.plugin.json") });
+        let plugin = case.get("plugin").unwrap_or(&plans["plugin"]);
+        let mut payload = json!({ "manifest": fixture(plugin.as_str().unwrap()) });
         for source in [&case["payload"], &specific["payload"]] {
             for (field, value) in source.as_object().into_iter().flatten() {
                 payload[field] = value.clone();
@@ -342,6 +347,78 @@ fn command_installers_are_reviewed_programs() {
     assert_ne!(programs(changed), before);
 }
 
+/// A download installer's review entry shows every archive it may fetch, so
+/// a new URL or digest is a new program the user approves again; it runs no
+/// tool, so the entry has no tool or arguments.
+#[test]
+fn download_installers_are_reviewed_programs() {
+    let programs = |manifest: Value| {
+        let outcome = lithe_plugin_marketplace::install_review_command(json!({
+            "manifest": manifest,
+        }))
+        .expect("payload is well formed");
+        outcome["review"]["programs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|program| program["kind"] == "commandInstaller")
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+    let manifest = fixture("command-installer-download.plugin.json");
+    let before = programs(manifest.clone());
+    assert_eq!(before.len(), 1);
+    let program = &before[0];
+    assert_eq!(program["installer"], "sample-lldb");
+    assert_eq!(program["timeoutSeconds"], 900);
+    assert!(program.get("tool").is_none() && program.get("arguments").is_none());
+    let artifacts = program["download"]["artifacts"].as_array().unwrap();
+    assert_eq!(artifacts.len(), 3);
+    // The review lists the digest Core checks, in lowercase.
+    let macos = artifacts
+        .iter()
+        .find(|artifact| artifact["os"] == "macos")
+        .unwrap();
+    assert_eq!(
+        macos["sha256"],
+        "2f114a990e1b368dd1dbd33c80c0e719767af2d228391ec0df0571c957f9ac91"
+    );
+    for (pointer, value) in [
+        (
+            "/commandInstallers/0/download/artifacts/0/url",
+            json!("https://downloads.example.org/other.zip"),
+        ),
+        (
+            "/commandInstallers/0/download/artifacts/1/sha256",
+            json!("0".repeat(64)),
+        ),
+        ("/commandInstallers/0/download/version", json!("1.2.4")),
+    ] {
+        let mut changed = manifest.clone();
+        *changed.pointer_mut(pointer).unwrap() = value;
+        assert_ne!(programs(changed), before, "{pointer}");
+    }
+}
+
+/// A host that declares `commandInstallers` 0 does not know download
+/// installers, so it refuses a plugin that needs them before installing it.
+#[test]
+fn download_installers_need_a_host_with_version_1() {
+    let manifest = fixture("command-installer-download.plugin.json");
+    let host = json!({ "commandInstallers": [0], "debugAdapters": [0], "languages": [0] });
+    let refused = validate_command(json!({ "manifest": manifest, "hostCapabilities": host }))
+        .expect("payload is well formed");
+    assert_eq!(
+        refused["error"]["code"], "plugin.api.unsupported",
+        "{refused}"
+    );
+    assert_eq!(refused["error"]["field"], "requires.commandInstallers");
+    let host = json!({ "commandInstallers": [0, 1], "debugAdapters": [0], "languages": [0] });
+    let accepted = validate_command(json!({ "manifest": manifest, "hostCapabilities": host }))
+        .expect("payload is well formed");
+    assert_eq!(accepted["status"], "ok", "{accepted}");
+}
+
 /// A malformed request is a Core failure, not a rejection.
 #[test]
 fn command_installer_requests_decode_strictly() {
@@ -353,6 +430,20 @@ fn command_installer_requests_decode_strictly() {
     assert!(command_installer_default_directory_command(
         json!({ "manifest": manifest, "installerID": "sample-ls" })
     )
+    .is_err());
+    // A platform names a supported pair by its two fields and nothing else.
+    let manifest = fixture("command-installer-download.plugin.json");
+    assert!(command_installer_plan_command(json!({
+        "manifest": manifest,
+        "installerID": "sample-lldb",
+        "target": "managed",
+        "platform": { "os": "macos" }
+    }))
+    .is_err());
+    assert!(command_installer_requirements_command(json!({
+        "manifest": manifest,
+        "platform": { "os": "macos", "arch": "arm64", "libc": "musl" }
+    }))
     .is_err());
 }
 

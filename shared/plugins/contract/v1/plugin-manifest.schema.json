@@ -13,6 +13,7 @@
     {"if": {"required": ["buildSystems"], "properties": {"buildSystems": {"contains": {"required": ["beforeLaunchTasks"]}}}}, "then": {"properties": {"requires": {"required": ["beforeLaunchTasks"]}}}},
     {"if": {"required": ["buildSystems"], "properties": {"buildSystems": {"contains": {"required": ["test"], "properties": {"test": {"required": ["discoveryCommand"]}}}}}}, "then": {"properties": {"requires": {"required": ["buildSystems"], "properties": {"buildSystems": {"const": 1}}}}}},
     {"if": {"required": ["commandInstallers"]}, "then": {"required": ["permissions"], "properties": {"requires": {"required": ["commandInstallers"]}, "permissions": {"contains": {"const": "commands.install"}}}}},
+    {"if": {"required": ["commandInstallers"], "properties": {"commandInstallers": {"contains": {"required": ["download"]}}}}, "then": {"properties": {"requires": {"properties": {"commandInstallers": {"const": 1}}}}}},
     {"if": {"required": ["managedRuntimes"]}, "then": {"required": ["backend", "permissions"], "properties": {"requires": {"required": ["managedRuntimes", "backend"]}, "permissions": {"allOf": [{"contains": {"const": "runtimes.install"}}, {"contains": {"const": "backend.launch"}}]}}}},
     {"if": {"required": ["toolchainProviders"]}, "then": {"required": ["backend"], "properties": {"requires": {"required": ["toolchainProviders", "backend"]}, "permissions": {"allOf": [{"contains": {"const": "toolchains.provide"}}, {"contains": {"const": "backend.launch"}}]}}}},
     {"if": {"required": ["pluginFunctions"]}, "then": {"required": ["backend"], "properties": {"requires": {"required": ["pluginFunctions", "backend"]}}}},
@@ -37,7 +38,7 @@
         "buildModelInputs": {"description": "Optional public model sharing between already enabled workspace plugins; no installation, private function, or process authority. Required exactly when modelSharing or modelInputs is used. Consumers require buildProviders. A producer cannot also consume inputs.", "enum": [0]},
         "buildProviders": { "description": "Required exactly when any buildSystems[].provider is present, including own-process and shared language-server providers. Declares host support for Provider orchestration (task execution, test execution and discovery, run preparation, native debug preparation, optional read-only model inputs, non-sensitive native configuration sources, inline test reports, opaque semantic test selectors, typed run options and service/task preparation, registry-selected adapters and host-owned connection targets for service debugging), independent of declarative buildSystems. Version 1 adds entrypoint runs (lithe/build/runEntrypoints).", "enum": [0, 1] },
         "buildSystems": { "description": "Declarative build detection, models, and command plans. Version 1 adds command-based test discovery. Neither version implies buildProviders support.", "enum": [0, 1] },
-        "commandInstallers": { "description": "Required exactly when commandInstallers is non-empty: installations of bare commands that systemCommand launches name, run by the host only after the user confirms them.", "enum": [0] },
+        "commandInstallers": { "description": "Required exactly when commandInstallers is non-empty: installations of bare commands that systemCommand launches name, run by the host only after the user confirms them. Version 1 adds download installers: pinned per-platform archives the host downloads, checks and extracts into the plugin's managed directory.", "enum": [0, 1] },
         "debugAdapters": { "description": "Required exactly when debugAdapters is non-empty. Covers bounded target argument and environment bindings and debugAdapters[].features and defaults. The DAP session itself is negotiated by the adapter in initialize.", "enum": [0] },
         "executionProviders": { "enum": [0] },
         "languageServers": { "description": "Required exactly when languageServers is non-empty. Covers languageServers[].workspaceConfiguration and the session fields requestMethods, commands, serializedCommands, forwardNotifications, state, and remote.", "enum": [0] },
@@ -1051,10 +1052,35 @@
       "pattern": "^(?:[^/\\\\:]+(?:/[^/\\\\:]+)*)?$"
     },
     "commandInstaller": {
-      "description": "One way to install bare commands. The host shows the tool, the expanded command line, the network use and the target directory, and runs it only after the user confirms.",
+      "description": "One way to install bare commands: run a tool, or, with requires.commandInstallers 1, download a pinned archive. The host shows the tool and the expanded command line, or the version and the archive URL, with the network use and the target directory, and installs only after the user confirms.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "commands", "tool", "arguments", "mayUseNetwork", "targets"],
+      "required": ["id", "commands", "mayUseNetwork", "targets"],
+      "oneOf": [
+        {
+          "description": "A tool installer runs the tool with the arguments.",
+          "required": ["tool", "arguments"],
+          "not": { "required": ["download"] }
+        },
+        {
+          "description": "A download installer runs no tool. It uses the network and extracts only into the managed target, which passes no arguments or environment.",
+          "required": ["download"],
+          "not": { "anyOf": [{ "required": ["tool"] }, { "required": ["minimumVersion"] }, { "required": ["arguments"] }] },
+          "properties": {
+            "mayUseNetwork": { "const": true },
+            "targets": {
+              "required": ["managed"],
+              "not": { "required": ["toolDefault"] },
+              "properties": {
+                "managed": {
+                  "not": { "required": ["arguments"] },
+                  "properties": { "environment": { "maxProperties": 0 } }
+                }
+              }
+            }
+          }
+        }
+      ],
       "properties": {
         "id": { "type": "string", "pattern": "^[a-z0-9-]+$", "maxLength": 64 },
         "commands": {
@@ -1068,7 +1094,8 @@
         "tool": { "description": "The ID of a tool definition listed in requiresTools; its executable runs the installation and the directory probes.", "$ref": "#/$defs/toolchainToolID" },
         "minimumVersion": { "$ref": "#/$defs/minimumVersion" },
         "arguments": { "description": "Arguments after the tool's executable. Literal: no template variables.", "$ref": "#/$defs/commandInstallerArguments" },
-        "mayUseNetwork": { "description": "Whether the installation may download; shown before the user confirms.", "type": "boolean" },
+        "download": { "$ref": "#/$defs/commandInstallerDownload" },
+        "mayUseNetwork": { "description": "Whether the installation may download; shown before the user confirms. Always true for a download installer.", "type": "boolean" },
         "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 3600, "default": 600 },
         "targets": {
           "description": "Where the commands may land; the user chooses one when installing.",
@@ -1083,7 +1110,7 @@
               "properties": {
                 "arguments": { "description": "Replaces the installer's arguments.", "$ref": "#/$defs/commandInstallerArguments" },
                 "environment": { "$ref": "#/$defs/commandInstallerEnvironment" },
-                "commandDirectory": { "description": "Package-style relative path below the install directory where the commands land; the install directory itself when absent.", "$ref": "#/$defs/commandInstallerRelativePath" }
+                "commandDirectory": { "description": "Package-style relative path below the install directory where the commands land; the install directory itself when absent. For a download installer it is relative to the extracted archive root and also follows the archive layout rules: forward slashes, no empty, dot or parent components, no colon.", "$ref": "#/$defs/commandInstallerRelativePath" }
               }
             },
             "toolDefault": {
@@ -1112,6 +1139,35 @@
             }
           }
         }
+      }
+    },
+    "commandInstallerDownload": {
+      "description": "requires.commandInstallers 1: one pinned archive per platform. The host downloads the archive for its platform, checks the SHA-256 digest and extracts it into a directory of its own below the plugin's managed directory; the commands are in targets.managed.commandDirectory below the extracted root. On a platform without an archive the installer is not offered.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "artifacts"],
+      "properties": {
+        "version": { "description": "Upstream version of the archives, shown before the user confirms.", "type": "string", "minLength": 1, "maxLength": 128 },
+        "artifacts": { "description": "At most one archive per os and arch. Sorted by os, then arch, when normalized.", "type": "array", "minItems": 1, "maxItems": 6, "items": { "$ref": "#/$defs/commandInstallerArchive" } }
+      }
+    },
+    "commandInstallerArchive": {
+      "type": "object", "additionalProperties": false,
+      "required": ["os", "arch", "url", "sha256", "archive"],
+      "properties": {
+        "os": { "enum": ["macos", "windows", "linux"] },
+        "arch": { "enum": ["arm64", "x86_64"] },
+        "url": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^https://", "description": "HTTPS without credentials or fragments; semantic URL validation is performed by Core." },
+        "mirrors": {
+          "type": "array",
+          "maxItems": 8,
+          "uniqueItems": true,
+          "description": "Optional fallback HTTPS URLs serving the exact same pinned SHA-256 archive, each different from url.",
+          "items": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^https://" }
+        },
+        "sha256": { "description": "Digest of the whole archive; lowercased when normalized.", "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
+        "archive": { "enum": ["zip", "tar.gz"] },
+        "stripPrefix": { "description": "Directory every entry of the archive is below, removed when extracting.", "$ref": "#/$defs/managedRuntimePath", "default": "" }
       }
     },
     "commandInstallerArguments": {

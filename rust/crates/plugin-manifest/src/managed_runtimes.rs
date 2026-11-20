@@ -2,15 +2,16 @@
 //! tool-specific qualification; hosts own downloads, filesystem evidence and
 //! atomic publication outside immutable plugin packages.
 
+use super::archives::{
+    bounded_text, is_archive_layout_path, is_archive_platform, validate_archive_source,
+    ArchivePlatform as RuntimePlatform, ArchiveSource, MAX_ARTIFACTS,
+};
 use super::*;
-use lithe_platform::{paths, Platform};
+use lithe_platform::paths;
 use lithe_plugin_model::is_function_id;
 use sha2::{Digest, Sha256};
-use url::Url;
 
 const MAX_DEPENDENCIES: usize = 16;
-const MAX_ARTIFACTS: usize = 6;
-const MAX_MIRRORS: usize = 8;
 const DEFAULT_RESOLVE_TIMEOUT: u64 = 30_000;
 const MAX_RESOLVE_TIMEOUT: u64 = 120_000;
 const MAX_PATH_BYTES: usize = 4096;
@@ -73,52 +74,16 @@ struct RuntimeArtifact {
     executable: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct RuntimePlatform {
-    os: String,
-    arch: String,
-}
-
-impl RuntimePlatform {
-    fn validate(&self) -> Validation<()> {
-        if !["macos", "windows", "linux"].contains(&self.os.as_str())
-            || !KNOWN_ARCHITECTURES.contains(&self.arch.as_str())
-        {
-            return Err(PluginRejection::at(
-                "plugin.managedRuntime.unavailable",
-                "platform",
-                "Managed runtimes require a supported operating system and architecture.",
-            ));
-        }
-        Ok(())
+/// Rejects a platform no runtime archive may target.
+fn validate_platform(platform: &RuntimePlatform) -> Validation<()> {
+    if !platform.is_supported() {
+        return Err(PluginRejection::at(
+            "plugin.managedRuntime.unavailable",
+            "platform",
+            "Managed runtimes require a supported operating system and architecture.",
+        ));
     }
-
-    fn native_paths(&self) -> Platform {
-        if self.os == "windows" {
-            Platform::Windows
-        } else {
-            Platform::Unix
-        }
-    }
-}
-
-fn bounded_text(value: &str, maximum: usize) -> bool {
-    !value.is_empty()
-        && value.len() <= maximum
-        && value.trim() == value
-        && !value.chars().any(char::is_control)
-}
-
-/// These paths have the same portable meaning on every host. Native extraction
-/// additionally checks filesystem aliases and symlink targets before writing.
-fn relative_runtime_path(value: &str) -> bool {
-    value.is_empty()
-        || (bounded_text(value, 512)
-            && !value.contains(['\\', ':'])
-            && value
-                .split('/')
-                .all(|part| !part.is_empty() && part != "." && part != ".."))
+    Ok(())
 }
 
 impl DeclarativePluginManifest {
@@ -212,8 +177,7 @@ impl DeclarativePluginManifest {
             let mut targets = BTreeSet::new();
             for (index, artifact) in dependency.artifacts.iter_mut().enumerate() {
                 let field = format!("{field}.artifacts[{index}]");
-                if !["macos", "windows", "linux"].contains(&artifact.os.as_str())
-                    || !KNOWN_ARCHITECTURES.contains(&artifact.arch.as_str())
+                if !is_archive_platform(&artifact.os, &artifact.arch)
                     || !targets.insert((artifact.os.clone(), artifact.arch.clone()))
                 {
                     return Err(invalid(
@@ -221,85 +185,30 @@ impl DeclarativePluginManifest {
                         "Artifacts have unique supported operating-system and architecture pairs.",
                     ));
                 }
-                let url = Url::parse(&artifact.url).map_err(|_| {
-                    invalid(
-                        format!("{field}.url"),
-                        "A runtime archive needs an HTTPS URL.",
-                    )
-                })?;
-                if !bounded_text(&artifact.url, 4096)
-                    || url.scheme() != "https"
-                    || url.host_str().is_none()
-                    || !url.username().is_empty()
-                    || url.password().is_some()
-                    || url.fragment().is_some()
-                {
-                    return Err(invalid(
-                        format!("{field}.url"),
-                        "Runtime archive URLs use HTTPS without credentials or fragments.",
-                    ));
-                }
-                if !artifact.mirrors.is_empty() {
-                    if managed_runtimes_version < 1 {
-                        return Err(invalid(
-                            "requires.managedRuntimes",
-                            "Managed runtime mirror URLs require requires.managedRuntimes >= 1.",
-                        ));
-                    }
-                    if artifact.mirrors.len() > MAX_MIRRORS {
-                        return Err(invalid(
-                            format!("{field}.mirrors"),
-                            "A runtime artifact declares at most 8 mirror URLs.",
-                        ));
-                    }
-                    let mut seen_urls = BTreeSet::new();
-                    seen_urls.insert(artifact.url.as_str());
-                    for (mirror_index, mirror) in artifact.mirrors.iter().enumerate() {
-                        let mirror_field = format!("{field}.mirrors[{mirror_index}]");
-                        let parsed = Url::parse(mirror).map_err(|_| {
-                            invalid(mirror_field.clone(), "A runtime mirror needs an HTTPS URL.")
-                        })?;
-                        if !bounded_text(mirror, 4096)
-                            || parsed.scheme() != "https"
-                            || parsed.host_str().is_none()
-                            || !parsed.username().is_empty()
-                            || parsed.password().is_some()
-                            || parsed.fragment().is_some()
-                        {
+                validate_archive_source(
+                    &field,
+                    ArchiveSource {
+                        url: &artifact.url,
+                        mirrors: &artifact.mirrors,
+                        sha256: &mut artifact.sha256,
+                        archive: &artifact.archive,
+                    },
+                    || {
+                        if managed_runtimes_version < 1 {
                             return Err(invalid(
-                                mirror_field,
-                                "Runtime mirror URLs use HTTPS without credentials or fragments.",
+                                "requires.managedRuntimes",
+                                "Managed runtime mirror URLs require requires.managedRuntimes >= 1.",
                             ));
                         }
-                        if !seen_urls.insert(mirror.as_str()) {
-                            return Err(invalid(
-                                mirror_field,
-                                "Runtime mirror URLs must be unique and differ from the primary URL.",
-                            ));
-                        }
-                    }
-                }
-                if artifact.sha256.len() != 64
-                    || !artifact.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
-                {
-                    return Err(invalid(
-                        format!("{field}.sha256"),
-                        "A runtime archive pins its complete SHA-256 digest.",
-                    ));
-                }
-                artifact.sha256.make_ascii_lowercase();
-                if !["zip", "tar.gz"].contains(&artifact.archive.as_str()) {
-                    return Err(invalid(
-                        format!("{field}.archive"),
-                        "A runtime archive format is zip or tar.gz.",
-                    ));
-                }
+                        Ok(())
+                    },
+                )?;
                 for (name, path) in [
                     ("stripPrefix", &artifact.strip_prefix),
                     ("home", &artifact.home),
                     ("executable", &artifact.executable),
                 ] {
-                    if !relative_runtime_path(path) {
+                    if !is_archive_layout_path(path) {
                         return Err(invalid(
                             format!("{field}.{name}"),
                             "Runtime paths are bounded relative paths without traversal.",
@@ -344,7 +253,7 @@ impl ManagedRuntimes {
             let Some(artifact) = dependency
                 .artifacts
                 .iter()
-                .find(|artifact| artifact.os == platform.os && artifact.arch == platform.arch)
+                .find(|artifact| platform.matches(&artifact.os, &artifact.arch))
             else {
                 return Err(PluginRejection::at(
                     "plugin.managedRuntime.unavailable",
@@ -393,7 +302,7 @@ pub fn managed_runtime_plan_command(payload: Value) -> Result<Value, CoreError> 
     let request: PlanRequest = decode_payload(payload, "plugins.managedRuntimes.plan")?;
     Ok(outcome(validate_manifest_value(request.manifest).and_then(
         |manifest| {
-            request.platform.validate()?;
+            validate_platform(&request.platform)?;
             let plan = match manifest.managed_runtimes {
                 Some(runtimes) => runtimes.plan(&request.platform)?,
                 None => json!({"dependencies": []}),
@@ -439,7 +348,7 @@ pub fn managed_runtime_resolution_command(payload: Value) -> Result<Value, CoreE
     let request: ResolutionRequest =
         decode_payload(payload, "plugins.managedRuntimes.decodeResolution")?;
     Ok(outcome(validate_manifest_value(request.manifest).and_then(|manifest| {
-        request.platform.validate()?;
+        validate_platform(&request.platform)?;
         let Some(declaration) = manifest.managed_runtimes else {
             return Err(invalid_resolution("The plugin declares no managed runtime resolver."));
         };

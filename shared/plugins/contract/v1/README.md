@@ -1402,9 +1402,12 @@ before running it. See [`build-toolchains.plugin.json`](fixtures/build-systems/b
 
 A [`systemCommand` launch](#process-start) names a bare command that the host
 finds with its tool discovery. When the machine lacks it, `commandInstallers[]`
-tells the host how to install it with a tool the plugin already requires, so
-the user installs it from plugin management instead of a terminal. The section
-requires `commandInstallers: 0` and the `commands.install` permission.
+tells the host how to install it, so the user installs it from plugin
+management instead of a terminal. An installer either runs a tool the plugin
+already requires (a **tool installer**), or, with `commandInstallers: 1`,
+downloads a pinned archive (a **download installer**). The section requires
+`commandInstallers: 0`, or `1` when any installer declares `download`, and the
+`commands.install` permission.
 
 ```json
 "requiresTools": ["go"],
@@ -1433,24 +1436,25 @@ requires `commandInstallers: 0` and the `commands.install` permission.
 | --- | --- |
 | `id` | Lowercase letters, digits and `-`, at most 64 characters; unique within the plugin. |
 | `commands` | 1 to 8 bare command names the installation provides. Each one is named by a `systemCommand` launch of this manifest (a language server, build provider, VCS provider, debug adapter or the backend) and by no other installer. |
-| `tool` | The tool-definition ID, listed in `requiresTools`, whose executable runs the installation and the directory probes. |
-| `minimumVersion` | Optional lowest version of `tool`: one to three dotted numbers. |
-| `arguments` | Arguments after the tool's executable, used by a target that does not replace them. Literal: no template variables. |
-| `mayUseNetwork` | Required: whether the installation may download. The host shows it before the user confirms. |
-| `timeoutSeconds` | How long the host lets the installation run, 1 to 3600; 600 when absent. |
-| `targets` | Where the commands may land: `managed`, `toolDefault`, or both. At least one. |
+| `tool` | Tool installer: the tool-definition ID, listed in `requiresTools`, whose executable runs the installation and the directory probes. |
+| `minimumVersion` | Tool installer, optional: lowest version of `tool`, one to three dotted numbers. |
+| `arguments` | Tool installer: arguments after the tool's executable, used by a target that does not replace them. Literal: no template variables. |
+| `download` | Download installer: the pinned archives, see [Download installers](#download-installers). Excludes `tool`, `minimumVersion` and `arguments`. |
+| `mayUseNetwork` | Required: whether the installation may download. The host shows it before the user confirms. Always `true` for a download installer. |
+| `timeoutSeconds` | How long the host lets the installation run, 1 to 3600; 600 when absent. A download installation counts the download and the extraction. |
+| `targets` | Where the commands may land: `managed`, `toolDefault`, or both. At least one. A download installer has only `managed`. |
 
 The user chooses the target when installing:
 
 - **`managed`** installs into a directory the host owns for the plugin, in its
   application data and never in the app bundle, the installation directory or
-  the plugin package; the host removes it with the plugin. `arguments`
-  (optional, replaces the installer's) and `environment` (variables set over
-  the tool's environment) may use `${installDirectory}`, the only template
-  variable of this section, and together must use it at least once.
-  `commandDirectory` is a package-style relative path, below the install
-  directory, of the directory the commands land in; the install directory
-  itself when absent.
+  the plugin package; the host removes it with the plugin. For a tool
+  installer, `arguments` (optional, replaces the installer's) and
+  `environment` (variables set over the tool's environment) may use
+  `${installDirectory}`, the only template variable of this section, and
+  together must use it at least once. `commandDirectory` is a package-style
+  relative path, below the install directory, of the directory the commands
+  land in; the install directory itself when absent.
 - **`toolDefault`** installs wherever the tool installs when it is told
   nothing. `arguments` and `environment` are literal. `directory` lists up to
   4 probes, tried in order: runs of the same tool with non-empty literal
@@ -1466,30 +1470,119 @@ letters, digits and `_`, not starting with a digit. Only `systemCommand`
 launches are served: a build system's or execution provider's executable
 resolved through `invocation.executables` is not.
 
+### Download installers
+
+A download installer serves a command its upstream publishes as a prebuilt
+archive, such as a debug adapter, so that the plugin package does not carry
+it and the user downloads it only when it is missing:
+
+```json
+"commandInstallers": [
+  {
+    "id": "codelldb",
+    "commands": ["codelldb"],
+    "download": {
+      "version": "1.12.3",
+      "artifacts": [
+        {
+          "os": "macos",
+          "arch": "arm64",
+          "url": "https://github.com/vadimcn/codelldb/releases/download/v1.12.3/codelldb-darwin-arm64.vsix",
+          "sha256": "2f114a990e1b368dd1dbd33c80c0e719767af2d228391ec0df0571c957f9ac91",
+          "archive": "zip"
+        }
+      ]
+    },
+    "mayUseNetwork": true,
+    "timeoutSeconds": 900,
+    "targets": { "managed": { "commandDirectory": "extension/adapter" } }
+  }
+]
+```
+
+| Field | Meaning |
+| --- | --- |
+| `download.version` | The upstream version of the archives, 1 to 128 bytes without surrounding whitespace or control characters. The host shows it before the user confirms. |
+| `download.artifacts` | 1 to 6 archives, at most one per `os` (`macos`, `windows`, `linux`) and `arch` (`arm64`, `x86_64`). Sorted by `os`, then `arch`, when normalized. |
+| `artifacts[].url` | HTTPS URL with a host, without credentials or a fragment, at most 4096 bytes. |
+| `artifacts[].mirrors` | Optional: up to 8 fallback HTTPS URLs serving the same bytes, each different from `url` and from each other. |
+| `artifacts[].sha256` | SHA-256 of the whole archive, 64 hex digits; lowercased when normalized. |
+| `artifacts[].archive` | `zip` or `tar.gz`. |
+| `artifacts[].stripPrefix` | Optional directory every entry of the archive is below, removed when extracting; empty when absent. |
+
+The archive and layout rules are those of [managed runtimes](#managed-runtimes):
+`stripPrefix` and `targets.managed.commandDirectory` are empty or
+`/`-separated relative paths without an empty, `.` or `..` part, backslash or
+colon, at most 512 bytes. `commandDirectory` is below the extracted root, after
+`stripPrefix` is removed. `targets.managed` passes no `arguments` and sets no
+`environment`, because nothing runs. A platform without an archive is not
+offered the installer: its commands have no installer there.
+
+The host downloads the archive for its platform, trying `url` and then the
+mirrors, checks the SHA-256 before extracting, and extracts into a directory
+of its own below the plugin's managed directory, never into the plugin package
+or the app bundle. It keeps the entries' modes, so an executable in the
+archive stays executable, and refuses an archive whose entries leave the
+extraction root, whose links point outside it, or that is not below
+`stripPrefix`. One extraction is kept per `download.cacheKey` of the plan, so
+updating the plugin without changing the archive reuses it.
+
+### Installation steps
+
 The host never installs on its own:
 
-1. `plugins.commandInstallers.requirements` lists each `systemCommand` launch
-   with its commands and their installer, `null` when none provides it. The
-   host looks each command up as the launch does and offers the installer of a
-   missing one.
+1. `plugins.commandInstallers.requirements` accepts `{manifest, platform?}`
+   and lists each `systemCommand` launch with its commands and their
+   installer, `null` when none provides it, and the installers offered. Each
+   installer entry has `id`, `commands`, `tool`, `minimumVersion`,
+   `download` (`null` for a tool installer, `{version}` for a download
+   installer), `mayUseNetwork` and `targets`. With `platform: {os, arch}` a
+   download installer without an archive for that platform is left out; a
+   host that installs downloads always sends it. The host looks each command
+   up as the launch does and offers the installer of a missing one.
 2. For `toolDefault`, the host runs each probe with the resolved `tool` and
    sends their outputs to `plugins.commandInstallers.defaultDirectory`, which
    answers the directory, or `null` when no probe named an absolute one.
-3. The host shows the tool, the expanded command line, whether it uses the
-   network and the directory of each target, and lets the user choose one.
-4. `plugins.commandInstallers.plan` expands the chosen target. The host runs
-   `tool` with `arguments` and `environment` under `timeoutMilliseconds`,
-   shows the output, lets the user cancel, and then checks that every command
-   is in `commandDirectory` (`managed`) or in the default directory
-   (`toolDefault`).
+3. The host shows the tool and the expanded command line, or the version and
+   the archive URL, whether it uses the network and the directory of each
+   target, and lets the user choose one.
+4. `plugins.commandInstallers.plan` accepts
+   `{manifest, installerID, target, installDirectory?, platform?}` and expands
+   the chosen target. Every plan has `installer`, `target`, `commands`,
+   `tool`, `minimumVersion`, `mayUseNetwork`, `timeoutMilliseconds`,
+   `arguments`, `environment`, `commandDirectory`, `directoryProbes` and
+   `download`.
+   - For a tool installer `download` is `null`. A `managed` plan needs the
+     absolute `installDirectory` the host made; a `toolDefault` plan takes
+     none. The host runs `tool` with `arguments` and `environment` under
+     `timeoutMilliseconds`, shows the output, lets the user cancel, and then
+     checks that every command is in `commandDirectory` (`managed`) or in the
+     default directory (`toolDefault`).
+   - For a download installer the plan needs `platform` and takes no
+     `installDirectory`; `arguments` and `directoryProbes` are empty,
+     `environment` is empty and `commandDirectory` is `null`. `download` is
+     the archive for the platform: `installer`, `version`, `os`, `arch`,
+     `url`, `sha256`, `archive`, `stripPrefix`, `cacheKey`,
+     `commandDirectory` (relative to the extracted root, empty for the root)
+     and `mirrors` when the archive has any. `cacheKey` is an opaque
+     64-character lowercase SHA-256 of the installer ID, version, platform,
+     URL, digest, format and `stripPrefix`; mirrors are left out of it.
+     The host downloads, checks and extracts under `timeoutMilliseconds`,
+     lets the user cancel, and then checks that every command is in
+     `download.commandDirectory` below the extracted root.
 5. Later launches of the plugin find the commands there: the host adds the
-   plugin's managed command directory and the default directories it recorded
-   to the lookup of that plugin's `systemCommand` launches.
+   plugin's managed command directories and the default directories it
+   recorded to the lookup of that plugin's `systemCommand` launches.
 
 Every installer is a program of the [install review](#trust-and-install-review)
 (`kind: "commandInstaller"` with its fields), so a change to what it runs is
-approved again. See
-[`command-installer.plugin.json`](fixtures/command-installers/command-installer.plugin.json)
+approved again. A download installer's program lists `download` with every
+archive instead of `tool`, `minimumVersion` and `arguments`, so a new URL,
+mirror, digest or version is approved again too. A host that declares only
+`commandInstallers: 0` refuses a plugin with a download installer before
+installing it. See
+[`command-installer.plugin.json`](fixtures/command-installers/command-installer.plugin.json),
+[`command-installer-download.plugin.json`](fixtures/command-installers/command-installer-download.plugin.json)
 and the golden cases in
 [`command-installer-plans.json`](fixtures/command-installers/command-installer-plans.json).
 
@@ -4971,9 +5064,14 @@ command payload is a Core `invalid_request` failure instead.
 | `plugin.command.missing` | Host | None of the commands a `systemCommand` launch names is on `PATH`, in the plugin's managed command directory, or in a default directory the host recorded; the host offers the [command installer](#command-installers) when there is one |
 | `plugin.commandInstaller.unknown` | Core | `installerID` names no command installer of the plugin |
 | `plugin.commandInstaller.targetUndeclared` | Core | The installer does not declare the requested target (`field: "target"`), or has no `toolDefault` to read a default directory for (`field: "installerID"`) |
-| `plugin.commandInstaller.directoryInvalid` | Core | A `managed` plan has no absolute `installDirectory` for this platform, or a `toolDefault` plan was sent one |
+| `plugin.commandInstaller.directoryInvalid` | Core | A tool installer's `managed` plan has no absolute `installDirectory` for this platform, or a `toolDefault` or download plan was sent one |
 | `plugin.commandInstaller.probeOutputsInvalid` | Core | `outputs` does not hold one entry for each directory probe |
-| `plugin.commandInstaller.failed` | Host | The installation exited unsuccessfully |
+| `plugin.commandInstaller.platformInvalid` | Core | `platform` names an operating system or architecture no archive may target, or a download plan was sent no `platform` |
+| `plugin.commandInstaller.unavailable` | Core | A download installer has no archive for the requested `platform` |
+| `plugin.commandInstaller.failed` | Host | A tool installation exited unsuccessfully |
+| `plugin.commandInstaller.downloadFailed` | Host | A download installation could not download its archive from `url` or any mirror |
+| `plugin.commandInstaller.checksumMismatch` | Host | A downloaded archive does not match its pinned SHA-256 |
+| `plugin.commandInstaller.archiveInvalid` | Host | A downloaded archive is not a safe `zip` or `tar.gz` below its `stripPrefix` |
 | `plugin.commandInstaller.timedOut` | Host | The installation ran past `timeoutMilliseconds` and was stopped |
 | `plugin.commandInstaller.commandsMissing` | Host | The installation finished but a command it provides is not in its directory |
 | `plugin.runtime.missing` | Host | A tool a launch needs cannot be found, or is older than its `minimumVersion`, when the server starts |
