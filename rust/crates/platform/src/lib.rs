@@ -11,6 +11,7 @@
 //! crate. Tests that need a real Windows or Unix host to observe them live in
 //! the `lithe-platform-tests` package.
 
+pub mod cli;
 pub mod fs;
 pub mod names;
 pub mod paths;

@@ -7632,3 +7632,36 @@ order. A nearer directory masks the project root even when the workspace is a fi
 root. Optional project discovery omits paths outside the supported native bounds, so a
 usable pin still resolves. Both project and external installations can omit `pathPrepend`
 directories explicitly observed as missing.
+
+## CLI launch and standalone documents
+
+`application.cli.planLaunch` accepts `{args: string[]}` (at most four arguments,
+32768 bytes each). It returns `{action: "welcome"|"open"|"help"|"version", path,
+detach}`. A single path is accepted; `--` protects dash-prefixed paths. `-h` /
+`--help` and `-v` / `--version` are supported. The managed launcher prepends
+`--cli`, requesting a detached GUI child. Invalid or ambiguous arguments fail
+with `invalid_request`, before a window or plugin service is created.
+
+`application.cli.openTarget` accepts the native observation `{kind: "file"|
+"directory"}` and returns `{mode: "file"|"project", plugins: boolean, commands: string[]}`.
+The file policy lists permitted command IDs; a project returns an empty list (unrestricted). A regular
+file opens an isolated document session: no plugin registry, backend, language
+server, project scan or Git observation. No terminal is created at startup;
+the user may explicitly open the host's integrated terminal in the selected
+file's directory. Bundled syntax highlighting, editing, guarded saving and
+document observation remain available. Directories
+retain the project workflow and workspace trust. Other native file types fail.
+
+`application.cli.editRegistration` accepts `{shell: "zsh"|"bash"|"sh"|"fish"|
+"windows", source, launcherSource?: string, directory, executable, action: "inspect"|"install"|"remove"}`.
+It returns `{installed, source, launcher, owned}`; installed describes the input source.
+Owned recognizes a complete managed launcher, permitting repair after an application move.
+Sources are bounded to 1 MiB. Unix shell configuration uses one marked owned
+block; unrelated bytes and line endings are preserved. Invalid markers fail
+closed. Windows edits only matching user PATH entries, comparing case-insensitively
+and ignoring trailing separators. The native host owns default-shell discovery,
+source selection, optimistic conflict checks, atomic publication, executable
+permissions and environment-change notification. Inspect is read-only; only an
+explicit install/remove click publishes. Launcher resources live in user data,
+never the read-only installation. Removing registration deletes the owned launcher after removing its PATH entry. See
+[fixtures](../fixtures/application/cli-v1.json).

@@ -956,6 +956,7 @@ dependencies = [
 name = "lithe-core-rules"
 version = "0.1.0"
 dependencies = [
+ "lithe-platform",
  "serde",
  "serde_json",
  "unicode-normalization",
