@@ -202,6 +202,7 @@
         "pluginDirectory": "/plugins/node/versions/1.0.0",
         "stateDirectory": "/state/node",
         "workspaceStateDirectory": "/state/node/workspaces/abc",
+        "projectCodeAllowed": true,
         "architecture": "x86_64"
       },
       "expected": {
@@ -243,6 +244,7 @@
         "pluginDirectory": "/plugins/node/versions/1.0.0",
         "stateDirectory": "/state/node",
         "workspaceStateDirectory": "/state/node/workspaces/abc",
+        "projectCodeAllowed": true,
         "architecture": "x86_64",
         "settings": { "heapMB": 4096, "logLevel": "debug", "telemetry": true }
       },
@@ -285,6 +287,7 @@
         "pluginDirectory": "/plugins/node/versions/1.0.0",
         "stateDirectory": "/state/node",
         "workspaceStateDirectory": "/state/node/workspaces/abc",
+        "projectCodeAllowed": true,
         "architecture": "x86_64",
         "settings": { "heapMB": 99999, "logLevel": "verbose", "telemetry": "yes", "unknown": 1 }
       },
@@ -327,6 +330,7 @@
         "pluginDirectory": "/plugins/node/versions/1.0.0",
         "stateDirectory": "/state/node",
         "workspaceStateDirectory": "/state/node/workspaces/abc",
+        "projectCodeAllowed": true,
         "architecture": "x86_64",
         "settings": { "heapMB": 1024 }
       },
@@ -369,6 +373,7 @@
         "pluginDirectory": "/plugins/java/versions/1.0.0",
         "stateDirectory": "/state/java",
         "workspaceStateDirectory": "/state/java/workspaces/abc",
+        "projectCodeAllowed": true,
         "architecture": "arm64"
       },
       "expected": {
@@ -402,6 +407,7 @@
         "pluginDirectory": "/plugins/java/versions/1.0.0",
         "stateDirectory": "/state/java",
         "workspaceStateDirectory": "/state/java/workspaces/abc",
+        "projectCodeAllowed": true,
         "architecture": "arm64"
       },
       "expected": {
@@ -442,6 +448,7 @@
         "pluginDirectory": "/plugins/mix/versions/0.1.0",
         "stateDirectory": "/state/mix",
         "workspaceStateDirectory": "/state/mix/workspaces/abc",
+        "projectCodeAllowed": true,
         "architecture": "x86_64"
       },
       "expected": {
@@ -476,6 +483,7 @@
         "pluginDirectory": "/plugins/mix/versions/0.1.0",
         "stateDirectory": "/state/mix",
         "workspaceStateDirectory": "/state/mix/workspaces/abc",
+        "projectCodeAllowed": true,
         "architecture": "x86_64"
       },
       "expected": {
@@ -544,6 +552,7 @@
         "pluginDirectory": "/plugins/node/versions/1.0.0",
         "stateDirectory": "/state/node",
         "workspaceStateDirectory": "/state/node/workspaces/abc",
+        "projectCodeAllowed": true,
         "architecture": "x86_64",
         "logDirectory": "/logs/sessions/current/plugins/io.example/files"
       },
@@ -577,6 +586,90 @@
         }
       },
       "manifestArguments": ["--stdio", "--log=${logDir}/server.log"]
+    },
+    {
+      "name": "a language server that runs project code waits until the workspace is trusted",
+      "plugin": "language-packaged-server.plugin.json",
+      "languageID": "php",
+      "operation": "languageServerLaunchPlan",
+      "request": {
+        "pluginDirectory": "/plugins/php/versions/1.0.0",
+        "stateDirectory": "/state/php",
+        "workspaceStateDirectory": "/state/php/workspaces/abc",
+        "architecture": "arm64"
+      },
+      "expected": {
+        "status": "rejected",
+        "code": "plugin.launch.untrustedWorkspace"
+      }
+    },
+    {
+      "name": "a language server that runs nothing from the project starts in an untrusted workspace",
+      "plugin": "language-server-untrusted.plugin.json",
+      "languageID": "yaml",
+      "operation": "languageServerLaunchPlan",
+      "request": {
+        "pluginDirectory": "/plugins/yaml/versions/0.1.0",
+        "stateDirectory": "/state/yaml",
+        "workspaceStateDirectory": "/state/yaml/workspaces/abc",
+        "architecture": "arm64"
+      },
+      "expected": {
+        "status": "ok",
+        "plan": {
+          "owner": { "pluginID": "dev.lithe.fixture.language-server-untrusted", "version": "0.1.0" },
+          "launch": { "kind": "systemCommand", "commands": ["yaml-language-server"] },
+          "arguments": ["--stdio"],
+          "validationArguments": [],
+          "runtimeRequirements": [],
+          "requiredDirectories": [],
+          "requiredPackagePaths": [],
+          "sessionPolicy": {
+            "serverID": "yaml",
+            "requestMethods": [],
+            "commands": [],
+            "serializedCommands": [],
+            "forwardNotifications": [],
+            "remote": "supported",
+            "gates": []
+          }
+        }
+      }
+    },
+    {
+      "name": "a build provider on a shared language server follows that server's trust",
+      "plugin": "build-provider-language-server.plugin.json",
+      "buildSystemID": "mix",
+      "operation": "languageServerLaunchPlan",
+      "request": {
+        "pluginDirectory": "/plugins/mix/versions/0.1.0",
+        "stateDirectory": "/state/mix",
+        "workspaceStateDirectory": "/state/mix/workspaces/abc",
+        "architecture": "x86_64"
+      },
+      "expected": {
+        "status": "rejected",
+        "code": "plugin.launch.untrustedWorkspace"
+      }
+    },
+    {
+      "name": "a build provider process that runs project code waits until the workspace is trusted",
+      "plugin": "build-provider.plugin.json",
+      "buildSystemID": "gradle",
+      "operation": "languageServerLaunchPlan",
+      "request": {
+        "pluginDirectory": "/plugins/gradle/versions/0.1.0",
+        "stateDirectory": "/state/gradle",
+        "workspaceStateDirectory": "/state/gradle/workspaces/abc",
+        "architecture": "arm64",
+        "settings": {
+          "providerHeapMB": 2048
+        }
+      },
+      "expected": {
+        "status": "rejected",
+        "code": "plugin.launch.untrustedWorkspace"
+      }
     }
   ]
 }

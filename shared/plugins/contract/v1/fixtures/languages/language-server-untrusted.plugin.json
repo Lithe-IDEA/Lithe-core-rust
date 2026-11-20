@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 0,
+  "id": "dev.lithe.fixture.language-server-untrusted",
+  "displayName": "Untrusted Workspace Language Server Fixture",
+  "version": "0.1.0",
+  "pluginAPIVersion": 0,
+  "requires": {
+    "languageServers": 1,
+    "languages": 0
+  },
+  "vendor": {
+    "id": "dev.lithe",
+    "displayName": "Lithe",
+    "signatureRequirement": "publisherPackage"
+  },
+  "permissions": [
+    "languageServer.launch"
+  ],
+  "activationEvents": [
+    "onLanguage:yaml"
+  ],
+  "languages": [
+    {
+      "id": "yaml",
+      "displayName": "YAML",
+      "fileExtensions": [
+        "yaml",
+        "yml"
+      ]
+    }
+  ],
+  "languageServers": [
+    {
+      "languageID": "yaml",
+      "launch": {
+        "kind": "systemCommand",
+        "commands": [
+          "yaml-language-server"
+        ]
+      },
+      "arguments": [
+        "--stdio"
+      ],
+      "validationArguments": [],
+      "executesProjectCode": false
+    }
+  ]
+}

@@ -34,9 +34,31 @@ pub struct LanguageServerLaunchPlanRequest {
     /// The current workspace's overrides of project-scoped settings.
     #[serde(default)]
     project_settings: BTreeMap<String, Value>,
+    /// Whether the user trusts the workspace, from `toolchains.catalogState`.
+    /// Absent means untrusted: a process that would run project code then
+    /// has no plan and is refused with [`UNTRUSTED_WORKSPACE`].
+    #[serde(default)]
+    project_code_allowed: bool,
 }
 
+/// Refusal of a launch whose process would run code or configuration the
+/// workspace controls while the user has not trusted the workspace. The
+/// host leaves the process stopped and asks again once trust is granted.
+pub(crate) const UNTRUSTED_WORKSPACE: &str = "plugin.launch.untrustedWorkspace";
+
 impl LanguageServerLaunchPlanRequest {
+    /// Refuses the launch of a process that runs project code, `subject`
+    /// naming it, unless the workspace is trusted.
+    pub(crate) fn require_trust(&self, runs_project_code: bool, subject: &str) -> Validation<()> {
+        if runs_project_code && !self.project_code_allowed {
+            return Err(PluginRejection::new(
+                UNTRUSTED_WORKSPACE,
+                format!("{subject} would run project code; the workspace is not trusted."),
+            ));
+        }
+        Ok(())
+    }
+
     fn layers(&self) -> SettingLayers<'_> {
         SettingLayers {
             global: &self.settings,
@@ -106,6 +128,10 @@ pub(crate) fn language_server_launch_plan(
                 format!("The plugin does not provide a language server for {language_id}."),
             )
         })?;
+    request.require_trust(
+        server.executes_project_code(),
+        &format!("The language server for {language_id}"),
+    )?;
     let mut plan = match &server.process.launch {
         LanguageServerLaunch::Backend {
             function,
@@ -219,6 +245,12 @@ pub fn decode_language_server_launch_command(payload: Value) -> Result<Value, Co
                     ),
                 ));
             }
+            // Checked again here: the answer is a second chance to start the
+            // server, and trust may have been revoked since the first step.
+            payload.request.require_trust(
+                server.executes_project_code(),
+                &format!("The language server for {}", payload.language_id),
+            )?;
             let directories = payload.request.backend_launch_directories()?;
             let tool_ids: BTreeSet<&str> = manifest
                 .tool_definitions

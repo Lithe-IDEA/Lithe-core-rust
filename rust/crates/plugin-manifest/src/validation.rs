@@ -114,6 +114,20 @@ impl DeclarativePluginManifest {
         }
         capabilities::check_used(&self.requires, &self.used_capabilities())?;
         if self
+            .language_servers
+            .iter()
+            .any(|server| server.executes_project_code.is_some())
+            && self
+                .requires
+                .get(capabilities::LANGUAGE_SERVERS)
+                .is_none_or(|version| *version < 1)
+        {
+            return Err(invalid(
+                "requires.languageServers",
+                "executesProjectCode needs languageServers 1.",
+            ));
+        }
+        if self
             .build_systems
             .iter()
             .any(|system| system.has_run_entrypoints())

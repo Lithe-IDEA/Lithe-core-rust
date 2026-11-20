@@ -1158,13 +1158,27 @@ is active; it does not wait behind a mutex outside its cancellation deadline.
 Git requests may include optional envelope metadata `gitExecution`:
 `{ executable?: string | null, interactive?: boolean, useCredentialHelper?: boolean,
 fetchDefaults?: GitFetchOptions, detailedFetch?: boolean, source?: "user" | "background" | "unknown",
-consoleQueries?: QueryCategory[], queryCategory?: QueryCategory }`. Defaults are PATH,
+consoleQueries?: QueryCategory[], queryCategory?: QueryCategory, projectCodeAllowed?: boolean }`.
+Defaults are PATH,
 noninteractive, helper enabled, normal Fetch defaults, legacy Fetch results, and no
 recorded query category, which leaves every internal query silent as IDEA does.
 An executable must be an absolute native path to Git 2.31 or newer. Interactive
 commands require an event receiver. These values are request-scoped, including
 nested requests, and never implicitly persist. Both current applications opt
 into detailed Fetch and supply their application settings snapshot.
+
+`projectCodeAllowed` is the workspace trust that `toolchains.catalogState` reports
+(issue 2208). Every Git command reads the repository's own configuration, which can
+name programs Git runs: a `core.fsmonitor` hook on each status refresh, hooks,
+filters, `diff.external`. With `false`, Core starts no Git process for the request,
+locally or on a remote host, and the request fails with `git_untrusted_workspace`
+before anything is traced or recorded in a console. It applies to every command,
+not only `git.*`: a file request such as `workspace.listDirectories` that would ask
+`git check-ignore` still answers, using the native ignore rules. A request that
+belongs to no workspace, such as a clone, has no trust state, so the field
+defaults to `true`; a host that
+tracks workspace trust sends `false` with every request of an untrusted workspace
+and offers to trust it, after which the same request runs Git.
 
 `git.fetchPlan` accepts `{ options?: GitFetchOptions, root?: string }`. Options are
 `{ remote?: string | null, prune?: boolean, submodules?: "inherit" | "no" |
@@ -4829,7 +4843,7 @@ Success returns `plan` (`executable`, `arguments`, `workingDirectory`, plus
 `buildSystemID` (a build provider), `vcsProviderID` (a VCS provider),
 `backend: true` (the plugin backend), or `debugAdapterID` (a debug adapter).
 Naming none or more than one is an `invalid_request` failure. The request is `{ pluginDirectory, stateDirectory,
-workspaceStateDirectory?, logDirectory?, temporaryDirectory?, architecture, settings?, projectSettings? }`. The directories are absolute host paths used only
+workspaceStateDirectory?, logDirectory?, temporaryDirectory?, architecture, settings?, projectSettings?, projectCodeAllowed? }`. The directories are absolute host paths used only
 as substitution text; the command does not read or create them. `settings` maps
 setting IDs to the values the user stored for every project, and
 `projectSettings` to the open project's overrides; a project value counts only
@@ -4846,7 +4860,13 @@ and the host reuses its session. An unknown
 architecture or an empty directory is refused with
 `plugin.launch.invalidRequest`; a language without a server, an undeclared
 build system, and a build system without a provider with
-`plugin.launch.unavailable`.
+`plugin.launch.unavailable`. `projectCodeAllowed` is the workspace trust that
+`toolchains.catalogState` reports; absent means untrusted. In an untrusted
+workspace a language server that does not declare `executesProjectCode: false`
+(`languageServers` 1), a build provider with a process of its own that declares
+`executesProjectCode: true`, and every VCS provider are refused with
+`plugin.launch.untrustedWorkspace`; a build provider on a shared server follows
+that server.
 
 A backend plan additionally returns `backend.hostServices`. These are the declared grants;
 the host must provide only services it actually implements and must verify the
@@ -4876,7 +4896,9 @@ step's request and `result` is what the backend function returned, and answers
 `sessionPolicy` with the answer's `gates`) or `{ status: "rejected", error }`.
 Refusals are `plugin.launch.unavailable` (no such server),
 `plugin.launch.notBackend` (the server is not launched by a backend),
-`plugin.launch.invalidRequest` (a missing directory), and
+`plugin.launch.invalidRequest` (a missing directory),
+`plugin.launch.untrustedWorkspace` (the workspace is not trusted, checked again
+because trust can be revoked between the steps), and
 `plugin.launch.invalidResult`, `plugin.launch.outsidePackage`,
 `plugin.launch.undeclaredTool`, and `plugin.launch.unwritablePath` for the
 answer. The golden cases are

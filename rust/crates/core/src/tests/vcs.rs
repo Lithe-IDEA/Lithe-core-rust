@@ -158,6 +158,7 @@ fn a_launch_plan_names_the_vcs_provider_it_starts() {
         "pluginDirectory": "/plugins/svn",
         "stateDirectory": "/state/svn",
         "workspaceStateDirectory": "/state/svn/workspace",
+        "projectCodeAllowed": true,
         "architecture": "arm64"
     });
     let plan = language_server_launch_plan_command(json!({
@@ -190,6 +191,27 @@ fn a_launch_plan_names_the_vcs_provider_it_starts() {
     }))
     .unwrap_err();
     assert!(matches!(both.code, ErrorCode::InvalidRequest), "{both:?}");
+}
+
+#[test]
+fn a_vcs_provider_has_no_launch_plan_in_an_untrusted_workspace() {
+    // A VCS client reads the repository's own configuration, which can name
+    // programs to run, so no provider declaration can opt out of trust.
+    let plan = language_server_launch_plan_command(json!({
+        "manifest": svn_provider(),
+        "vcsProviderID": "svn",
+        "request": {
+            "pluginDirectory": "/plugins/svn",
+            "stateDirectory": "/state/svn",
+            "workspaceStateDirectory": "/state/svn/workspace",
+            "architecture": "arm64"
+        },
+    }))
+    .unwrap();
+    assert_eq!(
+        plan["error"]["code"], "plugin.launch.untrustedWorkspace",
+        "{plan}"
+    );
 }
 
 fn under(path: &Value, root: &Path) -> bool {

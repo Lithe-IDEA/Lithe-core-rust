@@ -261,6 +261,11 @@ pub(crate) struct LanguageServerDeclaration {
     pub(crate) language_identifier: Option<String>,
     #[serde(flatten)]
     pub(crate) process: ServerProcess,
+    /// `languageServers` 1: whether the server runs code or configuration
+    /// the workspace controls, such as build scripts it imports. Absent
+    /// means it does, so the server starts only in a trusted workspace.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) executes_project_code: Option<bool>,
     /// Reserved. Core implements no host integration: a language server's
     /// run, test and debug support comes from the plugin's own backend and
     /// providers, so any value is refused with `plugin.integration.unsupported`

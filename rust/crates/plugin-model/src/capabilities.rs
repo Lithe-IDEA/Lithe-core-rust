@@ -47,7 +47,8 @@ pub const LANGUAGES: &str = "languages";
 /// `languageServers[]`: the launch, `workspaceConfiguration`, and the session
 /// fields a plugin backend uses to talk to its own server (`requestMethods`,
 /// `commands`, `serializedCommands`, `forwardNotifications`, `state`, and
-/// `remote`).
+/// `remote`). Version 1 adds `executesProjectCode`, which lets a server that
+/// runs nothing from the project start in an untrusted workspace.
 pub const LANGUAGE_SERVERS: &str = "languageServers";
 /// `vendor.bundledSignatureRequirement`: origin-scoped host-seal trust for a
 /// package whose independently installed versions require a publisher signature.
@@ -137,7 +138,7 @@ pub const SUPPORTED_CAPABILITIES: &[(&str, &[u32])] = &[
     (DEBUG_ADAPTERS, &[0]),
     (EXECUTION_PROVIDERS, &[0]),
     (KEYMAP_IMPORT_PROVIDERS, &[0]),
-    (LANGUAGE_SERVERS, &[0]),
+    (LANGUAGE_SERVERS, &[0, 1]),
     (LANGUAGES, &[0]),
     (MANAGED_RUNTIMES, &[0, 1]),
     (OUTPUT_LINK_MATCHERS, &[0]),

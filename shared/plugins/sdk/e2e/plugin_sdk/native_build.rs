@@ -40,6 +40,7 @@ pub fn run(sample: &Sample) {
         "manifest":manifest,"buildSystemID":BUILD_SYSTEM,"request":{
             "pluginDirectory":sample.package,"stateDirectory":fixture.root.join("state"),
             "workspaceStateDirectory":fixture.root.join("workspace-state"),
+            "projectCodeAllowed":true,
             "architecture":if cfg!(target_arch="aarch64") {"arm64"} else {"x86_64"}
         }}),
     );

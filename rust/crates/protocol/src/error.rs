@@ -56,6 +56,10 @@ pub enum ErrorCode {
     /// between angle brackets, without line breaks. Git would otherwise treat the value
     /// as a pattern that picks an earlier author.
     GitCommitAuthorInvalid,
+    /// The request's workspace is not trusted (`gitExecution.projectCodeAllowed: false`),
+    /// so Git was not started: the repository's configuration can name programs Git
+    /// runs. Trusting the workspace and repeating the request runs it.
+    GitUntrustedWorkspace,
     /// Input or tool output could not be decoded into the stable contract.
     ParseFailed,
     /// `file.write` text contains characters the requested encoding cannot

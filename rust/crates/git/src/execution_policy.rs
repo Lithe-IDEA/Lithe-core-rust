@@ -34,6 +34,14 @@ pub struct GitExecutionOptions {
     /// [`GitExecutionOptions::for_command`]; it is never read from the request.
     #[serde(skip)]
     pub command_category: Option<QueryCategory>,
+    /// Whether the request's workspace is trusted. Any Git command reads the repository's
+    /// own configuration, which can name programs Git runs (`core.fsmonitor`, hooks,
+    /// filters, `diff.external`), so `false` refuses to start Git, locally or on a remote
+    /// host, with [`ErrorCode::GitUntrustedWorkspace`]. A request outside any workspace,
+    /// such as a clone, has no trust state, so the field defaults to `true`; a host that
+    /// tracks workspace trust sends `false` with every request of an untrusted workspace,
+    /// including file requests whose ignore checks ask Git.
+    pub project_code_allowed: bool,
 }
 impl Default for GitExecutionOptions {
     fn default() -> Self {
@@ -47,6 +55,7 @@ impl Default for GitExecutionOptions {
             console_queries: Vec::new(),
             query_category: None,
             command_category: None,
+            project_code_allowed: true,
         }
     }
 }
@@ -89,6 +98,19 @@ impl Drop for Scope {
 
 pub(super) fn current() -> GitExecutionOptions {
     OPTIONS.with(|current| current.borrow().clone())
+}
+
+/// Refuses to start Git for a request of an untrusted workspace. Every local Git process
+/// is built by `process::git_process` and every remote one by `remote_process::parameters`;
+/// both call this first, so no path starts Git in safe mode.
+pub(super) fn require_project_code() -> Result<(), CoreError> {
+    if OPTIONS.with(|current| current.borrow().project_code_allowed) {
+        return Ok(());
+    }
+    Err(CoreError::new(
+        ErrorCode::GitUntrustedWorkspace,
+        "Git does not run in safe mode; trust the workspace to use Git",
+    ))
 }
 
 /// The provenance of the running request's Git processes: the Git policy's, or the request
@@ -293,6 +315,29 @@ mod tests {
             ..Default::default()
         }))
         .is_err());
+    }
+
+    /// An untrusted request builds no Git process; without the field, as for a clone that
+    /// belongs to no workspace, Git runs.
+    #[test]
+    fn untrusted_requests_build_no_git_process() {
+        let options: GitExecutionOptions = serde_json::from_value(serde_json::json!({})).unwrap();
+        assert!(options.project_code_allowed);
+        assert!(crate::process::git_process().is_ok());
+        {
+            let _scope = Scope::begin(Some(
+                serde_json::from_value(serde_json::json!({ "projectCodeAllowed": false })).unwrap(),
+            ))
+            .unwrap();
+            let refused = crate::process::git_process().unwrap_err();
+            assert!(matches!(refused.code, ErrorCode::GitUntrustedWorkspace));
+            assert!(
+                crate::ignored_paths(std::path::Path::new("."), &["x".into()])
+                    .unwrap()
+                    .is_none()
+            );
+        }
+        assert!(crate::process::git_process().is_ok());
     }
 
     /// The shared cases fix each command's category and which queries a console records.

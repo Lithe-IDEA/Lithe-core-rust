@@ -286,6 +286,9 @@ pub(crate) fn capture_git_process(
 ) -> Result<GitProcessOutput, CoreError> {
     validate_windows_git_path(Path::new(root)).map_err(git_path_error)?;
     lithe_protocol::cancellation::check()?;
+    // Refuse before the trace: in safe mode no Git starts, so there is nothing to record.
+    // The process builders refuse too, for paths that do not pass through here.
+    execution_policy::require_project_code()?;
     let mut trace = command_trace::Trace::begin(root, arguments, visible);
     let result = match remote_process::capture(
         root,
@@ -320,7 +323,7 @@ fn capture_local_git_process(
     visible: bool,
     trace: &mut command_trace::Trace,
 ) -> Result<GitProcessOutput, CoreError> {
-    let mut process = git_process();
+    let mut process = git_process()?;
     let version = lithe_git_host::configuration::version(process.get_program(), || {
         lithe_protocol::cancellation::check().is_err()
     });
@@ -464,7 +467,10 @@ fn capture_local_git_process(
     })
 }
 
-pub(crate) fn git_process() -> Command {
+/// The local Git process of the running request. It is the only builder of one, so it
+/// refuses with `git_untrusted_workspace` when the request's workspace is untrusted.
+pub(crate) fn git_process() -> Result<Command, CoreError> {
+    execution_policy::require_project_code()?;
     let options = execution_policy::current();
     let executable = lithe_git_host::configuration::executable(options.executable.as_deref())
         .unwrap_or_else(|| options.executable.unwrap_or_else(|| "git".into()).into());
@@ -472,7 +478,7 @@ pub(crate) fn git_process() -> Command {
     // the user's default terminal whenever status or repository data refreshes.
     let mut process = Command::new(executable);
     lithe_platform::process::hide_console_window(&mut process);
-    process
+    Ok(process)
 }
 
 pub(crate) fn successful_git_result() -> GitCommandResponse {
@@ -562,12 +568,14 @@ pub(crate) fn run_git(
     // which emits `.git/index` events into the native watcher and can trigger
     // another status refresh.
     let root = directory.to_string_lossy();
+    // A refusal in safe mode is no Git invocation, so it is neither traced nor reported.
+    let mut process = git_process()?;
     let mut trace = command_trace::Trace::begin(&root, &arguments, false);
     let mut invocation = execution_events::Invocation::reported(false);
     if let Some(invocation) = &invocation {
         invocation.started(&root, &arguments);
     }
-    let result = git_process()
+    let result = process
         .env("GIT_OPTIONAL_LOCKS", "0")
         .args(&arguments)
         .current_dir(directory)

@@ -41,7 +41,7 @@
         "commandInstallers": { "description": "Required exactly when commandInstallers is non-empty: installations of bare commands that systemCommand launches name, run by the host only after the user confirms them. Version 1 adds download installers: pinned per-platform archives the host downloads, checks and extracts into the plugin's managed directory.", "enum": [0, 1] },
         "debugAdapters": { "description": "Required exactly when debugAdapters is non-empty. Covers bounded target argument and environment bindings and debugAdapters[].features and defaults. The DAP session itself is negotiated by the adapter in initialize.", "enum": [0] },
         "executionProviders": { "enum": [0] },
-        "languageServers": { "description": "Required exactly when languageServers is non-empty. Covers languageServers[].workspaceConfiguration and the session fields requestMethods, commands, serializedCommands, forwardNotifications, state, and remote.", "enum": [0] },
+        "languageServers": { "description": "Required exactly when languageServers is non-empty. Covers languageServers[].workspaceConfiguration and the session fields requestMethods, commands, serializedCommands, forwardNotifications, state, and remote. Version 1 adds languageServers[].executesProjectCode.", "enum": [0, 1] },
         "languages": { "description": "Required exactly when languages is non-empty. Covers languages[].grammar, a TextMate grammar, and languages[].configuration.", "enum": [0] },
         "managedRuntimes": { "description": "Required exactly when managedRuntimes is present: approved pinned runtime archives, plugin-owned qualification and host-owned installation outside versioned packages. Version 1 adds optional artifact mirror URLs.", "enum": [0, 1] },
         "outputLinkMatchers": { "description": "Required exactly when outputLinkMatchers is non-empty.", "enum": [0] },
@@ -1670,6 +1670,7 @@
       "properties": {
         "languageID": { "type": "string" },
         "languageIdentifier": { "type": "string", "minLength": 1 },
+        "executesProjectCode": { "description": "languageServers 1. Whether the server runs code or configuration the workspace controls. Absent means true: the server starts only in a trusted workspace.", "type": "boolean" },
         "workspaceConfiguration": {
           "description": "What the server reads through workspace/configuration and receives again in workspace/didChangeConfiguration. String leaves may be ${setting:<id>} templates, including settings whose effect is immediate, and no other variable.",
           "type": "object"
