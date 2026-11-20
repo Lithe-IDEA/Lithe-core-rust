@@ -1257,6 +1257,23 @@ answer `"retry"` to repeat the failed transfer with helper bypass, at most three
 total attempts. The AskPass C ABI is called only in the child app's early helper
 mode. Credential answers are never copied into events or settings.
 
+The helper reaches its invocation's session over a channel that only the same
+account can open: on Unix, a socket (mode 0600) in a fresh owner-only directory,
+with both ends also checking the peer's user ID; on Windows, a named pipe that
+refuses remote clients, whose protected DACL admits only the current user, and
+whose owner the helper verifies before writing. Each request also carries a
+256-bit session token taken from the child's environment. Core drops a request
+before any prompt reaches the host when it comes from another account, carries
+another token, is malformed or longer than 16 KiB, asks a prompt longer than
+8 KiB, does not arrive within 10 seconds of connecting, would be the session's
+seventeenth distinct prompt, or repeats one prompt a fourth time. Each such
+drop is logged as `vcs.authentication.request_rejected` with only its `reason`.
+A session serves four helpers at a time; later ones wait to be accepted. A
+prompt the host leaves unanswered for 180 seconds expires and its helper exits
+with status 1, as after a cancel. Core zeroes the token, request frames and
+answers when it drops them; copies outside Core, such as the child environment,
+the host's JSON strings and operating system buffers, are not covered.
+
 See `rust/fixtures/git/{fetch-plan,execution-events,execution-policy}-v1.json`
 and [Git execution and project console](https://github.com/1lck/Lithe-IDEA/blob/main/.agents/notes/implemented/architecture/2026-09-12-git-execution-and-project-console.md).
 

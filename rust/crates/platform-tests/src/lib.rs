@@ -33,16 +33,20 @@ pub enum Mode {
     /// Writes its remaining arguments, one per line, to the file named by
     /// [`ECHO_FILE_ENV`], exactly as the platform passed them.
     EchoArguments,
+    /// Runs the Git AskPass helper for the prompt in its next argument, as
+    /// Git or SSH would, and exits with the helper's exit code.
+    AskPass,
 }
 
 impl Mode {
     /// Every mode, in declaration order.
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Hold,
         Self::Parent,
         Self::Failure,
         Self::Stream,
         Self::EchoArguments,
+        Self::AskPass,
     ];
 
     /// The argument that selects this mode.
@@ -53,6 +57,7 @@ impl Mode {
             Self::Failure => "failure",
             Self::Stream => "stream",
             Self::EchoArguments => "echo-arguments",
+            Self::AskPass => "askpass",
         }
     }
 

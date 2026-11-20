@@ -60,12 +60,14 @@ mod tests {
     fn helper_events_have_core_ownership_and_expected_channels() {
         install();
         install();
-        let input = [
+        let failure = [
             ("stage", json!("test")),
             ("error", json!("Helper operation failed")),
             ("error_code", json!("PermissionDenied")),
             ("error_domain", json!("io")),
         ];
+        // Rejections carry only their reason; every other helper event is a failure.
+        let rejection = [("reason", json!("token"))];
         for (events, channel) in [
             (lithe_git_host::failure_log::EVENTS, "vcs/git"),
             (lithe_ide_host::failure_log::EVENTS, "app"),
@@ -73,12 +75,18 @@ mod tests {
         ] {
             for id in events {
                 assert_eq!(catalog::event_by_id(id).unwrap().owner, "lithe-core");
+                let input: &[(&'static str, Value)] =
+                    if *id == "vcs.authentication.request_rejected" {
+                        &rejection
+                    } else {
+                        &failure
+                    };
                 // Exercise the exact sink conversion/validation into an owned
                 // queue, so parallel host drains cannot steal this assertion.
                 let queue = RefCell::new(Vec::new());
                 dispatch(
                     id,
-                    &input,
+                    input,
                     |event, map| {
                         let prepared = core_events::prepare(event, map, None)?;
                         queue.borrow_mut().push(prepared);
