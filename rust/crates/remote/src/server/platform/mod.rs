@@ -65,6 +65,7 @@ pub(crate) fn host_capabilities() -> HostCapabilities {
         arch: std::env::consts::ARCH.into(),
         host_name: unix::host_name(),
         user_name: account.user_name,
+        user_id: Some(unix::current_uid()),
         home_directory: account.home_directory,
         default_shell: account.shell,
         path_separator: "/".into(),

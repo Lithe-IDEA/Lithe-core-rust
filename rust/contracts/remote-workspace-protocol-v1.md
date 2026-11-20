@@ -279,12 +279,17 @@ connection with the same key starts a fresh session.
 ## Host capabilities
 
 `server.hello` returns `host` with `os` (`linux` / `macos`), `arch`
-(`x86_64` / `aarch64`), `hostName`, `userName`, `homeDirectory`,
+(`x86_64` / `aarch64`), `hostName`, `userName`, `userId`, `homeDirectory`,
 `defaultShell`, `pathSeparator`, `process.orphanProtection`
 (`parentDeathSignal` / `serverShutdown`), `watch.backend`
 (`inotify` / `fsevents`), `watch.directoryLimit` and the sorted `features`
 list. Clients branch on these facts, never on `os` alone, and check
 `features` before calling optional methods.
+
+`userName` comes from the server's environment when it is set, so it is for
+display only. `userId` is the numeric account from the kernel; clients key
+per-account state, such as workspace trust, by it. Servers that predate it omit
+the field.
 
 ## Error codes
 

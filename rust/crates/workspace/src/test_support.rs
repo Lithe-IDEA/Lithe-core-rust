@@ -2,17 +2,21 @@
 //! against an in-process host server instead of an SSH child.
 
 use crate::sessions::{lookup, nonce, registry, Connection, ConnectionTransport};
-use lithe_remote::client::RemoteSession;
+use lithe_remote::client::trust::Target;
+use lithe_remote::client::{RemoteSession, TransportChain};
 use std::sync::{Arc, Mutex};
 
-/// Registers `session` as a connected host and returns its session id.
+/// Registers `session` as a connected host and returns its session id. Its
+/// trust target has no hops, only the account the server reports.
 pub fn register_in_process(session: RemoteSession) -> String {
     let id = nonce();
+    let trust_target = Target::new(&TransportChain::local(), session.hello().host.user_id);
     registry().lock().unwrap().insert(
         id.clone(),
         Arc::new(Connection {
             session,
             git_tool: Mutex::new(None),
+            trust_target,
             transport: ConnectionTransport::InProcess,
         }),
     );

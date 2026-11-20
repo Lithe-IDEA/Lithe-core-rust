@@ -10,8 +10,9 @@
 //! The session side owns the long-lived connections: [`probe`] checks that a
 //! saved SSH connection reaches a usable host, [`sessions`] opens and keeps the
 //! connections, [`host`] forwards finite requests and owned streaming resources
-//! (processes, terminals, watches), and [`upload`] streams a verified file to
-//! the host. Domain semantics stay in their engines (Git, build, language
+//! (processes, terminals, watches), [`upload`] streams a verified file to
+//! the host, and [`trust`] keys remote workspace trust by what the connection
+//! resolves. Domain semantics stay in their engines (Git, build, language
 //! servers); this crate only supplies the IO boundary.
 
 pub mod fs;
@@ -21,6 +22,7 @@ mod scope;
 pub mod sessions;
 #[cfg(feature = "test-support")]
 pub mod test_support;
+pub mod trust;
 pub mod upload;
 
 pub use scope::{

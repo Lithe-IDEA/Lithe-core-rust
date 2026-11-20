@@ -1108,3 +1108,143 @@ fn plugin_protocol_maps_owned_uris_without_rewriting_source_text() {
     assert_eq!(mapped["params"]["paths"], request["params"]["paths"]);
     assert_eq!(mapped["params"]["uri"], local);
 }
+
+#[test]
+fn remote_workspace_trust_keys_the_host_real_path_on_the_connected_target() {
+    use std::os::unix::fs::MetadataExt;
+    let host = HostFixture::new();
+    let project = host.root.join("host/projects/app");
+    let sibling = host.root.join("host/projects/other");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::create_dir_all(&sibling).unwrap();
+    let link = host.root.join("host/link");
+    std::os::unix::fs::symlink(&project, &link).unwrap();
+    let call = |command: &str, payload: Value| -> Value {
+        serde_json::from_str(&crate::execute_json(
+            &json!({"id": test_support::unique_id(), "command": command,
+                "timeoutMilliseconds": 30_000, "payload": payload})
+            .to_string(),
+        ))
+        .unwrap()
+    };
+    let ok = |response: Value| -> Value {
+        assert_eq!(response["ok"], true, "{response}");
+        response["data"].clone()
+    };
+    let code = |response: Value| -> Value {
+        assert_eq!(response["ok"], false, "{response}");
+        response["error"]["code"].clone()
+    };
+    let state = |document: &Value, workspace: &std::path::Path| {
+        call(
+            "remote.workspaceTrust",
+            json!({"document": document, "sessionId": host.id, "workspace": workspace}),
+        )
+    };
+    let decide = |document: &Value, decision: Value| {
+        call(
+            "remote.editWorkspaceTrust",
+            json!({"document": document, "decision": decision}),
+        )
+    };
+    let real = json!(project);
+
+    // A link opens the decision of the folder it points to, on this target.
+    let unknown = ok(state(&Value::Null, &link));
+    assert_eq!(
+        unknown["storage"],
+        json!({"relativePath": "toolchains/remote-trust.json", "maximumBytes": 262_144})
+    );
+    assert_eq!(unknown["projectCodeAllowed"], false, "{unknown}");
+    let trust = &unknown["workspaceTrust"];
+    assert_eq!(trust["state"], "unknown", "{unknown}");
+    assert_eq!(trust["workspace"], real, "{unknown}");
+    assert_eq!(
+        trust["offeredLocation"],
+        json!(host.root.join("host/projects"))
+    );
+    let target = trust["target"].clone();
+    let uid = std::fs::metadata(&project).unwrap().uid();
+    assert_eq!(target, json!({"hops": [], "userId": uid}), "{unknown}");
+    assert_eq!(
+        ok(call("remote.workspaceTrust", json!({"document": null}))),
+        json!({"document": {"version": 1, "targets": []}, "storage": unknown["storage"]})
+    );
+
+    let decision =
+        json!({"sessionId": host.id, "workspace": link, "trusted": true, "label": "Fixture"});
+    let decided = ok(decide(&Value::Null, decision.clone()));
+    assert_eq!(decided["changed"], true, "{decided}");
+    assert_eq!(
+        decided["decisions"]["targets"][0]["trustedWorkspaces"],
+        json!([real])
+    );
+    let document = decided["document"].clone();
+    assert!(document.is_string(), "{decided}");
+    let repeated = ok(decide(&document, decision));
+    assert_eq!(repeated["changed"], false, "{repeated}");
+    assert!(repeated["document"].is_null(), "{repeated}");
+
+    let trusted = ok(state(&document, &project));
+    assert_eq!(trusted["projectCodeAllowed"], true, "{trusted}");
+    assert_eq!(trusted["workspaceTrust"]["state"], "trusted");
+    assert_eq!(
+        ok(state(&document, &sibling))["workspaceTrust"]["state"],
+        "unknown"
+    );
+
+    // Each failure keeps its own category.
+    assert_eq!(
+        code(state(&document, &host.root.join("host/missing"))),
+        "workspace_not_found"
+    );
+    assert_eq!(
+        code(state(&document, std::path::Path::new("projects/app"))),
+        "invalid_request"
+    );
+    assert_eq!(
+        code(call(
+            "remote.workspaceTrust",
+            json!({"document": document, "sessionId": host.id})
+        )),
+        "invalid_request"
+    );
+    assert_eq!(
+        code(state(&json!("{\"version\":1,\"trustAll\":true}"), &project)),
+        "parse_failed"
+    );
+    assert_eq!(
+        code(decide(
+            &document,
+            json!({"sessionId": host.id, "workspace": project, "trusted": false, "location": true})
+        )),
+        "invalid_request"
+    );
+    assert_eq!(
+        code(decide(
+            &document,
+            json!({"sessionId": test_support::unique_id(), "workspace": project, "trusted": true})
+        )),
+        "connection_closed"
+    );
+    assert_eq!(
+        code(call(
+            "remote.editWorkspaceTrust",
+            json!({"document": document})
+        )),
+        "invalid_request"
+    );
+
+    // Removing an entry needs no connection to its target.
+    let revoked = ok(call(
+        "remote.editWorkspaceTrust",
+        json!({"document": document, "revoke": {"target": target,
+            "list": "trustedWorkspaces", "path": project}}),
+    ));
+    assert_eq!(revoked["changed"], true, "{revoked}");
+    assert_eq!(revoked["decisions"]["targets"], json!([]), "{revoked}");
+    assert_eq!(
+        ok(state(&revoked["document"], &link))["workspaceTrust"]["state"],
+        "unknown"
+    );
+}

@@ -353,6 +353,10 @@ pub struct HostCapabilities {
     pub host_name: String,
     /// Account the server runs as; `None` when the host cannot name it.
     pub user_name: Option<String>,
+    /// Numeric id of that account, from the kernel rather than the
+    /// environment. `None` from servers that predate it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_id: Option<u32>,
     /// Home directory of that account; `None` when it is not set.
     pub home_directory: Option<String>,
     /// Login shell of the remote user, used for terminals and for resolving
