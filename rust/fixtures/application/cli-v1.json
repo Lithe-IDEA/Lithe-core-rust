@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "launch": [
+    {
+      "args": [],
+      "action": "welcome"
+    },
+    {
+      "args": [
+        "--cli",
+        "src/main.rs"
+      ],
+      "action": "open",
+      "detach": true
+    }
+  ],
+  "targets": [
+    {
+      "kind": "file",
+      "mode": "file",
+      "plugins": false,
+      "commands": [
+        "editor.find",
+        "terminal.new",
+        "tool.terminal"
+      ]
+    },
+    {
+      "kind": "directory",
+      "mode": "project",
+      "plugins": true
+    }
+  ]
+}

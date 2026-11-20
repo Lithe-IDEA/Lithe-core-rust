@@ -1,11 +1,14 @@
 //! Command routing for the rules `lithe-core` forwards to this crate.
 
-use crate::{action_search, editor, keymap, visibility, workbench, RuleError, RuleErrorCode};
+use crate::{action_search, cli, editor, keymap, visibility, workbench, RuleError, RuleErrorCode};
 use serde_json::Value;
 
 /// Every command name this crate owns. `lithe-core` routes exactly these names here.
 pub const COMMANDS: &[&str] = &[
     action_search::SEARCH_ACTIONS,
+    cli::PLAN_LAUNCH,
+    cli::OPEN_TARGET,
+    cli::EDIT_REGISTRATION,
     keymap::ANALYZE_CONFLICTS,
     keymap::EVALUATE_CONTEXT,
     keymap::MODIFIER_GESTURE_STEP,
@@ -21,6 +24,9 @@ pub const COMMANDS: &[&str] = &[
 /// Runs one rule on an already decoded payload.
 pub fn execute(command: &str, payload: Value) -> Result<Value, RuleError> {
     match command {
+        cli::PLAN_LAUNCH => cli::plan_launch_json(payload),
+        cli::OPEN_TARGET => cli::open_target_json(payload),
+        cli::EDIT_REGISTRATION => cli::edit_registration_json(payload),
         action_search::SEARCH_ACTIONS => action_search::search_actions_json(payload),
         keymap::ANALYZE_CONFLICTS => keymap::analyze_conflicts_json(payload),
         keymap::EVALUATE_CONTEXT => keymap::evaluate_context_json(payload),

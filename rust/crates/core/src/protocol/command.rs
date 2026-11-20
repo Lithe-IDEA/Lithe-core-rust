@@ -51,6 +51,8 @@ pub struct RequestOrigin {
 /// Variants are grouped by domain, but their serialized compatibility names
 /// live only in [`CoreCommand::parse`] so every host uses one mapping.
 pub enum CoreCommand {
+    /// Plans CLI launch and native shell registration (`application.cli.*`).
+    ApplicationCli,
     /// Controls the native IDE capability broker (`ideHost.control`).
     IdeHostControl,
     /// Reports the Core and protocol versions (`core.ping`).
@@ -1040,6 +1042,9 @@ impl CoreCommand {
     /// case variations that could behave differently across hosts.
     pub fn parse(value: &str) -> Option<Self> {
         match value {
+            "application.cli.planLaunch"
+            | "application.cli.openTarget"
+            | "application.cli.editRegistration" => Some(Self::ApplicationCli),
             "core.ping" => Some(Self::Ping),
             "ideHost.control" => Some(Self::IdeHostControl),
             "ai.commitInputBudget" => Some(Self::Ai(AiCommand::CommitInputBudget)),

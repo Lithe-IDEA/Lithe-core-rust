@@ -11,6 +11,7 @@
 //! [`RuleError`], which `lithe-core` maps one to one onto its stable error codes.
 
 pub mod action_search;
+pub mod cli;
 mod dispatch;
 pub mod editor;
 mod error;
