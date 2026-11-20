@@ -189,8 +189,8 @@ pub(crate) fn execute_git_with_environment(
 ) -> Result<GitCommandResponse, CoreError> {
     let arguments = execution_policy::arguments(arguments);
     let mut retry_scope = None;
-    for attempt in 0..3 {
-        let output = capture_git_process(
+    for round in 0..3 {
+        let attempt = capture_git_attempt(
             root,
             &arguments,
             input.clone(),
@@ -198,7 +198,7 @@ pub(crate) fn execute_git_with_environment(
             environment,
             true,
         )?;
-        let response = output.into_command_response(&arguments);
+        let response = attempt.output.into_command_response(&arguments);
         record_git_invocation(&response);
         let authentication_failed = [
             "Authentication failed",
@@ -214,11 +214,14 @@ pub(crate) fn execute_git_with_environment(
                 "fetch" | "pull" | "push" | "clone"
             )
         });
+        // A user who cancelled or let a prompt expire has already declined;
+        // asking whether to retry would only repeat the question.
         if response.exit_code == 0
             || !authentication_failed
             || !transfer
             || !execution_policy::current().interactive
-            || attempt == 2
+            || attempt.prompt_unanswered
+            || round == 2
         {
             return Ok(response);
         }
@@ -233,7 +236,7 @@ pub(crate) fn execute_git_with_environment(
         execution_events::emit(
             serde_json::json!({ "type": "authentication", "requestId": confirmation.request_id,
             "prompt": "Git authentication failed. Retry with credentials entered in Lithe, bypassing the credential helper for this retry?",
-            "secret": false, "retry": true, "attempt": attempt + 2, "workingDirectory": root }),
+            "secret": false, "retry": true, "attempt": round + 2, "workingDirectory": root }),
         );
         let retry = confirmation
             .wait(|| lithe_protocol::cancellation::check().is_err())
@@ -284,6 +287,34 @@ pub(crate) fn capture_git_process(
     environment: &[(String, String)],
     visible: bool,
 ) -> Result<GitProcessOutput, CoreError> {
+    capture_git_attempt(
+        root,
+        arguments,
+        input,
+        disable_optional_locks,
+        environment,
+        visible,
+    )
+    .map(|attempt| attempt.output)
+}
+
+/// One Git process and what became of the credential prompts it asked.
+struct GitAttempt {
+    output: GitProcessOutput,
+    /// A prompt ended without an answer from the user: they cancelled it, or
+    /// it expired. The authentication failure that follows is their decision,
+    /// so it is not offered for retry.
+    prompt_unanswered: bool,
+}
+
+fn capture_git_attempt(
+    root: &str,
+    arguments: &[String],
+    input: Option<String>,
+    disable_optional_locks: bool,
+    environment: &[(String, String)],
+    visible: bool,
+) -> Result<GitAttempt, CoreError> {
     validate_windows_git_path(Path::new(root)).map_err(git_path_error)?;
     lithe_protocol::cancellation::check()?;
     // Refuse before the trace: in safe mode no Git starts, so there is nothing to record.
@@ -299,7 +330,11 @@ pub(crate) fn capture_git_process(
         visible,
         &mut trace,
     ) {
-        Some(result) => result,
+        // Remote Git never asks through this host's AskPass channel.
+        Some(result) => result.map(|output| GitAttempt {
+            output,
+            prompt_unanswered: false,
+        }),
         None => capture_local_git_process(
             root,
             arguments,
@@ -322,7 +357,7 @@ fn capture_local_git_process(
     environment: &[(String, String)],
     visible: bool,
     trace: &mut command_trace::Trace,
-) -> Result<GitProcessOutput, CoreError> {
+) -> Result<GitAttempt, CoreError> {
     let mut process = git_process()?;
     let version = lithe_git_host::configuration::version(process.get_program(), || {
         lithe_protocol::cancellation::check().is_err()
@@ -460,10 +495,15 @@ fn capture_local_git_process(
     if let Some(error) = error {
         return Err(error);
     }
-    Ok(GitProcessOutput {
-        stdout: output.stdout,
-        stderr: output.stderr,
-        exit_code: exit_code.unwrap_or(1),
+    Ok(GitAttempt {
+        output: GitProcessOutput {
+            stdout: output.stdout,
+            stderr: output.stderr,
+            exit_code: exit_code.unwrap_or(1),
+        },
+        prompt_unanswered: authentication
+            .as_ref()
+            .is_some_and(lithe_git_host::authentication::Session::unanswered),
     })
 }
 

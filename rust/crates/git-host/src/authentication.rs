@@ -140,6 +140,8 @@ pub struct Session {
     token: Zeroizing<String>,
     pending: Vec<Pending>,
     attempts: HashMap<String, usize>,
+    /// A prompt ended without an answer from the host (see [`Session::unanswered`]).
+    unanswered: bool,
     helper: PathBuf,
     sink: FailureSink,
 }
@@ -152,6 +154,7 @@ impl Session {
             token: Zeroizing::new(random_hex::<32>()?),
             pending: Vec::new(),
             attempts: HashMap::new(),
+            unanswered: false,
             helper: std::env::current_exe()?,
             sink: failure_log::emit,
         })
@@ -194,6 +197,7 @@ impl Session {
         let mut context = Context {
             token: self.token.as_bytes(),
             attempts: &mut self.attempts,
+            unanswered: &mut self.unanswered,
             sink: self.sink,
             challenges: Vec::new(),
         };
@@ -201,12 +205,21 @@ impl Session {
             .retain_mut(|pending| pending.advance(&mut context, now));
         Ok(context.challenges)
     }
+
+    /// Whether a prompt of this session ended without an answer from the
+    /// host: the user cancelled it, or it expired while the host showed it.
+    /// The helper then failed, so offering a retry would only ask the same
+    /// user again. A helper that left by itself does not count.
+    pub fn unanswered(&self) -> bool {
+        self.unanswered
+    }
 }
 
 /// Session state that every connection consults.
 struct Context<'a> {
     token: &'a [u8],
     attempts: &'a mut HashMap<String, usize>,
+    unanswered: &'a mut bool,
     sink: FailureSink,
     challenges: Vec<Challenge>,
 }
@@ -283,7 +296,10 @@ impl Pending {
                     return false;
                 }
                 // The user did not answer before the prompt timeout.
-                Stage::Answer { .. } => "wait_answer",
+                Stage::Answer { .. } => {
+                    *context.unanswered = true;
+                    "wait_answer"
+                }
                 Stage::Reply { .. } => "write_response",
                 // The helper stayed connected after reading its answer.
                 Stage::Drain => "drain_helper",
@@ -303,7 +319,10 @@ impl Pending {
                     self.advance(context, now)
                 }
                 // log-exempt: User cancellation: the host cancelled the prompt; the helper sees the channel close and fails.
-                Ok(None) | Err(mpsc::TryRecvError::Disconnected) => false,
+                Ok(None) | Err(mpsc::TryRecvError::Disconnected) => {
+                    *context.unanswered = true;
+                    false
+                }
                 Err(mpsc::TryRecvError::Empty) => self.helper_waiting(context.sink),
             },
             Stage::Reply { frame, written } => match deliver(&mut self.stream, frame, written) {
