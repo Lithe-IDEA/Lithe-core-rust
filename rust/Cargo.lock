@@ -1193,6 +1193,9 @@ dependencies = [
 [[package]]
 name = "lithe-platform"
 version = "0.1.0"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "lithe-platform-tests"
@@ -1469,6 +1472,7 @@ dependencies = [
  "base64",
  "libc",
  "lithe-diagnostics",
+ "lithe-platform",
  "serde",
  "serde_json",
  "sha2",

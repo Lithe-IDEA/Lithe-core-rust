@@ -8,4 +8,5 @@ mod git_executable;
 mod lsp_process;
 mod permissions;
 mod process_tree;
+mod socket;
 mod support;

@@ -10,11 +10,11 @@ use crate::failure_log;
 use lithe_platform::fs::{
     restrict_directory_to_owner, OWNER_ONLY_DIRECTORY_MODE, OWNER_ONLY_FILE_MODE,
 };
+use lithe_platform::socket::{effective_uid, peer_uid};
 use std::ffi::OsStr;
 use std::fs::{self, DirBuilder, Permissions};
 use std::io;
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
-use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 
@@ -66,7 +66,7 @@ impl Listener {
             Err(error) => return Err(error),
         };
         // A peer whose account cannot be read is treated like another account.
-        if peer_uid(stream.as_raw_fd()).ok() != Some(effective_uid()) {
+        if peer_uid(&stream).ok() != Some(effective_uid()) {
             return Ok(Accept::Rejected("peer-identity"));
         }
         // Linux does not carry O_NONBLOCK from the listener to accepted sockets.
@@ -83,7 +83,7 @@ pub(super) fn connect(address: &OsStr) -> io::Result<UnixStream> {
         return Err(io::ErrorKind::InvalidInput.into());
     }
     let stream = UnixStream::connect(path)?;
-    if peer_uid(stream.as_raw_fd())? != effective_uid() {
+    if peer_uid(&stream)? != effective_uid() {
         return Err(io::ErrorKind::PermissionDenied.into());
     }
     // The session's own prompt and write deadlines end first and close the
@@ -180,48 +180,4 @@ fn verify_private(directory: &Path) -> io::Result<()> {
     } else {
         Err(io::ErrorKind::PermissionDenied.into())
     }
-}
-
-fn effective_uid() -> u32 {
-    // SAFETY: geteuid has no preconditions and cannot fail.
-    unsafe { libc::geteuid() }
-}
-
-/// Account of the process on the other end of a connected Unix socket. For a
-/// client this is the account that created the listening socket.
-#[cfg(any(target_os = "linux", target_os = "android"))]
-fn peer_uid(socket: RawFd) -> io::Result<u32> {
-    let mut credentials = libc::ucred {
-        pid: 0,
-        uid: 0,
-        gid: 0,
-    };
-    let mut length = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
-    // SAFETY: the out-pointers reference live locals of the declared size.
-    let status = unsafe {
-        libc::getsockopt(
-            socket,
-            libc::SOL_SOCKET,
-            libc::SO_PEERCRED,
-            (&mut credentials as *mut libc::ucred).cast(),
-            &mut length,
-        )
-    };
-    if status == -1 {
-        return Err(io::Error::last_os_error());
-    }
-    Ok(credentials.uid)
-}
-
-/// Account of the process on the other end of a connected Unix socket. For a
-/// client this is the account that created the listening socket.
-#[cfg(not(any(target_os = "linux", target_os = "android")))]
-fn peer_uid(socket: RawFd) -> io::Result<u32> {
-    let mut uid: libc::uid_t = 0;
-    let mut gid: libc::gid_t = 0;
-    // SAFETY: the out-pointers reference live locals.
-    if unsafe { libc::getpeereid(socket, &mut uid, &mut gid) } == -1 {
-        return Err(io::Error::last_os_error());
-    }
-    Ok(uid)
 }

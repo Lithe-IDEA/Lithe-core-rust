@@ -12,7 +12,7 @@ default = ["client"]
 client = ["dep:sha2"]
 # Host adapters must not become desktop client dependencies. Linux releases
 # target musl so the same static executable works in minimal containers.
-server = ["dep:libc", "dep:sha2", "dep:trash"]
+server = ["dep:libc", "dep:lithe-platform", "dep:sha2", "dep:trash"]
 
 # The server runs on Linux and macOS hosts, and its integration tests start
 # the server binary of this package, so they cannot move to
@@ -29,9 +29,13 @@ serde_json = "1"
 sha2 = { version = "0.10", optional = true }
 libc = { version = "0.2", optional = true }
 trash = { version = "5.2.6", default-features = false, features = ["chrono"], optional = true }
+# The server checks socket peers with the same code as the AskPass channel.
+# lithe-platform is a leaf crate of host rules that depends only on libc.
+lithe-platform = { path = "../platform", optional = true }
 
 # Tests check every lifecycle fact against the log catalog Core validates with.
-# Only tests use it: the server and the client stay free of Core crates.
+# Only tests use it: apart from lithe-platform, the server and the client stay
+# free of Core crates.
 [dev-dependencies]
 lithe-diagnostics = { path = "../diagnostics" }
 

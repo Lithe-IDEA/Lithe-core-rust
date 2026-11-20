@@ -3,9 +3,13 @@ name = "lithe-platform"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
-description = "Host platform rules as data: path comparison, Windows file names, Unix permissions and console-less processes"
+description = "Host platform rules as data: path comparison, Windows file names, Unix permissions, Unix socket peers and console-less processes"
 
 [dependencies]
+
+# Only the Unix socket peer checks need a system call that std does not wrap.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 # Its tests check `Platform::HOST` against the host they run on, so CI also
 # runs them on macOS and Windows (scripts/rust-core/affected-crates.mjs).

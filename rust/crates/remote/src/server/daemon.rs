@@ -410,7 +410,7 @@ pub fn run_daemon(options: &PersistentOptions) -> io::Result<()> {
     while !shutdown.load(Ordering::Acquire) {
         match listener.accept() {
             Ok((stream, _)) => {
-                if platform::peer_uid(stream.as_raw_fd()).ok() != Some(platform::current_uid()) {
+                if platform::peer_uid(&stream).ok() != Some(platform::current_uid()) {
                     eprintln!("lithe-remote-server: rejected a connection from another user");
                     continue;
                 }

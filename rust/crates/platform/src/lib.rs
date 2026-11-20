@@ -7,15 +7,17 @@
 //! [`Platform::HOST`]; tests pass the platform whose rule they check.
 //!
 //! The few calls that need an operating-system API, such as Unix permission
-//! bits or Windows process creation flags, stay behind `cfg` inside this
-//! crate. Tests that need a real Windows or Unix host to observe them live in
-//! the `lithe-platform-tests` package.
+//! bits, the account behind a Unix socket or Windows process creation flags,
+//! stay behind `cfg` inside this crate. Tests that need a real Windows or Unix
+//! host to observe them live in the `lithe-platform-tests` package.
 
 pub mod cli;
 pub mod fs;
 pub mod names;
 pub mod paths;
 pub mod process;
+#[cfg(unix)]
+pub mod socket;
 
 /// A family of host operating systems that share the rules in this crate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
