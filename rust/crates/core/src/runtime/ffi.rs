@@ -253,6 +253,38 @@ mod text_content_tests {
 mod editor_essentials_tests {
     use super::*;
     use serde_json::{json, Value};
+
+    #[test]
+    fn first_line_match_abi_matches_shared_vectors() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../../../fixtures/plugins/first-line-match-v1.json"
+        ))
+        .unwrap();
+        for case in fixture["cases"].as_array().unwrap() {
+            let request = CString::new(
+                json!({
+                    "id": case["name"],
+                    "command": fixture["command"],
+                    "payload": case["payload"]
+                })
+                .to_string(),
+            )
+            .unwrap();
+            let pointer = unsafe { lithe_core_execute_json(request.as_ptr()) };
+            assert!(!pointer.is_null());
+            let response = unsafe { serde_json::from_slice(CStr::from_ptr(pointer).to_bytes()) };
+            unsafe { lithe_core_free_string(pointer) };
+            let response: Value = response.unwrap();
+            if case["errorCode"].is_string() {
+                assert_eq!(response["id"], case["name"]);
+                assert_eq!(response["ok"], false, "{response}");
+                assert_eq!(response["error"]["code"], case["errorCode"]);
+            } else {
+                assert_eq!(response, case["expected"], "{}", case["name"]);
+            }
+        }
+    }
+
     #[test]
     fn borrowed_document_abi_matches_shared_vectors() {
         let fixture: Value = serde_json::from_str(include_str!(

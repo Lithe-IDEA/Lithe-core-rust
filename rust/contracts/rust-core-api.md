@@ -5185,7 +5185,8 @@ no match. Never send a truncated prefix. Supply the enabled declarations in
 registry precedence order, in batches of up to 64, stopping on the first match.
 The result preserves the winning ID unchanged. A malformed batch, language ID
 or pattern is an `invalid_request`. Core retains only bounded compiled
-declarations and performs no I/O. See the [first-line pattern
+declarations and performs no I/O. See the shared
+[ABI fixture](../fixtures/plugins/first-line-match-v1.json) and the [first-line pattern
 contract](../../shared/plugins/contract/v1/README.md#first-line-matching).
 
 `plugins.declarative.decodeGrammar` accepts `{ manifest, languageID, grammar }`,
@@ -5194,8 +5195,14 @@ inside the installed package, and returns `language: { id, fileExtensions,
 fileNames, grammar: { kind, scopeName, source, firstLineMatch? }, configuration }`.
 The editor registers the validated `textmate` JSON `source` byte for byte under
 `scopeName`.
-When present, `firstLineMatch` holds validated optional root-level metadata
-for `languages.matchFirstLine`. Unsupported or malformed hints are omitted.
+When present, `grammar.firstLineMatch` holds validated optional root-level
+metadata for `languages.matchFirstLine`. For a language without an explicit
+`grammar.path`, the host can instead pass the text from
+`grammars/<language-id>.first-line.json` as `grammar`. Core returns a valid hint
+as `language.firstLineMatch`, with `language.grammar` set to `null` so the editor
+uses its existing grammar. Unsupported or malformed hints are omitted. A
+standalone file with invalid JSON or above its size limit is rejected as
+`plugin.grammar.invalid`.
 Hosts run plugin grammars only off the editor UI thread,
 with bounded backtracking and a time budget per line. A grammar Core
 refuses is `plugin.grammar.invalid` with the failing `field`; a language

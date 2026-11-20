@@ -309,6 +309,13 @@ still install the package and apply its existing file associations and
 highlighting. See the [fixture manifest](fixtures/languages/first-line.plugin.json)
 and [grammar](fixtures/languages/grammars/sample.tmLanguage.json).
 
+To keep the editor's existing highlighting for a contributed language, omit
+`languages[].grammar` and package the hint in
+[`grammars/<language-id>.first-line.json`](fixtures/languages/grammars/sample.first-line.json).
+The standalone file is a JSON object of at most 4096 UTF-8 bytes with the same
+`firstLineMatch` field. Earlier hosts ignore this resource. An explicit grammar
+declaration takes precedence over the standalone file.
+
 Core interprets this hint as a Rust regular expression of 1–512 UTF-8 bytes.
 For example, `"firstLineMatch": "^#! */opt/tools/sample(?: |$)"` matches the
 interpreter followed by a space or the end of the line. The pattern cannot

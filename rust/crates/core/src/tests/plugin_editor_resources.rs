@@ -17,6 +17,8 @@ const GRAMMAR_PLUGIN: &str = contract_file!("fixtures/languages/language-grammar
 const HTTP_GRAMMAR: &str = contract_file!("fixtures/languages/grammars/http.tmLanguage.json");
 const FIRST_LINE_PLUGIN: &str = contract_file!("fixtures/languages/first-line.plugin.json");
 const SAMPLE_GRAMMAR: &str = contract_file!("fixtures/languages/grammars/sample.tmLanguage.json");
+const SAMPLE_FIRST_LINE: &str =
+    contract_file!("fixtures/languages/grammars/sample.first-line.json");
 
 fn manifest(source: &str) -> Value {
     serde_json::from_str(source).expect("fixture manifest is JSON")
@@ -407,6 +409,50 @@ fn first_line_grammar_uses_the_existing_language_capability() {
         language["grammar"]["firstLineMatch"],
         manifest(SAMPLE_GRAMMAR)["firstLineMatch"]
     );
+}
+
+#[test]
+fn standalone_first_line_metadata_keeps_the_existing_grammar() {
+    let mut plugin = manifest(FIRST_LINE_PLUGIN);
+    plugin["languages"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("grammar");
+    let admission = validate_command(json!({
+        "manifest": plugin,
+        "hostCapabilities": { "languages": [0] },
+    }))
+    .unwrap();
+    assert_eq!(admission["status"], "ok", "{admission}");
+    let decode = |source: &str| {
+        decode_grammar_command(json!({
+            "manifest": admission["plugin"],
+            "languageID": "sample",
+            "grammar": source,
+        }))
+        .unwrap()
+    };
+    let decoded = decode(SAMPLE_FIRST_LINE);
+    assert_eq!(decoded["status"], "ok", "{decoded}");
+    assert!(decoded["language"]["grammar"].is_null());
+    assert_eq!(
+        decoded["language"]["firstLineMatch"],
+        manifest(SAMPLE_FIRST_LINE)["firstLineMatch"]
+    );
+    assert_eq!(decoded["language"]["configuration"]["lineComment"], "//");
+    let unsupported = decode(r#"{"firstLineMatch":"["}"#);
+    assert_eq!(unsupported["status"], "ok", "{unsupported}");
+    assert!(unsupported["language"]["grammar"].is_null());
+    assert!(!unsupported["language"]
+        .as_object()
+        .unwrap()
+        .contains_key("firstLineMatch"));
+
+    for source in ["invalid JSON", "[]", &" ".repeat(4097)] {
+        let result = decode(source);
+        assert_eq!(result["status"], "rejected", "{result}");
+        assert_eq!(result["error"]["code"], "plugin.grammar.invalid");
+    }
 }
 
 #[test]

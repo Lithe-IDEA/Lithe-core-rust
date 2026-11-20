@@ -20,7 +20,7 @@
 
 `languages[]` 的 `id`、`fileExtensions`、`fileNames`、`projectFileNames` 和 `dependencies` 的规则见[契约的 Languages 一节](../../contract/v1/README.md#languages)。语法和编辑器配置是纯数据：宿主从包里读取，编辑器直接应用，不启动任何进程。只有语法的插件不需要语言服务器、后端或激活事件。
 
-无后缀脚本可以通过包内 TextMate 语法文件的顶层 `firstLineMatch` 声明 shebang。格式为 Rust 正则表达式，旧桌面可以忽略这项提示，插件仍声明 `languages: 0`。文件的既有语言关联优先，编辑器只检查至多 1024 UTF-8 字节的完整首行。详见[首行匹配](../../contract/v1/README.md#first-line-matching)。
+无后缀脚本可以通过包内 TextMate 语法文件的顶层 `firstLineMatch` 声明 shebang。沿用宿主已有语法的插件把同一字段放在 `grammars/<language-id>.first-line.json`，并省略语法声明。旧桌面可以忽略这项提示，插件仍声明 `languages: 0`。既有文件关联优先，编辑器只检查至多 1024 UTF-8 字节的完整首行。详见[首行匹配](../../contract/v1/README.md#first-line-matching)。
 
 ```json
 {
@@ -299,7 +299,9 @@ Languages let Lithe recognize a language: identify its files, highlight them wit
 The rules for `id`, `fileExtensions`, `fileNames`, `projectFileNames`, and `dependencies` are in [the contract's Languages section](../../contract/v1/README.md#languages). A grammar and editor configuration are pure data: the host reads them from the package and the editor applies them without starting any process. A plugin with only grammars needs no language server, backend, or activation event.
 
 Extensionless scripts can declare a shebang as a root-level `firstLineMatch`
-Rust regex in the packaged TextMate grammar. Keep `languages: 0` so older
+Rust regex in the packaged TextMate grammar. To inherit the editor's
+highlighting, put the field in `grammars/<language-id>.first-line.json` and omit
+the grammar declaration. Keep `languages: 0` so older
 hosts can install the same package and ignore the hint. Existing file
 associations take priority. The editor checks a complete first line of up to
 1024 UTF-8 bytes. See [first-line matching](../../contract/v1/README.md#first-line-matching).
