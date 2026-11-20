@@ -1617,6 +1617,18 @@ pub static EVENTS: &[EventMetadata] = &[
         owner: "Lithe",
     },
     EventMetadata {
+        id: "vcs.authentication.request_rejected",
+        channel: "vcs/git",
+        level: LogLevel::Warn,
+        message: "Git authentication request rejected",
+        fields: &[
+            FieldMetadata { name: "reason", field_type: FieldType::Token, required: true, description: "Why the AskPass channel refused a request: peer-identity (another account or unverifiable peer), token, malformed, oversized, timeout (no complete request before the deadline), prompt-limit or attempt-limit; never the prompt, token or peer input", reason: None },
+        ],
+        span: None,
+        rate: 60,
+        owner: "lithe-core",
+    },
+    EventMetadata {
         id: "vcs.authentication.response_failed",
         channel: "vcs/git",
         level: LogLevel::Warn,

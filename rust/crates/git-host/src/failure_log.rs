@@ -7,6 +7,7 @@ use std::sync::OnceLock;
 /// Complete catalog surface emitted by this adapter.
 pub const EVENTS: &[&str] = &[
     "vcs.authentication.response_failed",
+    "vcs.authentication.request_rejected",
     "vcs.host.cleanup_failed",
 ];
 

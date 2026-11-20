@@ -371,6 +371,21 @@
       "owner": "lithe-core"
     },
     {
+      "id": "vcs.authentication.request_rejected",
+      "channel": "vcs/git",
+      "level": "warn",
+      "message": "Git authentication request rejected",
+      "fields": {
+        "reason": {
+          "type": "token",
+          "required": true,
+          "description": "Why the AskPass channel refused a request: peer-identity (another account or unverifiable peer), token, malformed, oversized, timeout (no complete request before the deadline), prompt-limit or attempt-limit; never the prompt, token or peer input"
+        }
+      },
+      "rate": 60,
+      "owner": "lithe-core"
+    },
+    {
       "id": "vcs.host.cleanup_failed",
       "channel": "vcs/git",
       "level": "warn",

@@ -36,6 +36,7 @@ fn main() -> ExitCode {
             Ok(())
         }
         Mode::EchoArguments => echo(arguments),
+        Mode::AskPass => askpass(arguments),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -91,4 +92,12 @@ fn echo(arguments: impl Iterator<Item = OsString>) -> io::Result<()> {
         .map(|argument| argument.to_string_lossy().into_owned())
         .collect();
     std::fs::write(file, lines.join("\n"))
+}
+
+fn askpass(mut arguments: impl Iterator<Item = OsString>) -> ! {
+    let prompt = arguments
+        .next()
+        .map(|prompt| prompt.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    std::process::exit(lithe_git_host::authentication::helper_main(&prompt));
 }
