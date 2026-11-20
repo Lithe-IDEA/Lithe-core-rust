@@ -343,9 +343,71 @@ pub struct RemoteSession {
     /// Sequence number of the latest event received.
     last_seq: Arc<AtomicU64>,
     child: Mutex<Option<Child>>,
-    stderr_tail: Arc<Mutex<VecDeque<u8>>>,
+    stderr_tail: Arc<StderrTail>,
     hello: Option<HelloResult>,
     log: ConnectionLog,
+}
+
+/// The last [`STDERR_TAIL_BYTES`] of the transport's standard error, and
+/// whether its reader has reached the end of the stream.
+#[derive(Default)]
+struct StderrTail {
+    state: Mutex<TailState>,
+    ended: Condvar,
+}
+
+#[derive(Default)]
+struct TailState {
+    bytes: VecDeque<u8>,
+    ended: bool,
+}
+
+impl StderrTail {
+    /// A tail with no stream behind it, for sessions without a transport.
+    fn finished() -> Self {
+        Self {
+            state: Mutex::new(TailState {
+                bytes: VecDeque::new(),
+                ended: true,
+            }),
+            ended: Condvar::new(),
+        }
+    }
+
+    fn push(&self, bytes: &[u8]) {
+        let mut state = lock(&self.state);
+        state.bytes.extend(bytes);
+        let excess = state.bytes.len().saturating_sub(STDERR_TAIL_BYTES);
+        state.bytes.drain(..excess);
+    }
+
+    fn finish(&self) {
+        lock(&self.state).ended = true;
+        self.ended.notify_all();
+    }
+
+    /// Waits until the reader reaches the end of the stream or `deadline`
+    /// passes. A process the transport left running can hold the stream open
+    /// after the transport itself exited.
+    fn wait_for_end(&self, deadline: Instant) {
+        let mut state = lock(&self.state);
+        while !state.ended {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return;
+            }
+            state = match self.ended.wait_timeout(state, remaining) {
+                Ok((state, _)) => state,
+                Err(poisoned) => poisoned.into_inner().0,
+            };
+        }
+    }
+
+    fn text(&self) -> String {
+        let state = lock(&self.state);
+        let bytes: Vec<u8> = state.bytes.iter().copied().collect();
+        String::from_utf8_lossy(&bytes).trim().to_owned()
+    }
 }
 
 /// An owned request waiter. Dropping it withdraws unsent work and ignores late
@@ -414,14 +476,17 @@ impl RemoteSession {
         })?;
         let stdin = child.stdin.take().expect("stdin is piped");
         let stdout = child.stdout.take().expect("stdout is piped");
-        let stderr_tail = Arc::new(Mutex::new(VecDeque::new()));
-        if let Some(stderr) = child.stderr.take() {
-            if let Err(error) = keep_tail(stderr, Arc::clone(&stderr_tail)) {
-                abandon(Some(child));
-                let error = ClientError::Spawn(error);
-                log.connect_failed("connect", &error.failure_category(), "remote");
-                return Err(error);
+        let stderr_tail = Arc::new(StderrTail::default());
+        match child.stderr.take() {
+            Some(stderr) => {
+                if let Err(error) = keep_tail(stderr, Arc::clone(&stderr_tail)) {
+                    abandon(Some(child));
+                    let error = ClientError::Spawn(error);
+                    log.connect_failed("connect", &error.failure_category(), "remote");
+                    return Err(error);
+                }
             }
+            None => stderr_tail.finish(),
         }
         Self::establish(
             stdout,
@@ -440,7 +505,14 @@ impl RemoteSession {
         options: &ConnectOptions,
     ) -> Result<(Self, Receiver<Event>), ClientError> {
         let log = options.log_or_begin(ConnectionKind::Streams);
-        Self::establish(reader, Box::new(writer), None, Arc::default(), options, log)
+        Self::establish(
+            reader,
+            Box::new(writer),
+            None,
+            Arc::new(StderrTail::finished()),
+            options,
+            log,
+        )
     }
 
     /// Completes the handshake and records its outcome in `log`.
@@ -448,7 +520,7 @@ impl RemoteSession {
         reader: impl Read + Send + 'static,
         writer: Box<dyn Write + Send>,
         child: Option<Child>,
-        stderr_tail: Arc<Mutex<VecDeque<u8>>>,
+        stderr_tail: Arc<StderrTail>,
         options: &ConnectOptions,
         log: ConnectionLog,
     ) -> Result<(Self, Receiver<Event>), ClientError> {
@@ -464,7 +536,7 @@ impl RemoteSession {
         reader: impl Read + Send + 'static,
         writer: Box<dyn Write + Send>,
         child: Option<Child>,
-        stderr_tail: Arc<Mutex<VecDeque<u8>>>,
+        stderr_tail: Arc<StderrTail>,
         options: &ConnectOptions,
         log: ConnectionLog,
     ) -> Result<(Self, Receiver<Event>), ClientError> {
@@ -525,8 +597,7 @@ impl RemoteSession {
             Ok(Ok(())) => {}
             Ok(Err(FrameError::PreambleNotFound { noise })) => {
                 let mut output = String::from_utf8_lossy(&noise).trim().to_owned();
-                session.wait_for_transport_exit(SHUTDOWN_GRACE);
-                let stderr = session.diagnostics();
+                let stderr = session.final_diagnostics();
                 if !stderr.is_empty() {
                     output = format!("{output}\n{stderr}").trim().to_owned();
                 }
@@ -535,9 +606,8 @@ impl RemoteSession {
                 });
             }
             Ok(Err(_)) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                session.wait_for_transport_exit(SHUTDOWN_GRACE);
                 return Err(ClientError::Disconnected {
-                    diagnostics: session.diagnostics(),
+                    diagnostics: session.final_diagnostics(),
                 });
             }
             Err(mpsc::RecvTimeoutError::Timeout) => return Err(ClientError::Timeout),
@@ -707,9 +777,18 @@ impl RemoteSession {
     }
 
     fn diagnostics(&self) -> String {
-        let tail = lock(&self.stderr_tail);
-        let bytes: Vec<u8> = tail.iter().copied().collect();
-        String::from_utf8_lossy(&bytes).trim().to_owned()
+        self.stderr_tail.text()
+    }
+
+    /// Diagnostics of a transport that ended the stream. The transport's exit
+    /// and the end of its standard error share one grace: a message written
+    /// just before exiting can still be in the pipe when the exit is seen.
+    fn final_diagnostics(&self) -> String {
+        let deadline = Instant::now() + SHUTDOWN_GRACE;
+        if self.wait_for_transport_exit(SHUTDOWN_GRACE) {
+            self.stderr_tail.wait_for_end(deadline);
+        }
+        self.diagnostics()
     }
 
     /// Waits up to `grace` for the transport process to exit, so its final
@@ -915,25 +994,18 @@ fn close(pending: &Mutex<Pending>) {
     }
 }
 
-fn keep_tail(
-    mut stderr: impl Read + Send + 'static,
-    tail: Arc<Mutex<VecDeque<u8>>>,
-) -> io::Result<()> {
+fn keep_tail(mut stderr: impl Read + Send + 'static, tail: Arc<StderrTail>) -> io::Result<()> {
     thread::Builder::new()
         .name("remote-stderr".into())
         .spawn(move || {
             let mut buffer = [0_u8; 4096];
             loop {
                 match stderr.read(&mut buffer) {
-                    Ok(0) | Err(_) => return,
-                    Ok(read) => {
-                        let mut tail = lock(&tail);
-                        tail.extend(&buffer[..read]);
-                        let excess = tail.len().saturating_sub(STDERR_TAIL_BYTES);
-                        tail.drain(..excess);
-                    }
+                    Ok(0) | Err(_) => break,
+                    Ok(read) => tail.push(&buffer[..read]),
                 }
             }
+            tail.finish();
         })
         .map(drop)
 }
@@ -995,6 +1067,34 @@ mod tests {
             "process 7 is not active"
         ))
         .is_resource_already_gone());
+    }
+
+    #[test]
+    fn the_stderr_tail_is_complete_once_its_reader_reaches_the_end() {
+        let tail = Arc::new(StderrTail::default());
+        keep_tail(
+            io::Cursor::new(b"lithe-remote-server: not found\n".to_vec()),
+            Arc::clone(&tail),
+        )
+        .unwrap();
+        tail.wait_for_end(Instant::now() + Duration::from_secs(10));
+        assert!(lock(&tail.state).ended);
+        assert_eq!(tail.text(), "lithe-remote-server: not found");
+    }
+
+    #[test]
+    fn the_stderr_tail_keeps_its_last_bytes_and_stops_waiting_at_the_deadline() {
+        let tail = StderrTail::default();
+        tail.push(&vec![b'a'; STDERR_TAIL_BYTES]);
+        tail.push(b"end");
+        let text = tail.text();
+        assert_eq!(text.len(), STDERR_TAIL_BYTES);
+        assert!(text.ends_with("aend"), "{}", &text[text.len() - 8..]);
+        // A stream that stays open ends the wait at its deadline, here
+        // already passed.
+        tail.wait_for_end(Instant::now());
+        assert!(!lock(&tail.state).ended);
+        assert!(lock(&StderrTail::finished().state).ended);
     }
 
     fn waiter(outgoing: Arc<Outgoing>, payload: Vec<u8>) -> (PendingRequest, SyncSender<Reply>) {
