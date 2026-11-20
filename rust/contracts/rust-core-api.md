@@ -535,7 +535,7 @@ or removing a command fails until the table changes in the same commit.
 | `toolchains.resolvePins` | Validate a captured local document and find the nearest ancestor directory pin, retaining dormant and legacy entries without probing or writing |
 | `toolchains.editPins` | Apply one bounded batch of directory pin edits to a captured local document without writing native files |
 | `toolchains.catalogState` | Validate machine-wide SDK registrations and optional workspace project-code trust without a project |
-| `toolchains.editCatalog` | Merge confirmed machine-wide SDK registrations, defaults and explicit workspace project-code trust |
+| `toolchains.editCatalog` | Merge confirmed machine-wide SDK registrations, defaults, explicit workspace project-code trust and trusted location changes |
 | `toolchains.pinStoragePlan` | Declare bounded workspace-native pin and ignore sources |
 | `toolchains.decodePinDocument` | Validate a complete native source or supply the absent-source default |
 | `toolchains.editPinSources` | Plan deterministic pin and Git ignore source edits without native I/O |
@@ -7758,27 +7758,41 @@ applies first, then a trusted location containing it: `state` is `trusted`, `dis
 `unknown` when the user has not been asked. `location` is the trusted location that trusts the
 workspace, else `null`. `offeredLocation` is the parent folder a trust prompt may offer to trust
 with the workspace, or `null` when that parent is a filesystem root (`/`, a drive, a UNC share).
+A filesystem root is never a trusted location: a document listing one (no edit writes it) is
+rejected at `trustedLocations`, so its workspaces stay in safe mode rather than every project
+on the volume being trusted.
 The two newer lists are written only once used, so a document without them stays readable by
 hosts that predate them.
 Native clients resolve the relative path below their platform user-preference directory,
 never below a workspace, SDK, installed package or application bundle. Reading an absent
 source returns `{version:1,tools:{}}` and must not create a directory or file.
 
-`toolchains.editCatalog` accepts `{document:string|null,platform,filesystemCaseSensitive?,edits?,workspaceTrust?}`,
-where at least one of a nonempty `edits` array of `{tool,homes:[absoluteHome],defaultHome:string|null}`
-or `workspaceTrust:{workspace,trusted,location?}` is required. Each tool edit replaces only that tool's
+`toolchains.editCatalog` accepts `{document:string|null,platform,filesystemCaseSensitive?,edits?,workspaceTrust?,trustedLocations?}`,
+where at least one of a nonempty `edits` array of `{tool,homes:[absoluteHome],defaultHome:string|null}`,
+`workspaceTrust:{workspace,trusted,location?}` or `trustedLocations:{add?:[absolutePath],remove?:[absolutePath]}`
+is required. Each tool edit replaces only that tool's
 registrations and default; other tools, dormant plugins and the trust lists remain intact.
 `workspaceTrust` records one decision on one normalized workspace root, preserving `tools` and
 other decisions: `trusted: true` moves it to `trustedWorkspaces`, `trusted: false` to
 `distrustedWorkspaces` (safe mode), and `location: true` also adds its `offeredLocation` to
 `trustedLocations`; `location` with `trusted: false`, or without an offered location, rejects at
-`workspaceTrust.location`. At most
+`workspaceTrust.location`.
+`trustedLocations` changes the trusted folders on their own, for a settings page without an
+open workspace, and applies after `workspaceTrust` when both are present. Paths are normalized
+and matched by platform case identity: `remove` drops each named folder, a folder that is not
+trusted changes nothing, and `add` keeps the recorded spelling of a folder already trusted.
+`add` and `remove` cannot both be empty or name one folder. Adding a filesystem root (`/`, a
+drive, a UNC share) rejects with `plugin.toolchain.rootLocation` at `trustedLocations.add`.
+Workspace decisions are untouched: a workspace kept in safe mode stays there inside a newly
+trusted location.
+An edit that would leave `trustedWorkspaces`, `distrustedWorkspaces` or `trustedLocations`
+longer than 256 entries rejects with `plugin.toolchain.trustListFull` at that list's name. At most
 64 tools and 32 distinct homes per tool are accepted. Native platform path normalization
 and case identity apply before deduplication. A selected default is registered if needed;
 null clears only the default. Empty registrations plus null remove the tool entry.
 The result is `{status:"ok",edit:{changed,document:string|null,catalog}}`; unchanged edits
 return a null replacement and must not create a source. Invalid shapes, duplicate JSON keys,
-unknown fields, relative homes, aliases and oversized documents reject with
+unknown fields, relative homes or paths, aliases and oversized documents reject with
 `plugin.toolchain.invalidDocument`. The schema is
 [`toolchain-global-v1.schema.json`](toolchain-global-v1.schema.json); cross-client vectors
 are in `rust/fixtures/toolchain-global-catalog.json`.

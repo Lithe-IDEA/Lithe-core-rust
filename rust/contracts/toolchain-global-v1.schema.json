@@ -46,6 +46,26 @@
         "type": "string",
         "minLength": 1
       }
+    },
+    "distrustedWorkspaces": {
+      "description": "Workspaces the user chose to keep in safe mode; an explicit decision wins over a trusted location containing it.",
+      "type": "array",
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "trustedLocations": {
+      "description": "Folders whose every workspace, at any depth, is trusted unless distrusted itself. Never a filesystem root.",
+      "type": "array",
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     }
   }
 }
