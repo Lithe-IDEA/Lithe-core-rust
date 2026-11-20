@@ -650,6 +650,7 @@ or removing a command fails until the table changes in the same commit.
 | `processLifecycle.inventory` | Group a process snapshot of one Lithe instance into terminals, Agent tasks and background services |
 | `processLifecycle.settle` | Turn confirmation answers into what ends, what is kept and the updated settings |
 | `processMemory.summarize` | Sum a process table's memory, compressed memory, graphics memory and processor and graphics use by part of one Lithe instance: the host, language servers, plugin services, system helpers and other child processes |
+| `process.listeningPorts` | Filter, normalize, deduplicate, and format listening TCP ports for one run process tree |
 | `markdown.render` | Renders and sanitizes shared Markdown |
 | `markdown.outline` | Outlines the headings of shared Markdown as a document-symbol tree |
 | `markdown.resolveReference` | Decides what a link or an image of a rendered Markdown document points at |
@@ -6294,6 +6295,32 @@ Percentages measure use between two tables of one host:
 A table without the host or with a repeated process ID, or a `logicalProcessors`
 of 0, is `invalid_request`. Fixtures live in
 `rust/fixtures/process-lifecycle/memory-summary-v1.json`.
+
+`process.listeningPorts` accepts `{ rootProcessId, processes, sockets,
+excludePorts?, limit? }` and returns `{ schemaVersion, ports, truncated }` for
+one running session's process tree:
+
+- `rootProcessId` must be a positive integer. `processes` is a list of
+  `{ processId, parentProcessId, startTime? }`; parent links where
+  `parent.startTime > child.startTime` are ignored as PID reuse, and
+  `rootProcessId` itself is always included even when `processes` is empty.
+- `sockets` is a list of `{ processId, address, port }`. Addresses are trimmed,
+  unwrapped from `[...]`, stripped of IPv6 `%zone` suffixes, mapped from `""` /
+  `"*"` to `"0.0.0.0"`, and unwrapped from IPv4-mapped IPv6 `::ffff:a.b.c.d` to
+  IPv4; non-IP strings return `invalid_request`.
+- Sockets with `port == 0`, ports listed in `excludePorts` (such as an
+  attached debugger port), or `processId` outside the tree are filtered out.
+- Multiple sockets sharing a port (for example dual-stack `0.0.0.0` + `::`)
+  collapse deterministically to one entry, preferring loopback/unspecified binds,
+  then IPv4 over IPv6, then loopback over unspecified, then lowest `processId`.
+- Loopback and unspecified binds (`127.0.0.0/8`, `0.0.0.0`, `::1`, `::`) format
+  `label` as `:<port>` and `url` as `http://localhost:<port>`; specific
+  interface binds format `label` as `<ip>:<port>` / `[<ip>]:<port>` and `url`
+  as `http://<ip>:<port>` / `http://[<ip>]:<port>`.
+- Results are ordered ascending by `port`; `limit` defaults to 8 and is clamped
+  to `1..=32`, with `truncated: true` when more matching ports existed.
+
+Fixtures live in `rust/fixtures/process-lifecycle/listening-ports-v1.json`.
 
 ## Local IDE capability broker
 

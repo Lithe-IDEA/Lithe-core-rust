@@ -462,6 +462,25 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                 ),
             }
         }
+        CoreCommand::ProcessListeningPorts => {
+            match serde_json::from_value::<lithe_process::ports::ListeningPortsRequest>(
+                parsed.payload,
+            )
+            .map_err(|error| error.to_string())
+            .and_then(|request| {
+                lithe_process::ports::resolve(&request).map_err(|error| error.to_string())
+            }) {
+                Ok(ports) => CoreResponse::success(
+                    id,
+                    serde_json::to_value(ports).expect("listening ports response should encode"),
+                ),
+                Err(details) => CoreResponse::failure(
+                    id,
+                    CoreError::new(ErrorCode::InvalidRequest, "Invalid listening ports request")
+                        .with_details(details),
+                ),
+            }
+        }
         CoreCommand::Editor(command) => editor::dispatch(command, id, parsed.payload, document),
         CoreCommand::WorkbenchChromeLayoutReduce => {
             rules_response(id, "workbench.chromeLayout.reduce", parsed.payload)

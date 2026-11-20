@@ -130,6 +130,9 @@ pub enum CoreCommand {
     ProcessLifecycleSettle,
     /// Sums a process table's memory by part of the instance (`processMemory.summarize`).
     ProcessMemorySummarize,
+    /// Filters, normalizes, and formats listening TCP ports of one process tree
+    /// (`process.listeningPorts`).
+    ProcessListeningPorts,
     /// Renders and sanitizes shared Markdown (`markdown.render`).
     MarkdownRender,
     /// Outlines the headings of shared Markdown as document symbols (`markdown.outline`).
@@ -1336,6 +1339,7 @@ impl CoreCommand {
             "processLifecycle.inventory" => Some(Self::ProcessLifecycleInventory),
             "processLifecycle.settle" => Some(Self::ProcessLifecycleSettle),
             "processMemory.summarize" => Some(Self::ProcessMemorySummarize),
+            "process.listeningPorts" => Some(Self::ProcessListeningPorts),
             "markdown.render" => Some(Self::MarkdownRender),
             "markdown.outline" => Some(Self::MarkdownOutline),
             "markdown.resolveReference" => Some(Self::MarkdownResolveReference),
@@ -1819,6 +1823,10 @@ mod tests {
         assert!(matches!(
             CoreCommand::parse("processMemory.summarize"),
             Some(CoreCommand::ProcessMemorySummarize)
+        ));
+        assert!(matches!(
+            CoreCommand::parse("process.listeningPorts"),
+            Some(CoreCommand::ProcessListeningPorts)
         ));
     }
 
