@@ -33,6 +33,7 @@ mod run_directory;
 mod session;
 mod spawner;
 mod terminal;
+mod threads;
 mod tunnel;
 mod upload;
 mod walk;

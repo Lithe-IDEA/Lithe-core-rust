@@ -278,11 +278,18 @@ pub(crate) fn collect_output(
     use std::io::Read;
     let (sender, receiver) = std::sync::mpsc::channel();
     if let Some(mut stdout) = child.stdout.take() {
-        std::thread::spawn(move || {
-            let mut bytes = Vec::new();
-            let _ = stdout.read_to_end(&mut bytes);
-            let _ = sender.send(bytes);
-        });
+        let reader = std::thread::Builder::new()
+            .name("remote-helper-output".into())
+            .spawn(move || {
+                let mut bytes = Vec::new();
+                let _ = stdout.read_to_end(&mut bytes);
+                let _ = sender.send(bytes);
+            });
+        if let Err(error) = reader {
+            // Unread, the helper could block on a full pipe until killed.
+            kill_helper(&mut child);
+            return Err(error);
+        }
     } else {
         let _ = sender.send(Vec::new());
     }
@@ -292,9 +299,7 @@ pub(crate) fn collect_output(
             break status;
         }
         if std::time::Instant::now() >= deadline {
-            let _ = signal_process_group(child.id(), libc::SIGKILL);
-            let _ = child.kill();
-            let _ = child.wait();
+            kill_helper(&mut child);
             return Err(io::Error::new(
                 io::ErrorKind::TimedOut,
                 "helper command timed out",
@@ -307,4 +312,11 @@ pub(crate) fn collect_output(
         .recv_timeout(std::time::Duration::from_millis(500))
         .unwrap_or_default();
     Ok((status, stdout))
+}
+
+/// Kills a helper's whole process group and reaps the helper.
+fn kill_helper(child: &mut std::process::Child) {
+    let _ = signal_process_group(child.id(), libc::SIGKILL);
+    let _ = child.kill();
+    let _ = child.wait();
 }

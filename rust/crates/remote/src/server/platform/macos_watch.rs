@@ -8,6 +8,8 @@
 //! free of framework wrapper crates.
 
 use crate::protocol::methods::{ChangeKind, WatchBackend};
+use crate::protocol::RemoteError;
+use crate::server::fs::io_error;
 use crate::server::watch::{Excludes, RawEvent, Sink};
 use std::collections::HashSet;
 use std::ffi::{c_char, c_void, CStr};
@@ -151,7 +153,19 @@ impl Drop for Watcher {
 
 extern "C" fn drain(_: *mut c_void) {}
 
+/// Starts watching `root`. `requested` is the root as the client spelled it,
+/// for error messages. FSEvents calls back on a dispatch queue, so no thread
+/// of the server's is needed.
 pub(crate) fn start(
+    root: PathBuf,
+    requested: &str,
+    excludes: Arc<Excludes>,
+    sink: Sink,
+) -> Result<(Watcher, Option<u64>), RemoteError> {
+    stream(root, excludes, sink).map_err(|error| io_error(error, requested))
+}
+
+fn stream(
     root: PathBuf,
     excludes: Arc<Excludes>,
     sink: Sink,

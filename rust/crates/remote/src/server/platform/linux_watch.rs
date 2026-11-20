@@ -8,6 +8,9 @@
 //! produce no events of their own.
 
 use crate::protocol::methods::{ChangeKind, WatchBackend};
+use crate::protocol::RemoteError;
+use crate::server::fs::io_error;
+use crate::server::threads::Parked;
 use crate::server::watch::{Excludes, RawEvent, Sink};
 use std::collections::HashMap;
 use std::ffi::OsStr;
@@ -16,7 +19,7 @@ use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::thread::{self, JoinHandle};
+use std::thread::JoinHandle;
 
 pub(crate) const BACKEND: WatchBackend = WatchBackend::Inotify;
 
@@ -62,43 +65,84 @@ impl Drop for Watcher {
     }
 }
 
+/// Starts watching `root`. `requested` is the root as the client spelled it,
+/// for error messages.
 pub(crate) fn start(
     root: PathBuf,
+    requested: &str,
     excludes: Arc<Excludes>,
     sink: Sink,
-) -> io::Result<(Watcher, Option<u64>)> {
-    // SAFETY: inotify_init1 has no memory-safety preconditions.
-    let fd = unsafe { libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC) };
-    if fd == -1 {
-        return Err(io::Error::last_os_error());
-    }
-    // SAFETY: the descriptor was just created and is owned here.
-    let inotify = unsafe { OwnedFd::from_raw_fd(fd) };
-    let mut tree = Tree {
-        fd: inotify.as_raw_fd(),
-        root: root.clone(),
-        by_descriptor: HashMap::new(),
-        limit_reported: false,
-        excludes,
-    };
-    let root_descriptor = tree.add(&root)?;
-    tree.add_below(&root, &sink, false);
-    let watched = tree.by_descriptor.len() as u64;
-
-    let (stop_read, stop_write) = pipe()?;
-    let thread = thread::Builder::new()
-        .name("remote-inotify".into())
-        .spawn(move || {
-            let _inotify = inotify;
-            tree.run(root_descriptor, stop_read, sink);
-        })?;
+) -> Result<(Watcher, Option<u64>), RemoteError> {
+    // The thread starts before any directory is registered, so a host out of
+    // threads refuses the watch with nothing to release.
+    let thread = Parked::start("remote-inotify", Backend::run)?;
+    let (backend, stop) =
+        Backend::register(root, excludes, sink).map_err(|error| io_error(error, requested))?;
+    let watched = backend.tree.by_descriptor.len() as u64;
     Ok((
         Watcher {
-            stop: Some(stop_write),
-            thread: Some(thread),
+            stop: Some(stop),
+            thread: Some(thread.run(backend)),
         },
         Some(watched),
     ))
+}
+
+/// What the backend thread owns while it runs.
+struct Backend {
+    /// Kept open until the thread ends; closing it releases every
+    /// registration at once.
+    inotify: OwnedFd,
+    tree: Tree,
+    root_descriptor: i32,
+    stop: OwnedFd,
+    sink: Sink,
+}
+
+impl Backend {
+    /// Registers `root` and every directory below it. Also returns the write
+    /// end of the stop pipe, which [`Watcher`] closes to stop the thread.
+    fn register(root: PathBuf, excludes: Arc<Excludes>, sink: Sink) -> io::Result<(Self, OwnedFd)> {
+        // SAFETY: inotify_init1 has no memory-safety preconditions.
+        let fd = unsafe { libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC) };
+        if fd == -1 {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: the descriptor was just created and is owned here.
+        let inotify = unsafe { OwnedFd::from_raw_fd(fd) };
+        let mut tree = Tree {
+            fd: inotify.as_raw_fd(),
+            root: root.clone(),
+            by_descriptor: HashMap::new(),
+            limit_reported: false,
+            excludes,
+        };
+        let root_descriptor = tree.add(&root)?;
+        tree.add_below(&root, &sink, false);
+        let (stop, stop_write) = pipe()?;
+        Ok((
+            Self {
+                inotify,
+                tree,
+                root_descriptor,
+                stop,
+                sink,
+            },
+            stop_write,
+        ))
+    }
+
+    fn run(self) {
+        let Self {
+            inotify,
+            mut tree,
+            root_descriptor,
+            stop,
+            sink,
+        } = self;
+        tree.run(root_descriptor, stop, sink);
+        drop(inotify);
+    }
 }
 
 struct Tree {

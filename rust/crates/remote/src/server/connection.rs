@@ -303,14 +303,13 @@ fn dispatch_to_worker(context: &Context, id: u64, method: String, params: Value,
             return;
         }
     };
-    let workers = &context.session.workers;
-    if !workers.try_acquire() {
+    let Some(slot) = WorkerSlot::acquire(&context.session) else {
         outbox.send(Message::failure(
             id,
             RemoteError::new(ErrorCode::Busy, "too many requests in flight"),
         ));
         return;
-    }
+    };
     let worker_outbox = outbox.clone();
     let worker_context = context.clone();
     let spawned = thread::Builder::new()
@@ -328,14 +327,34 @@ fn dispatch_to_worker(context: &Context, id: u64, method: String, params: Value,
             // up cancellation of an already-published resource.
             drop(order);
             worker_outbox.send(respond(id, reply));
-            worker_context.session.workers.release();
+            drop(slot);
         });
+    // A closure that never ran is dropped with the error, and its slot with it.
     if let Err(error) = spawned {
-        workers.release();
         outbox.send(Message::failure(
             id,
-            RemoteError::new(ErrorCode::Busy, format!("cannot start worker: {error}")),
+            crate::server::threads::unavailable(error),
         ));
+    }
+}
+
+/// One of the session's in-flight request slots. It is released when the
+/// worker drops it, including while a panicking handler unwinds, so a failed
+/// request cannot use up the limit for the rest of the session.
+struct WorkerSlot(Arc<Session>);
+
+impl WorkerSlot {
+    fn acquire(session: &Arc<Session>) -> Option<Self> {
+        session
+            .workers
+            .try_acquire()
+            .then(|| Self(Arc::clone(session)))
+    }
+}
+
+impl Drop for WorkerSlot {
+    fn drop(&mut self) {
+        self.0.workers.release();
     }
 }
 

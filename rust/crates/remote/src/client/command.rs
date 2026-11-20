@@ -2,7 +2,7 @@
 //! Those tests drive real shells, so the module exists on Unix hosts only.
 
 use std::io::{self, Read};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -49,8 +49,17 @@ pub fn run(argv: &[String], timeout: Duration) -> io::Result<CommandOutput> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
-    let stdout = capture(child.stdout.take());
-    let stderr = capture(child.stderr.take());
+    let captures =
+        capture(child.stdout.take()).and_then(|stdout| Ok((stdout, capture(child.stderr.take())?)));
+    let (stdout, stderr) = match captures {
+        Ok(captures) => captures,
+        Err(error) => {
+            // Without a reader the child could block on a full pipe; a
+            // started stdout reader ends once the child is gone.
+            stop(&mut child);
+            return Err(error);
+        }
+    };
 
     let deadline = Instant::now() + timeout;
     let status = loop {
@@ -58,16 +67,7 @@ pub fn run(argv: &[String], timeout: Duration) -> io::Result<CommandOutput> {
             break status;
         }
         if Instant::now() >= deadline {
-            crate::failure_log::kill(
-                "remote.client.operation_failed",
-                "process_kill",
-                child.kill(),
-            );
-            crate::failure_log::io(
-                "remote.client.operation_failed",
-                "process_wait",
-                child.wait(),
-            );
+            stop(&mut child);
             return Err(io::Error::new(
                 io::ErrorKind::TimedOut,
                 format!(
@@ -112,28 +112,44 @@ impl Capture {
     }
 }
 
-fn capture(pipe: Option<impl Read + Send + 'static>) -> Capture {
+/// Kills and reaps a child that will not be waited for normally.
+fn stop(child: &mut Child) {
+    crate::failure_log::kill(
+        "remote.client.operation_failed",
+        "process_kill",
+        child.kill(),
+    );
+    crate::failure_log::io(
+        "remote.client.operation_failed",
+        "process_wait",
+        child.wait(),
+    );
+}
+
+fn capture(pipe: Option<impl Read + Send + 'static>) -> io::Result<Capture> {
     let bytes = Arc::new(Mutex::new(Vec::new()));
     let (finished_sender, finished) = mpsc::channel();
     let shared = Arc::clone(&bytes);
-    thread::spawn(move || {
-        if let Some(mut pipe) = pipe {
-            let mut buffer = [0_u8; 8192];
-            loop {
-                match pipe.read(&mut buffer) {
-                    Ok(0) | Err(_) => break,
-                    Ok(read) => {
-                        let mut captured = shared
-                            .lock()
-                            .unwrap_or_else(|poisoned| poisoned.into_inner());
-                        let room = CAPTURE_LIMIT_BYTES.saturating_sub(captured.len());
-                        captured.extend_from_slice(&buffer[..read.min(room)]);
+    thread::Builder::new()
+        .name("remote-command-output".into())
+        .spawn(move || {
+            if let Some(mut pipe) = pipe {
+                let mut buffer = [0_u8; 8192];
+                loop {
+                    match pipe.read(&mut buffer) {
+                        Ok(0) | Err(_) => break,
+                        Ok(read) => {
+                            let mut captured = shared
+                                .lock()
+                                .unwrap_or_else(|poisoned| poisoned.into_inner());
+                            let room = CAPTURE_LIMIT_BYTES.saturating_sub(captured.len());
+                            captured.extend_from_slice(&buffer[..read.min(room)]);
+                        }
                     }
                 }
             }
-        }
-        // log-exempt: User cancellation: the command caller already stopped collecting output and no longer waits for the capture completion notification.
-        let _ = finished_sender.send(());
-    });
-    Capture { bytes, finished }
+            // log-exempt: User cancellation: the command caller already stopped collecting output and no longer waits for the capture completion notification.
+            let _ = finished_sender.send(());
+        })?;
+    Ok(Capture { bytes, finished })
 }

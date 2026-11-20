@@ -416,7 +416,12 @@ impl RemoteSession {
         let stdout = child.stdout.take().expect("stdout is piped");
         let stderr_tail = Arc::new(Mutex::new(VecDeque::new()));
         if let Some(stderr) = child.stderr.take() {
-            keep_tail(stderr, Arc::clone(&stderr_tail));
+            if let Err(error) = keep_tail(stderr, Arc::clone(&stderr_tail)) {
+                abandon(Some(child));
+                let error = ClientError::Spawn(error);
+                log.connect_failed("connect", &error.failure_category(), "remote");
+                return Err(error);
+            }
         }
         Self::establish(
             stdout,
@@ -471,15 +476,18 @@ impl RemoteSession {
         let outgoing = Arc::new(Outgoing::default());
         let next_request = Arc::new(AtomicU64::new(0));
         let last_seq = Arc::new(AtomicU64::new(0));
-        {
+        let writer = {
             let outgoing = Arc::clone(&outgoing);
             let pending = Arc::clone(&pending);
             thread::Builder::new()
                 .name("remote-writer".into())
                 .spawn(move || write_loop(writer, &outgoing, &pending))
-                .map_err(ClientError::Spawn)?;
+        };
+        if let Err(error) = writer {
+            abandon(child);
+            return Err(ClientError::Spawn(error));
         }
-        {
+        let reader = {
             let reader_context = ReaderContext {
                 pending: Arc::clone(&pending),
                 routes: Arc::clone(&routes),
@@ -492,7 +500,13 @@ impl RemoteSession {
             thread::Builder::new()
                 .name("remote-reader".into())
                 .spawn(move || read_loop(reader, reader_context, ready_sender))
-                .map_err(ClientError::Spawn)?;
+        };
+        if let Err(error) = reader {
+            // Ends the writer thread, which otherwise waits for requests
+            // that never come.
+            outgoing.close();
+            abandon(child);
+            return Err(ClientError::Spawn(error));
         }
         let mut session = Self {
             outgoing,
@@ -730,18 +744,7 @@ impl Drop for RemoteSession {
         // is released when the transport is killed below.
         self.outgoing.close();
         if !self.wait_for_transport_exit(SHUTDOWN_GRACE) {
-            if let Some(child) = lock(&self.child).as_mut() {
-                crate::failure_log::kill(
-                    "remote.client.operation_failed",
-                    "process_kill",
-                    child.kill(),
-                );
-                crate::failure_log::io(
-                    "remote.client.operation_failed",
-                    "process_wait",
-                    child.wait(),
-                );
-            }
+            abandon(lock(&self.child).take());
         }
     }
 }
@@ -912,21 +915,45 @@ fn close(pending: &Mutex<Pending>) {
     }
 }
 
-fn keep_tail(mut stderr: impl Read + Send + 'static, tail: Arc<Mutex<VecDeque<u8>>>) {
-    thread::spawn(move || {
-        let mut buffer = [0_u8; 4096];
-        loop {
-            match stderr.read(&mut buffer) {
-                Ok(0) | Err(_) => return,
-                Ok(read) => {
-                    let mut tail = lock(&tail);
-                    tail.extend(&buffer[..read]);
-                    let excess = tail.len().saturating_sub(STDERR_TAIL_BYTES);
-                    tail.drain(..excess);
+fn keep_tail(
+    mut stderr: impl Read + Send + 'static,
+    tail: Arc<Mutex<VecDeque<u8>>>,
+) -> io::Result<()> {
+    thread::Builder::new()
+        .name("remote-stderr".into())
+        .spawn(move || {
+            let mut buffer = [0_u8; 4096];
+            loop {
+                match stderr.read(&mut buffer) {
+                    Ok(0) | Err(_) => return,
+                    Ok(read) => {
+                        let mut tail = lock(&tail);
+                        tail.extend(&buffer[..read]);
+                        let excess = tail.len().saturating_sub(STDERR_TAIL_BYTES);
+                        tail.drain(..excess);
+                    }
                 }
             }
-        }
-    });
+        })
+        .map(drop)
+}
+
+/// Kills and reaps a transport process: one that outlived its session's
+/// shutdown grace, or one that never became a session because no thread
+/// could be started for it. Dropping a `Child` neither stops nor reaps it.
+fn abandon(child: Option<Child>) {
+    if let Some(mut child) = child {
+        crate::failure_log::kill(
+            "remote.client.operation_failed",
+            "process_kill",
+            child.kill(),
+        );
+        crate::failure_log::io(
+            "remote.client.operation_failed",
+            "process_wait",
+            child.wait(),
+        );
+    }
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {

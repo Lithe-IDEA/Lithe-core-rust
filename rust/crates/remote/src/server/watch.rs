@@ -17,13 +17,13 @@ use crate::server::fs::host_path;
 use crate::server::platform::watcher;
 use crate::server::resources::Registry;
 use crate::server::session::Session;
+use crate::server::threads::Parked;
 use crate::server::{parse, to_value};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::Arc;
-use std::thread;
 use std::time::{Duration, Instant};
 
 const QUIET_PERIOD: Duration = Duration::from_millis(50);
@@ -152,23 +152,26 @@ impl WatchTable {
                 "only directories can be watched",
             ));
         }
+        // The coalescer starts before the backend, so a host out of threads
+        // refuses the watch without a backend that nobody would stop.
+        let watch_id = params.watch_id;
+        let coalescer = {
+            let session = Arc::clone(session);
+            Parked::start("remote-watch", move |raw: Receiver<RawEvent>| {
+                coalesce(raw, |batch| deliver(&session, watch_id, batch));
+            })?
+        };
         let excludes = Arc::new(Excludes::new(root.clone(), params.exclude_names));
         let (sink, raw) = mpsc::channel();
-        let (backend, watched_directories) = watcher::start(root, excludes, sink)
-            .map_err(|error| crate::server::fs::io_error(error, &params.root))?;
+        let (backend, watched_directories) = watcher::start(root, &params.root, excludes, sink)?;
         self.registry.insert(
-            params.watch_id,
+            watch_id,
             RunningWatch {
                 root: params.root,
                 _backend: backend,
             },
         )?;
-        let session = Arc::clone(session);
-        let watch_id = params.watch_id;
-        thread::Builder::new()
-            .name("remote-watch".into())
-            .spawn(move || coalesce(raw, |batch| deliver(&session, watch_id, batch)))
-            .map_err(|error| crate::server::fs::io_error(error, ""))?;
+        coalescer.run(raw);
         Ok(WatchStartResult {
             watched_directories,
         })

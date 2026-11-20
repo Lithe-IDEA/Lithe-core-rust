@@ -12,20 +12,25 @@ use crate::protocol::methods::{
 use crate::protocol::{ErrorCode, RemoteError};
 use crate::server::connection::Context;
 use crate::server::parse;
-use crate::server::process::{queue_input, INPUT_QUEUE_CAPACITY};
+use crate::server::process::{queue_input, InputWriter};
 use crate::server::resources::Registry;
 use crate::server::session::Session;
+use crate::server::threads::Parked;
 use serde_json::{json, Value};
 use std::io::{self, Read, Write};
 use std::net::{Shutdown, TcpStream, ToSocketAddrs};
 use std::os::unix::net::UnixStream;
 use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
-use std::thread;
 use std::time::Duration;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const READ_CHUNK_BYTES: usize = 32 * 1024;
+
+/// Most tunnels one session keeps open. Every tunnel holds a socket and two
+/// threads on the remote, and a single local page can open many connections,
+/// so the number is bounded independently of what the client asks for.
+const MAX_TUNNELS: usize = 256;
 
 pub(crate) struct TunnelTable {
     registry: Registry<OpenTunnel>,
@@ -88,7 +93,7 @@ impl Write for Stream {
 impl TunnelTable {
     pub(crate) fn new() -> Self {
         Self {
-            registry: Registry::new("tunnel"),
+            registry: Registry::bounded("tunnel", MAX_TUNNELS),
         }
     }
 
@@ -164,45 +169,37 @@ impl TunnelTable {
         let session = &context.session;
         session.ids.observe(params.tunnel_id);
         self.registry.ensure_free(params.tunnel_id)?;
+        // Both threads start before the connection exists, so a host out of
+        // threads refuses the tunnel without having touched the target. When
+        // the write queue's sender is dropped (`tunnel.shutdownWrite`), the
+        // queued data is still written and then only the write side is shut
+        // down, so the peer can still answer.
+        let writer = InputWriter::start(|stream: Stream| stream.shutdown(Shutdown::Write))?;
+        let tunnel_id = params.tunnel_id;
+        let reader = {
+            let session = Arc::clone(session);
+            Parked::start("remote-tunnel", move |stream: Stream| {
+                forward(&session, tunnel_id, stream);
+            })?
+        };
         let stream = connect(&params.target).map_err(|error| {
             RemoteError::new(ErrorCode::ConnectFailed, format!("cannot connect: {error}"))
                 .with_details(json!({ "osError": error.raw_os_error() }))
         })?;
         let io_failure = |error: io::Error| crate::server::fs::io_error(error, "");
-        let reader = stream.try_clone().map_err(io_failure)?;
-        let writer = stream.try_clone().map_err(io_failure)?;
+        let reading = stream.try_clone().map_err(io_failure)?;
+        let writing = stream.try_clone().map_err(io_failure)?;
         self.registry.insert(
-            params.tunnel_id,
+            tunnel_id,
             OpenTunnel {
                 connection: context.connection,
-                input: Some(start_tunnel_writer(writer)),
+                input: Some(writer.attach(writing)),
                 stream,
             },
         )?;
-        let session = Arc::clone(session);
-        let tunnel_id = params.tunnel_id;
-        thread::Builder::new()
-            .name("remote-tunnel".into())
-            .spawn(move || forward(&session, tunnel_id, reader))
-            .map_err(io_failure)?;
+        reader.run(reading);
         Ok(())
     }
-}
-
-/// Writes queued chunks to the remote stream. When the queue's sender is
-/// dropped (`tunnel.shutdownWrite`), the queued data is still written and
-/// then only the write side is shut down, so the peer can still answer.
-fn start_tunnel_writer(mut stream: Stream) -> SyncSender<Vec<u8>> {
-    let (sender, receiver) = std::sync::mpsc::sync_channel::<Vec<u8>>(INPUT_QUEUE_CAPACITY);
-    thread::spawn(move || {
-        while let Ok(chunk) = receiver.recv() {
-            if stream.write_all(&chunk).is_err() {
-                return;
-            }
-        }
-        stream.shutdown(Shutdown::Write);
-    });
-    sender
 }
 
 fn connect(target: &TunnelTarget) -> io::Result<Stream> {

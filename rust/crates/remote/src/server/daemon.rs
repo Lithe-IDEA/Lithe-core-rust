@@ -36,7 +36,7 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -334,11 +334,13 @@ fn wait_for_socket(socket: &Path, deadline: Instant) -> io::Result<UnixStream> {
 /// Copies bytes in both directions until the daemon closes the connection.
 fn relay(stream: UnixStream) -> io::Result<()> {
     let mut to_daemon = stream.try_clone()?;
-    thread::spawn(move || {
-        let _ = io::copy(&mut io::stdin().lock(), &mut to_daemon);
-        // End-of-file from the transport is the client's disconnect.
-        let _ = to_daemon.shutdown(std::net::Shutdown::Write);
-    });
+    thread::Builder::new()
+        .name("remote-relay".into())
+        .spawn(move || {
+            let _ = io::copy(&mut io::stdin().lock(), &mut to_daemon);
+            // End-of-file from the transport is the client's disconnect.
+            let _ = to_daemon.shutdown(std::net::Shutdown::Write);
+        })?;
     let mut from_daemon = stream;
     let mut stdout = io::stdout().lock();
     let mut buffer = vec![0_u8; 64 * 1024];
@@ -385,7 +387,7 @@ pub fn run_daemon(options: &PersistentOptions) -> io::Result<()> {
     listener.set_nonblocking(true)?;
 
     let session = Session::new(true)?;
-    let shutdown = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let shutdown = Arc::new(AtomicBool::new(false));
     {
         // A client that reconnects right after `server.shutdown` must not
         // reach this ending session: the socket disappears before the
@@ -400,7 +402,7 @@ pub fn run_daemon(options: &PersistentOptions) -> io::Result<()> {
     let attached = Arc::new(AtomicUsize::new(0));
     // The attached connection's id and a copy of its socket, kept so that a
     // replacing connection can disconnect it.
-    let current: Arc<Mutex<Option<(u64, UnixStream)>>> = Arc::new(Mutex::new(None));
+    let current: Current = Arc::new(Mutex::new(None));
     let mut next_connection: u64 = 0;
     let mut idle_since = Instant::now();
     let mut log_rotation_failed = false;
@@ -412,58 +414,20 @@ pub fn run_daemon(options: &PersistentOptions) -> io::Result<()> {
                     eprintln!("lithe-remote-server: rejected a connection from another user");
                     continue;
                 }
-                stream.set_nonblocking(false)?;
                 next_connection += 1;
-                let connection_id = next_connection;
-                let replacement = stream.try_clone()?;
-                let current = Arc::clone(&current);
-                attached.fetch_add(1, Ordering::AcqRel);
-                let session = Arc::clone(&session);
-                let attached = Arc::clone(&attached);
-                let shutdown = Arc::clone(&shutdown);
-                thread::Builder::new()
-                    .name("remote-connection".into())
-                    .spawn(move || {
-                        let input = match stream.try_clone() {
-                            Ok(input) => input,
-                            Err(error) => {
-                                eprintln!("lithe-remote-server: {error}");
-                                attached.fetch_sub(1, Ordering::AcqRel);
-                                return;
-                            }
-                        };
-                        // An admitted client replaces the attached one, which
-                        // may be half-dead after a network change and not yet
-                        // noticed. A connection the session refuses leaves it
-                        // alone, and its copy closes with the unused closure.
-                        let attach = {
-                            let current = Arc::clone(&current);
-                            move || {
-                                if let Some((_, previous)) = crate::server::lock(&current)
-                                    .replace((connection_id, replacement))
-                                {
-                                    // log-exempt: Expected absence: the replaced client may already have disconnected, which is why it is being replaced.
-                                    let _ = previous.shutdown(std::net::Shutdown::Both);
-                                }
-                            }
-                        };
-                        let ended = connection::serve(&session, input, stream, attach);
-                        // The copy kept for replacement is the last open
-                        // descriptor of this socket. Closing it delivers
-                        // end-of-file to the proxy, which would otherwise
-                        // linger on the host after every disconnect.
-                        // (`shutdown` is not enough: BSD rejects it with
-                        // ENOTCONN once the peer has half-closed.)
-                        let mut current = crate::server::lock(&current);
-                        if matches!(&*current, Some((id, _)) if *id == connection_id) {
-                            current.take();
-                        }
-                        drop(current);
-                        if matches!(ended, Ok(Ended::Shutdown)) {
-                            shutdown.store(true, Ordering::Release);
-                        }
-                        attached.fetch_sub(1, Ordering::AcqRel);
-                    })?;
+                let connection = Connection {
+                    id: next_connection,
+                    session: Arc::clone(&session),
+                    current: Arc::clone(&current),
+                    shutdown: Arc::clone(&shutdown),
+                    attached: Attached::count(&attached),
+                };
+                if let Err(error) = connection.start(stream) {
+                    // The client sees its connection close and may connect
+                    // again; one connection that cannot be set up must not
+                    // end the session and the programs running in it.
+                    eprintln!("lithe-remote-server: cannot serve a connection: {error}");
+                }
             }
             Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
                 if attached.load(Ordering::Acquire) > 0 || session.keeps_programs() {
@@ -499,6 +463,87 @@ pub fn run_daemon(options: &PersistentOptions) -> io::Result<()> {
     }
     drop(lock);
     Ok(())
+}
+
+/// The attached connection's id and a copy of its socket.
+type Current = Arc<Mutex<Option<(u64, UnixStream)>>>;
+
+/// One accepted connection, before its thread starts.
+struct Connection {
+    id: u64,
+    session: Arc<Session>,
+    current: Current,
+    shutdown: Arc<AtomicBool>,
+    attached: Attached,
+}
+
+impl Connection {
+    /// Serves the connection on its own thread. A failure drops everything,
+    /// which closes the socket and ends the connection's attached count.
+    fn start(self, stream: UnixStream) -> io::Result<()> {
+        stream.set_nonblocking(false)?;
+        let input = stream.try_clone()?;
+        let replacement = stream.try_clone()?;
+        thread::Builder::new()
+            .name("remote-connection".into())
+            .spawn(move || {
+                let Self {
+                    id,
+                    session,
+                    current,
+                    shutdown,
+                    attached,
+                } = self;
+                // An admitted client replaces the attached one, which may be
+                // half-dead after a network change and not yet noticed. A
+                // connection the session refuses leaves it alone, and its copy
+                // closes with the unused closure.
+                let attach = {
+                    let current = Arc::clone(&current);
+                    move || {
+                        if let Some((_, previous)) =
+                            crate::server::lock(&current).replace((id, replacement))
+                        {
+                            // log-exempt: Expected absence: the replaced client may already have disconnected, which is why it is being replaced.
+                            let _ = previous.shutdown(std::net::Shutdown::Both);
+                        }
+                    }
+                };
+                let ended = connection::serve(&session, input, stream, attach);
+                // The copy kept for replacement is the last open descriptor of
+                // this socket. Closing it delivers end-of-file to the proxy,
+                // which would otherwise linger on the host after every
+                // disconnect. (`shutdown` is not enough: BSD rejects it with
+                // ENOTCONN once the peer has half-closed.)
+                let mut current = crate::server::lock(&current);
+                if matches!(&*current, Some((attached_id, _)) if *attached_id == id) {
+                    current.take();
+                }
+                drop(current);
+                if matches!(ended, Ok(Ended::Shutdown)) {
+                    shutdown.store(true, Ordering::Release);
+                }
+                drop(attached);
+            })?;
+        Ok(())
+    }
+}
+
+/// Counts a connection for the idle timer from accept until its thread ends.
+/// Dropping it ends the count, including when the thread never started.
+struct Attached(Arc<AtomicUsize>);
+
+impl Attached {
+    fn count(attached: &Arc<AtomicUsize>) -> Self {
+        attached.fetch_add(1, Ordering::AcqRel);
+        Self(Arc::clone(attached))
+    }
+}
+
+impl Drop for Attached {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
 }
 
 /// Takes the exclusive lock for the key. Another daemon holding it is either

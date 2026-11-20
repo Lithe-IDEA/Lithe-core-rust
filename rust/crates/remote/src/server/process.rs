@@ -20,14 +20,14 @@ use crate::server::fs::{host_path, io_error};
 use crate::server::platform::{self, ChildKind};
 use crate::server::resources::Registry;
 use crate::server::session::Session;
+use crate::server::threads::Parked;
 use crate::server::{parse, to_value};
 use serde_json::{json, Value};
 use std::io::{self, Read, Write};
 use std::os::unix::process::ExitStatusExt;
-use std::process::{Child, Command, ExitStatus, Stdio};
+use std::process::{Child, ChildStdin, Command, ExitStatus, Stdio};
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::{Duration, Instant};
 
 pub(crate) const OUTPUT_CHUNK_BYTES: usize = 32 * 1024;
@@ -172,6 +172,13 @@ impl ProcessTable {
             command.current_dir(host_path(cwd)?);
         }
         platform::prepare_child(&mut command, ChildKind::Plain);
+        // Every thread the child needs starts before the child does.
+        let stdin_writer = if params.pipe_stdin {
+            Some(InputWriter::<ChildStdin>::start(drop)?)
+        } else {
+            None
+        };
+        let monitor = Self::monitor(session, params.process_id)?;
         let program_name = program.clone();
         let mut child = session
             .spawner
@@ -179,7 +186,9 @@ impl ProcessTable {
             .map_err(|error| spawn_error(&program_name, error))?;
 
         let pid = child.id();
-        let stdin = child.stdin.take().map(start_input_writer);
+        let stdin = stdin_writer
+            .zip(child.stdin.take())
+            .map(|(writer, pipe)| writer.attach(pipe));
         let entry = RunningProcess {
             leader: Leader::new(pid),
             argv: params.argv.clone(),
@@ -192,25 +201,23 @@ impl ProcessTable {
             let _ = child.wait();
             return Err(error);
         }
-        self.start_monitor(Arc::clone(session), params.process_id, child);
+        let pipes: [Option<Box<dyn Read + Send>>; 2] = [
+            child.stdout.take().map(|pipe| Box::new(pipe) as _),
+            child.stderr.take().map(|pipe| Box::new(pipe) as _),
+        ];
+        monitor.follow(pipes, child);
         Ok(SpawnResult { pid })
     }
 
-    fn start_monitor(&self, session: Arc<Session>, process_id: u64, mut child: Child) {
-        let mut gate = OutputGate::new();
-        let pipes = [
-            child
-                .stdout
-                .take()
-                .map(|pipe| (Box::new(pipe) as Box<dyn Read + Send>, OutputStream::Stdout)),
-            child
-                .stderr
-                .take()
-                .map(|pipe| (Box::new(pipe) as Box<dyn Read + Send>, OutputStream::Stderr)),
-        ];
-        for (pipe, stream) in pipes.into_iter().flatten() {
-            let session = Arc::clone(&session);
-            gate.start_reader(pipe, move |chunk| {
+    /// Readers for standard output and standard error, in that order, and
+    /// the waiter that reports the exit.
+    fn monitor(
+        session: &Arc<Session>,
+        process_id: u64,
+    ) -> Result<Monitor<Box<dyn Read + Send>>, RemoteError> {
+        let forwards = [OutputStream::Stdout, OutputStream::Stderr].map(|stream| {
+            let session = Arc::clone(session);
+            let forward: Forward = Box::new(move |chunk| {
                 session.link.emit(
                     methods::EVENT_PROCESS_OUTPUT,
                     ProcessOutputEvent {
@@ -220,27 +227,26 @@ impl ProcessTable {
                     },
                 );
             });
-        }
-        thread::spawn(move || {
-            let status = child.wait();
-            gate.finish(|| {
-                let registry = &session.processes.registry;
-                if let Some(process) = registry.lock().get_mut(&process_id) {
-                    process.leader.exited = true;
-                    process.stdin = None;
-                }
-                prune(registry, |process| &process.leader);
-                let (exit_code, signal) = exit_parts(status);
-                session.link.emit(
-                    methods::EVENT_PROCESS_EXIT,
-                    ProcessExitEvent {
-                        process_id,
-                        exit_code,
-                        signal,
-                    },
-                );
-            });
+            forward
         });
+        let session = Arc::clone(session);
+        Monitor::start(forwards, move |status| {
+            let registry = &session.processes.registry;
+            if let Some(process) = registry.lock().get_mut(&process_id) {
+                process.leader.exited = true;
+                process.stdin = None;
+            }
+            prune(registry, |process| &process.leader);
+            let (exit_code, signal) = exit_parts(status);
+            session.link.emit(
+                methods::EVENT_PROCESS_EXIT,
+                ProcessExitEvent {
+                    process_id,
+                    exit_code,
+                    signal,
+                },
+            );
+        })
     }
 
     fn write_stdin(&self, params: WriteStdinParams) -> Result<(), RemoteError> {
@@ -385,19 +391,36 @@ pub(crate) fn exit_parts(status: io::Result<ExitStatus>) -> (Option<i32>, Option
     }
 }
 
-/// Starts a thread that writes queued chunks to `pipe`. Dropping the sender
-/// (close or exit) ends the loop after queued writes, and dropping the pipe
-/// delivers end-of-file to the child.
-pub(crate) fn start_input_writer(mut pipe: impl Write + Send + 'static) -> SyncSender<Vec<u8>> {
-    let (sender, receiver): (_, Receiver<Vec<u8>>) = mpsc::sync_channel(INPUT_QUEUE_CAPACITY);
-    thread::spawn(move || {
-        while let Ok(chunk) = receiver.recv() {
-            if pipe.write_all(&chunk).is_err() {
-                break;
+/// The queue and thread that write a child's or stream's input, started
+/// before the child or stream exists (see [`crate::server::threads`]).
+pub(crate) struct InputWriter<W> {
+    queue: SyncSender<Vec<u8>>,
+    thread: Parked<W>,
+}
+
+impl<W: Write + Send + 'static> InputWriter<W> {
+    /// Starts the writer thread. Once the queue's sender is dropped (close or
+    /// exit), the queued chunks are still written and `finish` receives the
+    /// pipe; after a failed write the pipe is dropped without `finish`.
+    /// Dropping a pipe delivers end-of-file to its reader.
+    pub(crate) fn start(finish: impl FnOnce(W) + Send + 'static) -> Result<Self, RemoteError> {
+        let (queue, chunks): (_, Receiver<Vec<u8>>) = mpsc::sync_channel(INPUT_QUEUE_CAPACITY);
+        let thread = Parked::start("remote-input", move |mut pipe: W| {
+            while let Ok(chunk) = chunks.recv() {
+                if pipe.write_all(&chunk).is_err() {
+                    return;
+                }
             }
-        }
-    });
-    sender
+            finish(pipe);
+        })?;
+        Ok(Self { queue, thread })
+    }
+
+    /// Hands `pipe` to the writer and returns the queue that feeds it.
+    pub(crate) fn attach(self, pipe: W) -> SyncSender<Vec<u8>> {
+        self.thread.run(pipe);
+        self.queue
+    }
 }
 
 pub(crate) fn queue_input(queue: &SyncSender<Vec<u8>>, data: Vec<u8>) -> Result<(), RemoteError> {
@@ -414,20 +437,66 @@ pub(crate) fn queue_input(queue: &SyncSender<Vec<u8>>, data: Vec<u8>) -> Result<
     }
 }
 
+/// A chunk forwarder of one output pipe.
+pub(crate) type Forward = Box<dyn Fn(&[u8]) + Send>;
+
+/// The output readers and the exit waiter of one child, started before the
+/// child (see [`crate::server::threads`]).
+///
+/// Readers forward chunks through an [`OutputGate`]. The waiter reaps the
+/// child, lets the readers drain, and then runs the exit action, so the exit
+/// event follows the child's own output.
+pub(crate) struct Monitor<R> {
+    readers: Vec<Parked<R>>,
+    waiter: Parked<Child>,
+}
+
+impl<R: Read + Send + 'static> Monitor<R> {
+    /// Starts one reader per entry of `forwards`, and the waiter that runs
+    /// `exit` with the child's status.
+    pub(crate) fn start(
+        forwards: impl IntoIterator<Item = Forward>,
+        exit: impl FnOnce(io::Result<ExitStatus>) + Send + 'static,
+    ) -> Result<Self, RemoteError> {
+        let mut gate = OutputGate::new();
+        let readers = forwards
+            .into_iter()
+            .map(|forward| gate.reader(forward))
+            .collect::<Result<Vec<_>, _>>()?;
+        let waiter = Parked::start("remote-wait", move |mut child: Child| {
+            let status = child.wait();
+            gate.finish(|| exit(status));
+        })?;
+        Ok(Self { readers, waiter })
+    }
+
+    /// Follows `child`. `pipes` pairs with the forwards given to
+    /// [`Monitor::start`], in order; a missing pipe leaves its reader unused.
+    pub(crate) fn follow(self, pipes: impl IntoIterator<Item = Option<R>>, child: Child) {
+        for (reader, pipe) in self.readers.into_iter().zip(pipes) {
+            if let Some(pipe) = pipe {
+                reader.run(pipe);
+            }
+        }
+        self.waiter.run(child);
+    }
+}
+
 /// Orders a child's output before its exit event.
 ///
 /// Readers forward chunks while holding the gate; `finish` waits briefly for
 /// the readers to reach end-of-file, then closes the gate and runs the exit
 /// action under it. Output read after that is dropped, because it can only
-/// come from descendants that inherited the pipe.
-pub(crate) struct OutputGate {
+/// come from descendants that inherited the pipe. A reader that never
+/// receives its pipe only makes `finish` wait out the grace period.
+struct OutputGate {
     closed: Arc<Mutex<bool>>,
     drained: (mpsc::Sender<()>, Receiver<()>),
     readers: usize,
 }
 
 impl OutputGate {
-    pub(crate) fn new() -> Self {
+    fn new() -> Self {
         Self {
             closed: Arc::new(Mutex::new(false)),
             drained: mpsc::channel(),
@@ -435,15 +504,13 @@ impl OutputGate {
         }
     }
 
-    pub(crate) fn start_reader(
+    fn reader<R: Read + Send + 'static>(
         &mut self,
-        mut pipe: impl Read + Send + 'static,
-        forward: impl Fn(&[u8]) + Send + 'static,
-    ) {
-        self.readers += 1;
+        forward: Forward,
+    ) -> Result<Parked<R>, RemoteError> {
         let closed = Arc::clone(&self.closed);
         let drained = self.drained.0.clone();
-        thread::spawn(move || {
+        let reader = Parked::start("remote-output", move |mut pipe: R| {
             let mut buffer = vec![0_u8; OUTPUT_CHUNK_BYTES];
             loop {
                 let read = match pipe.read(&mut buffer) {
@@ -460,10 +527,12 @@ impl OutputGate {
                 }
             }
             let _ = drained.send(());
-        });
+        })?;
+        self.readers += 1;
+        Ok(reader)
     }
 
-    pub(crate) fn finish(self, exit: impl FnOnce()) {
+    fn finish(self, exit: impl FnOnce()) {
         let deadline = Instant::now() + OUTPUT_DRAIN_GRACE;
         for _ in 0..self.readers {
             let remaining = deadline.saturating_duration_since(Instant::now());
