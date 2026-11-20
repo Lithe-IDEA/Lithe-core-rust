@@ -14,6 +14,8 @@
 
 ## 待合入
 
+- [#135](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/135)，[@xiaoyumuxi](https://github.com/xiaoyumuxi)，`toolDefinitions` 0 内的行为修正（API-23）：外部安装的 `executableLayouts` 文件链接到另一个文件名时，`toolchains.candidates` 的待探针路径和 `toolchains.resolve` 的 `executable` 改为规范主目录下的布局路径，不再是链接目标。rustup 把 `cargo`、`rust-analyzer` 链接到自身、按启动时的名字决定运行哪个工具，以前 Core 返回 `rustup`，版本探针失败。链接目标的类型、可执行位和越界检查不变；同名链接仍返回规范路径。没有新增字段、版本号、宿主方法、通知或 SDK 版本。
+
 ## 按协议查首次出现
 
 所有版本都从 `0` 开始。以后一个 PR 给某个能力加版本 `1` 时，在对应的表里为它加一行。
