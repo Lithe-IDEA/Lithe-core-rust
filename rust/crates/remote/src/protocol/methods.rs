@@ -201,6 +201,18 @@ pub fn decode_bytes(data: &str) -> Result<Vec<u8>, base64::DecodeError> {
     base64::engine::general_purpose::STANDARD.decode(data)
 }
 
+/// Lower-case hex, the wire spelling of SHA-256 digests and session tokens.
+#[cfg(any(feature = "client", feature = "server"))]
+pub(crate) fn encode_hex(bytes: &[u8]) -> String {
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let mut hex = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        hex.push(char::from(DIGITS[usize::from(byte >> 4)]));
+        hex.push(char::from(DIGITS[usize::from(byte & 0x0f)]));
+    }
+    hex
+}
+
 // ---------------------------------------------------------------------------
 // Server and session
 // ---------------------------------------------------------------------------
@@ -214,11 +226,49 @@ pub struct HelloParams {
     pub protocol_version: u32,
     /// Free-form client identification for server diagnostics.
     pub client_name: String,
-    /// Seconds a persistent session keeps its processes and terminals while
-    /// no client is attached. Ignored by `--stdio` servers, whose session ends
-    /// with the connection. The server applies the latest value it received.
+    /// Seconds a persistent session waits without a client and without
+    /// running processes or open terminals before it ends. Ignored by
+    /// `--stdio` servers, whose session ends with the connection. The server
+    /// applies the latest value it received.
     #[serde(default)]
     pub idle_timeout_seconds: Option<u64>,
+    /// Token of the persistent session this client attached to before, from
+    /// [`SessionInfo::session_token`]. A session that already had a client
+    /// admits only a connection that presents it; any other fails with
+    /// `INVALID_SESSION_TOKEN` and the server closes the connection without
+    /// disturbing the attached client. Ignored by a session without a client
+    /// so far, which issues its own token.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_token: Option<SessionToken>,
+}
+
+/// Secret that proves a client attached to a persistent session before.
+///
+/// The daemon's socket already admits only the host account, so the token
+/// separates clients of that account: another program, or a second Lithe
+/// window reusing the session key, cannot take over the session or read its
+/// buffered output. It is 128 random bits, hex encoded, and never written to
+/// logs: `Debug` prints a placeholder.
+#[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct SessionToken(String);
+
+impl SessionToken {
+    /// Wraps a token a client stored from an earlier [`SessionInfo`].
+    pub fn new(token: impl Into<String>) -> Self {
+        Self(token.into())
+    }
+
+    /// The token as sent on the wire, for client-side secret storage.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Debug for SessionToken {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("SessionToken(<redacted>)")
+    }
 }
 
 /// Result of `server.hello`.
@@ -249,6 +299,11 @@ pub struct SessionInfo {
     /// Sequence number of the latest event the session produced, `0` before
     /// the first one.
     pub last_event_seq: u64,
+    /// Token a later connection presents to attach to this persistent
+    /// session; absent for `--stdio` sessions. It stays the same for the
+    /// whole session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_token: Option<SessionToken>,
 }
 
 /// Starts event delivery to this connection. Until it is called, events are

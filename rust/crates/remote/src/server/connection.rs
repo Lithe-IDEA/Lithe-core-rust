@@ -36,6 +36,16 @@ pub(crate) enum Ended {
     Shutdown,
 }
 
+/// Outcome of one `server.hello`.
+enum Handshake {
+    Accepted,
+    /// The client may try again, for example with a supported protocol
+    /// version.
+    Failed,
+    /// The client may not attach to this session; the connection closes.
+    Refused,
+}
+
 /// What a request handler knows about its origin.
 #[derive(Clone)]
 pub(crate) struct Context {
@@ -45,10 +55,14 @@ pub(crate) struct Context {
     pub(crate) closed: Arc<AtomicBool>,
 }
 
+/// Serves one connection until it closes. `on_attach` runs once the session
+/// admitted the client's `server.hello`, before the handshake is answered; a
+/// connection the session refuses never runs it.
 pub(crate) fn serve(
     session: &Arc<Session>,
     input: impl Read,
     mut output: impl Write + Send + 'static,
+    on_attach: impl FnOnce(),
 ) -> io::Result<Ended> {
     output.write_all(PREAMBLE)?;
     output.flush()?;
@@ -64,6 +78,7 @@ pub(crate) fn serve(
         closed: Arc::new(AtomicBool::new(false)),
     };
     let mut input = io::BufReader::new(input);
+    let mut on_attach = Some(on_attach);
     let mut handshaken = false;
     let mut resumed = false;
     let mut ended = Ended::Disconnected;
@@ -84,15 +99,25 @@ pub(crate) fn serve(
                 continue;
             }
             Err(error) => {
-                // Without a parsable id there is no response to send.
-                eprintln!("lithe-remote-server: malformed message: {error}");
+                // Without a parsable id there is no response to send. The
+                // error's text can quote the frame, which may carry file
+                // contents, so the log keeps only its category and position.
+                eprintln!(
+                    "lithe-remote-server: malformed message: {:?} error at column {}",
+                    error.classify(),
+                    error.column()
+                );
                 continue;
             }
         };
 
         if !handshaken {
             if method == methods::SERVER_HELLO {
-                handshaken = hello(&context, id, params, &outbox);
+                match hello(&context, id, params, &outbox, &mut on_attach) {
+                    Handshake::Accepted => handshaken = true,
+                    Handshake::Failed => {}
+                    Handshake::Refused => break,
+                }
             } else {
                 outbox.send(Message::failure(
                     id,
@@ -154,13 +179,18 @@ pub(crate) fn serve(
 }
 
 /// Handles `server.hello`. Events start flowing only after `server.resume`.
-/// Returns whether the handshake succeeded.
-fn hello(context: &Context, id: u64, params: Value, outbox: &Outbox) -> bool {
+fn hello(
+    context: &Context,
+    id: u64,
+    params: Value,
+    outbox: &Outbox,
+    on_attach: &mut Option<impl FnOnce()>,
+) -> Handshake {
     let params: HelloParams = match parse(params) {
         Ok(params) => params,
         Err(error) => {
             outbox.send(Message::failure(id, error));
-            return false;
+            return Handshake::Failed;
         }
     };
     if params.protocol_version != PROTOCOL_VERSION {
@@ -175,13 +205,24 @@ fn hello(context: &Context, id: u64, params: Value, outbox: &Outbox) -> bool {
             )
             .with_details(json!({ "serverProtocolVersion": PROTOCOL_VERSION })),
         ));
-        return false;
+        return Handshake::Failed;
     }
     let session = &context.session;
+    let resumed = match session.admit(params.session_token.as_ref()) {
+        Ok(resumed) => resumed,
+        Err(error) => {
+            eprintln!("lithe-remote-server: refused a client without this session's token");
+            outbox.send(Message::failure(id, error));
+            return Handshake::Refused;
+        }
+    };
+    // Only an admitted client may change how long the session outlives it.
     if let Some(seconds) = params.idle_timeout_seconds {
         session.set_idle_timeout(seconds);
     }
-    let resumed = session.mark_client();
+    if let Some(attach) = on_attach.take() {
+        attach();
+    }
     outbox.send(respond(
         id,
         to_value(HelloResult {
@@ -193,10 +234,11 @@ fn hello(context: &Context, id: u64, params: Value, outbox: &Outbox) -> bool {
                 resumed,
                 next_resource_id: session.ids.next(),
                 last_event_seq: session.link.last_seq(),
+                session_token: session.token().cloned(),
             },
         }),
     ));
-    true
+    Handshake::Accepted
 }
 
 fn is_inline(method: &str) -> bool {

@@ -1,6 +1,7 @@
 //! Session state that outlives individual connections.
 
-use crate::protocol::methods::ServerState;
+use crate::protocol::methods::{encode_hex, ServerState, SessionToken};
+use crate::protocol::{ErrorCode, RemoteError};
 use crate::server::environment::EnvironmentCache;
 use crate::server::link::Link;
 use crate::server::process::ProcessTable;
@@ -10,16 +11,41 @@ use crate::server::terminal::TerminalTable;
 use crate::server::tunnel::TunnelTable;
 use crate::server::walk::WalkTable;
 use crate::server::watch::WatchTable;
+use std::io::Read;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-/// Default time a persistent session survives without a client.
+/// Default time a persistent session without a client and without running
+/// programs survives.
 pub(crate) const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
-/// Upper bound clients may request, so a forgotten session does not keep
-/// builds running on a shared host for days.
+/// Upper bound clients may request, so an idle daemon that nobody comes back
+/// to does not linger on a shared host for days. Running processes and
+/// terminals keep a session regardless; see [`Session::keeps_programs`].
 const MAX_IDLE_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// Random bytes in a persistent session's token: 128 bits cannot be guessed
+/// by a local program in any useful time.
+const SESSION_TOKEN_BYTES: usize = 16;
+
+/// A fresh token from the kernel's random source.
+fn generate_token() -> std::io::Result<SessionToken> {
+    let mut bytes = [0_u8; SESSION_TOKEN_BYTES];
+    std::fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
+    Ok(SessionToken::new(encode_hex(&bytes)))
+}
+
+/// Compares secrets in time that depends only on their lengths, so response
+/// timing does not reveal how much of a guess was right.
+fn same_secret(presented: &[u8], expected: &[u8]) -> bool {
+    presented.len() == expected.len()
+        && presented
+            .iter()
+            .zip(expected)
+            .fold(0, |difference, (left, right)| difference | (left ^ right))
+            == 0
+}
 
 /// Time process groups get to exit after `SIGTERM` before `SIGKILL`.
 pub(crate) const TERMINATION_GRACE: Duration = Duration::from_secs(2);
@@ -73,6 +99,9 @@ pub(crate) struct Session {
     /// Whether any client completed a handshake before, which makes the
     /// next one a resumption.
     had_client: AtomicBool,
+    /// Secret later clients of a persistent session must present; `None`
+    /// for a `--stdio` session, which has exactly one connection.
+    token: Option<SessionToken>,
     next_connection: AtomicU64,
     idle_timeout: Mutex<Duration>,
     /// Runs once when a client requests `server.shutdown`, before the
@@ -101,6 +130,11 @@ impl Session {
             starts: Arc::default(),
             ending: AtomicBool::new(false),
             had_client: AtomicBool::new(false),
+            token: if persistent {
+                Some(generate_token()?)
+            } else {
+                None
+            },
             next_connection: AtomicU64::new(0),
             idle_timeout: Mutex::new(DEFAULT_IDLE_TIMEOUT),
             shutdown_hook: Mutex::new(None),
@@ -129,10 +163,45 @@ impl Session {
         self.next_connection.fetch_add(1, Ordering::Relaxed) + 1
     }
 
-    /// Records a completed handshake; returns whether a client was attached
-    /// before.
-    pub(crate) fn mark_client(&self) -> bool {
-        self.had_client.swap(true, Ordering::AcqRel)
+    /// Admits a connection's `server.hello` and returns whether a client was
+    /// attached before. The first client of a persistent session is admitted
+    /// whatever it presents, since a fresh session cannot know any token;
+    /// every later one must present this session's token.
+    pub(crate) fn admit(&self, presented: Option<&SessionToken>) -> Result<bool, RemoteError> {
+        let Some(token) = &self.token else {
+            return Ok(self.had_client.swap(true, Ordering::AcqRel));
+        };
+        if self
+            .had_client
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            return Ok(false);
+        }
+        match presented {
+            Some(presented)
+                if same_secret(presented.as_str().as_bytes(), token.as_str().as_bytes()) =>
+            {
+                Ok(true)
+            }
+            _ => Err(RemoteError::new(
+                ErrorCode::InvalidSessionToken,
+                "the session already has a client; reattaching needs the session token it issued",
+            )),
+        }
+    }
+
+    /// Token a client presents to reattach, returned by every handshake.
+    pub(crate) fn token(&self) -> Option<&SessionToken> {
+        self.token.as_ref()
+    }
+
+    /// Whether processes or terminals still run. A persistent session keeps
+    /// them however long it has no client: ending it would kill a build or a
+    /// shell the user expects to find again. Only `server.shutdown`, or the
+    /// user stopping them, ends them.
+    pub(crate) fn keeps_programs(&self) -> bool {
+        !self.processes.is_empty() || !self.terminals.is_empty()
     }
 
     pub(crate) fn set_idle_timeout(&self, seconds: u64) {

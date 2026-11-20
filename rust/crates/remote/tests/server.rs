@@ -1,13 +1,11 @@
-//! Handshake, filesystem and bootstrap behavior of the server binary over the
+//! Handshake, filesystem and launch behavior of the server binary over the
 //! local transport.
 
 mod support;
 
-use lithe_remote::client::bootstrap::Bootstrapper;
+use lithe_remote::client::launch::{launch, launch_command, LaunchError, Launched, UnsafeReason};
 use lithe_remote::client::session::ClientError;
-use lithe_remote::client::{
-    InstallLocation, RemoteSession, ServerArtifact, TransportChain, WriteOptions,
-};
+use lithe_remote::client::{RemoteSession, ServerArtifact, TransportChain, WriteOptions};
 use lithe_remote::protocol::frame::{read_frame, skip_preamble, write_frame};
 use lithe_remote::protocol::methods::{
     self, encode_bytes, FileKind, FileVersion, OperatingSystem, OrphanProtection, WatchBackend,
@@ -16,7 +14,8 @@ use lithe_remote::protocol::{ErrorCode, Message};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::io::BufReader;
-use std::process::{Command, Stdio};
+use std::path::{Path, PathBuf};
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use support::{connect, connect_command, options, TempDir, SERVER, STEP_TIMEOUT};
 
 fn code<T: std::fmt::Debug>(result: Result<T, ClientError>) -> ErrorCode {
@@ -270,9 +269,11 @@ fn handshake_reports_the_host_as_capabilities() {
     let mut sorted = host.features.clone();
     sorted.sort();
     assert_eq!(host.features, sorted);
-    // A `--stdio` session ends with its connection.
+    // A `--stdio` session ends with its connection, so nobody can reattach
+    // and it issues no token.
     assert!(!hello.session.persistent);
     assert!(!hello.session.resumed);
+    assert!(hello.session.session_token.is_none());
     assert!(session.ping().is_ok());
     session.shutdown(STEP_TIMEOUT);
 }
@@ -805,61 +806,128 @@ fn a_missing_server_reports_the_transport_output() {
     }
 }
 
-#[test]
-fn bootstrap_uploads_once_and_reuses_the_verified_binary() {
-    let install = TempDir::new("install");
-    let mut bootstrapper = Bootstrapper::new(TransportChain::local());
-    bootstrapper.location = InstallLocation::Directory(install.str().into());
-    let probe = bootstrapper.probe().unwrap();
-    let artifact =
-        ServerArtifact::from_file(probe.target, SERVER.into(), env!("CARGO_PKG_VERSION")).unwrap();
-    let artifact_for = |target| (target == artifact.target).then(|| artifact.clone());
+/// Runs the launch script in a local shell against `root`, exactly as one SSH
+/// connection would, and returns the streams the server takes over.
+fn run_launch(
+    root: &str,
+) -> (
+    Result<Launched, LaunchError>,
+    Child,
+    ChildStdout,
+    ChildStdin,
+) {
+    let mut child = Command::new("sh")
+        .args(&launch_command(Some(root), &["--stdio"])[1..])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut input = child.stdin.take().unwrap();
+    let mut output = child.stdout.take().unwrap();
+    let result = launch(&mut output, &mut input, |report| {
+        let target = report.target()?;
+        Some(ServerArtifact::from_file(target, SERVER.into(), env!("CARGO_PKG_VERSION")).unwrap())
+    });
+    (result, child, output, input)
+}
 
-    let first = bootstrapper.ensure_installed(artifact_for).unwrap();
-    assert!(first.uploaded);
-    assert!(first.path.starts_with(install.str()));
-    let second = bootstrapper.ensure_installed(artifact_for).unwrap();
-    assert!(!second.uploaded);
-    assert_eq!(first.path, second.path);
-
-    let (session, _events) = connect_command(&first.stdio_command());
+/// Launches the server, checks that it serves a request and returns whether
+/// this launch uploaded it.
+fn start_server(root: &str) -> bool {
+    let (launched, mut child, output, input) = run_launch(root);
+    let launched = launched.unwrap();
+    let (session, _events) = RemoteSession::from_streams(output, input, &options()).unwrap();
     session.stat("/").unwrap();
     session.shutdown(STEP_TIMEOUT);
+    assert!(child.wait().unwrap().success());
+    launched.uploaded
+}
+
+/// The one binary installed under `root`.
+fn installed_server(root: &Path) -> PathBuf {
+    let versions: Vec<_> = std::fs::read_dir(root.join("bin"))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect();
+    assert_eq!(versions.len(), 1, "{versions:?}");
+    versions[0].join("lithe-remote-server")
 }
 
 // One connection probes, installs and starts the server, so a host that
 // asks for a password asks once; the second launch reuses the install.
 #[test]
 fn one_connection_installs_once_and_starts_the_server() {
-    use lithe_remote::client::launch::{launch, launch_command};
     let install = TempDir::new("launch");
-    let root = install.path().to_str().unwrap().to_owned();
     for expected_upload in [true, false] {
-        let mut child = Command::new("sh")
-            .args(&launch_command(Some(&root), &["--stdio"])[1..])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()
-            .unwrap();
-        let mut input = child.stdin.take().unwrap();
-        let mut output = child.stdout.take().unwrap();
-        let launched = launch(&mut output, &mut input, |report| {
-            let target = report.target()?;
-            Some(
-                ServerArtifact::from_file(target, SERVER.into(), env!("CARGO_PKG_VERSION"))
-                    .unwrap(),
-            )
-        })
-        .unwrap();
-        assert_eq!(launched.uploaded, expected_upload);
-        let options = lithe_remote::client::session::ConnectOptions {
-            client_name: "test".into(),
-            handshake_timeout: STEP_TIMEOUT,
-            ..Default::default()
-        };
-        let (session, _events) = RemoteSession::from_streams(output, input, &options).unwrap();
-        session.stat("/").unwrap();
-        session.shutdown(STEP_TIMEOUT);
-        assert!(child.wait().unwrap().success());
+        assert_eq!(start_server(install.str()), expected_upload);
     }
+}
+
+// The host hashes the installed file itself, so a file that prints the
+// expected identity but holds other bytes is replaced instead of run.
+#[test]
+fn an_installed_file_with_other_bytes_is_replaced() {
+    let install = TempDir::new("launch-replace");
+    assert!(start_server(install.str()));
+    let installed = installed_server(install.path());
+    let expected = format!("{:x}", Sha256::digest(std::fs::read(SERVER).unwrap()));
+    std::fs::write(&installed, format!("#!/bin/sh\necho {expected}\n")).unwrap();
+
+    assert!(start_server(install.str()));
+    let replaced = format!("{:x}", Sha256::digest(std::fs::read(&installed).unwrap()));
+    assert_eq!(replaced, expected);
+}
+
+// Anyone who can write to an install directory can replace the server, so
+// such a directory is refused before a binary is reused or received there.
+#[test]
+fn install_directories_that_are_not_private_are_refused() {
+    use std::os::unix::fs::{symlink, PermissionsExt};
+    let install = TempDir::new("launch-unsafe");
+    let shared_mode = |path: &str, mode| {
+        std::fs::create_dir_all(path).unwrap();
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).unwrap();
+    };
+    let shared = install.join("shared");
+    shared_mode(&shared, 0o777);
+    let shared_bin = install.join("shared-bin");
+    shared_mode(&shared_bin, 0o700);
+    shared_mode(&format!("{shared_bin}/bin"), 0o770);
+    let linked = install.join("linked");
+    std::fs::create_dir(install.join("target")).unwrap();
+    symlink(install.join("target"), &linked).unwrap();
+    let file = install.join("file");
+    std::fs::write(&file, "").unwrap();
+
+    for (root, refused, expected) in [
+        (&shared, shared.clone(), UnsafeReason::WritableByOthers),
+        (
+            &shared_bin,
+            format!("{shared_bin}/bin"),
+            UnsafeReason::WritableByOthers,
+        ),
+        (&linked, linked.clone(), UnsafeReason::SymbolicLink),
+        (&file, file.clone(), UnsafeReason::NotADirectory),
+    ] {
+        let (result, mut child, output, input) = run_launch(root);
+        match result {
+            Err(LaunchError::UnsafeInstall { path, reason }) => {
+                assert_eq!((path, reason), (refused, expected))
+            }
+            other => panic!("{root}: expected a refusal, got {other:?}"),
+        }
+        drop((output, input));
+        assert_eq!(child.wait().unwrap().code(), Some(94), "{root}");
+    }
+    assert!(!Path::new(&shared).join("bin").exists());
+    assert_eq!(
+        std::fs::read_dir(format!("{shared_bin}/bin"))
+            .unwrap()
+            .count(),
+        0
+    );
+    assert_eq!(
+        std::fs::read_dir(install.join("target")).unwrap().count(),
+        0
+    );
 }

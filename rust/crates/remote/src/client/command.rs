@@ -1,23 +1,23 @@
-//! Bounded one-shot commands, used for probing and installing the server.
+//! Bounded one-shot commands for tests that run a transport chain end to end.
+//! Those tests drive real shells, so the module exists on Unix hosts only.
 
-use std::io::{self, Read, Write};
+use std::io::{self, Read};
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// Output bytes kept per stream. Probe and install output is small; anything
-/// larger is a misbehaving remote and only its beginning is useful.
+/// Output bytes kept per stream. Test commands print a few lines; anything
+/// larger is a broken command and only its beginning is useful.
 const CAPTURE_LIMIT_BYTES: usize = 1024 * 1024;
 
-/// Interval between exit checks. Bootstrap commands run for seconds over a
-/// network, so this adds no noticeable latency.
+/// Interval between exit checks. The tested commands run local shells, so
+/// this adds no noticeable latency.
 const EXIT_POLL_INTERVAL: Duration = Duration::from_millis(20);
 
-/// How long output pipes may stay open after the command exited. An SSH
-/// `ControlPersist` master or a daemonized remote process can inherit them and
-/// keep them open indefinitely.
+/// How long output pipes may stay open after the command exited. A
+/// descendant that inherited them can keep them open indefinitely.
 const OUTPUT_DRAIN_GRACE: Duration = Duration::from_millis(500);
 
 /// Result of a finished one-shot command.
@@ -32,48 +32,23 @@ pub struct CommandOutput {
 }
 
 impl CommandOutput {
-    /// Whether the command exited with status 0.
-    pub fn success(&self) -> bool {
-        self.status == Some(0)
-    }
-
-    /// Standard error for user-facing diagnostics.
+    /// Standard error for assertion messages.
     pub fn stderr_text(&self) -> String {
         String::from_utf8_lossy(&self.stderr).trim().to_owned()
     }
 }
 
-/// Runs `argv` locally, feeding it `stdin`, and kills it after `timeout`.
-pub fn run(argv: &[String], stdin: Option<&[u8]>, timeout: Duration) -> io::Result<CommandOutput> {
+/// Runs `argv` locally with no input and kills it after `timeout`.
+pub fn run(argv: &[String], timeout: Duration) -> io::Result<CommandOutput> {
     let (program, arguments) = argv
         .split_first()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "empty command"))?;
     let mut child = Command::new(program)
         .args(arguments)
-        .stdin(if stdin.is_some() {
-            Stdio::piped()
-        } else {
-            Stdio::null()
-        })
+        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
-
-    let writer = match (child.stdin.take(), stdin) {
-        (Some(mut pipe), Some(bytes)) => {
-            let bytes = bytes.to_vec();
-            // A remote that exits early closes stdin; its status and stderr
-            // carry the command result. Only unexpected write categories log.
-            Some(thread::spawn(move || {
-                crate::failure_log::teardown(
-                    "remote.client.operation_failed",
-                    "stdin_write",
-                    pipe.write_all(&bytes),
-                );
-            }))
-        }
-        _ => None,
-    };
     let stdout = capture(child.stdout.take());
     let stderr = capture(child.stderr.take());
 
@@ -101,11 +76,9 @@ pub fn run(argv: &[String], stdin: Option<&[u8]>, timeout: Duration) -> io::Resu
                 ),
             ));
         }
+        // test-stability: allow(rust-real-sleep) reason: a child process has no waitable handle with a timeout in std; the loop has a monotonic deadline.
         thread::sleep(EXIT_POLL_INTERVAL);
     };
-    // The writer thread is detached: it ends when the pipe closes, which
-    // the exited command already did unless a descendant inherited it.
-    drop(writer);
     let drain_deadline = Instant::now() + OUTPUT_DRAIN_GRACE;
     Ok(CommandOutput {
         status: status.code(),

@@ -138,13 +138,7 @@ impl UploadTable {
                 // Keep the slot discoverable during sync so disconnect/expiry
                 // can mark it without waiting on the per-upload mutex.
                 let result = (|| {
-                    let digest = upload
-                        .hash
-                        .clone()
-                        .finalize()
-                        .iter()
-                        .map(|byte| format!("{byte:02x}"))
-                        .collect::<String>();
+                    let digest = methods::encode_hex(&upload.hash.clone().finalize());
                     if upload.received != upload.size || digest != upload.expected {
                         return Err(RemoteError::new(
                             ErrorCode::Conflict,
