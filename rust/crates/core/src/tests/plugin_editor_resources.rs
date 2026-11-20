@@ -15,6 +15,8 @@ macro_rules! contract_file {
 
 const GRAMMAR_PLUGIN: &str = contract_file!("fixtures/languages/language-grammar.plugin.json");
 const HTTP_GRAMMAR: &str = contract_file!("fixtures/languages/grammars/http.tmLanguage.json");
+const FIRST_LINE_PLUGIN: &str = contract_file!("fixtures/languages/first-line.plugin.json");
+const SAMPLE_GRAMMAR: &str = contract_file!("fixtures/languages/grammars/sample.tmLanguage.json");
 
 fn manifest(source: &str) -> Value {
     serde_json::from_str(source).expect("fixture manifest is JSON")
@@ -381,72 +383,62 @@ fn configuration_only_contribution_decodes_without_grammar() {
 }
 
 #[test]
-fn first_line_only_language_requires_a_compatible_manifest_and_host() {
-    let mut plugin = manifest(contract_file!("fixtures/languages/first-line.plugin.json"));
-    plugin["languages"][0]
-        .as_object_mut()
-        .unwrap()
-        .remove("configuration");
-    let validate = |plugin: &Value, versions: &[u32]| {
-        validate_command(json!({ "manifest": plugin, "hostCapabilities": {"languages": versions} }))
-            .unwrap()
-    };
-    let outcome = validate(&plugin, &[0, 1]);
+fn first_line_grammar_uses_the_existing_language_capability() {
+    let plugin = manifest(FIRST_LINE_PLUGIN);
+    let admission = validate_command(json!({
+        "manifest": plugin,
+        "hostCapabilities": { "languages": [0] },
+    }))
+    .unwrap();
+    assert_eq!(admission["status"], "ok", "{admission}");
+    let outcome = decode_grammar_command(json!({
+        "manifest": admission["plugin"],
+        "languageID": "sample",
+        "grammar": SAMPLE_GRAMMAR,
+    }))
+    .unwrap();
     assert_eq!(outcome["status"], "ok", "{outcome}");
+    let language = &outcome["language"];
+    assert_eq!(language["fileExtensions"], json!(["sample"]));
+    assert_eq!(language["configuration"]["lineComment"], "//");
+    assert_eq!(language["grammar"]["scopeName"], "source.sample");
+    assert_eq!(language["grammar"]["source"], SAMPLE_GRAMMAR);
     assert_eq!(
-        outcome["plugin"]["languages"][0]["firstLineMatch"],
-        plugin["languages"][0]["firstLineMatch"]
+        language["grammar"]["firstLineMatch"],
+        manifest(SAMPLE_GRAMMAR)["firstLineMatch"]
     );
-
-    let unsupported = validate(&plugin, &[0]);
-    assert_eq!(unsupported["status"], "rejected");
-    assert_eq!(unsupported["error"]["field"], "requires.languages");
-    let mut downgraded = plugin;
-    downgraded["requires"]["languages"] = json!(0);
-    let invalid = validate(&downgraded, &[0, 1]);
-    assert_eq!(
-        invalid["error"]["code"], "plugin.manifest.invalid",
-        "{invalid}"
-    );
-    assert_eq!(invalid["error"]["field"], "requires.languages");
-
-    let legacy = validate(&manifest(GRAMMAR_PLUGIN), &[0, 1]);
-    assert_eq!(legacy["status"], "ok", "{legacy}");
-    assert!(legacy["plugin"]["languages"][0]
-        .get("firstLineMatch")
-        .is_none());
 }
 
 #[test]
-fn first_line_languages_reject_invalid_and_unbounded_patterns_at_installation() {
-    let mut plugin = manifest(contract_file!("fixtures/languages/first-line.plugin.json"));
+fn unsupported_first_line_metadata_keeps_its_grammar() {
     for pattern in [
-        "".into(),
-        "a*".into(),
-        "[".into(),
-        "(a)\\1".into(),
-        "a{10000000}".into(),
-        "é".repeat(257),
+        Value::Null,
+        json!(42),
+        json!(""),
+        json!("a*"),
+        json!("["),
+        json!(r"(a)\1"),
+        json!("a{10000000}"),
+        json!("é".repeat(257)),
     ] {
-        plugin["languages"][0]["firstLineMatch"] = json!(pattern);
-        let outcome = validate_command(json!({"manifest": plugin})).unwrap();
-        assert_eq!(
-            outcome["error"]["field"], "languages[0].firstLineMatch",
-            "{outcome}"
-        );
+        let mut grammar = grammar_with(json!([]));
+        grammar["firstLineMatch"] = pattern;
+        let source = grammar.to_string();
+        let outcome = decode_grammar(&source);
+        assert_eq!(outcome["status"], "ok", "{outcome}");
+        let grammar = &outcome["language"]["grammar"];
+        assert!(!grammar.as_object().unwrap().contains_key("firstLineMatch"));
+        assert_eq!(grammar["scopeName"], "source.test");
+        assert_eq!(grammar["source"], source);
     }
-    plugin["languages"][0]["firstLineMatch"] = Value::Null;
-    assert_eq!(
-        validate_command(json!({"manifest": plugin})).unwrap()["status"],
-        "rejected"
-    );
 }
 
 #[test]
 fn first_line_matching_keeps_registered_priority_and_never_reads_past_the_line() {
-    let plugin = manifest(contract_file!("fixtures/languages/first-line.plugin.json"));
-    let specific =
-        json!({"languageID":"sample", "firstLineMatch": plugin["languages"][0]["firstLineMatch"]});
+    let specific = json!({
+        "languageID": "sample",
+        "firstLineMatch": manifest(SAMPLE_GRAMMAR)["firstLineMatch"],
+    });
     let generic = json!({"languageID":"other", "firstLineMatch": "#!"});
     let choose = |line: &str, candidates: &[Value]| {
         let response = lithe_plugin_manifest::match_first_line(

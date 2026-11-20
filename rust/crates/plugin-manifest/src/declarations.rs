@@ -34,13 +34,9 @@ impl LanguageDeclaration {
         self.file_extensions = normalized_extensions(&self.file_extensions);
         self.file_names = normalized_names(&self.file_names);
         self.project_file_names = normalized_names(&self.project_file_names);
-        if let Some(pattern) = &self.first_line_match {
-            first_line::validate_pattern(pattern, &format!("{field}.firstLineMatch"))?;
-        }
         if self.file_extensions.is_empty()
             && self.file_names.is_empty()
             && self.project_file_names.is_empty()
-            && self.first_line_match.is_none()
         {
             return Err(invalid(
                 field,

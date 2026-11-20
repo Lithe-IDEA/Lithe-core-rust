@@ -5186,15 +5186,17 @@ registry precedence order, in batches of up to 64, stopping on the first match.
 The result preserves the winning ID unchanged. A malformed batch, language ID
 or pattern is an `invalid_request`. Core retains only bounded compiled
 declarations and performs no I/O. See the [first-line pattern
-contract](../../shared/plugins/contract/v1/README.md#first-line-matching-languages-1).
+contract](../../shared/plugins/contract/v1/README.md#first-line-matching).
 
 `plugins.declarative.decodeGrammar` accepts `{ manifest, languageID, grammar }`,
 where `grammar` is the text the host read from the language's `grammar.path`
 inside the installed package, and returns `language: { id, fileExtensions,
-fileNames, grammar: { kind, scopeName, source }, configuration }`. `kind` is
-`textmate`; `source` is the validated original JSON text, byte for byte, which
-the editor's TextMate engine parses and registers under `scopeName`, the
-grammar's own scope. Hosts run plugin grammars only off the editor UI thread,
+fileNames, grammar: { kind, scopeName, source, firstLineMatch? }, configuration }`.
+The editor registers the validated `textmate` JSON `source` byte for byte under
+`scopeName`.
+When present, `firstLineMatch` holds validated optional root-level metadata
+for `languages.matchFirstLine`. Unsupported or malformed hints are omitted.
+Hosts run plugin grammars only off the editor UI thread,
 with bounded backtracking and a time budget per line. A grammar Core
 refuses is `plugin.grammar.invalid` with the failing `field`; a language
 without static editor resources is `plugin.grammar.unavailable`. Configuration-only

@@ -1,10 +1,8 @@
 //! Bounded, data-only first-line language matching for documents with no path association.
 
-use super::{
-    declarations::is_language_id, decode_payload, invalid, CoreError, ErrorCode, Validation,
-};
+use super::{declarations::is_language_id, decode_payload, CoreError, ErrorCode};
 use regex::{Regex, RegexBuilder};
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -14,12 +12,7 @@ const MAX_FIRST_LINE_BYTES: usize = 1024;
 const MAX_CANDIDATES: usize = 64;
 const REGEX_SIZE_LIMIT: usize = 256 * 1024;
 
-/// An omitted declaration is distinct from an explicitly invalid JSON null.
-pub(crate) fn present_pattern<'de, D: Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
-    String::deserialize(d).map(Some)
-}
-
-/// Use the same compiled program on manifest acceptance and on repeated document opens.
+/// Use the same compiled program in grammar decoding and on repeated document opens.
 /// The cache contains only declaration text and programs, never document content.
 fn compiled(source: &str) -> Result<Arc<Regex>, &'static str> {
     if source.is_empty() || source.len() > MAX_PATTERN_BYTES {
@@ -48,10 +41,9 @@ fn compiled(source: &str) -> Result<Arc<Regex>, &'static str> {
     Ok(regex)
 }
 
-pub(crate) fn validate_pattern(source: &str, field: &str) -> Validation<()> {
-    compiled(source)
-        .map(|_| ())
-        .map_err(|reason| invalid(field, reason))
+/// Whether a grammar hint uses the syntax and budget of the first-line matcher.
+pub(crate) fn supports_pattern(source: &str) -> bool {
+    compiled(source).is_ok()
 }
 
 #[derive(Deserialize)]

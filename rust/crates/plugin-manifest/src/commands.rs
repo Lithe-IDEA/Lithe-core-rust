@@ -185,15 +185,22 @@ pub fn decode_grammar_command(payload: Value) -> Result<Value, CoreError> {
                 .grammar
                 .as_ref()
                 .map(|grammar| match grammar.kind {
-                    // The editor's engine parses the original text; Core only
-                    // proves that it can and names the scope it registers.
                     lithe_plugin_grammar::GrammarKind::Textmate => {
-                        lithe_plugin_grammar::decode_textmate(&payload.grammar).map(|scope_name| {
-                            json!({
+                        lithe_plugin_grammar::decode_textmate(&payload.grammar).map(|metadata| {
+                            let mut decoded = json!({
                                 "kind": grammar.kind,
-                                "scopeName": scope_name,
+                                "scopeName": metadata.scope_name,
                                 "source": payload.grammar,
-                            })
+                            });
+                            // The optional hint has a different regex dialect
+                            // from the original highlighting source.
+                            if let Some(pattern) = metadata
+                                .first_line_match
+                                .filter(|pattern| crate::first_line::supports_pattern(pattern))
+                            {
+                                decoded["firstLineMatch"] = json!(pattern);
+                            }
+                            decoded
                         })
                     }
                 })

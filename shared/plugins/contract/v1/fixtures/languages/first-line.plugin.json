@@ -4,7 +4,7 @@
   "id": "dev.lithe.test.first-line",
   "displayName": "First-line fixture",
   "version": "1.0.0",
-  "requires": { "languages": 1 },
+  "requires": { "languages": 0 },
   "vendor": { "id": "org.example", "displayName": "Example", "signatureRequirement": "publisherPackage" },
   "permissions": [],
   "activationEvents": [],
@@ -12,8 +12,9 @@
     {
       "id": "sample",
       "displayName": "Sample",
-      "configuration": { "lineComment": "//" },
-      "firstLineMatch": "^#![ \\t]*(?:/usr/bin/env[ \\t]+(?:-S[ \\t]+)?|/opt/tools/)sample[0-9]*(?:[ \\t]|$)"
+      "fileExtensions": ["sample"],
+      "grammar": { "kind": "textmate", "path": "grammars/sample.tmLanguage.json" },
+      "configuration": { "lineComment": "//" }
     }
   ]
 }

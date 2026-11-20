@@ -141,22 +141,6 @@ impl DeclarativePluginManifest {
                 "Command test discovery needs buildSystems 1.",
             ));
         }
-        if self
-            .languages
-            .iter()
-            .any(|language| language.first_line_match.is_some())
-            && self
-                .requires
-                .get(capabilities::LANGUAGES)
-                .copied()
-                .unwrap_or(0)
-                < 1
-        {
-            return Err(invalid(
-                "requires.languages",
-                "First-line language matching needs languages 1.",
-            ));
-        }
         if self.tool_definitions.iter().any(|definition| {
             definition.get("category").is_some() || definition.get("audience").is_some()
         }) && self
@@ -270,11 +254,11 @@ impl DeclarativePluginManifest {
             // Console links alone are a complete plugin: Core matches them.
             && self.output_link_matchers.is_empty()
             && self.backend.is_none()
-            // A static editor contribution can be the entire plugin.
+            // A grammar alone is a complete highlighting plugin.
             && !self
                 .languages
                 .iter()
-                .any(|language| language.grammar.is_some() || language.configuration.is_some() || language.first_line_match.is_some())
+                .any(|language| language.grammar.is_some() || language.configuration.is_some())
         {
             return Err(invalid(
                 "languages",

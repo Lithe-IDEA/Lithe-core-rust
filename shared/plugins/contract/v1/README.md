@@ -196,31 +196,11 @@ declare it (see [Versioning](#versioning)).
 ### Languages
 
 `id` is lowercase (`[a-z0-9+_-]`). `fileExtensions`, `fileNames`, and
-`projectFileNames` are matched case-insensitively. Each language declares at
-least one file name, project marker, extension, or first-line pattern. A leading dot is optional only in `fileExtensions` (`.php` equals
+`projectFileNames` are matched case-insensitively; at least one must be
+present. A leading dot is optional only in `fileExtensions` (`.php` equals
 `php`). In complete file names, project markers, and management file names it
 is part of the name, so `.toolrc` and `.env.example` stay hidden-file names. Optional `dependencies` lists `managementFileNames`,
 `projectDependencyPaths`, and `projectBinaryPaths` relative to the project.
-
-#### First-line matching (languages 1)
-
-An extensionless script can identify its language with a shebang. Other formats
-can declare a signature at the start of the file. Set `requires.languages` to
-`1` and supply `languages[].firstLineMatch`, a Rust regular expression of
-1–512 UTF-8 bytes. For example, `"firstLineMatch": "^#! */opt/tools/sample(?: |$)"`
-matches the interpreter followed by a space or the end of the line. A language
-can declare the pattern alone or alongside file names and extensions. Hosts
-that only implement `languages: 0` reject plugins requiring version 1.
-
-The editor tries this fallback only for a text document whose basename
-contains no dot, after all existing user and path associations. It matches the
-complete decoded first line, excluding its terminator. Empty lines, lines
-longer than 1024 UTF-8 bytes and lines containing NUL are ineligible. Core
-accepts a match only at the start of the line and only when it consumes text.
-Patterns cannot match empty input. The regex compiler and its DFA cache each
-have a 256 KiB size limit. Among matching enabled languages the host's existing
-registration priority wins. The result is the registered language ID for
-editing and language services. Matching reads text and starts no process.
 
 #### Grammars and editor configuration
 
@@ -281,17 +261,17 @@ activation event, and a plugin may consist of grammars alone.
   or `1`), and Core refuses a grammar where one of them has another type.
   Captures are an object keyed by group number or an array by position;
   object keys that are not group numbers are ignored. Every other key, such as
-  `comment`, `fileTypes`, `firstLineMatch`, or `uuid`, is ignored and not
-  checked.
+  `comment`, `fileTypes`, or `uuid`, is ignored. Root-level `firstLineMatch`
+  is optional [file association metadata](#first-line-matching).
 - Core accepts at most 2 MiB, 16384 rules counting every pattern, repository
   entry, and capture, rules nested 32 deep, regexes of 32 KiB, capture group
   4096, `name` and `contentName` of 1024 bytes, `include` targets and
   repository keys of 256 bytes, and 64 injections with selectors of 1024
   bytes. VS Code's own grammars, the largest of which is C++ at 662 KiB and
   3165 rules, are well within these bounds.
-- Regexes use the Oniguruma syntax TextMate grammars are written in. Core does
-  not compile them: a pattern the editor's engine cannot compile never
-  matches, and the rest of the grammar still applies.
+- Highlighting rules use the Oniguruma syntax TextMate grammars are written
+  in. The editor compiles them. An unsupported rule never matches, and the
+  rest of the grammar still applies.
 - `include` is `$self`, `$base`, `#name` for a repository entry, or `scope` or
   `scope#name` for another grammar. Another grammar resolves against those the
   editor has, its own and those of enabled plugins, which is how a grammar
@@ -318,6 +298,31 @@ activation event, and a plugin may consist of grammars alone.
   backtracking of each regex search and the time one line may take, so a
   grammar cannot stall editing; a line not yet tokenized, or that the grammar
   could not tokenize within that budget, is drawn as plain text.
+
+#### First-line matching
+
+A packaged TextMate grammar can add an optional root-level `firstLineMatch`
+pattern for extensionless scripts or formats with a signature on the first
+line. The package uses its existing `languages: 0` declaration and points
+`grammar.path` at the grammar file. Earlier hosts ignore the hint and can
+still install the package and apply its existing file associations and
+highlighting. See the [fixture manifest](fixtures/languages/first-line.plugin.json)
+and [grammar](fixtures/languages/grammars/sample.tmLanguage.json).
+
+Core interprets this hint as a Rust regular expression of 1–512 UTF-8 bytes.
+For example, `"firstLineMatch": "^#! */opt/tools/sample(?: |$)"` matches the
+interpreter followed by a space or the end of the line. The pattern cannot
+match empty input. The regex compiler and its DFA cache each have a 256 KiB
+size limit. Unsupported or invalid hints are treated as absent. The original
+grammar source continues to supply highlighting rules.
+
+The editor tries this hint for text whose basename contains no dot, after
+existing user and path associations. It checks only the complete decoded
+first line without the terminator. Empty lines, lines longer than 1024 UTF-8
+bytes and lines containing CR, LF or NUL are ineligible. A match must consume
+text at the start of the line. The first match in the enabled language
+registry supplies the language ID for editing and for language services.
+The matcher reads text without starting a process.
 
 ### Language servers
 

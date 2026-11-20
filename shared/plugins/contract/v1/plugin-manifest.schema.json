@@ -7,7 +7,6 @@
   "additionalProperties": false,
   "required": ["schemaVersion", "id", "displayName", "version", "pluginAPIVersion", "requires", "vendor"],
   "allOf": [
-    {"if": {"required": ["languages"], "properties": {"languages": {"contains": {"required": ["firstLineMatch"]}}}}, "then": {"properties": {"requires": {"required": ["languages"], "properties": {"languages": {"const": 1}}}}}},
     {"if": {"required": ["outputLinkMatchers"]}, "then": {"properties": {"requires": {"required": ["outputLinkMatchers"]}}}},
     {"if": {"required": ["toolDefinitions"]}, "then": {"properties": {"requires": {"required": ["toolDefinitions"]}}}},
     {"if": {"required": ["buildSystems"], "properties": {"buildSystems": {"contains": {"required": ["runConfigurationTypes"]}}}}, "then": {"properties": {"requires": {"required": ["runConfigurationTypes"]}}}},
@@ -42,7 +41,7 @@
         "debugAdapters": { "description": "Required exactly when debugAdapters is non-empty. Covers bounded target argument and environment bindings and debugAdapters[].features and defaults. The DAP session itself is negotiated by the adapter in initialize.", "enum": [0] },
         "executionProviders": { "enum": [0] },
         "languageServers": { "description": "Required exactly when languageServers is non-empty. Covers languageServers[].workspaceConfiguration and the session fields requestMethods, commands, serializedCommands, forwardNotifications, state, and remote.", "enum": [0] },
-        "languages": { "description": "Required exactly when languages is non-empty. Covers languages[].grammar and languages[].configuration. Version 1 adds firstLineMatch for extensionless documents.", "enum": [0, 1] },
+        "languages": { "description": "Required exactly when languages is non-empty. Covers languages[].grammar, a TextMate grammar, and languages[].configuration.", "enum": [0] },
         "managedRuntimes": { "description": "Required exactly when managedRuntimes is present: approved pinned runtime archives, plugin-owned qualification and host-owned installation outside versioned packages. Version 1 adds optional artifact mirror URLs.", "enum": [0, 1] },
         "outputLinkMatchers": { "description": "Required exactly when outputLinkMatchers is non-empty.", "enum": [0] },
         "packageTrust": { "description": "Required exactly when vendor.bundledSignatureRequirement is present.", "enum": [0] },
@@ -1548,7 +1547,6 @@
         "fileExtensions": { "$ref": "#/$defs/fileNameList" },
         "fileNames": { "$ref": "#/$defs/fileNameList" },
         "projectFileNames": { "$ref": "#/$defs/fileNameList" },
-        "firstLineMatch": { "description": "Rust regex matching a nonempty prefix of the complete first line of an unassociated dotless file. At most 512 UTF-8 bytes. Requires languages 1.", "type": "string", "minLength": 1, "maxLength": 512 },
         "dependencies": {
           "type": "object",
           "additionalProperties": false,

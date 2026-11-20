@@ -152,9 +152,17 @@ fn grammar_error(field: impl Into<String>, message: impl Into<String>) -> Plugin
     PluginRejection::at("plugin.grammar.invalid", field, message)
 }
 
-/// Validates the text of a TextMate grammar file and returns its `scopeName`.
-/// Hosts register the original text, which the editor's engine parses itself.
-pub fn decode_textmate(text: &str) -> Validation<String> {
+/// Metadata read during grammar decoding. The editor still parses the source
+/// text itself for highlighting.
+pub struct TextmateMetadata {
+    /// The grammar's validated `scopeName` for editor registration.
+    pub scope_name: String,
+    /// The optional root-level pattern for the host to check before matching.
+    pub first_line_match: Option<String>,
+}
+
+/// Validates a TextMate grammar and returns the metadata for editor registration.
+pub fn decode_textmate(text: &str) -> Validation<TextmateMetadata> {
     if text.len() > MAX_GRAMMAR_BYTES {
         return Err(grammar_error(
             "grammar",
@@ -163,7 +171,7 @@ pub fn decode_textmate(text: &str) -> Validation<String> {
     }
     let value: Value = serde_json::from_str(text)
         .map_err(|error| grammar_error("grammar", format!("The grammar is not JSON: {error}.")))?;
-    let Value::Object(grammar) = &value else {
+    let Value::Object(mut grammar) = value else {
         return Err(grammar_error(
             "grammar",
             "A TextMate grammar is a JSON object.",
@@ -197,7 +205,16 @@ pub fn decode_textmate(text: &str) -> Validation<String> {
     if let Some(injections) = grammar.get("injections") {
         rules.injections(injections, "grammar.injections")?;
     }
-    Ok(scope_name)
+    // Other metadata types were accepted by older hosts. Keep the original
+    // source available for highlighting regardless of the shape of this hint.
+    let first_line_match = match grammar.remove("firstLineMatch") {
+        Some(Value::String(pattern)) => Some(pattern),
+        _ => None,
+    };
+    Ok(TextmateMetadata {
+        scope_name,
+        first_line_match,
+    })
 }
 
 /// Walks the rules of a grammar, counting them against [`MAX_RULES`].
