@@ -1,5 +1,5 @@
 {
-  "description": "workspace.rowSelection.reduce: one click on rows that show workspace paths, such as the project tree and the changes of a change list. A plain click (choose) selects and drops the marks and the anchor; Cmd or Ctrl (toggle) marks or unmarks and sets the anchor; Shift (extend) marks from the anchor, else the selected row, to the clicked row and keeps other marks; clear ends a batch. The empty path is the workspace root and is never marked. targets is what a batch acts on: the marks without those inside a marked folder. Hosts keep focus, painting and the batch itself.",
+  "description": "workspace.rowSelection.reduce: one click on rows that show workspace paths, such as the project tree and the changes of a change list. A plain click (choose) selects and drops the marks and the anchor; Cmd or Ctrl (toggle) preserves the visible selected row when starting a batch, marks or unmarks the clicked row and sets the anchor; Shift (extend) marks from the anchor, else the selected row, to the clicked row and keeps other marks; clear ends a batch. The empty path is the workspace root and is never marked. targets is what a batch acts on: the marks without those inside a marked folder. Hosts keep focus, painting and the batch itself.",
   "cases": [
     {
       "name": "a plain click selects its row and drops the marks and the anchor",
@@ -83,13 +83,40 @@
         "selection": {
           "selected": "b",
           "marked": [
+            "a",
             "b"
           ],
           "anchor": "b"
         },
         "targets": [
+          "a",
           "b"
         ]
+      }
+    },
+    {
+      "name": "the first Cmd or Ctrl click on the selected row unselects it",
+      "request": {
+        "rows": [
+          "",
+          "a",
+          "b"
+        ],
+        "selection": {
+          "selected": "a"
+        },
+        "action": {
+          "kind": "toggle",
+          "path": "a"
+        }
+      },
+      "response": {
+        "selection": {
+          "selected": "a",
+          "marked": [],
+          "anchor": "a"
+        },
+        "targets": []
       }
     },
     {

@@ -25,6 +25,11 @@ pub enum ErrorCode {
     ProcessFailed,
     /// A reviewed pull-request checkout would overwrite or conflict with a local ref.
     GitBranchExists,
+    /// Ordinary branch deletion found commits not merged into the upstream or HEAD.
+    /// Details carries the exact target to review before an explicit forced retry.
+    GitBranchNotMerged,
+    /// The branch no longer points at the commit reviewed for deletion.
+    GitBranchChanged,
     /// The reviewed checkout or its GitHub origin no longer matches the current repository.
     GitCheckoutChanged,
     /// The Git remote refused the credentials, or none were available. Only

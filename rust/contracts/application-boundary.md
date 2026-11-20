@@ -367,10 +367,24 @@ owns the resulting session; stopping preparation or accepting late replies canno
 start a session after invalidation. Cross-plugin preparation is not covered by
 this native increment.
 
+## Local branch deletion
+
+Ordinary deletion preserves unmerged branches and reports `git_branch_not_merged`
+with the exact branch tip for review. A force-delete entry opens a separate warning
+and requires a second explicit destructive confirmation; cancelling or dismissing
+that confirmation never sends a forced write. The force request binds the reviewed
+full object ID with `expectedTarget`, rejects changes as `git_branch_changed`, and
+still refuses the current branch or a branch checked out in any worktree. A batch
+confirmation contains only the unmerged failures, never already deleted branches
+or remote failures. The shape is pinned by
+[`branch-delete-v1.json`](../fixtures/git/branch-delete-v1.json).
+
 ## Error Codes
 
 Use stable categories rather than platform error strings:
 
+- `git_branch_not_merged`
+- `git_branch_changed`
 - `invalid_request`
 - `workspace_not_found`
 - `permission_denied`
