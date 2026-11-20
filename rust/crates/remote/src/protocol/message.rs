@@ -112,7 +112,10 @@ pub enum ErrorCode {
     SpawnFailed,
     /// A tunnel could not connect to its remote target.
     ConnectFailed,
-    /// The server has too many requests in flight.
+    /// A capacity limit was reached, for now: too many requests in flight,
+    /// too many open tunnels, an input queue that is not being read, a
+    /// concurrent operation on the same upload, or a host that cannot start
+    /// another thread. Nothing was changed; the request may be retried.
     Busy,
     /// The operation is not available on this host.
     Unsupported,

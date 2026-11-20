@@ -13,12 +13,12 @@ use crate::server::fs::{host_path, kind_of};
 use crate::server::parse;
 use crate::server::resources::Registry;
 use crate::server::session::Session;
+use crate::server::threads::Parked;
 use serde_json::Value;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::thread;
 
 /// Entries per `walk.entries` event: large enough to amortize framing,
 /// small enough to keep each frame far below the size limit.
@@ -91,6 +91,18 @@ impl WalkTable {
                 "only directories can be walked",
             ));
         }
+        self.registry.ensure_free(params.walk_id)?;
+        // The thread starts before the walk is registered, so a host out of
+        // threads refuses the walk instead of leaving an entry that no
+        // thread would ever remove.
+        let thread = {
+            let session = Arc::clone(session);
+            Parked::start("remote-walk", move |walker: Walker| {
+                let done = walker.run(&session);
+                session.walks.registry.remove(done.walk_id);
+                session.link.emit(methods::EVENT_WALK_DONE, done);
+            })?
+        };
         let cancelled = Arc::new(AtomicBool::new(false));
         self.registry.insert(
             params.walk_id,
@@ -99,22 +111,13 @@ impl WalkTable {
                 cancelled: Arc::clone(&cancelled),
             },
         )?;
-        let session = Arc::clone(session);
-        let walker = Walker {
+        thread.run(Walker {
             walk_id: params.walk_id,
             root,
             excludes: params.exclude_names.into_iter().collect(),
             limit: params.max_entries.unwrap_or(u64::MAX),
             cancelled,
-        };
-        thread::Builder::new()
-            .name("remote-walk".into())
-            .spawn(move || {
-                let done = walker.run(&session);
-                session.walks.registry.remove(done.walk_id);
-                session.link.emit(methods::EVENT_WALK_DONE, done);
-            })
-            .map_err(|error| crate::server::fs::io_error(error, ""))?;
+        });
         Ok(())
     }
 }

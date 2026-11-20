@@ -146,14 +146,25 @@ impl Drop for StartGuard {
 /// variable lets shutdown wait, with a deadline, until resources have ended.
 pub(crate) struct Registry<T> {
     family: &'static str,
+    /// Most entries the family may hold at once.
+    limit: usize,
     entries: Mutex<BTreeMap<u64, T>>,
     changed: Condvar,
 }
 
 impl<T> Registry<T> {
+    /// A family whose size only the client's own requests drive, such as
+    /// the processes it started.
     pub(crate) fn new(family: &'static str) -> Self {
+        Self::bounded(family, usize::MAX)
+    }
+
+    /// A family holding at most `limit` entries. Further starts fail with
+    /// `BUSY` until an entry ends.
+    pub(crate) fn bounded(family: &'static str, limit: usize) -> Self {
         Self {
             family,
+            limit,
             entries: Mutex::new(BTreeMap::new()),
             changed: Condvar::new(),
         }
@@ -163,22 +174,32 @@ impl<T> Registry<T> {
         crate::server::lock(&self.entries)
     }
 
-    /// Fails when the id is already live. The check and the later insert are
-    /// separated by the resource's start-up, so callers insert a placeholder
-    /// through [`Registry::reserve`] when start-up can be slow.
+    /// Fails when the id is already live or the family is full, so a start
+    /// is refused before it does any work. Both can change during the
+    /// resource's start-up, so [`Registry::insert`] checks again.
     pub(crate) fn ensure_free(&self, id: u64) -> Result<(), RemoteError> {
-        if self.lock().contains_key(&id) {
-            return Err(self.in_use(id));
-        }
-        Ok(())
+        self.admit(&self.lock(), id)
     }
 
     pub(crate) fn insert(&self, id: u64, entry: T) -> Result<(), RemoteError> {
         let mut entries = self.lock();
+        self.admit(&entries, id)?;
+        entries.insert(id, entry);
+        Ok(())
+    }
+
+    /// An id in use is reported before a full family, so a client that
+    /// reuses an id learns about its own mistake.
+    fn admit(&self, entries: &BTreeMap<u64, T>, id: u64) -> Result<(), RemoteError> {
         if entries.contains_key(&id) {
             return Err(self.in_use(id));
         }
-        entries.insert(id, entry);
+        if entries.len() >= self.limit {
+            return Err(RemoteError::new(
+                ErrorCode::Busy,
+                format!("{} limit of {} reached", self.family, self.limit),
+            ));
+        }
         Ok(())
     }
 
@@ -265,5 +286,28 @@ impl InFlight {
                 .0;
         }
         *count
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Registry;
+    use crate::protocol::ErrorCode;
+
+    #[test]
+    fn bounded_registries_refuse_starts_until_an_entry_ends() {
+        let registry = Registry::bounded("tunnel", 2);
+        registry.insert(1, ()).unwrap();
+        registry.insert(2, ()).unwrap();
+        // An id in use is reported as such even when the family is full.
+        assert_eq!(
+            registry.insert(2, ()).unwrap_err().code,
+            ErrorCode::ResourceIdInUse
+        );
+        assert_eq!(registry.ensure_free(3).unwrap_err().code, ErrorCode::Busy);
+        assert_eq!(registry.insert(3, ()).unwrap_err().code, ErrorCode::Busy);
+        registry.remove(1);
+        registry.ensure_free(3).unwrap();
+        registry.insert(3, ()).unwrap();
     }
 }

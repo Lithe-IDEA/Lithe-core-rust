@@ -179,6 +179,29 @@ fn port_forwards_bridge_local_connections_to_the_remote() {
         .unwrap();
 }
 
+// A forward on every interface would expose the remote service to the local
+// network, so only loopback addresses are accepted.
+#[test]
+fn port_forwards_refuse_addresses_other_than_loopback() {
+    let (session, _events) = connect();
+    let session = Arc::new(session);
+    for bind in ["0.0.0.0:0", "[::]:0"] {
+        let error = PortForward::start(
+            Arc::clone(&session),
+            bind.parse().unwrap(),
+            TunnelTarget::Tcp {
+                host: "127.0.0.1".into(),
+                port: 1,
+            },
+        )
+        .err()
+        .unwrap_or_else(|| panic!("{bind} was accepted"));
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput, "{bind}");
+    }
+    let session = Arc::into_inner(session).expect("no forward holds the session");
+    session.shutdown(STEP_TIMEOUT);
+}
+
 // Regression: a local client that half-closes after its request, as
 // HTTP/1.0 clients and `nc -N` do, had the tunnel aborted. Queued data was
 // lost and the reply never arrived.

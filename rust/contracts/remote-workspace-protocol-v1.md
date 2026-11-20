@@ -17,9 +17,14 @@ clients. Design rationale lives in
 `<key>` is 1–64 characters from `[A-Za-z0-9._-]`. The daemon keeps its
 socket, lock and log under `<dir>` (default `$HOME/.lithe-server`) in
 directories only the user can access, and rejects peers with another user
-id. A session has one client at a time: a new connection replaces the
-current one. A session without a client ends after its idle timeout.
-Launchers serialize socket rechecking and daemon creation with a per-identity
+id. A session has one client at a time: a new connection that presents the
+session token (see below) replaces the current one. The idle timeout runs
+only while the session has neither a client nor running processes or open
+terminals; it is 10 minutes unless `server.hello` requests another with
+`idleTimeoutSeconds`, at most 24 hours, and the latest request applies. A
+connection the daemon cannot set up is closed without ending the session.
+The daemon log is created `0600`, never through a symbolic link, and moves to
+`<name>.log.1` once it reaches 1 MiB. Launchers serialize socket rechecking and daemon creation with a per-identity
 `.start` advisory lock in the private `run/` directory, bounded by the existing
 startup deadline. The lock is released when its owning descriptor closes; its
 inode is retained so concurrent waiters cannot lock different files. This keeps
@@ -35,7 +40,11 @@ a redundant launcher from restarting an explicitly closed session.
 3. Closing the client-to-server stream is a disconnect.
 
 The server never listens on a network port; all traffic, including tunnels,
-uses this stream.
+uses this stream. Local port forwards are the client's: the reference client
+listens on loopback addresses only, because a remote development server
+usually has no authentication of its own, and bridges at most 64 connections
+per forward, leaving further ones in the system's listen queue until one
+ends. Other clients should keep both rules.
 
 ## Messages
 
@@ -60,6 +69,12 @@ uses this stream.
   `terminal.write`, `terminal.resize`, `tunnel.write`, `tunnel.close`,
   `walk.cancel` — are applied in the order sent. Potentially blocking creation
   and teardown run on workers; other requests may complete in any order.
+- At most 64 requests run on workers at once; a further one fails with
+  `BUSY` and changes nothing. When the host cannot start a thread that a
+  request or a new process, terminal, tunnel, watch or walk needs, the
+  request fails with `BUSY` the same way, before it has any effect.
+  `environment.resolve` instead falls back to the server's environment and
+  names the failure in `diagnostics`.
 - A `process.kill`, `terminal.close`, or `watch.stop` received while the same
   resource is starting records teardown before worker scheduling. The creating
   worker applies it after publication, even if the close worker is rejected as
@@ -88,7 +103,7 @@ subscribe before creating the resource.
 
 | Method | Params | Result |
 | --- | --- | --- |
-| `server.hello` | `protocolVersion`, `clientName`, `idleTimeoutSeconds?` | `protocolVersion`, `serverVersion`, `host`, `session` |
+| `server.hello` | `protocolVersion`, `clientName`, `idleTimeoutSeconds?`, `sessionToken?` | `protocolVersion`, `serverVersion`, `host`, `session`; `INVALID_SESSION_TOKEN` closes the connection |
 | `server.resume` | `afterSeq?` | `truncated`; then every kept event after `afterSeq`, followed by live events |
 | `server.ack` | `seq` | `null`; events up to `seq` may be forgotten |
 | `server.shutdown` | — | `null`; the session ends |
@@ -125,7 +140,7 @@ subscribe before creating the resource.
 | `terminal.resize` | `terminalId`, `columns`, `rows` | `null` |
 | `terminal.close` | `terminalId` | `null`; `SIGHUP` to its session, `SIGKILL` after 2 s |
 | `environment.resolve` | `refresh` | `environment`, `source`, `diagnostics?` |
-| `tunnel.open` | `tunnelId`, `target` (`{kind: tcp, host, port}` / `{kind: unix, path}`) | `null`; `CONNECT_FAILED` on failure |
+| `tunnel.open` | `tunnelId`, `target` (`{kind: tcp, host, port}` / `{kind: unix, path}`) | `null`; `CONNECT_FAILED` on failure; `BUSY` while the session has 256 open tunnels |
 | `tunnel.write` | `tunnelId`, `data` | `null`; `BUSY` when the peer stops reading |
 | `tunnel.shutdownWrite` | `tunnelId` | `null`; queued data is sent, then the write side is shut down; replies keep arriving |
 | `tunnel.close` | `tunnelId` | `null`; aborts both directions, queued data is discarded |
@@ -229,7 +244,18 @@ changes were lost and the client must rescan the watched tree.
 ## Event delivery and persistent sessions
 
 `server.hello` returns `session` with `persistent`, `resumed`,
-`nextResourceId` and `lastEventSeq`. The session keeps every event until the
+`nextResourceId`, `lastEventSeq` and, for a persistent session,
+`sessionToken`: 128 random bits, hex encoded, fixed for the whole session.
+The first client of a persistent session is admitted whatever it presents;
+every later `server.hello` must present that token as `sessionToken`. A
+missing or different token fails with `INVALID_SESSION_TOKEN`, the server
+closes that connection, and the attached client is not disturbed. The socket
+already admits only the host account, so the token keeps other programs of
+that account, or a second window reusing the key, from taking over the
+session and its buffered output. Clients keep it in secret storage and never
+log it; the server compares it in constant time.
+
+The session keeps every event until the
 client acknowledges it with `server.ack` (clients acknowledge periodically,
 for example every 256 events), up to 8 MiB; beyond that the oldest kept
 events are dropped. Written to a socket is not received: when a connection
@@ -262,13 +288,15 @@ list. Clients branch on these facts, never on `os` alone, and check
 
 ## Error codes
 
-`PROTOCOL_MISMATCH`, `INVALID_REQUEST`, `UNKNOWN_METHOD`, `INVALID_PATH`,
+`PROTOCOL_MISMATCH`, `INVALID_SESSION_TOKEN`, `INVALID_REQUEST`,
+`UNKNOWN_METHOD`, `INVALID_PATH`,
 `NOT_FOUND`, `PERMISSION_DENIED`, `ALREADY_EXISTS`, `NOT_A_DIRECTORY`,
 `IS_A_DIRECTORY`, `DIRECTORY_NOT_EMPTY`, `CONFLICT`, `TOO_LARGE`,
 `UNKNOWN_RESOURCE`, `RESOURCE_ID_IN_USE`, `SPAWN_FAILED`, `CONNECT_FAILED`,
 `BUSY`, `UNSUPPORTED`, `IO`. Clients additionally produce `TIMEOUT` and
 `DISCONNECTED` locally. Messages are for people; OS error numbers stay in
-`details`.
+`details`. `BUSY` always means a capacity limit that may clear: retrying
+later is safe because the failed request changed nothing.
 
 ## Compatibility
 
@@ -281,5 +309,11 @@ than reaching an older one.
 ## Server identity
 
 `lithe-remote-server --identity` prints one JSON line with `serverVersion`,
-`protocolVersion` and `sha256` of the executable itself. Bootstrappers reuse an
-installed server only when the hash matches the artifact they ship.
+`protocolVersion` and `sha256` of the executable itself. A binary is never
+trusted to report its own hash: bootstrappers reuse an installed server only
+when the host's own `sha256sum` or `shasum` computes the hash of the artifact
+they ship, and only from install directories that are not symbolic links,
+belong to the remote user and are not writable by the group or other users.
+On a host without a hash tool, a fresh upload is accepted when its size
+matches and `--identity` reports the expected hash, and it is uploaded again
+on every connection instead of being reused.

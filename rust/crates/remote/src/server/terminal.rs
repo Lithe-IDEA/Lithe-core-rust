@@ -14,11 +14,12 @@ use crate::server::connection::Context;
 use crate::server::fs::host_path;
 use crate::server::platform::{self, ChildKind};
 use crate::server::process::{
-    exit_parts, has_exited_leaders, prune, queue_input, spawn_error, start_input_writer,
-    terminate_groups, Leader, OutputGate,
+    exit_parts, has_exited_leaders, prune, queue_input, spawn_error, terminate_groups, Forward,
+    InputWriter, Leader, Monitor,
 };
 use crate::server::resources::Registry;
 use crate::server::session::{Session, TERMINATION_GRACE};
+use crate::server::threads::Parked;
 use crate::server::{parse, to_value};
 use serde_json::Value;
 use std::fs::File;
@@ -28,7 +29,6 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
-use std::thread;
 
 const DEFAULT_TERM: &str = "xterm-256color";
 
@@ -147,44 +147,47 @@ impl TerminalTable {
             .stdout(stdio(&slave)?)
             .stderr(stdio(&slave)?);
         platform::prepare_child(&mut command, ChildKind::Terminal);
+        let master = Arc::new(master);
+        let io_failure = |error| crate::server::fs::io_error(error, "");
+        let reader = File::from(master.try_clone().map_err(io_failure)?);
+        let writer = File::from(master.try_clone().map_err(io_failure)?);
+        // Every thread the terminal needs starts before its program does.
+        let input = InputWriter::<File>::start(drop)?;
+        let monitor = Self::monitor(session, params.terminal_id)?;
         let program = command.get_program().to_string_lossy().into_owned();
         // The command, and with it the parent's copies of the slave side, is
         // dropped on the spawner thread right after the fork.
-        let child = session
+        let mut child = session
             .spawner
             .run(move || command.spawn())
             .map_err(|error| spawn_error(&program, error))?;
         drop(slave);
 
-        let master = Arc::new(master);
-        let reader = File::from(
-            master
-                .try_clone()
-                .map_err(|error| crate::server::fs::io_error(error, ""))?,
-        );
-        let writer = File::from(
-            master
-                .try_clone()
-                .map_err(|error| crate::server::fs::io_error(error, ""))?,
-        );
         let pid = child.id();
         let entry = RunningTerminal {
             leader: Leader::new(pid),
             columns: params.columns,
             rows: params.rows,
             master,
-            input: Some(start_input_writer(writer)),
+            input: Some(input.attach(writer)),
         };
         if let Err(error) = self.registry.insert(params.terminal_id, entry) {
+            // Like a lost race in `process.spawn`: the client never saw this
+            // terminal, so its program must not keep running.
             let _ = platform::signal_process_group(pid, libc::SIGKILL);
+            let _ = child.wait();
             return Err(error);
         }
+        monitor.follow([Some(reader)], child);
+        Ok(TerminalOpenResult { pid })
+    }
 
-        let terminal_id = params.terminal_id;
-        let mut gate = OutputGate::new();
-        let output_session = Arc::clone(session);
-        gate.start_reader(reader, move |chunk| {
-            output_session.link.emit(
+    /// The reader of the terminal's output and the waiter that reports the
+    /// exit of its program.
+    fn monitor(session: &Arc<Session>, terminal_id: u64) -> Result<Monitor<File>, RemoteError> {
+        let output = Arc::clone(session);
+        let forward: Forward = Box::new(move |chunk| {
+            output.link.emit(
                 methods::EVENT_TERMINAL_OUTPUT,
                 TerminalOutputEvent {
                     terminal_id,
@@ -193,28 +196,23 @@ impl TerminalTable {
             );
         });
         let session = Arc::clone(session);
-        let mut child = child;
-        thread::spawn(move || {
-            let status = child.wait();
-            gate.finish(|| {
-                let registry = &session.terminals.registry;
-                if let Some(terminal) = registry.lock().get_mut(&terminal_id) {
-                    terminal.leader.exited = true;
-                    terminal.input = None;
-                }
-                prune(registry, |terminal| &terminal.leader);
-                let (exit_code, signal) = exit_parts(status);
-                session.link.emit(
-                    methods::EVENT_TERMINAL_EXIT,
-                    TerminalExitEvent {
-                        terminal_id,
-                        exit_code,
-                        signal,
-                    },
-                );
-            });
-        });
-        Ok(TerminalOpenResult { pid })
+        Monitor::start([forward], move |status| {
+            let registry = &session.terminals.registry;
+            if let Some(terminal) = registry.lock().get_mut(&terminal_id) {
+                terminal.leader.exited = true;
+                terminal.input = None;
+            }
+            prune(registry, |terminal| &terminal.leader);
+            let (exit_code, signal) = exit_parts(status);
+            session.link.emit(
+                methods::EVENT_TERMINAL_EXIT,
+                TerminalExitEvent {
+                    terminal_id,
+                    exit_code,
+                    signal,
+                },
+            );
+        })
     }
 
     fn write(&self, params: TerminalWriteParams) -> Result<(), RemoteError> {
@@ -252,42 +250,48 @@ impl TerminalTable {
     /// whole session, including background jobs, and `SIGKILL` after a grace
     /// period to whatever ignored it.
     fn close(&self, session: &Arc<Session>, params: TerminalParams) -> Result<(), RemoteError> {
+        // The escalation thread starts first, so that a host out of threads
+        // refuses the close before the terminal stops taking input.
+        let terminal_id = params.terminal_id;
+        let escalation = {
+            let session = Arc::clone(session);
+            Parked::start("remote-hangup", move |pid: u32| {
+                let terminals = &session.terminals.registry;
+                let deadline = std::time::Instant::now() + TERMINATION_GRACE;
+                let owned = || {
+                    prune(terminals, |terminal| &terminal.leader);
+                    terminals
+                        .lock()
+                        .get(&terminal_id)
+                        .is_some_and(|terminal| terminal.leader.pid == pid)
+                };
+                while std::time::Instant::now() < deadline {
+                    if !owned() {
+                        return;
+                    }
+                    // Jobs that are not the server's children report no exit,
+                    // so the wait also wakes periodically to re-check the session.
+                    let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                    terminals.wait_for_change(
+                        remaining.min(crate::server::process::SESSION_POLL_INTERVAL),
+                    );
+                }
+                if owned() {
+                    let _ = platform::signal_session(pid, libc::SIGKILL);
+                }
+            })?
+        };
         prune(&self.registry, |terminal| &terminal.leader);
         let pid = {
             let mut terminals = self.registry.lock();
             let terminal = terminals
-                .get_mut(&params.terminal_id)
-                .ok_or_else(|| self.registry.unknown(params.terminal_id))?;
+                .get_mut(&terminal_id)
+                .ok_or_else(|| self.registry.unknown(terminal_id))?;
             terminal.input = None;
             terminal.leader.pid
         };
         let _ = platform::signal_session(pid, libc::SIGHUP);
-        let session = Arc::clone(session);
-        let terminal_id = params.terminal_id;
-        thread::spawn(move || {
-            let terminals = &session.terminals.registry;
-            let deadline = std::time::Instant::now() + TERMINATION_GRACE;
-            let owned = || {
-                prune(terminals, |terminal| &terminal.leader);
-                terminals
-                    .lock()
-                    .get(&terminal_id)
-                    .is_some_and(|terminal| terminal.leader.pid == pid)
-            };
-            while std::time::Instant::now() < deadline {
-                if !owned() {
-                    return;
-                }
-                // Jobs that are not the server's children report no exit, so
-                // the wait also wakes periodically to re-check the session.
-                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-                terminals
-                    .wait_for_change(remaining.min(crate::server::process::SESSION_POLL_INTERVAL));
-            }
-            if owned() {
-                let _ = platform::signal_session(pid, libc::SIGKILL);
-            }
-        });
+        escalation.run(pid);
         Ok(())
     }
 

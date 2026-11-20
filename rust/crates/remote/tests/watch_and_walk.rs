@@ -3,7 +3,10 @@
 mod support;
 
 use lithe_remote::client::api::{WatchEvent, WatchHandle};
-use lithe_remote::protocol::methods::{ChangeKind, FileKind, WatchErrorCode};
+use lithe_remote::client::session::ClientError;
+use lithe_remote::protocol::methods::{self, ChangeKind, FileKind, WatchErrorCode};
+use lithe_remote::protocol::ErrorCode;
+use serde_json::json;
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 use support::{connect, TempDir, STEP_TIMEOUT};
@@ -141,6 +144,34 @@ fn removing_the_watched_root_ends_the_watch() {
         }
     }
     assert!(session.state().unwrap().watches.is_empty());
+    drop(watch);
+    session.shutdown(STEP_TIMEOUT);
+}
+
+// A refused duplicate must neither replace nor stop the running watch.
+#[test]
+fn a_live_watch_id_cannot_be_reused() {
+    let root = TempDir::new("watch-duplicate");
+    let other = TempDir::new("watch-duplicate-other");
+    let (session, _events) = connect();
+    let watch = session.watch(root.str(), &[]).unwrap();
+    let duplicate = session.request_value(
+        methods::WATCH_START,
+        json!({ "watchId": watch.id, "root": other.str() }),
+        STEP_TIMEOUT,
+    );
+    match duplicate {
+        Err(ClientError::Remote(error)) => assert_eq!(error.code, ErrorCode::ResourceIdInUse),
+        other => panic!("expected RESOURCE_ID_IN_USE, got {other:?}"),
+    }
+    let state = session.state().unwrap();
+    assert_eq!(state.watches.len(), 1);
+    assert_eq!(state.watches[0].root, root.str());
+
+    let file = root.join("still-watched.txt");
+    std::fs::write(&file, b"x").unwrap();
+    wait_for_changes(&watch, &[(&file, ChangeKind::Created)]);
+    watch.stop().unwrap();
     drop(watch);
     session.shutdown(STEP_TIMEOUT);
 }

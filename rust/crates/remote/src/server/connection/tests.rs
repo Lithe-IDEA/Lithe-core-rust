@@ -325,3 +325,17 @@ fn pending_close_reports_the_creators_cleanup_failure_instead_of_success() {
     assert_eq!(close.wait(Duration::ZERO), Err(failure));
     ResourceOrder::prepare(&session, methods::FS_CREATE_RUN_DIRECTORY, &params).unwrap();
 }
+
+#[test]
+fn a_panicking_worker_gives_its_slot_back() {
+    let session = Session::new(false).unwrap();
+    let _cleanup = Cleanup(Arc::clone(&session));
+    let slot = WorkerSlot::acquire(&session).unwrap();
+    assert_eq!(session.workers.drain(Duration::ZERO), 1);
+    let worker = thread::spawn(move || {
+        let _slot = slot;
+        panic!("a handler failed");
+    });
+    assert!(worker.join().is_err());
+    assert_eq!(session.workers.drain(Duration::ZERO), 0);
+}
