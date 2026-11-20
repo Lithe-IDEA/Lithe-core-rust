@@ -849,6 +849,43 @@ fn toolchain_resolution_accepts_a_provider_home_reached_through_an_alias_link() 
     );
 }
 
+/// A multi-call program picks its tool from the name it starts with: rustup links `cargo`
+/// to itself and runs cargo, but started as `rustup` it runs rustup. The selection keeps
+/// the layout's file name beneath the canonical home instead of the link target.
+#[test]
+fn toolchain_resolution_starts_a_multi_call_link_by_its_layout_name() {
+    let mut value = input();
+    installation(&mut value, HOME, "21.0.4");
+    let link = format!("{HOME}/bin/java");
+    let target = format!("{HOME}/bin/multiplexer");
+    let facts = value["filesystem"].as_array_mut().unwrap();
+    facts.retain(|fact| fact["path"] != link.as_str());
+    facts.push(json!({"path":link,"canonicalPath":target,"kind":"file","executable":true}));
+    value["fixed"] = json!({"home":HOME});
+    let mut unprobed = value.clone();
+    unprobed["probes"] = json!([]);
+    let candidates =
+        candidates_command(value_for_candidates(&unprobed), validated_manifest_json).unwrap();
+    assert!(
+        candidates["candidates"]["skipped"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["reason"] == "probeFailed" && row["executable"] == link.as_str()),
+        "{candidates}"
+    );
+    // Started by its target's name the program answers as itself.
+    value["probes"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"executable":target,"output":"multiplexer 1.28.2","exitCode":0}));
+    let result = resolve(&value);
+    let selected = &result["outcome"]["selection"];
+    assert_eq!(selected["home"], HOME, "{result}");
+    assert_eq!(selected["executable"], link.as_str());
+    assert_eq!(selected["version"], "21.0.4");
+}
+
 #[test]
 fn toolchain_resolution_definition_plugin_can_be_its_own_installation_provider() {
     let mut value = input();

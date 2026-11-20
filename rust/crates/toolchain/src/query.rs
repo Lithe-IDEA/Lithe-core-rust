@@ -542,6 +542,7 @@ fn checked_installation(
                 "The executable escapes its installation or enters the workspace.",
             ));
         }
+        let executable = invoked_executable(&executable, &canonical_home, layout, facts)?;
         return Ok(json!({"home":canonical_home,"executable":executable}));
     }
     Err(reject(
@@ -551,8 +552,39 @@ fn checked_installation(
     ))
 }
 
+/// The path a checked installation's program starts from: its canonical target,
+/// unless the layout's file links to a program with another file name. Such a
+/// program may pick what to run from the name it was started with (rustup links
+/// `cargo` and `rust-analyzer` to itself and runs the named tool; started as
+/// `rustup` it runs rustup), so it starts from the layout path beneath the canonical
+/// home. The canonical home is the same directory as the home the facts checked, so
+/// that path names the same file and resolves to the same checked target.
+fn invoked_executable(
+    canonical: &str,
+    canonical_home: &str,
+    layout: &Value,
+    facts: &Facts,
+) -> Validation<String> {
+    let layout_path = layout["path"].as_str().unwrap_or("");
+    let name = |path: &str| {
+        let leaf = paths::file_name(path, &facts.platform);
+        if facts.case_sensitive {
+            leaf.to_owned()
+        } else {
+            leaf.to_lowercase()
+        }
+    };
+    if name(canonical) == name(layout_path) {
+        return Ok(canonical.to_owned());
+    }
+    paths::join(canonical_home, layout_path, &facts.platform)
+        .ok_or_else(|| reject(UNSAFE, "executableLayouts", "Invalid executable layout."))
+}
+
 /// Validates an external installation against trusted, authority-local native facts.
-/// Returns canonical home/executable paths without touching the native filesystem.
+/// Returns the canonical home and the executable to start (the canonical target, or the
+/// layout path when that target has another file name)
+/// without touching the native filesystem.
 /// Project-code candidates require their separate consumer trust policy.
 pub fn validate_installation(
     home: &str,

@@ -83,6 +83,13 @@ pub fn within(path: &str, root: &str, platform: &str, case_sensitive: bool) -> b
     path == root || path.starts_with(&format!("{}/", root.trim_end_matches('/')))
 }
 
+/// The last component of a native path, split with the target platform's separators.
+pub fn file_name<'a>(path: &'a str, platform: &str) -> &'a str {
+    path.rsplit(|character| is_separator(character, rules(platform)))
+        .next()
+        .unwrap_or(path)
+}
+
 /// Joins a package-independent relative executable layout beneath a native home.
 pub fn join(home: &str, relative: &str, platform: &str) -> Option<String> {
     if relative.is_empty()

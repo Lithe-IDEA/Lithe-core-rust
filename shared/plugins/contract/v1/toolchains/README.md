@@ -308,7 +308,11 @@ platform,workspaceRoot,filesystem}` and accepts `workspaceRoots`,
 document. Probes are host observations `{executable,output,exitCode}` keyed by the
 executable a selection reports (canonical for external installations, lexical for
 `fixed:{executable}` and `projectFile` candidates); system installations are
-`{tool,home}`.
+`{tool,home}`. When an external installation's layout file links to a file with
+another name, the reported executable is that layout path beneath the canonical
+home instead: a multi-call program such as rustup links `cargo` to itself and picks
+the tool from the name it starts with, so starting the link target would run the
+wrong program. The facts still check the target's kind, mode and containment.
 Shell environment home variables and `commandHomes` come from the native login-shell
 adapter, not command-name guessing. An environment candidate selects only through
 its declared `path` layout.
