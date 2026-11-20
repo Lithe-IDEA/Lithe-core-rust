@@ -12,6 +12,7 @@ use lithe_git_host::ProcessTree;
 use lithe_protocol::{CoreError, ErrorCode};
 use lithe_remote::client::launch::{launch, launch_command, LaunchError, Launched};
 use lithe_remote::client::session::{ClientError, ConnectOptions};
+use lithe_remote::client::trust::Target;
 use lithe_remote::client::{
     ConnectionKind, ConnectionLog, Hop, RemoteSession, ServerArtifact, ServerTarget, TransportChain,
 };
@@ -99,6 +100,9 @@ pub struct Connection {
     pub session: RemoteSession,
     /// Git executable path and version found on the host, once resolved.
     pub git_tool: Mutex<Option<(String, String)>>,
+    /// Where the connection ends, the key of its workspaces' trust together
+    /// with their real paths. Fixed when the connection opens.
+    pub(crate) trust_target: Target,
     pub(crate) transport: ConnectionTransport,
 }
 
@@ -294,7 +298,8 @@ fn connect_logged(
     if let Some(program) = ssh_program {
         hop.program = program.into();
     }
-    let argv = TransportChain::new(vec![Hop::Ssh(hop)])
+    let chain = TransportChain::new(vec![Hop::Ssh(hop)]);
+    let argv = chain
         .command(&launch_command(
             request.install_root.as_deref(),
             &["--stdio"],
@@ -552,6 +557,7 @@ fn connect_logged(
             Arc::new(Connection {
                 session,
                 git_tool: Mutex::new(None),
+                trust_target: Target::new(&chain, capabilities.user_id),
                 transport: ConnectionTransport::Ssh {
                     child: Mutex::new(child),
                     tree,

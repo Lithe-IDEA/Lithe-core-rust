@@ -13,6 +13,8 @@
 //! - [`forward`] forwards local ports through tunnels.
 //! - [`connection_log`] records one connection's lifecycle in the v2 log,
 //!   identified by a random id instead of the host or user name.
+//! - [`trust`] keeps the machine-local trust decisions on remote workspaces,
+//!   keyed by the target and the host's real path.
 //!
 //! The transport layer deliberately knows nothing about files or processes.
 //! Supporting a new kind of remote means adding a hop, not new capabilities.
@@ -28,6 +30,7 @@ pub mod forward;
 pub mod launch;
 pub mod session;
 pub mod transport;
+pub mod trust;
 
 pub use api::{SpawnSpec, TerminalSpec, WriteOptions};
 pub use bootstrap::{ServerArtifact, ServerTarget};

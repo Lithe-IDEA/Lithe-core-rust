@@ -814,6 +814,8 @@ or removing a command fails until the table changes in the same commit.
 | `remote.runWatch` | Own a host watch and relays changes until cancellation or root removal |
 | `remote.uploadFile` | Stream a native source into integrity-checked host file staging |
 | `remote.hostInfo` | Return cached handshake capabilities of one connection |
+| `remote.workspaceTrust` | Read remote workspace trust decisions and one open workspace's trust |
+| `remote.editWorkspaceTrust` | Record or remove one remote workspace trust decision |
 | `git.historyRewritePreview` | Review undo, message edit, squash, or drop with complete messages, eligibility, and an immutable checkout expectation |
 | `git.remotes` | Return configured fetch remote names and URLs |
 | `git.tags` | Return tag names, tag object IDs, target IDs, dates, and annotations |
@@ -5753,6 +5755,79 @@ Nonpersistent disconnect or session termination also collects full snapshots;
 persistent disconnect retains them until explicit release, shutdown or idle expiry.
 Forced server termination recovery remains unsupported, rather than risking
 deletion of inputs used by surviving processes.
+
+#### Remote workspace trust
+
+A remote workspace is trusted, kept in safe mode or undecided, as a local
+one is (see "Global SDK registrations without an open project"), but its
+decisions are separate and never carry over. They are keyed by the
+connection's **target** and the workspace's **real path** on the host:
+
+- The target is `{ hops, userId? }`. Each hop keeps only what chooses where
+  it ends: `{ ssh: { destination, port?, portOption?, user?, proxyJump? } }`
+  (the first `Port`, `User` and `ProxyJump` options, as ssh uses them) or
+  `{ container: { engine, program, container, user? } }`. Keys, timeouts,
+  keep-alive, working directories and environment are not part of it.
+  `userId` is the server's numeric account from `server.hello`. Targets match
+  exactly: another host, account, port, route or container asks again, and so
+  does a spelling that may reach the same account, such as `dev@box` against
+  `box` with `User=dev`.
+- The real path is the host's `fs.realPath` of the workspace root, so a
+  symbolic link opens the decision of the folder it points to.
+- Local workspaces never inherit remote decisions and the reverse; a
+  "trust every workspace" setting applies to local workspaces only.
+
+`remote.workspaceTrust` accepts `{ document: string|null, sessionId?,
+workspace? }`; `sessionId` and `workspace` (an absolute host path as opened)
+come together. It returns `{ document, storage: { relativePath:
+"toolchains/remote-trust.json", maximumBytes: 262144 }, projectCodeAllowed?,
+workspaceTrust? }`, where `document` is the validated
+`{ version: 1, targets: [{ target, label?, trustedWorkspaces?,
+distrustedWorkspaces?, trustedLocations? }] }`, sorted by target. With a
+workspace, `workspaceTrust` is `{ state, workspace, location, offeredLocation,
+target }` and `projectCodeAllowed` is `state == "trusted"`. As for local
+workspaces, an explicit decision applies first, then a trusted location of
+the same target containing the real path. `offeredLocation` is the parent
+folder, or `null` when that is `/`: a host's root is never offered and never
+accepted as a location.
+
+`remote.editWorkspaceTrust` accepts `{ document, decision }` or
+`{ document, revoke }`:
+
+- `decision: { sessionId, workspace, trusted, location?, label? }` resolves
+  the target and the real path over the session, like `remote.workspaceTrust`,
+  and records one decision: `trusted: true` moves the workspace to
+  `trustedWorkspaces`, `false` to `distrustedWorkspaces`, and `location: true`
+  also adds `offeredLocation` to `trustedLocations`. `location` with
+  `trusted: false`, or without an offered location, is rejected. `label` is
+  the connection name shown with the target's decisions (at most 128
+  characters, no control characters); it never affects matching.
+- `revoke: { target, list, path }` removes one entry, where `list` is
+  `trustedWorkspaces`, `distrustedWorkspaces` or `trustedLocations`, and works
+  without a connection to the target. A target without entries is dropped;
+  removing an absent entry changes nothing.
+
+The result is `{ changed, document: string|null, decisions }`. An unchanged
+edit returns a `null` document and must not create a source. There is no
+operation that trusts every remote workspace or host.
+
+Bounds: 256 KiB per document, 64 targets, 256 entries per list, 8 hops, and
+normalized absolute host paths of at most 4096 bytes (no empty, `.` or `..`
+component, no trailing `/`). A document that cannot be decoded, has duplicate
+keys, unknown fields, another version, a target listed twice, the same path
+trusted and distrusted, or `/` as a location is `parse_failed` with
+`details.field`; a malformed request, a refused decision or a full list is
+`invalid_request` with `details.field`. A missing workspace is
+`workspace_not_found`, a closed session `connection_closed`, and a host real
+path that is not normalized `parse_failed`.
+
+Native clients keep the document below their platform user-preference
+directory, never on the host, in a workspace or in an installed package: a
+marker on the host could be written by the project or other users. They retain
+the exact bytes, verify them before atomic publication and reread after Save,
+as for `toolchains/global.json`. The file is separate from that document so
+hosts that predate remote trust still read theirs. This user-settings resource
+does not affect code signatures or update deltas.
 
 ### Git patch discovery and rebase amendment preconditions
 

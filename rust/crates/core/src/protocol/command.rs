@@ -1003,6 +1003,12 @@ pub enum RemoteCommand {
     UploadFile,
     /// Returns cached handshake capabilities of one connection.
     HostInfo,
+    /// Reads remote workspace trust decisions, and one open workspace's
+    /// trust (`remote.workspaceTrust`).
+    WorkspaceTrust,
+    /// Records or removes one remote workspace trust decision
+    /// (`remote.editWorkspaceTrust`).
+    EditWorkspaceTrust,
 }
 
 #[derive(Debug, Clone)]
@@ -1565,6 +1571,8 @@ impl CoreCommand {
             "remote.runWatch" => Some(Self::Remote(RemoteCommand::RunWatch)),
             "remote.uploadFile" => Some(Self::Remote(RemoteCommand::UploadFile)),
             "remote.hostInfo" => Some(Self::Remote(RemoteCommand::HostInfo)),
+            "remote.workspaceTrust" => Some(Self::Remote(RemoteCommand::WorkspaceTrust)),
+            "remote.editWorkspaceTrust" => Some(Self::Remote(RemoteCommand::EditWorkspaceTrust)),
             "git.historyRewritePreview" => Some(Self::Git(GitCommand::HistoryRewritePreview)),
             "git.remotes" => Some(Self::Git(GitCommand::Remotes)),
             "git.tags" => Some(Self::Git(GitCommand::Tags)),

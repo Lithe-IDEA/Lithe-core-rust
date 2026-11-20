@@ -143,7 +143,7 @@ pub enum ContainerEngine {
 }
 
 impl ContainerEngine {
-    fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Self::Docker => "docker",
             Self::Podman => "podman",

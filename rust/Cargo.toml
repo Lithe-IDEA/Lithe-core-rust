@@ -7,3 +7,9 @@ strip = true
 lto = true
 codegen-units = 1
 opt-level = "s"
+
+# Unoptimized SHA-256 needs over a second for the 40 MB debug remote server,
+# which hashes itself in both its proxy and its daemon. On a busy machine that
+# alone outlasted the tests' handshake bound; optimized, it takes milliseconds.
+[profile.dev.package.sha2]
+opt-level = 3
