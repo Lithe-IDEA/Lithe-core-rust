@@ -7,7 +7,8 @@
 
 use super::decode;
 use super::run_preparation::{
-    process_fields, valid_configuration_type, DecodeRunPreparationRequest, MAX_ARGUMENT_BYTES,
+    output_encoding, process_fields, valid_configuration_type, DecodeRunPreparationRequest,
+    MAX_ARGUMENT_BYTES,
 };
 use super::BuildManifest;
 use lithe_plugin_model::is_function_id;
@@ -107,13 +108,28 @@ fn decode_start(payload: &DecodeStartPayload, required_tools: &[String]) -> Vali
         payload.temporary_directory.as_deref(),
     )?;
     for key in params.process.keys() {
-        if !["executable", "arguments", "workingDirectory", "environment"].contains(&key.as_str()) {
+        if ![
+            "executable",
+            "arguments",
+            "workingDirectory",
+            "environment",
+            "outputEncoding",
+        ]
+        .contains(&key.as_str())
+        {
             return Err(invalid(
                 &format!("process.{key}"),
                 "The process has no such field.",
             ));
         }
     }
+    let output_encoding =
+        output_encoding(&Value::Object(params.process.clone())).map_err(|()| {
+            invalid(
+                "process.outputEncoding",
+                "The output encoding is not a supported encoding.",
+            )
+        })?;
     let fields = process_fields(&DecodeRunPreparationRequest {
         workspace_root: payload.workspace_root.clone(),
         root: ".".to_string(),
@@ -168,6 +184,9 @@ fn decode_start(payload: &DecodeStartPayload, required_tools: &[String]) -> Vali
             })
             .collect::<Vec<_>>(),
     });
+    if let Some(encoding) = output_encoding {
+        start["outputEncoding"] = json!(encoding);
+    }
     if let Some(debug) = &params.debug {
         start["debug"] = start_debug(debug)?;
     }

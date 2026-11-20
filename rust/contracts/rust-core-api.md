@@ -265,16 +265,21 @@ target. At most 256 texts of 4096 bytes. See `rust/fixtures/terminal/link-target
 
 ## Output styles
 
-`outputStyle.decode` accepts `{text, state?}` and returns `{lines: Line[], state}`. A host sends each chunk of one
-console's output as it arrives, passing back the `state` the previous answer returned (none for the first chunk), and
-keeps only plain text plus styled ranges, so copying, search, output links and the IDE API never see an escape. A
+`outputStyle.decode` accepts `{text, state?}` or `{bytes, encoding?, state?}` and returns `{lines: Line[], open: Line,
+state}`. A host sends each chunk of one console's output as it arrives, passing back the `state` the previous answer
+returned (none for the first chunk), and keeps only plain text plus styled ranges, so copying, search, output links
+and the IDE API never see an escape. A host that reads a process's pipes sends `bytes`, the bytes exactly as written in
+standard base64, so Core decides the characters (see Output encodings); `text` is for output that is already text, and
+every chunk of one console uses the same kind. A
 `Line` is `{text, spans?}`: the text without its line ending and `{start, length, style}` ranges in UTF-16 code units,
 ascending and non-overlapping; text outside every range is plain. A `style` has optional `foreground` and `background`
 (`{index: 0-255}` or `{rgb: "#rrggbb"}`) and the flags `bold`, `dim`, `italic`, `underline`, `inverse`, `hidden` and
 `strikethrough`, each omitted when unset. `lines` are the lines the chunk ended, oldest first, the first continuing the
-previous open line; `state.line` is the line still open, which the host shows after them. The rest of the state (the
-style in effect, an unfinished escape sequence and a pending carriage return) is opaque to the host, and a state Core
-did not return is `invalid_request`.
+previous open line; `open` is the line still open, which the host shows after them. The state (the open line, the
+style in effect, an unfinished escape sequence, a pending carriage return and, for bytes, the bytes of the open line
+not decoded yet) is opaque to the host, and a state Core did not return, or returned for the other kind of input, is
+`invalid_request`. A request with neither or both of `text` and `bytes`, or with `encoding` and `text`, is
+`invalid_request`.
 
 SGR (`ESC [ … m`) sets the style across chunks and lines: 0 resets; 1, 2, 3, 4 (`4:0` off), 7, 8, 9 and 21 set
 attributes and 22–29 clear them; 30–37, 90–97, 40–47 and 100–107 pick palette colours 0–15, and 39 and 49 restore the
@@ -288,6 +293,35 @@ maps palette entries 0–15 to its theme and 16–255 to the xterm cube and grey
 draws `hidden` text in the background colour. A chunk is at most 1 MiB; lines longer than 16 KiB continue on the next
 line, and a line keeps at most 512 ranges. Lives in `rust/crates/terminal`; see
 `rust/fixtures/terminal/output-style-v1.json`.
+
+## Output encodings
+
+A process writes bytes, and not always UTF-8: on Windows a program writing to a pipe often uses the system ANSI code
+page (a JVM on a Chinese system writes GBK), and one build can mix both. For `bytes`, Core cuts the output into lines
+at `\n` and `\r` before decoding, which is safe because every supported encoding is ASCII-compatible and none uses
+those bytes or ESC inside a character (so UTF-16 is not supported), and decodes each line with the first candidate it
+is valid in; a line valid in none is decoded with the candidate that replaces the fewest characters, the earlier on a
+tie. An unfinished line is held as bytes until it ends, because its encoding is known only then, and `open` shows it
+decoded so far (a character still incomplete is left out), so a later answer may show the same open line differently;
+a held line that would outgrow the 16 KiB line limit is decoded up to its last character boundary instead. A chunk is
+at most 1 MiB of bytes.
+
+`encoding` is a policy `{setting?, declared?, windows?}`. `setting` is `auto` (the default) or the id of the one
+encoding every line is decoded with. In `auto`, the candidates are, in order and without repeats: `declared`, an
+explicit encoding the starter of the process says it writes; `utf-8`; and, only when `windows` is true, `gbk`.
+The default is UTF-8 everywhere, with GBK compatibility on Windows regardless of the host's locale or ANSI code page.
+Hosts pass whether they are Windows; an absent policy is UTF-8 alone. A valid UTF-8 line stays UTF-8 when there is no
+explicit declaration, and only lines that fail UTF-8 are tried as GBK on Windows. A single line mixing encodings or
+legacy bytes that also happen to be valid UTF-8 cannot be unambiguously detected; explicit choices resolve ambiguity.
+The ids are `utf-8`, `gbk`, `gb18030`, `big5`, `shift-jis`, `euc-jp`, `euc-kr`, `windows-874`, `windows-1250` to
+`windows-1258` and `koi8-r`; parsing is case-insensitive and accepts the aliases `utf8`, `cp936`, `cp950`, `shift_jis`,
+`sjis`, `cp932`, `eucjp`, `euckr`, `cp949`, `cp874`, `cp1250` to `cp1258`, `iso-8859-1`, `latin1` (both Windows-1252,
+as in the WHATWG Encoding Standard) and `koi8r`. An unsupported id or unknown policy member is `invalid_request`.
+
+`outputEncoding.resolve` takes the same policy and returns `{candidates, encodings}`: the ids a line is tried in, in
+order, and every id a setting may choose, in menu order, so a settings page can show what automatic means on this
+machine. It fails as `outputStyle.decode` does for an unsupported id or an unknown member. See
+`rust/fixtures/terminal/output-encoding-v1.json`.
 
 The Rust core is the shared application runtime for macOS SwiftUI and Windows
 React/Tauri. macOS calls the stable C ABI while the Tauri host links the Rust
@@ -634,7 +668,8 @@ or removing a command fails until the table changes in the same commit.
 | `workbench.chromeLayout.reduce` | Apply one transition to the rearrangeable workbench chrome: stripe, title bar and status bar button placement, hidden stripe buttons and open tool panels (from `lithe-core-rules`) |
 | `workbench.notifications.reduceReadState` | Apply one notification arrival or mark a window's history read; return bounded unread identities and the ready-to-render count (from `lithe-core-rules`) |
 | `terminal.parseLinkTarget` | Resolve terminal link candidates into file or external targets |
-| `outputStyle.decode` | Decode one chunk of console output with ANSI escapes into plain lines and styled ranges, carrying the console's state to the next chunk |
+| `outputStyle.decode` | Decode one chunk of console output with ANSI escapes into plain lines and styled ranges, carrying the console's state to the next chunk; bytes are decoded line by line with the encoding each line is valid in |
+| `outputEncoding.resolve` | List the encodings an output encoding policy tries, in order, and every encoding a setting may choose |
 | `debug.createSession` | Create a transport-neutral DAP session and return its initialize frame |
 | `debug.launch` | Queue a launch or attach request, including during initialization |
 | `debug.steppingFilters` | Return adapter defaults or normalize portable stepping filters |

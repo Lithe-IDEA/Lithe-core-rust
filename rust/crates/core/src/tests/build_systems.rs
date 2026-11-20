@@ -2803,7 +2803,15 @@ fn provider_run_preparation_selects_targets_and_validates_launch_data() {
     let valid = decode(fixture["result"].clone());
     assert_eq!(valid["status"], "ok", "{valid}");
     assert_eq!(valid["launch"], fixture["result"]);
+    // A declared output encoding reaches the host as its stable id.
+    let mut declared = fixture["result"].clone();
+    declared["outputEncoding"] = json!("Shift_JIS");
+    let declared = decode(declared);
+    assert_eq!(declared["status"], "ok", "{declared}");
+    assert_eq!(declared["launch"]["outputEncoding"], "shift-jis");
     for (field, value) in [
+        ("outputEncoding", json!("utf-16")),
+        ("outputEncoding", json!(936)),
         ("executable", json!({"kind":"command","value":"/bin/java"})),
         ("executable", json!({"kind":"absolute","value":"java"})),
         ("arguments", json!(["bad\u{0}"])),

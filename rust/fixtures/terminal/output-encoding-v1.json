@@ -1,0 +1,288 @@
+{
+  "version": 1,
+  "description": "Console output bytes. decode: each case sends its chunks (the bytes in hexadecimal) to outputStyle.decode as base64 bytes with the case's encoding policy, in order, passing back the state each answer returned; lines are all finished lines, oldest first, and open is the last answer's open line. resolve: outputEncoding.resolve with each policy returns the candidates, or fails with the error code; encodings is the list every resolve answer returns.",
+  "encodings": [
+    "utf-8",
+    "gbk",
+    "gb18030",
+    "big5",
+    "shift-jis",
+    "euc-jp",
+    "euc-kr",
+    "windows-874",
+    "windows-1250",
+    "windows-1251",
+    "windows-1252",
+    "windows-1253",
+    "windows-1254",
+    "windows-1255",
+    "windows-1256",
+    "windows-1257",
+    "windows-1258",
+    "koi8-r"
+  ],
+  "decode": [
+    {
+      "name": "a utf-8 line and a gbk line",
+      "encoding": {
+        "windows": true
+      },
+      "chunks": [
+        "e7bc96e8af910a",
+        "b9b9bda8b3c9b9a60d0a"
+      ],
+      "lines": [
+        {
+          "text": "编译"
+        },
+        {
+          "text": "构建成功"
+        }
+      ],
+      "open": {
+        "text": ""
+      }
+    },
+    {
+      "name": "gbk character split across chunks",
+      "encoding": {
+        "windows": true
+      },
+      "chunks": [
+        "b9b9bd",
+        "a80a"
+      ],
+      "lines": [
+        {
+          "text": "构建"
+        }
+      ],
+      "open": {
+        "text": ""
+      }
+    },
+    {
+      "name": "unfinished gbk line is shown decoded so far",
+      "encoding": {
+        "windows": true
+      },
+      "chunks": [
+        "b9b9bda8b3"
+      ],
+      "lines": [],
+      "open": {
+        "text": "构建"
+      }
+    },
+    {
+      "name": "outside Windows a gbk line is replaced",
+      "chunks": [
+        "b9b9bda80a"
+      ],
+      "lines": [
+        {
+          "text": "����"
+        }
+      ],
+      "open": {
+        "text": ""
+      }
+    },
+    {
+      "name": "a valid utf-8 line stays utf-8 on Windows",
+      "encoding": {
+        "windows": true
+      },
+      "chunks": [
+        "c3a90a"
+      ],
+      "lines": [
+        {
+          "text": "é"
+        }
+      ],
+      "open": {
+        "text": ""
+      }
+    },
+    {
+      "name": "a declared encoding is tried first",
+      "encoding": {
+        "declared": "gbk"
+      },
+      "chunks": [
+        "c3a90a"
+      ],
+      "lines": [
+        {
+          "text": "茅"
+        }
+      ],
+      "open": {
+        "text": ""
+      }
+    },
+    {
+      "name": "a fixed encoding decodes every line",
+      "encoding": {
+        "setting": "windows-1252",
+        "declared": "gbk",
+        "windows": true
+      },
+      "chunks": [
+        "c3a90a"
+      ],
+      "lines": [
+        {
+          "text": "Ã©"
+        }
+      ],
+      "open": {
+        "text": ""
+      }
+    },
+    {
+      "name": "colours around gbk text",
+      "encoding": {
+        "windows": true
+      },
+      "chunks": [
+        "1b5b33326db3c9b9a61b5b6d0d0a"
+      ],
+      "lines": [
+        {
+          "text": "成功",
+          "spans": [
+            {
+              "start": 0,
+              "length": 2,
+              "style": {
+                "foreground": {
+                  "index": 2
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "open": {
+        "text": ""
+      }
+    },
+    {
+      "name": "shift-jis by explicit declaration",
+      "encoding": {
+        "declared": "shift-jis"
+      },
+      "chunks": [
+        "93fa967b0a"
+      ],
+      "lines": [
+        {
+          "text": "日本"
+        }
+      ],
+      "open": {
+        "text": ""
+      }
+    }
+  ],
+  "resolve": [
+    {
+      "name": "nothing is utf-8",
+      "policy": {},
+      "candidates": [
+        "utf-8"
+      ]
+    },
+    {
+      "name": "windows falls back to gbk",
+      "policy": {
+        "windows": true
+      },
+      "candidates": [
+        "utf-8",
+        "gbk"
+      ]
+    },
+    {
+      "name": "non-windows has no gbk fallback",
+      "policy": {
+        "windows": false
+      },
+      "candidates": [
+        "utf-8"
+      ]
+    },
+    {
+      "name": "a declared encoding comes first",
+      "policy": {
+        "setting": "auto",
+        "declared": "GBK",
+        "windows": true
+      },
+      "candidates": [
+        "gbk",
+        "utf-8"
+      ]
+    },
+    {
+      "name": "a fixed encoding is alone",
+      "policy": {
+        "setting": "big5",
+        "windows": true
+      },
+      "candidates": [
+        "big5"
+      ]
+    },
+    {
+      "name": "a utf-8 declaration keeps windows gbk compatibility",
+      "policy": {
+        "declared": "utf-8",
+        "windows": true
+      },
+      "candidates": [
+        "utf-8",
+        "gbk"
+      ]
+    },
+    {
+      "name": "an alias names its encoding",
+      "policy": {
+        "setting": "cp936"
+      },
+      "candidates": [
+        "gbk"
+      ]
+    },
+    {
+      "name": "utf-16 is not an output encoding",
+      "policy": {
+        "setting": "utf-16"
+      },
+      "error": "invalid_request"
+    },
+    {
+      "name": "an unknown declaration is rejected",
+      "policy": {
+        "declared": "ebcdic"
+      },
+      "error": "invalid_request"
+    },
+    {
+      "name": "an unknown member is rejected",
+      "policy": {
+        "Windows": true
+      },
+      "error": "invalid_request"
+    },
+    {
+      "name": "a code page is not a default policy",
+      "policy": {
+        "codePage": 936
+      },
+      "error": "invalid_request"
+    }
+  ]
+}

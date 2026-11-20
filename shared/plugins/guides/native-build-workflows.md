@@ -31,7 +31,7 @@
 
 构建与测试处理器使用调用上下文的 `run` 启动工具，取消或调用结束会结束它拥有的工具树。工具正常返回非零码仍是执行结果；异常属于协议或准备失败。不要启动脱离调用的进程，或用一条私有函数代替这些领域入口。
 
-运行准备先等待上游同步和必要构建，再返回 `executable`、原始 `arguments` 数组、工作区相对 `workingDirectory` 和 `environment`。`executable.kind` 只能是 `command`（宿主解析的裸命令名）或 `toolchain`（宿主工具链标识）。处理器不启动长期运行的应用；宿主校验后启动、停止并显示应用输出。构建失败、取消或旧结果失效时不能启动应用。
+运行准备先等待上游同步和必要构建，再返回 `executable`、原始 `arguments` 数组、工作区相对 `workingDirectory` 和 `environment`。`executable.kind` 只能是 `command`（宿主解析的裸命令名）或 `toolchain`（宿主工具链标识）。应用确定按某种非 UTF-8 编码输出时（例如固定写 GBK 的旧程序），可以加 `outputEncoding`，宿主解码控制台的每一行时先试它；不确定时不写。处理器不启动长期运行的应用；宿主校验后启动、停止并显示应用输出。构建失败、取消或旧结果失效时不能启动应用。
 
 执行与测试请求的后端拒绝由 Core 报告为 `plugin.build.failed`。运行准备的 RPC 错误保留通用 LSP `serverError` 分类，不是带退出码的执行结果，也不使用私有函数的 `pluginErrorCode`。宿主在两种失败下都不能启动应用或改走旧命令。
 
@@ -129,7 +129,7 @@ The plugin reads the current project, test, and run facts from the upstream engi
 
 Build and test handlers start tools through the call context's `run`; cancellation or the end of the call ends the tool tree it owns. A tool that returns a non-zero code normally is still an execution result; an exception is a protocol or preparation failure. Do not start processes that outlive the call, and do not replace these domain entry points with a private function.
 
-Run preparation first waits for upstream sync and any required build, then returns `executable`, the raw `arguments` array, a workspace-relative `workingDirectory`, and `environment`. `executable.kind` is only `command` (a bare command name the host resolves) or `toolchain` (a host toolchain identifier). The handler does not start a long-running application; the host validates the plan, then starts and stops the application and shows its output. A build failure, cancellation, or stale result must not start the application.
+Run preparation first waits for upstream sync and any required build, then returns `executable`, the raw `arguments` array, a workspace-relative `workingDirectory`, and `environment`. `executable.kind` is only `command` (a bare command name the host resolves) or `toolchain` (a host toolchain identifier). When the application is known to write a non-UTF-8 encoding (for example an old program that always writes GBK), the plan can add `outputEncoding`, which the host tries first for every console line; leave it out when unsure. The handler does not start a long-running application; the host validates the plan, then starts and stops the application and shows its output. A build failure, cancellation, or stale result must not start the application.
 
 Core reports a backend rejection of an execute or test request as `plugin.build.failed`. An RPC error from run preparation keeps the generic LSP `serverError` classification; it is not an execution result with an exit code and does not use the private-function `pluginErrorCode`. In both failures the host must not start the application or fall back to an old command.
 

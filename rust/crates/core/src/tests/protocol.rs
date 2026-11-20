@@ -584,10 +584,69 @@ fn output_style_fixtures_cross_the_json_boundary() {
             assert_eq!(result["ok"], true, "{}: {result}", case["name"]);
             lines.extend(result["data"]["lines"].as_array().unwrap().iter().cloned());
             state = result["data"]["state"].clone();
+            // For text the open line is the state's line.
+            assert_eq!(result["data"]["open"], state["line"], "{}", case["name"]);
         }
         assert_eq!(Value::Array(lines), case["lines"], "{}", case["name"]);
         assert_eq!(state["line"], case["open"], "{}", case["name"]);
     }
+}
+
+#[test]
+fn output_encoding_fixtures_cross_the_json_boundary() {
+    // Each decode case replays its byte chunks with the state the previous answer returned.
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../fixtures/terminal/output-encoding-v1.json"
+    ))
+    .unwrap();
+    for case in fixture["decode"].as_array().unwrap() {
+        let mut lines = Vec::new();
+        let mut state = Value::Null;
+        let mut open = Value::Null;
+        for chunk in case["chunks"].as_array().unwrap() {
+            let bytes = hex_bytes(chunk.as_str().unwrap());
+            let mut request = serde_json::json!({ "bytes": BASE64.encode(bytes) });
+            if !case["encoding"].is_null() {
+                request["encoding"] = case["encoding"].clone();
+            }
+            if !state.is_null() {
+                request["state"] = state;
+            }
+            let result = call_fixture_command("outputStyle.decode", request);
+            assert_eq!(result["ok"], true, "{}: {result}", case["name"]);
+            lines.extend(result["data"]["lines"].as_array().unwrap().iter().cloned());
+            open = result["data"]["open"].clone();
+            state = result["data"]["state"].clone();
+        }
+        assert_eq!(Value::Array(lines), case["lines"], "{}", case["name"]);
+        assert_eq!(open, case["open"], "{}", case["name"]);
+    }
+    for case in fixture["resolve"].as_array().unwrap() {
+        let result = call_fixture_command("outputEncoding.resolve", case["policy"].clone());
+        if case["error"].is_null() {
+            assert_eq!(result["ok"], true, "{}: {result}", case["name"]);
+            assert_eq!(
+                result["data"]["candidates"], case["candidates"],
+                "{}",
+                case["name"]
+            );
+            assert_eq!(
+                result["data"]["encodings"], fixture["encodings"],
+                "{}",
+                case["name"]
+            );
+        } else {
+            assert_eq!(result["ok"], false, "{}: {result}", case["name"]);
+            assert_eq!(result["error"]["code"], case["error"], "{}", case["name"]);
+        }
+    }
+}
+
+fn hex_bytes(hex: &str) -> Vec<u8> {
+    (0..hex.len())
+        .step_by(2)
+        .map(|at| u8::from_str_radix(&hex[at..at + 2], 16).unwrap())
+        .collect()
 }
 
 #[test]

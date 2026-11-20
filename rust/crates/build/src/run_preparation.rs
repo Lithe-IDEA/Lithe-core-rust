@@ -323,7 +323,24 @@ pub(crate) fn decode(
     }
     let mut fields = process_fields(request)?;
     fields["executable"] = json!({"kind":kind,"value":name});
+    if let Some(encoding) = output_encoding(value).map_err(|()| invalid())? {
+        fields["outputEncoding"] = json!(encoding);
+    }
     Ok(fields)
+}
+
+/// The encoding a process plan says the process writes to its output, as its stable id: the
+/// host's automatic decoding tries it first (see `outputEncoding.resolve`). Absent is `None`;
+/// a value that is not a supported id or alias is `Err`.
+pub(super) fn output_encoding(process: &Value) -> Result<Option<&'static str>, ()> {
+    match process.get("outputEncoding") {
+        None => Ok(None),
+        Some(value) => value
+            .as_str()
+            .and_then(|text| lithe_terminal::OutputEncoding::parse(text).ok())
+            .map(|encoding| Some(encoding.id()))
+            .ok_or(()),
+    }
 }
 
 /// Common bounded arguments, environment and workspace-contained directory.

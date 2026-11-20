@@ -7,15 +7,23 @@
 //! how a carriage return rewrites a line and how long a line may grow. The host owns the palette
 //! and how a style is drawn.
 //!
+//! A host passes either text or the bytes the process wrote. Bytes are cut into lines at `\n`
+//! and `\r` first, and each line is decoded with the encoding it is valid in (see
+//! [`crate::encoding`]). A line the output has not ended yet is held as bytes until it ends,
+//! because its encoding is only known then; the answer shows it decoded so far.
+//!
 //! Decoding keeps no state between calls. Every answer returns the state the next chunk of the
 //! same console continues from: an escape sequence the chunk ended inside, the style in effect,
-//! a pending carriage return and the line the output has not ended yet. Splitting the same output
-//! into different chunks therefore never changes the lines.
+//! a pending carriage return, the line the output has not ended yet and the bytes still held.
+//! Splitting the same output into different chunks therefore never changes the lines.
 
+use base64::Engine as _;
 use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 
-/// Largest chunk one request may carry, in UTF-8 bytes.
+use crate::encoding::{complete_prefix, decode_line, OutputEncoding, OutputEncodingPolicy};
+
+/// Largest chunk one request may carry, in bytes (UTF-8 bytes for text).
 const MAX_TEXT_BYTES: usize = 1 << 20;
 /// Longest line Core keeps, in UTF-8 bytes; longer output continues on the next line.
 pub const MAX_LINE_BYTES: usize = 16 << 10;
@@ -23,6 +31,11 @@ pub const MAX_LINE_BYTES: usize = 16 << 10;
 pub const MAX_SPANS_PER_LINE: usize = 512;
 /// Longest unfinished escape sequence carried to the next chunk, in UTF-8 bytes.
 const MAX_PENDING_BYTES: usize = 4096;
+/// Most bytes of an unfinished line held back. A byte never decodes to more than three UTF-8
+/// bytes, so held bytes always fit in the open line they are shown on.
+const MAX_HELD_BYTES: usize = MAX_LINE_BYTES / 3;
+/// Standard base64, the form of a request's bytes and of the held bytes.
+const BASE64: base64::engine::GeneralPurpose = base64::engine::general_purpose::STANDARD;
 
 const ESC: char = '\u{1b}';
 
@@ -157,13 +170,14 @@ pub struct OutputLine {
 
 /// Where one console's output stands after a chunk.
 ///
-/// The host passes it back unchanged with the next chunk of the same console and shows `line`
-/// after the finished lines; it reads nothing else in it. Dropping the state ends the console:
-/// the open line stays as it is and an unfinished escape sequence is discarded.
+/// The host passes it back unchanged with the next chunk of the same console and reads nothing
+/// in it; it shows the answer's `open` line. Dropping the state ends the console: the open line
+/// stays as the host shows it and an unfinished escape sequence is discarded.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct OutputStyleState {
-    /// The line the output has not ended yet; empty text when the last chunk ended a line.
+    /// The decoded part of the line the output has not ended yet; empty text when the last
+    /// chunk ended a line.
     #[serde(default)]
     pub line: OutputLine,
     /// The style the next character is drawn with.
@@ -175,15 +189,28 @@ pub struct OutputStyleState {
     /// A carriage return moved to the start of `line`: the next printed character replaces it.
     #[serde(default, skip_serializing_if = "is_false")]
     pub carriage: bool,
+    /// The bytes that continue `line` and are not decoded yet, in standard base64; only in
+    /// answers to bytes.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub held: String,
 }
 
 /// `outputStyle.decode` request: the next chunk of one console and the state the previous
-/// chunk left. A console's first chunk carries no state.
-#[derive(Debug, Deserialize)]
+/// chunk left. A console's first chunk carries no state; every chunk of one console carries
+/// the same kind of input, text or bytes.
+#[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DecodeOutputStyleRequest {
-    /// The chunk, at most 1 MiB of UTF-8.
-    pub text: String,
+    /// The chunk as text, at most 1 MiB of UTF-8. Exactly one of `text` and `bytes` is present.
+    #[serde(default)]
+    pub text: Option<String>,
+    /// The chunk as the bytes the process wrote, in standard base64, at most 1 MiB decoded.
+    #[serde(default)]
+    pub bytes: Option<String>,
+    /// How the bytes become text; absent is automatic with no declared encoding and no Windows
+    /// compatibility. Only with `bytes`.
+    #[serde(default)]
+    pub encoding: Option<OutputEncodingPolicy>,
     /// The state the previous answer for this console returned, unchanged.
     #[serde(default)]
     pub state: Option<OutputStyleState>,
@@ -193,9 +220,12 @@ pub struct DecodeOutputStyleRequest {
 #[derive(Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct DecodeOutputStyleResponse {
-    /// The lines this chunk ended, oldest first; the first continues the request's open line.
+    /// The lines this chunk ended, oldest first; the first continues the previous open line.
     pub lines: Vec<OutputLine>,
-    /// The state for the next chunk; its `line` is the line still open.
+    /// The line still open, as the host shows it after the finished lines. For bytes it
+    /// includes the held bytes decoded so far, so a later answer may show them differently.
+    pub open: OutputLine,
+    /// The state for the next chunk.
     pub state: OutputStyleState,
 }
 
@@ -209,54 +239,125 @@ pub struct DecodeOutputStyleResponse {
 /// DCS, APC, PM, SOS) and escape, and every control character except tab, is dropped; the text
 /// between OSC 8 hyperlink markers is kept. Lines longer than 16 KiB continue on the next line.
 ///
+/// Bytes are decoded one line at a time, a line ended by `\n` or `\r`, with the first of the
+/// policy's candidates the line is valid in. An unfinished line is held until it ends; one that
+/// grows past what its open line can show is decoded up to its last character boundary.
+///
 /// # Errors
 ///
-/// `InvalidRequest` when the chunk is larger than 1 MiB or the state is not one this command
-/// returned: an open line over the limits, ranges outside the line or out of order, or a
-/// pending sequence that is not an escape.
+/// `InvalidRequest` when the request has neither or both of `text` and `bytes`, carries an
+/// encoding with text, names an unsupported encoding or has a chunk larger than 1 MiB, or when
+/// the state is not one this command returned for the same kind of input: an open line over
+/// the limits, ranges outside the line or out of order, a pending sequence that is not an
+/// escape, or held bytes that are not the base64 of an unfinished line.
 pub fn decode_output_style(
     request: DecodeOutputStyleRequest,
 ) -> Result<DecodeOutputStyleResponse, CoreError> {
-    if request.text.len() > MAX_TEXT_BYTES {
-        return Err(CoreError::new(
-            ErrorCode::InvalidRequest,
-            "The output chunk is too large.",
-        ));
-    }
+    let invalid = |message: &'static str| CoreError::new(ErrorCode::InvalidRequest, message);
     let state = request.state.unwrap_or_default();
     let units = validated_units(&state)?;
-    let mut input = state.pending;
-    input.push_str(&request.text);
-    let mut decoder = Decoder {
-        line: LineBuilder {
-            text: state.line.text,
-            units,
-            spans: state.line.spans,
-        },
-        style: state.style,
-        carriage: state.carriage,
-        finished: Vec::new(),
-    };
-    let pending = decoder.run(&input);
-    Ok(DecodeOutputStyleResponse {
-        lines: decoder.finished,
-        state: OutputStyleState {
-            line: decoder.line.take(),
+    match (request.text, request.bytes) {
+        (Some(text), None) => {
+            if request.encoding.is_some() {
+                return Err(invalid("An output encoding applies only to bytes."));
+            }
+            if text.len() > MAX_TEXT_BYTES {
+                return Err(invalid("The output chunk is too large."));
+            }
+            if !state.held.is_empty() {
+                return Err(invalid_state());
+            }
+            let (mut decoder, pending) = Decoder::resume(state, units);
+            let pending = decoder.run_after(pending, &text);
+            let open = decoder.line.snapshot();
+            Ok(decoder.answer(open, pending, &[]))
+        }
+        (None, Some(bytes)) => {
+            if bytes.len() > MAX_TEXT_BYTES.div_ceil(3) * 4 {
+                return Err(invalid("The output chunk is too large."));
+            }
+            let bytes = BASE64.decode(bytes).map_err(|error| {
+                invalid("The output bytes are not base64.").with_details(error.to_string())
+            })?;
+            if bytes.len() > MAX_TEXT_BYTES {
+                return Err(invalid("The output chunk is too large."));
+            }
+            let candidates = request.encoding.unwrap_or_default().candidates()?;
+            decode_bytes(state, units, &bytes, &candidates)
+        }
+        _ => Err(invalid(
+            "An output chunk has exactly one of text and bytes.",
+        )),
+    }
+}
+
+/// Decodes a chunk of bytes: the lines it ends are decoded and fed to the decoder; the rest is
+/// held and shown decoded so far.
+fn decode_bytes(
+    mut state: OutputStyleState,
+    units: u32,
+    bytes: &[u8],
+    candidates: &[OutputEncoding],
+) -> Result<DecodeOutputStyleResponse, CoreError> {
+    let mut input = BASE64
+        .decode(std::mem::take(&mut state.held))
+        .map_err(|_| invalid_state())?;
+    if input.len() > MAX_HELD_BYTES || input.iter().copied().any(is_line_break) {
+        return Err(invalid_state());
+    }
+    input.extend_from_slice(bytes);
+    let ended = input
+        .iter()
+        .copied()
+        .rposition(is_line_break)
+        .map_or(0, |at| at + 1);
+    let mut text = String::new();
+    for line in input[..ended].split_inclusive(|byte| is_line_break(*byte)) {
+        let (content, ending) = line.split_at(line.len() - 1);
+        text.push_str(&decode_line(content, candidates, true));
+        text.push(char::from(ending[0]));
+    }
+    let (mut decoder, pending) = Decoder::resume(state, units);
+    let mut pending = decoder.run_after(pending, &text);
+    let mut held = &input[ended..];
+    if decoder.line.text.len() + 3 * held.len() > MAX_LINE_BYTES {
+        // The open line could not show the held bytes: decode what ends on a character.
+        let end = complete_prefix(held, candidates);
+        pending = decoder.run_after(pending, &decode_line(&held[..end], candidates, true));
+        held = &held[end..];
+    }
+    let mut open = decoder.line.snapshot();
+    if !held.is_empty() {
+        let mut preview = Decoder {
+            line: decoder.line.clone(),
             style: decoder.style,
-            pending,
             carriage: decoder.carriage,
-        },
-    })
+            finished: Vec::new(),
+        };
+        preview.run_after(pending.clone(), &decode_line(held, candidates, false));
+        // The few bytes left after an overlong line may not fit its open line; they show once
+        // the line ends.
+        if preview.finished.is_empty() {
+            open = preview.line.take();
+        }
+    }
+    Ok(decoder.answer(open, pending, held))
+}
+
+fn is_line_break(byte: u8) -> bool {
+    byte == b'\n' || byte == b'\r'
+}
+
+fn invalid_state() -> CoreError {
+    CoreError::new(
+        ErrorCode::InvalidRequest,
+        "The output style state is invalid.",
+    )
 }
 
 /// Checks a state the host passed back and returns the UTF-16 length of its open line.
 fn validated_units(state: &OutputStyleState) -> Result<u32, CoreError> {
-    let invalid = || {
-        CoreError::new(
-            ErrorCode::InvalidRequest,
-            "The output style state is invalid.",
-        )
-    };
+    let invalid = invalid_state;
     let line = &state.line;
     if line.text.len() > MAX_LINE_BYTES
         || line.spans.len() > MAX_SPANS_PER_LINE
@@ -282,6 +383,7 @@ fn validated_units(state: &OutputStyleState) -> Result<u32, CoreError> {
 
 /// The open line while a chunk is decoded. Its UTF-16 length is kept so a range never needs
 /// a rescan of the text.
+#[derive(Clone)]
 struct LineBuilder {
     text: String,
     units: u32,
@@ -300,6 +402,13 @@ impl LineBuilder {
         OutputLine {
             text: std::mem::take(&mut self.text),
             spans: std::mem::take(&mut self.spans),
+        }
+    }
+
+    fn snapshot(&self) -> OutputLine {
+        OutputLine {
+            text: self.text.clone(),
+            spans: self.spans.clone(),
         }
     }
 
@@ -352,6 +461,53 @@ enum Scan<'a> {
 }
 
 impl Decoder {
+    /// Continues the console a validated state left, and returns the unfinished escape
+    /// sequence the state carries.
+    fn resume(state: OutputStyleState, units: u32) -> (Self, String) {
+        let decoder = Self {
+            line: LineBuilder {
+                text: state.line.text,
+                units,
+                spans: state.line.spans,
+            },
+            style: state.style,
+            carriage: state.carriage,
+            finished: Vec::new(),
+        };
+        (decoder, state.pending)
+    }
+
+    /// Decodes `text` after the unfinished escape sequence `pending` and returns the one it
+    /// ends inside, if any.
+    fn run_after(&mut self, mut pending: String, text: &str) -> String {
+        pending.push_str(text);
+        self.run(&pending)
+    }
+
+    /// The answer: the finished lines, the line shown open and the state to continue from.
+    fn answer(
+        mut self,
+        open: OutputLine,
+        pending: String,
+        held: &[u8],
+    ) -> DecodeOutputStyleResponse {
+        DecodeOutputStyleResponse {
+            lines: std::mem::take(&mut self.finished),
+            open,
+            state: OutputStyleState {
+                line: self.line.take(),
+                style: self.style,
+                pending,
+                carriage: self.carriage,
+                held: if held.is_empty() {
+                    String::new()
+                } else {
+                    BASE64.encode(held)
+                },
+            },
+        }
+    }
+
     /// Decodes `input` and returns the unfinished escape sequence it ends inside, if any.
     fn run(&mut self, input: &str) -> String {
         let mut index = 0;
@@ -651,14 +807,55 @@ mod tests {
         let mut state = None;
         for chunk in chunks {
             let response = decode_output_style(DecodeOutputStyleRequest {
-                text: (*chunk).to_owned(),
+                text: Some((*chunk).to_owned()),
                 state: state.take(),
+                ..DecodeOutputStyleRequest::default()
             })
             .unwrap();
+            assert_eq!(response.open, response.state.line);
             lines.extend(response.lines);
             state = Some(response.state);
         }
         (lines, state.unwrap())
+    }
+
+    /// Decodes byte chunks of one console and returns the lines, the last open line and the
+    /// last state.
+    fn decode_bytes(
+        chunks: &[&[u8]],
+        encoding: &OutputEncodingPolicy,
+    ) -> (Vec<OutputLine>, OutputLine, OutputStyleState) {
+        let mut lines = Vec::new();
+        let mut open = OutputLine::default();
+        let mut state = None;
+        for chunk in chunks {
+            let response = decode_output_style(DecodeOutputStyleRequest {
+                bytes: Some(BASE64.encode(chunk)),
+                encoding: Some(encoding.clone()),
+                state: state.take(),
+                ..DecodeOutputStyleRequest::default()
+            })
+            .unwrap();
+            lines.extend(response.lines);
+            open = response.open;
+            state = Some(response.state);
+        }
+        (lines, open, state.unwrap())
+    }
+
+    fn windows_chinese() -> OutputEncodingPolicy {
+        OutputEncodingPolicy {
+            windows: true,
+            ..OutputEncodingPolicy::default()
+        }
+    }
+
+    fn gbk(text: &str) -> Vec<u8> {
+        encoding_rs::GBK.encode(text).0.into_owned()
+    }
+
+    fn texts(lines: &[OutputLine]) -> Vec<&str> {
+        lines.iter().map(|line| line.text.as_str()).collect()
     }
 
     fn style(foreground: u8, bold: bool) -> OutputStyle {
@@ -726,7 +923,7 @@ mod tests {
     #[test]
     fn a_state_with_ranges_outside_its_line_is_rejected() {
         let error = decode_output_style(DecodeOutputStyleRequest {
-            text: String::new(),
+            text: Some(String::new()),
             state: Some(OutputStyleState {
                 line: OutputLine {
                     text: "ab".to_owned(),
@@ -738,9 +935,117 @@ mod tests {
                 },
                 ..OutputStyleState::default()
             }),
+            ..DecodeOutputStyleRequest::default()
         })
         .unwrap_err();
         assert!(matches!(error.code, ErrorCode::InvalidRequest));
+    }
+
+    #[test]
+    fn every_split_of_mixed_encoding_bytes_decodes_the_same_lines() {
+        // A Windows build prints its own UTF-8 lines and a JVM's GBK lines, coloured, with a
+        // progress rewrite; a cut anywhere, inside a character or an escape, changes nothing.
+        let mut bytes = b"\x1b[1;34m[INFO]\x1b[m ".to_vec();
+        bytes.extend(gbk("测试通过"));
+        bytes.extend("\r\n构建 ✓\n".as_bytes());
+        bytes.extend(gbk("下载 10%"));
+        bytes.extend(b"\r");
+        bytes.extend(gbk("下载 100%"));
+        let policy = windows_chinese();
+        let (whole, whole_open, whole_state) = decode_bytes(&[&bytes], &policy);
+        assert_eq!(texts(&whole), ["[INFO] 测试通过", "构建 ✓"]);
+        assert_eq!(whole_open.text, "下载 100%");
+        for split in 1..bytes.len() {
+            let (lines, open, state) = decode_bytes(&[&bytes[..split], &bytes[split..]], &policy);
+            assert_eq!(lines, whole, "split at {split}");
+            assert_eq!(open, whole_open, "split at {split}");
+            assert_eq!(state, whole_state, "split at {split}");
+        }
+    }
+
+    #[test]
+    fn an_unfinished_line_shows_what_is_decoded_so_far() {
+        let bytes = gbk("编码");
+        let (lines, open, state) = decode_bytes(&[&bytes[..3]], &windows_chinese());
+        assert!(lines.is_empty());
+        assert_eq!(open.text, "编");
+        assert!(state.line.text.is_empty());
+        assert!(!state.held.is_empty());
+        let (lines, _, _) = decode_bytes(&[&bytes[..3], &bytes[3..], b"\n"], &windows_chinese());
+        assert_eq!(texts(&lines), ["编码"]);
+    }
+
+    #[test]
+    fn a_fixed_encoding_decodes_every_line_with_it() {
+        let big5 = encoding_rs::BIG5.encode("編譯").0.into_owned();
+        let policy = OutputEncodingPolicy {
+            setting: Some("big5".to_owned()),
+            windows: true,
+            ..OutputEncodingPolicy::default()
+        };
+        let mut bytes = big5.clone();
+        bytes.push(b'\n');
+        let (lines, _, _) = decode_bytes(&[&bytes], &policy);
+        assert_eq!(texts(&lines), ["編譯"]);
+        // Automatic decoding on Windows would not read Big5 as Big5.
+        let (lines, _, _) = decode_bytes(&[&bytes], &windows_chinese());
+        assert_ne!(texts(&lines), ["編譯"]);
+    }
+
+    #[test]
+    fn an_overlong_unfinished_line_is_decoded_at_a_character_boundary() {
+        let line = gbk(&"中".repeat(MAX_HELD_BYTES));
+        let (lines, open, state) = decode_bytes(&[&line[..line.len() - 1]], &windows_chinese());
+        assert!(lines.is_empty());
+        assert!(open.text.chars().all(|ch| ch == '中'));
+        // Everything up to the last whole character is decoded; its lead byte is held.
+        assert_eq!(BASE64.decode(&state.held).unwrap(), [line[line.len() - 2]]);
+        let (lines, _, _) = decode_bytes(
+            &[&line[..line.len() - 1], &line[line.len() - 1..], b"\n"],
+            &windows_chinese(),
+        );
+        let joined: String = lines.iter().map(|line| line.text.as_str()).collect();
+        assert_eq!(joined, "中".repeat(MAX_HELD_BYTES));
+    }
+
+    #[test]
+    fn a_request_has_exactly_one_kind_of_input() {
+        let both = DecodeOutputStyleRequest {
+            text: Some(String::new()),
+            bytes: Some(String::new()),
+            ..DecodeOutputStyleRequest::default()
+        };
+        let encoding_with_text = DecodeOutputStyleRequest {
+            text: Some(String::new()),
+            encoding: Some(windows_chinese()),
+            ..DecodeOutputStyleRequest::default()
+        };
+        let held_with_text = DecodeOutputStyleRequest {
+            text: Some(String::new()),
+            state: Some(OutputStyleState {
+                held: BASE64.encode("a"),
+                ..OutputStyleState::default()
+            }),
+            ..DecodeOutputStyleRequest::default()
+        };
+        let held_line_break = DecodeOutputStyleRequest {
+            bytes: Some(String::new()),
+            state: Some(OutputStyleState {
+                held: BASE64.encode("a\n"),
+                ..OutputStyleState::default()
+            }),
+            ..DecodeOutputStyleRequest::default()
+        };
+        for request in [
+            DecodeOutputStyleRequest::default(),
+            both,
+            encoding_with_text,
+            held_with_text,
+            held_line_break,
+        ] {
+            let error = decode_output_style(request).unwrap_err();
+            assert!(matches!(error.code, ErrorCode::InvalidRequest));
+        }
     }
 
     #[test]

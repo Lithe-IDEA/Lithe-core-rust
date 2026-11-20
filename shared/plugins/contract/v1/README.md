@@ -2350,6 +2350,20 @@ keys match `[A-Za-z_][A-Za-z0-9_]*` with at most 128 bytes, values are strings
 of at most 64 KiB without NUL. The complete JSON is bounded at 32 MiB.
 `workingDirectory` must be an existing workspace-relative directory inside
 the selected instance, including after resolving filesystem aliases.
+
+`outputEncoding` is optional: the character encoding the process writes to
+stdout and stderr, for a provider that knows it, for example because it starts
+the tool with a fixed output encoding. It is one of `utf-8`, `gbk`, `gb18030`,
+`big5`, `shift-jis`, `euc-jp`, `euc-kr`, `windows-874`, `windows-1250` to
+`windows-1258` and `koi8-r`, matched case-insensitively; the aliases `utf8`,
+`cp936`, `cp950`, `shift_jis`, `sjis`, `cp932`, `eucjp`, `euckr`, `cp949`,
+`cp874`, `cp1250` to `cp1258`, `iso-8859-1`, `latin1` (both `windows-1252`)
+and `koi8r` are accepted, and the decoded plan carries the id. Any other
+value, UTF-16 included, fails as `plugin.build.invalidOutput`. The host still
+decodes each output line on its own: with the automatic console encoding
+setting it tries the declared encoding first, then UTF-8, then GBK on Windows, and a fixed encoding the user chose overrides the
+declaration. Leave it out when unsure; automatic decoding uses UTF-8 everywhere and falls back to GBK on Windows.
+
 Unknown fields are ignored. The host calls `build.decodeRunPreparation`
 with its workspace root, instance root and raw result; any malformed plan
 fails as `plugin.build.invalidOutput` before executable resolution.
@@ -4166,14 +4180,16 @@ context it started in has closed.
 
 - `label` is 1 to 256 characters without control characters. It titles the
   Run window entry.
-- `process` is `{executable, arguments, workingDirectory, environment}`, all
-  four required. `executable` is `{kind: "tool", tool}`, a tool that the
+- `process` is `{executable, arguments, workingDirectory, environment,
+  outputEncoding?}`, the first four required. `executable` is `{kind: "tool", tool}`, a tool that the
   manifest lists in `requiresTools` (the host resolves it through the
   [tool-definition layers](toolchains/README.md)), or `{kind: "packaged", path}`, a
   normalized relative path of a file inside the plugin package. Arguments, the
   working directory (relative to the workspace root and an existing directory
   inside it) and the environment have the bounds of
-  [run preparation](#provider-run-preparation). An unknown
+  [run preparation](#provider-run-preparation). `outputEncoding` declares the
+  encoding the process writes, as in run preparation; a value the host cannot
+  decode lines in is refused at `process.outputEncoding`. An unknown
   `process` field is refused.
 - `temporaryFiles` is at most four files of up to 4 MiB each. A file is
   `{name, contents}`, text the host writes as UTF-8, or `{name, base64}`,

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "description": "outputStyle.decode: each case sends its chunks in order, passing back the state each answer returned. lines are all finished lines, oldest first; open is the final state's line.",
+  "description": "outputStyle.decode: each case sends its chunks in order, passing back the state each answer returned. lines are all finished lines, oldest first; open is the last answer's open line, the same as its state's line.",
   "cases": [
     {
       "name": "maven info line",
