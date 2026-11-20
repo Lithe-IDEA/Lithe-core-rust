@@ -884,6 +884,7 @@ dependencies = [
  "lithe-plugin-model",
  "lithe-protocol",
  "lithe-remote",
+ "lithe-terminal",
  "lithe-workspace",
  "quick-xml",
  "regex",
@@ -1493,6 +1494,8 @@ dependencies = [
 name = "lithe-terminal"
 version = "0.1.0"
 dependencies = [
+ "base64",
+ "encoding_rs",
  "lithe-protocol",
  "serde",
  "serde_json",

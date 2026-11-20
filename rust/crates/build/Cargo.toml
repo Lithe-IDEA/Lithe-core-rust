@@ -12,6 +12,7 @@ lithe-execution = { path = "../execution" }
 lithe-plugin-model = { path = "../plugin-model" }
 lithe-protocol = { path = "../protocol" }
 lithe-remote = { path = "../remote", default-features = false, features = ["client"] }
+lithe-terminal = { path = "../terminal" }
 lithe-workspace = { path = "../workspace" }
 quick-xml = "0.37"
 regex = "1.11"

@@ -118,7 +118,7 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | API-21 | `credentials/set` | 保存密钥，最多 16 KiB | `credentials.store` | 0 |
 | API-21 | `credentials/delete` | 删除密钥，没有保存过也返回 `null` | `credentials.store` | 0 |
 | API-22、API-25 | `languageServer/setStatus` | 在宿主状态界面显示插件自己的语言服务器准备状态（`preparing`、`ready`、`degraded`、`failed`，可带消息和百分比） | `languageServer.request` | 0 |
-| API-23 | `run/start` | 启动宿主拥有的 Run 会话（Run 窗口条目、控制台、停止按钮）；可执行文件只能是工具定义 ID 或插件包内文件，可带临时文件、调试和再次运行，返回 `runID` | `run.start` | 0 |
+| API-23 | `run/start` | 启动宿主拥有的 Run 会话（Run 窗口条目、控制台、停止按钮）；可执行文件只能是工具定义 ID 或插件包内文件，可带临时文件、输出编码、调试和再次运行，返回 `runID` | `run.start` | 0 |
 | API-23 | `run/stop` | 按 `runID` 或 `sessionID` 停止本插件启动的运行或调试会话；不带 `context` | `run.start` | 0 |
 | API-24 | `terminal/create` | 经执行确认创建插件自有原生终端，返回 `terminalID` 和 `generation` | `terminal.create` | 0 |
 | API-24 | `terminal/show` | 显示并选中本插件的终端 | `terminal.create` | 0 |
@@ -290,7 +290,7 @@ Requests a backend sends to the host, all prefixed `lithe/host/`; the tables omi
 | API-21 | `credentials/set` | Stores a secret of at most 16 KiB | `credentials.store` | 0 |
 | API-21 | `credentials/delete` | Deletes a secret; also returns `null` when nothing was stored | `credentials.store` | 0 |
 | API-22, API-25 | `languageServer/setStatus` | Shows the plugin's own language server preparation state (`preparing`, `ready`, `degraded`, `failed`, optionally with a message and a percentage) in the host's status UI | `languageServer.request` | 0 |
-| API-23 | `run/start` | Starts a host-owned Run session (Run window entry, console, Stop button); the executable can only be a tool-definition ID or a file inside the plugin package, and the call can carry temporary files, debugging, and rerun, and returns a `runID` | `run.start` | 0 |
+| API-23 | `run/start` | Starts a host-owned Run session (Run window entry, console, Stop button); the executable can only be a tool-definition ID or a file inside the plugin package, and the call can carry temporary files, an output encoding, debugging, and rerun, and returns a `runID` | `run.start` | 0 |
 | API-23 | `run/stop` | Stops a run or debug session this plugin started, by `runID` or `sessionID`; takes no `context` | `run.start` | 0 |
 | API-24 | `terminal/create` | Creates a plugin-owned native terminal after execution consent and returns `terminalID` and `generation` | `terminal.create` | 0 |
 | API-24 | `terminal/show` | Shows and selects one of this plugin's terminals | `terminal.create` | 0 |

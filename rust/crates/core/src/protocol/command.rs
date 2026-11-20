@@ -154,6 +154,10 @@ pub enum CoreCommand {
     /// Decodes one chunk of console output with ANSI escapes into plain lines and styled ranges
     /// (`outputStyle.decode`), from `lithe-terminal`.
     OutputStyleDecode,
+    /// Lists the character encodings console output may be decoded with, and the ones a
+    /// setting, a declaration and a code page select (`outputEncoding.resolve`), from
+    /// `lithe-terminal`.
+    OutputEncodingResolve,
     /// Language server sessions, documents, edits, requests and events (`lsp.*`).
     Lsp(LspCommand),
     /// Normalizes the stored proxy settings into the policy a network stack
@@ -1358,6 +1362,7 @@ impl CoreCommand {
             }
             "terminal.parseLinkTarget" => Some(Self::TerminalParseLinkTarget),
             "outputStyle.decode" => Some(Self::OutputStyleDecode),
+            "outputEncoding.resolve" => Some(Self::OutputEncodingResolve),
             "debug.createSession" => Some(Self::Debug(DebugCommand::CreateSession)),
             "debug.launch" => Some(Self::Debug(DebugCommand::Launch)),
             "debug.steppingFilters" => Some(Self::Debug(DebugCommand::SteppingFilters)),
@@ -1860,6 +1865,7 @@ mod tests {
             "outputLinks.match",
             "outputLinks.decodeResolution",
             "outputStyle.decode",
+            "outputEncoding.resolve",
         ] {
             assert!(CoreCommand::parse(command).is_some(), "missing {command}");
         }

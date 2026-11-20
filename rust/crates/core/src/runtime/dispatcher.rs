@@ -501,6 +501,22 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
                 Err(error) => CoreResponse::failure(id, error),
             }
         }
+        CoreCommand::OutputEncodingResolve => {
+            let result =
+                serde_json::from_value::<lithe_terminal::OutputEncodingPolicy>(parsed.payload)
+                    .map_err(|error| {
+                        CoreError::new(ErrorCode::InvalidRequest, "Invalid output encoding request")
+                            .with_details(error.to_string())
+                    })
+                    .and_then(lithe_terminal::resolve_output_encoding);
+            match result {
+                Ok(data) => CoreResponse::success(
+                    id,
+                    serde_json::to_value(data).expect("output encoding result should encode"),
+                ),
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
         CoreCommand::MarkdownRender => {
             match serde_json::from_value::<MarkdownRenderRequest>(parsed.payload).map_err(|error| {
                 CoreError::new(ErrorCode::InvalidRequest, "Invalid Markdown render request")

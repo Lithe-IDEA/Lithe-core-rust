@@ -45,6 +45,28 @@
       }
     },
     {
+      "name": "a declared output encoding is kept as its id",
+      "params": {
+        "label": "Run legacy tool",
+        "process": {
+          "executable": { "kind": "tool", "tool": "interpreter" },
+          "arguments": [],
+          "workingDirectory": ".",
+          "environment": {},
+          "outputEncoding": "CP936"
+        }
+      },
+      "start": {
+        "label": "Run legacy tool",
+        "executable": { "kind": "toolchain", "value": "interpreter" },
+        "arguments": [],
+        "workingDirectory": ".",
+        "environment": {},
+        "temporaryFiles": [],
+        "outputEncoding": "gbk"
+      }
+    },
+    {
       "name": "a debug connection and a rerun function are kept",
       "params": {
         "label": "Debug main.script",
@@ -187,6 +209,20 @@
         }
       },
       "error": { "code": "plugin.run.invalidStart", "field": "process.shell" }
+    },
+    {
+      "name": "an output encoding the host cannot decode lines in",
+      "params": {
+        "label": "Run",
+        "process": {
+          "executable": { "kind": "tool", "tool": "interpreter" },
+          "arguments": [],
+          "workingDirectory": ".",
+          "environment": {},
+          "outputEncoding": "utf-16"
+        }
+      },
+      "error": { "code": "plugin.run.invalidStart", "field": "process.outputEncoding" }
     },
     {
       "name": "a label with a line break",
