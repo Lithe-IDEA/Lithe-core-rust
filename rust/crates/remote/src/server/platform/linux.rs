@@ -5,7 +5,6 @@ use crate::protocol::methods::{ListeningPort, OperatingSystem, OrphanProtection}
 use std::collections::HashSet;
 use std::io;
 use std::net::{Ipv4Addr, Ipv6Addr};
-use std::os::fd::RawFd;
 use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::Command;
@@ -111,30 +110,6 @@ fn process_sessions() -> impl Iterator<Item = (u32, u32)> {
 fn stat_session(stat: &str) -> Option<u32> {
     let (_, after_name) = stat.rsplit_once(')')?;
     after_name.split_whitespace().nth(3)?.parse().ok()
-}
-
-/// User id of the process on the other end of a Unix socket.
-pub(crate) fn peer_uid(socket: RawFd) -> io::Result<u32> {
-    let mut credentials = libc::ucred {
-        pid: 0,
-        uid: 0,
-        gid: 0,
-    };
-    let mut length = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
-    // SAFETY: the out-pointers reference live locals of the declared size.
-    let status = unsafe {
-        libc::getsockopt(
-            socket,
-            libc::SOL_SOCKET,
-            libc::SO_PEERCRED,
-            (&mut credentials as *mut libc::ucred).cast(),
-            &mut length,
-        )
-    };
-    if status == -1 {
-        return Err(io::Error::last_os_error());
-    }
-    Ok(credentials.uid)
 }
 
 /// Listening TCP sockets in the server's network namespace, which inside a

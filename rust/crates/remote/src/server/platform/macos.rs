@@ -4,7 +4,6 @@ use super::{unix, ChildKind};
 use crate::protocol::methods::{ListeningPort, OperatingSystem, OrphanProtection};
 use std::collections::HashSet;
 use std::io;
-use std::os::fd::RawFd;
 use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -109,16 +108,6 @@ fn process_sessions() -> Vec<(u32, u32)> {
             (session > 0).then_some((pid as u32, session as u32))
         })
         .collect()
-}
-
-pub(crate) fn peer_uid(socket: RawFd) -> io::Result<u32> {
-    let mut uid: libc::uid_t = 0;
-    let mut gid: libc::gid_t = 0;
-    // SAFETY: the out-pointers reference live locals.
-    if unsafe { libc::getpeereid(socket, &mut uid, &mut gid) } == -1 {
-        return Err(io::Error::last_os_error());
-    }
-    Ok(uid)
 }
 
 /// Listening TCP sockets of the remote user's processes. macOS has no

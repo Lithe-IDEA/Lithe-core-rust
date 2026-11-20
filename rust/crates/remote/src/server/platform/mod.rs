@@ -25,9 +25,10 @@ use macos as host;
 #[cfg(target_os = "macos")]
 pub(crate) use macos_watch as watcher;
 
-pub(crate) use host::{
-    case_sensitive, listening_ports, peer_uid, prepare_child, rename_no_replace,
-};
+pub(crate) use host::{case_sensitive, listening_ports, prepare_child, rename_no_replace};
+// Linux and macOS read a socket peer through different calls; lithe-platform
+// keeps both for every Lithe process that checks who is on a Unix socket.
+pub(crate) use lithe_platform::socket::peer_uid;
 pub(crate) use unix::{
     collect_output, current_account, current_uid, live_sessions, open_pty, set_window_size,
     signal_process_group, signal_session,
