@@ -14,16 +14,6 @@
 
 ## 待合入
 
-- [#133](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/133)，[@xiaoyumuxi](https://github.com/xiaoyumuxi)，**`commandInstallers` 1**（API-23）：命令安装新增[下载安装](../contract/v1/README.md#download-installers)：安装声明 `download`（与 `tool`、`minimumVersion`、`arguments` 互斥），固定上游 `version` 和 1–6 个平台归档，每个归档有 `os`、`arch`、HTTPS `url`、可选 `mirrors`（最多 8 个）、完整 `sha256`、`archive`（`zip`/`tar.gz`）和可选 `stripPrefix`，规则与 `managedRuntimes` 归档相同；只能用 `managed` 目标，不带 `arguments`、`environment`，`commandDirectory` 相对解压根目录，`mayUseNetwork` 必须为 `true`。`plugins.commandInstallers.requirements` 和 `plan` 新增可选 `platform: {os, arch}`：带上时没有该平台归档的下载安装不提供；安装条目新增 `download: null | {version}`；计划新增 `download`（工具安装为 `null`，下载安装为选中平台的归档、`cacheKey` 和 `commandDirectory`）。新增 Core 错误码 `plugin.commandInstaller.platformInvalid`、`unavailable`，宿主错误码 `plugin.commandInstaller.downloadFailed`、`checksumMismatch`、`archiveInvalid`；`failed` 只指工具安装失败。下载安装的审查程序列出全部归档，改地址、镜像、摘要或版本需要重新批准；只声明 `commandInstallers` 0 的宿主拒绝安装带下载安装的插件。没有新增宿主方法、通知或 SDK 版本。用于 Rust Support 插件按需下载 CodeLLDB。
-
-- [#130](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/130)，[@1lck](https://github.com/1lck)，**工作区插件推荐**：市场契约新增同级推荐索引格式 `plugin-recommendations.schema.json`（`schemaVersion: 0`，独立于只增不破旧版的 `lithe-plugin-index.json`）；`plugins.marketplace.resolveSource` 额外返回 `recommendationsURL`，并新增宿主内部 Core 命令 `plugins.marketplace.recommendForWorkspace`（不是插件 RPC），基于工作区采集文件名与已有市场索引匹配可安装的缺失插件。见 [1lck/Lithe-IDEA#2228](https://github.com/1lck/Lithe-IDEA/issues/2228)。
-
-- [#127](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/127)，[@Mucheen](https://github.com/Mucheen)，**API-25**：从 `grammar.path` 指定的 TextMate 语法或独立的 `grammars/<language-id>.first-line.json` 读取可选 `firstLineMatch`。独立文件可沿用宿主现有高亮。旧桌面仍可安装 `languages: 0` 的同一插件包。Core 解码返回可选提示并匹配完整首行，既有路径与用户关联优先。见 [1lck/Lithe-IDEA#2122](https://github.com/1lck/Lithe-IDEA/issues/2122)。
-
-- [#128](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/128)，[@xiaoyumuxi](https://github.com/xiaoyumuxi)，`pluginAPIVersion` 0 内的补充（API-23、API-29）：`run/start` 的 `process` 和提供者 `lithe/build/prepareRun` 的返回值新增可选 `outputEncoding`，用稳定编码 ID 或别名声明进程写入管道的编码；Core 校验并规范化，拒绝未知或不兼容 ASCII 的编码。用户固定编码优先；自动模式逐行尝试声明、UTF-8，以及仅 Windows 的 GBK。省略字段时所有平台默认 UTF-8，Windows 兼容 GBK；不修改进程环境或终端代码页。新增宿主内部 Core 命令 `outputEncoding.resolve`，返回同一解析规则的候选与可选编码列表，不是插件 RPC。见 [1lck/Lithe-IDEA#2186](https://github.com/1lck/Lithe-IDEA/issues/2186)。
-
-- [#112](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/112)，[@Mucheen](https://github.com/Mucheen)，**`buildSystems` 1**（API-29）：清单新增 `buildSystems[].test.discoveryCommand`，已有测试运行可以独立采用命令或 provider。命令使用现有构建工具，把 `litheTestDiscovery` v0 写到宿主提供的 `${outputFile}`。Core 的 `build.testDiscoveryPlan`、`build.decodeTestDiscovery` 和测试树兼容两种发现来源，检查每条选择器可原样运行，命令尝试沿用 `lithe/build/discoverTests` 的结构化终态。没有新增宿主方法、通知或 SDK 版本。见 [1lck/Lithe-IDEA#2122](https://github.com/1lck/Lithe-IDEA/issues/2122)。
-
 ## 按协议查首次出现
 
 所有版本都从 `0` 开始。以后一个 PR 给某个能力加版本 `1` 时，在对应的表里为它加一行。
@@ -41,7 +31,7 @@
 | 插件网页桥 `window.lithe.version` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 
 | `litheSettingsSources`、`litheSettingsSourceEdit` | 0 | 2026-11-15 | [#57](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/57) |
-| 市场推荐索引 `schemaVersion` | 0 | 待合入 | [#130](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/130) |
+| 市场推荐索引 `schemaVersion` | 0 | 2026-11-20 | [#130](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/130) |
 
 ### 能力版本（`requires`）
 
@@ -54,9 +44,9 @@
 | `buildProviders` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `buildProviders` | 1 | 2026-11-18 | [#89](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/89) |
 | `buildSystems` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
-| `buildSystems` | 1 | 待合入 | [#112](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/112) |
+| `buildSystems` | 1 | 2026-11-19 | [#112](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/112) |
 | `commandInstallers` | 0 | 2026-11-15 | [#53](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/53) |
-| `commandInstallers` | 1 | 待合入 | [#133](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/133) |
+| `commandInstallers` | 1 | 2026-11-20 | [#133](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/133) |
 | `debugAdapters` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `executionProviders` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `keymapImportProviders` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
@@ -153,15 +143,25 @@
 | — | `keymapImport/listInputs` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | — | `keymapImport/readChunk` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-23 | `run/start`：`temporaryFiles` 增加 `{name, base64}` 字节文件 | 0 | 2026-11-13 | [#23](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/23) |
-| API-23 | `run/start`：`process.outputEncoding` 可选声明 | 0 | 待合入 | [#128](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/128) |
-| API-29 | `lithe/build/prepareRun`：返回值 `outputEncoding` 可选声明（提供者方法） | `litheBuild` 0、1 | 待合入 | [#128](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/128) |
+| API-23 | `run/start`：`process.outputEncoding` 可选声明 | 0 | 2026-11-20 | [#128](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/128) |
+| API-29 | `lithe/build/prepareRun`：返回值 `outputEncoding` 可选声明（提供者方法） | `litheBuild` 0、1 | 2026-11-20 | [#128](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/128) |
 
 ## 时间线（新的在上）
+
+### 2026-11-20
+
+| PR | 修改人 | API 编号 | 协议 / 能力 | 改了什么 |
+| --- | --- | --- | --- | --- |
+| [#133](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/133) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | API-23 | **`commandInstallers` 1** | 命令安装新增[下载安装](../contract/v1/README.md#download-installers)：安装声明 `download`（与 `tool`、`minimumVersion`、`arguments` 互斥），固定上游 `version` 和 1–6 个平台归档，每个归档有 `os`、`arch`、HTTPS `url`、可选 `mirrors`（最多 8 个）、完整 `sha256`、`archive`（`zip`/`tar.gz`）和可选 `stripPrefix`，规则与 `managedRuntimes` 归档相同；只能用 `managed` 目标，不带 `arguments`、`environment`，`commandDirectory` 相对解压根目录，`mayUseNetwork` 必须为 `true`。`plugins.commandInstallers.requirements` 和 `plan` 新增可选 `platform: {os, arch}`：带上时没有该平台归档的下载安装不提供；安装条目新增 `download: null | {version}`；计划新增 `download`（工具安装为 `null`，下载安装为选中平台的归档、`cacheKey` 和 `commandDirectory`）。新增 Core 错误码 `plugin.commandInstaller.platformInvalid`、`unavailable`，宿主错误码 `plugin.commandInstaller.downloadFailed`、`checksumMismatch`、`archiveInvalid`；`failed` 只指工具安装失败。下载安装的审查程序列出全部归档，改地址、镜像、摘要或版本需要重新批准；只声明 `commandInstallers` 0 的宿主拒绝安装带下载安装的插件。没有新增宿主方法、通知或 SDK 版本。用于 Rust Support 插件按需下载 CodeLLDB。 |
+| [#130](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/130) | [@1lck](https://github.com/1lck) | — | **市场推荐索引 `schemaVersion` 0** | 市场契约新增同级推荐索引格式 `plugin-recommendations.schema.json`（`schemaVersion: 0`，独立于只增不破旧版的 `lithe-plugin-index.json`）；`plugins.marketplace.resolveSource` 额外返回 `recommendationsURL`，并新增宿主内部 Core 命令 `plugins.marketplace.recommendForWorkspace`（不是插件 RPC），基于工作区采集文件名与已有市场索引匹配可安装的缺失插件。见 [1lck/Lithe-IDEA#2228](https://github.com/1lck/Lithe-IDEA/issues/2228)。 |
+| [#128](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/128) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | API-23、API-29 | `pluginAPIVersion` 0 内的补充 | `run/start` 的 `process` 和提供者 `lithe/build/prepareRun` 的返回值新增可选 `outputEncoding`，用稳定编码 ID 或别名声明进程写入管道的编码；Core 校验并规范化，拒绝未知或不兼容 ASCII 的编码。用户固定编码优先；自动模式逐行尝试声明、UTF-8，以及仅 Windows 的 GBK。省略字段时所有平台默认 UTF-8，Windows 兼容 GBK；不修改进程环境或终端代码页。新增宿主内部 Core 命令 `outputEncoding.resolve`，返回同一解析规则的候选与可选编码列表，不是插件 RPC。见 [1lck/Lithe-IDEA#2186](https://github.com/1lck/Lithe-IDEA/issues/2186)。 |
+| [#127](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/127) | [@Mucheen](https://github.com/Mucheen) | API-25 | `languages` 0 内的补充 | 从 `grammar.path` 指定的 TextMate 语法或独立的 `grammars/<language-id>.first-line.json` 读取可选 `firstLineMatch`。独立文件可沿用宿主现有高亮。旧桌面仍可安装 `languages: 0` 的同一插件包。Core 解码返回可选提示并匹配完整首行，既有路径与用户关联优先。见 [1lck/Lithe-IDEA#2122](https://github.com/1lck/Lithe-IDEA/issues/2122)。 |
 
 ### 2026-11-19
 
 | PR | 修改人 | API 编号 | 协议 / 能力 | 改了什么 |
 | --- | --- | --- | --- | --- |
+| [#112](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/112) | [@Mucheen](https://github.com/Mucheen) | API-29 | **`buildSystems` 1** | 清单新增 `buildSystems[].test.discoveryCommand`，已有测试运行可以独立采用命令或 provider。命令使用现有构建工具，把 `litheTestDiscovery` v0 写到宿主提供的 `${outputFile}`。Core 的 `build.testDiscoveryPlan`、`build.decodeTestDiscovery` 和测试树兼容两种发现来源，检查每条选择器可原样运行，命令尝试沿用 `lithe/build/discoverTests` 的结构化终态。没有新增宿主方法、通知或 SDK 版本。见 [1lck/Lithe-IDEA#2122](https://github.com/1lck/Lithe-IDEA/issues/2122)。 |
 | [#122](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/122) | [@1lck](https://github.com/1lck) | API-29、API-37 | `buildSystems` 0 内的补充 | 包内翻译文件新增 `buildOptions.<buildSystemID>.<optionID>`，可翻译构建选项的 `displayName`、`description` 和固定选项值的 `title`，规则与 `runConfigurationTypes` 相同，不合规时整份拒绝，错误码 `plugin.build.invalidLocalization`。新 Core 命令 `build.localizeOptions` 接收已启用构建插件的清单和界面语言，采用两阶段读取翻译文件（与 `runConfig.configurationTypes` 相同），返回替换了选项文字的清单，宿主用它检测，选项对话框、工具栏开关和构建树都显示译文。插件清单、宿主方法、通知和能力版本都不变；旧 Core 会忽略翻译文件中的 `buildOptions`。见 [1lck/Lithe-IDEA#2204](https://github.com/1lck/Lithe-IDEA/issues/2204)。 |
 | [#121](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/121) | [@1lck](https://github.com/1lck) | API-29 | `buildSystems` 0 内的行为修正 | `build.resolveOptions` 对没有声明 `default` 的 `text`、`file`、`directory` 选项，用户覆盖时也返回 `implicitValue`，作为撤销覆盖后回到的值，宿主据此保留“覆盖”复选框。没有新增字段、版本号、宿主方法或通知。见 [1lck/Lithe-IDEA#2152](https://github.com/1lck/Lithe-IDEA/issues/2152)。 |
 | [#120](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/120) | [@1lck](https://github.com/1lck) | API-29 | `buildSystems` 0 内的补充 | 清单的 `options[]` 新增 `description`（1–512 字符），作为宿主 ⓘ 中的说明，只用于显示。`litheBuildModel` 和 `model.map` 的 `optionDefaults` 除 `choicesFromModel` 选项外，也可以填 `text`、`file`、`directory` 选项，值是选项未设置时工具实际使用的那一个（如 Maven 的用户设置文件和本地仓库），Core 只保留第一个值。`build.resolveOptions` 对未设置的这类选项返回 `implicitValue`，并返回 `description`。`implicitValue` 只用于显示，不生成参数，也不进入选项指纹。旧 Core 会拒绝声明了 `description` 或给路径选项填 `optionDefaults` 的清单。没有新增版本号、宿主方法、通知或 SDK 版本。见 [1lck/Lithe-IDEA#2152](https://github.com/1lck/Lithe-IDEA/issues/2152)、[#2204](https://github.com/1lck/Lithe-IDEA/issues/2204)。 |
