@@ -72,6 +72,13 @@ pub fn normalize(path: &str, platform: &str, case_sensitive: bool) -> Option<Str
     })
 }
 
+/// Whether a path returned by [`normalize`] names a filesystem root: `/`, a drive
+/// such as `C:/` or a UNC share such as `//server/share/`. Only a root keeps a
+/// trailing separator after normalization.
+pub fn is_root(normalized: &str) -> bool {
+    normalized.ends_with('/')
+}
+
 /// Compares complete native path components with target-platform case rules.
 pub fn within(path: &str, root: &str, platform: &str, case_sensitive: bool) -> bool {
     let Some(path) = normalize(path, platform, case_sensitive) else {

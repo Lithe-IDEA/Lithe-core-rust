@@ -176,6 +176,90 @@
           }
         }
       }
+    },
+    {
+      "name": "trusted-location-added-and-absent-one-removed-without-a-workspace",
+      "command": "toolchains.editCatalog",
+      "input": {
+        "document": "{\"version\":1,\"tools\":{},\"trustedWorkspaces\":[\"/Users/dev/app\"]}",
+        "platform": "macos",
+        "trustedLocations": {
+          "add": [
+            "/Users/dev/code/"
+          ],
+          "remove": [
+            "/Users/dev/old"
+          ]
+        }
+      },
+      "expected": {
+        "status": "ok",
+        "edit": {
+          "changed": true,
+          "document": "{\n  \"version\": 1,\n  \"tools\": {},\n  \"trustedWorkspaces\": [\n    \"/Users/dev/app\"\n  ],\n  \"trustedLocations\": [\n    \"/Users/dev/code\"\n  ]\n}\n",
+          "catalog": {
+            "version": 1,
+            "tools": {},
+            "trustedWorkspaces": [
+              "/Users/dev/app"
+            ],
+            "trustedLocations": [
+              "/Users/dev/code"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "trusted-location-removed-by-platform-identity",
+      "command": "toolchains.editCatalog",
+      "input": {
+        "document": "{\"version\":1,\"tools\":{},\"trustedLocations\":[\"C:/Code\",\"D:/Work\"]}",
+        "platform": "windows",
+        "trustedLocations": {
+          "remove": [
+            "c:\\code\\"
+          ]
+        }
+      },
+      "expected": {
+        "status": "ok",
+        "edit": {
+          "changed": true,
+          "document": "{\n  \"version\": 1,\n  \"tools\": {},\n  \"trustedLocations\": [\n    \"D:/Work\"\n  ]\n}\n",
+          "catalog": {
+            "version": 1,
+            "tools": {},
+            "trustedLocations": [
+              "D:/Work"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "trusted-location-filesystem-root-refused",
+      "command": "toolchains.editCatalog",
+      "input": {
+        "document": null,
+        "platform": "windows",
+        "trustedLocations": {
+          "add": [
+            "D:\\"
+          ]
+        }
+      },
+      "error": "plugin.toolchain.rootLocation"
+    },
+    {
+      "name": "hand-written-root-location-refused",
+      "command": "toolchains.catalogState",
+      "input": {
+        "document": "{\"version\":1,\"tools\":{},\"trustedLocations\":[\"/\"]}",
+        "platform": "macos",
+        "workspaceRoot": "/Users/dev/app"
+      },
+      "error": "plugin.toolchain.invalidDocument"
     }
   ]
 }

@@ -84,6 +84,17 @@ struct WorkspaceTrustEdit {
     location: bool,
 }
 
+/// Folders added to or removed from `trustedLocations` on their own, as on a
+/// trusted locations settings page. Removing an absent folder changes nothing.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct TrustedLocationsEdit {
+    #[serde(default)]
+    add: Vec<String>,
+    #[serde(default)]
+    remove: Vec<String>,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct EditRequest {
@@ -95,6 +106,8 @@ struct EditRequest {
     edits: Vec<Edit>,
     #[serde(default)]
     workspace_trust: Option<WorkspaceTrustEdit>,
+    #[serde(default)]
+    trusted_locations: Option<TrustedLocationsEdit>,
 }
 
 fn invalid(field: &str) -> PluginRejection {
@@ -102,6 +115,25 @@ fn invalid(field: &str) -> PluginRejection {
         "plugin.toolchain.invalidDocument",
         field,
         "Expected bounded global toolchain registrations with unique native homes.",
+    )
+}
+
+/// A filesystem root as a trusted location would trust every project on the volume.
+fn root_location(field: &str) -> PluginRejection {
+    PluginRejection::at(
+        "plugin.toolchain.rootLocation",
+        field,
+        "A filesystem root cannot be a trusted location.",
+    )
+}
+
+/// An edit that would leave a trust list longer than [`MAX_TRUST_ENTRIES`]. Not
+/// `plugin.toolchain.limitExceeded`, which is a provider reply budget.
+fn trust_list_full(field: &str) -> PluginRejection {
+    PluginRejection::at(
+        "plugin.toolchain.trustListFull",
+        field,
+        "A trust list holds at most 256 paths.",
     )
 }
 
@@ -211,6 +243,15 @@ impl Request {
             self.trust_list(&catalog.distrusted_workspaces, "distrustedWorkspaces")?;
         catalog.trusted_locations =
             self.trust_list(&catalog.trusted_locations, "trustedLocations")?;
+        // No edit writes a root, so a root here was written by hand; refusing the
+        // document keeps every workspace in safe mode instead of trusting the volume.
+        if catalog
+            .trusted_locations
+            .iter()
+            .any(|location| paths::is_root(location))
+        {
+            return Err(invalid("trustedLocations"));
+        }
         Ok(catalog)
     }
 
@@ -252,14 +293,9 @@ impl Request {
     fn offered_location(&self, workspace: &str) -> Option<String> {
         let path = paths::normalize(workspace, &self.platform, true)?;
         let (parent, _) = path.rsplit_once('/')?;
-        let root = parent.is_empty()
-            || (self.platform == "windows"
-                && (parent.len() == 2 && parent.ends_with(':')
-                    || parent.starts_with("//") && parent[2..].split('/').count() <= 2));
-        if root {
-            return None;
-        }
-        paths::normalize(parent, &self.platform, true)
+        // `/app` leaves an empty parent and `D:/app` leaves `D:`, neither of which
+        // normalizes; a UNC share root normalizes with its trailing separator.
+        paths::normalize(parent, &self.platform, true).filter(|parent| !paths::is_root(parent))
     }
 }
 
@@ -291,12 +327,17 @@ pub(crate) fn state(input: &Value) -> Validation<Value> {
     Ok(response)
 }
 
-/// Merges confirmed tool edits and one explicit machine-local workspace trust decision,
-/// preserving dormant registrations and the other trust decisions.
+/// Merges confirmed tool edits, one explicit machine-local workspace trust decision
+/// and trusted location changes, preserving dormant registrations and the other
+/// trust decisions.
 pub(crate) fn edit(input: &Value) -> Validation<Value> {
     let request: EditRequest =
         serde_json::from_value(input.clone()).map_err(|_| invalid("input"))?;
-    if (request.edits.is_empty() && request.workspace_trust.is_none()) || request.edits.len() > 64 {
+    if (request.edits.is_empty()
+        && request.workspace_trust.is_none()
+        && request.trusted_locations.is_none())
+        || request.edits.len() > 64
+    {
         return Err(invalid("edits"));
     }
     let source = Request {
@@ -355,18 +396,40 @@ pub(crate) fn edit(input: &Value) -> Validation<Value> {
             locations.entry(key).or_insert(location);
             catalog.trusted_locations = locations.into_values().collect();
         }
-        if [
-            trusted.len(),
-            distrusted.len(),
-            catalog.trusted_locations.len(),
-        ]
-        .iter()
-        .any(|len| *len > MAX_TRUST_ENTRIES)
-        {
-            return Err(invalid("workspaceTrust"));
-        }
         catalog.trusted_workspaces = trusted.into_values().collect();
         catalog.distrusted_workspaces = distrusted.into_values().collect();
+    }
+    if let Some(change) = request.trusted_locations {
+        if change.add.is_empty() && change.remove.is_empty() {
+            return Err(invalid("trustedLocations"));
+        }
+        let add = source.trust_keys(&change.add, "trustedLocations.add")?;
+        let remove = source.trust_keys(&change.remove, "trustedLocations.remove")?;
+        if add.values().any(|location| paths::is_root(location)) {
+            return Err(root_location("trustedLocations.add"));
+        }
+        // Adding and removing one folder at once has no single meaning.
+        if add.keys().any(|key| remove.contains_key(key)) {
+            return Err(invalid("trustedLocations"));
+        }
+        let mut locations = source.trust_keys(&catalog.trusted_locations, "trustedLocations")?;
+        for key in remove.keys() {
+            locations.remove(key);
+        }
+        for (key, location) in add {
+            // A folder already trusted keeps its recorded spelling.
+            locations.entry(key).or_insert(location);
+        }
+        catalog.trusted_locations = locations.into_values().collect();
+    }
+    for (len, field) in [
+        (catalog.trusted_workspaces.len(), "trustedWorkspaces"),
+        (catalog.distrusted_workspaces.len(), "distrustedWorkspaces"),
+        (catalog.trusted_locations.len(), "trustedLocations"),
+    ] {
+        if len > MAX_TRUST_ENTRIES {
+            return Err(trust_list_full(field));
+        }
     }
     let changed = catalog != original;
     let document = if changed {
@@ -659,5 +722,204 @@ mod tests {
             "workspaceTrust": {"workspace": "/Users/dev/app", "trusted": false, "location": true}
         }))
         .is_err());
+    }
+
+    /// The code and field of a refused request.
+    fn refusal(result: Validation<Value>) -> (&'static str, String) {
+        let rejection = result.expect_err("refused");
+        (rejection.code, rejection.field.unwrap_or_default())
+    }
+
+    // The settings page adds and removes folders without a workspace: paths are
+    // normalized, a folder is matched whatever its spelling, adding a folder already
+    // trusted or removing an absent one changes nothing, and registrations and
+    // workspace decisions stay.
+    #[test]
+    fn trusted_locations_are_added_and_removed_on_their_own() {
+        for (platform, folder, spelling, other, absent, distrusted) in [
+            (
+                "macos",
+                "/Users/dev/code/",
+                "/Users/dev/code",
+                "/Volumes/Work/src",
+                "/Users/dev/absent",
+                "/Users/dev/code/app",
+            ),
+            (
+                "windows",
+                r"C:\Code\",
+                "c:/code",
+                r"\\server\share\src",
+                r"D:\Absent",
+                r"C:\code\App",
+            ),
+        ] {
+            let normalized = |path: &str| paths::normalize(path, platform, true).unwrap();
+            let document = json!({
+                "version": 1,
+                "tools": {"vm": {"homes": [other]}},
+                "distrustedWorkspaces": [distrusted]
+            })
+            .to_string();
+            let added = edit(&json!({
+                "document": document,
+                "platform": platform,
+                "trustedLocations": {"add": [folder, other]}
+            }))
+            .unwrap();
+            assert_eq!(added["changed"], true, "{platform}");
+            let mut locations: Vec<String> =
+                serde_json::from_value(added["catalog"]["trustedLocations"].clone()).unwrap();
+            locations.sort();
+            let mut expected = vec![normalized(folder), normalized(other)];
+            expected.sort();
+            assert_eq!(locations, expected, "{platform}");
+            assert_eq!(
+                added["catalog"]["tools"]["vm"]["homes"],
+                json!([normalized(other)]),
+                "{platform}"
+            );
+            // A workspace kept in safe mode stays there inside a new location.
+            assert_eq!(
+                trust(&added["document"], platform, distrusted)["state"],
+                "distrusted",
+                "{platform}"
+            );
+
+            let unchanged = edit(&json!({
+                "document": added["document"],
+                "platform": platform,
+                "trustedLocations": {"add": [spelling], "remove": [absent]}
+            }))
+            .unwrap();
+            assert_eq!(unchanged["changed"], false, "{platform}");
+            assert_eq!(unchanged["document"], Value::Null, "{platform}");
+
+            let removed = edit(&json!({
+                "document": added["document"],
+                "platform": platform,
+                "trustedLocations": {"remove": [spelling]}
+            }))
+            .unwrap();
+            assert_eq!(
+                removed["catalog"]["trustedLocations"],
+                json!([normalized(other)]),
+                "{platform}"
+            );
+            assert_eq!(
+                removed["catalog"]["distrustedWorkspaces"],
+                json!([normalized(distrusted)]),
+                "{platform}"
+            );
+        }
+    }
+
+    // A filesystem root as a location would trust every project on the volume: no
+    // edit adds one, even next to a valid folder, and a document naming one, written
+    // by hand, is refused so its workspaces stay in safe mode.
+    #[test]
+    fn a_filesystem_root_is_never_added_or_read_as_a_location() {
+        for (platform, root, folder) in [
+            ("macos", "/", "/Users/dev/code"),
+            ("linux", "//", "/srv/code"),
+            ("windows", r"D:\", r"D:\Code"),
+            ("windows", "c:/", r"C:\Code"),
+            ("windows", r"\\server\share", r"\\server\share\code"),
+            ("windows", r"\\server\share\", r"\\server\share\code"),
+        ] {
+            for add in [json!([root]), json!([folder, root])] {
+                assert_eq!(
+                    refusal(edit(&json!({
+                        "document": null,
+                        "platform": platform,
+                        "trustedLocations": {"add": add}
+                    }))),
+                    (
+                        "plugin.toolchain.rootLocation",
+                        "trustedLocations.add".into()
+                    ),
+                    "{platform} {add}"
+                );
+            }
+            let document = json!({"version": 1, "tools": {}, "trustedLocations": [root]});
+            assert_eq!(
+                refusal(state(&json!({
+                    "document": document.to_string(),
+                    "platform": platform,
+                    "workspaceRoot": folder
+                }))),
+                (
+                    "plugin.toolchain.invalidDocument",
+                    "trustedLocations".into()
+                ),
+                "{platform} {root}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_trusted_locations_edit_must_name_one_meaning_per_folder() {
+        for change in [
+            json!({}),
+            json!({"add": [], "remove": []}),
+            json!({"add": ["/srv/code"], "remove": ["/srv/code/"]}),
+            json!({"add": ["/srv/code", "/srv/code/"]}),
+            json!({"add": ["srv/code"]}),
+            json!({"add": ["/srv/../code"]}),
+            json!({"add": ["/srv/code"], "parents": true}),
+        ] {
+            assert_eq!(
+                refusal(edit(&json!({
+                    "document": null,
+                    "platform": "linux",
+                    "trustedLocations": change
+                })))
+                .0,
+                "plugin.toolchain.invalidDocument",
+                "{change}"
+            );
+        }
+    }
+
+    // Each trust list stops at its bound with its own code, so a host can say the
+    // list is full rather than that the document is invalid; removing one folder
+    // in the same edit makes room for another.
+    #[test]
+    fn a_trust_list_never_grows_past_its_bound() {
+        let full: Vec<String> = (0..MAX_TRUST_ENTRIES)
+            .map(|index| format!("/srv/{index:03}"))
+            .collect();
+        let locations = json!({"version": 1, "tools": {}, "trustedLocations": full}).to_string();
+        assert_eq!(
+            refusal(edit(&json!({
+                "document": locations,
+                "platform": "linux",
+                "trustedLocations": {"add": ["/srv/new"]}
+            }))),
+            ("plugin.toolchain.trustListFull", "trustedLocations".into())
+        );
+        let swapped = edit(&json!({
+            "document": locations,
+            "platform": "linux",
+            "trustedLocations": {"add": ["/srv/new"], "remove": ["/srv/000"]}
+        }))
+        .unwrap();
+        assert_eq!(
+            swapped["catalog"]["trustedLocations"]
+                .as_array()
+                .unwrap()
+                .len(),
+            MAX_TRUST_ENTRIES
+        );
+
+        let workspaces = json!({"version": 1, "tools": {}, "trustedWorkspaces": full}).to_string();
+        assert_eq!(
+            refusal(edit(&json!({
+                "document": workspaces,
+                "platform": "linux",
+                "workspaceTrust": {"workspace": "/srv/new", "trusted": true}
+            }))),
+            ("plugin.toolchain.trustListFull", "trustedWorkspaces".into())
+        );
     }
 }
