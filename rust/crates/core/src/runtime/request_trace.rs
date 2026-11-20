@@ -197,8 +197,10 @@ pub(crate) fn is_hot(method: &str) -> bool {
             method,
             "workspace.filterChanges" | "lsp.workspaceFilesChanged" | "git.classifyMetadataChanges"
         )
-        // The status bar sums the instance's memory every few seconds while it is shown.
+        // The status bar sums the instance's memory every few seconds while it is shown,
+        // and active runs probe their process tree's listening ports periodically.
         || method == "processMemory.summarize"
+        || method == "process.listeningPorts"
 }
 
 /// Explicit host provenance wins; Git provenance covers hosts that send only that.
@@ -275,6 +277,7 @@ mod tests {
             "git.classifyMetadataChanges",
             "debug.transport.handle",
             "processMemory.summarize",
+            "process.listeningPorts",
         ] {
             assert!(is_hot(method), "{method}");
         }

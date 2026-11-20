@@ -1,0 +1,192 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "name": "filters process tree, excludes debug port, and deduplicates dual-stack binds",
+      "request": {
+        "rootProcessId": 100,
+        "processes": [
+          {
+            "processId": 100,
+            "parentProcessId": 1,
+            "startTime": 5000
+          },
+          {
+            "processId": 101,
+            "parentProcessId": 100,
+            "startTime": 5500
+          },
+          {
+            "processId": 102,
+            "parentProcessId": 101,
+            "startTime": 6000
+          },
+          {
+            "processId": 200,
+            "parentProcessId": 100,
+            "startTime": 1000
+          },
+          {
+            "processId": 300,
+            "parentProcessId": 1,
+            "startTime": 5100
+          }
+        ],
+        "sockets": [
+          {
+            "processId": 102,
+            "address": "::",
+            "port": 8080
+          },
+          {
+            "processId": 101,
+            "address": "0.0.0.0",
+            "port": 8080
+          },
+          {
+            "processId": 100,
+            "address": "127.0.0.1",
+            "port": 5005
+          },
+          {
+            "processId": 102,
+            "address": "[::ffff:127.0.0.1]",
+            "port": 9090
+          },
+          {
+            "processId": 101,
+            "address": "192.168.1.5",
+            "port": 8443
+          },
+          {
+            "processId": 102,
+            "address": "[fe80::1%en0]",
+            "port": 9091
+          },
+          {
+            "processId": 200,
+            "address": "127.0.0.1",
+            "port": 7000
+          },
+          {
+            "processId": 300,
+            "address": "127.0.0.1",
+            "port": 7001
+          }
+        ],
+        "excludePorts": [5005],
+        "limit": 8
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "ports": [
+          {
+            "port": 8080,
+            "address": "0.0.0.0",
+            "label": ":8080",
+            "url": "http://localhost:8080",
+            "processId": 101
+          },
+          {
+            "port": 8443,
+            "address": "192.168.1.5",
+            "label": "192.168.1.5:8443",
+            "url": "http://192.168.1.5:8443",
+            "processId": 101
+          },
+          {
+            "port": 9090,
+            "address": "127.0.0.1",
+            "label": ":9090",
+            "url": "http://localhost:9090",
+            "processId": 102
+          },
+          {
+            "port": 9091,
+            "address": "fe80::1",
+            "label": "[fe80::1]:9091",
+            "url": "http://[fe80::1]:9091",
+            "processId": 102
+          }
+        ],
+        "truncated": false
+      }
+    },
+    {
+      "name": "applies limit and sets truncated",
+      "request": {
+        "rootProcessId": 100,
+        "processes": [],
+        "sockets": [
+          {
+            "processId": 100,
+            "address": "*",
+            "port": 3002
+          },
+          {
+            "processId": 100,
+            "address": "",
+            "port": 3000
+          },
+          {
+            "processId": 100,
+            "address": "::1",
+            "port": 3001
+          }
+        ],
+        "limit": 2
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "ports": [
+          {
+            "port": 3000,
+            "address": "0.0.0.0",
+            "label": ":3000",
+            "url": "http://localhost:3000",
+            "processId": 100
+          },
+          {
+            "port": 3001,
+            "address": "::1",
+            "label": ":3001",
+            "url": "http://localhost:3001",
+            "processId": 100
+          }
+        ],
+        "truncated": true
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "non-positive rootProcessId",
+      "request": {
+        "rootProcessId": 0,
+        "processes": [],
+        "sockets": []
+      }
+    },
+    {
+      "name": "duplicate processId",
+      "request": {
+        "rootProcessId": 100,
+        "processes": [
+          { "processId": 100, "parentProcessId": 1 },
+          { "processId": 100, "parentProcessId": 1 }
+        ],
+        "sockets": []
+      }
+    },
+    {
+      "name": "malformed socket address",
+      "request": {
+        "rootProcessId": 100,
+        "processes": [],
+        "sockets": [
+          { "processId": 100, "address": "not-an-ip", "port": 8080 }
+        ]
+      }
+    }
+  ]
+}

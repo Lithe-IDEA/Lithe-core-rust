@@ -54,6 +54,7 @@ mod plugin_settings_documents;
 mod plugin_source_settings;
 mod plugin_views;
 mod process_memory;
+mod process_ports;
 mod project;
 mod project_generators;
 mod project_tree;

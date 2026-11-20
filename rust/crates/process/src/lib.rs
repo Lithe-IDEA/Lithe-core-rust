@@ -4,3 +4,4 @@
 pub mod inventory;
 pub mod lifecycle;
 pub mod memory;
+pub mod ports;
