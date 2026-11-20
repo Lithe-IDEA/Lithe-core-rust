@@ -1267,10 +1267,13 @@ setting is editable through this command.
 `git.authRespond` takes `{ requestId: string, answer: string | null }` and returns
 `{ accepted: boolean }`. Opaque IDs are invocation-owned, unguessable and single
 use; stale or invalid answers return false. Answers are bounded to 8 KiB without
-NUL/newlines. Null cancels the challenge. Hosts also cancel its owning operation
-when the user cancels the dialog. An event with `retry: true` requires the exact
-answer `"retry"` to repeat the failed transfer with helper bypass, at most three
-total attempts. The AskPass C ABI is called only in the child app's early helper
+NUL/newlines. Null cancels the challenge: the helper fails, Git ends with its
+authentication failure, and Core returns that failure without asking whether to
+retry, as it does when a challenge expires unanswered. Hosts therefore need not
+cancel the owning operation when the user dismisses the dialog. An event with
+`retry: true` follows only a failed attempt in which no challenge was cancelled
+or expired; it requires the exact answer `"retry"` to repeat the failed transfer
+with helper bypass, at most three total attempts. The AskPass C ABI is called only in the child app's early helper
 mode. Credential answers are never copied into events or settings.
 
 The helper reaches its invocation's session over a channel that only the same

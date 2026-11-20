@@ -205,6 +205,7 @@ fn answer_reaches_the_helper_exactly_once() {
     assert!(!respond(&id, Some("replayed".into())));
     let answer = finish(&mut fixture.session, helper).unwrap();
     assert_eq!(answer, format!("{CREDENTIAL}\n").into_bytes());
+    assert!(!fixture.session.unanswered());
     assert!(recorded().is_empty());
 }
 
@@ -225,10 +226,12 @@ fn cancelled_prompt_fails_the_helper() {
     let mut fixture = fixture();
     let helper = spawn_ask(&fixture.address, &fixture.token, "Password:");
     let challenge = next_challenge(&mut fixture.session);
+    assert!(!fixture.session.unanswered());
     assert!(respond(&challenge.request_id, None));
     let error = finish(&mut fixture.session, helper).unwrap_err();
     assert_eq!(error.kind(), io::ErrorKind::UnexpectedEof);
     assert!(!registry().contains_key(&challenge.request_id));
+    assert!(fixture.session.unanswered());
     assert!(recorded().is_empty());
 }
 
@@ -356,6 +359,8 @@ fn helper_that_leaves_ends_its_prompt() {
     }
     assert!(!respond(&challenge.request_id, Some(CREDENTIAL.into())));
     assert!(fixture.session.pending.is_empty());
+    // The helper gave up by itself; the user never declined anything.
+    assert!(!fixture.session.unanswered());
     assert!(recorded().is_empty());
 }
 
@@ -410,6 +415,7 @@ fn unanswered_prompt_is_recorded_at_its_deadline() {
     assert!(fixture.session.pending.is_empty());
     assert_no_answer(join(helper));
     assert!(!respond(&challenge.request_id, Some(CREDENTIAL.into())));
+    assert!(fixture.session.unanswered());
     assert_eq!(recorded(), [failure("wait_answer", "TimedOut")]);
 }
 
