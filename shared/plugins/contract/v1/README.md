@@ -14,6 +14,7 @@ This directory is the cross-platform source of truth:
 | `plugin-manifest.schema.json` | JSON shape of `plugin.json` |
 | `plugin-ui.schema.json` | JSON shape of what a [plugin view](#plugin-views) function returns: whole views and patches the host draws |
 | `plugin-index.schema.json` | JSON shape of a marketplace source index |
+| `plugin-recommendations.schema.json` | JSON shape of a marketplace companion recommendations file (`lithe-plugin-recommendations.json`) |
 | `plugin-l10n.schema.json` | JSON shape of a plugin's translation file `l10n/<language>.json` |
 | `fixtures/` | Valid example manifests and golden cases, one folder per contract area (below). Manifests are named after the capability they exercise rather than a published plugin. Case files name their base manifest by file name, so file names are unique across the folders |
 | `toolchains/README.md` | Implemented Core foundation: plugin definitions/provider declarations, registry (a short tool ID defined by several enabled plugins belongs to none of them), reply validation, directory pins, snapshot resolution, version matching and discovery plans; hosts that declare `toolDefinitions` use it for read-only settings pages and for Build and run tools |
@@ -36,7 +37,7 @@ This directory is the cross-platform source of truth:
 | `fixtures/project-generators/` | Project generators: template files (`templates/`), a scaffolding command, and an archive download; `project-generator-tool-field.plugin.json` with `templates/tool-field/` picks tool installations with `tool` fields; `project-plans.json` holds golden `project.*` form evaluations, generation plans, and name checks, and a case's optional `manifest` names the fixture it runs against (`project-generator.plugin.json` by default) |
 | `fixtures/toolchains/` | Production-shape fixtures for tool definitions and a packaged toolchain provider; they require `toolDefinitions` and `toolchainProviders`, which a host advertises only when it implements them |
 | `fixtures/package-trust/` | `publisher-bundled.plugin.json` and `signature-vectors.json`: public cross-platform vectors for the package publisher signature: the RFC 8032 test key, a fixed package with non-ASCII file names, its canonical payload, RFC 8032 deterministic signature, and content digest. Both platforms must build the same canonical payload and digest and accept the recorded signature; signers that add randomness, such as CryptoKit, check the signature by verification instead of byte comparison |
-| `fixtures/marketplace/` | Marketplace index, availability, source URL, and install review golden cases |
+| `fixtures/marketplace/` | Marketplace index, availability, source URL, workspace recommendation, and install review golden cases |
 
 Validation and template expansion are implemented once in Rust Core
 (`rust/crates/plugin-manifest/` and the `rust/crates/plugin-*` crates beside
@@ -1769,10 +1770,35 @@ every product shows the same catalog and the same install review.
   is used as is (fragment removed); `https://github.com/<owner>/<repo>`
   resolves to `lithe-plugin-index.json` at the repository root on its default
   branch (`HEAD`); a `…/blob/<ref>/<path>` page resolves to its raw file.
-  Plain http, embedded credentials, and other GitHub pages are refused with
-  `plugin.source.invalid`.
+  It also returns `recommendationsURL`, the sibling `lithe-plugin-recommendations.json`
+  beside `indexURL` (query and fragment cleared). Plain http, embedded
+  credentials, and other GitHub pages are refused with `plugin.source.invalid`.
 - Hosts cache fetched indexes in platform cache or application-support
   storage, never inside the installation.
+
+### Workspace recommendations
+
+A marketplace source may publish a companion recommendations file
+(`plugin-recommendations.schema.json`, `lithe-plugin-recommendations.json`)
+beside `lithe-plugin-index.json`, keeping `lithe-plugin-index.json` (`schemaVersion: 0`)
+unchanged for existing hosts. A source without `lithe-plugin-recommendations.json`
+simply offers no automatic workspace recommendations.
+
+| Field | Meaning |
+| --- | --- |
+| `pluginID` | Plugin ID listed in the same source's `lithe-plugin-index.json`. |
+| `markers` | Optional exact workspace file basenames (for example `pom.xml`, `go.mod`, `build.gradle.kts`). Matched case-sensitively on Unix (`darwin-*`, `linux-*`) and ASCII case-insensitively on Windows (`windows-*`). No path separators, `.`, or `..`. |
+| `extensions` | Optional lowercase file extensions without a leading dot (for example `java`, `go`). Matched ASCII case-insensitively against sampled workspace files (ignoring leading-dot names without a stem such as `.gitignore`). |
+| `coveredBy` | Optional other plugin IDs whose installation already covers this workflow; when any listed ID is in `installedPluginIDs`, this plugin is not recommended. |
+
+Each recommendation entry must declare at least one `markers` or `extensions`
+value; duplicate `pluginID` values within one catalog are rejected with
+`plugin.recommendations.duplicate` while keeping the first entry.
+`plugins.marketplace.recommendForWorkspace` validates each catalog pair
+(`index` + `recommendations`), filters to entries whose plugin is `available` on
+the host platform and `hostCapabilities`, excludes installed, `coveredBy`-covered,
+and dismissed IDs, deduplicates across catalogs (first catalog wins), and sorts
+marker matches before extension-only matches, then by plugin name and ID.
 
 ### Index entries
 
@@ -4933,6 +4959,9 @@ command payload is a Core `invalid_request` failure instead.
 | `plugin.index.duplicate` | Core | An index lists the same plugin ID more than once |
 | `plugin.index.platformUnsupported` | Core | No version has an archive for this platform (availability, not a rejection) |
 | `plugin.index.apiUnsupported` | Core | Only versions needing a plugin API or a capability version the host does not run list this platform (availability, not a rejection) |
+| `plugin.recommendations.invalid` | Core | Malformed companion recommendation catalog root or entry (`pluginID`, `markers`, `extensions`, or `coveredBy`) |
+| `plugin.recommendations.schemaUnsupported` | Core | The companion recommendation catalog `schemaVersion` is not `0` |
+| `plugin.recommendations.duplicate` | Core | A companion recommendation catalog lists the same `pluginID` more than once |
 | `plugin.source.invalid` | Core | A marketplace source URL cannot be used |
 | `plugin.package.mismatch` | Core | A downloaded package's ID or version differs from its index entry |
 | `plugin.archive.checksumMismatch` | Host | A downloaded archive does not match the index SHA-256 |

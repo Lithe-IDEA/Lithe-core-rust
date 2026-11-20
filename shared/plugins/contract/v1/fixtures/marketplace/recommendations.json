@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 0,
+  "recommendations": [
+    {
+      "pluginID": "dev.lithe.fixture.language-packaged-server",
+      "markers": ["composer.json"],
+      "extensions": ["php"]
+    },
+    {
+      "pluginID": "io.example.elixir-tools",
+      "markers": ["mix.exs"],
+      "extensions": ["ex", "exs"],
+      "coveredBy": ["io.example.elixir-lite"]
+    },
+    {
+      "pluginID": "io.example.future-tools",
+      "markers": ["Futurefile"]
+    },
+    {
+      "pluginID": "io.example.zig-support",
+      "markers": ["build.zig"],
+      "extensions": ["zig"]
+    }
+  ]
+}

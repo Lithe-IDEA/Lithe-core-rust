@@ -1,5 +1,6 @@
 use lithe_plugin_marketplace::{
-    install_review_command, resolve_source_command, validate_index_command,
+    install_review_command, recommend_for_workspace_command, resolve_source_command,
+    validate_index_command,
 };
 use serde_json::{json, Value};
 
@@ -17,6 +18,9 @@ const INDEX: &str = contract_file!("fixtures/marketplace/index.json");
 const INDEX_CASES: &str = contract_file!("fixtures/marketplace/index-cases.json");
 const INVALID_ENTRIES: &str = contract_file!("fixtures/marketplace/invalid-index-entries.json");
 const SOURCE_URLS: &str = contract_file!("fixtures/marketplace/source-urls.json");
+const RECOMMENDATIONS: &str = contract_file!("fixtures/marketplace/recommendations.json");
+const RECOMMENDATION_CASES: &str =
+    contract_file!("fixtures/marketplace/recommendations-cases.json");
 const INSTALL_REVIEWS: &str = contract_file!("fixtures/marketplace/install-reviews.json");
 const PHP_FIXTURE: &str = contract_file!("fixtures/languages/language-packaged-server.plugin.json");
 const GO_FIXTURE: &str = contract_file!("fixtures/languages/language-system-command.plugin.json");
@@ -373,4 +377,150 @@ fn publisher_bundled_versions_require_host_trust_support_before_download() {
             .unwrap();
         assert_eq!(plugin["availability"]["status"], expected, "{outcome}");
     }
+}
+
+#[test]
+fn recommendation_fixtures_match_expected_plugins() {
+    let cases = json_file(RECOMMENDATION_CASES);
+    for case in cases["cases"].as_array().unwrap() {
+        let name = case["name"].as_str().unwrap();
+        let outcome = recommend_for_workspace_command(json!({
+            "platform": case["platform"],
+            "workspaceFiles": case["workspaceFiles"],
+            "catalogs": [{
+                "index": json_file(INDEX),
+                "sourceKind": case["sourceKind"],
+                "indexURL": "https://example.com/lithe-plugin-index.json",
+                "recommendations": json_file(RECOMMENDATIONS),
+            }],
+            "hostCapabilities": case["hostCapabilities"],
+            "installedPluginIDs": case["installedPluginIDs"],
+            "dismissedPluginIDs": case["dismissedPluginIDs"],
+        }))
+        .expect("recommendation payload is well formed");
+        assert_eq!(outcome["status"], "ok", "{name}: {outcome}");
+        let plugins = outcome["recommendation"]["plugins"].as_array().unwrap();
+        let expected = case["expectedPlugins"].as_array().unwrap();
+        assert_eq!(plugins.len(), expected.len(), "{name}: {outcome}");
+        for (actual, want) in plugins.iter().zip(expected) {
+            assert_eq!(actual["plugin"]["id"], want["id"], "{name}");
+            assert_eq!(actual["matchedMarkers"], want["matchedMarkers"], "{name}");
+            assert_eq!(
+                actual["matchedExtensions"], want["matchedExtensions"],
+                "{name}"
+            );
+            assert_eq!(
+                actual["marketplaceIndexURL"], "https://example.com/lithe-plugin-index.json",
+                "{name}"
+            );
+        }
+    }
+}
+
+#[test]
+fn recommendations_deduplicate_across_catalogs_and_reject_invalid_entries() {
+    let outcome = recommend_for_workspace_command(json!({
+        "platform": "darwin-arm64",
+        "workspaceFiles": ["build.zig", "lib/app.ex"],
+        "catalogs": [
+            {
+                "index": json_file(INDEX),
+                "sourceKind": "thirdParty",
+                "indexURL": "https://first.example.com/lithe-plugin-index.json",
+                "recommendations": {
+                    "schemaVersion": 0,
+                    "recommendations": [
+                        { "pluginID": "io.example.zig-support", "markers": ["build.zig"] },
+                        { "pluginID": "io.example.zig-support", "extensions": ["zig"] },
+                        { "pluginID": "io.example.bad", "markers": ["../bad"] },
+                        { "pluginID": "io.example.empty" },
+                        { "pluginID": "io.example.bad-ext", "extensions": [".zig"] },
+                        { "pluginID": "io.example.self-cover", "markers": ["m"], "coveredBy": ["io.example.self-cover"] }
+                    ]
+                }
+            },
+            {
+                "index": json_file(INDEX),
+                "sourceKind": "thirdParty",
+                "indexURL": "https://second.example.com/lithe-plugin-index.json",
+                "recommendations": {
+                    "schemaVersion": 0,
+                    "recommendations": [
+                        { "pluginID": "io.example.zig-support", "markers": ["build.zig"] },
+                        { "pluginID": "io.example.elixir-tools", "extensions": ["ex"] }
+                    ]
+                }
+            },
+            {
+                "index": json_file(INDEX),
+                "sourceKind": "thirdParty",
+                "recommendations": { "schemaVersion": 99, "recommendations": [] }
+            }
+        ],
+        "hostCapabilities": { "languageServers": [0], "languages": [0] },
+        "installedPluginIDs": [],
+        "dismissedPluginIDs": []
+    }))
+    .expect("recommendation payload is well formed");
+
+    assert_eq!(outcome["status"], "ok", "{outcome}");
+    let plugins = outcome["recommendation"]["plugins"].as_array().unwrap();
+    assert_eq!(plugins.len(), 2, "{outcome}");
+    assert_eq!(plugins[0]["plugin"]["id"], "io.example.zig-support");
+    assert_eq!(
+        plugins[0]["marketplaceIndexURL"],
+        "https://first.example.com/lithe-plugin-index.json"
+    );
+    assert_eq!(plugins[1]["plugin"]["id"], "io.example.elixir-tools");
+    assert_eq!(
+        plugins[1]["marketplaceIndexURL"],
+        "https://second.example.com/lithe-plugin-index.json"
+    );
+
+    let rejected = outcome["recommendation"]["rejected"].as_array().unwrap();
+    let codes: Vec<&str> = rejected
+        .iter()
+        .map(|entry| entry["error"]["code"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        codes,
+        vec![
+            "plugin.recommendations.duplicate",
+            "plugin.recommendations.invalid",
+            "plugin.recommendations.invalid",
+            "plugin.recommendations.invalid",
+            "plugin.recommendations.invalid",
+            "plugin.recommendations.schemaUnsupported",
+        ]
+    );
+}
+
+#[test]
+fn recommend_for_workspace_dispatches_through_core_command() {
+    use crate::execute_json;
+    let request = json!({
+        "id": "marketplace-recommend-for-workspace",
+        "command": "plugins.marketplace.recommendForWorkspace",
+        "payload": {
+            "platform": "darwin-arm64",
+            "workspaceFiles": ["build.zig"],
+            "catalogs": [{
+                "index": json_file(INDEX),
+                "sourceKind": "thirdParty",
+                "recommendations": json_file(RECOMMENDATIONS),
+            }],
+            "hostCapabilities": { "languageServers": [0], "languages": [0] },
+            "installedPluginIDs": [],
+            "dismissedPluginIDs": []
+        }
+    })
+    .to_string();
+    let reply = execute_json(&request);
+    let value: Value = serde_json::from_str(&reply).unwrap();
+    assert_eq!(value["ok"], true, "{value}");
+    assert_eq!(value["data"]["status"], "ok", "{value}");
+    assert_eq!(
+        value["data"]["recommendation"]["plugins"][0]["plugin"]["id"], "io.example.zig-support",
+        "{value}"
+    );
 }

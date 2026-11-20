@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Lithe-IDEA/Lithe-core-rust/main/shared/plugins/contract/v1/plugin-recommendations.schema.json",
+  "title": "Lithe plugin marketplace recommendations (plugin contract v1)",
+  "description": "Shape of a marketplace companion recommendations file, lithe-plugin-recommendations.json. Semantic rules (non-empty signal requirement, non-`.`/.. markers, distinct coveredBy IDs, duplicate pluginID) are defined in README.md and enforced by plugins.marketplace.recommendForWorkspace.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "recommendations"],
+  "properties": {
+    "schemaVersion": { "const": 0 },
+    "recommendations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "$defs": {
+    "pluginID": {
+      "type": "string",
+      "pattern": "^[a-z0-9.-]+$"
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pluginID"],
+      "properties": {
+        "pluginID": { "$ref": "#/$defs/pluginID" },
+        "markers": {
+          "description": "Exact workspace file basenames (matched case-sensitively on Unix and ASCII case-insensitively on Windows).",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[^/\\\\]+$"
+          }
+        },
+        "extensions": {
+          "description": "Lowercase file extensions without a leading dot (matched ASCII case-insensitively).",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          }
+        },
+        "coveredBy": {
+          "description": "Other plugin IDs whose installation satisfies the same workflow, so this plugin is not recommended when any of them is already installed.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/pluginID" }
+        }
+      }
+    }
+  }
+}

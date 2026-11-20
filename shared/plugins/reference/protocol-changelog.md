@@ -14,6 +14,8 @@
 
 ## 待合入
 
+- 待提交 PR，**工作区插件推荐**：市场契约新增同级推荐索引格式 `plugin-recommendations.schema.json`（`schemaVersion: 0`，独立于只增不破旧版的 `lithe-plugin-index.json`）；`plugins.marketplace.resolveSource` 额外返回 `recommendationsURL`，并新增宿主内部 Core 命令 `plugins.marketplace.recommendForWorkspace`（不是插件 RPC），基于工作区采集文件名与已有市场索引匹配可安装的缺失插件。见 [1lck/Lithe-IDEA#2228](https://github.com/1lck/Lithe-IDEA/issues/2228)。
+
 - [#127](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/127)，[@Mucheen](https://github.com/Mucheen)，**API-25**：从 `grammar.path` 指定的 TextMate 语法或独立的 `grammars/<language-id>.first-line.json` 读取可选 `firstLineMatch`。独立文件可沿用宿主现有高亮。旧桌面仍可安装 `languages: 0` 的同一插件包。Core 解码返回可选提示并匹配完整首行，既有路径与用户关联优先。见 [1lck/Lithe-IDEA#2122](https://github.com/1lck/Lithe-IDEA/issues/2122)。
 
 - [#128](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/128)，[@xiaoyumuxi](https://github.com/xiaoyumuxi)，`pluginAPIVersion` 0 内的补充（API-23、API-29）：`run/start` 的 `process` 和提供者 `lithe/build/prepareRun` 的返回值新增可选 `outputEncoding`，用稳定编码 ID 或别名声明进程写入管道的编码；Core 校验并规范化，拒绝未知或不兼容 ASCII 的编码。用户固定编码优先；自动模式逐行尝试声明、UTF-8，以及仅 Windows 的 GBK。省略字段时所有平台默认 UTF-8，Windows 兼容 GBK；不修改进程环境或终端代码页。新增宿主内部 Core 命令 `outputEncoding.resolve`，返回同一解析规则的候选与可选编码列表，不是插件 RPC。见 [1lck/Lithe-IDEA#2186](https://github.com/1lck/Lithe-IDEA/issues/2186)。
@@ -37,6 +39,7 @@
 | 插件网页桥 `window.lithe.version` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 
 | `litheSettingsSources`、`litheSettingsSourceEdit` | 0 | 2026-11-15 | [#57](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/57) |
+| 市场推荐索引 `schemaVersion` | 0 | 待合入 | — |
 
 ### 能力版本（`requires`）
 
