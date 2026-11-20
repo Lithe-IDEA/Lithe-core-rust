@@ -22,8 +22,12 @@ use url::Url;
 
 /// Marketplace index schema version understood by this Core build.
 pub const MARKETPLACE_INDEX_SCHEMA_VERSION: u64 = 0;
+/// Marketplace recommendation catalog schema version understood by this Core build.
+pub const MARKETPLACE_RECOMMENDATIONS_SCHEMA_VERSION: u64 = 0;
 /// Index file a GitHub repository URL resolves to.
 pub const REPOSITORY_INDEX_FILE_NAME: &str = "lithe-plugin-index.json";
+/// Companion workspace-recommendation file resolved beside a marketplace index.
+pub const REPOSITORY_RECOMMENDATIONS_FILE_NAME: &str = "lithe-plugin-recommendations.json";
 /// Platforms with a Lithe host today. Other well-formed identifiers are
 /// accepted so an index can list future platforms without breaking older
 /// hosts; they simply never match.
@@ -523,6 +527,7 @@ fn resolve_source(input: &str) -> Validation<Value> {
         };
         return Ok(json!({
             "indexURL": index_url,
+            "recommendationsURL": sibling_recommendations_url(&index_url),
             "repository": repository.web_url(),
             "displayName": format!("{}/{}", repository.owner, repository.name),
         }));
@@ -537,11 +542,28 @@ fn resolve_source(input: &str) -> Validation<Value> {
     };
     Ok(json!({
         "indexURL": index_url.as_str(),
+        "recommendationsURL": sibling_recommendations_url(index_url.as_str()),
         "repository": repository.as_ref().map(GitHubRepository::web_url),
         "displayName": repository
             .map(|repository| format!("{}/{}", repository.owner, repository.name))
             .unwrap_or(host),
     }))
+}
+
+/// Derives the companion `lithe-plugin-recommendations.json` URL in the same
+/// directory as a validated `indexURL`, dropping any query or fragment.
+fn sibling_recommendations_url(index_url: &str) -> String {
+    let Ok(mut url) = Url::parse(index_url) else {
+        return String::new();
+    };
+    url.set_query(None);
+    url.set_fragment(None);
+    if let Ok(mut segments) = url.path_segments_mut() {
+        segments.pop_if_empty();
+        segments.pop();
+        segments.push(REPOSITORY_RECOMMENDATIONS_FILE_NAME);
+    }
+    url.to_string()
 }
 
 // MARK: Install review
@@ -755,6 +777,369 @@ struct ResolveSourcePayload {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct RecommendForWorkspacePayload {
+    platform: String,
+    workspace_files: Vec<String>,
+    catalogs: Vec<RecommendationCatalogInput>,
+    #[serde(default)]
+    host_capabilities: Option<HostCapabilities>,
+    #[serde(default, rename = "installedPluginIDs")]
+    installed_plugin_ids: Vec<String>,
+    #[serde(default, rename = "dismissedPluginIDs")]
+    dismissed_plugin_ids: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RecommendationCatalogInput {
+    index: Value,
+    source_kind: SourceKind,
+    #[serde(default, rename = "indexURL")]
+    index_url: Option<String>,
+    recommendations: Value,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawRecommendationEntry {
+    #[serde(rename = "pluginID")]
+    plugin_id: String,
+    #[serde(default)]
+    markers: Vec<String>,
+    #[serde(default)]
+    extensions: Vec<String>,
+    #[serde(default)]
+    covered_by: Vec<String>,
+}
+
+struct ValidRecommendationEntry {
+    plugin_id: String,
+    markers: Vec<String>,
+    extensions: Vec<String>,
+    covered_by: Vec<String>,
+}
+
+struct MatchedRecommendation {
+    has_markers: bool,
+    name_key: String,
+    id_key: String,
+    value: Value,
+}
+
+fn recommendations_invalid(
+    field: impl Into<String>,
+    message: impl Into<String>,
+) -> PluginRejection {
+    PluginRejection::at("plugin.recommendations.invalid", field, message)
+}
+
+fn is_recommendation_marker(value: &str) -> bool {
+    !value.is_empty()
+        && value == value.trim()
+        && value != "."
+        && value != ".."
+        && !value.contains('/')
+        && !value.contains('\\')
+}
+
+fn is_recommendation_extension(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    !bytes.is_empty()
+        && bytes.len() <= 32
+        && (bytes[0].is_ascii_lowercase() || bytes[0].is_ascii_digit())
+        && bytes[1..]
+            .iter()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"_-".contains(byte))
+}
+
+fn validate_recommendation_root(document: Value, prefix: &str) -> Validation<Vec<Value>> {
+    let Value::Object(mut root) = document else {
+        return Err(PluginRejection::at(
+            "plugin.recommendations.invalid",
+            prefix,
+            "The plugin recommendation catalog must be a JSON object.",
+        ));
+    };
+    match root.get("schemaVersion").and_then(Value::as_u64) {
+        Some(MARKETPLACE_RECOMMENDATIONS_SCHEMA_VERSION) => {}
+        Some(version) => {
+            return Err(PluginRejection::at(
+                "plugin.recommendations.schemaUnsupported",
+                format!("{prefix}.schemaVersion"),
+                format!(
+                    "Plugin recommendation catalog schema {version} is not supported by this version of Lithe."
+                ),
+            ))
+        }
+        None => {
+            return Err(recommendations_invalid(
+                format!("{prefix}.schemaVersion"),
+                "The plugin recommendation catalog has no schemaVersion.",
+            ))
+        }
+    }
+    let Some(Value::Array(entries)) = root.remove("recommendations") else {
+        return Err(recommendations_invalid(
+            format!("{prefix}.recommendations"),
+            "The plugin recommendation catalog has no recommendations list.",
+        ));
+    };
+    if let Some(unknown) = root.keys().find(|key| key.as_str() != "schemaVersion") {
+        return Err(recommendations_invalid(
+            format!("{prefix}.{unknown}"),
+            format!("The plugin recommendation catalog has an unknown field: {unknown}."),
+        ));
+    }
+    Ok(entries)
+}
+
+fn validate_recommendation_entry(
+    entry: RawRecommendationEntry,
+    field: &str,
+) -> Validation<ValidRecommendationEntry> {
+    if !is_plugin_id(&entry.plugin_id) {
+        return Err(recommendations_invalid(
+            format!("{field}.pluginID"),
+            "The plugin ID must use lowercase letters, digits, dots, and hyphens.",
+        ));
+    }
+    if entry.markers.is_empty() && entry.extensions.is_empty() {
+        return Err(recommendations_invalid(
+            field,
+            "Each recommendation entry must declare at least one marker or extension.",
+        ));
+    }
+    for (position, marker) in entry.markers.iter().enumerate() {
+        if !is_recommendation_marker(marker) {
+            return Err(recommendations_invalid(
+                format!("{field}.markers[{position}]"),
+                "Markers must be non-empty file basenames without path separators.",
+            ));
+        }
+    }
+    for (position, extension) in entry.extensions.iter().enumerate() {
+        if !is_recommendation_extension(extension) {
+            return Err(recommendations_invalid(
+                format!("{field}.extensions[{position}]"),
+                "Extensions must be lowercase identifiers without a leading dot.",
+            ));
+        }
+    }
+    for (position, alternative) in entry.covered_by.iter().enumerate() {
+        if !is_plugin_id(alternative) || alternative == &entry.plugin_id {
+            return Err(recommendations_invalid(
+                format!("{field}.coveredBy[{position}]"),
+                "coveredBy entries must be distinct valid plugin IDs.",
+            ));
+        }
+    }
+    Ok(ValidRecommendationEntry {
+        plugin_id: entry.plugin_id,
+        markers: entry.markers,
+        extensions: entry.extensions,
+        covered_by: entry.covered_by,
+    })
+}
+
+struct WorkspaceSignals {
+    basenames: Vec<String>,
+    extensions: BTreeSet<String>,
+}
+
+fn collect_workspace_signals(workspace_files: &[String]) -> WorkspaceSignals {
+    let mut seen_basenames = BTreeSet::new();
+    let mut extensions = BTreeSet::new();
+    for path in workspace_files {
+        let trimmed = path.trim();
+        let Some(basename) = trimmed.rsplit(['/', '\\']).next() else {
+            continue;
+        };
+        if basename.is_empty() || basename == "." || basename == ".." {
+            continue;
+        }
+        seen_basenames.insert(basename.to_string());
+        if let Some((stem, ext)) = basename.rsplit_once('.') {
+            if !stem.is_empty() && !ext.is_empty() {
+                extensions.insert(ext.to_ascii_lowercase());
+            }
+        }
+    }
+    WorkspaceSignals {
+        basenames: seen_basenames.into_iter().collect(),
+        extensions,
+    }
+}
+
+fn recommend_for_workspace(payload: RecommendForWorkspacePayload) -> Validation<Value> {
+    if !is_platform(&payload.platform) {
+        return Err(PluginRejection::at(
+            "plugin.index.invalid",
+            "platform",
+            "The host platform identifier is invalid.",
+        ));
+    }
+    let signals = collect_workspace_signals(&payload.workspace_files);
+    // Windows filesystems match build markers ASCII case-insensitively while Unix stays exact.
+    let marker_case_insensitive = payload.platform.starts_with("windows-");
+    let installed: BTreeSet<String> = payload.installed_plugin_ids.into_iter().collect();
+    let dismissed: BTreeSet<String> = payload.dismissed_plugin_ids.into_iter().collect();
+
+    let mut accepted_ids = BTreeSet::new();
+    let mut matched_plugins: Vec<MatchedRecommendation> = Vec::new();
+    let mut rejected = Vec::new();
+
+    for (catalog_pos, catalog) in payload.catalogs.into_iter().enumerate() {
+        let catalog_prefix = format!("catalogs[{catalog_pos}].recommendations");
+        let index_result = validate_index(
+            catalog.index,
+            catalog.source_kind,
+            &payload.platform,
+            payload.host_capabilities.as_ref(),
+        );
+        let validated_index = match index_result {
+            Ok(index) => index,
+            Err(error) => {
+                rejected.push(json!({ "id": Value::Null, "error": error }));
+                continue;
+            }
+        };
+        let entries = match validate_recommendation_root(catalog.recommendations, &catalog_prefix) {
+            Ok(entries) => entries,
+            Err(error) => {
+                rejected.push(json!({ "id": Value::Null, "error": error }));
+                continue;
+            }
+        };
+
+        let mut available_by_id: BTreeMap<String, Value> = BTreeMap::new();
+        if let Some(plugins) = validated_index["plugins"].as_array() {
+            for plugin in plugins {
+                if plugin["availability"]["status"] == "available" {
+                    if let Some(id) = plugin["id"].as_str() {
+                        available_by_id.insert(id.to_string(), plugin.clone());
+                    }
+                }
+            }
+        }
+
+        let mut seen_in_catalog = BTreeSet::new();
+        for (entry_pos, raw) in entries.into_iter().enumerate() {
+            let field = format!("{catalog_prefix}.recommendations[{entry_pos}]");
+            let raw_id = raw
+                .get("pluginID")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            let parsed = serde_json::from_value::<RawRecommendationEntry>(raw)
+                .map_err(|error| {
+                    recommendations_invalid(
+                        field.clone(),
+                        format!("The recommendation entry is invalid: {error}"),
+                    )
+                })
+                .and_then(|entry| validate_recommendation_entry(entry, &field))
+                .and_then(|entry| {
+                    if seen_in_catalog.insert(entry.plugin_id.clone()) {
+                        Ok(entry)
+                    } else {
+                        Err(PluginRejection::at(
+                            "plugin.recommendations.duplicate",
+                            format!("{field}.pluginID"),
+                            "The plugin is listed more than once in this recommendation catalog.",
+                        ))
+                    }
+                });
+            let rule = match parsed {
+                Ok(rule) => rule,
+                Err(error) => {
+                    rejected.push(json!({ "id": raw_id, "error": error }));
+                    continue;
+                }
+            };
+
+            let matched_markers: BTreeSet<String> = rule
+                .markers
+                .iter()
+                .filter(|marker| {
+                    signals.basenames.iter().any(|name| {
+                        if marker_case_insensitive {
+                            name.eq_ignore_ascii_case(marker)
+                        } else {
+                            name == marker.as_str()
+                        }
+                    })
+                })
+                .cloned()
+                .collect();
+            let matched_extensions: BTreeSet<String> = rule
+                .extensions
+                .iter()
+                .filter(|ext| signals.extensions.contains(ext.as_str()))
+                .cloned()
+                .collect();
+
+            if matched_markers.is_empty() && matched_extensions.is_empty() {
+                continue;
+            }
+            if installed.contains(&rule.plugin_id)
+                || dismissed.contains(&rule.plugin_id)
+                || rule
+                    .covered_by
+                    .iter()
+                    .any(|alternative| installed.contains(alternative))
+            {
+                continue;
+            }
+            let Some(plugin_value) = available_by_id.get(&rule.plugin_id) else {
+                continue;
+            };
+            if !accepted_ids.insert(rule.plugin_id.clone()) {
+                continue;
+            }
+
+            let matched_markers: Vec<String> = matched_markers.into_iter().collect();
+            let matched_extensions: Vec<String> = matched_extensions.into_iter().collect();
+            let has_markers = !matched_markers.is_empty();
+            let name_key = plugin_value["name"]
+                .as_str()
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            let mut item = serde_json::Map::new();
+            item.insert("plugin".to_string(), plugin_value.clone());
+            item.insert("matchedMarkers".to_string(), json!(matched_markers));
+            item.insert("matchedExtensions".to_string(), json!(matched_extensions));
+            if let Some(index_url) = catalog
+                .index_url
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                item.insert("marketplaceIndexURL".to_string(), json!(index_url));
+            }
+            matched_plugins.push(MatchedRecommendation {
+                has_markers,
+                name_key,
+                id_key: rule.plugin_id,
+                value: Value::Object(item),
+            });
+        }
+    }
+
+    matched_plugins.sort_by(|left, right| {
+        right
+            .has_markers
+            .cmp(&left.has_markers)
+            .then_with(|| left.name_key.cmp(&right.name_key))
+            .then_with(|| left.id_key.cmp(&right.id_key))
+    });
+    let plugins: Vec<Value> = matched_plugins
+        .into_iter()
+        .map(|entry| entry.value)
+        .collect();
+    Ok(json!({ "plugins": plugins, "rejected": rejected }))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct InstallReviewPayload {
     manifest: Value,
     #[serde(default, rename = "expectedID")]
@@ -822,4 +1207,13 @@ pub fn install_review_command(payload: Value) -> Result<Value, CoreError> {
             payload.host_capabilities.as_ref(),
         ),
     ))
+}
+
+/// `plugins.marketplace.recommendForWorkspace`: validates companion
+/// recommendation catalogs against marketplace indexes and returns matching,
+/// available, uninstalled, and undismissed plugins.
+pub fn recommend_for_workspace_command(payload: Value) -> Result<Value, CoreError> {
+    let payload: RecommendForWorkspacePayload =
+        decode_payload(payload, "plugins.marketplace.recommendForWorkspace")?;
+    Ok(outcome("recommendation", recommend_for_workspace(payload)))
 }

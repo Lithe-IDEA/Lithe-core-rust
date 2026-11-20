@@ -596,8 +596,9 @@ or removing a command fails until the table changes in the same commit.
 | `project.checkName` | Check that a name can be a new project's directory name |
 | `project.extractArchive` | Extract a downloaded project archive into the staging directory, refusing unsafe entries |
 | `plugins.marketplace.validateIndex` | Validate a marketplace index and report each plugin's availability for one platform |
-| `plugins.marketplace.resolveSource` | Resolve a user-entered marketplace source to the index URL to fetch |
+| `plugins.marketplace.resolveSource` | Resolve a user-entered marketplace source to the index and companion recommendations URLs to fetch |
 | `plugins.marketplace.installReview` | List a package's permissions and programs, and those not yet approved |
+| `plugins.marketplace.recommendForWorkspace` | Match sampled workspace files against marketplace recommendation catalogs and indexes |
 | `workspace.snapshot` | Enumerate visible workspace nodes and relative file paths; `nestedWorktrees` lists linked worktrees checked out inside their own repository, which are left out of the tree, files, and search index; hidden folders, Core's own and the ones enabled plugins declare through `workspace.configureVisibility`, are skipped without being read; `includeTree: false` returns only `files` and a childless `root`; `files` (and the tree, when included) keep the lowercase traversal order that bounded consumers such as Windows Quick Open rely on, not the natural display order of `workspace.listDirectories` |
 | `workspace.releaseIndexing` | Retire a policy and clear index/cache data at project close; accepts `root`, optional `ownerId`, and that owner's last observed `revision`, returns `released`; an old close must not retire a new generation |
 | `workspace.configureIndexing` | Install a process-local, canonical-root indexing policy before workspace consumers run; returns a monotonic revision, effective directory reasons and Git failure state; see `rust/fixtures/workspace/indexing-policy-v1.json` |
@@ -5333,10 +5334,15 @@ archives and pass the parsed JSON. `validateIndex` accepts
 and returns `{ status: "ok", index: { plugins, rejected } }` with per-entry
 `availability`; a listed version is available only when its `pluginAPIVersion`
 is one Core supports and every capability it requires is in `hostCapabilities`; `resolveSource` accepts `{ url }` and returns
-`{ status: "ok", source: { indexURL, repository, displayName } }`;
+`{ status: "ok", source: { indexURL, recommendationsURL, repository, displayName } }`;
 `installReview` accepts `{ manifest, expectedID?, expectedVersion?,
 approvedPrograms?, hostCapabilities? }` and returns `{ status: "ok", review: { id, version,
-permissions, programs, newPrograms } }`. Content problems use the same
+permissions, programs, newPrograms } }`;
+`recommendForWorkspace` accepts `{ platform, workspaceFiles, catalogs: [{ index, sourceKind, indexURL?, recommendations }], hostCapabilities?, installedPluginIDs?, dismissedPluginIDs? }`
+and returns `{ status: "ok", recommendation: { plugins: [{ plugin, matchedMarkers, matchedExtensions, marketplaceIndexURL? }], rejected } }`
+after validating each catalog, filtering to available/uninstalled/undismissed
+matches, excluding `coveredBy` alternatives, deduplicating across catalogs, and
+sorting marker matches ahead of extension-only matches. Content problems use the same
 `rejected` shape; see the Marketplace section of
 [`plugins/v1`](../../shared/plugins/contract/v1/README.md) and `fixtures/marketplace/`.
 

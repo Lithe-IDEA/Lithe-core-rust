@@ -176,5 +176,10 @@ pub(super) fn dispatch(
             payload,
             lithe_plugin_marketplace::install_review_command,
         ),
+        PluginsCommand::MarketplaceRecommendForWorkspace => plugin_response(
+            id,
+            payload,
+            lithe_plugin_marketplace::recommend_for_workspace_command,
+        ),
     }
 }

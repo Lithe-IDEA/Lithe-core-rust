@@ -300,6 +300,8 @@ pub enum PluginsCommand {
     MarketplaceResolveSource,
     /// Lists a package's permissions and programs before installation (`plugins.marketplace.installReview`).
     MarketplaceInstallReview,
+    /// Matches workspace file signals against marketplace recommendation catalogs (`plugins.marketplace.recommendForWorkspace`).
+    MarketplaceRecommendForWorkspace,
 }
 
 #[derive(Debug, Clone)]
@@ -1263,6 +1265,9 @@ impl CoreCommand {
             "plugins.marketplace.installReview" => {
                 Some(Self::Plugins(PluginsCommand::MarketplaceInstallReview))
             }
+            "plugins.marketplace.recommendForWorkspace" => Some(Self::Plugins(
+                PluginsCommand::MarketplaceRecommendForWorkspace,
+            )),
             "workspace.snapshot" => Some(Self::Workspace(WorkspaceCommand::Snapshot)),
             "workspace.releaseIndexing" => Some(Self::Workspace(WorkspaceCommand::ReleaseIndexing)),
             "workspace.configureIndexing" => {

@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "description": "plugins.marketplace.recommendForWorkspace matching, filtering, platform casing and sorting cases against index.json and recommendations.json.",
+  "cases": [
+    {
+      "name": "matches marker and extension and sorts marker matches first",
+      "sourceKind": "official",
+      "platform": "darwin-arm64",
+      "hostCapabilities": {
+        "buildProviders": [0],
+        "buildSystems": [0],
+        "languageServers": [0],
+        "languages": [0]
+      },
+      "workspaceFiles": ["build.zig", "lib/app.ex", "Futurefile", ".gitignore"],
+      "installedPluginIDs": [],
+      "dismissedPluginIDs": [],
+      "expectedPlugins": [
+        {
+          "id": "io.example.zig-support",
+          "matchedMarkers": ["build.zig"],
+          "matchedExtensions": ["zig"]
+        },
+        {
+          "id": "io.example.elixir-tools",
+          "matchedMarkers": [],
+          "matchedExtensions": ["ex"]
+        }
+      ]
+    },
+    {
+      "name": "excludes installed, coveredBy and dismissed plugins",
+      "sourceKind": "thirdParty",
+      "platform": "darwin-arm64",
+      "hostCapabilities": {
+        "buildProviders": [0],
+        "buildSystems": [0],
+        "languageServers": [0],
+        "languages": [0]
+      },
+      "workspaceFiles": ["build.zig", "src/main.zig", "mix.exs", "composer.json"],
+      "installedPluginIDs": ["io.example.zig-support", "io.example.elixir-lite"],
+      "dismissedPluginIDs": ["dev.lithe.fixture.language-packaged-server"],
+      "expectedPlugins": []
+    },
+    {
+      "name": "marker matching is case-sensitive on Unix and case-insensitive on Windows",
+      "sourceKind": "thirdParty",
+      "platform": "darwin-arm64",
+      "hostCapabilities": {
+        "languageServers": [0],
+        "languages": [0]
+      },
+      "workspaceFiles": ["BUILD.ZIG", "src/MAIN.ZIG"],
+      "installedPluginIDs": [],
+      "dismissedPluginIDs": [],
+      "expectedPlugins": [
+        {
+          "id": "io.example.zig-support",
+          "matchedMarkers": [],
+          "matchedExtensions": ["zig"]
+        }
+      ]
+    },
+    {
+      "name": "windows matches markers ASCII case-insensitively",
+      "sourceKind": "thirdParty",
+      "platform": "windows-x64",
+      "hostCapabilities": {
+        "languageServers": [0],
+        "languages": [0]
+      },
+      "workspaceFiles": ["BUILD.ZIG", "lib\\APP.EX"],
+      "installedPluginIDs": [],
+      "dismissedPluginIDs": [],
+      "expectedPlugins": [
+        {
+          "id": "io.example.zig-support",
+          "matchedMarkers": ["build.zig"],
+          "matchedExtensions": ["zig"]
+        },
+        {
+          "id": "io.example.elixir-tools",
+          "matchedMarkers": [],
+          "matchedExtensions": ["ex"]
+        }
+      ]
+    }
+  ]
+}
