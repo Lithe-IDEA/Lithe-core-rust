@@ -11,6 +11,8 @@
 //!   routes each resource's events to its subscriber.
 //! - [`api`] offers typed operations and resource handles on a session.
 //! - [`forward`] forwards local ports through tunnels.
+//! - [`connection_log`] records one connection's lifecycle in the v2 log,
+//!   identified by a random id instead of the host or user name.
 //!
 //! The transport layer deliberately knows nothing about files or processes.
 //! Supporting a new kind of remote means adding a hop, not new capabilities.
@@ -21,6 +23,7 @@ pub mod api;
 pub mod bootstrap;
 #[cfg(all(test, unix))]
 mod command;
+pub mod connection_log;
 pub mod forward;
 pub mod launch;
 pub mod session;
@@ -28,6 +31,7 @@ pub mod transport;
 
 pub use api::{SpawnSpec, TerminalSpec, WriteOptions};
 pub use bootstrap::{ServerArtifact, ServerTarget};
+pub use connection_log::{ConnectionKind, ConnectionLog};
 pub use forward::PortForward;
 pub use session::{ClientError, ConnectOptions, Event, RemoteSession, ResumeMode};
 pub use transport::{ContainerEngine, ContainerHop, Hop, SshHop, TransportChain, TransportError};

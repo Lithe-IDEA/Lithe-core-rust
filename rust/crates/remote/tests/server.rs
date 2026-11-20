@@ -5,7 +5,9 @@ mod support;
 
 use lithe_remote::client::launch::{launch, launch_command, LaunchError, Launched, UnsafeReason};
 use lithe_remote::client::session::ClientError;
-use lithe_remote::client::{RemoteSession, ServerArtifact, TransportChain, WriteOptions};
+use lithe_remote::client::{
+    ConnectionKind, ConnectionLog, RemoteSession, ServerArtifact, TransportChain, WriteOptions,
+};
 use lithe_remote::protocol::frame::{read_frame, skip_preamble, write_frame};
 use lithe_remote::protocol::methods::{
     self, encode_bytes, FileKind, FileVersion, OperatingSystem, OrphanProtection, WatchBackend,
@@ -824,10 +826,18 @@ fn run_launch(
         .unwrap();
     let mut input = child.stdin.take().unwrap();
     let mut output = child.stdout.take().unwrap();
-    let result = launch(&mut output, &mut input, |report| {
-        let target = report.target()?;
-        Some(ServerArtifact::from_file(target, SERVER.into(), env!("CARGO_PKG_VERSION")).unwrap())
-    });
+    let result = launch(
+        &mut output,
+        &mut input,
+        |report| {
+            let target = report.target()?;
+            Some(
+                ServerArtifact::from_file(target, SERVER.into(), env!("CARGO_PKG_VERSION"))
+                    .unwrap(),
+            )
+        },
+        &ConnectionLog::begin(ConnectionKind::Ssh),
+    );
     (result, child, output, input)
 }
 
