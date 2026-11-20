@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "command": "languages.matchFirstLine",
+  "cases": [
+    {
+      "name": "uses-registry-order",
+      "payload": {
+        "firstLine": "#!/usr/bin/env -S sample3 -f",
+        "candidates": [
+          { "languageID": "sample", "firstLineMatch": "^#! */usr/bin/env +-S +sample[0-9]*(?: |$)" },
+          { "languageID": "other", "firstLineMatch": "^#!" }
+        ]
+      },
+      "expected": { "id": "uses-registry-order", "ok": true, "data": { "languageID": "sample" } }
+    },
+    {
+      "name": "returns-null-for-no-match",
+      "payload": {
+        "firstLine": "#!/usr/bin/env other",
+        "candidates": [{ "languageID": "sample", "firstLineMatch": "^#! */usr/bin/env +sample(?: |$)" }]
+      },
+      "expected": { "id": "returns-null-for-no-match", "ok": true, "data": { "languageID": null } }
+    },
+    {
+      "name": "rejects-an-invalid-candidate",
+      "payload": {
+        "firstLine": "#!/usr/bin/env sample",
+        "candidates": [{ "languageID": "sample", "firstLineMatch": "[" }]
+      },
+      "errorCode": "invalid_request"
+    }
+  ]
+}

@@ -157,12 +157,12 @@ struct GrammarPayload {
     manifest: Value,
     #[serde(rename = "languageID")]
     language_id: String,
-    /// Text of the grammar file the host read from the package.
+    /// Text of the grammar or first-line metadata file the host read from the package.
     grammar: String,
 }
 
-/// `plugins.declarative.decodeGrammar`: validates the grammar file of one
-/// language and returns what the editor registers for it.
+/// `plugins.declarative.decodeGrammar`: validates the grammar or metadata of
+/// one language and returns what the editor registers for it.
 pub fn decode_grammar_command(payload: Value) -> Result<Value, CoreError> {
     let payload: GrammarPayload = decode_payload(payload, "plugins.declarative.decodeGrammar")?;
     Ok(outcome(validate_manifest_value(payload.manifest).and_then(
@@ -171,7 +171,11 @@ pub fn decode_grammar_command(payload: Value) -> Result<Value, CoreError> {
                 .languages
                 .iter()
                 .find(|language| language.id == payload.language_id)
-                .filter(|language| language.grammar.is_some() || language.configuration.is_some())
+                .filter(|language| {
+                    language.grammar.is_some()
+                        || language.configuration.is_some()
+                        || !payload.grammar.is_empty()
+                })
                 .ok_or_else(|| {
                     PluginRejection::new(
                         "plugin.grammar.unavailable",
@@ -185,29 +189,42 @@ pub fn decode_grammar_command(payload: Value) -> Result<Value, CoreError> {
                 .grammar
                 .as_ref()
                 .map(|grammar| match grammar.kind {
-                    // The editor's engine parses the original text; Core only
-                    // proves that it can and names the scope it registers.
                     lithe_plugin_grammar::GrammarKind::Textmate => {
-                        lithe_plugin_grammar::decode_textmate(&payload.grammar).map(|scope_name| {
-                            json!({
+                        lithe_plugin_grammar::decode_textmate(&payload.grammar).map(|metadata| {
+                            let mut decoded = json!({
                                 "kind": grammar.kind,
-                                "scopeName": scope_name,
+                                "scopeName": metadata.scope_name,
                                 "source": payload.grammar,
-                            })
+                            });
+                            // The optional hint has a different regex dialect
+                            // from the original highlighting source.
+                            if let Some(pattern) = metadata
+                                .first_line_match
+                                .filter(|pattern| crate::first_line::supports_pattern(pattern))
+                            {
+                                decoded["firstLineMatch"] = json!(pattern);
+                            }
+                            decoded
                         })
                     }
                 })
                 .transpose()?;
-            Ok((
-                "language",
-                json!({
-                    "id": language.id,
-                    "fileExtensions": language.file_extensions,
-                    "fileNames": language.file_names,
-                    "grammar": grammar,
-                    "configuration": language.configuration,
-                }),
-            ))
+            let mut decoded = json!({
+                "id": language.id,
+                "fileExtensions": language.file_extensions,
+                "fileNames": language.file_names,
+                "grammar": grammar,
+                "configuration": language.configuration,
+            });
+            let standalone_hint = if language.grammar.is_none() && !payload.grammar.is_empty() {
+                crate::first_line::decode_metadata(&payload.grammar)?
+            } else {
+                None
+            };
+            if let Some(pattern) = standalone_hint {
+                decoded["firstLineMatch"] = json!(pattern);
+            }
+            Ok(("language", decoded))
         },
     )))
 }

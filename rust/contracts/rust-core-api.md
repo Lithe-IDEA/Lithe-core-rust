@@ -485,6 +485,7 @@ or removing a command fails until the table changes in the same commit.
 | `plugins.installed.lifecycle` | Report installed plugins' enablement and plan confirming an install, enabling, disabling or uninstalling one |
 | `plugins.declarative.editSettings` | Validate one atomic setting edit batch and return replacement text while preserving unrelated plugins and dormant values |
 | `plugins.declarative.workspaceConfiguration` | Expand a language server's `workspaceConfiguration` with the merged setting values |
+| `languages.matchFirstLine` | Select the first matching registered language for an extensionless document |
 | `plugins.declarative.decodeGrammar` | Validate independent static editor resources |
 | `plugins.editorActions.decode` | Validate independent action registration, collection or click results |
 | `plugins.hostApi.describe` | Describe backend host methods and their required grants from Core's method table |
@@ -5175,13 +5176,34 @@ order, forgets the choice if there is one and removes the state, so a later
 installation starts as a first one. Shared cases are in
 `rust/fixtures/plugins/installed-lifecycle.json`.
 
+`languages.matchFirstLine` accepts `{firstLine, candidates:[{languageID,
+firstLineMatch}]}` and returns `{languageID}`, with `null` for no match. The
+host calls it after existing explicit, file-name and extension associations
+fail for a dotless basename. Send only the complete first decoded line minus
+its terminator. Empty input, CR, LF, NUL and lines over 1024 UTF-8 bytes produce
+no match. Never send a truncated prefix. Supply the enabled declarations in
+registry precedence order, in batches of up to 64, stopping on the first match.
+The result preserves the winning ID unchanged. A malformed batch, language ID
+or pattern is an `invalid_request`. Core retains only bounded compiled
+declarations and performs no I/O. See the shared
+[ABI fixture](../fixtures/plugins/first-line-match-v1.json) and the [first-line pattern
+contract](../../shared/plugins/contract/v1/README.md#first-line-matching).
+
 `plugins.declarative.decodeGrammar` accepts `{ manifest, languageID, grammar }`,
 where `grammar` is the text the host read from the language's `grammar.path`
 inside the installed package, and returns `language: { id, fileExtensions,
-fileNames, grammar: { kind, scopeName, source }, configuration }`. `kind` is
-`textmate`; `source` is the validated original JSON text, byte for byte, which
-the editor's TextMate engine parses and registers under `scopeName`, the
-grammar's own scope. Hosts run plugin grammars only off the editor UI thread,
+fileNames, grammar: { kind, scopeName, source, firstLineMatch? }, configuration }`.
+The editor registers the validated `textmate` JSON `source` byte for byte under
+`scopeName`.
+When present, `grammar.firstLineMatch` holds validated optional root-level
+metadata for `languages.matchFirstLine`. For a language without an explicit
+`grammar.path`, the host can instead pass the text from
+`grammars/<language-id>.first-line.json` as `grammar`. Core returns a valid hint
+as `language.firstLineMatch`, with `language.grammar` set to `null` so the editor
+uses its existing grammar. Unsupported or malformed hints are omitted. A
+standalone file with invalid JSON or above its size limit is rejected as
+`plugin.grammar.invalid`.
+Hosts run plugin grammars only off the editor UI thread,
 with bounded backtracking and a time budget per line. A grammar Core
 refuses is `plugin.grammar.invalid` with the failing `field`; a language
 without static editor resources is `plugin.grammar.unavailable`. Configuration-only

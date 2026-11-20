@@ -3,6 +3,13 @@
 
 use super::*;
 
+pub(crate) fn is_language_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"+-_".contains(&byte)
+        })
+}
+
 impl LanguageDeclaration {
     pub(crate) fn normalize(&mut self, index: usize) -> Validation<()> {
         let field = format!("languages[{index}]");
@@ -12,15 +19,7 @@ impl LanguageDeclaration {
         if let Some(configuration) = &self.configuration {
             configuration.validate(&format!("{field}.configuration"))?;
         }
-        let id = self.id.trim().to_lowercase();
-        if id.is_empty()
-            || id != self.id
-            || !id.chars().all(|character| {
-                character.is_ascii_lowercase()
-                    || character.is_ascii_digit()
-                    || "+-_".contains(character)
-            })
-        {
+        if !is_language_id(&self.id) {
             return Err(invalid(
                 format!("{field}.id"),
                 "The language ID must be lowercase.",

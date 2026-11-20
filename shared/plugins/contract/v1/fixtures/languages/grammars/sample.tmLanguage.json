@@ -1,0 +1,7 @@
+{
+  "scopeName": "source.sample",
+  "firstLineMatch": "^#![ \\t]*(?:/usr/bin/env[ \\t]+(?:-S[ \\t]+)?|/opt/tools/)sample[0-9]*(?:[ \\t]|$)",
+  "patterns": [
+    { "match": "\\bsample\\b", "name": "keyword.control.sample" }
+  ]
+}

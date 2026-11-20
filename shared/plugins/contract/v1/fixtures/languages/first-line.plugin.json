@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 0,
+  "pluginAPIVersion": 0,
+  "id": "dev.lithe.test.first-line",
+  "displayName": "First-line fixture",
+  "version": "1.0.0",
+  "requires": { "languages": 0 },
+  "vendor": { "id": "org.example", "displayName": "Example", "signatureRequirement": "publisherPackage" },
+  "permissions": [],
+  "activationEvents": [],
+  "languages": [
+    {
+      "id": "sample",
+      "displayName": "Sample",
+      "fileExtensions": ["sample"],
+      "grammar": { "kind": "textmate", "path": "grammars/sample.tmLanguage.json" },
+      "configuration": { "lineComment": "//" }
+    }
+  ]
+}

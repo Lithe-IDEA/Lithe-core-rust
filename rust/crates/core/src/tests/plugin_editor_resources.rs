@@ -15,6 +15,10 @@ macro_rules! contract_file {
 
 const GRAMMAR_PLUGIN: &str = contract_file!("fixtures/languages/language-grammar.plugin.json");
 const HTTP_GRAMMAR: &str = contract_file!("fixtures/languages/grammars/http.tmLanguage.json");
+const FIRST_LINE_PLUGIN: &str = contract_file!("fixtures/languages/first-line.plugin.json");
+const SAMPLE_GRAMMAR: &str = contract_file!("fixtures/languages/grammars/sample.tmLanguage.json");
+const SAMPLE_FIRST_LINE: &str =
+    contract_file!("fixtures/languages/grammars/sample.first-line.json");
 
 fn manifest(source: &str) -> Value {
     serde_json::from_str(source).expect("fixture manifest is JSON")
@@ -378,4 +382,178 @@ fn configuration_only_contribution_decodes_without_grammar() {
     assert_eq!(result["status"], "ok", "{result}");
     assert!(result["language"]["grammar"].is_null());
     assert_eq!(result["language"]["configuration"]["lineComment"], "#");
+}
+
+#[test]
+fn first_line_grammar_uses_the_existing_language_capability() {
+    let plugin = manifest(FIRST_LINE_PLUGIN);
+    let admission = validate_command(json!({
+        "manifest": plugin,
+        "hostCapabilities": { "languages": [0] },
+    }))
+    .unwrap();
+    assert_eq!(admission["status"], "ok", "{admission}");
+    let outcome = decode_grammar_command(json!({
+        "manifest": admission["plugin"],
+        "languageID": "sample",
+        "grammar": SAMPLE_GRAMMAR,
+    }))
+    .unwrap();
+    assert_eq!(outcome["status"], "ok", "{outcome}");
+    let language = &outcome["language"];
+    assert_eq!(language["fileExtensions"], json!(["sample"]));
+    assert_eq!(language["configuration"]["lineComment"], "//");
+    assert_eq!(language["grammar"]["scopeName"], "source.sample");
+    assert_eq!(language["grammar"]["source"], SAMPLE_GRAMMAR);
+    assert_eq!(
+        language["grammar"]["firstLineMatch"],
+        manifest(SAMPLE_GRAMMAR)["firstLineMatch"]
+    );
+}
+
+#[test]
+fn standalone_first_line_metadata_keeps_the_existing_grammar() {
+    let mut plugin = manifest(FIRST_LINE_PLUGIN);
+    plugin["languages"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("grammar");
+    let admission = validate_command(json!({
+        "manifest": plugin,
+        "hostCapabilities": { "languages": [0] },
+    }))
+    .unwrap();
+    assert_eq!(admission["status"], "ok", "{admission}");
+    let decode = |source: &str| {
+        decode_grammar_command(json!({
+            "manifest": admission["plugin"],
+            "languageID": "sample",
+            "grammar": source,
+        }))
+        .unwrap()
+    };
+    let decoded = decode(SAMPLE_FIRST_LINE);
+    assert_eq!(decoded["status"], "ok", "{decoded}");
+    assert!(decoded["language"]["grammar"].is_null());
+    assert_eq!(
+        decoded["language"]["firstLineMatch"],
+        manifest(SAMPLE_FIRST_LINE)["firstLineMatch"]
+    );
+    assert_eq!(decoded["language"]["configuration"]["lineComment"], "//");
+    let unsupported = decode(r#"{"firstLineMatch":"["}"#);
+    assert_eq!(unsupported["status"], "ok", "{unsupported}");
+    assert!(unsupported["language"]["grammar"].is_null());
+    assert!(!unsupported["language"]
+        .as_object()
+        .unwrap()
+        .contains_key("firstLineMatch"));
+
+    for source in ["invalid JSON", "[]", &" ".repeat(4097)] {
+        let result = decode(source);
+        assert_eq!(result["status"], "rejected", "{result}");
+        assert_eq!(result["error"]["code"], "plugin.grammar.invalid");
+    }
+}
+
+#[test]
+fn unsupported_first_line_metadata_keeps_its_grammar() {
+    for pattern in [
+        Value::Null,
+        json!(42),
+        json!(""),
+        json!("a*"),
+        json!("["),
+        json!(r"(a)\1"),
+        json!("a{10000000}"),
+        json!("é".repeat(257)),
+    ] {
+        let mut grammar = grammar_with(json!([]));
+        grammar["firstLineMatch"] = pattern;
+        let source = grammar.to_string();
+        let outcome = decode_grammar(&source);
+        assert_eq!(outcome["status"], "ok", "{outcome}");
+        let grammar = &outcome["language"]["grammar"];
+        assert!(!grammar.as_object().unwrap().contains_key("firstLineMatch"));
+        assert_eq!(grammar["scopeName"], "source.test");
+        assert_eq!(grammar["source"], source);
+    }
+}
+
+#[test]
+fn first_line_matching_keeps_registered_priority_and_never_reads_past_the_line() {
+    let specific = json!({
+        "languageID": "sample",
+        "firstLineMatch": manifest(SAMPLE_GRAMMAR)["firstLineMatch"],
+    });
+    let generic = json!({"languageID":"other", "firstLineMatch": "#!"});
+    let choose = |line: &str, candidates: &[Value]| {
+        let response = lithe_plugin_manifest::match_first_line(
+            json!({"firstLine":line, "candidates":candidates}),
+        )
+        .unwrap();
+        response["languageID"].clone()
+    };
+    for line in [
+        "#!/opt/tools/sample",
+        "#! /usr/bin/env sample3",
+        "#!/usr/bin/env -S sample3 -f",
+    ] {
+        assert_eq!(choose(line, &[specific.clone(), generic.clone()]), "sample");
+        assert_eq!(choose(line, &[generic.clone(), specific.clone()]), "other");
+    }
+    for line in [
+        "x#!/opt/tools/sample",
+        "#!/opt/tools/sample-extra",
+        "#!/opt/tools/sample\0",
+        "\n#!/opt/tools/sample",
+        "#!/opt/tools/sample\r",
+    ] {
+        assert_eq!(choose(line, std::slice::from_ref(&specific)), Value::Null);
+    }
+    assert_eq!(
+        choose(
+            &format!("#!{}", "é".repeat(511)),
+            std::slice::from_ref(&generic)
+        ),
+        "other"
+    );
+    assert_eq!(
+        choose(
+            &format!("#!{}x", "é".repeat(511)),
+            std::slice::from_ref(&generic)
+        ),
+        Value::Null
+    );
+    assert_eq!(choose("#!/opt/tools/sample", &[]), Value::Null);
+    // A word boundary alone may match at the start of nonempty text but claims no bytes.
+    assert_eq!(
+        choose(
+            "word",
+            &[json!({"languageID":"other","firstLineMatch":"\\b"})]
+        ),
+        Value::Null
+    );
+}
+
+#[test]
+fn first_line_matching_validates_the_whole_candidate_batch() {
+    let entry = json!({"languageID":"sample","firstLineMatch":"#!"});
+    let call = |candidates: Vec<Value>| {
+        lithe_plugin_manifest::match_first_line(json!({"firstLine":"#!", "candidates":candidates}))
+    };
+    assert_eq!(
+        call(vec![entry.clone(); 64]).unwrap()["languageID"],
+        "sample"
+    );
+    assert!(call(vec![entry.clone(); 65]).is_err());
+    assert!(call(vec![
+        entry.clone(),
+        json!({"languageID":"UPPER","firstLineMatch":"#!"})
+    ])
+    .is_err());
+    assert!(call(vec![
+        entry,
+        json!({"languageID":"rest","firstLineMatch":"("})
+    ])
+    .is_err());
 }

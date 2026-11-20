@@ -14,6 +14,8 @@
 
 ## 待合入
 
+- [#127](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/127)，[@Mucheen](https://github.com/Mucheen)，**API-25**：从 `grammar.path` 指定的 TextMate 语法或独立的 `grammars/<language-id>.first-line.json` 读取可选 `firstLineMatch`。独立文件可沿用宿主现有高亮。旧桌面仍可安装 `languages: 0` 的同一插件包。Core 解码返回可选提示并匹配完整首行，既有路径与用户关联优先。见 [1lck/Lithe-IDEA#2122](https://github.com/1lck/Lithe-IDEA/issues/2122)。
+
 - [#112](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/112)，[@Mucheen](https://github.com/Mucheen)，**`buildSystems` 1**（API-29）：清单新增 `buildSystems[].test.discoveryCommand`，已有测试运行可以独立采用命令或 provider。命令使用现有构建工具，把 `litheTestDiscovery` v0 写到宿主提供的 `${outputFile}`。Core 的 `build.testDiscoveryPlan`、`build.decodeTestDiscovery` 和测试树兼容两种发现来源，检查每条选择器可原样运行，命令尝试沿用 `lithe/build/discoverTests` 的结构化终态。没有新增宿主方法、通知或 SDK 版本。见 [1lck/Lithe-IDEA#2122](https://github.com/1lck/Lithe-IDEA/issues/2122)。
 
 ## 按协议查首次出现
