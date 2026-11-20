@@ -344,6 +344,30 @@ fn connecting_without_a_matching_server_reports_the_platform() {
     assert_eq!(value["host"]["system"], local_uname("-s"));
 }
 
+// The connection log keeps one category per failed status, so a log line
+// tells authentication, host key and network failures apart.
+#[test]
+fn every_failed_status_has_its_own_log_category() {
+    use crate::sessions::failure_of;
+    let failed = [
+        ProbeStatus::UnsupportedPlatform,
+        ProbeStatus::AuthenticationFailed,
+        ProbeStatus::HostKeyRejected,
+        ProbeStatus::Unreachable,
+        ProbeStatus::Failed,
+    ];
+    assert_eq!(failure_of(ProbeStatus::Connected), None);
+    let codes: std::collections::BTreeSet<_> = failed
+        .iter()
+        .map(|status| failure_of(*status).unwrap().1)
+        .collect();
+    assert_eq!(codes.len(), failed.len());
+    assert_eq!(
+        failure_of(ProbeStatus::AuthenticationFailed),
+        Some(("authentication", "authentication-failed"))
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn unknown_server_targets_are_rejected() {

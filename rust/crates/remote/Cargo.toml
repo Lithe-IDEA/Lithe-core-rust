@@ -30,6 +30,11 @@ sha2 = { version = "0.10", optional = true }
 libc = { version = "0.2", optional = true }
 trash = { version = "5.2.6", default-features = false, features = ["chrono"], optional = true }
 
+# Tests check every lifecycle fact against the log catalog Core validates with.
+# Only tests use it: the server and the client stay free of Core crates.
+[dev-dependencies]
+lithe-diagnostics = { path = "../diagnostics" }
+
 [[bin]]
 name = "lithe-remote-server"
 path = "src/bin/lithe-remote-server.rs"
@@ -61,4 +66,8 @@ required-features = ["client", "server"]
 
 [[test]]
 name = "persistence"
+required-features = ["client", "server"]
+
+[[test]]
+name = "connection_log"
 required-features = ["client", "server"]

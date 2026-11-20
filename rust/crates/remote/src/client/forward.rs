@@ -4,13 +4,18 @@
 //! opens its own tunnel to the remote target and copies bytes both ways, so
 //! `http://127.0.0.1:<local port>` in a browser reaches a server that only
 //! listens on the remote machine's loopback interface.
+//!
+//! Starting and removing a forward are recorded in the session's
+//! [`ConnectionLog`] with the local port and the number of accepted
+//! connections; the remote host and socket path are not recorded.
 
 use crate::client::api::TunnelEvent;
+use crate::client::connection_log::ConnectionLog;
 use crate::client::session::{ClientError, RemoteSession};
 use crate::protocol::methods::TunnelTarget;
 use std::io::{self, Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -30,6 +35,10 @@ pub struct PortForward {
     local_address: SocketAddr,
     stopping: Arc<AtomicBool>,
     acceptor: Option<JoinHandle<()>>,
+    /// Local connections accepted so far.
+    accepted: Arc<AtomicU64>,
+    started: Instant,
+    log: ConnectionLog,
 }
 
 impl PortForward {
@@ -43,8 +52,14 @@ impl PortForward {
         let listener = TcpListener::bind(bind)?;
         let local_address = listener.local_addr()?;
         let stopping = Arc::new(AtomicBool::new(false));
+        let accepted = Arc::new(AtomicU64::new(0));
+        let log = session.connection_log().clone();
+        let started = Instant::now();
         let acceptor = {
             let stopping = Arc::clone(&stopping);
+            let accepted = Arc::clone(&accepted);
+            let log = log.clone();
+            let target = target.clone();
             thread::Builder::new()
                 .name("remote-forward".into())
                 .spawn(move || {
@@ -57,6 +72,7 @@ impl PortForward {
                             Err(error) => {
                                 forward_failed(
                                     "remote.forward.accept_failed",
+                                    &log,
                                     "accept",
                                     &format!("{:?}", error.kind()),
                                     "io",
@@ -68,14 +84,17 @@ impl PortForward {
                                 continue;
                             }
                         };
+                        accepted.fetch_add(1, Ordering::Relaxed);
                         let session = Arc::clone(&session);
                         let target = target.clone();
+                        let log = log.clone();
                         thread::spawn(move || {
                             if let Err(error) = bridge(&session, connection, target) {
                                 if let Some(category) = crate::failure_log::bridge_category(&error)
                                 {
                                     forward_failed(
                                         "remote.forward.connection_failed",
+                                        &log,
                                         "bridge",
                                         &category,
                                         "remote",
@@ -87,10 +106,14 @@ impl PortForward {
                     }
                 })?
         };
+        log.forward_started(local_address, &target);
         Ok(Self {
             local_address,
             stopping,
             acceptor: Some(acceptor),
+            accepted,
+            started,
+            log,
         })
     }
 
@@ -126,6 +149,11 @@ impl Drop for PortForward {
                 "thread",
             );
         }
+        self.log.forward_removed(
+            self.local_address.port(),
+            self.accepted.load(Ordering::Relaxed),
+            self.started.elapsed(),
+        );
     }
 }
 
@@ -219,6 +247,7 @@ fn permit_failure(last: &mut Option<Instant>, now: Instant) -> bool {
 
 fn forward_failed(
     event: &str,
+    log: &ConnectionLog,
     stage: &'static str,
     code: &str,
     domain: &'static str,
@@ -229,7 +258,7 @@ fn forward_failed(
         Instant::now(),
     );
     if permitted {
-        crate::failure_log::failed(event, stage, code, domain);
+        crate::failure_log::failed_for(event, log.id(), stage, code, domain);
     }
 }
 
