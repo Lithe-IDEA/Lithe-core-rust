@@ -1,5 +1,5 @@
 {
-  "description": "Golden results of plugins.commandInstallers.requirements, plan and defaultDirectory for command-installer.plugin.json. payload is merged into {\"manifest\": <plugin>}; manifestEdits replace the value at a JSON pointer of the manifest. A case whose result depends on the host's path rules lists platforms.unix and platforms.windows, each with its own payload fields and expected outcome. A rejection is matched by its code and field only.",
+  "description": "Golden results of plugins.commandInstallers.requirements, plan and defaultDirectory for the plugin file named by plugin; a case that names its own plugin uses that file instead. payload is merged into {\"manifest\": <plugin>}; manifestEdits replace the value at a JSON pointer of the manifest. A case whose result depends on the host's path rules lists platforms.unix and platforms.windows, each with its own payload fields and expected outcome. A rejection is matched by its code and field only.",
   "plugin": "command-installer.plugin.json",
   "cases": [
     {
@@ -27,6 +27,7 @@
               "commands": ["sample-dap"],
               "tool": "builder",
               "minimumVersion": null,
+              "download": null,
               "mayUseNetwork": true,
               "targets": ["managed"]
             },
@@ -35,6 +36,7 @@
               "commands": ["sample-ls"],
               "tool": "builder",
               "minimumVersion": "1.2",
+              "download": null,
               "mayUseNetwork": true,
               "targets": ["managed", "toolDefault"]
             }
@@ -73,6 +75,7 @@
               "commands": ["sample-dap"],
               "tool": "builder",
               "minimumVersion": null,
+              "download": null,
               "mayUseNetwork": true,
               "targets": ["managed"]
             },
@@ -81,6 +84,7 @@
               "commands": ["sample-ls"],
               "tool": "builder",
               "minimumVersion": "1.2",
+              "download": null,
               "mayUseNetwork": true,
               "targets": ["managed", "toolDefault"]
             }
@@ -105,6 +109,7 @@
               "minimumVersion": "1.2",
               "mayUseNetwork": true,
               "timeoutMilliseconds": 300000,
+              "download": null,
               "arguments": ["install", "example.org/sample-ls@latest"],
               "environment": { "BUILDER_BIN": "/data/lithe/commands/sample-ls" },
               "commandDirectory": "/data/lithe/commands/sample-ls",
@@ -124,6 +129,7 @@
               "minimumVersion": "1.2",
               "mayUseNetwork": true,
               "timeoutMilliseconds": 300000,
+              "download": null,
               "arguments": ["install", "example.org/sample-ls@latest"],
               "environment": { "BUILDER_BIN": "C:\\Lithe\\commands\\sample-ls" },
               "commandDirectory": "C:\\Lithe\\commands\\sample-ls",
@@ -150,6 +156,7 @@
               "minimumVersion": null,
               "mayUseNetwork": true,
               "timeoutMilliseconds": 600000,
+              "download": null,
               "arguments": ["install", "--prefix", "/data/lithe/commands/sample-dap", "example.org/sample-dap@latest"],
               "environment": {},
               "commandDirectory": "/data/lithe/commands/sample-dap/bin",
@@ -169,6 +176,7 @@
               "minimumVersion": null,
               "mayUseNetwork": true,
               "timeoutMilliseconds": 600000,
+              "download": null,
               "arguments": ["install", "--prefix", "C:\\Lithe\\commands\\sample-dap", "example.org/sample-dap@latest"],
               "environment": {},
               "commandDirectory": "C:\\Lithe\\commands\\sample-dap\\bin",
@@ -192,6 +200,7 @@
           "minimumVersion": "1.2",
           "mayUseNetwork": true,
           "timeoutMilliseconds": 300000,
+          "download": null,
           "arguments": ["install", "example.org/sample-ls@latest"],
           "environment": {},
           "commandDirectory": null,
@@ -293,6 +302,201 @@
       "name": "an installer without toolDefault has no default directory",
       "operation": "defaultDirectory",
       "payload": { "installerID": "sample-dap", "outputs": [] },
+      "expected": { "status": "rejected", "code": "plugin.commandInstaller.targetUndeclared", "field": "installerID" }
+    },
+    {
+      "name": "a download installer is offered on a platform it has an archive for",
+      "plugin": "command-installer-download.plugin.json",
+      "operation": "requirements",
+      "payload": { "platform": { "os": "macos", "arch": "arm64" } },
+      "expected": {
+        "status": "ok",
+        "requirements": {
+          "consumers": [
+            {
+              "kind": "debugAdapter",
+              "id": "sample",
+              "commands": [{ "command": "sample-lldb", "installer": "sample-lldb" }]
+            }
+          ],
+          "installers": [
+            {
+              "id": "sample-lldb",
+              "commands": ["sample-lldb"],
+              "tool": null,
+              "minimumVersion": null,
+              "download": { "version": "1.2.3" },
+              "mayUseNetwork": true,
+              "targets": ["managed"]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "without a platform every download installer is listed",
+      "plugin": "command-installer-download.plugin.json",
+      "operation": "requirements",
+      "payload": {},
+      "expected": {
+        "status": "ok",
+        "requirements": {
+          "consumers": [
+            {
+              "kind": "debugAdapter",
+              "id": "sample",
+              "commands": [{ "command": "sample-lldb", "installer": "sample-lldb" }]
+            }
+          ],
+          "installers": [
+            {
+              "id": "sample-lldb",
+              "commands": ["sample-lldb"],
+              "tool": null,
+              "minimumVersion": null,
+              "download": { "version": "1.2.3" },
+              "mayUseNetwork": true,
+              "targets": ["managed"]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "a download installer without an archive for the platform is left out",
+      "plugin": "command-installer-download.plugin.json",
+      "operation": "requirements",
+      "payload": { "platform": { "os": "macos", "arch": "x86_64" } },
+      "expected": {
+        "status": "ok",
+        "requirements": {
+          "consumers": [
+            {
+              "kind": "debugAdapter",
+              "id": "sample",
+              "commands": [{ "command": "sample-lldb", "installer": null }]
+            }
+          ],
+          "installers": []
+        }
+      }
+    },
+    {
+      "name": "requirements refuse an unsupported platform",
+      "plugin": "command-installer-download.plugin.json",
+      "operation": "requirements",
+      "payload": { "platform": { "os": "freebsd", "arch": "x86_64" } },
+      "expected": { "status": "rejected", "code": "plugin.commandInstaller.platformInvalid", "field": "platform" }
+    },
+    {
+      "name": "a download plan names the platform's archive and its mirrors",
+      "plugin": "command-installer-download.plugin.json",
+      "operation": "plan",
+      "payload": { "installerID": "sample-lldb", "target": "managed", "platform": { "os": "macos", "arch": "arm64" } },
+      "expected": {
+        "status": "ok",
+        "plan": {
+          "installer": "sample-lldb",
+          "target": "managed",
+          "commands": ["sample-lldb"],
+          "tool": null,
+          "minimumVersion": null,
+          "mayUseNetwork": true,
+          "timeoutMilliseconds": 900000,
+          "download": {
+            "installer": "sample-lldb",
+            "version": "1.2.3",
+            "os": "macos",
+            "arch": "arm64",
+            "url": "https://downloads.example.org/sample-lldb/1.2.3/sample-lldb-darwin-arm64.zip",
+            "sha256": "2f114a990e1b368dd1dbd33c80c0e719767af2d228391ec0df0571c957f9ac91",
+            "archive": "zip",
+            "stripPrefix": "",
+            "cacheKey": "de1c7271950564f1696dd15c7f23c87e2f8d9afc4311ca55d81c23eccb35250f",
+            "commandDirectory": "extension/adapter",
+            "mirrors": ["https://mirror.example.net/sample-lldb/1.2.3/sample-lldb-darwin-arm64.zip"]
+          },
+          "arguments": [],
+          "environment": {},
+          "commandDirectory": null,
+          "directoryProbes": []
+        }
+      }
+    },
+    {
+      "name": "a download plan carries the archive's strip prefix",
+      "plugin": "command-installer-download.plugin.json",
+      "operation": "plan",
+      "payload": { "installerID": "sample-lldb", "target": "managed", "platform": { "os": "linux", "arch": "x86_64" } },
+      "expected": {
+        "status": "ok",
+        "plan": {
+          "installer": "sample-lldb",
+          "target": "managed",
+          "commands": ["sample-lldb"],
+          "tool": null,
+          "minimumVersion": null,
+          "mayUseNetwork": true,
+          "timeoutMilliseconds": 900000,
+          "download": {
+            "installer": "sample-lldb",
+            "version": "1.2.3",
+            "os": "linux",
+            "arch": "x86_64",
+            "url": "https://downloads.example.org/sample-lldb/1.2.3/sample-lldb-linux-x64.tar.gz",
+            "sha256": "1cd7f386598022b51a5b93b9ffa23e812b23f519cfe1833384ec4bef4bfd1be1",
+            "archive": "tar.gz",
+            "stripPrefix": "sample-lldb-1.2.3",
+            "cacheKey": "0484b60cdc12c632c91122f34138336b89e6b7c26d7f1ada09e232438d406e1e",
+            "commandDirectory": "extension/adapter"
+          },
+          "arguments": [],
+          "environment": {},
+          "commandDirectory": null,
+          "directoryProbes": []
+        }
+      }
+    },
+    {
+      "name": "a download installer has no toolDefault target",
+      "plugin": "command-installer-download.plugin.json",
+      "operation": "plan",
+      "payload": { "installerID": "sample-lldb", "target": "toolDefault", "platform": { "os": "macos", "arch": "arm64" } },
+      "expected": { "status": "rejected", "code": "plugin.commandInstaller.targetUndeclared", "field": "target" }
+    },
+    {
+      "name": "a download plan takes no install directory",
+      "plugin": "command-installer-download.plugin.json",
+      "operation": "plan",
+      "payload": { "installerID": "sample-lldb", "target": "managed", "platform": { "os": "macos", "arch": "arm64" }, "installDirectory": "/data/lithe/commands/sample-lldb" },
+      "expected": { "status": "rejected", "code": "plugin.commandInstaller.directoryInvalid", "field": "installDirectory" }
+    },
+    {
+      "name": "a download plan needs the platform",
+      "plugin": "command-installer-download.plugin.json",
+      "operation": "plan",
+      "payload": { "installerID": "sample-lldb", "target": "managed" },
+      "expected": { "status": "rejected", "code": "plugin.commandInstaller.platformInvalid", "field": "platform" }
+    },
+    {
+      "name": "a plan refuses an unsupported platform",
+      "plugin": "command-installer-download.plugin.json",
+      "operation": "plan",
+      "payload": { "installerID": "sample-lldb", "target": "managed", "platform": { "os": "freebsd", "arch": "x86_64" } },
+      "expected": { "status": "rejected", "code": "plugin.commandInstaller.platformInvalid", "field": "platform" }
+    },
+    {
+      "name": "a download plan for a platform without an archive is refused",
+      "plugin": "command-installer-download.plugin.json",
+      "operation": "plan",
+      "payload": { "installerID": "sample-lldb", "target": "managed", "platform": { "os": "macos", "arch": "x86_64" } },
+      "expected": { "status": "rejected", "code": "plugin.commandInstaller.unavailable", "field": "platform" }
+    },
+    {
+      "name": "a download installer has no default directory",
+      "plugin": "command-installer-download.plugin.json",
+      "operation": "defaultDirectory",
+      "payload": { "installerID": "sample-lldb", "outputs": [] },
       "expected": { "status": "rejected", "code": "plugin.commandInstaller.targetUndeclared", "field": "installerID" }
     }
   ]

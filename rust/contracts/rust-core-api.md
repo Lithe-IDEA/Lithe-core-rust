@@ -4875,29 +4875,43 @@ inside an app bundle or installation directory.
 The `plugins.commandInstallers.*` commands implement
 [Command installers](../../shared/plugins/contract/v1/README.md#command-installers).
 They revalidate the manifest, read nothing and start nothing.
-`plugins.commandInstallers.requirements` accepts `{ manifest }` and returns
-`requirements: { consumers: [{ kind, id, commands: [{ command, installer }] }],
-installers: [{ id, commands, tool, minimumVersion, mayUseNetwork, targets }] }`.
+`plugins.commandInstallers.requirements` accepts `{ manifest, platform?: { os,
+arch } }` and returns `requirements: { consumers: [{ kind, id, commands: [{
+command, installer }] }], installers: [{ id, commands, tool, minimumVersion,
+download: null | { version }, mayUseNetwork, targets }] }`.
 `kind` is `languageServer`, `buildProvider`, `vcsProvider`, `debugAdapter` or
 `backend`; `id` is the language, build system, VCS or adapter ID, `null` for
-the backend; `installer` is `null` for a command no installer provides.
+the backend; `installer` is `null` for a command no installer provides. With
+`platform`, a download installer without an archive for it is left out of
+`installers` and its commands have a `null` installer.
 `plugins.commandInstallers.plan` accepts `{ manifest, installerID, target:
-"managed" | "toolDefault", installDirectory? }` and returns `plan: { installer,
-target, commands, tool, minimumVersion, mayUseNetwork, timeoutMilliseconds,
-arguments, environment, commandDirectory, directoryProbes: [{ arguments }] }`.
-A `managed` plan needs the absolute directory the host made and expands
+"managed" | "toolDefault", installDirectory?, platform? }` and returns `plan: {
+installer, target, commands, tool, minimumVersion, mayUseNetwork,
+timeoutMilliseconds, arguments, environment, commandDirectory, directoryProbes:
+[{ arguments }], download }`. For a tool installer `download` is `null`. A
+`managed` plan needs the absolute directory the host made and expands
 `${installDirectory}` in it; `commandDirectory` is that directory or the
 declared path below it, and `directoryProbes` is empty. A `toolDefault` plan
 takes no `installDirectory`, has a `null` `commandDirectory` and lists the
-probes. `plugins.commandInstallers.defaultDirectory` accepts `{ manifest,
+probes. A download installer's plan needs `platform`, takes no
+`installDirectory`, has empty `arguments`, `environment` and
+`directoryProbes`, a `null` `commandDirectory`, and `download: { installer,
+version, os, arch, url, sha256, archive, stripPrefix, cacheKey,
+commandDirectory, mirrors? }` for the platform's archive. `cacheKey` is the
+lowercase SHA-256 of the compact JSON `{installer, version, os, arch, url,
+sha256, archive, stripPrefix}`, mirrors left out; `commandDirectory` is
+relative to the extracted root. `plugins.commandInstallers.defaultDirectory` accepts `{ manifest,
 installerID, outputs }`, one standard output per probe in plan order (`null`
 for a probe that failed), and returns `directory`: the first probe output that
 names an absolute directory, its first path-list entry for a `pathList` probe,
 with `append` joined; `null` when none does. Paths follow the platform Core
 runs on. Refusals are `plugin.commandInstaller.unknown`,
 `plugin.commandInstaller.targetUndeclared`,
-`plugin.commandInstaller.directoryInvalid` and
-`plugin.commandInstaller.probeOutputsInvalid`; the golden cases are
+`plugin.commandInstaller.directoryInvalid`,
+`plugin.commandInstaller.probeOutputsInvalid`,
+`plugin.commandInstaller.platformInvalid` (an unsupported `platform`, or none
+for a download plan) and `plugin.commandInstaller.unavailable` (no archive for
+the platform); the golden cases are
 `shared/plugins/contract/v1/fixtures/command-installers/command-installer-plans.json`.
 
 The `plugins.managedRuntimes.*` commands implement

@@ -100,7 +100,9 @@ pub const DEBUG_ADAPTERS: &str = "debugAdapters";
 
 /// `commandInstallers[]`: how the host installs, after the user confirms, a
 /// bare command that one of the plugin's `systemCommand` launches needs; see
-/// `lithe_plugin_manifest::command_installers`.
+/// `lithe_plugin_manifest::command_installers`. Version 1 adds `download`
+/// installers: pinned per-platform archives the host downloads, checks and
+/// extracts into the plugin's managed directory.
 pub const COMMAND_INSTALLERS: &str = "commandInstallers";
 
 /// `managedRuntimes`: pinned archives, isolated runtime storage, and the
@@ -130,7 +132,7 @@ pub const SUPPORTED_CAPABILITIES: &[(&str, &[u32])] = &[
     (BUILD_MODEL_INPUTS, &[0]),
     (BUILD_PROVIDERS, &[0, 1]),
     (BUILD_SYSTEMS, &[0, 1]),
-    (COMMAND_INSTALLERS, &[0]),
+    (COMMAND_INSTALLERS, &[0, 1]),
     (DEBUG_ADAPTERS, &[0]),
     (EXECUTION_PROVIDERS, &[0]),
     (KEYMAP_IMPORT_PROVIDERS, &[0]),

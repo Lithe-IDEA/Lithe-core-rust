@@ -14,6 +14,8 @@
 
 ## 待合入
 
+- [#133](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/133)，[@xiaoyumuxi](https://github.com/xiaoyumuxi)，**`commandInstallers` 1**（API-23）：命令安装新增[下载安装](../contract/v1/README.md#download-installers)：安装声明 `download`（与 `tool`、`minimumVersion`、`arguments` 互斥），固定上游 `version` 和 1–6 个平台归档，每个归档有 `os`、`arch`、HTTPS `url`、可选 `mirrors`（最多 8 个）、完整 `sha256`、`archive`（`zip`/`tar.gz`）和可选 `stripPrefix`，规则与 `managedRuntimes` 归档相同；只能用 `managed` 目标，不带 `arguments`、`environment`，`commandDirectory` 相对解压根目录，`mayUseNetwork` 必须为 `true`。`plugins.commandInstallers.requirements` 和 `plan` 新增可选 `platform: {os, arch}`：带上时没有该平台归档的下载安装不提供；安装条目新增 `download: null | {version}`；计划新增 `download`（工具安装为 `null`，下载安装为选中平台的归档、`cacheKey` 和 `commandDirectory`）。新增 Core 错误码 `plugin.commandInstaller.platformInvalid`、`unavailable`，宿主错误码 `plugin.commandInstaller.downloadFailed`、`checksumMismatch`、`archiveInvalid`；`failed` 只指工具安装失败。下载安装的审查程序列出全部归档，改地址、镜像、摘要或版本需要重新批准；只声明 `commandInstallers` 0 的宿主拒绝安装带下载安装的插件。没有新增宿主方法、通知或 SDK 版本。用于 Rust Support 插件按需下载 CodeLLDB。
+
 - [#130](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/130)，[@1lck](https://github.com/1lck)，**工作区插件推荐**：市场契约新增同级推荐索引格式 `plugin-recommendations.schema.json`（`schemaVersion: 0`，独立于只增不破旧版的 `lithe-plugin-index.json`）；`plugins.marketplace.resolveSource` 额外返回 `recommendationsURL`，并新增宿主内部 Core 命令 `plugins.marketplace.recommendForWorkspace`（不是插件 RPC），基于工作区采集文件名与已有市场索引匹配可安装的缺失插件。见 [1lck/Lithe-IDEA#2228](https://github.com/1lck/Lithe-IDEA/issues/2228)。
 
 - [#127](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/127)，[@Mucheen](https://github.com/Mucheen)，**API-25**：从 `grammar.path` 指定的 TextMate 语法或独立的 `grammars/<language-id>.first-line.json` 读取可选 `firstLineMatch`。独立文件可沿用宿主现有高亮。旧桌面仍可安装 `languages: 0` 的同一插件包。Core 解码返回可选提示并匹配完整首行，既有路径与用户关联优先。见 [1lck/Lithe-IDEA#2122](https://github.com/1lck/Lithe-IDEA/issues/2122)。
@@ -54,6 +56,7 @@
 | `buildSystems` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `buildSystems` | 1 | 待合入 | [#112](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/112) |
 | `commandInstallers` | 0 | 2026-11-15 | [#53](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/53) |
+| `commandInstallers` | 1 | 待合入 | [#133](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/133) |
 | `debugAdapters` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `executionProviders` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `keymapImportProviders` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |

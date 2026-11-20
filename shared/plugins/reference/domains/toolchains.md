@@ -115,17 +115,18 @@
 
 ### 安装缺失的命令
 
-`systemCommand` 启动只写裸命令名（如 `dlv`、`gopls`），机器上没有时启动失败。清单顶层 `commandInstallers[]` 告诉宿主怎样用插件已经依赖的工具（`requiresTools` 里的工具定义）安装它，用户在插件管理里点安装即可，不用开终端。需要能力 `commandInstallers` 0 和权限 `commands.install`。
+`systemCommand` 启动只写裸命令名（如 `dlv`、`gopls`、`codelldb`），机器上没有时启动失败。清单顶层 `commandInstallers[]` 告诉宿主怎样安装它，用户在插件管理里点安装即可，不用开终端。安装有两种：**工具安装**用插件已经依赖的工具（`requiresTools` 里的工具定义）运行安装命令；**下载安装**（能力 `commandInstallers` 1）下载上游发布的固定归档，插件包里不用带这个命令。需要能力 `commandInstallers` 0（有下载安装时为 1）和权限 `commands.install`。
 
 | 项目 | 规则 |
 | --- | --- |
-| 声明 | `id`、`commands`（1–8 个本清单 `systemCommand` 启动用到的裸命令，一个命令只归一个安装）、`tool`、`minimumVersion?`、字面量 `arguments`、`mayUseNetwork`、`timeoutSeconds?`（1–3600，默认 600）、`targets` |
+| 声明 | `id`、`commands`（1–8 个本清单 `systemCommand` 启动用到的裸命令，一个命令只归一个安装）、`mayUseNetwork`、`timeoutSeconds?`（1–3600，默认 600）、`targets`；工具安装另有 `tool`、`minimumVersion?`、字面量 `arguments`，下载安装另有 `download` |
+| 下载安装 | `download.version` 是上游版本；`download.artifacts` 1–6 个归档，每个 `os`/`arch` 最多一个，各有 HTTPS `url`、可选 `mirrors`（最多 8 个）、完整 `sha256`、`archive`（`zip` 或 `tar.gz`）、可选 `stripPrefix`。只能用 `managed` 目标，不带 `arguments`、`environment`；`commandDirectory` 相对解压根目录。`mayUseNetwork` 必须为 `true`。没有当前平台归档时不提供这个安装 |
 | `managed` 目标 | 装进宿主为插件管理的目录（应用数据目录，不在应用包、安装目录或插件包里，卸载插件时删除）。`arguments`（替换安装的参数）或 `environment` 必须用唯一的模板变量 `${installDirectory}`；`commandDirectory` 是命令所在的子目录 |
 | `toolDefault` 目标 | 装到工具默认位置，值都是字面量。`directory` 最多 4 个探针，按顺序用同一工具运行，第一个输出绝对目录的探针决定位置；`pathList` 取路径列表第一项，`append` 拼接子目录 |
-| 宿主做什么 | `plugins.commandInstallers.requirements` 列出每个启动缺哪些命令、由哪个安装提供；`toolDefault` 先运行探针，把输出交给 `defaultDirectory`；向用户展示工具、完整命令行、是否联网和每个目标的目录，用户选定后用 `plan` 展开并运行，显示输出、可取消、超时停止，结束后确认命令确实在目录里 |
+| 宿主做什么 | `plugins.commandInstallers.requirements` 带上本机 `platform`，列出每个启动缺哪些命令、由哪个安装提供；`toolDefault` 先运行探针，把输出交给 `defaultDirectory`；向用户展示工具和完整命令行（下载安装展示版本和下载地址）、是否联网和每个目标的目录，用户选定后用 `plan` 展开并运行，显示输出、可取消、超时停止，结束后确认命令确实在目录里。下载安装的 `plan` 带 `platform`，返回 `download`（选中平台的归档和 `cacheKey`）；宿主依次尝试 `url` 和镜像下载，解压前校验 SHA-256，安全解压到受管目录下自己的子目录，保留文件权限 |
 | 之后的启动 | 宿主查找这个插件的 `systemCommand` 时，除 `PATH` 外还查插件的受管命令目录和记录下来的默认目录 |
 | 不覆盖 | 构建系统和执行提供者通过 `invocation.executables` 解析的可执行文件 |
-| 安装审查 | 每个安装都是审查里的程序（`kind: "commandInstaller"`），改了要运行的内容需要重新批准 |
+| 安装审查 | 每个安装都是审查里的程序（`kind: "commandInstaller"`），改了要运行的内容需要重新批准；下载安装的程序列出全部归档，改地址、镜像、摘要或版本也要重新批准 |
 
 ### 独立于插件版本的受管运行时
 
@@ -145,7 +146,7 @@ Core 的 `plugins.managedRuntimes.plan` 选择准确平台并生成缓存键，`
 | --- | --- |
 | 工具定义（`toolDefinitions`） | 已声明（macOS、Windows、Linux）。设置页发现、项目环境信任、目录固定保存，以及构建、运行、调试、语言服务器和新建项目选择工具，都通过共享 Core 解析器完成 |
 | 工具链提供者（`toolchainProviders`） | 未声明。提供者查询路线不可用，需要它的插件不会被提供安装 |
-| 安装缺失的命令（`commandInstallers`） | 已声明。插件管理页展示工具、命令行、网络与目标目录，用户确认后安装到受管目录或工具默认目录 |
+| 安装缺失的命令（`commandInstallers`） | 已声明 `0`。插件管理页展示工具、命令行、网络与目标目录，用户确认后安装到受管目录或工具默认目录；下载安装（`1`）由配套宿主接入后声明 |
 | 语言服务器的 `{kind: "tool"}` 启动 | 按工作区工具链四层选择解析后启动（见[语言](languages.md)） |
 | `toolchainConsumers`、提供者热激活 | 契约尚未提供 |
 
@@ -302,17 +303,18 @@ When a plugin starts a process by tool-definition ID (a launch plan with `launch
 
 ### Installing missing commands
 
-A `systemCommand` launch names only a bare command (such as `dlv` or `gopls`), and fails when the machine lacks it. The top-level `commandInstallers[]` tells the host how to install it with a tool the plugin already requires (a tool definition in `requiresTools`), so the user installs it from plugin management instead of a terminal. It requires the `commandInstallers` 0 capability and the `commands.install` permission.
+A `systemCommand` launch names only a bare command (such as `dlv`, `gopls` or `codelldb`), and fails when the machine lacks it. The top-level `commandInstallers[]` tells the host how to install it, so the user installs it from plugin management instead of a terminal. A **tool installer** runs a tool the plugin already requires (a tool definition in `requiresTools`); a **download installer** (capability `commandInstallers` 1) downloads a pinned archive its upstream publishes, so the plugin package does not carry the command. It requires the `commandInstallers` 0 capability (1 with a download installer) and the `commands.install` permission.
 
 | Item | Rule |
 | --- | --- |
-| Declaration | `id`, `commands` (1 to 8 bare commands that `systemCommand` launches of this manifest name; one installer per command), `tool`, `minimumVersion?`, literal `arguments`, `mayUseNetwork`, `timeoutSeconds?` (1 to 3600, 600 by default), `targets` |
+| Declaration | `id`, `commands` (1 to 8 bare commands that `systemCommand` launches of this manifest name; one installer per command), `mayUseNetwork`, `timeoutSeconds?` (1 to 3600, 600 by default), `targets`; a tool installer adds `tool`, `minimumVersion?` and literal `arguments`, a download installer adds `download` |
+| Download installer | `download.version` is the upstream version; `download.artifacts` holds 1 to 6 archives, at most one per `os`/`arch`, each with an HTTPS `url`, optional `mirrors` (up to 8), the full `sha256`, `archive` (`zip` or `tar.gz`) and optional `stripPrefix`. Only the `managed` target, without `arguments` or `environment`; `commandDirectory` is relative to the extracted root. `mayUseNetwork` is `true`. The installer is not offered on a platform without an archive |
 | `managed` target | Installs into a directory the host manages for the plugin (in application data, never in the app bundle, installation directory or plugin package; removed with the plugin). `arguments` (replacing the installer's) or `environment` must use `${installDirectory}`, the only template variable; `commandDirectory` is the subdirectory the commands land in |
 | `toolDefault` target | Installs wherever the tool installs by default; every value is literal. `directory` holds up to 4 probes run in order with the same tool; the first to print an absolute directory decides; `pathList` takes the first entry of a path list and `append` adds a subdirectory |
-| Host steps | `plugins.commandInstallers.requirements` lists which commands each launch lacks and which installer provides them; for `toolDefault` the host runs the probes and sends their output to `defaultDirectory`; it shows the tool, the full command line, the network use and the directory of each target, then expands the chosen one with `plan` and runs it, showing the output, allowing cancel and stopping it at the timeout, and finally checks the commands are in the directory |
+| Host steps | `plugins.commandInstallers.requirements`, sent with the host `platform`, lists which commands each launch lacks and which installer provides them; for `toolDefault` the host runs the probes and sends their output to `defaultDirectory`; it shows the tool and the full command line (for a download installer the version and download URL), the network use and the directory of each target, then expands the chosen one with `plan` and runs it, showing the output, allowing cancel and stopping it at the timeout, and finally checks the commands are in the directory. A download installer's `plan` takes `platform` and returns `download` (the platform's archive and its `cacheKey`); the host tries `url` and then the mirrors, checks the SHA-256 before extracting, and extracts safely into a directory of its own below the managed directory, keeping file modes |
 | Later launches | The host looks for the plugin's `systemCommand` launches in its managed command directory and the recorded default directories as well as on `PATH` |
 | Not covered | Executables of build systems and execution providers resolved through `invocation.executables` |
-| Install review | Every installer is a reviewed program (`kind: "commandInstaller"`); a change to what it runs needs approval again |
+| Install review | Every installer is a reviewed program (`kind: "commandInstaller"`); a change to what it runs needs approval again. A download installer's program lists every archive, so a new URL, mirror, digest or version needs approval again too |
 
 ### Managed runtimes independent of plugin version
 
@@ -332,7 +334,7 @@ Core's `plugins.managedRuntimes.plan` selects the exact platform and generates c
 | --- | --- |
 | Tool definitions (`toolDefinitions`) | Declared (macOS, Windows, and Linux). Settings discovery, workspace project-environment trust, saving pins, and Build, Run, Debug, language-server, and project-generator tool selection all go through the shared Core resolver |
 | Toolchain providers (`toolchainProviders`) | Not declared. The provider query route is unavailable, and a plugin that needs it is not offered for installation |
-| Installing missing commands (`commandInstallers`) | Declared. Plugin management displays the tool, command line, network use, and target directory, and installs into the managed directory or tool default directory after user confirmation |
+| Installing missing commands (`commandInstallers`) | `0` declared. Plugin management displays the tool, command line, network use, and target directory, and installs into the managed directory or tool default directory after user confirmation; download installers (`1`) are declared with companion host integration |
 | Language server `{kind: "tool"}` launch | Resolved through the workspace's four toolchain layers and started (see [Languages](languages.md)) |
 | `toolchainConsumers`, live provider activation | Not provided by the contract yet |
 

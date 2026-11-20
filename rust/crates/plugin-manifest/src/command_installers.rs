@@ -1,20 +1,28 @@
 //! `commandInstallers[]`: how the host installs a bare command that one of the
 //! plugin's `systemCommand` launches needs and the machine lacks.
 //!
-//! The host never installs on its own. It shows the user the exact command
-//! line, whether it uses the network and where the command will land, and
-//! runs the installation only after the user confirms. The installation is
-//! one process of a tool the plugin requires, run either into a directory
-//! Lithe owns for the plugin (`managed`) or wherever the tool installs by
-//! default (`toolDefault`). This module validates the declaration, lists which
-//! launch needs which command, expands the plan for the chosen target, and
-//! reads the directory a `toolDefault` installation uses from the output of
-//! the tool's own probes.
+//! The host never installs on its own. It shows the user what the
+//! installation runs or downloads, whether it uses the network and where the
+//! command will land, and installs only after the user confirms. A tool
+//! installation is one process of a tool the plugin requires, run either into
+//! a directory Lithe owns for the plugin (`managed`) or wherever the tool
+//! installs by default (`toolDefault`). A download installation (version 1)
+//! fetches a pinned archive for the host's platform, checks its SHA-256
+//! digest and extracts it into the plugin's managed directory; the archive
+//! rules are those of `managedRuntimes`. This module validates the
+//! declaration, lists which launch needs which command, expands the plan for
+//! the chosen target, and reads the directory a `toolDefault` installation
+//! uses from the output of the tool's own probes.
 //!
 //! Note: the decision is recorded in .agents/notes/implemented/architecture/2026-11-15-plugin-command-installers.md
 
+use super::archives::{
+    bounded_text, is_archive_layout_path, validate_archive_source, ArchivePlatform, ArchiveSource,
+    MAX_ARTIFACTS,
+};
 use super::*;
 use lithe_platform::{paths, Platform};
+use sha2::{Digest, Sha256};
 
 /// Most installers one plugin may declare.
 const MAX_COMMAND_INSTALLERS: usize = 16;
@@ -40,6 +48,12 @@ const DEFAULT_TIMEOUT_SECONDS: u64 = 600;
 /// Longest timeout an installation may declare.
 const MAX_TIMEOUT_SECONDS: u64 = 3600;
 
+/// Longest upstream version of a download, in bytes.
+const MAX_DOWNLOAD_VERSION_BYTES: usize = 128;
+
+/// First `commandInstallers` version with download installers.
+const DOWNLOAD_VERSION: u32 = 1;
+
 /// Program kinds of the `systemCommand` launches an installer may serve, the
 /// consumer kind the host shows, and the program key that names the consumer.
 /// A plugin backend has a single process and so no key.
@@ -55,7 +69,9 @@ const SYSTEM_COMMAND_PROGRAMS: &[(&str, &str, Option<&str>)] = &[
     ("systemVcsProvider", "vcsProvider", Some("vcs")),
 ];
 
-/// One way to install bare commands the plugin's launches name.
+/// One way to install bare commands the plugin's launches name: a run of a
+/// tool (`tool` and `arguments`) or a pinned download (`download`), never
+/// both.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct CommandInstallerDeclaration {
@@ -65,22 +81,66 @@ pub(crate) struct CommandInstallerDeclaration {
     /// `systemCommand` launch of this manifest and by no other installer.
     pub(crate) commands: Vec<String>,
     /// Tool-definition ID, listed in `requiresTools`, whose executable runs
-    /// the installation.
-    pub(crate) tool: String,
+    /// the installation. Required unless the installer downloads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) tool: Option<String>,
     /// Lowest acceptable version of `tool`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) minimum_version: Option<String>,
     /// Arguments after the tool's executable, used by a target that does not
-    /// replace them. Literal: no template variables.
-    pub(crate) arguments: Vec<String>,
+    /// replace them. Literal: no template variables. Required with `tool`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) arguments: Option<Vec<String>>,
+    /// Pinned archives to download instead of running a tool; needs
+    /// `requires.commandInstallers` 1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) download: Option<CommandDownload>,
     /// Whether the installation may download; the host shows it before the
-    /// user confirms.
+    /// user confirms. Always true for a download installer.
     pub(crate) may_use_network: bool,
-    /// How long the host lets the installation run, 1 to 3600 seconds.
+    /// How long the host lets the installation run, 1 to 3600 seconds. A
+    /// download installer's timeout covers the download and the extraction.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) timeout_seconds: Option<u64>,
-    /// Where the installation may put the commands; at least one target.
+    /// Where the installation may put the commands; at least one target. A
+    /// download installer has only `managed`.
     pub(crate) targets: InstallTargets,
+}
+
+/// The archives of one upstream release, one per platform it supports.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct CommandDownload {
+    /// Upstream release identity the host shows, independent of the
+    /// plugin's own version.
+    version: String,
+    /// One archive per supported operating system and architecture, ordered
+    /// by platform after validation.
+    artifacts: Vec<CommandArchive>,
+}
+
+/// One platform's archive. The rules are those of a `managedRuntimes`
+/// artifact.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct CommandArchive {
+    /// macos, windows or linux.
+    os: String,
+    /// arm64 or x86_64.
+    arch: String,
+    /// HTTPS URL of the archive.
+    url: String,
+    /// Fallback HTTPS URLs serving the same bytes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    mirrors: Vec<String>,
+    /// SHA-256 digest of the archive, lowercased after validation.
+    sha256: String,
+    /// zip or tar.gz; the host never infers a format from a URL suffix.
+    archive: String,
+    /// Archive root removed while extracting; empty removes nothing. Every
+    /// entry lies below it.
+    #[serde(default)]
+    strip_prefix: String,
 }
 
 /// The locations the user may choose between.
@@ -95,9 +155,10 @@ pub(crate) struct InstallTargets {
     pub(crate) tool_default: Option<ToolDefaultTarget>,
 }
 
-/// Installation into the directory the host chose for the plugin. Its
-/// arguments or environment must name `${installDirectory}`, which is the
-/// only template variable of this contract.
+/// Installation into the directory the host chose for the plugin. A tool
+/// installer's arguments or environment must name `${installDirectory}`,
+/// which is the only template variable of this contract. A download
+/// installer's managed target sets only `commandDirectory`.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct ManagedTarget {
@@ -109,7 +170,7 @@ pub(crate) struct ManagedTarget {
     environment: BTreeMap<String, String>,
     /// Package-style relative path, below the install directory, of the
     /// directory the commands land in; the install directory itself when
-    /// absent.
+    /// absent. For a download, the path is below the extracted root.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     command_directory: Option<String>,
 }
@@ -227,11 +288,14 @@ fn check_environment_names(environment: &BTreeMap<String, String>, field: &str) 
 }
 
 impl CommandInstallerDeclaration {
+    /// Checks one installer; `version` is the manifest's
+    /// `requires.commandInstallers`.
     fn validate(
-        &self,
+        &mut self,
         field: &str,
         launched: &BTreeSet<String>,
         runtime_tools: RuntimeTools<'_>,
+        version: u32,
     ) -> Validation<()> {
         if !is_identifier(&self.id) || self.id.len() > 64 {
             return Err(invalid(
@@ -264,10 +328,6 @@ impl CommandInstallerDeclaration {
                 ));
             }
         }
-        runtime_tools.check(&self.tool, format!("{field}.tool"))?;
-        if let Some(version) = &self.minimum_version {
-            validate_minimum_version(version, &format!("{field}.minimumVersion"))?;
-        }
         if let Some(seconds) = self.timeout_seconds {
             if !(1..=MAX_TIMEOUT_SECONDS).contains(&seconds) {
                 return Err(invalid(
@@ -276,16 +336,35 @@ impl CommandInstallerDeclaration {
                 ));
             }
         }
-        check_arguments(&self.arguments, &format!("{field}.arguments"))?;
-        for (index, argument) in self.arguments.iter().enumerate() {
-            check_literal(argument, &format!("{field}.arguments[{index}]"))?;
-        }
         let targets = format!("{field}.targets");
         if self.targets.managed.is_none() && self.targets.tool_default.is_none() {
             return Err(invalid(
                 targets,
                 "An installer declares at least one target.",
             ));
+        }
+        if self.download.is_some() {
+            return self.validate_download(field, version);
+        }
+        let Some(tool) = &self.tool else {
+            return Err(invalid(
+                format!("{field}.tool"),
+                "An installer runs a tool or, with requires.commandInstallers 1, downloads an archive.",
+            ));
+        };
+        runtime_tools.check(tool, format!("{field}.tool"))?;
+        if let Some(version) = &self.minimum_version {
+            validate_minimum_version(version, &format!("{field}.minimumVersion"))?;
+        }
+        let Some(arguments) = &self.arguments else {
+            return Err(invalid(
+                format!("{field}.arguments"),
+                "A tool installer lists the arguments it passes to the tool.",
+            ));
+        };
+        check_arguments(arguments, &format!("{field}.arguments"))?;
+        for (index, argument) in arguments.iter().enumerate() {
+            check_literal(argument, &format!("{field}.arguments[{index}]"))?;
         }
         if let Some(managed) = &self.targets.managed {
             self.validate_managed(managed, &format!("{targets}.managed"))?;
@@ -294,6 +373,128 @@ impl CommandInstallerDeclaration {
             validate_tool_default(tool_default, &format!("{targets}.toolDefault"))?;
         }
         Ok(())
+    }
+
+    /// Checks a download installer: no tool, network use declared, only the
+    /// managed target with at most a command directory, and archives that
+    /// follow the `managedRuntimes` rules.
+    fn validate_download(&mut self, field: &str, version: u32) -> Validation<()> {
+        if version < DOWNLOAD_VERSION {
+            return Err(invalid(
+                "requires.commandInstallers",
+                "Download installers require requires.commandInstallers >= 1.",
+            ));
+        }
+        for (name, present) in [
+            ("tool", self.tool.is_some()),
+            ("minimumVersion", self.minimum_version.is_some()),
+            ("arguments", self.arguments.is_some()),
+        ] {
+            if present {
+                return Err(invalid(
+                    format!("{field}.{name}"),
+                    "A download installer runs no tool; it declares download instead.",
+                ));
+            }
+        }
+        if !self.may_use_network {
+            return Err(invalid(
+                format!("{field}.mayUseNetwork"),
+                "A download installer uses the network.",
+            ));
+        }
+        let targets = format!("{field}.targets");
+        if self.targets.tool_default.is_some() {
+            return Err(invalid(
+                format!("{targets}.toolDefault"),
+                "A download installer extracts only into the managed directory.",
+            ));
+        }
+        let Some(managed) = &self.targets.managed else {
+            return Err(invalid(
+                format!("{targets}.managed"),
+                "A download installer extracts into the managed directory.",
+            ));
+        };
+        let managed_field = format!("{targets}.managed");
+        if managed.arguments.is_some() {
+            return Err(invalid(
+                format!("{managed_field}.arguments"),
+                "A download installer runs no tool and passes no arguments.",
+            ));
+        }
+        if !managed.environment.is_empty() {
+            return Err(invalid(
+                format!("{managed_field}.environment"),
+                "A download installer runs no tool and sets no environment.",
+            ));
+        }
+        if let Some(directory) = &managed.command_directory {
+            if !is_safe_relative_path(directory) || !is_archive_layout_path(directory) {
+                return Err(invalid(
+                    format!("{managed_field}.commandDirectory"),
+                    "The command directory is a relative path inside the extracted archive.",
+                ));
+            }
+        }
+        let Some(download) = &mut self.download else {
+            return Ok(());
+        };
+        let field = format!("{field}.download");
+        if !bounded_text(&download.version, MAX_DOWNLOAD_VERSION_BYTES) {
+            return Err(invalid(
+                format!("{field}.version"),
+                format!("A download version is a nonempty upstream identity of at most {MAX_DOWNLOAD_VERSION_BYTES} bytes."),
+            ));
+        }
+        if !(1..=MAX_ARTIFACTS).contains(&download.artifacts.len()) {
+            return Err(invalid(
+                format!("{field}.artifacts"),
+                format!("A download declares from 1 to {MAX_ARTIFACTS} platform archives."),
+            ));
+        }
+        let mut platforms = BTreeSet::new();
+        for (index, artifact) in download.artifacts.iter_mut().enumerate() {
+            let field = format!("{field}.artifacts[{index}]");
+            if !archives::is_archive_platform(&artifact.os, &artifact.arch)
+                || !platforms.insert((artifact.os.clone(), artifact.arch.clone()))
+            {
+                return Err(invalid(
+                    &field,
+                    "Archives have unique supported operating-system and architecture pairs.",
+                ));
+            }
+            validate_archive_source(
+                &field,
+                ArchiveSource {
+                    url: &artifact.url,
+                    mirrors: &artifact.mirrors,
+                    sha256: &mut artifact.sha256,
+                    archive: &artifact.archive,
+                },
+                || Ok(()),
+            )?;
+            if !is_archive_layout_path(&artifact.strip_prefix) {
+                return Err(invalid(
+                    format!("{field}.stripPrefix"),
+                    "An archive path is a bounded relative path without traversal.",
+                ));
+            }
+        }
+        download
+            .artifacts
+            .sort_by(|left, right| (&left.os, &left.arch).cmp(&(&right.os, &right.arch)));
+        Ok(())
+    }
+
+    /// The archive of a download installer for `platform`, if it has one.
+    fn archive_for(&self, platform: &ArchivePlatform) -> Option<&CommandArchive> {
+        self.download.as_ref().and_then(|download| {
+            download
+                .artifacts
+                .iter()
+                .find(|artifact| platform.matches(&artifact.os, &artifact.arch))
+        })
     }
 
     fn validate_managed(&self, managed: &ManagedTarget, field: &str) -> Validation<()> {
@@ -327,7 +528,10 @@ impl CommandInstallerDeclaration {
     }
 
     fn effective_arguments<'a>(&'a self, replacement: &'a Option<Vec<String>>) -> &'a [String] {
-        replacement.as_deref().unwrap_or(&self.arguments)
+        replacement
+            .as_deref()
+            .or(self.arguments.as_deref())
+            .unwrap_or_default()
     }
 
     fn timeout_milliseconds(&self) -> u64 {
@@ -409,11 +613,16 @@ impl DeclarativePluginManifest {
             .into_iter()
             .flat_map(|consumer| consumer.commands)
             .collect();
+        let version = self
+            .requires
+            .get(capabilities::COMMAND_INSTALLERS)
+            .copied()
+            .unwrap_or(0);
         let mut ids = BTreeSet::new();
         let mut installed = BTreeSet::new();
-        for (index, installer) in self.command_installers.iter().enumerate() {
+        for (index, installer) in self.command_installers.iter_mut().enumerate() {
             let field = format!("commandInstallers[{index}]");
-            installer.validate(&field, &launched, runtime_tools)?;
+            installer.validate(&field, &launched, runtime_tools, version)?;
             if !ids.insert(installer.id.clone()) {
                 return Err(invalid(
                     format!("{field}.id"),
@@ -480,8 +689,20 @@ struct CommandConsumer {
 }
 
 /// The install review entry of one installer: everything that decides what
-/// the installation runs.
+/// the installation runs or downloads. A tool installer's entry is the same
+/// as in version 0.
 pub(crate) fn programs(installer: &CommandInstallerDeclaration) -> Value {
+    if let Some(download) = &installer.download {
+        return json!({
+            "kind": "commandInstaller",
+            "installer": installer.id,
+            "commands": installer.commands,
+            "download": download,
+            "targets": installer.targets,
+            "mayUseNetwork": installer.may_use_network,
+            "timeoutSeconds": installer.timeout_seconds.unwrap_or(DEFAULT_TIMEOUT_SECONDS),
+        });
+    }
     json!({
         "kind": "commandInstaller",
         "installer": installer.id,
@@ -499,10 +720,32 @@ pub(crate) fn programs(installer: &CommandInstallerDeclaration) -> Value {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct RequirementsPayload {
     manifest: Value,
+    /// The host's platform. With it, a download installer without an
+    /// archive for the platform is left out.
+    #[serde(default)]
+    platform: Option<ArchivePlatform>,
+}
+
+/// Rejects a platform no archive may target.
+fn check_platform(platform: Option<&ArchivePlatform>) -> Validation<()> {
+    match platform {
+        Some(platform) if !platform.is_supported() => Err(platform_invalid()),
+        _ => Ok(()),
+    }
+}
+
+fn platform_invalid() -> PluginRejection {
+    PluginRejection::at(
+        "plugin.commandInstaller.platformInvalid",
+        "platform",
+        "A download installation needs a supported operating system and architecture.",
+    )
 }
 
 /// `plugins.commandInstallers.requirements`: lists every launch that starts
-/// a bare command, the installer of each command, and the installers.
+/// a bare command, the installer of each command, and the installers. Given
+/// the host's platform, a download installer without an archive for it is
+/// left out, and its commands have no installer.
 pub fn command_installer_requirements_command(payload: Value) -> Result<Value, CoreError> {
     let payload: RequirementsPayload =
         decode_payload(payload, "plugins.commandInstallers.requirements")?;
@@ -511,9 +754,17 @@ pub fn command_installer_requirements_command(payload: Value) -> Result<Value, C
 
 fn requirements(payload: RequirementsPayload) -> Validation<(&'static str, Value)> {
     let manifest = validate_manifest_value(payload.manifest)?;
+    check_platform(payload.platform.as_ref())?;
+    let offered: Vec<&CommandInstallerDeclaration> = manifest
+        .command_installers
+        .iter()
+        .filter(|installer| match (&installer.download, &payload.platform) {
+            (Some(_), Some(platform)) => installer.archive_for(platform).is_some(),
+            _ => true,
+        })
+        .collect();
     let installer_of = |command: &str| {
-        manifest
-            .command_installers
+        offered
             .iter()
             .find(|installer| installer.commands.iter().any(|name| name == command))
             .map(|installer| installer.id.clone())
@@ -532,8 +783,7 @@ fn requirements(payload: RequirementsPayload) -> Validation<(&'static str, Value
             })
         })
         .collect();
-    let installers: Vec<Value> = manifest
-        .command_installers
+    let installers: Vec<Value> = offered
         .iter()
         .map(|installer| {
             json!({
@@ -541,6 +791,9 @@ fn requirements(payload: RequirementsPayload) -> Validation<(&'static str, Value
                 "commands": installer.commands,
                 "tool": installer.tool,
                 "minimumVersion": installer.minimum_version,
+                "download": installer.download.as_ref().map(|download| json!({
+                    "version": download.version,
+                })),
                 "mayUseNetwork": installer.may_use_network,
                 "targets": installer.target_names(),
             })
@@ -559,16 +812,23 @@ struct PlanPayload {
     #[serde(rename = "installerID")]
     installer_id: String,
     target: InstallTarget,
-    /// Absolute directory the host made for a managed installation.
+    /// Absolute directory the host made for a managed tool installation.
     #[serde(default)]
     install_directory: Option<String>,
+    /// The host's platform, which selects a download installer's archive.
+    #[serde(default)]
+    platform: Option<ArchivePlatform>,
 }
 
 /// `plugins.commandInstallers.plan`: expands one installer for the target
-/// the user chose. The host resolves `tool`, runs it with `arguments` and
-/// `environment` under the timeout, and then looks for the commands in
-/// `commandDirectory`, or for `toolDefault` in the directory the probes
-/// report.
+/// the user chose. For a tool installer the host resolves `tool`, runs it
+/// with `arguments` and `environment` under the timeout, and then looks for
+/// the commands in `commandDirectory`, or for `toolDefault` in the directory
+/// the probes report. For a download installer `download` names the archive
+/// for the host's platform; the host downloads it, checks the digest,
+/// extracts it into a directory of its own below the plugin's managed
+/// directory under the timeout, and looks for the commands in
+/// `download.commandDirectory` below the extracted root.
 pub fn command_installer_plan_command(payload: Value) -> Result<Value, CoreError> {
     let payload: PlanPayload = decode_payload(payload, "plugins.commandInstallers.plan")?;
     Ok(outcome(plan(payload, Platform::HOST)))
@@ -577,6 +837,7 @@ pub fn command_installer_plan_command(payload: Value) -> Result<Value, CoreError
 fn plan(payload: PlanPayload, platform: Platform) -> Validation<(&'static str, Value)> {
     let manifest = validate_manifest_value(payload.manifest)?;
     let installer = manifest.command_installer(&payload.installer_id)?;
+    check_platform(payload.platform.as_ref())?;
     let undeclared = || {
         PluginRejection::at(
             "plugin.commandInstaller.targetUndeclared",
@@ -602,7 +863,37 @@ fn plan(payload: PlanPayload, platform: Platform) -> Validation<(&'static str, V
         "minimumVersion": installer.minimum_version,
         "mayUseNetwork": installer.may_use_network,
         "timeoutMilliseconds": installer.timeout_milliseconds(),
+        "download": Value::Null,
     });
+    if installer.download.is_some() {
+        let managed = match payload.target {
+            InstallTarget::Managed => installer.targets.managed.as_ref(),
+            InstallTarget::ToolDefault => None,
+        }
+        .ok_or_else(undeclared)?;
+        if payload.install_directory.is_some() {
+            return Err(directory_invalid(
+                "A download installation takes no install directory; the host makes one for the archive.",
+            ));
+        }
+        let host = payload.platform.as_ref().ok_or_else(platform_invalid)?;
+        let artifact = installer.archive_for(host).ok_or_else(|| {
+            PluginRejection::at(
+                "plugin.commandInstaller.unavailable",
+                "platform",
+                format!(
+                    "The command installer {} has no archive for this operating system and architecture.",
+                    installer.id
+                ),
+            )
+        })?;
+        plan["arguments"] = json!([]);
+        plan["environment"] = json!({});
+        plan["commandDirectory"] = Value::Null;
+        plan["directoryProbes"] = json!([]);
+        plan["download"] = download_plan(installer, artifact, managed);
+        return Ok(("plan", plan));
+    }
     match payload.target {
         InstallTarget::Managed => {
             let managed = installer.targets.managed.as_ref().ok_or_else(undeclared)?;
@@ -666,6 +957,40 @@ fn plan(payload: PlanPayload, platform: Platform) -> Validation<(&'static str, V
         }
     }
     Ok(("plan", plan))
+}
+
+/// The selected archive of a download plan. `cacheKey` digests the fields
+/// that decide the extracted content, so the host keeps one extraction per
+/// archive; mirrors are left out of it, so adding a mirror reuses the
+/// extraction.
+fn download_plan(
+    installer: &CommandInstallerDeclaration,
+    artifact: &CommandArchive,
+    managed: &ManagedTarget,
+) -> Value {
+    let version = installer
+        .download
+        .as_ref()
+        .map(|download| download.version.as_str())
+        .unwrap_or_default();
+    // Serialize this explicitly built object, not the input's field order.
+    let mut selected = json!({
+        "installer": installer.id,
+        "version": version,
+        "os": artifact.os,
+        "arch": artifact.arch,
+        "url": artifact.url,
+        "sha256": artifact.sha256,
+        "archive": artifact.archive,
+        "stripPrefix": artifact.strip_prefix,
+    });
+    let identity = Sha256::digest(selected.to_string().as_bytes());
+    selected["cacheKey"] = json!(format!("{identity:x}"));
+    selected["commandDirectory"] = json!(managed.command_directory.as_deref().unwrap_or_default());
+    if !artifact.mirrors.is_empty() {
+        selected["mirrors"] = json!(artifact.mirrors);
+    }
+    selected
 }
 
 #[derive(Deserialize)]
@@ -754,6 +1079,10 @@ mod tests {
         env!("CARGO_MANIFEST_DIR"),
         "/../../../shared/plugins/contract/v1/fixtures/command-installers/command-installer.plugin.json"
     ));
+    const DOWNLOAD_PLUGIN: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../shared/plugins/contract/v1/fixtures/command-installers/command-installer-download.plugin.json"
+    ));
     const PLANS: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../../shared/plugins/contract/v1/fixtures/command-installers/command-installer-plans.json"
@@ -765,9 +1094,19 @@ mod tests {
     #[test]
     fn plan_fixtures_match_on_every_platform() {
         let plans: Value = serde_json::from_str(PLANS).unwrap();
-        let plugin: Value = serde_json::from_str(PLUGIN).unwrap();
         for case in plans["cases"].as_array().unwrap() {
             let name = case["name"].as_str().unwrap();
+            let file = case
+                .get("plugin")
+                .unwrap_or(&plans["plugin"])
+                .as_str()
+                .unwrap();
+            let plugin: Value = serde_json::from_str(match file {
+                "command-installer.plugin.json" => PLUGIN,
+                "command-installer-download.plugin.json" => DOWNLOAD_PLUGIN,
+                other => panic!("unknown plugin fixture {other}"),
+            })
+            .unwrap();
             for (platform, key) in [(Platform::Unix, "unix"), (Platform::Windows, "windows")] {
                 let specific = &case["platforms"][key];
                 let mut payload = json!({ "manifest": plugin });
