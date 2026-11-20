@@ -156,9 +156,9 @@ impl BuildSystemDeclaration {
                     }
                     (None, Some(kind))
                         if crate::run_preparation::valid_configuration_type(kind)
-                            && run.execution == Some(BuildExecution::Service) => {}
+                            && run.execution != Some(BuildExecution::Task) => {}
                     _ => return Err(invalid(&field,
-                        "Debug requires a same-package native adapter, or one registry configurationType for a service.")),
+                        "Debug requires a same-package native adapter, or one registry configurationType for an application or service.")),
                 }
             }
         }

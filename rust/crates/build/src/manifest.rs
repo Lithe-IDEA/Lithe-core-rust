@@ -195,6 +195,18 @@ impl BuildSystemDeclaration {
         self.run.iter().any(|run| run.entrypoints)
     }
 
+    /// Whether any provider application needs the registry attach feature in
+    /// `buildSystems` 2. Existing service declarations work in earlier versions.
+    pub fn has_application_connection_debug(&self) -> bool {
+        self.run.iter().any(|run| {
+            run.execution.unwrap_or(BuildExecution::Application) == BuildExecution::Application
+                && run
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.configuration_type.is_some())
+        })
+    }
+
     /// Folder names every workspace hides at any depth while the plugin is
     /// enabled (`layout.hiddenDirectoryNames`), sorted and unique once validated.
     pub fn hidden_directory_names(&self) -> &[String] {

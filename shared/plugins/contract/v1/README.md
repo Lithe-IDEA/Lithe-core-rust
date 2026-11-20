@@ -2529,8 +2529,9 @@ A provider run may declare `entrypoints: true` instead of `fromTargets`. It is
 an application that starts an entrypoint the provider names, such as a class
 with a `main` method, in one of its projects. It requires `source: "provider"`
 and `buildProviders` 1 in `requires`; `fromTargets`, `fromTasks`, `arguments`,
-`extension`, `debug`, and a `service` or `task` execution are refused. It
-applies to no target, so the host never lists it per target: the user starts
+`extension`, a native `debug.adapter`, and a `service` or `task` execution
+are refused. A registry `debug.configurationType` requires `buildSystems` 2.
+It applies to no target, so the host never lists it per target: the user starts
 it from a source file.
 
 `build.runEntrypointsPlan` takes the common plan fields, optional `refresh`
@@ -2567,8 +2568,12 @@ and `fixtures/build-providers/build-run-entrypoints.json`.
 
 #### Registry connection debugging
 
-A provider service run may declare
-`debug: {"configurationType":"example"}`. This is a public DebugAdapter Registry
+A provider service run may declare `debug: {"configurationType":"example"}`.
+With `buildSystems` 2, a provider application (including an entrypoint run)
+may make the same declaration. Saved application configurations keep
+`execution: "application"` for Run and Debug. Debug sends the existing
+connection fields in `launchOptions.debug`, with no change to the
+negotiated `litheBuild` version. The declaration names a public DebugAdapter Registry
 alias, not another plugin's private language server or a local adapter ID.
 The host selects one currently enabled adapter advertising the type and `attach`,
 respecting an explicit qualified adapter selection. Missing or ambiguous entries
@@ -2581,9 +2586,9 @@ fail before starting the provider process. It sends:
 
 These are the exact three debug fields and three target fields. The host owns
 the port (integer 1–65535), process, readiness and cleanup. Explicit null, unknown
-fields, remote hosts and application/task execution are rejected. The type must
+fields, remote hosts and task execution are rejected. The type must
 match the selected run declaration. The provider uses its
-upstream engine to suspend the service until attachment; it owns runtime-specific
+upstream engine to suspend the debuggee until attachment; it owns runtime-specific
 flags and fails if it cannot honor the request. It returns the ordinary portable
 Run process plan, without selecting an endpoint or returning DAP arguments.
 

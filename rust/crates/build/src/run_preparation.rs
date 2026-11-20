@@ -91,7 +91,7 @@ impl LaunchOptions {
             debug.target.kind != "connection"
                 || debug.target.host != "127.0.0.1"
                 || debug.target.port == 0
-                || self.execution != BuildExecution::Service
+                || self.execution == BuildExecution::Task
                 || !valid_configuration_type(&debug.configuration_type)
                 || !debug
                     .adapter_id

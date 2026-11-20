@@ -130,6 +130,20 @@ impl DeclarativePluginManifest {
         if self
             .build_systems
             .iter()
+            .any(|system| system.has_application_connection_debug())
+            && self
+                .requires
+                .get(capabilities::BUILD_SYSTEMS)
+                .is_none_or(|version| *version < 2)
+        {
+            return Err(invalid(
+                "requires.buildSystems",
+                "Registry connection debugging for applications needs buildSystems 2.",
+            ));
+        }
+        if self
+            .build_systems
+            .iter()
             .any(|system| system.has_test_discovery_command())
             && self
                 .requires
