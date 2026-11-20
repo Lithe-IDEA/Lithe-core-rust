@@ -21,6 +21,8 @@ const HELLO_FIXTURE: &str = contract_file!("fixtures/manifest/hello-lithe.plugin
 const WEB_PANEL_FIXTURE: &str = contract_file!("fixtures/ui/web-panel.plugin.json");
 const GO_FIXTURE: &str = contract_file!("fixtures/languages/language-system-command.plugin.json");
 const NODE_RUNTIME_FIXTURE: &str = contract_file!("fixtures/languages/node-runtime.plugin.json");
+const UNTRUSTED_SERVER_FIXTURE: &str =
+    contract_file!("fixtures/languages/language-server-untrusted.plugin.json");
 const BUILD_TOOLCHAINS_FIXTURE: &str =
     contract_file!("fixtures/build-systems/build-toolchains.plugin.json");
 const PUBLISHER_BUNDLED_FIXTURE: &str =
@@ -85,6 +87,7 @@ fn fixture(name: &str) -> Value {
         "hello-lithe.plugin.json" => HELLO_FIXTURE,
         "web-panel.plugin.json" => WEB_PANEL_FIXTURE,
         "node-runtime.plugin.json" => NODE_RUNTIME_FIXTURE,
+        "language-server-untrusted.plugin.json" => UNTRUSTED_SERVER_FIXTURE,
         "build-toolchains.plugin.json" => BUILD_TOOLCHAINS_FIXTURE,
         "publisher-bundled.plugin.json" => PUBLISHER_BUNDLED_FIXTURE,
         "build-static-file.plugin.json" => CARGO_BUILD_FIXTURE,
@@ -128,6 +131,7 @@ fn contract_fixtures_and_official_plugins_validate() {
         HELLO_FIXTURE,
         WEB_PANEL_FIXTURE,
         NODE_RUNTIME_FIXTURE,
+        UNTRUSTED_SERVER_FIXTURE,
         PUBLISHER_BUNDLED_FIXTURE,
         BACKEND_FIXTURE,
         WORKSPACE_BACKEND_FIXTURE,
@@ -502,6 +506,7 @@ fn language_server_arguments_expand_launch_variables() {
             "pluginDirectory": "/plugins/php",
             "stateDirectory": "/state/php",
             "workspaceStateDirectory": "/state/php/workspace",
+            "projectCodeAllowed": true,
             "architecture": "arm64"
         }
     }))
@@ -661,6 +666,7 @@ fn build_providers_require_their_own_host_capability() {
                 "pluginDirectory": "/plugins/provider",
                 "stateDirectory": "/state/provider",
                 "workspaceStateDirectory": "/state/provider/workspace",
+                "projectCodeAllowed": true,
                 "architecture": "arm64"
             }
         }))
@@ -1398,6 +1404,7 @@ fn debug_adapter_inside_the_language_server_has_no_process_of_its_own() {
         "request": {
             "pluginDirectory": "/plugins/example",
             "stateDirectory": "/state/example",
+            "projectCodeAllowed": true,
             "architecture": "arm64"
         },
     }))
@@ -2425,7 +2432,7 @@ fn launch_log_directory_is_explicit_for_servers_and_backends() {
         declaration["arguments"] = json!(["--log=${logDir}/native.log"]);
         let mut payload = selection;
         payload["manifest"] = manifest;
-        payload["request"] = json!({"pluginDirectory":"/plugins/example", "stateDirectory":"/state/example", "workspaceStateDirectory":"/state/example/workspace", "architecture":"arm64"});
+        payload["request"] = json!({"pluginDirectory":"/plugins/example", "stateDirectory":"/state/example", "workspaceStateDirectory":"/state/example/workspace", "projectCodeAllowed":true, "architecture":"arm64"});
         let missing = language_server_launch_plan_command(payload.clone()).unwrap();
         assert_eq!(
             missing["error"]["code"], "plugin.launch.invalidRequest",

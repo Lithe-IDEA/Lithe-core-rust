@@ -4827,7 +4827,7 @@ Success returns `plan` (`executable`, `arguments`, `workingDirectory`, plus
 `buildSystemID` (a build provider), `vcsProviderID` (a VCS provider),
 `backend: true` (the plugin backend), or `debugAdapterID` (a debug adapter).
 Naming none or more than one is an `invalid_request` failure. The request is `{ pluginDirectory, stateDirectory,
-workspaceStateDirectory?, logDirectory?, temporaryDirectory?, architecture, settings?, projectSettings? }`. The directories are absolute host paths used only
+workspaceStateDirectory?, logDirectory?, temporaryDirectory?, architecture, settings?, projectSettings?, projectCodeAllowed? }`. The directories are absolute host paths used only
 as substitution text; the command does not read or create them. `settings` maps
 setting IDs to the values the user stored for every project, and
 `projectSettings` to the open project's overrides; a project value counts only
@@ -4844,7 +4844,13 @@ and the host reuses its session. An unknown
 architecture or an empty directory is refused with
 `plugin.launch.invalidRequest`; a language without a server, an undeclared
 build system, and a build system without a provider with
-`plugin.launch.unavailable`.
+`plugin.launch.unavailable`. `projectCodeAllowed` is the workspace trust that
+`toolchains.catalogState` reports; absent means untrusted. In an untrusted
+workspace a language server that does not declare `executesProjectCode: false`
+(`languageServers` 1), a build provider with a process of its own that declares
+`executesProjectCode: true`, and every VCS provider are refused with
+`plugin.launch.untrustedWorkspace`; a build provider on a shared server follows
+that server.
 
 A backend plan additionally returns `backend.hostServices`. These are the declared grants;
 the host must provide only services it actually implements and must verify the
@@ -4874,7 +4880,9 @@ step's request and `result` is what the backend function returned, and answers
 `sessionPolicy` with the answer's `gates`) or `{ status: "rejected", error }`.
 Refusals are `plugin.launch.unavailable` (no such server),
 `plugin.launch.notBackend` (the server is not launched by a backend),
-`plugin.launch.invalidRequest` (a missing directory), and
+`plugin.launch.invalidRequest` (a missing directory),
+`plugin.launch.untrustedWorkspace` (the workspace is not trusted, checked again
+because trust can be revoked between the steps), and
 `plugin.launch.invalidResult`, `plugin.launch.outsidePackage`,
 `plugin.launch.undeclaredTool`, and `plugin.launch.unwritablePath` for the
 answer. The golden cases are

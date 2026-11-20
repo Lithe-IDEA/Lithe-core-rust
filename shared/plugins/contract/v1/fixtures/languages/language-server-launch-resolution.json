@@ -9,6 +9,7 @@
     "workspaceStateDirectory": "/state/metals/workspaces/abc",
     "logDirectory": "/logs/metals",
     "temporaryDirectory": "/tmp/metals",
+    "projectCodeAllowed": true,
     "architecture": "arm64"
   },
   "cases": [
@@ -103,6 +104,20 @@
       "expected": {
         "status": "rejected",
         "code": "plugin.launch.invalidRequest"
+      }
+    },
+    {
+      "name": "the first step waits until the workspace is trusted",
+      "operation": "languageServerLaunchPlan",
+      "requestEdits": [
+        {
+          "op": "remove",
+          "path": "/projectCodeAllowed"
+        }
+      ],
+      "expected": {
+        "status": "rejected",
+        "code": "plugin.launch.untrustedWorkspace"
       }
     },
     {
@@ -485,6 +500,27 @@
       "expected": {
         "status": "rejected",
         "code": "plugin.launch.invalidRequest"
+      }
+    },
+    {
+      "name": "decoding refuses an answer once trust is revoked",
+      "operation": "decodeLaunch",
+      "requestEdits": [
+        {
+          "op": "set",
+          "path": "/projectCodeAllowed",
+          "value": false
+        }
+      ],
+      "result": {
+        "executable": {
+          "kind": "packaged",
+          "path": "server/bin/metals"
+        }
+      },
+      "expected": {
+        "status": "rejected",
+        "code": "plugin.launch.untrustedWorkspace"
       }
     }
   ]

@@ -345,6 +345,7 @@ The matcher reads text without starting a process.
 | `initializationOptions` | A JSON object sent as the LSP `initializationOptions`. Every string value inside it is a launch template. |
 | `indexingExclusions` | The array in the server's workspace configuration that the host fills with the workspace's excluded directories; see [Indexing exclusions](#indexing-exclusions). |
 | `hostIntegration` | Reserved. Core implements no host integration, so any ID is refused; see [Language server host integrations](#language-server-host-integrations). |
+| `executesProjectCode` | `languageServers` 1. Whether the server runs code or configuration the workspace controls, such as build scripts it imports or project-local plugins it loads. Absent means `true`: the server starts only in a trusted workspace. Declare `false` only for a server that reads the project's files as text and runs nothing from them; see [Workspace trust](#workspace-trust). |
 | `requestMethods`, `commands`, `serializedCommands`, `forwardNotifications`, `state`, `remote` | What the plugin backend may ask of the running server and how the host keeps its state; see [Plugin-owned sessions](#plugin-owned-sessions). |
 
 One enabled plugin serves a language. Enabling a plugin, or confirming the
@@ -1195,9 +1196,12 @@ host selects the process with exactly one of `languageID` (a language server),
 `buildSystemID` (a build provider), `vcsProviderID` (a VCS provider), and
 `backend: true` (the [plugin backend](#plugin-backend)), passes `{pluginDirectory,
 stateDirectory, workspaceStateDirectory?, logDirectory?, temporaryDirectory?, architecture,
-settings?}`, and receives. `workspaceStateDirectory` may be omitted only when the selected
+settings?, projectCodeAllowed?}`, and receives. `workspaceStateDirectory` may be omitted only when the selected
 process does not use `${workspaceStateDir}`; otherwise the request is
 `plugin.launch.invalidRequest`. The same error applies when a template uses `${logDir}` but `logDirectory` is absent, empty, or not absolute.
+`projectCodeAllowed` is the workspace's trust as Core reports it; absent means
+untrusted, and a process that would run project code is then
+`plugin.launch.untrustedWorkspace` (see [Workspace trust](#workspace-trust)).
 
 | Field | Meaning |
 | --- | --- |
@@ -1221,6 +1225,14 @@ A language without a server, an undeclared build system, a build system
 without a provider, an undeclared VCS provider, and a plugin without a
 backend are `plugin.launch.unavailable`. Core never creates or
 reads any of these paths.
+
+In a workspace the user has not trusted, a language server, a build provider
+with a process of its own, and a VCS provider are
+`plugin.launch.untrustedWorkspace` unless the declaration says the process runs
+no project code; [Workspace trust](#workspace-trust) lists which. The plugin
+backend and a debug adapter with a process of its own are not refused: they
+run plugin code, and the requests that would run the project are refused on
+their own.
 
 ### Backend-resolved launch
 
@@ -2219,6 +2231,26 @@ A `command` model or dependency source that declares
 command that never runs build scripts or other project code. A `static` model
 needs no process. In safe mode the host leaves automatic loads undone and asks
 the user to trust the workspace before an action the user starts.
+
+Processes that start without a user action follow the same decision. The host
+passes `projectCodeAllowed` with every
+[launch plan request](#process-start), and in an untrusted workspace Core
+refuses with `plugin.launch.untrustedWorkspace`:
+
+- a language server, unless it declares `executesProjectCode: false`
+  (`languageServers` 1); a server that imports the build or loads project-local
+  plugins keeps the default;
+- a build provider with a process of its own that declares
+  `executesProjectCode: true`; a provider that shares a language server
+  follows that server's declaration;
+- every VCS provider, since a VCS client reads the repository's own
+  configuration, which can name programs to run (hooks, filters, extensions).
+
+`plugins.languageServers.decodeLaunch` checks the same rule again, so an answer
+that arrives after the user revoked trust starts nothing. The host does not
+start these processes in safe mode, shows that the project is in safe mode
+where they would have appeared, and starts them once the user trusts the
+workspace.
 
 ### Model and outputs
 
@@ -5041,6 +5073,7 @@ command payload is a Core `invalid_request` failure instead.
 | `plugin.build.invalidBeforeLaunchTask` | Core | A step of a [before-launch task](#before-launch-tasks) holds a value the task no longer accepts; `field` is `values.<fieldID>` |
 | `plugin.build.invalidLocalization` | Core | The `runConfigurationTypes`, `beforeLaunchTasks` or `buildOptions` part of a [translation file](#translations) does not fit the declarations; the host shows the next candidate or the manifest text |
 | `plugin.launch.invalidRequest` | Core | A launch plan request has an unusable directory or an unknown architecture |
+| `plugin.launch.untrustedWorkspace` | Core | The process would run project code and the user has not trusted the workspace; see [Workspace trust](#workspace-trust) |
 | `plugin.launch.notBackend` | Core | `decodeLaunch` named a language server that the plugin backend does not launch |
 | `plugin.launch.invalidResult` | Core | A [backend-resolved launch](#backend-resolved-launch) answer is malformed, unknown in a field, or over a bound |
 | `plugin.launch.outsidePackage` | Core | The answer's packaged executable leaves the plugin package |

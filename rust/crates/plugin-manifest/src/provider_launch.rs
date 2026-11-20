@@ -7,6 +7,11 @@ use super::*;
 /// language server gets that server's plan; `buildProvider.languageServer`
 /// then tells the host to send build requests to the session it already
 /// keeps for the language instead of starting a second process.
+///
+/// A provider process of its own that runs project code has no plan in an
+/// untrusted workspace, since every request it would answer is refused
+/// there too. A shared server follows the language server's own
+/// `executesProjectCode`.
 pub(crate) fn build_provider_launch_plan(
     manifest: &DeclarativePluginManifest,
     build_system_id: &str,
@@ -38,6 +43,10 @@ pub(crate) fn build_provider_launch_plan(
             language_server_launch_plan(manifest, language_id, request)?
         }
         lithe_build::ProviderProcess::Own(process) => {
+            request.require_trust(
+                provider.executes_project_code(),
+                &format!("The provider of {build_system_id}"),
+            )?;
             server_launch_plan(manifest, process, request)?
         }
     };
@@ -48,6 +57,10 @@ pub(crate) fn build_provider_launch_plan(
 /// The launch plan of a VCS provider. `vcsProvider` repeats what the host
 /// needs to resolve the client tool and to check the provider's answer in
 /// `initialize`, which must name the same VCS.
+///
+/// A VCS client reads the repository's own configuration, which can name
+/// programs to run (hooks, extensions, filters), so a provider has no plan
+/// in an untrusted workspace.
 pub(crate) fn vcs_provider_launch_plan(
     manifest: &DeclarativePluginManifest,
     vcs_id: &str,
@@ -63,6 +76,7 @@ pub(crate) fn vcs_provider_launch_plan(
                 format!("The plugin declares no VCS provider {vcs_id}."),
             )
         })?;
+    request.require_trust(true, &format!("The VCS provider {vcs_id}"))?;
     let mut plan = server_launch_plan(manifest, &provider.process, request)?;
     plan["vcsProvider"] = provider.descriptor(&manifest.id);
     Ok(plan)

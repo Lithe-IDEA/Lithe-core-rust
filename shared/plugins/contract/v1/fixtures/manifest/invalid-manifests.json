@@ -699,6 +699,8 @@
       "expectedCode": "plugin.api.unsupported"
     },
     {"name": "capability version 3 is not defined", "base": "build-static-file.plugin.json", "edits": [{"op": "set", "path": "/requires/buildSystems", "value": 3}], "expectedCode": "plugin.api.unsupported", "expectedField": "requires.buildSystems"},
+    {"name": "languageServers capability version 2 is not defined", "base": "language-packaged-server.plugin.json", "edits": [{"op": "set", "path": "/requires/languageServers", "value": 2}], "expectedCode": "plugin.api.unsupported", "expectedField": "requires.languageServers"},
+    {"name": "executesProjectCode needs languageServers 1", "base": "language-packaged-server.plugin.json", "edits": [{"op": "set", "path": "/languageServers/0/executesProjectCode", "value": false}], "expectedCode": "plugin.manifest.invalid", "expectedField": "requires.languageServers"},
     {
       "name": "used capability missing from requires",
       "base": "build-provider-language-server.plugin.json",

@@ -544,6 +544,7 @@ fn a_tool_reference_launch_plan_hands_the_host_the_parts_of_the_launch() {
         "request": {
             "pluginDirectory": "/plugins/script",
             "stateDirectory": "/state/script",
+            "projectCodeAllowed": true,
             "architecture": "arm64",
         },
     }))

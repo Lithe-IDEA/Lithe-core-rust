@@ -61,6 +61,7 @@
 | `initializationOptions` | 作为 LSP `initializationOptions` 发送的 JSON 对象；其中每个字符串值都是启动模板。 |
 | `indexingExclusions` | 服务器工作区配置里由宿主填入工作区排除目录的数组，见“索引排除”。 |
 | `hostIntegration` | 保留字段，见下一节。 |
+| `executesProjectCode` | `languageServers` 1。服务器是否会运行工作区控制的代码或配置，例如导入的构建脚本、项目里的插件。不写时按 `true`：只在信任的工作区启动。只有把项目文件当文本读、不运行其中任何内容的服务器才写 `false`；见[工作区信任](../../contract/v1/README.md#workspace-trust)。 |
 | `requestMethods`、`commands`、`serializedCommands`、`forwardNotifications`、`state`、`remote` | 后端可以向运行中的服务器发什么，以及宿主怎样保存它的状态，见“插件自有会话”。 |
 
 宿主拥有语言服务器进程的生命周期、LSP 会话，以及在提供者被停用时停止进程。
@@ -125,7 +126,7 @@
 | 调用 | 宿主建好四个目录，必要时启动插件后端，用 `lithe/function/invoke` 调用 `function`，参数是 `resolveParams`（`serverID`、`platform`、四个目录、`settings`）和工作区 `context`。调用失败、超时，或工作区代次已变，这次启动就不产生进程 |
 | 应答 | `executable`（`{kind: "packaged", path}` 是包内只读文件；`{kind: "tool", tool}` 是插件自己定义的工具，由宿主按工具解析）、`arguments`、`environment`、`initializationOptions`、`workspaceConfiguration`、`gates`（最多 8 个）、`writablePaths`（最多 32 个，都在四个目录之内）；不认识的字段会被拒绝 |
 | 解码 | 宿主把 `{manifest, languageID, request, result}` 交给 `plugins.languageServers.decodeLaunch`，得到普通的启动计划（`launch` 为 `packaged` 或 `tool`），`sessionPolicy` 另带应答的 `gates` |
-| 拒绝码 | `plugin.launch.invalidResult`、`plugin.launch.outsidePackage`、`plugin.launch.undeclaredTool`、`plugin.launch.unwritablePath`、`plugin.launch.invalidRequest`、`plugin.launch.unavailable`、`plugin.launch.notBackend` |
+| 拒绝码 | `plugin.launch.invalidResult`、`plugin.launch.outsidePackage`、`plugin.launch.undeclaredTool`、`plugin.launch.unwritablePath`、`plugin.launch.invalidRequest`、`plugin.launch.unavailable`、`plugin.launch.notBackend`、`plugin.launch.untrustedWorkspace`（工作区未信任；用户在两步之间撤销信任时，第二步同样拒绝） |
 
 ### 插件自有会话（`languageServers` 的会话字段）
 
@@ -343,6 +344,7 @@ associations take priority. The editor checks a complete first line of up to
 | `initializationOptions` | A JSON object sent as the LSP `initializationOptions`. Every string value inside it is a launch template. |
 | `indexingExclusions` | The array in the server's workspace configuration that the host fills with the workspace's excluded directories; see "Indexing exclusions". |
 | `hostIntegration` | Reserved; see the next section. |
+| `executesProjectCode` | `languageServers` 1. Whether the server runs code or configuration the workspace controls, such as build scripts it imports or project-local plugins. Absent means `true`: the server starts only in a trusted workspace. Declare `false` only for a server that reads project files as text and runs nothing from them; see [Workspace trust](../../contract/v1/README.md#workspace-trust). |
 | `requestMethods`, `commands`, `serializedCommands`, `forwardNotifications`, `state`, `remote` | What the backend may ask of the running server and how the host keeps its state; see "Plugin-owned sessions". |
 
 The host owns the language server process lifecycle, the LSP session, and stopping the process when the provider is disabled.
@@ -407,7 +409,7 @@ When a server's command line depends on what is known only at start (a version i
 | Call | The host creates the four directories, starts the plugin backend if needed, and calls `function` through `lithe/function/invoke` with `resolveParams` (`serverID`, `platform`, the four directories, `settings`) and the workspace `context`. A failed or timed-out call, or a changed workspace generation, ends the start without a process |
 | Answer | `executable` (`{kind: "packaged", path}` is a read-only file in the package; `{kind: "tool", tool}` names a tool definition of the plugin, which the host resolves), `arguments`, `environment`, `initializationOptions`, `workspaceConfiguration`, `gates` (at most 8), and `writablePaths` (at most 32, all inside the four directories). An unknown field is refused |
 | Decoding | The host passes `{manifest, languageID, request, result}` to `plugins.languageServers.decodeLaunch`, which returns an ordinary launch plan (`launch` is `packaged` or `tool`); its `sessionPolicy` also carries the answer's `gates` |
-| Rejections | `plugin.launch.invalidResult`, `plugin.launch.outsidePackage`, `plugin.launch.undeclaredTool`, `plugin.launch.unwritablePath`, `plugin.launch.invalidRequest`, `plugin.launch.unavailable`, `plugin.launch.notBackend` |
+| Rejections | `plugin.launch.invalidResult`, `plugin.launch.outsidePackage`, `plugin.launch.undeclaredTool`, `plugin.launch.unwritablePath`, `plugin.launch.invalidRequest`, `plugin.launch.unavailable`, `plugin.launch.notBackend`, `plugin.launch.untrustedWorkspace` (the workspace is not trusted; the second step refuses too when the user revoked trust between the steps) |
 
 ### Plugin-owned sessions
 

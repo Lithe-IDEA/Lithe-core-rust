@@ -166,6 +166,7 @@ pub fn run_vcs_scenario(node: &str) {
                 "pluginDirectory": package,
                 "stateDirectory": fixture.root.join("state"),
                 "workspaceStateDirectory": fixture.root.join("workspace-state"),
+                "projectCodeAllowed": true,
                 "architecture": if cfg!(target_arch = "aarch64") { "arm64" } else { "x86_64" },
             }
         }),

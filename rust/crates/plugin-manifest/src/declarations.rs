@@ -80,6 +80,12 @@ impl LanguageDeclaration {
 }
 
 impl LanguageServerDeclaration {
+    /// Whether starting the server needs a trusted workspace. A server
+    /// that does not say so is assumed to run project code.
+    pub(crate) fn executes_project_code(&self) -> bool {
+        self.executes_project_code.unwrap_or(true)
+    }
+
     pub(crate) fn validate(
         &self,
         field: &str,
