@@ -385,6 +385,7 @@ Use stable categories rather than platform error strings:
 
 - `git_branch_not_merged`
 - `git_branch_changed`
+- `git_untrusted_workspace`: the workspace is not trusted, so Git did not start
 - `invalid_request`
 - `workspace_not_found`
 - `permission_denied`

@@ -1156,13 +1156,27 @@ is active; it does not wait behind a mutex outside its cancellation deadline.
 Git requests may include optional envelope metadata `gitExecution`:
 `{ executable?: string | null, interactive?: boolean, useCredentialHelper?: boolean,
 fetchDefaults?: GitFetchOptions, detailedFetch?: boolean, source?: "user" | "background" | "unknown",
-consoleQueries?: QueryCategory[], queryCategory?: QueryCategory }`. Defaults are PATH,
+consoleQueries?: QueryCategory[], queryCategory?: QueryCategory, projectCodeAllowed?: boolean }`.
+Defaults are PATH,
 noninteractive, helper enabled, normal Fetch defaults, legacy Fetch results, and no
 recorded query category, which leaves every internal query silent as IDEA does.
 An executable must be an absolute native path to Git 2.31 or newer. Interactive
 commands require an event receiver. These values are request-scoped, including
 nested requests, and never implicitly persist. Both current applications opt
 into detailed Fetch and supply their application settings snapshot.
+
+`projectCodeAllowed` is the workspace trust that `toolchains.catalogState` reports
+(issue 2208). Every Git command reads the repository's own configuration, which can
+name programs Git runs: a `core.fsmonitor` hook on each status refresh, hooks,
+filters, `diff.external`. With `false`, Core starts no Git process for the request,
+locally or on a remote host, and the request fails with `git_untrusted_workspace`
+before anything is traced or recorded in a console. It applies to every command,
+not only `git.*`: a file request such as `workspace.listDirectories` that would ask
+`git check-ignore` still answers, using the native ignore rules. A request that
+belongs to no workspace, such as a clone, has no trust state, so the field
+defaults to `true`; a host that
+tracks workspace trust sends `false` with every request of an untrusted workspace
+and offers to trust it, after which the same request runs Git.
 
 `git.fetchPlan` accepts `{ options?: GitFetchOptions, root?: string }`. Options are
 `{ remote?: string | null, prune?: boolean, submodules?: "inherit" | "no" |

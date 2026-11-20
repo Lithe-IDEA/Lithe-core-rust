@@ -107,6 +107,8 @@ pub(super) fn capture(
 }
 
 /// Builds host-native argv and environment without exporting client executable paths.
+/// Every remote Git process starts from these parameters, so they are refused with
+/// `git_untrusted_workspace` when the request's workspace is untrusted.
 pub(super) fn parameters(
     host: &workspace::Host,
     root: &str,
@@ -115,6 +117,7 @@ pub(super) fn parameters(
     disable_optional_locks: bool,
     environment: &[(String, String)],
 ) -> Result<SpawnParams, CoreError> {
+    execution_policy::require_project_code()?;
     let result = workspace_host::request_cancellable(
         &host.connection.session,
         methods::ENVIRONMENT_RESOLVE,

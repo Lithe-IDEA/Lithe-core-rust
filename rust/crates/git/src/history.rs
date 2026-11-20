@@ -781,6 +781,8 @@ impl HistorySession {
             GIT_COMMIT_DATE_ARGUMENT.to_string(),
             "--pretty=format:%H%x1f%h%x1f%P%x1f%an%x1f%ae%x1f%ad%x1f%s%x1f%D".to_string(),
         ]);
+        // Refused before the trace, as no Git starts in safe mode.
+        super::execution_policy::require_project_code()?;
         let trace = super::command_trace::Trace::begin(&root, &arguments, false);
         let remote = match super::remote_history::RemoteHistory::start(&root, &arguments) {
             Ok(remote) => remote,
@@ -1112,7 +1114,7 @@ fn spawn_history_process(
     root: &str,
     arguments: &[String],
 ) -> Result<(Child, ChildStdout, ChildStderr), CoreError> {
-    let mut child = git_process()
+    let mut child = git_process()?
         .args(arguments)
         .current_dir(root)
         .env("GIT_OPTIONAL_LOCKS", "0")
