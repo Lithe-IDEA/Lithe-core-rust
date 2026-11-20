@@ -306,16 +306,17 @@ decoded so far (a character still incomplete is left out), so a later answer may
 a held line that would outgrow the 16 KiB line limit is decoded up to its last character boundary instead. A chunk is
 at most 1 MiB of bytes.
 
-`encoding` is a policy `{setting?, declared?, codePage?}`. `setting` is `auto` (the default) or the id of the one
-encoding every line is decoded with. In `auto` the candidates are, in order and without repeats: `declared`, the
-encoding whoever started the process says it writes (for example a plugin's run plan); `utf-8`; and the encoding of
-`codePage`, the host's system code page (Windows `GetACP`), which hosts whose programs write UTF-8 to pipes leave out.
-An absent policy is UTF-8 alone, which replaces invalid bytes. The ids are `utf-8`, `gbk`, `gb18030`, `big5`,
-`shift-jis`, `euc-jp`, `euc-kr`, `windows-874`, `windows-1250` to `windows-1258` and `koi8-r`; parsing is
-case-insensitive and accepts the aliases `utf8`, `cp936`, `cp950`, `shift_jis`, `sjis`, `cp932`, `eucjp`, `euckr`,
-`cp949`, `cp874`, `cp1250` to `cp1258`, `iso-8859-1`, `latin1` (both Windows-1252, as in the WHATWG Encoding Standard)
-and `koi8r`. Code pages 65001, 936, 54936, 950, 932, 20932/51932, 949/51949, 874, 1250–1258, 28591 and 20866 map to
-those encodings; any other code page adds nothing. An unsupported id is `invalid_request`.
+`encoding` is a policy `{setting?, declared?, windows?}`. `setting` is `auto` (the default) or the id of the one
+encoding every line is decoded with. In `auto`, the candidates are, in order and without repeats: `declared`, an
+explicit encoding the starter of the process says it writes; `utf-8`; and, only when `windows` is true, `gbk`.
+The default is UTF-8 everywhere, with GBK compatibility on Windows regardless of the host's locale or ANSI code page.
+Hosts pass whether they are Windows; an absent policy is UTF-8 alone. A valid UTF-8 line stays UTF-8 when there is no
+explicit declaration, and only lines that fail UTF-8 are tried as GBK on Windows. A single line mixing encodings or
+legacy bytes that also happen to be valid UTF-8 cannot be unambiguously detected; explicit choices resolve ambiguity.
+The ids are `utf-8`, `gbk`, `gb18030`, `big5`, `shift-jis`, `euc-jp`, `euc-kr`, `windows-874`, `windows-1250` to
+`windows-1258` and `koi8-r`; parsing is case-insensitive and accepts the aliases `utf8`, `cp936`, `cp950`, `shift_jis`,
+`sjis`, `cp932`, `eucjp`, `euckr`, `cp949`, `cp874`, `cp1250` to `cp1258`, `iso-8859-1`, `latin1` (both Windows-1252,
+as in the WHATWG Encoding Standard) and `koi8r`. An unsupported id or unknown policy member is `invalid_request`.
 
 `outputEncoding.resolve` takes the same policy and returns `{candidates, encodings}`: the ids a line is tried in, in
 order, and every id a setting may choose, in menu order, so a settings page can show what automatic means on this

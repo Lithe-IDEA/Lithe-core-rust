@@ -7,7 +7,7 @@
 //! encoding is almost never valid UTF-8 by accident; otherwise the next candidate in which the
 //! line is valid decodes it. The candidates come from an [`OutputEncodingPolicy`]: the user's
 //! fixed choice alone, or, automatically, the encoding the starter of the process declared,
-//! UTF-8, and the encoding of the system code page the host reports.
+//! UTF-8, and GBK on Windows. The platform is explicit data, independent of the system locale.
 //!
 //! Every encoding here is ASCII-compatible, and in none of them does a byte of a multibyte
 //! character equal `\n`, `\r` or ESC, so lines and escape sequences can be found in the bytes
@@ -26,41 +26,41 @@ use serde::{Deserialize, Serialize};
 /// are the same as the file encoding ids for the encodings both support.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputEncoding {
-    /// UTF-8 (`utf-8`); code page 65001.
+    /// UTF-8 (`utf-8`).
     Utf8,
-    /// Simplified Chinese GBK (`gbk`); code page 936.
+    /// Simplified Chinese GBK (`gbk`).
     Gbk,
-    /// Simplified Chinese GB 18030 (`gb18030`); code page 54936.
+    /// Simplified Chinese GB 18030 (`gb18030`).
     Gb18030,
-    /// Traditional Chinese Big5 (`big5`); code page 950.
+    /// Traditional Chinese Big5 (`big5`).
     Big5,
-    /// Japanese Shift_JIS (`shift-jis`); code page 932.
+    /// Japanese Shift_JIS (`shift-jis`).
     ShiftJis,
-    /// Japanese EUC-JP (`euc-jp`); code pages 20932 and 51932.
+    /// Japanese EUC-JP (`euc-jp`).
     EucJp,
-    /// Korean EUC-KR (`euc-kr`); code pages 949 and 51949.
+    /// Korean EUC-KR (`euc-kr`).
     EucKr,
-    /// Thai (`windows-874`); code page 874.
+    /// Thai (`windows-874`).
     Windows874,
-    /// Central European (`windows-1250`); code page 1250.
+    /// Central European (`windows-1250`).
     Windows1250,
-    /// Cyrillic (`windows-1251`); code page 1251.
+    /// Cyrillic (`windows-1251`).
     Windows1251,
-    /// Western European (`windows-1252`); code pages 1252 and 28591 (ISO-8859-1).
+    /// Western European (`windows-1252`).
     Windows1252,
-    /// Greek (`windows-1253`); code page 1253.
+    /// Greek (`windows-1253`).
     Windows1253,
-    /// Turkish (`windows-1254`); code page 1254.
+    /// Turkish (`windows-1254`).
     Windows1254,
-    /// Hebrew (`windows-1255`); code page 1255.
+    /// Hebrew (`windows-1255`).
     Windows1255,
-    /// Arabic (`windows-1256`); code page 1256.
+    /// Arabic (`windows-1256`).
     Windows1256,
-    /// Baltic (`windows-1257`); code page 1257.
+    /// Baltic (`windows-1257`).
     Windows1257,
-    /// Vietnamese (`windows-1258`); code page 1258.
+    /// Vietnamese (`windows-1258`).
     Windows1258,
-    /// Russian KOI8-R (`koi8-r`); code page 20866.
+    /// Russian KOI8-R (`koi8-r`).
     Koi8R,
 }
 
@@ -151,32 +151,6 @@ impl OutputEncoding {
         Ok(encoding)
     }
 
-    /// The encoding of a Windows code page (what `GetACP` returns), or `None` for a code page
-    /// none of these encodes.
-    pub fn from_code_page(code_page: u32) -> Option<Self> {
-        Some(match code_page {
-            65001 => Self::Utf8,
-            936 => Self::Gbk,
-            54936 => Self::Gb18030,
-            950 => Self::Big5,
-            932 => Self::ShiftJis,
-            20932 | 51932 => Self::EucJp,
-            949 | 51949 => Self::EucKr,
-            874 => Self::Windows874,
-            1250 => Self::Windows1250,
-            1251 => Self::Windows1251,
-            1252 | 28591 => Self::Windows1252,
-            1253 => Self::Windows1253,
-            1254 => Self::Windows1254,
-            1255 => Self::Windows1255,
-            1256 => Self::Windows1256,
-            1257 => Self::Windows1257,
-            1258 => Self::Windows1258,
-            20866 => Self::Koi8R,
-            _ => return None,
-        })
-    }
-
     fn codec(self) -> &'static Encoding {
         match self {
             Self::Utf8 => UTF_8,
@@ -212,10 +186,10 @@ pub struct OutputEncodingPolicy {
     /// The encoding the starter of the process declared it writes, tried first in `auto`.
     #[serde(default)]
     pub declared: Option<String>,
-    /// The system code page of the host (Windows `GetACP`), tried after UTF-8 in `auto`. Hosts
-    /// whose programs write UTF-8 to pipes leave it out.
+    /// Whether the host is Windows. In `auto`, Windows tries GBK after UTF-8; other hosts
+    /// use UTF-8 alone unless the run declares an encoding. This does not inspect the locale.
     #[serde(default)]
-    pub code_page: Option<u32>,
+    pub windows: bool,
 }
 
 impl OutputEncodingPolicy {
@@ -235,7 +209,9 @@ impl OutputEncodingPolicy {
             candidates.push(OutputEncoding::parse(declared)?);
         }
         candidates.push(OutputEncoding::Utf8);
-        candidates.extend(self.code_page.and_then(OutputEncoding::from_code_page));
+        if self.windows {
+            candidates.push(OutputEncoding::Gbk);
+        }
         let mut unique = Vec::with_capacity(candidates.len());
         for encoding in candidates {
             if !unique.contains(&encoding) {
@@ -371,9 +347,9 @@ mod tests {
         GBK.encode(text).0.into_owned()
     }
 
-    fn auto(code_page: Option<u32>) -> Vec<OutputEncoding> {
+    fn auto(windows: bool) -> Vec<OutputEncoding> {
         OutputEncodingPolicy {
-            code_page,
+            windows,
             ..OutputEncodingPolicy::default()
         }
         .candidates()
@@ -381,8 +357,8 @@ mod tests {
     }
 
     #[test]
-    fn utf8_lines_stay_utf8_and_others_fall_back_to_the_code_page() {
-        let candidates = auto(Some(936));
+    fn windows_preserves_utf8_and_falls_back_to_gbk() {
+        let candidates = auto(true);
         assert_eq!(candidates, [OutputEncoding::Utf8, OutputEncoding::Gbk]);
         assert_eq!(
             decode_line("构建成功".as_bytes(), &candidates, true),
@@ -392,9 +368,9 @@ mod tests {
     }
 
     #[test]
-    fn without_a_code_page_invalid_utf8_is_replaced() {
+    fn other_hosts_use_utf8_without_gbk_fallback() {
         assert_eq!(
-            decode_line(&gbk("中"), &auto(None), true),
+            decode_line(&gbk("中"), &auto(false), true),
             "\u{fffd}\u{fffd}"
         );
     }
@@ -403,7 +379,7 @@ mod tests {
     fn a_declared_encoding_comes_first_and_a_setting_is_the_only_one() {
         let declared = OutputEncodingPolicy {
             declared: Some("Shift_JIS".to_owned()),
-            code_page: Some(65001),
+            windows: false,
             ..OutputEncodingPolicy::default()
         };
         assert_eq!(
@@ -428,7 +404,7 @@ mod tests {
     #[test]
     fn an_unfinished_character_is_left_out_until_the_line_ends() {
         let bytes = gbk("中文");
-        let candidates = auto(Some(936));
+        let candidates = auto(true);
         assert_eq!(decode_line(&bytes[..3], &candidates, false), "中");
         assert_eq!(complete_prefix(&bytes[..3], &candidates), 2);
         assert_eq!(complete_prefix(&bytes, &candidates), 4);
@@ -439,21 +415,13 @@ mod tests {
         // GBK text with one stray byte: UTF-8 would replace every character.
         let mut bytes = gbk("编译错误");
         bytes.push(0xff);
-        assert_eq!(
-            decode_line(&bytes, &auto(Some(936)), true),
-            "编译错误\u{fffd}"
-        );
+        assert_eq!(decode_line(&bytes, &auto(true), true), "编译错误\u{fffd}");
     }
 
     #[test]
-    fn every_id_parses_back_and_known_code_pages_map() {
+    fn every_id_parses_back() {
         for encoding in OUTPUT_ENCODINGS {
             assert_eq!(OutputEncoding::parse(encoding.id()).unwrap(), encoding);
         }
-        assert_eq!(
-            OutputEncoding::from_code_page(54936),
-            Some(OutputEncoding::Gb18030)
-        );
-        assert_eq!(OutputEncoding::from_code_page(437), None);
     }
 }

@@ -207,8 +207,8 @@ pub struct DecodeOutputStyleRequest {
     /// The chunk as the bytes the process wrote, in standard base64, at most 1 MiB decoded.
     #[serde(default)]
     pub bytes: Option<String>,
-    /// How the bytes become text; absent is automatic with no declared encoding and no code
-    /// page. Only with `bytes`.
+    /// How the bytes become text; absent is automatic with no declared encoding and no Windows
+    /// compatibility. Only with `bytes`.
     #[serde(default)]
     pub encoding: Option<OutputEncodingPolicy>,
     /// The state the previous answer for this console returned, unchanged.
@@ -845,7 +845,7 @@ mod tests {
 
     fn windows_chinese() -> OutputEncodingPolicy {
         OutputEncodingPolicy {
-            code_page: Some(936),
+            windows: true,
             ..OutputEncodingPolicy::default()
         }
     }
@@ -980,14 +980,14 @@ mod tests {
         let big5 = encoding_rs::BIG5.encode("編譯").0.into_owned();
         let policy = OutputEncodingPolicy {
             setting: Some("big5".to_owned()),
-            code_page: Some(936),
+            windows: true,
             ..OutputEncodingPolicy::default()
         };
         let mut bytes = big5.clone();
         bytes.push(b'\n');
         let (lines, _, _) = decode_bytes(&[&bytes], &policy);
         assert_eq!(texts(&lines), ["編譯"]);
-        // Automatic decoding on a GBK system would not read Big5 as Big5.
+        // Automatic decoding on Windows would not read Big5 as Big5.
         let (lines, _, _) = decode_bytes(&[&bytes], &windows_chinese());
         assert_ne!(texts(&lines), ["編譯"]);
     }

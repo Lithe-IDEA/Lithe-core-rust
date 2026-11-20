@@ -2361,10 +2361,8 @@ the tool with a fixed output encoding. It is one of `utf-8`, `gbk`, `gb18030`,
 and `koi8r` are accepted, and the decoded plan carries the id. Any other
 value, UTF-16 included, fails as `plugin.build.invalidOutput`. The host still
 decodes each output line on its own: with the automatic console encoding
-setting it tries the declared encoding first, then UTF-8, then the encoding of
-the system code page, and a fixed encoding the user chose overrides the
-declaration. Leave it out when unsure; automatic decoding already reads UTF-8
-and the system code page.
+setting it tries the declared encoding first, then UTF-8, then GBK on Windows, and a fixed encoding the user chose overrides the
+declaration. Leave it out when unsure; automatic decoding uses UTF-8 everywhere and falls back to GBK on Windows.
 
 Unknown fields are ignored. The host calls `build.decodeRunPreparation`
 with its workspace root, instance root and raw result; any malformed plan

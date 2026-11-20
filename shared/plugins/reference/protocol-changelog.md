@@ -16,6 +16,8 @@
 
 - [#127](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/127)，[@Mucheen](https://github.com/Mucheen)，**API-25**：从 `grammar.path` 指定的 TextMate 语法或独立的 `grammars/<language-id>.first-line.json` 读取可选 `firstLineMatch`。独立文件可沿用宿主现有高亮。旧桌面仍可安装 `languages: 0` 的同一插件包。Core 解码返回可选提示并匹配完整首行，既有路径与用户关联优先。见 [1lck/Lithe-IDEA#2122](https://github.com/1lck/Lithe-IDEA/issues/2122)。
 
+- 工作区草稿（尚未创建 PR；PR 编号与作者在提交评审时补齐），`pluginAPIVersion` 0 内的补充（API-23、API-29）：`run/start` 的 `process` 和提供者 `lithe/build/prepareRun` 的返回值新增可选 `outputEncoding`，用稳定编码 ID 或别名声明进程写入管道的编码；Core 校验并规范化，拒绝未知或不兼容 ASCII 的编码。用户固定编码优先；自动模式逐行尝试声明、UTF-8，以及仅 Windows 的 GBK。省略字段时所有平台默认 UTF-8，Windows 兼容 GBK；不修改进程环境或终端代码页。新增宿主内部 Core 命令 `outputEncoding.resolve`，返回同一解析规则的候选与可选编码列表，不是插件 RPC。见 [1lck/Lithe-IDEA#2186](https://github.com/1lck/Lithe-IDEA/issues/2186)。
+
 - [#112](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/112)，[@Mucheen](https://github.com/Mucheen)，**`buildSystems` 1**（API-29）：清单新增 `buildSystems[].test.discoveryCommand`，已有测试运行可以独立采用命令或 provider。命令使用现有构建工具，把 `litheTestDiscovery` v0 写到宿主提供的 `${outputFile}`。Core 的 `build.testDiscoveryPlan`、`build.decodeTestDiscovery` 和测试树兼容两种发现来源，检查每条选择器可原样运行，命令尝试沿用 `lithe/build/discoverTests` 的结构化终态。没有新增宿主方法、通知或 SDK 版本。见 [1lck/Lithe-IDEA#2122](https://github.com/1lck/Lithe-IDEA/issues/2122)。
 
 ## 按协议查首次出现
@@ -145,6 +147,8 @@
 | — | `keymapImport/listInputs` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | — | `keymapImport/readChunk` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-23 | `run/start`：`temporaryFiles` 增加 `{name, base64}` 字节文件 | 0 | 2026-11-13 | [#23](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/23) |
+| API-23 | `run/start`：`process.outputEncoding` 可选声明 | 0 | 待合入 | 工作区草稿，尚未创建 PR |
+| API-29 | `lithe/build/prepareRun`：返回值 `outputEncoding` 可选声明（提供者方法） | `litheBuild` 0、1 | 待合入 | 工作区草稿，尚未创建 PR |
 
 ## 时间线（新的在上）
 
