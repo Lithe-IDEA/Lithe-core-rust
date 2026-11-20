@@ -121,14 +121,17 @@ impl BuildSystemDeclaration {
                     || !run.extension.is_empty()
                     || run.execution.unwrap_or(BuildExecution::Application)
                         != BuildExecution::Application
-                    || run.debug.is_some()
+                    || run
+                        .debug
+                        .as_ref()
+                        .is_some_and(|debug| debug.adapter.is_some())
                     || run.name.as_ref().is_some_and(|name| {
                         name.trim().is_empty() || name.len() > MAX_TEXT || name.contains("${")
                     })
                 {
                     return Err(invalid(
                         &field,
-                        "Entrypoint runs are provider applications without targets, templates or debug.",
+                        "Entrypoint runs are provider applications without targets, templates or native debug preparation.",
                     ));
                 }
                 continue;

@@ -37,7 +37,7 @@
         "beforeLaunchTasks": { "description": "Required exactly when any buildSystems[].beforeLaunchTasks is non-empty: kinds of step a run configuration's Before Launch list runs first, offered in its Add New Task menu, drawn from declared fields and run through a declared command line. Needs buildSystems.", "enum": [0] },
         "buildModelInputs": {"description": "Optional public model sharing between already enabled workspace plugins; no installation, private function, or process authority. Required exactly when modelSharing or modelInputs is used. Consumers require buildProviders. A producer cannot also consume inputs.", "enum": [0]},
         "buildProviders": { "description": "Required exactly when any buildSystems[].provider is present, including own-process and shared language-server providers. Declares host support for Provider orchestration (task execution, test execution and discovery, run preparation, native debug preparation, optional read-only model inputs, non-sensitive native configuration sources, inline test reports, opaque semantic test selectors, typed run options and service/task preparation, registry-selected adapters and host-owned connection targets for service debugging), independent of declarative buildSystems. Version 1 adds entrypoint runs (lithe/build/runEntrypoints).", "enum": [0, 1] },
-        "buildSystems": { "description": "Declarative build detection, models, and command plans. Version 1 adds command-based test discovery. Neither version implies buildProviders support.", "enum": [0, 1] },
+        "buildSystems": { "description": "Declarative build detection, models, and command plans. Version 1 adds command-based test discovery. Version 2 adds registry connection debugging for provider applications. These versions do not imply buildProviders support.", "enum": [0, 1, 2] },
         "commandInstallers": { "description": "Required exactly when commandInstallers is non-empty: installations of bare commands that systemCommand launches name, run by the host only after the user confirms them. Version 1 adds download installers: pinned per-platform archives the host downloads, checks and extracts into the plugin's managed directory.", "enum": [0, 1] },
         "debugAdapters": { "description": "Required exactly when debugAdapters is non-empty. Covers bounded target argument and environment bindings and debugAdapters[].features and defaults. The DAP session itself is negotiated by the adapter in initialize.", "enum": [0] },
         "executionProviders": { "enum": [0] },
@@ -3413,7 +3413,7 @@
             ],
             "properties": {
               "debug": {
-                "description": "Same-package native launch adapter, or a public registry configurationType for connection attach (service runs).",
+                "description": "Same-package native launch adapter, or a public registry configurationType for connection attach (services and, with buildSystems 2, applications).",
                 "type": "object", "additionalProperties": false,
                 "oneOf": [{"required": ["adapter"]}, {"required": ["configurationType"]}],
                 "properties": {
@@ -3491,7 +3491,7 @@
                 }
               },
               "entrypoints": {
-                "description": "buildProviders 1: a provider application that starts an entrypoint lithe/build/runEntrypoints names in a source file, in its project and without a target. Requires source provider; refuses fromTargets, fromTasks, arguments, extension, debug and a service or task execution.",
+                "description": "buildProviders 1: a provider application that starts an entrypoint lithe/build/runEntrypoints names in a source file, in its project and without a target. Requires source provider; refuses fromTargets, fromTasks, arguments, extension, native debug and a service or task execution. Registry connection debugging requires buildSystems 2.",
                 "type": "boolean"
               }
             },

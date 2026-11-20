@@ -3330,6 +3330,54 @@ fn provider_run_options_refuse_explicit_cwd_symlinks_outside_workspace() {
     assert_eq!(result["error"]["code"], "plugin.build.invalidOutput");
 }
 
+/// Source entrypoints support registry attach without rewriting existing
+/// application configurations or giving the provider a remote endpoint.
+#[test]
+fn provider_application_entrypoints_support_connection_debug_with_build_systems_v2() {
+    let mut manifest: Value = serde_json::from_str(contract_file!(
+        "fixtures/build-providers/build-provider-run-entrypoints.plugin.json"
+    ))
+    .unwrap();
+    let mut request = serde_json::from_str::<Value>(contract_file!(
+        "fixtures/build-providers/build-run-entrypoints.json"
+    ))
+    .unwrap()["prepareRun"]
+        .clone();
+    let debug = serde_json::from_str::<Value>(contract_file!(
+        "fixtures/build-providers/build-connection-debug-options.json"
+    ))
+    .unwrap()["launchOptions"]["debug"]
+        .clone();
+    let workspace = TemporaryWorkspace::new("entrypoint-attach");
+    workspace.write("app/src/main/java/example/Tool.java", "class Tool {}");
+    request["workspaceRoot"] = json!(workspace.root());
+    let plan = |request: &Value, manifest: &Value| {
+        build_prepare_run_plan_command::<Manifest>(super::support::trusted_payload(
+            json!({"manifest":manifest,"buildSystemID":"gradle","request":request}),
+        ))
+        .unwrap()
+    };
+    assert_eq!(plan(&request, &manifest)["status"], "ok");
+    request["launchOptions"]["debug"] = debug;
+    assert_eq!(plan(&request, &manifest)["status"], "rejected");
+
+    manifest["buildSystems"][0]["run"][1]["debug"] = json!({"configurationType":"java"});
+    assert_eq!(
+        validate(manifest.clone())["error"]["field"],
+        "requires.buildSystems"
+    );
+    manifest["requires"]["buildSystems"] = json!(2);
+    assert_eq!(validate(manifest.clone())["status"], "ok");
+    let planned = plan(&request, &manifest);
+    assert_eq!(planned["status"], "ok", "{planned}");
+    let params = &planned["plan"]["provider"]["params"];
+    assert!(params.get("target").is_none());
+    assert_eq!(params["launchOptions"], request["launchOptions"]);
+
+    request["launchOptions"]["debug"]["target"]["host"] = json!("remote.example");
+    assert_eq!(plan(&request, &manifest)["status"], "rejected");
+}
+
 /// Model-supplied default choices and exclusion prefixes let a build tool's
 /// profiles or features show default-active entries, deactivate them on CLI
 /// even before the model reloads, and clear the local override once the user
