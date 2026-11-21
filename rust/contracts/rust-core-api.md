@@ -820,7 +820,11 @@ or removing a command fails until the table changes in the same commit.
 | `remote.stopForward` | Stop one port forward and close its local port |
 | `remote.forwards` | List the running port forwards of one connection |
 | `remote.connections` | Read the SSH connections the user saved |
-| `remote.editConnections` | Save, remove or record a folder on one saved SSH connection |
+| `remote.editConnections` | Save, remove or import saved SSH connections, or record a folder or a connection time |
+| `remote.parseAddress` | Split a quick-connect address into connection fields |
+| `remote.effectiveSettings` | Tell what OpenSSH makes of a connection and where each value comes from |
+| `remote.sshConfigHosts` | List the Host aliases of the user's SSH configuration for an import |
+| `remote.mottyHosts` | List the SSH hosts saved in Motty for an import |
 | `git.historyRewritePreview` | Review undo, message edit, squash, or drop with complete messages, eligibility, and an immutable checkout expectation |
 | `git.remotes` | Return configured fetch remote names and URLs |
 | `git.tags` | Return tag names, tag object IDs, target IDs, dates, and annotations |
@@ -1322,7 +1326,8 @@ Each event has `operationId` and `type`:
 | `output` | `invocationId`, `stream` (`stdout`/`stderr`), `text`, `progress`, `truncated`, optional `progressDetails` (`stage`, nullable `percent`, `completed`, `total`) |
 | `finished` | `invocationId`, nullable `exitCode`, monotonic `durationMilliseconds`, nullable `error`, `expectedExit` |
 | `requestFinished` | nullable `error`, including failures before a child started; `unconfirmedInvocations`, the started records without `finished`; `failureRecord`, true when `error` is set, is not a cancellation, and no record of the request failed or is unconfirmed, so the host shows the error as its own record |
-| `authentication` | `requestId`, `prompt`, `secret`, `attempt`, optional `retry`, `workingDirectory` |
+| `authentication` | `requestId`, `prompt`, `secret`, `attempt`, optional `retry`, `workingDirectory`; for `remote.*`, `kind` and optional `keyType` and `fingerprint` (see Remote connections) |
+| `remoteStage` | `stage` of a `remote.connect` (see Remote connections that stay open) |
 | `remoteResult` | `remote`, `succeeded`, nullable structured `error`, updated/deleted reference lists and counts, `referencesTruncated`, `referencesAvailable` |
 
 `invocationId` is scoped to the request. `workingDirectory` is a native
@@ -5698,6 +5703,16 @@ once with `remote.authRespond` (`{ requestId, answer: string | null }`,
 returning `{ accepted }`, with the bounds of `git.authRespond`). Null cancels
 the prompt. Core never stores or emits an answer.
 
+Each question also carries `kind`, what the answer is, so the window can
+show a fitting form: `hostKey` (an unknown host key to accept with `yes` or
+decline with `no`), `password`, `passphrase` (of a private key), `code` (a
+one-time or verification code) or `other`. A `hostKey` question adds
+`keyType` (such as `ED25519`) and `fingerprint` (such as `SHA256:…`) when
+OpenSSH's text names them, each at most 128 characters. OpenSSH hands
+questions to AskPass only as text, so the kinds follow its English wording;
+a question in any other wording is `other` and the window shows its
+`prompt`.
+
 The result is `{ status, host, diagnostics }`:
 
 | `status` | Meaning |
@@ -5746,6 +5761,17 @@ named with the first entry's spelling. An empty list has no sections; a list
 without groups has the single `null` section. Clients render the sections as
 given and do not regroup or reorder the entries.
 
+An entry also carries `lastConnectedAt`, seconds since the Unix epoch of the
+last session opened over it, once one has. Replacing the entry's target
+clears it with the recent folders.
+
+`remote.connections` also takes an optional `query` of at most 256
+characters. With one, `sections` keeps only the entries whose name, group
+and `[user@]host[:port]` contain every whitespace-separated word of it,
+regardless of case, and drops the sections left empty; `connections` stays
+the whole list. A longer query is `invalid_request` with `{ field: "query",
+reason: "tooLong" }`.
+
 `remote.editConnections` accepts `{ document }` with exactly one of:
 
 - `save: { id?, name, connection, color?, group? }` normalizes and checks
@@ -5762,9 +5788,18 @@ given and do not regroup or reorder the entries.
 - `remove: { id }` removes the entry; an absent id changes nothing.
 - `rememberFolder: { id, path }` moves `path` to the front of the entry's
   recent folders and keeps 10.
+- `markConnected: { id }` records the current time as the entry's
+  `lastConnectedAt`; an unknown id is refused with `reason: "unknown"`.
+- `import: { entries: [{ name, connection, color?, group? }], fills: [{ id,
+  color?, group? }] }` adds every entry in order, each checked as for a save.
+  A name already taken, regardless of case, gets the first free ` (2)` to
+  ` (256)` suffix, so an import never replaces an entry. A fill gives the
+  saved entry `id` a color or a group only where it has none. The first
+  refusal leaves the list as it was.
 
 The result is `{ changed, document: string|null, connections, sections,
-id? }`; `id` names the entry a save wrote. An unchanged edit returns a `null`
+id?, ids? }`; `id` names the entry a save wrote and `ids` the entries an
+import added, in order. An unchanged edit returns a `null`
 document and must not create a source. Requests never carry a secret: a
 password field is an unknown field and is rejected.
 
@@ -5775,13 +5810,95 @@ refused edit is `invalid_request`. Both carry `details` as the JSON
 `{ field, reason }`, where `reason` is `required`, `invalid`, `tooLong`,
 `duplicate`, `full` (128 entries) or `unknown` (no entry has the id).
 
-The document stays at version 1 and omits `color` and `group` when they are
-unset. A build from before these fields refuses a document that sets one as
-having an unknown field.
+The document stays at version 1 and omits `color`, `group` and
+`lastConnectedAt` when they are unset. A build from before these fields
+refuses a document that sets one as having an unknown field.
 
 Native clients keep the document below their platform user-preference
 directory, never on a host, in a workspace or in an installed package. This
 user-settings resource does not affect code signatures or update deltas.
+
+#### Connection window helpers
+
+`remote.parseAddress` takes `{ text }`, a quick-connect address
+`[ssh://][user@]host[:port]` where an IPv6 host is written `[address]`, and
+returns `{ host, user?, port? }` for the form. The fields are checked as for
+`remote.probe`; a refused address is `invalid_request` with `{ field,
+reason }`, where `field` is `host`, `user` or `port`. Nothing is resolved or
+contacted.
+
+`remote.effectiveSettings` takes `{ connection }`, as for `remote.probe`,
+and returns what OpenSSH would use for it, without connecting:
+`{ hostName, port, user, identityFiles, proxyJump, connectTimeoutSeconds,
+keepAliveSeconds }`, each `{ value, source }`. `source` is `connection` when
+the saved connection sets the value, `sshConfig` when the user's or the
+system's SSH configuration does, and `default` otherwise. `identityFiles` is
+a list of paths as written in the configuration, empty for password
+authentication; `proxyJump` is `null` for a direct connection. Core runs
+`ssh -G` for the connection twice, with and without the configuration
+files (`-F none`), and compares the two. Both runs use the connection's
+allowlisted options, the restricted environment of `remote.probe` and a
+10 second bound, because `Match exec` lines still run commands. A missing
+`ssh` is `runtime_missing`, a client that fails is `process_failed` with its
+redacted standard error in `details`, the bound is `timed_out`, and output
+without one of the values is `parse_failed`.
+
+`remote.sshConfigHosts` takes `{ homeDirectory, document }`: the user's
+absolute home directory and the current connections document. Core reads
+`.ssh/config` below it and the files it includes, in the order OpenSSH
+reads them, up to 64 files of at most 1 MiB, 16 levels deep, and never a
+file outside the home directory. The result is `{ files, hosts, truncated }`:
+`files` are the paths read, and `hosts` lists each `Host` name once,
+regardless of case, up to 256 (`truncated` is `true` when more were left
+out). Each host is `{ alias, status, resolved?, existingId?, existingName?,
+usedAsJumpBy }`:
+
+| `status` | Meaning |
+| --- | --- |
+| `importable` | `ssh -G` read it; `resolved` is `{ hostName, user, port, proxyJump? }` |
+| `exists` | As `importable`, and the saved entry `existingId` (`existingName`) already reaches the alias or the same host, port and user |
+| `pattern` | The name has wildcards or a negation and names no single host |
+| `invalid` | Lithe refuses the name as a host |
+| `unreadable` | `ssh -G` failed or timed out for it |
+
+`usedAsJumpBy` names the aliases whose `ProxyJump` goes through the host.
+Each alias runs `ssh -G` as for `remote.effectiveSettings`, within 30
+seconds for the whole list. A missing `ssh` or a cancellation ends the
+request as `runtime_missing` or `cancelled`; a relative home directory is
+`invalid_request`, and a damaged document `parse_failed`. A home without
+`.ssh/config` lists nothing. The host imports a selection with
+`remote.editConnections`' `import`.
+
+`remote.mottyHosts` takes `{ configDirectory, document }`: the platform's
+absolute user configuration directory (`~/Library/Application Support`,
+`%APPDATA%` or `~/.config`) and the current connections document. Core opens
+`motty/config.db` below it read only, waiting at most 500 ms while Motty
+writes, and never opens Motty's vault, so no password or key is read. The
+result names the `database` path and is either `{ database, unavailable }`,
+where `unavailable` is `missing`, `unreadable`, `tooLarge` (over 64 MiB or
+4096 records) or `unsupportedFormat` (a layout other than `28`), or
+`{ database, format, groups, candidates }`. `groups` are Motty's groups with
+at least one host, in Motty's order. Each candidate, in Motty's order, is
+`{ key, name, address, system?, color?, group?, status, existingId?,
+connection?, fields }`:
+
+- `key` is Motty's id of the host and `name` its label, the name an import
+  saves it under; `address` is `[user@]host[:port]` and `system` Motty's
+  operating system tag. `color` is the nearest connection color.
+- `status` is `importable` (every setting is imported), `partial` (the
+  connection is imported without some settings), `exists` (the saved entry
+  `existingId` probably reaches the same host) or `unsupported` (not an SSH
+  host, or Lithe refuses its address). `connection` is what the import saves
+  and is absent for `unsupported`.
+- `fields` lists every setting of the host as `{ motty, value, lithe?,
+  skip? }`: `lithe` names the connection field it becomes, or `skip` says why
+  it is not imported: `secret` (stored in Motty's vault), `noSetting`,
+  `protocol` (not SSH), `command` (a jump route that runs a command),
+  `kerberos` (left to the SSH configuration), `extraKey` (only the first key
+  file is imported) or `invalid`.
+
+A relative directory is `invalid_request` and a damaged document
+`parse_failed`. Nothing is written to Motty's files.
 
 #### Remote connections that stay open
 
@@ -5797,7 +5914,17 @@ installed server only when its own `sha256sum` or `shasum` computes that
 SHA-256; otherwise it receives the build through the same stream, checks it
 the same way (a host with neither tool checks the size and `--identity`, and
 never reuses that upload), and starts it, so the user authenticates once.
-Prompts are relayed as for `remote.probe`. The result is `{ status, session,
+Prompts are relayed as for `remote.probe`.
+
+While it connects, Core emits `remoteStage` events on the request's event
+channel, so the window can show the steps: `{ stage: "authenticated" }` once
+the host's shell prints its first line, `{ stage: "platformChecked" }` once
+the shell reported its platform, `{ stage: "uploading", sentBytes,
+totalBytes }` when a build starts to be sent and after each part of at most 256 KiB,
+and `{ stage: "installed", uploaded }` once the server is in place, where
+`uploaded` tells whether a build was sent now. Stages only move forward; a
+failed attempt stops after the last stage reached, so a host without a
+matching build stops after `platformChecked`. The result is `{ status, session,
 host, diagnostics }`; `session` is `{ id, uploaded, hostName, userName,
 homeDirectory }` and is set only for `connected`. A host without a matching
 build is `unsupportedPlatform` and nothing is uploaded.

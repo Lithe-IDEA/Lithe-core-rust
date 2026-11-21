@@ -1249,6 +1249,52 @@ fn remote_workspace_trust_keys_the_host_real_path_on_the_connected_target() {
     );
 }
 
+// The connections window's helpers answer through the dispatcher: a quick
+// address splits into fields, a missing Motty database is a result, and a
+// malformed connection names its field before any `ssh -G` runs.
+#[test]
+fn connection_window_helpers_answer_through_the_dispatcher() {
+    let call = |command: &str, payload: Value| -> Value {
+        serde_json::from_str(&crate::execute_json(
+            &json!({"id": test_support::unique_id(), "command": command,
+                "timeoutMilliseconds": 30_000, "payload": payload})
+            .to_string(),
+        ))
+        .unwrap()
+    };
+
+    let address = call("remote.parseAddress", json!({"text": "dev@build-box:2222"}));
+    assert_eq!(
+        address["data"],
+        json!({"host": "build-box", "user": "dev", "port": 2222}),
+        "{address}"
+    );
+
+    let directory =
+        std::env::temp_dir().join(format!("lithe-core-motty-absent-{}", std::process::id()));
+    let motty = call(
+        "remote.mottyHosts",
+        json!({"configDirectory": directory, "document": null}),
+    );
+    assert_eq!(motty["data"]["unavailable"], "missing", "{motty}");
+
+    for (command, payload) in [
+        (
+            "remote.effectiveSettings",
+            json!({"connection": {"host": "dev@box"}}),
+        ),
+        (
+            "remote.sshConfigHosts",
+            json!({"homeDirectory": "relative"}),
+        ),
+        ("remote.parseAddress", json!({"text": "box", "extra": 1})),
+    ] {
+        let response = call(command, payload);
+        assert_eq!(response["ok"], false, "{response}");
+        assert_eq!(response["error"]["code"], "invalid_request", "{response}");
+    }
+}
+
 // The ports page: a forward reaches a program listening on the host's
 // wildcard address, a second click returns the same forward, a target on
 // another machine waits for the user's confirmation, and every failure keeps

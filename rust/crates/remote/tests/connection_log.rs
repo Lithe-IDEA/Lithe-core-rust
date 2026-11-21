@@ -203,6 +203,7 @@ fn run_launch(
             ))
         },
         log,
+        |_| {},
     );
     (result, child, output, input.inner)
 }

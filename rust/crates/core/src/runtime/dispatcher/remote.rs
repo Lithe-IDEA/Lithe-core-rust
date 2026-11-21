@@ -233,6 +233,30 @@ pub(super) fn dispatch(command: RemoteCommand, id: Option<String>, payload: Valu
                 Err(error) => CoreResponse::failure(id, error),
             }
         }
+        RemoteCommand::ParseAddress => answer(
+            id,
+            payload,
+            "Invalid remote address request",
+            lithe_workspace::connections::parse_address,
+        ),
+        RemoteCommand::EffectiveSettings => answer(
+            id,
+            payload,
+            "Invalid effective SSH settings request",
+            lithe_workspace::ssh_configuration::effective_settings,
+        ),
+        RemoteCommand::SshConfigHosts => answer(
+            id,
+            payload,
+            "Invalid SSH configuration hosts request",
+            lithe_workspace::ssh_configuration::ssh_config_hosts,
+        ),
+        RemoteCommand::MottyHosts => answer(
+            id,
+            payload,
+            "Invalid Motty hosts request",
+            lithe_workspace::motty::hosts,
+        ),
         RemoteCommand::Disconnect => {
             match serde_json::from_value::<lithe_workspace::sessions::DisconnectRequest>(payload) {
                 Ok(request) => CoreResponse::success(
@@ -274,6 +298,25 @@ pub(super) fn dispatch(command: RemoteCommand, id: Option<String>, payload: Valu
                 ),
             }
         }
+    }
+}
+
+/// Decodes `payload` as `run`'s request and answers with its result; a
+/// payload that does not decode is refused with `message`.
+fn answer<R: serde::de::DeserializeOwned>(
+    id: Option<String>,
+    payload: Value,
+    message: &'static str,
+    run: impl FnOnce(R) -> Result<Value, CoreError>,
+) -> CoreResponse {
+    match serde_json::from_value(payload)
+        .map_err(|error| {
+            CoreError::new(ErrorCode::InvalidRequest, message).with_details(error.to_string())
+        })
+        .and_then(run)
+    {
+        Ok(value) => CoreResponse::success(id, value),
+        Err(error) => CoreResponse::failure(id, error),
     }
 }
 

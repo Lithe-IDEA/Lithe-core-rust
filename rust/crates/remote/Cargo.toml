@@ -10,6 +10,10 @@ autotests = false
 [features]
 default = ["client"]
 client = ["dep:sha2"]
+# Reads Motty's SQLite configuration database for an import. SQLite is
+# bundled because Windows has no system library; only the desktop Core turns
+# it on, never the host server.
+motty = ["client", "dep:rusqlite"]
 # Host adapters must not become desktop client dependencies. Linux releases
 # target musl so the same static executable works in minimal containers.
 server = ["dep:libc", "dep:lithe-platform", "dep:sha2", "dep:trash"]
@@ -20,13 +24,14 @@ server = ["dep:libc", "dep:lithe-platform", "dep:sha2", "dep:trash"]
 # macOS (scripts/rust-core/affected-crates.mjs).
 [package.metadata.lithe-ci]
 hosts = ["macos"]
-test-features = ["server"]
+test-features = ["server", "motty"]
 
 [dependencies]
 base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = { version = "0.10", optional = true }
+rusqlite = { version = "0.32", features = ["bundled"], optional = true }
 libc = { version = "0.2", optional = true }
 trash = { version = "5.2.6", default-features = false, features = ["chrono"], optional = true }
 # The server checks socket peers with the same code as the AskPass channel.

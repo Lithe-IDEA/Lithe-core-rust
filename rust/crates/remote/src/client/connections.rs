@@ -18,7 +18,13 @@
 //!
 //! - An entry may carry a [`Label`]: an accent color and a group. Neither
 //!   reaches SSH; [`Connections::sections`] turns the groups into the
-//!   headings the window lists the entries under.
+//!   headings the window lists the entries under, and
+//!   [`Connections::sections_matching`] keeps only the entries a search
+//!   finds.
+//! - [`parse_address`] splits what the user typed in the quick-connect box,
+//!   such as `dev@build.example:2222`, into the form's fields.
+//! - [`Connections::import`] adds the entries an import chose in one edit,
+//!   and [`Connections::existing`] tells which candidates are already saved.
 //!
 //! Every refusal names the field and the reason, so a client can explain each
 //! one in the user's language next to the field it concerns.
@@ -65,6 +71,15 @@ const MAX_CONNECT_TIMEOUT_SECONDS: u32 = 600;
 
 /// Longest keep-alive interval.
 const MAX_KEEP_ALIVE_SECONDS: u32 = 3600;
+
+/// Latest accepted connection time: the last second of the year 9999.
+const MAX_TIMESTAMP_SECONDS: u64 = 253_402_300_799;
+
+/// Suffix numbers tried when an imported name is taken, `Name (2)` onwards.
+const MAX_NAME_SUFFIX: usize = 256;
+
+/// Longest search query, in characters.
+const MAX_QUERY_CHARS: usize = 256;
 
 /// How the connection proves the user's identity. Every method still lets
 /// OpenSSH ask follow-up questions, such as a one-time code.
@@ -134,29 +149,29 @@ pub struct Section<'a> {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SshConnection {
     /// Host name, address, or a `Host` alias from the user's SSH configuration.
-    host: String,
+    pub(crate) host: String,
     /// `None` keeps the port from the SSH configuration (22 by default).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    port: Option<u16>,
+    pub(crate) port: Option<u16>,
     /// `None` keeps the user from the SSH configuration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    user: Option<String>,
+    pub(crate) user: Option<String>,
     #[serde(default, skip_serializing_if = "Authentication::is_auto")]
-    authentication: Authentication,
+    pub(crate) authentication: Authentication,
     /// Private key path; required for, and only kept with,
     /// [`Authentication::PrivateKey`]. OpenSSH expands a leading `~` itself.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    identity_file: Option<String>,
+    pub(crate) identity_file: Option<String>,
     /// `ProxyJump`: `none`, or comma-separated `[user@]host[:port]` jump
     /// hosts. `None` keeps the jump hosts of the SSH configuration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    proxy_jump: Option<String>,
+    pub(crate) proxy_jump: Option<String>,
     /// `None` uses [`DEFAULT_CONNECT_TIMEOUT_SECONDS`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    connect_timeout_seconds: Option<u32>,
+    pub(crate) connect_timeout_seconds: Option<u32>,
     /// `None` keeps the transport's keep-alive default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    keep_alive_seconds: Option<u32>,
+    pub(crate) keep_alive_seconds: Option<u32>,
 }
 
 /// Why a connection, a document or an edit was refused.
@@ -374,6 +389,156 @@ impl SshConnection {
             && self.user == other.user
             && self.proxy_jump == other.proxy_jump
     }
+
+    /// A connection to `host` with every other field left to the SSH
+    /// configuration.
+    pub fn to_host(host: impl Into<String>) -> Self {
+        Self {
+            host: host.into(),
+            ..Self::default()
+        }
+    }
+
+    /// Host name, address or SSH alias.
+    pub fn host(&self) -> &str {
+        &self.host
+    }
+
+    /// Port the connection sets, if any.
+    pub fn port(&self) -> Option<u16> {
+        self.port
+    }
+
+    /// User the connection sets, if any.
+    pub fn user(&self) -> Option<&str> {
+        self.user.as_deref()
+    }
+
+    /// How the connection authenticates.
+    pub fn authentication(&self) -> Authentication {
+        self.authentication
+    }
+
+    /// Private key path for [`Authentication::PrivateKey`].
+    pub fn identity_file(&self) -> Option<&str> {
+        self.identity_file.as_deref()
+    }
+
+    /// `ProxyJump` the connection sets, if any.
+    pub fn proxy_jump(&self) -> Option<&str> {
+        self.proxy_jump.as_deref()
+    }
+
+    /// Connect timeout the connection sets, if any.
+    pub fn connect_timeout_seconds(&self) -> Option<u32> {
+        self.connect_timeout_seconds
+    }
+
+    /// Keep-alive interval the connection sets, if any.
+    pub fn keep_alive_seconds(&self) -> Option<u32> {
+        self.keep_alive_seconds
+    }
+
+    /// Whether `other` probably reaches the same account on the same host:
+    /// the hosts match regardless of case, and the port and the user match
+    /// where both connections set them. Imports use it to mark candidates
+    /// that are already saved; it is a hint for the user, not an identity.
+    fn probably_same(&self, other: &Self) -> bool {
+        self.host.eq_ignore_ascii_case(&other.host)
+            && (self.port.is_none() || other.port.is_none() || self.port == other.port)
+            && (self.user.is_none() || other.user.is_none() || self.user == other.user)
+    }
+
+    /// Words a search compares the query with: the host, the user and the
+    /// `user@host:port` spelling.
+    fn search_text(&self) -> String {
+        let mut text = self.host.clone();
+        if let Some(user) = &self.user {
+            text = format!("{user}@{text}");
+        }
+        if let Some(port) = self.port {
+            text = format!("{text}:{port}");
+        }
+        format!("{text} {}", self.host)
+    }
+}
+
+/// Fields read from a quick-connect address.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Address {
+    /// Host name, address or SSH alias.
+    pub host: String,
+    /// User before the `@`, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user: Option<String>,
+    /// Port after the host, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
+}
+
+/// Splits `[ssh://][user@]host[:port]` into the fields of a connection.
+///
+/// IPv6 addresses take a port only in brackets (`[fe80::1]:2222`); an
+/// address with several colons and no brackets is all host. The result
+/// passes the same checks as a saved connection, and a refusal names the
+/// field the user has to correct.
+pub fn parse_address(text: &str) -> Result<Address, ConnectionError> {
+    let mut rest = text.trim();
+    if let Some(stripped) = rest.strip_prefix("ssh://") {
+        rest = stripped.strip_suffix('/').unwrap_or(stripped);
+    }
+    if rest.is_empty() {
+        return Err(ConnectionError::at("host", Reason::Required));
+    }
+    let (user, rest) = match rest.rsplit_once('@') {
+        Some((user, host)) => (Some(user), host),
+        None => (None, rest),
+    };
+    let (host, port) = if let Some(bracketed) = rest.strip_prefix('[') {
+        let (host, after) = bracketed
+            .split_once(']')
+            .ok_or(ConnectionError::at("host", Reason::Invalid))?;
+        match after {
+            "" => (host, None),
+            _ => match after.strip_prefix(':') {
+                Some(port) => (host, Some(port)),
+                None => return Err(ConnectionError::at("host", Reason::Invalid)),
+            },
+        }
+    } else {
+        match rest.split_once(':') {
+            Some((host, port)) if !port.contains(':') => (host, Some(port)),
+            _ => (rest, None),
+        }
+    };
+    let port = match port {
+        None => None,
+        // `u16::from_str` would also take a leading `+`.
+        Some(port) => Some(
+            Some(port)
+                .filter(|port| !port.is_empty() && port.bytes().all(|byte| byte.is_ascii_digit()))
+                .and_then(|port| port.parse::<u16>().ok())
+                .filter(|port| *port != 0)
+                .ok_or(ConnectionError::at("port", Reason::Invalid))?,
+        ),
+    };
+    if user == Some("") {
+        return Err(ConnectionError::at("user", Reason::Required));
+    }
+    let address = Address {
+        host: host.to_owned(),
+        user: user.map(str::to_owned),
+        port,
+    };
+    SshConnection {
+        host: address.host.clone(),
+        user: address.user.clone(),
+        port,
+        ..SshConnection::default()
+    }
+    .check()?;
+    Ok(address)
 }
 
 /// One saved connection.
@@ -394,14 +559,93 @@ pub struct SavedConnection {
     /// Host folders opened over this connection, most recent first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     recent_folders: Vec<String>,
+    /// Seconds since the Unix epoch when a session last opened over this
+    /// connection. Like the folders, it belongs to the target.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last_connected_at: Option<u64>,
+}
+
+/// One entry an import adds.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ImportEntry {
+    /// Name to save the entry under; a taken name gets a ` (2)` style suffix.
+    pub name: String,
+    /// The connection, checked as for a save.
+    pub connection: SshConnection,
+    /// Accent color, if the import keeps one.
+    #[serde(default)]
+    pub color: Option<Color>,
+    /// Group, if the import keeps one.
+    #[serde(default)]
+    pub group: Option<String>,
+}
+
+/// Color and group an import gives an entry that is already saved, where
+/// the entry has none.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LabelFill {
+    /// The saved entry.
+    pub id: String,
+    /// Color to set when the entry has none.
+    #[serde(default)]
+    pub color: Option<Color>,
+    /// Group to set when the entry has none.
+    #[serde(default)]
+    pub group: Option<String>,
 }
 
 impl SavedConnection {
+    /// Stable id of the entry.
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// Name the user gave the entry.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// The SSH connection of the entry.
+    pub fn connection(&self) -> &SshConnection {
+        &self.connection
+    }
+
+    /// Accent color of the entry.
+    pub fn color(&self) -> Option<Color> {
+        self.color
+    }
+
+    /// Group of the entry.
+    pub fn group(&self) -> Option<&str> {
+        self.group.as_deref()
+    }
+
+    /// Whether every word of `terms` (lowercase) appears in the entry's name,
+    /// group or address.
+    fn matches(&self, terms: &[String]) -> bool {
+        let text = format!(
+            "{} {} {}",
+            self.name,
+            self.group.as_deref().unwrap_or(""),
+            self.connection.search_text()
+        )
+        .to_lowercase();
+        terms.iter().all(|term| text.contains(term.as_str()))
+    }
+
     fn check(&self) -> Result<(), ConnectionError> {
         check_id(&self.id)?;
         check_name(&self.name)?;
         if let Some(group) = &self.group {
             check_group(group)?;
+        }
+        if self
+            .last_connected_at
+            .is_some_and(|at| at == 0 || at > MAX_TIMESTAMP_SECONDS)
+        {
+            return Err(ConnectionError::at("lastConnectedAt", Reason::Invalid));
         }
         self.connection.check()?;
         if self.recent_folders.len() > MAX_RECENT_FOLDERS {
@@ -501,9 +745,42 @@ impl Connections {
     /// sections. Groups that differ only in case share the section, which
     /// shows the first entry's spelling.
     pub fn sections(&self) -> Vec<Section<'_>> {
+        self.sections_where(|_| true)
+    }
+
+    /// The [`Self::sections`] of the entries a search for `query` finds.
+    ///
+    /// The query is split at whitespace; an entry matches when every word
+    /// appears, regardless of case, in its name, its group, its host, its
+    /// user or its `user@host:port` spelling. A blank query keeps every
+    /// entry, and sections without a match are left out. Queries longer than
+    /// 256 characters are refused.
+    pub fn sections_matching(&self, query: &str) -> Result<Vec<Section<'_>>, ConnectionError> {
+        if query.chars().count() > MAX_QUERY_CHARS {
+            return Err(ConnectionError::at("query", Reason::TooLong));
+        }
+        let terms: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+        Ok(self.sections_where(|entry| entry.matches(&terms)))
+    }
+
+    /// The saved entry that probably reaches the same account on the same
+    /// host as `connection`: same host regardless of case, and the same
+    /// port and user where both set them.
+    pub fn existing(&self, connection: &SshConnection) -> Option<&SavedConnection> {
+        self.connections
+            .iter()
+            .find(|entry| entry.connection.probably_same(connection))
+    }
+
+    /// The entry `id`, if it exists.
+    pub fn entry(&self, id: &str) -> Option<&SavedConnection> {
+        self.get(id)
+    }
+
+    fn sections_where(&self, keep: impl Fn(&SavedConnection) -> bool) -> Vec<Section<'_>> {
         let mut sections: Vec<Section<'_>> = Vec::new();
         let mut ungrouped = Vec::new();
-        for entry in &self.connections {
+        for entry in self.connections.iter().filter(|entry| keep(entry)) {
             let Some(group) = entry.group.as_deref() else {
                 ungrouped.push(entry.id.as_str());
                 continue;
@@ -579,6 +856,7 @@ impl Connections {
                     .ok_or(ConnectionError::at("id", Reason::Unknown))?;
                 if !entry.connection.same_target(&connection) {
                     entry.recent_folders.clear();
+                    entry.last_connected_at = None;
                 }
                 entry.name = name.to_owned();
                 entry.connection = connection;
@@ -601,10 +879,88 @@ impl Connections {
                     color: label.color,
                     group,
                     recent_folders: Vec::new(),
+                    last_connected_at: None,
                 });
                 Ok(id)
             }
         }
+    }
+
+    /// Adds every entry of `entries`, in order, and gives the saved entries
+    /// of `fills` the color and group they lack. Returns the new ids.
+    ///
+    /// Each entry is checked as for [`Self::save`]. A name that is already
+    /// taken, regardless of case, gets the first free ` (2)` to ` (256)`
+    /// suffix, so importing never replaces an entry. A fill only sets a
+    /// color or a group where the entry has none. The first refusal leaves
+    /// the list as it was.
+    pub fn import(
+        &mut self,
+        entries: Vec<ImportEntry>,
+        fills: Vec<LabelFill>,
+        mut new_id: impl FnMut() -> String,
+    ) -> Result<Vec<String>, ConnectionError> {
+        let mut after = self.clone();
+        for fill in fills {
+            let entry = after
+                .get(&fill.id)
+                .ok_or(ConnectionError::at("id", Reason::Unknown))?
+                .clone();
+            let label = Label {
+                color: entry.color.or(fill.color),
+                group: entry.group.clone().or(fill.group),
+            };
+            after.save(
+                Some(&fill.id),
+                &entry.name,
+                entry.connection.clone(),
+                label,
+                &mut new_id,
+            )?;
+        }
+        let mut ids = Vec::with_capacity(entries.len());
+        for entry in entries {
+            let name = after.free_name(entry.name.trim())?;
+            let label = Label {
+                color: entry.color,
+                group: entry.group,
+            };
+            ids.push(after.save(None, &name, entry.connection, label, &mut new_id)?);
+        }
+        *self = after;
+        Ok(ids)
+    }
+
+    /// `name`, or `name (2)` and so on when an entry already uses it.
+    fn free_name(&self, name: &str) -> Result<String, ConnectionError> {
+        check_name(name)?;
+        let taken = |candidate: &str| {
+            self.connections
+                .iter()
+                .any(|entry| same_name(&entry.name, candidate))
+        };
+        if !taken(name) {
+            return Ok(name.to_owned());
+        }
+        (2..=MAX_NAME_SUFFIX)
+            .map(|number| format!("{name} ({number})"))
+            .find(|candidate| check_name(candidate).is_ok() && !taken(candidate))
+            .ok_or(ConnectionError::at("name", Reason::Duplicate))
+    }
+
+    /// Records that a session opened over the entry `id` at `at`, in seconds
+    /// since the Unix epoch.
+    pub fn mark_connected(&mut self, id: &str, at: u64) -> Result<(), ConnectionError> {
+        if at == 0 || at > MAX_TIMESTAMP_SECONDS {
+            return Err(ConnectionError::at("at", Reason::Invalid));
+        }
+        let entry = self
+            .connections
+            .iter_mut()
+            .find(|entry| entry.id == id)
+            .ok_or(ConnectionError::at("id", Reason::Unknown))?;
+        entry.last_connected_at = Some(at);
+        Ok(())
     }
 
     /// Removes the entry `id`; an absent id changes nothing.

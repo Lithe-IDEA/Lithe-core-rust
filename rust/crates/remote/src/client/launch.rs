@@ -116,6 +116,32 @@ pub struct Launched {
     pub uploaded: bool,
 }
 
+/// How far a launch got, for the connection window's steps. Reported in
+/// this order; `Uploading` repeats while the binary is sent and is skipped
+/// when the host keeps an installed server.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Stage {
+    /// The remote shell printed its first line, so OpenSSH authenticated.
+    Authenticated,
+    /// The shell reported its platform.
+    PlatformChecked,
+    /// Part of the server binary reached the stream.
+    Uploading {
+        /// Bytes written so far.
+        sent: usize,
+        /// Size of the binary.
+        total: usize,
+    },
+    /// The server is in place.
+    Installed {
+        /// Whether the binary was sent now rather than kept from before.
+        uploaded: bool,
+    },
+}
+
+/// Bytes written between two `Uploading` reports.
+const UPLOAD_CHUNK: usize = 256 * 1024;
+
 /// Why an install directory cannot hold the server safely.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UnsafeReason {
@@ -304,20 +330,28 @@ impl LaunchError {
 /// stage. Two failures are left to the caller, which knows more: a shell that
 /// never answered the probe, whose cause the SSH process tells, and
 /// [`LaunchError::NoArtifact`], which the caller's `artifact_for` decided.
+///
+/// `stage` is told each [`Stage`] as it is reached.
 pub fn launch(
     output: &mut impl Read,
     input: &mut impl Write,
     artifact_for: impl FnOnce(&ProbeReport) -> Option<ServerArtifact>,
     log: &ConnectionLog,
+    mut stage: impl FnMut(Stage),
 ) -> Result<Launched, LaunchError> {
-    let report = probe(output).inspect_err(|error| log.launch_failed("probe", error))?;
+    let report =
+        probe(output, &mut stage).inspect_err(|error| log.launch_failed("probe", error))?;
     log.shell_started(report.target());
+    stage(Stage::PlatformChecked);
     let artifact =
         artifact_for(&report).ok_or_else(|| LaunchError::NoArtifact(Box::new(report.clone())))?;
     let name = install_name(&artifact).inspect_err(|error| log.launch_failed("artifact", error))?;
     let started = Instant::now();
-    let deployment = deploy(output, input, &artifact, &name)
+    let deployment = deploy(output, input, &artifact, &name, &mut stage)
         .inspect_err(|error| log.launch_failed("deploy", error))?;
+    stage(Stage::Installed {
+        uploaded: deployment.uploaded,
+    });
     log.deployed(
         &artifact,
         &deployment,
@@ -331,11 +365,19 @@ pub fn launch(
 }
 
 /// Reads the probe block, skipping output before it such as a login banner.
-fn probe(output: &mut impl Read) -> Result<ProbeReport, LaunchError> {
+/// OpenSSH prints its banner on standard error, so the first line here
+/// comes from the authenticated shell.
+fn probe(
+    output: &mut impl Read,
+    stage: &mut impl FnMut(Stage),
+) -> Result<ProbeReport, LaunchError> {
     let mut probe_output = Vec::new();
     loop {
         let line = read_line(output, NOISE_LIMIT.saturating_sub(probe_output.len()))?
             .ok_or(LaunchError::NoShell)?;
+        if probe_output.is_empty() {
+            stage(Stage::Authenticated);
+        }
         probe_output.extend_from_slice(&line);
         probe_output.push(b'\n');
         if String::from_utf8_lossy(&line).trim_end() == PROBE_END {
@@ -372,6 +414,7 @@ fn deploy(
     input: &mut impl Write,
     artifact: &ServerArtifact,
     name: &str,
+    stage: &mut impl FnMut(Stage),
 ) -> Result<Deployment, LaunchError> {
     let binary = artifact.binary();
     writeln!(
@@ -389,10 +432,15 @@ fn deploy(
             verification: Verification::Sha256,
         }),
         INSTALL_NEEDED => {
-            input
-                .write_all(binary)
-                .and_then(|()| input.flush())
-                .map_err(LaunchError::Io)?;
+            let total = binary.len();
+            stage(Stage::Uploading { sent: 0, total });
+            let mut sent = 0;
+            for chunk in binary.chunks(UPLOAD_CHUNK) {
+                input.write_all(chunk).map_err(LaunchError::Io)?;
+                sent += chunk.len();
+                stage(Stage::Uploading { sent, total });
+            }
+            input.flush().map_err(LaunchError::Io)?;
             let verification = installed(&answer(output)?)?;
             Ok(Deployment {
                 uploaded: true,

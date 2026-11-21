@@ -7,11 +7,11 @@
 //! it by id. OpenSSH runs in its own process tree, which closing a connection
 //! ends, together with the connection's port forwards.
 
-use crate::probe::{classify, diagnostics, ssh_hop, ProbeStatus, ProbedHost};
+use crate::probe::{classify, diagnostics, relay_challenge, ssh_hop, ProbeStatus, ProbedHost};
 use lithe_git_host::ProcessTree;
 use lithe_protocol::{CoreError, ErrorCode};
 use lithe_remote::client::connections::SshConnection;
-use lithe_remote::client::launch::{launch, launch_command, LaunchError, Launched};
+use lithe_remote::client::launch::{launch, launch_command, LaunchError, Launched, Stage};
 use lithe_remote::client::session::{ClientError, ConnectOptions};
 use lithe_remote::client::trust::Target;
 use lithe_remote::client::{
@@ -406,6 +406,9 @@ fn connect_logged(
     // this thread keeps relaying prompts and observing cancellation. Killing
     // the tree ends the helper's reads.
     let (finished, launched) = mpsc::channel();
+    // Events can only be sent from the request's thread, so the helper hands
+    // its stages over.
+    let (stage_sender, stages) = mpsc::channel();
     let launch_log = log.clone();
     std::thread::spawn(move || {
         let artifact_for = |report: &lithe_remote::client::bootstrap::ProbeReport| {
@@ -426,7 +429,16 @@ fn connect_logged(
                 }
             }
         };
-        let result = launch(&mut output, &mut input, artifact_for, &launch_log);
+        let result = launch(
+            &mut output,
+            &mut input,
+            artifact_for,
+            &launch_log,
+            |stage| {
+                // log-exempt: User cancellation: abandon drops the stage receiver before killing the SSH tree.
+                let _ = stage_sender.send(stage);
+            },
+        );
         // log-exempt: User cancellation: abandon drops the launch receiver before killing the SSH tree.
         let _ = finished.send((result, output, input));
     });
@@ -454,18 +466,9 @@ fn connect_logged(
                 &mut child,
             );
         }
+        relay_stages(&stages);
         match authentication.poll() {
-            Ok(challenges) => {
-                for challenge in challenges {
-                    execution_events::emit(serde_json::json!({
-                        "type": "authentication",
-                        "requestId": challenge.request_id,
-                        "prompt": execution_events::redact(&challenge.prompt),
-                        "secret": challenge.secret,
-                        "attempt": challenge.attempt,
-                    }));
-                }
-            }
+            Ok(challenges) => challenges.into_iter().for_each(relay_challenge),
             Err(error) => {
                 return abandon(
                     CoreError::new(
@@ -491,6 +494,8 @@ fn connect_logged(
             }
         }
     };
+    // The helper sent its last stages before the result.
+    relay_stages(&stages);
 
     // Only called once the OpenSSH tree has ended, so joining the reader
     // cannot block; it guarantees the last bytes OpenSSH printed (the reason
@@ -884,6 +889,49 @@ fn wait_for_exit(child: &mut Child, grace: Duration) -> Option<std::process::Exi
             Ok(None) if Instant::now() < deadline => std::thread::sleep(POLL_INTERVAL),
             _ => return None,
         }
+    }
+}
+
+/// Relays the stages the launch reached as `remoteStage` events. Upload
+/// progress that piled up since the last poll is sent once, with the latest
+/// count.
+fn relay_stages(stages: &mpsc::Receiver<Stage>) {
+    let mut upload = None;
+    for stage in stages.try_iter() {
+        if matches!(stage, Stage::Uploading { .. }) {
+            upload = Some(stage);
+            continue;
+        }
+        if let Some(upload) = upload.take() {
+            execution_events::emit(stage_event(upload));
+        }
+        execution_events::emit(stage_event(stage));
+    }
+    if let Some(upload) = upload {
+        execution_events::emit(stage_event(upload));
+    }
+}
+
+/// The `remoteStage` event of `stage`.
+pub(crate) fn stage_event(stage: Stage) -> serde_json::Value {
+    match stage {
+        Stage::Authenticated => {
+            serde_json::json!({ "type": "remoteStage", "stage": "authenticated" })
+        }
+        Stage::PlatformChecked => {
+            serde_json::json!({ "type": "remoteStage", "stage": "platformChecked" })
+        }
+        Stage::Uploading { sent, total } => serde_json::json!({
+            "type": "remoteStage",
+            "stage": "uploading",
+            "sentBytes": sent,
+            "totalBytes": total,
+        }),
+        Stage::Installed { uploaded } => serde_json::json!({
+            "type": "remoteStage",
+            "stage": "installed",
+            "uploaded": uploaded,
+        }),
     }
 }
 

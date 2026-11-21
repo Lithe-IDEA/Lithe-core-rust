@@ -34,10 +34,10 @@ use std::ffi::OsString;
 use std::fmt;
 use std::process::Command;
 
-/// Seconds between SSH keep-alive probes. Together with
-/// [`SSH_KEEPALIVE_MISSES`] it bounds how long a dead network path stays
+/// Seconds between SSH keep-alive probes. OpenSSH gives up after three
+/// unanswered probes, which bounds how long a dead network path stays
 /// undetected.
-const SSH_KEEPALIVE_SECONDS: u32 = 15;
+pub const SSH_KEEPALIVE_SECONDS: u32 = 15;
 const SSH_KEEPALIVE_MISSES: u32 = 3;
 
 /// Options every SSH hop passes before the hop's own. ssh keeps the first
@@ -382,6 +382,32 @@ fn kept_ssh_variables(
         .collect()
 }
 
+impl SshHop {
+    /// Local command line that prints the configuration OpenSSH would use
+    /// for this hop (`ssh -G`) and exits without connecting.
+    ///
+    /// It passes exactly the options [`TransportChain::command`] passes, so
+    /// the printed values are the ones a connection uses. With
+    /// `user_configuration` false it adds `-F none`, which leaves out the
+    /// user's and the system's configuration files; comparing both outputs
+    /// tells which values those files set. OpenSSH still evaluates `Match
+    /// exec` lines of the user's configuration, as it does when connecting.
+    pub fn configuration_command(
+        &self,
+        user_configuration: bool,
+    ) -> Result<Vec<String>, TransportError> {
+        validate_ssh_destination(&self.destination)?;
+        let mut command = vec![self.program.clone(), "-G".into()];
+        if !user_configuration {
+            command.extend(["-F".into(), "none".into()]);
+        }
+        command.extend(ssh_options(self)?);
+        command.push("--".into());
+        command.push(self.destination.clone());
+        Ok(command)
+    }
+}
+
 fn ssh_command(hop: &SshHop, remote: &[Word]) -> Result<Vec<Word>, TransportError> {
     validate_ssh_destination(&hop.destination)?;
     let mut command: Vec<String> = vec![
@@ -392,6 +418,18 @@ fn ssh_command(hop: &SshHop, remote: &[Word]) -> Result<Vec<Word>, TransportErro
         "-e".into(),
         "none".into(),
     ];
+    command.extend(ssh_options(hop)?);
+    command.push("--".into());
+    command.push(hop.destination.clone());
+    let remote_command = shell_join(remote)?;
+    let mut words: Vec<Word> = command.into_iter().map(Word::Raw).collect();
+    words.push(Word::Generated(remote_command));
+    Ok(words)
+}
+
+/// The port and `-o` options of `hop`, in the order ssh must see them.
+fn ssh_options(hop: &SshHop) -> Result<Vec<String>, TransportError> {
+    let mut command = Vec::new();
     if let Some(port) = hop.port {
         command.push("-p".into());
         command.push(port.to_string());
@@ -414,12 +452,7 @@ fn ssh_command(hop: &SshHop, remote: &[Word]) -> Result<Vec<Word>, TransportErro
         "-o".into(),
         format!("ServerAliveCountMax={SSH_KEEPALIVE_MISSES}"),
     ]);
-    command.push("--".into());
-    command.push(hop.destination.clone());
-    let remote_command = shell_join(remote)?;
-    let mut words: Vec<Word> = command.into_iter().map(Word::Raw).collect();
-    words.push(Word::Generated(remote_command));
-    Ok(words)
+    Ok(command)
 }
 
 fn container_command(hop: &ContainerHop, inner: Vec<Word>) -> Result<Vec<Word>, TransportError> {
@@ -670,6 +703,43 @@ mod tests {
             ])
         );
         assert_eq!(chain.identity(), "ssh:dev@box:2222");
+    }
+
+    // `ssh -G` must see the options the connection itself passes, so the
+    // effective values match what a connection really uses.
+    #[test]
+    fn configuration_commands_pass_the_same_options_as_the_connection() {
+        let mut hop = SshHop::new("dev@box");
+        hop.port = Some(2222);
+        hop.options.push(("connecttimeout".into(), "10".into()));
+        let options = strings(&[
+            "-p",
+            "2222",
+            "-o",
+            "ForwardAgent=no",
+            "-o",
+            "ForwardX11=no",
+            "-o",
+            "ClearAllForwardings=yes",
+            "-o",
+            "ConnectTimeout=10",
+            "-o",
+            "ServerAliveInterval=15",
+            "-o",
+            "ServerAliveCountMax=3",
+            "--",
+            "dev@box",
+        ]);
+        let mut configured = strings(&["ssh", "-G"]);
+        configured.extend(options.clone());
+        assert_eq!(hop.configuration_command(true).unwrap(), configured);
+        let mut baseline = strings(&["ssh", "-G", "-F", "none"]);
+        baseline.extend(options);
+        assert_eq!(hop.configuration_command(false).unwrap(), baseline);
+        assert!(matches!(
+            SshHop::new("-oProxyCommand=x").configuration_command(true),
+            Err(TransportError::InvalidHop { .. })
+        ));
     }
 
     // A destination such as `-oProxyCommand=...` would otherwise be parsed by
