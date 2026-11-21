@@ -396,6 +396,9 @@ Use stable categories rather than platform error strings:
 - `parse_failed`
 - `cancelled`
 - `timed_out`
+- `connection_closed`: the remote connection the request names closed or was lost
+- `forward_target_not_confirmed`: a port forward reaches another machine through the remote host and the user has not confirmed it
+- `forward_limit_reached`: the remote connection keeps the most port forwards it allows
 - `unknown`
 
 GitHub authorization is independent of a Lithe account. Device Flow is the

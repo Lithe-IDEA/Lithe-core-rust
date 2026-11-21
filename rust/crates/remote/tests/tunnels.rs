@@ -3,13 +3,17 @@
 mod support;
 
 use lithe_remote::client::api::TunnelEvent;
-use lithe_remote::client::PortForward;
+use lithe_remote::client::forward_set::MAX_FORWARDS;
+use lithe_remote::client::{
+    ForwardError, ForwardSet, ForwardSpec, PortForward, RemoteSession, TargetField,
+};
 use lithe_remote::protocol::methods::TunnelTarget;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::os::unix::net::UnixListener;
 use std::sync::Arc;
 use std::thread;
+use std::time::{Duration, Instant};
 use support::{connect, STEP_TIMEOUT};
 
 /// A one-connection echo server that uppercases what it reads, so the test
@@ -257,12 +261,183 @@ fn listening_ports_include_a_local_listener() {
     let port = listener.local_addr().unwrap().port();
     let (session, _events) = connect();
     let ports = session.listening_ports().unwrap();
-    assert!(
-        ports
-            .iter()
-            .any(|listening| listening.port == port && listening.address == "127.0.0.1"),
-        "{port} not in {ports:?}"
-    );
+    let own = ports
+        .iter()
+        .find(|listening| listening.port == port && listening.address == "127.0.0.1")
+        .unwrap_or_else(|| panic!("{port} not in {ports:?}"));
+    // The server runs as the same user, so it can name the owner.
+    assert_eq!(own.pid, Some(std::process::id()), "{own:?}");
+    assert!(own.process.is_some(), "{own:?}");
     drop(listener);
     session.shutdown(STEP_TIMEOUT);
+}
+
+/// A forward to `host:port` on a port the system chooses, unconfirmed.
+fn forward_to(host: &str, port: u16) -> ForwardSpec {
+    ForwardSpec {
+        target_host: host.into(),
+        target_port: port,
+        local_port: None,
+        allow_non_loopback_target: false,
+    }
+}
+
+/// Ends the server through a shared session handle; forwards may still hold
+/// other handles.
+fn shut_down(session: &RemoteSession) {
+    session
+        .request_value(
+            lithe_remote::protocol::methods::SERVER_SHUTDOWN,
+            serde_json::Value::Null,
+            STEP_TIMEOUT,
+        )
+        .unwrap();
+}
+
+// The ports page names the address a remote program listens on, often the
+// wildcard address; the forward reaches it through the host's loopback
+// address, and a second click returns the same forward.
+#[test]
+fn forward_sets_bridge_a_wildcard_listener_once_per_target() {
+    let (port, server) = spawn_tcp_echo();
+    let (session, _events) = connect();
+    let session = Arc::new(session);
+    let forwards = ForwardSet::new(Arc::clone(&session));
+
+    let (info, created) = forwards.start(forward_to("0.0.0.0", port)).unwrap();
+    assert!(created);
+    assert_eq!(info.target_host, "127.0.0.1");
+    assert!(info.loopback_target);
+    assert_eq!(info.local_host, "127.0.0.1");
+    assert_eq!(info.requested_local_port, None);
+    assert!(!info.local_port_changed);
+    let (again, created) = forwards.start(forward_to("127.0.0.1", port)).unwrap();
+    assert!(!created);
+    assert_eq!(again.id, info.id);
+    assert_eq!(again.local_port, info.local_port);
+
+    let mut local = TcpStream::connect((info.local_host.as_str(), info.local_port)).unwrap();
+    local.set_read_timeout(Some(STEP_TIMEOUT)).unwrap();
+    local.write_all(b"ports page").unwrap();
+    let mut answer = vec![0_u8; b"ports page".len()];
+    local.read_exact(&mut answer).unwrap();
+    assert_eq!(answer, b"PORTS PAGE");
+    drop(local);
+    server.join().unwrap();
+
+    assert_eq!(forwards.list().unwrap().len(), 1);
+    assert!(forwards.stop(info.id));
+    assert!(!forwards.stop(info.id), "a stopped forward stops only once");
+    assert!(forwards.list().unwrap().is_empty());
+    shut_down(&session);
+}
+
+// Design S28: a target outside the host's loopback interface reaches another
+// machine through the host, so it starts only once the user confirmed it.
+#[test]
+fn forward_sets_start_targets_outside_the_host_only_when_confirmed() {
+    let (session, _events) = connect();
+    let session = Arc::new(session);
+    let forwards = ForwardSet::new(Arc::clone(&session));
+    // A documentation address (RFC 5737). Nothing connects to the forward,
+    // so no packet is ever sent to it.
+    let elsewhere = forward_to("192.0.2.10", 5432);
+
+    assert!(matches!(
+        forwards.start(elsewhere.clone()),
+        Err(ForwardError::TargetNotConfirmed)
+    ));
+    assert!(forwards.list().unwrap().is_empty());
+    let (info, created) = forwards
+        .start(ForwardSpec {
+            allow_non_loopback_target: true,
+            ..elsewhere
+        })
+        .unwrap();
+    assert!(created);
+    assert!(!info.loopback_target);
+    assert_eq!(info.target_host, "192.0.2.10");
+
+    for (spec, field) in [
+        (forward_to("127.0.0.1", 0), TargetField::Port),
+        (forward_to("-oProxyCommand", 22), TargetField::Host),
+    ] {
+        assert!(
+            matches!(forwards.start(spec.clone()), Err(ForwardError::InvalidTarget(found)) if found == field),
+            "{spec:?}"
+        );
+    }
+    shut_down(&session);
+}
+
+// A local program already using the requested port keeps it; the forward
+// moves to a free port and says so.
+#[test]
+fn forward_sets_move_off_a_local_port_another_program_uses() {
+    let taken = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = taken.local_addr().unwrap().port();
+    let (session, _events) = connect();
+    let session = Arc::new(session);
+    let forwards = ForwardSet::new(Arc::clone(&session));
+
+    let (info, created) = forwards
+        .start(ForwardSpec {
+            local_port: Some(port),
+            ..forward_to("localhost", 8080)
+        })
+        .unwrap();
+    assert!(created);
+    assert_eq!(info.requested_local_port, Some(port));
+    assert!(info.local_port_changed);
+    assert_ne!(info.local_port, port);
+    drop(taken);
+    shut_down(&session);
+}
+
+#[test]
+fn forward_sets_refuse_more_forwards_than_the_limit() {
+    let (session, _events) = connect();
+    let session = Arc::new(session);
+    let forwards = ForwardSet::new(Arc::clone(&session));
+    let limit = u16::try_from(MAX_FORWARDS).unwrap();
+    for port in 1..=limit {
+        forwards.start(forward_to("127.0.0.1", port)).unwrap();
+    }
+    assert!(matches!(
+        forwards.start(forward_to("127.0.0.1", limit + 1)),
+        Err(ForwardError::LimitReached)
+    ));
+    // A target that already has a forward still answers at the limit.
+    let (_, created) = forwards.start(forward_to("127.0.0.1", 1)).unwrap();
+    assert!(!created);
+    shut_down(&session);
+}
+
+// Design S29: when the connection ends, every local port closes, so a port
+// never keeps accepting connections that lead nowhere.
+#[test]
+fn forward_sets_release_their_local_ports_when_the_session_ends() {
+    let (session, _events) = connect();
+    let session = Arc::new(session);
+    let forwards = ForwardSet::new(Arc::clone(&session));
+    let (info, _) = forwards.start(forward_to("127.0.0.1", 1)).unwrap();
+
+    shut_down(&session);
+    // The release runs on a thread of its own once the session sees the
+    // stream end; the closed listener is its only observable result.
+    let deadline = Instant::now() + STEP_TIMEOUT;
+    while TcpStream::connect(("127.0.0.1", info.local_port)).is_ok() {
+        assert!(
+            Instant::now() < deadline,
+            "local port {} still accepts connections after the session ended",
+            info.local_port
+        );
+        // test-stability: allow(rust-real-sleep) reason: the listener closes on a background thread without a waitable signal; the loop has a monotonic deadline and a diagnostic.
+        thread::sleep(Duration::from_millis(20));
+    }
+    assert!(matches!(forwards.list(), Err(ForwardError::SessionClosed)));
+    assert!(matches!(
+        forwards.start(forward_to("127.0.0.1", 2)),
+        Err(ForwardError::SessionClosed)
+    ));
 }

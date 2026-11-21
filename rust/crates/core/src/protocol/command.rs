@@ -1009,6 +1009,13 @@ pub enum RemoteCommand {
     /// Records or removes one remote workspace trust decision
     /// (`remote.editWorkspaceTrust`).
     EditWorkspaceTrust,
+    /// Forwards a local port to a port as the remote host sees it
+    /// (`remote.startForward`).
+    StartForward,
+    /// Stops one port forward and closes its local port (`remote.stopForward`).
+    StopForward,
+    /// Lists the running port forwards of one connection (`remote.forwards`).
+    Forwards,
 }
 
 #[derive(Debug, Clone)]
@@ -1573,6 +1580,9 @@ impl CoreCommand {
             "remote.hostInfo" => Some(Self::Remote(RemoteCommand::HostInfo)),
             "remote.workspaceTrust" => Some(Self::Remote(RemoteCommand::WorkspaceTrust)),
             "remote.editWorkspaceTrust" => Some(Self::Remote(RemoteCommand::EditWorkspaceTrust)),
+            "remote.startForward" => Some(Self::Remote(RemoteCommand::StartForward)),
+            "remote.stopForward" => Some(Self::Remote(RemoteCommand::StopForward)),
+            "remote.forwards" => Some(Self::Remote(RemoteCommand::Forwards)),
             "git.historyRewritePreview" => Some(Self::Git(GitCommand::HistoryRewritePreview)),
             "git.remotes" => Some(Self::Git(GitCommand::Remotes)),
             "git.tags" => Some(Self::Git(GitCommand::Tags)),

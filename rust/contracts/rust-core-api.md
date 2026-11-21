@@ -816,6 +816,9 @@ or removing a command fails until the table changes in the same commit.
 | `remote.hostInfo` | Return cached handshake capabilities of one connection |
 | `remote.workspaceTrust` | Read remote workspace trust decisions and one open workspace's trust |
 | `remote.editWorkspaceTrust` | Record or remove one remote workspace trust decision |
+| `remote.startForward` | Forward a local port to a port as the remote host sees it |
+| `remote.stopForward` | Stop one port forward and close its local port |
+| `remote.forwards` | List the running port forwards of one connection |
 | `git.historyRewritePreview` | Review undo, message edit, squash, or drop with complete messages, eligibility, and an immutable checkout expectation |
 | `git.remotes` | Return configured fetch remote names and URLs |
 | `git.tags` | Return tag names, tag object IDs, target IDs, dates, and annotations |
@@ -5780,6 +5783,53 @@ Nonpersistent disconnect or session termination also collects full snapshots;
 persistent disconnect retains them until explicit release, shutdown or idle expiry.
 Forced server termination recovery remains unsupported, rather than risking
 deletion of inputs used by surviving processes.
+
+#### Remote port forwards
+
+The ports page forwards a local port to a TCP port as the remote host sees
+it. It lists candidates with `remote.hostRequest` and `ports.listening`
+(`{ ports: [{ address, port, pid?, process? }] }`, one entry for each address
+and port; `pid` and `process` only when the server's user can inspect the
+owning process). Forwards belong to one connection:
+
+| Command | Request | Result |
+| --- | --- | --- |
+| `remote.startForward` | `{ sessionId, targetHost, targetPort, localPort?, allowNonLoopbackTarget? }` | `{ forward, created }` |
+| `remote.stopForward` | `{ sessionId, forwardId }` | `{ stopped }` |
+| `remote.forwards` | `{ sessionId }` | `{ forwards }`, by `id` |
+
+A forward is `{ id, localHost, localPort, requestedLocalPort?,
+localPortChanged, targetHost, targetPort, loopbackTarget, connections }`.
+
+- **Target.** `targetHost` is an IP address (IPv6 with or without brackets)
+  or a host name the remote host resolves, such as `localhost`. A wildcard
+  address (`0.0.0.0`, `::`), as `ports.listening` reports a program that
+  listens on every interface, becomes the host's loopback address of the
+  same family; `targetHost` in the result is the address sent to the host.
+  A malformed host or port `0` is `invalid_request` with `details.field`
+  (`targetHost` or `targetPort`).
+- **Confirmation.** A target outside the host's loopback interface reaches
+  another machine through the host, so it starts only with
+  `allowNonLoopbackTarget: true`, which the native client sets after the
+  user confirmed that target. Without it the request fails with
+  `forward_target_not_confirmed` and nothing starts. `loopbackTarget` tells
+  the two apart in the list.
+- **Local port.** The forward listens on `127.0.0.1`. `localPort` (absent or
+  `0` for a free one) is used when no local program accepts connections on
+  it, on `127.0.0.1` or `::1`; otherwise the forward listens on a free port,
+  `requestedLocalPort` keeps the asked one and `localPortChanged` is `true`.
+  A local port that cannot be opened at all is `unknown` with
+  `details.io`.
+- **Once per target.** Starting a target that already has a forward returns
+  that forward with `created: false`, so a repeated click opens no second
+  local port. A connection keeps at most 64 forwards; one more is
+  `forward_limit_reached` with `details.maximum`.
+- **Lifetime.** `remote.stopForward` closes the local port; connections it
+  already accepted run until either side closes them, and an unknown id
+  returns `stopped: false`. `remote.disconnect`, `remote.closeAll` and a
+  lost connection close every local port of the connection. Requests on a
+  connection whose session ended are `connection_closed` and forget it, as
+  for the other commands. `connections` counts accepted local connections.
 
 #### Remote workspace trust
 

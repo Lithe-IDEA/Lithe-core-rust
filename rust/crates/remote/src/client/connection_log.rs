@@ -30,6 +30,7 @@
 //! so an attempt never records two outcomes.
 
 use crate::client::bootstrap::{ServerArtifact, ServerTarget};
+use crate::client::forward_set;
 use crate::client::launch::{Deployment, LaunchError};
 use crate::failure_log;
 use crate::protocol::methods::{encode_hex, HelloResult, TunnelTarget};
@@ -37,7 +38,7 @@ use serde_json::{json, Value};
 use std::collections::hash_map::RandomState;
 use std::fmt;
 use std::hash::BuildHasher;
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
@@ -294,7 +295,10 @@ impl ConnectionLog {
             TunnelTarget::Tcp { host, port } => {
                 fields.push(("target_kind", json!("tcp")));
                 fields.push(("remote_port", json!(port)));
-                fields.push(("target_scope", json!(scope(is_loopback_host(host)))));
+                fields.push((
+                    "target_scope",
+                    json!(scope(forward_set::is_loopback_host(host))),
+                ));
             }
             TunnelTarget::Unix { .. } => fields.push(("target_kind", json!("unix"))),
         }
@@ -343,17 +347,6 @@ fn scope(loopback: bool) -> &'static str {
     }
 }
 
-fn is_loopback_host(host: &str) -> bool {
-    let unbracketed = host
-        .strip_prefix('[')
-        .and_then(|rest| rest.strip_suffix(']'))
-        .unwrap_or(host);
-    host.eq_ignore_ascii_case("localhost")
-        || unbracketed
-            .parse::<IpAddr>()
-            .is_ok_and(|address| address.is_loopback())
-}
-
 /// Mirrors the catalog's `version` type: 1 to 64 ASCII letters, digits and `._+-`.
 fn is_version(value: &str) -> bool {
     !value.is_empty()
@@ -385,29 +378,6 @@ mod tests {
             .bytes()
             .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()));
         assert_ne!(first, second);
-    }
-
-    #[test]
-    fn loopback_hosts_are_recognized_without_resolving_names() {
-        for host in [
-            "localhost",
-            "LOCALHOST",
-            "127.0.0.1",
-            "127.8.9.1",
-            "::1",
-            "[::1]",
-        ] {
-            assert!(is_loopback_host(host), "{host}");
-        }
-        for host in [
-            "0.0.0.0",
-            "10.0.0.1",
-            "example.com",
-            "localhost.example.com",
-            "[::2]",
-        ] {
-            assert!(!is_loopback_host(host), "{host}");
-        }
     }
 
     #[test]

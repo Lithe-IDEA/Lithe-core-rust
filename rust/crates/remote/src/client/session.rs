@@ -16,6 +16,9 @@
 //!
 //! The session records its lifecycle in a [`ConnectionLog`]: the handshake
 //! outcome, a stream that ends without a shutdown request, and the release.
+//!
+//! Owners of local resources tied to the session, such as port forwards,
+//! register [`RemoteSession::on_closed`] to release them once the stream ends.
 
 use crate::client::connection_log::{ConnectionKind, ConnectionLog};
 use crate::client::transport::{TransportChain, TransportError};
@@ -162,11 +165,16 @@ impl ClientError {
 
 type Reply = Result<Value, ClientError>;
 
+/// Work to run once, when the session's stream ends.
+type ClosedHook = Box<dyn FnOnce() + Send>;
+
 #[derive(Default)]
 struct Pending {
     /// Set once the stream ended; new requests fail immediately.
     closed: bool,
     waiting: HashMap<u64, SyncSender<Reply>>,
+    /// Registered by [`RemoteSession::on_closed`]; taken when `closed` is set.
+    on_closed: Vec<ClosedHook>,
 }
 
 type Routes = Mutex<HashMap<(String, u64), SyncSender<Event>>>;
@@ -760,6 +768,23 @@ impl RemoteSession {
         lock(&self.pending).closed
     }
 
+    /// Runs `hook` once the stream ends, or right away when it already has.
+    ///
+    /// The hook runs on the session's reader or writer thread, after every
+    /// waiting request has failed. It must neither block on the network nor
+    /// own the session: a hook that keeps the session alive would keep its
+    /// own registration, and so the session, alive forever. Hooks capture a
+    /// weak reference to their state and move slow cleanup to a thread.
+    pub fn on_closed(&self, hook: impl FnOnce() + Send + 'static) {
+        let mut pending = lock(&self.pending);
+        if pending.closed {
+            drop(pending);
+            hook();
+        } else {
+            pending.on_closed.push(Box::new(hook));
+        }
+    }
+
     /// Asks the server to stop. A `--stdio` server ends; a persistent
     /// session ends together with everything it runs.
     pub fn shutdown(self, timeout: Duration) {
@@ -983,14 +1008,23 @@ fn route(routes: &Routes, events: &SyncSender<Event>, event: Event) -> bool {
     }
 }
 
+/// Marks the stream ended, fails every waiting request and then runs the
+/// closed hooks, outside the lock so that a hook may use the session. The
+/// reader and the writer can both end the stream; hooks run only once.
 fn close(pending: &Mutex<Pending>) {
-    let mut pending = lock(pending);
-    pending.closed = true;
-    for (_, waiter) in pending.waiting.drain() {
-        // log-exempt: User cancellation: the remote request caller already ended the request and no longer waits for the disconnect reply.
-        let _ = waiter.send(Err(ClientError::Disconnected {
-            diagnostics: String::new(),
-        }));
+    let hooks = {
+        let mut pending = lock(pending);
+        pending.closed = true;
+        for (_, waiter) in pending.waiting.drain() {
+            // log-exempt: User cancellation: the remote request caller already ended the request and no longer waits for the disconnect reply.
+            let _ = waiter.send(Err(ClientError::Disconnected {
+                diagnostics: String::new(),
+            }));
+        }
+        std::mem::take(&mut pending.on_closed)
+    };
+    for hook in hooks {
+        hook();
     }
 }
 
@@ -1237,5 +1271,29 @@ mod tests {
             }
         ));
         assert!(!lock(&routes).contains_key(&("process".into(), 7)));
+    }
+
+    #[test]
+    fn closed_hooks_run_once_after_waiting_requests_fail() {
+        let pending = Arc::new(Mutex::new(Pending::default()));
+        let (waiter, reply) = mpsc::sync_channel(1);
+        lock(&pending).waiting.insert(1, waiter);
+        let runs = Arc::new(AtomicU64::new(0));
+        let hook_runs = Arc::clone(&runs);
+        let hook_pending = Arc::clone(&pending);
+        lock(&pending).on_closed.push(Box::new(move || {
+            // The hook may use the session: the lock is released and every
+            // waiting request has already failed.
+            assert!(lock(&hook_pending).waiting.is_empty());
+            hook_runs.fetch_add(1, Ordering::SeqCst);
+        }));
+        close(&pending);
+        // The writer can end the stream after the reader did.
+        close(&pending);
+        assert_eq!(runs.load(Ordering::SeqCst), 1);
+        assert!(matches!(
+            reply.try_recv(),
+            Ok(Err(ClientError::Disconnected { .. }))
+        ));
     }
 }
