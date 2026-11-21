@@ -5729,28 +5729,44 @@ clients keep them in one machine-local document, read it, and publish the
 validates the document and applies every edit.
 
 `remote.connections` accepts `{ document: string|null }` and returns
-`{ connections, storage: { relativePath: "remote/connections.json",
+`{ connections, sections, storage: { relativePath: "remote/connections.json",
 maximumBytes: 262144 } }`. `connections` is the list in the user's order;
-each entry is `{ id, name, connection, recentFolders? }`, where `connection`
-is the object `remote.probe` takes and `recentFolders` holds at most 10
-normalized absolute host paths, most recent first.
+each entry is `{ id, name, connection, color?, group?, recentFolders? }`,
+where `connection` is the object `remote.probe` takes and `recentFolders`
+holds at most 10 normalized absolute host paths, most recent first. `color`
+is one of `red`, `orange`, `yellow`, `green`, `blue` and `purple`; clients
+pick the shade for their light and dark themes. `group` is the name of the
+group the window lists the entry under. Neither field reaches SSH.
+
+`sections` is the order the window shows the entries in:
+`[{ group: string|null, ids: [id] }]`, one section per group in the order the
+groups first appear in the list, then a `null` section for the entries
+without a group. Groups that differ only in letter case share a section,
+named with the first entry's spelling. An empty list has no sections; a list
+without groups has the single `null` section. Clients render the sections as
+given and do not regroup or reorder the entries.
 
 `remote.editConnections` accepts `{ document }` with exactly one of:
 
-- `save: { id?, name, connection }` normalizes and checks the connection,
-  then adds an entry with a new id or replaces the entry `id` in place.
-  `name` is trimmed, 1 to 128 characters without control characters, and
-  unique among the entries regardless of case. Replacing an entry with
-  another `host`, `port`, `user` or `proxyJump` clears its recent folders,
-  which belong to the target and not to the name.
+- `save: { id?, name, connection, color?, group? }` normalizes and checks
+  the connection, then adds an entry with a new id or replaces the entry `id`
+  in place. `name` is trimmed, 1 to 128 characters without control
+  characters, and unique among the entries regardless of case. Replacing an
+  entry with another `host`, `port`, `user` or `proxyJump` clears its recent
+  folders, which belong to the target and not to the name. A missing `color`
+  or `group` saves the entry without one, so a save always carries the
+  entry's current values. `group` is trimmed, and a blank group is no group;
+  otherwise it is at most 64 characters without control characters, and it
+  takes the spelling of another entry's group that differs only in letter
+  case.
 - `remove: { id }` removes the entry; an absent id changes nothing.
 - `rememberFolder: { id, path }` moves `path` to the front of the entry's
   recent folders and keeps 10.
 
-The result is `{ changed, document: string|null, connections, id? }`; `id`
-names the entry a save wrote. An unchanged edit returns a `null` document and
-must not create a source. Requests never carry a secret: a password field is
-an unknown field and is rejected.
+The result is `{ changed, document: string|null, connections, sections,
+id? }`; `id` names the entry a save wrote. An unchanged edit returns a `null`
+document and must not create a source. Requests never carry a secret: a
+password field is an unknown field and is rejected.
 
 Bounds: 256 KiB per document and 128 entries. A document that cannot be
 decoded, has duplicate keys, unknown fields, another version, a malformed
@@ -5758,6 +5774,10 @@ entry, or an id or name used twice is `parse_failed`; a malformed request or a
 refused edit is `invalid_request`. Both carry `details` as the JSON
 `{ field, reason }`, where `reason` is `required`, `invalid`, `tooLong`,
 `duplicate`, `full` (128 entries) or `unknown` (no entry has the id).
+
+The document stays at version 1 and omits `color` and `group` when they are
+unset. A build from before these fields refuses a document that sets one as
+having an unknown field.
 
 Native clients keep the document below their platform user-preference
 directory, never on a host, in a workspace or in an installed package. This
