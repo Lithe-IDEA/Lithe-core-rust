@@ -3074,8 +3074,9 @@ it, without that configuration's program arguments or environment. To run
 one, the host calls `build.beforeLaunchTaskPlan` with the manifest, the build
 system, `workspaceRoot`, the step and its working directory as
 `runConfig.beforeLaunch` returned them, and the detected instances of the
-build system with their stored options. Core picks the instance as for a run
-configuration and returns a task plan: the global arguments, then the task's
+build system with their stored options. Core picks the deepest instance
+containing the step's working directory, or the only instance, and returns
+a task plan: the global arguments, then the task's
 `arguments` with the field values and the instance's options. A saved value
 that no longer fits the task is `plugin.build.invalidBeforeLaunchTask` with
 `field: "values.<fieldID>"`; a task the plugin no longer declares is
