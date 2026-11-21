@@ -370,15 +370,62 @@ fn every_failed_status_has_its_own_log_category() {
 
 #[cfg(unix)]
 #[test]
-fn unknown_server_targets_are_rejected() {
-    let request: sessions::ConnectRequest = serde_json::from_value(json!({
+fn unknown_server_targets_and_malformed_hashes_are_rejected() {
+    for server in [
+        json!({ "target": "riscv64-unknown-linux-musl", "path": "/nowhere", "sha256": "0".repeat(64) }),
+        json!({ "target": "x86_64-unknown-linux-musl", "path": "/nowhere", "sha256": "0".repeat(63) }),
+        json!({ "target": "x86_64-unknown-linux-musl", "path": "/nowhere", "sha256": format!("{}z", "0".repeat(63)) }),
+    ] {
+        let error = sessions::connect(connect_request(json!([server]))).unwrap_err();
+        assert!(matches!(error.code, ErrorCode::InvalidRequest), "{error:?}");
+    }
+    // The expected hash is required: Core never derives it from the file.
+    let missing_hash = serde_json::from_value::<sessions::ConnectRequest>(json!({
         "connection": { "host": "devbox" },
-        "servers": [{ "target": "riscv64-unknown-linux-musl", "path": "/nowhere" }],
+        "servers": [{ "target": "x86_64-unknown-linux-musl", "path": "/nowhere" }],
         "serverVersion": "0.1.0",
-    }))
-    .unwrap();
-    let error = sessions::connect(request).unwrap_err();
-    assert!(matches!(error.code, ErrorCode::InvalidRequest), "{error:?}");
+    }));
+    assert!(missing_hash.is_err());
+}
+
+// The build for the host's platform is read once the shell reports the
+// platform. A file that cannot be read, or whose bytes are not the build the
+// request's SHA-256 describes, is refused before anything reaches the host.
+#[cfg(unix)]
+#[test]
+fn a_server_build_that_is_not_the_expected_one_is_never_installed() {
+    let ssh = FakeSsh::new(
+        "remote-connect-replaced",
+        "for last; do :; done\nexec /bin/sh -c \"$last\"",
+    );
+    let target =
+        lithe_remote::client::ServerTarget::from_uname(&local_uname("-s"), &local_uname("-m"))
+            .expect("the test machine has a server target")
+            .rust_target();
+    let replaced = ssh.root.join("replaced-server");
+    std::fs::write(&replaced, b"not the build the manifest describes").unwrap();
+    let install_root = ssh.root.join("install");
+    for (path, problem) in [
+        (replaced.clone(), "does not match the expected SHA-256"),
+        (ssh.root.join("missing-server"), "could not be read"),
+    ] {
+        let request: sessions::ConnectRequest = serde_json::from_value(json!({
+            "connection": { "host": "devbox", "user": "dev" },
+            "servers": [{ "target": target, "path": path, "sha256": "ab".repeat(32) }],
+            "serverVersion": "0.1.0",
+            "installRoot": install_root,
+        }))
+        .unwrap();
+        let error = sessions::connect_with(request, Some(ssh.path())).unwrap_err();
+        assert!(
+            matches!(error.code, ErrorCode::RemoteServerInvalid),
+            "{error:?}"
+        );
+        let details = error.details.unwrap_or_default();
+        assert!(details.contains(problem), "{details}");
+        assert!(!details.contains(path.to_str().unwrap()), "{details}");
+    }
+    assert!(!install_root.exists());
 }
 
 #[cfg(unix)]

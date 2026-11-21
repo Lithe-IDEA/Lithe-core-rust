@@ -322,3 +322,9 @@ belong to the remote user and are not writable by the group or other users.
 On a host without a hash tool, a fresh upload is accepted when its size
 matches and `--identity` reports the expected hash, and it is uploaded again
 on every connection instead of being reused.
+
+The expected hash is never computed from the file about to be sent: the
+application ships it in a manifest signed with the builds, and the
+bootstrapper reads the build once, compares it with that hash and sends the
+same bytes. A build that cannot be read or differs is refused before anything
+reaches the host (`remote_server_invalid` from `remote.connect`).

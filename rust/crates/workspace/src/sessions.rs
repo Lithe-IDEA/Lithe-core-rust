@@ -14,13 +14,15 @@ use lithe_remote::client::launch::{launch, launch_command, LaunchError, Launched
 use lithe_remote::client::session::{ClientError, ConnectOptions};
 use lithe_remote::client::trust::Target;
 use lithe_remote::client::{
-    ConnectionKind, ConnectionLog, Hop, RemoteSession, ServerArtifact, ServerTarget, TransportChain,
+    ArtifactError, ConnectionKind, ConnectionLog, Hop, RemoteSession, ServerArtifact, ServerTarget,
+    TransportChain,
 };
 use lithe_remote::protocol::methods;
 use lithe_request_context::events as execution_events;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::io::Read;
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
@@ -53,8 +55,11 @@ const STDERR_TAIL_BYTES: usize = 8 * 1024;
 struct ServerInput {
     /// Rust target triple, for example `x86_64-unknown-linux-musl`.
     target: String,
-    /// Absolute path of the read-only binary inside the installed app.
+    /// Absolute local path of the binary.
     path: String,
+    /// Hex SHA-256 the binary must have, taken from the manifest built and
+    /// signed with the application rather than from the file at `path`.
+    sha256: String,
 }
 
 /// `remote.connect`: the connection, the server builds Core may install,
@@ -276,8 +281,8 @@ fn connect_logged(
     ssh_program: Option<&str>,
     log: &ConnectionLog,
 ) -> Result<ConnectResult, CoreError> {
-    // Only the build for the host's platform is read and hashed, once the
-    // probe reports it; here the target names are just validated.
+    // Only the build for the host's platform is read and checked, once the
+    // probe reports it; here the targets and hashes are just validated.
     let servers = request
         .servers
         .iter()
@@ -286,12 +291,19 @@ fn connect_logged(
                 CoreError::new(ErrorCode::InvalidRequest, "Unknown remote server target")
                     .with_details(server.target.clone())
             })?;
-            Ok((target, server.path.clone()))
+            if !methods::is_sha256_hex(&server.sha256) {
+                return Err(CoreError::new(
+                    ErrorCode::InvalidRequest,
+                    "A remote server SHA-256 must be 64 hexadecimal digits",
+                )
+                .with_details(server.target.clone()));
+            }
+            Ok((target, server.path.clone(), server.sha256.clone()))
         })
         .collect::<Result<Vec<_>, CoreError>>()?;
     let server_version = request.server_version.clone();
-    let unreadable = Arc::new(Mutex::new(None::<String>));
-    let unreadable_in_launch = Arc::clone(&unreadable);
+    let rejected = Arc::new(Mutex::new(None::<ArtifactError>));
+    let rejected_in_launch = Arc::clone(&rejected);
     let _connecting = ConnectingGuard::enter();
 
     let mut hop = ssh_hop(&request.connection)?;
@@ -361,13 +373,18 @@ fn connect_logged(
     std::thread::spawn(move || {
         let artifact_for = |report: &lithe_remote::client::bootstrap::ProbeReport| {
             let target = report.target()?;
-            let (_, path) = servers.iter().find(|(known, _)| *known == target)?;
-            match ServerArtifact::from_file(target, path.clone().into(), server_version.clone()) {
+            let (_, path, sha256) = servers.iter().find(|(known, _, _)| *known == target)?;
+            match ServerArtifact::read_verified(
+                target,
+                Path::new(path),
+                server_version.clone(),
+                sha256,
+            ) {
                 Ok(artifact) => Some(artifact),
                 Err(error) => {
-                    *unreadable_in_launch
+                    *rejected_in_launch
                         .lock()
-                        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(error.to_string());
+                        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(error);
                     None
                 }
             }
@@ -483,16 +500,16 @@ fn connect_logged(
         Err(LaunchError::NoArtifact(report)) => {
             let report = *report;
             reap(&tree, &mut child);
-            let unreadable = unreadable
+            let rejected = rejected
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .take();
-            if let Some(details) = unreadable {
+            if let Some(error) = rejected {
                 return Err(CoreError::new(
-                    ErrorCode::RuntimeMissing,
-                    "A bundled remote server is unreadable",
+                    ErrorCode::RemoteServerInvalid,
+                    "The remote server build for this host could not be read or is not the expected build",
                 )
-                .with_details(details));
+                .with_details(error.to_string()));
             }
             let host = ProbedHost {
                 server_target: report.target().map(ServerTarget::rust_target),

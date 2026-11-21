@@ -826,15 +826,17 @@ fn run_launch(
         .unwrap();
     let mut input = child.stdin.take().unwrap();
     let mut output = child.stdout.take().unwrap();
+    let binary = std::fs::read(SERVER).unwrap();
     let result = launch(
         &mut output,
         &mut input,
         |report| {
             let target = report.target()?;
-            Some(
-                ServerArtifact::from_file(target, SERVER.into(), env!("CARGO_PKG_VERSION"))
-                    .unwrap(),
-            )
+            Some(ServerArtifact::from_bytes(
+                target,
+                binary,
+                env!("CARGO_PKG_VERSION"),
+            ))
         },
         &ConnectionLog::begin(ConnectionKind::Ssh),
     );

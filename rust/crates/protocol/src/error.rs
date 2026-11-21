@@ -72,6 +72,11 @@ pub enum ErrorCode {
     /// A long-lived connection the request names is closed or was lost; the
     /// caller can reconnect and retry.
     ConnectionClosed,
+    /// `remote.connect` reached a host whose server build the request names,
+    /// but the local file could not be read or its SHA-256 is not the one the
+    /// request gives for it. Nothing was installed on the host; the
+    /// application's copy of the build is damaged or was replaced.
+    RemoteServerInvalid,
     /// A failure does not fit a more stable cross-platform category.
     Unknown,
 }

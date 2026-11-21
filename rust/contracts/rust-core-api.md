@@ -5700,16 +5700,30 @@ and `uptimeSeconds`.
 
 #### Remote connections that stay open
 
-`remote.connect` takes `{ connection, servers: [{ target, path }],
+`remote.connect` takes `{ connection, servers: [{ target, path, sha256 }],
 serverVersion, installRoot? }`. `servers` are the read-only server builds the
-host ships, by Rust target; `installRoot` defaults to `$HOME/.lithe-server`.
-One OpenSSH process probes the host, keeps an installed server whose
-`--identity` reports the same SHA-256 or uploads the matching build through
-the same stream, and starts it, so the user authenticates once. Prompts are
-relayed as for `remote.probe`. The result is `{ status, session, host,
-diagnostics }`; `session` is `{ id, uploaded, hostName, userName,
+host ships, by Rust target; `sha256` is the build's SHA-256 as 64 hexadecimal
+digits, taken from the manifest the application ships and signs with the
+builds, never computed from the file Core is about to send. `installRoot`
+defaults to `$HOME/.lithe-server`. One OpenSSH process probes the host, then
+Core reads the build for the host's platform once and compares it with its
+`sha256`; the bytes it checked are the bytes it sends. The host keeps an
+installed server only when its own `sha256sum` or `shasum` computes that
+SHA-256; otherwise it receives the build through the same stream, checks it
+the same way (a host with neither tool checks the size and `--identity`, and
+never reuses that upload), and starts it, so the user authenticates once.
+Prompts are relayed as for `remote.probe`. The result is `{ status, session,
+host, diagnostics }`; `session` is `{ id, uploaded, hostName, userName,
 homeDirectory }` and is set only for `connected`. A host without a matching
 build is `unsupportedPlatform` and nothing is uploaded.
+
+A malformed connection, an unknown `target` or a `sha256` that is not 64
+hexadecimal digits is `invalid_request`, before OpenSSH starts. A missing
+`ssh` is `runtime_missing`. When the build for the host's platform cannot be
+read or its SHA-256 differs, the attempt ends as `remote_server_invalid`
+without sending anything; `details` says which of the two happened and, for a
+mismatch, the SHA-256 Core computed, but never the path. Cancellation and the
+five-minute bound are `cancelled` and `timed_out`.
 
 Core keeps an open connection until `remote.disconnect` (`{ sessionId }`,
 returning `{ closed }`) or until the host process exits; ending it terminates

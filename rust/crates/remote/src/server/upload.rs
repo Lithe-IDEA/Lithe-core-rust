@@ -173,8 +173,7 @@ impl UploadTable {
     fn start(&self, context: &Context, params: UploadStartParams) -> Result<Value, RemoteError> {
         if params.size > methods::MAX_UPLOAD_BYTES
             || params.mode > 0o777
-            || params.sha256.len() != 64
-            || !params.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+            || !methods::is_sha256_hex(&params.sha256)
         {
             return Err(RemoteError::new(
                 ErrorCode::InvalidRequest,

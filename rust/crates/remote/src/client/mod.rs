@@ -33,7 +33,7 @@ pub mod transport;
 pub mod trust;
 
 pub use api::{SpawnSpec, TerminalSpec, WriteOptions};
-pub use bootstrap::{ServerArtifact, ServerTarget};
+pub use bootstrap::{ArtifactError, ServerArtifact, ServerTarget};
 pub use connection_log::{ConnectionKind, ConnectionLog};
 pub use forward::PortForward;
 pub use session::{ClientError, ConnectOptions, Event, RemoteSession, ResumeMode};
