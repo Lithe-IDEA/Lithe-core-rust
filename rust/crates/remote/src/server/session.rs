@@ -19,7 +19,8 @@ use std::time::{Duration, Instant};
 
 /// Default time a persistent session without a client and without kept
 /// programs survives.
-pub(crate) const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+pub(crate) const DEFAULT_IDLE_TIMEOUT: Duration =
+    Duration::from_secs(crate::protocol::methods::DEFAULT_IDLE_TIMEOUT_SECONDS);
 
 /// Upper bound clients may request, so an idle daemon that nobody comes back
 /// to does not linger on a shared host for days. Programs the user kept

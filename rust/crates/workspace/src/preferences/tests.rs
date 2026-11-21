@@ -27,7 +27,7 @@ fn reading_no_document_reports_automatic_values_and_the_storage() {
     );
     assert_eq!(
         result["closing"],
-        json!({ "source": "automatic", "programs": "ask" })
+        json!({ "source": "automatic", "programs": "ask", "idleTimeoutSeconds": 600 })
     );
     assert_eq!(result["ssh"]["source"], "automatic");
     assert_eq!(result["reconnect"]["source"], "automatic");
@@ -138,7 +138,7 @@ fn the_closing_choice_is_edited_and_read_back() {
     assert_eq!(state["preferences"]["closePrograms"], "keep");
     assert_eq!(
         state["closing"],
-        json!({ "source": "setting", "programs": "keep" })
+        json!({ "source": "setting", "programs": "keep", "idleTimeoutSeconds": 600 })
     );
     let restored = edit(request(json!({
         "document": document,

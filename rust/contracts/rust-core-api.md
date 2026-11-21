@@ -5960,11 +5960,14 @@ sshConfig? }`:
 - `reverseForwarding` is `{ source, allowed }`: whether the ports page may
   start reverse forwards (automatic: not allowed), because every user of the
   host can reach the local port one opens.
-- `closing` is `{ source, programs }`: what happens to the processes and
-  terminals still running on the host when a window closes its connection.
-  `programs` is `ask` (automatic: the client asks every time, and may offer
-  to remember the answer), `end` or `keep`. Nothing keeps running on a host,
-  or ends, without the user deciding.
+- `closing` is `{ source, programs, idleTimeoutSeconds }`: what happens to
+  the processes and terminals still running on the host when a window closes
+  its connection. `programs` is `ask` (automatic: the client asks every
+  time, and may offer to remember the answer), `end` or `keep`. Nothing
+  keeps running on a host, or ends, without the user deciding.
+  `idleTimeoutSeconds` (600) is how long the host keeps a session whose
+  connection was lost and whose programs nobody kept; the server sets it and
+  no document changes it.
 - `storage` is `{ relativePath: "remote/preferences.json", maximumBytes:
   16384 }`.
 - `sshConfig` is `{ path, exists }` for `.ssh/config` below `homeDirectory`,

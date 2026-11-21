@@ -247,6 +247,12 @@ pub fn is_sha256_hex(value: &str) -> bool {
 // Server and session
 // ---------------------------------------------------------------------------
 
+/// Seconds a persistent session waits without a client and without kept
+/// programs before it ends, when no client set
+/// [`HelloParams::idle_timeout_seconds`]. Clients show it next to the
+/// closing choice, so it lives here rather than in the server.
+pub const DEFAULT_IDLE_TIMEOUT_SECONDS: u64 = 10 * 60;
+
 /// Parameters of `server.hello`.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]

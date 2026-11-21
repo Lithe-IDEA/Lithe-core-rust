@@ -95,6 +95,8 @@ fn closing_asks_until_the_user_chooses() {
         (closing.source, closing.programs),
         (Source::Automatic, ClosePrograms::Ask)
     );
+    // The server's idle timeout, which no document changes.
+    assert_eq!(closing.idle_timeout_seconds, 10 * 60);
     for programs in [ClosePrograms::Keep, ClosePrograms::End, ClosePrograms::Ask] {
         preferences.set_close_programs(Some(programs));
         let read = Preferences::parse(Some(&preferences.text().unwrap())).unwrap();

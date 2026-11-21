@@ -214,6 +214,10 @@ pub struct Closing {
     pub source: Source,
     /// The choice that takes effect.
     pub programs: ClosePrograms,
+    /// Seconds the host keeps a session whose connection was lost, and
+    /// whose programs nobody kept, before ending it. The server sets it,
+    /// so no document changes it; clients show it beside the choice.
+    pub idle_timeout_seconds: u64,
 }
 
 /// How long a lost session is reconnected automatically.
@@ -332,6 +336,7 @@ impl Preferences {
                 None => Source::Automatic,
             },
             programs: self.close_programs.unwrap_or(DEFAULT_CLOSE_PROGRAMS),
+            idle_timeout_seconds: crate::protocol::methods::DEFAULT_IDLE_TIMEOUT_SECONDS,
         }
     }
 
