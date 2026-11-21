@@ -213,6 +213,12 @@ pub(crate) fn encode_hex(bytes: &[u8]) -> String {
     hex
 }
 
+/// Whether `value` spells a SHA-256 digest: 64 hex digits of either case.
+/// Requests are checked with it before a digest is compared or sent.
+pub fn is_sha256_hex(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
 // ---------------------------------------------------------------------------
 // Server and session
 // ---------------------------------------------------------------------------

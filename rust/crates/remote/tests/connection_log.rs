@@ -133,12 +133,45 @@ fn assert_nothing_identifying(facts: &[Fact], secrets: &[&str]) {
     }
 }
 
+/// Passes the install request line through, then flips the first byte of the
+/// upload that follows, as a link that damages the binary in transit would.
+struct CorruptUpload<W> {
+    inner: W,
+    request_sent: bool,
+    flipped: bool,
+}
+
+impl<W: Write> Write for CorruptUpload<W> {
+    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+        if !self.request_sent {
+            let Some(end) = buffer.iter().position(|byte| *byte == b'\n') else {
+                return self.inner.write(buffer);
+            };
+            self.inner.write_all(&buffer[..=end])?;
+            self.request_sent = true;
+            return Ok(end + 1);
+        }
+        match buffer.first() {
+            Some(first) if !self.flipped => {
+                self.inner.write_all(&[first ^ 0xff])?;
+                self.flipped = true;
+                Ok(1)
+            }
+            _ => self.inner.write(buffer),
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
+}
+
 /// Runs the launch script in a local shell against `root`, as one SSH
-/// connection would. `sha256` replaces the artifact's real digest.
+/// connection would. `corrupt` damages the upload in transit.
 fn run_launch(
     root: &str,
     log: &ConnectionLog,
-    sha256: Option<&str>,
+    corrupt: bool,
 ) -> (
     Result<Launched, LaunchError>,
     Child,
@@ -151,24 +184,27 @@ fn run_launch(
         .stdout(Stdio::piped())
         .spawn()
         .unwrap();
-    let mut input = child.stdin.take().unwrap();
+    let mut input = CorruptUpload {
+        inner: child.stdin.take().unwrap(),
+        request_sent: false,
+        flipped: !corrupt,
+    };
     let mut output = child.stdout.take().unwrap();
+    let binary = std::fs::read(SERVER).unwrap();
     let result = launch(
         &mut output,
         &mut input,
         |report| {
             let target = report.target()?;
-            let mut artifact =
-                ServerArtifact::from_file(target, SERVER.into(), env!("CARGO_PKG_VERSION"))
-                    .unwrap();
-            if let Some(sha256) = sha256 {
-                artifact.sha256 = sha256.into();
-            }
-            Some(artifact)
+            Some(ServerArtifact::from_bytes(
+                target,
+                binary,
+                env!("CARGO_PKG_VERSION"),
+            ))
         },
         log,
     );
-    (result, child, output, input)
+    (result, child, output, input.inner)
 }
 
 #[test]
@@ -177,7 +213,7 @@ fn an_upload_and_a_reuse_record_every_step_of_the_connection() {
     let root = TempDir::new("log-install");
     for action in ["uploaded", "reused"] {
         let log = ConnectionLog::begin(ConnectionKind::Ssh);
-        let (launched, mut child, output, input) = run_launch(root.str(), &log, None);
+        let (launched, mut child, output, input) = run_launch(root.str(), &log, false);
         assert_eq!(launched.unwrap().uploaded, action == "uploaded");
         let options = ConnectOptions {
             log: Some(log.clone()),
@@ -210,7 +246,7 @@ fn a_binary_that_fails_verification_records_the_failed_step() {
     install();
     let root = TempDir::new("log-verify");
     let log = ConnectionLog::begin(ConnectionKind::Ssh);
-    let (launched, mut child, output, input) = run_launch(root.str(), &log, Some(&"0".repeat(64)));
+    let (launched, mut child, output, input) = run_launch(root.str(), &log, true);
     assert!(
         matches!(
             launched,
