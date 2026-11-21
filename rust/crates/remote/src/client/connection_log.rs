@@ -69,6 +69,8 @@ const RELEASED: u8 = 3;
 pub enum ConnectionKind {
     /// An SSH connection owned by the caller.
     Ssh,
+    /// A WSL distribution started through `wsl.exe`, owned by the caller.
+    Wsl,
     /// A transport chain [`crate::client::RemoteSession::connect`] spawns.
     Command,
     /// Streams the caller supplies to
@@ -80,6 +82,7 @@ impl ConnectionKind {
     fn as_str(self) -> &'static str {
         match self {
             Self::Ssh => "ssh",
+            Self::Wsl => "wsl",
             Self::Command => "command",
             Self::Streams => "streams",
         }

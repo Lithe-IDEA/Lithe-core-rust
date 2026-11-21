@@ -289,6 +289,13 @@ pub(super) fn dispatch(command: RemoteCommand, id: Option<String>, payload: Valu
             id,
             json!({ "closed": lithe_workspace::sessions::close_all() }),
         ),
+        RemoteCommand::ListWslDistributions => match lithe_workspace::wsl::list() {
+            Ok(listed) => CoreResponse::success(
+                id,
+                serde_json::to_value(listed).expect("WSL distributions should encode"),
+            ),
+            Err(error) => CoreResponse::failure(id, error),
+        },
         RemoteCommand::AuthRespond => {
             #[derive(serde::Deserialize)]
             #[serde(rename_all = "camelCase", deny_unknown_fields)]
