@@ -48,3 +48,12 @@ pub fn unique_id() -> String {
 pub fn stat_requests() -> usize {
     crate::fs::stat_requests_for_test()
 }
+
+/// `remote.listContainers` with `program` in place of the engine CLI, on
+/// this machine or on the host the request names.
+pub fn list_containers_with(
+    request: crate::containers::ListRequest,
+    program: &str,
+) -> Result<crate::containers::Containers, lithe_protocol::CoreError> {
+    crate::containers::list_with(request, Some(program))
+}

@@ -1324,6 +1324,19 @@ fn connection_window_helpers_answer_through_the_dispatcher() {
     assert_eq!(both["error"]["code"], "invalid_request", "{both}");
     let details: Value = serde_json::from_str(both["error"]["details"].as_str().unwrap()).unwrap();
     assert_eq!(details, json!({"field": "wsl", "reason": "invalid"}));
+    // A container listing names a known engine and nothing that could pick
+    // the program.
+    for payload in [
+        json!({"engine": "nerdctl"}),
+        json!({"engine": "docker", "program": "/bin/sh"}),
+    ] {
+        let refused = call("remote.listContainers", payload);
+        assert_eq!(refused["error"]["code"], "invalid_request", "{refused}");
+        assert_eq!(
+            refused["error"]["message"], "Invalid container listing request",
+            "{refused}"
+        );
+    }
 
     // The settings page reads automatic values and stores an edit; a damaged
     // document stops the SSH commands before OpenSSH starts.
@@ -1676,5 +1689,47 @@ fn remote_host_and_reverse_forwards_follow_their_own_rules() {
     assert_eq!(
         ok(call("remote.stopForward", json!({"forwardId": back["id"]})))["stopped"],
         true
+    );
+}
+
+// The connection window lists a connected host's containers through the
+// host's own engine CLI; a host without one says so instead of failing.
+#[test]
+fn container_listings_run_on_the_host_and_say_when_it_has_no_engine() {
+    use std::os::unix::fs::PermissionsExt;
+    let host = HostFixture::new();
+    let engine = host.root.join("host/docker");
+    std::fs::write(
+        &engine,
+        "#!/bin/sh\nprintf 'c0ffee\\tdev\\tubuntu:24.04\\tUp 1 minute\\n'\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&engine, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let request = |engine: &str| {
+        serde_json::from_value(json!({"engine": engine, "sessionId": host.id})).unwrap()
+    };
+    let listed =
+        test_support::list_containers_with(request("docker"), engine.to_str().unwrap()).unwrap();
+    assert_eq!(
+        serde_json::to_value(listed).unwrap(),
+        json!({"available": true, "diagnostics": "", "containers": [
+            {"id": "c0ffee", "name": "dev", "image": "ubuntu:24.04", "status": "Up 1 minute"}
+        ]})
+    );
+    let absent = host.root.join("host/absent");
+    let missing =
+        test_support::list_containers_with(request("podman"), absent.to_str().unwrap()).unwrap();
+    assert_eq!(
+        serde_json::to_value(missing).unwrap(),
+        json!({"available": false, "containers": [], "diagnostics": ""})
+    );
+    let unknown = test_support::list_containers_with(
+        serde_json::from_value(json!({"engine": "docker", "sessionId": "absent"})).unwrap(),
+        engine.to_str().unwrap(),
+    )
+    .unwrap_err();
+    assert!(
+        matches!(unknown.code, ErrorCode::ConnectionClosed),
+        "{unknown:?}"
     );
 }

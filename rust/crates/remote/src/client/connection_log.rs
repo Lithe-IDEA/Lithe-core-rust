@@ -74,6 +74,13 @@ pub enum ConnectionKind {
     Ssh,
     /// A WSL distribution started through `wsl.exe`, owned by the caller.
     Wsl,
+    /// A container on this machine, entered through its engine's `exec`,
+    /// owned by the caller.
+    Container,
+    /// A container on an SSH host, owned by the caller.
+    SshContainer,
+    /// A container inside a WSL distribution, owned by the caller.
+    WslContainer,
     /// A transport chain [`crate::client::RemoteSession::connect`] spawns.
     Command,
     /// Streams the caller supplies to
@@ -86,6 +93,9 @@ impl ConnectionKind {
         match self {
             Self::Ssh => "ssh",
             Self::Wsl => "wsl",
+            Self::Container => "container",
+            Self::SshContainer => "ssh-container",
+            Self::WslContainer => "wsl-container",
             Self::Command => "command",
             Self::Streams => "streams",
         }

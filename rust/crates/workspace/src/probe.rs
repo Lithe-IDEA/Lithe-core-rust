@@ -287,6 +287,51 @@ pub(crate) fn classify_wsl(exit: Option<ExitStatus>, stderr: &[u8]) -> ProbeResu
     }
 }
 
+/// Interprets a local container engine CLI that exited before the server
+/// started, from what it printed (see [`container_status`]).
+pub(crate) fn classify_container(
+    exit: Option<ExitStatus>,
+    stderr: &[u8],
+    engine: lithe_remote::client::ContainerEngine,
+) -> ProbeResult {
+    let text = String::from_utf8_lossy(stderr);
+    ProbeResult {
+        status: container_status(&text).unwrap_or(ProbeStatus::Failed),
+        host: None,
+        diagnostics: or_exit_status(diagnostics(&text), engine.name(), exit),
+    }
+}
+
+/// What a container engine's CLI printed when `exec` failed, as a status:
+/// a container that does not exist, is not running or is paused, and an
+/// engine whose service does not answer, are unreachable, like an unknown
+/// host; a service socket the user may not open is a failure the message
+/// explains, not a rejected SSH login. `None` when the text holds none of
+/// the Docker or Podman messages, so the client that reached the host
+/// decides.
+pub(crate) fn container_status(text: &str) -> Option<ProbeStatus> {
+    let lower = text.to_ascii_lowercase();
+    let mentions = |needles: &[&str]| needles.iter().any(|needle| lower.contains(needle));
+    if mentions(&[
+        "permission denied while trying to connect to the docker daemon",
+        "docker.sock: connect: permission denied",
+        "podman.sock: connect: permission denied",
+    ]) {
+        Some(ProbeStatus::Failed)
+    } else if mentions(&[
+        "no such container",
+        "is not running",
+        "is paused",
+        "container state improper",
+        "cannot connect to the docker daemon",
+        "cannot connect to podman",
+    ]) {
+        Some(ProbeStatus::Unreachable)
+    } else {
+        None
+    }
+}
+
 /// `diagnostics`, or the exit status of `program` when it printed nothing:
 /// some failures, such as a remote shell that exits early, are silent.
 fn or_exit_status(diagnostics: String, program: &str, exit: Option<ExitStatus>) -> String {

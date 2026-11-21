@@ -176,7 +176,7 @@
         "transport": {
           "type": "token",
           "required": true,
-          "description": "How the client reached the server: ssh, wsl (a local WSL distribution through wsl.exe), command (any spawned transport chain) or streams (caller-supplied pipes)"
+          "description": "How the client reached the server: ssh, wsl (a local WSL distribution through wsl.exe), container (a local container through its engine's exec), ssh-container or wsl-container (a container on that host), command (any spawned transport chain) or streams (caller-supplied pipes)"
         },
         "outcome": {
           "type": "token",

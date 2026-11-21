@@ -1046,6 +1046,9 @@ pub enum RemoteCommand {
     /// Lists the WSL distributions installed on this Windows machine
     /// (`remote.listWslDistributions`).
     ListWslDistributions,
+    /// Lists the running containers of a container engine on this machine
+    /// or on a connected host (`remote.listContainers`).
+    ListContainers,
     /// Reads the remote workspace preferences and what each automatic value
     /// resolves to (`remote.preferences`).
     Preferences,
@@ -1633,6 +1636,7 @@ impl CoreCommand {
             "remote.listWslDistributions" => {
                 Some(Self::Remote(RemoteCommand::ListWslDistributions))
             }
+            "remote.listContainers" => Some(Self::Remote(RemoteCommand::ListContainers)),
             "remote.preferences" => Some(Self::Remote(RemoteCommand::Preferences)),
             "remote.editPreferences" => Some(Self::Remote(RemoteCommand::EditPreferences)),
             "git.historyRewritePreview" => Some(Self::Git(GitCommand::HistoryRewritePreview)),

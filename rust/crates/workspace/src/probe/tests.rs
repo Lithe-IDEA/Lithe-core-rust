@@ -470,6 +470,164 @@ fn connections_name_exactly_one_client() {
     assert!(!wsl.program.with_extension("ran").exists());
 }
 
+#[cfg(unix)]
+fn container_request(fields: serde_json::Value) -> sessions::ConnectRequest {
+    let mut request = json!({ "servers": [], "serverVersion": "0.1.0" });
+    request
+        .as_object_mut()
+        .unwrap()
+        .extend(fields.as_object().unwrap().clone());
+    serde_json::from_value(request).unwrap()
+}
+
+/// Stand-in for a container engine CLI: writes its arguments and variables
+/// next to itself, then skips `exec -i`, the user and the container name
+/// and runs the inner command with the local shell.
+#[cfg(unix)]
+const FAKE_ENGINE: &str = "printf '%s\\n' \"$@\" > \"$0.arguments\"\n\
+    env > \"$0.environment\"\n\
+    shift 2\n\
+    if [ \"$1\" = -u ]; then shift 2; fi\n\
+    shift\n\
+    exec \"$@\"";
+
+// A container on this machine is entered through its engine's `exec`: the
+// server is probed inside it like on an SSH host, the engine keeps the
+// environment that selects its service, and nothing asks through AskPass.
+#[cfg(unix)]
+#[test]
+fn connecting_to_a_local_container_runs_the_launch_through_the_engine() {
+    let engine = FakeSsh::new("remote-connect-container", FAKE_ENGINE);
+    let request = container_request(json!({
+        "container": { "engine": "podman", "container": " web ", "user": " dev " }
+    }));
+    let result = sessions::connect_with(request, Some(engine.path())).unwrap();
+    let value = serde_json::to_value(result).unwrap();
+    assert_eq!(value["status"], "unsupportedPlatform");
+    assert_eq!(value["host"]["system"], local_uname("-s"));
+    let arguments = std::fs::read_to_string(engine.program.with_extension("arguments")).unwrap();
+    let arguments: Vec<&str> = arguments.lines().collect();
+    assert_eq!(arguments[..5], ["exec", "-i", "-u", "dev", "web"]);
+    let seen = environment_seen_by(&engine);
+    let names = seen.keys().collect::<Vec<_>>();
+    assert!(seen.contains_key("CARGO_PKG_NAME"), "{names:?}");
+    assert!(!seen.contains_key("SSH_ASKPASS_REQUIRE"), "{names:?}");
+}
+
+// What Docker and Podman print about a missing or stopped container reads
+// like an unknown host; an engine that prints nothing still names itself.
+#[cfg(unix)]
+#[test]
+fn a_missing_container_is_unreachable_with_the_engine_message() {
+    let engine = FakeSsh::new(
+        "remote-connect-container-missing",
+        "echo 'Error response from daemon: No such container: web' >&2\nexit 1",
+    );
+    let request = container_request(json!({
+        "container": { "engine": "docker", "container": "web" }
+    }));
+    let value = serde_json::to_value(sessions::connect_with(request, Some(engine.path())).unwrap())
+        .unwrap();
+    assert_eq!(value["status"], "unreachable");
+    assert_eq!(value["session"], serde_json::Value::Null);
+    assert_eq!(
+        value["diagnostics"],
+        "Error response from daemon: No such container: web"
+    );
+    let silent = FakeSsh::new("remote-connect-container-silent", "exit 3");
+    let request = container_request(json!({
+        "container": { "engine": "podman", "container": "web" }
+    }));
+    let value = serde_json::to_value(sessions::connect_with(request, Some(silent.path())).unwrap())
+        .unwrap();
+    assert_eq!(value["status"], "failed");
+    assert_eq!(value["diagnostics"], "podman exited with status 3");
+}
+
+// A container on an SSH host is one more hop inside the remote command, and
+// the engine's refusal to open its socket is not a rejected SSH login.
+#[cfg(unix)]
+#[test]
+fn a_container_on_an_ssh_host_is_entered_after_the_login() {
+    let ssh = FakeSsh::new(
+        "remote-connect-ssh-container",
+        "for last; do :; done\nprintf '%s' \"$last\" > \"$0.command\"\n\
+         echo 'permission denied while trying to connect to the Docker daemon socket at \
+         unix:///var/run/docker.sock: connect: permission denied' >&2\nexit 1",
+    );
+    let request = container_request(json!({
+        "connection": { "host": "devbox", "user": "dev" },
+        "container": { "engine": "docker", "container": "web" }
+    }));
+    let value =
+        serde_json::to_value(sessions::connect_with(request, Some(ssh.path())).unwrap()).unwrap();
+    assert_eq!(value["status"], "failed");
+    let command = std::fs::read_to_string(ssh.program.with_extension("command")).unwrap();
+    assert!(command.starts_with("docker exec -i web "), "{command}");
+}
+
+// A container inside a WSL distribution follows `--exec`, and the engine
+// message there decides the status as on an SSH host.
+#[cfg(unix)]
+#[test]
+fn a_container_in_a_wsl_distribution_is_entered_inside_it() {
+    let wsl = FakeSsh::new(
+        "remote-connect-wsl-container",
+        "printf '%s\\n' \"$@\" > \"$0.arguments\"\n\
+         echo 'Error: no container with name or ID \"web\" found: no such container' >&2\nexit 125",
+    );
+    let request = container_request(json!({
+        "wsl": { "distribution": "Ubuntu" },
+        "container": { "engine": "podman", "container": "web" }
+    }));
+    let value =
+        serde_json::to_value(sessions::connect_with(request, Some(wsl.path())).unwrap()).unwrap();
+    assert_eq!(value["status"], "unreachable");
+    let arguments = std::fs::read_to_string(wsl.program.with_extension("arguments")).unwrap();
+    let arguments: Vec<&str> = arguments.lines().collect();
+    let exec = arguments.iter().position(|word| *word == "--exec").unwrap();
+    assert_eq!(
+        arguments[exec + 1..exec + 5],
+        ["podman", "exec", "-i", "web"]
+    );
+}
+
+// A malformed container is refused before anything runs, naming the field;
+// so is a request that names no host and no container.
+#[cfg(unix)]
+#[test]
+fn malformed_containers_are_refused_naming_the_field() {
+    let engine = FakeSsh::new("remote-connect-container-refused", "touch \"$0.ran\"");
+    let refused = |fields: serde_json::Value| {
+        let error =
+            sessions::connect_with(container_request(fields), Some(engine.path())).unwrap_err();
+        assert!(matches!(error.code, ErrorCode::InvalidRequest), "{error:?}");
+        serde_json::from_str::<serde_json::Value>(error.details.as_deref().unwrap()).unwrap()
+    };
+    assert_eq!(
+        refused(json!({ "container": { "engine": "docker", "container": " " } })),
+        json!({ "field": "container", "reason": "required" })
+    );
+    assert_eq!(
+        refused(json!({ "container": { "engine": "docker", "container": "-web" } })),
+        json!({ "field": "container", "reason": "invalid" })
+    );
+    assert_eq!(
+        refused(json!({
+            "container": { "engine": "docker", "container": "web", "user": "root;id" }
+        })),
+        json!({ "field": "user", "reason": "invalid" })
+    );
+    assert_eq!(
+        refused(json!({
+            "connection": { "host": "devbox" },
+            "container": { "engine": "docker", "container": "web", "user": "-u" }
+        })),
+        json!({ "field": "user", "reason": "invalid" })
+    );
+    assert!(!engine.program.with_extension("ran").exists());
+}
+
 // The connection log keeps one category per failed status, so a log line
 // tells authentication, host key and network failures apart.
 #[test]

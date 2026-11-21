@@ -11,9 +11,11 @@
 //! the SSH connections the user saved, [`ssh_configuration`] tells what
 //! OpenSSH makes of them and lists the hosts of the user's SSH configuration,
 //! [`motty`] lists the hosts saved in Motty for an import, [`wsl`] lists the
-//! WSL distributions of this Windows machine, [`probe`] checks that a saved
-//! SSH connection reaches a usable host, [`sessions`] opens and keeps the
-//! connections (over OpenSSH or `wsl.exe`), [`host`] forwards finite requests
+//! WSL distributions of this Windows machine, [`containers`] lists the
+//! running containers on this machine or a connected host, [`probe`] checks
+//! that a saved SSH connection reaches a usable host, [`sessions`] opens and
+//! keeps the connections (over OpenSSH, `wsl.exe` or a container engine's
+//! `exec`), [`host`] forwards finite requests
 //! and owned streaming resources (processes, terminals, watches),
 //! [`forwards`] keeps the port forwards of the ports page, [`upload`] streams
 //! a verified file to the host, [`trust`] keys remote workspace trust by
@@ -23,6 +25,7 @@
 //! this crate only supplies the IO boundary.
 
 pub mod connections;
+pub mod containers;
 pub mod forwards;
 pub mod fs;
 pub mod host;

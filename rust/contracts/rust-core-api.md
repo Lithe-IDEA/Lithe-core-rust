@@ -830,6 +830,7 @@ or removing a command fails until the table changes in the same commit.
 | `remote.sshConfigHosts` | List the Host aliases of the user's SSH configuration for an import |
 | `remote.mottyHosts` | List the SSH hosts saved in Motty for an import |
 | `remote.listWslDistributions` | List the WSL distributions installed on this Windows machine |
+| `remote.listContainers` | List the running Docker or Podman containers on this machine or a connected host |
 | `remote.preferences` | Read the remote workspace settings and what each automatic value resolves to |
 | `remote.editPreferences` | Set the SSH program, the reconnect limit or whether reverse forwards are allowed, or make one automatic again |
 | `git.historyRewritePreview` | Review undo, message edit, squash, or drop with complete messages, eligibility, and an immutable checkout expectation |
@@ -5927,6 +5928,28 @@ its redacted message for display; it is never logged. Cancellation and the
 bound are `cancelled` and `timed_out`. Nothing is saved: the window lists
 the distributions each time it opens.
 
+`remote.listContainers` takes `{ engine, sessionId? }`, where `engine` is
+`docker` or `podman`, and returns `{ available, containers, diagnostics }`.
+Core runs `<engine> ps --no-trunc --format '{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}'`,
+at most 15 seconds: on this machine in Core's own environment (the login
+shell's `PATH` the application put in front, and variables such as
+`DOCKER_HOST`) when `sessionId` is absent, and otherwise on that
+connection's host in the server's environment, the same one the connection
+later enters the container from. Only running containers are listed, since
+Lithe never starts, creates or changes a container. `containers` are
+`{ id, name, image, status }` in the engine's order, at most 256 and from at
+most 256 KiB of output: `id` is the full id, `name` the first of the
+container's names, and `image` and `status` the engine's text without
+control characters, at most 256 bytes each. Lines that are not four fields,
+or whose id or name is not a container name, are skipped, and so are
+repeated ids. `available` is `false` when the engine CLI cannot start there;
+when it runs and fails, for example because its service is not running,
+`containers` is empty and `diagnostics` holds its redacted message for
+display; it is never logged. Any other field is `invalid_request` ("Invalid
+container listing request"), so a request cannot pick the program; an unknown
+`sessionId` is `connection_closed`, and cancellation and the bound are
+`cancelled` and `timed_out`. Nothing is saved.
+
 #### Remote workspace preferences
 
 The settings page "Tools › Remote Workspace" edits three values that apply to
@@ -6032,14 +6055,43 @@ because `wsl.exe` asks no questions. An unknown distribution is
 the distribution and the account (`{ wsl: { distribution, user } }` as the
 first and only hop).
 
+The request may also name a running container as `container: { engine,
+container, user? }`, where `engine` is `docker` or `podman`, `container` a
+name or id such as `remote.listContainers` returned, and `user` a user, uid or
+`user:group` inside it (the image's default user when absent or empty). Next
+to `connection` or `wsl` the container is on that host: the remote command
+becomes `<engine> exec -i [-u <user>] <container> …` there, after the login.
+On its own the container is on this machine, and Core starts that command
+itself in place of OpenSSH, with its own environment so the engine finds its
+service. Core only enters the running container: it never starts, creates or
+reconfigures it, mounts directories into it or asks for more rights than the
+engine CLI has. The probe, the checked upload into the container's `$HOME`
+and the stages are the same, and nothing is relayed through
+`remote.authRespond` for the engine. When the engine gives up before the
+server starts, a container that does not exist, is not running or is paused,
+and an engine whose service does not answer, are `unreachable`; a service
+socket the user may not open is `failed`, not `authenticationFailed`, even
+over SSH; and other failures are `failed` with the engine's message in
+`diagnostics` (or `<engine> exited with status <code>` when it printed
+nothing). The connection log's `transport` is `container`, `ssh-container` or
+`wsl-container`, without the container's name. Trust decisions name the
+container after the other hops, as `{ container: { engine, program,
+container, user? } }`, so a decision never carries over to another container
+or account.
+
 A request that names both `connection` and `wsl` is `invalid_request` with
-`details` `{ field: "wsl", reason: "invalid" }`, and one that names neither
-`{ field: "connection", reason: "required" }`. A malformed connection, a
-distribution that is empty, longer than 64 bytes or not a WSL distribution
-name, a user that is longer than 32 bytes or not a Linux login name, an
-unknown `target` or a `sha256` that is not 64 hexadecimal digits is
-`invalid_request`, before OpenSSH or `wsl.exe` starts. A missing `ssh` or
-`wsl.exe` is `runtime_missing`. When the build for the host's platform cannot be
+`details` `{ field: "wsl", reason: "invalid" }`, and one that names none of
+`connection`, `wsl` and `container` `{ field: "connection", reason:
+"required" }`. A malformed connection, a distribution that is empty, longer
+than 64 bytes or not a WSL distribution name, a user that is longer than 32
+bytes or not a Linux login name, a container that is empty (`{ field:
+"container", reason: "required" }`), longer than 128 bytes or not a container
+name, a container user that is longer than 64 bytes, starts with `-` or holds
+other characters than letters, digits and `_.:-` (`{ field: "user" }`), an
+unknown `engine` or field, an unknown `target` or a `sha256` that is not 64
+hexadecimal digits is `invalid_request`, before OpenSSH, `wsl.exe` or the
+engine starts. A missing `ssh`, `wsl.exe` or local engine CLI is
+`runtime_missing`. When the build for the host's platform cannot be
 read or its SHA-256 differs, the attempt ends as `remote_server_invalid`
 without sending anything; `details` says which of the two happened and, for a
 mismatch, the SHA-256 Core computed, but never the path. Cancellation and the
