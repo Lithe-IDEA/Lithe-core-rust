@@ -2,9 +2,10 @@
 //!
 //! A chain is an ordered list of hops from the local machine to the place
 //! where the workspace lives: `[]` is the local machine, `[ssh devbox]` a
-//! remote host, `[ssh devbox, docker api]` a container on that host. The only
-//! thing a chain does is build the local command line that runs a program at
-//! its end with standard streams connected end to end.
+//! remote host, `[ssh devbox, docker api]` a container on that host. A chain
+//! builds the local command line that runs a program at its end with
+//! standard streams connected end to end, and decides which inherited
+//! environment variables that local command keeps.
 //!
 //! An SSH hop passes its remote command to the remote user's login shell as
 //! one string. That shell may be sh, bash, zsh, fish or csh, which disagree on
@@ -18,9 +19,20 @@
 //! commands, load libraries, relax host-key checking or forward local
 //! resources may only come from the user's own SSH configuration, and every
 //! hop turns agent, X11 and port forwarding off before its own options.
+//!
+//! ssh sends the remote host every local variable that a `SendEnv` pattern
+//! in the SSH configuration names, and many systems ship `SendEnv LANG LC_*`.
+//! No command-line option can take such a pattern back, because ssh collects
+//! `SendEnv` patterns from every source, so a chain that starts with an SSH
+//! hop starts `ssh` with only the variables ssh itself needs: home, user,
+//! shell, search path, temporary directory, agent socket, Kerberos and the
+//! Windows system variables. The remote side then keeps its own login
+//! environment, locale and proxies.
 
 use std::collections::BTreeMap;
+use std::ffi::OsString;
 use std::fmt;
+use std::process::Command;
 
 /// Seconds between SSH keep-alive probes. Together with
 /// [`SSH_KEEPALIVE_MISSES`] it bounds how long a dead network path stays
@@ -85,6 +97,50 @@ const AUTHENTICATION_METHODS: [&str; 5] = [
     "publickey",
     "keyboard-interactive",
     "password",
+];
+
+/// Inherited variables a chain that starts with an SSH hop passes to `ssh`;
+/// it drops every other inherited variable. They are what ssh, its agent,
+/// security keys and Kerberos need, plus what the commands ssh starts for
+/// `ProxyJump` or the user's `ProxyCommand` and `Match exec` need to find a
+/// shell and programs. Locale (`LANG`, `LC_*`), proxy and tool variables are
+/// deliberately absent. The Windows entries let `ssh.exe` load its network
+/// stack and find the user's profile; Windows matches the names without
+/// regard to case.
+const KEPT_SSH_VARIABLES: &[&str] = &[
+    // Account, shell and search path.
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "SHELL",
+    "PATH",
+    "TMPDIR",
+    // Agent, security keys and Kerberos.
+    "SSH_AUTH_SOCK",
+    "SSH_SK_PROVIDER",
+    "KRB5CCNAME",
+    "KRB5_CONFIG",
+    "XDG_RUNTIME_DIR",
+    // Windows system and profile directories.
+    "SystemRoot",
+    "SystemDrive",
+    "windir",
+    "ComSpec",
+    "PATHEXT",
+    "TEMP",
+    "TMP",
+    "USERPROFILE",
+    "HOMEDRIVE",
+    "HOMEPATH",
+    "USERNAME",
+    "USERDOMAIN",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "ProgramData",
+    "ProgramFiles",
+    "ProgramFiles(x86)",
+    "ProgramW6432",
+    "CommonProgramFiles",
 ];
 
 /// Ordered hops from the local machine to the workspace host.
@@ -249,6 +305,23 @@ impl TransportChain {
         Ok(current.into_iter().map(Word::into_string).collect())
     }
 
+    /// Restricts the environment `command`, the local process that runs
+    /// [`Self::command`], inherits.
+    ///
+    /// A chain that starts with an SSH hop keeps only the variables ssh
+    /// itself needs, and no locale, proxy or tool variable that a `SendEnv`
+    /// pattern could pass on. Local and container chains keep everything: a container engine only
+    /// passes the variables a hop names with `-e`. The call also drops the
+    /// variables already set on `command`, so callers set their own, such as
+    /// an AskPass helper's, afterwards.
+    pub fn restrict_environment(&self, command: &mut Command) {
+        if matches!(self.hops.first(), Some(Hop::Ssh(_))) {
+            command
+                .env_clear()
+                .envs(kept_ssh_variables(std::env::vars_os(), cfg!(windows)));
+        }
+    }
+
     /// Stable identity of the chain, for example `ssh:devbox/docker:api`.
     /// Recent-project lists and per-host storage key on it, so it ignores
     /// settings such as keep-alive options that do not change the target.
@@ -285,6 +358,28 @@ impl Word {
             Self::Raw(text) | Self::Generated(text) => text,
         }
     }
+}
+
+/// The `variables` that [`KEPT_SSH_VARIABLES`] names. `ignore_case` follows
+/// the host: Windows matches variable names without regard to case.
+fn kept_ssh_variables(
+    variables: impl IntoIterator<Item = (OsString, OsString)>,
+    ignore_case: bool,
+) -> Vec<(OsString, OsString)> {
+    variables
+        .into_iter()
+        .filter(|(name, _)| {
+            name.to_str().is_some_and(|name| {
+                KEPT_SSH_VARIABLES.iter().any(|kept| {
+                    if ignore_case {
+                        kept.eq_ignore_ascii_case(name)
+                    } else {
+                        *kept == name
+                    }
+                })
+            })
+        })
+        .collect()
 }
 
 fn ssh_command(hop: &SshHop, remote: &[Word]) -> Result<Vec<Word>, TransportError> {
@@ -822,5 +917,79 @@ mod tests {
                 Err(TransportError::InvalidHop { .. })
             ));
         }
+    }
+
+    fn variables(pairs: &[(&str, &str)]) -> Vec<(OsString, OsString)> {
+        pairs
+            .iter()
+            .map(|(name, value)| (OsString::from(name), OsString::from(value)))
+            .collect()
+    }
+
+    #[test]
+    fn ssh_keeps_only_the_variables_it_needs() {
+        let inherited = variables(&[
+            ("HOME", "/home/dev"),
+            ("PATH", "/usr/bin:/bin"),
+            ("SSH_AUTH_SOCK", "/tmp/agent.sock"),
+            ("LANG", "zh_CN.UTF-8"),
+            ("LC_ALL", "zh_CN.UTF-8"),
+            ("HTTPS_PROXY", "http://proxy.example:8080"),
+            ("AWS_SECRET_ACCESS_KEY", "secret"),
+            ("GIT_ASKPASS", "/opt/other/askpass"),
+        ]);
+        assert_eq!(
+            kept_ssh_variables(inherited, false),
+            variables(&[
+                ("HOME", "/home/dev"),
+                ("PATH", "/usr/bin:/bin"),
+                ("SSH_AUTH_SOCK", "/tmp/agent.sock"),
+            ])
+        );
+    }
+
+    #[test]
+    fn windows_variable_names_match_without_regard_to_case() {
+        let inherited = variables(&[
+            ("Path", r"C:\Windows\System32"),
+            ("SYSTEMROOT", r"C:\Windows"),
+            ("Lang", "zh-CN"),
+        ]);
+        assert_eq!(
+            kept_ssh_variables(inherited.clone(), true),
+            variables(&[
+                ("Path", r"C:\Windows\System32"),
+                ("SYSTEMROOT", r"C:\Windows")
+            ])
+        );
+        // Elsewhere names are case-sensitive, so neither spelling is listed.
+        assert!(kept_ssh_variables(inherited, false).is_empty());
+    }
+
+    #[test]
+    fn only_a_chain_that_starts_with_ssh_restricts_the_environment() {
+        let keeps_caller_variable = |chain: TransportChain| {
+            let mut command = Command::new("true");
+            command.env("CALLER_VARIABLE", "1");
+            chain.restrict_environment(&mut command);
+            command
+                .get_envs()
+                .any(|(name, value)| name == "CALLER_VARIABLE" && value.is_some())
+        };
+        let ssh = || Hop::Ssh(SshHop::new("devbox"));
+        let container = || Hop::Container(ContainerHop::new(ContainerEngine::Docker, "api"));
+        assert!(!keeps_caller_variable(TransportChain::new(vec![ssh()])));
+        assert!(!keeps_caller_variable(TransportChain::new(vec![
+            ssh(),
+            container()
+        ])));
+        assert!(keeps_caller_variable(TransportChain::local()));
+        assert!(keeps_caller_variable(TransportChain::new(
+            vec![container()]
+        )));
+        assert!(keeps_caller_variable(TransportChain::new(vec![
+            container(),
+            ssh()
+        ])));
     }
 }

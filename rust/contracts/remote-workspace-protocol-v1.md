@@ -30,6 +30,16 @@ startup deadline. The lock is released when its owning descriptor closes; its
 inode is retained so concurrent waiters cannot lock different files. This keeps
 a redundant launcher from restarting an explicitly closed session.
 
+When a chain starts with an SSH hop, the reference client starts `ssh` with
+only the local variables OpenSSH itself needs (home, user, shell, search
+path, temporary directory, agent socket, Kerberos and the Windows system
+variables), followed by its own AskPass variables. ssh sends the remote host
+every variable a `SendEnv` pattern names, many systems ship
+`SendEnv LANG LC_*`, and no command-line option can withdraw a pattern, so
+this is the only way to keep local locale, proxy and credential variables
+off the host; the server runs with the remote user's login environment.
+Other clients should do the same.
+
 ## Stream
 
 1. The server writes the preamble `\nLITHE-REMOTE-PROTOCOL/1\n` once per

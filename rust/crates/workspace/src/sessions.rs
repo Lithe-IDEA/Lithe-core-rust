@@ -330,6 +330,8 @@ fn connect_logged(
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    // Before the AskPass variables, which must reach ssh.
+    chain.restrict_environment(&mut process);
     let mut authentication = lithe_git_host::authentication::Session::new().map_err(|error| {
         CoreError::new(
             ErrorCode::ProcessStartFailed,
