@@ -272,3 +272,40 @@ fn ignored_paths_resolve_by_layer_and_local_edits_replace_or_remove_the_list() {
         "plugin.build.invalidOptionsDocument"
     );
 }
+
+#[test]
+fn effective_options_are_scoped_to_the_declared_system_and_instance() {
+    let manifest: Value = serde_json::from_str(include_str!(
+        "../../../../../shared/plugins/contract/v1/fixtures/build-systems/build-instance-options.plugin.json"
+    ))
+    .unwrap();
+    let resolve = |system, root| {
+        crate::build::build_resolve_stored_instance_options_command::<Manifest>(json!({
+            "manifest": manifest,
+            "buildSystemID": system,
+            "request": {
+                "root": root,
+                "document": {"version":1, "systems":{"cargo":{
+                    "instanceDefaults":{"label":"team default"},
+                    "instances":{"app":{"label":"team app","unknown":"private"}}
+                }}},
+                "local": {"version":1,"document":{"version":1,"systems":{"cargo":{
+                    "instances":{"app":{"label":"local app"}}
+                }}}}
+            }
+        }))
+        .unwrap()
+    };
+    let app = resolve("cargo", "app");
+    assert_eq!(app["options"]["label"], "local app");
+    assert!(app["options"].get("unknown").is_none());
+    assert_eq!(resolve("cargo", ".")["options"]["label"], "team default");
+    assert_eq!(
+        resolve("foreign", "app")["error"]["code"],
+        "plugin.build.unavailable"
+    );
+    assert_eq!(
+        resolve("cargo", "../app")["error"]["code"],
+        "plugin.build.invalidRoot"
+    );
+}

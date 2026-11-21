@@ -23,6 +23,11 @@ pub(super) fn dispatch(command: BuildCommand, id: Option<String>, payload: Value
         BuildCommand::ResolveStoredOptions => {
             plugin_response(id, payload, crate::build::resolve_stored_options_command)
         }
+        BuildCommand::ResolveStoredInstanceOptions => plugin_response(
+            id,
+            payload,
+            crate::build::build_resolve_stored_instance_options_command::<Manifest>,
+        ),
         BuildCommand::EditStoredOption => plugin_response(
             id,
             payload,

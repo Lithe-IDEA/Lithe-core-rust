@@ -206,6 +206,7 @@ public final class Host {
     /** The wire operation ID of the function call this Host belongs to, or null; the default parent of {@link Functions#invoke}. */
     private final String parentOperationId;
     private final Credentials credentials = new Credentials();
+    private final Build build = new Build();
     private final Subscriptions subscriptions = new Subscriptions();
     private final Workspace workspace = new Workspace();
     private final Documents documents = new Documents();
@@ -262,6 +263,11 @@ public final class Host {
      */
     public CompletableFuture<Map<String, Object>> capabilities() {
         return channel.capabilities();
+    }
+
+    /** Accesses the calling plugin's effective build options and configuration changes. */
+    public Build build() {
+        return build;
     }
 
     /** Whether this session may call {@code method}, as {@link #capabilities} lists it. */
@@ -378,6 +384,30 @@ public final class Host {
         /** Disposes a subscription by ID; also succeeds for an unknown or disposed one. */
         public CompletableFuture<Void> dispose(String subscriptionId) {
             return channel.dispose(subscriptionId);
+        }
+    }
+
+    /** The local build configuration host service. Probe support before use. */
+    public final class Build {
+        private Build() {}
+
+        /** Returns {@code { options }} for a declared system and slash-separated workspace-relative root. */
+        public CompletableFuture<Map<String, Object>> getOptions(Map<String, ?> context, String systemId, String root) {
+            Map<String, Object> request = params("buildSystemID", systemId);
+            request.put("root", root);
+            return scoped(Protocol.HOST_BUILD_GET_OPTIONS, context, request);
+        }
+
+        /** Watches build preferences and up to four absolute configuration file paths. */
+        public CompletableFuture<Subscription> watchConfiguration(
+                Map<String, ?> context, List<String> files, Listener listener) {
+            Map<String, Object> request;
+            try {
+                request = withContext(context, params("files", files));
+            } catch (PluginSdkError error) {
+                return failed(error);
+            }
+            return channel.subscribe(Protocol.HOST_BUILD_WATCH_CONFIGURATION, request, listener, scope);
         }
     }
 

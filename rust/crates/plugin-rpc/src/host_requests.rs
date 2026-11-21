@@ -43,6 +43,8 @@ pub(crate) enum HostParams {
     /// `{ context, rootIDs? }`: a well-formed context reference and at most
     /// 256 distinct root IDs (plan API-40).
     HostPaths,
+    /// Build option lookup or build configuration subscription.
+    BuildConfiguration { watch: bool },
     /// Snapshot source listing or one bounded chunk from a selected source.
     KeymapSnapshot { chunk: bool },
     /// `{ context, serverID, method, params?, timeoutMilliseconds? }`: one
@@ -211,6 +213,18 @@ pub(crate) const HOST_METHODS: &[HostMethod] = &[
         service: HOST_SERVICE_WORKSPACE,
         permission: None,
         params: HostParams::Context,
+    },
+    HostMethod {
+        method: "lithe/host/build/getOptions",
+        service: "build",
+        permission: Some("build.options.read"),
+        params: HostParams::BuildConfiguration { watch: false },
+    },
+    HostMethod {
+        method: "lithe/host/build/watchConfiguration",
+        service: "build",
+        permission: Some("build.configuration.watch"),
+        params: HostParams::BuildConfiguration { watch: true },
     },
     HostMethod {
         method: WORKSPACE_GET_HOST_PATHS,
@@ -523,4 +537,48 @@ pub(crate) fn capabilities_answer(version: u64, granted: &BTreeSet<String>) -> V
             "notificationBytes": MAX_HOST_NOTIFICATION_BYTES,
         },
     })
+}
+
+#[cfg(test)]
+mod build_configuration_tests {
+    use super::*;
+
+    #[test]
+    fn the_build_methods_have_separate_grants_and_strict_contexts() {
+        let get = "lithe/host/build/getOptions";
+        let watch = "lithe/host/build/watchConfiguration";
+        let granted = [get.to_owned()].into_iter().collect();
+        let context = json!({"contextID":"context-1","generation":1});
+        let mut options = json!({"context": context, "buildSystemID":"make", "root":"."});
+        assert_eq!(
+            host_request(get, Some(&options), Some(0), &granted).unwrap(),
+            HostRoute::Forward("build")
+        );
+        let files = json!({"context": context, "files":[]});
+        assert_eq!(
+            host_request(watch, Some(&files), Some(0), &granted)
+                .unwrap_err()
+                .code,
+            codes::HOST_PERMISSION_DENIED
+        );
+        options["extra"] = json!(true);
+        assert_eq!(
+            host_request(get, Some(&options), Some(0), &granted)
+                .unwrap_err()
+                .code,
+            codes::HOST_UNSUPPORTED_OPTION
+        );
+        let granted = [watch.to_owned()].into_iter().collect();
+        let wrong = json!({"context": context, "files":["f","g","h","i","j"]});
+        assert_eq!(
+            host_request(watch, Some(&wrong), Some(0), &granted)
+                .unwrap_err()
+                .code,
+            codes::HOST_INVALID_PARAMS
+        );
+        assert_eq!(
+            host_request(watch, Some(&files), Some(0), &granted).unwrap(),
+            HostRoute::Forward("build")
+        );
+    }
 }

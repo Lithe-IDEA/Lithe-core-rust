@@ -106,6 +106,8 @@
 | API-06 | `workspace/readFile` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-07 | `workspace/watch` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-07、API-24 | `subscriptions/notify`（通知） | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
+| API-29 | `build/getOptions` | 0 | 待合入 | 待提交 |
+| API-29 | `build/watchConfiguration` | 0 | 待合入 | 待提交 |
 | API-08 | `workspace/findFiles` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-08 | `workspace/findText` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-09 | `documents/list` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |

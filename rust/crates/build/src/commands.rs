@@ -260,6 +260,18 @@ pub fn build_resolve_options_command<M: BuildManifest>(payload: Value) -> Result
     )
 }
 
+/// `build.resolveStoredInstanceOptions`: returns validated options for one instance without scanning the workspace.
+pub fn build_resolve_stored_instance_options_command<M: BuildManifest>(
+    payload: Value,
+) -> Result<Value, CoreError> {
+    with_build_system::<M, _>(
+        payload,
+        "build.resolveStoredInstanceOptions",
+        "options",
+        super::stored_options::resolve_instance,
+    )
+}
+
 /// `build.editStoredOption`: checks a local preference edit against its declaration.
 pub fn build_edit_stored_option_command<M: BuildManifest>(
     payload: Value,
