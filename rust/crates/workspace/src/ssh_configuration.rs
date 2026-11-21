@@ -32,6 +32,10 @@ const IMPORT_DEADLINE: Duration = Duration::from_secs(30);
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EffectiveRequest {
     connection: SshConnection,
+    /// Remote preferences document, whose SSH program runs `ssh -G`;
+    /// `null` or absent is every value automatic.
+    #[serde(default)]
+    preferences: Option<String>,
 }
 
 /// `remote.sshConfigHosts`: where the configuration is, and the saved
@@ -43,6 +47,10 @@ pub struct HostsRequest {
     home_directory: String,
     /// Current connections document; `null` when the source does not exist.
     document: Option<String>,
+    /// Remote preferences document, whose SSH program runs `ssh -G`;
+    /// `null` or absent is every value automatic.
+    #[serde(default)]
+    preferences: Option<String>,
 }
 
 /// The values the connection uses and where each comes from.
@@ -50,13 +58,15 @@ pub fn effective_settings(request: EffectiveRequest) -> Result<Value, CoreError>
     effective_with(request, None)
 }
 
-/// `ssh_program` replaces the `ssh` found on `PATH`; tests use a stand-in.
+/// `ssh_program` replaces the preferences' SSH program; tests use a
+/// stand-in.
 fn effective_with(
     request: EffectiveRequest,
     ssh_program: Option<&str>,
 ) -> Result<Value, CoreError> {
+    let program = crate::preferences::ssh_program(ssh_program, request.preferences.as_deref())?;
     let connection = request.connection.normalized();
-    let hop = with_program(ssh_hop(&connection)?, ssh_program);
+    let hop = with_program(ssh_hop(&connection)?, &program);
     let deadline = Instant::now() + COMMAND_DEADLINE;
     let configured = print_configuration(&hop, true, deadline)?;
     let baseline = print_configuration(&hop, false, deadline)?;
@@ -87,6 +97,7 @@ fn hosts_with(request: HostsRequest, ssh_program: Option<&str>) -> Result<Value,
         ));
     }
     let saved = parse(request.document.as_deref())?;
+    let program = crate::preferences::ssh_program(ssh_program, request.preferences.as_deref())?;
     let files = ssh_config::configuration_files(&home);
     let (names, truncated) = distinct_names(&files);
 
@@ -106,7 +117,7 @@ fn hosts_with(request: HostsRequest, ssh_program: Option<&str>) -> Result<Value,
             hosts.push(json!({ "alias": alias, "status": "invalid" }));
             continue;
         };
-        let hop = with_program(hop, ssh_program);
+        let hop = with_program(hop, &program);
         let resolved =
             print_configuration(&hop, true, deadline.min(Instant::now() + COMMAND_DEADLINE))
                 .and_then(|output| {
@@ -201,10 +212,8 @@ fn existing<'a>(
     })
 }
 
-fn with_program(mut hop: SshHop, ssh_program: Option<&str>) -> SshHop {
-    if let Some(program) = ssh_program {
-        hop.program = program.into();
-    }
+fn with_program(mut hop: SshHop, program: &str) -> SshHop {
+    hop.program = program.into();
     hop
 }
 

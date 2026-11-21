@@ -828,6 +828,8 @@ or removing a command fails until the table changes in the same commit.
 | `remote.sshConfigHosts` | List the Host aliases of the user's SSH configuration for an import |
 | `remote.mottyHosts` | List the SSH hosts saved in Motty for an import |
 | `remote.listWslDistributions` | List the WSL distributions installed on this Windows machine |
+| `remote.preferences` | Read the remote workspace settings and what each automatic value resolves to |
+| `remote.editPreferences` | Set the SSH program or the reconnect limit, or make one automatic again |
 | `git.historyRewritePreview` | Review undo, message edit, squash, or drop with complete messages, eligibility, and an immutable checkout expectation |
 | `git.remotes` | Return configured fetch remote names and URLs |
 | `git.tags` | Return tag names, tag object IDs, target IDs, dates, and annotations |
@@ -5698,6 +5700,12 @@ Every field becomes an allowlisted SSH option; options that run a local
 command, such as `ProxyCommand`, are only read from the user's own SSH
 configuration.
 
+`remote.probe`, `remote.connect`, `remote.effectiveSettings` and
+`remote.sshConfigHosts` also take an optional `preferences`: the text of the
+remote preferences document (see "Remote workspace preferences"), `null` or
+absent when it does not exist. Its SSH program is the OpenSSH client they
+start; a damaged document is `parse_failed` before anything starts.
+
 Core runs the system `ssh` with the probe of
 [`remote-workspace-protocol-v1`](remote-workspace-protocol-v1.md)'s bootstrap
 and relays every OpenSSH question through the same AskPass transport as Git.
@@ -5916,6 +5924,62 @@ distribution is installed, `distributions` is empty and `diagnostics` holds
 its redacted message for display; it is never logged. Cancellation and the
 bound are `cancelled` and `timed_out`. Nothing is saved: the window lists
 the distributions each time it opens.
+
+#### Remote workspace preferences
+
+The settings page "Tools › Remote Workspace" edits two values that apply to
+every connection. Native clients keep them in one machine-local document,
+read it, and publish the `document` an edit returns atomically, as for the
+saved connections; Core validates the document, applies every edit and
+tells what each automatic value resolves to.
+
+`remote.preferences` accepts `{ document: string|null, homeDirectory? }`
+and returns `{ preferences, ssh, reconnect, storage, sshConfig? }`:
+
+- `preferences` is `{ sshProgram, reconnectLimitSeconds }`, the stored
+  values; `null` is automatic.
+- `ssh` is `{ source, path, status }`, the OpenSSH client every connection
+  starts. `source` is `setting` for a stored program and `automatic`
+  otherwise, which is the first executable `ssh` (`ssh.exe` on Windows) in an
+  absolute directory of Core's `PATH`. `path` is that program, or `null` when
+  automatic finds none; then the system looks `ssh` up when it starts.
+  `status` is `found`, `missing` or `notExecutable`; a stored program that
+  disappeared is reported, not refused, so the page can show it.
+- `reconnect` is `{ source, limitSeconds, delaysMilliseconds }`: how long a
+  workspace whose connection dropped keeps reconnecting (automatic: 60
+  seconds) and the pauses before each attempt. Pauses start at one second,
+  double up to 30 seconds and add up to the limit; the last one is shortened
+  to fit. A limit of 0 never reconnects, so the list is empty. Clients wait
+  these pauses and decide nothing else about the schedule.
+- `storage` is `{ relativePath: "remote/preferences.json", maximumBytes:
+  16384 }`.
+- `sshConfig` is `{ path, exists }` for `.ssh/config` below `homeDirectory`,
+  returned only with one, for the page to show and open. A relative home is
+  `invalid_request` with `{ field: "homeDirectory", reason: "relative" }`.
+
+`remote.editPreferences` accepts `{ document }` with exactly one of:
+
+- `sshProgram: { path: string|null }` stores the trimmed absolute path of an
+  existing executable file, or makes the program automatic with `null`.
+- `reconnectLimit: { seconds: number|null }` stores 0 to 3600 seconds, or
+  makes the limit automatic with `null`.
+
+The result is `{ changed, document: string|null }`; an unchanged edit
+returns a `null` document and must not create a source. Neither or both
+fields is `invalid_request` with `{ field: "operation", reason: "invalid"
+}`; a refused value is `invalid_request` with `{ field, reason }`, where
+`field` is `sshProgram` or `reconnectLimitSeconds` and `reason` is
+`invalid` (empty, surrounding spaces or control characters), `tooLong`
+(over 4096 bytes), `relative`, `missing`, `notExecutable` or `outOfRange`.
+
+A document of more than 16 KiB, that cannot be decoded, has unknown fields
+or another version than 1, or holds a value an edit would refuse other than
+a missing or not executable program is `parse_failed` with the same
+`details`. The document omits automatic values.
+
+Native clients keep the document below their platform user-preference
+directory, never on a host, in a workspace or in an installed package. This
+user-settings resource does not affect code signatures or update deltas.
 
 #### Remote connections that stay open
 

@@ -1325,7 +1325,36 @@ fn connection_window_helpers_answer_through_the_dispatcher() {
     let details: Value = serde_json::from_str(both["error"]["details"].as_str().unwrap()).unwrap();
     assert_eq!(details, json!({"field": "wsl", "reason": "invalid"}));
 
+    // The settings page reads automatic values and stores an edit; a damaged
+    // document stops the SSH commands before OpenSSH starts.
+    let preferences = call("remote.preferences", json!({"document": null}));
+    assert_eq!(
+        preferences["data"]["reconnect"]["delaysMilliseconds"],
+        json!([1000, 2000, 4000, 8000, 16000, 29000]),
+        "{preferences}"
+    );
+    let edited = call(
+        "remote.editPreferences",
+        json!({"document": null, "reconnectLimit": {"seconds": 3}}),
+    );
+    assert_eq!(edited["data"]["changed"], true, "{edited}");
+    let stored = call(
+        "remote.preferences",
+        json!({"document": edited["data"]["document"]}),
+    );
+    assert_eq!(
+        stored["data"]["reconnect"],
+        json!({"source": "setting", "limitSeconds": 3, "delaysMilliseconds": [1000, 2000]}),
+        "{stored}"
+    );
+    let damaged = call(
+        "remote.effectiveSettings",
+        json!({"connection": {"host": "devbox"}, "preferences": "{\"version\":9}"}),
+    );
+    assert_eq!(damaged["error"]["code"], "parse_failed", "{damaged}");
+
     for (command, payload) in [
+        ("remote.editPreferences", json!({"document": null})),
         (
             "remote.connect",
             json!({"wsl": {"distribution": "Ubuntu", "program": "C:\\x.exe"},

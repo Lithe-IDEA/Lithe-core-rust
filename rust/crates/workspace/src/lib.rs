@@ -16,8 +16,9 @@
 //! connections (over OpenSSH or `wsl.exe`), [`host`] forwards finite requests
 //! and owned streaming resources (processes, terminals, watches),
 //! [`forwards`] keeps the port forwards of the ports page, [`upload`] streams
-//! a verified file to the host, and [`trust`] keys remote workspace trust by
-//! what the connection resolves.
+//! a verified file to the host, [`trust`] keys remote workspace trust by
+//! what the connection resolves, and [`preferences`] keeps the settings
+//! page's values, including the SSH program every OpenSSH start uses.
 //! Domain semantics stay in their engines (Git, build, language servers);
 //! this crate only supplies the IO boundary.
 
@@ -26,6 +27,7 @@ pub mod forwards;
 pub mod fs;
 pub mod host;
 pub mod motty;
+pub mod preferences;
 pub mod probe;
 mod scope;
 pub mod sessions;

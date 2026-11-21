@@ -201,6 +201,7 @@ fn configuration_hosts_are_listed_with_what_they_resolve_to() {
     let request = HostsRequest {
         home_directory: home.path().display().to_string(),
         document: Some(document),
+        preferences: None,
     };
 
     let result = hosts_with(request, Some(&ssh)).unwrap();
@@ -254,6 +255,7 @@ fn a_home_without_configuration_lists_nothing() {
     let request = HostsRequest {
         home_directory: home.path().display().to_string(),
         document: None,
+        preferences: None,
     };
 
     let result = hosts_with(request, Some("ssh-is-never-run")).unwrap();
@@ -269,6 +271,7 @@ fn a_relative_home_is_refused() {
     let request = HostsRequest {
         home_directory: "home".into(),
         document: None,
+        preferences: None,
     };
 
     let error = ssh_config_hosts(request).unwrap_err();
