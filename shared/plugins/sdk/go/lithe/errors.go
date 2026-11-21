@@ -42,6 +42,8 @@ var HostErrorCodes = []ErrorCode{
 	{"plugin.host.methodNotDeclared", -32024},
 	{"plugin.host.toolUnresolved", -32025},
 	{"plugin.host.foreignContribution", -32026},
+	{"plugin.host.remoteDisconnected", -32078},
+	{"plugin.host.platformUnavailable", -32079},
 }
 
 // RelayErrorCodes are the codes a cross-plugin call fails with.

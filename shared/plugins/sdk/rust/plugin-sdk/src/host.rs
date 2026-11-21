@@ -12,10 +12,13 @@ use crate::backend::{lock, Cancellation, Phase, Shared, State};
 use crate::error::{sdk_codes, SdkError};
 use crate::protocol::{
     generation, is_credential_key, is_function_id, is_parent_operation_id, methods,
-    MAX_CREDENTIAL_SECRET_BYTES, MAX_EARLY_EVENTS, MAX_PENDING_HOST_REQUESTS,
+    MAX_CREDENTIAL_SECRET_BYTES, MAX_EARLY_EVENTS, MAX_HOST_PATH_ROOTS, MAX_PENDING_HOST_REQUESTS,
 };
+use serde::{Serialize, Serializer};
 use serde_json::{json, Map, Value};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::fmt;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex, PoisonError, Weak};
@@ -820,6 +823,56 @@ impl Workspace {
             .scoped(methods::WORKSPACE_GET_FOLDERS, context, Value::Null)
     }
 
+    /// The roots of a `remote` context on its remote host: `None` for every
+    /// root, or 1-256 distinct root IDs. It needs the `workspace.metadata`
+    /// permission; a local context fails with
+    /// `plugin.host.authorityUnsupported`, an unknown root ID with
+    /// `plugin.host.notFound`.
+    pub fn get_host_paths(
+        &self,
+        context: &WorkspaceContext,
+        root_ids: Option<&[&str]>,
+    ) -> Result<Vec<HostFolder>, SdkError> {
+        let params = match root_ids {
+            None => Value::Null,
+            Some(root_ids) if distinct_root_ids(root_ids) => json!({ "rootIDs": root_ids }),
+            Some(_) => {
+                return Err(SdkError::new(
+                    "sdk.host.invalidParams",
+                    "rootIDs is 1-256 distinct root IDs of 1-128 ASCII letters, digits, \".\", \"_\", \":\" or \"-\".",
+                ))
+            }
+        };
+        let params = with_context(context, params)?;
+        host_folders(
+            &self
+                .host
+                .request(methods::WORKSPACE_GET_HOST_PATHS, params)?,
+        )
+    }
+
+    /// The roots of a full context from `list_contexts` or `get_context` as
+    /// a process started for it names its working directory. A `local`
+    /// context's folders are read without asking the host; for any other
+    /// authority it calls [`get_host_paths`](Self::get_host_paths).
+    pub fn process_roots(&self, context: &Value) -> Result<Vec<ProcessRoot>, SdkError> {
+        match context["authority"]["kind"].as_str() {
+            Some("local") => local_folders(&context["folders"]),
+            Some(_) => Ok(self
+                .get_host_paths(&WorkspaceContext::from_value(context)?, None)?
+                .into_iter()
+                .map(|folder| ProcessRoot::Remote {
+                    root_id: folder.root_id,
+                    host_path: folder.host_path,
+                })
+                .collect()),
+            None => Err(SdkError::new(
+                "sdk.host.invalidContext",
+                "process_roots takes a full context, with its authority and folders, from list_contexts or get_context.",
+            )),
+        }
+    }
+
     /// `params`: `resource, cursor?, limit?`.
     pub fn read_directory(
         &self,
@@ -863,6 +916,140 @@ impl Workspace {
         self.host
             .scoped(methods::WORKSPACE_FIND_TEXT, context, params)
     }
+}
+
+/// A path on the remote host of a `remote` workspace context, from
+/// [`Workspace::get_host_paths`]. It is not a [`Path`](std::path::Path) and
+/// converts to none, so it cannot reach `std::fs` by mistake: the machine
+/// that runs the backend has no file there. [`as_str`](Self::as_str) is the
+/// absolute POSIX path, for what runs on that host -- process arguments and
+/// working directories, a debug configuration's `program` or `cwd`, a
+/// language server's `initializationOptions`. It serializes as that string.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct HostPath(String);
+
+impl HostPath {
+    /// `None` unless `value` is an absolute POSIX path, a string starting
+    /// with `/`.
+    pub fn new(value: impl Into<String>) -> Option<Self> {
+        let value = value.into();
+        value.starts_with('/').then_some(Self(value))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl fmt::Display for HostPath {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl Serialize for HostPath {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.0)
+    }
+}
+
+/// One root of a [`Workspace::get_host_paths`] answer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HostFolder {
+    root_id: String,
+    host_path: HostPath,
+}
+
+impl HostFolder {
+    pub fn root_id(&self) -> &str {
+        &self.root_id
+    }
+
+    pub fn host_path(&self) -> &HostPath {
+        &self.host_path
+    }
+}
+
+/// A root of a context as a process started for it names its working
+/// directory, from [`Workspace::process_roots`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ProcessRoot {
+    /// A root of a `local` context, on the machine that runs the backend.
+    Local { root_id: String, path: PathBuf },
+    /// A root of a `remote` context, on its remote host.
+    Remote {
+        root_id: String,
+        host_path: HostPath,
+    },
+}
+
+impl ProcessRoot {
+    pub fn root_id(&self) -> &str {
+        match self {
+            Self::Local { root_id, .. } | Self::Remote { root_id, .. } => root_id,
+        }
+    }
+}
+
+fn distinct_root_ids(root_ids: &[&str]) -> bool {
+    let mut seen = HashSet::new();
+    (1..=MAX_HOST_PATH_ROOTS).contains(&root_ids.len())
+        && root_ids
+            .iter()
+            .all(|id| is_credential_key(id) && seen.insert(*id))
+}
+
+/// `[{ rootID, hostPath }]` of a `getHostPaths` answer's `folders`.
+fn host_folders(result: &Value) -> Result<Vec<HostFolder>, SdkError> {
+    let invalid = || {
+        SdkError::new(
+            "sdk.host.invalidResult",
+            "The host answered getHostPaths without folders of a root ID and an absolute host path.",
+        )
+    };
+    let folders = result["folders"].as_array().ok_or_else(invalid)?;
+    folders
+        .iter()
+        .map(|folder| {
+            let root_id = folder["rootID"].as_str().filter(|id| is_credential_key(id));
+            let host_path = folder["hostPath"].as_str().and_then(HostPath::new);
+            match (root_id, host_path) {
+                (Some(root_id), Some(host_path)) => Ok(HostFolder {
+                    root_id: root_id.to_string(),
+                    host_path,
+                }),
+                _ => Err(invalid()),
+            }
+        })
+        .collect()
+}
+
+/// `[{ rootID, path }]` of a `local` context's folders.
+fn local_folders(folders: &Value) -> Result<Vec<ProcessRoot>, SdkError> {
+    let invalid = || {
+        SdkError::new(
+            "sdk.host.invalidContext",
+            "A local context's folders each carry a rootID and a path.",
+        )
+    };
+    let folders = folders.as_array().ok_or_else(invalid)?;
+    folders
+        .iter()
+        .map(|folder| {
+            let root_id = folder["rootID"].as_str().filter(|id| is_credential_key(id));
+            match (root_id, folder["path"].as_str()) {
+                (Some(root_id), Some(path)) => Ok(ProcessRoot::Local {
+                    root_id: root_id.to_string(),
+                    path: PathBuf::from(path),
+                }),
+                _ => Err(invalid()),
+            }
+        })
+        .collect()
 }
 
 impl Host {

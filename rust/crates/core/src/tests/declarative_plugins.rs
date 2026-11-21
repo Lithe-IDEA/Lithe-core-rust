@@ -910,9 +910,10 @@ fn plugin_backend_is_planned_without_a_workspace_and_names_its_host_services() {
 
 /// A `backend` process starts without a page, its plan names the `backend`
 /// version so the host may start it on `onWorkspaceOpen`, and
-/// `workspace.metadata` grants the `workspace` host service. A host that does
-/// not offer `backend` refuses the manifest instead of starting a process it
-/// would misuse.
+/// `workspace.metadata` grants the `workspace` host service and the
+/// `getHostPaths` method grant; a host that does not serve that method drops
+/// the grant when it starts the backend. A host that does not offer `backend`
+/// refuses the manifest instead of starting a process it would misuse.
 #[test]
 fn workspace_backend_is_planned_with_its_version_and_workspace_service() {
     let outcome = validate(fixture("backend-workspace.plugin.json"));
@@ -930,7 +931,10 @@ fn workspace_backend_is_planned_with_its_version_and_workspace_service() {
     assert_eq!(launch["status"], "ok", "{launch}");
     assert_eq!(
         launch["plan"]["backend"],
-        json!({ "hostServices": ["workspace"], "version": 0 })
+        json!({
+            "hostServices": ["lithe/host/workspace/getHostPaths", "workspace"],
+            "version": 0
+        })
     );
 
     let hosted = |host: Value| {

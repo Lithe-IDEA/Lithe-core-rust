@@ -51,6 +51,7 @@ pub(crate) mod methods {
     pub const WORKSPACE_LIST_CONTEXTS: &str = "lithe/host/workspace/listContexts";
     pub const WORKSPACE_GET_CONTEXT: &str = "lithe/host/workspace/getContext";
     pub const WORKSPACE_GET_FOLDERS: &str = "lithe/host/workspace/getFolders";
+    pub const WORKSPACE_GET_HOST_PATHS: &str = "lithe/host/workspace/getHostPaths";
     pub const WORKSPACE_READ_DIRECTORY: &str = "lithe/host/workspace/readDirectory";
     pub const WORKSPACE_STAT: &str = "lithe/host/workspace/stat";
     pub const WORKSPACE_READ_FILE: &str = "lithe/host/workspace/readFile";
@@ -120,6 +121,8 @@ pub(crate) const MAX_EARLY_EVENTS: usize = 128;
 const MAX_COMMAND_ID_BYTES: usize = 128;
 /// The longest `parentOperationID` Core accepts on a relayed call.
 const MAX_PARENT_OPERATION_ID_BYTES: usize = 128;
+/// The most root IDs one `getHostPaths` request names.
+pub(crate) const MAX_HOST_PATH_ROOTS: usize = 256;
 /// The largest integer JSON carries exactly.
 const MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
 

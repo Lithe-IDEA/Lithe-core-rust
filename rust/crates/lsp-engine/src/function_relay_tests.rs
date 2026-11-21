@@ -490,6 +490,31 @@ fn a_declared_exported_call_reaches_the_callee_and_returns_its_value() {
     });
 }
 
+/// Both backends run on this machine for a remote workspace too, so a call
+/// naming a remote context reaches the callee like a local one (API-35).
+#[test]
+fn a_call_for_a_remote_workspace_reaches_the_callee() {
+    let fixture = Fixture::new();
+    let python = fixture.start(Launch::new(PYTHON));
+    let go = fixture.start(Launch::new(GO).serving(&[FORMAT]));
+    fixture.configure(snapshot(
+        vec![
+            plugin(PYTHON, &[], &[(FORMAT, 1)]),
+            plugin(GO, &[(FORMAT, 1)], &[]),
+        ],
+        "remote",
+    ));
+
+    python.ask("call-1", INVOKE, call_params(GO, FORMAT));
+    let (wire_id, received) = go.await_invoke();
+    assert_eq!(received["context"], workspace_context());
+    go.answer(&wire_id, json!({ "edits": 1 }));
+    assert_eq!(
+        python.reply("call-1")["result"],
+        json!({ "value": { "edits": 1 } })
+    );
+}
+
 #[test]
 fn a_caller_field_in_the_host_request_is_refused() {
     let fixture = Fixture::new();
@@ -727,19 +752,6 @@ fn refusals() -> Vec<Refusal> {
             params: stale_generation,
             code: "plugin.host.contextExpired",
             rpc_code: -32011,
-        },
-        Refusal {
-            name: "the workspace is remote",
-            snapshot: snapshot(
-                vec![
-                    plugin(PYTHON, &[], &[(FORMAT, 1)]),
-                    plugin(GO, &[(FORMAT, 1)], &[]),
-                ],
-                "remote",
-            ),
-            params: call_params(GO, FORMAT),
-            code: "plugin.host.authorityUnsupported",
-            rpc_code: -32012,
         },
         Refusal {
             name: "the params are above the relay limit",

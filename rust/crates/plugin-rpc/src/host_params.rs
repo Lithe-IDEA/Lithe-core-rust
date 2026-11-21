@@ -35,6 +35,7 @@ pub(crate) fn check_host_params(
         HostParams::Credential { with_secret: false } => &["key"],
         HostParams::Subscription => &["subscriptionID"],
         HostParams::Context => &["context"],
+        HostParams::HostPaths => &["context", "rootIDs"],
         HostParams::FunctionProviders => &["functionID"],
         HostParams::FunctionInvoke => &[
             "pluginID",
@@ -115,6 +116,27 @@ pub(crate) fn check_host_params(
         HostParams::Context => {
             if !params.get("context").is_some_and(is_context_reference) {
                 return Err(invalid(CONTEXT_REFERENCE_MESSAGE));
+            }
+        }
+        HostParams::HostPaths => {
+            if !params.get("context").is_some_and(is_context_reference) {
+                return Err(invalid(CONTEXT_REFERENCE_MESSAGE));
+            }
+            if let Some(root_ids) = params.get("rootIDs") {
+                let root_ids = root_ids
+                    .as_array()
+                    .filter(|ids| !ids.is_empty() && ids.len() <= MAX_HOST_PATH_ROOTS);
+                let mut seen = BTreeSet::new();
+                if !root_ids.is_some_and(|ids| {
+                    ids.iter().all(|id| {
+                        id.as_str()
+                            .is_some_and(|id| is_credential_key(id) && seen.insert(id))
+                    })
+                }) {
+                    return Err(invalid(
+                        "`rootIDs` is 1-256 distinct root IDs of 1-128 ASCII letters, digits, '.', '_', ':' or '-'.",
+                    ));
+                }
             }
         }
         HostParams::FunctionProviders => {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { createBackend, HOST_ERRORS, HostError, LIMITS, PluginSdkError } from '../src/index.mjs';
+import { createBackend, HOST_ERRORS, HostError, HostPath, LIMITS, PluginSdkError } from '../src/index.mjs';
 import { gate, TestHost, withTimeout } from './harness.mjs';
 
 const fixture = JSON.parse(
@@ -114,6 +114,86 @@ test('local key and context checks agree with the fixture cases Core refuses or 
   assert.deepEqual(request.params, { context: CONTEXT });
   host.send({ id: request.id, result: { folders: [] } });
   assert.deepEqual(await asking, { folders: [] });
+  await host.close();
+});
+
+test('host paths: root IDs Core refuses fail locally, and the answer holds HostPath values', async () => {
+  const { backend, host } = await session();
+  const taken = new Set();
+  const cases = fixture.hostRequests.filter((testCase) => testCase.method === 'lithe/host/workspace/getHostPaths');
+  for (const testCase of cases.filter(({ params }) => params.context && params.path === undefined)) {
+    const { context, rootIDs } = testCase.params;
+    const params = rootIDs === undefined ? undefined : { rootIDs };
+    if (testCase.expected.forward) {
+      const asking = backend.host.workspace.getHostPaths(context, params);
+      const request = await nextRequest(host, 'lithe/host/workspace/getHostPaths', taken);
+      assert.deepEqual(request.params, testCase.params, testCase.name);
+      const roots = rootIDs ?? ['r0c1d2e3f4a5b6c7d'];
+      host.send({ id: request.id, result: { folders: roots.map((rootID, index) => ({ rootID, hostPath: `/srv/root${index}` })) } });
+      const { folders } = await asking;
+      assert.deepEqual(folders.map(({ rootID }) => rootID), roots, testCase.name);
+      assert.ok(folders.every(({ hostPath }) => hostPath instanceof HostPath), testCase.name);
+      assert.equal(folders[0].hostPath.value, '/srv/root0', testCase.name);
+    } else if (testCase.expected.code === 'plugin.host.invalidParams') {
+      const before = host.messages.length;
+      await assert.rejects(
+        backend.host.workspace.getHostPaths(context, params),
+        (error) => error.code === 'sdk.host.invalidParams',
+        testCase.name,
+      );
+      assert.equal(host.messages.length, before, testCase.name);
+    }
+  }
+  const missingContext = cases.find(({ params }) => !params.context);
+  await assert.rejects(
+    backend.host.workspace.getHostPaths(missingContext.params.context, { rootIDs: missingContext.params.rootIDs }),
+    (error) => error.code === 'sdk.host.invalidContext',
+  );
+  await assert.rejects(
+    backend.host.workspace.getHostPaths(CONTEXT, { rootIDs: Array.from({ length: LIMITS.maxHostPathRoots + 1 }, (_, i) => `r${i}`) }),
+    (error) => error.code === 'sdk.host.invalidParams',
+  );
+
+  // An answer that is not root IDs with absolute paths is refused.
+  for (const result of [{}, { folders: [{ rootID: 'r0', hostPath: 'srv/root0' }] }, { folders: [{ hostPath: '/srv/root0' }] }]) {
+    const asking = backend.host.workspace.getHostPaths(CONTEXT);
+    host.send({ id: (await nextRequest(host, 'lithe/host/workspace/getHostPaths', taken)).id, result });
+    await assert.rejects(asking, (error) => error.code === 'sdk.host.invalidResult', JSON.stringify(result));
+  }
+  await host.close();
+});
+
+test('processRoots reads a local context and asks the host only for a remote one', async () => {
+  const { backend, host } = await session();
+  const before = host.messages.length;
+  const local = {
+    ...CONTEXT,
+    name: 'orders',
+    authority: { kind: 'local' },
+    folders: [{ rootID: 'r0', name: 'orders', path: '/Users/me/orders' }],
+  };
+  assert.deepEqual(await backend.host.workspace.processRoots(local), { folders: [{ rootID: 'r0', path: '/Users/me/orders' }] });
+  assert.equal(host.messages.length, before);
+
+  const remote = {
+    ...CONTEXT,
+    name: 'orders',
+    authority: { kind: 'remote', id: 'c-7d41', platform: { os: 'linux', arch: 'x86_64' } },
+    folders: [{ rootID: 'r0', name: 'orders' }],
+  };
+  const asking = backend.host.workspace.processRoots(remote);
+  const request = await nextRequest(host, 'lithe/host/workspace/getHostPaths');
+  assert.deepEqual(request.params, { context: CONTEXT });
+  host.send({ id: request.id, result: { folders: [{ rootID: 'r0', hostPath: '/home/me/orders' }] } });
+  const { folders } = await asking;
+  assert.equal(folders[0].hostPath.value, '/home/me/orders');
+  // A host path goes on the wire as its string, and never passes for a local path.
+  assert.equal(JSON.stringify({ cwd: folders[0].hostPath }), '{"cwd":"/home/me/orders"}');
+  assert.notEqual(typeof folders[0].hostPath, 'string');
+  assert.throws(() => new HostPath('home/me/orders'), TypeError);
+
+  // A reference alone does not say the authority.
+  await assert.rejects(backend.host.workspace.processRoots(CONTEXT), (error) => error.code === 'sdk.host.invalidContext');
   await host.close();
 });
 

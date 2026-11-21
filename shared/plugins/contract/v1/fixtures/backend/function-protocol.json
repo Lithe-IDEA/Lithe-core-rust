@@ -532,7 +532,15 @@
     {"name": "an invocation's function ID is well formed", "version": 0, "hostServices": ["functions"], "method": "lithe/host/functions/invoke", "params": {"pluginID": "dev.lithe.fixture.go", "functionID": "Not-Valid", "context": {"contextID": "w1", "generation": 1}}, "expected": {"rpcCode": -32602, "code": "plugin.host.invalidParams"}},
     {"name": "an invocation's params are an object", "version": 0, "hostServices": ["functions"], "method": "lithe/host/functions/invoke", "params": {"pluginID": "dev.lithe.fixture.go", "functionID": "languageImport.settings", "context": {"contextID": "w1", "generation": 1}, "params": [1]}, "expected": {"rpcCode": -32602, "code": "plugin.host.invalidParams"}},
     {"name": "an invocation's timeout is positive", "version": 0, "hostServices": ["functions"], "method": "lithe/host/functions/invoke", "params": {"pluginID": "dev.lithe.fixture.go", "functionID": "languageImport.settings", "context": {"contextID": "w1", "generation": 1}, "timeoutMilliseconds": 0}, "expected": {"rpcCode": -32602, "code": "plugin.host.invalidParams"}},
-    {"name": "a caller cannot choose who the callee thinks called", "version": 0, "hostServices": ["functions"], "method": "lithe/host/functions/invoke", "params": {"pluginID": "dev.lithe.fixture.go", "functionID": "languageImport.settings", "context": {"contextID": "w1", "generation": 1}, "caller": {"pluginID": "dev.lithe.fixture.other"}}, "expected": {"rpcCode": -32018, "code": "plugin.host.unsupportedOption", "details": {"option": "caller"}}}
+    {"name": "a caller cannot choose who the callee thinks called", "version": 0, "hostServices": ["functions"], "method": "lithe/host/functions/invoke", "params": {"pluginID": "dev.lithe.fixture.go", "functionID": "languageImport.settings", "context": {"contextID": "w1", "generation": 1}, "caller": {"pluginID": "dev.lithe.fixture.other"}}, "expected": {"rpcCode": -32018, "code": "plugin.host.unsupportedOption", "details": {"option": "caller"}}},
+    {"name": "a remote context's host paths are forwarded when workspace.metadata grants the method", "version": 0, "hostServices": ["workspace", "lithe/host/workspace/getHostPaths"], "method": "lithe/host/workspace/getHostPaths", "params": {"context": {"contextID": "w-3f2a", "generation": 2}}, "expected": {"forward": "workspace"}},
+    {"name": "host paths may be asked for some root folders", "version": 0, "hostServices": ["workspace", "lithe/host/workspace/getHostPaths"], "method": "lithe/host/workspace/getHostPaths", "params": {"context": {"contextID": "w-3f2a", "generation": 2}, "rootIDs": ["r0c1d2e3f4a5b6c7d", "r1a2b3c4d5e6f7a8b"]}, "expected": {"forward": "workspace"}},
+    {"name": "the workspace service alone does not grant host paths", "version": 0, "hostServices": ["workspace"], "method": "lithe/host/workspace/getHostPaths", "params": {"context": {"contextID": "w-3f2a", "generation": 2}}, "expected": {"rpcCode": -32010, "code": "plugin.host.permissionDenied"}},
+    {"name": "host paths name a context", "version": 0, "hostServices": ["workspace", "lithe/host/workspace/getHostPaths"], "method": "lithe/host/workspace/getHostPaths", "params": {"rootIDs": ["r0c1d2e3f4a5b6c7d"]}, "expected": {"rpcCode": -32602, "code": "plugin.host.invalidParams"}},
+    {"name": "an empty root ID list is invalid", "version": 0, "hostServices": ["workspace", "lithe/host/workspace/getHostPaths"], "method": "lithe/host/workspace/getHostPaths", "params": {"context": {"contextID": "w-3f2a", "generation": 2}, "rootIDs": []}, "expected": {"rpcCode": -32602, "code": "plugin.host.invalidParams"}},
+    {"name": "a root ID named twice is invalid", "version": 0, "hostServices": ["workspace", "lithe/host/workspace/getHostPaths"], "method": "lithe/host/workspace/getHostPaths", "params": {"context": {"contextID": "w-3f2a", "generation": 2}, "rootIDs": ["r0c1d2e3f4a5b6c7d", "r0c1d2e3f4a5b6c7d"]}, "expected": {"rpcCode": -32602, "code": "plugin.host.invalidParams"}},
+    {"name": "a root ID outside the alphabet is invalid", "version": 0, "hostServices": ["workspace", "lithe/host/workspace/getHostPaths"], "method": "lithe/host/workspace/getHostPaths", "params": {"context": {"contextID": "w-3f2a", "generation": 2}, "rootIDs": ["/home/me/orders"]}, "expected": {"rpcCode": -32602, "code": "plugin.host.invalidParams"}},
+    {"name": "host paths name the option they do not support", "version": 0, "hostServices": ["workspace", "lithe/host/workspace/getHostPaths"], "method": "lithe/host/workspace/getHostPaths", "params": {"context": {"contextID": "w-3f2a", "generation": 2}, "path": "/home/me/orders"}, "expected": {"rpcCode": -32018, "code": "plugin.host.unsupportedOption", "details": {"option": "path"}}}
   ],
   "invocationCallers": [
     {
@@ -584,8 +592,7 @@
     { "name": "the provider answered without a result Core can pass on", "code": "plugin.function.invalidResult", "rpcCode": -32071 },
     { "name": "the relay's own deadline passed", "code": "plugin.host.timeout", "rpcCode": -32015 },
     { "name": "the caller or an upstream caller cancelled", "code": "plugin.host.cancelled", "rpcCode": -32800 },
-    { "name": "the workspace context is unknown or replaced", "code": "plugin.host.contextExpired", "rpcCode": -32011 },
-    { "name": "the workspace is remote", "code": "plugin.host.authorityUnsupported", "rpcCode": -32012 }
+    { "name": "the workspace context is unknown or replaced", "code": "plugin.host.contextExpired", "rpcCode": -32011 }
   ],
   "invocationContexts": [
     {
@@ -634,7 +641,9 @@
     {"name": "the plugin's language server is not running", "code": "plugin.host.languageServerUnavailable", "expected": {"code": "plugin.host.languageServerUnavailable", "rpcCode": -32022}},
     {"name": "the language server answered with an error", "code": "plugin.host.languageServerError", "expected": {"code": "plugin.host.languageServerError", "rpcCode": -32023}},
     {"name": "the method is not in the language server's declared session", "code": "plugin.host.methodNotDeclared", "expected": {"code": "plugin.host.methodNotDeclared", "rpcCode": -32024}},
-    {"name": "the server belongs to another plugin", "code": "plugin.host.foreignContribution", "expected": {"code": "plugin.host.foreignContribution", "rpcCode": -32026}}
+    {"name": "the server belongs to another plugin", "code": "plugin.host.foreignContribution", "expected": {"code": "plugin.host.foreignContribution", "rpcCode": -32026}},
+    {"name": "the connection to the remote host was lost", "code": "plugin.host.remoteDisconnected", "expected": {"code": "plugin.host.remoteDisconnected", "rpcCode": -32078}},
+    {"name": "the plugin has nothing that runs on the remote host's platform", "code": "plugin.host.platformUnavailable", "expected": {"code": "plugin.host.platformUnavailable", "rpcCode": -32079}}
   ],
   "hostNotifications": [
     { "name": "changed contexts reach a workspace session", "version": 0, "hostServices": ["workspace"], "method": "lithe/host/workspace/didChangeContexts", "params": { "revision": 4 }, "expected": { "delivered": true } },

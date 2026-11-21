@@ -1,5 +1,15 @@
 // Check the host-service declarations the way a plugin uses them.
-import { createBackend, HOST_ERRORS, HostError, type ContextReference, type JsonValue, type Subscription } from '@lithe/plugin-sdk';
+import {
+  createBackend,
+  HOST_ERRORS,
+  HostError,
+  HostPath,
+  type ContextReference,
+  type JsonValue,
+  type RemotePlatform,
+  type Subscription,
+  type WorkspaceContext,
+} from '@lithe/plugin-sdk';
 
 const backend = createBackend();
 const version: number | null = backend.functionsVersion;
@@ -137,3 +147,27 @@ async function nativeTerminal(context: ContextReference) {
   await backend.host.terminal.dispose(context, { terminalID: created.terminalID });
 }
 void nativeTerminal;
+
+async function remoteRoots(context: WorkspaceContext) {
+  const platform: RemotePlatform | undefined = context.authority.platform;
+  const os: string | undefined = platform?.os;
+  void os;
+  const { folders } = await backend.host.workspace.getHostPaths(context, { rootIDs: [context.folders[0]!.rootID] });
+  const hostPath: HostPath = folders[0]!.hostPath;
+  const value: string = hostPath.value;
+  void value;
+  // @ts-expect-error A host path is not a local path string.
+  const local: string = hostPath;
+  void local;
+  // @ts-expect-error Root IDs are strings.
+  await backend.host.workspace.getHostPaths(context, { rootIDs: [1] });
+  const roots = await backend.host.workspace.processRoots(context);
+  for (const root of roots.folders) {
+    const cwd: string = 'path' in root ? root.path : root.hostPath.value;
+    void cwd;
+  }
+  const failure: -32078 = HOST_ERRORS['plugin.host.remoteDisconnected'];
+  const unavailable: -32079 = HOST_ERRORS['plugin.host.platformUnavailable'];
+  void failure; void unavailable;
+}
+void remoteRoots;
