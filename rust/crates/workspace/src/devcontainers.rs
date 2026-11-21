@@ -530,4 +530,66 @@ exit 1"#,
                 .unwrap();
         assert_eq!(request.config, None);
     }
+
+    /// The `devcontainerOutput` events one run of `log` sends.
+    fn log_events(log: impl FnOnce(&mut Log)) -> Vec<serde_json::Value> {
+        let observed = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let records = std::sync::Arc::clone(&observed);
+        let sink: execution_events::EventSink = std::sync::Arc::new(move |raw: &str| {
+            let event: serde_json::Value = serde_json::from_str(raw).unwrap();
+            records.lock().unwrap().push(event);
+        });
+        execution_events::with_sink(sink, || {
+            let mut state = Log::default();
+            log(&mut state);
+            state.finish();
+        });
+        let events = observed.lock().unwrap().clone();
+        assert!(events
+            .iter()
+            .all(|event| event["type"] == "devcontainerOutput"));
+        events
+    }
+
+    #[test]
+    fn the_log_is_sent_line_by_line_and_redacted() {
+        let events = log_events(|log| {
+            // A credential split across two reads is redacted as one line,
+            // and a CRLF ending is not part of the text.
+            log.push(b"[1 ms] Start: Run: docker build\r\n[2 ms] pull https://ci:hunter2@");
+            log.push(b"registry.example/app\n");
+            // A line longer than one event is sent in parts; the rest of it
+            // is sent when the CLI exits.
+            log.push(&vec![b'x'; MAX_LINE_BYTES + 10]);
+        });
+        let texts: Vec<&str> = events
+            .iter()
+            .map(|event| event["text"].as_str().unwrap())
+            .collect();
+        assert_eq!(texts.len(), 4, "{texts:?}");
+        assert_eq!(texts[0], "[1 ms] Start: Run: docker build");
+        assert!(!texts[1].contains("hunter2"), "{}", texts[1]);
+        assert!(texts[1].contains("registry.example/app"), "{}", texts[1]);
+        assert_eq!(texts[2].len(), MAX_LINE_BYTES);
+        assert_eq!(texts[3].len(), 10);
+        assert!(events.iter().all(|event| event.get("truncated").is_none()));
+    }
+
+    #[test]
+    fn the_log_stops_once_after_its_bound() {
+        let line = [vec![b'y'; 4000], vec![b'\n']].concat();
+        let sent = MAX_STREAMED_BYTES / line.len();
+        let events = log_events(|log| {
+            for _ in 0..sent + 20 {
+                log.push(&line);
+            }
+            log.push(b"after the bound\n");
+        });
+        assert_eq!(events.len(), sent + 1);
+        assert!(events[..sent]
+            .iter()
+            .all(|event| event["text"].as_str().map(str::len) == Some(4000)));
+        assert_eq!(events[sent]["truncated"], true);
+        assert!(events[sent].get("text").is_none());
+    }
 }
