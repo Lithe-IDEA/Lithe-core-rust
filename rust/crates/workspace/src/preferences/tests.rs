@@ -22,7 +22,12 @@ fn reading_no_document_reports_automatic_values_and_the_storage() {
             "sshProgram": null,
             "reconnectLimitSeconds": null,
             "allowReverseForwarding": null,
+            "closePrograms": null,
         })
+    );
+    assert_eq!(
+        result["closing"],
+        json!({ "source": "automatic", "programs": "ask" })
     );
     assert_eq!(result["ssh"]["source"], "automatic");
     assert_eq!(result["reconnect"]["source"], "automatic");
@@ -121,6 +126,30 @@ fn reverse_forwards_stay_refused_until_the_switch_allows_them() {
 }
 
 #[test]
+fn the_closing_choice_is_edited_and_read_back() {
+    let edited = edit(request(json!({
+        "document": null,
+        "closePrograms": { "programs": "keep" },
+    })))
+    .unwrap();
+    assert_eq!(edited["changed"], true);
+    let document = edited["document"].as_str().unwrap().to_owned();
+    let state = read(request(json!({ "document": document }))).unwrap();
+    assert_eq!(state["preferences"]["closePrograms"], "keep");
+    assert_eq!(
+        state["closing"],
+        json!({ "source": "setting", "programs": "keep" })
+    );
+    let restored = edit(request(json!({
+        "document": document,
+        "closePrograms": { "programs": null },
+    })))
+    .unwrap();
+    let state = read(request(json!({ "document": restored["document"] }))).unwrap();
+    assert_eq!(state["closing"]["source"], "automatic");
+}
+
+#[test]
 fn an_edit_names_exactly_one_value_and_refuses_bad_programs_by_field() {
     for both_or_neither in [
         json!({ "document": null }),
@@ -133,6 +162,11 @@ fn an_edit_names_exactly_one_value_and_refuses_bad_programs_by_field() {
             "document": null,
             "reconnectLimit": { "seconds": null },
             "reverseForwarding": { "allowed": true },
+        }),
+        json!({
+            "document": null,
+            "reverseForwarding": { "allowed": true },
+            "closePrograms": { "programs": "end" },
         }),
     ] {
         let error = edit(request(both_or_neither)).unwrap_err();

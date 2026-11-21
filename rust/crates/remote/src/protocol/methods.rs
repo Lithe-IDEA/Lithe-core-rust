@@ -29,6 +29,14 @@ pub const SERVER_STATE: &str = "server.state";
 pub const SERVER_RESUME: &str = "server.resume";
 /// Acknowledges received events, see [`AckParams`].
 pub const SERVER_ACK: &str = "server.ack";
+/// The user chose to keep the session's programs running after this client
+/// leaves. Until the next client attaches, running processes and terminals
+/// keep the persistent session past its idle timeout; without it, a session
+/// that lost its client ends after the idle timeout even while programs run,
+/// so a crashed or vanished client does not leave them behind for good.
+/// A `--stdio` session ends with its connection and refuses it with
+/// `UNSUPPORTED`. Returns `null`.
+pub const SERVER_KEEP: &str = "server.keep";
 
 /// Returns the [`FileMetadata`] of a path without following a final link.
 pub const FS_STAT: &str = "fs.stat";

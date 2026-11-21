@@ -17,13 +17,13 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// Default time a persistent session without a client and without running
+/// Default time a persistent session without a client and without kept
 /// programs survives.
 pub(crate) const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
 /// Upper bound clients may request, so an idle daemon that nobody comes back
-/// to does not linger on a shared host for days. Running processes and
-/// terminals keep a session regardless; see [`Session::keeps_programs`].
+/// to does not linger on a shared host for days. Programs the user kept
+/// keep a session regardless; see [`Session::keeps_programs`].
 const MAX_IDLE_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// Random bytes in a persistent session's token: 128 bits cannot be guessed
@@ -101,6 +101,9 @@ pub(crate) struct Session {
     /// Whether any client completed a handshake before, which makes the
     /// next one a resumption.
     had_client: AtomicBool,
+    /// Set by `server.keep` and cleared when a client is admitted: the user
+    /// chose to leave the running programs on the host.
+    kept: AtomicBool,
     /// Secret later clients of a persistent session must present; `None`
     /// for a `--stdio` session, which has exactly one connection.
     token: Option<SessionToken>,
@@ -133,6 +136,7 @@ impl Session {
             starts: Arc::default(),
             ending: AtomicBool::new(false),
             had_client: AtomicBool::new(false),
+            kept: AtomicBool::new(false),
             token: if persistent {
                 Some(generate_token()?)
             } else {
@@ -170,6 +174,9 @@ impl Session {
     /// attached before. The first client of a persistent session is admitted
     /// whatever it presents, since a fresh session cannot know any token;
     /// every later one must present this session's token.
+    ///
+    /// An admitted client decides again what happens to the programs when it
+    /// leaves, so admission clears an earlier `server.keep`.
     pub(crate) fn admit(&self, presented: Option<&SessionToken>) -> Result<bool, RemoteError> {
         let Some(token) = &self.token else {
             return Ok(self.had_client.swap(true, Ordering::AcqRel));
@@ -185,6 +192,7 @@ impl Session {
             Some(presented)
                 if same_secret(presented.as_str().as_bytes(), token.as_str().as_bytes()) =>
             {
+                self.kept.store(false, Ordering::Release);
                 Ok(true)
             }
             _ => Err(RemoteError::new(
@@ -199,12 +207,29 @@ impl Session {
         self.token.as_ref()
     }
 
-    /// Whether processes or terminals still run. A persistent session keeps
-    /// them however long it has no client: ending it would kill a build or a
-    /// shell the user expects to find again. Only `server.shutdown`, or the
-    /// user stopping them, ends them.
+    /// `server.keep`: the user chose to leave the running programs on the
+    /// host after this client goes. Refused by a `--stdio` session, which
+    /// ends with its only connection.
+    pub(crate) fn keep(&self) -> Result<(), RemoteError> {
+        if !self.persistent {
+            return Err(RemoteError::new(
+                ErrorCode::Unsupported,
+                "only a persistent session keeps programs without a client",
+            ));
+        }
+        self.kept.store(true, Ordering::Release);
+        Ok(())
+    }
+
+    /// Whether programs the user kept still run. A kept session outlives its
+    /// idle timeout however long it has no client, so a build or a shell the
+    /// user left running is there to find again; only `server.shutdown`, or
+    /// the programs ending, ends it. Programs nobody kept, such as those of a
+    /// client that crashed or lost its network, end with the session once
+    /// the idle timeout passes without a client.
     pub(crate) fn keeps_programs(&self) -> bool {
-        !self.processes.is_empty() || !self.terminals.is_empty()
+        self.kept.load(Ordering::Acquire)
+            && (!self.processes.is_empty() || !self.terminals.is_empty())
     }
 
     pub(crate) fn set_idle_timeout(&self, seconds: u64) {

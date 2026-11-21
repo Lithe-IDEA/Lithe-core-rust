@@ -247,6 +247,7 @@ fn is_inline(method: &str) -> bool {
         methods::SERVER_PING
             | methods::SERVER_STATE
             | methods::SERVER_ACK
+            | methods::SERVER_KEEP
             | methods::PROCESS_WRITE_STDIN
             | methods::PROCESS_CLOSE_STDIN
             | methods::TERMINAL_WRITE
@@ -266,6 +267,10 @@ fn handle(context: &Context, method: &str, params: Value) -> Result<Value, Remot
         methods::SERVER_ACK => {
             let params: AckParams = parse(params)?;
             session.link.acknowledge(params.seq);
+            Ok(Value::Null)
+        }
+        methods::SERVER_KEEP => {
+            session.keep()?;
             Ok(Value::Null)
         }
         method if method.starts_with("fs.upload") => {

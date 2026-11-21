@@ -187,6 +187,15 @@ impl RemoteSession {
         self.call(methods::SERVER_STATE, &json!({}))
     }
 
+    /// Sends `server.keep`: the user chose to leave the running programs on
+    /// the host after this client goes. Drop the session afterwards, instead
+    /// of shutting it down, to leave them running; the next client that
+    /// attaches decides again. A `--stdio` session refuses with
+    /// `UNSUPPORTED`.
+    pub fn keep(&self) -> Result<(), ClientError> {
+        self.call_unit(methods::SERVER_KEEP, &json!({}))
+    }
+
     /// Metadata of `path` itself, without following a final link.
     pub fn stat(&self, path: &str) -> Result<FileMetadata, ClientError> {
         self.call(methods::FS_STAT, &PathParams { path: path.into() })

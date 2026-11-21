@@ -470,6 +470,42 @@ fn connections_name_exactly_one_client() {
     assert!(!wsl.program.with_extension("ran").exists());
 }
 
+// A session key reaches the remote command line, so one the server would
+// refuse, or a token it never issues, is refused before anything runs.
+#[cfg(unix)]
+#[test]
+fn a_malformed_resume_is_refused_before_the_client_runs() {
+    let ssh = FakeSsh::new("remote-connect-resume-refused", "touch \"$0.ran\"");
+    let token = "0123456789abcdef".repeat(2);
+    for (key, token) in [
+        (String::new(), token.clone()),
+        ("a b".to_owned(), token.clone()),
+        ("$(id)".to_owned(), token.clone()),
+        ("k".repeat(65), token.clone()),
+        ("window-1".to_owned(), String::new()),
+        ("window-1".to_owned(), "not hex".to_owned()),
+        ("window-1".to_owned(), "a".repeat(129)),
+    ] {
+        let mut request = serde_json::to_value(json!({
+            "connection": { "host": "devbox", "user": "dev" },
+            "servers": [],
+            "serverVersion": "0.1.0",
+        }))
+        .unwrap();
+        request["resume"] = json!({ "key": key, "token": token });
+        let request: sessions::ConnectRequest = serde_json::from_value(request).unwrap();
+        let error = sessions::connect_with(request, Some(ssh.path())).unwrap_err();
+        assert!(matches!(error.code, ErrorCode::InvalidRequest), "{error:?}");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(error.details.as_deref().unwrap()).unwrap(),
+            json!({ "field": "resume", "reason": "invalid" }),
+            "key of {} chars",
+            key.chars().count()
+        );
+    }
+    assert!(!ssh.program.with_extension("ran").exists());
+}
+
 // The connection log keeps one category per failed status, so a log line
 // tells authentication, host key and network failures apart.
 #[test]
@@ -565,7 +601,10 @@ fn closed_connections_cannot_be_used() {
     ));
     let request: sessions::DisconnectRequest =
         serde_json::from_value(json!({ "sessionId": "missing" })).unwrap();
-    assert!(!sessions::disconnect(request));
+    assert_eq!(
+        sessions::disconnect(request),
+        sessions::DisconnectResult::default()
+    );
 }
 
 // Application exit closes whatever is open and must be safe with nothing open.
