@@ -4417,6 +4417,15 @@ script file, or a program or interpreter named by a path that is not a file, is
 
 Batch runs are `not_supported` outside Windows.
 
+In a remote workspace (a request carrying `remoteWorkspace`) every
+`runConfig.*` command reads and checks the host's files, and process runs are
+planned for the host, which is Linux or macOS, so they never get a Windows
+interpreter or a batch script even when the client is Windows. The plan's
+`executable.path`, `arguments` and `inlineScript.path` are host paths, and
+`inlineScriptBase` must name a host temporary directory, so the client starts
+the process on the host without translating the plan. A host that cannot be
+reached fails the request instead of reporting a file as missing.
+
 `diagnostics.redactText` accepts `text` and returns `redacted` with
 credentials, tokens, and home-directory paths replaced by stable placeholders
 (`<redacted>` for secrets, `<HOME>` for a macOS/Linux `Users`/`home` path or a

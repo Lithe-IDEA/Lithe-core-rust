@@ -688,7 +688,7 @@ pub(crate) fn launch_plan(
     let (script, shebang) = match (options.script(), options.text()) {
         (Some(script), _) => {
             let file = file_path(root, script, platform);
-            if !file.is_file() {
+            if !fs::is_file(&file).unwrap_or(false) {
                 return Err(
                     CoreError::new(ErrorCode::InvalidRequest, "Script file was not found")
                         .with_details(script),
@@ -761,7 +761,9 @@ fn require_program(
     executable: &Executable,
     platform: Platform,
 ) -> Result<(), CoreError> {
-    if matches!(executable, Executable::Path(_)) && !file_path(root, value, platform).is_file() {
+    if matches!(executable, Executable::Path(_))
+        && !fs::is_file(file_path(root, value, platform)).unwrap_or(false)
+    {
         return Err(
             CoreError::new(ErrorCode::InvalidRequest, "Program was not found").with_details(value),
         );
@@ -801,6 +803,8 @@ pub(crate) fn cmd_quote(argument: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Fixtures live on this machine.
+    use std::fs;
 
     /// A fresh project directory, removed when dropped.
     struct Project(PathBuf);

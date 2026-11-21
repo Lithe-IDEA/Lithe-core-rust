@@ -159,6 +159,116 @@ fn remote_build_detects_host_models_normalizes_diagnostics_and_invalidates_sync(
     assert_eq!(std::fs::read_dir(placeholder).unwrap().count(), 0);
 }
 
+/// Run configurations of a remote workspace are read from the host, checked
+/// against the host's files, and planned with host paths, so the client starts
+/// the process on the host without translating the plan.
+#[test]
+fn remote_run_configurations_resolve_and_plan_against_the_host() {
+    let host = HostFixture::new();
+    let root = host.root.join("host");
+    let placeholder = host.root.join("placeholder");
+    std::fs::create_dir_all(root.join("scripts")).unwrap();
+    std::fs::create_dir_all(root.join("web")).unwrap();
+    std::fs::write(
+        root.join("scripts/build.sh"),
+        "#!/bin/bash -e\necho built\n",
+    )
+    .unwrap();
+    super::support::write_run_document(
+        &root,
+        ".lithe/run/configurations.yaml",
+        &json!({"version": 2, "configurations": [
+            {"id": "user:build", "name": "build", "provider": "process.shell",
+             "confidence": "declared", "cwd": "web",
+             "extensions": {"process": {"script": "scripts/build.sh"}}},
+            {"id": "user:inline", "name": "inline", "provider": "process.shell",
+             "confidence": "declared", "extensions": {"process": {"text": "echo hi\n"}}},
+            {"id": "user:missing", "name": "missing", "provider": "process.shell",
+             "confidence": "declared", "extensions": {"process": {"script": "scripts/gone.sh"}}},
+        ]}),
+    );
+
+    let resolved = host.request("runConfig.resolve", json!({"root": placeholder}));
+    let availability = |id: &str| {
+        resolved["configurations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["id"] == id)
+            .unwrap_or_else(|| panic!("{id} missing from {resolved}"))["availability"]
+            .clone()
+    };
+    // The documents exist only on the host; a runnable entry carries no
+    // availability.
+    assert!(availability("user:build").is_null(), "{resolved}");
+
+    // The script and its `#!` line are read on the host; every path in the
+    // plan is the host's.
+    let plan = host.request(
+        "runConfig.createLaunchPlan",
+        json!({"root": placeholder, "configurationId": "user:build"}),
+    );
+    let script = root.join("scripts/build.sh");
+    assert_eq!(plan["executable"], json!({"path": "/bin/bash"}), "{plan}");
+    assert_eq!(plan["arguments"], json!(["-e", script]), "{plan}");
+    assert_eq!(plan["workingDirectory"], "web", "{plan}");
+
+    // An inline script goes where the client asked, on the host.
+    let inline = host.request(
+        "runConfig.createLaunchPlan",
+        json!({"root": placeholder, "configurationId": "user:inline",
+               "inlineScriptBase": "/tmp/lithe-run-x/script"}),
+    );
+    assert_eq!(
+        inline["inlineScript"]["path"], "/tmp/lithe-run-x/script.sh",
+        "{inline}"
+    );
+    assert_eq!(inline["inlineScript"]["content"], "echo hi\n", "{inline}");
+
+    // A script missing on the host is refused before anything starts.
+    let response: Value = serde_json::from_str(&crate::execute_json(
+        &json!({
+            "id": test_support::unique_id(), "command": "runConfig.createLaunchPlan",
+            "remoteWorkspace": {"sessionId": host.id, "localRoot": placeholder, "remoteRoot": root},
+            "payload": {"root": placeholder, "configurationId": "user:missing"},
+        })
+        .to_string(),
+    ))
+    .unwrap();
+    assert_eq!(response["ok"], false, "{response}");
+    assert_eq!(
+        response["error"]["message"], "Script file was not found",
+        "{response}"
+    );
+
+    // The editor checks a working directory against the host's folders and
+    // saves through changes the client applies on the host.
+    let form = host.request(
+        "runConfig.editorForm",
+        json!({"root": placeholder, "configurationId": "user:build"}),
+    );
+    let mut values = form["values"].as_object().unwrap().clone();
+    values.insert("workingDirectory".into(), json!("nowhere"));
+    let refused = host.request(
+        "runConfig.saveConfiguration",
+        json!({"root": placeholder, "provider": "process.shell",
+               "configurationId": "user:build", "values": values}),
+    );
+    assert_eq!(
+        refused["errors"],
+        json!([{"field": "workingDirectory", "code": "notFound"}]),
+        "{refused}"
+    );
+    values.insert("workingDirectory".into(), json!("scripts"));
+    let saved = host.request(
+        "runConfig.saveConfiguration",
+        json!({"root": placeholder, "provider": "process.shell",
+               "configurationId": "user:build", "values": values}),
+    );
+    assert_eq!(saved["status"], "saved", "{saved}");
+    assert_eq!(std::fs::read_dir(placeholder).unwrap().count(), 0);
+}
+
 /// A remote root opened through a host symbolic link resolves outside the
 /// local placeholder; the empty-root boundary must ask the host, not the
 /// unmaterialized local projection, before scanning.
