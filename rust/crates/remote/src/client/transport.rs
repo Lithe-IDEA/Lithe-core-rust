@@ -2,10 +2,16 @@
 //!
 //! A chain is an ordered list of hops from the local machine to the place
 //! where the workspace lives: `[]` is the local machine, `[ssh devbox]` a
-//! remote host, `[ssh devbox, docker api]` a container on that host. A chain
-//! builds the local command line that runs a program at its end with
-//! standard streams connected end to end, and decides which inherited
-//! environment variables that local command keeps.
+//! remote host, `[ssh devbox, docker api]` a container on that host, and
+//! `[wsl Ubuntu]` a distribution of the Windows Subsystem for Linux on the
+//! local Windows machine. A chain builds the local command line that runs a
+//! program at its end with standard streams connected end to end, and
+//! decides which inherited environment variables that local command keeps.
+//!
+//! A WSL hop runs `wsl.exe --exec`, which hands its arguments to the
+//! distribution without a shell, so they need no quoting beyond the Windows
+//! command line's, which the standard library applies. Only the local
+//! machine runs `wsl.exe`, so a WSL hop must come first.
 //!
 //! An SSH hop passes its remote command to the remote user's login shell as
 //! one string. That shell may be sh, bash, zsh, fish or csh, which disagree on
@@ -157,6 +163,64 @@ pub enum Hop {
     Ssh(SshHop),
     /// An `exec` into a running container.
     Container(ContainerHop),
+    /// A distribution of the Windows Subsystem for Linux; only as the first hop.
+    Wsl(WslHop),
+}
+
+/// Longest WSL distribution name, in bytes. `wsl.exe --import` accepts
+/// shorter names; the bound only refuses garbage.
+pub(crate) const MAX_WSL_DISTRIBUTION_BYTES: usize = 64;
+
+/// Distribution of the Windows Subsystem for Linux, started through
+/// `wsl.exe --distribution`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WslHop {
+    /// `wsl.exe`, resolved by [`WslHop::new`] from the Windows system
+    /// directory so that a program of that name on `PATH` cannot stand in.
+    pub program: String,
+    /// Distribution name as `wsl.exe --list` prints it, for example `Ubuntu-24.04`.
+    pub distribution: String,
+    /// Linux account passed as `--user`; the distribution's default user when absent.
+    pub user: Option<String>,
+}
+
+impl WslHop {
+    /// A hop into `distribution` as its default user, through the system's `wsl.exe`.
+    pub fn new(distribution: impl Into<String>) -> Self {
+        Self {
+            program: wsl_program(),
+            distribution: distribution.into(),
+            user: None,
+        }
+    }
+}
+
+/// `%SystemRoot%\System32\wsl.exe`, or `wsl.exe` when the variable is unset,
+/// which only happens outside Windows.
+pub fn wsl_program() -> String {
+    match std::env::var_os("SystemRoot") {
+        Some(root) => std::path::Path::new(&root)
+            .join("System32")
+            .join("wsl.exe")
+            .to_string_lossy()
+            .into_owned(),
+        None => "wsl.exe".into(),
+    }
+}
+
+/// Longest Linux account name, in bytes, as `useradd` accepts it.
+pub(crate) const MAX_WSL_USER_BYTES: usize = 32;
+
+/// A WSL distribution name: ASCII letters, digits, `.`, `_` and `-`, starting
+/// with a letter or digit, which is what `wsl.exe --import` accepts.
+pub(crate) fn is_wsl_distribution(name: &str) -> bool {
+    name.len() <= MAX_WSL_DISTRIBUTION_BYTES && is_plain_name(name)
+}
+
+/// A Linux account name `wsl.exe --user` can take: the login names
+/// [`is_ssh_user`] accepts, at most [`MAX_WSL_USER_BYTES`] long.
+pub(crate) fn is_wsl_user(user: &str) -> bool {
+    user.len() <= MAX_WSL_USER_BYTES && is_ssh_user(user)
 }
 
 /// Connection through the system OpenSSH client. Host aliases, jump hosts,
@@ -295,11 +359,22 @@ impl TransportChain {
 
     /// Local command line that runs `argv` at the end of the chain.
     pub fn command(&self, argv: &[String]) -> Result<Vec<String>, TransportError> {
+        if self
+            .hops
+            .iter()
+            .skip(1)
+            .any(|hop| matches!(hop, Hop::Wsl(_)))
+        {
+            return Err(TransportError::InvalidHop {
+                reason: "a WSL hop must be the first hop".into(),
+            });
+        }
         let mut current: Vec<Word> = argv.iter().cloned().map(Word::Raw).collect();
         for hop in self.hops.iter().rev() {
             current = match hop {
                 Hop::Ssh(hop) => ssh_command(hop, &current)?,
                 Hop::Container(hop) => container_command(hop, current)?,
+                Hop::Wsl(hop) => wsl_command(hop, current)?,
             };
         }
         Ok(current.into_iter().map(Word::into_string).collect())
@@ -311,15 +386,29 @@ impl TransportChain {
     /// A chain that starts with an SSH hop keeps only the variables ssh
     /// itself needs, and no locale, proxy or tool variable that a `SendEnv`
     /// pattern could pass on. Local and container chains keep everything: a container engine only
-    /// passes the variables a hop names with `-e`. The call also drops the
-    /// variables already set on `command`, so callers set their own, such as
-    /// an AskPass helper's, afterwards.
+    /// passes the variables a hop names with `-e`. A chain that starts with a
+    /// WSL hop keeps everything too, since `wsl.exe` only passes the
+    /// variables `WSLENV` names, and sets `WSL_UTF8=1` so that `wsl.exe`
+    /// prints its own messages in UTF-8 rather than UTF-16. The call also
+    /// drops the variables already set on `command`, so callers set their
+    /// own, such as an AskPass helper's, afterwards.
     pub fn restrict_environment(&self, command: &mut Command) {
-        if matches!(self.hops.first(), Some(Hop::Ssh(_))) {
-            command
-                .env_clear()
-                .envs(kept_ssh_variables(std::env::vars_os(), cfg!(windows)));
+        match self.hops.first() {
+            Some(Hop::Ssh(_)) => {
+                command
+                    .env_clear()
+                    .envs(kept_ssh_variables(std::env::vars_os(), cfg!(windows)));
+            }
+            Some(Hop::Wsl(_)) => {
+                command.env("WSL_UTF8", "1");
+            }
+            Some(Hop::Container(_)) | None => {}
         }
+    }
+
+    /// Whether the chain starts with an SSH hop, whose prompts need AskPass.
+    pub fn starts_with_ssh(&self) -> bool {
+        matches!(self.hops.first(), Some(Hop::Ssh(_)))
     }
 
     /// Stable identity of the chain, for example `ssh:devbox/docker:api`.
@@ -337,6 +426,10 @@ impl TransportChain {
                     None => format!("ssh:{}", hop.destination),
                 },
                 Hop::Container(hop) => format!("{}:{}", hop.engine.name(), hop.container),
+                Hop::Wsl(hop) => match &hop.user {
+                    Some(user) => format!("wsl:{user}@{}", hop.distribution),
+                    None => format!("wsl:{}", hop.distribution),
+                },
             })
             .collect::<Vec<_>>()
             .join("/")
@@ -492,6 +585,44 @@ fn container_command(hop: &ContainerHop, inner: Vec<Word>) -> Result<Vec<Word>, 
     // The engine stops parsing its own options at the container name, so the
     // inner command needs no separator.
     command.push(hop.container.clone());
+    let mut words: Vec<Word> = command.into_iter().map(Word::Raw).collect();
+    words.extend(inner);
+    Ok(words)
+}
+
+fn wsl_command(hop: &WslHop, inner: Vec<Word>) -> Result<Vec<Word>, TransportError> {
+    if !is_wsl_distribution(&hop.distribution) {
+        return Err(TransportError::InvalidHop {
+            reason: format!("invalid WSL distribution {:?}", hop.distribution),
+        });
+    }
+    let mut command = vec![
+        hop.program.clone(),
+        "--distribution".into(),
+        hop.distribution.clone(),
+    ];
+    if let Some(user) = &hop.user {
+        if !is_wsl_user(user) {
+            return Err(TransportError::InvalidHop {
+                reason: format!("invalid WSL user {user:?}"),
+            });
+        }
+        command.push("--user".into());
+        command.push(user.clone());
+    }
+    // Without `--cd`, the distribution starts in the Windows working
+    // directory under /mnt, a slow network mount the server does not need.
+    command.extend(["--cd".into(), "~".into(), "--exec".into()]);
+    // Windows passes a command line, not an argument vector; a NUL cannot
+    // be part of it.
+    if let Some(Word::Raw(argument) | Word::Generated(argument)) = inner
+        .iter()
+        .find(|word| matches!(word, Word::Raw(text) | Word::Generated(text) if text.contains('\0')))
+    {
+        return Err(TransportError::UnsafeArgument {
+            argument: argument.clone(),
+        });
+    }
     let mut words: Vec<Word> = command.into_iter().map(Word::Raw).collect();
     words.extend(inner);
     Ok(words)
@@ -1061,5 +1192,121 @@ mod tests {
             container(),
             ssh()
         ])));
+        let wsl = TransportChain::new(vec![Hop::Wsl(WslHop::new("Ubuntu"))]);
+        assert!(keeps_caller_variable(wsl.clone()));
+        let mut command = Command::new("true");
+        wsl.restrict_environment(&mut command);
+        assert!(command
+            .get_envs()
+            .any(|(name, value)| name == "WSL_UTF8" && value == Some("1".as_ref())));
+    }
+
+    fn wsl(distribution: &str, user: Option<&str>) -> TransportChain {
+        let mut hop = WslHop {
+            program: "wsl.exe".into(),
+            ..WslHop::new(distribution)
+        };
+        hop.user = user.map(Into::into);
+        TransportChain::new(vec![Hop::Wsl(hop)])
+    }
+
+    #[test]
+    fn wsl_hop_passes_arguments_without_a_shell_from_the_home_directory() {
+        // `--exec` runs no shell, so characters unsafe for shells pass as they are.
+        assert_eq!(
+            wsl("Ubuntu-24.04", None)
+                .command(&strings(&["sh", "-c", "echo \"$HOME\" it's", "x y"]))
+                .unwrap(),
+            strings(&[
+                "wsl.exe",
+                "--distribution",
+                "Ubuntu-24.04",
+                "--cd",
+                "~",
+                "--exec",
+                "sh",
+                "-c",
+                "echo \"$HOME\" it's",
+                "x y",
+            ])
+        );
+        assert_eq!(
+            wsl("Debian", Some("dev"))
+                .command(&strings(&["true"]))
+                .unwrap(),
+            strings(&[
+                "wsl.exe",
+                "--distribution",
+                "Debian",
+                "--user",
+                "dev",
+                "--cd",
+                "~",
+                "--exec",
+                "true",
+            ])
+        );
+        assert_eq!(wsl("Ubuntu", None).identity(), "wsl:Ubuntu");
+        assert_eq!(wsl("Ubuntu", Some("dev")).identity(), "wsl:dev@Ubuntu");
+        assert!(!wsl("Ubuntu", None).starts_with_ssh());
+    }
+
+    #[test]
+    fn wsl_hops_refuse_malformed_names_nul_and_a_place_after_the_first_hop() {
+        let long = "a".repeat(MAX_WSL_DISTRIBUTION_BYTES + 1);
+        for distribution in ["", "-d", "Ubuntu 24.04", "Ubuntu/x", long.as_str()] {
+            assert!(
+                matches!(
+                    wsl(distribution, None).command(&strings(&["true"])),
+                    Err(TransportError::InvalidHop { .. })
+                ),
+                "{distribution:?}"
+            );
+        }
+        let long_user = "u".repeat(MAX_WSL_USER_BYTES + 1);
+        for user in ["", "-u", "root;id", long_user.as_str()] {
+            assert!(
+                matches!(
+                    wsl("Ubuntu", Some(user)).command(&strings(&["true"])),
+                    Err(TransportError::InvalidHop { .. })
+                ),
+                "{user:?}"
+            );
+        }
+        assert_eq!(
+            wsl("Ubuntu", None).command(&strings(&["echo", "a\0b"])),
+            Err(TransportError::UnsafeArgument {
+                argument: "a\0b".into()
+            })
+        );
+        let behind_ssh = TransportChain::new(vec![
+            Hop::Ssh(SshHop::new("devbox")),
+            Hop::Wsl(WslHop::new("Ubuntu")),
+        ]);
+        assert!(matches!(
+            behind_ssh.command(&strings(&["true"])),
+            Err(TransportError::InvalidHop { .. })
+        ));
+        // A container inside the distribution is reached through it.
+        let container = TransportChain::new(vec![
+            wsl("Ubuntu", None).hops.remove(0),
+            Hop::Container(ContainerHop::new(ContainerEngine::Docker, "api")),
+        ]);
+        assert_eq!(
+            container.command(&strings(&["true"])).unwrap()[6..],
+            strings(&["docker", "exec", "-i", "api", "true"])
+        );
+    }
+
+    #[test]
+    fn the_system_wsl_program_comes_from_the_windows_directory() {
+        let program = wsl_program();
+        match std::env::var_os("SystemRoot") {
+            Some(root) => assert_eq!(
+                std::path::PathBuf::from(&program),
+                std::path::Path::new(&root).join("System32").join("wsl.exe")
+            ),
+            None => assert_eq!(program, "wsl.exe"),
+        }
     }
 }

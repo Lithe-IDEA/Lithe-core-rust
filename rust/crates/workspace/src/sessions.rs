@@ -1,22 +1,26 @@
 //! Long-lived remote connections.
 //!
-//! `remote.connect` starts one OpenSSH process that probes the host, installs
-//! the server when needed and starts it (see `lithe_remote::client::launch`),
-//! so the user authenticates once. The connection then stays open in this
-//! registry until `remote.disconnect`; requests such as `remote.readDir` use
-//! it by id. OpenSSH runs in its own process tree, which closing a connection
-//! ends, together with the connection's port forwards.
+//! `remote.connect` starts one client process, OpenSSH for a host or
+//! `wsl.exe` for a WSL distribution on this machine, that probes the host,
+//! installs the server when needed and starts it (see
+//! `lithe_remote::client::launch`), so the user authenticates once. The
+//! connection then stays open in this registry until `remote.disconnect`;
+//! requests such as `remote.readDir` use it by id. The client runs in its own
+//! process tree, which closing a connection ends, together with the
+//! connection's port forwards.
 
-use crate::probe::{classify, diagnostics, relay_challenge, ssh_hop, ProbeStatus, ProbedHost};
+use crate::probe::{
+    classify, classify_wsl, diagnostics, relay_challenge, ssh_hop, ProbeStatus, ProbedHost,
+};
 use lithe_git_host::ProcessTree;
 use lithe_protocol::{CoreError, ErrorCode};
-use lithe_remote::client::connections::SshConnection;
+use lithe_remote::client::connections::{ConnectionError, Reason, SshConnection};
 use lithe_remote::client::launch::{launch, launch_command, LaunchError, Launched, Stage};
 use lithe_remote::client::session::{ClientError, ConnectOptions};
 use lithe_remote::client::trust::Target;
 use lithe_remote::client::{
-    ArtifactError, ConnectionKind, ConnectionLog, ForwardSet, Hop, RemoteSession, ServerArtifact,
-    ServerTarget, TransportChain,
+    wsl, ArtifactError, ConnectionKind, ConnectionLog, ForwardSet, Hop, RemoteSession,
+    ServerArtifact, ServerTarget, TransportChain, WslConnection,
 };
 use lithe_remote::protocol::methods;
 use lithe_request_context::events as execution_events;
@@ -44,10 +48,10 @@ const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(30);
 /// Deadline for one request over an open connection.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Time OpenSSH gets to exit and print its reason after the stream ended.
+/// Time the client gets to exit and print its reason after the stream ended.
 const EXIT_GRACE: Duration = Duration::from_secs(2);
 
-/// Bytes of OpenSSH's standard error kept while a connection is open.
+/// Bytes of the client's standard error kept while a connection is open.
 const STDERR_TAIL_BYTES: usize = 8 * 1024;
 
 /// A server build shipped with the host.
@@ -63,12 +67,17 @@ struct ServerInput {
     sha256: String,
 }
 
-/// `remote.connect`: the connection, the server builds Core may install,
-/// and where to install them.
+/// `remote.connect`: the host, the server builds Core may install, and where
+/// to install them. Exactly one of `connection` and `wsl` names the host.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ConnectRequest {
-    connection: SshConnection,
+    /// A host reached through OpenSSH.
+    #[serde(default)]
+    connection: Option<SshConnection>,
+    /// A WSL distribution on this machine, reached through `wsl.exe`.
+    #[serde(default)]
+    wsl: Option<WslConnection>,
     servers: Vec<ServerInput>,
     server_version: String,
     /// Install root on the remote; `None` is `$HOME/.lithe-server`.
@@ -117,7 +126,8 @@ pub struct Connection {
 
 /// Owns the native transport independently of the framed workspace session.
 pub(crate) enum ConnectionTransport {
-    Ssh {
+    /// The client process, OpenSSH or `wsl.exe`, and its process tree.
+    Process {
         child: Mutex<Child>,
         tree: ProcessTree,
     },
@@ -162,7 +172,7 @@ impl Connection {
             }
         }
         match &self.transport {
-            ConnectionTransport::Ssh { child, tree } => {
+            ConnectionTransport::Process { child, tree } => {
                 let mut child = child
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -191,7 +201,7 @@ impl Connection {
     }
 }
 
-/// Records one failed SSH transport cleanup step. The caller keeps its own
+/// Records one failed client process cleanup step. The caller keeps its own
 /// result; WARN reports a process that may outlive the session.
 fn record_cleanup_io(stage: &str, error: &std::io::Error) {
     lithe_diagnostics::core_events::recovery_failed(
@@ -202,7 +212,7 @@ fn record_cleanup_io(stage: &str, error: &std::io::Error) {
     );
 }
 
-/// Kills the SSH process tree and reaps its root, recording each failed step.
+/// Kills the client's process tree and reaps its root, recording each failed step.
 fn reap(tree: &ProcessTree, child: &mut Child) {
     if let Err(error) = tree.kill() {
         record_cleanup_io("tree-kill", &error);
@@ -271,18 +281,112 @@ pub fn connect(request: ConnectRequest) -> Result<ConnectResult, CoreError> {
     connect_with(request, None)
 }
 
-/// `ssh_program` replaces the `ssh` found on `PATH`; tests use a stand-in.
+/// The local program that reaches the host.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Client {
+    /// OpenSSH, which asks its questions through AskPass.
+    Ssh,
+    /// `wsl.exe`, which starts a local distribution and asks nothing.
+    Wsl,
+}
+
+impl Client {
+    /// The client `request` names. A request that names both or neither is
+    /// refused by [`first_hop`]; it counts as SSH until then.
+    fn of(request: &ConnectRequest) -> Self {
+        if request.wsl.is_some() && request.connection.is_none() {
+            Self::Wsl
+        } else {
+            Self::Ssh
+        }
+    }
+
+    fn log_kind(self) -> ConnectionKind {
+        match self {
+            Self::Ssh => ConnectionKind::Ssh,
+            Self::Wsl => ConnectionKind::Wsl,
+        }
+    }
+
+    fn invalid(self) -> &'static str {
+        match self {
+            Self::Ssh => "Invalid SSH connection",
+            Self::Wsl => "Invalid WSL connection",
+        }
+    }
+
+    fn start_failed(self) -> &'static str {
+        match self {
+            Self::Ssh => "Could not start the SSH client",
+            Self::Wsl => "Could not start wsl.exe",
+        }
+    }
+
+    fn supervise_failed(self) -> &'static str {
+        match self {
+            Self::Ssh => "Could not supervise the SSH client",
+            Self::Wsl => "Could not supervise wsl.exe",
+        }
+    }
+
+    fn timed_out(self) -> &'static str {
+        match self {
+            Self::Ssh => "The SSH connection did not finish in time",
+            Self::Wsl => "The WSL distribution did not finish starting in time",
+        }
+    }
+
+    /// The client's standard error as text; `wsl.exe` may print UTF-16.
+    fn text(self, stderr: &[u8]) -> String {
+        match self {
+            Self::Ssh => String::from_utf8_lossy(stderr).into_owned(),
+            Self::Wsl => wsl::output_text(stderr),
+        }
+    }
+}
+
+/// The hop that starts the chain, with `program` in place of the system
+/// client when set. Exactly one of `connection` and `wsl` must be set.
+fn first_hop(request: &ConnectRequest, program: Option<&str>) -> Result<Hop, CoreError> {
+    let refused =
+        |field, reason| crate::connections::invalid_request(ConnectionError { field, reason });
+    match (&request.connection, &request.wsl) {
+        (Some(connection), None) => {
+            let mut hop = ssh_hop(connection)?;
+            if let Some(program) = program {
+                hop.program = program.into();
+            }
+            Ok(Hop::Ssh(hop))
+        }
+        (None, Some(distribution)) => {
+            let mut hop = distribution
+                .hop()
+                .map_err(crate::connections::invalid_request)?;
+            if let Some(program) = program {
+                hop.program = program.into();
+            }
+            Ok(Hop::Wsl(hop))
+        }
+        (None, None) => Err(refused("connection", Reason::Required)),
+        (Some(_), Some(_)) => Err(refused("wsl", Reason::Invalid)),
+    }
+}
+
+/// `program` replaces the system client (`ssh` on `PATH`, or `wsl.exe`);
+/// tests use a stand-in.
 ///
 /// The attempt is recorded in a [`ConnectionLog`]. The launch and the
 /// handshake record the failures they see themselves; this records what only
-/// the SSH process shows (authentication, host key, network), cancellation
-/// and local errors, as stable categories without diagnostics or host names.
+/// the client process shows (authentication, host key, network),
+/// cancellation and local errors, as stable categories without diagnostics
+/// or host names.
 pub(crate) fn connect_with(
     request: ConnectRequest,
-    ssh_program: Option<&str>,
+    program: Option<&str>,
 ) -> Result<ConnectResult, CoreError> {
-    let log = ConnectionLog::begin(ConnectionKind::Ssh);
-    let result = connect_logged(request, ssh_program, &log);
+    let client = Client::of(&request);
+    let log = ConnectionLog::begin(client.log_kind());
+    let result = connect_logged(request, client, program, &log);
     match &result {
         Ok(result) => {
             if let Some((stage, code)) = failure_of(result.status) {
@@ -313,7 +417,8 @@ pub(crate) fn failure_of(status: ProbeStatus) -> Option<(&'static str, &'static 
 
 fn connect_logged(
     request: ConnectRequest,
-    ssh_program: Option<&str>,
+    client: Client,
+    program: Option<&str>,
     log: &ConnectionLog,
 ) -> Result<ConnectResult, CoreError> {
     // Only the build for the host's platform is read and checked, once the
@@ -341,23 +446,17 @@ fn connect_logged(
     let rejected_in_launch = Arc::clone(&rejected);
     let _connecting = ConnectingGuard::enter();
 
-    let mut hop = ssh_hop(&request.connection)?;
-    if let Some(program) = ssh_program {
-        hop.program = program.into();
-    }
-    let chain = TransportChain::new(vec![Hop::Ssh(hop)]);
+    let chain = TransportChain::new(vec![first_hop(&request, program)?]);
     let argv = chain
         .command(&launch_command(
             request.install_root.as_deref(),
             &["--stdio"],
         ))
         .map_err(|error| {
-            CoreError::new(ErrorCode::InvalidRequest, "Invalid SSH connection")
+            CoreError::new(ErrorCode::InvalidRequest, client.invalid())
                 .with_details(error.to_string())
         })?;
-    let (program, arguments) = argv
-        .split_first()
-        .expect("an SSH hop always produces a command");
+    let (program, arguments) = argv.split_first().expect("a hop always produces a command");
     let mut process = Command::new(program);
     process
         .args(arguments)
@@ -366,31 +465,37 @@ fn connect_logged(
         .stderr(Stdio::piped());
     // Before the AskPass variables, which must reach ssh.
     chain.restrict_environment(&mut process);
-    let mut authentication = lithe_git_host::authentication::Session::new().map_err(|error| {
-        CoreError::new(
-            ErrorCode::ProcessStartFailed,
-            "Could not prepare SSH authentication",
-        )
-        .with_details(error.to_string())
-    })?;
-    authentication.configure(&mut process).map_err(|error| {
-        CoreError::new(
-            ErrorCode::ProcessStartFailed,
-            "Could not configure SSH authentication",
-        )
-        .with_details(error.to_string())
-    })?;
+    // OpenSSH asks for passwords, passphrases and host keys through AskPass;
+    // `wsl.exe` starts a local distribution as a local user and asks nothing.
+    let mut authentication = match client {
+        Client::Ssh => {
+            let authentication =
+                lithe_git_host::authentication::Session::new().map_err(|error| {
+                    CoreError::new(
+                        ErrorCode::ProcessStartFailed,
+                        "Could not prepare SSH authentication",
+                    )
+                    .with_details(error.to_string())
+                })?;
+            authentication.configure(&mut process).map_err(|error| {
+                CoreError::new(
+                    ErrorCode::ProcessStartFailed,
+                    "Could not configure SSH authentication",
+                )
+                .with_details(error.to_string())
+            })?;
+            Some(authentication)
+        }
+        Client::Wsl => None,
+    };
     ProcessTree::prepare(&mut process);
     let mut child = process.spawn().map_err(|error| {
-        CoreError::new(ErrorCode::RuntimeMissing, "Could not start the SSH client")
+        CoreError::new(ErrorCode::RuntimeMissing, client.start_failed())
             .with_details(error.to_string())
     })?;
     let tree = ProcessTree::adopt(&mut child).map_err(|error| {
-        CoreError::new(
-            ErrorCode::ProcessStartFailed,
-            "Could not supervise the SSH client",
-        )
-        .with_details(error.to_string())
+        CoreError::new(ErrorCode::ProcessStartFailed, client.supervise_failed())
+            .with_details(error.to_string())
     })?;
     let stderr_tail = Arc::new(Mutex::new(VecDeque::new()));
     let stderr_reader = Mutex::new(
@@ -459,25 +564,24 @@ fn connect_logged(
         }
         if Instant::now() >= deadline {
             return abandon(
-                CoreError::new(
-                    ErrorCode::TimedOut,
-                    "The SSH connection did not finish in time",
-                ),
+                CoreError::new(ErrorCode::TimedOut, client.timed_out()),
                 &mut child,
             );
         }
         relay_stages(&stages);
-        match authentication.poll() {
-            Ok(challenges) => challenges.into_iter().for_each(relay_challenge),
-            Err(error) => {
-                return abandon(
-                    CoreError::new(
-                        ErrorCode::ProcessFailed,
-                        "SSH authentication transport failed",
+        if let Some(authentication) = authentication.as_mut() {
+            match authentication.poll() {
+                Ok(challenges) => challenges.into_iter().for_each(relay_challenge),
+                Err(error) => {
+                    return abandon(
+                        CoreError::new(
+                            ErrorCode::ProcessFailed,
+                            "SSH authentication transport failed",
+                        )
+                        .with_details(error.to_string()),
+                        &mut child,
                     )
-                    .with_details(error.to_string()),
-                    &mut child,
-                )
+                }
             }
         }
         match launched.recv_timeout(POLL_INTERVAL) {
@@ -533,10 +637,14 @@ fn connect_logged(
     let launched = match result {
         Ok(launched) => launched,
         Err(LaunchError::NoShell) => {
-            // OpenSSH prints why it gave up only as it exits.
+            // The client prints why it gave up only as it exits.
             let status = wait_for_exit(&mut child, EXIT_GRACE);
             reap(&tree, &mut child);
-            let probe = classify(status, &[], &tail(&stderr_tail));
+            let stderr = tail(&stderr_tail);
+            let probe = match client {
+                Client::Ssh => classify(status, &[], &stderr),
+                Client::Wsl => classify_wsl(status, &stderr),
+            };
             return Ok(failed(probe.status, None, probe.diagnostics));
         }
         Err(LaunchError::NoArtifact(report)) => {
@@ -568,7 +676,7 @@ fn connect_logged(
         }
         Err(error) => {
             reap(&tree, &mut child);
-            let stderr = diagnostics(&String::from_utf8_lossy(&tail(&stderr_tail)));
+            let stderr = diagnostics(&client.text(&tail(&stderr_tail)));
             return Ok(failed(
                 ProbeStatus::Failed,
                 None,
@@ -595,7 +703,7 @@ fn connect_logged(
             // Grace expiry is advisory: the following checked kill/wait owns the final cleanup result.
             wait_for_exit(&mut child, EXIT_GRACE);
             reap(&tree, &mut child);
-            let stderr = diagnostics(&String::from_utf8_lossy(&tail(&stderr_tail)));
+            let stderr = diagnostics(&client.text(&tail(&stderr_tail)));
             return Ok(failed(
                 ProbeStatus::Failed,
                 Some(host),
@@ -616,7 +724,7 @@ fn connect_logged(
             Arc::new(Connection::new(
                 session,
                 Target::new(&chain, capabilities.user_id),
-                ConnectionTransport::Ssh {
+                ConnectionTransport::Process {
                     child: Mutex::new(child),
                     tree,
                 },

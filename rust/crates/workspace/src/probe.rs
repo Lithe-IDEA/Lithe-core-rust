@@ -260,20 +260,39 @@ pub(crate) fn classify(exit: Option<ExitStatus>, stdout: &[u8], stderr: &[u8]) -
     } else {
         ProbeStatus::Failed
     };
-    let diagnostics = if diagnostics.is_empty() {
-        // Some failures, such as a remote shell that exits early, print
-        // nothing; the exit status is then the only clue.
-        match exit.and_then(|exit| exit.code()) {
-            Some(code) => format!("ssh exited with status {code}"),
-            None => "ssh was terminated by a signal".into(),
-        }
+    ProbeResult {
+        status,
+        host: None,
+        diagnostics: or_exit_status(diagnostics, "ssh", exit),
+    }
+}
+
+/// Interprets a `wsl.exe` that exited before the server started. `wsl.exe`
+/// names its failures with stable error codes, such as
+/// `Wsl/Service/WSL_E_DISTRO_NOT_FOUND`, and may print them in UTF-16.
+pub(crate) fn classify_wsl(exit: Option<ExitStatus>, stderr: &[u8]) -> ProbeResult {
+    let text = lithe_remote::client::wsl::output_text(stderr);
+    let status = if text.contains("WSL_E_DISTRO_NOT_FOUND") {
+        ProbeStatus::Unreachable
     } else {
-        diagnostics
+        ProbeStatus::Failed
     };
     ProbeResult {
         status,
         host: None,
-        diagnostics,
+        diagnostics: or_exit_status(diagnostics(&text), "wsl.exe", exit),
+    }
+}
+
+/// `diagnostics`, or the exit status of `program` when it printed nothing:
+/// some failures, such as a remote shell that exits early, are silent.
+fn or_exit_status(diagnostics: String, program: &str, exit: Option<ExitStatus>) -> String {
+    if !diagnostics.is_empty() {
+        return diagnostics;
+    }
+    match exit.and_then(|exit| exit.code()) {
+        Some(code) => format!("{program} exited with status {code}"),
+        None => format!("{program} was terminated by a signal"),
     }
 }
 

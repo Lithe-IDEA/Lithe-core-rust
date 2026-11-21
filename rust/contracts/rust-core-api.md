@@ -802,9 +802,9 @@ or removing a command fails until the table changes in the same commit.
 | `git.authRespond` | Answer or cancel a live authentication challenge once |
 | `remote.probe` | Check that an SSH connection reaches a supported host |
 | `remote.authRespond` | Answer or cancel a prompt relayed by `remote.probe` or `remote.connect` once |
-| `remote.connect` | Open a connection, installing the shipped server when needed |
+| `remote.connect` | Open a connection over SSH or to a local WSL distribution, installing the shipped server when needed |
 | `remote.readDir` | List a directory over an open remote connection |
-| `remote.disconnect` | Close an open connection and its OpenSSH process tree |
+| `remote.disconnect` | Close an open connection and its OpenSSH or `wsl.exe` process tree |
 | `remote.closeAll` | Close every open connection; the host calls it at application exit |
 | `remote.readFile` | Read a file over an open remote connection |
 | `remote.writeFile` | Save a file over an open remote connection |
@@ -827,6 +827,7 @@ or removing a command fails until the table changes in the same commit.
 | `remote.effectiveSettings` | Tell what OpenSSH makes of a connection and where each value comes from |
 | `remote.sshConfigHosts` | List the Host aliases of the user's SSH configuration for an import |
 | `remote.mottyHosts` | List the SSH hosts saved in Motty for an import |
+| `remote.listWslDistributions` | List the WSL distributions installed on this Windows machine |
 | `git.historyRewritePreview` | Review undo, message edit, squash, or drop with complete messages, eligibility, and an immutable checkout expectation |
 | `git.remotes` | Return configured fetch remote names and URLs |
 | `git.tags` | Return tag names, tag object IDs, target IDs, dates, and annotations |
@@ -5903,6 +5904,19 @@ connection?, fields }`:
 A relative directory is `invalid_request` and a damaged document
 `parse_failed`. Nothing is written to Motty's files.
 
+`remote.listWslDistributions` (no payload) returns `{ available,
+distributions, diagnostics }`. On Windows Core runs `wsl.exe --list --quiet`
+from `%SystemRoot%\System32` with `WSL_UTF8=1`, at most 15 seconds, and reads
+its UTF-16 or UTF-8 output. `distributions` are the installed names in
+`wsl.exe` order, at most 64, without Docker Desktop's `docker-desktop` and
+`docker-desktop-data` and without names repeated in another case.
+`available` is `false` on other systems, where nothing runs, and when
+`wsl.exe` cannot start. When `wsl.exe` fails, for example because no
+distribution is installed, `distributions` is empty and `diagnostics` holds
+its redacted message for display; it is never logged. Cancellation and the
+bound are `cancelled` and `timed_out`. Nothing is saved: the window lists
+the distributions each time it opens.
+
 #### Remote connections that stay open
 
 `remote.connect` takes `{ connection, servers: [{ target, path, sha256 }],
@@ -5932,9 +5946,28 @@ host, diagnostics }`; `session` is `{ id, uploaded, hostName, userName,
 homeDirectory }` and is set only for `connected`. A host without a matching
 build is `unsupportedPlatform` and nothing is uploaded.
 
-A malformed connection, an unknown `target` or a `sha256` that is not 64
-hexadecimal digits is `invalid_request`, before OpenSSH starts. A missing
-`ssh` is `runtime_missing`. When the build for the host's platform cannot be
+Instead of `connection`, the request may name a WSL distribution on this
+Windows machine as `wsl: { distribution, user? }`, where `distribution` is a
+name `remote.listWslDistributions` returned and `user` a Linux account (the
+distribution's default user when absent). Core then runs
+`wsl.exe --distribution <distribution> [--user <user>] --cd ~ --exec …` from
+`%SystemRoot%\System32` in place of OpenSSH, keeping the Windows environment
+`wsl.exe` needs and setting `WSL_UTF8=1`; the probe, the checked upload and
+the stages are the same. Nothing is relayed through `remote.authRespond`,
+because `wsl.exe` asks no questions. An unknown distribution is
+`unreachable`; other failures are `failed` with `wsl.exe`'s message in
+`diagnostics`, decoded from UTF-16 when it prints that. Trust decisions name
+the distribution and the account (`{ wsl: { distribution, user } }` as the
+first and only hop).
+
+A request that names both `connection` and `wsl` is `invalid_request` with
+`details` `{ field: "wsl", reason: "invalid" }`, and one that names neither
+`{ field: "connection", reason: "required" }`. A malformed connection, a
+distribution that is empty, longer than 64 bytes or not a WSL distribution
+name, a user that is longer than 32 bytes or not a Linux login name, an
+unknown `target` or a `sha256` that is not 64 hexadecimal digits is
+`invalid_request`, before OpenSSH or `wsl.exe` starts. A missing `ssh` or
+`wsl.exe` is `runtime_missing`. When the build for the host's platform cannot be
 read or its SHA-256 differs, the attempt ends as `remote_server_invalid`
 without sending anything; `details` says which of the two happened and, for a
 mismatch, the SHA-256 Core computed, but never the path. Cancellation and the
@@ -5942,7 +5975,7 @@ five-minute bound are `cancelled` and `timed_out`.
 
 Core keeps an open connection until `remote.disconnect` (`{ sessionId }`,
 returning `{ closed }`) or until the host process exits; ending it terminates
-the OpenSSH process tree. `remote.closeAll` (no payload, returning
+the OpenSSH or `wsl.exe` process tree. `remote.closeAll` (no payload, returning
 `{ closed }` with the number of connections) ends all of them; the host calls
 it while quitting because exiting without it can leave the OpenSSH tree and
 the remote server running. Requests over it take `sessionId`:

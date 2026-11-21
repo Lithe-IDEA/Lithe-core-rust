@@ -10,13 +10,14 @@
 //! The session side owns the long-lived connections: [`connections`] keeps
 //! the SSH connections the user saved, [`ssh_configuration`] tells what
 //! OpenSSH makes of them and lists the hosts of the user's SSH configuration,
-//! [`motty`] lists the hosts saved in Motty for an import, [`probe`] checks
-//! that a saved SSH connection reaches a usable host, [`sessions`] opens and
-//! keeps the connections, [`host`] forwards finite requests and owned
-//! streaming resources (processes, terminals, watches), [`forwards`] keeps the
-//! port forwards of
-//! the ports page, [`upload`] streams a verified file to the host, and
-//! [`trust`] keys remote workspace trust by what the connection resolves.
+//! [`motty`] lists the hosts saved in Motty for an import, [`wsl`] lists the
+//! WSL distributions of this Windows machine, [`probe`] checks that a saved
+//! SSH connection reaches a usable host, [`sessions`] opens and keeps the
+//! connections (over OpenSSH or `wsl.exe`), [`host`] forwards finite requests
+//! and owned streaming resources (processes, terminals, watches),
+//! [`forwards`] keeps the port forwards of the ports page, [`upload`] streams
+//! a verified file to the host, and [`trust`] keys remote workspace trust by
+//! what the connection resolves.
 //! Domain semantics stay in their engines (Git, build, language servers);
 //! this crate only supplies the IO boundary.
 
@@ -33,6 +34,7 @@ pub mod ssh_configuration;
 pub mod test_support;
 pub mod trust;
 pub mod upload;
+pub mod wsl;
 
 pub use scope::{
     current, enter, identity_key, is_remote, local_path, remote_path, Host, Scope, Workspace,

@@ -2,8 +2,10 @@
 //!
 //! - [`connections`] keeps the SSH connections the user saved and turns each
 //!   into an SSH hop with allowlisted options only.
-//! - [`transport`] turns a chain of hops (SSH, container exec) into the local
-//!   command line that runs a program at the end of the chain.
+//! - [`transport`] turns a chain of hops (SSH, WSL, container exec) into the
+//!   local command line that runs a program at the end of the chain.
+//! - [`wsl`] turns a WSL distribution into the first hop and lists the
+//!   installed distributions.
 //! - [`bootstrap`] probes the platform at the end of the chain and describes
 //!   the local server builds that can run there.
 //! - [`launch`] probes, installs and starts the server over one connection,
@@ -50,6 +52,7 @@ pub mod session;
 pub mod ssh_config;
 pub mod transport;
 pub mod trust;
+pub mod wsl;
 
 pub use api::{SpawnSpec, TerminalSpec, WriteOptions};
 pub use bootstrap::{ArtifactError, ServerArtifact, ServerTarget};
@@ -58,4 +61,7 @@ pub use forward::PortForward;
 pub use forward_address::{AddressError, ForwardAddress};
 pub use forward_set::{ForwardError, ForwardInfo, ForwardSet, ForwardSpec, TargetField};
 pub use session::{ClientError, ConnectOptions, Event, RemoteSession, ResumeMode};
-pub use transport::{ContainerEngine, ContainerHop, Hop, SshHop, TransportChain, TransportError};
+pub use transport::{
+    ContainerEngine, ContainerHop, Hop, SshHop, TransportChain, TransportError, WslHop,
+};
+pub use wsl::WslConnection;

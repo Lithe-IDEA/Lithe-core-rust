@@ -1306,7 +1306,31 @@ fn connection_window_helpers_answer_through_the_dispatcher() {
         "a refused address is not echoed"
     );
 
+    // Outside Windows there is no WSL, and nothing runs.
+    if !cfg!(windows) {
+        let distributions = call("remote.listWslDistributions", Value::Null);
+        assert_eq!(
+            distributions["data"],
+            json!({"available": false, "distributions": [], "diagnostics": ""}),
+            "{distributions}"
+        );
+    }
+    // A connection names SSH or WSL, not both, before anything starts.
+    let both = call(
+        "remote.connect",
+        json!({"connection": {"host": "devbox"}, "wsl": {"distribution": "Ubuntu"},
+            "servers": [], "serverVersion": "0.1.0"}),
+    );
+    assert_eq!(both["error"]["code"], "invalid_request", "{both}");
+    let details: Value = serde_json::from_str(both["error"]["details"].as_str().unwrap()).unwrap();
+    assert_eq!(details, json!({"field": "wsl", "reason": "invalid"}));
+
     for (command, payload) in [
+        (
+            "remote.connect",
+            json!({"wsl": {"distribution": "Ubuntu", "program": "C:\\x.exe"},
+                "servers": [], "serverVersion": "0.1.0"}),
+        ),
         (
             "remote.parseForwardAddress",
             json!({"text": "3000", "extra": 1}),

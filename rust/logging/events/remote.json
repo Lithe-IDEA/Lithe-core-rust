@@ -61,12 +61,12 @@
         "stage": {
           "type": "token",
           "required": true,
-          "description": "SSH connection cleanup stage, e.g. shutdown, tree-kill, wait, or closer"
+          "description": "Connection cleanup stage of the owned ssh or wsl.exe process, e.g. shutdown, tree-kill, wait, or closer"
         },
         "error": {
           "type": "error",
           "required": true,
-          "description": "Stable native, thread, or remote category from ending an owned SSH connection"
+          "description": "Stable native, thread, or remote category from ending an owned ssh or wsl.exe connection"
         }
       },
       "rate": 60,
@@ -81,12 +81,12 @@
         "stage": {
           "type": "token",
           "required": true,
-          "description": "SSH diagnostic collection stage: reader join or stderr read"
+          "description": "Diagnostic collection stage of the ssh or wsl.exe process: reader join or stderr read"
         },
         "error": {
           "type": "error",
           "required": true,
-          "description": "Stable I/O or thread category explaining incomplete SSH connection diagnostic evidence"
+          "description": "Stable I/O or thread category explaining incomplete ssh or wsl.exe diagnostic evidence"
         }
       },
       "rate": 60,
@@ -176,7 +176,7 @@
         "transport": {
           "type": "token",
           "required": true,
-          "description": "How the client reached the server: ssh, command (any spawned transport chain) or streams (caller-supplied pipes)"
+          "description": "How the client reached the server: ssh, wsl (a local WSL distribution through wsl.exe), command (any spawned transport chain) or streams (caller-supplied pipes)"
         },
         "outcome": {
           "type": "token",

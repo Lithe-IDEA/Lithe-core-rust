@@ -338,6 +338,138 @@ fn the_ssh_client_starts_with_only_the_variables_it_needs() {
     }
 }
 
+#[cfg(unix)]
+fn wsl_request(wsl: serde_json::Value) -> sessions::ConnectRequest {
+    serde_json::from_value(json!({
+        "wsl": wsl,
+        "servers": [],
+        "serverVersion": "0.1.0",
+    }))
+    .unwrap()
+}
+
+/// Stand-in for `wsl.exe`: writes its arguments and variables next to
+/// itself, then runs what follows `--exec` with the local shell.
+#[cfg(unix)]
+const FAKE_WSL: &str = "printf '%s\\n' \"$@\" > \"$0.arguments\"\n\
+    env > \"$0.environment\"\n\
+    while [ \"$#\" -gt 0 ]; do case \"$1\" in --exec) shift; break;; *) shift;; esac; done\n\
+    exec \"$@\"";
+
+// A WSL distribution is reached through `wsl.exe` instead of OpenSSH: the
+// server is probed inside the distribution like on an SSH host, `wsl.exe`
+// keeps the Windows environment it needs, and nothing asks through AskPass.
+#[cfg(unix)]
+#[test]
+fn connecting_to_a_wsl_distribution_runs_the_launch_through_wsl() {
+    let wsl = FakeSsh::new("remote-connect-wsl", FAKE_WSL);
+    let request = wsl_request(json!({ "distribution": " Ubuntu-24.04 ", "user": "dev" }));
+    let result = sessions::connect_with(request, Some(wsl.path())).unwrap();
+    let value = serde_json::to_value(result).unwrap();
+    assert_eq!(value["status"], "unsupportedPlatform");
+    assert_eq!(value["host"]["system"], local_uname("-s"));
+    let arguments = std::fs::read_to_string(wsl.program.with_extension("arguments")).unwrap();
+    let arguments: Vec<&str> = arguments.lines().collect();
+    assert_eq!(
+        arguments[..7],
+        [
+            "--distribution",
+            "Ubuntu-24.04",
+            "--user",
+            "dev",
+            "--cd",
+            "~",
+            "--exec"
+        ]
+    );
+    let seen = environment_seen_by(&wsl);
+    let names = seen.keys().collect::<Vec<_>>();
+    assert_eq!(
+        seen.get("WSL_UTF8").map(String::as_str),
+        Some("1"),
+        "{names:?}"
+    );
+    assert!(seen.contains_key("CARGO_PKG_NAME"), "{names:?}");
+    assert!(!seen.contains_key("SSH_ASKPASS_REQUIRE"), "{names:?}");
+}
+
+// `wsl.exe` prints its failures in UTF-16 with a stable error code; an
+// unknown distribution reads like an unknown host name.
+#[cfg(unix)]
+#[test]
+fn an_unknown_wsl_distribution_is_unreachable_with_readable_diagnostics() {
+    let message = "There is no distribution with the supplied name.\r\n\
+                   Error code: Wsl/Service/WSL_E_DISTRO_NOT_FOUND\r\n";
+    let escaped: String = message
+        .encode_utf16()
+        .flat_map(u16::to_le_bytes)
+        .map(|byte| format!("\\{byte:03o}"))
+        .collect();
+    let wsl = FakeSsh::new(
+        "remote-connect-wsl-missing",
+        &format!("printf '{escaped}' >&2\nexit 1"),
+    );
+    let request = wsl_request(json!({ "distribution": "Missing" }));
+    let result = sessions::connect_with(request, Some(wsl.path())).unwrap();
+    let value = serde_json::to_value(result).unwrap();
+    assert_eq!(value["status"], "unreachable");
+    assert_eq!(value["session"], serde_json::Value::Null);
+    assert_eq!(
+        value["diagnostics"],
+        "There is no distribution with the supplied name.\r\n\
+         Error code: Wsl/Service/WSL_E_DISTRO_NOT_FOUND"
+    );
+    // A silent failure still says which program gave up.
+    let silent = FakeSsh::new("remote-connect-wsl-silent", "exit 3");
+    let request = wsl_request(json!({ "distribution": "Ubuntu" }));
+    let value = serde_json::to_value(sessions::connect_with(request, Some(silent.path())).unwrap())
+        .unwrap();
+    assert_eq!(value["status"], "failed");
+    assert_eq!(value["diagnostics"], "wsl.exe exited with status 3");
+}
+
+// A connection names exactly one way to reach the host, and a malformed WSL
+// field is refused before anything runs, naming the field.
+#[cfg(unix)]
+#[test]
+fn connections_name_exactly_one_client() {
+    let wsl = FakeSsh::new("remote-connect-wsl-refused", "touch \"$0.ran\"");
+    let refused = |request: serde_json::Value| {
+        let request: sessions::ConnectRequest = serde_json::from_value(request).unwrap();
+        let error = sessions::connect_with(request, Some(wsl.path())).unwrap_err();
+        assert!(matches!(error.code, ErrorCode::InvalidRequest), "{error:?}");
+        serde_json::from_str::<serde_json::Value>(error.details.as_deref().unwrap()).unwrap()
+    };
+    assert_eq!(
+        refused(json!({ "servers": [], "serverVersion": "0.1.0" })),
+        json!({ "field": "connection", "reason": "required" })
+    );
+    assert_eq!(
+        refused(json!({
+            "connection": { "host": "devbox" },
+            "wsl": { "distribution": "Ubuntu" },
+            "servers": [],
+            "serverVersion": "0.1.0",
+        })),
+        json!({ "field": "wsl", "reason": "invalid" })
+    );
+    assert_eq!(
+        refused(
+            json!({ "wsl": { "distribution": "-d" }, "servers": [], "serverVersion": "0.1.0" })
+        ),
+        json!({ "field": "distribution", "reason": "invalid" })
+    );
+    assert_eq!(
+        refused(json!({
+            "wsl": { "distribution": "Ubuntu", "user": "root;id" },
+            "servers": [],
+            "serverVersion": "0.1.0",
+        })),
+        json!({ "field": "user", "reason": "invalid" })
+    );
+    assert!(!wsl.program.with_extension("ran").exists());
+}
+
 // The connection log keeps one category per failed status, so a log line
 // tells authentication, host key and network failures apart.
 #[test]

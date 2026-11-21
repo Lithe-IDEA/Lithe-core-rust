@@ -1037,6 +1037,9 @@ pub enum RemoteCommand {
     SshConfigHosts,
     /// Lists the SSH hosts saved in Motty for an import (`remote.mottyHosts`).
     MottyHosts,
+    /// Lists the WSL distributions installed on this Windows machine
+    /// (`remote.listWslDistributions`).
+    ListWslDistributions,
 }
 
 #[derive(Debug, Clone)]
@@ -1614,6 +1617,9 @@ impl CoreCommand {
             "remote.effectiveSettings" => Some(Self::Remote(RemoteCommand::EffectiveSettings)),
             "remote.sshConfigHosts" => Some(Self::Remote(RemoteCommand::SshConfigHosts)),
             "remote.mottyHosts" => Some(Self::Remote(RemoteCommand::MottyHosts)),
+            "remote.listWslDistributions" => {
+                Some(Self::Remote(RemoteCommand::ListWslDistributions))
+            }
             "git.historyRewritePreview" => Some(Self::Git(GitCommand::HistoryRewritePreview)),
             "git.remotes" => Some(Self::Git(GitCommand::Remotes)),
             "git.tags" => Some(Self::Git(GitCommand::Tags)),

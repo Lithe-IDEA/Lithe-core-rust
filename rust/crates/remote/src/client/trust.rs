@@ -20,7 +20,7 @@
 //! did not resolve. The platform adapter reads the document and publishes
 //! edits atomically.
 
-use crate::client::transport::{Hop, TransportChain};
+use crate::client::transport::{is_wsl_distribution, is_wsl_user, Hop, TransportChain};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -76,6 +76,8 @@ pub enum TargetHop {
     Ssh(SshTarget),
     /// An `exec` into a container.
     Container(ContainerTarget),
+    /// A distribution of the Windows Subsystem for Linux.
+    Wsl(WslTarget),
 }
 
 /// SSH hop fields that choose the host, the account and the route.
@@ -113,6 +115,19 @@ pub struct ContainerTarget {
     pub user: Option<String>,
 }
 
+/// WSL hop fields that choose the distribution and the account. The program
+/// is always the system's `wsl.exe`, so it is not part of the key.
+#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WslTarget {
+    /// Distribution name as `wsl.exe --list` prints it.
+    pub distribution: String,
+    /// Linux account passed as `--user`; absent for the distribution's
+    /// default user.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user: Option<String>,
+}
+
 impl Target {
     /// The target of a session opened through `chain` to a server running as
     /// the numeric account `user_id`.
@@ -142,6 +157,10 @@ impl Target {
                     container: hop.container.clone(),
                     user: hop.user.clone(),
                 }),
+                Hop::Wsl(hop) => TargetHop::Wsl(WslTarget {
+                    distribution: hop.distribution.clone(),
+                    user: hop.user.clone(),
+                }),
             })
             .collect();
         Self { hops, user_id }
@@ -149,7 +168,8 @@ impl Target {
 
     /// Refuses targets no transport chain produces: too many hops, empty,
     /// oversized or control characters in a field, a destination ssh would
-    /// read as an option, or an unknown engine.
+    /// read as an option, an unknown engine, or a WSL hop that is not first
+    /// or names a distribution or user `wsl.exe` would not be given.
     fn validate(&self) -> Result<(), TrustError> {
         let field = |value: &str| {
             !value.is_empty()
@@ -158,7 +178,7 @@ impl Target {
         };
         let optional = |value: &Option<String>| value.as_deref().is_none_or(field);
         let valid = self.hops.len() <= MAX_HOPS
-            && self.hops.iter().all(|hop| match hop {
+            && self.hops.iter().enumerate().all(|(index, hop)| match hop {
                 TargetHop::Ssh(hop) => {
                     field(&hop.destination)
                         && !hop.destination.starts_with('-')
@@ -171,6 +191,11 @@ impl Target {
                         && field(&hop.program)
                         && field(&hop.container)
                         && optional(&hop.user)
+                }
+                TargetHop::Wsl(hop) => {
+                    index == 0
+                        && is_wsl_distribution(&hop.distribution)
+                        && hop.user.as_deref().is_none_or(is_wsl_user)
                 }
             });
         if valid {
@@ -593,7 +618,7 @@ fn remove(list: &mut Vec<String>, path: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::transport::{ContainerEngine, ContainerHop, SshHop};
+    use crate::client::transport::{ContainerEngine, ContainerHop, SshHop, WslHop};
     use serde_json::json;
 
     fn ssh(destination: &str) -> SshHop {
@@ -712,6 +737,76 @@ mod tests {
             ..ssh("dev@box")
         };
         assert_eq!(target(vec![Hop::Ssh(keep_alive)], Some(1000)), devbox());
+    }
+
+    #[test]
+    fn wsl_targets_name_the_distribution_and_account_and_come_first_only() {
+        let wsl = |distribution: &str, user: Option<&str>| {
+            let mut hop = WslHop::new(distribution);
+            hop.program = r"C:\Windows\System32\wsl.exe".into();
+            hop.user = user.map(Into::into);
+            Hop::Wsl(hop)
+        };
+        let ubuntu = target(vec![wsl("Ubuntu", Some("dev"))], Some(1000));
+        assert_eq!(
+            serde_json::to_value(&ubuntu).unwrap(),
+            json!({"hops": [{"wsl": {"distribution": "Ubuntu", "user": "dev"}}], "userId": 1000})
+        );
+        let mut decisions = Decisions::parse(None).unwrap();
+        trust(&mut decisions, &ubuntu, "/home/dev/app", false);
+        let reparsed = Decisions::parse(Some(&decisions.text().unwrap())).unwrap();
+        assert_eq!(
+            state(&reparsed, &ubuntu, "/home/dev/app"),
+            TrustState::Trusted
+        );
+        // The program path is where wsl.exe lives, not where the hop ends.
+        let mut moved = WslHop::new("Ubuntu");
+        moved.user = Some("dev".into());
+        assert_eq!(target(vec![Hop::Wsl(moved)], Some(1000)), ubuntu);
+        for other in [
+            target(vec![wsl("Ubuntu", None)], Some(1000)),
+            target(vec![wsl("Ubuntu", Some("root"))], Some(1000)),
+            target(vec![wsl("Debian", Some("dev"))], Some(1000)),
+            target(vec![Hop::Ssh(ssh("dev@Ubuntu"))], Some(1000)),
+            target(
+                vec![
+                    wsl("Ubuntu", Some("dev")),
+                    Hop::Container(ContainerHop::new(ContainerEngine::Docker, "api")),
+                ],
+                Some(1000),
+            ),
+        ] {
+            assert_ne!(other, ubuntu);
+            assert_eq!(
+                state(&reparsed, &other, "/home/dev/app"),
+                TrustState::Unknown,
+                "{other:?}"
+            );
+        }
+
+        let entry = |hops: serde_json::Value| {
+            json!({"version": 1, "targets": [{"target": {"hops": hops}, "trustedWorkspaces": ["/a"]}]})
+                .to_string()
+        };
+        for hops in [
+            json!([{"ssh": {"destination": "box"}}, {"wsl": {"distribution": "Ubuntu"}}]),
+            json!([{"wsl": {"distribution": "Ubuntu"}}, {"wsl": {"distribution": "Debian"}}]),
+            json!([{"wsl": {"distribution": "-d"}}]),
+            json!([{"wsl": {"distribution": "Ubuntu", "user": "root;id"}}]),
+        ] {
+            assert_eq!(
+                Decisions::parse(Some(&entry(hops.clone()))),
+                Err(TrustError::at("target")),
+                "{hops}"
+            );
+        }
+        // Unknown fields are refused while reading, like any other.
+        assert_eq!(
+            Decisions::parse(Some(&entry(json!([
+                {"wsl": {"distribution": "Ubuntu", "program": "wsl.exe"}}
+            ])))),
+            Err(TrustError::at("document"))
+        );
     }
 
     #[test]

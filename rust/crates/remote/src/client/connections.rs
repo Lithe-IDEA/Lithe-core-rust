@@ -204,7 +204,7 @@ pub enum Reason {
 }
 
 impl ConnectionError {
-    fn at(field: &'static str, reason: Reason) -> Self {
+    pub(crate) fn at(field: &'static str, reason: Reason) -> Self {
         Self { field, reason }
     }
 }
