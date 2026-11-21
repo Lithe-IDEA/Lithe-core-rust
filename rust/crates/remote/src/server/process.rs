@@ -11,14 +11,14 @@
 
 use crate::protocol::methods::{
     self, decode_bytes, encode_bytes, EnvironmentSource, KillParams, OutputStream,
-    ProcessExitEvent, ProcessOutputEvent, ProcessParams, ProcessState, SpawnParams, SpawnResult,
-    WriteStdinParams,
+    ProcessExitEvent, ProcessOutputEvent, ProcessParams, ProcessState, ResourceLabel, SpawnParams,
+    SpawnResult, WriteStdinParams,
 };
 use crate::protocol::{ErrorCode, RemoteError};
 use crate::server::connection::Context;
 use crate::server::fs::{host_path, io_error};
 use crate::server::platform::{self, ChildKind};
-use crate::server::resources::Registry;
+use crate::server::resources::{validate_label, Registry};
 use crate::server::session::Session;
 use crate::server::threads::Parked;
 use crate::server::{parse, to_value};
@@ -56,11 +56,23 @@ pub(crate) struct Leader {
     pub(crate) pid: u32,
     /// Set when the leader exited and its exit event was sent.
     pub(crate) exited: bool,
+    /// When the server started the leader.
+    started: Instant,
 }
 
 impl Leader {
     pub(crate) fn new(pid: u32) -> Self {
-        Self { pid, exited: false }
+        Self {
+            pid,
+            exited: false,
+            started: Instant::now(),
+        }
+    }
+
+    /// Whole milliseconds from the leader's start to `now`, the moment
+    /// `server.state` reads every entry at.
+    pub(crate) fn running_ms(&self, now: Instant) -> u64 {
+        u64::try_from(now.saturating_duration_since(self.started).as_millis()).unwrap_or(u64::MAX)
     }
 }
 
@@ -100,6 +112,7 @@ pub(crate) struct ProcessTable {
 struct RunningProcess {
     leader: Leader,
     argv: Vec<String>,
+    label: Option<ResourceLabel>,
     /// `None` when standard input was not piped or has been closed.
     stdin: Option<SyncSender<Vec<u8>>>,
 }
@@ -129,7 +142,7 @@ impl ProcessTable {
         }
     }
 
-    pub(crate) fn states(&self) -> Vec<ProcessState> {
+    pub(crate) fn states(&self, now: Instant) -> Vec<ProcessState> {
         self.registry
             .lock()
             .iter()
@@ -137,6 +150,8 @@ impl ProcessTable {
                 process_id: *process_id,
                 pid: process.leader.pid,
                 argv: process.argv.clone(),
+                label: process.label.clone(),
+                running_ms: process.leader.running_ms(now),
                 leader_exited: process.leader.exited,
             })
             .collect()
@@ -153,6 +168,7 @@ impl ProcessTable {
         let Some((program, arguments)) = params.argv.split_first() else {
             return Err(RemoteError::new(ErrorCode::InvalidRequest, "argv is empty"));
         };
+        validate_label(params.label.as_ref())?;
         let mut command = Command::new(program);
         command
             .args(arguments)
@@ -192,6 +208,7 @@ impl ProcessTable {
         let entry = RunningProcess {
             leader: Leader::new(pid),
             argv: params.argv.clone(),
+            label: params.label,
             stdin,
         };
         if let Err(error) = self.registry.insert(params.process_id, entry) {
@@ -543,5 +560,35 @@ impl OutputGate {
         let mut closed = crate::server::lock(&self.closed);
         *closed = true;
         exit();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Leader;
+    use std::time::{Duration, Instant};
+
+    fn started_at(started: Instant) -> Leader {
+        Leader {
+            pid: 1,
+            exited: false,
+            started,
+        }
+    }
+
+    #[test]
+    fn running_time_counts_whole_milliseconds_since_the_start() {
+        let started = Instant::now();
+        let leader = started_at(started);
+        assert_eq!(leader.running_ms(started), 0);
+        assert_eq!(leader.running_ms(started + Duration::from_micros(1_999)), 1);
+        assert_eq!(leader.running_ms(started + Duration::from_secs(90)), 90_000);
+    }
+
+    #[test]
+    fn running_time_is_never_negative() {
+        let started = Instant::now();
+        let leader = started_at(started + Duration::from_secs(1));
+        assert_eq!(leader.running_ms(started), 0);
     }
 }

@@ -314,12 +314,16 @@ pub fn launch(
     log.shell_started(report.target());
     let artifact =
         artifact_for(&report).ok_or_else(|| LaunchError::NoArtifact(Box::new(report.clone())))?;
-    let (binary, name) =
-        read_artifact(&artifact).inspect_err(|error| log.launch_failed("artifact", error))?;
+    let name = install_name(&artifact).inspect_err(|error| log.launch_failed("artifact", error))?;
     let started = Instant::now();
-    let deployment = deploy(output, input, &artifact, &binary, &name)
+    let deployment = deploy(output, input, &artifact, &name)
         .inspect_err(|error| log.launch_failed("deploy", error))?;
-    log.deployed(&artifact, &deployment, binary.len(), started.elapsed());
+    log.deployed(
+        &artifact,
+        &deployment,
+        artifact.binary().len(),
+        started.elapsed(),
+    );
     Ok(Launched {
         report,
         uploaded: deployment.uploaded,
@@ -341,27 +345,24 @@ fn probe(output: &mut impl Read) -> Result<ProbeReport, LaunchError> {
     parse_probe(&probe_output).ok_or(LaunchError::NoShell)
 }
 
-/// Reads the binary and checks the fields sent to the shell. Returns the
-/// bytes and the version directory name.
-fn read_artifact(artifact: &ServerArtifact) -> Result<(Vec<u8>, String), LaunchError> {
-    let binary = std::fs::read(&artifact.path).map_err(LaunchError::Io)?;
-    let name = format!(
-        "{}-{}",
-        artifact.version,
-        &artifact.sha256[..INSTALL_HASH_PREFIX.min(artifact.sha256.len())]
-    );
-    for field in [&artifact.version, &artifact.sha256, &name] {
-        if field.is_empty()
-            || !field
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || "._-".contains(c))
-        {
-            return Err(LaunchError::Protocol(format!(
-                "invalid artifact field {field:?}"
-            )));
-        }
+/// Checks the version, the only field the caller chose freely, and returns
+/// the version directory name sent to the shell. The SHA-256 is always 64
+/// lowercase hex digits because the artifact computed it.
+fn install_name(artifact: &ServerArtifact) -> Result<String, LaunchError> {
+    let version = artifact.version();
+    if version.is_empty()
+        || !version
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "._-".contains(c))
+    {
+        return Err(LaunchError::Protocol(format!(
+            "invalid artifact version {version:?}"
+        )));
     }
-    Ok((binary, name))
+    Ok(format!(
+        "{version}-{}",
+        &artifact.sha256()[..INSTALL_HASH_PREFIX]
+    ))
 }
 
 /// Sends the install request, then the binary when the shell needs it, and
@@ -370,14 +371,14 @@ fn deploy(
     output: &mut impl Read,
     input: &mut impl Write,
     artifact: &ServerArtifact,
-    binary: &[u8],
     name: &str,
 ) -> Result<Deployment, LaunchError> {
+    let binary = artifact.binary();
     writeln!(
         input,
         "{} {} {} {name}",
-        artifact.version,
-        artifact.sha256,
+        artifact.version(),
+        artifact.sha256(),
         binary.len()
     )
     .and_then(|()| input.flush())

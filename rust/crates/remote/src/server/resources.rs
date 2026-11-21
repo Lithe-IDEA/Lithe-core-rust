@@ -1,5 +1,6 @@
 //! Shared bookkeeping for client-identified resources.
 
+use crate::protocol::methods::{ResourceLabel, MAX_LABEL_KIND_CHARS, MAX_LABEL_NAME_CHARS};
 use crate::protocol::{ErrorCode, RemoteError};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -289,10 +290,74 @@ impl InFlight {
     }
 }
 
+/// Checks a client's label against the protocol's limits before the resource
+/// starts. The error names the field that broke a rule, never its content.
+pub(crate) fn validate_label(label: Option<&ResourceLabel>) -> Result<(), RemoteError> {
+    let Some(label) = label else {
+        return Ok(());
+    };
+    for (field, value, limit) in [
+        ("kind", &label.kind, MAX_LABEL_KIND_CHARS),
+        ("name", &label.name, MAX_LABEL_NAME_CHARS),
+    ] {
+        if value.chars().count() > limit {
+            return Err(RemoteError::new(
+                ErrorCode::InvalidRequest,
+                format!("label {field} is longer than {limit} characters"),
+            ));
+        }
+        if value.chars().any(char::is_control) {
+            return Err(RemoteError::new(
+                ErrorCode::InvalidRequest,
+                format!("label {field} contains a control character"),
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::Registry;
+    use super::{validate_label, Registry};
+    use crate::protocol::methods::{ResourceLabel, MAX_LABEL_KIND_CHARS, MAX_LABEL_NAME_CHARS};
     use crate::protocol::ErrorCode;
+
+    fn label(kind: &str, name: &str) -> ResourceLabel {
+        ResourceLabel {
+            kind: kind.into(),
+            name: name.into(),
+        }
+    }
+
+    #[test]
+    fn labels_within_the_limits_are_accepted() {
+        validate_label(None).unwrap();
+        validate_label(Some(&label("run", "Server"))).unwrap();
+        // The limits count characters, so a name in Chinese may use three
+        // times as many bytes.
+        validate_label(Some(&label(
+            &"k".repeat(MAX_LABEL_KIND_CHARS),
+            &"运".repeat(MAX_LABEL_NAME_CHARS),
+        )))
+        .unwrap();
+    }
+
+    #[test]
+    fn labels_that_break_a_rule_are_invalid_requests() {
+        let long_kind = "k".repeat(MAX_LABEL_KIND_CHARS + 1);
+        let long_name = "运".repeat(MAX_LABEL_NAME_CHARS + 1);
+        for (rejected, field) in [
+            (label(&long_kind, "Server"), "kind"),
+            (label("run", &long_name), "name"),
+            (label("run\n", "Server"), "kind"),
+            (label("run", "\u{1b}[31mServer"), "name"),
+        ] {
+            let error = validate_label(Some(&rejected)).unwrap_err();
+            assert_eq!(error.code, ErrorCode::InvalidRequest);
+            assert!(error.message.contains(field), "{}", error.message);
+            assert!(!error.message.contains("Server"), "{}", error.message);
+        }
+    }
 
     #[test]
     fn bounded_registries_refuse_starts_until_an_entry_ends() {

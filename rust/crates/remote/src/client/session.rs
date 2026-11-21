@@ -872,13 +872,14 @@ fn spawn(chain: &TransportChain, server_command: &[String]) -> Result<Child, Cli
     let (program, arguments) = command
         .split_first()
         .ok_or_else(|| ClientError::Protocol("empty server command".into()))?;
-    Command::new(program)
+    let mut process = Command::new(program);
+    process
         .args(arguments)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(ClientError::Spawn)
+        .stderr(Stdio::piped());
+    chain.restrict_environment(&mut process);
+    process.spawn().map_err(ClientError::Spawn)
 }
 
 /// Log token for why the server stream ended; never peer bytes.

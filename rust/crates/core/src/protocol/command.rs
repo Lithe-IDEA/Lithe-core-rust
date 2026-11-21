@@ -1016,6 +1016,11 @@ pub enum RemoteCommand {
     StopForward,
     /// Lists the running port forwards of one connection (`remote.forwards`).
     Forwards,
+    /// Reads the SSH connections the user saved (`remote.connections`).
+    Connections,
+    /// Saves, removes or records a folder on one saved SSH connection
+    /// (`remote.editConnections`).
+    EditConnections,
 }
 
 #[derive(Debug, Clone)]
@@ -1583,6 +1588,8 @@ impl CoreCommand {
             "remote.startForward" => Some(Self::Remote(RemoteCommand::StartForward)),
             "remote.stopForward" => Some(Self::Remote(RemoteCommand::StopForward)),
             "remote.forwards" => Some(Self::Remote(RemoteCommand::Forwards)),
+            "remote.connections" => Some(Self::Remote(RemoteCommand::Connections)),
+            "remote.editConnections" => Some(Self::Remote(RemoteCommand::EditConnections)),
             "git.historyRewritePreview" => Some(Self::Git(GitCommand::HistoryRewritePreview)),
             "git.remotes" => Some(Self::Git(GitCommand::Remotes)),
             "git.tags" => Some(Self::Git(GitCommand::Tags)),

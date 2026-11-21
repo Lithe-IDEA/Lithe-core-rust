@@ -213,6 +213,12 @@ pub(crate) fn encode_hex(bytes: &[u8]) -> String {
     hex
 }
 
+/// Whether `value` spells a SHA-256 digest: 64 hex digits of either case.
+/// Requests are checked with it before a digest is compared or sent.
+pub fn is_sha256_hex(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
 // ---------------------------------------------------------------------------
 // Server and session
 // ---------------------------------------------------------------------------
@@ -476,6 +482,13 @@ pub struct ProcessState {
     pub pid: u32,
     /// Program and arguments the process was spawned with.
     pub argv: Vec<String>,
+    /// The label the process was spawned with.
+    #[serde(default)]
+    pub label: Option<ResourceLabel>,
+    /// Milliseconds since the server started the process, on the server's
+    /// monotonic clock, so it stays right across client restarts and clock
+    /// differences between the machines.
+    pub running_ms: u64,
     /// The process itself exited, but members of its session still run;
     /// `process.kill` still reaches them.
     pub leader_exited: bool,
@@ -489,10 +502,43 @@ pub struct TerminalState {
     pub terminal_id: u64,
     /// Operating-system pid of the terminal's program, for diagnostics only.
     pub pid: u32,
+    /// Program and arguments the terminal runs: those it was opened with,
+    /// or the path of the login shell it started by default.
+    pub argv: Vec<String>,
+    /// The label the terminal was opened with.
+    #[serde(default)]
+    pub label: Option<ResourceLabel>,
+    /// Milliseconds since the server started the terminal's program, on the
+    /// server's monotonic clock.
+    pub running_ms: u64,
     /// Current width in character cells.
     pub columns: u16,
     /// Current height in character cells.
     pub rows: u16,
+}
+
+/// Longest [`ResourceLabel::kind`], in characters.
+pub const MAX_LABEL_KIND_CHARS: usize = 64;
+/// Longest [`ResourceLabel::name`], in characters.
+pub const MAX_LABEL_NAME_CHARS: usize = 256;
+
+/// What a client shows for a process or terminal when it lists the session's
+/// resources: when a window closes while they still run, or after a new
+/// client reconnects to a persistent session and no longer knows what it
+/// started. The server keeps it unchanged with the resource and returns it in
+/// `server.state`; it never interprets it.
+///
+/// Neither field may contain control characters; a label that breaks a rule
+/// fails the request with `INVALID_REQUEST`.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResourceLabel {
+    /// Client-defined category, such as `run`, `task` or `debug`; at most
+    /// [`MAX_LABEL_KIND_CHARS`].
+    pub kind: String,
+    /// Name shown to the user, such as a run configuration's name; at most
+    /// [`MAX_LABEL_NAME_CHARS`].
+    pub name: String,
 }
 
 /// An active watch.
@@ -945,6 +991,9 @@ pub struct SpawnParams {
     /// process reads end-of-file immediately.
     #[serde(default)]
     pub pipe_stdin: bool,
+    /// What `server.state` reports for the process.
+    #[serde(default)]
+    pub label: Option<ResourceLabel>,
 }
 
 /// Result of `process.spawn`.
@@ -1046,6 +1095,9 @@ pub struct TerminalOpenParams {
     pub columns: u16,
     /// Initial height in character cells.
     pub rows: u16,
+    /// What `server.state` reports for the terminal.
+    #[serde(default)]
+    pub label: Option<ResourceLabel>,
 }
 
 /// Result of `terminal.open`.

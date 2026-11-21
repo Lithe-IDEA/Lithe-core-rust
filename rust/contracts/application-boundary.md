@@ -381,11 +381,9 @@ or remote failures. The shape is pinned by
 
 ## Error Codes
 
-Use stable categories rather than platform error strings:
+Use stable categories rather than platform error strings. Each code has one
+meaning; `lithe_protocol::ErrorCode` documents when it is reported:
 
-- `git_branch_not_merged`
-- `git_branch_changed`
-- `git_untrusted_workspace`: the workspace is not trusted, so Git did not start
 - `invalid_request`
 - `workspace_not_found`
 - `permission_denied`
@@ -393,12 +391,27 @@ Use stable categories rather than platform error strings:
 - `runtime_missing`
 - `process_start_failed`
 - `process_failed`
+- `git_branch_exists`
+- `git_branch_not_merged`
+- `git_branch_changed`
+- `git_checkout_changed`
+- `git_authentication_failed`
+- `git_worktree_not_registered`
+- `git_worktree_primary`
+- `git_worktree_current`
+- `git_worktree_locked`
+- `git_worktree_has_changes`
+- `git_commit_author_invalid`
+- `git_untrusted_workspace`: the workspace is not trusted, so Git did not start
 - `parse_failed`
+- `encoding_unmappable`
 - `cancelled`
 - `timed_out`
 - `connection_closed`: the remote connection the request names closed or was lost
 - `forward_target_not_confirmed`: a port forward reaches another machine through the remote host and the user has not confirmed it
 - `forward_limit_reached`: the remote connection keeps the most port forwards it allows
+- `remote_server_invalid`: the server build `remote.connect` would send cannot
+  be read or is not the build its SHA-256 names
 - `unknown`
 
 GitHub authorization is independent of a Lithe account. Device Flow is the

@@ -9,118 +9,17 @@ use std::sync::atomic::{AtomicU64, Ordering};
 #[cfg(unix)]
 use std::sync::OnceLock;
 
-fn connection(value: serde_json::Value) -> SshConnection {
-    serde_json::from_value(value).expect("valid connection")
-}
-
-/// The local command line the connection produces for the probe.
-fn command_line(value: serde_json::Value) -> Vec<String> {
-    let hop = ssh_hop(&connection(value)).expect("valid hop");
-    TransportChain::new(vec![Hop::Ssh(hop)])
-        .command(&probe_command())
-        .unwrap()
-}
-
-fn option_value(command: &[String], key: &str) -> Option<String> {
-    command
-        .windows(2)
-        .filter(|pair| pair[0] == "-o")
-        .find_map(|pair| pair[1].strip_prefix(&format!("{key}=")).map(str::to_owned))
-}
-
+// The connection rules live in `lithe_remote::client::connections`; the
+// probe only reports a refusal as a bad request that names the field.
 #[test]
-fn private_key_connections_offer_only_the_chosen_key() {
-    let command = command_line(json!({
-        "host": "devbox.example",
-        "port": 2222,
-        "user": "dev",
-        "authentication": "privateKey",
-        "identityFile": "~/.ssh/id_ed25519",
-        "connectTimeoutSeconds": 20,
-        "keepAliveSeconds": 30,
-    }));
-    assert!(command.windows(2).any(|pair| pair == ["-p", "2222"]));
-    assert_eq!(&command[command.len() - 2], "dev@devbox.example");
-    assert_eq!(
-        option_value(&command, "IdentityFile").as_deref(),
-        Some("~/.ssh/id_ed25519")
-    );
-    assert_eq!(
-        option_value(&command, "IdentitiesOnly").as_deref(),
-        Some("yes")
-    );
-    assert_eq!(
-        option_value(&command, "PreferredAuthentications").as_deref(),
-        Some("publickey")
-    );
-    assert_eq!(
-        option_value(&command, "ConnectTimeout").as_deref(),
-        Some("20")
-    );
-    // OpenSSH keeps the first value, so the profile's interval must come
-    // before the transport's default.
-    assert_eq!(
-        option_value(&command, "ServerAliveInterval").as_deref(),
-        Some("30")
-    );
-    assert_eq!(option_value(&command, "BatchMode").as_deref(), Some("no"));
-}
-
-#[test]
-fn other_authentication_methods_select_matching_ssh_options() {
-    let password = command_line(json!({ "host": "h", "authentication": "password" }));
-    assert_eq!(
-        option_value(&password, "PreferredAuthentications").as_deref(),
-        Some("keyboard-interactive,password")
-    );
-    assert_eq!(
-        option_value(&password, "PubkeyAuthentication").as_deref(),
-        Some("no")
-    );
-
-    let agent = command_line(json!({ "host": "h", "authentication": "agent" }));
-    assert_eq!(
-        option_value(&agent, "PreferredAuthentications").as_deref(),
-        Some("publickey")
-    );
-    assert_eq!(option_value(&agent, "IdentityFile"), None);
-
-    // Automatic leaves the order to OpenSSH and the user's configuration,
-    // and an alias without a user or port stays untouched.
-    let automatic = command_line(json!({ "host": "devbox" }));
-    assert_eq!(option_value(&automatic, "PreferredAuthentications"), None);
-    assert_eq!(&automatic[automatic.len() - 2], "devbox");
-    assert!(!automatic.iter().any(|argument| argument == "-p"));
-    assert_eq!(
-        option_value(&automatic, "ConnectTimeout").as_deref(),
-        Some(DEFAULT_CONNECT_TIMEOUT_SECONDS.to_string().as_str())
-    );
-}
-
-#[test]
-fn malformed_connections_are_rejected_before_ssh_starts() {
-    for value in [
-        json!({ "host": "" }),
-        json!({ "host": "dev@box" }),
-        json!({ "host": "-oProxyCommand=touch x" }),
-        json!({ "host": "box", "user": "-oProxyCommand=x" }),
-        json!({ "host": "box", "user": "a b" }),
-        json!({ "host": "box", "authentication": "privateKey" }),
-    ] {
-        let hop = ssh_hop(&connection(value.clone()));
-        let command = hop.and_then(|hop| {
-            TransportChain::new(vec![Hop::Ssh(hop)])
-                .command(&probe_command())
-                .map_err(|error| CoreError::new(ErrorCode::InvalidRequest, error.to_string()))
-        });
-        assert!(
-            matches!(command, Err(ref error) if matches!(error.code, ErrorCode::InvalidRequest)),
-            "{value} was accepted"
-        );
-    }
-    assert!(
-        serde_json::from_value::<SshConnection>(json!({ "host": "h", "password": "x" })).is_err()
-    );
+fn malformed_connections_name_the_field_in_the_error() {
+    let connection: SshConnection =
+        serde_json::from_value(json!({ "host": "dev@box" })).expect("decodes");
+    let error = ssh_hop(&connection).expect_err("host with a user is refused");
+    assert!(matches!(error.code, ErrorCode::InvalidRequest));
+    let details: serde_json::Value =
+        serde_json::from_str(error.details.as_deref().expect("details")).unwrap();
+    assert_eq!(details, json!({ "field": "host", "reason": "invalid" }));
 }
 
 #[test]
@@ -344,6 +243,50 @@ fn connecting_without_a_matching_server_reports_the_platform() {
     assert_eq!(value["host"]["system"], local_uname("-s"));
 }
 
+/// Variables the fake client started with, as its body wrote them with
+/// `env > "$0.environment"`.
+#[cfg(unix)]
+fn environment_seen_by(ssh: &FakeSsh) -> std::collections::BTreeMap<String, String> {
+    std::fs::read_to_string(ssh.program.with_extension("environment"))
+        .unwrap()
+        .lines()
+        .filter_map(|line| line.split_once('='))
+        .map(|(name, value)| (name.to_owned(), value.to_owned()))
+        .collect()
+}
+
+// ssh sends the remote host every local variable a `SendEnv` pattern names,
+// so the probe and the connection start it with only the variables it needs
+// and the AskPass helper's (S26).
+#[cfg(unix)]
+#[test]
+fn the_ssh_client_starts_with_only_the_variables_it_needs() {
+    // Cargo sets its package variables for every test process; none is kept.
+    assert!(std::env::var_os("CARGO_PKG_NAME").is_some());
+    let body = "env > \"$0.environment\"\n\
+                echo 'dev@devbox: Permission denied (password).' >&2\nexit 255";
+    let probing = FakeSsh::new("remote-probe-environment", body);
+    probe_with(probe_request(), Some(probing.path())).unwrap();
+    let connecting = FakeSsh::new("remote-connect-environment", body);
+    sessions::connect_with(connect_request(json!([])), Some(connecting.path())).unwrap();
+    for ssh in [&probing, &connecting] {
+        let seen = environment_seen_by(ssh);
+        // Names only: values may be secrets of the machine running the test.
+        let names = seen.keys().collect::<Vec<_>>();
+        assert!(!seen.contains_key("CARGO_PKG_NAME"), "{names:?}");
+        assert!(!seen.contains_key("LANG"), "{names:?}");
+        assert_eq!(
+            seen.get("PATH").map(String::as_str),
+            std::env::var("PATH").ok().as_deref()
+        );
+        assert_eq!(
+            seen.get("SSH_ASKPASS_REQUIRE").map(String::as_str),
+            Some("force"),
+            "{names:?}"
+        );
+    }
+}
+
 // The connection log keeps one category per failed status, so a log line
 // tells authentication, host key and network failures apart.
 #[test]
@@ -370,15 +313,62 @@ fn every_failed_status_has_its_own_log_category() {
 
 #[cfg(unix)]
 #[test]
-fn unknown_server_targets_are_rejected() {
-    let request: sessions::ConnectRequest = serde_json::from_value(json!({
+fn unknown_server_targets_and_malformed_hashes_are_rejected() {
+    for server in [
+        json!({ "target": "riscv64-unknown-linux-musl", "path": "/nowhere", "sha256": "0".repeat(64) }),
+        json!({ "target": "x86_64-unknown-linux-musl", "path": "/nowhere", "sha256": "0".repeat(63) }),
+        json!({ "target": "x86_64-unknown-linux-musl", "path": "/nowhere", "sha256": format!("{}z", "0".repeat(63)) }),
+    ] {
+        let error = sessions::connect(connect_request(json!([server]))).unwrap_err();
+        assert!(matches!(error.code, ErrorCode::InvalidRequest), "{error:?}");
+    }
+    // The expected hash is required: Core never derives it from the file.
+    let missing_hash = serde_json::from_value::<sessions::ConnectRequest>(json!({
         "connection": { "host": "devbox" },
-        "servers": [{ "target": "riscv64-unknown-linux-musl", "path": "/nowhere" }],
+        "servers": [{ "target": "x86_64-unknown-linux-musl", "path": "/nowhere" }],
         "serverVersion": "0.1.0",
-    }))
-    .unwrap();
-    let error = sessions::connect(request).unwrap_err();
-    assert!(matches!(error.code, ErrorCode::InvalidRequest), "{error:?}");
+    }));
+    assert!(missing_hash.is_err());
+}
+
+// The build for the host's platform is read once the shell reports the
+// platform. A file that cannot be read, or whose bytes are not the build the
+// request's SHA-256 describes, is refused before anything reaches the host.
+#[cfg(unix)]
+#[test]
+fn a_server_build_that_is_not_the_expected_one_is_never_installed() {
+    let ssh = FakeSsh::new(
+        "remote-connect-replaced",
+        "for last; do :; done\nexec /bin/sh -c \"$last\"",
+    );
+    let target =
+        lithe_remote::client::ServerTarget::from_uname(&local_uname("-s"), &local_uname("-m"))
+            .expect("the test machine has a server target")
+            .rust_target();
+    let replaced = ssh.root.join("replaced-server");
+    std::fs::write(&replaced, b"not the build the manifest describes").unwrap();
+    let install_root = ssh.root.join("install");
+    for (path, problem) in [
+        (replaced.clone(), "does not match the expected SHA-256"),
+        (ssh.root.join("missing-server"), "could not be read"),
+    ] {
+        let request: sessions::ConnectRequest = serde_json::from_value(json!({
+            "connection": { "host": "devbox", "user": "dev" },
+            "servers": [{ "target": target, "path": path, "sha256": "ab".repeat(32) }],
+            "serverVersion": "0.1.0",
+            "installRoot": install_root,
+        }))
+        .unwrap();
+        let error = sessions::connect_with(request, Some(ssh.path())).unwrap_err();
+        assert!(
+            matches!(error.code, ErrorCode::RemoteServerInvalid),
+            "{error:?}"
+        );
+        let details = error.details.unwrap_or_default();
+        assert!(details.contains(problem), "{details}");
+        assert!(!details.contains(path.to_str().unwrap()), "{details}");
+    }
+    assert!(!install_root.exists());
 }
 
 #[cfg(unix)]
@@ -401,22 +391,6 @@ fn closed_connections_cannot_be_used() {
 fn closing_all_connections_with_none_open_succeeds() {
     let connections = std::sync::Mutex::new(std::collections::HashMap::new());
     assert_eq!(sessions::close_registry(&connections), 0);
-}
-
-// ssh splits an option value on whitespace, so a key path with spaces must
-// reach it quoted.
-#[cfg(unix)]
-#[test]
-fn private_key_paths_with_spaces_are_quoted() {
-    let command = command_line(json!({
-        "host": "devbox.example",
-        "authentication": "privateKey",
-        "identityFile": "/Users/me/My Keys/id_rsa",
-    }));
-    assert_eq!(
-        option_value(&command, "IdentityFile").as_deref(),
-        Some("\"/Users/me/My Keys/id_rsa\"")
-    );
 }
 
 /// A scratch directory no other fixture shares, even across processes.

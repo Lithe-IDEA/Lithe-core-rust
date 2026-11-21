@@ -218,8 +218,8 @@ impl ConnectionLog {
             "reused"
         };
         let mut fields = vec![
-            ("target", json!(artifact.target.rust_target())),
-            ("server_version", json!(artifact.version)),
+            ("target", json!(artifact.target().rust_target())),
+            ("server_version", json!(artifact.version())),
             ("action", json!(action)),
             ("verification", json!(deployment.verification.as_str())),
             ("duration_ms", millis(duration)),

@@ -10,9 +10,10 @@
 //! directory, so clients of different releases can share a host.
 
 use sha2::{Digest, Sha256};
-use std::fs::File;
+use std::fmt;
 use std::io;
-use std::path::PathBuf;
+use std::path::Path;
+use std::sync::Arc;
 
 const PROBE_BEGIN: &str = "LITHE-PROBE-BEGIN";
 const PROBE_END: &str = "LITHE-PROBE-END";
@@ -92,36 +93,112 @@ impl ServerTarget {
     }
 }
 
-/// A server binary available on the local machine.
+/// A server binary held in memory together with its identity.
+///
+/// The bytes are read once. The SHA-256 sent to the host, the bytes uploaded
+/// and the bytes checked against the caller's expected hash are therefore the
+/// same: replacing the file after the check changes nothing that is sent.
 #[derive(Clone, Debug)]
 pub struct ServerArtifact {
-    /// Platform the binary runs on.
-    pub target: ServerTarget,
-    /// Location of the binary on the local machine.
-    pub path: PathBuf,
-    /// Server version, the first part of the install directory name.
-    pub version: String,
-    /// Lowercase hex SHA-256 of the binary; the host must compute the same hash.
-    pub sha256: String,
+    target: ServerTarget,
+    version: String,
+    sha256: String,
+    binary: Arc<[u8]>,
 }
 
 impl ServerArtifact {
-    /// Describes a binary on disk, hashing it.
-    pub fn from_file(
+    /// Reads the binary at `path` and accepts it only when its SHA-256 is
+    /// `expected_sha256`. The expected hash must come from something the
+    /// local file cannot change, for example a manifest built and signed
+    /// together with the application; then a binary replaced on the local
+    /// disk is refused instead of being uploaded to the host.
+    pub fn read_verified(
         target: ServerTarget,
-        path: PathBuf,
+        path: &Path,
         version: impl Into<String>,
-    ) -> io::Result<Self> {
-        let mut hasher = Sha256::new();
-        io::copy(&mut File::open(&path)?, &mut hasher)?;
-        Ok(Self {
+        expected_sha256: &str,
+    ) -> Result<Self, ArtifactError> {
+        if !crate::protocol::methods::is_sha256_hex(expected_sha256) {
+            return Err(ArtifactError::InvalidHash);
+        }
+        let binary = std::fs::read(path).map_err(ArtifactError::Io)?;
+        let artifact = Self::from_bytes(target, binary, version);
+        if !artifact.sha256.eq_ignore_ascii_case(expected_sha256) {
+            return Err(ArtifactError::Mismatch {
+                actual: artifact.sha256,
+            });
+        }
+        Ok(artifact)
+    }
+
+    /// Describes bytes the caller already holds, hashing them. Suits callers
+    /// that produced the binary themselves, such as tests that build it.
+    pub fn from_bytes(
+        target: ServerTarget,
+        binary: impl Into<Arc<[u8]>>,
+        version: impl Into<String>,
+    ) -> Self {
+        let binary = binary.into();
+        Self {
             target,
-            path,
             version: version.into(),
-            sha256: crate::protocol::methods::encode_hex(&hasher.finalize()),
-        })
+            sha256: crate::protocol::methods::encode_hex(&Sha256::digest(&binary)),
+            binary,
+        }
+    }
+
+    /// Platform the binary runs on.
+    pub fn target(&self) -> ServerTarget {
+        self.target
+    }
+
+    /// Server version, the first part of the install directory name.
+    pub fn version(&self) -> &str {
+        &self.version
+    }
+
+    /// Lowercase hex SHA-256 of [`Self::binary`]; the host must compute the
+    /// same hash before it runs the server.
+    pub fn sha256(&self) -> &str {
+        &self.sha256
+    }
+
+    /// The bytes uploaded when the host has no matching server installed.
+    pub fn binary(&self) -> &[u8] {
+        &self.binary
     }
 }
+
+/// Why [`ServerArtifact::read_verified`] refused a binary.
+#[derive(Debug)]
+pub enum ArtifactError {
+    /// The expected SHA-256 is not 64 hexadecimal digits.
+    InvalidHash,
+    /// The binary could not be read.
+    Io(io::Error),
+    /// The binary's SHA-256 is not the expected one.
+    Mismatch {
+        /// Lowercase hex SHA-256 of the bytes that were read.
+        actual: String,
+    },
+}
+
+impl fmt::Display for ArtifactError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidHash => {
+                formatter.write_str("the expected SHA-256 is not 64 hexadecimal digits")
+            }
+            Self::Io(error) => write!(formatter, "the server binary could not be read: {error}"),
+            Self::Mismatch { actual } => write!(
+                formatter,
+                "the server binary does not match the expected SHA-256; its SHA-256 is {actual}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ArtifactError {}
 
 /// What the probe reported about the end of a chain.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -288,6 +365,91 @@ LITHE-PROBE-BEGIN\nLinux\nx86_64\n/root\nLITHE-PROBE-END\n";
         );
         assert_eq!(mac.memory_bytes, Some(17_179_869_184));
         assert_eq!(mac.cpu_count, None);
+    }
+
+    /// A private file removed when the test ends, also after a failed assertion.
+    struct TempFile(std::path::PathBuf);
+
+    impl TempFile {
+        fn new(name: &str, contents: &[u8]) -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "lithe-remote-artifact-{name}-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            std::fs::write(&path, contents).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for TempFile {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+
+    const BINARY: &[u8] = b"server build";
+
+    fn sha256_of(bytes: &[u8]) -> String {
+        crate::protocol::methods::encode_hex(&Sha256::digest(bytes))
+    }
+
+    // The hash sent to the host and the bytes uploaded are the ones checked,
+    // so replacing the file after the check does not change the upload.
+    #[test]
+    fn a_verified_binary_keeps_the_bytes_that_were_checked() {
+        let file = TempFile::new("keeps", BINARY);
+        let expected = sha256_of(BINARY).to_ascii_uppercase();
+        let artifact =
+            ServerArtifact::read_verified(ServerTarget::LinuxX86_64, &file.0, "1.0.0", &expected)
+                .unwrap();
+        std::fs::write(&file.0, b"replaced afterwards").unwrap();
+        assert_eq!(artifact.binary(), BINARY);
+        assert_eq!(artifact.sha256(), sha256_of(BINARY));
+        assert_eq!(artifact.target(), ServerTarget::LinuxX86_64);
+        assert_eq!(artifact.version(), "1.0.0");
+    }
+
+    #[test]
+    fn a_binary_that_differs_from_the_expected_hash_is_refused() {
+        let file = TempFile::new("differs", b"replaced build");
+        let refused = ServerArtifact::read_verified(
+            ServerTarget::LinuxAarch64,
+            &file.0,
+            "1.0.0",
+            &sha256_of(BINARY),
+        );
+        assert!(
+            matches!(&refused, Err(ArtifactError::Mismatch { actual })
+                if *actual == sha256_of(b"replaced build")),
+            "{refused:?}"
+        );
+    }
+
+    // A malformed expectation is refused before the file is read, so it can
+    // never be compared against, or confused with, a missing file.
+    #[test]
+    fn a_malformed_expected_hash_is_refused_before_reading() {
+        let missing = std::env::temp_dir().join("lithe-remote-artifact-never-created");
+        for expected in [
+            String::new(),
+            "0".repeat(63),
+            format!("{}g", "0".repeat(63)),
+        ] {
+            assert!(matches!(
+                ServerArtifact::read_verified(ServerTarget::LinuxX86_64, &missing, "1", &expected),
+                Err(ArtifactError::InvalidHash)
+            ));
+        }
+        assert!(matches!(
+            ServerArtifact::read_verified(
+                ServerTarget::LinuxX86_64,
+                &missing,
+                "1",
+                &"0".repeat(64)
+            ),
+            Err(ArtifactError::Io(error)) if error.kind() == io::ErrorKind::NotFound
+        ));
     }
 
     // The probe crosses SSH hops through the transport's quoting, which

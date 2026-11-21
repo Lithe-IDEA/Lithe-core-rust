@@ -1,5 +1,7 @@
 //! Client side of Lithe remote workspaces.
 //!
+//! - [`connections`] keeps the SSH connections the user saved and turns each
+//!   into an SSH hop with allowlisted options only.
 //! - [`transport`] turns a chain of hops (SSH, container exec) into the local
 //!   command line that runs a program at the end of the chain.
 //! - [`bootstrap`] probes the platform at the end of the chain and describes
@@ -28,6 +30,7 @@ pub mod bootstrap;
 #[cfg(all(test, unix))]
 mod command;
 pub mod connection_log;
+pub mod connections;
 pub mod forward;
 pub mod forward_set;
 pub mod launch;
@@ -36,7 +39,7 @@ pub mod transport;
 pub mod trust;
 
 pub use api::{SpawnSpec, TerminalSpec, WriteOptions};
-pub use bootstrap::{ServerArtifact, ServerTarget};
+pub use bootstrap::{ArtifactError, ServerArtifact, ServerTarget};
 pub use connection_log::{ConnectionKind, ConnectionLog};
 pub use forward::PortForward;
 pub use forward_set::{ForwardError, ForwardInfo, ForwardSet, ForwardSpec, TargetField};

@@ -212,6 +212,7 @@ pub(super) fn parameters(
         environment: EnvironmentSource::Login,
         env,
         pipe_stdin,
+        label: None,
     })
 }
 
@@ -278,6 +279,7 @@ fn remote_git_executable(
                     environment: EnvironmentSource::Login,
                     env: BTreeMap::new(),
                     pipe_stdin: false,
+                    label: None,
                 },
                 None,
                 &mut |event| {

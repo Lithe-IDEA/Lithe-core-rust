@@ -203,6 +203,36 @@ pub(super) fn dispatch(command: RemoteCommand, id: Option<String>, payload: Valu
                 Err(error) => CoreResponse::failure(id, error),
             }
         }
+        RemoteCommand::Connections => {
+            match serde_json::from_value(payload)
+                .map_err(|error| {
+                    CoreError::new(
+                        ErrorCode::InvalidRequest,
+                        "Invalid remote connections request",
+                    )
+                    .with_details(error.to_string())
+                })
+                .and_then(lithe_workspace::connections::list)
+            {
+                Ok(value) => CoreResponse::success(id, value),
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
+        RemoteCommand::EditConnections => {
+            match serde_json::from_value(payload)
+                .map_err(|error| {
+                    CoreError::new(
+                        ErrorCode::InvalidRequest,
+                        "Invalid remote connections request",
+                    )
+                    .with_details(error.to_string())
+                })
+                .and_then(lithe_workspace::connections::edit)
+            {
+                Ok(value) => CoreResponse::success(id, value),
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
         RemoteCommand::Disconnect => {
             match serde_json::from_value::<lithe_workspace::sessions::DisconnectRequest>(payload) {
                 Ok(request) => CoreResponse::success(
