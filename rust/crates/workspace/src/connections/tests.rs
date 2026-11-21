@@ -120,6 +120,112 @@ fn each_edit_carries_exactly_one_operation() {
 }
 
 #[test]
+fn a_query_lists_only_the_matching_sections() {
+    let first = edit(edit_request(json!({
+        "document": null,
+        "save": { "name": "Web", "connection": { "host": "web.example" }, "group": "Production" },
+    })))
+    .unwrap();
+    let second = edit(edit_request(json!({
+        "document": first["document"],
+        "save": { "name": "Lab", "connection": { "host": "lab.example", "user": "dev" } },
+    })))
+    .unwrap();
+    let lab = second["id"].clone();
+
+    let listed = list(list_request(json!({
+        "document": second["document"],
+        "query": "DEV lab",
+    })))
+    .unwrap();
+
+    assert_eq!(listed["sections"], json!([{ "group": null, "ids": [lab] }]));
+    assert_eq!(listed["connections"].as_array().unwrap().len(), 2);
+}
+
+#[test]
+fn an_address_is_split_into_fields_or_names_the_field_to_fix() {
+    let address =
+        parse_address(serde_json::from_value(json!({ "text": "dev@build-box:2222" })).unwrap())
+            .unwrap();
+    assert_eq!(
+        address,
+        json!({ "host": "build-box", "user": "dev", "port": 2222 })
+    );
+
+    let error = parse_address(serde_json::from_value(json!({ "text": "box:99999" })).unwrap())
+        .expect_err("port out of range");
+    assert_eq!(
+        details(&error),
+        json!({ "field": "port", "reason": "invalid" })
+    );
+}
+
+#[test]
+fn an_import_adds_entries_under_free_names_and_fills_labels() {
+    let first = edit(edit_request(json!({
+        "document": null,
+        "save": { "name": "Web", "connection": { "host": "web.example" } },
+    })))
+    .unwrap();
+    let web = first["id"].as_str().unwrap().to_owned();
+
+    let imported = edit(edit_request(json!({
+        "document": first["document"],
+        "import": {
+            "entries": [{
+                "name": "web",
+                "connection": { "host": "web2.example" },
+                "color": "blue",
+                "group": "Imported",
+            }],
+            "fills": [{ "id": web, "color": "green", "group": "Production" }],
+        },
+    })))
+    .unwrap();
+
+    assert_eq!(imported["changed"], json!(true));
+    let ids = imported["ids"].as_array().unwrap();
+    assert_eq!(ids.len(), 1);
+    let connections = imported["connections"].as_array().unwrap();
+    assert_eq!(connections[0]["color"], json!("green"));
+    assert_eq!(connections[0]["group"], json!("Production"));
+    assert_eq!(connections[1]["id"], ids[0]);
+    assert_eq!(connections[1]["name"], json!("web (2)"));
+    assert_eq!(connections[1]["group"], json!("Imported"));
+}
+
+#[test]
+fn marking_a_connection_records_when_it_was_last_connected() {
+    let first = edit(edit_request(json!({
+        "document": null,
+        "save": { "name": "Web", "connection": { "host": "web.example" } },
+    })))
+    .unwrap();
+    let web = first["id"].clone();
+
+    let marked = edit(edit_request(json!({
+        "document": first["document"],
+        "markConnected": { "id": web },
+    })))
+    .unwrap();
+
+    let at = marked["connections"][0]["lastConnectedAt"]
+        .as_u64()
+        .expect("timestamp");
+    assert!(at > 1_700_000_000, "{at}");
+    let error = edit(edit_request(json!({
+        "document": first["document"],
+        "markConnected": { "id": "absent" },
+    })))
+    .expect_err("unknown entry");
+    assert_eq!(
+        details(&error),
+        json!({ "field": "id", "reason": "unknown" })
+    );
+}
+
+#[test]
 fn a_damaged_source_is_a_parse_failure_and_a_bad_edit_is_a_bad_request() {
     let error = list(list_request(
         json!({ "document": "{\"version\":2,\"connections\":[]}" }),

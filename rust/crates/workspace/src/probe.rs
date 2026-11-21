@@ -9,6 +9,7 @@
 //!
 //! Note: .agents/notes/implemented/feature/2026-10-24-remote-ssh-connections.md
 
+use lithe_git_host::authentication::Challenge;
 use lithe_protocol::{CoreError, ErrorCode};
 use lithe_remote::client::bootstrap::{parse_probe, probe_command};
 use lithe_remote::client::connections::SshConnection;
@@ -131,17 +132,7 @@ fn probe_with(request: ProbeRequest, ssh_program: Option<&str>) -> Result<ProbeR
                 ));
             } else {
                 match authentication.poll() {
-                    Ok(challenges) => {
-                        for challenge in challenges {
-                            execution_events::emit(serde_json::json!({
-                                "type": "authentication",
-                                "requestId": challenge.request_id,
-                                "prompt": execution_events::redact(&challenge.prompt),
-                                "secret": challenge.secret,
-                                "attempt": challenge.attempt,
-                            }));
-                        }
-                    }
+                    Ok(challenges) => challenges.into_iter().for_each(relay_challenge),
                     Err(error) => {
                         stop = Some(
                             CoreError::new(
@@ -182,6 +173,33 @@ fn probe_with(request: ProbeRequest, ssh_program: Option<&str>) -> Result<ProbeR
 /// Answers a prompt that a running probe relayed.
 pub fn respond(request_id: &str, answer: Option<String>) -> bool {
     lithe_git_host::authentication::respond(request_id, answer)
+}
+
+/// Relays one OpenSSH question as an `authentication` event. `kind` tells
+/// the window which form to show; a host key question also carries the
+/// key's algorithm and fingerprint, which are public.
+pub(crate) fn relay_challenge(challenge: Challenge) {
+    execution_events::emit(challenge_event(&challenge));
+}
+
+/// The `authentication` event of `challenge`.
+pub(crate) fn challenge_event(challenge: &Challenge) -> serde_json::Value {
+    let prompt = lithe_remote::client::prompt::classify(&challenge.prompt);
+    let mut event = serde_json::json!({
+        "type": "authentication",
+        "requestId": challenge.request_id,
+        "prompt": execution_events::redact(&challenge.prompt),
+        "secret": challenge.secret,
+        "attempt": challenge.attempt,
+        "kind": prompt.kind,
+    });
+    if let Some(key_type) = prompt.key_type {
+        event["keyType"] = key_type.into();
+    }
+    if let Some(fingerprint) = prompt.fingerprint {
+        event["fingerprint"] = fingerprint.into();
+    }
+    event
 }
 
 /// The SSH hop of `connection`, refused with the field and the reason when

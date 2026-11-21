@@ -726,3 +726,280 @@ fn stored_documents_are_checked_like_edits() {
         );
     }
 }
+
+#[test]
+fn quick_connect_addresses_split_into_user_host_and_port() {
+    let parsed = |text: &str| parse_address(text).expect(text);
+    assert_eq!(
+        parsed("dev@build.example:2222"),
+        Address {
+            host: "build.example".into(),
+            user: Some("dev".into()),
+            port: Some(2222),
+        }
+    );
+    assert_eq!(parsed("  build-box  ").host, "build-box");
+    assert_eq!(parsed("build-box").user, None);
+    assert_eq!(parsed("ssh://ops@10.0.0.8:22/").port, Some(22));
+    assert_eq!(parsed("ssh://ops@10.0.0.8").host, "10.0.0.8");
+    // IPv6 takes a port only in brackets.
+    assert_eq!(parsed("[fe80::1]:2200").host, "fe80::1");
+    assert_eq!(parsed("[fe80::1]:2200").port, Some(2200));
+    assert_eq!(parsed("ci@[fe80::1]").port, None);
+    assert_eq!(parsed("fe80::1").host, "fe80::1");
+    assert_eq!(parsed("fe80::1").port, None);
+}
+
+#[test]
+fn quick_connect_addresses_name_the_field_to_correct() {
+    let refused = |text: &str| parse_address(text).expect_err(text);
+    assert_eq!(refused(""), ConnectionError::at("host", Reason::Required));
+    assert_eq!(
+        refused("ssh://"),
+        ConnectionError::at("host", Reason::Required)
+    );
+    assert_eq!(
+        refused("@build.example"),
+        ConnectionError::at("user", Reason::Required)
+    );
+    for port in [
+        "build.example:",
+        "build.example:0",
+        "build.example:65536",
+        "build.example:+22",
+        "build.example:2x",
+    ] {
+        assert_eq!(
+            refused(port),
+            ConnectionError::at("port", Reason::Invalid),
+            "{port}"
+        );
+    }
+    assert_eq!(
+        refused("[fe80::1"),
+        ConnectionError::at("host", Reason::Invalid)
+    );
+    assert_eq!(
+        refused("[fe80::1]2200"),
+        ConnectionError::at("host", Reason::Invalid)
+    );
+    assert_eq!(refused("build example").field, "host");
+    assert_eq!(refused("-oProxyCommand=x").field, "host");
+}
+
+#[test]
+fn searches_match_every_word_in_name_group_or_address() {
+    let mut connections = Connections::parse(None).unwrap();
+    let staging = connections
+        .save(
+            None,
+            "Staging API",
+            connection(json!({ "host": "api.staging.example", "user": "deploy", "port": 2222 })),
+            Label {
+                color: None,
+                group: Some("Servers".into()),
+            },
+            ids(),
+        )
+        .unwrap();
+    let build = saved(&mut connections, "Build box", "build-box");
+    let ids_of = |sections: Vec<Section<'_>>| -> Vec<String> {
+        sections
+            .into_iter()
+            .flat_map(|section| section.ids.into_iter().map(str::to_owned))
+            .collect()
+    };
+    let found = |query: &str| ids_of(connections.sections_matching(query).unwrap());
+    assert_eq!(found(""), vec![staging.clone(), build.clone()]);
+    assert_eq!(found("  BUILD "), vec![build.clone()]);
+    assert_eq!(found("servers api"), vec![staging.clone()]);
+    assert_eq!(found("deploy@api"), vec![staging.clone()]);
+    assert_eq!(found(":2222"), vec![staging.clone()]);
+    assert!(found("servers build").is_empty());
+    let sections = connections.sections_matching("build").unwrap();
+    assert_eq!(sections.len(), 1);
+    assert_eq!(sections[0].group, None);
+    assert_eq!(
+        connections.sections_matching(&"x".repeat(257)).unwrap_err(),
+        ConnectionError::at("query", Reason::TooLong)
+    );
+}
+
+#[test]
+fn imports_add_entries_with_free_names_and_fill_missing_labels() {
+    let mut connections = Connections::parse(None).unwrap();
+    let build = saved(&mut connections, "Build box", "build-box");
+    let entry = |name: &str, host: &str| ImportEntry {
+        name: name.into(),
+        connection: connection(json!({ "host": host })),
+        color: Some(Color::Green),
+        group: Some("lab".into()),
+    };
+    let fill = LabelFill {
+        id: build.clone(),
+        color: Some(Color::Red),
+        group: Some("Lab".into()),
+    };
+    let added = connections
+        .import(
+            vec![
+                entry("build box", "other.example"),
+                entry("Gpu", "gpu.example"),
+                entry("Gpu", "gpu2.example"),
+            ],
+            vec![fill],
+            ids(),
+        )
+        .unwrap();
+    assert_eq!(added.len(), 3);
+    let names: Vec<&str> = connections
+        .entries()
+        .iter()
+        .map(SavedConnection::name)
+        .collect();
+    assert_eq!(names, ["Build box", "build box (2)", "Gpu", "Gpu (2)"]);
+    let existing = connections.entry(&build).unwrap();
+    assert_eq!(existing.color(), Some(Color::Red));
+    assert_eq!(existing.group(), Some("Lab"));
+    // Imported groups take the spelling already in use.
+    assert!(connections
+        .entries()
+        .iter()
+        .all(|entry| entry.group() == Some("Lab")));
+
+    // A fill never replaces a label the entry has.
+    connections
+        .import(
+            Vec::new(),
+            vec![LabelFill {
+                id: build.clone(),
+                color: Some(Color::Blue),
+                group: Some("Other".into()),
+            }],
+            ids(),
+        )
+        .unwrap();
+    assert_eq!(connections.entry(&build).unwrap().color(), Some(Color::Red));
+    assert_eq!(connections.entry(&build).unwrap().group(), Some("Lab"));
+}
+
+#[test]
+fn a_refused_import_leaves_the_list_as_it_was() {
+    let mut connections = Connections::parse(None).unwrap();
+    saved(&mut connections, "Build box", "build-box");
+    let before = connections.clone();
+    let import = |name: &str, host: &str| ImportEntry {
+        name: name.into(),
+        connection: connection(json!({ "host": host })),
+        color: None,
+        group: None,
+    };
+    let error = connections
+        .import(
+            vec![import("Fine", "fine.example"), import("Broken", "bad host")],
+            Vec::new(),
+            ids(),
+        )
+        .unwrap_err();
+    assert_eq!(error.field, "host");
+    assert_eq!(connections, before);
+    let unknown = connections
+        .import(
+            Vec::new(),
+            vec![LabelFill {
+                id: "missing".into(),
+                color: None,
+                group: None,
+            }],
+            ids(),
+        )
+        .unwrap_err();
+    assert_eq!(unknown, ConnectionError::at("id", Reason::Unknown));
+    assert_eq!(connections, before);
+}
+
+#[test]
+fn existing_entries_are_found_by_host_and_the_fields_both_set() {
+    let mut connections = Connections::parse(None).unwrap();
+    let id = connections
+        .save(
+            None,
+            "Build",
+            connection(json!({ "host": "Build.Example", "user": "ci", "port": 2222 })),
+            Label::default(),
+            ids(),
+        )
+        .unwrap();
+    let found = |value: serde_json::Value| {
+        connections
+            .existing(&connection(value))
+            .map(|entry| entry.id().to_owned())
+    };
+    assert_eq!(found(json!({ "host": "build.example" })), Some(id.clone()));
+    assert_eq!(
+        found(json!({ "host": "build.example", "user": "ci", "port": 2222 })),
+        Some(id.clone())
+    );
+    assert_eq!(
+        found(json!({ "host": "build.example", "user": "root" })),
+        None
+    );
+    assert_eq!(found(json!({ "host": "build.example", "port": 22 })), None);
+    assert_eq!(found(json!({ "host": "other.example" })), None);
+    assert_eq!(
+        connections
+            .existing(&SshConnection::to_host("BUILD.example"))
+            .map(SavedConnection::id),
+        Some(id.as_str())
+    );
+}
+
+#[test]
+fn the_last_connection_time_belongs_to_the_target() {
+    let mut connections = Connections::parse(None).unwrap();
+    let id = saved(&mut connections, "Build", "build-box");
+    connections.mark_connected(&id, 1_790_000_000).unwrap();
+    let text = connections.text().unwrap();
+    assert!(text.contains("\"lastConnectedAt\": 1790000000"), "{text}");
+    assert_eq!(Connections::parse(Some(&text)).unwrap(), connections);
+
+    // Renaming keeps it, another host forgets it.
+    connections
+        .save(
+            Some(&id),
+            "Renamed",
+            connection(json!({ "host": "build-box" })),
+            Label::default(),
+            ids(),
+        )
+        .unwrap();
+    assert!(connections.text().unwrap().contains("lastConnectedAt"));
+    connections
+        .save(
+            Some(&id),
+            "Renamed",
+            connection(json!({ "host": "other.example" })),
+            Label::default(),
+            ids(),
+        )
+        .unwrap();
+    assert!(!connections.text().unwrap().contains("lastConnectedAt"));
+
+    for at in [0, 253_402_300_800] {
+        assert_eq!(
+            connections.mark_connected(&id, at).unwrap_err(),
+            ConnectionError::at("at", Reason::Invalid)
+        );
+    }
+    assert_eq!(
+        connections
+            .mark_connected("missing", 1_790_000_000)
+            .unwrap_err(),
+        ConnectionError::at("id", Reason::Unknown)
+    );
+    let stored = text.replace("1790000000", "0");
+    assert_eq!(
+        Connections::parse(Some(&stored)).unwrap_err(),
+        ConnectionError::at("lastConnectedAt", Reason::Invalid)
+    );
+}

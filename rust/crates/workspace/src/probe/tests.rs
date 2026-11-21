@@ -22,6 +22,57 @@ fn malformed_connections_name_the_field_in_the_error() {
     assert_eq!(details, json!({ "field": "host", "reason": "invalid" }));
 }
 
+// The window picks the form from `kind`; a host key question carries the
+// public fingerprint so the user can compare it before trusting the key.
+#[test]
+fn questions_are_relayed_with_their_kind_and_the_host_key() {
+    let host_key = challenge_event(&Challenge {
+        request_id: "request-1".into(),
+        prompt: "The authenticity of host 'build-box (10.0.0.5)' can't be established.\nED25519 key fingerprint is SHA256:fakeFingerprintForTests0123456789abcdefgh.\nAre you sure you want to continue connecting (yes/no/[fingerprint])? ".into(),
+        secret: false,
+        attempt: 1,
+    });
+    assert_eq!(host_key["type"], "authentication");
+    assert_eq!(host_key["kind"], "hostKey");
+    assert_eq!(host_key["keyType"], "ED25519");
+    assert_eq!(
+        host_key["fingerprint"],
+        "SHA256:fakeFingerprintForTests0123456789abcdefgh"
+    );
+    assert_eq!(host_key["secret"], false);
+
+    let password = challenge_event(&Challenge {
+        request_id: "request-2".into(),
+        prompt: "dev@build-box's password: ".into(),
+        secret: true,
+        attempt: 2,
+    });
+    assert_eq!(password["kind"], "password");
+    assert_eq!(password["attempt"], 2);
+    assert!(password.get("fingerprint").is_none());
+}
+
+#[test]
+fn launch_stages_become_remote_stage_events() {
+    use crate::sessions::stage_event;
+    use lithe_remote::client::launch::Stage;
+    assert_eq!(
+        stage_event(Stage::Authenticated),
+        json!({ "type": "remoteStage", "stage": "authenticated" })
+    );
+    assert_eq!(
+        stage_event(Stage::Uploading {
+            sent: 1024,
+            total: 4096
+        }),
+        json!({ "type": "remoteStage", "stage": "uploading", "sentBytes": 1024, "totalBytes": 4096 })
+    );
+    assert_eq!(
+        stage_event(Stage::Installed { uploaded: false }),
+        json!({ "type": "remoteStage", "stage": "installed", "uploaded": false })
+    );
+}
+
 #[test]
 fn ssh_failures_map_to_stable_statuses() {
     let cases: [(&str, ProbeStatus); 6] = [

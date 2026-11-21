@@ -14,7 +14,7 @@ lithe-diagnostics = { path = "../diagnostics" }
 lithe-git-host = { path = "../git-host" }
 lithe-platform = { path = "../platform" }
 lithe-protocol = { path = "../protocol" }
-lithe-remote = { path = "../remote", default-features = false, features = ["client"] }
+lithe-remote = { path = "../remote", default-features = false, features = ["client", "motty"] }
 lithe-request-context = { path = "../request-context" }
 rand = "0.8"
 serde = { version = "1.0", features = ["derive"] }

@@ -1018,9 +1018,20 @@ pub enum RemoteCommand {
     Forwards,
     /// Reads the SSH connections the user saved (`remote.connections`).
     Connections,
-    /// Saves, removes or records a folder on one saved SSH connection
-    /// (`remote.editConnections`).
+    /// Saves, removes, imports or records a folder or a connection time on
+    /// the saved SSH connections (`remote.editConnections`).
     EditConnections,
+    /// Splits a quick-connect `[user@]host[:port]` into connection fields
+    /// (`remote.parseAddress`).
+    ParseAddress,
+    /// Tells what OpenSSH makes of a connection and where each value comes
+    /// from (`remote.effectiveSettings`).
+    EffectiveSettings,
+    /// Lists the `Host` aliases of the user's SSH configuration for an
+    /// import (`remote.sshConfigHosts`).
+    SshConfigHosts,
+    /// Lists the SSH hosts saved in Motty for an import (`remote.mottyHosts`).
+    MottyHosts,
 }
 
 #[derive(Debug, Clone)]
@@ -1590,6 +1601,10 @@ impl CoreCommand {
             "remote.forwards" => Some(Self::Remote(RemoteCommand::Forwards)),
             "remote.connections" => Some(Self::Remote(RemoteCommand::Connections)),
             "remote.editConnections" => Some(Self::Remote(RemoteCommand::EditConnections)),
+            "remote.parseAddress" => Some(Self::Remote(RemoteCommand::ParseAddress)),
+            "remote.effectiveSettings" => Some(Self::Remote(RemoteCommand::EffectiveSettings)),
+            "remote.sshConfigHosts" => Some(Self::Remote(RemoteCommand::SshConfigHosts)),
+            "remote.mottyHosts" => Some(Self::Remote(RemoteCommand::MottyHosts)),
             "git.historyRewritePreview" => Some(Self::Git(GitCommand::HistoryRewritePreview)),
             "git.remotes" => Some(Self::Git(GitCommand::Remotes)),
             "git.tags" => Some(Self::Git(GitCommand::Tags)),

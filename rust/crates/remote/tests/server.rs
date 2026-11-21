@@ -3,7 +3,9 @@
 
 mod support;
 
-use lithe_remote::client::launch::{launch, launch_command, LaunchError, Launched, UnsafeReason};
+use lithe_remote::client::launch::{
+    launch, launch_command, LaunchError, Launched, Stage, UnsafeReason,
+};
 use lithe_remote::client::session::ClientError;
 use lithe_remote::client::{
     ConnectionKind, ConnectionLog, RemoteSession, ServerArtifact, TransportChain, WriteOptions,
@@ -818,6 +820,21 @@ fn run_launch(
     ChildStdout,
     ChildStdin,
 ) {
+    let (result, child, output, input, _) = run_launch_with_stages(root);
+    (result, child, output, input)
+}
+
+/// [`run_launch`], also returning the stages the launch reported.
+fn run_launch_with_stages(
+    root: &str,
+) -> (
+    Result<Launched, LaunchError>,
+    Child,
+    ChildStdout,
+    ChildStdin,
+    Vec<Stage>,
+) {
+    let mut stages = Vec::new();
     let mut child = Command::new("sh")
         .args(&launch_command(Some(root), &["--stdio"])[1..])
         .stdin(Stdio::piped())
@@ -839,15 +856,39 @@ fn run_launch(
             ))
         },
         &ConnectionLog::begin(ConnectionKind::Ssh),
+        |stage| stages.push(stage),
     );
-    (result, child, output, input)
+    (result, child, output, input, stages)
 }
 
 /// Launches the server, checks that it serves a request and returns whether
-/// this launch uploaded it.
+/// this launch uploaded it. The stages must come in order, with the upload's
+/// progress counting up to the binary's size only when it was sent.
 fn start_server(root: &str) -> bool {
-    let (launched, mut child, output, input) = run_launch(root);
+    let (launched, mut child, output, input, stages) = run_launch_with_stages(root);
     let launched = launched.unwrap();
+    assert_eq!(&stages[..2], [Stage::Authenticated, Stage::PlatformChecked]);
+    assert_eq!(
+        stages.last(),
+        Some(&Stage::Installed {
+            uploaded: launched.uploaded
+        })
+    );
+    let progress: Vec<(usize, usize)> = stages[2..stages.len() - 1]
+        .iter()
+        .map(|stage| match stage {
+            Stage::Uploading { sent, total } => (*sent, *total),
+            other => panic!("unexpected stage {other:?}"),
+        })
+        .collect();
+    if launched.uploaded {
+        let total = std::fs::metadata(SERVER).unwrap().len() as usize;
+        assert_eq!(progress.first(), Some(&(0, total)));
+        assert_eq!(progress.last(), Some(&(total, total)));
+        assert!(progress.windows(2).all(|pair| pair[0].0 < pair[1].0));
+    } else {
+        assert!(progress.is_empty(), "{progress:?}");
+    }
     let (session, _events) = RemoteSession::from_streams(output, input, &options()).unwrap();
     session.stat("/").unwrap();
     session.shutdown(STEP_TIMEOUT);
