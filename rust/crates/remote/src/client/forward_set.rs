@@ -400,6 +400,12 @@ fn is_host_name(host: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || b"-_.".contains(&byte))
 }
 
+/// True for a host a forward can target: an IP address, IPv6 in brackets or
+/// not, or a host name.
+pub(crate) fn is_target_host(host: &str) -> bool {
+    TargetHost::parse(host).is_ok()
+}
+
 /// True for the host's loopback interface: `localhost` or a loopback address,
 /// IPv6 in brackets or not and IPv4-mapped included. Names are not resolved.
 pub(crate) fn is_loopback_host(host: &str) -> bool {

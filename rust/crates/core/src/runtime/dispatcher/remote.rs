@@ -203,6 +203,18 @@ pub(super) fn dispatch(command: RemoteCommand, id: Option<String>, payload: Valu
                 Err(error) => CoreResponse::failure(id, error),
             }
         }
+        RemoteCommand::ParseForwardAddress => {
+            match serde_json::from_value(payload)
+                .map_err(|error| invalid_forward_request(&error))
+                .and_then(lithe_workspace::forwards::parse_address)
+            {
+                Ok(address) => CoreResponse::success(
+                    id,
+                    serde_json::to_value(address).expect("port forward address should encode"),
+                ),
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
         RemoteCommand::Connections => {
             match serde_json::from_value(payload)
                 .map_err(|error| {
@@ -320,7 +332,7 @@ fn answer<R: serde::de::DeserializeOwned>(
     }
 }
 
-/// A `remote.*Forward` payload that does not decode.
+/// A `remote.*Forward*` payload that does not decode.
 fn invalid_forward_request(error: &serde_json::Error) -> CoreError {
     CoreError::new(ErrorCode::InvalidRequest, "Invalid port forward request")
         .with_details(error.to_string())
