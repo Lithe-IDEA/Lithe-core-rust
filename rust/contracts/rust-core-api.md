@@ -831,6 +831,8 @@ or removing a command fails until the table changes in the same commit.
 | `remote.mottyHosts` | List the SSH hosts saved in Motty for an import |
 | `remote.listWslDistributions` | List the WSL distributions installed on this Windows machine |
 | `remote.listContainers` | List the running Docker or Podman containers on this machine or a connected host |
+| `remote.devcontainerConfigs` | List the `devcontainer.json` files of a local folder |
+| `remote.devcontainerUp` | Build or reuse and start a trusted local folder's dev container with the Dev Container CLI |
 | `remote.preferences` | Read the remote workspace settings and what each automatic value resolves to |
 | `remote.editPreferences` | Set the SSH program, the reconnect limit or whether reverse forwards are allowed, or make one automatic again |
 | `git.historyRewritePreview` | Review undo, message edit, squash, or drop with complete messages, eligibility, and an immutable checkout expectation |
@@ -5949,6 +5951,63 @@ display; it is never logged. Any other field is `invalid_request` ("Invalid
 container listing request"), so a request cannot pick the program; an unknown
 `sessionId` is `connection_closed`, and cancellation and the bound are
 `cancelled` and `timed_out`. Nothing is saved.
+
+#### Dev Containers
+
+A local folder's dev container is built and started by the reference Dev
+Container CLI (`devcontainer`, from `@devcontainers/cli`; `devcontainer.cmd`
+on Windows) on `PATH`, then entered like any running container with
+`remote.connect`'s `container`. Lithe does not interpret the configuration
+and adds no mounts or options to it.
+
+`remote.devcontainerConfigs` takes `{ folder }`, an absolute folder on this
+machine, and returns `{ configs }`: `{ path, name? }` for each regular file in
+the places the specification searches, in this order:
+`.devcontainer/devcontainer.json`, `.devcontainer.json`, then
+`.devcontainer/<subfolder>/devcontainer.json` for at most 64 subfolders in
+name order, skipping names that start with `.`. `path` is relative to the
+folder with `/` separators. `name` is the configuration's `name`, read as
+JSON with comments and trailing commas, without control characters and at
+most 128 bytes; it is absent when the file is larger than 1 MiB, resolves
+outside the folder, cannot be read or has no non-empty string `name`. A
+relative or empty `folder` is `invalid_request`; a folder that does not
+exist is `workspace_not_found`. Reading starts nothing.
+
+`remote.devcontainerUp` takes `{ folder, config?, engine,
+projectCodeAllowed }` and returns `{ container?, diagnostics }`. Building runs
+the folder's code on this machine (`initializeCommand`, Dockerfiles, feature
+scripts), so when `projectCodeAllowed` is `false` nothing starts and the
+request fails with `devcontainer_untrusted_folder`; native clients pass the
+folder's trust decision, as for Git. `config` must be one of the `path`s
+`remote.devcontainerConfigs` lists for the folder, otherwise
+`invalid_request`; without it the CLI searches the folder itself. Core runs
+`devcontainer up --workspace-folder <folder> [--config <folder>/<config>]`,
+adding `--docker-path podman` after `up` for `engine: "podman"`, on this
+machine in Core's own environment, for at most one hour. Each line the CLI
+logs to standard error is sent as a `{ type: "devcontainerOutput", text }`
+event, redacted, at most 4096 bytes per event and 2 MiB in all; after that
+one `{ type: "devcontainerOutput", truncated: true }` event follows and later
+lines are dropped. The log is shown, never logged.
+
+The result is the last line of standard output that is a JSON object with an
+`outcome`:
+
+- `success`: `container` is `{ engine, container, containerId, user?,
+  workspaceFolder }`. `containerId` is the CLI's container id, `container` the
+  name `<engine> inspect --format '{{.Name}}'` gives within 15 seconds
+  (without Docker's leading `/`), or the id when it gives none, `user` the
+  configuration's `remoteUser`, and `workspaceFolder` the absolute
+  `remoteWorkspaceFolder` to open. A container id that is not a container
+  name, a user `exec` cannot take, or a folder that is not absolute is
+  `parse_failed`, and so is a successful exit without a result line.
+- `error`, or no result line with a failed exit: `container` is absent and
+  `diagnostics` holds the end of the CLI's log followed by its `message` and
+  `description`, redacted, for display.
+
+A missing CLI is `runtime_missing`; any other field is `invalid_request`
+("Invalid dev container start request"), so a request cannot add mounts or
+pick the program; cancellation and the bound are `cancelled` and
+`timed_out`. Nothing is saved.
 
 #### Remote workspace preferences
 

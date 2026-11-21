@@ -12,7 +12,9 @@
 //! OpenSSH makes of them and lists the hosts of the user's SSH configuration,
 //! [`motty`] lists the hosts saved in Motty for an import, [`wsl`] lists the
 //! WSL distributions of this Windows machine, [`containers`] lists the
-//! running containers on this machine or a connected host, [`probe`] checks
+//! running containers on this machine or a connected host, [`devcontainers`]
+//! builds and starts a local folder's dev container with the Dev Container
+//! CLI, [`probe`] checks
 //! that a saved SSH connection reaches a usable host, [`sessions`] opens and
 //! keeps the connections (over OpenSSH, `wsl.exe` or a container engine's
 //! `exec`), [`host`] forwards finite requests
@@ -26,6 +28,7 @@
 
 pub mod connections;
 pub mod containers;
+pub mod devcontainers;
 pub mod forwards;
 pub mod fs;
 pub mod host;

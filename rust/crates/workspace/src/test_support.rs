@@ -57,3 +57,12 @@ pub fn list_containers_with(
 ) -> Result<crate::containers::Containers, lithe_protocol::CoreError> {
     crate::containers::list_with(request, Some(program))
 }
+
+/// `remote.devcontainerUp` with `program` in place of both the Dev Container
+/// CLI and the engine CLI.
+pub fn devcontainer_up_with(
+    request: crate::devcontainers::UpRequest,
+    program: &str,
+) -> Result<crate::devcontainers::Up, lithe_protocol::CoreError> {
+    crate::devcontainers::up_with(request, Some(program))
+}

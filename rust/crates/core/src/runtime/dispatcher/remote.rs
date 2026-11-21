@@ -342,6 +342,27 @@ pub(super) fn dispatch(command: RemoteCommand, id: Option<String>, payload: Valu
                 })
             },
         ),
+        RemoteCommand::DevcontainerConfigs => answer(
+            id,
+            payload,
+            "Invalid dev container configuration request",
+            |request| {
+                lithe_workspace::devcontainers::configs(request).map(|listed| {
+                    serde_json::to_value(listed)
+                        .expect("dev container configurations should encode")
+                })
+            },
+        ),
+        RemoteCommand::DevcontainerUp => answer(
+            id,
+            payload,
+            "Invalid dev container start request",
+            |request| {
+                lithe_workspace::devcontainers::up(request).map(|started| {
+                    serde_json::to_value(started).expect("dev container starts should encode")
+                })
+            },
+        ),
         RemoteCommand::AuthRespond => {
             #[derive(serde::Deserialize)]
             #[serde(rename_all = "camelCase", deny_unknown_fields)]

@@ -1337,6 +1337,24 @@ fn connection_window_helpers_answer_through_the_dispatcher() {
             "{refused}"
         );
     }
+    // A dev container starts only for a trusted folder, from a configuration
+    // the folder lists; nothing runs otherwise.
+    let untrusted = call(
+        "remote.devcontainerUp",
+        json!({"folder": "/nonexistent", "engine": "docker", "projectCodeAllowed": false}),
+    );
+    assert_eq!(
+        untrusted["error"]["code"], "devcontainer_untrusted_folder",
+        "{untrusted}"
+    );
+    let unknown = call(
+        "remote.devcontainerUp",
+        json!({"folder": "/nonexistent", "engine": "docker", "projectCodeAllowed": true,
+            "mounts": ["/"]}),
+    );
+    assert_eq!(unknown["error"]["code"], "invalid_request", "{unknown}");
+    let relative = call("remote.devcontainerConfigs", json!({"folder": "app"}));
+    assert_eq!(relative["error"]["code"], "invalid_request", "{relative}");
 
     // The settings page reads automatic values and stores an edit; a damaged
     // document stops the SSH commands before OpenSSH starts.
