@@ -4,6 +4,7 @@ mod support;
 
 use lithe_remote::client::api::{TerminalEvent, TerminalHandle};
 use lithe_remote::client::TerminalSpec;
+use lithe_remote::protocol::methods::ResourceLabel;
 use std::collections::BTreeMap;
 use std::time::Instant;
 use support::{connect, wait_until_gone, STEP_TIMEOUT};
@@ -22,6 +23,7 @@ fn plain_shell() -> TerminalSpec {
         ]),
         columns: 100,
         rows: 40,
+        label: None,
     }
 }
 
@@ -85,6 +87,33 @@ fn resizing_changes_the_size_programs_see() {
     terminal.resize(132, 50).unwrap();
     terminal.write(b"stty size\n").unwrap();
     read_until(&terminal, "50 132\r\n$ ");
+    terminal.close().unwrap();
+    read_until_exit(&terminal);
+    drop(terminal);
+    session.shutdown(STEP_TIMEOUT);
+}
+
+#[test]
+fn state_reports_the_terminal_command_and_label() {
+    let (session, _events) = connect();
+    let label = ResourceLabel {
+        kind: "terminal".into(),
+        name: "Local".into(),
+    };
+    let terminal = session
+        .open_terminal(TerminalSpec {
+            label: Some(label.clone()),
+            ..plain_shell()
+        })
+        .unwrap();
+    let state = session.state().unwrap();
+    let running = state
+        .terminals
+        .iter()
+        .find(|running| running.terminal_id == terminal.id)
+        .unwrap();
+    assert_eq!(running.argv, ["/bin/sh"]);
+    assert_eq!(running.label.as_ref(), Some(&label));
     terminal.close().unwrap();
     read_until_exit(&terminal);
     drop(terminal);

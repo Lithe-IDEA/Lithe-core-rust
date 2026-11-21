@@ -6,8 +6,9 @@
 //! therefore behave as users expect.
 
 use crate::protocol::methods::{
-    self, decode_bytes, encode_bytes, TerminalExitEvent, TerminalOpenParams, TerminalOpenResult,
-    TerminalOutputEvent, TerminalParams, TerminalResizeParams, TerminalState, TerminalWriteParams,
+    self, decode_bytes, encode_bytes, ResourceLabel, TerminalExitEvent, TerminalOpenParams,
+    TerminalOpenResult, TerminalOutputEvent, TerminalParams, TerminalResizeParams, TerminalState,
+    TerminalWriteParams,
 };
 use crate::protocol::{ErrorCode, RemoteError};
 use crate::server::connection::Context;
@@ -17,7 +18,7 @@ use crate::server::process::{
     exit_parts, has_exited_leaders, prune, queue_input, spawn_error, terminate_groups, Forward,
     InputWriter, Leader, Monitor,
 };
-use crate::server::resources::Registry;
+use crate::server::resources::{validate_label, Registry};
 use crate::server::session::{Session, TERMINATION_GRACE};
 use crate::server::threads::Parked;
 use crate::server::{parse, to_value};
@@ -29,6 +30,7 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
+use std::time::Instant;
 
 const DEFAULT_TERM: &str = "xterm-256color";
 
@@ -43,6 +45,9 @@ struct RunningTerminal {
     /// Kept after the shell exits while jobs it started still run, so that
     /// closing the terminal or ending the session still reaches them.
     leader: Leader,
+    /// The program actually started, including the default login shell.
+    argv: Vec<String>,
+    label: Option<ResourceLabel>,
     columns: u16,
     rows: u16,
     master: Arc<OwnedFd>,
@@ -77,7 +82,7 @@ impl TerminalTable {
         }
     }
 
-    pub(crate) fn states(&self) -> Vec<TerminalState> {
+    pub(crate) fn states(&self, now: Instant) -> Vec<TerminalState> {
         self.registry
             .lock()
             .iter()
@@ -85,6 +90,9 @@ impl TerminalTable {
             .map(|(terminal_id, terminal)| TerminalState {
                 terminal_id: *terminal_id,
                 pid: terminal.leader.pid,
+                argv: terminal.argv.clone(),
+                label: terminal.label.clone(),
+                running_ms: terminal.leader.running_ms(now),
                 columns: terminal.columns,
                 rows: terminal.rows,
             })
@@ -98,15 +106,16 @@ impl TerminalTable {
     ) -> Result<TerminalOpenResult, RemoteError> {
         session.ids.observe(params.terminal_id);
         self.registry.ensure_free(params.terminal_id)?;
+        validate_label(params.label.as_ref())?;
         let account = platform::current_account();
-        let mut command = match &params.argv {
+        let (mut command, argv) = match &params.argv {
             Some(argv) => {
                 let Some((program, arguments)) = argv.split_first() else {
                     return Err(RemoteError::new(ErrorCode::InvalidRequest, "argv is empty"));
                 };
                 let mut command = Command::new(program);
                 command.args(arguments);
-                command
+                (command, argv.clone())
             }
             None => {
                 let shell = account
@@ -121,7 +130,7 @@ impl TerminalTable {
                     .map(|name| name.to_string_lossy().into_owned())
                     .unwrap_or_else(|| "sh".into());
                 command.arg0(format!("-{name}"));
-                command
+                (command, vec![shell])
             }
         };
         let directory = match &params.cwd {
@@ -166,6 +175,8 @@ impl TerminalTable {
         let pid = child.id();
         let entry = RunningTerminal {
             leader: Leader::new(pid),
+            argv,
+            label: params.label,
             columns: params.columns,
             rows: params.rows,
             master,

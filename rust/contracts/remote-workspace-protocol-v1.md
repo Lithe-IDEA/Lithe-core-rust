@@ -108,7 +108,7 @@ subscribe before creating the resource.
 | `server.ack` | `seq` | `null`; events up to `seq` may be forgotten |
 | `server.shutdown` | — | `null`; the session ends |
 | `server.ping` | — | `{}` |
-| `server.state` | — | running `processes`, `terminals`, `watches` |
+| `server.state` | — | running `processes` (`processId`, `pid`, `argv`, `label?`, `runningMs`, `leaderExited`), `terminals` (`terminalId`, `pid`, `argv`, `label?`, `runningMs`, `columns`, `rows`), `watches` |
 | `fs.stat` | `path` | metadata of the path itself (links not followed) |
 | `fs.readDir` | `path` | `entries` sorted by name byte order, `skippedNonUtf8` |
 | `fs.readFile` | `path`, `offset`, `length` (≤ 8 MiB) | `data`, `eof`, `metadata` |
@@ -131,11 +131,11 @@ subscribe before creating the resource.
 | `walk.cancel` | `walkId` | `null` |
 | `watch.start` | `watchId`, `root`, `excludeNames` | `watchedDirectories` (per-directory backends) |
 | `watch.stop` | `watchId` | `null` |
-| `process.spawn` | `processId`, `argv`, `cwd?`, `environment` (`server` / `login`), `env`, `pipeStdin` | `pid` |
+| `process.spawn` | `processId`, `argv`, `cwd?`, `environment` (`server` / `login`), `env`, `pipeStdin`, `label?` | `pid` |
 | `process.writeStdin` | `processId`, `data` | `null`; `BUSY` when the process stops reading |
 | `process.closeStdin` | `processId` | `null` |
 | `process.kill` | `processId`, `force` | `null`; signals every process of its session, also after `process.exit` while members run; `UNKNOWN_RESOURCE` once the session is empty |
-| `terminal.open` | `terminalId`, `argv?`, `cwd?`, `env`, `columns`, `rows` | `pid`; default program is the login shell |
+| `terminal.open` | `terminalId`, `argv?`, `cwd?`, `env`, `columns`, `rows`, `label?` | `pid`; default program is the login shell |
 | `terminal.write` | `terminalId`, `data` | `null`; `BUSY` when not read |
 | `terminal.resize` | `terminalId`, `columns`, `rows` | `null` |
 | `terminal.close` | `terminalId` | `null`; `SIGHUP` to its session, `SIGKILL` after 2 s |
@@ -214,6 +214,16 @@ persistent provider state are never cleanup targets.
 its session until no member is left, so members that outlive the leader can
 still be killed and are cleaned up when the session ends; `server.state`
 marks such processes with `leaderExited`.
+
+`server.state` lets a client list what still runs before it closes a window,
+and lets a later client list what an earlier one left running. `label`
+(`kind` ≤ 64 characters, `name` ≤ 256 characters, no control characters)
+is what the client shows for the resource; the server stores it unchanged,
+never interprets it, and refuses a label that breaks a rule with
+`INVALID_REQUEST` before starting anything. `runningMs` counts from the
+start on the server's monotonic clock, so it is right after a client
+restart and whatever the clients' clocks say. A terminal's `argv` is the
+program actually started: the requested `argv`, or the login shell's path.
 
 When a session ends, the server terminates everything it still owns
 (`SIGTERM` or `SIGHUP`, then `SIGKILL` after 2 seconds to sessions that still

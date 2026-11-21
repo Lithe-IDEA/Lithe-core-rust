@@ -107,6 +107,7 @@ fn allowed_method(method: &str) -> bool {
             | methods::TERMINAL_RESIZE
             | methods::TERMINAL_CLOSE
             | methods::PORTS_LISTENING
+            | methods::SERVER_STATE
     )
 }
 
@@ -567,6 +568,7 @@ mod request_tests {
             methods::PROCESS_KILL,
             methods::TERMINAL_RESIZE,
             methods::TERMINAL_CLOSE,
+            methods::SERVER_STATE,
         ] {
             assert!(allowed_method(method), "{method}");
         }
