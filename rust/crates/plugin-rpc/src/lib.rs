@@ -140,6 +140,8 @@ pub fn methods_for_permission(permission: &str) -> Vec<&'static str> {
 pub const HOST_PERMISSIONS: &[&str] = &[
     "workspace.files.read",
     "workspace.files.watch",
+    "build.options.read",
+    "build.configuration.watch",
     "workspace.search",
     "documents.read",
     "editor.edit",

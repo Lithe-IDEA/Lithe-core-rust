@@ -3929,6 +3929,39 @@ checks every request before the host sees it.
   (`credentials`, `workspace`, or registered method-grant names); otherwise `lsp.startServer` is
   `invalid_request`.
 
+### Build configuration host service
+
+This service is available for local workspace contexts when advertised by
+`getCapabilities`. Each request carries `context: { contextID, generation }`.
+
+| Request | Additional params | Result | Permission |
+| --- | --- | --- | --- |
+| `lithe/host/build/getOptions` | `{ buildSystemID, root }` | `{ options: { <optionID>: <value> } }` | `build.options.read` |
+| `lithe/host/build/watchConfiguration` | `{ files: [<path>] }` | `{ subscriptionID }` | `build.configuration.watch` |
+
+- `root` is a slash-separated workspace-relative build root (`.` for the
+  workspace folder). Only a build system declared by the caller may be queried.
+  Core applies local preferences over team preferences, resolves the instance
+  and declaration defaults, and checks the values against the manifest. No
+  build model is loaded and no process is run. A foreign build-system ID
+  returns `plugin.host.foreignContribution`.
+- The watch covers the workspace's build preferences and up to four named
+  configuration files. The supplied paths are absolute on the local host,
+  normalized, at most 4096 UTF-8 bytes each, and may name files outside the
+  workspace. They may be absent when the watch starts. Directories and globs
+  cannot be watched. A change sends an existing `subscriptions/notify` event
+  `{ type: "changed" }`, without paths, source contents, or values. Read
+  the effective configuration again after subscribing and on invalidation.
+- File creation, replacement and removal invalidate the snapshot. A terminal
+  `{ type: "watchFailed" }` event ends a watch the host could not restore.
+  The host releases watches on disposal, context expiration or session end.
+  At most 16 build configuration subscriptions may be held per backend.
+- Malformed requests get `plugin.host.invalidParams`, unknown request members
+  get `plugin.host.unsupportedOption`, an expired context gets
+  `plugin.host.contextExpired`, and an exhausted subscription budget gets
+  `plugin.host.limitExceeded`. A local read or observation failure gets
+  `plugin.host.failure`.
+
 ### Workspace contexts and capability discovery
 
 The requests below give a backend capability discovery, subscription

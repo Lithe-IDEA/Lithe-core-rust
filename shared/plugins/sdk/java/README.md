@@ -253,6 +253,15 @@ backend.onCommand("db.refresh", (commandId, workspaceContext) -> {
 });
 ```
 
+Build plugins may call `host.build().getOptions(context, systemId, root)`
+for their effective options, and `host.build().watchConfiguration(context,
+files, listener)` for invalidation of those options and named local files.
+Probe each method with `host.supports(Protocol.HOST_BUILD_GET_OPTIONS)` or
+`host.supports(Protocol.HOST_BUILD_WATCH_CONFIGURATION)`. Use the
+backend's long-lived host for a subscription that should outlast a function
+call. See the [build configuration contract](../../contract/v1/README.md#build-configuration-host-service).
+
+
 | `Host` member | Purpose |
 | --- | --- |
 | `negotiated()` | Whether the host offered plugin functions. When false, every other member fails or reports false locally. |

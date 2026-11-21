@@ -36,6 +36,8 @@ pub(crate) fn check_host_params(
         HostParams::Subscription => &["subscriptionID"],
         HostParams::Context => &["context"],
         HostParams::HostPaths => &["context", "rootIDs"],
+        HostParams::BuildConfiguration { watch: false } => &["context", "buildSystemID", "root"],
+        HostParams::BuildConfiguration { watch: true } => &["context", "files"],
         HostParams::FunctionProviders => &["functionID"],
         HostParams::FunctionInvoke => &[
             "pluginID",
@@ -137,6 +139,44 @@ pub(crate) fn check_host_params(
                         "`rootIDs` is 1-256 distinct root IDs of 1-128 ASCII letters, digits, '.', '_', ':' or '-'.",
                     ));
                 }
+            }
+        }
+        HostParams::BuildConfiguration { watch } => {
+            if !params.get("context").is_some_and(is_context_reference) {
+                return Err(invalid(CONTEXT_REFERENCE_MESSAGE));
+            }
+            if watch {
+                if !params
+                    .get("files")
+                    .and_then(Value::as_array)
+                    .is_some_and(|files| {
+                        files.len() <= 4
+                            && files.iter().all(|file| {
+                                file.as_str()
+                                    .is_some_and(|file| !file.is_empty() && file.len() <= 4096)
+                            })
+                    })
+                {
+                    return Err(invalid(
+                        "Files must be an array of at most four paths of up to 4096 bytes.",
+                    ));
+                }
+            } else if !params
+                .get("buildSystemID")
+                .and_then(Value::as_str)
+                .is_some_and(|id| {
+                    !id.is_empty()
+                        && id.len() <= 64
+                        && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+                })
+                || !params
+                    .get("root")
+                    .and_then(Value::as_str)
+                    .is_some_and(|root| !root.is_empty() && root.chars().count() <= 1024)
+            {
+                return Err(invalid(
+                    "The build system ID and workspace-relative root are required.",
+                ));
             }
         }
         HostParams::FunctionProviders => {

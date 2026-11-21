@@ -455,6 +455,8 @@ pub enum BuildCommand {
     ProjectOptions,
     /// Merges checked team and machine-local Build preferences without I/O.
     ResolveStoredOptions,
+    /// Resolves stored values against the declaration for one instance.
+    ResolveStoredInstanceOptions,
     /// Edits one declared option in a machine-local Build document without I/O.
     EditStoredOption,
     /// Replaces or removes the machine-local ignored paths for build detection (`build.editIgnoredPaths`).
@@ -1241,6 +1243,9 @@ impl CoreCommand {
             "build.localizeOptions" => Some(Self::Build(BuildCommand::LocalizeOptions)),
             "build.projectOptions" => Some(Self::Build(BuildCommand::ProjectOptions)),
             "build.resolveStoredOptions" => Some(Self::Build(BuildCommand::ResolveStoredOptions)),
+            "build.resolveStoredInstanceOptions" => {
+                Some(Self::Build(BuildCommand::ResolveStoredInstanceOptions))
+            }
             "build.editStoredOption" => Some(Self::Build(BuildCommand::EditStoredOption)),
             "build.editIgnoredPaths" => Some(Self::Build(BuildCommand::EditIgnoredPaths)),
             "build.invocationPlan" => Some(Self::Build(BuildCommand::InvocationPlan)),

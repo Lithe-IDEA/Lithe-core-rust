@@ -59,6 +59,8 @@ public final class Protocol {
     public static final String HOST_CREDENTIALS_DELETE = "lithe/host/credentials/delete";
     public static final String HOST_GET_CAPABILITIES = "lithe/host/getCapabilities";
     public static final String HOST_SUBSCRIPTIONS_DISPOSE = "lithe/host/subscriptions/dispose";
+    public static final String HOST_BUILD_GET_OPTIONS = "lithe/host/build/getOptions";
+    public static final String HOST_BUILD_WATCH_CONFIGURATION = "lithe/host/build/watchConfiguration";
     public static final String HOST_WORKSPACE_LIST_CONTEXTS = "lithe/host/workspace/listContexts";
     public static final String HOST_WORKSPACE_GET_CONTEXT = "lithe/host/workspace/getContext";
     public static final String HOST_WORKSPACE_GET_FOLDERS = "lithe/host/workspace/getFolders";

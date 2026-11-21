@@ -106,6 +106,8 @@
 | API-06 | `workspace/readFile` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-07 | `workspace/watch` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-07、API-24 | `subscriptions/notify`（通知） | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
+| API-29 | `build/getOptions` | 0 | 2026-11-21 | [#155](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/155) |
+| API-29 | `build/watchConfiguration` | 0 | 2026-11-21 | [#155](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/155) |
 | API-08 | `workspace/findFiles` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-08 | `workspace/findText` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-09 | `documents/list` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
@@ -153,6 +155,12 @@
 | API-40 | `workspace/getHostPaths` | 0 | 待合入 | [#151](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/151) |
 
 ## 时间线（新的在上）
+
+### 2026-11-21
+
+| PR | 修改人 | API 编号 | 协议 / 能力 | 改动 |
+| --- | --- | --- | --- | --- |
+| [#155](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/155) | [@1lck](https://github.com/1lck) | API-29 | `pluginAPIVersion` 0 | 增加 `build/getOptions` 和 `build/watchConfiguration`。构建后端可读取本插件的生效选项，订阅工作区构建选项及声明的配置文件变更。增加独立的方法权限和 Java SDK 调用入口。 |
 
 ### 2026-11-20
 

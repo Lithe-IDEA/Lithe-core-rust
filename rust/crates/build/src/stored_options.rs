@@ -205,6 +205,31 @@ pub fn resolve_stored_options_command(payload: Value) -> Result<Value, CoreError
     })()))
 }
 
+/// Selects the effective stored values for one declared build instance.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ResolveInstanceRequest {
+    document: Value,
+    local: Value,
+    root: String,
+}
+
+pub(super) fn resolve_instance(
+    system: &BuildSystemDeclaration,
+    request: &ResolveInstanceRequest,
+) -> Validation<Value> {
+    if !project_options::root_valid(&request.root) {
+        return Err(PluginRejection::new(
+            "plugin.build.invalidRoot",
+            "The root must be a normalized workspace-relative path.",
+        ));
+    }
+    let team = project_options::validate(request.document.clone())?;
+    let local = validate_local(request.local.clone())?;
+    let stored = effective(system, &merge(&team, &local), &local, &request.root);
+    Ok(json!(options::resolve(system, &stored, None).values))
+}
+
 /// Produces one local document; the supplied team document is never edited.
 pub(super) fn edit(system: &BuildSystemDeclaration, request: &EditRequest) -> Validation<Value> {
     if !project_options::root_valid(&request.root) {

@@ -130,6 +130,8 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | API-25 | `languageServer/request` | 向本插件自己的语言服务器发 JSON-RPC 请求，受会话策略检查，返回 `{value}` | `languageServer.request` | 0 |
 | API-25 | `languageServer/notify` | 向本插件自己的语言服务器发通知，返回 `{delivered}` | `languageServer.request` | 0 |
 | API-27 | `editor/registerActions` | 注册编辑器动作：把后端的普通函数绑定到文件范围（`selector`），返回 `subscriptionID` | `editor.actions`（同时需要 `documents.read`） | 0 |
+| API-29 | `build/getOptions` | 读取本插件构建实例的生效选项 | `build.options.read` | 0 |
+| API-29 | `build/watchConfiguration` | 订阅构建选项与配置文件变更 | `build.configuration.watch` | 0 |
 | API-29 | `lithe/build/prepareRun`（提供者方法） | 准备宿主启动的运行计划，可选 `outputEncoding` 声明进程管道编码；参数、失败码和生命周期见[运行准备](../contract/v1/README.md#provider-run-preparation) | `process.build` | `litheBuild` 0、1 |
 | API-30 | `debug/start` | 在本插件自己声明的调试适配器上启动 launch 或 attach 调试会话，返回 `sessionID` | `debug.start` | 0 |
 | API-35 | `functions/providers` | 列出导出某函数、已启用、且不是调用方自己的插件及其导出版本 | 无清单权限，需在 `pluginFunctions.calls` 声明该函数 | 0 |
@@ -304,6 +306,8 @@ Requests a backend sends to the host, all prefixed `lithe/host/`; the tables omi
 | API-25 | `languageServer/request` | Sends a JSON-RPC request to the plugin's own language server, checked against the session policy, and returns `{value}` | `languageServer.request` | 0 |
 | API-25 | `languageServer/notify` | Sends a notification to the plugin's own language server and returns `{delivered}` | `languageServer.request` | 0 |
 | API-27 | `editor/registerActions` | Registers editor actions that bind an ordinary backend function to file ranges (`selector`) and returns a `subscriptionID` | `editor.actions` (also needs `documents.read`) | 0 |
+| API-29 | `build/getOptions` | Reads effective options of the calling plugin’s build instance | `build.options.read` | 0 |
+| API-29 | `build/watchConfiguration` | Subscribes to changes to build options and configuration files | `build.configuration.watch` | 0 |
 | API-29 | `lithe/build/prepareRun` (provider method) | Prepares a host-owned launch plan; optional `outputEncoding` declares the process pipe encoding; see [run preparation](../contract/v1/README.md#provider-run-preparation) for params, failures and lifecycle | `process.build` | `litheBuild` 0, 1 |
 | API-30 | `debug/start` | Starts a launch or attach debug session on a debug adapter the plugin itself declares, and returns a `sessionID` | `debug.start` | 0 |
 | API-35 | `functions/providers` | Lists the enabled plugins, other than the caller, that export a function, with their exported versions | No manifest permission; the function must be declared in `pluginFunctions.calls` | 0 |

@@ -82,6 +82,8 @@
       "items": { "enum": ["backend.launch", "commands.install", "credentials.store", "debug.attach", "debug.launch", "languageServer.launch", "process.build", "process.run", "process.test", "process.vcs", "project.generate", "runtimes.install", "ui.contribute", "ui.web", "workspace.metadata",
           "workspace.files.read",
           "workspace.files.watch",
+          "build.options.read",
+          "build.configuration.watch",
           "workspace.search",
           "documents.read",
           "editor.edit",
