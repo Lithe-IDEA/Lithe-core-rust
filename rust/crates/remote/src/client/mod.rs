@@ -15,6 +15,8 @@
 //!   routes each resource's events to its subscriber.
 //! - [`api`] offers typed operations and resource handles on a session.
 //! - [`forward`] forwards local ports through tunnels.
+//! - [`host_forward`] makes the host listen: relaying to another server, or
+//!   back to this machine's loopback interface.
 //! - [`forward_address`] reads the addresses typed into the ports page:
 //!   ports, `host:port` and URLs.
 //! - [`forward_set`] keeps the forwards of one session for the ports page,
@@ -46,6 +48,7 @@ pub mod connections;
 pub mod forward;
 pub mod forward_address;
 pub mod forward_set;
+pub mod host_forward;
 pub mod launch;
 #[cfg(feature = "motty")]
 pub mod motty;
@@ -62,7 +65,11 @@ pub use bootstrap::{ArtifactError, ServerArtifact, ServerTarget};
 pub use connection_log::{ConnectionKind, ConnectionLog};
 pub use forward::PortForward;
 pub use forward_address::{AddressError, ForwardAddress};
-pub use forward_set::{ForwardError, ForwardInfo, ForwardSet, ForwardSpec, TargetField};
+pub use forward_set::{
+    ForwardError, ForwardInfo, ForwardKind, ForwardSet, ForwardSpec, HostForwardSpec,
+    ReverseForwardSpec, TargetField,
+};
+pub use host_forward::{HostForward, ReverseForward};
 pub use session::{ClientError, ConnectOptions, Event, RemoteSession, ResumeMode};
 pub use transport::{
     ContainerEngine, ContainerHop, Hop, SshHop, TransportChain, TransportError, WslHop,

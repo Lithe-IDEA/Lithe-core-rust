@@ -18,11 +18,19 @@ fn reading_no_document_reports_automatic_values_and_the_storage() {
     .unwrap();
     assert_eq!(
         result["preferences"],
-        json!({ "sshProgram": null, "reconnectLimitSeconds": null })
+        json!({
+            "sshProgram": null,
+            "reconnectLimitSeconds": null,
+            "allowReverseForwarding": null,
+        })
     );
     assert_eq!(result["ssh"]["source"], "automatic");
     assert_eq!(result["reconnect"]["source"], "automatic");
     assert_eq!(result["reconnect"]["limitSeconds"], 60);
+    assert_eq!(
+        result["reverseForwarding"],
+        json!({ "source": "automatic", "allowed": false })
+    );
     assert_eq!(
         result["storage"],
         json!({ "relativePath": "remote/preferences.json", "maximumBytes": 16384 })
@@ -85,6 +93,34 @@ fn an_edit_changes_one_value_and_publishes_the_document() {
 }
 
 #[test]
+fn reverse_forwards_stay_refused_until_the_switch_allows_them() {
+    assert!(!reverse_forwarding_allowed(None).unwrap());
+    let allowed = edit(request(json!({
+        "document": null,
+        "reverseForwarding": { "allowed": true },
+    })))
+    .unwrap();
+    let document = allowed["document"].as_str().unwrap().to_owned();
+    assert!(reverse_forwarding_allowed(Some(&document)).unwrap());
+    let state = read(request(json!({ "document": document }))).unwrap();
+    assert_eq!(
+        state["reverseForwarding"],
+        json!({ "source": "setting", "allowed": true })
+    );
+
+    let refused = edit(request(json!({
+        "document": document,
+        "reverseForwarding": { "allowed": false },
+    })))
+    .unwrap();
+    let document = refused["document"].as_str().unwrap().to_owned();
+    assert!(!reverse_forwarding_allowed(Some(&document)).unwrap());
+
+    let error = reverse_forwarding_allowed(Some("not json")).unwrap_err();
+    assert!(matches!(error.code, ErrorCode::ParseFailed));
+}
+
+#[test]
 fn an_edit_names_exactly_one_value_and_refuses_bad_programs_by_field() {
     for both_or_neither in [
         json!({ "document": null }),
@@ -92,6 +128,11 @@ fn an_edit_names_exactly_one_value_and_refuses_bad_programs_by_field() {
             "document": null,
             "sshProgram": { "path": null },
             "reconnectLimit": { "seconds": null },
+        }),
+        json!({
+            "document": null,
+            "reconnectLimit": { "seconds": null },
+            "reverseForwarding": { "allowed": true },
         }),
     ] {
         let error = edit(request(both_or_neither)).unwrap_err();

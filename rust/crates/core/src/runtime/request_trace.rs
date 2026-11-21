@@ -292,6 +292,8 @@ mod tests {
             "lsp.startServer",
             "remote.connect",
             "remote.startForward",
+            "remote.startHostForward",
+            "remote.startReverseForward",
             "debug.launch",
         ] {
             assert!(!is_hot(method), "{method}");

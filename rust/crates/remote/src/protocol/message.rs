@@ -112,6 +112,8 @@ pub enum ErrorCode {
     SpawnFailed,
     /// A tunnel could not connect to its remote target.
     ConnectFailed,
+    /// A listener could not bind its port because another socket holds it.
+    AddressInUse,
     /// A capacity limit was reached, for now: too many requests in flight,
     /// too many open tunnels, an input queue that is not being read, a
     /// concurrent operation on the same upload, or a host that cannot start

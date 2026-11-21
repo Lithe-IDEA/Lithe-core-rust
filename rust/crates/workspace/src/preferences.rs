@@ -25,8 +25,8 @@ pub struct ReadRequest {
     home_directory: Option<String>,
 }
 
-/// `remote.editPreferences`: exactly one of `sshProgram` and
-/// `reconnectLimit`.
+/// `remote.editPreferences`: exactly one of `sshProgram`, `reconnectLimit`
+/// and `reverseForwarding`.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EditRequest {
@@ -36,6 +36,8 @@ pub struct EditRequest {
     ssh_program: Option<ProgramEdit>,
     #[serde(default)]
     reconnect_limit: Option<LimitEdit>,
+    #[serde(default)]
+    reverse_forwarding: Option<SwitchEdit>,
 }
 
 /// The SSH program to use; `path: null` makes it automatic.
@@ -50,6 +52,13 @@ struct ProgramEdit {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct LimitEdit {
     seconds: Option<u32>,
+}
+
+/// Whether reverse forwards are allowed; `allowed: null` makes it automatic.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SwitchEdit {
+    allowed: Option<bool>,
 }
 
 /// Where the native client keeps the document.
@@ -74,9 +83,11 @@ pub fn read(request: ReadRequest) -> Result<Value, CoreError> {
         "preferences": {
             "sshProgram": preferences.ssh_program(),
             "reconnectLimitSeconds": preferences.reconnect_limit_seconds(),
+            "allowReverseForwarding": preferences.allow_reverse_forwarding(),
         },
         "ssh": ssh,
         "reconnect": preferences.reconnect(),
+        "reverseForwarding": preferences.reverse_forwarding(),
         "storage": STORAGE,
     });
     if let Some(home) = request.home_directory {
@@ -102,13 +113,18 @@ pub fn read(request: ReadRequest) -> Result<Value, CoreError> {
 pub fn edit(request: EditRequest) -> Result<Value, CoreError> {
     let before = parse(request.document.as_deref())?;
     let mut after = before.clone();
-    match (request.ssh_program, request.reconnect_limit) {
-        (Some(program), None) => after
+    match (
+        request.ssh_program,
+        request.reconnect_limit,
+        request.reverse_forwarding,
+    ) {
+        (Some(program), None, None) => after
             .set_ssh_program(program.path.as_deref())
             .map_err(invalid_request)?,
-        (None, Some(limit)) => after
+        (None, Some(limit), None) => after
             .set_reconnect_limit(limit.seconds)
             .map_err(invalid_request)?,
+        (None, None, Some(switch)) => after.set_allow_reverse_forwarding(switch.allowed),
         _ => {
             return Err(CoreError::new(
                 ErrorCode::InvalidRequest,
@@ -139,6 +155,11 @@ pub(crate) fn ssh_program(
     let preferences = parse(document)?;
     let ssh = preferences.ssh(std::env::var_os("PATH").as_deref());
     Ok(ssh.command().to_owned())
+}
+
+/// Whether the preferences in `document` allow reverse forwards.
+pub(crate) fn reverse_forwarding_allowed(document: Option<&str>) -> Result<bool, CoreError> {
+    Ok(parse(document)?.reverse_forwarding().allowed)
 }
 
 /// A stored document that cannot be decoded is a parse failure, not a bad

@@ -4,6 +4,7 @@ use crate::protocol::methods::{encode_hex, ServerState, SessionToken};
 use crate::protocol::{ErrorCode, RemoteError};
 use crate::server::environment::EnvironmentCache;
 use crate::server::link::Link;
+use crate::server::listener::ListenerTable;
 use crate::server::process::ProcessTable;
 use crate::server::resources::{IdWatermark, InFlight, PendingStarts};
 use crate::server::spawner::Spawner;
@@ -87,6 +88,7 @@ pub(crate) struct Session {
     pub(crate) terminals: TerminalTable,
     pub(crate) watches: WatchTable,
     pub(crate) tunnels: TunnelTable,
+    pub(crate) listeners: ListenerTable,
     pub(crate) walks: WalkTable,
     pub(crate) uploads: crate::server::upload::UploadTable,
     pub(crate) run_directories: crate::server::run_directory::RunDirectories,
@@ -121,6 +123,7 @@ impl Session {
             terminals: TerminalTable::new(),
             watches: WatchTable::new(),
             tunnels: TunnelTable::new(),
+            listeners: ListenerTable::new(),
             walks: WalkTable::new(),
             uploads: crate::server::upload::UploadTable::default(),
             run_directories: crate::server::run_directory::RunDirectories::new(
@@ -225,10 +228,12 @@ impl Session {
     }
 
     /// Resources bound to a client connection. Tunnels end because their
-    /// local sockets are gone; walks end because their results would only
-    /// fill the replay buffer.
+    /// local sockets are gone; listeners close because a host port stays
+    /// open only while the client that holds the rule is connected; walks end
+    /// because their results would only fill the replay buffer.
     pub(crate) fn release_connection_resources(&self, connection: u64) {
         self.uploads.release(connection);
+        self.listeners.close_owned_by(connection);
         self.tunnels.close_owned_by(connection);
         self.walks.cancel_owned_by(connection);
     }
@@ -236,6 +241,7 @@ impl Session {
     /// Ends everything the session started.
     pub(crate) fn terminate_all(&self) {
         self.ending.store(true, Ordering::Release);
+        self.listeners.close_all();
         self.tunnels.close_all();
         self.walks.cancel_all();
         self.watches.stop_all();

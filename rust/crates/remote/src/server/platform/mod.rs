@@ -58,6 +58,7 @@ pub(crate) fn host_capabilities() -> HostCapabilities {
         Feature::Terminal,
         Feature::Environment,
         Feature::Tunnel,
+        Feature::Listener,
         Feature::Persistence,
     ];
     features.sort();

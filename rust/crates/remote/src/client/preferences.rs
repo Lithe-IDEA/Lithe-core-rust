@@ -13,6 +13,11 @@
 //! - `reconnectLimitSeconds` bounds how long a client keeps reconnecting a
 //!   lost session automatically. [`reconnect_delays`] turns it into the
 //!   pauses between attempts, so every client waits the same way.
+//! - `allowReverseForwarding` lets the ports page start reverse forwards: a
+//!   port on the host's loopback interface that reaches a port on this
+//!   machine's loopback interface. [`Preferences::reverse_forwarding`] is off
+//!   unless the user turned it on, because every user of the host can then
+//!   reach that local port.
 //! - The document lives at [`STORAGE_PATH`] below the platform's
 //!   user-preference directory, never on a host or in a workspace. It holds
 //!   no secret. This module validates and edits it; the platform adapter
@@ -49,6 +54,9 @@ const MAX_PAUSE_MILLISECONDS: u64 = 30_000;
 
 /// Program name OpenSSH installs on `PATH`.
 const SSH_NAME: &str = "ssh";
+
+/// Whether reverse forwards are offered when the document sets nothing.
+pub const DEFAULT_ALLOW_REVERSE_FORWARDING: bool = false;
 
 /// Why a document or an edit was refused.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -107,6 +115,9 @@ pub struct Preferences {
     /// `None` uses [`DEFAULT_RECONNECT_LIMIT_SECONDS`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     reconnect_limit_seconds: Option<u32>,
+    /// `None` uses [`DEFAULT_ALLOW_REVERSE_FORWARDING`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    allow_reverse_forwarding: Option<bool>,
 }
 
 impl Default for Preferences {
@@ -115,6 +126,7 @@ impl Default for Preferences {
             version: 1,
             ssh_program: None,
             reconnect_limit_seconds: None,
+            allow_reverse_forwarding: None,
         }
     }
 }
@@ -158,6 +170,15 @@ impl SshProgram {
     pub fn command(&self) -> &str {
         self.path.as_deref().unwrap_or(SSH_NAME)
     }
+}
+
+/// Whether the ports page offers reverse forwards.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReverseForwarding {
+    pub source: Source,
+    /// The value that takes effect.
+    pub allowed: bool,
 }
 
 /// How long a lost session is reconnected automatically.
@@ -243,6 +264,30 @@ impl Preferences {
         }
         self.ssh_program = Some(path.to_owned());
         Ok(())
+    }
+
+    /// The stored reverse-forwarding switch, `None` when automatic.
+    pub fn allow_reverse_forwarding(&self) -> Option<bool> {
+        self.allow_reverse_forwarding
+    }
+
+    /// Turns reverse forwards on or off, or makes the switch automatic with
+    /// `None`.
+    pub fn set_allow_reverse_forwarding(&mut self, allowed: Option<bool>) {
+        self.allow_reverse_forwarding = allowed;
+    }
+
+    /// Whether reverse forwards are offered, and whether the user decided.
+    pub fn reverse_forwarding(&self) -> ReverseForwarding {
+        ReverseForwarding {
+            source: match self.allow_reverse_forwarding {
+                Some(_) => Source::Setting,
+                None => Source::Automatic,
+            },
+            allowed: self
+                .allow_reverse_forwarding
+                .unwrap_or(DEFAULT_ALLOW_REVERSE_FORWARDING),
+        }
     }
 
     /// Sets the reconnect limit, or makes it automatic with `None`.
