@@ -47,6 +47,7 @@ pub fn run_backend_scenario(package: &Path) {
             "lithe/host/window/showError",
             "lithe/host/window/showInformation",
             "lithe/host/window/showWarning",
+            "lithe/host/workspace/getHostPaths",
             "lithe/host/workspace/watch",
             "workspace"
         ])

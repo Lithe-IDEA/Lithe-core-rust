@@ -136,7 +136,7 @@
 | `contextID` | 窗口显示这个工作区期间不变。窗口切到别的工作区时，旧上下文关闭、新上下文换新 ID，所以按 ID 缓存的状态不会串到别的工作区 |
 | `generation` | 从 1 起；同一工作区的根目录或来源变化时加一。请求里带旧的 `generation`，或上下文已关闭，会得到 `plugin.host.contextExpired`，重新 `listContexts` 即可 |
 | `rootID` | 同一位置跨重启稳定，不暴露路径；按插件加密派生，两个插件对同一目录看到的 ID 不同 |
-| `path` | 只有本地工作区有。远程工作区（`authority.kind` 为 `remote`，另有不透明的 `authority.id`）没有 `path`，宿主在本地为它保留的目录只是空占位 |
+| `path` | 只有本地工作区有。远程工作区（`authority.kind` 为 `remote`，另有不透明的 `authority.id` 和远端主机的 `authority.platform`）没有 `path`，宿主在本地为它保留的目录只是空占位；根目录在远端主机上的路径另用 `getHostPaths` 获取，见[远程工作区](plugin-backend-remote-workspaces.md) |
 | `stateDirectory` | 插件与工作区私有，在插件包和应用包之外，插件被禁用或更新后保留、卸载时删除。只有 `getContext` 返回它并在那时创建；`listContexts` 不创建目录 |
 
 常用请求：
@@ -146,6 +146,7 @@
 | `lithe/host/workspace/listContexts` | 无 | `{ revision, contexts }`，条目不含 `stateDirectory`；`revision` 在上下文打开、关闭或变化时增长 |
 | `lithe/host/workspace/getContext` | `{ context: { contextID, generation } }` | 完整上下文 |
 | `lithe/host/workspace/getFolders` | `{ context: { contextID, generation } }` | `{ folders }` |
+| `lithe/host/workspace/getHostPaths` | `{ context: { contextID, generation }, rootIDs? }` | `{ folders: [{ rootID, hostPath }] }`；只对远程上下文，单独授权 |
 
 页面调用后端函数时，宿主会按页面所在窗口填好上下文：后端在 `lithe/function/invoke` 的
 `params.context` 里收到 `{ contextID, generation }`，直接拿它调 `getContext`。
@@ -250,6 +251,8 @@
 | `plugin.host.methodNotDeclared` | `-32024` | 方法或 `workspace/executeCommand` 的命令不在服务器声明的会话范围内 |
 | `plugin.host.toolUnresolved` | `-32025` | 请求里的工具定义在这个工作区解析不到可执行文件；`details` 是 `{ tool, reason }` |
 | `plugin.host.foreignContribution` | `-32026` | 指名的服务器或贡献属于别的插件 |
+| `plugin.host.remoteDisconnected` | `-32078` | 操作进行中和远端主机断开，不知道它是否已在远端生效；上下文恢复后先重新读取状态再决定，不要自动重放修改 |
+| `plugin.host.platformUnavailable` | `-32079` | 插件没有适合远端主机 `platform` 的程序包或托管运行时，所需进程无法在那里运行；告诉用户缺什么 |
 
 `-32000` 到 `-32009` 留给后端自己的失败，宿主号码从 `-32010` 起。跨插件调用另有 `plugin.function.failed`（`-32070`）和 `plugin.function.invalidResult`（`-32071`），见第 11 节。
 
@@ -280,7 +283,7 @@
 - **被调方收到的 `caller`。** 中转的 `lithe/function/invoke` 顶层多一个 `caller: { pluginID }`，由 Core 按调用方会话写入；没有这个字段就表示宿主发起的调用。要按调用方判断的被调方只读这个顶层字段，不读 `params` 里自称的插件 ID。
 - **嵌套调用。** 被调方在处理中转调用时再发起调用，要把这次调用顶层的 `operationID` 填进 `parentOperationID`，Core 才知道嵌套调用属于哪条调用链；调用链最长 4 次，调用链上已有的插件不能再被调用（`plugin.function.callCycle`）。
 - **信任不传递。** 被调方不得接受调用方给的可执行路径或命令行去启动进程。
-- 远程工作区的上下文被拒绝（`plugin.host.authorityUnsupported`）。
+- 远程工作区的上下文照常中转：后端都在运行 Lithe 的机器上，被调方用 `getContext` 得知来源，它对这个上下文的宿主请求按各服务的规则处理；Core 不改写路径。
 
 官方 SDK 封装了 `functions/providers`、`functions/invoke`，被调函数能读到 `caller`；`parentOperationID` 不传时，SDK 取正在处理的 `lithe/function/invoke` 的 `operationID`。
 下面以 Node.js 为例，[Java](../sdk/java/README.md#calling-other-plugins) 和 [Rust](../sdk/rust/README.md#calling-other-plugins) 的对应方法见各自 README：
@@ -459,7 +462,7 @@ A context is "one workspace open in one window":
 | `contextID` | Stable while the window shows this workspace. When the window switches to another workspace, the old context closes and the new one gets a new ID, so state cached by ID never leaks into another workspace |
 | `generation` | Starts at 1 and increments when the same workspace's roots or authority change. A request with a stale `generation`, or for a closed context, gets `plugin.host.contextExpired`; call `listContexts` again |
 | `rootID` | Stable for the same location across restarts and does not reveal the path; derived cryptographically per plugin, so two plugins see different IDs for the same folder |
-| `path` | Present only for local workspaces. A remote workspace (`authority.kind` is `remote`, with an opaque `authority.id`) has no `path`, and the local directory the host keeps for it is only an empty placeholder |
+| `path` | Present only for local workspaces. A remote workspace (`authority.kind` is `remote`, with an opaque `authority.id` and the remote host's `authority.platform`) has no `path`, and the local directory the host keeps for it is only an empty placeholder; the roots' paths on the remote host come from `getHostPaths`, see [remote workspaces](plugin-backend-remote-workspaces.md) |
 | `stateDirectory` | Private to the plugin and the workspace, outside the plugin package and the app bundle; it survives disabling and updating the plugin and is deleted on uninstall. Only `getContext` returns it, creating it at that moment; `listContexts` creates no directory |
 
 Common requests:
@@ -469,6 +472,7 @@ Common requests:
 | `lithe/host/workspace/listContexts` | none | `{ revision, contexts }`; entries have no `stateDirectory`; `revision` grows whenever a context opens, closes, or changes |
 | `lithe/host/workspace/getContext` | `{ context: { contextID, generation } }` | The full context |
 | `lithe/host/workspace/getFolders` | `{ context: { contextID, generation } }` | `{ folders }` |
+| `lithe/host/workspace/getHostPaths` | `{ context: { contextID, generation }, rootIDs? }` | `{ folders: [{ rootID, hostPath }] }`; remote contexts only, granted on its own |
 
 When a page calls a backend function, the host fills in the context of the page's window: the backend receives `{ contextID, generation }`
 in `params.context` of `lithe/function/invoke` and can pass it straight to `getContext`.
@@ -573,6 +577,8 @@ Host failures are typed: each JSON-RPC number maps one-to-one to an `error.data.
 | `plugin.host.methodNotDeclared` | `-32024` | The method, or the `workspace/executeCommand` command, is not in the server's declared session |
 | `plugin.host.toolUnresolved` | `-32025` | A tool definition the request names resolves to no executable for this workspace; `details` is `{ tool, reason }` |
 | `plugin.host.foreignContribution` | `-32026` | The named server or contribution belongs to another plugin |
+| `plugin.host.remoteDisconnected` | `-32078` | The connection to the remote host was lost while the operation ran, so whether it took effect there is unknown; once the context is current, read the state again before deciding, and do not replay a change automatically |
+| `plugin.host.platformUnavailable` | `-32079` | The plugin has no package or managed runtime for the remote host's `platform`, so the process it needs cannot run there; tell the user what is missing |
 
 `-32000` through `-32009` are reserved for the backend's own failures; host numbers start at `-32010`. Cross-plugin calls add `plugin.function.failed` (`-32070`) and `plugin.function.invalidResult` (`-32071`); see section 11.
 
@@ -603,7 +609,7 @@ A plugin function is private to its plugin unless the plugin exports it. An expo
 - **`caller` in a relayed call.** The `lithe/function/invoke` a provider receives has one more top-level field, `caller: { pluginID }`, which Core writes from the calling session; its absence means the host started the call. A provider that decides by who is asking reads only this top-level field, never a plugin ID that `params` claims.
 - **Nested calls.** When a provider makes a call while serving a relayed call, it puts that call's top-level `operationID` in `parentOperationID`, so Core knows which call chain the new call belongs to. A chain has at most 4 calls, and a plugin already on the chain cannot be called again (`plugin.function.callCycle`).
 - **Trust is not transitive.** A provider must not accept an executable path or command line from its caller and start a process with it.
-- A call whose context is a remote workspace is refused (`plugin.host.authorityUnsupported`).
+- A call for a remote workspace's context is relayed like any other: every backend runs on the machine that runs Lithe, the provider learns the authority from `getContext`, and its own host requests for that context follow the rules of each service; Core rewrites no path.
 
 The official SDKs wrap `functions/providers` and `functions/invoke` and expose `caller` to the called function; when `parentOperationID` is omitted, the SDK uses the `operationID` of the `lithe/function/invoke` being handled.
 The example below uses Node.js; for the matching methods in [Java](../sdk/java/README.md#calling-other-plugins) and [Rust](../sdk/rust/README.md#calling-other-plugins), see their READMEs:

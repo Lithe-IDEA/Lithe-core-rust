@@ -79,7 +79,7 @@ public final class Json {
         }
         if (value == null) {
             output.append("null");
-        } else if (value instanceof String || value instanceof Character) {
+        } else if (value instanceof String || value instanceof Character || value instanceof Host.HostPath) {
             quote(output, value.toString());
         } else if (value instanceof Boolean) {
             output.append(value.toString());

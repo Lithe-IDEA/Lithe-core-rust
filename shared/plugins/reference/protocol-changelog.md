@@ -14,10 +14,8 @@
 
 ## 待合入
 
+- [#151](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/151)，[@xiaoyumuxi](https://github.com/xiaoyumuxi)，`pluginAPIVersion` 0 内的补充（API-05、API-35、API-40）：远程工作区上下文的 `authority` 新增 `platform: { os, arch }`，取值同托管运行时（`os` 为 `linux`，`arch` 为 `arm64` 或 `x86_64`），本地上下文没有这个字段。新增宿主方法 `workspace/getHostPaths`：返回远程上下文的根目录在远端主机上的绝对 POSIX 路径 `hostPath`，可选的 `rootIDs`（1–256 个不重复的根目录 ID）决定返回哪些根目录和顺序；它是 `workspace.metadata` 下单独的方法授权，本地上下文返回 `plugin.host.authorityUnsupported`，未知根目录返回 `plugin.host.notFound`；声明 `workspace.metadata` 的插件，启动计划的 `backend.hostServices` 因此多出 `lithe/host/workspace/getHostPaths`，宿主传给 `lsp.startServer` 时去掉自己没有注册处理器的方法授权，后端调用它们得到 `plugin.host.permissionDenied`。新增失败码 `plugin.host.remoteDisconnected`（`-32078`，操作进行中与远端主机断开）和 `plugin.host.platformUnavailable`（`-32079`，插件没有适合远端平台的程序包或托管运行时）。插件函数中转不再拒绝远程工作区的上下文，导出的 `context: "workspace"` 指两种来源的工作区，Core 不读也不改写参数和结果里的路径。四个官方 SDK 新增远端平台读取、`getHostPaths`、按来源选择进程所用路径的辅助方法和两个失败码，`path` 与 `hostPath` 是不同类型。没有新增能力版本、通知或 SDK 版本。
 - [#150](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/150)，[@Mucheen](https://github.com/Mucheen)，`runConfigurationTypes` 0 内的行为修正（API-29）。`build.runConfigurationPlan` 在工作目录为工作区根且没有匹配实例时，用唯一生效的文件字段解析后的工作区内目标定位最深的构建实例。`./` 等价于工作区根，指向工作区外的链接不参与定位。进程工作目录和执行前任务选择规则保持原样。没有新增宿主方法、通知或协议版本。
-- [#141](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/141)，[@1lck](https://github.com/1lck)，**`languageServers` 1**（API-25、API-29、API-31）：语言服务器新增可选 `executesProjectCode`（不写按 `true`），启动请求新增 `projectCodeAllowed`（不写按未信任，[1lck/Lithe-IDEA#2208](https://github.com/1lck/Lithe-IDEA/issues/2208)）。未信任的工作区里，`plugins.declarative.languageServerLaunchPlan` 和 `plugins.languageServers.decodeLaunch` 只给声明 `executesProjectCode: false` 的语言服务器计划；自带进程的构建提供者按 `buildSystems[].provider.executesProjectCode` 判断，共用语言服务器的跟随该服务器；VCS 提供者一律不给计划。拒绝码是新的 `plugin.launch.untrustedWorkspace`。插件后端和独立调试适配器不受影响。用 `executesProjectCode` 要声明 `requires.languageServers: 1`。没有新增宿主方法、通知或 SDK 版本。
-- [#139](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/139)，[@1lck](https://github.com/1lck)，**`buildSystems` 2**（API-29）：构建提供者的 `application` 运行声明（含 `entrypoints: true`）可以通过 `debug.configurationType` 复用已注册的连接调试器。`lithe/build/prepareRun` 复用原有 `launchOptions.debug`，入口运行仍不带 `target`。已有服务运行声明继续适用旧版本。没有新增 RPC 方法、通知或 SDK 版本。
-- [#135](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/135)，[@xiaoyumuxi](https://github.com/xiaoyumuxi)，`toolDefinitions` 0 内的行为修正（API-23）：外部安装的 `executableLayouts` 文件链接到另一个文件名时，`toolchains.candidates` 的待探针路径和 `toolchains.resolve` 的 `executable` 改为规范主目录下的布局路径，不再是链接目标。rustup 把 `cargo`、`rust-analyzer` 链接到自身、按启动时的名字决定运行哪个工具，以前 Core 返回 `rustup`，版本探针失败。链接目标的类型、可执行位和越界检查不变；同名链接仍返回规范路径。没有新增字段、版本号、宿主方法、通知或 SDK 版本。
 
 ## 按协议查首次出现
 
@@ -50,14 +48,14 @@
 | `buildProviders` | 1 | 2026-11-18 | [#89](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/89) |
 | `buildSystems` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `buildSystems` | 1 | 2026-11-19 | [#112](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/112) |
-| `buildSystems` | 2 | 待合入 | [#139](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/139) |
+| `buildSystems` | 2 | 2026-11-20 | [#139](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/139) |
 | `commandInstallers` | 0 | 2026-11-15 | [#53](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/53) |
 | `commandInstallers` | 1 | 2026-11-20 | [#133](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/133) |
 | `debugAdapters` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `executionProviders` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `keymapImportProviders` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `languageServers` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
-| `languageServers` | 1 | 待合入 | [#141](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/141) |
+| `languageServers` | 1 | 2026-11-20 | [#141](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/141) |
 | `languages` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `outputLinkMatchers` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `packageTrust` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
@@ -152,6 +150,7 @@
 | API-23 | `run/start`：`temporaryFiles` 增加 `{name, base64}` 字节文件 | 0 | 2026-11-13 | [#23](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/23) |
 | API-23 | `run/start`：`process.outputEncoding` 可选声明 | 0 | 2026-11-20 | [#128](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/128) |
 | API-29 | `lithe/build/prepareRun`：返回值 `outputEncoding` 可选声明（提供者方法） | `litheBuild` 0、1 | 2026-11-20 | [#128](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/128) |
+| API-40 | `workspace/getHostPaths` | 0 | 待合入 | [#151](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/151) |
 
 ## 时间线（新的在上）
 
@@ -159,6 +158,9 @@
 
 | PR | 修改人 | API 编号 | 协议 / 能力 | 改了什么 |
 | --- | --- | --- | --- | --- |
+| [#141](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/141) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | API-25、API-29、API-31 | **`languageServers` 1** | 语言服务器新增可选 `executesProjectCode`（不写按 `true`），启动请求新增 `projectCodeAllowed`（不写按未信任，[1lck/Lithe-IDEA#2208](https://github.com/1lck/Lithe-IDEA/issues/2208)）。未信任的工作区里，`plugins.declarative.languageServerLaunchPlan` 和 `plugins.languageServers.decodeLaunch` 只给声明 `executesProjectCode: false` 的语言服务器计划；自带进程的构建提供者按 `buildSystems[].provider.executesProjectCode` 判断，共用语言服务器的跟随该服务器；VCS 提供者一律不给计划。拒绝码是新的 `plugin.launch.untrustedWorkspace`。插件后端和独立调试适配器不受影响。用 `executesProjectCode` 要声明 `requires.languageServers: 1`。没有新增宿主方法、通知或 SDK 版本。 |
+| [#139](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/139) | [@1lck](https://github.com/1lck) | API-29 | **`buildSystems` 2** | 构建提供者的 `application` 运行声明（含 `entrypoints: true`）可以通过 `debug.configurationType` 复用已注册的连接调试器。`lithe/build/prepareRun` 复用原有 `launchOptions.debug`，入口运行仍不带 `target`。已有服务运行声明继续适用旧版本。没有新增 RPC 方法、通知或 SDK 版本。 |
+| [#135](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/135) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | API-23 | `toolDefinitions` 0 内的行为修正 | 外部安装的 `executableLayouts` 文件链接到另一个文件名时，`toolchains.candidates` 的待探针路径和 `toolchains.resolve` 的 `executable` 改为规范主目录下的布局路径，不再是链接目标。rustup 把 `cargo`、`rust-analyzer` 链接到自身、按启动时的名字决定运行哪个工具，以前 Core 返回 `rustup`，版本探针失败。链接目标的类型、可执行位和越界检查不变；同名链接仍返回规范路径。没有新增字段、版本号、宿主方法、通知或 SDK 版本。 |
 | [#133](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/133) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | API-23 | **`commandInstallers` 1** | 命令安装新增[下载安装](../contract/v1/README.md#download-installers)：安装声明 `download`（与 `tool`、`minimumVersion`、`arguments` 互斥），固定上游 `version` 和 1–6 个平台归档，每个归档有 `os`、`arch`、HTTPS `url`、可选 `mirrors`（最多 8 个）、完整 `sha256`、`archive`（`zip`/`tar.gz`）和可选 `stripPrefix`，规则与 `managedRuntimes` 归档相同；只能用 `managed` 目标，不带 `arguments`、`environment`，`commandDirectory` 相对解压根目录，`mayUseNetwork` 必须为 `true`。`plugins.commandInstallers.requirements` 和 `plan` 新增可选 `platform: {os, arch}`：带上时没有该平台归档的下载安装不提供；安装条目新增 `download: null | {version}`；计划新增 `download`（工具安装为 `null`，下载安装为选中平台的归档、`cacheKey` 和 `commandDirectory`）。新增 Core 错误码 `plugin.commandInstaller.platformInvalid`、`unavailable`，宿主错误码 `plugin.commandInstaller.downloadFailed`、`checksumMismatch`、`archiveInvalid`；`failed` 只指工具安装失败。下载安装的审查程序列出全部归档，改地址、镜像、摘要或版本需要重新批准；只声明 `commandInstallers` 0 的宿主拒绝安装带下载安装的插件。没有新增宿主方法、通知或 SDK 版本。用于 Rust Support 插件按需下载 CodeLLDB。 |
 | [#130](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/130) | [@1lck](https://github.com/1lck) | — | **市场推荐索引 `schemaVersion` 0** | 市场契约新增同级推荐索引格式 `plugin-recommendations.schema.json`（`schemaVersion: 0`，独立于只增不破旧版的 `lithe-plugin-index.json`）；`plugins.marketplace.resolveSource` 额外返回 `recommendationsURL`，并新增宿主内部 Core 命令 `plugins.marketplace.recommendForWorkspace`（不是插件 RPC），基于工作区采集文件名与已有市场索引匹配可安装的缺失插件。见 [1lck/Lithe-IDEA#2228](https://github.com/1lck/Lithe-IDEA/issues/2228)。 |
 | [#128](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/128) | [@xiaoyumuxi](https://github.com/xiaoyumuxi) | API-23、API-29 | `pluginAPIVersion` 0 内的补充 | `run/start` 的 `process` 和提供者 `lithe/build/prepareRun` 的返回值新增可选 `outputEncoding`，用稳定编码 ID 或别名声明进程写入管道的编码；Core 校验并规范化，拒绝未知或不兼容 ASCII 的编码。用户固定编码优先；自动模式逐行尝试声明、UTF-8，以及仅 Windows 的 GBK。省略字段时所有平台默认 UTF-8，Windows 兼容 GBK；不修改进程环境或终端代码页。新增宿主内部 Core 命令 `outputEncoding.resolve`，返回同一解析规则的候选与可选编码列表，不是插件 RPC。见 [1lck/Lithe-IDEA#2186](https://github.com/1lck/Lithe-IDEA/issues/2186)。 |

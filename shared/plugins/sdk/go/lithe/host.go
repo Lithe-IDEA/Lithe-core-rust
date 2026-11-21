@@ -878,6 +878,142 @@ func (w *Workspace) GetFolders(context WorkspaceContext) (json.RawMessage, error
 	return w.host.scoped(methodGetFolders, context, nil)
 }
 
+// HostPath is an absolute path on the remote host of a remote context, read
+// with [Workspace.GetHostPaths]. It is not a path on this machine: give it
+// only to a process that runs on that host, never to os, filepath or exec
+// here. It is its own type so it is not passed as a local path by mistake.
+type HostPath string
+
+// String is the path as text.
+func (p HostPath) String() string { return string(p) }
+
+// HostFolder is a root of a remote context and its path on the remote host.
+type HostFolder struct {
+	RootID   string   `json:"rootID"`
+	HostPath HostPath `json:"hostPath"`
+}
+
+// GetHostPaths answers the path on the remote host of each root of a remote
+// context, or of rootIDs only: 1-256 distinct root IDs from GetFolders. It
+// needs the workspace.metadata permission, and only a host that serves it
+// lists it, so check Supports("lithe/host/workspace/getHostPaths") first. A
+// local context, or a host that cannot answer, fails with
+// plugin.host.authorityUnsupported.
+func (w *Workspace) GetHostPaths(context WorkspaceContext, rootIDs ...string) ([]HostFolder, error) {
+	params := map[string]any{"context": context.toValue()}
+	if len(rootIDs) > 0 {
+		if !distinctRootIDs(rootIDs) {
+			return nil, newSdkError("sdk.host.invalidParams", "rootIDs is 1-256 distinct root IDs of 1-128 ASCII letters, digits, \".\", \"_\", \":\" or \"-\".")
+		}
+		ids := make([]any, len(rootIDs))
+		for i, id := range rootIDs {
+			ids[i] = id
+		}
+		params["rootIDs"] = ids
+	}
+	result, err := w.host.request(methodGetHostPaths, params)
+	if err != nil {
+		return nil, err
+	}
+	return hostFolders(result)
+}
+
+// ProcessRoot is a root of a context as a process started for it names its
+// working directory: Path for a local context, HostPath for a remote one.
+// The other one is empty.
+type ProcessRoot struct {
+	RootID   string   `json:"rootID"`
+	Path     string   `json:"path,omitempty"`
+	HostPath HostPath `json:"hostPath,omitempty"`
+}
+
+// ProcessRoots answers the roots of a full context from ListContexts or
+// GetContext -- a json.RawMessage, a map, or any value that serializes to
+// one. A local context's folders are read without asking the host; for any
+// other authority it calls GetHostPaths.
+func (w *Workspace) ProcessRoots(context any) ([]ProcessRoot, error) {
+	value, err := toValue(context)
+	kind, ok := pointer(value, "authority", "kind").(string)
+	if err != nil || !ok {
+		return nil, newSdkError("sdk.host.invalidContext", "ProcessRoots takes a full context, with its authority and folders, from ListContexts or GetContext.")
+	}
+	if kind == "local" {
+		return localFolders(field(value, "folders"))
+	}
+	reference, err := workspaceContextFromValue(value)
+	if err != nil {
+		return nil, err
+	}
+	folders, err := w.GetHostPaths(reference)
+	if err != nil {
+		return nil, err
+	}
+	roots := make([]ProcessRoot, len(folders))
+	for i, folder := range folders {
+		roots[i] = ProcessRoot{RootID: folder.RootID, HostPath: folder.HostPath}
+	}
+	return roots, nil
+}
+
+func distinctRootIDs(rootIDs []string) bool {
+	if len(rootIDs) > maxHostPathRoots {
+		return false
+	}
+	seen := make(map[string]bool, len(rootIDs))
+	for _, id := range rootIDs {
+		if !IsCredentialKey(id) || seen[id] {
+			return false
+		}
+		seen[id] = true
+	}
+	return true
+}
+
+// hostFolders reads { folders: [{ rootID, hostPath }] } of a GetHostPaths
+// answer.
+func hostFolders(result any) ([]HostFolder, error) {
+	items, ok := field(result, "folders").([]any)
+	if !ok {
+		return nil, invalidHostPaths()
+	}
+	folders := make([]HostFolder, len(items))
+	for i, item := range items {
+		rootID, _ := field(item, "rootID").(string)
+		path, _ := field(item, "hostPath").(string)
+		if !IsCredentialKey(rootID) || !strings.HasPrefix(path, "/") {
+			return nil, invalidHostPaths()
+		}
+		folders[i] = HostFolder{RootID: rootID, HostPath: HostPath(path)}
+	}
+	return folders, nil
+}
+
+func invalidHostPaths() *SdkError {
+	return newSdkError("sdk.host.invalidResult", "The host answered getHostPaths without folders of a root ID and an absolute host path.")
+}
+
+// localFolders reads [{ rootID, path }] of a local context's folders.
+func localFolders(value any) ([]ProcessRoot, error) {
+	items, ok := value.([]any)
+	if !ok {
+		return nil, invalidLocalFolders()
+	}
+	roots := make([]ProcessRoot, len(items))
+	for i, item := range items {
+		rootID, _ := field(item, "rootID").(string)
+		path, ok := field(item, "path").(string)
+		if !IsCredentialKey(rootID) || !ok {
+			return nil, invalidLocalFolders()
+		}
+		roots[i] = ProcessRoot{RootID: rootID, Path: path}
+	}
+	return roots, nil
+}
+
+func invalidLocalFolders() *SdkError {
+	return newSdkError("sdk.host.invalidContext", "A local context's folders each carry a rootID and a path.")
+}
+
 // ReadDirectory takes resource, cursor?, limit?.
 func (w *Workspace) ReadDirectory(context WorkspaceContext, params any) (json.RawMessage, error) {
 	return w.host.scoped(methodReadDirectory, context, params)

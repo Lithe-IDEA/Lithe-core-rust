@@ -18,7 +18,7 @@ public final class HostError extends PluginSdkError {
     /**
      * Stable host failure codes and their JSON-RPC numbers, including the
      * {@code plugin.function.*} codes of cross-plugin calls. A later host adds
-     * codes after the highest number here.
+     * codes at numbers no code here uses yet.
      */
     public static final Map<String, Integer> CODES;
     private static final Map<Integer, String> BY_RPC_CODE;
@@ -57,6 +57,8 @@ public final class HostError extends PluginSdkError {
         codes.put("plugin.function.providerUnavailable", -32069);
         codes.put("plugin.function.failed", -32070);
         codes.put("plugin.function.invalidResult", -32071);
+        codes.put("plugin.host.remoteDisconnected", -32078);
+        codes.put("plugin.host.platformUnavailable", -32079);
         CODES = Collections.unmodifiableMap(codes);
         Map<Integer, String> byNumber = new HashMap<>();
         for (Map.Entry<String, Integer> entry : codes.entrySet()) {

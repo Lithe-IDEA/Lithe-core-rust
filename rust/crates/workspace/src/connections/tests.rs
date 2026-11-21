@@ -16,6 +16,7 @@ fn details(error: &CoreError) -> Value {
 fn a_missing_document_lists_nothing_and_says_where_to_keep_one() {
     let result = list(list_request(json!({ "document": null }))).unwrap();
     assert_eq!(result["connections"], json!([]));
+    assert_eq!(result["sections"], json!([]));
     assert_eq!(
         result["storage"],
         json!({ "relativePath": "remote/connections.json", "maximumBytes": 262144 })
@@ -38,6 +39,53 @@ fn saving_returns_the_document_to_write_and_the_new_id() {
     let document = result["document"].as_str().expect("document");
     let listed = list(list_request(json!({ "document": document }))).unwrap();
     assert_eq!(listed["connections"], result["connections"]);
+}
+
+#[test]
+fn colors_and_groups_are_saved_and_listed_by_section() {
+    let first = edit(edit_request(json!({
+        "document": null,
+        "save": {
+            "name": "Web",
+            "connection": { "host": "web.example" },
+            "color": "green",
+            "group": " Production ",
+        },
+    })))
+    .unwrap();
+    let web = first["id"].as_str().expect("id").to_owned();
+    assert_eq!(first["connections"][0]["color"], json!("green"));
+    assert_eq!(first["connections"][0]["group"], json!("Production"));
+    let second = edit(edit_request(json!({
+        "document": first["document"],
+        "save": { "name": "Lab", "connection": { "host": "lab.example" } },
+    })))
+    .unwrap();
+    let lab = second["id"].as_str().expect("id").to_owned();
+    assert!(second["connections"][1].get("color").is_none());
+    assert!(second["connections"][1].get("group").is_none());
+    let sections = json!([
+        { "group": "Production", "ids": [web] },
+        { "group": null, "ids": [lab] },
+    ]);
+    assert_eq!(second["sections"], sections);
+    let listed = list(list_request(json!({ "document": second["document"] }))).unwrap();
+    assert_eq!(listed["sections"], sections);
+
+    let error = edit(edit_request(json!({
+        "document": null,
+        "save": { "name": "Box", "connection": { "host": "box" }, "group": "a\u{7}b" },
+    })))
+    .expect_err("control character");
+    assert_eq!(
+        details(&error),
+        json!({ "field": "group", "reason": "invalid" })
+    );
+    assert!(serde_json::from_value::<EditRequest>(json!({
+        "document": null,
+        "save": { "name": "Box", "connection": { "host": "box" }, "color": "pink" },
+    }))
+    .is_err());
 }
 
 #[test]

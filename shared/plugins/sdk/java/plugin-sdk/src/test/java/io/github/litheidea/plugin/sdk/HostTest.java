@@ -548,6 +548,115 @@ class HostTest {
         host.close();
     }
 
+    @Test
+    void hostPathRootIdsCoreRefusesFailLocallyAndTheAnswerHoldsHostPaths() {
+        Backend backend = Backend.create(null, null);
+        TestHost host = session(backend);
+        Host.Workspace workspace = backend.host().workspace();
+        Set<Object> taken = new HashSet<>();
+        int checked = 0;
+        for (Map<String, Object> testCase : cases("hostRequests")) {
+            if (!Protocol.HOST_WORKSPACE_GET_HOST_PATHS.equals(testCase.get("method"))) {
+                continue;
+            }
+            Map<String, Object> params = object(testCase.get("params"));
+            if (params.get("context") == null || params.get("path") != null) {
+                continue;
+            }
+            String name = (String) testCase.get("name");
+            Map<String, Object> context = object(params.get("context"));
+            List<String> rootIds = null;
+            if (params.get("rootIDs") != null) {
+                rootIds = new ArrayList<>();
+                for (Object id : (List<?>) params.get("rootIDs")) {
+                    rootIds.add((String) id);
+                }
+            }
+            Map<String, Object> expected = object(testCase.get("expected"));
+            if (expected.get("forward") != null) {
+                CompletableFuture<List<Host.HostFolder>> asking = workspace.getHostPaths(context, rootIds);
+                Map<String, Object> request = nextRequest(host, Protocol.HOST_WORKSPACE_GET_HOST_PATHS, taken);
+                assertEquals(params, request.get("params"), name);
+                List<String> roots = rootIds == null ? Arrays.asList("r0c1d2e3f4a5b6c7d") : rootIds;
+                List<Object> folders = new ArrayList<>();
+                for (int index = 0; index < roots.size(); index++) {
+                    folders.add(map("rootID", roots.get(index), "hostPath", "/srv/root" + index));
+                }
+                host.send(map("id", request.get("id"), "result", map("folders", folders)));
+                List<Host.HostFolder> answer = value(asking);
+                assertEquals(roots.size(), answer.size(), name);
+                assertEquals(roots.get(0), answer.get(0).rootId(), name);
+                assertEquals(Host.HostPath.of("/srv/root0"), answer.get(0).hostPath(), name);
+                checked++;
+            } else if ("plugin.host.invalidParams".equals(expected.get("code"))) {
+                assertEquals("sdk.host.invalidParams", code(workspace.getHostPaths(context, rootIds)), name);
+                checked++;
+            }
+        }
+        assertEquals(5, checked);
+        int before = host.messages().size();
+        List<String> tooMany = new ArrayList<>();
+        for (int index = 0; index < 257; index++) {
+            tooMany.add("r" + index);
+        }
+        assertEquals("sdk.host.invalidParams", code(workspace.getHostPaths(CONTEXT, tooMany)));
+        assertEquals(before, host.messages().size());
+
+        // An answer that is not root IDs with absolute paths is refused.
+        for (Object answer : Arrays.asList(map(),
+                map("folders", Arrays.asList(map("rootID", "r0", "hostPath", "srv/root0"))),
+                map("folders", Arrays.asList(map("hostPath", "/srv/root0"))))) {
+            CompletableFuture<List<Host.HostFolder>> asking = workspace.getHostPaths(CONTEXT);
+            Map<String, Object> request = nextRequest(host, Protocol.HOST_WORKSPACE_GET_HOST_PATHS, taken);
+            host.send(map("id", request.get("id"), "result", answer));
+            assertEquals("sdk.host.invalidResult", code(asking), String.valueOf(answer));
+        }
+        host.close();
+    }
+
+    @Test
+    void processRootsReadsALocalContextAndAsksTheHostOnlyForARemoteOne() {
+        Backend backend = Backend.create(null, null);
+        TestHost host = session(backend);
+        Host.Workspace workspace = backend.host().workspace();
+        int before = host.messages().size();
+        List<Host.ProcessRoot> local = value(workspace.processRoots(map("contextID", "w1", "generation", 2L,
+                "name", "orders", "authority", map("kind", "local"),
+                "folders", Arrays.asList(map("rootID", "r0", "name", "orders", "path", "/Users/me/orders")))));
+        assertEquals(1, local.size());
+        assertEquals("r0", local.get(0).rootId());
+        assertEquals("/Users/me/orders", local.get(0).path());
+        assertFalse(local.get(0).isRemote());
+        assertNull(local.get(0).hostPath());
+        assertEquals(before, host.messages().size());
+
+        CompletableFuture<List<Host.ProcessRoot>> asking = workspace.processRoots(map("contextID", "w1", "generation", 2L,
+                "name", "orders",
+                "authority", map("kind", "remote", "id", "c-7d41", "platform", map("os", "linux", "arch", "x86_64")),
+                "folders", Arrays.asList(map("rootID", "r0", "name", "orders"))));
+        Map<String, Object> request = nextRequest(host, Protocol.HOST_WORKSPACE_GET_HOST_PATHS);
+        assertEquals(map("context", CONTEXT), request.get("params"));
+        host.send(map("id", request.get("id"), "result",
+                map("folders", Arrays.asList(map("rootID", "r0", "hostPath", "/home/me/orders")))));
+        List<Host.ProcessRoot> remote = value(asking);
+        assertEquals(1, remote.size());
+        assertTrue(remote.get(0).isRemote());
+        assertNull(remote.get(0).path());
+        Host.HostPath hostPath = remote.get(0).hostPath();
+        assertEquals("/home/me/orders", hostPath.value());
+        // It is written as the path, for what runs on the remote host.
+        assertEquals("{\"cwd\":\"/home/me/orders\"}", Json.stringify(map("cwd", hostPath)));
+        assertThrows(IllegalArgumentException.class, () -> Host.HostPath.of("home/me/orders"));
+
+        // A reference alone does not say the authority, and a local folder names its path.
+        before = host.messages().size();
+        assertEquals("sdk.host.invalidContext", code(workspace.processRoots(CONTEXT)));
+        assertEquals("sdk.host.invalidContext", code(workspace.processRoots(map("contextID", "w1", "generation", 2L,
+                "authority", map("kind", "local"), "folders", Arrays.asList(map("rootID", "r0"))))));
+        assertEquals(before, host.messages().size());
+        host.close();
+    }
+
     /** {@code base} as a new map, with {@code overrides} (alternating keys and values) replacing or adding entries. */
     private static Map<String, Object> with(Map<String, Object> base, Object... overrides) {
         Map<String, Object> copy = map();

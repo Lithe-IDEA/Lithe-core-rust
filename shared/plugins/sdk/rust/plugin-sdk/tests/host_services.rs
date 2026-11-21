@@ -5,13 +5,13 @@ mod common;
 
 use common::{Host, WAIT};
 use lithe_plugin_sdk::{
-    is_credential_key, Backend, Cancellation, FunctionError, SdkError, WorkspaceContext,
-    HOST_ERROR_CODES,
+    is_credential_key, Backend, Cancellation, FunctionError, HostPath, ProcessRoot, SdkError,
+    WorkspaceContext, HOST_ERROR_CODES,
 };
 use serde_json::{json, Value};
 use std::collections::{BTreeSet, VecDeque};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::Arc;
 use std::thread;
@@ -784,6 +784,170 @@ fn native_terminal_methods_keep_context_and_literal_arguments() {
 }
 
 #[test]
+fn host_path_root_ids_core_refuses_fail_locally_and_the_answer_holds_host_paths() {
+    let backend = Backend::new("test-backend");
+    let host = backend.handle().host();
+    let mut session = Session::start(backend);
+    let mut checked = 0;
+    for case in cases(&fixture(), "hostRequests") {
+        let params = &case["params"];
+        if case["method"] != "lithe/host/workspace/getHostPaths"
+            || params["context"].is_null()
+            || !params["path"].is_null()
+        {
+            continue;
+        }
+        let name = case["name"].as_str().unwrap().to_string();
+        let workspace = WorkspaceContext::from_value(&params["context"]).unwrap();
+        let root_ids: Option<Vec<String>> = params["rootIDs"].as_array().map(|ids| {
+            ids.iter()
+                .map(|id| id.as_str().unwrap().to_string())
+                .collect()
+        });
+        let expected = &case["expected"];
+        if expected.get("forward").is_some() {
+            let asking = {
+                let (host, workspace, root_ids) =
+                    (host.clone(), workspace.clone(), root_ids.clone());
+                background(move || {
+                    let ids: Option<Vec<&str>> = root_ids
+                        .as_ref()
+                        .map(|ids| ids.iter().map(String::as_str).collect());
+                    host.workspace().get_host_paths(&workspace, ids.as_deref())
+                })
+            };
+            let request = session.take("lithe/host/workspace/getHostPaths");
+            assert_eq!(&request["params"], params, "{name}");
+            let roots = root_ids.unwrap_or_else(|| vec!["r0c1d2e3f4a5b6c7d".to_string()]);
+            let folders: Vec<Value> = roots
+                .iter()
+                .enumerate()
+                .map(|(index, id)| json!({ "rootID": id, "hostPath": format!("/srv/root{index}") }))
+                .collect();
+            session.reply(&request, json!({ "folders": folders }));
+            let answer = done(&asking).unwrap();
+            assert_eq!(answer.len(), roots.len(), "{name}");
+            assert_eq!(answer[0].root_id(), roots[0], "{name}");
+            assert_eq!(answer[0].host_path().as_str(), "/srv/root0", "{name}");
+            checked += 1;
+        } else if expected["code"] == "plugin.host.invalidParams" {
+            let ids: Vec<&str> = root_ids
+                .as_ref()
+                .expect("an invalid case names root IDs")
+                .iter()
+                .map(String::as_str)
+                .collect();
+            assert_eq!(
+                code(host.workspace().get_host_paths(&workspace, Some(&ids))),
+                "sdk.host.invalidParams",
+                "{name}"
+            );
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, 5);
+    let too_many: Vec<String> = (0..257).map(|index| format!("r{index}")).collect();
+    let too_many: Vec<&str> = too_many.iter().map(String::as_str).collect();
+    assert_eq!(
+        code(host.workspace().get_host_paths(&context(), Some(&too_many))),
+        "sdk.host.invalidParams"
+    );
+    session.host.assert_quiet();
+
+    // An answer that is not root IDs with absolute paths is refused.
+    for answer in [
+        json!({}),
+        json!({ "folders": [{ "rootID": "r0", "hostPath": "srv/root0" }] }),
+        json!({ "folders": [{ "hostPath": "/srv/root0" }] }),
+    ] {
+        let asking = {
+            let host = host.clone();
+            background(move || host.workspace().get_host_paths(&context(), None))
+        };
+        let request = session.take("lithe/host/workspace/getHostPaths");
+        session.reply(&request, answer.clone());
+        assert_eq!(code(done(&asking)), "sdk.host.invalidResult", "{answer}");
+    }
+    session.close();
+}
+
+#[test]
+fn process_roots_reads_a_local_context_and_asks_the_host_only_for_a_remote_one() {
+    let backend = Backend::new("test-backend");
+    let host = backend.handle().host();
+    let mut session = Session::start(backend);
+    let local = host
+        .workspace()
+        .process_roots(&json!({
+            "contextID": "w1", "generation": 2, "name": "orders", "authority": { "kind": "local" },
+            "folders": [{ "rootID": "r0", "name": "orders", "path": "/Users/me/orders" }]
+        }))
+        .unwrap();
+    assert_eq!(
+        local,
+        [ProcessRoot::Local {
+            root_id: "r0".into(),
+            path: PathBuf::from("/Users/me/orders")
+        }]
+    );
+    session.host.assert_quiet();
+
+    let asking = {
+        let host = host.clone();
+        background(move || {
+            host.workspace().process_roots(&json!({
+                "contextID": "w1", "generation": 2, "name": "orders",
+                "authority": { "kind": "remote", "id": "c-7d41", "platform": { "os": "linux", "arch": "x86_64" } },
+                "folders": [{ "rootID": "r0", "name": "orders" }]
+            }))
+        })
+    };
+    let request = session.take("lithe/host/workspace/getHostPaths");
+    assert_eq!(
+        request["params"],
+        json!({ "context": { "contextID": "w1", "generation": 2 } })
+    );
+    session.reply(
+        &request,
+        json!({ "folders": [{ "rootID": "r0", "hostPath": "/home/me/orders" }] }),
+    );
+    let remote = done(&asking).unwrap();
+    let host_path = HostPath::new("/home/me/orders").unwrap();
+    assert_eq!(
+        remote,
+        [ProcessRoot::Remote {
+            root_id: "r0".into(),
+            host_path: host_path.clone()
+        }]
+    );
+    assert_eq!(remote[0].root_id(), "r0");
+    // It is written as the path, for what runs on the remote host.
+    assert_eq!(
+        json!({ "cwd": host_path }),
+        json!({ "cwd": "/home/me/orders" })
+    );
+    assert_eq!(host_path.to_string(), "/home/me/orders");
+    assert_eq!(HostPath::new("home/me/orders"), None);
+
+    // A reference alone does not say the authority, and a local folder names its path.
+    for context in [
+        context().to_value(),
+        json!({
+            "contextID": "w1", "generation": 2, "authority": { "kind": "local" },
+            "folders": [{ "rootID": "r0" }]
+        }),
+    ] {
+        assert_eq!(
+            code(host.workspace().process_roots(&context)),
+            "sdk.host.invalidContext",
+            "{context}"
+        );
+    }
+    session.host.assert_quiet();
+    session.close();
+}
+
+#[test]
 fn a_relayed_call_names_the_plugin_that_called_it_and_a_host_call_names_none() {
     let mut checked = 0;
     for case in cases(&fixture(), "invocationCallers") {
@@ -969,7 +1133,7 @@ fn relay_refusals_keep_the_code_number_and_the_providers_own_code() {
         done(&pending).expect_err("a refusal")
     };
     let relay_errors = cases(&fixture(), "relayErrors");
-    assert_eq!(relay_errors.len(), 15);
+    assert_eq!(relay_errors.len(), 14);
     for case in relay_errors {
         let expected = case["code"].as_str().unwrap();
         let number = case["rpcCode"].as_i64().unwrap();

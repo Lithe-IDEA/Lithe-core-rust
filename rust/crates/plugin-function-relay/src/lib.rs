@@ -84,7 +84,11 @@ pub struct RelayContext {
     #[serde(rename = "contextID")]
     pub(crate) context_id: String,
     pub(crate) generation: u64,
-    pub(crate) authority: ContextAuthority,
+    /// Checked as part of the snapshot, but the relay does not depend on it:
+    /// both backends run on this machine for a remote workspace too, and the
+    /// callee's host requests are routed by the context's authority (API-35).
+    #[serde(rename = "authority")]
+    pub(crate) _authority: ContextAuthority,
 }
 
 /// A function an enabled plugin exports.
@@ -639,12 +643,6 @@ impl FunctionRelay {
                 codes::HOST_CONTEXT_EXPIRED,
                 "The workspace context is no longer current.",
             )),
-            Some(context) if context.authority == ContextAuthority::Remote => {
-                Err(RelayFailure::new(
-                    codes::HOST_AUTHORITY_UNSUPPORTED,
-                    "Plugin functions do not run for remote workspaces.",
-                ))
-            }
             Some(_) => Ok(()),
         }
     }
@@ -924,7 +922,7 @@ mod tests {
         RelayContext {
             context_id: "workspace-1".to_string(),
             generation: 3,
-            authority: ContextAuthority::Local,
+            _authority: ContextAuthority::Local,
         }
     }
 
@@ -1228,25 +1226,18 @@ mod tests {
         assert_eq!(refusal(&mut relay, unknown), codes::HOST_CONTEXT_EXPIRED);
     }
 
+    /// Both backends run on this machine for a remote workspace too, so a call
+    /// naming a remote context is dispatched like a local one (API-35).
     #[test]
-    fn a_remote_workspace_is_refused() {
-        let mut relay = relay();
+    fn a_remote_workspace_is_relayed() {
+        let mut relay = FunctionRelay::default();
         relay
-            .configure(RelaySnapshot {
-                plugins: vec![
-                    plugin(PYTHON, &[], &[(FUNCTION, 1)]),
-                    plugin(GO, &[(FUNCTION, 1)], &[]),
-                ],
-                contexts: vec![RelayContext {
-                    authority: ContextAuthority::Remote,
-                    ..local_context()
-                }],
-            })
+            .configure(snapshot_with_contexts(vec![RelayContext {
+                _authority: ContextAuthority::Remote,
+                ..local_context()
+            }]))
             .unwrap();
-        assert_eq!(
-            refusal(&mut relay, request("py", PYTHON, GO, 1)),
-            codes::HOST_AUTHORITY_UNSUPPORTED
-        );
+        admitted_call(&mut relay, request("py", PYTHON, GO, 1), Instant::now());
     }
 
     #[test]
