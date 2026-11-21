@@ -103,6 +103,7 @@ fn terminals_can_be_reattached_after_reconnecting() {
             ]),
             columns: 80,
             rows: 24,
+            label: None,
         })
         .unwrap();
     // The answer is printed only after the test creates the gate file while
@@ -334,6 +335,7 @@ fn open_terminals_keep_an_idle_session_alive() {
             env: BTreeMap::new(),
             columns: 80,
             rows: 24,
+            label: None,
         })
         .unwrap();
     let terminal_id = terminal.id;

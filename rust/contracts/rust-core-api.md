@@ -5803,8 +5803,8 @@ the remote server running. Requests over it take `sessionId`:
 | `remote.hostInfo` | `{ sessionId }` | the original connection's handshake `host`, including OS, architecture, home and features |
 | `remote.uploadFile` | `{ sessionId, sourcePath, path, sha256, mode }` | verified `{ size, sha256 }` |
 | `remote.runWatch` | `{ sessionId, params: { root, excludeNames? } }` | waits until root removal or cancellation; relays `watch.started`, `watch.changed`, `watch.error` |
-| `remote.runProcess` | `{ sessionId, params: { argv, cwd?, environment?, env?, pipeStdin? } }` | leader exit; relays `process.started`, `process.output`, `process.exit` |
-| `remote.runTerminal` | `{ sessionId, params: { argv?, cwd?, env?, columns, rows } }` | leader exit; relays `terminal.started`, `terminal.output`, `terminal.exit` |
+| `remote.runProcess` | `{ sessionId, params: { argv, cwd?, environment?, env?, pipeStdin?, label? } }` | leader exit; relays `process.started`, `process.output`, `process.exit` |
+| `remote.runTerminal` | `{ sessionId, params: { argv?, cwd?, env?, columns, rows, label? } }` | leader exit; relays `terminal.started`, `terminal.output`, `terminal.exit` |
 | `remote.captureProcess` | `{ sessionId, params, timeoutMilliseconds, maxOutputBytes }` | base64 `stdout`, `stderr`, nullable `exitCode` and `signal` |
 
 `remote.writeFile` replaces the file atomically on the host. With
@@ -5815,7 +5815,9 @@ fails with `connection_closed` and is forgotten, so the host reconnects; an
 unknown or closed `sessionId` is also `connection_closed`.
 
 `remote.hostRequest` accepts finite filesystem, environment and port queries,
-plus controls of existing processes and terminals. Creating a watch, process,
+`server.state` (what still runs, with the `label` given at start, so the host
+can ask before closing a window), plus controls of existing processes and
+terminals. Creating a watch, process,
 terminal, walk or tunnel through that command is `invalid_request`; creation
 requires an owner that subscribes before sending the start request. Streamed
 Core events use `{ type: "remote", event, params }`. Resource IDs are allocated

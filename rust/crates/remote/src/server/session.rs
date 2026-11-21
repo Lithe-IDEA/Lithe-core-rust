@@ -14,7 +14,7 @@ use crate::server::watch::WatchTable;
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Default time a persistent session without a client and without running
 /// programs survives.
@@ -213,10 +213,13 @@ impl Session {
         *crate::server::lock(&self.idle_timeout)
     }
 
+    /// Running times are measured to one moment, so entries of one reply
+    /// compare correctly.
     pub(crate) fn state(&self) -> ServerState {
+        let now = Instant::now();
         ServerState {
-            processes: self.processes.states(),
-            terminals: self.terminals.states(),
+            processes: self.processes.states(now),
+            terminals: self.terminals.states(now),
             watches: self.watches.states(),
         }
     }

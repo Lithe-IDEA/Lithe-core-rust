@@ -474,6 +474,7 @@ pub(crate) fn launch(host: Host, spec: LspProcessSpec) -> Result<LspProcessStrea
         environment: EnvironmentSource::Login,
         env: spec.environment,
         pipe_stdin: true,
+        label: None,
     };
     let pending = process
         .connection

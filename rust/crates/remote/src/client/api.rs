@@ -12,12 +12,12 @@ use crate::protocol::methods::{
     EnvironmentResolveParams, EnvironmentResolveResult, EnvironmentSource, FileMetadata,
     FileVersion, KillParams, ListeningPort, ListeningPortsResult, OutputStream, PathParams,
     ProcessExitEvent, ProcessOutputEvent, ProcessParams, ReadDirResult, ReadFileParams,
-    ReadFileResult, RealPathResult, RemoveParams, RenameParams, ServerState, SetPermissionsParams,
-    SpawnParams, SpawnResult, TerminalExitEvent, TerminalOpenParams, TerminalOpenResult,
-    TerminalOutputEvent, TerminalParams, TerminalResizeParams, TerminalWriteParams,
-    TunnelClosedEvent, TunnelDataEvent, TunnelOpenParams, TunnelParams, TunnelTarget,
-    TunnelWriteParams, VolumeInfo, WalkDoneEvent, WalkEntriesEvent, WalkEntry, WalkParams,
-    WalkStartParams, WatchChangedEvent, WatchErrorEvent, WatchParams, WatchStartParams,
+    ReadFileResult, RealPathResult, RemoveParams, RenameParams, ResourceLabel, ServerState,
+    SetPermissionsParams, SpawnParams, SpawnResult, TerminalExitEvent, TerminalOpenParams,
+    TerminalOpenResult, TerminalOutputEvent, TerminalParams, TerminalResizeParams,
+    TerminalWriteParams, TunnelClosedEvent, TunnelDataEvent, TunnelOpenParams, TunnelParams,
+    TunnelTarget, TunnelWriteParams, VolumeInfo, WalkDoneEvent, WalkEntriesEvent, WalkEntry,
+    WalkParams, WalkStartParams, WatchChangedEvent, WatchErrorEvent, WatchParams, WatchStartParams,
     WatchStartResult, WriteFileParams, MAX_TRANSFER_BYTES,
 };
 use crate::protocol::{ErrorCode, RemoteError};
@@ -64,6 +64,8 @@ pub struct SpawnSpec {
     pub env: BTreeMap<String, String>,
     /// Keep standard input open for [`ProcessHandle::write_stdin`].
     pub pipe_stdin: bool,
+    /// What [`RemoteSession::state`] reports for the process.
+    pub label: Option<ResourceLabel>,
 }
 
 /// What to open in [`RemoteSession::open_terminal`].
@@ -80,6 +82,8 @@ pub struct TerminalSpec {
     pub columns: u16,
     /// Initial height in character cells.
     pub rows: u16,
+    /// What [`RemoteSession::state`] reports for the terminal.
+    pub label: Option<ResourceLabel>,
 }
 
 /// A finished process's collected output.
@@ -386,6 +390,7 @@ impl RemoteSession {
                 environment: spec.environment,
                 env: spec.env,
                 pipe_stdin: spec.pipe_stdin,
+                label: spec.label,
             },
         );
         match result {
@@ -415,6 +420,7 @@ impl RemoteSession {
                 env: spec.env,
                 columns: spec.columns,
                 rows: spec.rows,
+                label: spec.label,
             },
         );
         match result {

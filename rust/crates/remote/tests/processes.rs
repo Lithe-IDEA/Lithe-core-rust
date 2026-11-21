@@ -6,11 +6,12 @@ use lithe_remote::client::api::ProcessEvent;
 use lithe_remote::client::session::ClientError;
 use lithe_remote::client::SpawnSpec;
 use lithe_remote::protocol::methods::{
-    self, EnvironmentSource, OutputStream, ResolvedEnvironmentSource,
+    self, EnvironmentSource, OutputStream, ResolvedEnvironmentSource, ResourceLabel,
 };
 use lithe_remote::protocol::ErrorCode;
 use serde_json::json;
 use std::collections::BTreeMap;
+use std::time::Instant;
 use support::{connect, connect_with_environment, wait_until_gone, TempDir, STEP_TIMEOUT};
 
 fn argv(values: &[&str]) -> Vec<String> {
@@ -112,6 +113,90 @@ fn a_live_resource_id_cannot_be_reused() {
     process.kill(true).unwrap();
     process.wait(STEP_TIMEOUT).unwrap();
     drop(process);
+    session.shutdown(STEP_TIMEOUT);
+}
+
+// Closing a window lists what still runs by the label its client gave and
+// the time it has been running, also to a client that did not start it.
+#[test]
+fn state_reports_labels_and_running_time() {
+    let (session, _events) = connect();
+    let label = ResourceLabel {
+        kind: "run".into(),
+        name: "Server".into(),
+    };
+    let started = Instant::now();
+    let labeled = session
+        .spawn(SpawnSpec {
+            argv: argv(&["sleep", "60"]),
+            label: Some(label.clone()),
+            ..SpawnSpec::default()
+        })
+        .unwrap();
+    let unlabeled = session
+        .spawn(SpawnSpec {
+            argv: argv(&["sleep", "60"]),
+            ..SpawnSpec::default()
+        })
+        .unwrap();
+    let state = session.state().unwrap();
+    // The server started both after `started` and measured before this.
+    let elapsed = started.elapsed().as_millis();
+    let find = |process_id| {
+        state
+            .processes
+            .iter()
+            .find(|running| running.process_id == process_id)
+            .unwrap()
+    };
+    assert_eq!(find(labeled.id).label.as_ref(), Some(&label));
+    assert_eq!(find(unlabeled.id).label, None);
+    for running in &state.processes {
+        assert!(u128::from(running.running_ms) <= elapsed);
+    }
+    for process in [labeled, unlabeled] {
+        process.kill(true).unwrap();
+        process.wait(STEP_TIMEOUT).unwrap();
+    }
+    session.shutdown(STEP_TIMEOUT);
+}
+
+#[test]
+fn a_label_that_breaks_a_rule_starts_nothing() {
+    let (session, _events) = connect();
+    let directory = TempDir::new("rejected-label");
+    let started = directory.join("started");
+    let invalid = [
+        ResourceLabel {
+            kind: "k".repeat(methods::MAX_LABEL_KIND_CHARS + 1),
+            name: "Server".into(),
+        },
+        ResourceLabel {
+            kind: "run".into(),
+            name: "n".repeat(methods::MAX_LABEL_NAME_CHARS + 1),
+        },
+        ResourceLabel {
+            kind: "run".into(),
+            name: "Server\n".into(),
+        },
+    ];
+    for label in invalid {
+        let result = session.spawn(SpawnSpec {
+            argv: argv(&["touch", &started]),
+            label: Some(label),
+            ..SpawnSpec::default()
+        });
+        match result {
+            Err(ClientError::Remote(error)) => assert_eq!(error.code, ErrorCode::InvalidRequest),
+            Err(other) => panic!("expected INVALID_REQUEST, got {other:?}"),
+            Ok(_) => panic!("a process with an invalid label started"),
+        }
+    }
+    assert!(session.state().unwrap().processes.is_empty());
+    assert!(
+        !std::path::Path::new(&started).exists(),
+        "the rejected command ran"
+    );
     session.shutdown(STEP_TIMEOUT);
 }
 
