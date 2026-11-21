@@ -3,7 +3,10 @@
 //! their fields, and `build.runConfigurationPlan` expands a saved entry into
 //! the argv plan the host starts.
 
-use super::support::{apply_run_changes, changed_run_document, temporary_root, Cleanup};
+use super::support::{
+    apply_run_changes, changed_run_document, changed_run_paths, edit_plugin_run_document,
+    temporary_root, Cleanup,
+};
 use crate::execute_json;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -63,6 +66,23 @@ fn plan(root: &std::path::Path, manifest: Value, request: Value) -> Value {
             "request": super::support::trusted(request),
         }),
     )
+}
+
+fn save_file_run(root: &std::path::Path, name: &str, directory: &str) -> Value {
+    let saved = call(
+        "runConfig.saveConfiguration",
+        json!({
+            "root": root, "provider": "build.run-type", "runType": run_type("build"),
+            "runTypePlugins": plugins(),
+            "values": {
+                "name": name, "workingDirectory": directory,
+                "field:runKind": "file", "field:file": "apps/worker/main.go",
+            },
+        }),
+    );
+    assert_eq!(saved["data"]["status"], "saved", "{saved}");
+    apply_run_changes(root, &saved["data"]);
+    saved["data"].clone()
 }
 
 #[test]
@@ -516,6 +536,118 @@ fn saved_declared_runs_expand_into_the_types_command_line() {
         "{planned}"
     );
     assert_eq!(planned["data"]["plan"]["root"], ".");
+}
+
+/// A file run at the workspace root can resolve the one project that contains
+/// that file. An explicit working directory still chooses its own instance.
+#[test]
+fn file_run_uses_its_project_when_the_workspace_root_has_no_instance() {
+    let root = temporary_root("run-types-file-project");
+    let _cleanup = Cleanup(root.clone());
+    fs::create_dir_all(root.join("apps/worker")).unwrap();
+    fs::create_dir_all(root.join("tools")).unwrap();
+    fs::write(root.join("apps/worker/main.go"), "package main\n").unwrap();
+
+    for (name, directory, expected_instance) in [
+        ("default", "", "apps/worker"),
+        ("explicit", "tools", "tools"),
+    ] {
+        let saved = save_file_run(&root, name, directory);
+        let planned = plan(
+            &root,
+            manifest(),
+            json!({
+                "configurationId": saved["id"],
+                "instances": [{"root": "apps"}, {"root": "apps/worker"}, {"root": "tools"}],
+            }),
+        );
+        assert_eq!(planned["data"]["status"], "ok", "{planned}");
+        assert_eq!(planned["data"]["plan"]["root"], expected_instance);
+        let expected_directory = if directory.is_empty() { "." } else { directory };
+        assert_eq!(
+            planned["data"]["plan"]["workingDirectory"],
+            expected_directory
+        );
+    }
+}
+
+#[test]
+fn file_run_accepts_an_equivalent_saved_workspace_root() {
+    let root = temporary_root("run-types-root-alias");
+    let _cleanup = Cleanup(root.clone());
+    fs::create_dir_all(root.join("apps/worker")).unwrap();
+    fs::create_dir_all(root.join("tools")).unwrap();
+    fs::write(root.join("apps/worker/main.go"), "package main\n").unwrap();
+    let saved = save_file_run(&root, "root alias", "");
+    let plugin_document = changed_run_paths(&saved)
+        .into_iter()
+        .find(|path| path.ends_with(".toml"))
+        .expect("a declared run is saved in a plugin TOML document");
+    edit_plugin_run_document(&root, &plugin_document, |document| {
+        document["configurations"][0]["cwd"] = json!("./");
+    });
+
+    let planned = plan(
+        &root,
+        manifest(),
+        json!({
+            "configurationId": saved["id"],
+            "instances": [{"root": "apps/worker"}, {"root": "tools"}],
+        }),
+    );
+    assert_eq!(planned["data"]["status"], "ok", "{planned}");
+    assert_eq!(planned["data"]["plan"]["root"], "apps/worker");
+    assert_eq!(planned["data"]["plan"]["workingDirectory"], "./");
+}
+
+#[cfg(unix)]
+fn plan_file_run_after_script_becomes_link(target: &str) -> Value {
+    let fixture = temporary_root("run-types-linked-file");
+    let _cleanup = Cleanup(fixture.clone());
+    let root = fixture.join("workspace");
+    fs::create_dir_all(root.join("apps/worker")).unwrap();
+    fs::create_dir_all(root.join("tools")).unwrap();
+    let script = root.join("apps/worker/main.go");
+    fs::write(&script, "package main\n").unwrap();
+    let target = fixture.join(target);
+    fs::write(&target, "package main\n").unwrap();
+    let saved = save_file_run(&root, "linked script", "");
+    fs::remove_file(&script).unwrap();
+    std::os::unix::fs::symlink(target, script).unwrap();
+
+    plan(
+        &root,
+        manifest(),
+        json!({
+            "configurationId": saved["id"],
+            "instances": [
+                {"root": "apps/worker", "options": {"tags": "worker"}},
+                {"root": "tools", "options": {"tags": "tools"}},
+            ],
+        }),
+    )
+}
+
+#[cfg(unix)]
+#[test]
+fn file_run_selects_the_project_of_its_link_target() {
+    let planned = plan_file_run_after_script_becomes_link("workspace/tools/main.go");
+    assert_eq!(planned["data"]["status"], "ok", "{planned}");
+    assert_eq!(planned["data"]["plan"]["root"], "tools");
+    assert_eq!(planned["data"]["plan"]["workingDirectory"], ".");
+    assert_eq!(planned["data"]["plan"]["arguments"][1], "-tags");
+    assert_eq!(planned["data"]["plan"]["arguments"][2], "tools");
+}
+
+#[cfg(unix)]
+#[test]
+fn file_run_cannot_infer_a_project_from_a_link_to_an_external_file() {
+    let planned = plan_file_run_after_script_becomes_link("outside.go");
+    assert_eq!(planned["data"]["status"], "rejected", "{planned}");
+    assert_eq!(
+        planned["data"]["error"]["code"],
+        "plugin.build.invalidSelection"
+    );
 }
 
 #[test]

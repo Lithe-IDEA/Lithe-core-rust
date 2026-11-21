@@ -31,9 +31,11 @@ use lithe_plugin_model::settings::{parse_localization_file, present, Localizatio
 use lithe_plugin_model::{PluginRejection, Validation};
 use lithe_protocol::json_document::UniqueMap;
 use lithe_protocol::{CoreError, ErrorCode};
+use lithe_workspace::fs;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use std::collections::BTreeMap;
+use std::io;
 use std::path::Path;
 
 /// Error code of a translation file Core did not apply.
@@ -46,6 +48,8 @@ const INVALID_BEFORE_LAUNCH_TASK: &str = "plugin.build.invalidBeforeLaunchTask";
 const MAX_PLUGINS: usize = 512;
 /// Most build-system instances one plan request may name.
 const MAX_INSTANCES: usize = 4_096;
+const NO_MATCHING_INSTANCE: &str =
+    "The working directory is outside every project of this build system; choose one inside a project.";
 
 /// The installed plugins whose run configuration types and before-launch
 /// tasks the editor offers.
@@ -442,9 +446,9 @@ pub(crate) struct RunConfigurationPlanRequest {
     /// `runConfig.launchPlan`.
     #[serde(default)]
     pub(crate) local_document: Option<Value>,
-    /// The detected instances of the build system, with their stored
-    /// options; the plan runs with the instance whose root holds the
-    /// working directory.
+    /// The detected instances of the build system, with their stored options.
+    /// Selection uses the working directory first and can fall back to the
+    /// run's file when the workspace root has no instance.
     pub(crate) instances: Vec<RunTypeInstance>,
     /// Absolute installed plugin directory, for `${pluginDir}`.
     #[serde(default)]
@@ -624,7 +628,9 @@ fn declared_plan(
             .expect("launch values name declared fields");
         field_arguments.push((id.clone(), field_value_arguments(field, value)?));
     }
-    let instance = instance_of(sources.instances, &launch.working_directory)?;
+    let file_directory = (role.role == RunTypeRole::Configuration)
+        .then_some(|| sole_file_directory(workspace_root, declaration, &values));
+    let instance = instance_of(sources.instances, &launch.working_directory, file_directory)?;
     let base = PlanBase {
         model_inputs: instance.model_inputs.clone(),
         root: instance.root.clone(),
@@ -684,13 +690,53 @@ fn field_value_arguments(
     }
 }
 
-/// The instance a configuration runs with: the deepest one whose root holds
-/// the working directory, or the only one when the working directory is
-/// outside every instance, such as an absolute directory outside the
-/// workspace.
+/// The workspace-relative parent of the sole active file's resolved target.
+/// Resolving both paths keeps aliases inside the workspace usable and prevents
+/// a link to an external file from choosing an instance.
+fn sole_file_directory(
+    workspace_root: &Path,
+    declaration: &RunTypeDeclaration,
+    values: &[(String, DeclaredValue)],
+) -> io::Result<Option<String>> {
+    let mut files = values.iter().filter_map(|(id, value)| {
+        let DeclaredValue::Text(path) = value else {
+            return None;
+        };
+        declaration
+            .fields
+            .iter()
+            .any(|field| field.id == *id && field.kind == RunFieldKind::File)
+            .then_some(path)
+    });
+    let (Some(file), None) = (files.next(), files.next()) else {
+        return Ok(None);
+    };
+    let workspace_root = fs::canonicalize(workspace_root)?;
+    let file = fs::canonicalize(file)?;
+    let Some(directory) = file
+        .parent()
+        .and_then(|parent| parent.strip_prefix(&workspace_root).ok())
+    else {
+        return Ok(None);
+    };
+    if !fs::is_file(&file)? {
+        return Ok(None);
+    }
+    let components = directory
+        .iter()
+        .map(|component| component.to_str())
+        .collect::<Option<Vec<_>>>();
+    Ok(components.and_then(|parts| decode::request_path(&parts.join("/"), "file directory").ok()))
+}
+
+/// Picks the deepest project that contains the working directory. When no
+/// root holds it, a run at the workspace root can supply a file's directory
+/// to select the instance while keeping the configured working directory.
+/// A lone instance can run from outside its project.
 fn instance_of<'a>(
     instances: &'a [RunTypeInstance],
     working_directory: &str,
+    file_directory: Option<impl FnOnce() -> io::Result<Option<String>>>,
 ) -> Validation<&'a RunTypeInstance> {
     if instances.is_empty() {
         return Err(invalid_selection(
@@ -704,12 +750,11 @@ fn instance_of<'a>(
         .iter()
         .map(|instance| decode::request_path(&instance.root, "root"))
         .collect::<Validation<Vec<_>>>()?;
-    let directory = decode::request_path(working_directory, "working directory").ok();
-    let holding = directory.and_then(|directory| {
+    let holding = |directory: &str| {
         roots
             .iter()
             .enumerate()
-            .filter(|(_, root)| decode::contains(root, &directory))
+            .filter(|(_, root)| decode::contains(root, directory))
             .max_by_key(|(_, root)| {
                 if *root == "." {
                     0
@@ -718,11 +763,20 @@ fn instance_of<'a>(
                 }
             })
             .map(|(index, _)| &instances[index])
-    });
-    match (holding, instances) {
-        (Some(instance), _) | (None, [instance]) => Ok(instance),
-        (None, _) => Err(invalid_selection(
-            "The working directory is outside every project of this build system; choose one inside a project.",
-        )),
+    };
+    let directory = decode::request_path(working_directory, "working directory").ok();
+    match (directory.as_deref().and_then(holding), instances) {
+        (Some(instance), _) | (None, [instance]) => return Ok(instance),
+        (None, _) => {}
     }
+    if let Some(resolve_file_directory) =
+        file_directory.filter(|_| directory.as_deref() == Some("."))
+    {
+        let resolved =
+            resolve_file_directory().map_err(|_| invalid_selection(NO_MATCHING_INSTANCE))?;
+        if let Some(instance) = resolved.as_deref().and_then(holding) {
+            return Ok(instance);
+        }
+    }
+    Err(invalid_selection(NO_MATCHING_INSTANCE))
 }

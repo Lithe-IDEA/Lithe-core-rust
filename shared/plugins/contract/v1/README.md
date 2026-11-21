@@ -3008,8 +3008,14 @@ configuration, which needs the plugin again to edit or run.
 To run one, the host calls `build.runConfigurationPlan` with the manifest,
 the build system, `workspaceRoot`, the configuration ID and the detected
 instances of the build system with their stored options. Core picks the
-deepest instance whose root holds the configuration's working directory (or
-the only instance) and returns a task plan: the global arguments, then the
+deepest instance whose root contains the configuration's working directory.
+When that directory is the workspace root and no instance contains it, Core
+can instead use the deepest instance containing the parent of the sole active
+file field's resolved target, provided the target is a file inside the
+workspace. Equivalent spellings of the workspace root, such as `./`, qualify
+for this fallback. If neither path selects an instance, a single detected
+instance still works. This choice does not change
+the working directory. Core returns a task plan: the global arguments, then the
 type's `arguments` with the field values, the instance's options and the
 program arguments, at the configuration's working directory, with its
 environment over the options'. The host starts it like any build command. A
@@ -3070,8 +3076,9 @@ it, without that configuration's program arguments or environment. To run
 one, the host calls `build.beforeLaunchTaskPlan` with the manifest, the build
 system, `workspaceRoot`, the step and its working directory as
 `runConfig.beforeLaunch` returned them, and the detected instances of the
-build system with their stored options. Core picks the instance as for a run
-configuration and returns a task plan: the global arguments, then the task's
+build system with their stored options. Core picks the deepest instance
+containing the step's working directory, or the only instance, and returns
+a task plan: the global arguments, then the task's
 `arguments` with the field values and the instance's options. A saved value
 that no longer fits the task is `plugin.build.invalidBeforeLaunchTask` with
 `field: "values.<fieldID>"`; a task the plugin no longer declares is
