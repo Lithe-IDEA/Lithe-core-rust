@@ -407,7 +407,9 @@ meaning; `lithe_protocol::ErrorCode` documents when it is reported:
 - `encoding_unmappable`
 - `cancelled`
 - `timed_out`
-- `connection_closed`
+- `connection_closed`: the remote connection the request names closed or was lost
+- `forward_target_not_confirmed`: a port forward reaches another machine through the remote host and the user has not confirmed it
+- `forward_limit_reached`: the remote connection keeps the most port forwards it allows
 - `remote_server_invalid`: the server build `remote.connect` would send cannot
   be read or is not the build its SHA-256 names
 - `unknown`

@@ -1,4 +1,5 @@
-//! `remote.*` commands: probing, authentication, connections, files and processes.
+//! `remote.*` commands: probing, authentication, connections, files,
+//! processes and port forwards.
 
 use crate::protocol::{CoreError, CoreResponse, ErrorCode, RemoteCommand};
 use serde_json::{json, Value};
@@ -166,6 +167,42 @@ pub(super) fn dispatch(command: RemoteCommand, id: Option<String>, payload: Valu
                 Err(error) => CoreResponse::failure(id, error),
             }
         }
+        RemoteCommand::StartForward => {
+            match serde_json::from_value(payload)
+                .map_err(|error| invalid_forward_request(&error))
+                .and_then(lithe_workspace::forwards::start)
+            {
+                Ok(started) => CoreResponse::success(
+                    id,
+                    serde_json::to_value(started).expect("port forward result should encode"),
+                ),
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
+        RemoteCommand::StopForward => {
+            match serde_json::from_value(payload)
+                .map_err(|error| invalid_forward_request(&error))
+                .and_then(lithe_workspace::forwards::stop)
+            {
+                Ok(stopped) => CoreResponse::success(
+                    id,
+                    serde_json::to_value(stopped).expect("port forward result should encode"),
+                ),
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
+        RemoteCommand::Forwards => {
+            match serde_json::from_value(payload)
+                .map_err(|error| invalid_forward_request(&error))
+                .and_then(lithe_workspace::forwards::list)
+            {
+                Ok(forwards) => CoreResponse::success(
+                    id,
+                    serde_json::to_value(forwards).expect("port forward list should encode"),
+                ),
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
         RemoteCommand::Connections => {
             match serde_json::from_value(payload)
                 .map_err(|error| {
@@ -238,4 +275,10 @@ pub(super) fn dispatch(command: RemoteCommand, id: Option<String>, payload: Valu
             }
         }
     }
+}
+
+/// A `remote.*Forward` payload that does not decode.
+fn invalid_forward_request(error: &serde_json::Error) -> CoreError {
+    CoreError::new(ErrorCode::InvalidRequest, "Invalid port forward request")
+        .with_details(error.to_string())
 }

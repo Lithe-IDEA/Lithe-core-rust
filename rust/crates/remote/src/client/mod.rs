@@ -13,6 +13,8 @@
 //!   routes each resource's events to its subscriber.
 //! - [`api`] offers typed operations and resource handles on a session.
 //! - [`forward`] forwards local ports through tunnels.
+//! - [`forward_set`] keeps the forwards of one session for the ports page,
+//!   confirms targets outside the host and releases them with the session.
 //! - [`connection_log`] records one connection's lifecycle in the v2 log,
 //!   identified by a random id instead of the host or user name.
 //! - [`trust`] keeps the machine-local trust decisions on remote workspaces,
@@ -30,6 +32,7 @@ mod command;
 pub mod connection_log;
 pub mod connections;
 pub mod forward;
+pub mod forward_set;
 pub mod launch;
 pub mod session;
 pub mod transport;
@@ -39,5 +42,6 @@ pub use api::{SpawnSpec, TerminalSpec, WriteOptions};
 pub use bootstrap::{ArtifactError, ServerArtifact, ServerTarget};
 pub use connection_log::{ConnectionKind, ConnectionLog};
 pub use forward::PortForward;
+pub use forward_set::{ForwardError, ForwardInfo, ForwardSet, ForwardSpec, TargetField};
 pub use session::{ClientError, ConnectOptions, Event, RemoteSession, ResumeMode};
 pub use transport::{ContainerEngine, ContainerHop, Hop, SshHop, TransportChain, TransportError};

@@ -1280,13 +1280,22 @@ pub struct ListeningPort {
     pub address: String,
     /// TCP port.
     pub port: u16,
+    /// Process that holds the socket. Absent when the socket belongs to a
+    /// process the server's user cannot inspect, such as a proxy run by
+    /// `root`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pid: Option<u32>,
+    /// Command name of that process as the host reports it, which Linux
+    /// shortens to 15 bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub process: Option<String>,
 }
 
 /// Result of `ports.listening`.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListeningPortsResult {
-    /// Sorted and without duplicates.
+    /// Sorted by address and port, one entry for each.
     pub ports: Vec<ListeningPort>,
 }
 

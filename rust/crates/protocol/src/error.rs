@@ -72,6 +72,14 @@ pub enum ErrorCode {
     /// A long-lived connection the request names is closed or was lost; the
     /// caller can reconnect and retry.
     ConnectionClosed,
+    /// `remote.startForward` names a target outside the remote host's
+    /// loopback interface without `allowNonLoopbackTarget`. Nothing started;
+    /// the caller asks the user to confirm that target and repeats the
+    /// request with the flag.
+    ForwardTargetNotConfirmed,
+    /// `remote.startForward` found the connection at its forward limit
+    /// (`details.maximum`); stopping a forward makes room.
+    ForwardLimitReached,
     /// `remote.connect` reached a host whose server build the request names,
     /// but the local file could not be read or its SHA-256 is not the one the
     /// request gives for it. Nothing was installed on the host; the

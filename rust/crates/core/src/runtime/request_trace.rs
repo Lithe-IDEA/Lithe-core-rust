@@ -201,6 +201,8 @@ pub(crate) fn is_hot(method: &str) -> bool {
         // and active runs probe their process tree's listening ports periodically.
         || method == "processMemory.summarize"
         || method == "process.listeningPorts"
+        // The ports page refreshes its forwards' connection counts while shown.
+        || method == "remote.forwards"
 }
 
 /// Explicit host provenance wins; Git provenance covers hosts that send only that.
@@ -278,6 +280,7 @@ mod tests {
             "debug.transport.handle",
             "processMemory.summarize",
             "process.listeningPorts",
+            "remote.forwards",
         ] {
             assert!(is_hot(method), "{method}");
         }
@@ -288,6 +291,7 @@ mod tests {
             "file.write",
             "lsp.startServer",
             "remote.connect",
+            "remote.startForward",
             "debug.launch",
         ] {
             assert!(!is_hot(method), "{method}");

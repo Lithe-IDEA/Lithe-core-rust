@@ -112,11 +112,12 @@ fn process_sessions() -> Vec<(u32, u32)> {
 
 /// Listening TCP sockets of the remote user's processes. macOS has no
 /// `/proc`; `lsof` ships with the system and is the supported way to list
-/// sockets without elevated rights.
+/// sockets without elevated rights. `+c 0` asks for command names that are
+/// not cut to nine characters.
 pub(crate) fn listening_ports() -> io::Result<Vec<ListeningPort>> {
     let mut command = Command::new("lsof");
     command
-        .args(["-nP", "-iTCP", "-sTCP:LISTEN", "-Fn"])
+        .args(["-nP", "+c", "0", "-iTCP", "-sTCP:LISTEN", "-Fpcn"])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
@@ -138,23 +139,50 @@ fn interpret_lsof(status: Option<i32>, stdout: &[u8]) -> io::Result<Vec<Listenin
     }
 }
 
+/// Reads lsof's field output: a `p` line with the process id and a `c` line
+/// with its command start each process, followed by an `n` line with the
+/// address of each of its sockets.
 fn parse_lsof(output: &str) -> Vec<ListeningPort> {
-    output
-        .lines()
-        .filter_map(|line| line.strip_prefix('n'))
-        .filter_map(|name| {
-            let (address, port) = name.rsplit_once(':')?;
-            let address = address.trim_start_matches('[').trim_end_matches(']');
-            Some(ListeningPort {
-                address: if address == "*" {
-                    "0.0.0.0".into()
-                } else {
-                    address.into()
-                },
-                port: port.parse().ok()?,
-            })
-        })
-        .collect()
+    let mut pid = None;
+    let mut process = None;
+    let mut ports = Vec::new();
+    for line in output.lines() {
+        let Some((field, value)) = line.split_at_checked(1) else {
+            continue;
+        };
+        match field {
+            "p" => {
+                pid = value.parse().ok();
+                process = None;
+            }
+            "c" => process = (!value.is_empty()).then(|| value.to_owned()),
+            "n" => {
+                if let Some(mut port) = parse_lsof_address(value) {
+                    port.pid = pid;
+                    port.process = process.clone();
+                    ports.push(port);
+                }
+            }
+            _ => {}
+        }
+    }
+    ports
+}
+
+/// An address such as `127.0.0.1:5432`, `[::1]:5432` or `*:3000`.
+fn parse_lsof_address(name: &str) -> Option<ListeningPort> {
+    let (address, port) = name.rsplit_once(':')?;
+    let address = address.trim_start_matches('[').trim_end_matches(']');
+    Some(ListeningPort {
+        address: if address == "*" {
+            "0.0.0.0".into()
+        } else {
+            address.into()
+        },
+        port: port.parse().ok()?,
+        pid: None,
+        process: None,
+    })
 }
 
 #[cfg(test)]
@@ -173,24 +201,36 @@ mod tests {
     }
 
     #[test]
-    fn lsof_field_output_yields_addresses_and_ports() {
-        let output = "p123\nf5\nn127.0.0.1:5432\nf6\nn[::1]:5432\np456\nf9\nn*:3000\n";
+    fn lsof_field_output_yields_addresses_ports_and_owners() {
+        let output = "p123\ncpostgres\nf5\nn127.0.0.1:5432\nf6\nn[::1]:5432\np456\nf9\nn*:3000\n";
+        let owned = |address: &str, port, pid, process: Option<&str>| ListeningPort {
+            address: address.into(),
+            port,
+            pid,
+            process: process.map(str::to_owned),
+        };
         assert_eq!(
             parse_lsof(output),
             vec![
-                ListeningPort {
-                    address: "127.0.0.1".into(),
-                    port: 5432
-                },
-                ListeningPort {
-                    address: "::1".into(),
-                    port: 5432
-                },
-                ListeningPort {
-                    address: "0.0.0.0".into(),
-                    port: 3000
-                },
+                owned("127.0.0.1", 5432, Some(123), Some("postgres")),
+                owned("::1", 5432, Some(123), Some("postgres")),
+                // A process without a `c` line keeps no name from the one before.
+                owned("0.0.0.0", 3000, Some(456), None),
             ]
         );
+    }
+
+    // The test's own listener is in a process this user can inspect.
+    #[test]
+    fn listening_sockets_of_the_users_own_processes_name_their_owner() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let ports = listening_ports().unwrap();
+        let own = ports
+            .iter()
+            .find(|listening| listening.port == port && listening.address == "127.0.0.1")
+            .unwrap_or_else(|| panic!("{port} not in {ports:?}"));
+        assert_eq!(own.pid, Some(std::process::id()));
+        assert!(own.process.is_some(), "{own:?}");
     }
 }

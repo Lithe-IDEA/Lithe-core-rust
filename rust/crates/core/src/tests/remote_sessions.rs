@@ -1248,3 +1248,162 @@ fn remote_workspace_trust_keys_the_host_real_path_on_the_connected_target() {
         "unknown"
     );
 }
+
+// The ports page: a forward reaches a program listening on the host's
+// wildcard address, a second click returns the same forward, a target on
+// another machine waits for the user's confirmation, and every failure keeps
+// its own category.
+#[test]
+fn remote_port_forwards_start_once_per_target_and_end_with_the_connection() {
+    use std::io::{Read, Write};
+    use std::net::{TcpListener, TcpStream};
+
+    let host = HostFixture::new();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let echo = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        stream.set_read_timeout(Some(STEP)).unwrap();
+        let mut buffer = [0_u8; 5];
+        stream.read_exact(&mut buffer).unwrap();
+        stream.write_all(&buffer).unwrap();
+    });
+    let call = |command: &str, payload: Value| -> Value {
+        serde_json::from_str(&crate::execute_json(
+            &json!({"id": test_support::unique_id(), "command": command,
+                "timeoutMilliseconds": 30_000, "payload": payload})
+            .to_string(),
+        ))
+        .unwrap()
+    };
+    let ok = |response: Value| -> Value {
+        assert_eq!(response["ok"], true, "{response}");
+        response["data"].clone()
+    };
+    let error = |response: Value| -> Value {
+        assert_eq!(response["ok"], false, "{response}");
+        response["error"].clone()
+    };
+    let start = |payload: Value| {
+        let mut payload = payload;
+        payload["sessionId"] = json!(host.id);
+        call("remote.startForward", payload)
+    };
+
+    let started = ok(start(json!({"targetHost": "0.0.0.0", "targetPort": port})));
+    assert_eq!(started["created"], true, "{started}");
+    let forward = started["forward"].clone();
+    assert_eq!(forward["targetHost"], "127.0.0.1", "{started}");
+    assert_eq!(forward["loopbackTarget"], true, "{started}");
+    assert_eq!(forward["localHost"], "127.0.0.1", "{started}");
+    assert_eq!(forward["localPortChanged"], false, "{started}");
+    assert!(forward.get("requestedLocalPort").is_none(), "{started}");
+    // The wildcard and the loopback address name one target.
+    let again = ok(start(
+        json!({"targetHost": "127.0.0.1", "targetPort": port}),
+    ));
+    assert_eq!(again["created"], false, "{again}");
+    assert_eq!(again["forward"]["id"], forward["id"], "{again}");
+
+    let local_port = u16::try_from(forward["localPort"].as_u64().unwrap()).unwrap();
+    let mut local = TcpStream::connect(("127.0.0.1", local_port)).unwrap();
+    local.set_read_timeout(Some(STEP)).unwrap();
+    local.write_all(b"ports").unwrap();
+    let mut answer = [0_u8; 5];
+    local.read_exact(&mut answer).unwrap();
+    assert_eq!(&answer, b"ports");
+    drop(local);
+    echo.join().unwrap();
+
+    let listed = ok(call("remote.forwards", json!({"sessionId": host.id})));
+    assert_eq!(listed["forwards"].as_array().unwrap().len(), 1, "{listed}");
+    assert_eq!(listed["forwards"][0]["id"], forward["id"], "{listed}");
+
+    // A database on the host's network starts only once confirmed.
+    let elsewhere = json!({"targetHost": "192.0.2.10", "targetPort": 5432});
+    assert_eq!(
+        error(start(elsewhere.clone()))["code"],
+        "forward_target_not_confirmed"
+    );
+    let mut confirmed = elsewhere;
+    confirmed["allowNonLoopbackTarget"] = json!(true);
+    let outside = ok(start(confirmed));
+    assert_eq!(outside["forward"]["loopbackTarget"], false, "{outside}");
+
+    for (payload, field) in [
+        (
+            json!({"targetHost": "127.0.0.1", "targetPort": 0}),
+            "targetPort",
+        ),
+        (
+            json!({"targetHost": "-oProxyCommand", "targetPort": 22}),
+            "targetHost",
+        ),
+    ] {
+        let refused = error(start(payload));
+        assert_eq!(refused["code"], "invalid_request", "{refused}");
+        let details: Value = serde_json::from_str(refused["details"].as_str().unwrap()).unwrap();
+        assert_eq!(details["field"], field, "{refused}");
+    }
+    assert_eq!(
+        error(start(
+            json!({"targetHost": "127.0.0.1", "targetPort": 70_000})
+        ))["code"],
+        "invalid_request"
+    );
+
+    // The connection keeps a bounded number of forwards; a target that
+    // already has one still answers at the limit.
+    let running = ok(call("remote.forwards", json!({"sessionId": host.id})))["forwards"]
+        .as_array()
+        .unwrap()
+        .len();
+    let limit = lithe_remote::client::forward_set::MAX_FORWARDS;
+    for target in (1..).filter(|target| *target != port).take(limit - running) {
+        ok(start(
+            json!({"targetHost": "127.0.0.1", "targetPort": target}),
+        ));
+    }
+    let full = error(start(json!({"targetHost": "::1", "targetPort": 1})));
+    assert_eq!(full["code"], "forward_limit_reached", "{full}");
+    let details: Value = serde_json::from_str(full["details"].as_str().unwrap()).unwrap();
+    assert_eq!(details["maximum"], limit, "{full}");
+    assert_eq!(
+        ok(start(
+            json!({"targetHost": "127.0.0.1", "targetPort": port})
+        ))["created"],
+        false
+    );
+
+    let stop = |forward_id: &Value| {
+        call(
+            "remote.stopForward",
+            json!({"sessionId": host.id, "forwardId": forward_id}),
+        )
+    };
+    assert_eq!(ok(stop(&forward["id"]))["stopped"], true);
+    assert_eq!(ok(stop(&forward["id"]))["stopped"], false);
+    assert_eq!(
+        error(call(
+            "remote.forwards",
+            json!({"sessionId": test_support::unique_id()})
+        ))["code"],
+        "connection_closed"
+    );
+
+    // A connection whose session ended released its forwards and is
+    // forgotten, so the ports page reconnects instead of listing nothing.
+    test_support::drop_link(&host.id);
+    for _ in 0..2 {
+        assert_eq!(
+            error(call("remote.forwards", json!({"sessionId": host.id})))["code"],
+            "connection_closed"
+        );
+    }
+    assert_eq!(
+        error(start(
+            json!({"targetHost": "127.0.0.1", "targetPort": port})
+        ))["code"],
+        "connection_closed"
+    );
+}

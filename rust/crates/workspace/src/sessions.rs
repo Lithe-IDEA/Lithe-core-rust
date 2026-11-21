@@ -5,7 +5,7 @@
 //! so the user authenticates once. The connection then stays open in this
 //! registry until `remote.disconnect`; requests such as `remote.readDir` use
 //! it by id. OpenSSH runs in its own process tree, which closing a connection
-//! ends.
+//! ends, together with the connection's port forwards.
 
 use crate::probe::{classify, diagnostics, ssh_hop, ProbeStatus, ProbedHost};
 use lithe_git_host::ProcessTree;
@@ -15,8 +15,8 @@ use lithe_remote::client::launch::{launch, launch_command, LaunchError, Launched
 use lithe_remote::client::session::{ClientError, ConnectOptions};
 use lithe_remote::client::trust::Target;
 use lithe_remote::client::{
-    ArtifactError, ConnectionKind, ConnectionLog, Hop, RemoteSession, ServerArtifact, ServerTarget,
-    TransportChain,
+    ArtifactError, ConnectionKind, ConnectionLog, ForwardSet, Hop, RemoteSession, ServerArtifact,
+    ServerTarget, TransportChain,
 };
 use lithe_remote::protocol::methods;
 use lithe_request_context::events as execution_events;
@@ -102,13 +102,16 @@ pub struct ConnectResult {
 
 /// One open host connection in the registry.
 pub struct Connection {
-    /// Framed workspace session to the host server.
-    pub session: RemoteSession,
+    /// Framed workspace session to the host server, shared with the port
+    /// forwards that tunnel through it.
+    pub session: Arc<RemoteSession>,
     /// Git executable path and version found on the host, once resolved.
     pub git_tool: Mutex<Option<(String, String)>>,
     /// Where the connection ends, the key of its workspaces' trust together
     /// with their real paths. Fixed when the connection opens.
     pub(crate) trust_target: Target,
+    /// Port forwards of the ports page; they end with the session.
+    pub(crate) forwards: ForwardSet,
     pub(crate) transport: ConnectionTransport,
 }
 
@@ -118,12 +121,31 @@ pub(crate) enum ConnectionTransport {
         child: Mutex<Child>,
         tree: ProcessTree,
     },
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(feature = "test-support")]
     InProcess,
 }
 
 impl Connection {
+    /// A registered connection over `session`, with no forwards yet.
+    pub(crate) fn new(
+        session: RemoteSession,
+        trust_target: Target,
+        transport: ConnectionTransport,
+    ) -> Self {
+        let session = Arc::new(session);
+        Self {
+            forwards: ForwardSet::new(Arc::clone(&session)),
+            session,
+            git_tool: Mutex::new(None),
+            trust_target,
+            transport,
+        }
+    }
+
     pub(crate) fn close(&self) {
+        // Local ports close first, so nothing new is accepted into a tunnel
+        // the shutdown below is about to end.
+        self.forwards.close();
         if let Err(error) = self.session.request_value(
             methods::SERVER_SHUTDOWN,
             serde_json::Value::Null,
@@ -163,7 +185,7 @@ impl Connection {
                     record_cleanup_io("tree-terminate", &error);
                 }
             }
-            #[cfg(any(test, feature = "test-support"))]
+            #[cfg(feature = "test-support")]
             ConnectionTransport::InProcess => {}
         }
     }
@@ -230,6 +252,18 @@ pub(crate) fn lookup(id: &str) -> Result<Arc<Connection>, CoreError> {
                 "The remote connection is closed",
             )
         })
+}
+
+/// Removes a connection whose session ended and closes it in the background,
+/// so the host reconnects instead of retrying a dead session.
+pub(crate) fn forget(id: &str) {
+    if let Some(connection) = registry()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove(id)
+    {
+        std::thread::spawn(move || connection.close());
+    }
 }
 
 /// Opens a connection and registers it.
@@ -574,15 +608,14 @@ fn connect_logged(
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .insert(
             id.clone(),
-            Arc::new(Connection {
+            Arc::new(Connection::new(
                 session,
-                git_tool: Mutex::new(None),
-                trust_target: Target::new(&chain, capabilities.user_id),
-                transport: ConnectionTransport::Ssh {
+                Target::new(&chain, capabilities.user_id),
+                ConnectionTransport::Ssh {
                     child: Mutex::new(child),
                     tree,
                 },
-            }),
+            )),
         );
     Ok(ConnectResult {
         status: ProbeStatus::Connected,
@@ -822,15 +855,8 @@ pub fn request_error(session_id: &str, error: ClientError) -> CoreError {
             "The remote host did not answer in time",
         ),
         ClientError::Disconnected { diagnostics } => {
-            // A broken connection cannot recover; forget it so the host
-            // reconnects instead of retrying a dead session.
-            if let Some(connection) = registry()
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .remove(session_id)
-            {
-                std::thread::spawn(move || connection.close());
-            }
+            // A broken connection cannot recover.
+            forget(session_id);
             CoreError::new(ErrorCode::ConnectionClosed, "The remote connection closed")
                 .with_details(diagnostics)
         }

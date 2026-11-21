@@ -114,6 +114,11 @@ impl PortForward {
         self.local_address
     }
 
+    /// Local connections handed to a bridge so far.
+    pub fn connections(&self) -> u64 {
+        self.accepted.load(Ordering::Relaxed)
+    }
+
     /// Connects to the listener so that an acceptor waiting in `accept`
     /// observes `stopping`, and returns whether joining the acceptor is
     /// bounded. An acceptor waiting for a free slot needs no wakeup.

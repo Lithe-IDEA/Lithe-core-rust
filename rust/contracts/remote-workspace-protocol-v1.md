@@ -154,7 +154,7 @@ subscribe before creating the resource.
 | `tunnel.write` | `tunnelId`, `data` | `null`; `BUSY` when the peer stops reading |
 | `tunnel.shutdownWrite` | `tunnelId` | `null`; queued data is sent, then the write side is shut down; replies keep arriving |
 | `tunnel.close` | `tunnelId` | `null`; aborts both directions, queued data is discarded |
-| `ports.listening` | — | sorted `ports` (`address`, `port`) |
+| `ports.listening` | — | `ports` sorted by `address` and `port`, one entry for each: `address`, `port`, and `pid` and `process` (the command name) when the server's user can inspect the owning process |
 
 `fs.copy` refuses, with `INVALID_REQUEST`, to copy a file onto itself —
 directly, through a symbolic link in either direction or onto a hard link —
