@@ -41,9 +41,13 @@ fn ids() -> impl FnMut() -> String {
 /// Saves a connection to `host`, with an id derived from the host.
 fn saved(connections: &mut Connections, name: &str, host: &str) -> String {
     connections
-        .save(None, name, connection(json!({ "host": host })), || {
-            format!("id-{host}")
-        })
+        .save(
+            None,
+            name,
+            connection(json!({ "host": host })),
+            Label::default(),
+            || format!("id-{host}"),
+        )
         .expect("saved")
 }
 
@@ -249,6 +253,7 @@ fn saved_connections_round_trip_through_the_document() {
             None,
             "  Build box ",
             connection(json!({ "host": "build.example", "user": "ci", "port": 2222 })),
+            Label::default(),
             ids(),
         )
         .unwrap();
@@ -275,6 +280,111 @@ fn saved_connections_round_trip_through_the_document() {
 }
 
 #[test]
+fn labels_are_saved_and_groups_become_sections_in_first_use_order() {
+    let mut connections = Connections::default();
+    assert!(connections.sections().is_empty());
+    let label = |color: Option<Color>, group: &str| Label {
+        color,
+        group: Some(group.to_owned()),
+    };
+    let save = |connections: &mut Connections, name: &str, label: Label| {
+        connections
+            .save(None, name, connection(json!({ "host": "h" })), label, ids())
+            .unwrap()
+    };
+    let web = save(
+        &mut connections,
+        "Web",
+        label(Some(Color::Green), " Production "),
+    );
+    let lab = save(&mut connections, "Lab", label(Some(Color::Purple), "   "));
+    let db = save(&mut connections, "Db", label(None, "PRODUCTION"));
+    let ci = save(&mut connections, "Ci", label(None, "Build"));
+    let section = |group: Option<&'static str>, ids: Vec<&str>| (group, ids.join(","));
+    fn listed(connections: &Connections) -> Vec<(Option<&str>, String)> {
+        connections
+            .sections()
+            .into_iter()
+            .map(|section| (section.group, section.ids.join(",")))
+            .collect()
+    }
+    // A blank group is no group; another case takes the first spelling.
+    assert_eq!(
+        listed(&connections),
+        vec![
+            section(Some("Production"), vec![&web, &db]),
+            section(Some("Build"), vec![&ci]),
+            section(None, vec![&lab]),
+        ]
+    );
+    let text = connections.text().unwrap();
+    let stored: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(stored["connections"][0]["color"], json!("green"));
+    assert_eq!(stored["connections"][0]["group"], json!("Production"));
+    assert_eq!(stored["connections"][1]["color"], json!("purple"));
+    assert!(stored["connections"][1].get("group").is_none());
+    assert!(stored["connections"][2].get("color").is_none());
+    assert_eq!(stored["connections"][2]["group"], json!("Production"));
+    assert_eq!(Connections::parse(Some(&text)).unwrap(), connections);
+
+    // An entry alone in its group may change the group's case; saving
+    // without a label clears both fields.
+    connections
+        .save(
+            Some(&ci),
+            "Ci",
+            connection(json!({ "host": "h" })),
+            label(None, "BUILD"),
+            ids(),
+        )
+        .unwrap();
+    connections
+        .save(
+            Some(&web),
+            "Web",
+            connection(json!({ "host": "h" })),
+            Label::default(),
+            ids(),
+        )
+        .unwrap();
+    assert_eq!(connections.get(&web).unwrap().color, None);
+    assert_eq!(
+        listed(&connections),
+        vec![
+            section(Some("Production"), vec![&db]),
+            section(Some("BUILD"), vec![&ci]),
+            section(None, vec![&web, &lab]),
+        ]
+    );
+
+    for (group, reason) in [
+        ("tab\there".to_owned(), Reason::Invalid),
+        ("组".repeat(65), Reason::TooLong),
+    ] {
+        assert_eq!(
+            connections.save(
+                None,
+                "Other",
+                connection(json!({ "host": "h" })),
+                label(None, &group),
+                ids()
+            ),
+            Err(ConnectionError::at("group", reason)),
+            "{group:?}"
+        );
+    }
+    assert!(connections
+        .save(
+            None,
+            "Other",
+            connection(json!({ "host": "h" })),
+            label(None, &"组".repeat(64)),
+            ids()
+        )
+        .is_ok());
+}
+
+#[test]
 fn saving_refuses_names_that_only_differ_in_case_and_unknown_ids() {
     let mut connections = Connections::default();
     let first = saved(&mut connections, "Devbox", "devbox");
@@ -283,6 +393,7 @@ fn saving_refuses_names_that_only_differ_in_case_and_unknown_ids() {
             None,
             "devbox",
             connection(json!({ "host": "other" })),
+            Label::default(),
             ids()
         ),
         Err(ConnectionError::at("name", Reason::Duplicate))
@@ -293,6 +404,7 @@ fn saving_refuses_names_that_only_differ_in_case_and_unknown_ids() {
             Some(&first),
             "DEVBOX",
             connection(json!({ "host": "devbox" })),
+            Label::default(),
             ids()
         ),
         Ok(first.clone())
@@ -302,6 +414,7 @@ fn saving_refuses_names_that_only_differ_in_case_and_unknown_ids() {
             Some("missing"),
             "Other",
             connection(json!({ "host": "h" })),
+            Label::default(),
             ids()
         ),
         Err(ConnectionError::at("id", Reason::Unknown))
@@ -312,14 +425,26 @@ fn saving_refuses_names_that_only_differ_in_case_and_unknown_ids() {
         ("tab\there", Reason::Invalid),
     ] {
         assert_eq!(
-            connections.save(None, name, connection(json!({ "host": "h" })), ids()),
+            connections.save(
+                None,
+                name,
+                connection(json!({ "host": "h" })),
+                Label::default(),
+                ids()
+            ),
             Err(ConnectionError::at("name", reason)),
             "{name:?}"
         );
     }
     let long = "名".repeat(129);
     assert_eq!(
-        connections.save(None, &long, connection(json!({ "host": "h" })), ids()),
+        connections.save(
+            None,
+            &long,
+            connection(json!({ "host": "h" })),
+            Label::default(),
+            ids()
+        ),
         Err(ConnectionError::at("name", Reason::TooLong))
     );
     assert_eq!(connections.entries().len(), 1);
@@ -363,6 +488,7 @@ fn recent_folders_follow_the_target_not_the_name() {
             connection(
                 json!({ "host": "devbox", "authentication": "agent", "keepAliveSeconds": 30 }),
             ),
+            Label::default(),
             ids(),
         )
         .unwrap();
@@ -376,7 +502,13 @@ fn recent_folders_follow_the_target_not_the_name() {
     ] {
         connections.remember_folder(&id, "/srv").unwrap();
         connections
-            .save(Some(&id), "Renamed", connection(target.clone()), ids())
+            .save(
+                Some(&id),
+                "Renamed",
+                connection(target.clone()),
+                Label::default(),
+                ids(),
+            )
             .unwrap();
         assert!(
             connections.get(&id).unwrap().recent_folders.is_empty(),
@@ -395,6 +527,7 @@ fn removing_keeps_the_order_and_ignores_absent_ids() {
             None,
             "Two",
             connection(json!({ "host": "two" })),
+            Label::default(),
             &mut second_ids,
         )
         .unwrap();
@@ -404,6 +537,7 @@ fn removing_keeps_the_order_and_ignores_absent_ids() {
             None,
             "Three",
             connection(json!({ "host": "three" })),
+            Label::default(),
             &mut third_ids,
         )
         .unwrap();
@@ -429,6 +563,7 @@ fn new_ids_are_drawn_until_one_is_valid_and_unused() {
             None,
             "One",
             connection(json!({ "host": "one" })),
+            Label::default(),
             &mut first,
         )
         .unwrap();
@@ -436,9 +571,13 @@ fn new_ids_are_drawn_until_one_is_valid_and_unused() {
         .into_iter()
         .map(str::to_owned);
     let id = connections
-        .save(None, "Two", connection(json!({ "host": "two" })), || {
-            candidates.next().unwrap()
-        })
+        .save(
+            None,
+            "Two",
+            connection(json!({ "host": "two" })),
+            Label::default(),
+            || candidates.next().unwrap(),
+        )
         .unwrap();
     assert_eq!(id, "fresh");
 }
@@ -454,7 +593,13 @@ fn the_list_holds_at_most_128_connections() {
         );
     }
     assert_eq!(
-        connections.save(None, "One more", connection(json!({ "host": "h" })), ids()),
+        connections.save(
+            None,
+            "One more",
+            connection(json!({ "host": "h" })),
+            Label::default(),
+            ids()
+        ),
         Err(ConnectionError::at("connections", Reason::Full))
     );
     // Editing an entry still works when the list is full.
@@ -464,6 +609,7 @@ fn the_list_holds_at_most_128_connections() {
             Some(&id),
             "Host 0",
             connection(json!({ "host": "h0", "port": 22 })),
+            Label::default(),
             ids()
         )
         .is_ok());
@@ -549,6 +695,27 @@ fn stored_documents_are_checked_like_edits() {
                 .collect::<Vec<_>>())),
             "connections",
             Reason::Full,
+        ),
+        (
+            document(
+                json!([{ "id": "a", "name": "One", "connection": { "host": "h" }, "group": " Prod" }]),
+            ),
+            "group",
+            Reason::Invalid,
+        ),
+        (
+            document(
+                json!([{ "id": "a", "name": "One", "connection": { "host": "h" }, "group": "" }]),
+            ),
+            "group",
+            Reason::Required,
+        ),
+        (
+            document(
+                json!([{ "id": "a", "name": "One", "connection": { "host": "h" }, "color": "pink" }]),
+            ),
+            "document",
+            Reason::Invalid,
         ),
         (" ".repeat(MAX_BYTES + 1), "document", Reason::TooLong),
     ] {

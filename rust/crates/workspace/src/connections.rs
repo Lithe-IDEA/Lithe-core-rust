@@ -9,7 +9,7 @@
 use crate::sessions::nonce;
 use lithe_protocol::{CoreError, ErrorCode};
 use lithe_remote::client::connections::{
-    self, ConnectionError, Connections, Reason, SshConnection,
+    self, Color, ConnectionError, Connections, Label, Reason, SshConnection,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -37,7 +37,8 @@ pub struct EditRequest {
     remember_folder: Option<FolderRequest>,
 }
 
-/// Adds a connection, or replaces the entry `id`.
+/// Adds a connection, or replaces the entry `id`. A missing `color` or
+/// `group` saves the entry without one.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct SaveRequest {
@@ -45,6 +46,10 @@ struct SaveRequest {
     id: Option<String>,
     name: String,
     connection: SshConnection,
+    #[serde(default)]
+    color: Option<Color>,
+    #[serde(default)]
+    group: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -74,10 +79,15 @@ const STORAGE: Storage = Storage {
     maximum_bytes: connections::MAX_BYTES,
 };
 
-/// Reads the document.
+/// Reads the document. `sections` lists the entry ids by group, in the
+/// order the window shows them.
 pub fn list(request: ListRequest) -> Result<Value, CoreError> {
     let connections = parse(request.document.as_deref())?;
-    Ok(json!({ "connections": connections.entries(), "storage": STORAGE }))
+    Ok(json!({
+        "connections": connections.entries(),
+        "sections": connections.sections(),
+        "storage": STORAGE,
+    }))
 }
 
 /// Applies one edit. An edit that changes nothing returns a `null`
@@ -89,9 +99,19 @@ pub fn edit(request: EditRequest) -> Result<Value, CoreError> {
     let mut id = None;
     match (request.save, request.remove, request.remember_folder) {
         (Some(save), None, None) => {
+            let label = Label {
+                color: save.color,
+                group: save.group,
+            };
             id = Some(
                 after
-                    .save(save.id.as_deref(), &save.name, save.connection, nonce)
+                    .save(
+                        save.id.as_deref(),
+                        &save.name,
+                        save.connection,
+                        label,
+                        nonce,
+                    )
                     .map_err(invalid_request)?,
             );
         }
@@ -116,6 +136,7 @@ pub fn edit(request: EditRequest) -> Result<Value, CoreError> {
         "changed": changed,
         "document": document,
         "connections": after.entries(),
+        "sections": after.sections(),
     });
     if let Some(id) = id {
         result["id"] = json!(id);

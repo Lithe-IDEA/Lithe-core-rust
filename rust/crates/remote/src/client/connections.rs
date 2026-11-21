@@ -16,6 +16,10 @@
 //!   validates and edits it; the platform adapter reads it and publishes edits
 //!   atomically.
 //!
+//! - An entry may carry a [`Label`]: an accent color and a group. Neither
+//!   reaches SSH; [`Connections::sections`] turns the groups into the
+//!   headings the window lists the entries under.
+//!
 //! Every refusal names the field and the reason, so a client can explain each
 //! one in the user's language next to the field it concerns.
 
@@ -38,6 +42,9 @@ const MAX_CONNECTIONS: usize = 128;
 
 /// Longest connection name, in characters.
 const MAX_NAME_CHARS: usize = 128;
+
+/// Longest group name, in characters.
+const MAX_GROUP_CHARS: usize = 64;
 
 /// Longest host, user, private key path or jump host list, in bytes.
 const MAX_FIELD_BYTES: usize = 1024;
@@ -79,6 +86,46 @@ impl Authentication {
     fn is_auto(&self) -> bool {
         *self == Self::Auto
     }
+}
+
+/// Accent color the window marks an entry with. Clients pick the shade for
+/// their light and dark themes.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Color {
+    /// Red.
+    Red,
+    /// Orange.
+    Orange,
+    /// Yellow.
+    Yellow,
+    /// Green.
+    Green,
+    /// Blue.
+    Blue,
+    /// Purple.
+    Purple,
+}
+
+/// How the window marks and groups an entry. `None` leaves the entry
+/// without a color or outside every group.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct Label {
+    /// Accent color of the entry.
+    pub color: Option<Color>,
+    /// Group the entry is listed under. Trimmed before it is saved; a blank
+    /// group is no group.
+    pub group: Option<String>,
+}
+
+/// The entries listed under one heading, in the user's order.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Section<'a> {
+    /// The group's name; `None` for the entries without a group.
+    pub group: Option<&'a str>,
+    /// Ids of the entries in the section.
+    pub ids: Vec<&'a str>,
 }
 
 /// One SSH connection: the host, the account and how to authenticate.
@@ -338,6 +385,12 @@ pub struct SavedConnection {
     /// Name the user gave, unique among the saved connections.
     name: String,
     connection: SshConnection,
+    /// Accent color the window marks the entry with.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    color: Option<Color>,
+    /// Group the entry is listed under. Groups compare regardless of case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    group: Option<String>,
     /// Host folders opened over this connection, most recent first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     recent_folders: Vec<String>,
@@ -347,6 +400,9 @@ impl SavedConnection {
     fn check(&self) -> Result<(), ConnectionError> {
         check_id(&self.id)?;
         check_name(&self.name)?;
+        if let Some(group) = &self.group {
+            check_group(group)?;
+        }
         self.connection.check()?;
         if self.recent_folders.len() > MAX_RECENT_FOLDERS {
             return Err(ConnectionError::at("recentFolders", Reason::Full));
@@ -440,21 +496,71 @@ impl Connections {
         self.connections.iter().find(|entry| entry.id == id)
     }
 
-    /// Saves `connection` under `name`, replacing the entry `id` or, without
-    /// one, appending a new entry with an id from `new_id`. Returns the id.
+    /// The entries by group: one section per group, in the order the groups
+    /// first appear, then the entries without a group. An empty list has no
+    /// sections. Groups that differ only in case share the section, which
+    /// shows the first entry's spelling.
+    pub fn sections(&self) -> Vec<Section<'_>> {
+        let mut sections: Vec<Section<'_>> = Vec::new();
+        let mut ungrouped = Vec::new();
+        for entry in &self.connections {
+            let Some(group) = entry.group.as_deref() else {
+                ungrouped.push(entry.id.as_str());
+                continue;
+            };
+            match sections
+                .iter_mut()
+                .find(|section| section.group.is_some_and(|name| same_name(name, group)))
+            {
+                Some(section) => section.ids.push(&entry.id),
+                None => sections.push(Section {
+                    group: Some(group),
+                    ids: vec![&entry.id],
+                }),
+            }
+        }
+        if !ungrouped.is_empty() {
+            sections.push(Section {
+                group: None,
+                ids: ungrouped,
+            });
+        }
+        sections
+    }
+
+    /// Saves `connection` under `name` with `label`, replacing the entry
+    /// `id` or, without one, appending a new entry with an id from `new_id`.
+    /// Returns the id.
     ///
     /// Renaming keeps the remembered folders; pointing the entry at another
-    /// host, port, user or jump host forgets them. `new_id` is called until
-    /// it returns an unused valid id, at most 16 times.
+    /// host, port, user or jump host forgets them. A group that another entry
+    /// already uses with other letter case takes that entry's spelling, so
+    /// the window shows one heading. `new_id` is called until it returns an
+    /// unused valid id, at most 16 times.
     pub fn save(
         &mut self,
         id: Option<&str>,
         name: &str,
         connection: SshConnection,
+        label: Label,
         mut new_id: impl FnMut() -> String,
     ) -> Result<String, ConnectionError> {
         let name = name.trim();
         check_name(name)?;
+        let group = match label.group.as_deref().map(str::trim) {
+            None | Some("") => None,
+            Some(group) => {
+                check_group(group)?;
+                let spelling = self
+                    .connections
+                    .iter()
+                    .filter(|other| Some(other.id.as_str()) != id)
+                    .filter_map(|other| other.group.as_deref())
+                    .find(|other| same_name(other, group))
+                    .unwrap_or(group);
+                Some(spelling.to_owned())
+            }
+        };
         let connection = connection.normalized();
         connection.check()?;
         if self
@@ -476,6 +582,8 @@ impl Connections {
                 }
                 entry.name = name.to_owned();
                 entry.connection = connection;
+                entry.color = label.color;
+                entry.group = group;
                 Ok(entry.id.clone())
             }
             None => {
@@ -490,6 +598,8 @@ impl Connections {
                     id: id.clone(),
                     name: name.to_owned(),
                     connection,
+                    color: label.color,
+                    group,
                     recent_folders: Vec::new(),
                 });
                 Ok(id)
@@ -542,6 +652,20 @@ fn check_name(name: &str) -> Result<(), ConnectionError> {
     }
     if name.trim() != name || name.chars().any(char::is_control) {
         return Err(ConnectionError::at("name", Reason::Invalid));
+    }
+    Ok(())
+}
+
+/// A trimmed group of at most 64 characters without control characters.
+fn check_group(group: &str) -> Result<(), ConnectionError> {
+    if group.is_empty() {
+        return Err(ConnectionError::at("group", Reason::Required));
+    }
+    if group.chars().count() > MAX_GROUP_CHARS {
+        return Err(ConnectionError::at("group", Reason::TooLong));
+    }
+    if group.trim() != group || group.chars().any(char::is_control) {
+        return Err(ConnectionError::at("group", Reason::Invalid));
     }
     Ok(())
 }
