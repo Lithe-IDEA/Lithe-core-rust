@@ -29,6 +29,8 @@
 //!   database, read only, for an import.
 //! - [`prompt`] tells what an OpenSSH question asks for, so the window can
 //!   show a host key, password, passphrase or code form.
+//! - [`preferences`] keeps the settings page's machine-local values: the
+//!   OpenSSH client to start and how long a lost session is reconnected.
 //!
 //! The transport layer deliberately knows nothing about files or processes.
 //! Supporting a new kind of remote means adding a hop, not new capabilities.
@@ -47,6 +49,7 @@ pub mod forward_set;
 pub mod launch;
 #[cfg(feature = "motty")]
 pub mod motty;
+pub mod preferences;
 pub mod prompt;
 pub mod session;
 pub mod ssh_config;

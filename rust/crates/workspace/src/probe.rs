@@ -31,6 +31,10 @@ const DIAGNOSTICS_LIMIT: usize = 4 * 1024;
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProbeRequest {
     connection: SshConnection,
+    /// Remote preferences document, whose SSH program starts OpenSSH;
+    /// `null` or absent is every value automatic.
+    #[serde(default)]
+    preferences: Option<String>,
 }
 
 /// Stable outcome of a probe. Failures to connect are results, not Core
@@ -83,12 +87,11 @@ pub fn probe(request: ProbeRequest) -> Result<ProbeResult, CoreError> {
     probe_with(request, None)
 }
 
-/// `ssh_program` replaces the `ssh` found on `PATH`; tests use a stand-in.
+/// `ssh_program` replaces the preferences' SSH program; tests use a
+/// stand-in.
 fn probe_with(request: ProbeRequest, ssh_program: Option<&str>) -> Result<ProbeResult, CoreError> {
     let mut hop = ssh_hop(&request.connection)?;
-    if let Some(program) = ssh_program {
-        hop.program = program.into();
-    }
+    hop.program = crate::preferences::ssh_program(ssh_program, request.preferences.as_deref())?;
     let chain = TransportChain::new(vec![Hop::Ssh(hop)]);
     let argv = chain.command(&probe_command()).map_err(|error| {
         CoreError::new(ErrorCode::InvalidRequest, "Invalid SSH connection")

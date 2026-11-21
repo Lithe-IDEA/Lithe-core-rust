@@ -78,6 +78,10 @@ pub struct ConnectRequest {
     /// A WSL distribution on this machine, reached through `wsl.exe`.
     #[serde(default)]
     wsl: Option<WslConnection>,
+    /// Remote preferences document, whose SSH program starts OpenSSH;
+    /// `null` or absent is every value automatic. Unused for `wsl`.
+    #[serde(default)]
+    preferences: Option<String>,
     servers: Vec<ServerInput>,
     server_version: String,
     /// Install root on the remote; `None` is `$HOME/.lithe-server`.
@@ -346,16 +350,15 @@ impl Client {
 }
 
 /// The hop that starts the chain, with `program` in place of the system
-/// client when set. Exactly one of `connection` and `wsl` must be set.
+/// client when set; OpenSSH is otherwise the preferences' SSH program.
+/// Exactly one of `connection` and `wsl` must be set.
 fn first_hop(request: &ConnectRequest, program: Option<&str>) -> Result<Hop, CoreError> {
     let refused =
         |field, reason| crate::connections::invalid_request(ConnectionError { field, reason });
     match (&request.connection, &request.wsl) {
         (Some(connection), None) => {
             let mut hop = ssh_hop(connection)?;
-            if let Some(program) = program {
-                hop.program = program.into();
-            }
+            hop.program = crate::preferences::ssh_program(program, request.preferences.as_deref())?;
             Ok(Hop::Ssh(hop))
         }
         (None, Some(distribution)) => {

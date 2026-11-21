@@ -269,6 +269,18 @@ pub(super) fn dispatch(command: RemoteCommand, id: Option<String>, payload: Valu
             "Invalid Motty hosts request",
             lithe_workspace::motty::hosts,
         ),
+        RemoteCommand::Preferences => answer(
+            id,
+            payload,
+            "Invalid remote preferences request",
+            lithe_workspace::preferences::read,
+        ),
+        RemoteCommand::EditPreferences => answer(
+            id,
+            payload,
+            "Invalid remote preferences request",
+            lithe_workspace::preferences::edit,
+        ),
         RemoteCommand::Disconnect => {
             match serde_json::from_value::<lithe_workspace::sessions::DisconnectRequest>(payload) {
                 Ok(request) => CoreResponse::success(

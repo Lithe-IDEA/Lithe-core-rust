@@ -1040,6 +1040,11 @@ pub enum RemoteCommand {
     /// Lists the WSL distributions installed on this Windows machine
     /// (`remote.listWslDistributions`).
     ListWslDistributions,
+    /// Reads the remote workspace preferences and what each automatic value
+    /// resolves to (`remote.preferences`).
+    Preferences,
+    /// Changes one remote workspace preference (`remote.editPreferences`).
+    EditPreferences,
 }
 
 #[derive(Debug, Clone)]
@@ -1620,6 +1625,8 @@ impl CoreCommand {
             "remote.listWslDistributions" => {
                 Some(Self::Remote(RemoteCommand::ListWslDistributions))
             }
+            "remote.preferences" => Some(Self::Remote(RemoteCommand::Preferences)),
+            "remote.editPreferences" => Some(Self::Remote(RemoteCommand::EditPreferences)),
             "git.historyRewritePreview" => Some(Self::Git(GitCommand::HistoryRewritePreview)),
             "git.remotes" => Some(Self::Git(GitCommand::Remotes)),
             "git.tags" => Some(Self::Git(GitCommand::Tags)),
