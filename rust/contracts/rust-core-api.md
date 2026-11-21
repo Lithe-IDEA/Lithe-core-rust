@@ -833,7 +833,7 @@ or removing a command fails until the table changes in the same commit.
 | `remote.preferences` | Read the remote workspace settings and what each automatic value resolves to |
 | `remote.editPreferences` | Set the SSH program, the reconnect limit, whether reverse forwards are allowed or what closing a connection does to its programs, or make one automatic again |
 | `remote.runningPrograms` | List the processes and terminals a connection's host session still runs |
-| `remote.endPrograms` | End every process and terminal a connection's host session runs |
+| `remote.endPrograms` | End every process and terminal a connection's host session runs, or the listed ones |
 | `git.historyRewritePreview` | Review undo, message edit, squash, or drop with complete messages, eligibility, and an immutable checkout expectation |
 | `git.remotes` | Return configured fetch remote names and URLs |
 | `git.tags` | Return tag names, tag object IDs, target IDs, dates, and annotations |
@@ -6102,7 +6102,7 @@ the remote server running. Requests over it take `sessionId`:
 | `remote.runTerminal` | `{ sessionId, params: { argv?, cwd?, env?, columns, rows, label? } }` | leader exit; relays `terminal.started`, `terminal.output`, `terminal.exit` |
 | `remote.captureProcess` | `{ sessionId, params, timeoutMilliseconds, maxOutputBytes }` | base64 `stdout`, `stderr`, nullable `exitCode` and `signal` |
 | `remote.runningPrograms` | `{ sessionId }` | `{ programs: [{ kind, id, argv, label, runningMs }] }`, processes first; `kind` is `process` or `terminal`, `label` the one the program started with or `null` |
-| `remote.endPrograms` | `{ sessionId }` | `{ ended }`: every listed process gets `SIGTERM` for its process session and every terminal hangs up; one that ended in the meantime is not counted, one that ignores the signal is still listed |
+| `remote.endPrograms` | `{ sessionId, programs? }` | `{ ended }`: every running process gets `SIGTERM` for its process session and every terminal hangs up, or only those `programs` (`[{ kind, id }]` as `remote.runningPrograms` listed them) names; one that ended in the meantime or is not running is not counted, one that ignores the signal is still listed |
 
 `remote.writeFile` replaces the file atomically on the host. With
 `expected` (`{ size, modifiedMs }` from the read) a changed file is a

@@ -1744,9 +1744,19 @@ fn remote_programs_are_listed_ended_and_kept_only_by_a_persistent_session() {
     assert_eq!(programs[1]["id"], terminal.id, "{listed}");
     assert!(programs[1]["label"].is_null(), "{listed}");
 
-    assert_eq!(call("remote.endPrograms", session.clone())["ended"], 2);
+    // Only the programs named end, and one the session does not run is not
+    // counted; a kind other than process or terminal is refused.
+    let refused = respond(
+        "remote.endPrograms",
+        json!({"sessionId": host.id, "programs": [{"kind": "watch", "id": 1}]}),
+    );
+    assert_eq!(refused["ok"], false, "{refused}");
+    let named = json!({"sessionId": host.id, "programs": [
+        {"kind": "terminal", "id": terminal.id},
+        {"kind": "process", "id": process.id + 1000},
+    ]});
+    assert_eq!(call("remote.endPrograms", named)["ended"], 1);
     // The server forgets an exited program before it reports the exit.
-    assert!(process.wait(STEP).unwrap().exit.is_some());
     loop {
         match terminal.next_event(STEP).unwrap() {
             Some(TerminalEvent::Exit(_)) => break,
@@ -1754,6 +1764,11 @@ fn remote_programs_are_listed_ended_and_kept_only_by_a_persistent_session() {
             None => panic!("the terminal subscription ended before its exit"),
         }
     }
+    let left = call("remote.runningPrograms", session.clone());
+    assert_eq!(left["programs"].as_array().unwrap().len(), 1, "{left}");
+    assert_eq!(left["programs"][0]["kind"], "process", "{left}");
+    assert_eq!(call("remote.endPrograms", session.clone())["ended"], 1);
+    assert!(process.wait(STEP).unwrap().exit.is_some());
     assert_eq!(
         call("remote.runningPrograms", session.clone()),
         json!({"programs": []})
