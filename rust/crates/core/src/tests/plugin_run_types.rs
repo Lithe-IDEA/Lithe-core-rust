@@ -518,6 +518,51 @@ fn saved_declared_runs_expand_into_the_types_command_line() {
     assert_eq!(planned["data"]["plan"]["root"], ".");
 }
 
+/// A file run at the workspace root can resolve the one project that contains
+/// that file. An explicit working directory still chooses its own instance.
+#[test]
+fn file_run_uses_its_project_when_the_workspace_root_has_no_instance() {
+    let root = temporary_root("run-types-file-project");
+    let _cleanup = Cleanup(root.clone());
+    fs::create_dir_all(root.join("apps/worker")).unwrap();
+    fs::create_dir_all(root.join("tools")).unwrap();
+    fs::write(root.join("apps/worker/main.go"), "package main\n").unwrap();
+
+    for (name, directory, expected_instance) in [
+        ("default", "", "apps/worker"),
+        ("explicit", "tools", "tools"),
+    ] {
+        let saved = call(
+            "runConfig.saveConfiguration",
+            json!({
+                "root": root, "provider": "build.run-type", "runType": run_type("build"),
+                "runTypePlugins": plugins(),
+                "values": {
+                    "name": name, "workingDirectory": directory,
+                    "field:runKind": "file", "field:file": "apps/worker/main.go",
+                },
+            }),
+        );
+        assert_eq!(saved["data"]["status"], "saved", "{saved}");
+        apply_run_changes(&root, &saved["data"]);
+        let planned = plan(
+            &root,
+            manifest(),
+            json!({
+                "configurationId": saved["data"]["id"],
+                "instances": [{"root": "apps"}, {"root": "apps/worker"}, {"root": "tools"}],
+            }),
+        );
+        assert_eq!(planned["data"]["status"], "ok", "{planned}");
+        assert_eq!(planned["data"]["plan"]["root"], expected_instance);
+        let expected_directory = if directory.is_empty() { "." } else { directory };
+        assert_eq!(
+            planned["data"]["plan"]["workingDirectory"],
+            expected_directory
+        );
+    }
+}
+
 #[test]
 fn a_type_without_program_arguments_stores_none() {
     let root = temporary_root("run-types-no-arguments");

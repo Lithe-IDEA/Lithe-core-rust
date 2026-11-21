@@ -624,7 +624,17 @@ fn declared_plan(
             .expect("launch values name declared fields");
         field_arguments.push((id.clone(), field_value_arguments(field, value)?));
     }
-    let instance = instance_of(sources.instances, &launch.working_directory)?;
+    let file_directory =
+        if role.role == RunTypeRole::Configuration && launch.working_directory == "." {
+            sole_file_directory(workspace_root, declaration, &values)
+        } else {
+            None
+        };
+    let instance = instance_of(
+        sources.instances,
+        &launch.working_directory,
+        file_directory.as_deref(),
+    )?;
     let base = PlanBase {
         model_inputs: instance.model_inputs.clone(),
         root: instance.root.clone(),
@@ -684,13 +694,43 @@ fn field_value_arguments(
     }
 }
 
-/// The instance a configuration runs with: the deepest one whose root holds
-/// the working directory, or the only one when the working directory is
-/// outside every instance, such as an absolute directory outside the
-/// workspace.
+/// A single effective file field identifies a project when the workspace
+/// root does not identify one. Hidden fields are absent from `values`.
+fn sole_file_directory(
+    workspace_root: &Path,
+    declaration: &RunTypeDeclaration,
+    values: &[(String, DeclaredValue)],
+) -> Option<String> {
+    let mut files = values.iter().filter_map(|(id, value)| {
+        let DeclaredValue::Text(path) = value else {
+            return None;
+        };
+        declaration
+            .fields
+            .iter()
+            .any(|field| field.id == *id && field.kind == RunFieldKind::File)
+            .then_some(path)
+    });
+    let file = Path::new(files.next()?);
+    if files.next().is_some() {
+        return None;
+    }
+    let directory = file.parent()?.strip_prefix(workspace_root).ok()?;
+    directory
+        .iter()
+        .map(|component| component.to_str())
+        .collect::<Option<Vec<_>>>()
+        .map(|components| components.join("/"))
+}
+
+/// Picks the deepest project that contains the working directory. When no
+/// root holds it, a run at the workspace root can supply a file's directory
+/// to select the instance while keeping the configured working directory.
+/// A lone instance can run from outside its project.
 fn instance_of<'a>(
     instances: &'a [RunTypeInstance],
     working_directory: &str,
+    file_directory: Option<&str>,
 ) -> Validation<&'a RunTypeInstance> {
     if instances.is_empty() {
         return Err(invalid_selection(
@@ -704,21 +744,24 @@ fn instance_of<'a>(
         .iter()
         .map(|instance| decode::request_path(&instance.root, "root"))
         .collect::<Validation<Vec<_>>>()?;
-    let directory = decode::request_path(working_directory, "working directory").ok();
-    let holding = directory.and_then(|directory| {
-        roots
-            .iter()
-            .enumerate()
-            .filter(|(_, root)| decode::contains(root, &directory))
-            .max_by_key(|(_, root)| {
-                if *root == "." {
-                    0
-                } else {
-                    root.split('/').count()
-                }
-            })
-            .map(|(index, _)| &instances[index])
-    });
+    let holding = [Some(working_directory), file_directory]
+        .into_iter()
+        .flatten()
+        .find_map(|directory| {
+            let directory = decode::request_path(directory, "working directory").ok()?;
+            roots
+                .iter()
+                .enumerate()
+                .filter(|(_, root)| decode::contains(root, &directory))
+                .max_by_key(|(_, root)| {
+                    if *root == "." {
+                        0
+                    } else {
+                        root.split('/').count()
+                    }
+                })
+                .map(|(index, _)| &instances[index])
+        });
     match (holding, instances) {
         (Some(instance), _) | (None, [instance]) => Ok(instance),
         (None, _) => Err(invalid_selection(
