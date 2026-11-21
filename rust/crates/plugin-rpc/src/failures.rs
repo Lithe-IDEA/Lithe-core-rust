@@ -42,6 +42,9 @@ pub fn host_rpc_code(code: &str) -> i64 {
         // must tell the provider's error from Core's by the number alone.
         codes::FAILED => -32070,
         codes::INVALID_RESULT => -32071,
+        // -32072 to -32077 are the toolchain provider protocol's.
+        codes::HOST_REMOTE_DISCONNECTED => -32078,
+        codes::HOST_PLATFORM_UNAVAILABLE => -32079,
         _ => -32603,
     }
 }
@@ -86,6 +89,8 @@ pub fn host_failure(code: Option<&str>) -> (&'static str, i64) {
         Some(codes::HOST_METHOD_NOT_DECLARED) => codes::HOST_METHOD_NOT_DECLARED,
         Some(codes::HOST_TOOL_UNRESOLVED) => codes::HOST_TOOL_UNRESOLVED,
         Some(codes::HOST_FOREIGN_CONTRIBUTION) => codes::HOST_FOREIGN_CONTRIBUTION,
+        Some(codes::HOST_REMOTE_DISCONNECTED) => codes::HOST_REMOTE_DISCONNECTED,
+        Some(codes::HOST_PLATFORM_UNAVAILABLE) => codes::HOST_PLATFORM_UNAVAILABLE,
         // A backend exit is reported to pages, never to the backend itself.
         Some(codes::BACKEND_EXITED) => codes::HOST_FAILED,
         _ => codes::HOST_FAILED,

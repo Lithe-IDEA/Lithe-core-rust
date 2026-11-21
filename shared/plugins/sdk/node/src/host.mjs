@@ -239,6 +239,11 @@ export function createHost(channel, callSignal, parentOperationId) {
   /** A method whose params name a workspace context. */
   const scoped = (method) => async (context, params = {}, options) =>
     request(method, { ...params, context: contextReference(context) }, options);
+  const getHostPaths = async (context, params = {}, options) => {
+    const wire = { ...params, context: contextReference(context) };
+    if (params?.rootIDs !== undefined) checkRootIds(params.rootIDs);
+    return hostFolders(await request(HOST_METHODS.workspaceGetHostPaths, wire, options));
+  };
 
   return Object.freeze({
     get negotiated() {
@@ -279,6 +284,18 @@ export function createHost(channel, callSignal, parentOperationId) {
         request(HOST_METHODS.workspaceGetContext, { context: contextReference(context) }, options),
       getFolders: async (context, options) =>
         request(HOST_METHODS.workspaceGetFolders, { context: contextReference(context) }, options),
+      getHostPaths,
+      processRoots: async (context, options) => {
+        const kind = context?.authority?.kind;
+        if (kind === 'local') return { folders: localFolders(context.folders) };
+        if (typeof kind !== 'string') {
+          throw new PluginSdkError(
+            'sdk.host.invalidContext',
+            'processRoots takes a full context, with its authority and folders, from listContexts or getContext.',
+          );
+        }
+        return getHostPaths(context, {}, options);
+      },
       readDirectory: scoped(HOST_METHODS.workspaceReadDirectory),
       stat: scoped(HOST_METHODS.workspaceStat),
       readFile: scoped(HOST_METHODS.workspaceReadFile),
@@ -346,6 +363,77 @@ export function contextReference(value) {
     );
   }
   return reference;
+}
+
+/**
+ * A path on the remote host of a `remote` workspace context, from
+ * `workspace.getHostPaths`. It is not a string, so it cannot reach `fs` or
+ * `path` by mistake: the machine that runs the backend has no file there.
+ * `value` is the absolute POSIX path, for what runs on that host -- process
+ * arguments and working directories, a debug configuration's `program` or
+ * `cwd`, a language server's `initializationOptions`. `JSON.stringify`
+ * writes it as that string.
+ */
+export class HostPath {
+  #value;
+
+  constructor(value) {
+    if (!isHostPath(value)) {
+      throw new TypeError('A host path is an absolute POSIX path, a string starting with "/".');
+    }
+    this.#value = value;
+  }
+
+  get value() {
+    return this.#value;
+  }
+
+  toString() {
+    return this.#value;
+  }
+
+  toJSON() {
+    return this.#value;
+  }
+}
+
+function isHostPath(value) {
+  return typeof value === 'string' && value.startsWith('/');
+}
+
+function checkRootIds(rootIDs) {
+  if (
+    !Array.isArray(rootIDs) ||
+    rootIDs.length === 0 ||
+    rootIDs.length > LIMITS.maxHostPathRoots ||
+    !rootIDs.every(isCredentialKey) ||
+    new Set(rootIDs).size !== rootIDs.length
+  ) {
+    throw new PluginSdkError(
+      'sdk.host.invalidParams',
+      'rootIDs is 1-256 distinct root IDs of 1-128 ASCII letters, digits, ".", "_", ":" or "-".',
+    );
+  }
+}
+
+/** `{ folders: [{ rootID, hostPath }] }` of a `getHostPaths` answer, each `hostPath` a `HostPath`. */
+function hostFolders(result) {
+  const folders = result?.folders;
+  if (!Array.isArray(folders) || !folders.every((folder) => isCredentialKey(folder?.rootID) && isHostPath(folder?.hostPath))) {
+    throw new PluginSdkError(
+      'sdk.host.invalidResult',
+      'The host answered getHostPaths without folders of a root ID and an absolute host path.',
+    );
+  }
+  return { folders: folders.map(({ rootID, hostPath }) => ({ rootID, hostPath: new HostPath(hostPath) })) };
+}
+
+/** `[{ rootID, path }]` of a `local` context's folders, read without asking the host. */
+function localFolders(folders) {
+  if (!Array.isArray(folders) || !folders.every((folder) => isCredentialKey(folder?.rootID) && typeof folder?.path === 'string')) {
+    throw new PluginSdkError('sdk.host.invalidContext', "A local context's folders each carry a rootID and a path.");
+  }
+  return folders.map(({ rootID, path }) => ({ rootID, path }));
 }
 
 function checkCredentialKey(key) {

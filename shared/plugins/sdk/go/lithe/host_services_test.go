@@ -803,6 +803,114 @@ func TestNativeTerminalMethodsKeepContextAndLiteralArguments(t *testing.T) {
 	s.close()
 }
 
+func TestHostPathRootIDsCoreRefusesFailLocallyAndTheAnswerHoldsHostPaths(t *testing.T) {
+	backend := lithe.NewBackend("test-backend")
+	workspace := backend.Handle().Host().Workspace()
+	s := startSession(t, backend, []any{0})
+	checked := 0
+	for _, c := range cases(t, fixture(t), "hostRequests") {
+		params, _ := c["params"].(map[string]any)
+		if c["method"] != "lithe/host/workspace/getHostPaths" || params["context"] == nil || params["path"] != nil {
+			continue
+		}
+		name, _ := c["name"].(string)
+		context, err := lithe.ParseWorkspaceContext(params["context"])
+		must(t, err)
+		var rootIDs []string
+		list, _ := params["rootIDs"].([]any)
+		for _, id := range list {
+			rootIDs = append(rootIDs, id.(string))
+		}
+		expected, _ := c["expected"].(map[string]any)
+		switch {
+		case expected["forward"] != nil:
+			asking := background(func() ([]lithe.HostFolder, error) { return workspace.GetHostPaths(context, rootIDs...) })
+			request := s.take("lithe/host/workspace/getHostPaths")
+			eq(t, request["params"], encode(t, params))
+			roots := rootIDs
+			if len(roots) == 0 {
+				roots = []string{"r0c1d2e3f4a5b6c7d"}
+			}
+			folders := make([]any, len(roots))
+			for i, id := range roots {
+				folders[i] = map[string]any{"rootID": id, "hostPath": fmt.Sprintf("/srv/root%d", i)}
+			}
+			s.reply(request, map[string]any{"folders": folders})
+			result := done(t, asking)
+			must(t, result.err)
+			if len(result.value) != len(roots) || result.value[0].RootID != roots[0] || result.value[0].HostPath != "/srv/root0" {
+				t.Errorf("%s: %v", name, result.value)
+			}
+			checked++
+		case expected["code"] == "plugin.host.invalidParams" && len(rootIDs) > 0:
+			// An empty list cannot be written: no root IDs asks for every root.
+			if _, err := workspace.GetHostPaths(context, rootIDs...); code(err) != "sdk.host.invalidParams" {
+				t.Errorf("%s: %v", name, err)
+			}
+			checked++
+		}
+	}
+	if checked != 4 {
+		t.Errorf("checked %d cases, want 4", checked)
+	}
+	tooMany := make([]string, 257)
+	for i := range tooMany {
+		tooMany[i] = fmt.Sprintf("r%d", i)
+	}
+	if _, err := workspace.GetHostPaths(testContext(), tooMany...); code(err) != "sdk.host.invalidParams" {
+		t.Errorf("257 root IDs: %v", err)
+	}
+	s.assertQuiet()
+
+	// An answer that is not root IDs with absolute paths is refused.
+	for _, answer := range []string{`{}`, `{"folders": [{"rootID": "r0", "hostPath": "srv/root0"}]}`, `{"folders": [{"hostPath": "/srv/root0"}]}`} {
+		asking := background(func() ([]lithe.HostFolder, error) { return workspace.GetHostPaths(testContext()) })
+		s.reply(s.take("lithe/host/workspace/getHostPaths"), j(t, answer))
+		if err := done(t, asking).err; code(err) != "sdk.host.invalidResult" {
+			t.Errorf("%s: %v", answer, err)
+		}
+	}
+	s.close()
+}
+
+func TestProcessRootsReadsALocalContextAndAsksTheHostOnlyForARemoteOne(t *testing.T) {
+	backend := lithe.NewBackend("test-backend")
+	workspace := backend.Handle().Host().Workspace()
+	s := startSession(t, backend, []any{0})
+	local, err := workspace.ProcessRoots(json.RawMessage(`{
+		"contextID": "w1", "generation": 2, "name": "orders", "authority": {"kind": "local"},
+		"folders": [{"rootID": "r0", "name": "orders", "path": "/Users/me/orders"}]
+	}`))
+	must(t, err)
+	eq(t, local, `[{"rootID": "r0", "path": "/Users/me/orders"}]`)
+	s.assertQuiet()
+
+	remote := j(t, `{
+		"contextID": "w1", "generation": 2, "name": "orders",
+		"authority": {"kind": "remote", "id": "c-7d41", "platform": {"os": "linux", "arch": "x86_64"}},
+		"folders": [{"rootID": "r0", "name": "orders"}]
+	}`)
+	asking := background(func() ([]lithe.ProcessRoot, error) { return workspace.ProcessRoots(remote) })
+	request := s.take("lithe/host/workspace/getHostPaths")
+	eq(t, request["params"], `{"context": {"contextID": "w1", "generation": 2}}`)
+	s.reply(request, j(t, `{"folders": [{"rootID": "r0", "hostPath": "/home/me/orders"}]}`))
+	result := done(t, asking)
+	must(t, result.err)
+	eq(t, result.value, `[{"rootID": "r0", "hostPath": "/home/me/orders"}]`)
+	if result.value[0].Path != "" || result.value[0].HostPath.String() != "/home/me/orders" {
+		t.Errorf("a remote root: %+v", result.value[0])
+	}
+
+	// A reference alone does not say the authority, and a local folder names its path.
+	for _, context := range []any{testContext(), j(t, `{"contextID": "w1", "generation": 2, "authority": {"kind": "local"}, "folders": [{"rootID": "r0"}]}`)} {
+		if _, err := workspace.ProcessRoots(context); code(err) != "sdk.host.invalidContext" {
+			t.Errorf("%s: %v", encode(t, context), err)
+		}
+	}
+	s.assertQuiet()
+	s.close()
+}
+
 func TestARelayedCallNamesThePluginThatCalledItAndAHostCallNamesNone(t *testing.T) {
 	checked := 0
 	for _, c := range cases(t, fixture(t), "invocationCallers") {
@@ -978,8 +1086,8 @@ func TestRelayRefusalsKeepTheCodeNumberAndTheProvidersOwnCode(t *testing.T) {
 		return refusal(t, pending)
 	}
 	relayErrors := cases(t, fixture(t), "relayErrors")
-	if len(relayErrors) != 15 {
-		t.Errorf("%d relay errors, want 15", len(relayErrors))
+	if len(relayErrors) != 14 {
+		t.Errorf("%d relay errors, want 14", len(relayErrors))
 	}
 	for _, c := range relayErrors {
 		expected := c["code"].(string)

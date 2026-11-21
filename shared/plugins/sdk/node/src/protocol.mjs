@@ -48,6 +48,7 @@ export const HOST_METHODS = Object.freeze({
   workspaceListContexts: 'lithe/host/workspace/listContexts',
   workspaceGetContext: 'lithe/host/workspace/getContext',
   workspaceGetFolders: 'lithe/host/workspace/getFolders',
+  workspaceGetHostPaths: 'lithe/host/workspace/getHostPaths',
   workspaceReadDirectory: 'lithe/host/workspace/readDirectory',
   workspaceStat: 'lithe/host/workspace/stat',
   workspaceReadFile: 'lithe/host/workspace/readFile',
@@ -125,6 +126,8 @@ export const HOST_ERRORS = Object.freeze({
   'plugin.function.providerUnavailable': -32069,
   'plugin.function.failed': -32070,
   'plugin.function.invalidResult': -32071,
+  'plugin.host.remoteDisconnected': -32078,
+  'plugin.host.platformUnavailable': -32079,
 });
 
 /**
@@ -189,6 +192,7 @@ export const LIMITS = Object.freeze({
   maxCredentialKeyBytes: 128,
   maxCredentialSecretBytes: 16 * 1024,
   maxPendingHostRequests: 16,
+  maxHostPathRoots: 256,
   // The relay's bounds are Core's to enforce; the SDK only names them.
   relayDefaultTimeoutMilliseconds: 60000,
   relayMaxTimeoutMilliseconds: 600000,

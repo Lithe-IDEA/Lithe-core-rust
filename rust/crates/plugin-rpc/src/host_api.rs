@@ -98,6 +98,10 @@ mod tests {
             method("lithe/host/workspace/readFile")["grant"],
             "lithe/host/workspace/readFile"
         );
+        assert_eq!(
+            method("lithe/host/workspace/getHostPaths")["grant"],
+            "lithe/host/workspace/getHostPaths"
+        );
         assert!(method("lithe/host/subscriptions/dispose")["grant"].is_null());
         assert_eq!(method("lithe/host/functions/invoke")["coreServed"], true);
     }

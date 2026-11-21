@@ -155,6 +155,7 @@ SDK 与插件后端在构建时下载，并按锁定的 SHA-256（或 Git commit
 | [构建、运行与测试接入](guides/build-tool-integration.md) | 执行提供者示例、工程后端边界，以及声明式构建系统的现状和已发布示例 |
 | [编写调试适配器插件](guides/debug-adapter-plugin.md) | 从最小清单到启动方式、先编译再调试的 `executable`，以及调试控制台补全 |
 | [插件后端：工作区上下文与宿主服务](guides/plugin-backend-workspace.md) | 免页面启动、工作区上下文、纯后端命令、文档/文件/窗口宿主方法、宿主通知、失败码，以及宿主服务只增不改时后端要遵守的规则 |
+| [插件后端：远程工作区](guides/plugin-backend-remote-workspaces.md) | 远程上下文的来源与远端平台、单独获取的远端路径 `getHostPaths`、`path` 与 `hostPath` 的区别、断线与平台失败，以及插件函数中转 |
 | [插件自有的原生终端](guides/native-terminals.md) | `terminal/*`：创建、显示、关闭、重开和退出通知（本机工作区） |
 
 收录和上架的规则由 Lithe Store 维护：[发布社区插件](https://github.com/Lithe-IDEA/Lithe-store/blob/main/docs/publishing.md)讲怎么打包、提交收录和发布新版本，[版本追踪与更新](https://github.com/Lithe-IDEA/Lithe-store/blob/main/docs/versioning-and-updates.md)讲 Lithe 怎么选择可安装的版本。
@@ -375,6 +376,7 @@ The example plugins are maintained in their own repositories. Before copying one
 | [Build, run, and test integration](guides/build-tool-integration.md) | Execution provider examples, the project backend boundary, and the current status and published examples of declarative build systems |
 | [Writing a debug adapter plugin](guides/debug-adapter-plugin.md) | From a minimal manifest to launch modes, compile-then-debug `executable`, and debug console completion |
 | [Plugin backend: workspace contexts and host services](guides/plugin-backend-workspace.md) | Launching without a page, workspace contexts, backend-only commands, document, file, and window host methods, host notifications, failure codes, and the rules a backend follows while host services only grow |
+| [Plugin backend: remote workspaces](guides/plugin-backend-remote-workspaces.md) | A remote context's authority and the remote platform, remote paths fetched on their own with `getHostPaths`, how `path` and `hostPath` differ, disconnect and platform failures, and the function relay |
 | [Plugin-owned native terminals](guides/native-terminals.md) | `terminal/*`: create, show, close, reopen, and exit notifications (local workspaces) |
 
 Lithe Store maintains the listing rules: [Publishing community plugins](https://github.com/Lithe-IDEA/Lithe-store/blob/main/docs/publishing.md) covers packaging, submitting a listing, and releasing new versions, and [Version tracking and updates](https://github.com/Lithe-IDEA/Lithe-store/blob/main/docs/versioning-and-updates.md) covers how Lithe chooses an installable version.

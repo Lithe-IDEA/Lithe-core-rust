@@ -40,6 +40,9 @@ pub(crate) enum HostParams {
     Subscription,
     /// Exactly `{ context }`, a well-formed context reference.
     Context,
+    /// `{ context, rootIDs? }`: a well-formed context reference and at most
+    /// 256 distinct root IDs (plan API-40).
+    HostPaths,
     /// Snapshot source listing or one bounded chunk from a selected source.
     KeymapSnapshot { chunk: bool },
     /// `{ context, serverID, method, params?, timeoutMilliseconds? }`: one
@@ -208,6 +211,12 @@ pub(crate) const HOST_METHODS: &[HostMethod] = &[
         service: HOST_SERVICE_WORKSPACE,
         permission: None,
         params: HostParams::Context,
+    },
+    HostMethod {
+        method: WORKSPACE_GET_HOST_PATHS,
+        service: HOST_SERVICE_WORKSPACE,
+        permission: Some("workspace.metadata"),
+        params: HostParams::HostPaths,
     },
     HostMethod {
         method: "lithe/host/workspace/readDirectory",

@@ -260,6 +260,7 @@ backend.onCommand("db.refresh", (commandId, workspaceContext) -> {
 | `capabilities()`, `supports(method)` | What this session may call, from `lithe/host/getCapabilities` (asked once). `supports` is false when the host offered no plugin functions. |
 | `workspace().listContexts()`, `.getContext(context)`, `.getFolders(context)` | Workspace contexts; only `getContext` returns, and creates, the context's `stateDirectory`. |
 | `workspace().readDirectory`, `.stat`, `.readFile`, `.findFiles`, `.findText`, `.watch` | Files of a local context, addressed as `{ rootID, path }` from `getFolders`. |
+| `workspace().getHostPaths(context, rootIds)`, `.processRoots(fullContext)` | Root paths on the remote host of a remote context; see [Remote workspaces](#remote-workspaces). |
 | `documents().list`, `.getSnapshot`; `editor().getActive`, `.getSelections`, `.applyEdits`, `.replaceSelections`, `.insertText`, `.open`, `.reveal`, `.registerActions` | Live documents and editors. Edits name the `expectedVersion` they were computed against. |
 | `preview().openHtml`, `browser().openExternal`, `window().showInformation`, `.showWarning`, `.showError` | Preview, browser, and messages. |
 | `functions().providers(functionId)`, `.invoke(context, call)` | [Calls to other plugins' functions](#calling-other-plugins), relayed by Core. |
@@ -303,6 +304,45 @@ What the SDK does for you, and what it leaves to you:
 - **Commands are events.** `onCommand` runs when the user runs one of the
   plugin's commands; the host waits for no result. A stopped backend is
   started for it only when the manifest declares `onCommand:<commandID>`.
+
+## Remote workspaces
+
+A backend runs on the machine that runs Lithe also when the workspace is on a
+remote host. Such a context has `authority.kind` `remote` and
+`authority.platform` `{ os, arch }`, and its folders carry no `path`.
+`getHostPaths` gives their paths on the host. It needs the
+`workspace.metadata` permission, and only a host that serves it lists it, so
+check `supports("lithe/host/workspace/getHostPaths")` first.
+
+```java
+Map<String, Object> full = context.host().workspace().getContext(workspace).get();
+for (Host.ProcessRoot root : context.host().workspace().processRoots(full).get()) {
+    if (root.isRemote()) {
+        Host.HostPath hostPath = root.hostPath(); // a path on the remote host
+    } else {
+        String path = root.path(); // a path on this machine
+    }
+}
+```
+
+- `Host.HostPath` is its own type, not a `String`, so it is not passed to
+  `java.io.File`, `java.nio.file.Paths` or `ProcessBuilder` by mistake: the
+  machine that runs the backend has no file there. Give `value()` only to
+  what runs on the host, such as process arguments or a debug configuration;
+  the SDK writes it into JSON as that string. `HostPath.of` takes only an
+  absolute POSIX path.
+- `processRoots` takes a full context. For a `local` one it reads the
+  folders without asking the host; otherwise it calls `getHostPaths`.
+- `getHostPaths(context)` asks for every root; `getHostPaths(context,
+  rootIds)` takes 1–256 distinct root IDs, and others fail locally with
+  `sdk.host.invalidParams`. An answer without absolute paths is
+  `sdk.host.invalidResult`.
+- `plugin.host.remoteDisconnected` means the connection was lost while the
+  request ran, so whether it took effect is unknown;
+  `plugin.host.platformUnavailable` means the plugin has nothing for the
+  host's platform. The
+  [remote workspaces guide](../../guides/plugin-backend-remote-workspaces.md)
+  says which services serve a remote context.
 
 ## Calling other plugins
 
@@ -367,8 +407,8 @@ What the SDK does for you, and what it leaves to you:
   `.payloadTooLarge`, `.providerUnavailable`, `.failed` and `.invalidResult`.
   `plugin.function.failed` carries the provider's own code in
   `pluginErrorCode()`. A call to a context the host closed fails with
-  `plugin.host.contextExpired`; a remote workspace with
-  `plugin.host.authorityUnsupported`; a deadline with `plugin.host.timeout`.
+  `plugin.host.contextExpired`, and a deadline with `plugin.host.timeout`; a
+  remote workspace's context is relayed like a local one.
   Core never retries a call, and neither does the SDK.
 - **Calls end with their caller.** Ending or cancelling the function call that
   made a relayed call, or cancelling the token given to `withCancellation`,

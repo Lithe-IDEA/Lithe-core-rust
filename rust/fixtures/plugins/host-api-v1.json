@@ -11,6 +11,16 @@
       "expected": { "allowed": false, "code": "plugin.host.permissionDenied" }
     },
     {
+      "name": "metadata grant alone does not grant host paths",
+      "input": { "method": "lithe/host/workspace/getHostPaths", "service": "workspace", "grants": ["workspace"] },
+      "expected": { "allowed": false, "code": "plugin.host.permissionDenied" }
+    },
+    {
+      "name": "the host-paths grant admits host paths",
+      "input": { "method": "lithe/host/workspace/getHostPaths", "service": "workspace", "grants": ["workspace", "lithe/host/workspace/getHostPaths"] },
+      "expected": { "allowed": true }
+    },
+    {
       "name": "a method cannot be attributed to another service",
       "input": { "method": "lithe/host/editor/applyEdits", "service": "workspace", "grants": ["workspace"] },
       "expected": { "allowed": false, "code": "plugin.host.unavailable" }

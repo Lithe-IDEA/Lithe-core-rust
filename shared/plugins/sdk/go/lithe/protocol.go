@@ -39,6 +39,7 @@ const (
 	methodListContexts   = "lithe/host/workspace/listContexts"
 	methodGetContext     = "lithe/host/workspace/getContext"
 	methodGetFolders     = "lithe/host/workspace/getFolders"
+	methodGetHostPaths   = "lithe/host/workspace/getHostPaths"
 	methodReadDirectory  = "lithe/host/workspace/readDirectory"
 	methodStat           = "lithe/host/workspace/stat"
 	methodReadFile       = "lithe/host/workspace/readFile"
@@ -99,6 +100,7 @@ const (
 	maxEarlyEvents        = 128
 	maxCommandIDBytes     = 128
 	maxParentOperation    = 128
+	maxHostPathRoots      = 256
 	maxSafeInteger        = 1<<53 - 1
 )
 

@@ -371,6 +371,7 @@ backend
 | `capabilities()`, `supports(method)` | What this session may call, from `lithe/host/getCapabilities` (asked once). |
 | `workspace().list_contexts()`, `.get_context(&context)`, `.get_folders(&context)` | Workspace contexts; only `get_context` returns, and creates, the context's `stateDirectory`. |
 | `workspace().read_directory`, `.stat`, `.read_file`, `.find_files`, `.find_text`, `.watch` | Files of a local context, addressed as `{ rootID, path }` from `get_folders`. |
+| `workspace().get_host_paths(&context, root_ids)`, `.process_roots(&full_context)` | Root paths on the remote host of a remote context; see [Remote workspaces](#remote-workspaces). |
 | `documents().list`, `.get_snapshot`; `editor().get_active`, `.get_selections`, `.apply_edits`, `.replace_selections`, `.insert_text`, `.open`, `.reveal`, `.register_actions` | Live documents and editors. Edits name the `expectedVersion` they were computed against. |
 | `preview().open_html`, `browser().open_external`, `window().show_information`, `.show_warning`, `.show_error` | Preview, browser, and messages. |
 | `functions().providers(function_id)`, `.invoke(&context, call)` | The plugins that export a function, and a call to one of them; see [Calling other plugins](#calling-other-plugins). |
@@ -439,6 +440,45 @@ nothing is stored.
 | `plugin.host.failed` | The host's secret store failed, for example a locked secret store; the message says why and never contains the secret. |
 | `sdk.call.cancelled` | The call was cancelled while waiting; `?` answers as cancelled. |
 | `sdk.session.notReady`, `sdk.session.closed` | The session has not finished `initialize`, or it ended while waiting. |
+
+### Remote workspaces
+
+A backend runs on the machine that runs Lithe also when the workspace is on a
+remote host. Such a context has `authority.kind` `remote` and
+`authority.platform` `{ os, arch }`, and its folders carry no `path`.
+`get_host_paths` gives their paths on the host. It needs the
+`workspace.metadata` permission, and only a host that serves it lists it, so
+check `supports("lithe/host/workspace/getHostPaths")` first.
+
+```rust
+use lithe_plugin_sdk::ProcessRoot;
+
+let full = host.workspace().get_context(&workspace)?;
+for root in host.workspace().process_roots(&full)? {
+    match root {
+        ProcessRoot::Local { root_id, path } => { /* a path on this machine */ }
+        ProcessRoot::Remote { root_id, host_path } => { /* a path on the remote host */ }
+    }
+}
+```
+
+- `HostPath` is its own type and converts to no `Path`, so it is not
+  passed to `std::fs` or `std::process` by mistake: the machine that runs
+  the backend has no file there. Give `as_str()` only to what runs on the
+  host, such as process arguments or a debug configuration; it serializes as
+  that string.
+- `process_roots` takes a full context. For a `local` one it reads the
+  folders without asking the host; otherwise it calls `get_host_paths`.
+- `get_host_paths(&context, None)` asks for every root; `Some(ids)` takes
+  1–256 distinct root IDs, and others fail locally with
+  `sdk.host.invalidParams`. An answer without absolute paths is
+  `sdk.host.invalidResult`.
+- `plugin.host.remoteDisconnected` means the connection was lost while the
+  request ran, so whether it took effect is unknown;
+  `plugin.host.platformUnavailable` means the plugin has nothing for the
+  host's platform. The
+  [remote workspaces guide](../../guides/plugin-backend-remote-workspaces.md)
+  says which services serve a remote context.
 
 ### Calling other plugins
 
@@ -543,7 +583,7 @@ backend
 | `plugin.function.callCycle`, `.depthExceeded`, `.tooManyCalls`, `.payloadTooLarge` | The chain, the caller's running calls, or a payload exceeded a limit. |
 | `plugin.function.providerUnavailable`, `.invalidResult` | The provider's backend stopped or did not start in time, or answered with no result or one over 1 MiB. |
 | `plugin.function.failed` | The provider's function returned an error. The `pluginErrorCode` entry of `details()` is the provider's own `PluginError` code, and `message()` is its message. |
-| `plugin.host.contextExpired`, `plugin.host.authorityUnsupported`, `plugin.host.timeout`, `plugin.host.cancelled` | The context was closed or replaced, is not a local workspace, the deadline passed, or the call (or its parent) was cancelled. |
+| `plugin.host.contextExpired`, `plugin.host.timeout`, `plugin.host.cancelled` | The context was closed or replaced, the deadline passed, or the call (or its parent) was cancelled. A remote workspace's context is relayed like a local one. |
 | `sdk.host.invalidResult` | The host answered with something other than an object. |
 
 ## Results and errors

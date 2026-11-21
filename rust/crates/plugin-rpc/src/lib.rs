@@ -183,6 +183,15 @@ const WORKSPACE_GET_CONTEXT: &str = "lithe/host/workspace/getContext";
 
 const WORKSPACE_GET_FOLDERS: &str = "lithe/host/workspace/getFolders";
 
+/// Paths of a remote context's root folders on the remote host (plan
+/// API-40). `workspace.metadata` admits it as a grant of its own, not as
+/// part of the `workspace` service, so a host that does not serve it leaves
+/// it out of the session and adding it widened no existing grant.
+const WORKSPACE_GET_HOST_PATHS: &str = "lithe/host/workspace/getHostPaths";
+
+/// Most root IDs one `getHostPaths` request may name.
+const MAX_HOST_PATH_ROOTS: usize = 256;
+
 /// Backend request listing the plugins that export a function it may call.
 pub const FUNCTIONS_PROVIDERS: &str = "lithe/host/functions/providers";
 
@@ -291,6 +300,13 @@ pub mod codes {
     /// The request names a contribution, such as a language server, that
     /// another plugin owns.
     pub const HOST_FOREIGN_CONTRIBUTION: &str = "plugin.host.foreignContribution";
+    /// The connection to the remote workspace host was lost while the
+    /// operation ran. Whether the operation took effect on the host is
+    /// unknown; the backend asks again once the context is current.
+    pub const HOST_REMOTE_DISCONNECTED: &str = "plugin.host.remoteDisconnected";
+    /// The plugin has no package or managed runtime for the remote host's
+    /// platform, so the process the request needs cannot run there.
+    pub const HOST_PLATFORM_UNAVAILABLE: &str = "plugin.host.platformUnavailable";
     /// A page's call or a host operation ended because the backend process
     /// exited. Reported by hosts to pages, never sent to a backend.
     pub const BACKEND_EXITED: &str = "plugin.backend.exited";
@@ -802,6 +818,50 @@ mod tests {
             &list_grant
         )
         .is_err());
+    }
+
+    /// `workspace.metadata` admits `getHostPaths` as a method grant of its
+    /// own, and one request names at most 256 root IDs (plan API-40).
+    #[test]
+    fn host_paths_are_a_method_grant_with_bounded_root_ids() {
+        assert_eq!(
+            methods_for_permission("workspace.metadata"),
+            [WORKSPACE_GET_HOST_PATHS]
+        );
+        assert!(is_host_grant(WORKSPACE_GET_HOST_PATHS));
+        let granted = BTreeSet::from([
+            HOST_SERVICE_WORKSPACE.to_string(),
+            WORKSPACE_GET_HOST_PATHS.to_string(),
+        ]);
+        let context = json!({ "contextID": "w-3f2a", "generation": 2 });
+        let root_ids =
+            |count: usize| -> Vec<String> { (0..count).map(|i| format!("r{i}")).collect() };
+        let request = |count| {
+            host_request(
+                WORKSPACE_GET_HOST_PATHS,
+                Some(&json!({ "context": context, "rootIDs": root_ids(count) })),
+                Some(0),
+                &granted,
+            )
+        };
+        assert_eq!(
+            request(MAX_HOST_PATH_ROOTS),
+            Ok(HostRoute::Forward(HOST_SERVICE_WORKSPACE))
+        );
+        assert_eq!(
+            request(MAX_HOST_PATH_ROOTS + 1).unwrap_err().code,
+            codes::HOST_INVALID_PARAMS
+        );
+        // The method is not part of the `workspace` service's methods, so a
+        // session granted only the service never learns it exists.
+        let capabilities =
+            capabilities_answer(0, &BTreeSet::from([HOST_SERVICE_WORKSPACE.to_string()]));
+        assert!(!capabilities.to_string().contains(WORKSPACE_GET_HOST_PATHS));
+        let capabilities = capabilities_answer(0, &granted);
+        assert!(capabilities["services"][HOST_SERVICE_WORKSPACE]["methods"]
+            .as_array()
+            .unwrap()
+            .contains(&json!(WORKSPACE_GET_HOST_PATHS)));
     }
 
     /// A message over the bound is cut at a character boundary, never inside

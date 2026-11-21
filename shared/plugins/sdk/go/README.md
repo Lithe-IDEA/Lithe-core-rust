@@ -271,6 +271,7 @@ must(backend.OnCommand("db.refresh", func(_ string, workspace *lithe.WorkspaceCo
 | `Credentials().Get(key)`, `.Set(key, secret)`, `.Delete(key)` | Secrets in the platform's store; see [Credentials](#credentials). |
 | `Capabilities()`, `Supports(method)` | What this session may call, from `lithe/host/getCapabilities` (asked once). |
 | `Workspace().ListContexts()`, `.GetContext(context)`, `.GetFolders(context)` | Workspace contexts; only `GetContext` returns, and creates, the context's `stateDirectory`. |
+| `Workspace().GetHostPaths(context, rootIDs...)`, `.ProcessRoots(context)` | Root paths on the remote host of a remote context; see [Remote workspaces](#remote-workspaces). |
 | `Workspace().ReadDirectory`, `.Stat`, `.ReadFile`, `.FindFiles`, `.FindText`, `.Watch` | Files of a local context, addressed as `{ rootID, path }` from `GetFolders`. |
 | `Documents().List`, `.GetSnapshot`; `Editor().GetActive`, `.GetSelections`, `.ApplyEdits`, `.ReplaceSelections`, `.InsertText`, `.Open`, `.Reveal`, `.RegisterActions` | Live documents and editors. Edits name the `expectedVersion` they were computed against. |
 | `Preview().OpenHTML`, `Browser().OpenExternal`, `Window().ShowInformation`, `.ShowWarning`, `.ShowError` | Preview, browser, and messages. |
@@ -345,6 +346,51 @@ package. `Get` returns `"", false, nil` when nothing is stored.
 | `plugin.host.failed` | The host's secret store failed, for example a locked secret store; the message says why and never contains the secret. |
 | `sdk.call.cancelled` | The call was cancelled while waiting; returning it answers as cancelled. |
 | `sdk.session.notReady`, `sdk.session.closed` | The session has not finished `initialize`, or it ended while waiting. |
+
+### Remote workspaces
+
+A backend runs on the machine that runs Lithe also when the workspace is on a
+remote host. Such a context has `authority.kind` `remote` and
+`authority.platform` `{ os, arch }`, and its folders carry no `path`.
+`GetHostPaths` gives their paths on the host. It needs the
+`workspace.metadata` permission, and only a host that serves it lists it, so
+check `Supports("lithe/host/workspace/getHostPaths")` first.
+
+```go
+full, err := host.Workspace().GetContext(*workspace)
+if err != nil {
+	return nil, err
+}
+roots, err := host.Workspace().ProcessRoots(full)
+if err != nil {
+	return nil, err
+}
+for _, root := range roots {
+	// A local root has Path; a remote one has HostPath.
+	cwd := root.Path
+	if cwd == "" {
+		cwd = root.HostPath.String()
+	}
+	// ...
+}
+```
+
+- `lithe.HostPath` is its own type, so it is not passed to `os`, `filepath`
+  or `exec` by mistake: the machine that runs the backend has no file there.
+  Give `String()` only to what runs on the host, such as process arguments or
+  a debug configuration; it marshals to JSON as that string.
+- `ProcessRoots` takes a full context. For a `local` one it reads the folders
+  without asking the host; otherwise it calls `GetHostPaths`.
+- `GetHostPaths` without root IDs asks for every root; with them it takes
+  1–256 distinct root IDs, and others fail locally with
+  `sdk.host.invalidParams`. An answer without absolute paths is
+  `sdk.host.invalidResult`.
+- `plugin.host.remoteDisconnected` means the connection was lost while the
+  request ran, so whether it took effect is unknown;
+  `plugin.host.platformUnavailable` means the plugin has nothing for the
+  host's platform. The
+  [remote workspaces guide](../../guides/plugin-backend-remote-workspaces.md)
+  says which services serve a remote context.
 
 ### Calling other plugins
 
@@ -456,7 +502,7 @@ must(backend.Function("project.describe", func(params json.RawMessage, call *lit
 | `plugin.function.callCycle`, `.depthExceeded`, `.tooManyCalls`, `.payloadTooLarge` | The chain, the caller's running calls, or a payload exceeded a limit. |
 | `plugin.function.providerUnavailable`, `.invalidResult` | The provider's backend stopped or did not start in time, or answered with no result or one over 1 MiB. |
 | `plugin.function.failed` | The provider's function returned an error. The `pluginErrorCode` entry of `Details()` is the provider's own `PluginError` code, and `Message()` is its message. |
-| `plugin.host.contextExpired`, `plugin.host.authorityUnsupported`, `plugin.host.timeout`, `plugin.host.cancelled` | The context was closed or replaced, is not a local workspace, the deadline passed, or the call (or its parent) was cancelled. |
+| `plugin.host.contextExpired`, `plugin.host.timeout`, `plugin.host.cancelled` | The context was closed or replaced, the deadline passed, or the call (or its parent) was cancelled. A remote workspace's context is relayed like a local one. |
 | `sdk.host.invalidResult` | The host answered with something other than an object. |
 
 ## Results and errors

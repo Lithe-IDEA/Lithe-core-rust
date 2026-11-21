@@ -3,9 +3,11 @@ package io.github.litheidea.plugin.sdk;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BooleanSupplier;
 
@@ -92,6 +94,110 @@ public final class Host {
         /** Stops routing events at once and asks the host to dispose the subscription. */
         public CompletableFuture<Void> dispose() {
             return channel.dispose(id);
+        }
+    }
+
+    /**
+     * A path on the remote host of a {@code remote} workspace context, from
+     * {@link Workspace#getHostPaths}. It is not a {@code String} or a
+     * {@code java.nio.file.Path}, so it cannot reach {@code Files} or
+     * {@code ProcessBuilder.directory} by mistake: the machine that runs the
+     * backend has no file there. {@link #value()} is the absolute POSIX path,
+     * for what runs on that host -- process arguments and working
+     * directories, a debug configuration's {@code program} or {@code cwd}, a
+     * language server's {@code initializationOptions}. In request params it is
+     * written as that string.
+     */
+    public static final class HostPath {
+        private final String value;
+
+        private HostPath(String value) {
+            this.value = value;
+        }
+
+        /**
+         * @throws IllegalArgumentException unless {@code value} is an absolute
+         *     POSIX path, a string starting with {@code /}
+         */
+        public static HostPath of(String value) {
+            if (!isHostPath(value)) {
+                throw new IllegalArgumentException("A host path is an absolute POSIX path, a string starting with \"/\".");
+            }
+            return new HostPath(value);
+        }
+
+        public String value() {
+            return value;
+        }
+
+        @Override
+        public String toString() {
+            return value;
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            return other instanceof HostPath && value.equals(((HostPath) other).value);
+        }
+
+        @Override
+        public int hashCode() {
+            return value.hashCode();
+        }
+    }
+
+    /** One root of a {@link Workspace#getHostPaths} answer. */
+    public static final class HostFolder {
+        private final String rootId;
+        private final HostPath hostPath;
+
+        HostFolder(String rootId, HostPath hostPath) {
+            this.rootId = rootId;
+            this.hostPath = hostPath;
+        }
+
+        public String rootId() {
+            return rootId;
+        }
+
+        public HostPath hostPath() {
+            return hostPath;
+        }
+    }
+
+    /**
+     * A root of a context as a process started for it names its working
+     * directory, from {@link Workspace#processRoots}: {@link #path()} for a
+     * {@code local} context, {@link #hostPath()} for a {@code remote} one. The
+     * other one is null.
+     */
+    public static final class ProcessRoot {
+        private final String rootId;
+        private final String path;
+        private final HostPath hostPath;
+
+        ProcessRoot(String rootId, String path, HostPath hostPath) {
+            this.rootId = rootId;
+            this.path = path;
+            this.hostPath = hostPath;
+        }
+
+        public String rootId() {
+            return rootId;
+        }
+
+        /** The root on the machine that runs the backend, or null for a remote root. */
+        public String path() {
+            return path;
+        }
+
+        /** The root on the remote host, or null for a local root. */
+        public HostPath hostPath() {
+            return hostPath;
+        }
+
+        public boolean isRemote() {
+            return hostPath != null;
         }
     }
 
@@ -297,6 +403,65 @@ public final class Host {
         /** {@code { folders }}. */
         public CompletableFuture<Map<String, Object>> getFolders(Map<String, ?> context) {
             return scoped(Protocol.HOST_WORKSPACE_GET_FOLDERS, context, null);
+        }
+
+        /** Every root of a {@code remote} context on its remote host; see {@link #getHostPaths(Map, List)}. */
+        public CompletableFuture<List<HostFolder>> getHostPaths(Map<String, ?> context) {
+            return getHostPaths(context, null);
+        }
+
+        /**
+         * The roots of a {@code remote} context on its remote host:
+         * {@code rootIds} null for every root, or 1-256 distinct root IDs.
+         * It needs the {@code workspace.metadata} permission; a local context
+         * fails with {@code plugin.host.authorityUnsupported}, an unknown root
+         * ID with {@code plugin.host.notFound}.
+         */
+        public CompletableFuture<List<HostFolder>> getHostPaths(Map<String, ?> context, List<String> rootIds) {
+            Map<String, Object> params = new LinkedHashMap<>();
+            if (rootIds != null) {
+                if (!distinctRootIds(rootIds)) {
+                    return failed(new PluginSdkError("sdk.host.invalidParams",
+                            "rootIDs is 1-256 distinct root IDs of 1-128 ASCII letters, digits, \".\", \"_\", \":\" or \"-\"."));
+                }
+                params.put("rootIDs", new ArrayList<>(rootIds));
+            }
+            Map<String, Object> message;
+            try {
+                message = withContext(context, params);
+            } catch (PluginSdkError error) {
+                return failed(error);
+            }
+            return channel.request(Protocol.HOST_WORKSPACE_GET_HOST_PATHS, message, scope).thenApply(Host::hostFolders);
+        }
+
+        /**
+         * The roots of a full context from {@link #listContexts} or
+         * {@link #getContext} as a process started for it names its working
+         * directory. A {@code local} context's folders are read without asking
+         * the host; for any other authority it calls {@link #getHostPaths(Map)}.
+         */
+        public CompletableFuture<List<ProcessRoot>> processRoots(Map<String, ?> context) {
+            Object authority = context == null ? null : context.get("authority");
+            Object kind = authority instanceof Map ? ((Map<?, ?>) authority).get("kind") : null;
+            if (!(kind instanceof String)) {
+                return failed(new PluginSdkError("sdk.host.invalidContext",
+                        "processRoots takes a full context, with its authority and folders, from listContexts or getContext."));
+            }
+            if ("local".equals(kind)) {
+                try {
+                    return CompletableFuture.completedFuture(localFolders(context.get("folders")));
+                } catch (PluginSdkError error) {
+                    return failed(error);
+                }
+            }
+            return getHostPaths(context).thenApply(folders -> {
+                List<ProcessRoot> roots = new ArrayList<>(folders.size());
+                for (HostFolder folder : folders) {
+                    roots.add(new ProcessRoot(folder.rootId(), null, folder.hostPath()));
+                }
+                return Collections.unmodifiableList(roots);
+            });
         }
 
         /** {@code params}: {@code resource, cursor?, limit?}. */
@@ -616,6 +781,67 @@ public final class Host {
             }
             return Json.object(result);
         });
+    }
+
+    private static boolean isHostPath(Object value) {
+        return value instanceof String && ((String) value).startsWith("/");
+    }
+
+    private static boolean distinctRootIds(List<String> rootIds) {
+        if (rootIds.isEmpty() || rootIds.size() > Protocol.MAX_HOST_PATH_ROOTS) {
+            return false;
+        }
+        Set<String> seen = new HashSet<>();
+        for (String id : rootIds) {
+            if (!Protocol.isCredentialKey(id) || !seen.add(id)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** {@code [{ rootID, hostPath }]} of a {@code getHostPaths} answer's {@code folders}. */
+    private static List<HostFolder> hostFolders(Object result) {
+        Object folders = result instanceof Map ? ((Map<?, ?>) result).get("folders") : null;
+        if (!(folders instanceof List)) {
+            throw invalidHostPaths();
+        }
+        List<HostFolder> answer = new ArrayList<>();
+        for (Object folder : (List<?>) folders) {
+            Object rootId = folder instanceof Map ? ((Map<?, ?>) folder).get("rootID") : null;
+            Object hostPath = folder instanceof Map ? ((Map<?, ?>) folder).get("hostPath") : null;
+            if (!(rootId instanceof String) || !Protocol.isCredentialKey((String) rootId) || !isHostPath(hostPath)) {
+                throw invalidHostPaths();
+            }
+            answer.add(new HostFolder((String) rootId, new HostPath((String) hostPath)));
+        }
+        return Collections.unmodifiableList(answer);
+    }
+
+    private static PluginSdkError invalidHostPaths() {
+        return new PluginSdkError("sdk.host.invalidResult",
+                "The host answered getHostPaths without folders of a root ID and an absolute host path.");
+    }
+
+    /** {@code [{ rootID, path }]} of a {@code local} context's folders. */
+    private static List<ProcessRoot> localFolders(Object folders) {
+        if (!(folders instanceof List)) {
+            throw invalidLocalFolders();
+        }
+        List<ProcessRoot> roots = new ArrayList<>();
+        for (Object folder : (List<?>) folders) {
+            Object rootId = folder instanceof Map ? ((Map<?, ?>) folder).get("rootID") : null;
+            Object path = folder instanceof Map ? ((Map<?, ?>) folder).get("path") : null;
+            if (!(rootId instanceof String) || !Protocol.isCredentialKey((String) rootId) || !(path instanceof String)) {
+                throw invalidLocalFolders();
+            }
+            roots.add(new ProcessRoot((String) rootId, (String) path, null));
+        }
+        return Collections.unmodifiableList(roots);
+    }
+
+    private static PluginSdkError invalidLocalFolders() {
+        return new PluginSdkError("sdk.host.invalidContext", "A local context's folders each carry a rootID and a path.");
     }
 
     private static Map<String, Object> params(String key, Object value) {

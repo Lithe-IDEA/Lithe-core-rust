@@ -287,6 +287,7 @@ backend.onCommand('db.refresh', async ({ workspaceContext }) => {
 | `credentials.get(key)`, `.set(key, secret)`, `.delete(key)` | Secrets in the platform's store. `get` returns `null` when nothing is stored. A key is 1–128 of `[A-Za-z0-9._:-]`, a secret at most 16 KiB; others fail locally. |
 | `capabilities()`, `supports(method)` | What this session may call, from `lithe/host/getCapabilities` (asked once). |
 | `workspace.listContexts()`, `.getContext(context)`, `.getFolders(context)` | Workspace contexts; only `getContext` returns, and creates, the context's `stateDirectory`. |
+| `workspace.getHostPaths(context, { rootIDs? })`, `.processRoots(context)` | The root folders of a remote context on the remote host, as `HostPath` values; `processRoots` gives the path a process uses for either authority. See [Remote workspaces](#remote-workspaces). |
 | `workspace.readDirectory`, `.stat`, `.readFile`, `.findFiles`, `.findText`, `.watch` | Files of a local context, addressed as `{ rootID, path }` from `getFolders`. |
 | `documents.list`, `.getSnapshot`; `editor.getActive`, `.getSelections`, `.applyEdits`, `.replaceSelections`, `.insertText`, `.open`, `.reveal`, `.registerActions` | Live documents and editors. Edits name the `expectedVersion` they were computed against. |
 | `preview.openHTML`, `browser.openExternal`, `window.showInformation`, `.showWarning`, `.showError` | Preview, browser, and messages. |
@@ -331,6 +332,41 @@ What the SDK does for you, and what it leaves to you:
 - **Commands are events.** `onCommand` runs when the user runs one of the
   plugin's commands; the host waits for no result. A stopped backend is
   started for it only when the manifest declares `onCommand:<commandID>`.
+
+### Remote workspaces
+
+A backend runs on the machine that runs Lithe also when the workspace is on a
+remote host. Such a context has `authority.kind` `remote` and
+`authority.platform` `{ os, arch }`, and its folders carry no `path`.
+`getHostPaths` gives their paths on the host. It needs the
+`workspace.metadata` permission, and only a host that serves it lists it, so
+check `supports('lithe/host/workspace/getHostPaths')` first.
+
+```js
+const full = await context.host.workspace.getContext(workspace);
+const { folders } = await context.host.workspace.processRoots(full);
+for (const root of folders) {
+  // A local root has `path`; a remote one has `hostPath`, a HostPath.
+  const cwd = root.path ?? root.hostPath.value;
+  // ...
+}
+```
+
+- `HostPath` is not a string, so `fs` and `path` refuse it: the machine that
+  runs the backend has no file there. Pass `value` only to what runs on the
+  host, such as process arguments or a debug configuration; `JSON.stringify`
+  writes it as that string.
+- `processRoots` takes a full context. For a `local` one it reads the
+  folders without asking the host; otherwise it calls `getHostPaths`.
+- `rootIDs` names 1–256 distinct root IDs; others fail locally with
+  `sdk.host.invalidParams`. An answer without absolute paths is
+  `sdk.host.invalidResult`.
+- `plugin.host.remoteDisconnected` means the connection was lost while the
+  request ran, so whether it took effect is unknown;
+  `plugin.host.platformUnavailable` means the plugin has nothing for the
+  host's platform. The
+  [remote workspaces guide](../../guides/plugin-backend-remote-workspaces.md)
+  says which services serve a remote context.
 
 ### Calling other plugins
 
@@ -424,8 +460,9 @@ A failed relayed call rejects with a `HostError` whose `code` is one of these
 | `plugin.function.invalidResult` | -32071 | The provider answered without a result, or with one over 1 MiB. |
 
 The host codes `plugin.host.timeout`, `plugin.host.cancelled`,
-`plugin.host.contextExpired`, `plugin.host.authorityUnsupported`,
-`plugin.host.permissionDenied` and `plugin.host.invalidParams` also occur. On
+`plugin.host.contextExpired`, `plugin.host.permissionDenied` and
+`plugin.host.invalidParams` also occur; a remote workspace's context is
+relayed like a local one. On
 `plugin.function.failed`, `error.message` is the provider's message and
 `error.details.pluginErrorCode` is the code the provider's function threw;
 only branch on a code its provider documents.

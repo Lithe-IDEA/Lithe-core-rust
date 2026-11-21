@@ -90,8 +90,8 @@ pub mod sdk_codes {
 }
 
 /// Stable `plugin.host.*` failure codes and their JSON-RPC numbers. A later
-/// host adds codes after `-32026`.
-pub const HOST_ERROR_CODES: [(&str, i64); 21] = [
+/// host adds codes at numbers no code of the contract uses yet.
+pub const HOST_ERROR_CODES: [(&str, i64); 23] = [
     ("plugin.host.unavailable", -32601),
     ("plugin.host.invalidParams", -32602),
     ("plugin.host.failed", -32603),
@@ -113,12 +113,14 @@ pub const HOST_ERROR_CODES: [(&str, i64); 21] = [
     ("plugin.host.methodNotDeclared", -32024),
     ("plugin.host.toolUnresolved", -32025),
     ("plugin.host.foreignContribution", -32026),
+    ("plugin.host.remoteDisconnected", -32078),
+    ("plugin.host.platformUnavailable", -32079),
 ];
 
 /// The `plugin.function.*` failures a relayed call from another plugin may
 /// end with, and their JSON-RPC numbers. The
-/// relay's `plugin.host.*` outcomes (`timeout`, `cancelled`, `contextExpired`,
-/// `authorityUnsupported`) are in [`HOST_ERROR_CODES`]. A
+/// relay's `plugin.host.*` outcomes (`timeout`, `cancelled`, `contextExpired`)
+/// are in [`HOST_ERROR_CODES`]. A
 /// `plugin.function.failed` answer names the provider's own code in its
 /// `pluginErrorCode` detail.
 pub const RELAY_ERROR_CODES: [(&str, i64); 11] = [
@@ -335,7 +337,7 @@ mod tests {
 
     #[test]
     fn the_host_and_relay_tables_hold_every_documented_code_once() {
-        assert_eq!(HOST_ERROR_CODES.len(), 21);
+        assert_eq!(HOST_ERROR_CODES.len(), 23);
         assert_eq!(RELAY_ERROR_CODES.len(), 11);
         let mut codes = std::collections::BTreeSet::new();
         let mut numbers = std::collections::BTreeSet::new();

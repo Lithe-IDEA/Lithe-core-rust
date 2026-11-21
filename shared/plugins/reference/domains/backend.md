@@ -113,7 +113,7 @@ Core 把中转的调用以 `lithe/function/invoke` 转给被调方。和任何�
 
 - 被调方用自己的权限、状态目录和凭据运行；调用方不获得被调方的任何权限，被调方也不获得调用方的。调用方的插件 ID 只出现在 `caller` 字段里，不写进被调方的会话。
 - 导出的函数不得接受调用方给的可执行路径、命令行或脚本去启动进程，也不得读写调用方指定的路径而不核对自己的访问范围。调用方需要被调方运行什么，函数应当接收一个由被调方自己解释的请求（任务名、文档），由被调方决定可执行文件。
-- 这不是安装依赖：安装调用方不会连带安装被调方，停用被调方只会让调用找不到提供者；不参与安装闭包，不做版本求解。远程工作区的上下文被拒绝，`plugin.host.authorityUnsupported`；导出的 `context: "workspace"` 只指本地工作区，后端仍在运行 Lithe 的机器上。
+- 这不是安装依赖：安装调用方不会连带安装被调方，停用被调方只会让调用找不到提供者；不参与安装闭包，不做版本求解。导出的 `context: "workspace"` 指本地或远程的工作区：后端都在运行 Lithe 的机器上，所以远程工作区的上下文照常中转。被调方用 `getContext` 得知来源，它对这个上下文的宿主请求按各服务的规则送到远端主机或得到 `plugin.host.authorityUnsupported`；Core 不读也不改写参数和结果里的路径。
 - 停用、启用、替换和卸载插件对中转立即生效，不需要重启；宿主用 Core 命令 `lsp.configureFunctionRelay` 发送插件和工作区上下文的快照。只在启动时注册后端插件的宿主上，新安装或更新的后端插件要重启 Lithe 后才会出现在 `providers` 里。
 
 #### 错误码
@@ -217,6 +217,7 @@ Core 把中转的调用以 `lithe/function/invoke` 转给被调方。和任何�
 ### 相关指南
 
 - [插件后端：工作区上下文与宿主服务](../../guides/plugin-backend-workspace.md)
+- [插件后端：远程工作区](../../guides/plugin-backend-remote-workspaces.md)
 - [从插件打开原生终端](../../guides/native-terminals.md)
 - [插件接入统一日志](../../guides/plugin-logging.md)
 
@@ -333,7 +334,7 @@ Core forwards a relayed call to the provider as `lithe/function/invoke`. As for 
 
 - The provider runs with its own permissions, state directory, and credentials. The caller gains none of the provider's, and the provider gains none of the caller's. The caller's plugin ID appears only in the `caller` field, never in the provider's session.
 - An exported function must not accept an executable path, command line, or script from its caller and start a process with it, nor read or write a path the caller chose without checking it against what the provider itself may access. If a caller needs the provider to run something, the function takes a request the provider interprets (a task name, a document) and the provider decides the executable.
-- This is not an install dependency: installing the caller does not install a provider, and disabling a provider only leaves calls without one; it takes no part in the install closure and does no version solving. A call whose context is a remote workspace is refused with `plugin.host.authorityUnsupported`; the exported `context: "workspace"` means a local workspace only, and backends still run on the machine that runs Lithe.
+- This is not an install dependency: installing the caller does not install a provider, and disabling a provider only leaves calls without one; it takes no part in the install closure and does no version solving. The exported `context: "workspace"` means a local or a remote workspace: every backend runs on the machine that runs Lithe, so a call for a remote workspace's context is relayed like any other. The provider learns the authority from `getContext`, and its own host requests for that context reach the remote host or get `plugin.host.authorityUnsupported` by the rules of each service; Core neither reads nor rewrites paths in the params or the result.
 - Disabling, enabling, replacing, and uninstalling a plugin take effect for the relay at once, with no restart; the host sends the snapshot of plugins and workspace contexts with the Core command `lsp.configureFunctionRelay`. On a host that registers backend plugins only when it launches, a newly installed or updated backend plugin appears in `providers` only after Lithe restarts.
 
 #### Error codes
@@ -437,5 +438,6 @@ Backend rejections are in [`manifest/invalid-manifests.json`](../../contract/v1/
 ### Related guides
 
 - [Plugin backend: workspace contexts and host services](../../guides/plugin-backend-workspace.md)
+- [Plugin backend: remote workspaces](../../guides/plugin-backend-remote-workspaces.md)
 - [Open a native Lithe terminal from a plugin](../../guides/native-terminals.md)
 - [Plugin logging](../../guides/plugin-logging.md)

@@ -62,10 +62,48 @@ export interface WorkspaceFolder {
   path?: string;
 }
 
+/**
+ * The remote host's operating system and CPU architecture: `os` is `linux`
+ * and `arch` is `arm64` or `x86_64`. Ignore a value you do not know; a later
+ * host may connect to other systems.
+ */
+export interface RemotePlatform {
+  os: string;
+  arch: string;
+}
+
+/**
+ * A path on the remote host of a `remote` context, from `getHostPaths`. It
+ * is not a string, so `fs` and `path` refuse it: the machine that runs the
+ * backend has no file there. Pass `value` only to what runs on that host.
+ * `JSON.stringify` writes it as that string.
+ */
+export class HostPath {
+  /** Throws `TypeError` unless `value` is an absolute POSIX path. */
+  constructor(value: string);
+  /** The absolute POSIX path on the remote host. */
+  readonly value: string;
+  toString(): string;
+  toJSON(): string;
+}
+
+/** One root folder of a `remote` context and its path on the remote host. */
+export interface HostFolder {
+  rootID: string;
+  hostPath: HostPath;
+}
+
+/** One root folder of a `local` context and its local path. */
+export interface LocalFolder {
+  rootID: string;
+  path: string;
+}
+
 /** One open workspace in one window. */
 export interface WorkspaceContext extends ContextReference {
   name: string;
-  authority: { kind: 'local' | 'remote'; id?: string };
+  /** `platform` is present only for a remote authority. */
+  authority: { kind: 'local' | 'remote'; id?: string; platform?: RemotePlatform };
   folders: WorkspaceFolder[];
   /** Private to the plugin and the workspace; only `getContext` returns, and creates, it. */
   stateDirectory?: string;
@@ -238,6 +276,25 @@ export interface Host {
     listContexts(options?: HostRequestOptions): Promise<{ revision: number; contexts: WorkspaceContext[] }>;
     getContext(context: ContextReference, options?: HostRequestOptions): Promise<WorkspaceContext>;
     getFolders(context: ContextReference, options?: HostRequestOptions): Promise<{ folders: WorkspaceFolder[] }>;
+    /**
+     * The root folders of a `remote` context on the remote host, every root or
+     * the `rootIDs` named, in that order. Permission `workspace.metadata`, as a
+     * method grant of its own. A `local` context is `plugin.host.authorityUnsupported`.
+     */
+    getHostPaths(
+      context: ContextReference,
+      params?: { rootIDs?: string[] },
+      options?: HostRequestOptions,
+    ): Promise<{ folders: HostFolder[] }>;
+    /**
+     * The path a process uses for each root of a full context: `path` of a
+     * `local` context, without asking the host, or `hostPath` from
+     * `getHostPaths` for any other authority.
+     */
+    processRoots(
+      context: WorkspaceContext,
+      options?: HostRequestOptions,
+    ): Promise<{ folders: LocalFolder[] } | { folders: HostFolder[] }>;
     /** Permission `workspace.files.read`. */
     readDirectory: Scoped<{ resource: WorkspaceResource; cursor?: string; limit?: number }, {
       entries: { name: string; resource: WorkspaceResource; kind: string }[];
@@ -844,17 +901,21 @@ export const HOST_ERRORS: Readonly<{
   'plugin.function.providerUnavailable': -32069;
   'plugin.function.failed': -32070;
   'plugin.function.invalidResult': -32071;
+  'plugin.host.remoteDisconnected': -32078;
+  'plugin.host.platformUnavailable': -32079;
 }>;
 
 /** Host request method names. */
 export const HOST_METHODS: Readonly<Record<
   | 'credentialsGet' | 'credentialsSet' | 'credentialsDelete' | 'getCapabilities' | 'subscriptionsDispose'
-  | 'workspaceListContexts' | 'workspaceGetContext' | 'workspaceGetFolders' | 'workspaceReadDirectory'
+  | 'workspaceListContexts' | 'workspaceGetContext' | 'workspaceGetFolders' | 'workspaceGetHostPaths'
+  | 'workspaceReadDirectory'
   | 'workspaceStat' | 'workspaceReadFile' | 'workspaceWatch' | 'workspaceFindFiles' | 'workspaceFindText'
   | 'documentsList' | 'documentsGetSnapshot' | 'editorRegisterActions' | 'editorGetActive'
   | 'editorGetSelections' | 'editorApplyEdits' | 'editorReplaceSelections' | 'editorInsertText'
   | 'editorOpen' | 'editorReveal' | 'previewOpenHTML' | 'browserOpenExternal'
   | 'windowShowInformation' | 'windowShowWarning' | 'windowShowError'
+  | 'terminalCreate' | 'terminalShow' | 'terminalClose' | 'terminalReopen' | 'terminalDispose' | 'terminalOnExit'
   | 'functionsProviders' | 'functionsInvoke',
   string
 >>;
@@ -885,6 +946,7 @@ export const LIMITS: Readonly<{
   maxCredentialKeyBytes: number;
   maxCredentialSecretBytes: number;
   maxPendingHostRequests: number;
+  maxHostPathRoots: number;
   relayDefaultTimeoutMilliseconds: number;
   relayMaxTimeoutMilliseconds: number;
   maxParentOperationIdBytes: number;

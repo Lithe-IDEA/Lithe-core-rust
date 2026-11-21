@@ -1219,7 +1219,7 @@ untrusted, and a process that would run project code is then
 | `sessionPolicy` | Present for a language server that declares session fields: the [session policy](#plugin-owned-sessions) the host passes to `lsp.startServer` unchanged. |
 | `buildProvider` | Present only for a `buildSystemID` selection: `{buildSystemID, executesProjectCode, mayUseNetwork, languageServer?}`. `languageServer` names the language whose server is the provider; the rest of the plan is then that server's plan, and the host reuses its running session instead of starting a second process. |
 | `vcsProvider` | Present only for a `vcsProviderID` selection: the [provider descriptor](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/contracts/vcs-provider-v1.md#provider-descriptor) the host keeps for the session. |
-| `backend` | Present only for a `backend` selection: `{hostServices, version}`, the sorted [host services](#host-services) the plugin's permissions grant, plus `version`, the manifest's `requires.backend` (`0`). The host passes `hostServices` to `lsp.startServer.hostServices` unchanged. |
+| `backend` | Present only for a `backend` selection: `{hostServices, version}`, the sorted [host services](#host-services) the plugin's permissions grant, plus `version`, the manifest's `requires.backend` (`0`). The list holds service names (`workspace`, `credentials`) and the full names of methods a permission grants one by one, such as `lithe/host/workspace/getHostPaths`. The host passes it to `lsp.startServer.hostServices` without the method names it registered no handler for; a backend calling one of those gets `plugin.host.permissionDenied`. |
 
 A language without a server, an undeclared build system, a build system
 without a provider, an undeclared VCS provider, and a plugin without a
@@ -3888,7 +3888,8 @@ running on that session, is dropped.
 A backend may send these requests to the host.
 Each service is granted by one manifest permission; Core receives the
 granted services as `lsp.startServer.hostServices` (from the launch plan's
-`backend.hostServices`) and checks every request before the host sees it.
+`backend.hostServices`, less the method grants the host does not serve) and
+checks every request before the host sees it.
 
 | Request | Params | Result | Permission |
 | --- | --- | --- | --- |
@@ -3935,6 +3936,7 @@ notifications.
 | `lithe/host/workspace/listContexts` | none or `{}` | `{ revision, contexts: [<context>] }` | `workspace.metadata` |
 | `lithe/host/workspace/getContext` | `{ context: { contextID, generation } }` | `<context>` | `workspace.metadata` |
 | `lithe/host/workspace/getFolders` | `{ context: { contextID, generation } }` | `{ folders: [<folder>] }` | `workspace.metadata` |
+| `lithe/host/workspace/getHostPaths` | `{ context: { contextID, generation }, rootIDs?: [<rootID>] }` | `{ folders: [{ rootID, hostPath }] }` | `workspace.metadata`, as a method grant of its own |
 
 - Core answers `getCapabilities` itself; `protocolVersion` is the negotiated `litheFunctions` version. `services` maps each service the
   session may use (the implicit `host`, `subscriptions`, and `commands`, and
@@ -3987,6 +3989,41 @@ notifications.
   process services answer a request for a context whose authority they do
   not implement with `plugin.host.authorityUnsupported`; they never read the
   placeholder or run the operation locally instead.
+- A `remote` authority also has `platform: { os, arch }`, the remote host's
+  operating system and CPU architecture, with the values of
+  [managed runtimes](#managed-runtimes): `os` is `linux` and `arch` is
+  `arm64` or `x86_64`. A backend uses it to choose the package or runtime a
+  process on the host needs. A `local` authority has no `platform`; the
+  backend runs on that machine. A backend ignores an `os` or `arch` it does
+  not know, as a later host may connect to other systems.
+
+  ```json
+  "authority": { "kind": "remote", "id": "c-7d41", "platform": { "os": "linux", "arch": "x86_64" } }
+  ```
+- `getHostPaths` gives the paths of a `remote` context's root folders on the
+  remote host. They are not part of the context, so a backend that does not
+  need them never sees the remote user name or directory layout, and a
+  backend written before remote workspaces cannot take one for a local path.
+  - It is granted by `workspace.metadata` as a method grant of its own, not
+    with the `workspace` service: a host that does not serve it leaves it
+    out of `getCapabilities`, and the service grant alone is
+    `plugin.host.permissionDenied`.
+  - `rootIDs`, when present, names 1 to 256 distinct root IDs of the
+    context, in the key alphabet; `folders` then holds those roots in that
+    order. Without it, `folders` holds every root in `getFolders` order. A
+    root ID the context does not have is `plugin.host.notFound`.
+  - A `local` context is `plugin.host.authorityUnsupported`: its folders
+    already carry `path`. A closed context, or one whose generation changed,
+    is `plugin.host.contextExpired`, and earlier answers are void.
+  - `hostPath` is an absolute POSIX path on the remote host. A backend uses
+    it only in what runs on that host: process arguments and working
+    directories, a debug configuration's `program` and `cwd`, a language
+    server's `initializationOptions`. It never names a file on the machine
+    that runs Lithe, so a backend never reads or writes it locally; files of
+    the workspace are read through the file services by `{ rootID, path }`.
+  - The official SDKs give `path` and `hostPath` distinct types, and their
+    helper that picks the path a process uses returns `path` for a `local`
+    context without asking the host.
 - `stateDirectory` is private to the plugin and the workspace, outside the
   plugin package and the application bundle. Only `getContext` returns it,
   and creates it then; `listContexts` entries carry every other field and
@@ -4032,6 +4069,8 @@ notifications.
   | `plugin.host.methodNotDeclared` | `-32024` | The method, or the `workspace/executeCommand` command, is not in the server's declared session |
   | `plugin.host.toolUnresolved` | `-32025` | A tool definition the request names resolves to no executable for this workspace; `details` is `{ tool, reason }`, `reason` being `notFound` (no candidate of the four layers meets the definition and its minimum version) or `unusable` (a chosen executable cannot be used) |
   | `plugin.host.foreignContribution` | `-32026` | The named server or contribution belongs to another plugin |
+  | `plugin.host.remoteDisconnected` | `-32078` | The connection to the remote host was lost while the operation ran; whether it took effect on the host is unknown, and the backend asks again once the context is current |
+  | `plugin.host.platformUnavailable` | `-32079` | The plugin has no package or managed runtime for the remote host's `platform`, so the process the request needs cannot run there |
 
   JSON-RPC reserves `-32768` to `-32000` for the protocol and lets
   implementations define `-32099` to `-32000` as server errors. `-32000`
@@ -4102,8 +4141,8 @@ without a new version:
 - an optional field of request params (an *option*) whose absence keeps the
   earlier behavior, or a field of a result, a notification, `details`, or
   `limits`;
-- a failure code, which takes the next unused JSON-RPC number after
-  `-32021`; a number never changes meaning.
+- a failure code, which takes the next JSON-RPC number no code of this
+  contract uses yet; a number never changes meaning.
 
 A change an existing backend would misread gives `backend` version 1, and the
 protocol moves with it: removing or renaming a method, notification, or
@@ -4829,7 +4868,6 @@ the provider; the first failing check wins:
 | The provider exports the function | `plugin.function.notExported` |
 | The declared and exported versions are equal | `plugin.function.versionMismatch` |
 | The context is open, and has this generation | `plugin.host.contextExpired` |
-| The context is a local workspace | `plugin.host.authorityUnsupported` |
 | The params are at most 256 KiB | `plugin.function.payloadTooLarge` |
 | The call named by `parentOperationID` is still running | `plugin.host.cancelled` |
 | The provider is not on the call chain, the caller included | `plugin.function.callCycle` |
@@ -4941,10 +4979,13 @@ same way.
 
 #### Remote workspaces
 
-The relay is a local-workspace feature. A call whose context is a remote
-workspace is refused with `plugin.host.authorityUnsupported`, and the
-exported `context` value `"workspace"` means a local workspace only. Backends
-still run on the machine that runs Lithe.
+Backends run on the machine that runs Lithe for a remote workspace too, so the
+relay dispatches a call whose context is a remote workspace like a local one,
+and the exported `context` value `"workspace"` means a workspace of either
+authority. The callee learns the authority from `getContext`, and its own host
+requests for that context reach the remote host or are
+`plugin.host.authorityUnsupported` by the rules of each service; the relay
+neither reads nor rewrites paths in the params or the result.
 
 #### Hot activation
 
@@ -5150,6 +5191,8 @@ command payload is a Core `invalid_request` failure instead.
 | `plugin.host.languageServerError` | Core | The language server answered a forwarded request with an error; `details` is `{code, message}` |
 | `plugin.host.methodNotDeclared` | Core | A forwarded method or command is not in the server's declared session |
 | `plugin.host.foreignContribution` | Core | The named language server belongs to another plugin |
+| `plugin.host.remoteDisconnected` | Host | The connection to the remote host was lost while the operation ran |
+| `plugin.host.platformUnavailable` | Host | The plugin has no package or managed runtime for the remote host's platform |
 | `plugin.backend.exited` | Host | A page's call, or a host operation for the backend, ended because the backend process exited |
 
 Host-facing plugin states are `notInstalled`, `installed` (enabled or
