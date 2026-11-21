@@ -818,7 +818,9 @@ or removing a command fails until the table changes in the same commit.
 | `remote.workspaceTrust` | Read remote workspace trust decisions and one open workspace's trust |
 | `remote.editWorkspaceTrust` | Record or remove one remote workspace trust decision |
 | `remote.startForward` | Forward a local port to a port as the remote host sees it |
-| `remote.stopForward` | Stop one port forward and close its local port |
+| `remote.startHostForward` | Make the remote host listen on a port and connect it to another server |
+| `remote.startReverseForward` | Make the remote host listen on a loopback port that reaches a port on this machine |
+| `remote.stopForward` | Stop one port forward and close the port it listens on |
 | `remote.forwards` | List the running port forwards of one connection |
 | `remote.parseForwardAddress` | Read a port, `host:port` or URL typed into the ports page into a forward target |
 | `remote.connections` | Read the SSH connections the user saved |
@@ -829,7 +831,7 @@ or removing a command fails until the table changes in the same commit.
 | `remote.mottyHosts` | List the SSH hosts saved in Motty for an import |
 | `remote.listWslDistributions` | List the WSL distributions installed on this Windows machine |
 | `remote.preferences` | Read the remote workspace settings and what each automatic value resolves to |
-| `remote.editPreferences` | Set the SSH program or the reconnect limit, or make one automatic again |
+| `remote.editPreferences` | Set the SSH program, the reconnect limit or whether reverse forwards are allowed, or make one automatic again |
 | `git.historyRewritePreview` | Review undo, message edit, squash, or drop with complete messages, eligibility, and an immutable checkout expectation |
 | `git.remotes` | Return configured fetch remote names and URLs |
 | `git.tags` | Return tag names, tag object IDs, target IDs, dates, and annotations |
@@ -5927,17 +5929,18 @@ the distributions each time it opens.
 
 #### Remote workspace preferences
 
-The settings page "Tools › Remote Workspace" edits two values that apply to
+The settings page "Tools › Remote Workspace" edits three values that apply to
 every connection. Native clients keep them in one machine-local document,
 read it, and publish the `document` an edit returns atomically, as for the
 saved connections; Core validates the document, applies every edit and
 tells what each automatic value resolves to.
 
 `remote.preferences` accepts `{ document: string|null, homeDirectory? }`
-and returns `{ preferences, ssh, reconnect, storage, sshConfig? }`:
+and returns `{ preferences, ssh, reconnect, reverseForwarding, storage,
+sshConfig? }`:
 
-- `preferences` is `{ sshProgram, reconnectLimitSeconds }`, the stored
-  values; `null` is automatic.
+- `preferences` is `{ sshProgram, reconnectLimitSeconds,
+  allowReverseForwarding }`, the stored values; `null` is automatic.
 - `ssh` is `{ source, path, status }`, the OpenSSH client every connection
   starts. `source` is `setting` for a stored program and `automatic`
   otherwise, which is the first executable `ssh` (`ssh.exe` on Windows) in an
@@ -5951,6 +5954,9 @@ and returns `{ preferences, ssh, reconnect, storage, sshConfig? }`:
   double up to 30 seconds and add up to the limit; the last one is shortened
   to fit. A limit of 0 never reconnects, so the list is empty. Clients wait
   these pauses and decide nothing else about the schedule.
+- `reverseForwarding` is `{ source, allowed }`: whether the ports page may
+  start reverse forwards (automatic: not allowed), because every user of the
+  host can reach the local port one opens.
 - `storage` is `{ relativePath: "remote/preferences.json", maximumBytes:
   16384 }`.
 - `sshConfig` is `{ path, exists }` for `.ssh/config` below `homeDirectory`,
@@ -5963,10 +5969,12 @@ and returns `{ preferences, ssh, reconnect, storage, sshConfig? }`:
   existing executable file, or makes the program automatic with `null`.
 - `reconnectLimit: { seconds: number|null }` stores 0 to 3600 seconds, or
   makes the limit automatic with `null`.
+- `reverseForwarding: { allowed: boolean|null }` allows or refuses reverse
+  forwards, or makes the switch automatic with `null`.
 
 The result is `{ changed, document: string|null }`; an unchanged edit
-returns a `null` document and must not create a source. Neither or both
-fields is `invalid_request` with `{ field: "operation", reason: "invalid"
+returns a `null` document and must not create a source. No field or more
+than one is `invalid_request` with `{ field: "operation", reason: "invalid"
 }`; a refused value is `invalid_request` with `{ field, reason }`, where
 `field` is `sshProgram` or `reconnectLimitSeconds` and `reason` is
 `invalid` (empty, surrounding spaces or control characters), `tooLong`
@@ -6111,8 +6119,18 @@ deletion of inputs used by surviving processes.
 
 #### Remote port forwards
 
-The ports page forwards a local port to a TCP port as the remote host sees
-it. It lists candidates with `remote.hostRequest` and `ports.listening`
+The ports page runs three kinds of forwards over one connection:
+
+- a **local** forward listens on this machine and reaches a TCP port as the
+  remote host sees it;
+- a **host** forward makes the host listen on a port and connect every
+  accepted connection to another server itself, as `ssh -L` on a jump host
+  does; the bytes never cross the connection;
+- a **reverse** forward makes the host listen on its loopback interface and
+  brings every accepted connection back to a port on this machine's loopback
+  interface, as `ssh -R 127.0.0.1:…` does.
+
+The page lists candidates with `remote.hostRequest` and `ports.listening`
 (`{ ports: [{ address, port, pid?, process? }] }`, one entry for each address
 and port; `pid` and `process` only when the server's user can inspect the
 owning process). Forwards belong to one connection:
@@ -6120,12 +6138,26 @@ owning process). Forwards belong to one connection:
 | Command | Request | Result |
 | --- | --- | --- |
 | `remote.startForward` | `{ sessionId, targetHost, targetPort, localPort?, allowNonLoopbackTarget? }` | `{ forward, created }` |
+| `remote.startHostForward` | `{ sessionId, targetHost, targetPort, listenPort?, allInterfaces?, allowNonLoopbackTarget? }` | `{ forward, created }` |
+| `remote.startReverseForward` | `{ sessionId, localPort, listenPort?, preferences }` | `{ forward, created }` |
 | `remote.stopForward` | `{ sessionId, forwardId }` | `{ stopped }` |
 | `remote.forwards` | `{ sessionId }` | `{ forwards }`, by `id` |
 | `remote.parseForwardAddress` | `{ text }` | `{ targetHost, targetPort, scheme?, path? }` |
 
-A forward is `{ id, localHost, localPort, requestedLocalPort?,
-localPortChanged, targetHost, targetPort, loopbackTarget, connections }`.
+A forward is `{ id, kind, localHost?, localPort?, requestedLocalPort?,
+localPortChanged, hostListenHost?, hostListenPort?, requestedHostPort?,
+allInterfaces, targetHost?, targetPort?, loopbackTarget, connections,
+failedConnections }`. `kind` is `local`, `host` or `reverse`; a field that
+does not apply to the kind is absent:
+
+| Kind | Listens on | Reaches |
+| --- | --- | --- |
+| `local` | `localHost:localPort` | `targetHost:targetPort` as the host sees it |
+| `host` | `hostListenHost:hostListenPort` | `targetHost:targetPort` as the host resolves it |
+| `reverse` | `hostListenHost:hostListenPort` (always `127.0.0.1`) | `localHost:localPort` (always `127.0.0.1`) on this machine |
+
+`connections` counts accepted connections and `failedConnections` those
+that could not reach their target (always 0 for a local forward).
 
 - **Target.** `targetHost` is an IP address (IPv6 with or without brackets)
   or a host name the remote host resolves, such as `localhost`. A wildcard
@@ -6133,7 +6165,8 @@ localPortChanged, targetHost, targetPort, loopbackTarget, connections }`.
   listens on every interface, becomes the host's loopback address of the
   same family; `targetHost` in the result is the address sent to the host.
   A malformed host or port `0` is `invalid_request` with `details.field`
-  (`targetHost` or `targetPort`).
+  (`targetHost`, `targetPort`, or `localPort` for a reverse forward's port
+  `0`).
 - **Typed address.** `remote.parseForwardAddress` reads what the user typed
   into the page, without a connection and without resolving anything: a
   port alone (`3000`, on `localhost`), `host:port` with brackets around an
@@ -6153,23 +6186,42 @@ localPortChanged, targetHost, targetPort, loopbackTarget, connections }`.
   `allowNonLoopbackTarget: true`, which the native client sets after the
   user confirmed that target. Without it the request fails with
   `forward_target_not_confirmed` and nothing starts. `loopbackTarget` tells
-  the two apart in the list.
+  the two apart in the list. The rule is the same for host forwards.
 - **Local port.** The forward listens on `127.0.0.1`. `localPort` (absent or
   `0` for a free one) is used when no local program accepts connections on
   it, on `127.0.0.1` or `::1`; otherwise the forward listens on a free port,
   `requestedLocalPort` keeps the asked one and `localPortChanged` is `true`.
   A local port that cannot be opened at all is `unknown` with
   `details.io`.
-- **Once per target.** Starting a target that already has a forward returns
-  that forward with `created: false`, so a repeated click opens no second
-  local port. A connection keeps at most 64 forwards; one more is
-  `forward_limit_reached` with `details.maximum`.
-- **Lifetime.** `remote.stopForward` closes the local port; connections it
-  already accepted run until either side closes them, and an unknown id
-  returns `stopped: false`. `remote.disconnect`, `remote.closeAll` and a
-  lost connection close every local port of the connection. Requests on a
+- **Host port.** Host and reverse forwards listen on the host port
+  `listenPort` (absent or `0` for one the host chooses) and never move to
+  another one: a port another host program uses is
+  `forward_host_port_in_use`, and one the host refuses, such as a port below
+  1024 for an unprivileged user, is `forward_host_port_denied`. A host
+  forward listens on the host's loopback interface unless `allInterfaces` is
+  `true`; native clients ask the user every time and never remember it,
+  because every machine that reaches the host can then use the port. A
+  server that cannot listen is `forward_host_unsupported`.
+- **Reverse forwards are off by default.** `remote.startReverseForward`
+  takes the current remote preferences `document` as `preferences` and is
+  `reverse_forward_disabled` unless they allow reverse forwards; native
+  clients also ask the user before each one starts. The local side only ever
+  connects to `127.0.0.1`, then `::1`, so a host user cannot reach the local
+  network through it.
+- **Once per rule.** Starting a rule that already runs returns that forward
+  with `created: false`, so a repeated click opens no second port: a local
+  forward by target, a host forward by host port (or any port when none is
+  asked), interfaces and target, a reverse forward by host port and local
+  port. A connection keeps at most 64 forwards of all kinds together; one
+  more is `forward_limit_reached` with `details.maximum`.
+- **Lifetime.** `remote.stopForward` closes the port the forward listens
+  on; connections it already accepted run until either side closes them,
+  except a host forward's, which the host closes with its port. An unknown
+  id returns `stopped: false`. `remote.disconnect`, `remote.closeAll` and a
+  lost connection close every port the connection opened on either side,
+  and a reconnect reopens none of them. Requests on a
   connection whose session ended are `connection_closed` and forget it, as
-  for the other commands. `connections` counts accepted local connections.
+  for the other commands.
 
 #### Remote workspace trust
 

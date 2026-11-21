@@ -3,7 +3,8 @@
 //! The client listens locally and opens one tunnel per accepted connection,
 //! which is how a web server, database or debugger on the remote becomes
 //! reachable from the user's machine. Tunnels travel inside the protocol
-//! stream, so the server never opens a listening port of its own.
+//! stream; the server listens on a port only for a rule the user added, see
+//! `listener`, whose reverse connections become tunnels here.
 
 use crate::protocol::methods::{
     self, decode_bytes, encode_bytes, TunnelClosedEvent, TunnelDataEvent, TunnelOpenParams,
@@ -44,20 +45,21 @@ struct OpenTunnel {
     stream: Stream,
 }
 
-enum Stream {
+/// A connected byte stream: a tunnel's, or one a listener relays.
+pub(crate) enum Stream {
     Tcp(TcpStream),
     Unix(UnixStream),
 }
 
 impl Stream {
-    fn try_clone(&self) -> io::Result<Self> {
+    pub(crate) fn try_clone(&self) -> io::Result<Self> {
         Ok(match self {
             Self::Tcp(stream) => Self::Tcp(stream.try_clone()?),
             Self::Unix(stream) => Self::Unix(stream.try_clone()?),
         })
     }
 
-    fn shutdown(&self, how: Shutdown) {
+    pub(crate) fn shutdown(&self, how: Shutdown) {
         let _ = match self {
             Self::Tcp(stream) => stream.shutdown(how),
             Self::Unix(stream) => stream.shutdown(how),
@@ -166,26 +168,48 @@ impl TunnelTable {
     }
 
     fn open(&self, context: &Context, params: TunnelOpenParams) -> Result<(), RemoteError> {
+        self.start(context, params.tunnel_id, || {
+            connect(&params.target).map_err(|error| {
+                RemoteError::new(ErrorCode::ConnectFailed, format!("cannot connect: {error}"))
+                    .with_details(json!({ "osError": error.raw_os_error() }))
+            })
+        })
+    }
+
+    /// Turns a connection a reverse listener accepted into the tunnel
+    /// `tunnel_id`, as if `tunnel.open` had connected it. The connection is
+    /// closed when the tunnel cannot start.
+    pub(crate) fn adopt(
+        &self,
+        context: &Context,
+        tunnel_id: u64,
+        stream: Stream,
+    ) -> Result<(), RemoteError> {
+        self.start(context, tunnel_id, || Ok(stream))
+    }
+
+    fn start(
+        &self,
+        context: &Context,
+        tunnel_id: u64,
+        stream: impl FnOnce() -> Result<Stream, RemoteError>,
+    ) -> Result<(), RemoteError> {
         let session = &context.session;
-        session.ids.observe(params.tunnel_id);
-        self.registry.ensure_free(params.tunnel_id)?;
+        session.ids.observe(tunnel_id);
+        self.registry.ensure_free(tunnel_id)?;
         // Both threads start before the connection exists, so a host out of
         // threads refuses the tunnel without having touched the target. When
         // the write queue's sender is dropped (`tunnel.shutdownWrite`), the
         // queued data is still written and then only the write side is shut
         // down, so the peer can still answer.
         let writer = InputWriter::start(|stream: Stream| stream.shutdown(Shutdown::Write))?;
-        let tunnel_id = params.tunnel_id;
         let reader = {
             let session = Arc::clone(session);
             Parked::start("remote-tunnel", move |stream: Stream| {
                 forward(&session, tunnel_id, stream);
             })?
         };
-        let stream = connect(&params.target).map_err(|error| {
-            RemoteError::new(ErrorCode::ConnectFailed, format!("cannot connect: {error}"))
-                .with_details(json!({ "osError": error.raw_os_error() }))
-        })?;
+        let stream = stream()?;
         let io_failure = |error: io::Error| crate::server::fs::io_error(error, "");
         let reading = stream.try_clone().map_err(io_failure)?;
         let writing = stream.try_clone().map_err(io_failure)?;
@@ -202,7 +226,9 @@ impl TunnelTable {
     }
 }
 
-fn connect(target: &TunnelTarget) -> io::Result<Stream> {
+/// Connects to `target` as the host sees it, within [`CONNECT_TIMEOUT`] per
+/// address.
+pub(crate) fn connect(target: &TunnelTarget) -> io::Result<Stream> {
     match target {
         TunnelTarget::Tcp { host, port } => {
             let mut last_error = None;

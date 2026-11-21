@@ -284,6 +284,9 @@ fn handle(context: &Context, method: &str, params: Value) -> Result<Value, Remot
             session.terminals.handle(context, method, params)
         }
         method if method.starts_with("tunnel.") => session.tunnels.handle(context, method, params),
+        method if method.starts_with("listener.") => {
+            session.listeners.handle(context, method, params)
+        }
         methods::ENVIRONMENT_RESOLVE => environment::handle(session, params),
         methods::PORTS_LISTENING => ports::handle(session),
         _ => Err(RemoteError::new(
@@ -399,6 +402,8 @@ impl ResourceOrder {
             methods::TERMINAL_CLOSE => ("terminal", "terminalId", false),
             methods::WATCH_START => ("watch", "watchId", true),
             methods::WATCH_STOP => ("watch", "watchId", false),
+            methods::LISTENER_OPEN => ("listener", "listenerId", true),
+            methods::LISTENER_CLOSE => ("listener", "listenerId", false),
             _ => return Ok(Self::Independent),
         };
         let Some(id) = params.get(field).and_then(Value::as_u64) else {
@@ -412,6 +417,9 @@ impl ResourceOrder {
                 "terminal" => {
                     parse::<methods::TerminalParams>(params.clone())?;
                 }
+                "listener" => {
+                    parse::<methods::ListenerParams>(params.clone())?;
+                }
                 _ => {
                     parse::<methods::WatchParams>(params.clone())?;
                 }
@@ -423,6 +431,7 @@ impl ResourceOrder {
                 close_method: match family {
                     "terminal" => methods::TERMINAL_CLOSE,
                     "watch" => methods::WATCH_STOP,
+                    "listener" => methods::LISTENER_CLOSE,
                     _ => methods::PROCESS_KILL,
                 },
                 close_params: if family == "process" {

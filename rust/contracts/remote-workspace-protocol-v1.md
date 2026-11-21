@@ -49,8 +49,10 @@ Other clients should do the same.
    bytes of UTF-8 JSON. Frames larger than 16 MiB are rejected.
 3. Closing the client-to-server stream is a disconnect.
 
-The server never listens on a network port; all traffic, including tunnels,
-uses this stream. Local port forwards are the client's: the reference client
+All traffic, including tunnels, uses this stream. The server listens on a
+network port only for a forwarding rule the user added (`listener.open`, see
+"Listeners"); such a port belongs to the connection that opened it and
+closes with it. Local port forwards are the client's: the reference client
 listens on loopback addresses only, because a remote development server
 usually has no authentication of its own, and bridges at most 64 connections
 per forward, leaving further ones in the system's listen queue until one
@@ -154,6 +156,10 @@ subscribe before creating the resource.
 | `tunnel.write` | `tunnelId`, `data` | `null`; `BUSY` when the peer stops reading |
 | `tunnel.shutdownWrite` | `tunnelId` | `null`; queued data is sent, then the write side is shut down; replies keep arriving |
 | `tunnel.close` | `tunnelId` | `null`; aborts both directions, queued data is discarded |
+| `listener.open` | `listenerId`, `host` (an IP address), `port` (`0`: the host chooses), `relay?` (a `tunnel.open` target) | `port`; `ADDRESS_IN_USE` when another socket holds the port, `PERMISSION_DENIED` when the host refuses it, `BUSY` while the session has 64 listeners |
+| `listener.adopt` | `listenerId`, `acceptId`, `tunnelId` | `null`; the waiting connection becomes that tunnel; `UNKNOWN_RESOURCE` when it no longer waits |
+| `listener.close` | `listenerId` | `listenerId`, `port`, `connections`, `failedConnections`; closes the port and every connection it relays or still holds |
+| `listener.list` | — | `listeners` by `listenerId`: `listenerId`, `port`, `connections`, `failedConnections` |
 | `ports.listening` | — | `ports` sorted by `address` and `port`, one entry for each: `address`, `port`, and `pid` and `process` (the command name) when the server's user can inspect the owning process |
 
 `fs.copy` refuses, with `INVALID_REQUEST`, to copy a file onto itself —
@@ -257,9 +263,39 @@ environment and caches it for the session. `process.spawn` with
 | `walk.done` | `walkId`, `total`, `truncated`, `cancelled`, `skippedNonUtf8`, `unreadableDirectories` |
 | `tunnel.data` | `tunnelId`, `data` |
 | `tunnel.closed` | `tunnelId`, `error?` — the last event of the tunnel |
+| `listener.accepted` | `listenerId`, `acceptId` — a reverse listener holds a connection for `listener.adopt` |
 
 `watch.changed` batches are coalesced and sorted by path. With `overflow`
 changes were lost and the client must rescan the watched tree.
+
+## Listeners
+
+The `listener` feature lets a client make the host listen on a TCP port for
+a forwarding rule the user added:
+
+- With `relay`, a **host rule**: the host connects every accepted connection
+  to that target itself and copies the bytes on the host, so nothing
+  crosses the stream. `host` is a loopback address, or `0.0.0.0` or `::`
+  when the user confirmed listening on every interface. At most 64
+  connections of one listener and 256 of the session are relayed at once;
+  further ones wait in the kernel's backlog, or are closed and counted as
+  failed when the session is at its limit.
+- Without `relay`, a **reverse rule**: `host` must be a loopback address.
+  Every accepted connection waits, at most 16 at once per listener, for the
+  client, which receives `listener.accepted`, subscribes to a new tunnel and
+  calls `listener.adopt`; the connection then behaves as a tunnel the client
+  opened. A connection not adopted within 10 seconds is closed and counted
+  as failed.
+
+Host names are refused, so the host never resolves what the client sends as
+an address to bind. `failedConnections` counts connections that never
+reached their target: a relay target that refused, a connection not adopted
+in time, or one the host had no thread or tunnel left for. A listener
+belongs to the connection that opened it, also in a persistent session, and
+closes when that connection ends; clients do not reopen one after a
+reconnect on their own, so a host port is open only while the user's rule
+is. `listener.close` waits up to one second for the port to be released, so
+a rule edited to the same port can bind it again at once.
 
 ## Event delivery and persistent sessions
 
@@ -291,8 +327,8 @@ events after `afterSeq` were dropped; the client re-reads state and rescans
 watches.
 
 While no client is attached, a persistent session keeps processes, terminals
-and watches running. Tunnels and walks belong to the connection that opened
-them and end with it. After `server.shutdown` a persistent session is no
+and watches running. Tunnels, walks and listeners belong to the connection
+that opened them and end with it. After `server.shutdown` a persistent session is no
 longer reachable, even while it is still terminating its processes; the next
 connection with the same key starts a fresh session.
 
@@ -318,7 +354,7 @@ the field.
 `NOT_FOUND`, `PERMISSION_DENIED`, `ALREADY_EXISTS`, `NOT_A_DIRECTORY`,
 `IS_A_DIRECTORY`, `DIRECTORY_NOT_EMPTY`, `CONFLICT`, `TOO_LARGE`,
 `UNKNOWN_RESOURCE`, `RESOURCE_ID_IN_USE`, `SPAWN_FAILED`, `CONNECT_FAILED`,
-`BUSY`, `UNSUPPORTED`, `IO`. Clients additionally produce `TIMEOUT` and
+`ADDRESS_IN_USE`, `BUSY`, `UNSUPPORTED`, `IO`. Clients additionally produce `TIMEOUT` and
 `DISCONNECTED` locally. Messages are for people; OS error numbers stay in
 `details`. `BUSY` always means a capacity limit that may clear: retrying
 later is safe because the failed request changed nothing.

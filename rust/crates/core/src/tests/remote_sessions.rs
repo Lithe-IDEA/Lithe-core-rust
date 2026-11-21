@@ -1538,3 +1538,143 @@ fn remote_port_forwards_start_once_per_target_and_end_with_the_connection() {
         "connection_closed"
     );
 }
+
+// Forwards that listen on the host: a host port relays to another server, a
+// taken host port keeps its own category, and a reverse forward waits for the
+// settings switch before it brings host connections back to a local port.
+#[test]
+fn remote_host_and_reverse_forwards_follow_their_own_rules() {
+    use std::io::{Read, Write};
+    use std::net::{TcpListener, TcpStream};
+
+    let echo = || {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let worker = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_read_timeout(Some(STEP)).unwrap();
+            let mut buffer = [0_u8; 4];
+            stream.read_exact(&mut buffer).unwrap();
+            stream.write_all(&buffer).unwrap();
+        });
+        (port, worker)
+    };
+    let exchange = |port: u64| {
+        let mut stream = TcpStream::connect(("127.0.0.1", u16::try_from(port).unwrap())).unwrap();
+        stream.set_read_timeout(Some(STEP)).unwrap();
+        stream.write_all(b"ping").unwrap();
+        let mut answer = [0_u8; 4];
+        stream.read_exact(&mut answer).unwrap();
+        answer
+    };
+    let host = HostFixture::new();
+    let call = |command: &str, payload: Value| -> Value {
+        let mut payload = payload;
+        payload["sessionId"] = json!(host.id);
+        serde_json::from_str(&crate::execute_json(
+            &json!({"id": test_support::unique_id(), "command": command,
+                "timeoutMilliseconds": 30_000, "payload": payload})
+            .to_string(),
+        ))
+        .unwrap()
+    };
+    let plain = |command: &str, payload: Value| -> Value {
+        serde_json::from_str(&crate::execute_json(
+            &json!({"id": test_support::unique_id(), "command": command,
+                "payload": payload})
+            .to_string(),
+        ))
+        .unwrap()
+    };
+    let ok = |response: Value| -> Value {
+        assert_eq!(response["ok"], true, "{response}");
+        response["data"].clone()
+    };
+    let code = |response: Value| -> Value {
+        assert_eq!(response["ok"], false, "{response}");
+        response["error"]["code"].clone()
+    };
+
+    let (target_port, target) = echo();
+    let started = ok(call(
+        "remote.startHostForward",
+        json!({"targetHost": "localhost", "targetPort": target_port}),
+    ));
+    let forward = started["forward"].clone();
+    assert_eq!(forward["kind"], "host", "{started}");
+    assert_eq!(forward["hostListenHost"], "127.0.0.1", "{started}");
+    assert_eq!(forward["allInterfaces"], false, "{started}");
+    assert!(forward.get("localPort").is_none(), "{started}");
+    assert_eq!(
+        &exchange(forward["hostListenPort"].as_u64().unwrap()),
+        b"ping"
+    );
+    target.join().unwrap();
+
+    assert_eq!(
+        code(call(
+            "remote.startHostForward",
+            json!({"targetHost": "192.0.2.10", "targetPort": 5432}),
+        )),
+        "forward_target_not_confirmed"
+    );
+    let taken = TcpListener::bind("127.0.0.1:0").unwrap();
+    assert_eq!(
+        code(call(
+            "remote.startHostForward",
+            json!({"listenPort": taken.local_addr().unwrap().port(),
+                "targetHost": "127.0.0.1", "targetPort": target_port}),
+        )),
+        "forward_host_port_in_use"
+    );
+
+    // Reverse forwards stay off until the user turns them on.
+    let (local_port, local) = echo();
+    let reverse = json!({"localPort": local_port, "preferences": null});
+    assert_eq!(
+        code(call("remote.startReverseForward", reverse.clone())),
+        "reverse_forward_disabled"
+    );
+    let read = ok(plain("remote.preferences", json!({"document": null})));
+    assert_eq!(
+        read["reverseForwarding"],
+        json!({"source": "automatic", "allowed": false}),
+        "{read}"
+    );
+    let edited = ok(plain(
+        "remote.editPreferences",
+        json!({"document": null, "reverseForwarding": {"allowed": true}}),
+    ));
+    let mut allowed = reverse;
+    allowed["preferences"] = edited["document"].clone();
+    let started = ok(call("remote.startReverseForward", allowed.clone()));
+    let back = started["forward"].clone();
+    assert_eq!(back["kind"], "reverse", "{started}");
+    assert_eq!(back["hostListenHost"], "127.0.0.1", "{started}");
+    assert_eq!(back["localPort"], local_port, "{started}");
+    assert_eq!(&exchange(back["hostListenPort"].as_u64().unwrap()), b"ping");
+    local.join().unwrap();
+    let again = ok(call("remote.startReverseForward", allowed.clone()));
+    assert_eq!(again["created"], false, "{again}");
+    assert_eq!(again["forward"]["id"], back["id"], "{again}");
+
+    allowed["localPort"] = json!(0);
+    let refused = call("remote.startReverseForward", allowed);
+    assert_eq!(code(refused.clone()), "invalid_request");
+    let details: Value =
+        serde_json::from_str(refused["error"]["details"].as_str().unwrap()).unwrap();
+    assert_eq!(details["field"], "localPort", "{refused}");
+
+    let listed = ok(call("remote.forwards", json!({})));
+    let kinds: Vec<&str> = listed["forwards"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|forward| forward["kind"].as_str().unwrap())
+        .collect();
+    assert_eq!(kinds, ["host", "reverse"], "{listed}");
+    assert_eq!(
+        ok(call("remote.stopForward", json!({"forwardId": back["id"]})))["stopped"],
+        true
+    );
+}

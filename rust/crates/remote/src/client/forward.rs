@@ -20,7 +20,7 @@
 //! [`ConnectionLog`] with the local port and the number of accepted
 //! connections; the remote host and socket path are not recorded.
 
-use crate::client::api::TunnelEvent;
+use crate::client::api::{TunnelEvent, TunnelHandle};
 use crate::client::connection_log::ConnectionLog;
 use crate::client::session::{ClientError, RemoteSession};
 use crate::protocol::methods::TunnelTarget;
@@ -249,14 +249,14 @@ impl Acceptor {
 }
 
 /// The connections one forward is bridging, at most `limit` at once.
-struct Slots {
+pub(crate) struct Slots {
     limit: usize,
     active: Mutex<usize>,
     freed: Condvar,
 }
 
 impl Slots {
-    fn new(limit: usize) -> Self {
+    pub(crate) fn new(limit: usize) -> Self {
         Self {
             limit,
             active: Mutex::new(0),
@@ -265,7 +265,7 @@ impl Slots {
     }
 
     /// Waits for a free slot, or returns `None` once the forward stops.
-    fn acquire(self: &Arc<Self>, stopping: &AtomicBool) -> Option<Slot> {
+    pub(crate) fn acquire(self: &Arc<Self>, stopping: &AtomicBool) -> Option<Slot> {
         let mut active = self.active.lock().unwrap_or_else(PoisonError::into_inner);
         while *active >= self.limit {
             if stopping.load(Ordering::Acquire) {
@@ -284,7 +284,7 @@ impl Slots {
 
 /// One bridged connection's slot, freed when its bridge ends, including when
 /// the bridge thread never starts or panics.
-struct Slot(Arc<Slots>);
+pub(crate) struct Slot(Arc<Slots>);
 
 impl Drop for Slot {
     fn drop(&mut self) {
@@ -311,6 +311,16 @@ fn bridge(
             return Err(error);
         }
     };
+    pump(session, local, tunnel)
+}
+
+/// Copies bytes between a local connection and an open tunnel until either
+/// side closes, passing a half-close on in both directions.
+pub(crate) fn pump(
+    session: &RemoteSession,
+    local: TcpStream,
+    tunnel: TunnelHandle<'_>,
+) -> Result<(), ClientError> {
     let mut to_remote = local.try_clone().map_err(ClientError::Spawn)?;
     let mut to_local = local;
     let local_done = Arc::new(AtomicBool::new(false));
@@ -379,7 +389,7 @@ fn bridge(
 // matching the catalog's rate=12 even across concurrent forwarded connections.
 const FAILURE_LOG_INTERVAL: Duration = Duration::from_secs(5);
 static ACCEPT_LOG: Mutex<Option<Instant>> = Mutex::new(None);
-static BRIDGE_LOG: Mutex<Option<Instant>> = Mutex::new(None);
+pub(crate) static BRIDGE_LOG: Mutex<Option<Instant>> = Mutex::new(None);
 
 fn permit_failure(last: &mut Option<Instant>, now: Instant) -> bool {
     if last.is_some_and(|previous| now.saturating_duration_since(previous) < FAILURE_LOG_INTERVAL) {
@@ -389,7 +399,7 @@ fn permit_failure(last: &mut Option<Instant>, now: Instant) -> bool {
     true
 }
 
-fn forward_failed(
+pub(crate) fn forward_failed(
     event: &str,
     log: &ConnectionLog,
     stage: &'static str,

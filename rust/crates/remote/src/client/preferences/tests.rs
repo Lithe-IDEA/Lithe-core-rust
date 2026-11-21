@@ -60,6 +60,31 @@ fn a_missing_document_is_every_value_automatic() {
         vec![1_000, 2_000, 4_000, 8_000, 16_000, 29_000]
     );
     assert_eq!(preferences.text().unwrap(), "{\n  \"version\": 1\n}\n");
+    let reverse = preferences.reverse_forwarding();
+    assert_eq!(
+        (reverse.source, reverse.allowed),
+        (Source::Automatic, false)
+    );
+}
+
+#[test]
+fn reverse_forwarding_is_off_until_the_user_turns_it_on() {
+    let mut preferences = Preferences::default();
+    preferences.set_allow_reverse_forwarding(Some(true));
+    let read = Preferences::parse(Some(&preferences.text().unwrap())).unwrap();
+    assert_eq!(read.allow_reverse_forwarding(), Some(true));
+    let reverse = read.reverse_forwarding();
+    assert_eq!((reverse.source, reverse.allowed), (Source::Setting, true));
+
+    preferences.set_allow_reverse_forwarding(Some(false));
+    let reverse = preferences.reverse_forwarding();
+    assert_eq!((reverse.source, reverse.allowed), (Source::Setting, false));
+    preferences.set_allow_reverse_forwarding(None);
+    assert_eq!(preferences, Preferences::default());
+    assert_eq!(
+        refusal("{\"version\":1,\"allowReverseForwarding\":\"yes\"}").field,
+        "document"
+    );
 }
 
 #[test]

@@ -165,6 +165,19 @@ pub const TUNNEL_CLOSE: &str = "tunnel.close";
 /// Lists the TCP ports listening on the host as a [`ListeningPortsResult`].
 pub const PORTS_LISTENING: &str = "ports.listening";
 
+/// Listens on a host TCP port for a forwarding rule the user added, see
+/// [`ListenerOpenParams`]; fails with `ADDRESS_IN_USE` when the port is taken.
+pub const LISTENER_OPEN: &str = "listener.open";
+/// Stops a listener and closes the connections it relays or still holds;
+/// returns its final [`ListenerState`].
+pub const LISTENER_CLOSE: &str = "listener.close";
+/// Hands a connection a reverse listener accepted to a new tunnel, see
+/// [`ListenerAdoptParams`].
+pub const LISTENER_ADOPT: &str = "listener.adopt";
+/// The session's listeners and their connection counts, as a
+/// [`ListenersResult`].
+pub const LISTENER_LIST: &str = "listener.list";
+
 /// Output of a spawned process, carried by [`ProcessOutputEvent`].
 pub const EVENT_PROCESS_OUTPUT: &str = "process.output";
 /// End of a spawned process, carried by [`ProcessExitEvent`].
@@ -185,6 +198,9 @@ pub const EVENT_WALK_DONE: &str = "walk.done";
 pub const EVENT_TUNNEL_DATA: &str = "tunnel.data";
 /// End of a tunnel, carried by [`TunnelClosedEvent`].
 pub const EVENT_TUNNEL_CLOSED: &str = "tunnel.closed";
+/// A reverse listener accepted a connection, carried by
+/// [`ListenerAcceptedEvent`].
+pub const EVENT_LISTENER_ACCEPTED: &str = "listener.accepted";
 
 /// Largest byte count one `fs.readFile` or `fs.writeFile` call may move.
 /// Base64 inflates it by a third, which keeps the frame under
@@ -455,6 +471,9 @@ pub enum Feature {
     Environment,
     /// `tunnel.*` and `ports.listening`.
     Tunnel,
+    /// `listener.*` methods and events: host ports for host-side and
+    /// reverse forwarding rules.
+    Listener,
     /// The session survives disconnection when started with `--connect`.
     Persistence,
 }
@@ -1297,6 +1316,95 @@ pub struct ListeningPort {
 pub struct ListeningPortsResult {
     /// Sorted by address and port, one entry for each.
     pub ports: Vec<ListeningPort>,
+}
+
+// ---------------------------------------------------------------------------
+// Listeners
+// ---------------------------------------------------------------------------
+
+/// Parameters of `listener.open`.
+///
+/// With `relay`, the host connects every accepted connection to that target
+/// itself: a host-side rule, such as a host port that reaches a database on
+/// another server. Without it, every accepted connection waits for the
+/// client to adopt it as a tunnel (`listener.accepted`, `listener.adopt`): a
+/// reverse rule, which reaches a port on the user's machine.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListenerOpenParams {
+    /// Client-chosen id that the listener's events carry.
+    pub listener_id: u64,
+    /// IP address to bind: a loopback address, or with `relay` also `0.0.0.0`
+    /// or `::` for every interface. Names are refused.
+    pub host: String,
+    /// TCP port to bind; `0` lets the host choose one.
+    pub port: u16,
+    /// Where the host connects accepted connections; absent for a reverse
+    /// listener.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relay: Option<TunnelTarget>,
+}
+
+/// Result of `listener.open`.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListenerOpened {
+    /// Bound port, with the one the host chose for port 0.
+    pub port: u16,
+}
+
+/// Parameters of `listener.close`.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListenerParams {
+    /// Id the listener was opened with.
+    pub listener_id: u64,
+}
+
+/// Parameters of `listener.adopt`.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListenerAdoptParams {
+    /// Id the listener was opened with.
+    pub listener_id: u64,
+    /// `acceptId` of the `listener.accepted` event.
+    pub accept_id: u64,
+    /// Client-chosen id of the tunnel the connection becomes; the client
+    /// subscribes to it first, as for `tunnel.open`.
+    pub tunnel_id: u64,
+}
+
+/// Parameters of the `listener.accepted` event.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListenerAcceptedEvent {
+    /// Id the listener was opened with.
+    pub listener_id: u64,
+    /// Identifies the waiting connection for `listener.adopt`.
+    pub accept_id: u64,
+}
+
+/// One listener in `listener.list`.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListenerState {
+    /// Id the listener was opened with.
+    pub listener_id: u64,
+    /// Bound port.
+    pub port: u16,
+    /// Connections accepted so far.
+    pub connections: u64,
+    /// Accepted connections that never reached their target: the relay
+    /// target refused, or the host had no thread or tunnel left for them.
+    pub failed_connections: u64,
+}
+
+/// Result of `listener.list`.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListenersResult {
+    /// By id.
+    pub listeners: Vec<ListenerState>,
 }
 
 /// Output of `lithe-remote-server --identity`, used by the bootstrapper to

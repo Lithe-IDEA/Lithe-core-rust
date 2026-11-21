@@ -179,6 +179,30 @@ pub(super) fn dispatch(command: RemoteCommand, id: Option<String>, payload: Valu
                 Err(error) => CoreResponse::failure(id, error),
             }
         }
+        RemoteCommand::StartHostForward => {
+            match serde_json::from_value(payload)
+                .map_err(|error| invalid_forward_request(&error))
+                .and_then(lithe_workspace::forwards::start_host)
+            {
+                Ok(started) => CoreResponse::success(
+                    id,
+                    serde_json::to_value(started).expect("port forward result should encode"),
+                ),
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
+        RemoteCommand::StartReverseForward => {
+            match serde_json::from_value(payload)
+                .map_err(|error| invalid_forward_request(&error))
+                .and_then(lithe_workspace::forwards::start_reverse)
+            {
+                Ok(started) => CoreResponse::success(
+                    id,
+                    serde_json::to_value(started).expect("port forward result should encode"),
+                ),
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
         RemoteCommand::StopForward => {
             match serde_json::from_value(payload)
                 .map_err(|error| invalid_forward_request(&error))

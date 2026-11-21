@@ -80,6 +80,20 @@ pub enum ErrorCode {
     /// `remote.startForward` found the connection at its forward limit
     /// (`details.maximum`); stopping a forward makes room.
     ForwardLimitReached,
+    /// `remote.startHostForward` or `remote.startReverseForward` asked for a
+    /// host port another program on the host already listens on. Nothing
+    /// started; another port, or none to let the host choose, can.
+    ForwardHostPortInUse,
+    /// The remote host refused to listen on the requested host port, as
+    /// Linux does for ports below 1024 to unprivileged users. Nothing started.
+    ForwardHostPortDenied,
+    /// The remote server the connection runs cannot listen on host ports, so
+    /// only forwards that listen on this machine are available.
+    ForwardHostUnsupported,
+    /// `remote.startReverseForward` was refused because the remote
+    /// preferences do not allow reverse forwards (`allowReverseForwarding`).
+    /// Nothing started; the user can allow them in the settings.
+    ReverseForwardDisabled,
     /// `remote.connect` reached a host whose server build the request names,
     /// but the local file could not be read or its SHA-256 is not the one the
     /// request gives for it. Nothing was installed on the host; the

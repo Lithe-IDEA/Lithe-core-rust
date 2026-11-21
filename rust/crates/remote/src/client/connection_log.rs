@@ -22,7 +22,8 @@
 //! 6. `remote.connection.cleaned` when the established session is released.
 //!
 //! Port forwards over the session add `remote.forward.started` and
-//! `remote.forward.removed`.
+//! `remote.forward.removed`; forwards that listen on the host add
+//! `remote.forward.host_started` and `remote.forward.host_removed`.
 //!
 //! Several layers can see the same failure: the launch script, the protocol
 //! handshake, and the caller that owns the SSH process. Each reports the most
@@ -52,6 +53,8 @@ pub(crate) const INTERRUPTED: &str = "remote.connection.interrupted";
 pub(crate) const CLEANED: &str = "remote.connection.cleaned";
 pub(crate) const FORWARD_STARTED: &str = "remote.forward.started";
 pub(crate) const FORWARD_REMOVED: &str = "remote.forward.removed";
+pub(crate) const HOST_FORWARD_STARTED: &str = "remote.forward.host_started";
+pub(crate) const HOST_FORWARD_REMOVED: &str = "remote.forward.host_removed";
 
 // Session states only move forward, in this order.
 
@@ -315,6 +318,64 @@ impl ConnectionLog {
             vec![
                 ("local_port", json!(local_port)),
                 ("connections", json!(connections)),
+                ("duration_ms", millis(duration)),
+            ],
+        );
+    }
+
+    /// Records a host port that relays to `target_host:target_port`. Only the
+    /// ports and whether each side is a loopback address are recorded.
+    pub(crate) fn host_forward_started(
+        &self,
+        listen_port: u16,
+        all_interfaces: bool,
+        target_host: &str,
+        target_port: u16,
+    ) {
+        self.emit(
+            HOST_FORWARD_STARTED,
+            vec![
+                ("kind", json!("host")),
+                ("listen_port", json!(listen_port)),
+                ("bind_scope", json!(scope(!all_interfaces))),
+                ("target_port", json!(target_port)),
+                (
+                    "target_scope",
+                    json!(scope(forward_set::is_loopback_host(target_host))),
+                ),
+            ],
+        );
+    }
+
+    /// Records a host loopback port whose connections reach `local_port` on
+    /// this machine's loopback.
+    pub(crate) fn reverse_forward_started(&self, listen_port: u16, local_port: u16) {
+        self.emit(
+            HOST_FORWARD_STARTED,
+            vec![
+                ("kind", json!("reverse")),
+                ("listen_port", json!(listen_port)),
+                ("bind_scope", json!(scope(true))),
+                ("local_port", json!(local_port)),
+            ],
+        );
+    }
+
+    /// Records a host port that stopped after accepting `connections`, of
+    /// which `failed_connections` never reached their target.
+    pub(crate) fn host_forward_removed(
+        &self,
+        listen_port: u16,
+        connections: u64,
+        failed_connections: u64,
+        duration: Duration,
+    ) {
+        self.emit(
+            HOST_FORWARD_REMOVED,
+            vec![
+                ("listen_port", json!(listen_port)),
+                ("connections", json!(connections)),
+                ("failed_connections", json!(failed_connections)),
                 ("duration_ms", millis(duration)),
             ],
         );

@@ -5,7 +5,8 @@ mod support;
 use lithe_remote::client::api::TunnelEvent;
 use lithe_remote::client::forward_set::MAX_FORWARDS;
 use lithe_remote::client::{
-    ForwardError, ForwardSet, ForwardSpec, PortForward, RemoteSession, TargetField,
+    ForwardError, ForwardKind, ForwardSet, ForwardSpec, HostForwardSpec, PortForward,
+    RemoteSession, ReverseForwardSpec, TargetField,
 };
 use lithe_remote::protocol::methods::TunnelTarget;
 use std::io::{Read, Write};
@@ -306,9 +307,9 @@ fn forward_sets_bridge_a_wildcard_listener_once_per_target() {
 
     let (info, created) = forwards.start(forward_to("0.0.0.0", port)).unwrap();
     assert!(created);
-    assert_eq!(info.target_host, "127.0.0.1");
+    assert_eq!(info.target_host.as_deref(), Some("127.0.0.1"));
     assert!(info.loopback_target);
-    assert_eq!(info.local_host, "127.0.0.1");
+    assert_eq!(info.local_host.as_deref(), Some("127.0.0.1"));
     assert_eq!(info.requested_local_port, None);
     assert!(!info.local_port_changed);
     let (again, created) = forwards.start(forward_to("127.0.0.1", port)).unwrap();
@@ -316,7 +317,8 @@ fn forward_sets_bridge_a_wildcard_listener_once_per_target() {
     assert_eq!(again.id, info.id);
     assert_eq!(again.local_port, info.local_port);
 
-    let mut local = TcpStream::connect((info.local_host.as_str(), info.local_port)).unwrap();
+    let local_port = info.local_port.unwrap();
+    let mut local = TcpStream::connect(("127.0.0.1", local_port)).unwrap();
     local.set_read_timeout(Some(STEP_TIMEOUT)).unwrap();
     local.write_all(b"ports page").unwrap();
     let mut answer = vec![0_u8; b"ports page".len()];
@@ -356,7 +358,7 @@ fn forward_sets_start_targets_outside_the_host_only_when_confirmed() {
         .unwrap();
     assert!(created);
     assert!(!info.loopback_target);
-    assert_eq!(info.target_host, "192.0.2.10");
+    assert_eq!(info.target_host.as_deref(), Some("192.0.2.10"));
 
     for (spec, field) in [
         (forward_to("127.0.0.1", 0), TargetField::Port),
@@ -389,7 +391,7 @@ fn forward_sets_move_off_a_local_port_another_program_uses() {
     assert!(created);
     assert_eq!(info.requested_local_port, Some(port));
     assert!(info.local_port_changed);
-    assert_ne!(info.local_port, port);
+    assert_ne!(info.local_port, Some(port));
     drop(taken);
     shut_down(&session);
 }
@@ -421,16 +423,17 @@ fn forward_sets_release_their_local_ports_when_the_session_ends() {
     let session = Arc::new(session);
     let forwards = ForwardSet::new(Arc::clone(&session));
     let (info, _) = forwards.start(forward_to("127.0.0.1", 1)).unwrap();
+    let local_port = info.local_port.unwrap();
 
     shut_down(&session);
     // The release runs on a thread of its own once the session sees the
     // stream end; the closed listener is its only observable result.
     let deadline = Instant::now() + STEP_TIMEOUT;
-    while TcpStream::connect(("127.0.0.1", info.local_port)).is_ok() {
+    while TcpStream::connect(("127.0.0.1", local_port)).is_ok() {
         assert!(
             Instant::now() < deadline,
             "local port {} still accepts connections after the session ended",
-            info.local_port
+            local_port
         );
         // test-stability: allow(rust-real-sleep) reason: the listener closes on a background thread without a waitable signal; the loop has a monotonic deadline and a diagnostic.
         thread::sleep(Duration::from_millis(20));
@@ -438,6 +441,183 @@ fn forward_sets_release_their_local_ports_when_the_session_ends() {
     assert!(matches!(forwards.list(), Err(ForwardError::SessionClosed)));
     assert!(matches!(
         forwards.start(forward_to("127.0.0.1", 2)),
+        Err(ForwardError::SessionClosed)
+    ));
+}
+
+/// A host forward on a port the host chooses, on its loopback interface,
+/// unconfirmed.
+fn host_forward_to(host: &str, port: u16) -> HostForwardSpec {
+    HostForwardSpec {
+        listen_port: None,
+        all_interfaces: false,
+        target_host: host.into(),
+        target_port: port,
+        allow_non_loopback_target: false,
+    }
+}
+
+/// Sends `request` over `port` on this machine's loopback interface and
+/// reads the echo server's uppercased answer.
+fn exchange(port: u16, request: &[u8]) -> Vec<u8> {
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    stream.set_read_timeout(Some(STEP_TIMEOUT)).unwrap();
+    stream.write_all(request).unwrap();
+    let mut answer = vec![0_u8; request.len()];
+    stream.read_exact(&mut answer).unwrap();
+    answer
+}
+
+// The test server runs on this machine, so the host's loopback interface is
+// this machine's too.
+#[test]
+fn host_forwards_relay_a_host_port_to_another_server() {
+    let (port, server) = spawn_tcp_echo();
+    let (session, _events) = connect();
+    let session = Arc::new(session);
+    let forwards = ForwardSet::new(Arc::clone(&session));
+
+    let (info, created) = forwards
+        .start_host(host_forward_to("127.0.0.1", port))
+        .unwrap();
+    assert!(created);
+    assert_eq!(info.kind, ForwardKind::Host);
+    assert_eq!(info.host_listen_host.as_deref(), Some("127.0.0.1"));
+    assert!(!info.all_interfaces);
+    assert_eq!(info.local_port, None);
+    let host_port = info.host_listen_port.unwrap();
+    let (again, created) = forwards
+        .start_host(host_forward_to("127.0.0.1", port))
+        .unwrap();
+    assert!(!created);
+    assert_eq!(again.id, info.id);
+
+    assert_eq!(exchange(host_port, b"jump host"), b"JUMP HOST");
+    server.join().unwrap();
+    let listed = forwards.list().unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].connections, 1);
+    assert_eq!(listed[0].failed_connections, 0);
+
+    assert!(forwards.stop(info.id));
+    // Closing waits until the host released the port.
+    assert!(TcpStream::connect(("127.0.0.1", host_port)).is_err());
+    shut_down(&session);
+}
+
+#[test]
+fn host_forwards_report_a_taken_host_port_and_check_their_targets() {
+    let taken = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = taken.local_addr().unwrap().port();
+    let (session, _events) = connect();
+    let session = Arc::new(session);
+    let forwards = ForwardSet::new(Arc::clone(&session));
+
+    let error = forwards
+        .start_host(HostForwardSpec {
+            listen_port: Some(port),
+            ..host_forward_to("127.0.0.1", 8080)
+        })
+        .unwrap_err();
+    assert!(matches!(error, ForwardError::HostPortInUse), "{error:?}");
+    // A documentation address (RFC 5737); nothing connects to it.
+    assert!(matches!(
+        forwards.start_host(host_forward_to("192.0.2.10", 5432)),
+        Err(ForwardError::TargetNotConfirmed)
+    ));
+    assert!(matches!(
+        forwards.start_host(host_forward_to("127.0.0.1", 0)),
+        Err(ForwardError::InvalidTarget(TargetField::Port))
+    ));
+    assert!(forwards.list().unwrap().is_empty());
+    drop(taken);
+    shut_down(&session);
+}
+
+#[test]
+fn reverse_forwards_bring_host_connections_back_to_a_local_port() {
+    let (local_port, server) = spawn_tcp_echo();
+    let (session, _events) = connect();
+    let session = Arc::new(session);
+    let forwards = ForwardSet::new(Arc::clone(&session));
+
+    assert!(matches!(
+        forwards.start_reverse(ReverseForwardSpec {
+            listen_port: None,
+            local_port: 0,
+        }),
+        Err(ForwardError::InvalidTarget(TargetField::LocalPort))
+    ));
+    let (info, created) = forwards
+        .start_reverse(ReverseForwardSpec {
+            listen_port: None,
+            local_port,
+        })
+        .unwrap();
+    assert!(created);
+    assert_eq!(info.kind, ForwardKind::Reverse);
+    assert_eq!(info.host_listen_host.as_deref(), Some("127.0.0.1"));
+    assert_eq!(info.local_port, Some(local_port));
+    assert_eq!(info.target_host, None);
+
+    let host_port = info.host_listen_port.unwrap();
+    assert_eq!(exchange(host_port, b"reverse"), b"REVERSE");
+    server.join().unwrap();
+    assert_eq!(forwards.list().unwrap()[0].connections, 1);
+    assert!(forwards.stop(info.id));
+    assert!(TcpStream::connect(("127.0.0.1", host_port)).is_err());
+    shut_down(&session);
+}
+
+// One limit covers every kind, so host listeners cannot exceed what the
+// ports page shows.
+#[test]
+fn forward_kinds_share_one_limit() {
+    let (session, _events) = connect();
+    let session = Arc::new(session);
+    let forwards = ForwardSet::new(Arc::clone(&session));
+    let local = u16::try_from(MAX_FORWARDS - 1).unwrap();
+    for port in 1..=local {
+        forwards.start(forward_to("127.0.0.1", port)).unwrap();
+    }
+    forwards
+        .start_host(host_forward_to("127.0.0.1", 1))
+        .unwrap();
+    assert!(matches!(
+        forwards.start_reverse(ReverseForwardSpec {
+            listen_port: None,
+            local_port: 1,
+        }),
+        Err(ForwardError::LimitReached)
+    ));
+    shut_down(&session);
+}
+
+// The host closes its listeners when the client disconnects; nothing
+// reopens them.
+#[test]
+fn host_ports_close_when_the_session_ends() {
+    let (session, _events) = connect();
+    let session = Arc::new(session);
+    let forwards = ForwardSet::new(Arc::clone(&session));
+    let (info, _) = forwards
+        .start_host(host_forward_to("127.0.0.1", 1))
+        .unwrap();
+    let host_port = info.host_listen_port.unwrap();
+
+    shut_down(&session);
+    let deadline = Instant::now() + STEP_TIMEOUT;
+    // The host can exit before this client reads the end of its stream.
+    while !session.is_closed() || TcpStream::connect(("127.0.0.1", host_port)).is_ok() {
+        assert!(
+            Instant::now() < deadline,
+            "host port {host_port} still accepts connections after the session ended"
+        );
+        // test-stability: allow(rust-real-sleep) reason: the host closes the listener when its process exits, without a signal to this test; the loop has a monotonic deadline and a diagnostic.
+        thread::sleep(Duration::from_millis(20));
+    }
+    assert!(matches!(
+        forwards.start_host(host_forward_to("127.0.0.1", 2)),
         Err(ForwardError::SessionClosed)
     ));
 }

@@ -30,6 +30,8 @@ pub const LIFECYCLE_EVENTS: &[&str] = &[
     "remote.connection.cleaned",
     "remote.forward.started",
     "remote.forward.removed",
+    "remote.forward.host_started",
+    "remote.forward.host_removed",
 ];
 
 /// Borrowed scalar fields; callers supply only fixed summaries and stable categories.

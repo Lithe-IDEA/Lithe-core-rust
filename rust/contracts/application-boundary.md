@@ -410,6 +410,10 @@ meaning; `lithe_protocol::ErrorCode` documents when it is reported:
 - `connection_closed`: the remote connection the request names closed or was lost
 - `forward_target_not_confirmed`: a port forward reaches another machine through the remote host and the user has not confirmed it
 - `forward_limit_reached`: the remote connection keeps the most port forwards it allows
+- `forward_host_port_in_use`: another program on the remote host already uses the port a host or reverse forward asks for
+- `forward_host_port_denied`: the remote host does not allow listening on the port a host or reverse forward asks for
+- `forward_host_unsupported`: the remote server cannot listen on host ports for host or reverse forwards
+- `reverse_forward_disabled`: the remote workspace settings do not allow reverse forwards
 - `remote_server_invalid`: the server build `remote.connect` would send cannot
   be read or is not the build its SHA-256 names
 - `unknown`

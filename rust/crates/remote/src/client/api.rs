@@ -10,15 +10,16 @@ use crate::client::session::{ClientError, Event, RemoteSession};
 use crate::protocol::methods::{
     self, decode_bytes, encode_bytes, CopyParams, CopyResult, CreateDirParams,
     EnvironmentResolveParams, EnvironmentResolveResult, EnvironmentSource, FileMetadata,
-    FileVersion, KillParams, ListeningPort, ListeningPortsResult, OutputStream, PathParams,
-    ProcessExitEvent, ProcessOutputEvent, ProcessParams, ReadDirResult, ReadFileParams,
-    ReadFileResult, RealPathResult, RemoveParams, RenameParams, ResourceLabel, ServerState,
-    SetPermissionsParams, SpawnParams, SpawnResult, TerminalExitEvent, TerminalOpenParams,
-    TerminalOpenResult, TerminalOutputEvent, TerminalParams, TerminalResizeParams,
-    TerminalWriteParams, TunnelClosedEvent, TunnelDataEvent, TunnelOpenParams, TunnelParams,
-    TunnelTarget, TunnelWriteParams, VolumeInfo, WalkDoneEvent, WalkEntriesEvent, WalkEntry,
-    WalkParams, WalkStartParams, WatchChangedEvent, WatchErrorEvent, WatchParams, WatchStartParams,
-    WatchStartResult, WriteFileParams, MAX_TRANSFER_BYTES,
+    FileVersion, KillParams, ListenerAdoptParams, ListenerOpenParams, ListenerOpened,
+    ListenerParams, ListenerState, ListenersResult, ListeningPort, ListeningPortsResult,
+    OutputStream, PathParams, ProcessExitEvent, ProcessOutputEvent, ProcessParams, ReadDirResult,
+    ReadFileParams, ReadFileResult, RealPathResult, RemoveParams, RenameParams, ResourceLabel,
+    ServerState, SetPermissionsParams, SpawnParams, SpawnResult, TerminalExitEvent,
+    TerminalOpenParams, TerminalOpenResult, TerminalOutputEvent, TerminalParams,
+    TerminalResizeParams, TerminalWriteParams, TunnelClosedEvent, TunnelDataEvent,
+    TunnelOpenParams, TunnelParams, TunnelTarget, TunnelWriteParams, VolumeInfo, WalkDoneEvent,
+    WalkEntriesEvent, WalkEntry, WalkParams, WalkStartParams, WatchChangedEvent, WatchErrorEvent,
+    WatchParams, WatchStartParams, WatchStartResult, WriteFileParams, MAX_TRANSFER_BYTES,
 };
 use crate::protocol::{ErrorCode, RemoteError};
 use serde::de::DeserializeOwned;
@@ -505,6 +506,72 @@ impl RemoteSession {
         match self.call_unit(
             methods::TUNNEL_OPEN,
             &TunnelOpenParams { tunnel_id, target },
+        ) {
+            Ok(()) => Ok(TunnelHandle {
+                session: self,
+                id: tunnel_id,
+                events,
+            }),
+            Err(error) => {
+                self.unsubscribe("tunnel", tunnel_id);
+                Err(error)
+            }
+        }
+    }
+
+    /// Opens a host listener and returns the bound port. With `relay` the
+    /// host connects accepted connections to that target itself; without
+    /// it the caller subscribes to `listener` events for `listener_id`
+    /// first and adopts every accepted connection with
+    /// [`RemoteSession::adopt_tunnel`].
+    pub fn open_listener(
+        &self,
+        listener_id: u64,
+        host: &str,
+        port: u16,
+        relay: Option<TunnelTarget>,
+    ) -> Result<u16, ClientError> {
+        self.call::<_, ListenerOpened>(
+            methods::LISTENER_OPEN,
+            &ListenerOpenParams {
+                listener_id,
+                host: host.into(),
+                port,
+                relay,
+            },
+        )
+        .map(|opened| opened.port)
+    }
+
+    /// Closes a host listener and every connection it still holds, and
+    /// returns its final counts.
+    pub fn close_listener(&self, listener_id: u64) -> Result<ListenerState, ClientError> {
+        self.call(methods::LISTENER_CLOSE, &ListenerParams { listener_id })
+    }
+
+    /// The session's host listeners with their connection counts.
+    pub fn listeners(&self) -> Result<Vec<ListenerState>, ClientError> {
+        self.call::<_, ListenersResult>(methods::LISTENER_LIST, &json!({}))
+            .map(|result| result.listeners)
+    }
+
+    /// Turns the connection `accept_id` of a reverse listener into a tunnel,
+    /// subscribing to its events first as [`RemoteSession::open_tunnel`]
+    /// does.
+    pub fn adopt_tunnel(
+        &self,
+        listener_id: u64,
+        accept_id: u64,
+    ) -> Result<TunnelHandle<'_>, ClientError> {
+        let tunnel_id = self.allocate_id();
+        let events = self.subscribe("tunnel", tunnel_id);
+        match self.call_unit(
+            methods::LISTENER_ADOPT,
+            &ListenerAdoptParams {
+                listener_id,
+                accept_id,
+                tunnel_id,
+            },
         ) {
             Ok(()) => Ok(TunnelHandle {
                 session: self,

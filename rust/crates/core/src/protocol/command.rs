@@ -1014,6 +1014,12 @@ pub enum RemoteCommand {
     /// Forwards a local port to a port as the remote host sees it
     /// (`remote.startForward`).
     StartForward,
+    /// Makes the remote host listen on a port and connect it to another
+    /// server (`remote.startHostForward`).
+    StartHostForward,
+    /// Makes the remote host listen on a loopback port that reaches a port
+    /// on this machine (`remote.startReverseForward`).
+    StartReverseForward,
     /// Stops one port forward and closes its local port (`remote.stopForward`).
     StopForward,
     /// Lists the running port forwards of one connection (`remote.forwards`).
@@ -1613,6 +1619,8 @@ impl CoreCommand {
             "remote.workspaceTrust" => Some(Self::Remote(RemoteCommand::WorkspaceTrust)),
             "remote.editWorkspaceTrust" => Some(Self::Remote(RemoteCommand::EditWorkspaceTrust)),
             "remote.startForward" => Some(Self::Remote(RemoteCommand::StartForward)),
+            "remote.startHostForward" => Some(Self::Remote(RemoteCommand::StartHostForward)),
+            "remote.startReverseForward" => Some(Self::Remote(RemoteCommand::StartReverseForward)),
             "remote.stopForward" => Some(Self::Remote(RemoteCommand::StopForward)),
             "remote.forwards" => Some(Self::Remote(RemoteCommand::Forwards)),
             "remote.parseForwardAddress" => Some(Self::Remote(RemoteCommand::ParseForwardAddress)),
