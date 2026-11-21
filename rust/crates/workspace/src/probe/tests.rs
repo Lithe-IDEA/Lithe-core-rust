@@ -9,118 +9,17 @@ use std::sync::atomic::{AtomicU64, Ordering};
 #[cfg(unix)]
 use std::sync::OnceLock;
 
-fn connection(value: serde_json::Value) -> SshConnection {
-    serde_json::from_value(value).expect("valid connection")
-}
-
-/// The local command line the connection produces for the probe.
-fn command_line(value: serde_json::Value) -> Vec<String> {
-    let hop = ssh_hop(&connection(value)).expect("valid hop");
-    TransportChain::new(vec![Hop::Ssh(hop)])
-        .command(&probe_command())
-        .unwrap()
-}
-
-fn option_value(command: &[String], key: &str) -> Option<String> {
-    command
-        .windows(2)
-        .filter(|pair| pair[0] == "-o")
-        .find_map(|pair| pair[1].strip_prefix(&format!("{key}=")).map(str::to_owned))
-}
-
+// The connection rules live in `lithe_remote::client::connections`; the
+// probe only reports a refusal as a bad request that names the field.
 #[test]
-fn private_key_connections_offer_only_the_chosen_key() {
-    let command = command_line(json!({
-        "host": "devbox.example",
-        "port": 2222,
-        "user": "dev",
-        "authentication": "privateKey",
-        "identityFile": "~/.ssh/id_ed25519",
-        "connectTimeoutSeconds": 20,
-        "keepAliveSeconds": 30,
-    }));
-    assert!(command.windows(2).any(|pair| pair == ["-p", "2222"]));
-    assert_eq!(&command[command.len() - 2], "dev@devbox.example");
-    assert_eq!(
-        option_value(&command, "IdentityFile").as_deref(),
-        Some("~/.ssh/id_ed25519")
-    );
-    assert_eq!(
-        option_value(&command, "IdentitiesOnly").as_deref(),
-        Some("yes")
-    );
-    assert_eq!(
-        option_value(&command, "PreferredAuthentications").as_deref(),
-        Some("publickey")
-    );
-    assert_eq!(
-        option_value(&command, "ConnectTimeout").as_deref(),
-        Some("20")
-    );
-    // OpenSSH keeps the first value, so the profile's interval must come
-    // before the transport's default.
-    assert_eq!(
-        option_value(&command, "ServerAliveInterval").as_deref(),
-        Some("30")
-    );
-    assert_eq!(option_value(&command, "BatchMode").as_deref(), Some("no"));
-}
-
-#[test]
-fn other_authentication_methods_select_matching_ssh_options() {
-    let password = command_line(json!({ "host": "h", "authentication": "password" }));
-    assert_eq!(
-        option_value(&password, "PreferredAuthentications").as_deref(),
-        Some("keyboard-interactive,password")
-    );
-    assert_eq!(
-        option_value(&password, "PubkeyAuthentication").as_deref(),
-        Some("no")
-    );
-
-    let agent = command_line(json!({ "host": "h", "authentication": "agent" }));
-    assert_eq!(
-        option_value(&agent, "PreferredAuthentications").as_deref(),
-        Some("publickey")
-    );
-    assert_eq!(option_value(&agent, "IdentityFile"), None);
-
-    // Automatic leaves the order to OpenSSH and the user's configuration,
-    // and an alias without a user or port stays untouched.
-    let automatic = command_line(json!({ "host": "devbox" }));
-    assert_eq!(option_value(&automatic, "PreferredAuthentications"), None);
-    assert_eq!(&automatic[automatic.len() - 2], "devbox");
-    assert!(!automatic.iter().any(|argument| argument == "-p"));
-    assert_eq!(
-        option_value(&automatic, "ConnectTimeout").as_deref(),
-        Some(DEFAULT_CONNECT_TIMEOUT_SECONDS.to_string().as_str())
-    );
-}
-
-#[test]
-fn malformed_connections_are_rejected_before_ssh_starts() {
-    for value in [
-        json!({ "host": "" }),
-        json!({ "host": "dev@box" }),
-        json!({ "host": "-oProxyCommand=touch x" }),
-        json!({ "host": "box", "user": "-oProxyCommand=x" }),
-        json!({ "host": "box", "user": "a b" }),
-        json!({ "host": "box", "authentication": "privateKey" }),
-    ] {
-        let hop = ssh_hop(&connection(value.clone()));
-        let command = hop.and_then(|hop| {
-            TransportChain::new(vec![Hop::Ssh(hop)])
-                .command(&probe_command())
-                .map_err(|error| CoreError::new(ErrorCode::InvalidRequest, error.to_string()))
-        });
-        assert!(
-            matches!(command, Err(ref error) if matches!(error.code, ErrorCode::InvalidRequest)),
-            "{value} was accepted"
-        );
-    }
-    assert!(
-        serde_json::from_value::<SshConnection>(json!({ "host": "h", "password": "x" })).is_err()
-    );
+fn malformed_connections_name_the_field_in_the_error() {
+    let connection: SshConnection =
+        serde_json::from_value(json!({ "host": "dev@box" })).expect("decodes");
+    let error = ssh_hop(&connection).expect_err("host with a user is refused");
+    assert!(matches!(error.code, ErrorCode::InvalidRequest));
+    let details: serde_json::Value =
+        serde_json::from_str(error.details.as_deref().expect("details")).unwrap();
+    assert_eq!(details, json!({ "field": "host", "reason": "invalid" }));
 }
 
 #[test]
@@ -401,22 +300,6 @@ fn closed_connections_cannot_be_used() {
 fn closing_all_connections_with_none_open_succeeds() {
     let connections = std::sync::Mutex::new(std::collections::HashMap::new());
     assert_eq!(sessions::close_registry(&connections), 0);
-}
-
-// ssh splits an option value on whitespace, so a key path with spaces must
-// reach it quoted.
-#[cfg(unix)]
-#[test]
-fn private_key_paths_with_spaces_are_quoted() {
-    let command = command_line(json!({
-        "host": "devbox.example",
-        "authentication": "privateKey",
-        "identityFile": "/Users/me/My Keys/id_rsa",
-    }));
-    assert_eq!(
-        option_value(&command, "IdentityFile").as_deref(),
-        Some("\"/Users/me/My Keys/id_rsa\"")
-    );
 }
 
 /// A scratch directory no other fixture shares, even across processes.

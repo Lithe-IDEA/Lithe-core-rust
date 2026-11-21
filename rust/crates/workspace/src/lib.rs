@@ -7,14 +7,16 @@
 //! [`remote_path`] / [`local_path`] translate schema-owned paths between the
 //! two namespaces. Without a host every call is the local filesystem.
 //!
-//! The session side owns the long-lived connections: [`probe`] checks that a
-//! saved SSH connection reaches a usable host, [`sessions`] opens and keeps the
+//! The session side owns the long-lived connections: [`connections`] keeps
+//! the SSH connections the user saved, [`probe`] checks that a saved SSH
+//! connection reaches a usable host, [`sessions`] opens and keeps the
 //! connections, [`host`] forwards finite requests and owned streaming resources
 //! (processes, terminals, watches), [`upload`] streams a verified file to
 //! the host, and [`trust`] keys remote workspace trust by what the connection
 //! resolves. Domain semantics stay in their engines (Git, build, language
 //! servers); this crate only supplies the IO boundary.
 
+pub mod connections;
 pub mod fs;
 pub mod host;
 pub mod probe;

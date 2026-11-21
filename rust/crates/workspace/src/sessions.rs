@@ -7,9 +7,10 @@
 //! it by id. OpenSSH runs in its own process tree, which closing a connection
 //! ends.
 
-use crate::probe::{classify, diagnostics, ssh_hop, ProbeStatus, ProbedHost, SshConnection};
+use crate::probe::{classify, diagnostics, ssh_hop, ProbeStatus, ProbedHost};
 use lithe_git_host::ProcessTree;
 use lithe_protocol::{CoreError, ErrorCode};
+use lithe_remote::client::connections::SshConnection;
 use lithe_remote::client::launch::{launch, launch_command, LaunchError, Launched};
 use lithe_remote::client::session::{ClientError, ConnectOptions};
 use lithe_remote::client::trust::Target;
