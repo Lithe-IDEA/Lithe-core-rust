@@ -402,7 +402,7 @@ fn allowed_option(key: &str, value: &str) -> Result<&'static str, TransportError
             OptionSyntax::Methods => value
                 .split(',')
                 .all(|method| AUTHENTICATION_METHODS.contains(&method)),
-            OptionSyntax::Jumps => value == "none" || value.split(',').all(is_jump_host),
+            OptionSyntax::Jumps => is_jumps(value),
         };
     if !well_formed {
         return Err(TransportError::InvalidHop {
@@ -422,11 +422,16 @@ fn is_port(value: &str) -> bool {
 }
 
 /// A login name that ssh cannot read as an option or a host separator.
-fn is_ssh_user(user: &str) -> bool {
+pub(crate) fn is_ssh_user(user: &str) -> bool {
     let mut characters = user.chars();
     matches!(characters.next(), Some(first) if first.is_ascii_alphanumeric() || first == '_')
         && characters
             .all(|character| character.is_ascii_alphanumeric() || "._-".contains(character))
+}
+
+/// A `ProxyJump` value: `none`, or comma-separated jump hosts.
+pub(crate) fn is_jumps(value: &str) -> bool {
+    value == "none" || value.split(',').all(is_jump_host)
 }
 
 /// `[user@]host[:port]`, where `host` is a host name, an SSH alias or a

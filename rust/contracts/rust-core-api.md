@@ -816,6 +816,8 @@ or removing a command fails until the table changes in the same commit.
 | `remote.hostInfo` | Return cached handshake capabilities of one connection |
 | `remote.workspaceTrust` | Read remote workspace trust decisions and one open workspace's trust |
 | `remote.editWorkspaceTrust` | Record or remove one remote workspace trust decision |
+| `remote.connections` | Read the SSH connections the user saved |
+| `remote.editConnections` | Save, remove or record a folder on one saved SSH connection |
 | `git.historyRewritePreview` | Review undo, message edit, squash, or drop with complete messages, eligibility, and an immutable checkout expectation |
 | `git.remotes` | Return configured fetch remote names and URLs |
 | `git.tags` | Return tag names, tag object IDs, target IDs, dates, and annotations |
@@ -5661,10 +5663,28 @@ place.
 
 `remote.probe` checks a saved SSH connection before a remote workspace is
 opened. The request is `{ connection: { host, port?, user?, authentication?,
-identityFile?, connectTimeoutSeconds?, keepAliveSeconds? } }`; unknown fields,
-including any password, are rejected. `authentication` is `auto` (default),
-`agent`, `privateKey` (requires `identityFile`), or `password`. `host` is a
-name, address, or SSH configuration alias without a user.
+identityFile?, proxyJump?, connectTimeoutSeconds?, keepAliveSeconds? } }`;
+unknown fields, including any password, are rejected. `authentication` is
+`auto` (default), `agent`, `privateKey` (requires `identityFile`), or
+`password`. `host` is a name, address, or SSH configuration alias without a
+user. Text fields are trimmed and empty optional fields dropped first;
+`identityFile` is dropped unless `authentication` is `privateKey`. Then:
+
+| Field | Accepted |
+| --- | --- |
+| `host` | 1 to 1024 bytes of ASCII letters, digits and `._-:%`, not starting with `-` |
+| `port` | 1 to 65535; absent keeps the SSH configuration's port |
+| `user` | at most 1024 bytes of ASCII letters, digits and `._-`, starting with a letter, digit or `_` |
+| `identityFile` | at most 1024 bytes, no control characters; quoted for OpenSSH when it has spaces |
+| `proxyJump` | `none`, or comma-separated `[user@]host[:port]`; absent keeps the SSH configuration's jump hosts |
+| `connectTimeoutSeconds` | 1 to 600; absent is 15 |
+| `keepAliveSeconds` | 1 to 3600; absent keeps the transport's default |
+
+A refused connection is `invalid_request` whose `details` is the JSON
+`{ field, reason }`, where `reason` is `required`, `invalid` or `tooLong`.
+Every field becomes an allowlisted SSH option; options that run a local
+command, such as `ProxyCommand`, are only read from the user's own SSH
+configuration.
 
 Core runs the system `ssh` with the probe of
 [`remote-workspace-protocol-v1`](remote-workspace-protocol-v1.md)'s bootstrap
@@ -5689,7 +5709,7 @@ The result is `{ status, host, diagnostics }`:
 `host` is `{ system, machine, homeDirectory, serverTarget }` from `uname -s`,
 `uname -m` and `$HOME`; `serverTarget` is the server's Rust target or `null`.
 `diagnostics` is the redacted end of OpenSSH's standard error (at most
-4 KiB). A malformed connection is `invalid_request`, a missing `ssh` is
+4 KiB). A malformed connection is `invalid_request` as above, a missing `ssh` is
 `runtime_missing`, and cancellation or the five-minute bound are `cancelled`
 and `timed_out`.
 
@@ -5697,6 +5717,48 @@ and `timed_out`.
 `hostName`, `operatingSystem`, `kernel`, `cpuCount`, `memoryBytes`,
 `diskTotalBytes` and `diskAvailableBytes` (the file system holding `$HOME`),
 and `uptimeSeconds`.
+
+#### Saved connections
+
+The connection window lists the SSH connections the user saved. Native
+clients keep them in one machine-local document, read it, and publish the
+`document` an edit returns atomically, as for the trust decisions; Core
+validates the document and applies every edit.
+
+`remote.connections` accepts `{ document: string|null }` and returns
+`{ connections, storage: { relativePath: "remote/connections.json",
+maximumBytes: 262144 } }`. `connections` is the list in the user's order;
+each entry is `{ id, name, connection, recentFolders? }`, where `connection`
+is the object `remote.probe` takes and `recentFolders` holds at most 10
+normalized absolute host paths, most recent first.
+
+`remote.editConnections` accepts `{ document }` with exactly one of:
+
+- `save: { id?, name, connection }` normalizes and checks the connection,
+  then adds an entry with a new id or replaces the entry `id` in place.
+  `name` is trimmed, 1 to 128 characters without control characters, and
+  unique among the entries regardless of case. Replacing an entry with
+  another `host`, `port`, `user` or `proxyJump` clears its recent folders,
+  which belong to the target and not to the name.
+- `remove: { id }` removes the entry; an absent id changes nothing.
+- `rememberFolder: { id, path }` moves `path` to the front of the entry's
+  recent folders and keeps 10.
+
+The result is `{ changed, document: string|null, connections, id? }`; `id`
+names the entry a save wrote. An unchanged edit returns a `null` document and
+must not create a source. Requests never carry a secret: a password field is
+an unknown field and is rejected.
+
+Bounds: 256 KiB per document and 128 entries. A document that cannot be
+decoded, has duplicate keys, unknown fields, another version, a malformed
+entry, or an id or name used twice is `parse_failed`; a malformed request or a
+refused edit is `invalid_request`. Both carry `details` as the JSON
+`{ field, reason }`, where `reason` is `required`, `invalid`, `tooLong`,
+`duplicate`, `full` (128 entries) or `unknown` (no entry has the id).
+
+Native clients keep the document below their platform user-preference
+directory, never on a host, in a workspace or in an installed package. This
+user-settings resource does not affect code signatures or update deltas.
 
 #### Remote connections that stay open
 

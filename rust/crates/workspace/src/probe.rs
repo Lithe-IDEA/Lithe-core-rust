@@ -11,14 +11,12 @@
 
 use lithe_protocol::{CoreError, ErrorCode};
 use lithe_remote::client::bootstrap::{parse_probe, probe_command};
+use lithe_remote::client::connections::SshConnection;
 use lithe_remote::client::{Hop, SshHop, TransportChain};
 use lithe_request_context::events as execution_events;
 use serde::{Deserialize, Serialize};
 use std::process::{Command, ExitStatus};
 use std::time::{Duration, Instant};
-
-/// Seconds OpenSSH waits for the TCP connection when the profile sets none.
-const DEFAULT_CONNECT_TIMEOUT_SECONDS: u32 = 15;
 
 /// Upper bound for one probe, including the time the user needs to answer
 /// prompts. Each prompt is additionally bounded by the AskPass session.
@@ -26,48 +24,6 @@ const PROBE_DEADLINE: Duration = Duration::from_secs(5 * 60);
 
 /// Bytes of OpenSSH's standard error kept as diagnostics.
 const DIAGNOSTICS_LIMIT: usize = 4 * 1024;
-
-/// How the connection proves the user's identity. Every method still lets
-/// OpenSSH ask follow-up questions, such as a one-time code.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub enum Authentication {
-    /// OpenSSH's own order: keys and agent first, then interactive methods.
-    #[default]
-    Auto,
-    /// Keys offered by the running SSH agent or the SSH configuration.
-    Agent,
-    /// Only the private key named by `identityFile`.
-    PrivateKey,
-    /// Password or keyboard-interactive prompts, without trying keys.
-    Password,
-}
-
-/// One saved SSH connection. Only facts that change the target or the
-/// authentication are sent; names and colors stay in the host.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct SshConnection {
-    /// Host name, address, or a `Host` alias from the user's SSH configuration.
-    host: String,
-    /// `None` keeps the port from the SSH configuration (22 by default).
-    #[serde(default)]
-    port: Option<u16>,
-    /// `None` keeps the user from the SSH configuration.
-    #[serde(default)]
-    user: Option<String>,
-    #[serde(default)]
-    authentication: Authentication,
-    /// Private key path; required for [`Authentication::PrivateKey`]. OpenSSH
-    /// expands a leading `~` itself.
-    #[serde(default)]
-    identity_file: Option<String>,
-    #[serde(default)]
-    connect_timeout_seconds: Option<u32>,
-    /// `None` keeps the transport's keep-alive default.
-    #[serde(default)]
-    keep_alive_seconds: Option<u32>,
-}
 
 /// `remote.probe`: the saved connection to check.
 #[derive(Deserialize)]
@@ -226,83 +182,14 @@ pub fn respond(request_id: &str, answer: Option<String>) -> bool {
     lithe_git_host::authentication::respond(request_id, answer)
 }
 
+/// The SSH hop of `connection`, refused with the field and the reason when
+/// one is malformed. The rules are in `lithe_remote::client::connections`.
 pub(crate) fn ssh_hop(connection: &SshConnection) -> Result<SshHop, CoreError> {
-    let invalid = |reason: &str| CoreError::new(ErrorCode::InvalidRequest, reason.to_string());
-    let host = connection.host.trim();
-    if host.is_empty() || host.contains('@') {
-        return Err(invalid("Enter a host name or address without a user"));
-    }
-    let destination = match connection.user.as_deref().map(str::trim) {
-        Some(user) if !user.is_empty() => {
-            if user.starts_with('-')
-                || user
-                    .chars()
-                    .any(|character| matches!(character, '@' | ':') || character.is_whitespace())
-            {
-                return Err(invalid("The user name contains characters SSH cannot use"));
-            }
-            format!("{user}@{host}")
-        }
-        _ => host.to_string(),
-    };
-    let mut hop = SshHop::new(destination);
-    hop.port = connection.port.filter(|port| *port != 0);
-    let mut option = |key: &str, value: String| hop.options.push((key.into(), value));
-    option(
-        "ConnectTimeout",
-        connection
-            .connect_timeout_seconds
-            .filter(|seconds| *seconds > 0)
-            .unwrap_or(DEFAULT_CONNECT_TIMEOUT_SECONDS)
-            .to_string(),
-    );
-    if let Some(seconds) = connection.keep_alive_seconds {
-        option("ServerAliveInterval", seconds.to_string());
-    }
-    // Prompts must reach AskPass even when the user's configuration sets
-    // BatchMode for scripts.
-    option("BatchMode", "no".into());
-    match connection.authentication {
-        Authentication::Auto => {}
-        Authentication::Agent => option("PreferredAuthentications", "publickey".into()),
-        Authentication::PrivateKey => {
-            let identity = connection
-                .identity_file
-                .as_deref()
-                .map(str::trim)
-                .filter(|path| !path.is_empty())
-                .ok_or_else(|| invalid("Choose a private key file"))?;
-            if identity.chars().any(char::is_control) {
-                return Err(invalid("The private key path is invalid"));
-            }
-            // ssh splits an option value on whitespace, so a path such as
-            // "~/My Keys/id_rsa" must be quoted (ssh_config quoting rules).
-            let identity = if identity
-                .chars()
-                .any(|c| c.is_whitespace() || c == '"' || c == '\\')
-            {
-                format!(
-                    "\"{}\"",
-                    identity.replace('\\', "\\\\").replace('"', "\\\"")
-                )
-            } else {
-                identity.to_string()
-            };
-            option("IdentityFile", identity);
-            // Without this, keys from the agent are tried first and can use
-            // up the server's attempt limit before the chosen key is offered.
-            option("IdentitiesOnly", "yes".into());
-            option("PreferredAuthentications", "publickey".into());
-        }
-        Authentication::Password => {
-            option(
-                "PreferredAuthentications",
-                "keyboard-interactive,password".into(),
-            );
-            option("PubkeyAuthentication", "no".into());
-        }
-    }
-    Ok(hop)
+    connection
+        .clone()
+        .normalized()
+        .hop()
+        .map_err(crate::connections::invalid_request)
 }
 
 /// Interprets the finished probe. OpenSSH reports connection failures only

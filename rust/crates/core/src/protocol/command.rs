@@ -1009,6 +1009,11 @@ pub enum RemoteCommand {
     /// Records or removes one remote workspace trust decision
     /// (`remote.editWorkspaceTrust`).
     EditWorkspaceTrust,
+    /// Reads the SSH connections the user saved (`remote.connections`).
+    Connections,
+    /// Saves, removes or records a folder on one saved SSH connection
+    /// (`remote.editConnections`).
+    EditConnections,
 }
 
 #[derive(Debug, Clone)]
@@ -1573,6 +1578,8 @@ impl CoreCommand {
             "remote.hostInfo" => Some(Self::Remote(RemoteCommand::HostInfo)),
             "remote.workspaceTrust" => Some(Self::Remote(RemoteCommand::WorkspaceTrust)),
             "remote.editWorkspaceTrust" => Some(Self::Remote(RemoteCommand::EditWorkspaceTrust)),
+            "remote.connections" => Some(Self::Remote(RemoteCommand::Connections)),
+            "remote.editConnections" => Some(Self::Remote(RemoteCommand::EditConnections)),
             "git.historyRewritePreview" => Some(Self::Git(GitCommand::HistoryRewritePreview)),
             "git.remotes" => Some(Self::Git(GitCommand::Remotes)),
             "git.tags" => Some(Self::Git(GitCommand::Tags)),
