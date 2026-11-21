@@ -344,6 +344,50 @@ fn connecting_without_a_matching_server_reports_the_platform() {
     assert_eq!(value["host"]["system"], local_uname("-s"));
 }
 
+/// Variables the fake client started with, as its body wrote them with
+/// `env > "$0.environment"`.
+#[cfg(unix)]
+fn environment_seen_by(ssh: &FakeSsh) -> std::collections::BTreeMap<String, String> {
+    std::fs::read_to_string(ssh.program.with_extension("environment"))
+        .unwrap()
+        .lines()
+        .filter_map(|line| line.split_once('='))
+        .map(|(name, value)| (name.to_owned(), value.to_owned()))
+        .collect()
+}
+
+// ssh sends the remote host every local variable a `SendEnv` pattern names,
+// so the probe and the connection start it with only the variables it needs
+// and the AskPass helper's (S26).
+#[cfg(unix)]
+#[test]
+fn the_ssh_client_starts_with_only_the_variables_it_needs() {
+    // Cargo sets its package variables for every test process; none is kept.
+    assert!(std::env::var_os("CARGO_PKG_NAME").is_some());
+    let body = "env > \"$0.environment\"\n\
+                echo 'dev@devbox: Permission denied (password).' >&2\nexit 255";
+    let probing = FakeSsh::new("remote-probe-environment", body);
+    probe_with(probe_request(), Some(probing.path())).unwrap();
+    let connecting = FakeSsh::new("remote-connect-environment", body);
+    sessions::connect_with(connect_request(json!([])), Some(connecting.path())).unwrap();
+    for ssh in [&probing, &connecting] {
+        let seen = environment_seen_by(ssh);
+        // Names only: values may be secrets of the machine running the test.
+        let names = seen.keys().collect::<Vec<_>>();
+        assert!(!seen.contains_key("CARGO_PKG_NAME"), "{names:?}");
+        assert!(!seen.contains_key("LANG"), "{names:?}");
+        assert_eq!(
+            seen.get("PATH").map(String::as_str),
+            std::env::var("PATH").ok().as_deref()
+        );
+        assert_eq!(
+            seen.get("SSH_ASKPASS_REQUIRE").map(String::as_str),
+            Some("force"),
+            "{names:?}"
+        );
+    }
+}
+
 // The connection log keeps one category per failed status, so a log line
 // tells authentication, host key and network failures apart.
 #[test]

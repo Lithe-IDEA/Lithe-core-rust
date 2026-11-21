@@ -142,6 +142,8 @@ fn probe_with(request: ProbeRequest, ssh_program: Option<&str>) -> Result<ProbeR
         .expect("an SSH hop always produces a command");
     let mut process = Command::new(program);
     process.args(arguments);
+    // Before the AskPass variables, which must reach ssh.
+    chain.restrict_environment(&mut process);
 
     let mut authentication = lithe_git_host::authentication::Session::new().map_err(|error| {
         CoreError::new(
