@@ -1,6 +1,7 @@
 //! Filesystem adapter for workspace engines, with no local fallback on remote errors.
 
 use crate::scope::{self as workspace, Host};
+use lithe_platform::{paths::invalid_relative_path, Platform};
 use lithe_remote::client::session::ClientError;
 use lithe_remote::protocol::{methods, ErrorCode};
 use serde::de::DeserializeOwned;
@@ -590,6 +591,14 @@ pub fn read_dir(
                 .entries
                 .into_iter()
                 .map(|entry| {
+                    // The server sends a Unix leaf. Keep a Windows separator or
+                    // drive prefix from changing the placeholder it belongs to.
+                    if invalid_relative_path(&entry.name, Platform::HOST) {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "Remote entry name cannot be represented on this client",
+                        ));
+                    }
                     Ok(DirEntry {
                         path: path_value.join(entry.name),
                         kind: entry.metadata.kind,
