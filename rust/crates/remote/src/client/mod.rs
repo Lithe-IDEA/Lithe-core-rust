@@ -13,6 +13,8 @@
 //!   routes each resource's events to its subscriber.
 //! - [`api`] offers typed operations and resource handles on a session.
 //! - [`forward`] forwards local ports through tunnels.
+//! - [`forward_address`] reads the addresses typed into the ports page:
+//!   ports, `host:port` and URLs.
 //! - [`forward_set`] keeps the forwards of one session for the ports page,
 //!   confirms targets outside the host and releases them with the session.
 //! - [`connection_log`] records one connection's lifecycle in the v2 log,
@@ -38,6 +40,7 @@ mod command;
 pub mod connection_log;
 pub mod connections;
 pub mod forward;
+pub mod forward_address;
 pub mod forward_set;
 pub mod launch;
 #[cfg(feature = "motty")]
@@ -52,6 +55,7 @@ pub use api::{SpawnSpec, TerminalSpec, WriteOptions};
 pub use bootstrap::{ArtifactError, ServerArtifact, ServerTarget};
 pub use connection_log::{ConnectionKind, ConnectionLog};
 pub use forward::PortForward;
+pub use forward_address::{AddressError, ForwardAddress};
 pub use forward_set::{ForwardError, ForwardInfo, ForwardSet, ForwardSpec, TargetField};
 pub use session::{ClientError, ConnectOptions, Event, RemoteSession, ResumeMode};
 pub use transport::{ContainerEngine, ContainerHop, Hop, SshHop, TransportChain, TransportError};

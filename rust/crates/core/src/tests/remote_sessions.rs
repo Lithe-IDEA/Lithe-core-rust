@@ -1278,7 +1278,39 @@ fn connection_window_helpers_answer_through_the_dispatcher() {
     );
     assert_eq!(motty["data"]["unavailable"], "missing", "{motty}");
 
+    let forward = call(
+        "remote.parseForwardAddress",
+        json!({"text": "HTTP://Localhost:3000/app?tab=1"}),
+    );
+    assert_eq!(
+        forward["data"],
+        json!({"targetHost": "localhost", "targetPort": 3000, "scheme": "http", "path": "/app?tab=1"}),
+        "{forward}"
+    );
+    let port = call("remote.parseForwardAddress", json!({"text": "8080"}));
+    assert_eq!(
+        port["data"],
+        json!({"targetHost": "localhost", "targetPort": 8080}),
+        "{port}"
+    );
+    let secret = call(
+        "remote.parseForwardAddress",
+        json!({"text": "https://user:secret@example.com"}),
+    );
+    assert_eq!(secret["error"]["code"], "invalid_request", "{secret}");
+    let details: Value =
+        serde_json::from_str(secret["error"]["details"].as_str().unwrap()).unwrap();
+    assert_eq!(details, json!({"field": "text", "reason": "credentials"}));
+    assert!(
+        !secret.to_string().contains("secret@"),
+        "a refused address is not echoed"
+    );
+
     for (command, payload) in [
+        (
+            "remote.parseForwardAddress",
+            json!({"text": "3000", "extra": 1}),
+        ),
         (
             "remote.effectiveSettings",
             json!({"connection": {"host": "dev@box"}}),

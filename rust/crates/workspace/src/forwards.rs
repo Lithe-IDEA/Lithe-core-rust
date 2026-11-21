@@ -1,5 +1,7 @@
 //! `remote.startForward`, `remote.stopForward` and `remote.forwards`: the
 //! port forwards of one open connection, as the ports page manages them.
+//! `remote.parseForwardAddress` reads what the user typed into the page, a
+//! port, `host:port` or a URL, without a connection.
 //!
 //! Each connection owns its forwards. Closing the connection, or losing it,
 //! closes every local port it opened (design S29). Which targets need the
@@ -11,7 +13,9 @@
 use crate::sessions::{forget, lookup, Connection};
 use lithe_protocol::{CoreError, ErrorCode};
 use lithe_remote::client::forward_set::MAX_FORWARDS;
-use lithe_remote::client::{ForwardError, ForwardInfo, ForwardSpec, TargetField};
+use lithe_remote::client::{
+    forward_address, ForwardAddress, ForwardError, ForwardInfo, ForwardSpec, TargetField,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
@@ -31,6 +35,13 @@ pub struct StartRequest {
     /// The user confirmed a target outside the host's loopback interface.
     #[serde(default)]
     allow_non_loopback_target: bool,
+}
+
+/// `remote.parseForwardAddress`: an address typed into the ports page.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AddressRequest {
+    text: String,
 }
 
 /// `remote.stopForward`.
@@ -88,6 +99,15 @@ pub fn start(request: StartRequest) -> Result<Started, CoreError> {
         .start(spec)
         .map_err(|error| forward_error(&request.session_id, error))?;
     Ok(Started { forward, created })
+}
+
+/// Reads an address typed into the ports page into the target of a forward.
+/// Nothing is resolved or contacted.
+pub fn parse_address(request: AddressRequest) -> Result<ForwardAddress, CoreError> {
+    forward_address::parse(&request.text).map_err(|error| {
+        CoreError::new(ErrorCode::InvalidRequest, "Invalid port forward address")
+            .with_details(json!({ "field": "text", "reason": error.reason() }).to_string())
+    })
 }
 
 /// Stops one forward and closes its local port.

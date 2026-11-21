@@ -820,6 +820,7 @@ or removing a command fails until the table changes in the same commit.
 | `remote.startForward` | Forward a local port to a port as the remote host sees it |
 | `remote.stopForward` | Stop one port forward and close its local port |
 | `remote.forwards` | List the running port forwards of one connection |
+| `remote.parseForwardAddress` | Read a port, `host:port` or URL typed into the ports page into a forward target |
 | `remote.connections` | Read the SSH connections the user saved |
 | `remote.editConnections` | Save, remove or import saved SSH connections, or record a folder or a connection time |
 | `remote.parseAddress` | Split a quick-connect address into connection fields |
@@ -6024,6 +6025,7 @@ owning process). Forwards belong to one connection:
 | `remote.startForward` | `{ sessionId, targetHost, targetPort, localPort?, allowNonLoopbackTarget? }` | `{ forward, created }` |
 | `remote.stopForward` | `{ sessionId, forwardId }` | `{ stopped }` |
 | `remote.forwards` | `{ sessionId }` | `{ forwards }`, by `id` |
+| `remote.parseForwardAddress` | `{ text }` | `{ targetHost, targetPort, scheme?, path? }` |
 
 A forward is `{ id, localHost, localPort, requestedLocalPort?,
 localPortChanged, targetHost, targetPort, loopbackTarget, connections }`.
@@ -6035,6 +6037,20 @@ localPortChanged, targetHost, targetPort, loopbackTarget, connections }`.
   same family; `targetHost` in the result is the address sent to the host.
   A malformed host or port `0` is `invalid_request` with `details.field`
   (`targetHost` or `targetPort`).
+- **Typed address.** `remote.parseForwardAddress` reads what the user typed
+  into the page, without a connection and without resolving anything: a
+  port alone (`3000`, on `localhost`), `host:port` with brackets around an
+  IPv6 address, or a URL `scheme://host[:port][/path][?query][#fragment]`.
+  A URL without a port uses its scheme's (80 for `http` and `ws`, 443 for
+  `https` and `wss`); any other scheme must name the port. `targetHost` has
+  no brackets and names are in lower case; `scheme` and `path` (what follows
+  the host and port, absent when empty or `/`) come only from a URL or an
+  address with a path, so the page opens the forwarded address the same
+  way. A refused address is `invalid_request` with `details` `{ field:
+  "text", reason }`, where `reason` is `empty`, `tooLong` (over 2048 bytes),
+  `malformed` (white space or a control character inside), `scheme`,
+  `credentials` (a user name or password, refused rather than kept),
+  `host` or `port`.
 - **Confirmation.** A target outside the host's loopback interface reaches
   another machine through the host, so it starts only with
   `allowNonLoopbackTarget: true`, which the native client sets after the

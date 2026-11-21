@@ -1018,6 +1018,9 @@ pub enum RemoteCommand {
     StopForward,
     /// Lists the running port forwards of one connection (`remote.forwards`).
     Forwards,
+    /// Reads a port, `host:port` or URL typed into the ports page
+    /// (`remote.parseForwardAddress`).
+    ParseForwardAddress,
     /// Reads the SSH connections the user saved (`remote.connections`).
     Connections,
     /// Saves, removes, imports or records a folder or a connection time on
@@ -1604,6 +1607,7 @@ impl CoreCommand {
             "remote.startForward" => Some(Self::Remote(RemoteCommand::StartForward)),
             "remote.stopForward" => Some(Self::Remote(RemoteCommand::StopForward)),
             "remote.forwards" => Some(Self::Remote(RemoteCommand::Forwards)),
+            "remote.parseForwardAddress" => Some(Self::Remote(RemoteCommand::ParseForwardAddress)),
             "remote.connections" => Some(Self::Remote(RemoteCommand::Connections)),
             "remote.editConnections" => Some(Self::Remote(RemoteCommand::EditConnections)),
             "remote.parseAddress" => Some(Self::Remote(RemoteCommand::ParseAddress)),
