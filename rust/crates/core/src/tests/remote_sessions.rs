@@ -1678,3 +1678,126 @@ fn remote_host_and_reverse_forwards_follow_their_own_rules() {
         true
     );
 }
+
+#[test]
+fn remote_programs_are_listed_ended_and_kept_only_by_a_persistent_session() {
+    use lithe_remote::client::api::{SpawnSpec, TerminalEvent, TerminalSpec};
+    use lithe_remote::protocol::methods::ResourceLabel;
+
+    let host = HostFixture::new();
+    let respond = |command: &str, payload: Value| -> Value {
+        serde_json::from_str(&crate::execute_json(
+            &json!({"id": test_support::unique_id(), "command": command,
+                "timeoutMilliseconds": 30_000, "payload": payload})
+            .to_string(),
+        ))
+        .unwrap()
+    };
+    let call = |command: &str, payload: Value| -> Value {
+        let response = respond(command, payload);
+        assert_eq!(response["ok"], true, "{command}: {response}");
+        response["data"].clone()
+    };
+    let session = json!({"sessionId": host.id});
+    assert_eq!(
+        call("remote.runningPrograms", session.clone()),
+        json!({"programs": []})
+    );
+
+    let connection = test_support::connection(&host.id);
+    let process = connection
+        .session
+        .spawn(SpawnSpec {
+            argv: vec!["sleep".into(), "30".into()],
+            label: Some(ResourceLabel {
+                kind: "run".into(),
+                name: "server".into(),
+            }),
+            ..SpawnSpec::default()
+        })
+        .unwrap();
+    let terminal = connection
+        .session
+        .open_terminal(TerminalSpec {
+            argv: Some(vec!["sleep".into(), "30".into()]),
+            cwd: None,
+            env: std::collections::BTreeMap::new(),
+            columns: 80,
+            rows: 24,
+            label: None,
+        })
+        .unwrap();
+    let listed = call("remote.runningPrograms", session.clone());
+    let programs = listed["programs"].as_array().unwrap();
+    let kinds: Vec<&str> = programs
+        .iter()
+        .map(|program| program["kind"].as_str().unwrap())
+        .collect();
+    assert_eq!(kinds, ["process", "terminal"], "{listed}");
+    assert_eq!(programs[0]["id"], process.id, "{listed}");
+    assert_eq!(programs[0]["argv"], json!(["sleep", "30"]), "{listed}");
+    assert_eq!(
+        programs[0]["label"],
+        json!({"kind": "run", "name": "server"}),
+        "{listed}"
+    );
+    assert_eq!(programs[1]["id"], terminal.id, "{listed}");
+    assert!(programs[1]["label"].is_null(), "{listed}");
+
+    // Only the programs named end, and one the session does not run is not
+    // counted; a kind other than process or terminal is refused.
+    let refused = respond(
+        "remote.endPrograms",
+        json!({"sessionId": host.id, "programs": [{"kind": "watch", "id": 1}]}),
+    );
+    assert_eq!(refused["ok"], false, "{refused}");
+    let named = json!({"sessionId": host.id, "programs": [
+        {"kind": "terminal", "id": terminal.id},
+        {"kind": "process", "id": process.id + 1000},
+    ]});
+    assert_eq!(call("remote.endPrograms", named)["ended"], 1);
+    // The server forgets an exited program before it reports the exit.
+    loop {
+        match terminal.next_event(STEP).unwrap() {
+            Some(TerminalEvent::Exit(_)) => break,
+            Some(TerminalEvent::Output(_)) => {}
+            None => panic!("the terminal subscription ended before its exit"),
+        }
+    }
+    let left = call("remote.runningPrograms", session.clone());
+    assert_eq!(left["programs"].as_array().unwrap().len(), 1, "{left}");
+    assert_eq!(left["programs"][0]["kind"], "process", "{left}");
+    assert_eq!(call("remote.endPrograms", session.clone())["ended"], 1);
+    assert!(process.wait(STEP).unwrap().exit.is_some());
+    assert_eq!(
+        call("remote.runningPrograms", session.clone()),
+        json!({"programs": []})
+    );
+    assert_eq!(call("remote.endPrograms", session.clone())["ended"], 0);
+    drop((process, terminal));
+    drop(connection);
+
+    let refused = respond(
+        "remote.disconnect",
+        json!({"sessionId": host.id, "programs": "later"}),
+    );
+    assert_eq!(refused["ok"], false, "{refused}");
+    // An in-process session runs over standard streams and cannot outlive
+    // its client, so keeping its programs is refused and they end.
+    assert_eq!(
+        call(
+            "remote.disconnect",
+            json!({"sessionId": host.id, "programs": "keep"})
+        ),
+        json!({"closed": true, "kept": false})
+    );
+    assert_eq!(
+        call(
+            "remote.disconnect",
+            json!({"sessionId": host.id, "programs": "end"})
+        ),
+        json!({"closed": false, "kept": false})
+    );
+    let gone = respond("remote.runningPrograms", session);
+    assert_eq!(gone["ok"], false, "{gone}");
+}

@@ -8,10 +8,19 @@
 //! requests such as `remote.readDir` use it by id. The client runs in its own
 //! process tree, which closing a connection ends, together with the
 //! connection's port forwards.
+//!
+//! The server runs a persistent session under a key (`--connect`), so the
+//! processes and terminals it runs survive the connection. Closing a
+//! connection ends them unless the client chose to keep them
+//! (`remote.disconnect` with `programs: keep`); a later `remote.connect` that
+//! presents the key and the session's token attaches to them again. A
+//! session nobody kept, such as one whose client crashed, ends with its
+//! programs once the server's idle timeout passes without a client.
 
 use crate::probe::{
     classify, classify_wsl, diagnostics, relay_challenge, ssh_hop, ProbeStatus, ProbedHost,
 };
+use crate::programs::RunningProgram;
 use lithe_git_host::ProcessTree;
 use lithe_protocol::{CoreError, ErrorCode};
 use lithe_remote::client::connections::{ConnectionError, Reason, SshConnection};
@@ -22,7 +31,8 @@ use lithe_remote::client::{
     wsl, ArtifactError, ConnectionKind, ConnectionLog, ForwardSet, Hop, RemoteSession,
     ServerArtifact, ServerTarget, TransportChain, WslConnection,
 };
-use lithe_remote::protocol::methods;
+use lithe_remote::protocol::message::ErrorCode as RemoteErrorCode;
+use lithe_remote::protocol::methods::{self, SessionToken};
 use lithe_request_context::events as execution_events;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
@@ -84,9 +94,55 @@ pub struct ConnectRequest {
     preferences: Option<String>,
     servers: Vec<ServerInput>,
     server_version: String,
-    /// Install root on the remote; `None` is `$HOME/.lithe-server`.
+    /// Install root on the remote; `None` is `$HOME/.lithe-server`. The
+    /// server keeps its persistent sessions' state below it too.
     #[serde(default)]
     install_root: Option<String>,
+    /// The persistent session an earlier connection to this host kept, to
+    /// attach to again; `None` starts a new session.
+    #[serde(default)]
+    resume: Option<ResumeInput>,
+}
+
+/// A persistent session `remote.connect` returned earlier.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ResumeInput {
+    /// [`OpenedSession::session_key`].
+    key: String,
+    /// [`OpenedSession::session_token`]; a secret.
+    token: SessionToken,
+}
+
+/// Longest session key, which the server limits too.
+const MAX_SESSION_KEY_CHARS: usize = 64;
+
+/// Longest session token accepted from a client; the server issues 32 hex
+/// digits.
+const MAX_SESSION_TOKEN_CHARS: usize = 128;
+
+impl ResumeInput {
+    /// Refuses a key the server would refuse, so it never reaches a remote
+    /// command line, and a token that is not one the server issues.
+    fn check(&self) -> Result<(), CoreError> {
+        let key_valid = !self.key.is_empty()
+            && self.key.chars().count() <= MAX_SESSION_KEY_CHARS
+            && self
+                .key
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+        let token = self.token.as_str();
+        let token_valid = !token.is_empty()
+            && token.len() <= MAX_SESSION_TOKEN_CHARS
+            && token.chars().all(|c| c.is_ascii_hexdigit());
+        if key_valid && token_valid {
+            return Ok(());
+        }
+        Err(crate::connections::invalid_request(ConnectionError {
+            field: "resume",
+            reason: Reason::Invalid,
+        }))
+    }
 }
 
 /// The session `remote.connect` opened.
@@ -99,6 +155,18 @@ pub struct OpenedSession {
     host_name: String,
     user_name: Option<String>,
     home_directory: Option<String>,
+    /// Names the persistent session on the host, for a later `resume`.
+    session_key: String,
+    /// Secret a later `resume` presents; the client stores it like a
+    /// password and never logs it.
+    session_token: Option<SessionToken>,
+    /// Whether this connection attached to the session `resume` named.
+    /// `false` after a `resume` means that session had ended, or belonged
+    /// to another client, and a new one started.
+    resumed: bool,
+    /// Processes and terminals the resumed session still runs, which an
+    /// earlier connection kept; empty for a new session.
+    kept_programs: Vec<RunningProgram>,
 }
 
 /// `remote.connect` result. Connection failures are results, not errors.
@@ -156,25 +224,53 @@ impl Connection {
         }
     }
 
+    /// Ends the session together with every program it runs.
     pub(crate) fn close(&self) {
         // Local ports close first, so nothing new is accepted into a tunnel
         // the shutdown below is about to end.
         self.forwards.close();
-        if let Err(error) = self.session.request_value(
-            methods::SERVER_SHUTDOWN,
-            serde_json::Value::Null,
-            EXIT_GRACE,
-        ) {
-            // A peer that already closed needs no shutdown; other failures use WARN.
-            if !matches!(error, ClientError::Disconnected { .. }) {
-                lithe_diagnostics::core_events::recovery_failed(
-                    "remote.session.cleanup_failed",
-                    "shutdown",
-                    &error.failure_category(),
-                    "remote",
-                );
+        self.request_quietly(methods::SERVER_SHUTDOWN, "shutdown");
+        self.end_transport();
+    }
+
+    /// Leaves the session's programs running on the host for a later
+    /// connection: `server.keep`, then the connection ends without
+    /// `server.shutdown`. Returns whether the host keeps them. A session
+    /// that refused, or whose connection was already lost, ends them once
+    /// its idle timeout passes.
+    pub(crate) fn detach(&self) -> bool {
+        self.forwards.close();
+        let kept = self.request_quietly(methods::SERVER_KEEP, "keep");
+        self.end_transport();
+        kept
+    }
+
+    /// Sends `method` with the exit grace as its deadline, recording a
+    /// failure other than a peer that already closed at WARN.
+    fn request_quietly(&self, method: &str, stage: &str) -> bool {
+        match self
+            .session
+            .request_value(method, serde_json::Value::Null, EXIT_GRACE)
+        {
+            Ok(_) => true,
+            Err(error) => {
+                // A peer that already closed needs no request; other failures use WARN.
+                if !matches!(error, ClientError::Disconnected { .. }) {
+                    lithe_diagnostics::core_events::recovery_failed(
+                        "remote.session.cleanup_failed",
+                        stage,
+                        &error.failure_category(),
+                        "remote",
+                    );
+                }
+                false
             }
         }
+    }
+
+    /// Ends the client process and its tree. A persistent session on the
+    /// host outlives it.
+    fn end_transport(&self) {
         match &self.transport {
             ConnectionTransport::Process { child, tree } => {
                 let mut child = child
@@ -280,7 +376,9 @@ pub(crate) fn forget(id: &str) {
     }
 }
 
-/// Opens a connection and registers it.
+/// Opens a connection and registers it. A `resume` whose token the host
+/// refuses starts a new session instead, so a stale or foreign token never
+/// locks the user out of the host.
 pub fn connect(request: ConnectRequest) -> Result<ConnectResult, CoreError> {
     connect_with(request, None)
 }
@@ -389,7 +487,20 @@ pub(crate) fn connect_with(
 ) -> Result<ConnectResult, CoreError> {
     let client = Client::of(&request);
     let log = ConnectionLog::begin(client.log_kind());
-    let result = connect_logged(request, client, program, &log);
+    let mut refused = false;
+    let mut result = connect_logged(
+        &request,
+        request.resume.as_ref(),
+        client,
+        program,
+        &log,
+        &mut refused,
+    );
+    if refused {
+        // The session under that key belongs to another client, or replaced
+        // the one the token was issued for.
+        result = connect_logged(&request, None, client, program, &log, &mut refused);
+    }
     match &result {
         Ok(result) => {
             if let Some((stage, code)) = failure_of(result.status) {
@@ -418,12 +529,24 @@ pub(crate) fn failure_of(status: ProbeStatus) -> Option<(&'static str, &'static 
     }
 }
 
+/// One connection attempt. Sets `refused` when the host refused the token
+/// of `resume`.
 fn connect_logged(
-    request: ConnectRequest,
+    request: &ConnectRequest,
+    resume: Option<&ResumeInput>,
     client: Client,
     program: Option<&str>,
     log: &ConnectionLog,
+    refused: &mut bool,
 ) -> Result<ConnectResult, CoreError> {
+    if let Some(resume) = resume {
+        resume.check()?;
+    }
+    let session_key = resume.map_or_else(nonce, |resume| resume.key.clone());
+    let mut server_arguments = vec!["--connect", session_key.as_str()];
+    if let Some(root) = request.install_root.as_deref() {
+        server_arguments.extend(["--state-dir", root]);
+    }
     // Only the build for the host's platform is read and checked, once the
     // probe reports it; here the targets and hashes are just validated.
     let servers = request
@@ -449,11 +572,11 @@ fn connect_logged(
     let rejected_in_launch = Arc::clone(&rejected);
     let _connecting = ConnectingGuard::enter();
 
-    let chain = TransportChain::new(vec![first_hop(&request, program)?]);
+    let chain = TransportChain::new(vec![first_hop(request, program)?]);
     let argv = chain
         .command(&launch_command(
             request.install_root.as_deref(),
-            &["--stdio"],
+            &server_arguments,
         ))
         .map_err(|error| {
             CoreError::new(ErrorCode::InvalidRequest, client.invalid())
@@ -697,12 +820,19 @@ fn connect_logged(
     };
     let options = ConnectOptions {
         handshake_timeout: HANDSHAKE_TIMEOUT,
+        session_token: resume.map(|resume| resume.token.clone()),
         log: Some(log.clone()),
         ..ConnectOptions::default()
     };
     let (session, events) = match RemoteSession::from_streams(output, input, &options) {
         Ok(value) => value,
         Err(error) => {
+            *refused = resume.is_some()
+                && matches!(
+                    &error,
+                    ClientError::Remote(remote)
+                        if remote.code == RemoteErrorCode::InvalidSessionToken
+                );
             // Grace expiry is advisory: the following checked kill/wait owns the final cleanup result.
             wait_for_exit(&mut child, EXIT_GRACE);
             reap(&tree, &mut child);
@@ -718,6 +848,21 @@ fn connect_logged(
     // from blocking on a full channel.
     std::thread::spawn(move || for _ in events {});
     let capabilities = session.hello().host.clone();
+    let info = session.hello().session.clone();
+    let kept_programs = if info.resumed {
+        crate::programs::running(&session).unwrap_or_else(|error| {
+            // The connection works without the list; the client can ask again.
+            lithe_diagnostics::core_events::recovery_failed(
+                "remote.session.state_failed",
+                "kept_programs",
+                &error.failure_category(),
+                "remote",
+            );
+            Vec::new()
+        })
+    } else {
+        Vec::new()
+    };
     let id = nonce();
     registry()
         .lock()
@@ -741,6 +886,10 @@ fn connect_logged(
             host_name: capabilities.host_name,
             user_name: capabilities.user_name,
             home_directory: capabilities.home_directory,
+            session_key,
+            session_token: info.session_token,
+            resumed: info.resumed,
+            kept_programs,
         }),
         host: Some(host),
         diagnostics: String::new(),
@@ -887,24 +1036,55 @@ pub fn write_file(request: WriteFileRequest) -> Result<serde_json::Value, CoreEr
     }
 }
 
-/// `remote.disconnect`: the session to close.
+/// `remote.disconnect`: the session to close and what happens to the
+/// programs it runs.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DisconnectRequest {
     session_id: String,
+    #[serde(default)]
+    programs: ProgramsOnClose,
+}
+
+/// What closing a connection does to the session's programs.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum ProgramsOnClose {
+    /// They end with the session.
+    #[default]
+    End,
+    /// They keep running for a later `remote.connect` with `resume`.
+    Keep,
+}
+
+/// `remote.disconnect` result.
+#[derive(Debug, Default, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DisconnectResult {
+    /// Whether an open connection was closed.
+    pub closed: bool,
+    /// Whether the host keeps the programs running; `false` when they end,
+    /// including when keeping them was asked but the host could not.
+    pub kept: bool,
 }
 
 /// Closes a connection; closing an unknown or closed one succeeds.
-pub fn disconnect(request: DisconnectRequest) -> bool {
+pub fn disconnect(request: DisconnectRequest) -> DisconnectResult {
     let connection = registry()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .remove(&request.session_id);
     let Some(connection) = connection else {
-        return false;
+        return DisconnectResult::default();
     };
-    connection.close();
-    true
+    let kept = match request.programs {
+        ProgramsOnClose::End => {
+            connection.close();
+            false
+        }
+        ProgramsOnClose::Keep => connection.detach(),
+    };
+    DisconnectResult { closed: true, kept }
 }
 
 /// Closes every open connection, for application exit. Connections close in

@@ -19,8 +19,9 @@ socket, lock and log under `<dir>` (default `$HOME/.lithe-server`) in
 directories only the user can access, and rejects peers with another user
 id. A session has one client at a time: a new connection that presents the
 session token (see below) replaces the current one. The idle timeout runs
-only while the session has neither a client nor running processes or open
-terminals; it is 10 minutes unless `server.hello` requests another with
+while the session has no client, unless its last client sent `server.keep`
+and the session still runs processes or open terminals; when it passes, the
+session ends with everything it runs. It is 10 minutes unless `server.hello` requests another with
 `idleTimeoutSeconds`, at most 24 hours, and the latest request applies. A
 connection the daemon cannot set up is closed without ending the session.
 The daemon log is created `0600`, never through a symbolic link, and moves to
@@ -119,6 +120,7 @@ subscribe before creating the resource.
 | `server.resume` | `afterSeq?` | `truncated`; then every kept event after `afterSeq`, followed by live events |
 | `server.ack` | `seq` | `null`; events up to `seq` may be forgotten |
 | `server.shutdown` | — | `null`; the session ends |
+| `server.keep` | — | `null`; the running processes and terminals outlast this client; `UNSUPPORTED` on a `--stdio` session |
 | `server.ping` | — | `{}` |
 | `server.state` | — | running `processes` (`processId`, `pid`, `argv`, `label?`, `runningMs`, `leaderExited`), `terminals` (`terminalId`, `pid`, `argv`, `label?`, `runningMs`, `columns`, `rows`), `watches` |
 | `fs.stat` | `path` | metadata of the path itself (links not followed) |
@@ -327,7 +329,13 @@ events after `afterSeq` were dropped; the client re-reads state and rescans
 watches.
 
 While no client is attached, a persistent session keeps processes, terminals
-and watches running. Tunnels, walks and listeners belong to the connection
+and watches running until the idle timeout. A client whose user chose to
+leave them running sends `server.keep` before it goes, without
+`server.shutdown`; the session then outlasts the idle timeout while any of
+its processes or terminals runs, and ends once none does. Each client that
+attaches decides again: attaching clears an earlier `server.keep`. So the
+programs of a client that crashed or lost its network end with the session
+after the idle timeout, unless the user reconnects before it passes. Tunnels, walks and listeners belong to the connection
 that opened them and end with it. After `server.shutdown` a persistent session is no
 longer reachable, even while it is still terminating its processes; the next
 connection with the same key starts a fresh session.

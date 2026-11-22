@@ -305,12 +305,23 @@ pub(super) fn dispatch(command: RemoteCommand, id: Option<String>, payload: Valu
             "Invalid remote preferences request",
             lithe_workspace::preferences::edit,
         ),
+        RemoteCommand::RunningPrograms => answer(
+            id,
+            payload,
+            "Invalid remote programs request",
+            lithe_workspace::programs::list,
+        ),
+        RemoteCommand::EndPrograms => answer(
+            id,
+            payload,
+            "Invalid remote programs request",
+            lithe_workspace::programs::end,
+        ),
         RemoteCommand::Disconnect => {
             match serde_json::from_value::<lithe_workspace::sessions::DisconnectRequest>(payload) {
-                Ok(request) => CoreResponse::success(
-                    id,
-                    json!({ "closed": lithe_workspace::sessions::disconnect(request) }),
-                ),
+                Ok(request) => {
+                    CoreResponse::success(id, json!(lithe_workspace::sessions::disconnect(request)))
+                }
                 Err(error) => CoreResponse::failure(
                     id,
                     CoreError::new(

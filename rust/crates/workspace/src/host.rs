@@ -216,9 +216,14 @@ impl Drop for Resource<'_> {
             };
             if let Err(error) = self.session.request_value(method, params, CLEANUP_TIMEOUT) {
                 // An exited process, stopped watch or closed terminal is already gone
-                // on the host: expected missing. The resource owner keeps the primary
-                // result; WARN reports any other failed cleanup.
-                if !error.is_resource_already_gone() {
+                // on the host: expected missing. So is a connection that already
+                // closed: the host then ended the session, keeps it as the user chose
+                // or ends it after its idle timeout, and this side can do nothing
+                // more. The resource owner keeps the primary result; WARN reports any
+                // other failed cleanup.
+                if !error.is_resource_already_gone()
+                    && !matches!(error, ClientError::Disconnected { .. })
+                {
                     lithe_diagnostics::core_events::recovery_failed(
                         "remote.resource.cleanup_failed",
                         self.family,
