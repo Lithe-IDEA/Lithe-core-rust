@@ -28,7 +28,7 @@ It covers the same protocols as the [Rust SDK](../rust/README.md), and the
 same Core end-to-end scenario checks both. The SDK owns the wire format,
 negotiation, cancellation, and error mapping; your code supplies only
 handlers. It uses only the Go standard library, runs every call on a
-goroutine of its own, and needs Go 1.22 or newer.
+goroutine of its own, and needs Go 1.27.4 or newer.
 
 This SDK has no build provider or VCS provider API; write build providers with
 the [Node.js](../node/README.md) or [Java](../java/README.md) SDK, and VCS
@@ -563,6 +563,7 @@ gofmt -l .
 ```
 
 and, from the root of this repository, `node shared/plugins/scripts/sdk-e2e.mjs`.
+CI runs the first three on the Go release that `go.mod` names.
 
 The unit tests drive a session through in-process pipes with a scripted
 host; `lithe/host_services_test.go` checks the host services against the

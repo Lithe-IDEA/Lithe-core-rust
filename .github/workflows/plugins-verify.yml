@@ -104,6 +104,30 @@ jobs:
           cargo fmt --manifest-path shared/plugins/sdk/rust/Cargo.toml --all -- --check
           cargo clippy --locked --manifest-path shared/plugins/sdk/rust/Cargo.toml --all-targets -- -D warnings
 
+  sdk-go:
+    name: Go SDK
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      # The SDK supports the Go release its go.mod names, the one the desktop
+      # builds with. It has no dependencies, so there is nothing to cache.
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: shared/plugins/sdk/go/go.mod
+          cache: false
+
+      - name: Test
+        run: go -C shared/plugins/sdk/go test -race ./...
+      - name: Check formatting and vet
+        run: |
+          unformatted="$(gofmt -l shared/plugins/sdk/go)"
+          if [ -n "$unformatted" ]; then
+            printf '::error::Run gofmt -w on these files:\n%s\n' "$unformatted"
+            exit 1
+          fi
+          go -C shared/plugins/sdk/go vet ./...
+
   sdk-e2e:
     name: SDK end-to-end with Rust Core
     runs-on: ubuntu-latest
@@ -125,6 +149,11 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: dtolnay/rust-toolchain@1.100.0
+      # The Go sample builds with the release the SDK's go.mod names.
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: shared/plugins/sdk/go/go.mod
+          cache: false
 
       - uses: actions/cache@v6
         with:

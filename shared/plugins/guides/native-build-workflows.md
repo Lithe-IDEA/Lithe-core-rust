@@ -82,7 +82,7 @@ node --test shared/plugins/scripts/*.test.mjs
 node shared/plugins/scripts/sdk-e2e.mjs
 ```
 
-`sdk-e2e.mjs` 先构建四个 SDK 的示例后端，再用 `cargo test -p lithe-core --features plugin-sdk-e2e` 运行 `plugin_sdk_node`、`plugin_sdk_java`、`plugin_sdk_rust`、`plugin_sdk_go` 和 `plugin_sdk_build`，被测对象是当前工作树里的 Core，所以改 Core 与改 SDK 或契约可以在同一个 PR 里一起验证。运行需要 Rust、Node.js 20.3 或更高版本、Go 1.22 或更高版本、Java（用 `LITHE_PLUGIN_SDK_JAVA_RUNTIME` 指定，或放在 `PATH` 上的 `java`）和 Maven。
+`sdk-e2e.mjs` 先构建四个 SDK 的示例后端，再用 `cargo test -p lithe-core --features plugin-sdk-e2e` 运行 `plugin_sdk_node`、`plugin_sdk_java`、`plugin_sdk_rust`、`plugin_sdk_go` 和 `plugin_sdk_build`，被测对象是当前工作树里的 Core，所以改 Core 与改 SDK 或契约可以在同一个 PR 里一起验证。运行需要 Rust、Node.js 20.3 或更高版本、Go 1.27.4 或更高版本、Java（用 `LITHE_PLUGIN_SDK_JAVA_RUNTIME` 指定，或放在 `PATH` 上的 `java`）和 Maven。
 
 这些测试通过真实 Core 规划与解码，覆盖构建非零退出码、精确筛选、运行前构建、准备计划、进度、取消后的工具清理、并行工作区隔离，以及包含 SDK 和 JAR 的完整包文件不变。它们不代替原生界面、真实 Maven/JDT 工程或桌面端实机验证。
 
@@ -180,7 +180,7 @@ node --test shared/plugins/scripts/*.test.mjs
 node shared/plugins/scripts/sdk-e2e.mjs
 ```
 
-`sdk-e2e.mjs` first builds the four SDKs' sample backends, then runs `plugin_sdk_node`, `plugin_sdk_java`, `plugin_sdk_rust`, `plugin_sdk_go`, and `plugin_sdk_build` with `cargo test -p lithe-core --features plugin-sdk-e2e`. The code under test is the Core in the working tree, so a change to Core and a change to an SDK or the contract are verified together in one PR. It needs Rust, Node.js 20.3 or newer, Go 1.22 or newer, Java (set with `LITHE_PLUGIN_SDK_JAVA_RUNTIME`, or `java` on `PATH`), and Maven.
+`sdk-e2e.mjs` first builds the four SDKs' sample backends, then runs `plugin_sdk_node`, `plugin_sdk_java`, `plugin_sdk_rust`, `plugin_sdk_go`, and `plugin_sdk_build` with `cargo test -p lithe-core --features plugin-sdk-e2e`. The code under test is the Core in the working tree, so a change to Core and a change to an SDK or the contract are verified together in one PR. It needs Rust, Node.js 20.3 or newer, Go 1.27.4 or newer, Java (set with `LITHE_PLUGIN_SDK_JAVA_RUNTIME`, or `java` on `PATH`), and Maven.
 
 These tests plan and decode through a real Core and cover a non-zero build exit code, exact filtering, build before run, preparation plans, progress, tool cleanup after cancellation, isolation between parallel workspaces, and an unchanged complete package including the SDK and JAR. They do not replace verification of the native UI, real Maven/JDT projects, or the desktop on a real machine.
 
