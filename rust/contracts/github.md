@@ -88,8 +88,21 @@ Supported operations are `deviceCode`, `deviceToken`, `currentUser`,
 `listBranches`, `compareBranches`, `listPullRequests`, `getPullRequest`, `createPullRequest`, `updatePullRequest`,
 `listPullRequestFiles`, `listPullRequestComments`,
 `createPullRequestComment`, `createPullRequestReview`, `mergePullRequest`,
-`updatePullRequestMetadata`, `listReviewComments`, `listCheckRuns`, and
-`getCombinedStatus`.
+`updatePullRequestMetadata`, `listReviewComments`, `listCheckRuns`,
+`getCombinedStatus`, `latestCommit`, and `listReleases`.
+
+`latestCommit` and `listReleases` read public data, so their plans set
+`requiresAuthentication: false` and work without a signed-in account.
+`latestCommit` (`GET /repos/{owner}/{name}/commits?sha={ref}&per_page=1`) needs
+`ref` (`HEAD`, a branch or tag name, or a `refs/...` name; whitespace, `..`, a
+leading `-` and the revision operators `~ ^ : ? * [ \` are refused) and returns
+`{ sha }`, the ref's newest commit as a full lowercase SHA-1 or SHA-256 name.
+Hosts use it to pin a marketplace index to a commit, because raw file URLs of a
+branch are cached for minutes (see `plugins.marketplace.resolveSource`).
+`listReleases` (`GET /repos/{owner}/{name}/releases`, first page of 20) returns
+`[{ tagName, name, body, publishedAt, prerelease, url }]` newest publication
+first, ties ordered by tag; drafts are dropped, an empty title is `null` and
+missing notes are `""`.
 
 `listReviewComments` (`GET /repos/{owner}/{name}/pulls/{number}/comments`, first
 page of 100) needs `pullNumber` and returns a flat array of

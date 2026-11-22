@@ -394,3 +394,127 @@ fn request_plan_and_normalize_review_comment_threads() {
     assert!(response["data"][1]["line"].is_null());
     assert_eq!(response["data"][1]["createdAt"], "2026-11-01T00:05:00Z");
 }
+
+#[test]
+fn request_plan_reads_the_newest_commit_and_releases_without_credentials() {
+    let response = execute(
+        "github.requestPlan",
+        json!({
+            "operation": "latestCommit",
+            "repository": {"owner": "example", "name": "lithe-plugins"},
+            "ref": "refs/heads/release"
+        }),
+    );
+    assert_eq!(response["ok"], true, "{response:?}");
+    assert_eq!(response["data"]["host"], "api");
+    assert_eq!(response["data"]["method"], "GET");
+    assert_eq!(
+        response["data"]["path"],
+        "/repos/example/lithe-plugins/commits"
+    );
+    assert_eq!(
+        response["data"]["query"],
+        json!({"per_page": "1", "sha": "refs/heads/release"})
+    );
+    assert_eq!(response["data"]["requiresAuthentication"], false);
+
+    let response = execute(
+        "github.requestPlan",
+        json!({
+            "operation": "listReleases",
+            "repository": {"owner": "example", "name": "lithe-plugin-rust"}
+        }),
+    );
+    assert_eq!(response["ok"], true, "{response:?}");
+    assert_eq!(
+        response["data"]["path"],
+        "/repos/example/lithe-plugin-rust/releases"
+    );
+    assert_eq!(response["data"]["query"], json!({"per_page": "20"}));
+    assert_eq!(response["data"]["requiresAuthentication"], false);
+
+    for git_ref in ["", "main..x", "-x", "main x", "HEAD~1", "a:b"] {
+        let response = execute(
+            "github.requestPlan",
+            json!({
+                "operation": "latestCommit",
+                "repository": {"owner": "example", "name": "lithe-plugins"},
+                "ref": git_ref
+            }),
+        );
+        assert_eq!(response["ok"], false, "{git_ref}: {response:?}");
+        assert_eq!(response["error"]["code"], "invalid_request");
+    }
+}
+
+#[test]
+fn normalizes_the_newest_commit_to_a_full_lowercase_object_name() {
+    let sha = "0123456789ABCDEF0123456789ABCDEF01234567";
+    let response = execute(
+        "github.normalizeResponse",
+        json!({
+            "operation": "latestCommit",
+            "status": 200,
+            "body": json!([{"sha": sha, "commit": {"message": "x"}}]).to_string()
+        }),
+    );
+    assert_eq!(response["ok"], true, "{response:?}");
+    assert_eq!(response["data"], json!({"sha": sha.to_ascii_lowercase()}));
+
+    for body in [json!([]), json!([{"sha": "0123abc"}]), json!({"sha": sha})] {
+        let response = execute(
+            "github.normalizeResponse",
+            json!({"operation": "latestCommit", "status": 200, "body": body.to_string()}),
+        );
+        assert_eq!(response["ok"], false, "{body}: {response:?}");
+        assert_eq!(response["error"]["code"], "parse_failed");
+    }
+}
+
+#[test]
+fn normalizes_releases_newest_first_without_drafts() {
+    let body = json!([
+        {
+            "tag_name": "v0.1.0", "name": "v0.1.0", "body": "First.", "draft": false,
+            "prerelease": true, "published_at": "2026-11-21T08:00:00Z",
+            "html_url": "https://github.com/example/p/releases/tag/v0.1.0"
+        },
+        {
+            "tag_name": "v0.2.0", "name": null, "body": null, "draft": true,
+            "prerelease": false, "published_at": null,
+            "html_url": "https://github.com/example/p/releases/tag/untagged"
+        },
+        {
+            "tag_name": "v0.1.1", "name": " ", "body": "## Fixes\n- One.", "draft": false,
+            "prerelease": false, "published_at": "2026-11-22T13:31:49Z",
+            "html_url": "https://github.com/example/p/releases/tag/v0.1.1"
+        }
+    ]);
+    let response = execute(
+        "github.normalizeResponse",
+        json!({"operation": "listReleases", "status": 200, "body": body.to_string()}),
+    );
+    assert_eq!(response["ok"], true, "{response:?}");
+    assert_eq!(
+        response["data"],
+        json!([
+            {
+                "tagName": "v0.1.1", "name": null, "body": "## Fixes\n- One.",
+                "publishedAt": "2026-11-22T13:31:49Z", "prerelease": false,
+                "url": "https://github.com/example/p/releases/tag/v0.1.1"
+            },
+            {
+                "tagName": "v0.1.0", "name": "v0.1.0", "body": "First.",
+                "publishedAt": "2026-11-21T08:00:00Z", "prerelease": true,
+                "url": "https://github.com/example/p/releases/tag/v0.1.0"
+            }
+        ])
+    );
+
+    let response = execute(
+        "github.normalizeResponse",
+        json!({"operation": "listReleases", "status": 404, "body": "{\"message\":\"Not Found\"}"}),
+    );
+    assert_eq!(response["ok"], false, "{response:?}");
+    assert_eq!(response["error"]["code"], "invalid_request");
+}

@@ -197,7 +197,11 @@ fn source_url_fixtures_resolve_to_expected_index_urls() {
     let cases = json_file(SOURCE_URLS);
     for case in cases["cases"].as_array().unwrap() {
         let input = case["input"].as_str().unwrap();
-        let outcome = resolve_source_command(json!({ "url": input })).unwrap();
+        let mut payload = json!({ "url": input });
+        if let Some(commit) = case.get("commit") {
+            payload["commit"] = commit.clone();
+        }
+        let outcome = resolve_source_command(payload).unwrap();
         if let Some(code) = case.get("expectedCode") {
             assert_eq!(outcome["status"], "rejected", "{input}: {outcome}");
             assert_eq!(&outcome["error"]["code"], code, "{input}: {outcome}");

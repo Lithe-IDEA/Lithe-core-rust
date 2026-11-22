@@ -481,7 +481,25 @@ fn availability(
 // MARK: Source resolution
 
 /// Resolves what a user pasted into the index URL Lithe will fetch.
-fn resolve_source(input: &str) -> Validation<Value> {
+///
+/// A GitHub-hosted index also reports `revision`, the repository and the ref
+/// its URL follows. raw.githubusercontent.com caches a branch URL for minutes,
+/// so a host that looks the ref's newest commit up passes it back as `commit`
+/// and fetches `pinned`, the same files at that commit, which no cache serves
+/// stale. `indexURL` stays the source's identity either way.
+fn resolve_source(input: &str, commit: Option<&str>) -> Validation<Value> {
+    let commit = commit
+        .map(|commit| {
+            is_object_name(commit)
+                .then(|| commit.to_ascii_lowercase())
+                .ok_or_else(|| {
+                    PluginRejection::new(
+                        "plugin.source.commitInvalid",
+                        "The commit must be a full hexadecimal object name.",
+                    )
+                })
+        })
+        .transpose()?;
     let url = parse_https(input.trim()).ok_or_else(|| {
         PluginRejection::new(
             "plugin.source.invalid",
@@ -494,7 +512,7 @@ fn resolve_source(input: &str) -> Validation<Value> {
         .map(|segments| segments.filter(|segment| !segment.is_empty()).collect())
         .unwrap_or_default();
 
-    if host == "github.com" || host == "www.github.com" {
+    let (mut source, file) = if host == "github.com" || host == "www.github.com" {
         let repository = segments
             .first()
             .zip(segments.get(1))
@@ -505,18 +523,24 @@ fn resolve_source(input: &str) -> Validation<Value> {
                     "The GitHub URL does not name a repository.",
                 )
             })?;
-        let index_url = match &segments[2..] {
-            [] => format!(
-                "https://raw.githubusercontent.com/{}/{}/HEAD/{REPOSITORY_INDEX_FILE_NAME}",
-                repository.owner, repository.name
+        let (index_url, file) = match &segments[2..] {
+            [] => (
+                format!(
+                    "https://raw.githubusercontent.com/{}/{}/HEAD/{REPOSITORY_INDEX_FILE_NAME}",
+                    repository.owner, repository.name
+                ),
+                github_file(&repository, &["HEAD", REPOSITORY_INDEX_FILE_NAME]),
             ),
             // A file page (`/blob/<ref>/<path>`) maps one-to-one to its raw
             // URL, whatever slashes the ref contains.
-            ["blob", rest @ ..] if rest.len() >= 2 => format!(
-                "https://raw.githubusercontent.com/{}/{}/{}",
-                repository.owner,
-                repository.name,
-                rest.join("/")
+            ["blob", rest @ ..] if rest.len() >= 2 => (
+                format!(
+                    "https://raw.githubusercontent.com/{}/{}/{}",
+                    repository.owner,
+                    repository.name,
+                    rest.join("/")
+                ),
+                github_file(&repository, rest),
             ),
             _ => {
                 return Err(PluginRejection::new(
@@ -525,29 +549,98 @@ fn resolve_source(input: &str) -> Validation<Value> {
                 ))
             }
         };
-        return Ok(json!({
-            "indexURL": index_url,
-            "recommendationsURL": sibling_recommendations_url(&index_url),
-            "repository": repository.web_url(),
-            "displayName": format!("{}/{}", repository.owner, repository.name),
-        }));
-    }
-
-    let mut index_url = url.clone();
-    index_url.set_fragment(None);
-    let repository = if host == "raw.githubusercontent.com" && segments.len() >= 4 {
-        repository_from_parts(segments[0], segments[1])
+        (
+            json!({
+                "indexURL": index_url,
+                "recommendationsURL": sibling_recommendations_url(&index_url),
+                "repository": repository.web_url(),
+                "displayName": format!("{}/{}", repository.owner, repository.name),
+            }),
+            file,
+        )
     } else {
-        None
+        let mut index_url = url.clone();
+        index_url.set_fragment(None);
+        let repository = if host == "raw.githubusercontent.com" && segments.len() >= 4 {
+            repository_from_parts(segments[0], segments[1])
+        } else {
+            None
+        };
+        // A query (such as a private file's token) would be lost by pinning.
+        let file = repository
+            .as_ref()
+            .filter(|_| url.query().is_none())
+            .and_then(|repository| github_file(repository, &segments[2..]));
+        (
+            json!({
+                "indexURL": index_url.as_str(),
+                "recommendationsURL": sibling_recommendations_url(index_url.as_str()),
+                "repository": repository.as_ref().map(GitHubRepository::web_url),
+                "displayName": repository
+                    .map(|repository| format!("{}/{}", repository.owner, repository.name))
+                    .unwrap_or(host),
+            }),
+            file,
+        )
     };
-    Ok(json!({
-        "indexURL": index_url.as_str(),
-        "recommendationsURL": sibling_recommendations_url(index_url.as_str()),
-        "repository": repository.as_ref().map(GitHubRepository::web_url),
-        "displayName": repository
-            .map(|repository| format!("{}/{}", repository.owner, repository.name))
-            .unwrap_or(host),
-    }))
+    source["revision"] = file.as_ref().map_or(Value::Null, |file| {
+        json!({
+            "repository": { "owner": file.repository.owner, "name": file.repository.name },
+            "ref": file.git_ref,
+        })
+    });
+    if let Some(commit) = commit {
+        source["pinned"] = file.as_ref().map_or(Value::Null, |file| {
+            let index_url = format!(
+                "https://raw.githubusercontent.com/{}/{}/{commit}/{}",
+                file.repository.owner, file.repository.name, file.path
+            );
+            json!({
+                "commit": commit,
+                "recommendationsURL": sibling_recommendations_url(&index_url),
+                "indexURL": index_url,
+            })
+        });
+    }
+    Ok(source)
+}
+
+/// One file of a GitHub repository as a branch or tag URL names it.
+struct GitHubFile {
+    repository: GitHubRepository,
+    /// `HEAD`, a branch or tag name, or `refs/heads/<name>` / `refs/tags/<name>`.
+    git_ref: String,
+    /// Repository-relative path, still percent-encoded as in the URL.
+    path: String,
+}
+
+/// Splits `<ref>/<path>` of a raw URL. A short ref is its first segment: a
+/// branch whose name contains `/` is only found when written as
+/// `refs/heads/<name>`; otherwise the commit lookup or the pinned fetch fails
+/// and the host keeps the unpinned URL. A URL already at a commit, or a ref
+/// spelled with escapes, has nothing to pin.
+fn github_file(repository: &GitHubRepository, rest: &[&str]) -> Option<GitHubFile> {
+    let ref_len = match rest {
+        ["refs", "heads" | "tags", ..] => 3,
+        _ => 1,
+    };
+    if rest.len() <= ref_len {
+        return None;
+    }
+    let git_ref = rest[..ref_len].join("/");
+    if is_object_name(&git_ref) || git_ref.contains('%') {
+        return None;
+    }
+    Some(GitHubFile {
+        repository: repository.clone(),
+        git_ref,
+        path: rest[ref_len..].join("/"),
+    })
+}
+
+/// A full SHA-1 or SHA-256 Git object name.
+fn is_object_name(value: &str) -> bool {
+    matches!(value.len(), 40 | 64) && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 /// Derives the companion `lithe-plugin-recommendations.json` URL in the same
@@ -773,6 +866,9 @@ struct ValidateIndexPayload {
 #[serde(rename_all = "camelCase")]
 struct ResolveSourcePayload {
     url: String,
+    /// Newest commit of `source.revision`, looked up by the host.
+    #[serde(default)]
+    commit: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -1185,11 +1281,15 @@ pub fn validate_index_command(payload: Value) -> Result<Value, CoreError> {
 }
 
 /// `plugins.marketplace.resolveSource`: returns `{status: "ok", source:
-/// {indexURL, repository?, displayName}}`.
+/// {indexURL, recommendationsURL, repository, displayName, revision}}`, plus
+/// `pinned` when the payload carries a `commit`.
 pub fn resolve_source_command(payload: Value) -> Result<Value, CoreError> {
     let payload: ResolveSourcePayload =
         decode_payload(payload, "plugins.marketplace.resolveSource")?;
-    Ok(outcome("source", resolve_source(&payload.url)))
+    Ok(outcome(
+        "source",
+        resolve_source(&payload.url, payload.commit.as_deref()),
+    ))
 }
 
 /// `plugins.marketplace.installReview`: returns `{status: "ok", review:

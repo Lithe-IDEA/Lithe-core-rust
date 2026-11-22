@@ -42,6 +42,8 @@
 | `…/blob/<ref>/<path>` | 对应的 raw 文件 |
 | http、带账号密码的地址、其他 GitHub 页面 | `plugin.source.invalid` |
 
+raw.githubusercontent.com 会把分支地址缓存几分钟，刚合入的索引可能还是旧的。索引托管在 GitHub 上且地址不带查询参数时，`resolveSource` 还返回 `revision: { repository: { owner, name }, ref }`，也就是地址跟随的分支或标签：`HEAD`、路径的第一段，或者 `refs/heads/<name>`、`refs/tags/<name>`。其他来源和已经指向完整提交的地址，`revision` 为 null。宿主可以用 GitHub 的 `latestCommit` 操作查到这个 ref 当前的提交，再带上 `commit`（完整的 SHA-1 或 SHA-256，否则返回 `plugin.source.commitInvalid`）调用一次 `resolveSource`，结果多出 `pinned: { commit, indexURL, recommendationsURL }`，即同一批文件在这个提交上的地址；无法固定时为 null。宿主下载固定地址，查询或下载失败时退回原地址。`indexURL` 始终是来源的身份，宿主记录和比较的都是它，不是固定地址。分支名含 `/` 时，只有写成 `refs/heads/<name>` 才能固定。
+
 获取到的索引缓存在平台缓存或 Application Support，不写进安装目录。
 
 ### 索引条目
@@ -131,7 +133,7 @@
 | [`marketplace/index-cases.json`](../../contract/v1/fixtures/marketplace/index-cases.json) | 7 个 `validateIndex` 用例：没有宿主能力表的官方来源、第三方来源不能列官方命名空间、Windows 平台选自己的压缩包、宿主能运行语言服务器但不能运行构建系统、有构建系统但没有构建提供者时保留只含语言的版本、没有语言服务器时不提供语言插件、Core 无法校验的能力永远不可用 |
 | [`marketplace/invalid-index-entries.json`](../../contract/v1/fixtures/marketplace/invalid-index-entries.json) | 26 个条目错误用例：25 个 `plugin.index.invalid`，1 个 `plugin.index.officialNamespace` |
 | [`marketplace/install-reviews.json`](../../contract/v1/fixtures/marketplace/install-reviews.json) | 19 个 `installReview` 用例：首次安装、无变化更新、改了参数或探针需要重新批准、包与条目不符、官方命名空间的未签名包、构建插件的能力要求 |
-| [`marketplace/source-urls.json`](../../contract/v1/fixtures/marketplace/source-urls.json) | 11 个 `resolveSource` 用例：5 个解析成功，6 个 `plugin.source.invalid` |
+| [`marketplace/source-urls.json`](../../contract/v1/fixtures/marketplace/source-urls.json) | 17 个 `resolveSource` 用例：10 个解析成功（其中 5 个带 `commit`），6 个 `plugin.source.invalid`，1 个 `plugin.source.commitInvalid` |
 
 ### 相关指南
 
@@ -178,6 +180,8 @@ A marketplace is a JSON index that lists plugins and the release archives of eac
 | `https://github.com/<owner>/<repo>` | `lithe-plugin-index.json` at the root of the default branch (`HEAD`) |
 | `…/blob/<ref>/<path>` | The matching raw file |
 | Plain http, embedded credentials, other GitHub pages | `plugin.source.invalid` |
+
+raw.githubusercontent.com caches a branch URL for minutes, so a just-merged index can look unchanged. For a GitHub-hosted index without a query, `resolveSource` also returns `revision: { repository: { owner, name }, ref }`, the branch or tag the URL follows: `HEAD`, the first path segment, or `refs/heads/<name>` / `refs/tags/<name>`. It is null for other sources and for a URL already at a full commit. A host may look the ref's current commit up with the GitHub `latestCommit` operation and call `resolveSource` again with `commit` (a full SHA-1 or SHA-256, otherwise `plugin.source.commitInvalid`); the answer then adds `pinned: { commit, indexURL, recommendationsURL }`, the same files at that commit, or null when nothing can be pinned. The host fetches the pinned URLs and falls back to the unpinned ones when the lookup or the fetch fails. `indexURL` stays the source's identity: the host records and compares it, never the pinned URL. A branch whose name contains `/` is only pinned when written as `refs/heads/<name>`.
 
 Fetched indexes are cached in platform cache or Application Support storage, never inside the installation.
 
@@ -268,7 +272,7 @@ When several sources list the same ID, the user chooses the source at install ti
 | [`marketplace/index-cases.json`](../../contract/v1/fixtures/marketplace/index-cases.json) | 7 `validateIndex` cases: the official source without a host capability table, a third-party source listing the official namespace, a Windows platform picking its own archive, a host that runs language servers but not build systems, a host with build systems but no build providers keeping the language-only version, a host without language servers offered no language plugin, and a capability Core cannot validate never being offered |
 | [`marketplace/invalid-index-entries.json`](../../contract/v1/fixtures/marketplace/invalid-index-entries.json) | 26 entry error cases: 25 `plugin.index.invalid` and 1 `plugin.index.officialNamespace` |
 | [`marketplace/install-reviews.json`](../../contract/v1/fixtures/marketplace/install-reviews.json) | 19 `installReview` cases: first install, an unchanged update, argument or probe changes needing new approval, a package that does not match its entry, an unsigned official-namespace package, and the capability requirements of build plugins |
-| [`marketplace/source-urls.json`](../../contract/v1/fixtures/marketplace/source-urls.json) | 11 `resolveSource` cases: 5 resolved and 6 `plugin.source.invalid` |
+| [`marketplace/source-urls.json`](../../contract/v1/fixtures/marketplace/source-urls.json) | 17 `resolveSource` cases: 10 resolved (5 of them with a `commit`), 6 `plugin.source.invalid` and 1 `plugin.source.commitInvalid` |
 
 ### Related guides
 
