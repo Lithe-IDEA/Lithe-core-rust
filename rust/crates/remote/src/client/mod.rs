@@ -6,6 +6,11 @@
 //!   local command line that runs a program at the end of the chain.
 //! - [`wsl`] turns a WSL distribution into the first hop and lists the
 //!   installed distributions.
+//! - [`container`] turns a running container into the last hop and lists
+//!   the running containers.
+//! - [`devcontainer`] finds a folder's `devcontainer.json` files and reads
+//!   what the Dev Container CLI's `up` reports about the container it
+//!   started.
 //! - [`bootstrap`] probes the platform at the end of the chain and describes
 //!   the local server builds that can run there.
 //! - [`launch`] probes, installs and starts the server over one connection,
@@ -48,6 +53,8 @@ pub mod bootstrap;
 mod command;
 pub mod connection_log;
 pub mod connections;
+pub mod container;
+pub mod devcontainer;
 pub mod forward;
 pub mod forward_address;
 pub mod forward_set;
@@ -67,6 +74,8 @@ pub mod wsl;
 pub use api::{SpawnSpec, TerminalSpec, WriteOptions};
 pub use bootstrap::{ArtifactError, ServerArtifact, ServerTarget};
 pub use connection_log::{ConnectionKind, ConnectionLog};
+pub use container::{ContainerConnection, ListedContainer};
+pub use devcontainer::{DevcontainerConfig, StartedDevcontainer, UpFailure};
 pub use forward::PortForward;
 pub use forward_address::{AddressError, ForwardAddress};
 pub use forward_set::{

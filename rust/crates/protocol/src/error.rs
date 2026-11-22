@@ -99,6 +99,11 @@ pub enum ErrorCode {
     /// request gives for it. Nothing was installed on the host; the
     /// application's copy of the build is damaged or was replaced.
     RemoteServerInvalid,
+    /// `remote.devcontainerUp` names a folder the user does not trust
+    /// (`projectCodeAllowed: false`), so the Dev Container CLI was not
+    /// started: building runs the folder's code on this machine. Trusting the
+    /// folder and repeating the request builds it.
+    DevcontainerUntrustedFolder,
     /// A failure does not fit a more stable cross-platform category.
     Unknown,
 }

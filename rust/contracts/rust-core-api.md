@@ -833,6 +833,9 @@ or removing a command fails until the table changes in the same commit.
 | `remote.sshConfigHosts` | List the Host aliases of the user's SSH configuration for an import |
 | `remote.mottyHosts` | List the SSH hosts saved in Motty for an import |
 | `remote.listWslDistributions` | List the WSL distributions installed on this Windows machine |
+| `remote.listContainers` | List the running Docker or Podman containers on this machine or a connected host |
+| `remote.devcontainerConfigs` | List the `devcontainer.json` files of a local folder |
+| `remote.devcontainerUp` | Build or reuse and start a trusted local folder's dev container with the Dev Container CLI |
 | `remote.preferences` | Read the remote workspace settings and what each automatic value resolves to |
 | `remote.editPreferences` | Set the SSH program, the reconnect limit, whether reverse forwards are allowed or what closing a connection does to its programs, or make one automatic again |
 | `remote.runningPrograms` | List the processes and terminals a connection's host session still runs |
@@ -5941,6 +5944,85 @@ its redacted message for display; it is never logged. Cancellation and the
 bound are `cancelled` and `timed_out`. Nothing is saved: the window lists
 the distributions each time it opens.
 
+`remote.listContainers` takes `{ engine, sessionId? }`, where `engine` is
+`docker` or `podman`, and returns `{ available, containers, diagnostics }`.
+Core runs `<engine> ps --no-trunc --format '{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}'`,
+at most 15 seconds: on this machine in Core's own environment (the login
+shell's `PATH` the application put in front, and variables such as
+`DOCKER_HOST`) when `sessionId` is absent, and otherwise on that
+connection's host in the server's environment, the same one the connection
+later enters the container from. Only running containers are listed, since
+Lithe never starts, creates or changes a container. `containers` are
+`{ id, name, image, status }` in the engine's order, at most 256 and from at
+most 256 KiB of output: `id` is the full id, `name` the first of the
+container's names, and `image` and `status` the engine's text without
+control characters, at most 256 bytes each. Lines that are not four fields,
+or whose id or name is not a container name, are skipped, and so are
+repeated ids. `available` is `false` when the engine CLI cannot start there;
+when it runs and fails, for example because its service is not running,
+`containers` is empty and `diagnostics` holds its redacted message for
+display; it is never logged. Any other field is `invalid_request` ("Invalid
+container listing request"), so a request cannot pick the program; an unknown
+`sessionId` is `connection_closed`, and cancellation and the bound are
+`cancelled` and `timed_out`. Nothing is saved.
+
+#### Dev Containers
+
+A local folder's dev container is built and started by the reference Dev
+Container CLI (`devcontainer`, from `@devcontainers/cli`; `devcontainer.cmd`
+on Windows) on `PATH`, then entered like any running container with
+`remote.connect`'s `container`. Lithe does not interpret the configuration
+and adds no mounts or options to it.
+
+`remote.devcontainerConfigs` takes `{ folder }`, an absolute folder on this
+machine, and returns `{ configs }`: `{ path, name? }` for each regular file in
+the places the specification searches, in this order:
+`.devcontainer/devcontainer.json`, `.devcontainer.json`, then
+`.devcontainer/<subfolder>/devcontainer.json` for at most 64 subfolders in
+name order, skipping names that start with `.`. `path` is relative to the
+folder with `/` separators. `name` is the configuration's `name`, read as
+JSON with comments and trailing commas, without control characters and at
+most 128 bytes; it is absent when the file is larger than 1 MiB, resolves
+outside the folder, cannot be read or has no non-empty string `name`. A
+relative or empty `folder` is `invalid_request`; a folder that does not
+exist is `workspace_not_found`. Reading starts nothing.
+
+`remote.devcontainerUp` takes `{ folder, config?, engine,
+projectCodeAllowed }` and returns `{ container?, diagnostics }`. Building runs
+the folder's code on this machine (`initializeCommand`, Dockerfiles, feature
+scripts), so when `projectCodeAllowed` is `false` nothing starts and the
+request fails with `devcontainer_untrusted_folder`; native clients pass the
+folder's trust decision, as for Git. `config` must be one of the `path`s
+`remote.devcontainerConfigs` lists for the folder, otherwise
+`invalid_request`; without it the CLI searches the folder itself. Core runs
+`devcontainer up --workspace-folder <folder> [--config <folder>/<config>]`,
+adding `--docker-path podman` after `up` for `engine: "podman"`, on this
+machine in Core's own environment, for at most one hour. Each line the CLI
+logs to standard error is sent as a `{ type: "devcontainerOutput", text }`
+event, redacted, at most 4096 bytes per event and 2 MiB in all; after that
+one `{ type: "devcontainerOutput", truncated: true }` event follows and later
+lines are dropped. The log is shown, never logged.
+
+The result is the last line of standard output that is a JSON object with an
+`outcome`:
+
+- `success`: `container` is `{ engine, container, containerId, user?,
+  workspaceFolder }`. `containerId` is the CLI's container id, `container` the
+  name `<engine> inspect --format '{{.Name}}'` gives within 15 seconds
+  (without Docker's leading `/`), or the id when it gives none, `user` the
+  configuration's `remoteUser`, and `workspaceFolder` the absolute
+  `remoteWorkspaceFolder` to open. A container id that is not a container
+  name, a user `exec` cannot take, or a folder that is not absolute is
+  `parse_failed`, and so is a successful exit without a result line.
+- `error`, or no result line with a failed exit: `container` is absent and
+  `diagnostics` holds the end of the CLI's log followed by its `message` and
+  `description`, redacted, for display.
+
+A missing CLI is `runtime_missing`; any other field is `invalid_request`
+("Invalid dev container start request"), so a request cannot add mounts or
+pick the program; cancellation and the bound are `cancelled` and
+`timed_out`. Nothing is saved.
+
 #### Remote workspace preferences
 
 The settings page "Tools › Remote Workspace" edits three values that apply to
@@ -6075,14 +6157,43 @@ because `wsl.exe` asks no questions. An unknown distribution is
 the distribution and the account (`{ wsl: { distribution, user } }` as the
 first and only hop).
 
+The request may also name a running container as `container: { engine,
+container, user? }`, where `engine` is `docker` or `podman`, `container` a
+name or id such as `remote.listContainers` returned, and `user` a user, uid or
+`user:group` inside it (the image's default user when absent or empty). Next
+to `connection` or `wsl` the container is on that host: the remote command
+becomes `<engine> exec -i [-u <user>] <container> …` there, after the login.
+On its own the container is on this machine, and Core starts that command
+itself in place of OpenSSH, with its own environment so the engine finds its
+service. Core only enters the running container: it never starts, creates or
+reconfigures it, mounts directories into it or asks for more rights than the
+engine CLI has. The probe, the checked upload into the container's `$HOME`
+and the stages are the same, and nothing is relayed through
+`remote.authRespond` for the engine. When the engine gives up before the
+server starts, a container that does not exist, is not running or is paused,
+and an engine whose service does not answer, are `unreachable`; a service
+socket the user may not open is `failed`, not `authenticationFailed`, even
+over SSH; and other failures are `failed` with the engine's message in
+`diagnostics` (or `<engine> exited with status <code>` when it printed
+nothing). The connection log's `transport` is `container`, `ssh-container` or
+`wsl-container`, without the container's name. Trust decisions name the
+container after the other hops, as `{ container: { engine, program,
+container, user? } }`, so a decision never carries over to another container
+or account.
+
 A request that names both `connection` and `wsl` is `invalid_request` with
-`details` `{ field: "wsl", reason: "invalid" }`, and one that names neither
-`{ field: "connection", reason: "required" }`. A malformed connection, a
-distribution that is empty, longer than 64 bytes or not a WSL distribution
-name, a user that is longer than 32 bytes or not a Linux login name, an
-unknown `target` or a `sha256` that is not 64 hexadecimal digits is
-`invalid_request`, before OpenSSH or `wsl.exe` starts. A missing `ssh` or
-`wsl.exe` is `runtime_missing`. When the build for the host's platform cannot be
+`details` `{ field: "wsl", reason: "invalid" }`, and one that names none of
+`connection`, `wsl` and `container` `{ field: "connection", reason:
+"required" }`. A malformed connection, a distribution that is empty, longer
+than 64 bytes or not a WSL distribution name, a user that is longer than 32
+bytes or not a Linux login name, a container that is empty (`{ field:
+"container", reason: "required" }`), longer than 128 bytes or not a container
+name, a container user that is longer than 64 bytes, starts with `-` or holds
+other characters than letters, digits and `_.:-` (`{ field: "user" }`), an
+unknown `engine` or field, an unknown `target` or a `sha256` that is not 64
+hexadecimal digits is `invalid_request`, before OpenSSH, `wsl.exe` or the
+engine starts. A missing `ssh`, `wsl.exe` or local engine CLI is
+`runtime_missing`. When the build for the host's platform cannot be
 read or its SHA-256 differs, the attempt ends as `remote_server_invalid`
 without sending anything; `details` says which of the two happened and, for a
 mismatch, the SHA-256 Core computed, but never the path. Cancellation and the
