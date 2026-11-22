@@ -15,6 +15,11 @@ const DEVICE_EXPIRATION_MAX_SECONDS: u64 = 86_400;
 // Once an interval reaches the maximum lifetime, no further poll can occur.
 const DEVICE_INTERVAL_MAX_SECONDS: u64 = DEVICE_EXPIRATION_MAX_SECONDS;
 const DEVICE_SLOW_DOWN_SECONDS: u64 = 5;
+// The changelog shows the newest releases; one bounded page keeps the
+// anonymous request small.
+const RELEASE_PAGE_SIZE: u64 = 20;
+// A Git ref name is bounded like a file name; GitHub refuses longer ones.
+const GIT_REF_MAX_BYTES: usize = 255;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -200,6 +205,9 @@ pub struct RequestPlanRequest {
     /// Full commit SHA required by commit-status operations.
     #[serde(default)]
     pub commit: Option<String>,
+    /// Branch, tag or `HEAD` whose newest commit `latestCommit` looks up.
+    #[serde(default, rename = "ref")]
+    pub git_ref: Option<String>,
     /// OAuth application's public client identifier.
     #[serde(default)]
     pub client_id: Option<String>,
@@ -452,6 +460,24 @@ pub struct GitHubComparison {
     pub files: Vec<GitHubPullRequestFile>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+/// Normalized published release of a repository, as a changelog lists it.
+pub struct GitHubRelease {
+    /// Git tag the release was published from.
+    pub tag_name: String,
+    /// Release title; null when the author left it empty.
+    pub name: Option<String>,
+    /// Markdown release notes; empty when the author wrote none.
+    pub body: String,
+    /// ISO-8601 publication timestamp.
+    pub published_at: Option<String>,
+    /// Whether the author marked the release as a pre-release.
+    pub prerelease: bool,
+    /// Browser URL of the release page.
+    pub url: String,
+}
+
 /// Parses one supported GitHub remote URL.
 pub fn parse_remote(request: ParseRemoteRequest) -> Result<GitHubRepository, CoreError> {
     let value = request.remote_url.trim().trim_end_matches('/');
@@ -634,6 +660,32 @@ pub fn request_plan(request: RequestPlanRequest) -> Result<GitHubRequestPlan, Co
                 true,
             )
         }
+        // Public reads: an anonymous request works on any public repository,
+        // so a signed-out user gets the same answer.
+        "latestCommit" => {
+            let repository = repository_path(&request)?;
+            let git_ref = git_ref(&request)?;
+            query.insert("sha".to_string(), git_ref.to_string());
+            query.insert("per_page".to_string(), "1".to_string());
+            (
+                GitHubHost::Api,
+                "GET",
+                format!("/repos/{repository}/commits"),
+                None,
+                false,
+            )
+        }
+        "listReleases" => {
+            let repository = repository_path(&request)?;
+            query.insert("per_page".to_string(), RELEASE_PAGE_SIZE.to_string());
+            (
+                GitHubHost::Api,
+                "GET",
+                format!("/repos/{repository}/releases"),
+                None,
+                false,
+            )
+        }
         "listPullRequestComments" => {
             let repository = repository_path(&request)?;
             let number = pull_number(&request)?;
@@ -744,6 +796,8 @@ pub fn normalize_response(request: NormalizeResponseRequest) -> Result<Value, Co
         "listReviewComments" => normalize_review_comment_list(value),
         "listCheckRuns" => normalize_check_run_list(value),
         "getCombinedStatus" => normalize_combined_status(value),
+        "latestCommit" => normalize_latest_commit(value),
+        "listReleases" => normalize_release_list(value),
         "createPullRequestComment" => {
             Ok(serde_json::to_value(normalize_comment(&value)?).expect("comment encodes"))
         }
@@ -764,6 +818,24 @@ fn commit_path(request: &RequestPlanRequest) -> Result<(String, String), CoreErr
         return Err(invalid_field("commit"));
     }
     Ok((repository, commit.to_string()))
+}
+
+/// The ref travels as a query value, so it is only bounded here; GitHub
+/// answers an unknown ref with an error.
+fn git_ref(request: &RequestPlanRequest) -> Result<&str, CoreError> {
+    let value = required_text(request.git_ref.as_deref(), "ref")?;
+    let valid = value.len() <= GIT_REF_MAX_BYTES
+        && !value.contains("..")
+        && !value.starts_with('-')
+        && value.chars().all(|character| {
+            character.is_ascii_graphic()
+                && !matches!(character, '~' | '^' | ':' | '?' | '*' | '[' | '\\')
+        });
+    if valid {
+        Ok(value)
+    } else {
+        Err(invalid_field("ref"))
+    }
 }
 
 fn repository_path(request: &RequestPlanRequest) -> Result<String, CoreError> {
@@ -1095,6 +1167,59 @@ fn normalize_combined_status(value: Value) -> Result<Value, CoreError> {
         .collect::<Result<Vec<_>, CoreError>>()?;
     checks.sort_by(|left, right| left.name.cmp(&right.name));
     Ok(serde_json::to_value(checks).expect("combined status encodes"))
+}
+
+/// The commit list is asked for one entry: the ref's newest commit. A full
+/// SHA-1 or SHA-256 object name is required, because the caller builds an
+/// immutable file URL from it.
+fn normalize_latest_commit(value: Value) -> Result<Value, CoreError> {
+    let first = value
+        .as_array()
+        .and_then(|commits| commits.first())
+        .ok_or_else(parse_shape_error)?;
+    let sha = text(object(first)?, "sha")?;
+    if !matches!(sha.len(), 40 | 64) || !sha.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(parse_shape_error());
+    }
+    Ok(json!({ "sha": sha.to_ascii_lowercase() }))
+}
+
+/// Drafts are dropped (an anonymous reader never sees them). The newest
+/// publication comes first; equal timestamps fall back to the tag so the
+/// order does not depend on GitHub's.
+fn normalize_release_list(value: Value) -> Result<Value, CoreError> {
+    let mut releases = Vec::new();
+    for value in value.as_array().ok_or_else(parse_shape_error)? {
+        let object = object(value)?;
+        if object.get("draft").and_then(Value::as_bool) == Some(true) {
+            continue;
+        }
+        let optional = |key: &str| {
+            object
+                .get(key)
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .map(str::to_string)
+        };
+        releases.push(GitHubRelease {
+            tag_name: text(object, "tag_name")?.to_string(),
+            name: optional("name"),
+            body: optional("body").unwrap_or_default(),
+            published_at: optional("published_at"),
+            prerelease: object
+                .get("prerelease")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            url: text(object, "html_url")?.to_string(),
+        });
+    }
+    releases.sort_by(|left, right| {
+        right
+            .published_at
+            .cmp(&left.published_at)
+            .then_with(|| right.tag_name.cmp(&left.tag_name))
+    });
+    Ok(serde_json::to_value(releases).expect("release list encodes"))
 }
 
 fn normalize_file_list(value: Value) -> Result<Value, CoreError> {

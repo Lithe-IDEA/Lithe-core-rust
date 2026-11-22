@@ -5438,8 +5438,11 @@ archives and pass the parsed JSON. `validateIndex` accepts
 `{ index, sourceKind: "official" | "thirdParty", platform, hostCapabilities? }`
 and returns `{ status: "ok", index: { plugins, rejected } }` with per-entry
 `availability`; a listed version is available only when its `pluginAPIVersion`
-is one Core supports and every capability it requires is in `hostCapabilities`; `resolveSource` accepts `{ url }` and returns
-`{ status: "ok", source: { indexURL, recommendationsURL, repository, displayName } }`;
+is one Core supports and every capability it requires is in `hostCapabilities`; `resolveSource` accepts `{ url, commit? }` and returns
+`{ status: "ok", source: { indexURL, recommendationsURL, repository, displayName, revision, pinned? } }`,
+where `revision` names the GitHub repository and ref a host may look the newest commit of
+(`github.latestCommit`) and `pinned` holds the same URLs at the `commit` passed back;
+`indexURL` remains the source identity;
 `installReview` accepts `{ manifest, expectedID?, expectedVersion?,
 approvedPrograms?, hostCapabilities? }` and returns `{ status: "ok", review: { id, version,
 permissions, programs, newPrograms } }`;

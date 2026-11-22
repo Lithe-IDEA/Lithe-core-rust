@@ -1878,6 +1878,21 @@ every product shows the same catalog and the same install review.
   It also returns `recommendationsURL`, the sibling `lithe-plugin-recommendations.json`
   beside `indexURL` (query and fragment cleared). Plain http, embedded
   credentials, and other GitHub pages are refused with `plugin.source.invalid`.
+- raw.githubusercontent.com serves a branch URL from a cache for minutes, so a
+  just-merged index can look unchanged. For a GitHub-hosted index without a
+  query, `resolveSource` also returns `revision: { repository: { owner, name },
+  ref }`, the ref the URL follows (`HEAD`, the first path segment, or
+  `refs/heads/<name>` / `refs/tags/<name>`); it is null for other sources and
+  for a URL already at a full commit. A host may look the ref's newest commit
+  up with the GitHub `latestCommit` operation and call `resolveSource` again
+  with `commit`, a full SHA-1 or SHA-256 object name (otherwise
+  `plugin.source.commitInvalid`); the answer then adds `pinned: { commit,
+  indexURL, recommendationsURL }`, the same files at that commit, or null when
+  nothing can be pinned. The host fetches the pinned URLs and falls back to the
+  unpinned ones when the lookup or the pinned fetch fails. `indexURL` stays the
+  source's identity: a host records and compares that one, never the pinned
+  URL. A branch whose name contains `/` is only pinned when written as
+  `refs/heads/<name>`.
 - Hosts cache fetched indexes in platform cache or application-support
   storage, never inside the installation.
 
