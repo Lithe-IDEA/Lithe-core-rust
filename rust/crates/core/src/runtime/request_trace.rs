@@ -294,6 +294,7 @@ mod tests {
             "remote.startForward",
             "remote.startHostForward",
             "remote.startReverseForward",
+            "remote.restoreForwards",
             "remote.runningPrograms",
             "remote.endPrograms",
             "debug.launch",

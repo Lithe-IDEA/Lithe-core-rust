@@ -823,6 +823,9 @@ or removing a command fails until the table changes in the same commit.
 | `remote.stopForward` | Stop one port forward and close the port it listens on |
 | `remote.forwards` | List the running port forwards of one connection |
 | `remote.parseForwardAddress` | Read a port, `host:port` or URL typed into the ports page into a forward target |
+| `remote.portRecords` | Read what the ports page remembers of one open remote workspace |
+| `remote.editPortRecords` | Record or forget one port row or forwarding rule of a remote workspace |
+| `remote.restoreForwards` | Start again the local forwards a remote workspace left running |
 | `remote.connections` | Read the SSH connections the user saved |
 | `remote.editConnections` | Save, remove or import saved SSH connections, or record a folder or a connection time |
 | `remote.parseAddress` | Split a quick-connect address into connection fields |
@@ -6270,7 +6273,8 @@ that could not reach their target (always 0 for a local forward).
   except a host forward's, which the host closes with its port. An unknown
   id returns `stopped: false`. `remote.disconnect`, `remote.closeAll` and a
   lost connection close every port the connection opened on either side,
-  and a reconnect reopens none of them. Requests on a
+  and a reconnect reopens none of them by itself: the native client calls
+  `remote.restoreForwards` (see "Remote port records"). Requests on a
   connection whose session ended are `connection_closed` and forget it, as
   for the other commands.
 
@@ -6346,6 +6350,88 @@ the exact bytes, verify them before atomic publication and reread after Save,
 as for `toolchains/global.json`. The file is separate from that document so
 hosts that predate remote trust still read theirs. This user-settings resource
 does not affect code signatures or update deltas.
+
+#### Remote port records
+
+The ports page remembers what the user set by hand when a remote workspace
+closes or its connection drops, so the next connection to the same workspace
+shows it again. Records are keyed like workspace trust, by the connection's
+target and the workspace's real path on the host, and never carry over to
+another host, account, container or folder.
+
+| Command | Request | Result |
+| --- | --- | --- |
+| `remote.portRecords` | `{ document, sessionId, workspace }` | `{ records, workspace, storage: { relativePath: "remote/ports.json", maximumBytes: 262144 } }` |
+| `remote.editPortRecords` | `{ document, sessionId, workspace }` and one of `port`, `removePort`, `rule`, `removeRule` | `{ changed, document: string\|null, records }` |
+| `remote.restoreForwards` | `{ document, sessionId, workspace }` | `{ forwards }` |
+
+`document` is the current text of the source, `null` when there is none, and
+`workspace` the absolute host path as opened; the result's `workspace` is its
+real path. `records` is `{ ports, rules }` of that workspace:
+
+- A **row** is `{ host?, port, added?, label?, localPort?, forwardTarget?,
+  confirmedTarget? }`, one for each port on each address. `host` is absent
+  for the host's own loopback address, which `localhost`, `127.0.0.1`, `::1`
+  and the wildcard addresses all name; otherwise it is an IP address in
+  canonical form or a name in lower case. Rows are ordered by port, then by
+  host, the loopback row first.
+  - `added: { host, scheme?, path? }` is the address the user added the row
+    with, as `remote.parseForwardAddress` read it and for the same row. Its
+    path keeps no query and no fragment, which can carry an access token
+    such as Jupyter's `?token=`; the native client keeps the full address in
+    memory only.
+  - `label` is 1 to 64 characters without control characters;
+    `localPort` is the local port the user chose (absent uses `port`).
+  - `forwardTarget` is the target of the local forward the user started for
+    the row and has not stopped, as `remote.forwards` lists it; it must name
+    the row's address. `confirmedTarget: true` keeps the user's confirmation
+    of a target outside the host's loopback interface; it is dropped for a
+    loopback target and without `forwardTarget`, so stopping the forward
+    forgets it.
+- A **rule** is a forward that listens on the host, `{ kind: "host",
+  listenPort?, targetHost, targetPort, label? }` or `{ kind: "reverse",
+  listenPort?, localPort, label? }`, in the order the user added them.
+  `listenPort` `0` is stored as absent. There is no `allInterfaces`: listening
+  on every host interface is asked at each start and never remembered.
+
+`remote.editPortRecords` applies one change: `port` replaces the row it names
+and removes it when nothing is left to remember; `removePort: { host?, port }`
+forgets a row, any spelling of its host accepted; `rule` adds a rule or
+renames the same rule (rules that differ only in their labels are the same);
+`removeRule` forgets the same rule whatever its label. Removing an absent row
+or rule changes nothing. An unchanged edit returns a `null` document and must
+not create a source. The workspace edited last comes first; a workspace with
+nothing left is dropped.
+
+`remote.restoreForwards` starts again, in row order, the local forward of
+every row with a `forwardTarget`, each as `remote.startForward` would with
+the row's `localPort` (or `port`) and `allowNonLoopbackTarget` set to its
+`confirmedTarget`. Each entry of `forwards` is `{ host?, port }` with either
+`{ forward, created }` or `{ error }`, the error `remote.startForward` would
+have returned, such as `forward_target_not_confirmed`; one failure does not
+stop the others. A forward that already runs returns `created: false`. Rules
+never start this way: host and reverse forwards ask the user at each start.
+
+Bounds: 256 KiB per document, 64 workspaces, 128 rows and 64 rules per
+workspace. Unlike trust decisions the records are a convenience: past 64
+workspaces, or when the document would outgrow 256 KiB, the workspace edited
+longest ago is dropped instead of refusing the edit. A full workspace refuses
+a new row or rule. A document that cannot be decoded, has duplicate keys,
+unknown fields (`allInterfaces` included), another version, more than 64
+workspaces, a workspace, row or rule listed twice, or a value an edit never
+writes is `parse_failed` with `details.field`. A malformed request, none or
+more than one change (`details.field` `change`), a refused row or rule, or a
+full list is `invalid_request` with `details.field`. A missing workspace is
+`workspace_not_found`, a closed session `connection_closed`, and a host real
+path that is not normalized `parse_failed`.
+
+Native clients keep the document below their platform user-preference
+directory, next to the remote preferences and the saved connections, never on
+the host, in a workspace or in an installed package. They retain the exact
+bytes, verify them before atomic publication and reread after Save, as for
+`toolchains/remote-trust.json`. The document holds no secret; Core never logs
+its addresses. This user-settings resource does not affect code signatures or
+update deltas.
 
 ### Git patch discovery and rebase amendment preconditions
 

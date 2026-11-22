@@ -364,6 +364,35 @@ pub(crate) fn lookup(id: &str) -> Result<Arc<Connection>, CoreError> {
         })
 }
 
+/// The key of a workspace's machine-local records, its trust and its port
+/// records: the connection's target and the workspace's real path as the host
+/// resolves it, so a symbolic link or another spelling of the path never
+/// reaches a record of a different folder. `workspace` is the absolute host
+/// path the workspace was opened at.
+pub(crate) fn workspace_key(
+    session_id: &str,
+    workspace: &str,
+) -> Result<(Target, String), CoreError> {
+    if !workspace.starts_with('/') || workspace.contains('\0') {
+        return Err(
+            CoreError::new(ErrorCode::InvalidRequest, "Invalid remote workspace path")
+                .with_details(serde_json::json!({ "field": "workspace" }).to_string()),
+        );
+    }
+    let connection = lookup(session_id)?;
+    let real_path = connection
+        .session
+        .real_path(workspace)
+        .map_err(|error| request_error(session_id, error))?;
+    if lithe_remote::client::trust::host_path(&real_path).is_none() {
+        return Err(CoreError::new(
+            ErrorCode::ParseFailed,
+            "The host returned an invalid real path",
+        ));
+    }
+    Ok((connection.trust_target.clone(), real_path))
+}
+
 /// Removes a connection whose session ended and closes it in the background,
 /// so the host reconnects instead of retrying a dead session.
 pub(crate) fn forget(id: &str) {

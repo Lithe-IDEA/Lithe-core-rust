@@ -1027,6 +1027,15 @@ pub enum RemoteCommand {
     /// Reads a port, `host:port` or URL typed into the ports page
     /// (`remote.parseForwardAddress`).
     ParseForwardAddress,
+    /// Reads what the ports page remembers of one open remote workspace
+    /// (`remote.portRecords`).
+    PortRecords,
+    /// Records or forgets one port row or forwarding rule of an open remote
+    /// workspace (`remote.editPortRecords`).
+    EditPortRecords,
+    /// Starts again the local forwards the user left running in an open
+    /// remote workspace (`remote.restoreForwards`).
+    RestoreForwards,
     /// Reads the SSH connections the user saved (`remote.connections`).
     Connections,
     /// Saves, removes, imports or records a folder or a connection time on
@@ -1630,6 +1639,9 @@ impl CoreCommand {
             "remote.stopForward" => Some(Self::Remote(RemoteCommand::StopForward)),
             "remote.forwards" => Some(Self::Remote(RemoteCommand::Forwards)),
             "remote.parseForwardAddress" => Some(Self::Remote(RemoteCommand::ParseForwardAddress)),
+            "remote.portRecords" => Some(Self::Remote(RemoteCommand::PortRecords)),
+            "remote.editPortRecords" => Some(Self::Remote(RemoteCommand::EditPortRecords)),
+            "remote.restoreForwards" => Some(Self::Remote(RemoteCommand::RestoreForwards)),
             "remote.connections" => Some(Self::Remote(RemoteCommand::Connections)),
             "remote.editConnections" => Some(Self::Remote(RemoteCommand::EditConnections)),
             "remote.parseAddress" => Some(Self::Remote(RemoteCommand::ParseAddress)),
