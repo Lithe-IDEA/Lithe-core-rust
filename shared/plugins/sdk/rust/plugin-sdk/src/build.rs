@@ -13,11 +13,22 @@ use crate::diagnostics::Diagnostics;
 use crate::error::Cancelled;
 use crate::host::Host;
 use crate::protocol::{bounded_text, methods, MAX_BUILD_MESSAGE_BYTES, MAX_BUILD_OUTPUT_BYTES};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::atomic::Ordering;
 
 /// The `version` every build result document carries.
 const DOCUMENT_VERSION: u64 = 0;
+
+/// The host that starts a contributed process. Omit the field to use the workspace host.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ProcessPlacement {
+    /// The machine that owns the workspace.
+    Workspace,
+    /// The machine running Lithe.
+    Ui,
+}
 
 /// Requests that run the build tool. Core gives each a wire `operationID`,
 /// and only they report `lithe/build/progress`.
@@ -99,6 +110,9 @@ pub(crate) fn result(method: &str, value: Value) -> Option<Value> {
             }) && fields.get("workingDirectory").is_some_and(Value::is_string)
                 && strings(fields.get("arguments"))
                 && environment(fields.get("environment"))
+                && fields
+                    .get("placement")
+                    .is_none_or(|value| ProcessPlacement::deserialize(value).is_ok())
         }
         // Native target facts only: the adapter and its DAP arguments come
         // from the manifest.
@@ -266,6 +280,23 @@ mod tests {
         let plan = json!({ "executable": { "kind": "command", "value": "app" },
             "arguments": ["a"], "workingDirectory": "app", "environment": { "A": "1" } });
         assert!(result(methods::BUILD_PREPARE_RUN, plan.clone()).is_some());
+        for (placement, wire) in [
+            (ProcessPlacement::Workspace, "workspace"),
+            (ProcessPlacement::Ui, "ui"),
+        ] {
+            let mut placed = plan.clone();
+            placed["placement"] = json!(placement);
+            assert_eq!(placed["placement"], wire);
+            assert_eq!(
+                result(methods::BUILD_PREPARE_RUN, placed.clone()),
+                Some(placed)
+            );
+        }
+        for placement in [json!("remote"), Value::Null] {
+            let mut invalid = plan.clone();
+            invalid["placement"] = placement;
+            assert!(result(methods::BUILD_PREPARE_RUN, invalid).is_none());
+        }
         let mut other = plan.clone();
         other["executable"]["kind"] = json!("shell");
         assert!(result(methods::BUILD_PREPARE_RUN, other).is_none());

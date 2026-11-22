@@ -459,20 +459,23 @@ pub(crate) fn launch(host: Host, spec: LspProcessSpec) -> Result<LspProcessStrea
     });
     let parameters = SpawnParams {
         process_id: id,
-        argv: std::iter::once(
+        argv: std::iter::once(spec.remote_executable.unwrap_or_else(|| {
             host.remote_path(&spec.executable)
                 .to_string_lossy()
-                .into_owned(),
-        )
+                .into_owned()
+        }))
         .chain(spec.arguments)
         .collect(),
+        command_candidates: spec.remote_commands,
         cwd: Some(
             host.remote_path(&spec.working_directory)
                 .to_string_lossy()
                 .into_owned(),
         ),
+        scoped_cwd: None,
         environment: EnvironmentSource::Login,
         env: spec.environment,
+        path_prepend: spec.remote_path_prepend,
         pipe_stdin: true,
         label: None,
     };

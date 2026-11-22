@@ -47,7 +47,7 @@ pub(crate) fn build_provider_launch_plan(
                 provider.executes_project_code(),
                 &format!("The provider of {build_system_id}"),
             )?;
-            server_launch_plan(manifest, process, request)?
+            server_launch_plan(manifest, process, request, ServerRole::BuildProvider)?
         }
     };
     plan["buildProvider"] = description;
@@ -77,7 +77,12 @@ pub(crate) fn vcs_provider_launch_plan(
             )
         })?;
     request.require_trust(true, &format!("The VCS provider {vcs_id}"))?;
-    let mut plan = server_launch_plan(manifest, &provider.process, request)?;
+    let mut plan = server_launch_plan(
+        manifest,
+        &provider.process,
+        request,
+        ServerRole::VcsProvider,
+    )?;
     plan["vcsProvider"] = provider.descriptor(&manifest.id);
     Ok(plan)
 }
@@ -95,7 +100,7 @@ pub(crate) fn backend_launch_plan(
             "The plugin declares no backend.",
         )
     })?;
-    let mut plan = server_launch_plan(manifest, &backend.process, request)?;
+    let mut plan = server_launch_plan(manifest, &backend.process, request, ServerRole::Backend)?;
     plan["backend"] = lithe_plugin_backend::plan_descriptor(
         manifest.capability_version(capabilities::BACKEND),
         &manifest.backend_host_services(),
@@ -125,7 +130,9 @@ pub(crate) fn debug_adapter_launch_plan(
             )
         })?;
     let mut plan = match &adapter.launch.process {
-        Some(DebugProcess::Server(process)) => server_launch_plan(manifest, process, request)?,
+        Some(DebugProcess::Server(process)) => {
+            server_launch_plan(manifest, process, request, ServerRole::DebugAdapter)?
+        }
         Some(DebugProcess::SelectedRuntime(_)) => {
             return Err(PluginRejection::new(
                 "plugin.launch.unavailable",

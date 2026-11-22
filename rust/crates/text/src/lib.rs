@@ -7,8 +7,10 @@
 //! `lithe-core`.
 
 mod edits;
+pub mod encoding;
 mod line_preview;
 mod position;
+pub mod search;
 mod snippets;
 mod symbols;
 

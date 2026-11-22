@@ -2,6 +2,7 @@ package org.example.samplebuild;
 
 import io.github.litheidea.plugin.sdk.Backend;
 import io.github.litheidea.plugin.sdk.CallContext;
+import io.github.litheidea.plugin.sdk.Host;
 import io.github.litheidea.plugin.sdk.Json;
 import io.github.litheidea.plugin.sdk.PluginError;
 import io.github.litheidea.plugin.sdk.Processes;
@@ -106,6 +107,19 @@ public final class SampleBuild {
 
         backend.function("workspace.build", this::build);
         backend.function("snapshot.read", (params, context) -> store.read("snapshot", null));
+        backend.function("workspace.processRoots", (params, context) -> {
+            if (context.workspaceContext() == null) {
+                throw new PluginError("sample.noWorkspace", "Open a workspace first.");
+            }
+            Host.Workspace workspace = context.host().workspace();
+            List<Object> folders = new ArrayList<>();
+            for (Host.ProcessRoot root : workspace.processRoots(workspace.getContext(context.workspaceContext()).get()).get()) {
+                folders.add(root.isRemote()
+                        ? object("rootID", root.rootId(), "hostPath", root.hostPath().value())
+                        : object("rootID", root.rootId(), "path", root.path()));
+            }
+            return folders;
+        });
         backend.listen();
     }
 

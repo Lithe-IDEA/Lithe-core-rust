@@ -64,6 +64,10 @@ pub struct SettingsSource {
     pub title: String,
     /// Normalized workspace-relative path, interpreted only by native I/O.
     pub path: String,
+    /// A remote helper explicitly selects the workspace or remote home. A
+    /// host-readable source outside those scopes is always read-only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<RemoteSourceScope>,
     /// `missing`, or `sha256:` followed by 64 lowercase hexadecimal digits.
     pub revision: String,
     /// Whether the plugin permits explicit edits of this source.
@@ -74,6 +78,18 @@ pub struct SettingsSource {
     /// this one; empty for a top-level source.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub parent: String,
+}
+
+/// File namespace used by remote native settings helpers.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "camelCase")]
+pub enum RemoteSourceScope {
+    /// Relative to the remote workspace.
+    Workspace,
+    /// Relative to the remote account home.
+    Home,
+    /// An absolute host path the helper may display but the host never replaces.
+    HostReadOnly,
 }
 
 /// One explicitly non-sensitive raw value and its upstream effective value.
@@ -449,9 +465,17 @@ impl SourceSettings {
             }
             if !identifier(&source.id)
                 || !ids.insert(&source.id)
-                || !paths.insert(&source.path)
+                || !paths.insert((
+                    source.scope.unwrap_or(RemoteSourceScope::Workspace),
+                    &source.path,
+                ))
                 || !text(&source.title, 256, false)
-                || !relative_path(&source.path)
+                || match source.scope {
+                    Some(RemoteSourceScope::HostReadOnly) => {
+                        source.writable || !source.path.strip_prefix('/').is_some_and(relative_path)
+                    }
+                    _ => !relative_path(&source.path),
+                }
                 || !valid_source_revision(&source.revision)
                 || source.fields.is_empty()
                 || source.fields.len() > MAX_FIELDS

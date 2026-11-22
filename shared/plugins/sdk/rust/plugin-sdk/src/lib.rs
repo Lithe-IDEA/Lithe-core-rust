@@ -49,7 +49,7 @@ pub use backend::{
     Backend, BackendHandle, Caller, Cancellation, Context, Initialize, KeymapImportRequest,
     KeymapSourceFile,
 };
-pub use build::BuildContext;
+pub use build::{BuildContext, ProcessPlacement};
 pub use diagnostics::Diagnostics;
 pub use error::{
     sdk_codes, Cancelled, FunctionError, PluginError, SdkError, HOST_ERROR_CODES, RELAY_ERROR_CODES,

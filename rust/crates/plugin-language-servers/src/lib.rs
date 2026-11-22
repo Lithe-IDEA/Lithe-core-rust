@@ -166,6 +166,11 @@ pub enum RemoteSupport {
 }
 
 impl SessionDeclaration {
+    /// Whether this server can run on the workspace's remote host.
+    pub fn supports_remote(&self) -> bool {
+        self.remote.unwrap_or_default() == RemoteSupport::Supported
+    }
+
     /// Whether the backend may talk to the server, which needs the
     /// `languageServer.request` permission.
     pub fn exposes_server(&self) -> bool {
@@ -352,13 +357,14 @@ fn is_within(path: &str, directory: &str) -> bool {
 /// the machine, the writable directories, and the plugin's effective settings.
 pub fn resolve_params(
     server_id: &str,
+    operating_system: &str,
     architecture: &str,
     directories: &LaunchDirectories<'_>,
     settings: &BTreeMap<String, Value>,
 ) -> Value {
     json!({
         "serverID": server_id,
-        "platform": { "os": std::env::consts::OS, "arch": architecture },
+        "platform": { "os": operating_system, "arch": architecture },
         "stateDirectory": directories.state,
         "workspaceStateDirectory": directories.workspace_state,
         "logDirectory": directories.log,

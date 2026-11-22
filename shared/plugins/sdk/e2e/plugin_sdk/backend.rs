@@ -67,9 +67,12 @@ pub fn run_backend_scenario(package: &Path) {
             "secret.forget",
             "secret.remember",
             "terminal.cycle",
-            "work.wait"
+            "work.wait",
+            "workspace.processRoots"
         ]
     );
+    #[cfg(unix)]
+    super::remote_workspace::run(&mut session, &fixture);
 
     // A function with progress, which registers note.clear on first use.
     let saved = session.call(
@@ -445,7 +448,7 @@ fn run_terminal_services(session: &mut Session) {
 }
 
 /// Invokes `function` as a page of the window showing `context` does.
-fn invoke_in(session: &Session, operation: &str, function: &str, context: &Value) {
+pub(super) fn invoke_in(session: &Session, operation: &str, function: &str, context: &Value) {
     core(
         "lsp.functionRequest",
         json!({
@@ -460,7 +463,7 @@ fn invoke_in(session: &Session, operation: &str, function: &str, context: &Value
 
 /// Waits for a `hostRequest` for `method` and takes it from the events, so
 /// the next wait finds the next one.
-fn take_host_request(session: &mut Session, method: &str) -> Value {
+pub(super) fn take_host_request(session: &mut Session, method: &str) -> Value {
     let request = session.await_event(&format!("a {method} host request"), |event| {
         event["type"] == "hostRequest" && event["method"] == method
     });
@@ -472,7 +475,7 @@ fn take_host_request(session: &mut Session, method: &str) -> Value {
 }
 
 /// Answers a host request as the host does: its result, or its failure.
-fn respond(session: &Session, request: &Value, outcome: Result<Value, Value>) {
+pub(super) fn respond(session: &Session, request: &Value, outcome: Result<Value, Value>) {
     let mut response = json!({
         "sessionId": session.id,
         "hostRequestID": request["result"]["hostRequestID"],

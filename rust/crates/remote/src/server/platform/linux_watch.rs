@@ -10,10 +10,12 @@
 use crate::protocol::methods::{ChangeKind, WatchBackend};
 use crate::protocol::RemoteError;
 use crate::server::fs::io_error;
+use crate::server::scoped_files::{open_root, watch_directory};
 use crate::server::threads::Parked;
 use crate::server::watch::{Excludes, RawEvent, Sink};
 use std::collections::HashMap;
 use std::ffi::OsStr;
+use std::fs::File;
 use std::io;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
@@ -33,7 +35,6 @@ const WATCH_MASK: u32 = libc::IN_CREATE
     | libc::IN_DELETE_SELF
     | libc::IN_MOVE_SELF
     | libc::IN_ONLYDIR
-    | libc::IN_DONT_FOLLOW
     | libc::IN_EXCL_UNLINK;
 
 /// Read buffer for events; one event is at most a header plus `NAME_MAX`.
@@ -113,6 +114,7 @@ impl Backend {
         let mut tree = Tree {
             fd: inotify.as_raw_fd(),
             root: root.clone(),
+            root_directory: open_root(&root)?,
             by_descriptor: HashMap::new(),
             limit_reported: false,
             excludes,
@@ -148,6 +150,7 @@ impl Backend {
 struct Tree {
     fd: RawFd,
     root: PathBuf,
+    root_directory: File,
     by_descriptor: HashMap<i32, PathBuf>,
     limit_reported: bool,
     excludes: Arc<Excludes>,
@@ -155,9 +158,11 @@ struct Tree {
 
 impl Tree {
     fn add(&mut self, directory: &Path) -> io::Result<i32> {
-        let path = std::ffi::CString::new(directory.as_os_str().as_bytes())
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path contains NUL"))?;
-        // SAFETY: the path is a NUL-terminated string that outlives the call.
+        let opened = self.open(directory)?;
+        // Follow the trusted proc descriptor link, never a path from an event.
+        let path =
+            std::ffi::CString::new(descriptor_path(&opened)).expect("descriptor paths have no NUL");
+        // SAFETY: the terminated proc path and its open descriptor outlive the call.
         let descriptor = unsafe { libc::inotify_add_watch(self.fd, path.as_ptr(), WATCH_MASK) };
         if descriptor == -1 {
             return Err(io::Error::last_os_error());
@@ -167,16 +172,29 @@ impl Tree {
         Ok(descriptor)
     }
 
+    fn open(&self, directory: &Path) -> io::Result<File> {
+        let relative = directory
+            .strip_prefix(&self.root)
+            .map_err(|_| io::Error::from(io::ErrorKind::InvalidInput))?;
+        watch_directory(&self.root_directory, relative)
+    }
+
     /// Registers every directory below `directory`. With `report`, every
     /// entry found is also reported as created.
     fn add_below(&mut self, directory: &Path, sink: &Sink, report: bool) {
         let mut pending = vec![directory.to_path_buf()];
         while let Some(current) = pending.pop() {
-            let Ok(entries) = std::fs::read_dir(&current) else {
+            let entries = self
+                .open(&current)
+                .and_then(|directory| std::fs::read_dir(descriptor_path(&directory)));
+            let Ok(entries) = entries else {
+                // The directory moved, vanished, or became unreadable
+                // after registration. The client must refresh its view.
+                let _ = sink.send(RawEvent::Overflow);
                 continue;
             };
             for entry in entries.flatten() {
-                let path = entry.path();
+                let path = current.join(entry.file_name());
                 if report {
                     let _ = sink.send(RawEvent::Change(path.clone(), ChangeKind::Created));
                 }
@@ -326,6 +344,10 @@ impl Tree {
         }
         true
     }
+}
+
+fn descriptor_path(directory: &File) -> String {
+    format!("/proc/self/fd/{}", directory.as_raw_fd())
 }
 
 fn pipe() -> io::Result<(OwnedFd, OwnedFd)> {

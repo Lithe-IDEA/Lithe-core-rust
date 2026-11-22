@@ -91,6 +91,14 @@ backend.function('workspace.build', async ({ projects: selected }, context) => {
 
 backend.function('snapshot.read', () => store.read('snapshot', null));
 
+backend.function('workspace.processRoots', async (_, context) => {
+  if (!context.workspaceContext) throw new PluginError('sample.noWorkspace', 'Open a workspace first.');
+  const workspace = context.host.workspace;
+  const full = await workspace.getContext(context.workspaceContext);
+  const { folders } = await workspace.processRoots(full);
+  return folders;
+});
+
 // Reads the latest snapshot when the build ends, not when it starts: two
 // overlapping builds then get consecutive generations instead of the same one.
 // The read and the write run without an `await` between them.

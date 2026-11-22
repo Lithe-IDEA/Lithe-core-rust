@@ -538,6 +538,50 @@ pub(crate) fn applies_any(
     })
 }
 
+/// Collects the package inputs of the model command that would be emitted.
+pub(crate) fn package_inputs(
+    arguments: &[BuildArgument],
+    values: &Values<'_>,
+) -> Validation<BTreeSet<String>> {
+    let mut paths = BTreeSet::new();
+    for argument in arguments {
+        if !argument
+            .conditions()
+            .iter()
+            .all(|condition| condition.holds(values))
+        {
+            continue;
+        }
+        let parts = parse(argument.value()).unwrap_or_default();
+        let mut suffixes =
+            parts.split(|part| matches!(part, TemplatePart::Variable(Variable::PluginDir)));
+        // The segment before the first variable may contain an option prefix.
+        suffixes.next();
+        let Some(suffix) = suffixes.next() else {
+            continue;
+        };
+        let [TemplatePart::Text(path)] = suffix else {
+            return Err(invalid_package_input());
+        };
+        let path = path
+            .strip_prefix('/')
+            .unwrap_or_default()
+            .trim_end_matches('/');
+        if suffixes.next().is_some() || !lithe_plugin_model::deployment_package_path(path) {
+            return Err(invalid_package_input());
+        }
+        paths.insert(path.to_owned());
+    }
+    Ok(paths)
+}
+
+fn invalid_package_input() -> PluginRejection {
+    PluginRejection::new(
+        "plugin.build.invalidSelection",
+        "A remote model command must name a fixed package path after the plugin directory variable.",
+    )
+}
+
 /// A selected project, target, or task: its name and the properties the
 /// model recorded for it.
 #[derive(Debug, Clone)]

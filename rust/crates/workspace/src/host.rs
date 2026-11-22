@@ -17,6 +17,14 @@ use std::collections::VecDeque;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::time::{Duration, Instant};
 
+pub use methods::FileKind as ScopedFileKind;
+pub use methods::{NativeSettingsOperation, ProjectPluginSettingsBaseline};
+pub use methods::{
+    ScopedDirectoryEntry, ScopedFileAccess, ScopedFileRead, ScopedFileStat, ScopedSearch,
+    ScopedSearchMatch, ScopedSearchResult, MAX_SCOPED_CONFIGURATION_BYTES, MAX_SCOPED_READ_BYTES,
+    MAX_SCOPED_SEARCH_RESULTS, MAX_TRANSFER_BYTES,
+};
+
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const EVENT_POLL: Duration = Duration::from_millis(20);
 const CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
@@ -38,6 +46,161 @@ pub fn request_cancellable(
             return Ok(value);
         }
     }
+}
+
+/// Reads within the root bound to the current Core request. The plugin-facing
+/// payload can select a relative path and operation, but cannot change the root
+/// or address another connection. A local request has no adapter here.
+pub fn scoped_file<T: serde::de::DeserializeOwned>(
+    path: String,
+    access: ScopedFileAccess,
+) -> Result<T, CoreError> {
+    let host = scoped_host()?;
+    let params = methods::ScopedFileParams {
+        root: host.remote_root().to_owned(),
+        path,
+        access,
+    };
+    scoped_request(&host, methods::FS_SCOPED_FILE, params)
+}
+
+/// Reads a bounded document from the current workspace without following links.
+/// A missing document has no bytes; a truncated or invalid reply is an error.
+pub fn read_scoped_document(path: String, maximum: usize) -> Result<Option<Vec<u8>>, CoreError> {
+    let response: ScopedFileRead =
+        match scoped_file(path, ScopedFileAccess::ReadDocument { length: maximum }) {
+            Ok(response) => response,
+            Err(error) if matches!(error.code, ErrorCode::WorkspaceNotFound) => return Ok(None),
+            Err(error) => return Err(error),
+        };
+    if response.is_truncated {
+        return Err(CoreError::new(
+            ErrorCode::InvalidRequest,
+            "Workspace document is too large",
+        ));
+    }
+    let bytes = methods::decode_bytes(&response.data)
+        .map_err(|_| CoreError::new(ErrorCode::ParseFailed, "Invalid workspace document bytes"))?;
+    if bytes.len() > maximum {
+        return Err(CoreError::new(
+            ErrorCode::ParseFailed,
+            "Workspace document exceeded its read budget",
+        ));
+    }
+    Ok(Some(bytes))
+}
+
+/// Searches the current workspace on its host, without retaining a server handle.
+pub fn scoped_search(
+    search: ScopedSearch,
+    hidden_directories: Vec<String>,
+) -> Result<ScopedSearchResult, CoreError> {
+    let host = scoped_host()?;
+    let params = methods::ScopedSearchParams {
+        root: host.remote_root().to_owned(),
+        hidden_directories,
+        search,
+    };
+    scoped_request(&host, methods::FS_SCOPED_SEARCH, params)
+}
+
+/// Reads the exact plugin settings source and revision from the bound host.
+pub fn read_project_plugin_settings() -> Result<methods::ProjectPluginSettingsSnapshot, CoreError> {
+    let host = scoped_host()?;
+    let params = methods::ProjectPluginSettingsParams {
+        root: host.remote_root().to_owned(),
+        operation: methods::ProjectPluginSettingsOperation::Read,
+    };
+    scoped_request(&host, methods::FS_PROJECT_PLUGIN_SETTINGS, params)
+}
+
+/// Commits a confirmed project settings edit and waits for the bounded host reply.
+/// After dispatch the file may have changed; cancellation must not mask a reply.
+pub fn publish_project_plugin_settings(
+    baseline: methods::ProjectPluginSettingsBaseline,
+    content: Option<String>,
+) -> Result<bool, CoreError> {
+    let host = scoped_host()?;
+    let params = methods::ProjectPluginSettingsParams {
+        root: host.remote_root().to_owned(),
+        operation: methods::ProjectPluginSettingsOperation::Publish { baseline, content },
+    };
+    cancellation::check()?;
+    host.connection
+        .session
+        .request(
+            methods::FS_PROJECT_PLUGIN_SETTINGS,
+            &params,
+            REQUEST_TIMEOUT,
+        )
+        .map_err(|error| request_error(host.session_id(), error))
+}
+
+/// Inspects or stages settings inside the captured remote workspace. After
+/// publication is dispatched, retain its receipt even if the editor cancels.
+pub fn native_settings(operation: NativeSettingsOperation) -> Result<Value, CoreError> {
+    let host = scoped_host()?;
+    let publishes = matches!(operation, NativeSettingsOperation::Publish { .. });
+    let params = methods::NativeSettingsParams {
+        root: host.remote_root().to_owned(),
+        operation,
+    };
+    if !publishes {
+        return scoped_request(&host, methods::FS_NATIVE_SETTINGS, params);
+    }
+    cancellation::check()?;
+    host.connection
+        .session
+        .request(methods::FS_NATIVE_SETTINGS, &params, REQUEST_TIMEOUT)
+        .map_err(|error| native_settings_publication_error(host.session_id(), error))
+}
+
+fn native_settings_publication_error(session: &str, error: ClientError) -> CoreError {
+    let details = match &error {
+        ClientError::Remote(error) => {
+            let committed: Vec<u16> = error
+                .details
+                .as_ref()
+                .and_then(|details| serde_json::from_value(details["committedSlots"].clone()).ok())
+                .unwrap_or_default();
+            json!({"remoteCode": error.code, "committedSlots": committed})
+        }
+        // A dropped response cannot establish that the original is unchanged.
+        _ => json!({"publicationUncertain": true}),
+    };
+    request_error(session, error).with_details(details.to_string())
+}
+
+/// Returns the connected session and host root for a cursor scope.
+pub fn scoped_workspace_identity() -> Result<(String, String), CoreError> {
+    scoped_host().map(|host| (host.session_id().to_owned(), host.remote_root().to_owned()))
+}
+
+fn scoped_host() -> Result<crate::scope::Host, CoreError> {
+    crate::scope::current().ok_or_else(|| {
+        CoreError::new(
+            ErrorCode::NotSupported,
+            "A connected remote workspace is required",
+        )
+    })
+}
+
+fn scoped_request<T: serde::de::DeserializeOwned>(
+    host: &crate::scope::Host,
+    method: &str,
+    params: impl serde::Serialize,
+) -> Result<T, CoreError> {
+    cancellation::check()?;
+    let result = request_cancellable(
+        &host.connection.session,
+        method,
+        serde_json::to_value(params).expect("Scoped request parameters always encode"),
+        REQUEST_TIMEOUT,
+    );
+    cancellation::check()?;
+    let value = result.map_err(|error| request_error(host.session_id(), error))?;
+    serde_json::from_value(value)
+        .map_err(|_| CoreError::new(ErrorCode::ParseFailed, "Invalid scoped workspace response"))
 }
 
 /// One host operation. Parameters retain the versioned remote protocol shape.
@@ -63,9 +226,33 @@ pub fn request(request: Request) -> Result<Value, CoreError> {
     }
     cancellation::check()?;
     let connection = lookup(&request.session_id)?;
-    let timeout = if request.method == methods::ENVIRONMENT_RESOLVE {
+    if matches!(
+        request.method.as_str(),
+        methods::FS_CREATE_RUNTIME_STAGING
+            | methods::FS_MANAGED_RUNTIME_LOOKUP
+            | methods::FS_MANAGED_RUNTIME_COMMIT
+    ) && !connection
+        .session
+        .hello()
+        .host
+        .features
+        .contains(&methods::Feature::ManagedRuntimeDeployments)
+    {
+        return Err(CoreError::new(
+            ErrorCode::NotSupported,
+            "The host does not support managed runtime deployments",
+        ));
+    }
+    let timeout = if matches!(
+        request.method.as_str(),
+        methods::ENVIRONMENT_RESOLVE
+            | methods::PROCESS_RESOLVE_EXECUTABLE
+            | methods::PROCESS_RESOLVE_DEBUG_LAUNCH
+    ) {
         // Interactive and non-interactive login probes each have a host deadline.
         Duration::from_secs(60)
+    } else if request.method == methods::FS_MANAGED_RUNTIME_COMMIT {
+        Duration::from_secs(300)
     } else {
         REQUEST_TIMEOUT
     };
@@ -79,6 +266,60 @@ pub fn request(request: Request) -> Result<Value, CoreError> {
     result.map_err(|error| request_error(&request.session_id, error))
 }
 
+impl crate::scope::Host {
+    /// Performs a finite request on the session already bound to this workspace.
+    pub fn request<T: serde::de::DeserializeOwned>(
+        &self,
+        method: &str,
+        params: Value,
+    ) -> Result<T, CoreError> {
+        let result = request(Request {
+            session_id: self.session_id().to_owned(),
+            method: method.to_owned(),
+            params,
+            timeout_milliseconds: None,
+        })?;
+        serde_json::from_value(result)
+            .map_err(|_| CoreError::new(ErrorCode::ParseFailed, "Invalid remote host response"))
+    }
+
+    /// Captures a bounded version probe in the remote workspace's login environment.
+    pub fn capture_tool_version(
+        &self,
+        argv: Vec<String>,
+        directory: String,
+    ) -> Result<Value, CoreError> {
+        // The toolchain resolver names the workspace root `.`. The scoped
+        // server protocol represents the root by an empty relative path.
+        let directory = if directory == "." {
+            String::new()
+        } else {
+            directory
+        };
+        capture_process(CaptureRequest {
+            session_id: self.session_id().to_owned(),
+            params: methods::SpawnParams {
+                process_id: 0,
+                argv,
+                command_candidates: Vec::new(),
+                cwd: None,
+                scoped_cwd: Some(methods::ScopedWorkingDirectory {
+                    root: self.remote_root().to_owned(),
+                    path: directory,
+                }),
+                environment: methods::EnvironmentSource::Login,
+                env: Default::default(),
+                path_prepend: Vec::new(),
+                pipe_stdin: false,
+                label: None,
+            },
+            timeout_milliseconds: 5_000,
+            // Lossy UTF-8 conversion must still fit the resolver's 128 KiB limit.
+            max_output_bytes: 32 * 1024,
+        })
+    }
+}
+
 fn allowed_method(method: &str) -> bool {
     matches!(
         method,
@@ -86,12 +327,14 @@ fn allowed_method(method: &str) -> bool {
             | methods::FS_READ_DIR
             | methods::FS_READ_FILE
             | methods::FS_WRITE_FILE
+            | methods::FS_APPLY_RUN_CONFIG_CHANGES
             | methods::FS_CREATE_DIR
             | methods::FS_REMOVE
             | methods::FS_RENAME
             | methods::FS_COPY
             | methods::FS_TRASH
             | methods::FS_REAL_PATH
+            | methods::FS_VCS_ROOTS
             | methods::FS_SET_PERMISSIONS
             | methods::FS_VOLUME_INFO
             | methods::FS_TEMP_DIRECTORY
@@ -101,26 +344,50 @@ fn allowed_method(method: &str) -> bool {
             | methods::FS_UPLOAD_ABORT
             | methods::FS_CREATE_RUN_DIRECTORY
             | methods::FS_RELEASE_RUN_DIRECTORY
+            | methods::FS_PLUGIN_DEPLOYMENT_LOOKUP
+            | methods::FS_PLUGIN_DEPLOYMENT_COMMIT
+            | methods::FS_PLUGIN_DEPLOYMENT_SWEEP
+            | methods::FS_CREATE_RUNTIME_STAGING
+            | methods::FS_MANAGED_RUNTIME_LOOKUP
+            | methods::FS_MANAGED_RUNTIME_COMMIT
             | methods::ENVIRONMENT_RESOLVE
+            | methods::PROCESS_RESOLVE_EXECUTABLE
+            | methods::PROCESS_RESOLVE_DEBUG_LAUNCH
             | methods::PROCESS_WRITE_STDIN
             | methods::PROCESS_CLOSE_STDIN
             | methods::PROCESS_KILL
+            | methods::PROCESS_DEBUG_PORT_READY
             | methods::TERMINAL_WRITE
             | methods::TERMINAL_RESIZE
             | methods::TERMINAL_CLOSE
             | methods::PORTS_LISTENING
+            | methods::PORTS_PICK_LOOPBACK
             | methods::SERVER_STATE
     )
 }
 
 /// Starts a process with a subscription installed before any output can arrive.
 pub fn run_process(request: Request) -> Result<Value, CoreError> {
-    run_resource(request, "process", methods::PROCESS_SPAWN)
+    // Older servers ignore unknown fields on process.spawn. A distinct
+    // method keeps them from starting a scoped process in the server's cwd.
+    let method = if request.params.get("scopedCwd").is_some() {
+        methods::PROCESS_SPAWN_SCOPED
+    } else {
+        methods::PROCESS_SPAWN
+    };
+    run_resource(request, "process", method)
 }
 
 /// Starts a PTY with the same subscription, cancellation and cleanup ownership.
 pub fn run_terminal(request: Request) -> Result<Value, CoreError> {
-    run_resource(request, "terminal", methods::TERMINAL_OPEN)
+    // Older servers ignore unknown fields on terminal.open. Use a separate
+    // method so they cannot silently start a scoped program in the home folder.
+    let method = if request.params.get("scopedCwd").is_some() {
+        methods::TERMINAL_OPEN_SCOPED
+    } else {
+        methods::TERMINAL_OPEN
+    };
+    run_resource(request, "terminal", method)
 }
 
 /// Owns a recursive watch until cancellation, disconnect, or root removal.
@@ -181,6 +448,12 @@ pub(crate) fn capture(
     max_output_bytes: usize,
 ) -> Result<Captured, CoreError> {
     let connection = lookup(session_id)?;
+    // Use the scoped method so older hosts cannot silently ignore the workspace cwd.
+    let method = if params.scoped_cwd.is_some() {
+        methods::PROCESS_SPAWN_SCOPED
+    } else {
+        methods::PROCESS_SPAWN
+    };
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
     let exit = run_observing(
@@ -192,7 +465,7 @@ pub(crate) fn capture(
             timeout_milliseconds: None,
         },
         "process",
-        methods::PROCESS_SPAWN,
+        method,
         None,
         Some(Instant::now() + timeout),
         &mut |event| {

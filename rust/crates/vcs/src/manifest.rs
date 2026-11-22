@@ -25,7 +25,7 @@ pub const BUILT_IN_GIT: &str = "git";
 /// Most providers one plugin may declare.
 const MAX_PROVIDERS: usize = 8;
 /// Most markers one provider may declare.
-const MAX_MARKERS: usize = 8;
+pub(crate) const MAX_MARKERS: usize = 8;
 /// Most metadata paths one provider may ask the host to watch.
 const MAX_METADATA_PATHS: usize = 16;
 /// Most tool command names one provider may list.
@@ -108,7 +108,7 @@ pub fn built_in_git_markers() -> Vec<VcsMarker> {
     ]
 }
 
-fn is_marker_name(value: &str) -> bool {
+pub(crate) fn is_marker_name(value: &str) -> bool {
     !value.is_empty()
         && value != "."
         && value != ".."

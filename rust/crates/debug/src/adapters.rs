@@ -149,6 +149,7 @@ const TARGET_KINDS: &[&str] = &["connection", "executable", "file", "process", "
 /// LSP field and has no meaning for a DAP transport.
 const PROCESS_KEYS: &[&str] = &[
     "launch",
+    "placement",
     "arguments",
     "validationArguments",
     "runtimeDependencies",

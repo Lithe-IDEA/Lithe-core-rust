@@ -49,7 +49,7 @@
         "projectGenerators": { "description": "Entries of the New Project window: fields, requirements, and steps, with tool fields that pick tool installations.", "enum": [0] },
         "runConfigurationTypes": { "description": "Required exactly when any buildSystems[].runConfigurationTypes is non-empty: kinds of run configuration the user creates in the Run/Debug Configurations dialog, drawn from declared fields and run through a declared command line. Needs buildSystems.", "enum": [0] },
         "settings": { "description": "Required exactly when settings, settingActions or settingRegions is non-empty. Covers integer, enum, boolean, multiSelect, text, file, and directory options, scope, effect, page, section, settingActions, and settingRegions.", "enum": [0] },
-        "sourceSettings": { "description": "Required exactly when a setting action declares sourceEditor. Native-source settings projection, compiler placement, confirmed staging and read-back. Version 1 adds sidebar groups, nested sources, field sections and entry lists.", "enum": [0, 1] },
+        "sourceSettings": { "description": "Required exactly when a setting action declares sourceEditor. Native-source settings projection, compiler placement, confirmed staging and read-back. Version 1 adds structured source forms. Version 2 adds remote native settings helpers.", "enum": [0, 1, 2] },
         "toolDefinitions": { "description": "Required exactly when toolDefinitions is present. Version 1 adds the display-only category and audience of a definition.", "enum": [0, 1] },
         "toolchainProviders": { "enum": [0] },
         "keymapImportProviders": { "enum": [0] },
@@ -171,6 +171,17 @@
       "items": { "$ref": "#/$defs/commandInstaller" }
     },
     "managedRuntimes": { "$ref": "#/$defs/managedRuntimes" },
+    "localOnlyPaths": {
+      "description": "Package files or trees reserved for the UI host when a remote process declares a broader package input directory.",
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1024,
+        "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*//)(?!.*\\/$)[^:\\\\\\u0000-\\u001f\\u007f-\\u009f]+$"
+      }
+    },
     "projectGenerators": {
       "description": "requires.projectGenerators: entries of the New Project window. Requires the project.generate permission.",
       "type": "array",
@@ -513,6 +524,7 @@
       "propertyNames": {
         "enum": [
           "launch",
+          "placement",
           "arguments",
           "validationArguments",
           "runtimeDependencies"
@@ -1575,6 +1587,12 @@
         "compilerID": { "$ref": "#/$defs/settingToken" }
       }
     },
+    "settingsHelperPackagePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?!\\.{1,2}(?:/|$))[^/\\\\:\\u0000-\\u001f\\u007f-\\u009f]+(?:/(?!\\.{1,2}(?:/|$))[^/\\\\:\\u0000-\\u001f\\u007f-\\u009f]+)*(?![\\s\\S])"
+    },
     "settingAction": {
       "description": "A button the host draws on the plugin's settings page and on page. It invokes function, one of the plugin's own plugin functions, with empty params.",
       "type": "object",
@@ -1588,7 +1606,59 @@
         "section": { "type": "string", "minLength": 1, "maxLength": 120 },
         "function": { "description": "Plugin function ID: dot-separated lowerCamelCase segments.", "type": "string", "maxLength": 128, "pattern": "^[a-z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)*(?![\\s\\S])" },
         "confirm": { "description": "Ask before invoking, for actions that discard state.", "type": "boolean" },
-        "sourceEditor": { "description": "Read a non-sensitive native-source editor; requires sourceSettings 0 or 1. Only explicit Save invokes editFunction for private staging.", "type": "object", "additionalProperties": false, "required": ["editFunction"], "properties": { "editFunction": { "type":"string", "pattern":"^[a-z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)*(?![\\s\\S])", "maxLength":128 }, "buildSystemID": {"type":"string","minLength":1,"maxLength":128}, "languageID": {"type":"string","minLength":1,"maxLength":128} } }
+        "sourceEditor": {
+          "description": "A non-sensitive native-source editor using sourceSettings 0, 1 or 2. An optional remoteHelper requires version 2.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "editFunction"
+          ],
+          "properties": {
+            "editFunction": {
+              "type": "string",
+              "pattern": "^[a-z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)*(?![\\s\\S])",
+              "maxLength": 128
+            },
+            "buildSystemID": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "languageID": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "remoteHelper": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "executable"
+              ],
+              "properties": {
+                "executable": {
+                  "$ref": "#/$defs/settingsHelperPackagePath"
+                },
+                "arguments": {
+                  "type": "array",
+                  "maxItems": 32,
+                  "items": {
+                    "type": "string",
+                    "maxLength": 1024,
+                    "pattern": "^[^\\u0000]*(?![\\s\\S])"
+                  }
+                },
+                "resources": {
+                  "type": "array",
+                  "maxItems": 32,
+                  "items": {
+                    "$ref": "#/$defs/settingsHelperPackagePath"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "fileNameList": {
@@ -1777,6 +1847,11 @@
       "type": "object",
       "required": ["launch"],
       "properties": {
+        "placement": {
+          "description": "The host that starts the process. Defaults to the workspace host. A UI process stays on the machine running Lithe.",
+          "enum": ["workspace", "ui"],
+          "default": "workspace"
+        },
         "launch": {
           "oneOf": [
             {
@@ -1878,6 +1953,7 @@
       "description": "Launch fields of the plugin backend. ${workspaceStateDir} is refused because one backend process serves every workspace; each workspace's state directory arrives in its context instead.",
       "type": "object",
       "$ref": "#/$defs/processLaunch",
+      "properties": { "placement": false },
       "unevaluatedProperties": false
     },
     "vcsProvider": {

@@ -5,6 +5,8 @@ use super::plugin_response;
 use crate::protocol::{CoreResponse, ToolchainsCommand};
 use serde_json::Value;
 
+mod remote;
+
 /// Runs one `toolchains.*` command.
 pub(super) fn dispatch(
     command: ToolchainsCommand,
@@ -64,6 +66,7 @@ pub(super) fn dispatch(
                 lithe_plugin_manifest::validated_manifest_json,
             )
         }),
+        ToolchainsCommand::ResolveRemote => plugin_response(id, payload, remote::resolve),
         ToolchainsCommand::CheckVersion => plugin_response(id, payload, |payload| {
             crate::toolchain::check_version_command(
                 payload,

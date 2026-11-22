@@ -3,11 +3,70 @@
 mod support;
 
 use lithe_remote::client::api::{TerminalEvent, TerminalHandle};
+use lithe_remote::client::session::ClientError;
 use lithe_remote::client::TerminalSpec;
-use lithe_remote::protocol::methods::ResourceLabel;
+use lithe_remote::protocol::methods::{
+    self, decode_bytes, ResourceLabel, TerminalExitEvent, TerminalOutputEvent,
+};
+use lithe_remote::protocol::ErrorCode;
+use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::time::Instant;
-use support::{connect, wait_until_gone, STEP_TIMEOUT};
+use support::{connect, connect_with_environment, wait_until_gone, TempDir, STEP_TIMEOUT};
+
+#[test]
+fn scoped_terminal_uses_workspace_directory_and_removes_environment_entries() {
+    let workspace = TempDir::new("terminal-workspace");
+    let outside = TempDir::new("terminal-outside");
+    std::fs::create_dir(workspace.join("src")).unwrap();
+    std::os::unix::fs::symlink(outside.path(), workspace.join("link")).unwrap();
+    let (session, _events) =
+        connect_with_environment(&[("LITHE_TERMINAL_TEST_REMOVED", "inherited")]);
+    let mut params: Value = serde_json::from_str(include_str!(
+        "../../../fixtures/workspace/remote-terminal-scoped-v1.json"
+    ))
+    .unwrap();
+    params["scopedCwd"]["root"] = json!(workspace.str());
+    params["terminalId"] = json!(session.allocate_id());
+    params["scopedCwd"]["path"] = json!("link");
+    let refused =
+        session.request_value(methods::TERMINAL_OPEN_SCOPED, params.clone(), STEP_TIMEOUT);
+    assert!(matches!(
+        refused,
+        Err(ClientError::Remote(error)) if error.code == ErrorCode::PermissionDenied
+    ));
+
+    let id = session.allocate_id();
+    let events = session.subscribe("terminal", id);
+    params["terminalId"] = json!(id);
+    params["scopedCwd"]["path"] = json!("src");
+    session
+        .request_value(methods::TERMINAL_OPEN_SCOPED, params, STEP_TIMEOUT)
+        .unwrap();
+    let deadline = Instant::now() + STEP_TIMEOUT;
+    let mut output = Vec::new();
+    loop {
+        let event = events
+            .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+            .expect("waiting for scoped terminal output and exit");
+        match event.event.as_str() {
+            methods::EVENT_TERMINAL_OUTPUT => {
+                let chunk: TerminalOutputEvent = event.decode().unwrap();
+                output.extend(decode_bytes(&chunk.data).unwrap());
+            }
+            methods::EVENT_TERMINAL_EXIT => {
+                let exit: TerminalExitEvent = event.decode().unwrap();
+                assert_eq!(exit.exit_code, Some(0), "{output:?}");
+                break;
+            }
+            other => panic!("unexpected terminal event: {other}"),
+        }
+    }
+    assert_eq!(
+        String::from_utf8(output).unwrap().trim(),
+        workspace.join("src")
+    );
+}
 
 /// A plain `sh` with a fixed prompt, so the test does not depend on the
 /// developer's login shell and its configuration. `HISTFILE` keeps an

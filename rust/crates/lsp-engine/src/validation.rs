@@ -30,11 +30,40 @@ pub(crate) fn validate_start_request(request: &StartServerRequest) -> Result<(),
     {
         return Err(invalid_field("hostOptions"));
     }
-    if request.executable_path.trim().is_empty()
-        || request.executable_path.contains('\0')
-        || request.working_directory.trim().is_empty()
-        || request.working_directory.contains('\0')
-    {
+    let remote_launch =
+        !request.remote_commands.is_empty() || request.remote_executable_path.is_some();
+    let remote_role = match request.role {
+        SessionRole::LanguageServer => request
+            .session_policy
+            .as_ref()
+            .is_some_and(|policy| policy.remote == RemoteSupport::Supported),
+        SessionRole::Vcs | SessionRole::Build => request.plugin_id.is_some(),
+        SessionRole::Backend | SessionRole::Toolchain => false,
+    };
+    if request.ui_process && (!lithe_workspace::is_remote() || !remote_role || remote_launch) {
+        return Err(invalid_field("uiProcess"));
+    }
+    if remote_launch {
+        if !lithe_workspace::is_remote() || !remote_role || !request.executable_path.is_empty() {
+            return Err(invalid_field("remoteCommands/remoteExecutablePath"));
+        }
+        if let Some(path) = &request.remote_executable_path {
+            if !request.remote_commands.is_empty()
+                || !path.starts_with('/')
+                || path.contains(['\0', '\\'])
+            {
+                return Err(invalid_field("remoteExecutablePath"));
+            }
+        }
+    } else {
+        if request.executable_path.trim().is_empty() || request.executable_path.contains('\0') {
+            return Err(invalid_field("executablePath/workingDirectory"));
+        }
+        if !request.remote_path_prepend.is_empty() {
+            return Err(invalid_field("remotePathPrepend"));
+        }
+    }
+    if request.working_directory.trim().is_empty() || request.working_directory.contains('\0') {
         return Err(invalid_field("executablePath/workingDirectory"));
     }
     if !request.root_uri.contains("://") || request.root_uri.contains('\0') {

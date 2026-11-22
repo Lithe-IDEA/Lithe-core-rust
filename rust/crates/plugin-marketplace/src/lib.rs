@@ -8,7 +8,9 @@
 //! start, so macOS and Windows present the same catalog and the same trust
 //! prompts. The contract lives in `shared/plugins/contract/v1/`.
 
-use lithe_plugin_manifest::{validate_manifest_value, SUPPORTED_PLUGIN_API_VERSIONS};
+use lithe_plugin_manifest::{
+    validate_manifest_value, validated_manifest_json, SUPPORTED_PLUGIN_API_VERSIONS,
+};
 use lithe_plugin_model::capabilities::{self, HostCapabilities, Requires};
 use lithe_plugin_model::{
     decode_payload, is_language_tag, is_official_namespace, is_plugin_id, is_semantic_version,
@@ -19,6 +21,12 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use url::Url;
+
+mod remote_variant;
+
+pub use remote_variant::{
+    plan_remote_deployment_command, select_remote_variant_command, verify_remote_variant_command,
+};
 
 /// Marketplace index schema version understood by this Core build.
 pub const MARKETPLACE_INDEX_SCHEMA_VERSION: u64 = 0;
@@ -126,6 +134,24 @@ fn validate_index(
     platform: &str,
     host_capabilities: Option<&HostCapabilities>,
 ) -> Validation<Value> {
+    validate_index_for_release(index, source, platform, host_capabilities, None)
+}
+
+/// Restricts archive selection to a release carrying the previously approved
+/// desktop archive. The regular marketplace list remains newest-compatible.
+struct ApprovedRelease<'a> {
+    version: &'a str,
+    platform: &'a str,
+    sha256: &'a str,
+}
+
+fn validate_index_for_release(
+    index: Value,
+    source: SourceKind,
+    platform: &str,
+    host_capabilities: Option<&HostCapabilities>,
+    approved_release: Option<&ApprovedRelease<'_>>,
+) -> Validation<Value> {
     if !is_platform(platform) {
         return Err(PluginRejection::at(
             "plugin.index.invalid",
@@ -185,7 +211,16 @@ fn validate_index(
                     format!("The plugin entry is invalid: {error}"),
                 )
             })
-            .and_then(|entry| validate_entry(entry, source, platform, host_capabilities, &field))
+            .and_then(|entry| {
+                validate_entry(
+                    entry,
+                    source,
+                    platform,
+                    host_capabilities,
+                    approved_release,
+                    &field,
+                )
+            })
             .and_then(|plugin| {
                 // The first listing of an ID wins; a later duplicate cannot
                 // silently replace the download the user saw first.
@@ -214,6 +249,7 @@ fn validate_entry(
     source: SourceKind,
     platform: &str,
     host_capabilities: Option<&HostCapabilities>,
+    approved_release: Option<&ApprovedRelease<'_>>,
     field: &str,
 ) -> Validation<Value> {
     if !is_plugin_id(&entry.id) {
@@ -371,7 +407,7 @@ fn validate_entry(
     versions.sort_by_key(|listed| std::cmp::Reverse(listed.number));
 
     let latest = &versions[0];
-    let availability = availability(&versions, platform, host_capabilities);
+    let availability = availability(&versions, platform, host_capabilities, approved_release);
     Ok(json!({
         "id": entry.id,
         "name": entry.name.trim(),
@@ -428,10 +464,23 @@ fn availability(
     versions: &[ListedVersion<'_>],
     platform: &str,
     host_capabilities: Option<&HostCapabilities>,
+    approved_release: Option<&ApprovedRelease<'_>>,
 ) -> Value {
     let mut platform_listed = false;
     for listed in versions {
         let version = listed.version;
+        if approved_release.is_some_and(|approved| {
+            version.version != approved.version
+                || !version.downloads.iter().any(|download| {
+                    download.sha256 == approved.sha256
+                        && download
+                            .platforms
+                            .iter()
+                            .any(|value| value == approved.platform)
+                })
+        }) {
+            continue;
+        }
         if !listed.platforms.contains(platform) {
             continue;
         }

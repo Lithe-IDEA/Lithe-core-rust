@@ -365,16 +365,16 @@ pub(crate) fn search_with_index(
 /// result row shows a line ([`line_preview`]), next to the matches in the line.
 fn content_preview(
     line: &str,
-    ranges: Vec<SearchNameRange>,
+    ranges: Vec<Utf16Span>,
 ) -> (String, Vec<SearchNameRange>, Vec<SearchNameRange>) {
-    let highlights: Vec<Utf16Span> = ranges
-        .iter()
-        .map(|range| Utf16Span {
-            start: range.start,
-            length: range.length,
+    let shown = line_preview(line, &ranges, None);
+    let ranges = ranges
+        .into_iter()
+        .map(|span| SearchNameRange {
+            start: span.start,
+            length: span.length,
         })
         .collect();
-    let shown = line_preview(line, &highlights, None);
     let preview_ranges = shown
         .ranges
         .iter()

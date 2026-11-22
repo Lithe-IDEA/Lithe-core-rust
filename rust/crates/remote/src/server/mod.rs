@@ -20,17 +20,24 @@
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
 compile_error!("lithe-remote-server supports Linux and macOS hosts only");
 
+mod configuration_changes;
 mod connection;
 mod daemon;
 mod environment;
 mod fs;
 mod link;
 mod listener;
+mod managed_runtime;
+mod native_settings;
 mod platform;
+mod plugin_deployment;
 mod ports;
 mod process;
 mod resources;
 mod run_directory;
+mod runtime_zip;
+mod scoped_files;
+mod scoped_search;
 mod session;
 mod spawner;
 mod terminal;

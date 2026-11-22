@@ -120,9 +120,12 @@ fn list_on_host(session_id: &str, argv: Vec<String>) -> Result<Containers, CoreE
     let params = methods::SpawnParams {
         process_id: 0,
         argv,
+        command_candidates: Vec::new(),
         cwd: None,
+        scoped_cwd: None,
         environment: methods::EnvironmentSource::Server,
         env: BTreeMap::new(),
+        path_prepend: Vec::new(),
         pipe_stdin: false,
         label: None,
     };

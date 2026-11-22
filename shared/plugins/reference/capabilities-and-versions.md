@@ -48,10 +48,11 @@ Core 列以本仓库 `main` 上的 Core 源码为准（[`capabilities.rs`](https
 | `settings` `0` | `settings[]`、`settingActions[]` 与 [`settingRegions[]`](../contract/v1/README.md#settings-regions)（设置页上的搜索关键词和插件视图），含[放置位置、作用域、生效方式、页面按钮](../contract/v1/README.md#placement-scope-effect-and-page-buttons) | ✅ | ✅¹ | [插件设置](domains/settings.md)、[Plugin settings](../contract/v1/README.md#plugin-settings) |
 | `sourceSettings` `0` | 真实配置来源表单、编译器页、私有暂存与显式保存 | ✅ | ✅ | [Source-backed settings editors](../contract/v1/README.md#source-backed-settings-editors) |
 | `sourceSettings` `1` | 在 `0` 之上加：模块列表布局 `sidebar`（来源可用 `parent` 嵌套）、字段 `section`（标签页或小标题）、有序类型化条目列表 `entryList`（添加菜单、文件/目录选择器、可选项、按条目的属性列） | ✅ | ✅ | [Entry lists](../contract/v1/README.md#source-backed-settings-editors) |
+| `sourceSettings` `2` | 在远端运行已审核的原生设置辅助程序，显示连接及文件，确认后写入并回读 | 已接入，待合入 | 待合入 | [远端原生设置](../contract/v1/README.md#remote-native-settings-sourcesettings-2) |
 | `ui` `0` | [`ui`](../contract/v1/README.md#host-owned-workbench-ui)：文本、[包内网页](../contract/v1/README.md#web-content)和[插件视图](../contract/v1/README.md#plugin-views)的工具窗口、设置区域里的插件视图、命令，以及[不打开工具窗口的后端命令](../contract/v1/README.md#backend-only-commands)；视图函数的结果由 Core 命令 `plugins.ui.applyResult` 校验，形状见 [`plugin-ui.schema.json`](../contract/v1/plugin-ui.schema.json) | ✅ | ✅¹ | [界面](domains/ui.md) |
 | `buildSystems` `0` | 不带 `provider` 的 [`buildSystems[]`](../contract/v1/README.md#build-systems)：检测、选项、项目模型、任务、运行入口、测试、诊断、依赖、同步和[声明式项目准备](../contract/v1/README.md#declarative-project-preparation) | ✅ | ✅¹ | [声明式构建系统](domains/build-systems.md) |
 | `buildSystems` `1` | 新增 [命令式测试发现](../contract/v1/README.md#test-discovery)，复用声明的构建工具和测试选择器 | ✅ | 待宿主声明 | [声明式构建系统](domains/build-systems.md) |
-| `buildSystems` `2` | 构建提供者的应用运行声明可使用 `debug.configurationType`，包括按源文件发现的入口 | ✅ | 待宿主接入 | [构建提供者](domains/build-providers.md) |
+| `buildSystems` `2` | 构建提供者的应用运行声明可使用 `debug.configurationType`，包括按源文件发现的入口 | ✅ | 已接入，待合入 | [构建提供者](domains/build-providers.md) |
 | `buildProviders` `0` | `buildSystems[].provider`：[构建提供者](../contract/v1/README.md#build-providers)，可以是自有进程或共享语言服务器；说 `litheBuild`，包含任务执行、测试执行与发现、运行准备、原生调试准备、原生配置、内联测试报告、语义测试选择器、类型化运行选项和注册表连接调试 | ✅ | ✅¹ | [构建提供者](domains/build-providers.md) |
 | `buildProviders` `1` | 在 `0` 之上加：运行声明 `entrypoints: true`（入口运行，不需要目标），提供者用 `lithe/build/runEntrypoints` 回答一个源文件里可运行的入口，宿主把它保存为运行配置并按入口启动 | ✅ | ✅ | [Run entrypoints](../contract/v1/README.md#run-entrypoints-buildproviders-1) |
 | `buildModelInputs` `0` | `buildSystems[].modelSharing` 与 `modelInputs`：[已启用工作区插件之间共享的只读模型输入](../contract/v1/README.md#optional-read-only-model-inputs)（可选） | ✅ | 未声明 | [构建提供者](domains/build-providers.md) |
@@ -77,10 +78,10 @@ Core 列以本仓库 `main` 上的 Core 源码为准（[`capabilities.rs`](https
 - 插件的 `foldingRange` 提供者未路由；语言服务器的诊断、补全、悬停、签名帮助、代码操作、内嵌提示、定义、引用、重命名、格式化、文档符号、文档链接和语义高亮均已呈现，`{kind: "tool"}` 启动按工作区工具链解析。
 - `systemCommand` 启动的命令查找只读 `PATH` 和插件已安装的受管命令目录；依赖项目工具链或用户覆盖的启动应使用 `tool` 启动。
 - 构建提供者的模型输入、原生配置、内联测试报告和运行期调试；构建系统的实例选项和任务准备。
-- 插件声明的运行配置类型只能运行，不能调试。
+- 插件自定义表单的运行配置类型用于运行命令；带调试声明的提供者应用运行可从保存的运行配置启动调试。
 - 不属于任何工具窗口的 `ui` 命令。
 - VCS 提供者的逐行追溯（annotation）、文件历史、文件操作、元数据监听、认证、历史提交差异、项目树与编辑器行号栏状态，以及 `lithe/vcs/execution` 控制台输出。
-- 后端宿主服务：工作区文件与搜索（`workspace/readDirectory`、`stat`、`readFile`、`watch`、`findFiles`、`findText`）和 `preview/openHTML` 尚未注册，请求这些权限的插件被拒绝。`workspace/getHostPaths` 也尚未注册，`supports` 返回 false；它和 `listContexts` 共用 `workspace.metadata`，所以声明该权限的插件不会因此被拒绝，见[远程工作区](../guides/plugin-backend-remote-workspaces.md)。运行期以 `lithe/host/getCapabilities` 的返回为准，见 [API 总表](api-catalog.md)。
+- 桌面端在[远程工作区](../guides/plugin-backend-remote-workspaces.md)提供文件读取、监听、搜索和 `workspace/getHostPaths`。`preview/openHTML` 尚未注册。可用方法及其支持的工作区类型以 `lithe/host/getCapabilities` 返回为准，见 [API 总表](api-catalog.md)。
 
 ### 进程协议版本
 
@@ -166,10 +167,11 @@ Each row is one capability. `requires` lists **exactly** the capabilities a mani
 | `settings` `0` | `settings[]`, `settingActions[]`, and [`settingRegions[]`](../contract/v1/README.md#settings-regions) (search keywords and plugin views on settings pages), with [placement, scope, effect, and page buttons](../contract/v1/README.md#placement-scope-effect-and-page-buttons) | ✅ | ✅¹ | [Plugin settings](domains/settings.md), [Plugin settings](../contract/v1/README.md#plugin-settings) |
 | `sourceSettings` `0` | Native source forms, compiler pages, private staging and explicit Save | ✅ | ✅ | [Source-backed settings editors](../contract/v1/README.md#source-backed-settings-editors) |
 | `sourceSettings` `1` | Adds to `0`: the `sidebar` module-list layout with sources nested by `parent`, field `section`s shown as tabs or subheadings, and ordered typed `entryList`s with an add menu, file and folder pickers, offered choices and per-entry attribute columns | ✅ | ✅ | [Entry lists](../contract/v1/README.md#source-backed-settings-editors) |
+| `sourceSettings` `2` | Runs an approved native settings helper on the remote host, displays the connection and targets, and verifies the read-back after confirmed writes | Integrated, pending merge | Pending merge | [Remote native settings](../contract/v1/README.md#remote-native-settings-sourcesettings-2) |
 | `ui` `0` | [`ui`](../contract/v1/README.md#host-owned-workbench-ui): text, [web](../contract/v1/README.md#web-content), and [plugin view](../contract/v1/README.md#plugin-views) tool windows, plugin views in settings regions, commands, and [backend-only commands](../contract/v1/README.md#backend-only-commands) without a tool window; the Core command `plugins.ui.applyResult` checks view function results, shaped as in [`plugin-ui.schema.json`](../contract/v1/plugin-ui.schema.json) | ✅ | ✅¹ | [UI](domains/ui.md) |
 | `buildSystems` `0` | [`buildSystems[]`](../contract/v1/README.md#build-systems) without `provider`: detection, options, project model, tasks, run entries, tests, diagnostics, dependencies, sync, and [declarative preparation](../contract/v1/README.md#declarative-project-preparation) | ✅ | ✅¹ | [Declarative build systems](domains/build-systems.md) |
 | `buildSystems` `1` | Adds [command test discovery](../contract/v1/README.md#test-discovery) using the declared build tool and the existing test selectors | ✅ | Pending host declaration | [Declarative build systems](domains/build-systems.md) |
-| `buildSystems` `2` | Allows build provider application runs to declare `debug.configurationType`, including source entrypoints | ✅ | Pending host integration | [Build providers](domains/build-providers.md) |
+| `buildSystems` `2` | Allows build provider application runs to declare `debug.configurationType`, including source entrypoints | ✅ | Implemented, pending merge | [Build providers](domains/build-providers.md) |
 | `buildProviders` `0` | `buildSystems[].provider`: [build providers](../contract/v1/README.md#build-providers), in their own process or a shared language server; they speak `litheBuild`, which covers task execution, test execution and discovery, run preparation, native debug preparation, native configuration, inline test reports, semantic test selectors, typed run options, and registry connection debugging | ✅ | ✅¹ | [Build providers](domains/build-providers.md) |
 | `buildProviders` `1` | Adds to `0`: run declarations with `entrypoints: true` (entrypoint runs, without a target); the provider answers `lithe/build/runEntrypoints` with the runnable entrypoints of one source file, which the host saves as run configurations and starts | ✅ | ✅ | [Run entrypoints](../contract/v1/README.md#run-entrypoints-buildproviders-1) |
 | `buildModelInputs` `0` | `buildSystems[].modelSharing` and `modelInputs`: [optional read-only model inputs](../contract/v1/README.md#optional-read-only-model-inputs) shared between enabled workspace plugins | ✅ | Not declared | [Build providers](domains/build-providers.md) |
@@ -195,10 +197,10 @@ Each row is one capability. `requires` lists **exactly** the capabilities a mani
 - For language servers: a plugin's `foldingRange` provider is not routed; diagnostics, completion, hover, signature help, code actions, inlay hints, definition, references, rename, formatting, document symbols, document links, and semantic tokens are presented, and `{kind: "tool"}` launches resolve through the workspace toolchain.
 - Command lookup for `systemCommand` launches reads `PATH` and the plugin's installed command directories only; a launch that depends on a project toolchain or a user override must use a `tool` launch.
 - For build providers: model inputs, native configuration, inline test reports, and runtime debugging; for build systems: instance options and task preparations.
-- Run configuration types a plugin declares run but cannot be debugged.
+- Custom-form configuration types run their declared commands. Saved provider application runs can start a debugger when the provider declares one.
 - `ui` commands that belong to no tool window.
 - For VCS providers: annotation, file history, file operations, metadata watching, authentication, history entry diffs, status in the project tree and the editor gutter, and `lithe/vcs/execution` console output.
-- Backend host services: the workspace file and search methods (`workspace/readDirectory`, `stat`, `readFile`, `watch`, `findFiles`, `findText`) and `preview/openHTML` are not registered, so a plugin that asks for one of those permissions is refused. `workspace/getHostPaths` is not registered either, so `supports` is false for it; it shares `workspace.metadata` with `listContexts`, so a plugin that declares that permission is not refused for it, see [remote workspaces](../guides/plugin-backend-remote-workspaces.md). At runtime, the reply of `lithe/host/getCapabilities` is authoritative; see the [API catalog](api-catalog.md).
+- The desktop host serves file reads, watches, searches, and `workspace/getHostPaths` in [remote workspaces](../guides/plugin-backend-remote-workspaces.md). `preview/openHTML` is still pending. Consult `lithe/host/getCapabilities` for available methods and supported workspace types. See the [API catalog](api-catalog.md).
 
 ### Process protocol versions
 

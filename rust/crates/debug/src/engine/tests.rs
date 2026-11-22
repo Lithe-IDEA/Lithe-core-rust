@@ -2564,6 +2564,150 @@ fn run_in_terminal_request_is_normalized_completed_and_stale_safe() {
 }
 
 #[test]
+fn remote_debug_translates_paths_and_prepares_the_reverse_terminal_request() {
+    let id = "debug-remote-paths-and-terminal";
+    let root = std::env::temp_dir().join("debug-remote-workspace");
+    let source = root.join("src").join("main.go");
+    let host_root = "/home/dev/project";
+    let host_source = "/home/dev/project/src/main.go";
+    let workspace = serde_json::from_value(json!({
+        "sessionId": "test-host",
+        "localRoot": root,
+        "remoteRoot": host_root
+    }))
+    .unwrap();
+    let created = create_session_for_workspace(
+        CreateSessionRequest {
+            session_id: id.into(),
+            adapter_id: "fixture".into(),
+            root_path: root.to_str().unwrap().into(),
+            supports_run_in_terminal_request: true,
+            supports_start_debugging_request: false,
+            disabled_capabilities: Vec::new(),
+            parent_session_id: None,
+            declared: Default::default(),
+        },
+        Some(workspace),
+    )
+    .unwrap();
+    struct Cleanup(&'static str);
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            destroy_session(SessionRequest {
+                session_id: self.0.into(),
+            })
+            .expect("release the process-free test session");
+        }
+    }
+    let _cleanup = Cleanup(id);
+    assert_eq!(
+        decode_frame(&created.outbound_frames[0])["arguments"]["supportsRunInTerminalRequest"],
+        true
+    );
+    receive_messages(id, vec![response_message(1, "initialize", json!({}))]);
+    let launched = launch(
+        serde_json::from_value(json!({
+            "sessionId": id,
+            "operationId": "launch",
+            "configuration": {
+                "name": "fixture",
+                "request": "launch",
+                "arguments": { "program": source, "cwd": root }
+            }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let launch_frame = decode_frame(&launched.outbound_frames[0]);
+    assert_eq!(launch_frame["arguments"]["program"], host_source);
+    assert_eq!(launch_frame["arguments"]["cwd"], host_root);
+    let reverse = receive_messages(
+        id,
+        vec![request_message(
+            200,
+            "runInTerminal",
+            json!({
+                "cwd": "/home/dev/project//src/",
+                "args": ["/usr/bin/debuggee", "a b"],
+                "env": {"SET": "value", "UNSET": null}
+            }),
+        )],
+    );
+    assert!(reverse.outbound_frames.is_empty());
+    let request = reverse
+        .events
+        .iter()
+        .find_map(|event| match &event.body {
+            DebugEventBody::RunInTerminalRequested { request, .. } => Some(request),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(request.remote_directory.as_deref(), Some("src"));
+    assert_eq!(request.args, ["/usr/bin/debuggee", "a b"]);
+    assert_eq!(request.environment[1].name, "UNSET");
+    assert_eq!(request.environment[1].value, None);
+    for invalid in [
+        json!({"cwd": "/home/dev/project-backup", "args": ["debuggee"]}),
+        json!({"cwd": "/home/dev/project/src/../..", "args": ["debuggee"]}),
+        json!({"cwd": host_root, "args": ["debuggee"], "kind": "external"}),
+        json!({"cwd": host_root, "args": ["debuggee"], "argsCanBeInterpretedByShell": true}),
+    ] {
+        let refused = receive_messages(id, vec![request_message(201, "runInTerminal", invalid)]);
+        assert_eq!(decode_frame(&refused.outbound_frames[0])["success"], false);
+        assert!(refused.events.is_empty());
+    }
+    receive_messages(
+        id,
+        vec![
+            response_message(launch_frame["seq"].as_i64().unwrap(), "launch", json!({})),
+            json!({"type": "event", "event": "initialized"}),
+        ],
+    );
+    let breakpoints = set_breakpoints(
+        serde_json::from_value(json!({
+            "sessionId": id, "sourcePath": source, "breakpoints": [{"line": 3}]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let breakpoint = decode_frame(&breakpoints.outbound_frames[0]);
+    assert_eq!(breakpoint["command"], "setBreakpoints");
+    assert_eq!(breakpoint["arguments"]["source"]["path"], host_source);
+    let stopped = receive_messages(
+        id,
+        vec![
+            response_message(
+                breakpoint["seq"].as_i64().unwrap(),
+                "setBreakpoints",
+                json!({"breakpoints": [{"id": 9, "verified": true, "line": 3, "source": {"path": host_source}}]}),
+            ),
+            json!({"type": "event", "event": "stopped", "body": {"reason": "breakpoint", "threadId": 7}}),
+        ],
+    );
+    assert_eq!(stopped.state, DebugSessionState::Paused);
+    let stack = inspect(
+        serde_json::from_value(json!({
+            "sessionId": id, "operationId": "stack", "kind": "stackTrace", "threadId": 7
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let frame = decode_frame(&stack.outbound_frames[0]);
+    let update = receive_messages(
+        id,
+        vec![response_message(
+            frame["seq"].as_i64().unwrap(),
+            "stackTrace",
+            json!({"stackFrames": [{"id": 1, "name": "main", "line": 3, "column": 1, "source": {"path": host_source}}]}),
+        )],
+    );
+    assert!(update.events.iter().any(|event| matches!(&event.body,
+        DebugEventBody::OperationCompleted { result: DebugOperationResult::StackTrace { stack_frames }, .. }
+        if stack_frames[0].source_path.as_deref() == source.to_str() && stack_frames[0].line == 3
+    )));
+}
+
+#[test]
 fn malformed_run_in_terminal_request_gets_an_explicit_failure_response() {
     let session_id = "debug-run-in-terminal-invalid";
     create_session(CreateSessionRequest {

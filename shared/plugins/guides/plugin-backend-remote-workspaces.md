@@ -63,15 +63,34 @@
 
 ### 远程上下文现在能用哪些服务
 
+调用前先从 `getCapabilities` 确认方法已获授权。如果返回了来源信息，先查
+`services.<service>.options.methodAuthorities[<完整方法名>]`，没有对应条目时再查
+`options.authorities`，用当前上下文的 `authority.kind` 匹配。比如 `workspace/getHostPaths`
+只支持远程上下文。较早的宿主可能省略这些字段，具体操作仍会检查工作区信任和连接状态。
+
 | 服务 | 对远程上下文 |
 | --- | --- |
 | `listContexts`、`getContext`、`getFolders` | 可用，返回上面的 `authority` 和不带 `path` 的根目录 |
-| `getHostPaths` | 契约已定义；Lithe 桌面端还没有注册，`supports` 返回 false |
-| 工作区文件、搜索、监听（`readDirectory`、`stat`、`readFile`、`findFiles`、`findText`、`watch`） | `plugin.host.authorityUnsupported`；宿主不会读取本地占位目录，也不会改在本地执行 |
-| 原生终端（`terminal/create`、`reopen`） | 首个实现只支持本地，远程上下文为 `plugin.host.authorityUnsupported`，不会在本地启动任何东西 |
+| `getHostPaths` | 返回已授权根目录在远端主机上的路径；先用 `supports` 探测宿主是否提供该方法 |
+| 工作区文件（`readDirectory`、`stat`、`readFile`） | 需要 `workspace.files.read`。用 `{ rootID, path }` 在远端工作区内读取磁盘内容，单次文件读取最多 128 KiB |
+| 搜索（`findFiles`、`findText`） | 需要 `workspace.search`。搜索远端磁盘，每次扫描最多返回 200 个匹配。用 `nextCursor` 翻页，`isTruncated` 表示本次扫描达到预算或跳过了部分内容 |
+| 监听（`watch`） | 需要 `workspace.files.watch`。事件路径相对于工作区根目录。收到 `requiresRescan` 时重新读取当前状态，重连后继续使用同一订阅 |
+| 原生终端（`terminal/create`、`reopen`） | 受信任的工作区在远端主机启动终端，用户确认界面会显示连接和工作目录。确认期间断开或更换连接时返回 `plugin.host.remoteDisconnected` |
+| 运行（`run/start`、`run/stop`） | 受信任的工作区可用工具 ID 在远端启动进程。工作目录、工具探测、登录环境和临时文件都在远端。关闭工作区或连接变化时回收。打包程序和调试目标需要宿主支持相应能力 |
 | 插件函数中转（`functions/invoke`） | 和本地上下文一样转发；被调用的插件用 `getContext` 得知 authority，中转不读也不改参数和结果里的路径 |
 
-契约目前没有定义在远端主机上启动插件进程（语言服务器、构建、运行、调试）的规则。后端不要假定这些进程会在远端运行，也不要在本地替远程工作区运行它们。
+使用 [运行契约](../contract/v1/README.md#run-and-debug-sessions) 声明工作区相对工作目录与工具 ID，由宿主解析。后端收到远端连接断开错误时，重新读取上下文和状态后再决定是否重试。
+
+搜索游标绑定查询、根目录和当前连接。重连、变更查询或已返回的结果发生变化时，从第一页重新搜索。
+
+远端语言服务器可由 `systemCommand` 或后端函数启动。后端函数仍在本机执行，收到目标 Linux 平台与远端工具信息，可返回已声明的工具 ID。使用打包程序或宿主提供的写入目录需要相应的远端部署支持。
+
+### 原生工具设置
+
+需要读取或编辑远端项目或用户目录里的真实工具配置时，使用
+[`sourceSettings: 2`](../contract/v1/README.md#remote-native-settings-sourcesettings-2)。
+设置动作声明由已审核的远端插件包提供的辅助程序，宿主显示连接和目标，用户确认后写入并回读。
+普通项目偏好仍保存在项目的 `.lithe/plugin-settings.json`。
 
 ### 两个与远端有关的错误码
 
@@ -211,15 +230,37 @@ When a backend needs, for each root, the path a process uses, it calls `processR
 
 ### Which services serve a remote context today
 
+Use `getCapabilities` to check that a method is granted before calling it. If the host returns
+workspace authority information, check `services.<service>.options.methodAuthorities[<full method name>]`
+first, then fall back to `options.authorities`. Match the list against the context's `authority.kind`.
+For example, `workspace/getHostPaths` only serves remote contexts. Older hosts may omit these fields,
+and individual operations still check workspace trust and connection state.
+
 | Service | For a remote context |
 | --- | --- |
 | `listContexts`, `getContext`, `getFolders` | Served, with the `authority` above and roots without `path` |
-| `getHostPaths` | Defined by the contract; the Lithe desktop does not register it yet, so `supports` is false |
-| Workspace files, search, and watching (`readDirectory`, `stat`, `readFile`, `findFiles`, `findText`, `watch`) | `plugin.host.authorityUnsupported`; the host never reads the local placeholder or runs the operation locally instead |
-| Native terminals (`terminal/create`, `reopen`) | The first release is local only; a remote context is `plugin.host.authorityUnsupported`, and nothing starts locally |
+| `getHostPaths` | Gives the authorized roots’ paths on the remote host. Use `supports` to check whether the host offers this method |
+| Workspace files (`readDirectory`, `stat`, `readFile`) | Require `workspace.files.read`. Use `{ rootID, path }` to read from disk inside the remote workspace, with at most 128 KiB per file read |
+| Search (`findFiles`, `findText`) | Requires `workspace.search`. The remote disk scan returns up to 200 matches. Follow `nextCursor` for more pages. `isTruncated` means the scan hit a budget or skipped part of the tree |
+| Watching (`watch`) | Requires `workspace.files.watch`. Event paths are relative to the workspace root. Read the current state again after `requiresRescan`. The same subscription continues after reconnect |
+| Native terminals (`terminal/create`, `reopen`) | Trusted workspaces start the terminal on the remote host. Consent identifies the connection and working directory. If the connection is lost or replaced during consent, the request returns `plugin.host.remoteDisconnected` |
+| Runs (`run/start`, `run/stop`) | A trusted workspace can run a tool by ID on the remote host. The working directory, tool probe, login environment and temporary files are on that host. Workspace close or connection loss ends the run. Package executables and debug targets require host support for those operations |
 | The function relay (`functions/invoke`) | Relayed as for a local context; the callee learns the authority from `getContext`, and the relay neither reads nor rewrites paths in the params or the result |
 
-The contract does not yet define how a plugin's processes (language servers, builds, runs, debugging) start on a remote host. A backend does not assume they run there, and does not run them locally for a remote workspace instead.
+Pass a workspace-relative working directory and a tool ID through the [Run contract](../contract/v1/README.md#run-and-debug-sessions). If the remote host disconnects, refresh the context and state before asking to start another run.
+
+A search cursor belongs to the query, root and current connection. Start from the first page after reconnecting, changing the query, or a change to results already returned.
+
+Remote language servers can start through `systemCommand` or a backend resolver. The resolver function runs locally, receives the target Linux platform and remote tool facts, and can return a declared tool ID. Packaged programs and host-supplied writable directories require remote deployment support.
+
+### Native tool settings
+
+Use [`sourceSettings: 2`](../contract/v1/README.md#remote-native-settings-sourcesettings-2)
+for the tool's actual files in the remote project or login account home. The
+settings action declares an approved remote package helper that discovers and
+projects the current configuration. The host shows the connection and targets,
+confirms writes, and verifies a fresh read. Ordinary project preferences still
+use the project's `.lithe/plugin-settings.json`.
 
 ### Two codes for remote hosts
 

@@ -9,3 +9,6 @@ description = "UTF-16 positions, text edit planning and the in-process completio
 lithe-protocol = { path = "../protocol" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
+encoding_rs = "0.8"
+regex = "1"
+sha2 = "0.10"

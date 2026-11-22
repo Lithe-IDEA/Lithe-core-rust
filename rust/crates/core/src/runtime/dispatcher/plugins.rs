@@ -176,6 +176,21 @@ pub(super) fn dispatch(
             payload,
             lithe_plugin_marketplace::install_review_command,
         ),
+        PluginsCommand::MarketplaceSelectRemoteVariant => plugin_response(
+            id,
+            payload,
+            lithe_plugin_marketplace::select_remote_variant_command,
+        ),
+        PluginsCommand::MarketplacePlanRemoteDeployment => plugin_response(
+            id,
+            payload,
+            lithe_plugin_marketplace::plan_remote_deployment_command,
+        ),
+        PluginsCommand::MarketplaceVerifyRemoteVariant => plugin_response(
+            id,
+            payload,
+            lithe_plugin_marketplace::verify_remote_variant_command,
+        ),
         PluginsCommand::MarketplaceRecommendForWorkspace => plugin_response(
             id,
             payload,

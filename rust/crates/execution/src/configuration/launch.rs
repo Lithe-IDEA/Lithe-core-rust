@@ -73,39 +73,9 @@ pub fn provider_launch_inputs(request: ProviderLaunchInputsRequest) -> Result<Va
 /// toolchain.
 /// Ecosystem launch semantics stay in the plugin that declared the run.
 ///
-/// In a remote workspace the plan names the host's files: the placeholder
-/// paths it was assembled with become the host paths they stand for, so the
-/// client starts the process on the host without translating any of it.
+/// In a remote workspace, paths derived from process fields name files on
+/// the host. Literal arguments retain the values saved by the user.
 pub fn create_launch_plan(request: LaunchPlanRequest) -> Result<Value, CoreError> {
-    assemble_launch_plan(request).map(host_paths)
-}
-
-/// Replaces placeholder paths in `plan`'s executable, arguments and inline
-/// script with the host paths they stand for; other values stay as they are.
-fn host_paths(mut plan: Value) -> Value {
-    if !lithe_workspace::is_remote() {
-        return plan;
-    }
-    let host = |value: &mut Value| {
-        if let Some(text) = value.as_str() {
-            if let Some(mapped) = lithe_workspace::remote_path(Path::new(text)).to_str() {
-                *value = json!(mapped);
-            }
-        }
-    };
-    if let Some(path) = plan.pointer_mut("/executable/path") {
-        host(path);
-    }
-    if let Some(arguments) = plan.get_mut("arguments").and_then(Value::as_array_mut) {
-        arguments.iter_mut().for_each(host);
-    }
-    if let Some(path) = plan.pointer_mut("/inlineScript/path") {
-        host(path);
-    }
-    plan
-}
-
-fn assemble_launch_plan(request: LaunchPlanRequest) -> Result<Value, CoreError> {
     let root = existing_root(&request.root)?;
     let layers = read_layers(&root, None, request.local_document)?;
     let resolved = resolve_layers(&root, &layers, None)?;

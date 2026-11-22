@@ -93,6 +93,7 @@ pub(crate) struct Session {
     pub(crate) walks: WalkTable,
     pub(crate) uploads: crate::server::upload::UploadTable,
     pub(crate) run_directories: crate::server::run_directory::RunDirectories,
+    pub(crate) plugin_deployments: crate::server::plugin_deployment::Deployments,
     /// Requests running on worker threads, drained before the session ends.
     pub(crate) workers: InFlight,
     pub(crate) starts: Arc<PendingStarts>,
@@ -117,6 +118,7 @@ pub(crate) struct Session {
 
 impl Session {
     pub(crate) fn new(persistent: bool) -> std::io::Result<Arc<Self>> {
+        let home = crate::server::platform::current_account().home_directory;
         let session = Arc::new(Self {
             persistent,
             link: Link::new(),
@@ -130,9 +132,8 @@ impl Session {
             listeners: ListenerTable::new(),
             walks: WalkTable::new(),
             uploads: crate::server::upload::UploadTable::default(),
-            run_directories: crate::server::run_directory::RunDirectories::new(
-                crate::server::platform::current_account().home_directory,
-            ),
+            run_directories: crate::server::run_directory::RunDirectories::new(home.clone()),
+            plugin_deployments: crate::server::plugin_deployment::Deployments::new(home),
             workers: InFlight::default(),
             starts: Arc::default(),
             ending: AtomicBool::new(false),
@@ -255,11 +256,13 @@ impl Session {
 
     /// Resources bound to a client connection. Tunnels end because their
     /// local sockets are gone; listeners close because a host port stays
-    /// open only while the client that holds the rule is connected; walks end
-    /// because their results would only fill the replay buffer.
+    /// open only while the client that holds the rule is connected. Private
+    /// staging belongs to the allocating connection; walks end because their
+    /// results would only fill the replay buffer.
     pub(crate) fn release_connection_resources(&self, connection: u64) {
         self.uploads.release(connection);
         self.listeners.close_owned_by(connection);
+        self.run_directories.release_connection(connection);
         self.tunnels.close_owned_by(connection);
         self.walks.cancel_owned_by(connection);
     }
@@ -282,5 +285,6 @@ impl Session {
         self.uploads.clear();
         // Processes must be stopped before their read-only runtime inputs go.
         self.run_directories.clear();
+        self.plugin_deployments.clear();
     }
 }

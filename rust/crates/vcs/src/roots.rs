@@ -14,9 +14,12 @@
 //! markers of several providers is ambiguous and owns nothing until the
 //! user maps it to one of them; Core never guesses.
 
-use super::manifest::{MarkerKind, VcsMarker};
+use super::manifest::{is_marker_name, MarkerKind, VcsMarker, MAX_MARKERS};
 use super::model::is_root_relative;
+use super::model::is_vcs_id;
 use lithe_core_rules::visibility::VisibilityRules;
+use lithe_protocol::{CoreError, ErrorCode};
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fs::{self, FileType};
 use std::path::{Path, PathBuf};
@@ -27,14 +30,52 @@ const MAX_DEPTH: usize = 8;
 const MAX_DIRECTORIES: usize = 20_000;
 
 /// The markers of one VCS, as detection sees them.
-pub(crate) struct MarkerSet<'a> {
-    pub(crate) vcs: &'a str,
-    pub(crate) markers: &'a [VcsMarker],
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct MarkerSet {
+    pub(crate) vcs: String,
+    pub(crate) markers: Vec<VcsMarker>,
+}
+
+/// A filesystem-only scan, after Core selected the effective marker sets.
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RootScanRequest {
+    /// Absolute directory on the machine doing the scan.
+    pub workspace: PathBuf,
+    pub(crate) sets: Vec<MarkerSet>,
+    pub(crate) mappings: Vec<Mapping>,
+}
+
+impl RootScanRequest {
+    /// Resolves static markers on the current machine without starting providers.
+    pub fn scan(self) -> Result<RootScanResult, CoreError> {
+        if !self.workspace.is_absolute()
+            || self.workspace.to_string_lossy().contains('\0')
+            || self.sets.iter().any(|set| {
+                !is_vcs_id(&set.vcs)
+                    || set.markers.is_empty()
+                    || set.markers.len() > MAX_MARKERS
+                    || set
+                        .markers
+                        .iter()
+                        .any(|marker| !is_marker_name(&marker.name))
+            })
+        {
+            return Err(CoreError::new(
+                ErrorCode::InvalidRequest,
+                "Invalid VCS root scan",
+            ));
+        }
+        // The target of a workspace symlink belongs to its own working copy.
+        let workspace = self.workspace.canonicalize().unwrap_or(self.workspace);
+        Ok(detect(&workspace, &self.sets, &self.mappings))
+    }
 }
 
 /// A detected root. `id` is workspace-relative with `/` separators: `""` is
 /// the workspace root and `..` segments name an enclosing directory.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub(crate) struct Root {
     pub(crate) id: String,
     pub(crate) vcs: String,
@@ -44,21 +85,23 @@ pub(crate) struct Root {
 }
 
 /// A directory with markers of several VCSs and no mapping.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub(crate) struct Ambiguous {
     pub(crate) id: String,
     pub(crate) vcs: Vec<String>,
 }
 
 /// The user's choice for an ambiguous directory.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub(crate) struct Mapping {
     pub(crate) id: String,
     pub(crate) vcs: String,
 }
 
-#[derive(Debug, Default)]
-pub(crate) struct Detection {
+/// A bounded scan's roots, conflicts between markers, and unused mappings.
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RootScanResult {
     pub(crate) roots: Vec<Root>,
     pub(crate) ambiguous: Vec<Ambiguous>,
     /// Mappings that name no ambiguous directory, or a VCS whose markers
@@ -67,6 +110,21 @@ pub(crate) struct Detection {
     /// Whether the directory budget cut the walk short, so a root may be
     /// missing. Roots deeper than [`MAX_DEPTH`] are never looked for.
     pub(crate) truncated: bool,
+}
+
+impl RootScanResult {
+    /// Maps each host path to the caller's workspace identity. Enclosing IDs
+    /// carry a different anchor from IDs relative to the workspace itself.
+    /// Roots the client cannot represent are omitted.
+    pub fn project_paths(&mut self, mut project: impl FnMut(&str, &Path, bool) -> Option<PathBuf>) {
+        self.roots.retain_mut(|root| {
+            let Some(path) = project(&root.id, &root.path, is_enclosing(&root.id)) else {
+                return false;
+            };
+            root.path = path;
+            true
+        });
+    }
 }
 
 /// Whether `id` names a directory enclosing the workspace: only `..`
@@ -140,19 +198,19 @@ fn marker_kind(path: &Path, file_type: FileType) -> Option<MarkerKind> {
     }
 }
 
-fn matches(sets: &[MarkerSet<'_>], name: &str, kind: MarkerKind) -> Vec<String> {
+fn matches(sets: &[MarkerSet], name: &str, kind: MarkerKind) -> Vec<String> {
     sets.iter()
         .filter(|set| {
             set.markers
                 .iter()
                 .any(|marker| marker.name == name && marker.kind == kind)
         })
-        .map(|set| set.vcs.to_string())
+        .map(|set| set.vcs.clone())
         .collect()
 }
 
 /// VCSs whose markers sit directly in `directory`, checked by name.
-fn markers_at(directory: &Path, sets: &[MarkerSet<'_>]) -> BTreeSet<String> {
+fn markers_at(directory: &Path, sets: &[MarkerSet]) -> BTreeSet<String> {
     let names: BTreeSet<&str> = sets
         .iter()
         .flat_map(|set| set.markers.iter().map(|marker| marker.name.as_str()))
@@ -171,7 +229,7 @@ fn markers_at(directory: &Path, sets: &[MarkerSet<'_>]) -> BTreeSet<String> {
 }
 
 /// Walks the workspace and its ancestors. `workspace` must be absolute.
-pub(crate) fn detect(workspace: &Path, sets: &[MarkerSet<'_>], mappings: &[Mapping]) -> Detection {
+pub(crate) fn detect(workspace: &Path, sets: &[MarkerSet], mappings: &[Mapping]) -> RootScanResult {
     let metadata_directories: BTreeSet<&str> = sets
         .iter()
         .flat_map(|set| set.markers.iter())
@@ -244,9 +302,9 @@ pub(crate) fn detect(workspace: &Path, sets: &[MarkerSet<'_>], mappings: &[Mappi
         }
     }
 
-    let mut detection = Detection {
+    let mut detection = RootScanResult {
         truncated,
-        ..Detection::default()
+        ..RootScanResult::default()
     };
     let mut used = BTreeSet::new();
     for (id, (path, vcs)) in found {

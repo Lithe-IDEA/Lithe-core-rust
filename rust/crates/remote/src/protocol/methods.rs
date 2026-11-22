@@ -3,7 +3,8 @@
 //! Paths in this protocol are absolute paths on the remote host, using the
 //! host's own spelling. This is deliberate: the protocol is a filesystem and
 //! process adapter, and toolchains, terminals and debuggers need real host
-//! paths. Workspace-relative identifiers are built above this layer.
+//! paths. The scoped read method takes a host root and a relative path so
+//! the server can enforce the plugin-facing boundary itself.
 //!
 //! Long-lived resources (processes, terminals, watches, tunnels, walks) are
 //! identified by ids the *client* chooses, unique per session. A client can
@@ -44,6 +45,18 @@ pub const FS_STAT: &str = "fs.stat";
 pub const FS_READ_DIR: &str = "fs.readDir";
 /// Reads a byte range of a file, see [`ReadFileParams`].
 pub const FS_READ_FILE: &str = "fs.readFile";
+/// Reads only within a workspace, see [`ScopedFileParams`].
+pub const FS_SCOPED_FILE: &str = "fs.scopedFile";
+/// Publishes a bounded batch of Run configuration edits within a workspace.
+pub const FS_APPLY_RUN_CONFIG_CHANGES: &str = "fs.applyRunConfigChanges";
+/// Reads or conditionally publishes the plugin preferences document of one workspace.
+pub const FS_PROJECT_PLUGIN_SETTINGS: &str = "fs.projectPluginSettings";
+/// Inspects or stages approved native settings sources without transferring their contents.
+pub const FS_NATIVE_SETTINGS: &str = "fs.nativeSettings";
+/// Searches disk contents or names within an opened workspace root.
+pub const FS_SCOPED_SEARCH: &str = "fs.scopedSearch";
+/// Finds working copies by static markers on the workspace host.
+pub const FS_VCS_ROOTS: &str = "fs.vcsRoots";
 /// Replaces a whole file atomically, see [`WriteFileParams`].
 pub const FS_WRITE_FILE: &str = "fs.writeFile";
 /// Creates a directory, see [`CreateDirParams`].
@@ -78,6 +91,176 @@ pub const FS_CREATE_RUN_DIRECTORY: &str = "fs.createRunDirectory";
 /// Removes a run directory this session allocated; releasing it again
 /// succeeds without effect.
 pub const FS_RELEASE_RUN_DIRECTORY: &str = "fs.releaseRunDirectory";
+
+/// Acquires a published plugin deployment for the lifetime of the session.
+pub const FS_PLUGIN_DEPLOYMENT_LOOKUP: &str = "fs.pluginDeploymentLookup";
+/// Publishes a staged package and leases it for the session.
+pub const FS_PLUGIN_DEPLOYMENT_COMMIT: &str = "fs.pluginDeploymentCommit";
+/// Removes unused uninstalled deployments and abandoned upload scratch.
+pub const FS_PLUGIN_DEPLOYMENT_SWEEP: &str = "fs.pluginDeploymentSweep";
+
+/// Private connection-owned scratch for a plugin package or a runtime archive.
+pub const FS_CREATE_RUNTIME_STAGING: &str = "fs.createRuntimeStaging";
+/// Leases an existing managed runtime and checks its declared launch paths.
+pub const FS_MANAGED_RUNTIME_LOOKUP: &str = "fs.managedRuntimeLookup";
+/// Verifies and extracts an uploaded archive before leasing the published runtime.
+pub const FS_MANAGED_RUNTIME_COMMIT: &str = "fs.managedRuntimeCommit";
+
+/// Which trusted host directory owns a native settings source.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub enum NativeSettingsScope {
+    /// A project source below the opened workspace.
+    Workspace,
+    /// A separately confirmed source below the remote account's home.
+    Home,
+}
+
+/// Path of one native source relative to its approved scope.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeSettingsTarget {
+    /// Directory scope.
+    pub scope: NativeSettingsScope,
+    /// Normalized relative path with no links.
+    pub path: String,
+}
+
+/// Revision and host file identity. The original bytes stay on the host.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeSettingsBaseline {
+    /// Scoped source.
+    pub target: NativeSettingsTarget,
+    /// Opaque identity covering workspace, ancestors, and file metadata.
+    pub identity: String,
+    /// `missing` or `sha256:<digest>` of the exact bytes.
+    pub revision: String,
+    /// Actual host path for the confirmation dialog.
+    pub host_path: String,
+    /// Whether the host allows the target to be replaced.
+    pub writable: bool,
+}
+
+/// A helper's staged output and the snapshot it is authorized to replace.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeSettingsReplacement {
+    /// Decimal staging slot within the connection-owned directory.
+    pub slot: u16,
+    /// Exact previously inspected source.
+    pub baseline: NativeSettingsBaseline,
+    /// Replacement byte revision reported by the helper.
+    pub revision: String,
+}
+
+/// Native settings operations used only by the desktop source editor.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum NativeSettingsOperation {
+    /// Returns ordered source baselines without reading file text across the wire.
+    Inspect {
+        /// Sources projected by the approved helper.
+        targets: Vec<NativeSettingsTarget>,
+    },
+    /// Verifies confirmed sources and creates already-existing output files.
+    Stage {
+        /// Connection-owned staging directory.
+        directory_id: String,
+        /// Baselines in staging slot order, starting at zero.
+        baselines: Vec<NativeSettingsBaseline>,
+    },
+    /// Verifies every changed output, then publishes from the same staging directory.
+    Publish {
+        /// Connection-owned staging directory to consume.
+        directory_id: String,
+        /// Changed output slots and their revisions.
+        replacements: Vec<NativeSettingsReplacement>,
+    },
+}
+
+/// Native settings operation for the current workspace.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeSettingsParams {
+    /// Workspace's host root, injected from the bound desktop attachment.
+    pub root: String,
+    /// Specific inspection or publication phase.
+    pub operation: NativeSettingsOperation,
+}
+
+/// Cache identity of a single approved, immutable deployment.
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PluginDeploymentKey {
+    /// Validated plugin ID.
+    pub plugin_id: String,
+    /// Installed release version.
+    pub version: String,
+    /// SHA-256 of the approved deployment inputs.
+    pub sha256: String,
+}
+
+/// Publishes a package after all its uploads have committed.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CommitPluginDeploymentParams {
+    /// Identity of the target cache entry.
+    pub key: PluginDeploymentKey,
+    /// Session-owned run directory whose `package` subdirectory is complete.
+    pub directory_id: String,
+}
+
+/// Cache and layout of one reviewed managed runtime for the workspace host.
+#[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ManagedRuntimeLayout {
+    /// The plugin and release that approved the archive, plus its Core cache key.
+    pub key: PluginDeploymentKey,
+    /// Approved archive SHA-256, checked against the uploaded bytes.
+    pub archive_sha256: String,
+    /// Compression format, ZIP or gzip-compressed tar.
+    pub archive: String,
+    /// Directory removed from every archive entry.
+    pub strip_prefix: String,
+    /// Declared tool home, relative to the extracted root.
+    pub home: String,
+    /// Executable relative to the declared home, or empty for a data dependency.
+    pub executable: String,
+}
+
+/// Publishes a runtime from scratch allocated on the same connection.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CommitManagedRuntimeParams {
+    /// Layout selected by Core on the desktop.
+    pub layout: ManagedRuntimeLayout,
+    /// Connection-owned scratch containing the verified upload named `archive`.
+    pub directory_id: String,
+}
+
+/// Installed version retained by the desktop on reconnect.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct InstalledPluginVersion {
+    /// Installed plugin ID.
+    pub plugin_id: String,
+    /// Installed release version.
+    pub version: String,
+}
+
+/// Sweep input from one complete installed-plugin inventory.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SweepPluginDeploymentsParams {
+    /// Deployments of these versions remain available.
+    pub installed: Vec<InstalledPluginVersion>,
+}
 
 /// Caller-generated opaque identity, known before allocation can be cancelled.
 #[derive(Debug, Deserialize, Serialize)]
@@ -137,8 +320,15 @@ pub const WATCH_START: &str = "watch.start";
 /// Stops a watch.
 pub const WATCH_STOP: &str = "watch.stop";
 
+/// Finds an executable on the host without starting it.
+pub const PROCESS_RESOLVE_EXECUTABLE: &str = "process.resolveExecutable";
+
+/// Resolves host-side launch facts for a debug adapter that starts the process itself.
+pub const PROCESS_RESOLVE_DEBUG_LAUNCH: &str = "process.resolveDebugLaunch";
 /// Starts a process with piped output, see [`SpawnParams`].
 pub const PROCESS_SPAWN: &str = "process.spawn";
+/// Spawns a process with a descriptor-relative workspace working directory.
+pub const PROCESS_SPAWN_SCOPED: &str = "process.spawnScoped";
 /// Writes Base64 bytes to a process's standard input; fails with `BUSY` when
 /// the process stops reading.
 pub const PROCESS_WRITE_STDIN: &str = "process.writeStdin";
@@ -146,9 +336,13 @@ pub const PROCESS_WRITE_STDIN: &str = "process.writeStdin";
 pub const PROCESS_CLOSE_STDIN: &str = "process.closeStdin";
 /// Signals every process of a process's session, see [`KillParams`].
 pub const PROCESS_KILL: &str = "process.kill";
+/// Checks whether a process session owns a listener for its loopback debug port.
+pub const PROCESS_DEBUG_PORT_READY: &str = "process.debugPortReady";
 
 /// Opens a pseudo-terminal running a program, see [`TerminalOpenParams`].
 pub const TERMINAL_OPEN: &str = "terminal.open";
+/// Opens a PTY confined to a host-selected workspace working directory.
+pub const TERMINAL_OPEN_SCOPED: &str = "terminal.openScoped";
 /// Writes Base64 input to a terminal; fails with `BUSY` when it is not read.
 pub const TERMINAL_WRITE: &str = "terminal.write";
 /// Changes a terminal's size in character cells.
@@ -172,6 +366,8 @@ pub const TUNNEL_SHUTDOWN_WRITE: &str = "tunnel.shutdownWrite";
 pub const TUNNEL_CLOSE: &str = "tunnel.close";
 /// Lists the TCP ports listening on the host as a [`ListeningPortsResult`].
 pub const PORTS_LISTENING: &str = "ports.listening";
+/// Asks the target OS for an available IPv4 loopback port.
+pub const PORTS_PICK_LOOPBACK: &str = "ports.pickLoopback";
 
 /// Listens on a host TCP port for a forwarding rule the user added, see
 /// [`ListenerOpenParams`]; fails with `ADDRESS_IN_USE` when the port is taken.
@@ -473,6 +669,10 @@ pub enum Feature {
     Upload,
     /// Session-owned private run directories reclaimed when the session ends.
     RunDirectories,
+    /// Privately cached, session-leased plugin deployments.
+    PluginDeployments,
+    /// Host extraction and leasing of reviewed runtime archives.
+    ManagedRuntimeDeployments,
     /// `walk.*` methods and events.
     Walk,
     /// `watch.*` methods and events.
@@ -587,6 +787,204 @@ pub struct WatchState {
 // ---------------------------------------------------------------------------
 // Filesystem
 // ---------------------------------------------------------------------------
+
+/// Maximum bytes exposed by one scoped file read.
+pub const MAX_SCOPED_READ_BYTES: usize = 128 * 1024;
+/// Largest configuration document the desktop may read within a workspace.
+pub const MAX_SCOPED_CONFIGURATION_BYTES: usize = 1024 * 1024;
+
+/// An operation anchored to the workspace root supplied by the client.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScopedFileParams {
+    /// Absolute directory of the workspace on the host.
+    pub root: String,
+    /// Slash-separated relative path; empty for the root itself.
+    pub path: String,
+    /// Selects the permitted read-only operation.
+    pub access: ScopedFileAccess,
+}
+
+/// Read-only operations with descriptor-relative containment.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
+pub enum ScopedFileAccess {
+    /// Lists addressable regular files and directories.
+    List,
+    /// Stats the named entry without following a final link.
+    Stat,
+    /// Reads a bounded prefix of a regular file without following links.
+    Read {
+        /// Requested length, from one byte through [`MAX_SCOPED_READ_BYTES`].
+        length: usize,
+    },
+    /// Reads a configuration document using the desktop's larger storage budget.
+    ReadConfiguration {
+        /// Requested length, through [`MAX_SCOPED_CONFIGURATION_BYTES`].
+        length: usize,
+    },
+    /// Reads a document requested by the desktop editor.
+    ReadDocument {
+        /// Requested length, through [`MAX_TRANSFER_BYTES`].
+        length: usize,
+    },
+}
+
+/// Directory entry exposed by a scoped listing.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScopedDirectoryEntry {
+    /// Name relative to the requested directory.
+    pub name: String,
+    /// The entry's own type.
+    pub kind: FileKind,
+}
+
+/// Scoped stat result without any resolved link target.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScopedFileStat {
+    /// The entry's own type.
+    pub kind: FileKind,
+    /// Size in bytes.
+    pub size: u64,
+    /// Modification time in milliseconds since the Unix epoch.
+    pub modified_milliseconds: i64,
+}
+
+/// Scoped read result before client-side encoding detection.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScopedFileRead {
+    /// Base64-encoded file bytes.
+    pub data: String,
+    /// Whether the host observed at least one byte beyond the returned prefix.
+    pub is_truncated: bool,
+}
+
+/// A batch of edits prepared from the Run configuration layers by Core.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ApplyRunConfigChangesParams {
+    /// Opened workspace's absolute host directory.
+    pub root: String,
+    /// All files one logical edit changes.
+    pub changes: Vec<RunConfigChange>,
+}
+
+/// One compare-and-publish operation below the workspace's `.lithe/run`.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RunConfigChange {
+    /// Workspace-relative path of a Run configuration document.
+    pub path: String,
+    /// SHA-256 of the old bytes, or null if the file must be absent.
+    pub base_sha256: Option<String>,
+    /// Replacement UTF-8 text, or null to remove the old file.
+    pub content: Option<String>,
+}
+
+/// A settings edit request whose scope is chosen by the workspace owner.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectPluginSettingsParams {
+    /// Absolute directory of the workspace on the host.
+    pub root: String,
+    /// Selects a read or compare-and-publish of the fixed preferences document.
+    pub operation: ProjectPluginSettingsOperation,
+}
+
+/// Host-side operations for `.lithe/plugin-settings.json`.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
+pub enum ProjectPluginSettingsOperation {
+    /// Reads the exact document and its workspace identity.
+    Read,
+    /// Publishes the Core-planned document conditionally on the captured baseline.
+    Publish {
+        /// Captured workspace and source revisions; contains no document contents.
+        baseline: ProjectPluginSettingsBaseline,
+        /// The replacement document, or null to remove the existing document.
+        content: Option<String>,
+    },
+}
+
+/// Origin of one settings snapshot, retained privately by the desktop.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectPluginSettingsBaseline {
+    /// Device and inode of the opened workspace directory.
+    pub workspace_identity: String,
+    /// SHA-256 of the source bytes, or null for a missing source.
+    pub base_sha256: Option<String>,
+}
+
+/// Exact source and conflict baseline of a remote project settings read.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectPluginSettingsSnapshot {
+    /// Workspace-relative path of the captured settings source.
+    pub path: String,
+    /// UTF-8 source text, or null for a missing source.
+    pub text: Option<String>,
+    /// Origin checked before the next publication.
+    pub baseline: ProjectPluginSettingsBaseline,
+}
+
+/// Maximum available matches in one bounded plugin disk search.
+pub const MAX_SCOPED_SEARCH_RESULTS: usize = 200;
+
+/// One disk search across the authenticated root.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScopedSearchParams {
+    /// Absolute directory of the workspace on the host.
+    pub root: String,
+    /// Names hidden by enabled plugins on the desktop.
+    pub hidden_directories: Vec<String>,
+    /// Match and filter options.
+    pub search: ScopedSearch,
+}
+
+/// Query options shared by the client and host.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScopedSearch {
+    /// Literal path query or text expression.
+    pub query: String,
+    /// Comma-separated filename patterns.
+    pub file_mask: String,
+    /// When false, match workspace-relative paths instead of file contents.
+    pub text: bool,
+    /// Use case-sensitive matching.
+    pub case_sensitive: bool,
+    /// Match whole words for literal text.
+    pub whole_words: bool,
+    /// Compile the text query as a regular expression.
+    pub regular_expression: bool,
+}
+
+/// One regular file or one matching line on disk.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScopedSearchMatch {
+    /// Slash-separated path relative to the opened workspace root.
+    pub path: String,
+    /// One-based text line, absent for a path match.
+    pub line: Option<usize>,
+    /// Bounded preview, absent for a path match.
+    pub preview: Option<String>,
+}
+
+/// Bounded host scan, before projection into plugin pages.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScopedSearchResult {
+    /// Matches in deterministic traversal order while the tree is unchanged.
+    pub matches: Vec<ScopedSearchMatch>,
+    /// At least one result or part of the search corpus exceeded a budget.
+    pub is_truncated: bool,
+}
 
 /// Parameters of the `fs.*` methods that take only a path.
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1001,6 +1399,41 @@ pub enum EnvironmentSource {
     Login,
 }
 
+/// Host-side filesystem and login environment lookup for an already planned candidate.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
+pub enum ResolveExecutableParams {
+    /// A bare command on login PATH, or a specifically configured absolute executable.
+    Program {
+        /// Program name or absolute path.
+        value: String,
+        /// Explicit PATH of a user-authored run. Omitted uses the host's login PATH.
+        #[serde(
+            default,
+            rename = "searchPath",
+            skip_serializing_if = "Option::is_none"
+        )]
+        search_path: Option<String>,
+    },
+    /// A workspace-relative executable and its required workspace-relative files.
+    ProjectFile {
+        /// Absolute workspace directory selected by the client.
+        root: String,
+        /// Path below the root.
+        path: String,
+        /// Additional files that must exist before the candidate applies.
+        #[serde(default)]
+        requires: Vec<String>,
+    },
+    /// An executable below an absolute directory from the login environment.
+    Environment {
+        /// Name of the variable containing the directory.
+        variable: String,
+        /// Executable's relative path below that directory.
+        path: String,
+    },
+}
+
 /// Parameters of `process.spawn`. The process leads a new session, so
 /// `process.kill` reaches everything it starts.
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1011,15 +1444,25 @@ pub struct SpawnParams {
     /// Program and arguments. The program is resolved through the base
     /// environment's `PATH` when it contains no `/`.
     pub argv: Vec<String>,
+    /// Approved bare command names in priority order. When present, `argv[0]`
+    /// is empty and the server selects the program from its login `PATH`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub command_candidates: Vec<String>,
     /// Absolute host working directory; the server's own when absent.
     #[serde(default)]
     pub cwd: Option<String>,
+    /// Required for `process.spawnScoped`; mutually exclusive with `cwd`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scoped_cwd: Option<ScopedWorkingDirectory>,
     /// Base environment the `env` variables are applied to.
     #[serde(default)]
     pub environment: EnvironmentSource,
     /// Variables added to, or replacing, the base environment.
     #[serde(default)]
     pub env: BTreeMap<String, String>,
+    /// Absolute host directories inserted before the resulting PATH.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub path_prepend: Vec<String>,
     /// Keep standard input open for `process.writeStdin`. Otherwise the
     /// process reads end-of-file immediately.
     #[serde(default)]
@@ -1035,6 +1478,20 @@ pub struct SpawnParams {
 pub struct SpawnResult {
     /// Operating-system pid, for diagnostics only.
     pub pid: u32,
+}
+
+/// Host facts requested before a debug adapter launches a debuggee.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResolveDebugLaunchParams {
+    /// The workspace-scoped directory supplied by the decoded run.
+    pub scoped_cwd: ScopedWorkingDirectory,
+    /// An explicit PATH provided by the tool, if there is one.
+    #[serde(default)]
+    pub path: Option<String>,
+    /// Toolchain directories to prepend.
+    #[serde(default)]
+    pub path_prepend: Vec<String>,
 }
 
 /// Parameters of `process.writeStdin`.
@@ -1053,6 +1510,16 @@ pub struct WriteStdinParams {
 pub struct ProcessParams {
     /// Id the process was spawned with.
     pub process_id: u64,
+}
+
+/// Identifies an owned process session and the loopback port its debugger needs.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessDebugPortParams {
+    /// Resource id returned by the spawn request, scoped to this remote session.
+    pub process_id: u64,
+    /// Nonzero port to check on IPv4 loopback.
+    pub port: u16,
 }
 
 /// Parameters of `process.kill`.
@@ -1106,6 +1573,16 @@ pub struct ProcessExitEvent {
 // Terminals
 // ---------------------------------------------------------------------------
 
+/// A working directory resolved relative to an opened workspace root.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScopedWorkingDirectory {
+    /// Absolute workspace root selected by the host.
+    pub root: String,
+    /// Workspace-relative directory, empty for the root itself.
+    pub path: String,
+}
+
 /// Parameters of `terminal.open`.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1120,10 +1597,19 @@ pub struct TerminalOpenParams {
     /// without one.
     #[serde(default)]
     pub cwd: Option<String>,
-    /// Variables added to the server environment. `TERM` defaults to
+    /// Descriptor-relative alternative to `cwd` for workspace-scoped launches.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scoped_cwd: Option<ScopedWorkingDirectory>,
+    /// Base environment used before setting terminal defaults and overrides.
+    #[serde(default)]
+    pub environment: EnvironmentSource,
+    /// Variables added to the base environment. `TERM` defaults to
     /// `xterm-256color`.
     #[serde(default)]
     pub env: BTreeMap<String, String>,
+    /// Variables removed after applying overrides.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unset_env: Vec<String>,
     /// Initial width in character cells.
     pub columns: u16,
     /// Initial height in character cells.

@@ -381,7 +381,8 @@ impl Backend {
 
     /// Answers `lithe/build/prepareRun` with a portable launch plan:
     /// `{ executable: { kind, value }, arguments, workingDirectory,
-    /// environment }`.
+    /// environment, placement? }`. Use [`crate::ProcessPlacement`] for the
+    /// optional placement value.
     pub fn build_prepare_run<F>(&mut self, handler: F) -> &mut Self
     where
         F: Fn(Value, &BuildContext) -> Result<Value, FunctionError> + Send + Sync + 'static,

@@ -145,6 +145,9 @@ enum TransportEvent {
     /// Begins a lifecycle; ignored while one is already running.
     Start {
         limits: Option<LimitOverrides>,
+        /// Whether the host opens a byte stream directly, such as process stdio.
+        #[serde(default)]
+        direct_stream: bool,
     },
     /// Queues one outgoing frame of `bytes` bytes. The host keeps the bytes.
     Send {
@@ -236,6 +239,8 @@ enum TransportEffect {
         host: String,
         port: u16,
     },
+    /// Open the process stream and report the same events as a socket.
+    OpenStream,
     /// Send the oldest queued frame, which must be `bytes` long, then report `writeCompleted`.
     Write {
         write_id: u64,
@@ -330,9 +335,12 @@ impl Lifecycle {
     fn handle(&mut self, event: TransportEvent) -> Result<TransportStep, CoreError> {
         let mut effects = Vec::new();
         let outcome = match event {
-            TransportEvent::Start { limits } => {
+            TransportEvent::Start {
+                limits,
+                direct_stream,
+            } => {
                 let limits = TransportLimits::resolve(limits)?;
-                self.start(limits, &mut effects)
+                self.start(limits, direct_stream, &mut effects)
             }
             TransportEvent::Send { bytes } => self.send(bytes, &mut effects),
             TransportEvent::Stop {} if self.phase == TransportPhase::Stopped => {
@@ -386,6 +394,7 @@ impl Lifecycle {
     fn start(
         &mut self,
         limits: TransportLimits,
+        direct_stream: bool,
         effects: &mut Vec<TransportEffect>,
     ) -> StepOutcome {
         // A draining lifecycle has already been released by its owner, so a new
@@ -398,6 +407,12 @@ impl Lifecycle {
         }
         self.limits = limits;
         self.generation += 1;
+        if direct_stream {
+            self.phase = TransportPhase::Connecting;
+            self.arm_startup_timer(TimerPurpose::Connect, limits.connect_milliseconds, effects);
+            effects.push(TransportEffect::OpenStream);
+            return StepOutcome::Applied;
+        }
         self.phase = TransportPhase::Discovering;
         self.arm_startup_timer(
             TimerPurpose::Discovery,

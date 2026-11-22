@@ -24,7 +24,7 @@ const UTF32_LE_BOM: [u8; 4] = [0xFF, 0xFE, 0x00, 0x00];
 
 /// A document encoding selectable by clients, identified by a stable string id.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum DocumentEncoding {
+pub enum DocumentEncoding {
     Utf8,
     Utf8Bom,
     Utf16LeBom,
@@ -44,7 +44,7 @@ pub(crate) enum DocumentEncoding {
 }
 
 /// Every supported encoding in catalog order.
-pub(crate) const ALL_ENCODINGS: [DocumentEncoding; 16] = [
+pub const ALL_ENCODINGS: [DocumentEncoding; 16] = [
     DocumentEncoding::Utf8,
     DocumentEncoding::Utf8Bom,
     DocumentEncoding::Utf16LeBom,
@@ -64,18 +64,20 @@ pub(crate) const ALL_ENCODINGS: [DocumentEncoding; 16] = [
 ];
 
 /// Result of decoding a file's bytes.
-pub(crate) struct DecodedDocument {
-    pub(crate) text: String,
-    pub(crate) encoding: DocumentEncoding,
+pub struct DecodedDocument {
+    /// The decoded file contents.
+    pub text: String,
+    /// The selected or detected encoding.
+    pub encoding: DocumentEncoding,
     /// A leading BOM was present and removed from `text`.
-    pub(crate) had_bom: bool,
+    pub had_bom: bool,
     /// Invalid bytes were replaced with U+FFFD (only for an explicit encoding).
-    pub(crate) lossy: bool,
+    pub lossy: bool,
 }
 
 impl DocumentEncoding {
     /// Stable identifier exchanged with clients.
-    pub(crate) fn id(self) -> &'static str {
+    pub fn id(self) -> &'static str {
         match self {
             Self::Utf8 => "utf-8",
             Self::Utf8Bom => "utf-8-bom",
@@ -97,7 +99,7 @@ impl DocumentEncoding {
     }
 
     /// Parses a stable id or one of the accepted aliases, case-insensitively.
-    pub(crate) fn parse(value: &str) -> Result<Self, CoreError> {
+    pub fn parse(value: &str) -> Result<Self, CoreError> {
         let normalized = value.trim().to_ascii_lowercase();
         let encoding = match normalized.as_str() {
             "utf-8" | "utf8" => Self::Utf8,
@@ -193,7 +195,7 @@ impl DocumentEncoding {
 }
 
 /// SHA-256 of the exact bytes, as lowercase hex; used for external-change guards.
-pub(crate) fn bytes_identity(bytes: &[u8]) -> String {
+pub fn bytes_identity(bytes: &[u8]) -> String {
     Sha256::digest(bytes)
         .iter()
         .map(|byte| format!("{byte:02x}"))
@@ -253,7 +255,7 @@ fn detect(bytes: &[u8]) -> Result<DocumentEncoding, CoreError> {
 /// Automatic detection is strict: invalid bytes fail with `parse_failed`. An
 /// explicit encoding is a request to inspect the bytes through that codec, so
 /// invalid sequences become U+FFFD and `lossy` is set.
-pub(crate) fn decode(
+pub fn decode(
     bytes: &[u8],
     requested: Option<DocumentEncoding>,
 ) -> Result<DecodedDocument, CoreError> {
@@ -286,7 +288,7 @@ pub(crate) fn decode(
 /// The text of `bytes` as [`decode`] detects and decodes it without a
 /// requested encoding. Bytes that are already UTF-8 without a byte order mark
 /// become the text without a copy, which is the common case for search.
-pub(crate) fn decode_detected_text(bytes: Vec<u8>) -> Result<String, CoreError> {
+pub fn decode_detected_text(bytes: Vec<u8>) -> Result<String, CoreError> {
     if bytes.starts_with(&UTF8_BOM) || starts_with_utf16_bom(&bytes) {
         return decode(&bytes, None).map(|decoded| decoded.text);
     }
@@ -298,7 +300,7 @@ pub(crate) fn decode_detected_text(bytes: Vec<u8>) -> Result<String, CoreError> 
 
 /// Whether detection reads `bytes` as UTF-16, the only detected encoding
 /// whose text bytes can be zero.
-pub(crate) fn starts_with_utf16_bom(bytes: &[u8]) -> bool {
+pub fn starts_with_utf16_bom(bytes: &[u8]) -> bool {
     (bytes.starts_with(&UTF16_LE_BOM) && !bytes.starts_with(&UTF32_LE_BOM))
         || bytes.starts_with(&UTF16_BE_BOM)
 }
@@ -309,7 +311,7 @@ pub(crate) fn starts_with_utf16_bom(bytes: &[u8]) -> bool {
 /// requesting a BOM for a legacy encoding is `invalid_request`. Characters the
 /// target encoding cannot represent fail with `encoding_unmappable` and are
 /// never substituted.
-pub(crate) fn encode(
+pub fn encode(
     text: &str,
     encoding: DocumentEncoding,
     bom: Option<bool>,

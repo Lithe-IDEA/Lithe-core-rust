@@ -171,6 +171,19 @@ func main() {
 		return nextChange(call)
 	}))
 
+	must(backend.Function("workspace.processRoots", func(_ json.RawMessage, call *lithe.Context) (any, error) {
+		context := call.WorkspaceContext()
+		if context == nil {
+			return nil, lithe.NewPluginError("sample.noWorkspace", "Open a workspace first.")
+		}
+		workspace := call.Host().Workspace()
+		full, err := workspace.GetContext(*context)
+		if err != nil {
+			return nil, err
+		}
+		return workspace.ProcessRoots(full)
+	}))
+
 	// The terminal API is a host service. The lifecycle sample deliberately
 	// uses a harmless interactive client and display-only history; it never
 	// executes retained text as input.

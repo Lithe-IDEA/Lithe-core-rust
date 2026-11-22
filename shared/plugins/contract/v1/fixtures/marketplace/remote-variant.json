@@ -1,0 +1,85 @@
+{
+  "index": {
+    "schemaVersion": 0,
+    "plugins": [
+      {
+        "id": "io.example.remote-tools",
+        "name": "Remote Tools Fixture",
+        "author": "Example",
+        "repository": "https://github.com/example/remote-tools",
+        "description": "Tests exact remote variants.",
+        "license": "MIT",
+        "versions": [
+          {
+            "version": "2.0.0",
+            "pluginAPIVersion": 0,
+            "requires": {
+              "languageServers": 0,
+              "languages": 0
+            },
+            "releaseDate": "2026-10-01",
+            "downloads": [
+              {
+                "platforms": [
+                  "darwin-arm64"
+                ],
+                "downloadURL": "https://github.com/example/remote-tools/releases/download/2.0.0/desktop.zip",
+                "sha256": "4444444444444444444444444444444444444444444444444444444444444444"
+              },
+              {
+                "platforms": [
+                  "linux-x64"
+                ],
+                "downloadURL": "https://github.com/example/remote-tools/releases/download/2.0.0/linux.zip",
+                "sha256": "5555555555555555555555555555555555555555555555555555555555555555"
+              }
+            ]
+          },
+          {
+            "version": "1.0.0",
+            "pluginAPIVersion": 0,
+            "requires": {
+              "languageServers": 0,
+              "languages": 0
+            },
+            "releaseDate": "2026-10-01",
+            "downloads": [
+              {
+                "platforms": [
+                  "darwin-arm64"
+                ],
+                "downloadURL": "https://github.com/example/remote-tools/releases/download/1.0.0/desktop.zip",
+                "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+              },
+              {
+                "platforms": [
+                  "linux-x64"
+                ],
+                "downloadURL": "https://github.com/example/remote-tools/releases/download/1.0.0/linux.zip",
+                "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "sourceKind": "thirdParty",
+  "pluginID": "io.example.remote-tools",
+  "version": "1.0.0",
+  "installedPlatform": "darwin-arm64",
+  "installedSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+  "repository": "https://github.com/example/remote-tools",
+  "target": {
+    "os": "linux",
+    "arch": "x86_64"
+  },
+  "hostCapabilities": {
+    "languageServers": [
+      0
+    ],
+    "languages": [
+      0
+    ]
+  }
+}

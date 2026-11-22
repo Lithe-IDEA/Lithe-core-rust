@@ -182,6 +182,7 @@ pub fn run_vcs_scenario(node: &str) {
         node,
         &arguments,
         &workspace,
+        &[],
     );
 
     // The provider negotiated one capability per handler it declared.

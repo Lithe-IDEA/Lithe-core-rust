@@ -29,6 +29,7 @@
 use super::plugin_document::{self, InstalledPlugin, PluginDocument};
 use super::*;
 use lithe_plugin_model::is_plugin_id;
+use lithe_workspace::host::{self, ScopedDirectoryEntry, ScopedFileAccess, ScopedFileKind};
 use sha2::{Digest, Sha256};
 use std::io::Read;
 
@@ -490,18 +491,7 @@ fn read_plugin_documents(
 ) -> Result<(BTreeMap<String, PluginFile>, BTreeMap<String, PluginFile>), CoreError> {
     let mut project = BTreeMap::new();
     let mut local = BTreeMap::new();
-    let directory = root.join(".lithe").join(PLUGIN_DIRECTORY);
-    let entries = match fs::read_dir(&directory) {
-        Ok(entries) => entries,
-        Err(error) if fs::is_transport_failure(&error) => return Err(CoreError::from(error)),
-        Err(_) => return Ok((project, local)),
-    };
-    let mut names = entries
-        .filter_map(Result::ok)
-        .filter(|entry| fs::is_file(entry.path()).unwrap_or(false))
-        .filter_map(|entry| entry.file_name().into_string().ok())
-        .filter(|name| name.ends_with(".toml"))
-        .collect::<Vec<_>>();
+    let mut names = plugin_filenames(root)?;
     names.sort();
     if names.len() > MAXIMUM_PLUGIN_DOCUMENTS {
         diagnostics.push(json!({
@@ -528,6 +518,14 @@ fn read_plugin_documents(
         let (text, sha256) = match read_file(root, &relative) {
             Ok(Some(read)) => read,
             Ok(None) => continue,
+            Err(error)
+                if matches!(
+                    error.code,
+                    ErrorCode::ConnectionClosed | ErrorCode::TimedOut | ErrorCode::Cancelled
+                ) =>
+            {
+                return Err(error)
+            }
             Err(error) => {
                 skip(
                     "invalidPluginDocument",
@@ -574,17 +572,64 @@ fn read_plugin_documents(
     Ok((project, local))
 }
 
+fn plugin_filenames(root: &Path) -> Result<Vec<String>, CoreError> {
+    if lithe_workspace::is_remote() {
+        let directory = format!(".lithe/{PLUGIN_DIRECTORY}");
+        let entries: Vec<ScopedDirectoryEntry> =
+            match host::scoped_file(directory, ScopedFileAccess::List) {
+                Ok(entries) => entries,
+                Err(error) if matches!(error.code, ErrorCode::WorkspaceNotFound) => {
+                    return Ok(Vec::new())
+                }
+                Err(error) => return Err(error),
+            };
+        return Ok(entries
+            .into_iter()
+            .filter(|entry| entry.kind == ScopedFileKind::File)
+            .map(|entry| entry.name)
+            .filter(|name| name.ends_with(".toml"))
+            .collect());
+    }
+    let Ok(entries) = std::fs::read_dir(root.join(".lithe").join(PLUGIN_DIRECTORY)) else {
+        return Ok(Vec::new());
+    };
+    Ok(entries
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().is_file())
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .filter(|name| name.ends_with(".toml"))
+        .collect())
+}
+
 /// Reads a document below `.lithe` with the hash of its bytes, or `None`
 /// when it does not exist.
 pub(crate) fn read_file(
     root: &Path,
     relative: &str,
 ) -> Result<Option<(String, String)>, CoreError> {
+    let bytes = if lithe_workspace::is_remote() {
+        host::read_scoped_document(format!(".lithe/{relative}"), MAXIMUM_FILE_BYTES as usize)?
+    } else {
+        read_native_file(root, relative)?
+    };
+    let Some(bytes) = bytes else {
+        return Ok(None);
+    };
+    let sha256 = format!("{:x}", Sha256::digest(&bytes));
+    let text = String::from_utf8(bytes).map_err(|_| {
+        CoreError::new(
+            ErrorCode::ParseFailed,
+            format!("Run configuration document is not UTF-8: .lithe/{relative}"),
+        )
+    })?;
+    Ok(Some((text, sha256)))
+}
+
+fn read_native_file(root: &Path, relative: &str) -> Result<Option<Vec<u8>>, CoreError> {
     let path = root.join(".lithe").join(relative);
-    let file = match fs::File::open(&path) {
+    let file = match std::fs::File::open(&path) {
         Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) if fs::is_transport_failure(&error) => return Err(CoreError::from(error)),
         Err(error) => {
             return Err(CoreError::new(
                 ErrorCode::PermissionDenied,
@@ -609,14 +654,7 @@ pub(crate) fn read_file(
             format!("Run configuration document is larger than 4 MiB: .lithe/{relative}"),
         ));
     }
-    let sha256 = format!("{:x}", Sha256::digest(&bytes));
-    let text = String::from_utf8(bytes).map_err(|_| {
-        CoreError::new(
-            ErrorCode::ParseFailed,
-            format!("Run configuration document is not UTF-8: .lithe/{relative}"),
-        )
-    })?;
-    Ok(Some((text, sha256)))
+    Ok(Some(bytes))
 }
 
 /// The change that replaces a JSON document below `.lithe` with `document`,

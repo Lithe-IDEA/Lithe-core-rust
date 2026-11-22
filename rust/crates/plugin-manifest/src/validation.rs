@@ -112,6 +112,18 @@ impl DeclarativePluginManifest {
                 ));
             }
         }
+        if self.local_only_paths.len() > 256
+            || self
+                .local_only_paths
+                .iter()
+                .any(|path| !lithe_plugin_model::deployment_package_path(path))
+        {
+            return Err(invalid(
+                "localOnlyPaths",
+                "Local-only resources must name up to 256 safe package-relative paths.",
+            ));
+        }
+        self.local_only_paths = sorted_unique(self.local_only_paths);
         capabilities::check_used(&self.requires, &self.used_capabilities())?;
         if self
             .language_servers

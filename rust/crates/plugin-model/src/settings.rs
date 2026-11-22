@@ -161,6 +161,9 @@ pub struct SettingAction {
 pub struct SourceEditorDeclaration {
     /// Same-plugin function that writes only the host's private staging file.
     pub edit_function: String,
+    /// Verified package program that serves the same editor on the workspace host.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_helper: Option<RemoteSettingsHelper>,
     /// Optional declared build system whose native tool and stored options accompany reads.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[serde(rename = "buildSystemID")]
@@ -169,6 +172,43 @@ pub struct SourceEditorDeclaration {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[serde(rename = "languageID")]
     pub language_id: Option<String>,
+}
+
+/// One package-owned native settings program and its fixed launch inputs.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RemoteSettingsHelper {
+    /// Executable relative to the package root.
+    pub executable: String,
+    /// Literal arguments, independent of any setting value or project path.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub arguments: Vec<String>,
+    /// Additional verified files or directories required to run the helper.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub resources: Vec<String>,
+}
+
+impl RemoteSettingsHelper {
+    fn validate(&self, field: &str) -> Validation<()> {
+        if !crate::names::deployment_package_path(&self.executable)
+            || self.arguments.len() > 32
+            || self
+                .arguments
+                .iter()
+                .any(|arg| arg.len() > 1024 || arg.contains('\0'))
+            || self.resources.len() > 32
+            || self
+                .resources
+                .iter()
+                .any(|path| !crate::names::deployment_package_path(path))
+        {
+            return Err(invalid(
+                field,
+                "Invalid remote settings helper launch or resources.",
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// Resolves one declared action without native I/O or runtime admission. Only
@@ -209,6 +249,7 @@ pub fn plan_action(
             plan["editFunction"] = json!(editor.edit_function);
             plan["buildSystemID"] = json!(editor.build_system_id);
             plan["languageID"] = json!(editor.language_id);
+            plan["remoteHelper"] = json!(editor.remote_helper);
         }
     }
     Ok(plan)
@@ -227,6 +268,9 @@ impl SettingAction {
             ));
         }
         if let Some(editor) = &self.source_editor {
+            if let Some(helper) = &editor.remote_helper {
+                helper.validate(&format!("{field}.sourceEditor.remoteHelper"))?;
+            }
             if !crate::is_function_id(&editor.edit_function)
                 || editor.edit_function == self.function
             {

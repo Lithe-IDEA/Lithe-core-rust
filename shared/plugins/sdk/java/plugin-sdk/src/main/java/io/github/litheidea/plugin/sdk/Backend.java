@@ -1379,9 +1379,12 @@ public final class Backend {
         }
         if (Protocol.BUILD_PREPARE_RUN.equals(method)) {
             Map<String, Object> executable = Json.object(document.get("executable"));
+            Object placement = document.get("placement");
             if (!("toolchain".equals(executable.get("kind")) || "command".equals(executable.get("kind")))
                     || !(executable.get("value") instanceof String) || !(document.get("workingDirectory") instanceof String)
-                    || !stringList(document.get("arguments")) || !stringMap(document.get("environment"))) {
+                    || !stringList(document.get("arguments")) || !stringMap(document.get("environment"))
+                    || (document.containsKey("placement") && !Protocol.PLACEMENT_WORKSPACE.equals(placement)
+                        && !Protocol.PLACEMENT_UI.equals(placement))) {
                 throw new PluginSdkError("sdk.build.invalidResult", method + " needs a portable launch plan.");
             }
         }

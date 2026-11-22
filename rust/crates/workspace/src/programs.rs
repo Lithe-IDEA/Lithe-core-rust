@@ -24,9 +24,9 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ProgramKind {
-    /// A process started by `process.spawn`.
+    /// A session leader started through the process API.
     Process,
-    /// A terminal started by `terminal.open`.
+    /// A terminal session backed by a remote PTY.
     Terminal,
 }
 
@@ -34,7 +34,7 @@ pub enum ProgramKind {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunningProgram {
-    /// Whether the program is a process or a terminal.
+    /// Selects which resource namespace owns the ID.
     pub kind: ProgramKind,
     /// The id the program was started with; unique per kind.
     pub id: u64,

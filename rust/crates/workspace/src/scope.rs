@@ -4,18 +4,20 @@
 //! executables. Git continues to own Git semantics; this boundary supplies IO.
 
 use crate::sessions::{lookup, Connection};
+use lithe_document_uri::DocumentPathPlatform;
 use lithe_platform::{
     paths::{invalid_relative_path, is_absolute_path, join_native, slash_separated},
     Platform,
 };
 use lithe_protocol::{CoreError, ErrorCode};
+use percent_encoding::percent_decode_str;
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 /// Host and path identity supplied by the native workspace registry.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Workspace {
     session_id: String,
@@ -114,28 +116,38 @@ pub fn is_remote() -> bool {
 }
 
 impl Host {
+    /// Captures the connection's validated path identities without retaining its transport.
+    pub fn path_mapping(&self) -> Workspace {
+        self.workspace.clone()
+    }
+
+    /// Workspace root as an absolute POSIX path on this host.
+    pub fn remote_root(&self) -> &str {
+        &self.workspace.remote_root
+    }
+
+    /// Maps a scan ID relative to the opened root, even if the server resolved
+    /// that root through a symlink before walking its children.
+    pub fn local_workspace_path(&self, relative: &str) -> Option<PathBuf> {
+        if relative.is_empty() {
+            return Some(self.workspace.local_root.clone());
+        }
+        if invalid_relative_path(relative, Platform::HOST) {
+            return None;
+        }
+        let remote = join_native(&self.workspace.remote_root, relative, Platform::Unix);
+        self.workspace.project_to_local(&remote, Platform::HOST)
+    }
+
+    /// Maps an absolute host path only if the native client can represent it.
+    pub fn project_host_path(&self, path: &Path) -> Option<PathBuf> {
+        self.workspace
+            .project_to_local(path.to_str()?, Platform::HOST)
+    }
+
     /// Maps schema-owned file URIs while preserving host identity and escaping.
     pub fn map_uri(&self, value: &str, outbound: bool) -> Option<String> {
-        let uri = url::Url::parse(value).ok()?;
-        if uri.scheme() != "file"
-            || uri
-                .host_str()
-                .is_some_and(|host| !host.is_empty() && host != "localhost")
-        {
-            return None;
-        }
-        let path = uri.to_file_path().ok()?;
-        let mapped = if outbound {
-            self.remote_path(&path)
-        } else {
-            self.local_path(&path)
-        };
-        if mapped == path {
-            return None;
-        }
-        url::Url::from_file_path(mapped)
-            .ok()
-            .map(|uri| uri.to_string())
+        self.workspace.map_uri(value, outbound, Platform::HOST)
     }
 
     /// Translates a placeholder path to the host path it stands for; paths
@@ -147,8 +159,7 @@ impl Host {
     }
 
     pub(crate) fn local_path(&self, path: &Path) -> PathBuf {
-        path.to_str()
-            .and_then(|path| self.workspace.project_to_local(path, Platform::HOST))
+        self.project_host_path(path)
             .unwrap_or_else(|| path.to_owned())
     }
 
@@ -160,6 +171,65 @@ impl Host {
 }
 
 impl Workspace {
+    /// Native absolute root used to identify documents in this workspace.
+    pub fn local_root(&self) -> &Path {
+        &self.local_root
+    }
+
+    /// Projects a native document path into the host's filesystem namespace.
+    pub fn to_host_path(&self, path: &str) -> Option<String> {
+        self.project_to_remote(Path::new(path), Platform::HOST)?
+            .into_os_string()
+            .into_string()
+            .ok()
+    }
+
+    /// Projects an absolute host path into the client's document namespace.
+    pub fn to_document_path(&self, path: &str) -> Option<String> {
+        self.project_to_local(path, Platform::HOST)?
+            .into_os_string()
+            .into_string()
+            .ok()
+    }
+
+    /// Returns the POSIX path relative to the workspace root for a scoped host operation.
+    pub fn remote_relative_path(&self, path: &str) -> Option<String> {
+        let path = normalize_remote_path(path)?;
+        self.remote_suffix(&path).map(str::to_owned)
+    }
+
+    fn remote_suffix<'a>(&self, path: &'a str) -> Option<&'a str> {
+        if path == self.remote_root {
+            return Some("");
+        }
+        path.strip_prefix(self.remote_root.trim_end_matches('/'))?
+            .strip_prefix('/')
+    }
+
+    fn map_uri(&self, value: &str, outbound: bool, client: Platform) -> Option<String> {
+        let uri = url::Url::parse(value).ok()?;
+        if uri.scheme() != "file" || uri.query().is_some() || uri.fragment().is_some() {
+            return None;
+        }
+        if outbound {
+            // The client identity is native even when the target always uses POSIX.
+            let local = uri.to_file_path().ok()?;
+            let remote = self.project_to_remote(&local, client)?;
+            DocumentPathPlatform::Posix
+                .document_uri(remote.to_str()?)
+                .ok()
+        } else {
+            // URL::to_file_path interprets paths using the compiled client OS. A
+            // server URI always names a POSIX path, even on a Windows client.
+            if uri.host_str().is_some_and(|host| host != "localhost") {
+                return None;
+            }
+            let remote = percent_decode_str(uri.path()).decode_utf8().ok()?;
+            let local = self.project_to_local(&remote, client)?;
+            url::Url::from_file_path(local).ok().map(|uri| uri.into())
+        }
+    }
+
     fn project_to_remote(&self, path: &Path, client: Platform) -> Option<PathBuf> {
         let (root, suffix) = if let Ok(suffix) = path.strip_prefix(self.host_paths_root()) {
             ("/", suffix)
@@ -182,10 +252,7 @@ impl Workspace {
         if path == self.remote_root {
             return Some(self.local_root.clone());
         }
-        let (root, suffix) = if let Some(suffix) = path
-            .strip_prefix(self.remote_root.trim_end_matches('/'))
-            .and_then(|suffix| suffix.strip_prefix('/'))
-        {
+        let (root, suffix) = if let Some(suffix) = self.remote_suffix(&path) {
             (self.local_root.clone(), suffix)
         } else {
             (self.host_paths_root(), path.trim_start_matches('/'))
@@ -292,6 +359,33 @@ mod tests {
                 workspace.project_to_local("/", client),
                 Some(workspace.host_paths_root())
             );
+        }
+    }
+
+    #[test]
+    fn remote_file_uris_use_posix_syntax_and_keep_escaped_names() {
+        let workspace = workspace("/srv/repo");
+        for client in Platform::ALL {
+            let local = workspace.local_root.join("src/a #明%.rs");
+            let local_uri = url::Url::from_file_path(local).unwrap().to_string();
+            let remote_uri = "file:///srv/repo/src/a%20%23%E6%98%8E%25.rs";
+            assert_eq!(
+                workspace.map_uri(&local_uri, true, client).as_deref(),
+                Some(remote_uri)
+            );
+            assert_eq!(
+                workspace.map_uri(remote_uri, false, client),
+                Some(local_uri)
+            );
+            for invalid in [
+                "file://foreign/srv/repo/a.rs",
+                "file:///srv/repo/a%00.rs",
+                "file:///srv/repo/a%FF.rs",
+                "file:///srv/repo/a.rs?x",
+                "file:///srv/repo/a.rs#x",
+            ] {
+                assert_eq!(workspace.map_uri(invalid, false, client), None, "{invalid}");
+            }
         }
     }
 

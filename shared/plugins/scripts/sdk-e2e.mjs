@@ -95,6 +95,13 @@ async function main() {
   const { jar, nativeJar } = await javaSamples();
   const rust = await rustSample();
   const go = await goSample();
+  const manifest = join(repository, 'rust/Cargo.toml');
+  const remoteServer = process.platform === 'win32' ? undefined : join(repository, 'rust/target/debug/lithe-remote-server');
+  if (remoteServer) {
+    await run('cargo', ['build', '--locked', '--manifest-path', manifest, '-p', 'lithe-remote',
+      '--features', 'server', '--bin', 'lithe-remote-server']);
+    await access(remoteServer);
+  }
   await run('cargo', ['test', '--locked', '--manifest-path', join(repository, 'rust/Cargo.toml'),
     '-p', 'lithe-core', '--features', 'plugin-sdk-e2e', ...tests.flatMap(test => ['--test', test])], {
     env: {
@@ -106,6 +113,7 @@ async function main() {
       LITHE_PLUGIN_SDK_JAVA_NATIVE_SAMPLE: nativeJar,
       LITHE_PLUGIN_SDK_RUST_SAMPLE: rust,
       LITHE_PLUGIN_SDK_GO_SAMPLE: go,
+      ...(remoteServer && { LITHE_PLUGIN_SDK_REMOTE_SERVER: remoteServer }),
     },
   });
 }

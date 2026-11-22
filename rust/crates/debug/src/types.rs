@@ -694,6 +694,9 @@ pub struct DebugRunInTerminalRequest {
     pub(crate) kind: DebugRunInTerminalKind,
     pub(crate) title: Option<String>,
     pub(crate) cwd: String,
+    /// Working directory relative to the validated remote workspace root.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) remote_directory: Option<String>,
     /// The executable is the first item; remaining items are passed without a shell.
     pub(crate) args: Vec<String>,
     pub(crate) environment: Vec<DebugRunInTerminalEnvironmentVariable>,

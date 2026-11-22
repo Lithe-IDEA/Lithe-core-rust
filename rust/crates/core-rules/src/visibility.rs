@@ -486,3 +486,21 @@ pub fn visibility_defaults_json(_payload: Value) -> Result<Value, RuleError> {
     })
     .map_err(invalid)
 }
+
+/// Splits a mask list such as `*.md, *.txt`; an empty list disables filtering.
+pub fn parse_file_mask(mask: &str) -> Vec<String> {
+    mask.split(',')
+        .map(|part| part.trim())
+        .filter(|part| !part.is_empty())
+        .map(|part| part.to_string())
+        .collect()
+}
+
+/// Matches masks against the file name only and accepts any matching pattern.
+pub fn file_mask_allows(masks: &[String], path: &str) -> bool {
+    if masks.is_empty() {
+        return true;
+    }
+    let name = path.rsplit('/').next().unwrap_or(path);
+    masks.iter().any(|mask| glob_matches(mask, name))
+}

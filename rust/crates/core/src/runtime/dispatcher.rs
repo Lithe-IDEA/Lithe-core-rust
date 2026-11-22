@@ -8,7 +8,10 @@ use crate::project::{
     HtmlPreviewSiteRequest, MarkdownOutlineRequest, MarkdownReferenceRequest,
     MarkdownRenderRequest,
 };
-use crate::protocol::{CoreCommand, CoreError, CoreRequest, CoreResponse, ErrorCode, GitCommand};
+use crate::protocol::{
+    CoreCommand, CoreError, CoreRequest, CoreResponse, ErrorCode, GitCommand, LspCommand,
+    WorkspaceCommand,
+};
 use lithe_github::{NormalizeResponseRequest, ParseRemoteRequest, RequestPlanRequest};
 /// The manifest type every domain command validates plugin manifests with.
 use lithe_plugin_manifest::DeclarativePluginManifest as Manifest;
@@ -168,8 +171,15 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
         return CoreResponse::failure(id, error);
     }
 
-    let preserve_workspace_outcome =
-        matches!(command, CoreCommand::Git(GitCommand::WorkspaceCommitStep));
+    let preserve_outcome = matches!(
+        command,
+        CoreCommand::Git(GitCommand::WorkspaceCommitStep)
+            | CoreCommand::Lsp(LspCommand::StartServer)
+            | CoreCommand::Workspace(WorkspaceCommand::PublishPluginSettings)
+    ) || (matches!(
+        command,
+        CoreCommand::Workspace(WorkspaceCommand::NativeSettings)
+    ) && parsed.payload["kind"] == "publish");
     let response = match command {
         CoreCommand::ApplicationCli => rules_response(id, &parsed.command, parsed.payload),
         CoreCommand::IdeHostControl => {
@@ -210,11 +220,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
             lithe_plugin_output_links::decode_resolution,
         ),
         CoreCommand::Build(command) => build::dispatch(command, id, parsed.payload),
-        CoreCommand::VcsDetectRoots => plugin_response(
-            id,
-            parsed.payload,
-            crate::vcs::vcs_detect_roots_command::<Manifest>,
-        ),
+        CoreCommand::VcsDetectRoots => plugin_response(id, parsed.payload, vcs_detect_roots),
         CoreCommand::VcsOwnerOf => {
             plugin_response(id, parsed.payload, crate::vcs::vcs_owner_of_command)
         }
@@ -730,9 +736,10 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
         }
         CoreCommand::Diagnostics(command) => diagnostics::dispatch(command, id, parsed.payload),
     };
-    // Workspace steps already reconcile cancelled writes under a bounded cleanup
-    // deadline. Preserve that continuation so a retry cannot duplicate a commit.
-    if response.is_success() && !preserve_workspace_outcome {
+    // A commit step returns the reconciled continuation. A start returns the
+    // registered session ID so its caller can dispose it if cancellation won
+    // just after registration. Masking either result would lose ownership.
+    if response.is_success() && !preserve_outcome {
         match crate::protocol::cancellation::check() {
             Ok(()) => response,
             Err(error) => CoreResponse::failure(response_id, error),
@@ -748,12 +755,17 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
 fn has_remote_workspace_adapter(command: &str) -> bool {
     command.starts_with("git.")
         || command.starts_with("build.")
-        || command.starts_with("runConfig.")
         || matches!(
             command,
             "workspace.repositories"
                 | "workspace.snapshot"
+                | "vcs.detectRoots"
                 | "workspace.listDirectories"
+                | "workspace.pluginFile"
+                | "workspace.readConfiguration"
+                | "workspace.readPluginSettings"
+                | "workspace.publishPluginSettings"
+                | "workspace.nativeSettings"
                 | "workspace.search"
                 | "workspace.searchEverywhere"
                 | "file.read"
@@ -763,7 +775,57 @@ fn has_remote_workspace_adapter(command: &str) -> bool {
                 | "workspace.searchIndex.invalidate"
                 | "workspace.replacePreview"
                 | "lsp.startServer"
+                | "debug.createSession"
+                | "debug.adapters.executablePlan"
+                | "debug.adapters.startArguments"
+                | "run.decodeStart"
+                | "runConfig.argumentText"
+                | "runConfig.beforeLaunch"
+                | "runConfig.beforeLaunchField"
+                | "runConfig.checkBeforeLaunchTask"
+                | "runConfig.configurationTypes"
+                | "runConfig.createLaunchPlan"
+                | "runConfig.decideTitleAction"
+                | "runConfig.editorForm"
+                | "runConfig.generate"
+                | "runConfig.inspect"
+                | "runConfig.projectToolchain"
+                | "runConfig.providerLaunchInputs"
+                | "runConfig.arrange"
+                | "runConfig.copyConfiguration"
+                | "runConfig.createUserConfiguration"
+                | "runConfig.deleteConfiguration"
+                | "runConfig.saveConfiguration"
+                | "runConfig.saveEditorChanges"
+                | "runConfig.updateOptions"
+                | "runConfig.updateToolPreferences"
+                | "runConfig.resolve"
+                | "runConfig.selectContextConfiguration"
+                | "toolchains.resolveRemote"
         )
+}
+
+fn vcs_detect_roots(payload: serde_json::Value) -> Result<serde_json::Value, CoreError> {
+    use lithe_remote::protocol::methods;
+    use lithe_vcs::{RootScanRequest, RootScanResult};
+
+    let Some(host) = lithe_workspace::current() else {
+        return lithe_vcs::vcs_detect_roots_command::<Manifest>(payload);
+    };
+    lithe_vcs::vcs_detect_roots_using::<Manifest>(payload, |mut scan: RootScanRequest| {
+        scan.workspace = host.remote_root().into();
+        let mut result: RootScanResult = host.request(methods::FS_VCS_ROOTS, json!(scan))?;
+        result.project_paths(|id, path, enclosing| {
+            // In-tree IDs remain relative to the path the user opened, even
+            // when the host resolved that path through a symlink.
+            if enclosing {
+                host.project_host_path(path)
+            } else {
+                host.local_workspace_path(id)
+            }
+        });
+        Ok(result)
+    })
 }
 
 #[cfg(test)]

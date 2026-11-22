@@ -135,7 +135,7 @@ pub(crate) fn decode(
     if request.base.launch_options.is_some() {
         return Err(invalid());
     }
-    let validated = run_preparation::process_fields(&request.base)?;
+    let validated = run_preparation::process_fields(&request.base, None)?;
     Ok(
         json!({"adapter":run.debug.as_ref().expect("selected debug declaration").adapter,
         "root":root,"program":program,"arguments":validated["arguments"],"environment":validated["environment"],"workingDirectory":validated["workingDirectory"]}),

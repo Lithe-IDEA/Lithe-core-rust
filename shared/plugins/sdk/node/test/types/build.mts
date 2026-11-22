@@ -21,7 +21,7 @@ backend.build.discoverTests(async (params: BuildRequestParams) => ({
 backend.build.prepareRun(async (params, context: BuildContext) => {
   context.throwIfCancelled();
   return { executable: { kind: 'toolchain', value: 'project-jdk' },
-    arguments: ['Main', ...params.userArguments], workingDirectory: params.project.path, environment: {} };
+    arguments: ['Main', ...params.userArguments], workingDirectory: params.project.path, environment: {}, placement: 'workspace' };
 });
 backend.build.model((_params, context) => {
   // @ts-expect-error Model requests have no bounded execution progress.

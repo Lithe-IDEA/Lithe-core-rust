@@ -2,7 +2,8 @@
 //!
 //! The server acts with the remote user's own permissions, exactly like the
 //! shell the user could open over the same transport. It therefore does not
-//! confine paths to the workspace; the client decides which paths it shows.
+//! confine general operations to a workspace. Scoped plugin reads use a
+//! separate descriptor-relative operation implemented in `scoped_files`.
 
 use crate::protocol::methods::{
     self, decode_bytes, encode_bytes, CopyParams, CopyResult, CreateDirParams, DirectoryEntry,
@@ -30,7 +31,24 @@ pub(crate) fn handle(method: &str, params: Value) -> Result<Value, RemoteError> 
         }
         methods::FS_READ_DIR => to_value(read_dir(parse(params)?)?),
         methods::FS_READ_FILE => to_value(read_file(parse(params)?)?),
+        methods::FS_SCOPED_FILE => crate::server::scoped_files::handle(parse(params)?),
+        methods::FS_SCOPED_SEARCH => {
+            to_value(crate::server::scoped_search::search(parse(params)?)?)
+        }
+        methods::FS_VCS_ROOTS => {
+            let request: lithe_vcs::RootScanRequest = parse(params)?;
+            let result = request
+                .scan()
+                .map_err(|error| RemoteError::new(ErrorCode::InvalidRequest, error.message))?;
+            to_value(result)
+        }
         methods::FS_WRITE_FILE => to_value(write_file(parse(params)?)?),
+        methods::FS_APPLY_RUN_CONFIG_CHANGES => {
+            crate::server::configuration_changes::apply_run(parse(params)?).map(|()| Value::Null)
+        }
+        methods::FS_PROJECT_PLUGIN_SETTINGS => {
+            crate::server::configuration_changes::plugin_settings(parse(params)?)
+        }
         methods::FS_CREATE_DIR => create_dir(parse(params)?).map(|()| Value::Null),
         methods::FS_TEMP_DIRECTORY => to_value(temp_directory(parse(params)?)?),
         methods::FS_REMOVE => remove(parse(params)?).map(|()| Value::Null),

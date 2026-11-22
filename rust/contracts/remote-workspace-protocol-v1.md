@@ -127,6 +127,7 @@ subscribe before creating the resource.
 | `fs.readDir` | `path` | `entries` sorted by name byte order, `skippedNonUtf8` |
 | `fs.readFile` | `path`, `offset`, `length` (≤ 8 MiB) | `data`, `eof`, `metadata`; only a regular file is read |
 | `fs.writeFile` | `path`, `data` (≤ 8 MiB), `expected?`, `overwrite`, `createParents` | metadata after the write |
+| `fs.projectPluginSettings` | `root`, `operation: {kind:"read"}` or `{kind:"publish",baseline,content}` | Read returns `{path,text,baseline:{workspaceIdentity,baseSha256}}`; publish returns whether it committed a change. |
 | `fs.createDir` | `path`, `recursive`, `mode?` (at most `0o7777`) | `null` |
 | `fs.remove` | `path`, `recursive` | `null`; links are removed, never followed |
 | `fs.rename` | `from`, `to`, `overwrite` | `null` |
@@ -141,15 +142,22 @@ subscribe before creating the resource.
 | `fs.uploadAbort` | `uploadId` | `null` |
 | `fs.createRunDirectory` | `directoryId` | private session-owned `path` |
 | `fs.releaseRunDirectory` | `directoryId` | `null`; idempotent release of this session's allocation |
+| `fs.pluginDeploymentLookup` | `pluginId`, `version`, `sha256` | `path`; `null` path on miss, session lease on hit |
+| `fs.pluginDeploymentCommit` | `key: {pluginId, version, sha256}`, `directoryId` | leased `path`; atomically publishes the run directory's `package/` tree |
+| `fs.pluginDeploymentSweep` | `installed: [{pluginId, version}]` | `null`; removes unleased entries for absent versions |
 | `walk.start` | `walkId`, `root`, `excludeNames`, `maxEntries?` | `null`; entries follow as events |
 | `walk.cancel` | `walkId` | `null` |
 | `watch.start` | `watchId`, `root`, `excludeNames` | `watchedDirectories` (per-directory backends) |
 | `watch.stop` | `watchId` | `null` |
-| `process.spawn` | `processId`, `argv`, `cwd?`, `environment` (`server` / `login`), `env`, `pipeStdin`, `label?` | `pid` |
+| `process.spawn` | `processId`, `argv`, `cwd?`, `environment` (`server` / `login`), `env`, `pipeStdin`, `label?`, `commandCandidates?` | `pid` |
+| `process.spawnScoped` | Same as `process.spawn`, with `scopedCwd: { root, path }` in place of `cwd` | `pid`; resolves the working directory below the host-selected root without following nested symlinks |
 | `process.writeStdin` | `processId`, `data` | `null`; `BUSY` when the process stops reading |
 | `process.closeStdin` | `processId` | `null` |
 | `process.kill` | `processId`, `force` | `null`; signals every process of its session, also after `process.exit` while members run; `UNKNOWN_RESOURCE` once the session is empty |
-| `terminal.open` | `terminalId`, `argv?`, `cwd?`, `env`, `columns`, `rows`, `label?` | `pid`; default program is the login shell |
+| `process.debugPortReady` | `processId`, `port` | Boolean; whether the still-running process or a member of its session owns a listener reachable at the IPv4 loopback port. The server does not make a probe connection. `UNKNOWN_RESOURCE` after the process exits or if the id does not belong to this session |
+| `process.resolveDebugLaunch` | `scopedCwd`, optional `path`, optional `pathPrepend` | Host `cwd` after scoped directory validation, and optional effective `path` for a debug adapter that launches the debuggee. The host uses its own login PATH for the toolchain overlay and does not export the other environment variables. |
+| `terminal.open` | `terminalId`, `argv?`, `cwd?`, `environment?`, `env`, `unsetEnv?`, `columns`, `rows`, `label?` | `pid`; default program is the login shell |
+| `terminal.openScoped` | Same as `terminal.open`, with `scopedCwd: { root, path }` in place of `cwd` | `pid`; opens the host-selected root and resolves its relative directory without following nested symlinks |
 | `terminal.write` | `terminalId`, `data` | `null`; `BUSY` when not read |
 | `terminal.resize` | `terminalId`, `columns`, `rows` | `null` |
 | `terminal.close` | `terminalId` | `null`; `SIGHUP` to its session, `SIGKILL` after 2 s |
@@ -163,6 +171,7 @@ subscribe before creating the resource.
 | `listener.close` | `listenerId` | `listenerId`, `port`, `connections`, `failedConnections`; closes the port and every connection it relays or still holds |
 | `listener.list` | — | `listeners` by `listenerId`: `listenerId`, `port`, `connections`, `failedConnections` |
 | `ports.listening` | — | `ports` sorted by `address` and `port`, one entry for each: `address`, `port`, and `pid` and `process` (the command name) when the server's user can inspect the owning process |
+| `ports.pickLoopback` | — | Nonzero port selected by binding IPv4 loopback on the host. The binding is released before replying so the debuggee can bind it. |
 
 `fs.readFile` opens the path without blocking and checks the type of the
 opened file, so a FIFO without a writer never holds the request and a path
@@ -183,6 +192,15 @@ Linux and the system Trash on macOS). Recovery content and metadata belong to
 the remote account, never to the client placeholder or installation. A host
 without usable trash storage returns an error and retains the original entry;
 it does not fall back to permanent deletion.
+
+`fs.projectPluginSettings` accesses only `.lithe/plugin-settings.json` below
+the opened workspace root. It reads up to 1 MiB of UTF-8 and records the
+root device and inode along with the exact bytes' SHA-256. A missing file
+has null text and digest; reading never creates it. Publication checks the
+baseline, rejects symbolic links below the opened root and a read-only
+file, and uses an atomic sibling replacement that preserves permission bits.
+Null content removes the file. Equal content or an already absent file
+returns false without a write.
 
 `fs.writeFile` replaces the file atomically through a temporary sibling and
 writes through symbolic links. With `expected` (`size`, `modifiedMs`) it fails
@@ -233,6 +251,26 @@ until a future process-liveness-aware recovery mechanism or manual cleanup.
 No age-based scan deletes other sessions' snapshots. Installed resources and
 persistent provider state are never cleanup targets.
 
+The optional `pluginDeployments` feature caches approved process inputs in
+`~/.lithe-server/plugin-deployments/<pluginId>/<version>-<sha256>/`. The desktop
+uploads read-only files into connection-owned staging and commits the complete
+tree at once. Servers also accept session run directories from older clients.
+A successful lookup or commit holds a shared lease until the
+session has stopped its processes. At attachment the desktop sends its complete
+on-disk inventory, including disabled plugins and retained older releases. An
+empty inventory is represented by `[]`. If inventory fails, the desktop skips
+the sweep. The host only removes versions absent from the inventory after
+acquiring an exclusive lock on their cache directory.
+
+`fs.createRuntimeStaging` allocates unpublished plugin uploads and managed
+runtime archives and extraction trees in `~/.lithe-server/deployment-staging/`.
+A live allocation holds a shared directory lease. Commit, release and
+disconnect retire its allocation. An inventory sweep also reclaims abandoned
+staging after an abrupt server exit by acquiring an exclusive lease. The
+allocator and sweep coordinate on the parent directory before leasing a child.
+The sweep only scans this staging directory. Process snapshots in
+`plugin-runs/` follow the session teardown rules above.
+
 `process.exit` and `terminal.exit` report the leader. The server keeps owning
 its session until no member is left, so members that outlive the leader can
 still be killed and are cleaned up when the session ends; `server.state`
@@ -255,6 +293,14 @@ have members), lets running requests finish for up to 5 seconds, and exits.
 `environment.resolve` asks the user's login shell, interactive first, for its
 environment and caches it for the session. `process.spawn` with
 `environment: login` uses that environment as the base.
+
+`process.spawn` can resolve up to 32 bare `commandCandidates` in declaration
+order when `argv[0]` is empty and `environment` is `login`. Only absolute
+directories in the resolved login `PATH` participate in lookup. The selected
+path replaces `argv[0]` in the running process and its state listing. Invalid
+candidate names or incompatible launch fields return `INVALID_REQUEST`. A
+valid list with no executable match returns `NOT_FOUND`. When the list is omitted
+or empty, the server uses `argv[0]` as before.
 
 ## Events
 

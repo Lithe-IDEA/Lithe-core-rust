@@ -22,6 +22,8 @@
 pub mod backend;
 pub mod keymap;
 pub mod native_build;
+#[cfg(unix)]
+mod remote_workspace;
 pub mod toolchains;
 pub mod vcs;
 
@@ -118,6 +120,7 @@ impl Session {
             executable,
             arguments,
             workspace,
+            &[],
         )
     }
 
@@ -128,6 +131,7 @@ impl Session {
         executable: &str,
         arguments: &[Value],
         workspace: &Path,
+        host_services: &[&str],
     ) -> Self {
         let started = core(
             "lsp.startServer",
@@ -139,6 +143,7 @@ impl Session {
                 // Directory URI with a trailing slash, as the macOS host sends it.
                 "rootUri": format!("file://{}/", workspace.display()),
                 "workingDirectory": workspace,
+                "hostServices": host_services,
                 "initializeTimeoutMilliseconds": WAIT.as_millis() as u64,
                 "requestTimeoutMilliseconds": WAIT.as_millis() as u64,
                 "shutdownTimeoutMilliseconds": 5000,
@@ -455,8 +460,20 @@ pub fn run_sample_scenario(sample: &Sample) {
         fs::create_dir_all(path).expect("host state directory");
     }
 
-    let mut session = Session::start(&plugin_id, runtime, &arguments, &workspace);
-    assert_eq!(session.functions(), ["snapshot.read", "workspace.build"]);
+    let mut session = Session::start_provider(
+        &format!("buildProvider:{plugin_id}:{BUILD_SYSTEM}"),
+        &plugin_id,
+        runtime,
+        &arguments,
+        &workspace,
+        &["workspace", "lithe/host/workspace/getHostPaths"],
+    );
+    assert_eq!(
+        session.functions(),
+        ["snapshot.read", "workspace.build", "workspace.processRoots"]
+    );
+    #[cfg(unix)]
+    remote_workspace::run(&mut session, &fixture);
 
     // Typed build requests: Core plans them and decodes the answers. The fixture workspace is
     // the test's own, so it is trusted: a plan that runs the workspace's code needs that.

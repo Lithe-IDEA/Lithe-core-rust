@@ -16,6 +16,15 @@ pub fn is_safe_relative_path(value: &str) -> bool {
         && !value.split('/').any(|component| component == "..")
 }
 
+/// Deployment paths are canonical, portable package-relative file or tree names.
+pub fn deployment_package_path(path: &str) -> bool {
+    is_safe_relative_path(path)
+        && path.len() <= 1024
+        && !path.contains(':')
+        && !path.chars().any(char::is_control)
+        && path.split('/').all(|part| !part.is_empty() && part != ".")
+}
+
 /// A bare command name the host looks up on `PATH`: no path separator, whitespace or NUL.
 pub fn is_bare_command(value: &str) -> bool {
     !value.is_empty()

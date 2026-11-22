@@ -17,11 +17,11 @@ use super::manifest::{
 use super::model::{entry_id, BuildModel, ModelProject};
 use super::options::{self, OptionContribution};
 use super::template::{self, BuildArgument, Selected, Values, Variable};
+use lithe_platform::{paths::is_absolute_path, Platform};
 use lithe_plugin_model::{PluginRejection, Validation};
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
 
 const MAX_USER_ARGUMENTS: usize = 64;
 const MAX_USER_ARGUMENT: usize = 4_096;
@@ -206,7 +206,7 @@ pub(crate) fn provider_hints(request: &OutputPlanRequest) -> Validation<Map<Stri
         let usable = !executable.is_empty()
             && executable.trim() == executable
             && !executable.chars().any(char::is_control)
-            && Path::new(executable).is_absolute();
+            && is_absolute_path(executable, launch_platform());
         if !usable {
             return Err(invalid_selection(
                 "tool.executable must be an absolute path.",
@@ -315,6 +315,15 @@ pub(crate) struct PlanContext<'a> {
     project_code_allowed: bool,
 }
 
+/// The OS interpreting launch paths can differ from the client OS.
+fn launch_platform() -> Platform {
+    if lithe_workspace::is_remote() {
+        Platform::Unix
+    } else {
+        Platform::HOST
+    }
+}
+
 fn host_directory(value: &Option<String>, name: &str) -> Validation<Option<String>> {
     let Some(value) = value else {
         return Ok(None);
@@ -322,7 +331,7 @@ fn host_directory(value: &Option<String>, name: &str) -> Validation<Option<Strin
     let trimmed = value.trim_end_matches(['/', '\\']);
     if trimmed.is_empty()
         || trimmed.chars().any(char::is_control)
-        || !Path::new(trimmed).is_absolute()
+        || !is_absolute_path(trimmed, launch_platform())
     {
         return Err(invalid_selection(format!(
             "The {name} must be an absolute path."
@@ -541,7 +550,7 @@ pub(crate) fn output_file(
             let usable = !path.is_empty()
                 && path.trim() == path
                 && !path.chars().any(char::is_control)
-                && Path::new(path).is_absolute();
+                && is_absolute_path(path, launch_platform());
             if !usable {
                 return Err(invalid_selection("outputFile must be an absolute path."));
             }
@@ -994,6 +1003,15 @@ pub(crate) fn model_plan(
     let output_file = output_file(request.output_file.as_deref(), *output)?;
     let mut values = context.values(&[]);
     values.output_file = output_file.as_deref();
+    if lithe_workspace::is_remote() {
+        if *executes_project_code && !request.base.project_code_allowed {
+            return Err(untrusted(build_system));
+        }
+        let paths = template::package_inputs(arguments, &values)?;
+        if !paths.is_empty() && values.plugin_dir.is_none() {
+            return Ok(json!({"requiredPackagePaths": paths}));
+        }
+    }
     context.plan(
         arguments,
         &values,

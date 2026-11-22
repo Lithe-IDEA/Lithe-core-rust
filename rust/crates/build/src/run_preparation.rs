@@ -5,6 +5,7 @@
 use super::decode::{self, Workspace};
 use super::manifest::{BuildExecution, BuildSystemDeclaration, TaskSource};
 use super::plans::{self, OutputPlanRequest, SelectedEntity};
+use lithe_plugin_model::process::ProcessPlacement;
 use lithe_plugin_model::{is_bare_command, is_identifier, is_plugin_id, Validation};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -135,7 +136,7 @@ impl LaunchOptions {
                 return Err(invalid());
             }
             let workspace = Workspace::new(workspace_root.ok_or_else(invalid)?)?;
-            if !workspace.read_path(cwd).is_some_and(|path| path.is_dir()) {
+            if workspace.directory(cwd).is_none() {
                 return Err(invalid());
             }
         }
@@ -321,7 +322,8 @@ pub(crate) fn decode(
     {
         return Err(invalid());
     }
-    let mut fields = process_fields(request)?;
+    let placement = process_placement(value).map_err(|()| invalid())?;
+    let mut fields = process_fields(request, placement)?;
     fields["executable"] = json!({"kind":kind,"value":name});
     if let Some(encoding) = output_encoding(value).map_err(|()| invalid())? {
         fields["outputEncoding"] = json!(encoding);
@@ -343,8 +345,19 @@ pub(super) fn output_encoding(process: &Value) -> Result<Option<&'static str>, (
     }
 }
 
+/// Absent placement preserves the workspace default and the existing reply shape.
+pub(super) fn process_placement(process: &Value) -> Result<Option<ProcessPlacement>, ()> {
+    process
+        .get("placement")
+        .map(|value| serde_json::from_value(value.clone()).map_err(|_| ()))
+        .transpose()
+}
+
 /// Common bounded arguments, environment and workspace-contained directory.
-pub(super) fn process_fields(request: &DecodeRunPreparationRequest) -> Validation<Value> {
+pub(super) fn process_fields(
+    request: &DecodeRunPreparationRequest,
+    placement: Option<ProcessPlacement>,
+) -> Validation<Value> {
     let invalid = || decode::invalid_output("Invalid provider process preparation result.");
     let value = &request.result;
     if serde_json::to_vec(value).map_or(usize::MAX, |bytes| bytes.len()) > decode::MAX_OUTPUT_BYTES
@@ -364,27 +377,32 @@ pub(super) fn process_fields(request: &DecodeRunPreparationRequest) -> Validatio
     let root = decode::request_path(&request.root, "root")?;
     let cwd = value["workingDirectory"].as_str().ok_or_else(invalid)?;
     let cwd = decode::request_path(cwd, "workingDirectory").map_err(|_| invalid())?;
-    let workspace = Workspace::new(&request.workspace_root)?;
-    let instance = workspace
-        .read_path(&root)
-        .filter(|path| path.is_dir())
-        .ok_or_else(invalid)?;
     let override_cwd = request
         .launch_options
         .as_ref()
         .and_then(|options| options.working_directory.as_deref());
-    if let Some(options) = &request.launch_options {
-        options
-            .validate(Some(&request.workspace_root))
-            .map_err(|_| invalid())?;
-    }
-    let permitted = if let Some(expected) = override_cwd {
-        cwd == expected && workspace.read_path(&cwd).is_some_and(|path| path.is_dir())
+    let permitted = if lithe_workspace::is_remote() && placement == Some(ProcessPlacement::Ui) {
+        // The UI host supplies a private local directory, unrelated to the remote tree.
+        if let Some(options) = &request.launch_options {
+            options.validate(None).map_err(|_| invalid())?;
+        }
+        cwd == "." && override_cwd.is_none()
     } else {
-        decode::contains(&root, &cwd)
-            && workspace
-                .read_path(&cwd)
-                .is_some_and(|path| path.is_dir() && path.starts_with(&instance))
+        let workspace = Workspace::new(&request.workspace_root)?;
+        let instance = workspace.directory(&root).ok_or_else(invalid)?;
+        if let Some(options) = &request.launch_options {
+            options
+                .validate(Some(&request.workspace_root))
+                .map_err(|_| invalid())?;
+        }
+        if let Some(expected) = override_cwd {
+            cwd == expected && workspace.directory(&cwd).is_some()
+        } else {
+            decode::contains(&root, &cwd)
+                && workspace
+                    .directory(&cwd)
+                    .is_some_and(|path| path.starts_with(&instance))
+        }
     };
     if !permitted {
         return Err(invalid());
@@ -402,5 +420,9 @@ pub(super) fn process_fields(request: &DecodeRunPreparationRequest) -> Validatio
             return Err(invalid());
         }
     }
-    Ok(json!({"arguments":args,"workingDirectory":cwd,"environment":environment}))
+    let mut fields = json!({"arguments":args,"workingDirectory":cwd,"environment":environment});
+    if let Some(placement) = placement {
+        fields["placement"] = json!(placement);
+    }
+    Ok(fields)
 }

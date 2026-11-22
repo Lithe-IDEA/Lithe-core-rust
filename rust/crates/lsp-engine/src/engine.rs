@@ -167,17 +167,27 @@ impl LspEngine {
                     ..LspClientState::default()
                 },
                 root_uri: request.root_uri.clone(),
-                process_id: (!lithe_workspace::is_remote()).then_some(std::process::id() as i64),
+                process_id: (request.ui_process || !lithe_workspace::is_remote())
+                    .then_some(std::process::id() as i64),
                 initialization_options: request.initialization_options,
             },
             request.plugin_id.is_some(),
         )?;
-        let process = self.launcher.launch(LspProcessSpec {
+        let spec = LspProcessSpec {
             executable: PathBuf::from(&request.executable_path),
+            remote_commands: request.remote_commands,
+            remote_executable: request.remote_executable_path,
+            remote_path_prepend: request.remote_path_prepend,
             arguments: request.arguments,
             working_directory: workspace_root,
             environment: request.environment,
-        })?;
+        };
+        let process = if request.ui_process {
+            let _local_process = lithe_workspace::enter(None);
+            self.launcher.launch(spec)?
+        } else {
+            self.launcher.launch(spec)?
+        };
 
         let request_id = (initialize.state.next_request_id - 1).to_string();
         let now = Instant::now();

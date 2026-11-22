@@ -283,10 +283,11 @@ pub fn client_apply_server_message_for_plugin(
                     Ok(lithe_plugin_rpc::HostRoute::Answer(mut result)) => {
                         // getCapabilities also reports the options of the
                         // granted host services.
-                        if let (lithe_plugin_rpc::GET_CAPABILITIES, Some(editor)) =
-                            (method, &state.host_options.editor)
-                        {
-                            editor.report(&mut result, &state.host_services);
+                        if method == lithe_plugin_rpc::GET_CAPABILITIES {
+                            if let Some(editor) = &state.host_options.editor {
+                                editor.report(&mut result, &state.host_services);
+                            }
+                            state.host_options.report_authorities(&mut result);
                         }
                         responses.push(json_rpc_result(id, result)?)
                     }

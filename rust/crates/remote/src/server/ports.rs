@@ -2,11 +2,21 @@
 
 use crate::protocol::methods::ListeningPortsResult;
 use crate::protocol::RemoteError;
-use crate::server::platform;
 use crate::server::session::Session;
 use crate::server::to_value;
+use crate::server::{fs::io_error, platform};
 use serde_json::Value;
+use std::net::{Ipv4Addr, TcpListener};
 use std::sync::Arc;
+
+pub(crate) fn pick_loopback() -> Result<Value, RemoteError> {
+    // Providers bind this port themselves. The later readiness check verifies
+    // ownership because the OS can give the port to another process in between.
+    let listener =
+        TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).map_err(|error| io_error(error, ""))?;
+    let address = listener.local_addr().map_err(|error| io_error(error, ""))?;
+    to_value(address.port())
+}
 
 pub(crate) fn handle(_session: &Arc<Session>) -> Result<Value, RemoteError> {
     let mut ports =

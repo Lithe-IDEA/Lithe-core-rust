@@ -21,12 +21,16 @@ mod model;
 mod requests;
 mod roots;
 
-pub use commands::{vcs_decode_reply_command, vcs_detect_roots_command, vcs_owner_of_command};
+pub use commands::{
+    vcs_decode_reply_command, vcs_detect_roots_command, vcs_detect_roots_using,
+    vcs_owner_of_command,
+};
 pub use manifest::{
     activation_event, programs, validate_declarations, DeclarationContext, VcsProviderDeclaration,
 };
 pub use model::{is_vcs_id, negotiated_capabilities, Capabilities};
 pub use requests::{is_vcs_method, plan, Operation, PlannedRequest};
+pub use roots::{RootScanRequest, RootScanResult};
 
 use lithe_plugin_model::PluginManifest;
 

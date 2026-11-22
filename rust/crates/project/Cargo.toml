@@ -14,7 +14,6 @@ test-support = []
 ammonia = "4.1.4"
 base64 = "0.22"
 comrak = { version = "0.54.0", default-features = false, features = ["shortcodes"] }
-encoding_rs = "0.8"
 lithe-core-rules = { path = "../core-rules" }
 lithe-diagnostics = { path = "../diagnostics" }
 lithe-git = { path = "../git" }
