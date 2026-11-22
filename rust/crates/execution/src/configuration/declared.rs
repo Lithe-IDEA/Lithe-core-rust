@@ -781,6 +781,8 @@ pub(crate) fn validate(configuration: &RunConfiguration) -> Result<(), CoreError
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Fixtures live on this machine.
+    use std::fs;
 
     fn kind() -> DeclaredRunType {
         DeclaredRunType {

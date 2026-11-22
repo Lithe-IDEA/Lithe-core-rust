@@ -10,10 +10,10 @@ use lithe_platform::paths::{
 };
 use lithe_platform::Platform;
 use lithe_protocol::{CoreError, ErrorCode};
+use lithe_workspace::fs;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
 use std::path::{Path, PathBuf};
 
 mod arrangement;
@@ -33,6 +33,18 @@ mod requests;
 mod resolve;
 mod storage;
 mod validation;
+
+/// The platform whose rules decide how a run's process starts: the
+/// workspace host's when the workspace is remote, else this machine's.
+/// Remote hosts are Linux or macOS, so a remote run never gets a Windows
+/// interpreter or a batch script even when this machine is Windows.
+pub(crate) fn run_platform() -> Platform {
+    if lithe_workspace::is_remote() {
+        Platform::Unix
+    } else {
+        Platform::HOST
+    }
+}
 
 pub use arrangement::{arrange, ArrangeRequest};
 pub(crate) use arrangement::{valid_folder, Arrangement};

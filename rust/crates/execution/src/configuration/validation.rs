@@ -113,7 +113,7 @@ pub(crate) fn validate_configuration(configuration: &RunConfiguration) -> Result
         super::declared::validate(configuration)?;
     }
     if super::process::is_process_provider(&configuration.provider) {
-        super::process::validate(configuration, Platform::HOST)?;
+        super::process::validate(configuration, run_platform())?;
     }
     if invalid_native_relative_path(&configuration.cwd, Platform::HOST) {
         return Err(CoreError::new(

@@ -186,8 +186,8 @@ pub struct ConnectOptions {
     pub client_name: String,
     /// Bounds transport start-up, the preamble and `server.hello` together.
     pub handshake_timeout: Duration,
-    /// How long a persistent session without a client and without running
-    /// processes or terminals stays alive.
+    /// How long a persistent session without a client stays alive, unless
+    /// its last client kept its running programs with `server.keep`.
     pub idle_timeout: Option<Duration>,
     /// Token from an earlier connection's [`HelloResult`], required to
     /// reattach to a persistent session that already had a client. A wrong

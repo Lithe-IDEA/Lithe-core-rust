@@ -159,6 +159,116 @@ fn remote_build_detects_host_models_normalizes_diagnostics_and_invalidates_sync(
     assert_eq!(std::fs::read_dir(placeholder).unwrap().count(), 0);
 }
 
+/// Run configurations of a remote workspace are read from the host, checked
+/// against the host's files, and planned with host paths, so the client starts
+/// the process on the host without translating the plan.
+#[test]
+fn remote_run_configurations_resolve_and_plan_against_the_host() {
+    let host = HostFixture::new();
+    let root = host.root.join("host");
+    let placeholder = host.root.join("placeholder");
+    std::fs::create_dir_all(root.join("scripts")).unwrap();
+    std::fs::create_dir_all(root.join("web")).unwrap();
+    std::fs::write(
+        root.join("scripts/build.sh"),
+        "#!/bin/bash -e\necho built\n",
+    )
+    .unwrap();
+    super::support::write_run_document(
+        &root,
+        ".lithe/run/configurations.yaml",
+        &json!({"version": 2, "configurations": [
+            {"id": "user:build", "name": "build", "provider": "process.shell",
+             "confidence": "declared", "cwd": "web",
+             "extensions": {"process": {"script": "scripts/build.sh"}}},
+            {"id": "user:inline", "name": "inline", "provider": "process.shell",
+             "confidence": "declared", "extensions": {"process": {"text": "echo hi\n"}}},
+            {"id": "user:missing", "name": "missing", "provider": "process.shell",
+             "confidence": "declared", "extensions": {"process": {"script": "scripts/gone.sh"}}},
+        ]}),
+    );
+
+    let resolved = host.request("runConfig.resolve", json!({"root": placeholder}));
+    let availability = |id: &str| {
+        resolved["configurations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["id"] == id)
+            .unwrap_or_else(|| panic!("{id} missing from {resolved}"))["availability"]
+            .clone()
+    };
+    // The documents exist only on the host; a runnable entry carries no
+    // availability.
+    assert!(availability("user:build").is_null(), "{resolved}");
+
+    // The script and its `#!` line are read on the host; every path in the
+    // plan is the host's.
+    let plan = host.request(
+        "runConfig.createLaunchPlan",
+        json!({"root": placeholder, "configurationId": "user:build"}),
+    );
+    let script = root.join("scripts/build.sh");
+    assert_eq!(plan["executable"], json!({"path": "/bin/bash"}), "{plan}");
+    assert_eq!(plan["arguments"], json!(["-e", script]), "{plan}");
+    assert_eq!(plan["workingDirectory"], "web", "{plan}");
+
+    // An inline script goes where the client asked, on the host.
+    let inline = host.request(
+        "runConfig.createLaunchPlan",
+        json!({"root": placeholder, "configurationId": "user:inline",
+               "inlineScriptBase": "/tmp/lithe-run-x/script"}),
+    );
+    assert_eq!(
+        inline["inlineScript"]["path"], "/tmp/lithe-run-x/script.sh",
+        "{inline}"
+    );
+    assert_eq!(inline["inlineScript"]["content"], "echo hi\n", "{inline}");
+
+    // A script missing on the host is refused before anything starts.
+    let response: Value = serde_json::from_str(&crate::execute_json(
+        &json!({
+            "id": test_support::unique_id(), "command": "runConfig.createLaunchPlan",
+            "remoteWorkspace": {"sessionId": host.id, "localRoot": placeholder, "remoteRoot": root},
+            "payload": {"root": placeholder, "configurationId": "user:missing"},
+        })
+        .to_string(),
+    ))
+    .unwrap();
+    assert_eq!(response["ok"], false, "{response}");
+    assert_eq!(
+        response["error"]["message"], "Script file was not found",
+        "{response}"
+    );
+
+    // The editor checks a working directory against the host's folders and
+    // saves through changes the client applies on the host.
+    let form = host.request(
+        "runConfig.editorForm",
+        json!({"root": placeholder, "configurationId": "user:build"}),
+    );
+    let mut values = form["values"].as_object().unwrap().clone();
+    values.insert("workingDirectory".into(), json!("nowhere"));
+    let refused = host.request(
+        "runConfig.saveConfiguration",
+        json!({"root": placeholder, "provider": "process.shell",
+               "configurationId": "user:build", "values": values}),
+    );
+    assert_eq!(
+        refused["errors"],
+        json!([{"field": "workingDirectory", "code": "notFound"}]),
+        "{refused}"
+    );
+    values.insert("workingDirectory".into(), json!("scripts"));
+    let saved = host.request(
+        "runConfig.saveConfiguration",
+        json!({"root": placeholder, "provider": "process.shell",
+               "configurationId": "user:build", "values": values}),
+    );
+    assert_eq!(saved["status"], "saved", "{saved}");
+    assert_eq!(std::fs::read_dir(placeholder).unwrap().count(), 0);
+}
+
 /// A remote root opened through a host symbolic link resolves outside the
 /// local placeholder; the empty-root boundary must ask the host, not the
 /// unmaterialized local projection, before scanning.
@@ -1881,4 +1991,127 @@ fn remote_host_and_reverse_forwards_follow_their_own_rules() {
         ok(call("remote.stopForward", json!({"forwardId": back["id"]})))["stopped"],
         true
     );
+}
+
+#[test]
+fn remote_programs_are_listed_ended_and_kept_only_by_a_persistent_session() {
+    use lithe_remote::client::api::{SpawnSpec, TerminalEvent, TerminalSpec};
+    use lithe_remote::protocol::methods::ResourceLabel;
+
+    let host = HostFixture::new();
+    let respond = |command: &str, payload: Value| -> Value {
+        serde_json::from_str(&crate::execute_json(
+            &json!({"id": test_support::unique_id(), "command": command,
+                "timeoutMilliseconds": 30_000, "payload": payload})
+            .to_string(),
+        ))
+        .unwrap()
+    };
+    let call = |command: &str, payload: Value| -> Value {
+        let response = respond(command, payload);
+        assert_eq!(response["ok"], true, "{command}: {response}");
+        response["data"].clone()
+    };
+    let session = json!({"sessionId": host.id});
+    assert_eq!(
+        call("remote.runningPrograms", session.clone()),
+        json!({"programs": []})
+    );
+
+    let connection = test_support::connection(&host.id);
+    let process = connection
+        .session
+        .spawn(SpawnSpec {
+            argv: vec!["sleep".into(), "30".into()],
+            label: Some(ResourceLabel {
+                kind: "run".into(),
+                name: "server".into(),
+            }),
+            ..SpawnSpec::default()
+        })
+        .unwrap();
+    let terminal = connection
+        .session
+        .open_terminal(TerminalSpec {
+            argv: Some(vec!["sleep".into(), "30".into()]),
+            cwd: None,
+            env: std::collections::BTreeMap::new(),
+            columns: 80,
+            rows: 24,
+            label: None,
+        })
+        .unwrap();
+    let listed = call("remote.runningPrograms", session.clone());
+    let programs = listed["programs"].as_array().unwrap();
+    let kinds: Vec<&str> = programs
+        .iter()
+        .map(|program| program["kind"].as_str().unwrap())
+        .collect();
+    assert_eq!(kinds, ["process", "terminal"], "{listed}");
+    assert_eq!(programs[0]["id"], process.id, "{listed}");
+    assert_eq!(programs[0]["argv"], json!(["sleep", "30"]), "{listed}");
+    assert_eq!(
+        programs[0]["label"],
+        json!({"kind": "run", "name": "server"}),
+        "{listed}"
+    );
+    assert_eq!(programs[1]["id"], terminal.id, "{listed}");
+    assert!(programs[1]["label"].is_null(), "{listed}");
+
+    // Only the programs named end, and one the session does not run is not
+    // counted; a kind other than process or terminal is refused.
+    let refused = respond(
+        "remote.endPrograms",
+        json!({"sessionId": host.id, "programs": [{"kind": "watch", "id": 1}]}),
+    );
+    assert_eq!(refused["ok"], false, "{refused}");
+    let named = json!({"sessionId": host.id, "programs": [
+        {"kind": "terminal", "id": terminal.id},
+        {"kind": "process", "id": process.id + 1000},
+    ]});
+    assert_eq!(call("remote.endPrograms", named)["ended"], 1);
+    // The server forgets an exited program before it reports the exit.
+    loop {
+        match terminal.next_event(STEP).unwrap() {
+            Some(TerminalEvent::Exit(_)) => break,
+            Some(TerminalEvent::Output(_)) => {}
+            None => panic!("the terminal subscription ended before its exit"),
+        }
+    }
+    let left = call("remote.runningPrograms", session.clone());
+    assert_eq!(left["programs"].as_array().unwrap().len(), 1, "{left}");
+    assert_eq!(left["programs"][0]["kind"], "process", "{left}");
+    assert_eq!(call("remote.endPrograms", session.clone())["ended"], 1);
+    assert!(process.wait(STEP).unwrap().exit.is_some());
+    assert_eq!(
+        call("remote.runningPrograms", session.clone()),
+        json!({"programs": []})
+    );
+    assert_eq!(call("remote.endPrograms", session.clone())["ended"], 0);
+    drop((process, terminal));
+    drop(connection);
+
+    let refused = respond(
+        "remote.disconnect",
+        json!({"sessionId": host.id, "programs": "later"}),
+    );
+    assert_eq!(refused["ok"], false, "{refused}");
+    // An in-process session runs over standard streams and cannot outlive
+    // its client, so keeping its programs is refused and they end.
+    assert_eq!(
+        call(
+            "remote.disconnect",
+            json!({"sessionId": host.id, "programs": "keep"})
+        ),
+        json!({"closed": true, "kept": false})
+    );
+    assert_eq!(
+        call(
+            "remote.disconnect",
+            json!({"sessionId": host.id, "programs": "end"})
+        ),
+        json!({"closed": false, "kept": false})
+    );
+    let gone = respond("remote.runningPrograms", session);
+    assert_eq!(gone["ok"], false, "{gone}");
 }

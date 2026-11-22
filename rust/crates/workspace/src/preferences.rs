@@ -8,7 +8,7 @@
 //! `lithe_remote::client::preferences`.
 
 use lithe_protocol::{CoreError, ErrorCode};
-use lithe_remote::client::preferences::{self, PreferenceError, Preferences};
+use lithe_remote::client::preferences::{self, ClosePrograms, PreferenceError, Preferences};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -25,8 +25,8 @@ pub struct ReadRequest {
     home_directory: Option<String>,
 }
 
-/// `remote.editPreferences`: exactly one of `sshProgram`, `reconnectLimit`
-/// and `reverseForwarding`.
+/// `remote.editPreferences`: exactly one of `sshProgram`, `reconnectLimit`,
+/// `reverseForwarding` and `closePrograms`.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EditRequest {
@@ -38,6 +38,8 @@ pub struct EditRequest {
     reconnect_limit: Option<LimitEdit>,
     #[serde(default)]
     reverse_forwarding: Option<SwitchEdit>,
+    #[serde(default)]
+    close_programs: Option<CloseEdit>,
 }
 
 /// The SSH program to use; `path: null` makes it automatic.
@@ -59,6 +61,14 @@ struct LimitEdit {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct SwitchEdit {
     allowed: Option<bool>,
+}
+
+/// What happens to running programs on close; `programs: null` makes it
+/// automatic, which asks.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct CloseEdit {
+    programs: Option<ClosePrograms>,
 }
 
 /// Where the native client keeps the document.
@@ -84,10 +94,12 @@ pub fn read(request: ReadRequest) -> Result<Value, CoreError> {
             "sshProgram": preferences.ssh_program(),
             "reconnectLimitSeconds": preferences.reconnect_limit_seconds(),
             "allowReverseForwarding": preferences.allow_reverse_forwarding(),
+            "closePrograms": preferences.close_programs(),
         },
         "ssh": ssh,
         "reconnect": preferences.reconnect(),
         "reverseForwarding": preferences.reverse_forwarding(),
+        "closing": preferences.closing(),
         "storage": STORAGE,
     });
     if let Some(home) = request.home_directory {
@@ -117,14 +129,16 @@ pub fn edit(request: EditRequest) -> Result<Value, CoreError> {
         request.ssh_program,
         request.reconnect_limit,
         request.reverse_forwarding,
+        request.close_programs,
     ) {
-        (Some(program), None, None) => after
+        (Some(program), None, None, None) => after
             .set_ssh_program(program.path.as_deref())
             .map_err(invalid_request)?,
-        (None, Some(limit), None) => after
+        (None, Some(limit), None, None) => after
             .set_reconnect_limit(limit.seconds)
             .map_err(invalid_request)?,
-        (None, None, Some(switch)) => after.set_allow_reverse_forwarding(switch.allowed),
+        (None, None, Some(switch), None) => after.set_allow_reverse_forwarding(switch.allowed),
+        (None, None, None, Some(close)) => after.set_close_programs(close.programs),
         _ => {
             return Err(CoreError::new(
                 ErrorCode::InvalidRequest,

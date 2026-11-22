@@ -1060,6 +1060,12 @@ pub enum RemoteCommand {
     Preferences,
     /// Changes one remote workspace preference (`remote.editPreferences`).
     EditPreferences,
+    /// Lists the processes and terminals a host session still runs
+    /// (`remote.runningPrograms`).
+    RunningPrograms,
+    /// Ends every process and terminal a host session runs
+    /// (`remote.endPrograms`).
+    EndPrograms,
 }
 
 #[derive(Debug, Clone)]
@@ -1647,6 +1653,8 @@ impl CoreCommand {
             }
             "remote.preferences" => Some(Self::Remote(RemoteCommand::Preferences)),
             "remote.editPreferences" => Some(Self::Remote(RemoteCommand::EditPreferences)),
+            "remote.runningPrograms" => Some(Self::Remote(RemoteCommand::RunningPrograms)),
+            "remote.endPrograms" => Some(Self::Remote(RemoteCommand::EndPrograms)),
             "git.historyRewritePreview" => Some(Self::Git(GitCommand::HistoryRewritePreview)),
             "git.remotes" => Some(Self::Git(GitCommand::Remotes)),
             "git.tags" => Some(Self::Git(GitCommand::Tags)),
