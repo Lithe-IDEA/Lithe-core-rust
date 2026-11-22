@@ -6154,8 +6154,10 @@ distribution's default user when absent). Core then runs
 `wsl.exe` needs and setting `WSL_UTF8=1`; the probe, the checked upload and
 the stages are the same. Nothing is relayed through `remote.authRespond`,
 because `wsl.exe` asks no questions. An unknown distribution is
-`unreachable`; other failures are `failed` with `wsl.exe`'s message in
-`diagnostics`, decoded from UTF-16 when it prints that. Trust decisions name
+`unreachable`; other failures, such as an unknown user, are `failed` with
+`wsl.exe`'s message in `diagnostics`: what it printed on standard output,
+where it reports its own failures, then standard error, decoded from UTF-16
+when it prints that. Trust decisions name
 the distribution and the account (`{ wsl: { distribution, user } }` as the
 first and only hop).
 

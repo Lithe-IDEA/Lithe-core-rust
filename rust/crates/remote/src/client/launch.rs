@@ -250,7 +250,14 @@ impl Verification {
 pub enum LaunchError {
     /// The stream ended before the shell answered, usually because the
     /// connection or authentication failed.
-    NoShell,
+    NoShell {
+        /// The lines the stream carried before it ended, each with its
+        /// newline (a last line without one gains it), at most the probe's
+        /// bound on output before the server; empty when it ended after the
+        /// probe. `wsl.exe` prints its own failures there, not on standard
+        /// error.
+        output: Vec<u8>,
+    },
     /// The caller has no artifact for the reported platform.
     NoArtifact(Box<ProbeReport>),
     /// An install directory on the host is not private to the remote user,
@@ -273,7 +280,7 @@ pub enum LaunchError {
 impl fmt::Display for LaunchError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NoShell => formatter.write_str("the remote shell did not start"),
+            Self::NoShell { .. } => formatter.write_str("the remote shell did not start"),
             Self::NoArtifact(report) => write!(
                 formatter,
                 "no remote server is available for {} {}",
@@ -312,7 +319,7 @@ impl LaunchError {
     /// Stable category for logs. It never contains remote output or paths.
     pub fn failure_category(&self) -> String {
         match self {
-            Self::NoShell => "no-shell".into(),
+            Self::NoShell { .. } => "no-shell".into(),
             Self::NoArtifact(_) => "no-artifact".into(),
             Self::UnsafeInstall { reason, .. } => format!("unsafe-{}", reason.as_str()),
             Self::InstallFailed(step) => format!("install-{}", step.as_str()),
@@ -373,8 +380,13 @@ fn probe(
 ) -> Result<ProbeReport, LaunchError> {
     let mut probe_output = Vec::new();
     loop {
-        let line = read_line(output, NOISE_LIMIT.saturating_sub(probe_output.len()))?
-            .ok_or(LaunchError::NoShell)?;
+        // `read_line` drops only the newline, so the lines and their
+        // newlines are the bytes as they arrived, UTF-16 included.
+        let Some(line) = read_line(output, NOISE_LIMIT.saturating_sub(probe_output.len()))? else {
+            return Err(LaunchError::NoShell {
+                output: probe_output,
+            });
+        };
         if probe_output.is_empty() {
             stage(Stage::Authenticated);
         }
@@ -384,7 +396,7 @@ fn probe(
             break;
         }
     }
-    parse_probe(&probe_output).ok_or(LaunchError::NoShell)
+    parse_probe(&probe_output).ok_or(LaunchError::NoShell { output: Vec::new() })
 }
 
 /// Checks the version, the only field the caller chose freely, and returns
@@ -453,7 +465,8 @@ fn deploy(
 
 /// Reads one answer line of the script.
 fn answer(output: &mut impl Read) -> Result<String, LaunchError> {
-    let line = read_line(output, NOISE_LIMIT)?.ok_or(LaunchError::NoShell)?;
+    let line =
+        read_line(output, NOISE_LIMIT)?.ok_or(LaunchError::NoShell { output: Vec::new() })?;
     Ok(String::from_utf8_lossy(&line).trim_end().to_owned())
 }
 
@@ -583,6 +596,30 @@ mod tests {
                 "{answer}"
             );
         }
+    }
+
+    // `wsl.exe` prints why it gave up on the stream the probe reads, in
+    // UTF-16 unless `WSL_UTF8` is set; the failure keeps those lines so the
+    // caller can read them, and its text shows none. Splitting UTF-16 at its
+    // newline bytes loses nothing: only the last line gains a newline byte,
+    // which completes no code unit.
+    #[test]
+    fn a_stream_that_ends_before_the_probe_keeps_what_it_carried() {
+        let text =
+            "不存在具有所提供名称的分发。\r\n错误代码： Wsl/Service/WSL_E_DISTRO_NOT_FOUND\r\n";
+        let message: Vec<u8> = text.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        let error = probe(&mut message.as_slice(), &mut |_| {}).unwrap_err();
+        let LaunchError::NoShell { output } = &error else {
+            panic!("{error:?}");
+        };
+        assert_eq!(output[..message.len()], message[..]);
+        assert_eq!(crate::client::wsl::output_text(output), text);
+        let error = probe(&mut text.as_bytes(), &mut |_| {}).unwrap_err();
+        assert!(matches!(&error, LaunchError::NoShell { output } if output == text.as_bytes()));
+        assert_eq!(error.to_string(), "the remote shell did not start");
+        assert_eq!(error.failure_category(), "no-shell");
+        let error = probe(&mut io::empty(), &mut |_| {}).unwrap_err();
+        assert!(matches!(error, LaunchError::NoShell { output } if output.is_empty()));
     }
 
     // Categories reach the log, so none carries remote output or a path.

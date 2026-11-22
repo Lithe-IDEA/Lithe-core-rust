@@ -117,13 +117,20 @@ pub fn parse_distributions(output: &[u8]) -> Vec<String> {
 }
 
 /// What `wsl.exe` itself printed, as text: UTF-16LE when it starts with that
-/// byte order mark or its second byte is NUL, which no UTF-8 text has, and
-/// UTF-8 otherwise. Malformed sequences become replacement characters, which
-/// no distribution name has.
+/// byte order mark or its second byte is NUL, which no UTF-8 text has, or
+/// when it is not UTF-8 and has a NUL at an odd offset, as UTF-16LE text
+/// that opens with a character outside ASCII, such as a message in Chinese,
+/// has at its line ends; UTF-8 otherwise. Malformed sequences become
+/// replacement characters, which no distribution name has.
 pub fn output_text(output: &[u8]) -> String {
     let utf16 = match output {
         [0xff, 0xfe, rest @ ..] => Some(rest),
         [_, 0, ..] => Some(output),
+        _ if std::str::from_utf8(output).is_err()
+            && output.iter().skip(1).step_by(2).any(|byte| *byte == 0) =>
+        {
+            Some(output)
+        }
         _ => None,
     };
     match utf16 {
@@ -138,6 +145,21 @@ pub fn output_text(output: &[u8]) -> String {
         .collect(),
         None => String::from_utf8_lossy(output).into_owned(),
     }
+}
+
+/// What `wsl.exe` printed when it gave up before its command started, as
+/// text. It reports its own failures, with a stable error code such as
+/// `Wsl/Service/WSL_E_DISTRO_NOT_FOUND`, on standard output; a distribution
+/// that started may add a line on standard error. Standard output comes
+/// first, each part read as [`output_text`] reads it and blank parts left
+/// out.
+pub fn failure_text(stdout: &[u8], stderr: &[u8]) -> String {
+    [stdout, stderr]
+        .iter()
+        .map(|part| output_text(part).trim().to_owned())
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[cfg(test)]
@@ -169,6 +191,34 @@ mod tests {
         assert_eq!(output_text(&utf16(message, false)), message);
         assert_eq!(output_text(message.as_bytes()), message);
         assert_eq!(output_text(b"x"), "x");
+        // A message in Chinese opens with a character whose second byte is
+        // not NUL; its line ends and error code still are.
+        let chinese =
+            "不存在具有所提供名称的分发。\r\n错误代码： Wsl/Service/WSL_E_DISTRO_NOT_FOUND\r\n";
+        assert_eq!(output_text(&utf16(chinese, false)), chinese);
+        assert_eq!(output_text(chinese.as_bytes()), chinese);
+        // UTF-8 with a stray NUL stays UTF-8.
+        assert_eq!(output_text(b"Alpine1\0\r\n"), "Alpine1\0\r\n");
+    }
+
+    // Real `wsl.exe` prints its failure on standard output; the line on
+    // standard error comes from the distribution it started.
+    #[test]
+    fn failures_read_standard_output_then_standard_error() {
+        let message = "User not found.\r\nError code: Wsl/WSL_E_USER_NOT_FOUND\r\n";
+        let relay =
+            b"<3>WSL (342 - Relay) ERROR: CreateProcessParseCommon:1067: getpwnam(dev) failed 17\n";
+        assert_eq!(
+            failure_text(&utf16(message, false), relay),
+            "User not found.\r\nError code: Wsl/WSL_E_USER_NOT_FOUND\n\
+             <3>WSL (342 - Relay) ERROR: CreateProcessParseCommon:1067: getpwnam(dev) failed 17"
+        );
+        assert_eq!(failure_text(message.as_bytes(), b""), message.trim());
+        assert_eq!(
+            failure_text(b"\r\n", relay),
+            String::from_utf8_lossy(relay).trim()
+        );
+        assert_eq!(failure_text(b"", b""), "");
     }
 
     #[test]
