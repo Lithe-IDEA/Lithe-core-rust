@@ -8,10 +8,10 @@
 //! configurations a user saves are project documents.
 
 use super::configuration::RunConfigurationDocument;
+use lithe_workspace::fs;
 #[cfg(any(test, feature = "test-support"))]
 use serde_json::Value;
 use std::collections::HashMap;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 

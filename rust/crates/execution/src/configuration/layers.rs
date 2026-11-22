@@ -11,7 +11,7 @@ use super::*;
 /// editors would otherwise be stored as a literal directory name.
 pub(crate) fn normalize_working_directory(root: &Path, value: &str) -> Result<String, CoreError> {
     normalize_project_directory(root, value).map_err(|error| {
-        if value.contains('$') && !root.join(value).is_dir() {
+        if value.contains('$') && !fs::is_dir(root.join(value)).unwrap_or(false) {
             CoreError::new(
                 ErrorCode::InvalidRequest,
                 "Working directory variables are not supported; use a path relative to the project",
@@ -73,7 +73,7 @@ pub(crate) fn project_directory_exists(root: &Path, value: &str) -> bool {
     let Ok(canonical_target) = fs::canonicalize(root.join(value)) else {
         return false;
     };
-    canonical_target.is_dir() && canonical_target.starts_with(canonical_root)
+    canonical_target.starts_with(canonical_root) && fs::is_dir(&canonical_target).unwrap_or(false)
 }
 
 /// Reads a sidecar document below `.lithe`, such as `project.json`, with the
@@ -111,11 +111,15 @@ pub(crate) fn generated_ids(root: &Path) -> BTreeSet<String> {
 
 pub(crate) fn existing_root(value: &str) -> Result<PathBuf, CoreError> {
     let path = PathBuf::from(value);
-    if !path.is_dir() {
-        return Err(CoreError::new(
-            ErrorCode::WorkspaceNotFound,
-            "Project root does not exist",
-        ));
+    match fs::is_dir(&path) {
+        Ok(true) => {}
+        Err(error) if fs::is_transport_failure(&error) => return Err(CoreError::from(error)),
+        Ok(false) | Err(_) => {
+            return Err(CoreError::new(
+                ErrorCode::WorkspaceNotFound,
+                "Project root does not exist",
+            ))
+        }
     }
     Ok(path)
 }

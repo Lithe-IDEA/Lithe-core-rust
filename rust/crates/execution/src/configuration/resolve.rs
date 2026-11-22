@@ -56,7 +56,7 @@ pub(crate) fn resolve_layers(
         }
     }
     let global_toolchain = local.get("toolchain").cloned();
-    let platform = Platform::HOST;
+    let platform = run_platform();
     for configuration in &mut configurations {
         configuration.plugin = layers
             .plugin_dependency(&configuration.id)

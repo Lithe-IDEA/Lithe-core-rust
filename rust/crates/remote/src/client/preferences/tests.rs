@@ -88,6 +88,37 @@ fn reverse_forwarding_is_off_until_the_user_turns_it_on() {
 }
 
 #[test]
+fn closing_asks_until_the_user_chooses() {
+    let mut preferences = Preferences::default();
+    let closing = preferences.closing();
+    assert_eq!(
+        (closing.source, closing.programs),
+        (Source::Automatic, ClosePrograms::Ask)
+    );
+    // The server's idle timeout, which no document changes.
+    assert_eq!(closing.idle_timeout_seconds, 10 * 60);
+    for programs in [ClosePrograms::Keep, ClosePrograms::End, ClosePrograms::Ask] {
+        preferences.set_close_programs(Some(programs));
+        let read = Preferences::parse(Some(&preferences.text().unwrap())).unwrap();
+        assert_eq!(read.close_programs(), Some(programs));
+        let closing = read.closing();
+        assert_eq!(
+            (closing.source, closing.programs),
+            (Source::Setting, programs)
+        );
+    }
+    preferences.set_close_programs(None);
+    assert_eq!(preferences, Preferences::default());
+    assert_eq!(
+        refusal("{\"version\":1,\"closePrograms\":\"later\"}"),
+        PreferenceError {
+            field: "document",
+            reason: PreferenceReason::Invalid
+        }
+    );
+}
+
+#[test]
 fn the_document_refuses_other_versions_unknown_fields_and_bad_values() {
     let at = |field, reason| PreferenceError { field, reason };
     assert_eq!(

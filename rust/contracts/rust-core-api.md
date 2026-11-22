@@ -804,7 +804,7 @@ or removing a command fails until the table changes in the same commit.
 | `remote.authRespond` | Answer or cancel a prompt relayed by `remote.probe` or `remote.connect` once |
 | `remote.connect` | Open a connection over SSH or to a local WSL distribution, installing the shipped server when needed |
 | `remote.readDir` | List a directory over an open remote connection |
-| `remote.disconnect` | Close an open connection and its OpenSSH or `wsl.exe` process tree |
+| `remote.disconnect` | Close an open connection and its OpenSSH or `wsl.exe` process tree, ending or keeping the programs it runs on the host |
 | `remote.closeAll` | Close every open connection; the host calls it at application exit |
 | `remote.readFile` | Read a file over an open remote connection |
 | `remote.writeFile` | Save a file over an open remote connection |
@@ -834,7 +834,9 @@ or removing a command fails until the table changes in the same commit.
 | `remote.devcontainerConfigs` | List the `devcontainer.json` files of a local folder |
 | `remote.devcontainerUp` | Build or reuse and start a trusted local folder's dev container with the Dev Container CLI |
 | `remote.preferences` | Read the remote workspace settings and what each automatic value resolves to |
-| `remote.editPreferences` | Set the SSH program, the reconnect limit or whether reverse forwards are allowed, or make one automatic again |
+| `remote.editPreferences` | Set the SSH program, the reconnect limit, whether reverse forwards are allowed or what closing a connection does to its programs, or make one automatic again |
+| `remote.runningPrograms` | List the processes and terminals a connection's host session still runs |
+| `remote.endPrograms` | End every process and terminal a connection's host session runs, or the listed ones |
 | `git.historyRewritePreview` | Review undo, message edit, squash, or drop with complete messages, eligibility, and an immutable checkout expectation |
 | `git.remotes` | Return configured fetch remote names and URLs |
 | `git.tags` | Return tag names, tag object IDs, target IDs, dates, and annotations |
@@ -4420,6 +4422,15 @@ script file, or a program or interpreter named by a path that is not a file, is
 
 Batch runs are `not_supported` outside Windows.
 
+In a remote workspace (a request carrying `remoteWorkspace`) every
+`runConfig.*` command reads and checks the host's files, and process runs are
+planned for the host, which is Linux or macOS, so they never get a Windows
+interpreter or a batch script even when the client is Windows. The plan's
+`executable.path`, `arguments` and `inlineScript.path` are host paths, and
+`inlineScriptBase` must name a host temporary directory, so the client starts
+the process on the host without translating the plan. A host that cannot be
+reached fails the request instead of reporting a file as missing.
+
 `diagnostics.redactText` accepts `text` and returns `redacted` with
 credentials, tokens, and home-directory paths replaced by stable placeholders
 (`<redacted>` for secrets, `<HOME>` for a macOS/Linux `Users`/`home` path or a
@@ -6022,7 +6033,8 @@ and returns `{ preferences, ssh, reconnect, reverseForwarding, storage,
 sshConfig? }`:
 
 - `preferences` is `{ sshProgram, reconnectLimitSeconds,
-  allowReverseForwarding }`, the stored values; `null` is automatic.
+  allowReverseForwarding, closePrograms }`, the stored values; `null` is
+  automatic.
 - `ssh` is `{ source, path, status }`, the OpenSSH client every connection
   starts. `source` is `setting` for a stored program and `automatic`
   otherwise, which is the first executable `ssh` (`ssh.exe` on Windows) in an
@@ -6039,6 +6051,14 @@ sshConfig? }`:
 - `reverseForwarding` is `{ source, allowed }`: whether the ports page may
   start reverse forwards (automatic: not allowed), because every user of the
   host can reach the local port one opens.
+- `closing` is `{ source, programs, idleTimeoutSeconds }`: what happens to
+  the processes and terminals still running on the host when a window closes
+  its connection. `programs` is `ask` (automatic: the client asks every
+  time, and may offer to remember the answer), `end` or `keep`. Nothing
+  keeps running on a host, or ends, without the user deciding.
+  `idleTimeoutSeconds` (600) is how long the host keeps a session whose
+  connection was lost and whose programs nobody kept; the server sets it and
+  no document changes it.
 - `storage` is `{ relativePath: "remote/preferences.json", maximumBytes:
   16384 }`.
 - `sshConfig` is `{ path, exists }` for `.ssh/config` below `homeDirectory`,
@@ -6053,6 +6073,8 @@ sshConfig? }`:
   makes the limit automatic with `null`.
 - `reverseForwarding: { allowed: boolean|null }` allows or refuses reverse
   forwards, or makes the switch automatic with `null`.
+- `closePrograms: { programs: "ask"|"end"|"keep"|null }` stores the closing
+  choice, or makes it automatic with `null`.
 
 The result is `{ changed, document: string|null }`; an unchanged edit
 returns a `null` document and must not create a source. No field or more
@@ -6074,7 +6096,7 @@ user-settings resource does not affect code signatures or update deltas.
 #### Remote connections that stay open
 
 `remote.connect` takes `{ connection, servers: [{ target, path, sha256 }],
-serverVersion, installRoot? }`. `servers` are the read-only server builds the
+serverVersion, installRoot?, resume? }`. `servers` are the read-only server builds the
 host ships, by Rust target; `sha256` is the build's SHA-256 as 64 hexadecimal
 digits, taken from the manifest the application ships and signs with the
 builds, never computed from the file Core is about to send. `installRoot`
@@ -6097,8 +6119,26 @@ and `{ stage: "installed", uploaded }` once the server is in place, where
 failed attempt stops after the last stage reached, so a host without a
 matching build stops after `platformChecked`. The result is `{ status, session,
 host, diagnostics }`; `session` is `{ id, uploaded, hostName, userName,
-homeDirectory }` and is set only for `connected`. A host without a matching
-build is `unsupportedPlatform` and nothing is uploaded.
+homeDirectory, sessionKey, sessionToken, resumed, keptPrograms }` and is set
+only for `connected`. A host without a matching build is
+`unsupportedPlatform` and nothing is uploaded.
+
+The server runs a persistent session (`--connect <sessionKey>`, with
+`--state-dir <installRoot>` when one is given), so what it runs survives the
+connection. `sessionKey` names that session and `sessionToken` is the secret
+that attaches to it again; the client stores the token like a password and
+never logs it. To attach to a session an earlier connection kept, pass
+`resume: { key, token }` with the values it returned. `resumed` tells whether
+this connection attached to it; `keptPrograms` lists the processes and
+terminals it still runs, as `remote.runningPrograms` does, and is empty for
+a new session. When the host refuses the token, because the session ended
+and another took its key, Core connects once more without `resume`, so the
+user authenticates again but is never locked out; that connection reports
+`resumed: false` and a new key and token. A key that is empty, longer than 64
+characters or not made of ASCII letters, digits, `.`, `_` and `-`, or a token
+that is empty, longer than 128 characters or not hexadecimal, is
+`invalid_request` with `{ field: "resume", reason: "invalid" }`, before
+OpenSSH or `wsl.exe` starts.
 
 Instead of `connection`, the request may name a WSL distribution on this
 Windows machine as `wsl: { distribution, user? }`, where `distribution` is a
@@ -6156,9 +6196,18 @@ without sending anything; `details` says which of the two happened and, for a
 mismatch, the SHA-256 Core computed, but never the path. Cancellation and the
 five-minute bound are `cancelled` and `timed_out`.
 
-Core keeps an open connection until `remote.disconnect` (`{ sessionId }`,
-returning `{ closed }`) or until the host process exits; ending it terminates
-the OpenSSH or `wsl.exe` process tree. `remote.closeAll` (no payload, returning
+Core keeps an open connection until `remote.disconnect` (`{ sessionId,
+programs? }`, returning `{ closed, kept }`) or until the host process exits;
+ending it terminates the OpenSSH or `wsl.exe` process tree. `programs` is
+`end` (the default), which ends the host session with every process and
+terminal it runs, or `keep`, which tells the host to keep them and leaves
+without ending the session; a later `remote.connect` with `resume` finds
+them. `kept` tells whether the host keeps them: it is `false` for `end`, for
+an unknown or closed connection (`closed: false`) and when the host could not
+be told, whose programs then end like those of a client that crashed. A
+session nobody kept, such as one whose client crashed or lost its network,
+ends with its programs once the server's idle timeout (ten minutes) passes
+without a client; one whose programs were kept lasts until they end. `remote.closeAll` (no payload, returning
 `{ closed }` with the number of connections) ends all of them; the host calls
 it while quitting because exiting without it can leave the OpenSSH tree and
 the remote server running. Requests over it take `sessionId`:
@@ -6175,6 +6224,8 @@ the remote server running. Requests over it take `sessionId`:
 | `remote.runProcess` | `{ sessionId, params: { argv, cwd?, environment?, env?, pipeStdin?, label? } }` | leader exit; relays `process.started`, `process.output`, `process.exit` |
 | `remote.runTerminal` | `{ sessionId, params: { argv?, cwd?, env?, columns, rows, label? } }` | leader exit; relays `terminal.started`, `terminal.output`, `terminal.exit` |
 | `remote.captureProcess` | `{ sessionId, params, timeoutMilliseconds, maxOutputBytes }` | base64 `stdout`, `stderr`, nullable `exitCode` and `signal` |
+| `remote.runningPrograms` | `{ sessionId }` | `{ programs: [{ kind, id, argv, label, runningMs }] }`, processes first; `kind` is `process` or `terminal`, `label` the one the program started with or `null` |
+| `remote.endPrograms` | `{ sessionId, programs? }` | `{ ended }`: every running process gets `SIGTERM` for its process session and every terminal hangs up, or only those `programs` (`[{ kind, id }]` as `remote.runningPrograms` listed them) names; one that ended in the meantime or is not running is not counted, one that ignores the signal is still listed |
 
 `remote.writeFile` replaces the file atomically on the host. With
 `expected` (`{ size, modifiedMs }` from the read) a changed file is a

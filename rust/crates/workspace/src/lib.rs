@@ -35,6 +35,7 @@ pub mod host;
 pub mod motty;
 pub mod preferences;
 pub mod probe;
+pub mod programs;
 mod scope;
 pub mod sessions;
 pub mod ssh_configuration;

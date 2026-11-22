@@ -1523,7 +1523,7 @@ pub static EVENTS: &[EventMetadata] = &[
         message: "Remote session cleanup failed",
         fields: &[
             FieldMetadata { name: "error", field_type: FieldType::Error, required: true, description: "Stable native, thread, or remote category from ending an owned ssh or wsl.exe connection", reason: None },
-            FieldMetadata { name: "stage", field_type: FieldType::Token, required: true, description: "Connection cleanup stage of the owned ssh or wsl.exe process, e.g. shutdown, tree-kill, wait, or closer", reason: None },
+            FieldMetadata { name: "stage", field_type: FieldType::Token, required: true, description: "Connection cleanup stage of the owned ssh or wsl.exe process, e.g. shutdown, keep, tree-kill, wait, or closer", reason: None },
         ],
         span: None,
         rate: 60,
@@ -1537,6 +1537,19 @@ pub static EVENTS: &[EventMetadata] = &[
         fields: &[
             FieldMetadata { name: "error", field_type: FieldType::Error, required: true, description: "Stable I/O or thread category explaining incomplete ssh or wsl.exe diagnostic evidence", reason: None },
             FieldMetadata { name: "stage", field_type: FieldType::Token, required: true, description: "Diagnostic collection stage of the ssh or wsl.exe process: reader join or stderr read", reason: None },
+        ],
+        span: None,
+        rate: 60,
+        owner: "lithe-core",
+    },
+    EventMetadata {
+        id: "remote.session.state_failed",
+        channel: "remote",
+        level: LogLevel::Warn,
+        message: "Remote session state could not be listed",
+        fields: &[
+            FieldMetadata { name: "error", field_type: FieldType::Error, required: true, description: "Remote protocol category returned by server.state on the resumed session", reason: None },
+            FieldMetadata { name: "stage", field_type: FieldType::Token, required: true, description: "What the state was listed for after a connection opened, e.g. kept_programs", reason: None },
         ],
         span: None,
         rate: 60,

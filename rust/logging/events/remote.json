@@ -61,12 +61,32 @@
         "stage": {
           "type": "token",
           "required": true,
-          "description": "Connection cleanup stage of the owned ssh or wsl.exe process, e.g. shutdown, tree-kill, wait, or closer"
+          "description": "Connection cleanup stage of the owned ssh or wsl.exe process, e.g. shutdown, keep, tree-kill, wait, or closer"
         },
         "error": {
           "type": "error",
           "required": true,
           "description": "Stable native, thread, or remote category from ending an owned ssh or wsl.exe connection"
+        }
+      },
+      "rate": 60,
+      "owner": "lithe-core"
+    },
+    {
+      "id": "remote.session.state_failed",
+      "channel": "remote",
+      "level": "warn",
+      "message": "Remote session state could not be listed",
+      "fields": {
+        "stage": {
+          "type": "token",
+          "required": true,
+          "description": "What the state was listed for after a connection opened, e.g. kept_programs"
+        },
+        "error": {
+          "type": "error",
+          "required": true,
+          "description": "Remote protocol category returned by server.state on the resumed session"
         }
       },
       "rate": 60,

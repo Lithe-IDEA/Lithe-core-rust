@@ -274,10 +274,10 @@ fn wait_for_file(path: &str) -> bool {
     false
 }
 
-// The idle timeout applies only while nothing runs: a build left running
-// keeps its session past the timeout, and the session ends after it.
+// A build the user chose to keep keeps its session past the idle timeout,
+// and the session ends after the build does.
 #[test]
-fn running_processes_keep_an_idle_session_alive() {
+fn kept_processes_keep_an_idle_session_alive() {
     let daemon = Daemon::new("kept-process");
     let gate = TempDir::new("kept-process-gate");
     let (marker, release) = (gate.join("marker"), gate.join("release"));
@@ -290,6 +290,7 @@ fn running_processes_keep_an_idle_session_alive() {
         .unwrap();
     let process_id = process.id;
     drop(process);
+    session.keep().unwrap();
     drop(session);
     assert!(
         wait_for_file(&marker),
@@ -316,10 +317,10 @@ fn running_processes_keep_an_idle_session_alive() {
     );
 }
 
-// An open terminal counts as running, so a shell left open with no output
+// A kept terminal counts as running, so a shell left open with no output
 // keeps its session past the idle timeout too.
 #[test]
-fn open_terminals_keep_an_idle_session_alive() {
+fn kept_terminals_keep_an_idle_session_alive() {
     let daemon = Daemon::new("kept-terminal");
     let gate = TempDir::new("kept-terminal-gate");
     let (marker, release) = (gate.join("marker"), gate.join("release"));
@@ -340,6 +341,7 @@ fn open_terminals_keep_an_idle_session_alive() {
         .unwrap();
     let terminal_id = terminal.id;
     drop(terminal);
+    session.keep().unwrap();
     drop(session);
     assert!(
         wait_for_file(&marker),
@@ -362,6 +364,59 @@ fn open_terminals_keep_an_idle_session_alive() {
         "the session outlived its last terminal\n{}",
         daemon.log()
     );
+}
+
+// Programs nobody kept, such as those of a client that crashed or lost its
+// network, end with the session once the idle timeout passes.
+#[test]
+fn programs_nobody_kept_end_with_an_idle_session() {
+    let daemon = Daemon::new("unkept-process");
+    let gate = TempDir::new("unkept-process-gate");
+    let (marker, release) = (gate.join("marker"), gate.join("release"));
+    let (session, _events) = daemon.connect(Some(Duration::from_secs(1)));
+    let process = session
+        .spawn(SpawnSpec {
+            argv: argv(&["sh", "-c", &outlast_idle_timeout(&marker, &release)]),
+            ..SpawnSpec::default()
+        })
+        .unwrap();
+    drop(process);
+    drop(session);
+    assert!(
+        daemon.wait_until_stopped(),
+        "the session outlived its idle timeout with a program nobody kept\n{}",
+        daemon.log()
+    );
+    std::fs::write(&release, b"").unwrap();
+}
+
+// A client that attaches to a kept session decides again: when it leaves
+// without keeping, the programs end after the idle timeout.
+#[test]
+fn attaching_clears_an_earlier_keep() {
+    let daemon = Daemon::new("rekept-process");
+    let gate = TempDir::new("rekept-process-gate");
+    let (marker, release) = (gate.join("marker"), gate.join("release"));
+    let (session, _events) = daemon.connect(Some(Duration::from_secs(1)));
+    let process = session
+        .spawn(SpawnSpec {
+            argv: argv(&["sh", "-c", &outlast_idle_timeout(&marker, &release)]),
+            ..SpawnSpec::default()
+        })
+        .unwrap();
+    drop(process);
+    session.keep().unwrap();
+    drop(session);
+
+    let (session, _events) = daemon.connect_deferred();
+    assert!(session.hello().session.resumed);
+    drop(session);
+    assert!(
+        daemon.wait_until_stopped(),
+        "an earlier keep outlived the next client\n{}",
+        daemon.log()
+    );
+    std::fs::write(&release, b"").unwrap();
 }
 
 // Within the account, only the session's own client may reattach: another

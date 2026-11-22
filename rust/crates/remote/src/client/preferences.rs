@@ -18,6 +18,11 @@
 //!   machine's loopback interface. [`Preferences::reverse_forwarding`] is off
 //!   unless the user turned it on, because every user of the host can then
 //!   reach that local port.
+//! - `closePrograms` says what happens to the processes and terminals still
+//!   running on the host when a window closes its connection: `ask` every
+//!   time, `end` them, or `keep` them running for the next connection.
+//!   [`Preferences::closing`] is `ask` unless the user chose otherwise, so
+//!   nothing keeps running on a host, or ends, without the user deciding.
 //! - The document lives at [`STORAGE_PATH`] below the platform's
 //!   user-preference directory, never on a host or in a workspace. It holds
 //!   no secret. This module validates and edits it; the platform adapter
@@ -58,11 +63,28 @@ const SSH_NAME: &str = "ssh";
 /// Whether reverse forwards are offered when the document sets nothing.
 pub const DEFAULT_ALLOW_REVERSE_FORWARDING: bool = false;
 
+/// What happens to programs still running on the host when a window closes
+/// its connection.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ClosePrograms {
+    /// Ask every time.
+    Ask,
+    /// End every process and terminal of the session.
+    End,
+    /// Leave them running; the next connection to the host finds them.
+    Keep,
+}
+
+/// The choice when the document sets nothing.
+pub const DEFAULT_CLOSE_PROGRAMS: ClosePrograms = ClosePrograms::Ask;
+
 /// Why a document or an edit was refused.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PreferenceError {
-    /// `document`, `version`, `sshProgram` or `reconnectLimitSeconds`.
+    /// `document`, `version`, `sshProgram`, `reconnectLimitSeconds` or
+    /// `closePrograms`.
     pub field: &'static str,
     /// Why the field was refused.
     pub reason: PreferenceReason,
@@ -118,6 +140,9 @@ pub struct Preferences {
     /// `None` uses [`DEFAULT_ALLOW_REVERSE_FORWARDING`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     allow_reverse_forwarding: Option<bool>,
+    /// `None` uses [`DEFAULT_CLOSE_PROGRAMS`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    close_programs: Option<ClosePrograms>,
 }
 
 impl Default for Preferences {
@@ -127,6 +152,7 @@ impl Default for Preferences {
             ssh_program: None,
             reconnect_limit_seconds: None,
             allow_reverse_forwarding: None,
+            close_programs: None,
         }
     }
 }
@@ -179,6 +205,19 @@ pub struct ReverseForwarding {
     pub source: Source,
     /// The value that takes effect.
     pub allowed: bool,
+}
+
+/// What happens to running programs when a window closes its connection.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Closing {
+    pub source: Source,
+    /// The choice that takes effect.
+    pub programs: ClosePrograms,
+    /// Seconds the host keeps a session whose connection was lost, and
+    /// whose programs nobody kept, before ending it. The server sets it,
+    /// so no document changes it; clients show it beside the choice.
+    pub idle_timeout_seconds: u64,
 }
 
 /// How long a lost session is reconnected automatically.
@@ -275,6 +314,30 @@ impl Preferences {
     /// `None`.
     pub fn set_allow_reverse_forwarding(&mut self, allowed: Option<bool>) {
         self.allow_reverse_forwarding = allowed;
+    }
+
+    /// The stored closing choice, `None` when automatic.
+    pub fn close_programs(&self) -> Option<ClosePrograms> {
+        self.close_programs
+    }
+
+    /// Sets what happens to running programs on close, or makes it
+    /// automatic with `None`.
+    pub fn set_close_programs(&mut self, programs: Option<ClosePrograms>) {
+        self.close_programs = programs;
+    }
+
+    /// What happens to running programs on close, and whether the user
+    /// decided.
+    pub fn closing(&self) -> Closing {
+        Closing {
+            source: match self.close_programs {
+                Some(_) => Source::Setting,
+                None => Source::Automatic,
+            },
+            programs: self.close_programs.unwrap_or(DEFAULT_CLOSE_PROGRAMS),
+            idle_timeout_seconds: crate::protocol::methods::DEFAULT_IDLE_TIMEOUT_SECONDS,
+        }
     }
 
     /// Whether reverse forwards are offered, and whether the user decided.

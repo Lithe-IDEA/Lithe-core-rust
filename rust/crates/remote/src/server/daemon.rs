@@ -5,10 +5,11 @@
 //! the daemon first if none runs, and then copies bytes between its standard
 //! streams and the socket. When SSH drops, only the proxy dies: the daemon
 //! keeps terminals and builds running, buffers their events, and hands them
-//! to the next connection. A daemon whose session has no client and no
-//! running process or terminal ends it after the idle timeout the client
-//! requested; running programs end only through `server.shutdown` or the
-//! user stopping them.
+//! to the next connection. A daemon whose session has no client ends it
+//! after the idle timeout the client requested, together with whatever it
+//! still runs, unless the last client sent `server.keep`: programs the user
+//! chose to keep run, and keep the session, until they end, a client stops
+//! them, or `server.shutdown`.
 //!
 //! The socket lives in a directory only the user can access, and the daemon
 //! also verifies the peer's user id, so other users on a shared host cannot
