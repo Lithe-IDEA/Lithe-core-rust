@@ -1015,6 +1015,10 @@ pub enum RemoteCommand {
     HostRequest,
     /// Owns a remote process and relays output until it exits or is cancelled.
     RunProcess,
+    /// Takes over a process an earlier connection to the resumed host session
+    /// started and relays its output until it exits or is cancelled
+    /// (`remote.attachProcess`).
+    AttachProcess,
     /// Captures a short remote process with explicit time and output budgets.
     CaptureProcess,
     /// Owns a remote PTY and relays output until it exits or is cancelled.
@@ -1679,6 +1683,7 @@ impl CoreCommand {
             "remote.writeFile" => Some(Self::Remote(RemoteCommand::WriteFile)),
             "remote.hostRequest" => Some(Self::Remote(RemoteCommand::HostRequest)),
             "remote.runProcess" => Some(Self::Remote(RemoteCommand::RunProcess)),
+            "remote.attachProcess" => Some(Self::Remote(RemoteCommand::AttachProcess)),
             "remote.captureProcess" => Some(Self::Remote(RemoteCommand::CaptureProcess)),
             "remote.runTerminal" => Some(Self::Remote(RemoteCommand::RunTerminal)),
             "remote.runWatch" => Some(Self::Remote(RemoteCommand::RunWatch)),

@@ -418,6 +418,10 @@ meaning; `lithe_protocol::ErrorCode` documents when it is reported:
   be read or is not the build its SHA-256 names
 - `devcontainer_untrusted_folder`: the folder is not trusted, so its dev
   container was not built or started
+- `remote_process_gone`: the remote process to attach to no longer runs and
+  its output is gone, or the reconnection started a new host session
+- `remote_process_attached`: another request already receives the output of
+  the remote process to attach to
 - `unknown`
 
 GitHub authorization is independent of a Lithe account. Device Flow is the

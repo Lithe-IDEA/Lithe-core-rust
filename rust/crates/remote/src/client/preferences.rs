@@ -183,10 +183,12 @@ pub enum ProgramStatus {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SshProgram {
+    /// Whether the document sets the value or Lithe picks it.
     pub source: Source,
     /// The setting, or the first `ssh` on `PATH`; `None` when automatic
     /// finds none.
     pub path: Option<String>,
+    /// What is at that path when the page reads it.
     pub status: ProgramStatus,
 }
 
@@ -202,6 +204,7 @@ impl SshProgram {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReverseForwarding {
+    /// Whether the document sets the value or Lithe picks it.
     pub source: Source,
     /// The value that takes effect.
     pub allowed: bool,
@@ -211,6 +214,7 @@ pub struct ReverseForwarding {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Closing {
+    /// Whether the document sets the value or Lithe picks it.
     pub source: Source,
     /// The choice that takes effect.
     pub programs: ClosePrograms,
@@ -224,6 +228,7 @@ pub struct Closing {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Reconnect {
+    /// Whether the document sets the value or Lithe picks it.
     pub source: Source,
     /// The limit that takes effect; 0 turns automatic reconnection off.
     pub limit_seconds: u32,

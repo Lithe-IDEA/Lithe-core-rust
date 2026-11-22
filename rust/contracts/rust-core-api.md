@@ -819,6 +819,7 @@ or removing a command fails until the table changes in the same commit.
 | `remote.writeFile` | Save a file over an open remote connection |
 | `remote.hostRequest` | Perform a non-streaming operation on an existing workspace host |
 | `remote.runProcess` | Own a remote process and relays output until it exits or is cancelled |
+| `remote.attachProcess` | Take over a process an earlier connection to the resumed host session started, relaying its missed and live output until it exits or is cancelled |
 | `remote.captureProcess` | Capture a short remote process with explicit time and output budgets |
 | `remote.runTerminal` | Own a remote PTY and relays output until it exits or is cancelled |
 | `remote.runWatch` | Own a host watch and relays changes until cancellation or root removal |
@@ -6297,6 +6298,7 @@ gone. Requests over it take `sessionId`:
 | `remote.uploadFile` | `{ sessionId, sourcePath, path, sha256, mode }` | verified `{ size, sha256 }` |
 | `remote.runWatch` | `{ sessionId, params: { root, excludeNames? } }` | waits until root removal or cancellation; relays `watch.started`, `watch.changed`, `watch.error` |
 | `remote.runProcess` | `{ sessionId, params: { argv, cwd?, scopedCwd?, environment?, env?, pipeStdin?, label? } }` | leader exit; relays `process.started`, `process.output`, `process.exit`. Use `scopedCwd: { root, path }` in place of `cwd` for a workspace-scoped spawn. An empty `path` selects the root. |
+| `remote.attachProcess` | `{ sessionId, processId }` | leader exit; relays `process.attached` (`{ processId, truncated }`), `process.output`, `process.exit` |
 | `remote.runTerminal` | `{ sessionId, params: { argv?, cwd?, scopedCwd?: { root, path }, environment?, env?, unsetEnv?, columns, rows, label? } }` | leader exit; relays `terminal.started`, `terminal.output`, `terminal.exit` |
 | `remote.captureProcess` | `{ sessionId, params, timeoutMilliseconds, maxOutputBytes }` | base64 `stdout`, `stderr`, nullable `exitCode` and `signal` |
 | `remote.runningPrograms` | `{ sessionId }` | `{ programs: [{ kind, id, argv, label, runningMs }] }`, processes first; `kind` is `process` or `terminal`, `label` the one the program started with or `null` |
@@ -6323,6 +6325,31 @@ That deadline bounds the client's wait, not ownership: when creation has not
 published yet, the host records teardown against the pending resource ID and
 the creating worker cleans it after publication. A rejected or timed-out close
 worker cannot turn an already accepted cancellation into an orphaned resource.
+
+`remote.connect` that resumes a persistent session (`resumed: true`) asks
+the host once for the events after the last one this Core received over the
+session, then keeps the output and exit of every process an earlier
+connection started until a caller attaches to it. `remote.attachProcess`
+takes those events, then relays the live ones; the request owns the process
+from then on exactly like the `remote.runProcess` that started it, so
+cancelling it ends the process. A run window that showed the process before
+the connection dropped attaches with the `processId` from its
+`process.started`; a kept program listed in `keptPrograms` or by
+`remote.runningPrograms` attaches with its `id`. `process.attached` comes
+first, and `truncated: true` means output between what the caller already
+showed and the first relayed event may be missing: this Core was restarted
+since, the host dropped events past its retention limit, or more than 4 MiB
+of one process's output (16 MiB together) waited for an attach, in which
+case the oldest output went first. Exit events are never dropped. A process
+that exited while the connection was down ends the request at once with its
+replayed output and exit.
+
+`remote.attachProcess` fails with `remote_process_gone` when the connection
+did not resume a session, the process ended before the events this Core
+received, or an earlier attach of it already ended; with
+`remote_process_attached` when another request receives it, the
+`remote.runProcess` that started it or an earlier `remote.attachProcess`.
+Neither changes the process. Terminals and watches are not reattached.
 
 Watch startup emits `watch.started` before buffered changes. The caller rescans
 on startup, `overflow`, or watch error; `ROOT_REMOVED` ends the call. Watch paths

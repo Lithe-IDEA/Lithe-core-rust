@@ -297,6 +297,7 @@ mod tests {
             "remote.restoreForwards",
             "remote.runningPrograms",
             "remote.endPrograms",
+            "remote.attachProcess",
             "debug.launch",
         ] {
             assert!(!is_hot(method), "{method}");

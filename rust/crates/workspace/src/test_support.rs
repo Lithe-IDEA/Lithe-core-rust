@@ -1,7 +1,7 @@
 //! Hooks for `lithe-core`'s end-to-end tests, which drive real Core commands
 //! against an in-process host server instead of an SSH child.
 
-use crate::sessions::{ended, lookup, nonce, registry, Connection, ConnectionTransport};
+use crate::sessions::{ended, lookup, nonce, registry, Connection, ConnectionTransport, History};
 use lithe_remote::client::trust::Target;
 use lithe_remote::client::{RemoteSession, TransportChain};
 use std::sync::Arc;
@@ -9,6 +9,12 @@ use std::sync::Arc;
 /// Registers `session` as a connected host and returns its session id. Its
 /// trust target has no hops, only the account the server reports.
 pub fn register_in_process(session: RemoteSession) -> String {
+    register_in_process_with(session, History::default())
+}
+
+/// [`register_in_process`] for a connection that resumed a kept session,
+/// with what it has of the earlier connections' processes.
+pub fn register_in_process_with(session: RemoteSession, history: History) -> String {
     let id = nonce();
     let trust_target = Target::new(&TransportChain::local(), session.hello().host.user_id);
     registry().lock().unwrap().insert(
@@ -17,6 +23,7 @@ pub fn register_in_process(session: RemoteSession) -> String {
             session,
             trust_target,
             ConnectionTransport::InProcess,
+            history,
         )),
     );
     id

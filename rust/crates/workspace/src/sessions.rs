@@ -27,7 +27,7 @@ use lithe_git_host::ProcessTree;
 use lithe_protocol::{CoreError, ErrorCode};
 use lithe_remote::client::connections::{ConnectionError, Reason, SshConnection};
 use lithe_remote::client::launch::{launch, launch_command, LaunchError, Launched, Stage};
-use lithe_remote::client::session::{ClientError, ConnectOptions};
+use lithe_remote::client::session::{ClientError, ConnectOptions, ResumeMode};
 use lithe_remote::client::trust::Target;
 use lithe_remote::client::{
     wsl, ArtifactError, ConnectionKind, ConnectionLog, ContainerConnection, ForwardSet, Hop,
@@ -203,6 +203,21 @@ pub struct Connection {
     /// Port forwards of the ports page; they end with the session.
     pub(crate) forwards: ForwardSet,
     pub(crate) transport: ConnectionTransport,
+    /// What the connection has of the programs earlier connections started.
+    pub(crate) history: History,
+}
+
+/// What a connection has of the processes earlier connections to the same
+/// persistent session started, which `remote.attachProcess` reattaches to.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct History {
+    /// Whether the connection resumed a session an earlier one kept.
+    pub resumed: bool,
+    /// Whether it received every event of those processes after the last one
+    /// earlier connections showed. `false` after the application restarted,
+    /// the host dropped events past its retention limit, or an earlier
+    /// connection discarded events nobody attached to.
+    pub complete: bool,
 }
 
 /// Owns the native transport independently of the framed workspace session.
@@ -222,6 +237,7 @@ impl Connection {
         session: RemoteSession,
         trust_target: Target,
         transport: ConnectionTransport,
+        history: History,
     ) -> Self {
         let session = Arc::new(session);
         Self {
@@ -230,6 +246,7 @@ impl Connection {
             git_tool: Mutex::new(None),
             trust_target,
             transport,
+            history,
         }
     }
 
@@ -960,6 +977,9 @@ fn connect_logged(
     let options = ConnectOptions {
         handshake_timeout: HANDSHAKE_TIMEOUT,
         session_token: resume.map(|resume| resume.token.clone()),
+        // Events start only after process events are parked below, so the
+        // ones a resumed session replays wait for `remote.attachProcess`.
+        resume: ResumeMode::Deferred,
         log: Some(log.clone()),
         ..ConnectOptions::default()
     };
@@ -983,11 +1003,36 @@ fn connect_logged(
             ));
         }
     };
-    // Process events are not used yet; draining keeps the session's reader
-    // from blocking on a full channel.
-    std::thread::spawn(move || for _ in events {});
     let capabilities = session.hello().host.clone();
     let info = session.hello().session.clone();
+    // Events of resources an earlier connection started wait for
+    // `remote.attachProcess`; everything else nobody subscribed to is
+    // drained, so the session's reader never blocks on a full channel. The
+    // drain runs before `server.resume` because the replay follows at once.
+    session.park("process");
+    std::thread::spawn(move || for _ in events {});
+    let earlier = info
+        .resumed
+        .then(|| crate::resumption::continuation(&session_key))
+        .flatten();
+    let history_complete = match session.resume(earlier.map(|earlier| earlier.after_seq)) {
+        Ok(resumed) => {
+            !info.resumed || (earlier.is_some_and(|earlier| earlier.complete) && !resumed.truncated)
+        }
+        Err(error) => {
+            drop(session);
+            // Grace expiry is advisory: the following checked kill/wait owns the final cleanup result.
+            wait_for_exit(&mut child, EXIT_GRACE);
+            reap(&tree, &mut child);
+            let stderr = diagnostics(&client.text(&tail(&stderr_tail)));
+            return Ok(failed(
+                ProbeStatus::Failed,
+                Some(host),
+                join_diagnostics(&error.to_string(), &stderr),
+            ));
+        }
+    };
+    crate::resumption::remember(&session_key, session.event_position(), history_complete);
     let kept_programs = if info.resumed {
         crate::programs::running(&session).unwrap_or_else(|error| {
             // The connection works without the list; the client can ask again.
@@ -1014,6 +1059,10 @@ fn connect_logged(
                 ConnectionTransport::Process {
                     child: Mutex::new(child),
                     tree,
+                },
+                History {
+                    resumed: info.resumed,
+                    complete: history_complete,
                 },
             )),
         );
