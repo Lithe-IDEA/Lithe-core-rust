@@ -111,8 +111,13 @@ jobs:
           cargo clippy --locked --manifest-path rust/Cargo.toml "${packages[@]}" --all-targets --all-features -- -D warnings
       # Code behind cfg(windows) compiles only for Windows. Checking it here
       # finds its errors without a Windows runner; default features only,
-      # because the remote server feature targets Unix hosts.
+      # because the remote server feature targets Unix hosts. Clippy only
+      # checks and never links, so SQLite (bundled for the Motty import) is
+      # told to link a system library instead of compiling its C source,
+      # which needs the MSVC tools that a Linux runner does not have.
       - name: Lint for Windows
+        env:
+          LIBSQLITE3_SYS_USE_PKG_CONFIG: "1"
         run: |
           read -ra packages <<< "$PACKAGES"
           cargo clippy --locked --manifest-path rust/Cargo.toml "${packages[@]}" --all-targets --target x86_64-pc-windows-msvc -- -D warnings
