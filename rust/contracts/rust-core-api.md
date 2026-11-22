@@ -5707,9 +5707,9 @@ user. Text fields are trimmed and empty optional fields dropped first;
 | --- | --- |
 | `host` | 1 to 1024 bytes of ASCII letters, digits and `._-:%`, not starting with `-` |
 | `port` | 1 to 65535; absent keeps the SSH configuration's port |
-| `user` | at most 1024 bytes of ASCII letters, digits and `._-`, starting with a letter, digit or `_` |
+| `user` | at most 1024 bytes: a login name of ASCII letters, digits and `._-`, starting with a letter, digit or `_`, or a Windows domain account `DOMAIN\name` or `name@domain`, where the domain is a host-name-like word of letters, digits and `._-` starting with a letter or digit |
 | `identityFile` | at most 1024 bytes, no control characters; quoted for OpenSSH when it has spaces |
-| `proxyJump` | `none`, or comma-separated `[user@]host[:port]`; absent keeps the SSH configuration's jump hosts |
+| `proxyJump` | `none`, or comma-separated `[user@]host[:port]`, where `user` is a login name (ssh starts jump hosts through a shell, so no domain account); absent keeps the SSH configuration's jump hosts |
 | `connectTimeoutSeconds` | 1 to 600; absent is 15 |
 | `keepAliveSeconds` | 1 to 3600; absent keeps the transport's default |
 
@@ -5918,9 +5918,10 @@ connection?, fields }`:
   operating system tag. `color` is the nearest connection color.
 - `status` is `importable` (every setting is imported), `partial` (the
   connection is imported without some settings), `exists` (the saved entry
-  `existingId` probably reaches the same host) or `unsupported` (not an SSH
-  host, or Lithe refuses its address). `connection` is what the import saves
-  and is absent for `unsupported`.
+  `existingId` probably reaches the same host), `unsupported` (not an SSH
+  host) or `invalid` (an SSH host with a setting Lithe refuses, which its
+  field marks `invalid`). `connection` is what the import saves and is absent
+  for `unsupported` and `invalid`.
 - `fields` lists every setting of the host as `{ motty, value, lithe?,
   skip? }`: `lithe` names the connection field it becomes, or `skip` says why
   it is not imported: `secret` (stored in Motty's vault), `noSetting`,

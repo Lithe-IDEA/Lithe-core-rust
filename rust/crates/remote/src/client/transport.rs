@@ -66,7 +66,7 @@ enum OptionSyntax {
     Count,
     /// TCP port from 1 to 65535.
     Port,
-    /// Login name, as checked by [`is_ssh_user`].
+    /// User name, as checked by [`is_ssh_user`].
     User,
     /// Local file path, already quoted by the caller where ssh_config needs it.
     Path,
@@ -217,10 +217,10 @@ pub(crate) fn is_wsl_distribution(name: &str) -> bool {
     name.len() <= MAX_WSL_DISTRIBUTION_BYTES && is_plain_name(name)
 }
 
-/// A Linux account name `wsl.exe --user` can take: the login names
-/// [`is_ssh_user`] accepts, at most [`MAX_WSL_USER_BYTES`] long.
+/// A Linux account name `wsl.exe --user` can take: a [`is_login_name`] at
+/// most [`MAX_WSL_USER_BYTES`] long.
 pub(crate) fn is_wsl_user(user: &str) -> bool {
-    user.len() <= MAX_WSL_USER_BYTES && is_ssh_user(user)
+    user.len() <= MAX_WSL_USER_BYTES && is_login_name(user)
 }
 
 /// Connection through the system OpenSSH client. Host aliases, jump hosts,
@@ -704,9 +704,30 @@ fn is_port(value: &str) -> bool {
     is_decimal(value) && value.parse::<u16>().is_ok_and(|port| port != 0)
 }
 
-/// A login name that ssh cannot read as an option or a host separator.
+/// A user name for an SSH destination: a [`is_login_name`], or a Windows
+/// domain account written `DOMAIN\name` or `name@domain`, as Windows OpenSSH
+/// servers expect it, where the domain is a plain name.
+///
+/// ssh splits `user@host` at the last `@`, so `name@domain@host` keeps the
+/// domain in the user, and OpenSSH accepts a backslash in a user name unless
+/// it is the last character. The destination and the `User` option reach ssh
+/// as one argument each, never through a shell, and ssh's option parser keeps
+/// a backslash that does not escape a quote, a backslash or a space.
 pub(crate) fn is_ssh_user(user: &str) -> bool {
-    let mut characters = user.chars();
+    if let Some((domain, name)) = user.split_once('\\') {
+        return is_plain_name(domain) && is_login_name(name);
+    }
+    match user.split_once('@') {
+        Some((name, domain)) => is_login_name(name) && is_plain_name(domain),
+        None => is_login_name(user),
+    }
+}
+
+/// A POSIX login name: ASCII letters, digits, `.`, `_` and `-`, starting with
+/// a letter, a digit or `_`. A shell reads none of its characters specially,
+/// and ssh cannot read it as an option or a host separator.
+pub(crate) fn is_login_name(name: &str) -> bool {
+    let mut characters = name.chars();
     matches!(characters.next(), Some(first) if first.is_ascii_alphanumeric() || first == '_')
         && characters
             .all(|character| character.is_ascii_alphanumeric() || "._-".contains(character))
@@ -718,7 +739,8 @@ pub(crate) fn is_jumps(value: &str) -> bool {
 }
 
 /// `[user@]host[:port]`, where `host` is a host name, an SSH alias or a
-/// bracketed IPv6 address.
+/// bracketed IPv6 address, and `user` is a [`is_login_name`]: ssh starts a
+/// jump through a shell command line, where a backslash is an escape.
 fn is_jump_host(jump: &str) -> bool {
     let (user, address) = match jump.rsplit_once('@') {
         Some((user, address)) => (Some(user), address),
@@ -746,7 +768,7 @@ fn is_jump_host(jump: &str) -> bool {
     } else {
         is_plain_name(host)
     };
-    user.is_none_or(is_ssh_user) && host_valid && port.is_none_or(is_port)
+    user.is_none_or(is_login_name) && host_valid && port.is_none_or(is_port)
 }
 
 /// Letters, digits, `.`, `_` and `-`, starting with a letter or digit. Host

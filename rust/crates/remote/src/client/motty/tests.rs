@@ -233,7 +233,7 @@ fn settings_lithe_has_no_place_for_are_listed_with_the_reason() {
 }
 
 #[test]
-fn other_protocols_and_refused_addresses_are_not_imported() {
+fn other_protocols_and_refused_settings_are_not_imported() {
     let database = Database::new(SUPPORTED_FORMAT);
     database.host(
         "t",
@@ -245,14 +245,53 @@ fn other_protocols_and_refused_addresses_are_not_imported() {
         1,
         json!({ "label": "Bad", "address": "-oProxyCommand=x" }),
     );
+    database.host(
+        "user",
+        2,
+        json!({ "label": "Bad user", "address": "192.0.2.20", "user": "a b" }),
+    );
     let report = database.report(&Connections::default());
     let telnet = find(&report, "t");
     assert_eq!(telnet.status, Status::Unsupported);
     assert_eq!(telnet.connection, None);
     assert_eq!(field(telnet, "protocol").skip, Some(Skip::Protocol));
     let bad = find(&report, "bad");
-    assert_eq!(bad.status, Status::Unsupported);
+    assert_eq!(bad.status, Status::Invalid);
+    assert_eq!(bad.connection, None);
     assert_eq!(field(bad, "address").skip, Some(Skip::Invalid));
+    // The refusal names the setting that Lithe refuses, not the address.
+    let user = find(&report, "user");
+    assert_eq!(user.status, Status::Invalid);
+    assert_eq!(user.connection, None);
+    assert_eq!(field(user, "user").skip, Some(Skip::Invalid));
+    assert_eq!(field(user, "user").lithe, None);
+    assert_eq!(field(user, "address").skip, None);
+    assert_eq!(field(user, "address").lithe, Some("host"));
+}
+
+#[test]
+fn windows_domain_users_are_imported() {
+    let database = Database::new(SUPPORTED_FORMAT);
+    database.host(
+        "prefix",
+        0,
+        json!({ "label": "Prefix", "address": "192.0.2.30", "user": "CONTOSO\\admin" }),
+    );
+    database.host(
+        "suffix",
+        1,
+        json!({ "label": "Suffix", "address": "192.0.2.31", "user": "admin@contoso.example" }),
+    );
+    let report = database.report(&Connections::default());
+    for (key, user) in [
+        ("prefix", "CONTOSO\\admin"),
+        ("suffix", "admin@contoso.example"),
+    ] {
+        let candidate = find(&report, key);
+        assert_eq!(candidate.status, Status::Importable, "host {key}");
+        let connection = candidate.connection.as_ref().expect("imported connection");
+        assert_eq!(connection.user.as_deref(), Some(user), "host {key}");
+    }
 }
 
 #[test]

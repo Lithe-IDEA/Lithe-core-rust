@@ -158,8 +158,11 @@ pub enum Status {
     Partial,
     /// A saved connection probably reaches the same host already.
     Exists,
-    /// The host is not an SSH host, or Lithe refuses its address.
+    /// The host is not an SSH host.
     Unsupported,
+    /// An SSH host with a setting Lithe refuses; the field is marked
+    /// [`Skip::Invalid`].
+    Invalid,
 }
 
 /// Why a Motty setting is not imported.
@@ -222,7 +225,8 @@ pub struct Candidate {
     /// The saved connection that probably reaches the same host.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub existing_id: Option<String>,
-    /// The connection the import saves; `None` when it is unsupported.
+    /// The connection the import saves; `None` when it is unsupported or
+    /// invalid.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub connection: Option<SshConnection>,
     /// Every setting the host has, imported or not.
@@ -438,19 +442,29 @@ fn candidate(
     }
 
     let connection = connection.normalized();
-    let valid = ssh && connection.check().is_ok();
-    if ssh && !valid {
-        if let Some(field) = fields.iter_mut().find(|field| field.motty == "address") {
+    let refused = if ssh { connection.check().err() } else { None };
+    if let Some(error) = &refused {
+        // Each imported field names the connection field it becomes, which
+        // is the field a refusal names; a refusal of a field Motty does not
+        // set falls back to the address.
+        let blamed = fields
+            .iter()
+            .position(|field| field.lithe == Some(error.field))
+            .or_else(|| fields.iter().position(|field| field.motty == "address"));
+        if let Some(field) = blamed.map(|index| &mut fields[index]) {
             field.lithe = None;
             field.skip = Some(Skip::Invalid);
         }
     }
+    let valid = ssh && refused.is_none();
     let existing_id = valid
         .then(|| connections.existing(&connection))
         .flatten()
         .map(|entry| entry.id().to_owned());
-    let status = if !valid {
+    let status = if !ssh {
         Status::Unsupported
+    } else if !valid {
+        Status::Invalid
     } else if existing_id.is_some() {
         Status::Exists
     } else if fields.iter().any(|field| field.skip.is_some()) {
