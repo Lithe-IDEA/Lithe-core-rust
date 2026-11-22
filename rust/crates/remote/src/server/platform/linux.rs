@@ -76,6 +76,36 @@ pub(crate) fn case_sensitive(path: &Path) -> Option<bool> {
     unix::probe_case_sensitivity(path)
 }
 
+/// Where the kernel lists `binfmt_misc` entries.
+const BINFMT_MISC: &str = "/proc/sys/fs/binfmt_misc";
+
+/// Entries WSL registers to start Windows programs. Some WSL releases name it
+/// `WSLInterop-late` on distributions that run systemd; either or both can
+/// exist.
+const WSL_INTEROP_ENTRIES: [&str; 2] = ["WSLInterop", "WSLInterop-late"];
+
+/// See [`crate::protocol::methods::HostCapabilities::windows_interop`].
+pub(crate) fn windows_interop() -> Option<bool> {
+    windows_interop_in(Path::new(BINFMT_MISC))
+}
+
+/// Reads the WSL entries below `directory`. The first line of a
+/// `binfmt_misc` entry is `enabled` or `disabled`; an entry that cannot be
+/// read is treated as absent.
+fn windows_interop_in(directory: &Path) -> Option<bool> {
+    let mut registered = false;
+    for entry in WSL_INTEROP_ENTRIES {
+        let Ok(text) = std::fs::read_to_string(directory.join(entry)) else {
+            continue;
+        };
+        registered = true;
+        if text.lines().next().map(str::trim) == Some("enabled") {
+            return Some(true);
+        }
+    }
+    registered.then_some(false)
+}
+
 /// Processes whose session id is `session`, read from `/proc/<pid>/stat`.
 pub(crate) fn session_members(session: u32) -> Vec<u32> {
     process_sessions()
@@ -332,5 +362,59 @@ mod tests {
             .unwrap_or_else(|| panic!("{port} not in {ports:?}"));
         assert_eq!(own.pid, Some(std::process::id()));
         assert!(own.process.is_some(), "{own:?}");
+    }
+
+    /// A fresh directory standing in for `/proc/sys/fs/binfmt_misc`, holding
+    /// `entries` as `(name, contents)`.
+    fn binfmt_misc_with(entries: &[(&str, &str)]) -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static SEQUENCE: AtomicU64 = AtomicU64::new(0);
+        let directory = std::env::temp_dir().join(format!(
+            "lithe-remote-binfmt-{}-{}",
+            std::process::id(),
+            SEQUENCE.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(&directory).unwrap();
+        for (name, contents) in entries {
+            std::fs::write(directory.join(name), contents).unwrap();
+        }
+        directory
+    }
+
+    // Contents as WSL leaves them: the state line, then the interpreter.
+    const ENABLED: &str = "enabled\ninterpreter /init\nflags: PF\noffset 0\nmagic 4d5a\n";
+    const DISABLED: &str = "disabled\ninterpreter /init\nflags: PF\noffset 0\nmagic 4d5a\n";
+
+    #[test]
+    fn windows_interop_follows_whichever_wsl_entry_is_enabled() {
+        let check = |entries: &[(&str, &str)], expected: Option<bool>| {
+            let directory = binfmt_misc_with(entries);
+            assert_eq!(windows_interop_in(&directory), expected, "{entries:?}");
+            std::fs::remove_dir_all(&directory).unwrap();
+        };
+        check(&[("WSLInterop", ENABLED)], Some(true));
+        check(&[("WSLInterop", DISABLED)], Some(false));
+        check(&[("WSLInterop-late", ENABLED)], Some(true));
+        check(
+            &[("WSLInterop", DISABLED), ("WSLInterop-late", ENABLED)],
+            Some(true),
+        );
+        check(
+            &[("WSLInterop", DISABLED), ("WSLInterop-late", DISABLED)],
+            Some(false),
+        );
+        // Not a state the kernel writes; a registered entry still counts.
+        check(&[("WSLInterop", "unexpected\n")], Some(false));
+        // Other interpreters do not make a host WSL.
+        check(&[("python3.12", ENABLED), ("status", "enabled\n")], None);
+    }
+
+    #[test]
+    fn windows_interop_is_unknown_without_binfmt_misc() {
+        let directory = binfmt_misc_with(&[]);
+        assert_eq!(windows_interop_in(&directory), None);
+        std::fs::remove_dir_all(&directory).unwrap();
+        assert_eq!(windows_interop_in(&directory), None);
     }
 }

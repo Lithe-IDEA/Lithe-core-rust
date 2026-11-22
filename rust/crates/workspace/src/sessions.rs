@@ -164,6 +164,10 @@ pub struct OpenedSession {
     host_name: String,
     user_name: Option<String>,
     home_directory: Option<String>,
+    /// Whether the host can start Windows programs through WSL
+    /// interoperability; `null` outside WSL. Shown to the user only: a WSL
+    /// host gets no more trust than any other (S31).
+    windows_interop: Option<bool>,
     /// Names the persistent session on the host, for a later `resume`.
     session_key: String,
     /// Secret a later `resume` presents; the client stores it like a
@@ -1074,6 +1078,7 @@ fn connect_logged(
             host_name: capabilities.host_name,
             user_name: capabilities.user_name,
             home_directory: capabilities.home_directory,
+            windows_interop: capabilities.windows_interop,
             session_key,
             session_token: info.session_token,
             resumed: info.resumed,

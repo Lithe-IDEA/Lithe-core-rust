@@ -349,7 +349,7 @@ connection with the same key starts a fresh session.
 
 `server.hello` returns `host` with `os` (`linux` / `macos`), `arch`
 (`x86_64` / `aarch64`), `hostName`, `userName`, `userId`, `homeDirectory`,
-`defaultShell`, `pathSeparator`, `process.orphanProtection`
+`defaultShell`, `pathSeparator`, `windowsInterop`, `process.orphanProtection`
 (`parentDeathSignal` / `serverShutdown`), `watch.backend`
 (`inotify` / `fsevents`), `watch.directoryLimit` and the sorted `features`
 list. Clients branch on these facts, never on `os` alone, and check
@@ -359,6 +359,14 @@ list. Clients branch on these facts, never on `os` alone, and check
 display only. `userId` is the numeric account from the kernel; clients key
 per-account state, such as workspace trust, by it. Servers that predate it omit
 the field.
+
+`windowsInterop` is `true` when the host can start Windows programs through
+WSL interoperability, that is when a `binfmt_misc` entry WSL registers
+(`WSLInterop`, or `WSLInterop-late` on some WSL releases with systemd) is
+enabled, and `false` when such an entry exists but none is enabled. The field
+is omitted when there is no such entry: outside WSL, on macOS, in a container
+that does not see it, and from servers that predate it. WSL is not a security
+boundary, so clients show the value and never relax trust for it.
 
 ## Error codes
 
