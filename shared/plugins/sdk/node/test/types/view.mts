@@ -57,6 +57,7 @@ const region: ViewNode[] = [
   { type: 'toggle', id: 'plt', label: 'Build PLT', setting: 'buildPlt' },
   { type: 'setting', setting: 'dialyzer' },
   { type: 'tool', tool: 'erlang' },
+  { type: 'tool', id: 'otpPicker', tool: 'erlang', choose: true },
   { type: 'button', id: 'clean', text: 'Clean', action: 'cleanPlt' },
 ];
 void region;

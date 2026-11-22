@@ -1639,7 +1639,8 @@ impl Context {
     }
 
     /// The `{ contextID, generation }` of the window the call came from;
-    /// `None` for calls without one, such as from the plugin's own UI.
+    /// `None` for calls from no workspace, such as a view or page shown
+    /// without one.
     pub fn workspace_context(&self) -> Option<&WorkspaceContext> {
         self.workspace_context.as_ref()
     }

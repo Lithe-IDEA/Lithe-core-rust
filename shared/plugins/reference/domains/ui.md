@@ -9,7 +9,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 清单字段 | `ui.toolWindows`、`ui.commands`（可选 `icon`） |
-| 能力版本 | `ui` 0；插件视图的结果形状见 [`plugin-ui.schema.json`](../../contract/v1/plugin-ui.schema.json)，不另带版本号。见[版本对照](../capabilities-and-versions.md#能力版本requires) |
+| 能力版本 | `ui` 0；`ui` 1 加上设置区域里的工具选择器（工具行的 `choose`）。插件视图的结果形状见 [`plugin-ui.schema.json`](../../contract/v1/plugin-ui.schema.json)，不另带版本号。见[版本对照](../capabilities-and-versions.md#能力版本requires) |
 | 协议 | 网页通过 `functions.*` 调用[插件后端](backend.md)；插件视图由宿主经 `lithe/function/invoke` 按事件调用视图函数，每个结果交给 Core 命令 `plugins.ui.applyResult` 校验；没有窗口的命令通过 `litheFunctions` 0 的 `lithe/host/commands/didRun` 通知后端 |
 | API 编号 | API-02、03、13、14、17，见 [API 总表](../api-catalog.md#现在能用的-api) |
 | 权限 | `ui.contribute`；网页加 `ui.web`；没有窗口的命令加 `backend.launch`；后端弹出消息用 `window.messages` |
@@ -21,7 +21,7 @@
 - **工具窗口**：1–64 个。每个窗口有稳定的 `id`、`title`、初始 `placement`（`left`、`bottom` 或 `right`）、整数 `order`（默认 0），以及且只能有一种内容：`text`（纯文本）、`web`（包内网页）或 `view`（插件视图）。
 - **命令**：最多 128 个，`placements` 非空，取值为 `commandPalette`、`toolbar`、`menu`。带 `toolWindowID` 的命令打开同一插件的一个窗口；省略 `toolWindowID` 的命令只通知后端，此时 `toolWindows` 可以为空或省略。
 - **网页窗口**：`web.entry` 是包内 `.html` 文件的相对路径，需要 `ui.web` 权限。网页的桥接和生命周期见[网页内容](../../contract/v1/README.md#web-content)。
-- **插件视图**：`view.function` 是插件后端的私有函数，清单需要 `backend`、`ui` 0 和 `ui.contribute` 权限。宿主按事件（`open`、`click`、`change`、`select`、`viewport` 等）调用它，函数返回整个视图或按节点 ID 的补丁。一个视图最多 512 个界面节点、深度 16、2000 个树项和 8 个画布，每个画布最多 2000 个节点；超出预算或违反界面规则的结果整体拒绝，宿主保留上一版视图并显示错误和重试。工具窗口里不能绑定设置，设置区域里不能放树。官方 SDK 都用 `view(id, handler)`（Go 是 `View(id, handler)`）声明视图函数（[Node.js](../../sdk/node/README.md#plugin-views)、[Rust](../../sdk/rust/README.md#plugin-views)、[Go](../../sdk/go/README.md#plugin-views)、[Java](../../sdk/java/README.md#plugin-views)）。
+- **插件视图**：`view.function` 是插件后端的私有函数，清单需要 `backend`、`ui` 0 和 `ui.contribute` 权限。宿主按事件（`open`、`click`、`change`、`select`、`viewport` 等）调用它，为某个工作区显示的视图调用时带着该窗口的工作区上下文，函数返回整个视图或按节点 ID 的补丁。一个视图最多 512 个界面节点、深度 16、2000 个树项和 8 个画布，每个画布最多 2000 个节点；超出预算或违反界面规则的结果整体拒绝，宿主保留上一版视图并显示错误和重试。工具窗口里不能绑定设置，设置区域里不能放树。设置区域里的工具行带 `choose` 时是该工具的选择器，需要 `ui` 1。官方 SDK 都用 `view(id, handler)`（Go 是 `View(id, handler)`）声明视图函数（[Node.js](../../sdk/node/README.md#plugin-views)、[Rust](../../sdk/rust/README.md#plugin-views)、[Go](../../sdk/go/README.md#plugin-views)、[Java](../../sdk/java/README.md#plugin-views)）。
 - **没有窗口的命令**：需要 `backend`（清单 `requires`）、`ui.contribute` 和 `backend.launch` 权限，以及 `onCommand:<command-id>` 激活事件。`commands/didRun` 只是事件，不代表命令的业务动作成功。
 - 所有 ID 以插件 ID 加点开头。标题最多 256 字节，窗口文本最多 65536 字节，按原样显示，不作为 HTML 或脚本执行。
 
@@ -65,7 +65,7 @@ A plugin can place tool windows and commands in the workbench. The window shell 
 | Item | Value |
 | --- | --- |
 | Manifest fields | `ui.toolWindows`, `ui.commands` (optional `icon`) |
-| Capability versions | `ui` 0; the shape of plugin view results is [`plugin-ui.schema.json`](../../contract/v1/plugin-ui.schema.json), which carries no version of its own. See [versions](../capabilities-and-versions.md#capability-versions-requires) |
+| Capability versions | `ui` 0; `ui` 1 adds the tool picker in settings regions (`choose` on a tool row). The shape of plugin view results is [`plugin-ui.schema.json`](../../contract/v1/plugin-ui.schema.json), which carries no version of its own. See [versions](../capabilities-and-versions.md#capability-versions-requires) |
 | Protocols | Pages call the [plugin backend](backend.md) through `functions.*`; for a plugin view the host calls the view function through `lithe/function/invoke` once per event and passes each result to the Core command `plugins.ui.applyResult`; a command without a window notifies the backend with `lithe/host/commands/didRun` (`litheFunctions` 0) |
 | API IDs | API-02, 03, 13, 14, 17; see the [API catalog](../api-catalog.md#apis-usable-now) |
 | Permissions | `ui.contribute`; `ui.web` for web pages; `backend.launch` for a command without a window; `window.messages` for messages shown by the backend |
@@ -77,7 +77,7 @@ A plugin can place tool windows and commands in the workbench. The window shell 
 - **Tool windows**: 1–64. Each has a stable `id`, `title`, initial `placement` (`left`, `bottom`, or `right`), integer `order` (default 0), and exactly one kind of content: `text` (plain text), `web` (a packaged page), or `view` (a plugin view).
 - **Commands**: up to 128. `placements` is nonempty and takes `commandPalette`, `toolbar`, or `menu`. A command with `toolWindowID` opens one of the same plugin's windows. A command without `toolWindowID` only notifies the backend; `toolWindows` may then be empty or omitted.
 - **Web windows**: `web.entry` is a package-relative `.html` path and requires the `ui.web` permission. The bridge and lifecycle are in [Web content](../../contract/v1/README.md#web-content).
-- **Plugin views**: `view.function` is a private function of the plugin's backend; the manifest needs `backend`, `ui` 0, and the `ui.contribute` permission. The host calls it once per event (`open`, `click`, `change`, `select`, `viewport`, and so on), and it returns a whole view or patches by node ID. A view holds at most 512 UI nodes, depth 16, 2000 tree items and 8 canvases of at most 2000 nodes each; a result over budget or against a surface rule is refused whole, and the host keeps the last view with an error and Retry. A tool window cannot bind settings, and a settings region cannot show a tree. All official SDKs declare a view function with `view(id, handler)` (`View(id, handler)` in Go) ([Node.js](../../sdk/node/README.md#plugin-views), [Rust](../../sdk/rust/README.md#plugin-views), [Go](../../sdk/go/README.md#plugin-views), [Java](../../sdk/java/README.md#plugin-views)).
+- **Plugin views**: `view.function` is a private function of the plugin's backend; the manifest needs `backend`, `ui` 0, and the `ui.contribute` permission. The host calls it once per event (`open`, `click`, `change`, `select`, `viewport`, and so on), with the window's workspace context when the view is shown for a workspace, and it returns a whole view or patches by node ID. A view holds at most 512 UI nodes, depth 16, 2000 tree items and 8 canvases of at most 2000 nodes each; a result over budget or against a surface rule is refused whole, and the host keeps the last view with an error and Retry. A tool window cannot bind settings, and a settings region cannot show a tree. A tool row with `choose` in a settings region is the tool's picker and needs `ui` 1. All official SDKs declare a view function with `view(id, handler)` (`View(id, handler)` in Go) ([Node.js](../../sdk/node/README.md#plugin-views), [Rust](../../sdk/rust/README.md#plugin-views), [Go](../../sdk/go/README.md#plugin-views), [Java](../../sdk/java/README.md#plugin-views)).
 - **Commands without a window**: require `backend` (in `requires`), `ui.contribute`, and `backend.launch`, plus the `onCommand:<command-id>` activation event. `commands/didRun` is an event; it does not show that the command's business action succeeded.
 - Every ID starts with the plugin ID and a dot. Titles are at most 256 bytes and window text at most 65536 bytes; text is shown literally and never evaluated as HTML or script.
 

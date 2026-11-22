@@ -121,6 +121,12 @@
       "expected": {"status": "rejected", "field": "result.view[0]"}
     },
     {
+      "name": "a tool picker needs ui 1, which this manifest does not declare",
+      "surface": {"settingRegionID": "overview"},
+      "result": {"view": [{"type": "tool", "tool": "node", "choose": true}]},
+      "expected": {"status": "rejected", "field": "result.view[0].choose"}
+    },
+    {
       "name": "a patch that misses refuses the whole result",
       "surface": {"toolWindowID": "dev.lithe.fixture.view-panel.explorer"},
       "view": [{"type": "label", "id": "count", "text": "2 modules"}],
