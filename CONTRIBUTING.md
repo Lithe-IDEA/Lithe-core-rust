@@ -63,7 +63,7 @@ node --test scripts/rust-core/*.test.mjs                  # CI 脚本自己的�
 cargo test --manifest-path rust/Cargo.toml -p lithe-platform -p lithe-platform-tests   # 在 macOS 或 Windows 上运行平台测试
 ```
 
-手边没有 Windows 时，至少运行一次 `cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets --target x86_64-pc-windows-msvc -- -D warnings`，确认 Windows 代码能编译。
+手边没有 Windows 时，至少运行一次 `LIBSQLITE3_SYS_USE_PKG_CONFIG=1 cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets --target x86_64-pc-windows-msvc -- -D warnings`，确认 Windows 代码能编译。环境变量让 SQLite 改为链接系统库、不编译自带的 C 源码：编译它需要 MSVC 工具，macOS 和 Linux 上没有；clippy 只检查不链接，不受影响。
 
 ---
 
@@ -132,4 +132,4 @@ node --test scripts/rust-core/*.test.mjs                  # the CI scripts' own 
 cargo test --manifest-path rust/Cargo.toml -p lithe-platform -p lithe-platform-tests   # platform tests on macOS or Windows
 ```
 
-Without a Windows host, at least run `cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets --target x86_64-pc-windows-msvc -- -D warnings` to confirm the Windows code compiles.
+Without a Windows host, at least run `LIBSQLITE3_SYS_USE_PKG_CONFIG=1 cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets --target x86_64-pc-windows-msvc -- -D warnings` to confirm the Windows code compiles. The variable makes SQLite link a system library instead of compiling its bundled C source, which needs the MSVC tools that macOS and Linux do not have; clippy only checks and never links, so this does not matter.

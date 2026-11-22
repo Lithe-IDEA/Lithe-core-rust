@@ -18,6 +18,9 @@ impl Directory {
         Self(path)
     }
 
+    // Writing files, `lines` and `DEFAULTS` serve only the tests that run
+    // `fake_ssh`, a shell script, so they are Unix only like those tests.
+    #[cfg(unix)]
     fn write(&self, relative: &str, text: &str) {
         let path = self.0.join(relative);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -53,10 +56,12 @@ fn fake_ssh(directory: &Directory, configured: &str, baseline: &str) -> String {
     program.display().to_string()
 }
 
+#[cfg(unix)]
 fn lines(values: &[&str]) -> String {
     values.join("\n")
 }
 
+#[cfg(unix)]
 const DEFAULTS: &[&str] = &[
     "user localdev",
     "port 22",
