@@ -307,11 +307,8 @@ fn remote_build_detects_a_root_opened_through_a_host_symbolic_link() {
 
 impl Drop for HostFixture {
     fn drop(&mut self) {
-        let _ = crate::execute_json(&json!({
-            "id": test_support::unique_id(), "command": "workspace.searchIndex.invalidate", "timeoutMilliseconds": 1_000,
-            "remoteWorkspace": {"sessionId": self.id, "localRoot": self.root.join("placeholder"), "remoteRoot": self.root.join("host")},
-            "payload": {"root": self.root.join("placeholder")}
-        }).to_string());
+        // Unregistering runs the session-end hooks, which drop the search
+        // indexes the session built.
         test_support::unregister(&self.id);
         let _ = self.socket.shutdown(Shutdown::Both);
         if self.done.recv_timeout(STEP + STEP).is_ok() {
@@ -463,6 +460,69 @@ fn remote_search_reads_host_content_and_applies_incremental_updates_without_loca
     ))
     .unwrap();
     assert_eq!(local["ok"], true, "{local}");
+}
+
+// Every session ends with a new id, so indexes keyed by an ended session can
+// never be reached again and must not stay cached (1lck/Lithe-IDEA#2277).
+#[test]
+fn ending_a_remote_session_releases_its_search_indexes() {
+    let search = |host: &HostFixture| {
+        std::fs::write(host.root.join("host/Indexed.txt"), "IndexedWord\n").unwrap();
+        host.call("workspace.searchEverywhere", json!({"query": "Indexed"}));
+        host.call("workspace.search", json!({"query": "IndexedWord"}));
+        assert!(lithe_project::cached_indexes_for_session(&host.id) > 0);
+    };
+
+    // `remote.disconnect` releases the indexes of the session it closes.
+    let closed = HostFixture::new();
+    search(&closed);
+    let disconnected: Value = serde_json::from_str(&crate::execute_json(
+        &json!({
+            "id": test_support::unique_id(), "command": "remote.disconnect",
+            "payload": {"sessionId": closed.id, "programs": "end"}
+        })
+        .to_string(),
+    ))
+    .unwrap();
+    assert_eq!(disconnected["ok"], true, "{disconnected}");
+    assert_eq!(lithe_project::cached_indexes_for_session(&closed.id), 0);
+
+    // A request that already held the host when the session ended still
+    // builds its index, but must not leave it cached.
+    let racing = HostFixture::new();
+    search(&racing);
+    let held = {
+        let workspace: lithe_workspace::Workspace = serde_json::from_value(json!({
+            "sessionId": racing.id,
+            "localRoot": racing.root.join("placeholder"),
+            "remoteRoot": racing.root.join("host"),
+        }))
+        .unwrap();
+        let _scope = lithe_workspace::Scope::begin(Some(workspace)).unwrap();
+        lithe_workspace::current().unwrap()
+    };
+    let link = test_support::forget_keeping_link(&racing.id);
+    assert_eq!(lithe_project::cached_indexes_for_session(&racing.id), 0);
+    let found = {
+        let _scope = lithe_workspace::enter(Some(held));
+        lithe_project::search(
+            serde_json::from_value(json!({
+                "root": racing.root.join("placeholder"),
+                "query": "IndexedWord",
+            }))
+            .unwrap(),
+        )
+        .unwrap()
+    };
+    assert!(
+        found
+            .matches
+            .iter()
+            .any(|item| item.kind == "content" && item.path == "Indexed.txt"),
+        "the held host must still search the host"
+    );
+    assert_eq!(lithe_project::cached_indexes_for_session(&racing.id), 0);
+    drop(link);
 }
 
 #[test]

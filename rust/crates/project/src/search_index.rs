@@ -51,6 +51,8 @@ pub(crate) struct SearchIndexStats {
 struct IndexKey {
     root: PathBuf,
     host: PathBuf,
+    /// The remote session the index reads through; `None` for this machine.
+    session: Option<String>,
     hidden_directories: Vec<String>,
     hidden_file_patterns: Vec<String>,
     names_only: bool,
@@ -70,13 +72,29 @@ type IndexSlot = Arc<std::sync::Mutex<Option<SharedIndex>>>;
 static INDEX_CACHE: OnceLock<std::sync::Mutex<HashMap<IndexKey, IndexSlot>>> = OnceLock::new();
 
 fn cache() -> &'static std::sync::Mutex<HashMap<IndexKey, IndexSlot>> {
-    INDEX_CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+    INDEX_CACHE.get_or_init(|| {
+        // Every session ends with a new id, so without this a process that
+        // reconnects or reopens remote workspaces keeps one content index and
+        // one name index per session until it exits (1lck/Lithe-IDEA#2277).
+        workspace::sessions::on_session_end(release_session);
+        std::sync::Mutex::new(HashMap::new())
+    })
+}
+
+/// Drops every index built through `session`, including in-flight builds,
+/// which can then no longer publish into the cache.
+fn release_session(session: &str) {
+    let Ok(mut indexes) = cache().lock() else {
+        return;
+    };
+    indexes.retain(|key, _| key.session.as_deref() != Some(session));
 }
 
 fn key(root: &Path, rules: &VisibilityRules) -> IndexKey {
     IndexKey {
         root: root.to_path_buf(),
         host: workspace::identity_key(root),
+        session: workspace::current().map(|host| host.session_id().to_owned()),
         hidden_directories: rules.hidden_directories.clone(),
         hidden_file_patterns: rules.hidden_file_patterns.clone(),
         names_only: false,
@@ -120,10 +138,11 @@ fn get_index(
     rules: &VisibilityRules,
     names_only: bool,
 ) -> Result<SharedIndex, CoreError> {
+    let mut cache_key = key(root, rules);
+    cache_key.names_only = names_only;
+    let session = cache_key.session.clone();
     let slot = {
         let mut indexes = cache().lock().map_err(|_| index_lock_error())?;
-        let mut cache_key = key(root, rules);
-        cache_key.names_only = names_only;
         // Keep one visibility variant per workspace/source, including in-flight builds.
         indexes.retain(|existing, _| {
             existing.host != cache_key.host
@@ -136,6 +155,12 @@ fn get_index(
                 .or_insert_with(|| Arc::new(std::sync::Mutex::new(None))),
         )
     };
+    // The session may have ended while this request still held its host.
+    // Checking after the insert closes the gap: either the check sees the
+    // session gone, or its end hook runs after the insert and removes it.
+    if let Some(session) = session.filter(|session| !workspace::sessions::is_registered(session)) {
+        release_session(&session);
+    }
     let mut index = slot.lock().map_err(|_| index_lock_error())?;
     if let Some(index) = index.as_ref() {
         return Ok(Arc::clone(index));
@@ -149,6 +174,18 @@ fn get_index(
 
 fn index_lock_error() -> CoreError {
     CoreError::new(ErrorCode::Unknown, "Search index lock was poisoned")
+}
+
+/// Counts cached indexes, built or still building, that read through
+/// `session`, so lithe-core's tests can prove that ending a session releases them.
+#[cfg(feature = "test-support")]
+pub fn cached_indexes_for_session(session: &str) -> usize {
+    cache().lock().map_or(0, |indexes| {
+        indexes
+            .keys()
+            .filter(|key| key.session.as_deref() == Some(session))
+            .count()
+    })
 }
 
 pub(crate) fn invalidate_root(root: &Path) {

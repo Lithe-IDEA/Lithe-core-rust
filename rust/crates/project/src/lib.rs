@@ -36,6 +36,8 @@ pub use html_preview::*;
 pub use markdown::*;
 pub use markdown_outline::*;
 pub use markdown_reference::*;
+#[cfg(feature = "test-support")]
+pub use search_index::cached_indexes_for_session;
 pub use search_paging::{project_search_page, search_page, SearchPageRequest};
 pub use search_preferences::*;
 

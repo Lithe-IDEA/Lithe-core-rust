@@ -1,7 +1,7 @@
 //! Hooks for `lithe-core`'s end-to-end tests, which drive real Core commands
 //! against an in-process host server instead of an SSH child.
 
-use crate::sessions::{lookup, nonce, registry, Connection, ConnectionTransport};
+use crate::sessions::{ended, lookup, nonce, registry, Connection, ConnectionTransport};
 use lithe_remote::client::trust::Target;
 use lithe_remote::client::{RemoteSession, TransportChain};
 use std::sync::Arc;
@@ -32,10 +32,32 @@ pub fn drop_link(id: &str) {
     lookup(id).unwrap().close();
 }
 
-/// Removes the session from the registry and shuts it down.
+/// Removes the session from the registry, runs the session-end hooks and
+/// shuts it down, as `remote.disconnect` does.
 pub fn unregister(id: &str) {
-    if let Some(connection) = registry().lock().unwrap().remove(id) {
+    let connection = registry().lock().unwrap().remove(id);
+    if let Some(connection) = connection {
+        ended(id);
         connection.close();
+    }
+}
+
+/// Removes the session from the registry and runs the session-end hooks but
+/// leaves its link open, as a request that already holds the session's host
+/// sees when `remote.disconnect` runs at the same time. Dropping the result
+/// closes the link.
+pub fn forget_keeping_link(id: &str) -> KeptLink {
+    let connection = registry().lock().unwrap().remove(id).unwrap();
+    ended(id);
+    KeptLink(connection)
+}
+
+/// An unregistered session's link, closed when dropped.
+pub struct KeptLink(Arc<Connection>);
+
+impl Drop for KeptLink {
+    fn drop(&mut self) {
+        self.0.close();
     }
 }
 
