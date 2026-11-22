@@ -6214,7 +6214,13 @@ ends with its programs once the server's idle timeout (ten minutes) passes
 without a client; one whose programs were kept lasts until they end. `remote.closeAll` (no payload, returning
 `{ closed }` with the number of connections) ends all of them; the host calls
 it while quitting because exiting without it can leave the OpenSSH tree and
-the remote server running. Requests over it take `sessionId`:
+the remote server running. Every session id is new, so when a connection
+leaves Core — through `remote.disconnect`, `remote.closeAll`, or a broken link
+that makes a request return `connection_closed` — Core also drops the search
+indexes built through it, including one a request that still held the
+session was building; the client does not call
+`workspace.searchIndex.invalidate` for them, and cannot once the session is
+gone. Requests over it take `sessionId`:
 
 | Command | Request | Result |
 | --- | --- | --- |

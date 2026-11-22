@@ -152,7 +152,9 @@ impl Host {
             .unwrap_or_else(|| path.to_owned())
     }
 
-    pub(crate) fn identity(&self) -> &str {
+    /// The id of the session this host belongs to, which keys process-wide
+    /// state released through [`crate::sessions::on_session_end`].
+    pub fn session_id(&self) -> &str {
         &self.workspace.session_id
     }
 }
@@ -221,7 +223,7 @@ pub fn remote_path(path: &Path) -> PathBuf {
 /// Includes host identity in process-local repository coordination keys.
 pub fn identity_key(path: &Path) -> PathBuf {
     current()
-        .map(|host| PathBuf::from(host.identity()).join(path.strip_prefix("/").unwrap_or(path)))
+        .map(|host| PathBuf::from(host.session_id()).join(path.strip_prefix("/").unwrap_or(path)))
         .unwrap_or_else(|| path.to_owned())
 }
 

@@ -373,6 +373,54 @@ pub(crate) fn lookup(id: &str) -> Result<Arc<Connection>, CoreError> {
         })
 }
 
+/// Releases process-wide state another crate keys by a session id, such as
+/// the search indexes `lithe-project` builds over a remote workspace.
+pub type SessionEndHook = fn(&str);
+
+fn session_end_hooks() -> &'static Mutex<Vec<SessionEndHook>> {
+    static HOOKS: OnceLock<Mutex<Vec<SessionEndHook>>> = OnceLock::new();
+    HOOKS.get_or_init(Mutex::default)
+}
+
+/// Runs `hook` with the id of every session that leaves the registry from now
+/// on: `remote.disconnect`, a broken link that forgets the session, and
+/// application exit. Session ids are never reused, so state keyed by an ended
+/// id can never be reached again. Registering a hook twice runs it once.
+///
+/// A caller that may insert state for a session after the session ended must
+/// insert first and then check [`is_registered`]: either the check sees the
+/// session gone, or the hook runs after the insert and removes it.
+pub fn on_session_end(hook: SessionEndHook) {
+    let mut hooks = session_end_hooks()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if !hooks
+        .iter()
+        .any(|existing| std::ptr::fn_addr_eq(*existing, hook))
+    {
+        hooks.push(hook);
+    }
+}
+
+/// Whether `id` names a session that is still registered.
+pub fn is_registered(id: &str) -> bool {
+    registry()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .contains_key(id)
+}
+
+/// Runs the session-end hooks for `id`, which has just left the registry.
+pub(crate) fn ended(id: &str) {
+    let hooks = session_end_hooks()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone();
+    for hook in hooks {
+        hook(id);
+    }
+}
+
 /// The key of a workspace's machine-local records, its trust and its port
 /// records: the connection's target and the workspace's real path as the host
 /// resolves it, so a symbolic link or another spelling of the path never
@@ -405,11 +453,12 @@ pub(crate) fn workspace_key(
 /// Removes a connection whose session ended and closes it in the background,
 /// so the host reconnects instead of retrying a dead session.
 pub(crate) fn forget(id: &str) {
-    if let Some(connection) = registry()
+    let connection = registry()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .remove(id)
-    {
+        .remove(id);
+    if let Some(connection) = connection {
+        ended(id);
         std::thread::spawn(move || connection.close());
     }
 }
@@ -1167,6 +1216,7 @@ pub fn disconnect(request: DisconnectRequest) -> DisconnectResult {
     let Some(connection) = connection else {
         return DisconnectResult::default();
     };
+    ended(&request.session_id);
     let kept = match request.programs {
         ProgramsOnClose::End => {
             connection.close();
@@ -1199,13 +1249,19 @@ pub(crate) fn close_registered() -> usize {
 /// Drains the owned registry, allowing isolated lifecycle tests without closing
 /// unrelated sessions concurrently exercising the application registry.
 pub(crate) fn close_registry(connections: &Mutex<HashMap<String, Arc<Connection>>>) -> usize {
-    let connections: Vec<Arc<Connection>> = connections
+    let connections: Vec<(String, Arc<Connection>)> = connections
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .drain()
-        .map(|(_, connection)| connection)
         .collect();
     let count = connections.len();
+    let connections: Vec<Arc<Connection>> = connections
+        .into_iter()
+        .map(|(id, connection)| {
+            ended(&id);
+            connection
+        })
+        .collect();
     let closers: Vec<_> = connections
         .into_iter()
         .map(|connection| std::thread::spawn(move || connection.close()))

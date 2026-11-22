@@ -6,7 +6,8 @@ license = "Apache-2.0"
 description = "Project services for Lithe: workspace files, indexing policy, search, local history, document rendering and Markdown outlines"
 
 [features]
-# Lets lithe-core's tests trace which directories a workspace scan enumerates.
+# Lets lithe-core's tests trace which directories a workspace scan enumerates and count
+# the search indexes a remote session still holds.
 test-support = []
 
 [dependencies]
