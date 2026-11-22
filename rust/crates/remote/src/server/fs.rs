@@ -180,7 +180,17 @@ fn read_file(params: ReadFileParams) -> Result<ReadFileResult, RemoteError> {
         return Err(too_large(params.length));
     }
     let path = host_path(&params.path)?;
-    let mut file = File::open(&path).map_err(|error| io_error(error, &params.path))?;
+    // Opening a FIFO for reading blocks until a writer appears, which would
+    // hold a worker thread forever. O_NONBLOCK makes that open return at once,
+    // and checking the opened handle (not the path) means the type check and
+    // the read cover the same file even if the path is replaced in between.
+    // O_NOCTTY keeps a terminal device from becoming the daemon's controlling
+    // terminal. O_NONBLOCK has no effect on reads from a regular file.
+    let mut file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY)
+        .open(&path)
+        .map_err(|error| io_error(error, &params.path))?;
     let metadata = file
         .metadata()
         .map_err(|error| io_error(error, &params.path))?;
@@ -188,6 +198,12 @@ fn read_file(params: ReadFileParams) -> Result<ReadFileResult, RemoteError> {
         return Err(RemoteError::new(
             ErrorCode::IsADirectory,
             "cannot read a directory",
+        ));
+    }
+    if !metadata.is_file() {
+        return Err(RemoteError::new(
+            ErrorCode::Unsupported,
+            "sockets, FIFOs and devices cannot be read",
         ));
     }
     file.seek(SeekFrom::Start(params.offset))
@@ -644,6 +660,74 @@ mod tests {
         let temporary = directory.join("secret.tmp");
         let file = create_temporary(&temporary, Some(&replaced)).unwrap();
         assert_eq!(file.metadata().unwrap().permissions().mode() & 0o777, 0o600);
+    }
+
+    fn read_whole(path: &Path) -> Result<ReadFileResult, RemoteError> {
+        read_file(ReadFileParams {
+            path: path.to_str().unwrap().to_owned(),
+            offset: 0,
+            length: 16,
+        })
+    }
+
+    // A FIFO with no writer must be refused at once instead of blocking the
+    // worker thread in open(2) until some process opens the other end.
+    #[test]
+    fn reading_a_fifo_without_a_writer_is_refused_without_blocking() {
+        let directory = std::env::temp_dir().join(format!(
+            "lithe-remote-fs-fifo-{}-{}",
+            std::process::id(),
+            TEMPORARY_FILE_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let _cleanup = RemoveOnDrop(directory.clone());
+        let fifo = directory.join("pipe");
+        let status = std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .unwrap();
+        assert!(status.success());
+
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let reader_path = fifo.clone();
+        let reader = std::thread::spawn(move || {
+            let _ = sender.send(read_whole(&reader_path).map(|_| ()));
+        });
+        let outcome = match receiver.recv_timeout(std::time::Duration::from_secs(10)) {
+            Ok(outcome) => outcome,
+            Err(_) => {
+                // Release the blocked reader so the thread and directory are
+                // cleaned up before the test fails.
+                drop(OpenOptions::new().write(true).open(&fifo));
+                let _ = reader.join();
+                panic!("fs.readFile blocked on a FIFO without a writer");
+            }
+        };
+        reader.join().unwrap();
+        assert_eq!(outcome.unwrap_err().code, ErrorCode::Unsupported);
+    }
+
+    #[test]
+    fn reading_a_device_is_refused_and_a_regular_file_still_reads() {
+        let error = read_whole(Path::new("/dev/zero")).unwrap_err();
+        assert_eq!(error.code, ErrorCode::Unsupported);
+
+        let directory = std::env::temp_dir().join(format!(
+            "lithe-remote-fs-read-{}-{}",
+            std::process::id(),
+            TEMPORARY_FILE_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let _cleanup = RemoveOnDrop(directory.clone());
+        assert_eq!(
+            read_whole(&directory).unwrap_err().code,
+            ErrorCode::IsADirectory
+        );
+        let file = directory.join("plain");
+        fs::write(&file, b"hello").unwrap();
+        let result = read_whole(&file).unwrap();
+        assert!(result.eof);
+        assert_eq!(decode_bytes(&result.data).unwrap(), b"hello");
     }
 
     struct RemoveOnDrop(PathBuf);
