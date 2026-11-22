@@ -104,6 +104,14 @@ pub enum ErrorCode {
     /// started: building runs the folder's code on this machine. Trusting the
     /// folder and repeating the request builds it.
     DevcontainerUntrustedFolder,
+    /// `remote.attachProcess` names a process the host session no longer
+    /// runs and whose events are gone, or the connection did not resume the
+    /// session that started it. Nothing was attached; its output ends here.
+    RemoteProcessGone,
+    /// `remote.attachProcess` names a process whose events another request
+    /// already receives: the `remote.runProcess` that started it on this
+    /// connection, or an earlier `remote.attachProcess`. Nothing changed.
+    RemoteProcessAttached,
     /// A failure does not fit a more stable cross-platform category.
     Unknown,
 }

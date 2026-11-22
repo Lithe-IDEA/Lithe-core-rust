@@ -230,6 +230,152 @@ fn resuming_after_a_lost_connection_delivers_every_event_exactly_once() {
     assert!(daemon.wait_until_stopped());
 }
 
+/// The standard output of `events` up to the process exit, and its exit code.
+fn output_until_exit(
+    missed: Vec<lithe_remote::client::session::Event>,
+    events: &std::sync::mpsc::Receiver<lithe_remote::client::session::Event>,
+    process_id: u64,
+    mut before_waiting: impl FnMut(&[u8]),
+) -> (Vec<u8>, Option<i32>) {
+    let deadline = Instant::now() + STEP_TIMEOUT;
+    let mut stdout = Vec::new();
+    let mut missed = missed.into_iter();
+    loop {
+        let event = match missed.next() {
+            Some(event) => event,
+            None => {
+                before_waiting(&stdout);
+                events
+                    .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                    .unwrap_or_else(|_| panic!("no exit; output has {} bytes", stdout.len()))
+            }
+        };
+        assert_eq!(event.resource(), Some(("process", process_id)));
+        match event.event.as_str() {
+            methods::EVENT_PROCESS_OUTPUT => {
+                let output: ProcessOutputEvent = event.decode().unwrap();
+                stdout.extend(methods::decode_bytes(&output.data).unwrap());
+            }
+            methods::EVENT_PROCESS_EXIT => {
+                let exit: ProcessExitEvent = event.decode().unwrap();
+                return (stdout, exit.exit_code);
+            }
+            _ => {}
+        }
+    }
+}
+
+// A run window shows a process, the connection drops, and after the
+// reconnection it attaches to the same process: the output produced while
+// disconnected and the live output arrive once each, in order, and nowhere
+// else.
+#[test]
+fn a_reconnected_client_attaches_to_a_running_process_without_a_gap() {
+    let daemon = Daemon::new("attach");
+    let gate = TempDir::new("gate");
+    let (release, written, finish) = (
+        gate.join("release"),
+        gate.join("written"),
+        gate.join("finish"),
+    );
+    let script = format!(
+        "echo before; while [ ! -e '{release}' ]; do sleep 0.05; done; echo during; \
+         touch '{written}'; while [ ! -e '{finish}' ]; do sleep 0.05; done; echo after"
+    );
+    let (session, _events) = daemon.connect(None);
+    let process_id = session.allocate_id();
+    let subscription = session.subscribe("process", process_id);
+    session
+        .request_value(
+            methods::PROCESS_SPAWN,
+            serde_json::json!({"processId": process_id, "argv": ["sh", "-c", script]}),
+            STEP_TIMEOUT,
+        )
+        .unwrap();
+    let first = subscription
+        .recv_timeout(STEP_TIMEOUT)
+        .expect("output before the disconnect");
+    let output: ProcessOutputEvent = first.decode().unwrap();
+    assert_eq!(methods::decode_bytes(&output.data).unwrap(), b"before\n");
+    let shown = first.seq.unwrap();
+    drop(subscription);
+    drop(session);
+    std::fs::write(&release, b"").unwrap();
+    assert!(
+        wait_for_file(&written),
+        "the process did not reach its marker"
+    );
+
+    let (session, events) = daemon.connect_deferred();
+    assert!(session.hello().session.resumed);
+    session.park("process");
+    assert!(!session.resume(Some(shown)).unwrap().truncated);
+    let attachment = session.attach("process", process_id).unwrap();
+    assert!(!attachment.lost);
+    assert_eq!(
+        session.attach("process", process_id).unwrap_err(),
+        lithe_remote::client::session::AttachRefusal::Owned
+    );
+    let mut finished = false;
+    let (stdout, exit_code) = output_until_exit(
+        attachment.missed,
+        &attachment.events,
+        process_id,
+        |stdout| {
+            // Let the process finish only once the disconnected output
+            // arrived, so the rest is live.
+            if !finished && stdout == b"during\n" {
+                std::fs::write(&finish, b"").unwrap();
+                finished = true;
+            }
+        },
+    );
+    assert_eq!(stdout, b"during\nafter\n");
+    assert_eq!(exit_code, Some(0));
+    assert!(
+        events
+            .try_iter()
+            .all(|event| event.resource() != Some(("process", process_id))),
+        "the attached process's events also went to the general channel"
+    );
+    session.shutdown(STEP_TIMEOUT);
+    assert!(daemon.wait_until_stopped());
+}
+
+// A process that finished while nobody was connected is attached to with its
+// remaining output and its exit, and nothing reaches the general channel
+// before the attach.
+#[test]
+fn attaching_to_a_process_that_exited_while_disconnected_replays_its_end() {
+    let daemon = Daemon::new("attach-exited");
+    let (session, _events) = daemon.connect(None);
+    let process = session
+        .spawn(SpawnSpec {
+            argv: argv(&["sh", "-c", "sleep 0.3; echo done"]),
+            ..SpawnSpec::default()
+        })
+        .unwrap();
+    let (process_id, pid) = (process.id, process.pid);
+    drop(process);
+    drop(session);
+    assert!(wait_until_gone(pid), "process {pid} did not finish");
+
+    let (session, events) = daemon.connect_deferred();
+    session.park("process");
+    // Without a remembered position every kept event is replayed.
+    session.resume(None).unwrap();
+    let attachment = session.attach("process", process_id).unwrap();
+    let (stdout, exit_code) =
+        output_until_exit(attachment.missed, &attachment.events, process_id, |_| {});
+    assert_eq!(stdout, b"done\n");
+    assert_eq!(exit_code, Some(0));
+    assert!(events
+        .try_iter()
+        .all(|event| event.resource() != Some(("process", process_id))));
+    session.shutdown(STEP_TIMEOUT);
+    assert!(daemon.wait_until_stopped());
+}
+
 // A session nobody returns to ends once nothing runs in it, so a host does
 // not keep daemons for clients that are gone. Finished programs do not
 // count.

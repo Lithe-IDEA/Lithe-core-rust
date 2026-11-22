@@ -93,6 +93,18 @@ pub(super) fn dispatch(command: RemoteCommand, id: Option<String>, payload: Valu
                 Err(error) => CoreResponse::failure(id, error),
             }
         }
+        RemoteCommand::AttachProcess => {
+            match serde_json::from_value(payload)
+                .map_err(|error| {
+                    CoreError::new(ErrorCode::InvalidRequest, "Invalid process attach request")
+                        .with_details(error.to_string())
+                })
+                .and_then(lithe_workspace::host::attach_process)
+            {
+                Ok(value) => CoreResponse::success(id, value),
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
         RemoteCommand::HostRequest
         | RemoteCommand::RunProcess
         | RemoteCommand::RunWatch

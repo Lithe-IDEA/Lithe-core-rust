@@ -64,6 +64,8 @@ mod protocol;
 mod published_build_plugins;
 mod rank_names;
 #[cfg(unix)]
+mod remote_attach;
+#[cfg(unix)]
 mod remote_sessions;
 mod request_events;
 mod row_selection;
