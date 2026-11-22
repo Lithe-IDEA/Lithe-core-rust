@@ -121,9 +121,15 @@
       "expected": {"status": "rejected", "field": "result.view[0]"}
     },
     {
-      "name": "a tool picker needs ui 1, which this manifest does not declare",
+      "name": "a settings region's tool row can be the tool's picker",
       "surface": {"settingRegionID": "overview"},
       "result": {"view": [{"type": "tool", "tool": "node", "choose": true}]},
+      "expected": {"status": "ok", "changed": true, "view": "result.view"}
+    },
+    {
+      "name": "choose on a tool row is a boolean",
+      "surface": {"settingRegionID": "overview"},
+      "result": {"view": [{"type": "tool", "tool": "node", "choose": "yes"}]},
       "expected": {"status": "rejected", "field": "result.view[0].choose"}
     },
     {

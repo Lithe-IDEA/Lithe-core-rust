@@ -62,8 +62,7 @@ pub const SETTINGS: &str = "settings";
 /// compiler pages and guarded native staging receipts.
 pub const SOURCE_SETTINGS: &str = "sourceSettings";
 /// `ui`: tool windows with text, web, or plugin view content, plugin views in
-/// settings regions, and commands. Version 1 adds the tool picker: a settings
-/// region's tool row with `choose`.
+/// settings regions, and commands.
 pub const UI: &str = "ui";
 /// Declarative build detection, models, and command plans.
 /// Version 1 adds command-based test discovery. Version 2 adds registry
@@ -151,7 +150,7 @@ pub const SUPPORTED_CAPABILITIES: &[(&str, &[u32])] = &[
     (SOURCE_SETTINGS, &[0, 1]),
     (TOOL_DEFINITIONS, &[0, 1]),
     (TOOLCHAIN_PROVIDERS, &[0]),
-    (UI, &[0, 1]),
+    (UI, &[0]),
     (VCS_PROVIDERS, &[0]),
 ];
 

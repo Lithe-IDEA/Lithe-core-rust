@@ -5501,8 +5501,7 @@ holds golden `plugins.ui.applyResult` cases.
 `view: {function}` names a private [plugin function](#plugin-functions) of the
 plugin's own [backend](#plugin-backend) (letters and digits in dot-separated
 segments, at most 128 characters). A manifest with a view needs `backend`,
-`requires.ui` (0, or 1 for a [tool picker](#tool-rows-and-pickers)), the
-`ui.contribute` permission, and, for a settings region,
+`requires.ui: 0`, the `ui.contribute` permission, and, for a settings region,
 `requires.settings: 0`. A tool window still declares `onView:<id>`; a settings
 region starts the backend when its page opens. Results are described by
 [`plugin-ui.schema.json`](plugin-ui.schema.json); the rules JSON Schema cannot
@@ -5621,8 +5620,7 @@ scope (the global settings, or the project of a project window): the version,
 the home, and the reason when nothing resolves. Pressing it opens the tool on
 the host's toolchain page.
 
-With `choose: true`, which needs `requires.ui: 1`, the row is also the tool's
-picker, like an interpreter menu: pressing it opens the host's choices for the
+With `choose: true`, the row is also the tool's picker, like an interpreter menu: pressing it opens the host's choices for the
 tool in that scope, the same choices the toolchain page lists. They are the
 automatic choice, every installation the host found or the user added, with
 its version and source, and adding an installation directory, plus a way to
@@ -5631,9 +5629,10 @@ tool, which Apply commits and Cancel discards, as on the toolchain page; the
 row shows the pending choice until then. A region never stores the choice
 itself; once applied, the plugin's launches and runs receive the chosen
 installation as they receive any resolved tool (see
-[Tool references](#tool-references)). A plugin that writes `choose`
-with `requires.ui: 0` has the whole result refused with `plugin.ui.invalidView`
-at `choose`.
+[Tool references](#tool-references)). `choose` is a boolean; any other value
+refuses the whole result with `plugin.ui.invalidView` at `choose`. A host whose
+Core predates `choose` refuses a result that writes it the same way, so a plugin
+writes it once a desktop release that includes it is out.
 
 #### Canvas
 

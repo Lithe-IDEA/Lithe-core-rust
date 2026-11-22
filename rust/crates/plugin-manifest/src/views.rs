@@ -9,7 +9,7 @@
 //! same results; the host only renders.
 
 use crate::{validate_manifest_value, DeclarativePluginManifest};
-use lithe_plugin_model::{capabilities, decode_payload, outcome, PluginRejection, Validation};
+use lithe_plugin_model::{decode_payload, outcome, PluginRejection, Validation};
 use lithe_plugin_ui::{Context, Surface, INVALID_VIEW};
 use lithe_protocol::CoreError;
 use serde::Deserialize;
@@ -55,7 +55,6 @@ pub fn apply_result_command(payload: Value) -> Result<Value, CoreError> {
                 settings: &manifest.settings,
                 actions: &manifest.setting_actions,
                 tools: &tools,
-                ui_version: manifest.capability_version(capabilities::UI),
             };
             let (view, changed) =
                 lithe_plugin_ui::apply(&context, payload.view.as_ref(), &payload.result)?;
@@ -198,23 +197,9 @@ mod tests {
     }
 
     #[test]
-    fn a_tool_picker_follows_the_declared_ui_version() {
+    fn a_settings_region_accepts_a_tool_picker() {
         let picker = json!({"view": [{"type": "tool", "tool": "node", "choose": true}]});
-        let outcome = apply(json!({"settingRegionID": "overview"}), None, picker.clone());
-        assert_eq!(outcome["status"], "rejected", "{outcome}");
-        assert_eq!(
-            outcome["error"]["field"], "result.view[0].choose",
-            "{outcome}"
-        );
-
-        let mut manifest = manifest();
-        manifest["requires"]["ui"] = json!(1);
-        let outcome = apply_result_command(json!({
-            "manifest": manifest,
-            "surface": {"settingRegionID": "overview"},
-            "result": picker,
-        }))
-        .expect("outcome");
+        let outcome = apply(json!({"settingRegionID": "overview"}), None, picker);
         assert_eq!(outcome["status"], "ok", "{outcome}");
     }
 

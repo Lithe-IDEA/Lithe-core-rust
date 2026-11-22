@@ -304,7 +304,7 @@
       }
     },
     "toolRow": {
-      "description": "settings only: the host's row for a tool this plugin defines (toolDefinitions) or requires (requiresTools): its resolved version and path, as the toolchain pages draw it. With choose (requires.ui 1) the row is also the tool's picker.",
+      "description": "settings only: the host's row for a tool this plugin defines (toolDefinitions) or requires (requiresTools): its resolved version and path, as the toolchain pages draw it. With choose the row is also the tool's picker.",
       "type": "object",
       "additionalProperties": false,
       "required": ["type", "tool"],
@@ -312,7 +312,7 @@
         "type": { "const": "tool" },
         "id": { "$ref": "#/$defs/id" },
         "tool": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "choose": { "description": "requires.ui 1: the row opens the host's choices for the tool in the settings page's scope: the automatic choice, every installation the host found or the user added, and adding a directory. A choice edits the settings window's draft, which Apply commits and Cancel discards, as on the toolchain page.", "type": "boolean" }
+        "choose": { "description": "The row opens the host's choices for the tool in the settings page's scope: the automatic choice, every installation the host found or the user added, and adding a directory. A choice edits the settings window's draft, which Apply commits and Cancel discards, as on the toolchain page.", "type": "boolean" }
       }
     },
     "tree": {

@@ -171,12 +171,6 @@ impl<'c> Walk<'c> {
                     ));
                 }
                 boolean(map, path, "choose")?;
-                if map.contains_key("choose") && self.context.ui_version < 1 {
-                    return Err(fail(
-                        at(path, "choose"),
-                        "A tool row with choose needs ui 1 in requires.",
-                    ));
-                }
                 Ok(())
             }
             "tree" => self.tree(value, path),
