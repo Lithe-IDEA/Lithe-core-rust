@@ -125,7 +125,7 @@ subscribe before creating the resource.
 | `server.state` | — | running `processes` (`processId`, `pid`, `argv`, `label?`, `runningMs`, `leaderExited`), `terminals` (`terminalId`, `pid`, `argv`, `label?`, `runningMs`, `columns`, `rows`), `watches` |
 | `fs.stat` | `path` | metadata of the path itself (links not followed) |
 | `fs.readDir` | `path` | `entries` sorted by name byte order, `skippedNonUtf8` |
-| `fs.readFile` | `path`, `offset`, `length` (≤ 8 MiB) | `data`, `eof`, `metadata` |
+| `fs.readFile` | `path`, `offset`, `length` (≤ 8 MiB) | `data`, `eof`, `metadata`; only a regular file is read |
 | `fs.writeFile` | `path`, `data` (≤ 8 MiB), `expected?`, `overwrite`, `createParents` | metadata after the write |
 | `fs.createDir` | `path`, `recursive`, `mode?` (at most `0o7777`) | `null` |
 | `fs.remove` | `path`, `recursive` | `null`; links are removed, never followed |
@@ -163,6 +163,11 @@ subscribe before creating the resource.
 | `listener.close` | `listenerId` | `listenerId`, `port`, `connections`, `failedConnections`; closes the port and every connection it relays or still holds |
 | `listener.list` | — | `listeners` by `listenerId`: `listenerId`, `port`, `connections`, `failedConnections` |
 | `ports.listening` | — | `ports` sorted by `address` and `port`, one entry for each: `address`, `port`, and `pid` and `process` (the command name) when the server's user can inspect the owning process |
+
+`fs.readFile` opens the path without blocking and checks the type of the
+opened file, so a FIFO without a writer never holds the request and a path
+replaced between `fs.stat` and the read is still checked. A directory fails
+with `IS_A_DIRECTORY`; sockets, FIFOs and devices fail with `UNSUPPORTED`.
 
 `fs.copy` refuses, with `INVALID_REQUEST`, to copy a file onto itself —
 directly, through a symbolic link in either direction or onto a hard link —

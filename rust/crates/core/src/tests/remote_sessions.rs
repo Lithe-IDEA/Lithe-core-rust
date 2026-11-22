@@ -1419,6 +1419,210 @@ fn remote_workspace_trust_keys_the_host_real_path_on_the_connected_target() {
     );
 }
 
+// The ports page's records: keyed like trust by the real path on the
+// connected target, an added URL never keeps its query, and a reconnect
+// starts again only the local forwards the user left running, each with the
+// confirmation it was given.
+#[test]
+fn remote_port_records_key_the_real_path_and_restore_running_forwards() {
+    let host = HostFixture::new();
+    let project = host.root.join("host/projects/app");
+    let sibling = host.root.join("host/projects/other");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::create_dir_all(&sibling).unwrap();
+    let link = host.root.join("host/link");
+    std::os::unix::fs::symlink(&project, &link).unwrap();
+    // Holds a port number on the host's loopback interface for the test.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let call = |command: &str, payload: Value| -> Value {
+        serde_json::from_str(&crate::execute_json(
+            &json!({"id": test_support::unique_id(), "command": command,
+                "timeoutMilliseconds": 30_000, "payload": payload})
+            .to_string(),
+        ))
+        .unwrap()
+    };
+    let ok = |response: Value| -> Value {
+        assert_eq!(response["ok"], true, "{response}");
+        response["data"].clone()
+    };
+    let error = |response: Value| -> Value {
+        assert_eq!(response["ok"], false, "{response}");
+        response["error"].clone()
+    };
+    let field = |error: &Value| -> Value {
+        serde_json::from_str::<Value>(error["details"].as_str().unwrap()).unwrap()["field"].clone()
+    };
+    let workspace = |command: &str, document: &Value, workspace: &std::path::Path| {
+        call(
+            command,
+            json!({"document": document, "sessionId": host.id, "workspace": workspace}),
+        )
+    };
+    let edit = |document: &Value, change: Value| {
+        let mut payload = change;
+        payload["document"] = document.clone();
+        payload["sessionId"] = json!(host.id);
+        payload["workspace"] = json!(link);
+        call("remote.editPortRecords", payload)
+    };
+
+    let empty = ok(workspace("remote.portRecords", &Value::Null, &link));
+    assert_eq!(
+        empty["storage"],
+        json!({"relativePath": "remote/ports.json", "maximumBytes": 262_144})
+    );
+    assert_eq!(empty["workspace"], json!(project), "{empty}");
+    assert_eq!(empty["records"], json!({"ports": [], "rules": []}));
+
+    // An added URL keeps its scheme and path; the token in its query stays
+    // in the page.
+    let notebook = json!({"port": {"port": port, "label": "Notebook",
+        "added": {"host": "localhost", "scheme": "http", "path": "/lab?token=secret"},
+        "forwardTarget": "127.0.0.1"}});
+    let added = ok(edit(&Value::Null, notebook.clone()));
+    assert_eq!(added["changed"], true, "{added}");
+    assert_eq!(
+        added["records"]["ports"],
+        json!([{"port": port, "label": "Notebook", "forwardTarget": "127.0.0.1",
+            "added": {"host": "localhost", "scheme": "http", "path": "/lab"}}])
+    );
+    let document = added["document"].clone();
+    assert!(
+        document
+            .as_str()
+            .is_some_and(|text| !text.contains("token")),
+        "{added}"
+    );
+    let repeated = ok(edit(&document, notebook));
+    assert_eq!(repeated["changed"], false, "{repeated}");
+    assert!(repeated["document"].is_null(), "{repeated}");
+
+    // A database on the host's network, once without and once with the
+    // user's confirmation, and a rule that listens on the host.
+    let mut document = document;
+    for change in [
+        json!({"port": {"host": "192.0.2.10", "port": 5432, "forwardTarget": "192.0.2.10"}}),
+        json!({"port": {"host": "192.0.2.11", "port": 5432, "forwardTarget": "192.0.2.11",
+            "confirmedTarget": true}}),
+        json!({"rule": {"kind": "host", "targetHost": "192.0.2.20", "targetPort": 80,
+            "label": "Web"}}),
+    ] {
+        let edited = ok(edit(&document, change));
+        assert_eq!(edited["changed"], true, "{edited}");
+        document = edited["document"].clone();
+    }
+    let records = ok(workspace("remote.portRecords", &document, &project))["records"].clone();
+    assert_eq!(records["ports"].as_array().unwrap().len(), 3, "{records}");
+    assert_eq!(records["rules"].as_array().unwrap().len(), 1, "{records}");
+    assert_eq!(
+        ok(workspace("remote.portRecords", &document, &sibling))["records"],
+        json!({"ports": [], "rules": []})
+    );
+
+    // A reconnect starts the forwards again; the rule waits for the user.
+    let restore = || workspace("remote.restoreForwards", &document, &link);
+    let restored = ok(restore());
+    let forwards = restored["forwards"].as_array().unwrap();
+    assert_eq!(forwards.len(), 3, "{restored}");
+    let row = |host: Option<&str>| {
+        forwards
+            .iter()
+            .find(|forward| forward.get("host").and_then(Value::as_str) == host)
+            .unwrap()
+            .clone()
+    };
+    let loopback = row(None);
+    assert_eq!(loopback["port"], port, "{restored}");
+    assert_eq!(loopback["created"], true, "{restored}");
+    assert_eq!(loopback["forward"]["targetHost"], "127.0.0.1", "{restored}");
+    assert_eq!(
+        row(Some("192.0.2.10"))["error"]["code"],
+        "forward_target_not_confirmed"
+    );
+    assert_eq!(
+        row(Some("192.0.2.11"))["forward"]["loopbackTarget"],
+        false,
+        "{restored}"
+    );
+    let running = ok(call("remote.forwards", json!({"sessionId": host.id})));
+    assert_eq!(
+        running["forwards"].as_array().unwrap().len(),
+        2,
+        "{running}"
+    );
+    let again = ok(restore());
+    for forward in again["forwards"].as_array().unwrap() {
+        assert_ne!(forward["created"], true, "{again}");
+    }
+
+    let removed = ok(edit(&document, json!({"removePort": {"port": port}})));
+    assert_eq!(removed["changed"], true, "{removed}");
+    assert_eq!(
+        removed["records"]["ports"].as_array().unwrap().len(),
+        2,
+        "{removed}"
+    );
+    let unruled = ok(edit(
+        &document,
+        json!({"removeRule": {"kind": "host", "targetHost": "192.0.2.20", "targetPort": 80}}),
+    ));
+    assert_eq!(unruled["records"]["rules"], json!([]), "{unruled}");
+
+    // Each failure keeps its own category.
+    assert_eq!(
+        error(workspace(
+            "remote.portRecords",
+            &json!("{\"version\":1,\"everything\":true}"),
+            &link
+        ))["code"],
+        "parse_failed"
+    );
+    let unchanged = error(edit(&document, json!({})));
+    assert_eq!(unchanged["code"], "invalid_request", "{unchanged}");
+    assert_eq!(field(&unchanged), "change", "{unchanged}");
+    assert_eq!(
+        field(&error(edit(
+            &document,
+            json!({"removePort": {"port": port}, "removeRule": {"kind": "reverse", "localPort": 1}})
+        ))),
+        "change"
+    );
+    assert_eq!(
+        error(edit(
+            &document,
+            json!({"rule": {"kind": "reverse", "localPort": 3000, "allInterfaces": true}})
+        ))["code"],
+        "invalid_request"
+    );
+    assert_eq!(
+        error(workspace(
+            "remote.portRecords",
+            &document,
+            std::path::Path::new("projects/app")
+        ))["code"],
+        "invalid_request"
+    );
+    assert_eq!(
+        error(workspace(
+            "remote.restoreForwards",
+            &document,
+            &host.root.join("host/missing")
+        ))["code"],
+        "workspace_not_found"
+    );
+    assert_eq!(
+        error(call(
+            "remote.portRecords",
+            json!({"document": document, "sessionId": test_support::unique_id(),
+                "workspace": project})
+        ))["code"],
+        "connection_closed"
+    );
+    drop(listener);
+}
+
 // The connections window's helpers answer through the dispatcher: a quick
 // address splits into fields, a missing Motty database is a result, and a
 // malformed connection names its field before any `ssh -G` runs.
@@ -1494,6 +1698,37 @@ fn connection_window_helpers_answer_through_the_dispatcher() {
     assert_eq!(both["error"]["code"], "invalid_request", "{both}");
     let details: Value = serde_json::from_str(both["error"]["details"].as_str().unwrap()).unwrap();
     assert_eq!(details, json!({"field": "wsl", "reason": "invalid"}));
+    // A container listing names a known engine and nothing that could pick
+    // the program.
+    for payload in [
+        json!({"engine": "nerdctl"}),
+        json!({"engine": "docker", "program": "/bin/sh"}),
+    ] {
+        let refused = call("remote.listContainers", payload);
+        assert_eq!(refused["error"]["code"], "invalid_request", "{refused}");
+        assert_eq!(
+            refused["error"]["message"], "Invalid container listing request",
+            "{refused}"
+        );
+    }
+    // A dev container starts only for a trusted folder, from a configuration
+    // the folder lists; nothing runs otherwise.
+    let untrusted = call(
+        "remote.devcontainerUp",
+        json!({"folder": "/nonexistent", "engine": "docker", "projectCodeAllowed": false}),
+    );
+    assert_eq!(
+        untrusted["error"]["code"], "devcontainer_untrusted_folder",
+        "{untrusted}"
+    );
+    let unknown = call(
+        "remote.devcontainerUp",
+        json!({"folder": "/nonexistent", "engine": "docker", "projectCodeAllowed": true,
+            "mounts": ["/"]}),
+    );
+    assert_eq!(unknown["error"]["code"], "invalid_request", "{unknown}");
+    let relative = call("remote.devcontainerConfigs", json!({"folder": "app"}));
+    assert_eq!(relative["error"]["code"], "invalid_request", "{relative}");
 
     // The settings page reads automatic values and stores an edit; a damaged
     // document stops the SSH commands before OpenSSH starts.
@@ -1846,6 +2081,48 @@ fn remote_host_and_reverse_forwards_follow_their_own_rules() {
     assert_eq!(
         ok(call("remote.stopForward", json!({"forwardId": back["id"]})))["stopped"],
         true
+    );
+}
+
+// The connection window lists a connected host's containers through the
+// host's own engine CLI; a host without one says so instead of failing.
+#[test]
+fn container_listings_run_on_the_host_and_say_when_it_has_no_engine() {
+    use std::os::unix::fs::PermissionsExt;
+    let host = HostFixture::new();
+    let engine = host.root.join("host/docker");
+    std::fs::write(
+        &engine,
+        "#!/bin/sh\nprintf 'c0ffee\\tdev\\tubuntu:24.04\\tUp 1 minute\\n'\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&engine, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let request = |engine: &str| {
+        serde_json::from_value(json!({"engine": engine, "sessionId": host.id})).unwrap()
+    };
+    let listed =
+        test_support::list_containers_with(request("docker"), engine.to_str().unwrap()).unwrap();
+    assert_eq!(
+        serde_json::to_value(listed).unwrap(),
+        json!({"available": true, "diagnostics": "", "containers": [
+            {"id": "c0ffee", "name": "dev", "image": "ubuntu:24.04", "status": "Up 1 minute"}
+        ]})
+    );
+    let absent = host.root.join("host/absent");
+    let missing =
+        test_support::list_containers_with(request("podman"), absent.to_str().unwrap()).unwrap();
+    assert_eq!(
+        serde_json::to_value(missing).unwrap(),
+        json!({"available": false, "containers": [], "diagnostics": ""})
+    );
+    let unknown = test_support::list_containers_with(
+        serde_json::from_value(json!({"engine": "docker", "sessionId": "absent"})).unwrap(),
+        engine.to_str().unwrap(),
+    )
+    .unwrap_err();
+    assert!(
+        matches!(unknown.code, ErrorCode::ConnectionClosed),
+        "{unknown:?}"
     );
 }
 

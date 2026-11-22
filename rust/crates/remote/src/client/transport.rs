@@ -253,8 +253,10 @@ impl SshHop {
     }
 }
 
-/// Container engine whose CLI runs the `exec`.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Container engine whose CLI runs the `exec`; `docker` or `podman` in
+/// requests.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ContainerEngine {
     /// Docker, or a Docker-compatible CLI.
     Docker,
@@ -263,7 +265,8 @@ pub enum ContainerEngine {
 }
 
 impl ContainerEngine {
-    pub(crate) fn name(self) -> &'static str {
+    /// The engine CLI's executable name, which `PATH` resolves.
+    pub fn name(self) -> &'static str {
         match self {
             Self::Docker => "docker",
             Self::Podman => "podman",
@@ -302,6 +305,32 @@ impl ContainerHop {
             environment: BTreeMap::new(),
         }
     }
+}
+
+/// Longest container name or id, in bytes. Ids are 64 hexadecimal digits;
+/// the bound only refuses garbage.
+pub(crate) const MAX_CONTAINER_NAME_BYTES: usize = 128;
+
+/// Longest container user, in bytes: a name or uid, optionally with a group.
+pub(crate) const MAX_CONTAINER_USER_BYTES: usize = 64;
+
+/// A container name or id the engine CLI cannot read as an option: ASCII
+/// letters, digits, `.`, `_` and `-`, starting with a letter or digit, at
+/// most [`MAX_CONTAINER_NAME_BYTES`] long.
+pub(crate) fn is_container_name(name: &str) -> bool {
+    name.len() <= MAX_CONTAINER_NAME_BYTES && is_plain_name(name)
+}
+
+/// A `--user` value for `exec`: a name or uid, optionally `:group`, from
+/// ASCII letters, digits, `_`, `.`, `:` and `-`, not starting with `-`, at
+/// most [`MAX_CONTAINER_USER_BYTES`] long.
+pub(crate) fn is_container_user(user: &str) -> bool {
+    !user.is_empty()
+        && user.len() <= MAX_CONTAINER_USER_BYTES
+        && !user.starts_with('-')
+        && user
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "_.:-".contains(character))
 }
 
 /// Why a transport chain could not build a command line.
@@ -549,19 +578,14 @@ fn ssh_options(hop: &SshHop) -> Result<Vec<String>, TransportError> {
 }
 
 fn container_command(hop: &ContainerHop, inner: Vec<Word>) -> Result<Vec<Word>, TransportError> {
-    if !is_plain_name(&hop.container) {
+    if !is_container_name(&hop.container) {
         return Err(TransportError::InvalidHop {
             reason: format!("invalid container name {:?}", hop.container),
         });
     }
     let mut command = vec![hop.program.clone(), "exec".into(), "-i".into()];
     if let Some(user) = &hop.user {
-        if user.is_empty()
-            || user.starts_with('-')
-            || !user
-                .chars()
-                .all(|character| character.is_ascii_alphanumeric() || "_.:-".contains(character))
-        {
+        if !is_container_user(user) {
             return Err(TransportError::InvalidHop {
                 reason: format!("invalid container user {user:?}"),
             });

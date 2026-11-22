@@ -7,7 +7,7 @@
 //! host, so a symbolic link or a spelling the host resolves elsewhere never
 //! reaches a decision. The rules are in `lithe_remote::client::trust`.
 
-use crate::sessions::{lookup, request_error};
+use crate::sessions::workspace_key;
 use lithe_protocol::{CoreError, ErrorCode};
 use lithe_remote::client::trust::{self, Decision, Decisions, List, Target, TrustError};
 use serde::{Deserialize, Serialize};
@@ -84,7 +84,7 @@ pub fn state(request: StateRequest) -> Result<Value, CoreError> {
     match (request.session_id, request.workspace) {
         (None, None) => {}
         (Some(session_id), Some(workspace)) => {
-            let (target, real_path) = resolve(&session_id, &workspace)?;
+            let (target, real_path) = workspace_key(&session_id, &workspace)?;
             let workspace_trust = decisions
                 .workspace(&target, &real_path)
                 .map_err(invalid_request)?;
@@ -105,7 +105,7 @@ pub fn edit(request: EditRequest) -> Result<Value, CoreError> {
     let mut after = before.clone();
     match (request.decision, request.revoke) {
         (Some(decision), None) => {
-            let (target, real_path) = resolve(&decision.session_id, &decision.workspace)?;
+            let (target, real_path) = workspace_key(&decision.session_id, &decision.workspace)?;
             after
                 .decide(
                     &target,
@@ -130,25 +130,6 @@ pub fn edit(request: EditRequest) -> Result<Value, CoreError> {
         None
     };
     Ok(json!({ "changed": changed, "document": document, "decisions": after }))
-}
-
-/// The connection's target and the workspace's real path on the host.
-fn resolve(session_id: &str, workspace: &str) -> Result<(Target, String), CoreError> {
-    if !workspace.starts_with('/') || workspace.contains('\0') {
-        return Err(invalid_request(TrustError { field: "workspace" }));
-    }
-    let connection = lookup(session_id)?;
-    let real_path = connection
-        .session
-        .real_path(workspace)
-        .map_err(|error| request_error(session_id, error))?;
-    if trust::host_path(&real_path).is_none() {
-        return Err(CoreError::new(
-            ErrorCode::ParseFailed,
-            "The host returned an invalid real path",
-        ));
-    }
-    Ok((connection.trust_target.clone(), real_path))
 }
 
 /// A stored document that cannot be decoded is a parse failure, not a bad

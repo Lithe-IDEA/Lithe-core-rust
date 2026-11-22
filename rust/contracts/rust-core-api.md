@@ -823,6 +823,9 @@ or removing a command fails until the table changes in the same commit.
 | `remote.stopForward` | Stop one port forward and close the port it listens on |
 | `remote.forwards` | List the running port forwards of one connection |
 | `remote.parseForwardAddress` | Read a port, `host:port` or URL typed into the ports page into a forward target |
+| `remote.portRecords` | Read what the ports page remembers of one open remote workspace |
+| `remote.editPortRecords` | Record or forget one port row or forwarding rule of a remote workspace |
+| `remote.restoreForwards` | Start again the local forwards a remote workspace left running |
 | `remote.connections` | Read the SSH connections the user saved |
 | `remote.editConnections` | Save, remove or import saved SSH connections, or record a folder or a connection time |
 | `remote.parseAddress` | Split a quick-connect address into connection fields |
@@ -830,6 +833,9 @@ or removing a command fails until the table changes in the same commit.
 | `remote.sshConfigHosts` | List the Host aliases of the user's SSH configuration for an import |
 | `remote.mottyHosts` | List the SSH hosts saved in Motty for an import |
 | `remote.listWslDistributions` | List the WSL distributions installed on this Windows machine |
+| `remote.listContainers` | List the running Docker or Podman containers on this machine or a connected host |
+| `remote.devcontainerConfigs` | List the `devcontainer.json` files of a local folder |
+| `remote.devcontainerUp` | Build or reuse and start a trusted local folder's dev container with the Dev Container CLI |
 | `remote.preferences` | Read the remote workspace settings and what each automatic value resolves to |
 | `remote.editPreferences` | Set the SSH program, the reconnect limit, whether reverse forwards are allowed or what closing a connection does to its programs, or make one automatic again |
 | `remote.runningPrograms` | List the processes and terminals a connection's host session still runs |
@@ -5938,6 +5944,85 @@ its redacted message for display; it is never logged. Cancellation and the
 bound are `cancelled` and `timed_out`. Nothing is saved: the window lists
 the distributions each time it opens.
 
+`remote.listContainers` takes `{ engine, sessionId? }`, where `engine` is
+`docker` or `podman`, and returns `{ available, containers, diagnostics }`.
+Core runs `<engine> ps --no-trunc --format '{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}'`,
+at most 15 seconds: on this machine in Core's own environment (the login
+shell's `PATH` the application put in front, and variables such as
+`DOCKER_HOST`) when `sessionId` is absent, and otherwise on that
+connection's host in the server's environment, the same one the connection
+later enters the container from. Only running containers are listed, since
+Lithe never starts, creates or changes a container. `containers` are
+`{ id, name, image, status }` in the engine's order, at most 256 and from at
+most 256 KiB of output: `id` is the full id, `name` the first of the
+container's names, and `image` and `status` the engine's text without
+control characters, at most 256 bytes each. Lines that are not four fields,
+or whose id or name is not a container name, are skipped, and so are
+repeated ids. `available` is `false` when the engine CLI cannot start there;
+when it runs and fails, for example because its service is not running,
+`containers` is empty and `diagnostics` holds its redacted message for
+display; it is never logged. Any other field is `invalid_request` ("Invalid
+container listing request"), so a request cannot pick the program; an unknown
+`sessionId` is `connection_closed`, and cancellation and the bound are
+`cancelled` and `timed_out`. Nothing is saved.
+
+#### Dev Containers
+
+A local folder's dev container is built and started by the reference Dev
+Container CLI (`devcontainer`, from `@devcontainers/cli`; `devcontainer.cmd`
+on Windows) on `PATH`, then entered like any running container with
+`remote.connect`'s `container`. Lithe does not interpret the configuration
+and adds no mounts or options to it.
+
+`remote.devcontainerConfigs` takes `{ folder }`, an absolute folder on this
+machine, and returns `{ configs }`: `{ path, name? }` for each regular file in
+the places the specification searches, in this order:
+`.devcontainer/devcontainer.json`, `.devcontainer.json`, then
+`.devcontainer/<subfolder>/devcontainer.json` for at most 64 subfolders in
+name order, skipping names that start with `.`. `path` is relative to the
+folder with `/` separators. `name` is the configuration's `name`, read as
+JSON with comments and trailing commas, without control characters and at
+most 128 bytes; it is absent when the file is larger than 1 MiB, resolves
+outside the folder, cannot be read or has no non-empty string `name`. A
+relative or empty `folder` is `invalid_request`; a folder that does not
+exist is `workspace_not_found`. Reading starts nothing.
+
+`remote.devcontainerUp` takes `{ folder, config?, engine,
+projectCodeAllowed }` and returns `{ container?, diagnostics }`. Building runs
+the folder's code on this machine (`initializeCommand`, Dockerfiles, feature
+scripts), so when `projectCodeAllowed` is `false` nothing starts and the
+request fails with `devcontainer_untrusted_folder`; native clients pass the
+folder's trust decision, as for Git. `config` must be one of the `path`s
+`remote.devcontainerConfigs` lists for the folder, otherwise
+`invalid_request`; without it the CLI searches the folder itself. Core runs
+`devcontainer up --workspace-folder <folder> [--config <folder>/<config>]`,
+adding `--docker-path podman` after `up` for `engine: "podman"`, on this
+machine in Core's own environment, for at most one hour. Each line the CLI
+logs to standard error is sent as a `{ type: "devcontainerOutput", text }`
+event, redacted, at most 4096 bytes per event and 2 MiB in all; after that
+one `{ type: "devcontainerOutput", truncated: true }` event follows and later
+lines are dropped. The log is shown, never logged.
+
+The result is the last line of standard output that is a JSON object with an
+`outcome`:
+
+- `success`: `container` is `{ engine, container, containerId, user?,
+  workspaceFolder }`. `containerId` is the CLI's container id, `container` the
+  name `<engine> inspect --format '{{.Name}}'` gives within 15 seconds
+  (without Docker's leading `/`), or the id when it gives none, `user` the
+  configuration's `remoteUser`, and `workspaceFolder` the absolute
+  `remoteWorkspaceFolder` to open. A container id that is not a container
+  name, a user `exec` cannot take, or a folder that is not absolute is
+  `parse_failed`, and so is a successful exit without a result line.
+- `error`, or no result line with a failed exit: `container` is absent and
+  `diagnostics` holds the end of the CLI's log followed by its `message` and
+  `description`, redacted, for display.
+
+A missing CLI is `runtime_missing`; any other field is `invalid_request`
+("Invalid dev container start request"), so a request cannot add mounts or
+pick the program; cancellation and the bound are `cancelled` and
+`timed_out`. Nothing is saved.
+
 #### Remote workspace preferences
 
 The settings page "Tools › Remote Workspace" edits three values that apply to
@@ -6072,14 +6157,43 @@ because `wsl.exe` asks no questions. An unknown distribution is
 the distribution and the account (`{ wsl: { distribution, user } }` as the
 first and only hop).
 
+The request may also name a running container as `container: { engine,
+container, user? }`, where `engine` is `docker` or `podman`, `container` a
+name or id such as `remote.listContainers` returned, and `user` a user, uid or
+`user:group` inside it (the image's default user when absent or empty). Next
+to `connection` or `wsl` the container is on that host: the remote command
+becomes `<engine> exec -i [-u <user>] <container> …` there, after the login.
+On its own the container is on this machine, and Core starts that command
+itself in place of OpenSSH, with its own environment so the engine finds its
+service. Core only enters the running container: it never starts, creates or
+reconfigures it, mounts directories into it or asks for more rights than the
+engine CLI has. The probe, the checked upload into the container's `$HOME`
+and the stages are the same, and nothing is relayed through
+`remote.authRespond` for the engine. When the engine gives up before the
+server starts, a container that does not exist, is not running or is paused,
+and an engine whose service does not answer, are `unreachable`; a service
+socket the user may not open is `failed`, not `authenticationFailed`, even
+over SSH; and other failures are `failed` with the engine's message in
+`diagnostics` (or `<engine> exited with status <code>` when it printed
+nothing). The connection log's `transport` is `container`, `ssh-container` or
+`wsl-container`, without the container's name. Trust decisions name the
+container after the other hops, as `{ container: { engine, program,
+container, user? } }`, so a decision never carries over to another container
+or account.
+
 A request that names both `connection` and `wsl` is `invalid_request` with
-`details` `{ field: "wsl", reason: "invalid" }`, and one that names neither
-`{ field: "connection", reason: "required" }`. A malformed connection, a
-distribution that is empty, longer than 64 bytes or not a WSL distribution
-name, a user that is longer than 32 bytes or not a Linux login name, an
-unknown `target` or a `sha256` that is not 64 hexadecimal digits is
-`invalid_request`, before OpenSSH or `wsl.exe` starts. A missing `ssh` or
-`wsl.exe` is `runtime_missing`. When the build for the host's platform cannot be
+`details` `{ field: "wsl", reason: "invalid" }`, and one that names none of
+`connection`, `wsl` and `container` `{ field: "connection", reason:
+"required" }`. A malformed connection, a distribution that is empty, longer
+than 64 bytes or not a WSL distribution name, a user that is longer than 32
+bytes or not a Linux login name, a container that is empty (`{ field:
+"container", reason: "required" }`), longer than 128 bytes or not a container
+name, a container user that is longer than 64 bytes, starts with `-` or holds
+other characters than letters, digits and `_.:-` (`{ field: "user" }`), an
+unknown `engine` or field, an unknown `target` or a `sha256` that is not 64
+hexadecimal digits is `invalid_request`, before OpenSSH, `wsl.exe` or the
+engine starts. A missing `ssh`, `wsl.exe` or local engine CLI is
+`runtime_missing`. When the build for the host's platform cannot be
 read or its SHA-256 differs, the attempt ends as `remote_server_invalid`
 without sending anything; `details` says which of the two happened and, for a
 mismatch, the SHA-256 Core computed, but never the path. Cancellation and the
@@ -6276,7 +6390,8 @@ that could not reach their target (always 0 for a local forward).
   except a host forward's, which the host closes with its port. An unknown
   id returns `stopped: false`. `remote.disconnect`, `remote.closeAll` and a
   lost connection close every port the connection opened on either side,
-  and a reconnect reopens none of them. Requests on a
+  and a reconnect reopens none of them by itself: the native client calls
+  `remote.restoreForwards` (see "Remote port records"). Requests on a
   connection whose session ended are `connection_closed` and forget it, as
   for the other commands.
 
@@ -6352,6 +6467,88 @@ the exact bytes, verify them before atomic publication and reread after Save,
 as for `toolchains/global.json`. The file is separate from that document so
 hosts that predate remote trust still read theirs. This user-settings resource
 does not affect code signatures or update deltas.
+
+#### Remote port records
+
+The ports page remembers what the user set by hand when a remote workspace
+closes or its connection drops, so the next connection to the same workspace
+shows it again. Records are keyed like workspace trust, by the connection's
+target and the workspace's real path on the host, and never carry over to
+another host, account, container or folder.
+
+| Command | Request | Result |
+| --- | --- | --- |
+| `remote.portRecords` | `{ document, sessionId, workspace }` | `{ records, workspace, storage: { relativePath: "remote/ports.json", maximumBytes: 262144 } }` |
+| `remote.editPortRecords` | `{ document, sessionId, workspace }` and one of `port`, `removePort`, `rule`, `removeRule` | `{ changed, document: string\|null, records }` |
+| `remote.restoreForwards` | `{ document, sessionId, workspace }` | `{ forwards }` |
+
+`document` is the current text of the source, `null` when there is none, and
+`workspace` the absolute host path as opened; the result's `workspace` is its
+real path. `records` is `{ ports, rules }` of that workspace:
+
+- A **row** is `{ host?, port, added?, label?, localPort?, forwardTarget?,
+  confirmedTarget? }`, one for each port on each address. `host` is absent
+  for the host's own loopback address, which `localhost`, `127.0.0.1`, `::1`
+  and the wildcard addresses all name; otherwise it is an IP address in
+  canonical form or a name in lower case. Rows are ordered by port, then by
+  host, the loopback row first.
+  - `added: { host, scheme?, path? }` is the address the user added the row
+    with, as `remote.parseForwardAddress` read it and for the same row. Its
+    path keeps no query and no fragment, which can carry an access token
+    such as Jupyter's `?token=`; the native client keeps the full address in
+    memory only.
+  - `label` is 1 to 64 characters without control characters;
+    `localPort` is the local port the user chose (absent uses `port`).
+  - `forwardTarget` is the target of the local forward the user started for
+    the row and has not stopped, as `remote.forwards` lists it; it must name
+    the row's address. `confirmedTarget: true` keeps the user's confirmation
+    of a target outside the host's loopback interface; it is dropped for a
+    loopback target and without `forwardTarget`, so stopping the forward
+    forgets it.
+- A **rule** is a forward that listens on the host, `{ kind: "host",
+  listenPort?, targetHost, targetPort, label? }` or `{ kind: "reverse",
+  listenPort?, localPort, label? }`, in the order the user added them.
+  `listenPort` `0` is stored as absent. There is no `allInterfaces`: listening
+  on every host interface is asked at each start and never remembered.
+
+`remote.editPortRecords` applies one change: `port` replaces the row it names
+and removes it when nothing is left to remember; `removePort: { host?, port }`
+forgets a row, any spelling of its host accepted; `rule` adds a rule or
+renames the same rule (rules that differ only in their labels are the same);
+`removeRule` forgets the same rule whatever its label. Removing an absent row
+or rule changes nothing. An unchanged edit returns a `null` document and must
+not create a source. The workspace edited last comes first; a workspace with
+nothing left is dropped.
+
+`remote.restoreForwards` starts again, in row order, the local forward of
+every row with a `forwardTarget`, each as `remote.startForward` would with
+the row's `localPort` (or `port`) and `allowNonLoopbackTarget` set to its
+`confirmedTarget`. Each entry of `forwards` is `{ host?, port }` with either
+`{ forward, created }` or `{ error }`, the error `remote.startForward` would
+have returned, such as `forward_target_not_confirmed`; one failure does not
+stop the others. A forward that already runs returns `created: false`. Rules
+never start this way: host and reverse forwards ask the user at each start.
+
+Bounds: 256 KiB per document, 64 workspaces, 128 rows and 64 rules per
+workspace. Unlike trust decisions the records are a convenience: past 64
+workspaces, or when the document would outgrow 256 KiB, the workspace edited
+longest ago is dropped instead of refusing the edit. A full workspace refuses
+a new row or rule. A document that cannot be decoded, has duplicate keys,
+unknown fields (`allInterfaces` included), another version, more than 64
+workspaces, a workspace, row or rule listed twice, or a value an edit never
+writes is `parse_failed` with `details.field`. A malformed request, none or
+more than one change (`details.field` `change`), a refused row or rule, or a
+full list is `invalid_request` with `details.field`. A missing workspace is
+`workspace_not_found`, a closed session `connection_closed`, and a host real
+path that is not normalized `parse_failed`.
+
+Native clients keep the document below their platform user-preference
+directory, next to the remote preferences and the saved connections, never on
+the host, in a workspace or in an installed package. They retain the exact
+bytes, verify them before atomic publication and reread after Save, as for
+`toolchains/remote-trust.json`. The document holds no secret; Core never logs
+its addresses. This user-settings resource does not affect code signatures or
+update deltas.
 
 ### Git patch discovery and rebase amendment preconditions
 

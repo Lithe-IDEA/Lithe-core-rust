@@ -147,21 +147,52 @@ pub fn capture_process(request: CaptureRequest) -> Result<Value, CoreError> {
             "Invalid host capture limits",
         ));
     }
-    let connection = lookup(&request.session_id)?;
+    let captured = capture(
+        &request.session_id,
+        request.params,
+        Duration::from_millis(request.timeout_milliseconds),
+        request.max_output_bytes,
+    )?;
+    Ok(json!({
+        "stdout": methods::encode_bytes(&captured.stdout),
+        "stderr": methods::encode_bytes(&captured.stderr),
+        "exitCode": captured.exit["exitCode"],
+        "signal": captured.exit["signal"],
+    }))
+}
+
+/// What [`capture`] collected from one host process.
+pub(crate) struct Captured {
+    pub(crate) stdout: Vec<u8>,
+    pub(crate) stderr: Vec<u8>,
+    /// The process's `exit` event: `exitCode` and `signal`.
+    pub(crate) exit: Value,
+}
+
+/// Runs `params` on the host of session `session_id` and collects both
+/// output streams, killing the process when it runs longer than `timeout` or
+/// prints more than `max_output_bytes` in all.
+pub(crate) fn capture(
+    session_id: &str,
+    params: methods::SpawnParams,
+    timeout: Duration,
+    max_output_bytes: usize,
+) -> Result<Captured, CoreError> {
+    let connection = lookup(session_id)?;
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
     let exit = run_observing(
         &connection.session,
         Request {
-            session_id: request.session_id,
+            session_id: session_id.into(),
             method: String::new(),
-            params: serde_json::to_value(request.params).expect("spawn parameters encode"),
+            params: serde_json::to_value(params).expect("spawn parameters encode"),
             timeout_milliseconds: None,
         },
         "process",
         methods::PROCESS_SPAWN,
         None,
-        Some(Instant::now() + Duration::from_millis(request.timeout_milliseconds)),
+        Some(Instant::now() + timeout),
         &mut |event| {
             if event.event == methods::EVENT_PROCESS_OUTPUT {
                 let output: methods::ProcessOutputEvent = event.decode().map_err(|error| {
@@ -172,7 +203,7 @@ pub fn capture_process(request: CaptureRequest) -> Result<Value, CoreError> {
                     CoreError::new(ErrorCode::ParseFailed, "Invalid host process bytes")
                         .with_details(error.to_string())
                 })?;
-                if stdout.len() + stderr.len() + bytes.len() > request.max_output_bytes {
+                if stdout.len() + stderr.len() + bytes.len() > max_output_bytes {
                     return Err(CoreError::new(
                         ErrorCode::ProcessFailed,
                         "Host process output exceeded its limit",
@@ -186,10 +217,11 @@ pub fn capture_process(request: CaptureRequest) -> Result<Value, CoreError> {
             Ok(())
         },
     )?;
-    Ok(
-        json!({"stdout": methods::encode_bytes(&stdout), "stderr": methods::encode_bytes(&stderr),
-        "exitCode": exit["exitCode"], "signal": exit["signal"]}),
-    )
+    Ok(Captured {
+        stdout,
+        stderr,
+        exit,
+    })
 }
 
 struct Resource<'a> {

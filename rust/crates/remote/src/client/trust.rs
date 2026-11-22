@@ -169,8 +169,9 @@ impl Target {
     /// Refuses targets no transport chain produces: too many hops, empty,
     /// oversized or control characters in a field, a destination ssh would
     /// read as an option, an unknown engine, or a WSL hop that is not first
-    /// or names a distribution or user `wsl.exe` would not be given.
-    fn validate(&self) -> Result<(), TrustError> {
+    /// or names a distribution or user `wsl.exe` would not be given. Port
+    /// records refuse the same targets.
+    pub(crate) fn validate(&self) -> Result<(), TrustError> {
         let field = |value: &str| {
             !value.is_empty()
                 && value.len() <= MAX_FIELD_BYTES

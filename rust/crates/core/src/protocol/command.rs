@@ -1027,6 +1027,15 @@ pub enum RemoteCommand {
     /// Reads a port, `host:port` or URL typed into the ports page
     /// (`remote.parseForwardAddress`).
     ParseForwardAddress,
+    /// Reads what the ports page remembers of one open remote workspace
+    /// (`remote.portRecords`).
+    PortRecords,
+    /// Records or forgets one port row or forwarding rule of an open remote
+    /// workspace (`remote.editPortRecords`).
+    EditPortRecords,
+    /// Starts again the local forwards the user left running in an open
+    /// remote workspace (`remote.restoreForwards`).
+    RestoreForwards,
     /// Reads the SSH connections the user saved (`remote.connections`).
     Connections,
     /// Saves, removes, imports or records a folder or a connection time on
@@ -1046,6 +1055,15 @@ pub enum RemoteCommand {
     /// Lists the WSL distributions installed on this Windows machine
     /// (`remote.listWslDistributions`).
     ListWslDistributions,
+    /// Lists the running containers of a container engine on this machine
+    /// or on a connected host (`remote.listContainers`).
+    ListContainers,
+    /// Lists the `devcontainer.json` files of a local folder
+    /// (`remote.devcontainerConfigs`).
+    DevcontainerConfigs,
+    /// Builds or reuses and starts a local folder's dev container with the
+    /// Dev Container CLI (`remote.devcontainerUp`).
+    DevcontainerUp,
     /// Reads the remote workspace preferences and what each automatic value
     /// resolves to (`remote.preferences`).
     Preferences,
@@ -1630,6 +1648,9 @@ impl CoreCommand {
             "remote.stopForward" => Some(Self::Remote(RemoteCommand::StopForward)),
             "remote.forwards" => Some(Self::Remote(RemoteCommand::Forwards)),
             "remote.parseForwardAddress" => Some(Self::Remote(RemoteCommand::ParseForwardAddress)),
+            "remote.portRecords" => Some(Self::Remote(RemoteCommand::PortRecords)),
+            "remote.editPortRecords" => Some(Self::Remote(RemoteCommand::EditPortRecords)),
+            "remote.restoreForwards" => Some(Self::Remote(RemoteCommand::RestoreForwards)),
             "remote.connections" => Some(Self::Remote(RemoteCommand::Connections)),
             "remote.editConnections" => Some(Self::Remote(RemoteCommand::EditConnections)),
             "remote.parseAddress" => Some(Self::Remote(RemoteCommand::ParseAddress)),
@@ -1639,6 +1660,9 @@ impl CoreCommand {
             "remote.listWslDistributions" => {
                 Some(Self::Remote(RemoteCommand::ListWslDistributions))
             }
+            "remote.listContainers" => Some(Self::Remote(RemoteCommand::ListContainers)),
+            "remote.devcontainerConfigs" => Some(Self::Remote(RemoteCommand::DevcontainerConfigs)),
+            "remote.devcontainerUp" => Some(Self::Remote(RemoteCommand::DevcontainerUp)),
             "remote.preferences" => Some(Self::Remote(RemoteCommand::Preferences)),
             "remote.editPreferences" => Some(Self::Remote(RemoteCommand::EditPreferences)),
             "remote.runningPrograms" => Some(Self::Remote(RemoteCommand::RunningPrograms)),

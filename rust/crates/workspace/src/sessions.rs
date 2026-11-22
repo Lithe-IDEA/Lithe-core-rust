@@ -1,7 +1,8 @@
 //! Long-lived remote connections.
 //!
-//! `remote.connect` starts one client process, OpenSSH for a host or
-//! `wsl.exe` for a WSL distribution on this machine, that probes the host,
+//! `remote.connect` starts one client process, OpenSSH for a host,
+//! `wsl.exe` for a WSL distribution on this machine or the container
+//! engine's CLI for a container on this machine, that probes the host,
 //! installs the server when needed and starts it (see
 //! `lithe_remote::client::launch`), so the user authenticates once. The
 //! connection then stays open in this registry until `remote.disconnect`;
@@ -18,7 +19,8 @@
 //! programs once the server's idle timeout passes without a client.
 
 use crate::probe::{
-    classify, classify_wsl, diagnostics, relay_challenge, ssh_hop, ProbeStatus, ProbedHost,
+    classify, classify_container, classify_wsl, container_status, diagnostics, relay_challenge,
+    ssh_hop, ProbeStatus, ProbedHost,
 };
 use crate::programs::RunningProgram;
 use lithe_git_host::ProcessTree;
@@ -28,8 +30,8 @@ use lithe_remote::client::launch::{launch, launch_command, LaunchError, Launched
 use lithe_remote::client::session::{ClientError, ConnectOptions};
 use lithe_remote::client::trust::Target;
 use lithe_remote::client::{
-    wsl, ArtifactError, ConnectionKind, ConnectionLog, ForwardSet, Hop, RemoteSession,
-    ServerArtifact, ServerTarget, TransportChain, WslConnection,
+    wsl, ArtifactError, ConnectionKind, ConnectionLog, ContainerConnection, ForwardSet, Hop,
+    RemoteSession, ServerArtifact, ServerTarget, TransportChain, WslConnection,
 };
 use lithe_remote::protocol::message::ErrorCode as RemoteErrorCode;
 use lithe_remote::protocol::methods::{self, SessionToken};
@@ -78,7 +80,9 @@ struct ServerInput {
 }
 
 /// `remote.connect`: the host, the server builds Core may install, and where
-/// to install them. Exactly one of `connection` and `wsl` names the host.
+/// to install them. At most one of `connection` and `wsl` names the host;
+/// `container` then names a running container on that host, or, on its own,
+/// one on this machine.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ConnectRequest {
@@ -88,8 +92,13 @@ pub struct ConnectRequest {
     /// A WSL distribution on this machine, reached through `wsl.exe`.
     #[serde(default)]
     wsl: Option<WslConnection>,
+    /// A running container, reached through its engine's `exec`, on the
+    /// host the other fields name or on this machine.
+    #[serde(default)]
+    container: Option<ContainerConnection>,
     /// Remote preferences document, whose SSH program starts OpenSSH;
-    /// `null` or absent is every value automatic. Unused for `wsl`.
+    /// `null` or absent is every value automatic. Unused without
+    /// `connection`.
     #[serde(default)]
     preferences: Option<String>,
     servers: Vec<ServerInput>,
@@ -412,6 +421,35 @@ pub(crate) fn ended(id: &str) {
     }
 }
 
+/// The key of a workspace's machine-local records, its trust and its port
+/// records: the connection's target and the workspace's real path as the host
+/// resolves it, so a symbolic link or another spelling of the path never
+/// reaches a record of a different folder. `workspace` is the absolute host
+/// path the workspace was opened at.
+pub(crate) fn workspace_key(
+    session_id: &str,
+    workspace: &str,
+) -> Result<(Target, String), CoreError> {
+    if !workspace.starts_with('/') || workspace.contains('\0') {
+        return Err(
+            CoreError::new(ErrorCode::InvalidRequest, "Invalid remote workspace path")
+                .with_details(serde_json::json!({ "field": "workspace" }).to_string()),
+        );
+    }
+    let connection = lookup(session_id)?;
+    let real_path = connection
+        .session
+        .real_path(workspace)
+        .map_err(|error| request_error(session_id, error))?;
+    if lithe_remote::client::trust::host_path(&real_path).is_none() {
+        return Err(CoreError::new(
+            ErrorCode::ParseFailed,
+            "The host returned an invalid real path",
+        ));
+    }
+    Ok((connection.trust_target.clone(), real_path))
+}
+
 /// Removes a connection whose session ended and closes it in the background,
 /// so the host reconnects instead of retrying a dead session.
 pub(crate) fn forget(id: &str) {
@@ -439,23 +477,31 @@ enum Client {
     Ssh,
     /// `wsl.exe`, which starts a local distribution and asks nothing.
     Wsl,
+    /// The CLI of a container engine on this machine, which asks nothing.
+    Container,
 }
 
 impl Client {
-    /// The client `request` names. A request that names both or neither is
-    /// refused by [`first_hop`]; it counts as SSH until then.
+    /// The client `request` names. A request that names neither SSH, WSL
+    /// nor a container, or both SSH and WSL, is refused by [`first_hop`]; it
+    /// counts as SSH until then.
     fn of(request: &ConnectRequest) -> Self {
-        if request.wsl.is_some() && request.connection.is_none() {
-            Self::Wsl
-        } else {
-            Self::Ssh
+        match (&request.connection, &request.wsl, &request.container) {
+            (None, Some(_), _) => Self::Wsl,
+            (None, None, Some(_)) => Self::Container,
+            _ => Self::Ssh,
         }
     }
 
-    fn log_kind(self) -> ConnectionKind {
-        match self {
-            Self::Ssh => ConnectionKind::Ssh,
-            Self::Wsl => ConnectionKind::Wsl,
+    /// How the log names the attempt: the client, and whether the chain
+    /// then enters a container.
+    fn log_kind(self, container: bool) -> ConnectionKind {
+        match (self, container) {
+            (Self::Ssh, false) => ConnectionKind::Ssh,
+            (Self::Ssh, true) => ConnectionKind::SshContainer,
+            (Self::Wsl, false) => ConnectionKind::Wsl,
+            (Self::Wsl, true) => ConnectionKind::WslContainer,
+            (Self::Container, _) => ConnectionKind::Container,
         }
     }
 
@@ -463,6 +509,7 @@ impl Client {
         match self {
             Self::Ssh => "Invalid SSH connection",
             Self::Wsl => "Invalid WSL connection",
+            Self::Container => "Invalid container connection",
         }
     }
 
@@ -470,6 +517,7 @@ impl Client {
         match self {
             Self::Ssh => "Could not start the SSH client",
             Self::Wsl => "Could not start wsl.exe",
+            Self::Container => "Could not start the container engine",
         }
     }
 
@@ -477,6 +525,7 @@ impl Client {
         match self {
             Self::Ssh => "Could not supervise the SSH client",
             Self::Wsl => "Could not supervise wsl.exe",
+            Self::Container => "Could not supervise the container engine",
         }
     }
 
@@ -484,21 +533,39 @@ impl Client {
         match self {
             Self::Ssh => "The SSH connection did not finish in time",
             Self::Wsl => "The WSL distribution did not finish starting in time",
+            Self::Container => "The container did not finish starting the server in time",
         }
     }
 
     /// The client's standard error as text; `wsl.exe` may print UTF-16.
     fn text(self, stderr: &[u8]) -> String {
         match self {
-            Self::Ssh => String::from_utf8_lossy(stderr).into_owned(),
+            Self::Ssh | Self::Container => String::from_utf8_lossy(stderr).into_owned(),
             Self::Wsl => wsl::output_text(stderr),
         }
     }
 }
 
+/// The hops of the chain: [`first_hop`], then the container when the
+/// request names one on the host `connection` or `wsl` reaches.
+fn chain_hops(request: &ConnectRequest, program: Option<&str>) -> Result<Vec<Hop>, CoreError> {
+    let mut hops = vec![first_hop(request, program)?];
+    if let (false, Some(container)) = (
+        matches!(hops[0], Hop::Container(_)),
+        request.container.as_ref(),
+    ) {
+        let hop = container
+            .hop()
+            .map_err(crate::connections::invalid_request)?;
+        hops.push(Hop::Container(hop));
+    }
+    Ok(hops)
+}
+
 /// The hop that starts the chain, with `program` in place of the system
-/// client when set; OpenSSH is otherwise the preferences' SSH program.
-/// Exactly one of `connection` and `wsl` must be set.
+/// client when set; OpenSSH is otherwise the preferences' SSH program, and
+/// a container engine its CLI on `PATH`. At most one of `connection` and
+/// `wsl` may be set; without either, `container` must be.
 fn first_hop(request: &ConnectRequest, program: Option<&str>) -> Result<Hop, CoreError> {
     let refused =
         |field, reason| crate::connections::invalid_request(ConnectionError { field, reason });
@@ -517,13 +584,25 @@ fn first_hop(request: &ConnectRequest, program: Option<&str>) -> Result<Hop, Cor
             }
             Ok(Hop::Wsl(hop))
         }
-        (None, None) => Err(refused("connection", Reason::Required)),
+        (None, None) => {
+            let Some(container) = &request.container else {
+                return Err(refused("connection", Reason::Required));
+            };
+            let mut hop = container
+                .hop()
+                .map_err(crate::connections::invalid_request)?;
+            if let Some(program) = program {
+                hop.program = program.into();
+            }
+            Ok(Hop::Container(hop))
+        }
         (Some(_), Some(_)) => Err(refused("wsl", Reason::Invalid)),
     }
 }
 
-/// `program` replaces the system client (`ssh` on `PATH`, or `wsl.exe`);
-/// tests use a stand-in.
+/// `program` replaces the system client (`ssh` on `PATH`, `wsl.exe`, or the
+/// container engine's CLI for a container on this machine); tests use a
+/// stand-in.
 ///
 /// The attempt is recorded in a [`ConnectionLog`]. The launch and the
 /// handshake record the failures they see themselves; this records what only
@@ -535,7 +614,7 @@ pub(crate) fn connect_with(
     program: Option<&str>,
 ) -> Result<ConnectResult, CoreError> {
     let client = Client::of(&request);
-    let log = ConnectionLog::begin(client.log_kind());
+    let log = ConnectionLog::begin(client.log_kind(request.container.is_some()));
     let mut refused = false;
     let mut result = connect_logged(
         &request,
@@ -621,7 +700,7 @@ fn connect_logged(
     let rejected_in_launch = Arc::clone(&rejected);
     let _connecting = ConnectingGuard::enter();
 
-    let chain = TransportChain::new(vec![first_hop(request, program)?]);
+    let chain = TransportChain::new(chain_hops(request, program)?);
     let argv = chain
         .command(&launch_command(
             request.install_root.as_deref(),
@@ -641,7 +720,8 @@ fn connect_logged(
     // Before the AskPass variables, which must reach ssh.
     chain.restrict_environment(&mut process);
     // OpenSSH asks for passwords, passphrases and host keys through AskPass;
-    // `wsl.exe` starts a local distribution as a local user and asks nothing.
+    // `wsl.exe` starts a local distribution as a local user and asks nothing,
+    // and so does a local container engine.
     let mut authentication = match client {
         Client::Ssh => {
             let authentication =
@@ -661,7 +741,7 @@ fn connect_logged(
             })?;
             Some(authentication)
         }
-        Client::Wsl => None,
+        Client::Wsl | Client::Container => None,
     };
     ProcessTree::prepare(&mut process);
     let mut child = process.spawn().map_err(|error| {
@@ -816,10 +896,20 @@ fn connect_logged(
             let status = wait_for_exit(&mut child, EXIT_GRACE);
             reap(&tree, &mut child);
             let stderr = tail(&stderr_tail);
-            let probe = match client {
-                Client::Ssh => classify(status, &[], &stderr),
-                Client::Wsl => classify_wsl(status, &stderr),
+            let mut probe = match (client, request.container.as_ref()) {
+                (Client::Container, Some(container)) => {
+                    classify_container(status, &stderr, container.engine)
+                }
+                (Client::Wsl, _) => classify_wsl(status, &stderr),
+                _ => classify(status, &[], &stderr),
             };
+            // The engine on the host printed why it gave up, after the SSH
+            // or WSL client had connected.
+            if let (Client::Ssh | Client::Wsl, Some(_)) = (client, &request.container) {
+                if let Some(status) = container_status(&client.text(&stderr)) {
+                    probe.status = status;
+                }
+            }
             return Ok(failed(probe.status, None, probe.diagnostics));
         }
         Err(LaunchError::NoArtifact(report)) => {

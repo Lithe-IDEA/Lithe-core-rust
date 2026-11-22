@@ -70,3 +70,21 @@ pub fn unique_id() -> String {
 pub fn stat_requests() -> usize {
     crate::fs::stat_requests_for_test()
 }
+
+/// `remote.listContainers` with `program` in place of the engine CLI, on
+/// this machine or on the host the request names.
+pub fn list_containers_with(
+    request: crate::containers::ListRequest,
+    program: &str,
+) -> Result<crate::containers::Containers, lithe_protocol::CoreError> {
+    crate::containers::list_with(request, Some(program))
+}
+
+/// `remote.devcontainerUp` with `program` in place of both the Dev Container
+/// CLI and the engine CLI.
+pub fn devcontainer_up_with(
+    request: crate::devcontainers::UpRequest,
+    program: &str,
+) -> Result<crate::devcontainers::Up, lithe_protocol::CoreError> {
+    crate::devcontainers::up_with(request, Some(program))
+}

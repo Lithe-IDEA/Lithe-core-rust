@@ -416,6 +416,8 @@ meaning; `lithe_protocol::ErrorCode` documents when it is reported:
 - `reverse_forward_disabled`: the remote workspace settings do not allow reverse forwards
 - `remote_server_invalid`: the server build `remote.connect` would send cannot
   be read or is not the build its SHA-256 names
+- `devcontainer_untrusted_folder`: the folder is not trusted, so its dev
+  container was not built or started
 - `unknown`
 
 GitHub authorization is independent of a Lithe account. Device Flow is the

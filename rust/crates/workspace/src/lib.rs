@@ -11,22 +11,31 @@
 //! the SSH connections the user saved, [`ssh_configuration`] tells what
 //! OpenSSH makes of them and lists the hosts of the user's SSH configuration,
 //! [`motty`] lists the hosts saved in Motty for an import, [`wsl`] lists the
-//! WSL distributions of this Windows machine, [`probe`] checks that a saved
-//! SSH connection reaches a usable host, [`sessions`] opens and keeps the
-//! connections (over OpenSSH or `wsl.exe`), [`host`] forwards finite requests
+//! WSL distributions of this Windows machine, [`containers`] lists the
+//! running containers on this machine or a connected host, [`devcontainers`]
+//! builds and starts a local folder's dev container with the Dev Container
+//! CLI, [`probe`] checks
+//! that a saved SSH connection reaches a usable host, [`sessions`] opens and
+//! keeps the connections (over OpenSSH, `wsl.exe` or a container engine's
+//! `exec`), [`host`] forwards finite requests
 //! and owned streaming resources (processes, terminals, watches),
 //! [`forwards`] keeps the port forwards of the ports page, [`upload`] streams
 //! a verified file to the host, [`trust`] keys remote workspace trust by
-//! what the connection resolves, and [`preferences`] keeps the settings
-//! page's values, including the SSH program every OpenSSH start uses.
+//! what the connection resolves, [`port_records`] keeps what the ports page
+//! remembers of each workspace under the same key and restores its forwards,
+//! and [`preferences`] keeps the settings page's values, including the SSH
+//! program every OpenSSH start uses.
 //! Domain semantics stay in their engines (Git, build, language servers);
 //! this crate only supplies the IO boundary.
 
 pub mod connections;
+pub mod containers;
+pub mod devcontainers;
 pub mod forwards;
 pub mod fs;
 pub mod host;
 pub mod motty;
+pub mod port_records;
 pub mod preferences;
 pub mod probe;
 pub mod programs;
