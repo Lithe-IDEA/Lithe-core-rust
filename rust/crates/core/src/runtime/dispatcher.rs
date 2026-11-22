@@ -748,6 +748,7 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
 fn has_remote_workspace_adapter(command: &str) -> bool {
     command.starts_with("git.")
         || command.starts_with("build.")
+        || command.starts_with("runConfig.")
         || matches!(
             command,
             "workspace.repositories"

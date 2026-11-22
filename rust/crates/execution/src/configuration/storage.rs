@@ -491,12 +491,14 @@ fn read_plugin_documents(
     let mut project = BTreeMap::new();
     let mut local = BTreeMap::new();
     let directory = root.join(".lithe").join(PLUGIN_DIRECTORY);
-    let Ok(entries) = fs::read_dir(&directory) else {
-        return Ok((project, local));
+    let entries = match fs::read_dir(&directory) {
+        Ok(entries) => entries,
+        Err(error) if fs::is_transport_failure(&error) => return Err(CoreError::from(error)),
+        Err(_) => return Ok((project, local)),
     };
     let mut names = entries
         .filter_map(Result::ok)
-        .filter(|entry| entry.path().is_file())
+        .filter(|entry| fs::is_file(entry.path()).unwrap_or(false))
         .filter_map(|entry| entry.file_name().into_string().ok())
         .filter(|name| name.ends_with(".toml"))
         .collect::<Vec<_>>();
@@ -582,6 +584,7 @@ pub(crate) fn read_file(
     let file = match fs::File::open(&path) {
         Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) if fs::is_transport_failure(&error) => return Err(CoreError::from(error)),
         Err(error) => {
             return Err(CoreError::new(
                 ErrorCode::PermissionDenied,
@@ -693,6 +696,8 @@ fn render_yaml(document: &Value) -> Result<String, CoreError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Fixtures live on this machine.
+    use std::fs;
 
     /// A temporary workspace, removed when dropped so a failing assertion
     /// does not leave it behind.

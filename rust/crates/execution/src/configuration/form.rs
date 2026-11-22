@@ -46,7 +46,7 @@ pub fn configuration_types(request: ConfigurationTypesRequest) -> Result<Value, 
         .into_iter()
         .map(|kind| {
             let mut item = json!({ "provider": kind.provider() });
-            if let Some(availability) = process::platform_availability(kind, Platform::HOST) {
+            if let Some(availability) = process::platform_availability(kind, run_platform()) {
                 item["availability"] = json!(availability);
             }
             item
@@ -138,7 +138,7 @@ pub fn editor_form(request: EditorFormRequest) -> Result<Value, CoreError> {
     });
     match editor {
         Editor::Process(kind) => {
-            if let Some(availability) = process::platform_availability(kind, Platform::HOST) {
+            if let Some(availability) = process::platform_availability(kind, run_platform()) {
                 form["availability"] = json!(availability);
             }
         }
@@ -672,7 +672,7 @@ fn header_fields(automatic_name: Option<String>) -> Vec<Field> {
 
 /// The fields of `kind`'s editor, with automatic values for `draft`.
 fn fields(kind: Kind, root: &Path, draft: &Draft, choices: StepChoices) -> Vec<Value> {
-    let platform = Platform::HOST;
+    let platform = run_platform();
     let options = draft.options();
     let mut fields = header_fields(process::default_name(&options));
     if kind.runs_script() {
@@ -906,8 +906,8 @@ impl Common {
         let working_directory = match self.working_directory.trim() {
             "" | "." => ".".to_string(),
             value => normalize_working_directory(root, value).unwrap_or_else(|_| {
-                let target = process::file_path(root, value, Platform::HOST);
-                let code = if target.is_dir() {
+                let target = process::file_path(root, value, run_platform());
+                let code = if fs::is_dir(&target).unwrap_or(false) {
                     "outsideProject"
                 } else {
                     "notFound"
@@ -1084,7 +1084,7 @@ impl Draft {
             "process",
             serde_json::to_value(&options).expect("process options encode"),
         );
-        if let Ok(found) = process::field_errors(&configuration, Platform::HOST) {
+        if let Ok(found) = process::field_errors(&configuration, run_platform()) {
             for error in found {
                 if error.code != "required"
                     && !errors.iter().any(|known| known.field == error.field)
@@ -1134,14 +1134,19 @@ fn stored_path(
     if let Some(code) = process::text_error(value, 4096) {
         return Err(code);
     }
-    let platform = Platform::HOST;
+    let platform = run_platform();
     let absolute = lithe_platform::paths::is_absolute_path(value, platform);
     let path = if absolute {
         PathBuf::from(value)
     } else {
         root.join(value)
     };
-    if (directory && !path.is_dir()) || (!directory && !path.is_file()) {
+    let found = if directory {
+        fs::is_dir(&path)
+    } else {
+        fs::is_file(&path)
+    };
+    if !found.unwrap_or(false) {
         return Err("notFound");
     }
     let canonical = fs::canonicalize(&path).map_err(|_| "notFound")?;
