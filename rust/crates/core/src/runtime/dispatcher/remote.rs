@@ -239,6 +239,24 @@ pub(super) fn dispatch(command: RemoteCommand, id: Option<String>, payload: Valu
                 Err(error) => CoreResponse::failure(id, error),
             }
         }
+        RemoteCommand::PortRecords => answer(
+            id,
+            payload,
+            "Invalid remote port records request",
+            lithe_workspace::port_records::read,
+        ),
+        RemoteCommand::EditPortRecords => answer(
+            id,
+            payload,
+            "Invalid remote port records request",
+            lithe_workspace::port_records::edit,
+        ),
+        RemoteCommand::RestoreForwards => answer(
+            id,
+            payload,
+            "Invalid remote port records request",
+            lithe_workspace::port_records::restore,
+        ),
         RemoteCommand::Connections => {
             match serde_json::from_value(payload)
                 .map_err(|error| {

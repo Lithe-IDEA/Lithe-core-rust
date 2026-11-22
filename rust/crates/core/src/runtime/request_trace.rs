@@ -294,6 +294,7 @@ mod tests {
             "remote.startForward",
             "remote.startHostForward",
             "remote.startReverseForward",
+            "remote.restoreForwards",
             "debug.launch",
         ] {
             assert!(!is_hot(method), "{method}");

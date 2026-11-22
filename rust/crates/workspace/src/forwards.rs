@@ -218,7 +218,7 @@ pub fn list(request: ListRequest) -> Result<Forwards, CoreError> {
 
 /// The registered connection, while its session still runs. A session that
 /// ended already released its forwards, so its connection is forgotten.
-fn open(session_id: &str) -> Result<Arc<Connection>, CoreError> {
+pub(crate) fn open(session_id: &str) -> Result<Arc<Connection>, CoreError> {
     let connection = lookup(session_id)?;
     if connection.session.is_closed() {
         return Err(forward_error(session_id, ForwardError::SessionClosed));
@@ -227,7 +227,7 @@ fn open(session_id: &str) -> Result<Arc<Connection>, CoreError> {
 }
 
 /// Gives each forward failure its own category.
-fn forward_error(session_id: &str, error: ForwardError) -> CoreError {
+pub(crate) fn forward_error(session_id: &str, error: ForwardError) -> CoreError {
     match error {
         ForwardError::InvalidTarget(field) => {
             let field = match field {

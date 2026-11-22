@@ -17,8 +17,10 @@
 //! and owned streaming resources (processes, terminals, watches),
 //! [`forwards`] keeps the port forwards of the ports page, [`upload`] streams
 //! a verified file to the host, [`trust`] keys remote workspace trust by
-//! what the connection resolves, and [`preferences`] keeps the settings
-//! page's values, including the SSH program every OpenSSH start uses.
+//! what the connection resolves, [`port_records`] keeps what the ports page
+//! remembers of each workspace under the same key and restores its forwards,
+//! and [`preferences`] keeps the settings page's values, including the SSH
+//! program every OpenSSH start uses.
 //! Domain semantics stay in their engines (Git, build, language servers);
 //! this crate only supplies the IO boundary.
 
@@ -27,6 +29,7 @@ pub mod forwards;
 pub mod fs;
 pub mod host;
 pub mod motty;
+pub mod port_records;
 pub mod preferences;
 pub mod probe;
 mod scope;

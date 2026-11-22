@@ -25,6 +25,9 @@
 //!   identified by a random id instead of the host or user name.
 //! - [`trust`] keeps the machine-local trust decisions on remote workspaces,
 //!   keyed by the target and the host's real path.
+//! - [`port_records`] keeps what the ports page remembers of each remote
+//!   workspace, keyed like trust: added ports, labels, the forwards to start
+//!   again and the rules that listen on the host.
 //! - [`ssh_config`] reads what OpenSSH makes of a connection (`ssh -G`) and
 //!   the `Host` aliases of the user's SSH configuration.
 //! - `motty` (feature `motty`) reads the SSH hosts of a Motty configuration
@@ -52,6 +55,7 @@ pub mod host_forward;
 pub mod launch;
 #[cfg(feature = "motty")]
 pub mod motty;
+pub mod port_records;
 pub mod preferences;
 pub mod prompt;
 pub mod session;

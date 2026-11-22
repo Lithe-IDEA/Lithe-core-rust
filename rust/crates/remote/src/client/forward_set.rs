@@ -835,6 +835,15 @@ pub(crate) fn is_target_host(host: &str) -> bool {
     TargetHost::parse(host).is_ok()
 }
 
+/// The host a forward to `host` reaches, as [`ForwardInfo`] lists it, and
+/// whether it is on the host's loopback interface, so that a forward to it
+/// starts without a confirmation; `None` for a host no forward can target.
+pub(crate) fn canonical_target(host: &str) -> Option<(String, bool)> {
+    TargetHost::parse(host)
+        .ok()
+        .map(|target| (target.host, target.loopback))
+}
+
 /// True for the host's loopback interface: `localhost` or a loopback address,
 /// IPv6 in brackets or not and IPv4-mapped included. Names are not resolved.
 pub(crate) fn is_loopback_host(host: &str) -> bool {
