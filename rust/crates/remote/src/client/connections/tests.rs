@@ -90,6 +90,20 @@ fn private_key_connections_offer_only_the_chosen_key() {
 }
 
 #[test]
+fn windows_domain_users_reach_ssh_unchanged() {
+    // ssh splits the destination at the last `@`, so both spellings Windows
+    // OpenSSH servers take for a domain account arrive as the user.
+    for user in ["CONTOSO\\admin", "admin@contoso.example"] {
+        let command = command_line(json!({ "host": "192.0.2.10", "user": user }));
+        assert_eq!(
+            command[command.len() - 2],
+            format!("{user}@192.0.2.10"),
+            "user {user}"
+        );
+    }
+}
+
+#[test]
 fn other_authentication_methods_select_matching_ssh_options() {
     let password = command_line(json!({ "host": "h", "authentication": "password" }));
     assert_eq!(
@@ -183,6 +197,41 @@ fn malformed_connections_name_the_field_before_ssh_starts() {
         ),
         (json!({ "host": "box", "user": "a b" }), "user", Invalid),
         (json!({ "host": "box", "user": "a:b" }), "user", Invalid),
+        // A domain account has one domain, before `\` or after `@`, and a
+        // login name; OpenSSH refuses a trailing backslash.
+        (
+            json!({ "host": "box", "user": "CONTOSO\\" }),
+            "user",
+            Invalid,
+        ),
+        (json!({ "host": "box", "user": "\\admin" }), "user", Invalid),
+        (
+            json!({ "host": "box", "user": "A\\B\\admin" }),
+            "user",
+            Invalid,
+        ),
+        (
+            json!({ "host": "box", "user": "CONTOSO\\admin@contoso.example" }),
+            "user",
+            Invalid,
+        ),
+        (json!({ "host": "box", "user": "admin@" }), "user", Invalid),
+        (
+            json!({ "host": "box", "user": "@contoso" }),
+            "user",
+            Invalid,
+        ),
+        (json!({ "host": "box", "user": "a@b@c" }), "user", Invalid),
+        (
+            json!({ "host": "box", "user": "-oProxyCommand=x\\admin" }),
+            "user",
+            Invalid,
+        ),
+        (
+            json!({ "host": "box", "user": "CONTOSO\\-oProxyCommand=x" }),
+            "user",
+            Invalid,
+        ),
         (
             json!({ "host": "box", "authentication": "privateKey" }),
             "identityFile",
