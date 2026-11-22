@@ -17,7 +17,8 @@
 //!   so a host that asks for a password asks only once. The host itself
 //!   verifies the installed binary and its directories.
 //! - [`session`] starts the server, exchanges protocol messages with it and
-//!   routes each resource's events to its subscriber.
+//!   routes each resource's events to its subscriber, or keeps them for a
+//!   reconnecting client until it attaches to the resource.
 //! - [`api`] offers typed operations and resource handles on a session.
 //! - [`forward`] forwards local ports through tunnels.
 //! - [`host_forward`] makes the host listen: relaying to another server, or
@@ -65,6 +66,7 @@ pub mod motty;
 pub mod port_records;
 pub mod preferences;
 pub mod prompt;
+mod routes;
 pub mod session;
 pub mod ssh_config;
 pub mod transport;

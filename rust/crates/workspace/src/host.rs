@@ -3,10 +3,12 @@
 //! Streaming calls own their resource and subscription together. Cancellation,
 //! failed creation, and caller disconnect all close the remote process tree;
 //! ordinary host requests cannot create an unobserved streaming resource.
+//! `remote.attachProcess` takes over a process an earlier connection to the
+//! same persistent session started, with the same ownership.
 
 use crate::sessions::{lookup, request_error};
 use lithe_protocol::{cancellation, CoreError, ErrorCode};
-use lithe_remote::client::session::{ClientError, Event, RemoteSession};
+use lithe_remote::client::session::{AttachRefusal, Attachment, ClientError, Event, RemoteSession};
 use lithe_remote::protocol::methods;
 use lithe_request_context::events as execution_events;
 use serde::Deserialize;
@@ -283,20 +285,118 @@ fn run_on_session(
     let deadline = request
         .timeout_milliseconds
         .map(|timeout| Instant::now() + Duration::from_millis(timeout.min(86_400_000)));
-    run_observing(
+    run_observing(session, request, family, method, None, deadline, &mut relay)
+}
+
+/// Relays a resource event to the request's caller.
+fn relay(event: Event) -> Result<(), CoreError> {
+    execution_events::emit(json!({
+        "type": "remote", "event": event.event, "params": event.params,
+    }));
+    Ok(())
+}
+
+/// A process an earlier connection to the same persistent host session
+/// started.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AttachRequest {
+    session_id: String,
+    process_id: u64,
+}
+
+/// Receives the events of a process an earlier connection started, after
+/// this connection resumed the session: first the ones since the earlier
+/// connections' last event, then the live ones until the process exits.
+/// The first event, `process.attached`, says whether output may be missing.
+/// From the attach on the request owns the process like `remote.runProcess`:
+/// cancelling it ends the process.
+pub fn attach_process(request: AttachRequest) -> Result<Value, CoreError> {
+    cancellation::check()?;
+    let connection = lookup(&request.session_id)?;
+    let session = &connection.session;
+    if session.is_closed() {
+        return Err(request_error(
+            &request.session_id,
+            ClientError::Disconnected {
+                diagnostics: String::new(),
+            },
+        ));
+    }
+    let gone = || {
+        CoreError::new(
+            ErrorCode::RemoteProcessGone,
+            "The host session no longer runs this process",
+        )
+    };
+    if !connection.history.resumed {
+        return Err(gone());
+    }
+    let Attachment {
+        missed,
+        lost,
+        events,
+    } = match session.attach("process", request.process_id) {
+        Ok(attachment) => attachment,
+        Err(AttachRefusal::Owned) => {
+            return Err(CoreError::new(
+                ErrorCode::RemoteProcessAttached,
+                "Another request already receives this process",
+            ))
+        }
+        Err(AttachRefusal::Unavailable) => return Err(gone()),
+    };
+    let mut resource = Resource {
         session,
-        request,
-        family,
-        method,
+        family: "process",
+        id: request.process_id,
+        creation_attempted: true,
+    };
+    let mut missed = VecDeque::from(missed);
+    if missed.is_empty() && !still_runs(session, &request.session_id, request.process_id)? {
+        // The state response follows any earlier exit event on the wire, so
+        // an exit that arrived meanwhile is already in the subscription.
+        missed.extend(events.try_iter());
+        if missed.is_empty() {
+            resource.creation_attempted = false;
+            return Err(gone());
+        }
+    }
+    relay(Event {
+        event: "process.attached".into(),
+        params: json!({
+            "processId": request.process_id,
+            "truncated": lost || !connection.history.complete,
+        }),
+        seq: None,
+    })?;
+    let outcome = receive_events(
+        &resource,
+        &events,
+        missed,
+        &request.session_id,
         None,
-        deadline,
-        &mut |event| {
-            execution_events::emit(json!({
-                "type": "remote", "event": event.event, "params": event.params,
-            }));
-            Ok(())
-        },
-    )
+        None,
+        &mut relay,
+    );
+    // See Resource::drop: remove backpressure before trying to stop the tree.
+    drop(events);
+    drop(resource);
+    outcome
+}
+
+/// Whether the host session still owns process `id`.
+fn still_runs(session: &RemoteSession, session_id: &str, id: u64) -> Result<bool, CoreError> {
+    let state = request_cancellable(session, methods::SERVER_STATE, json!({}), REQUEST_TIMEOUT)
+        .map_err(|error| request_error(session_id, error))?;
+    let state: methods::ServerState = serde_json::from_value(state).map_err(|error| {
+        CoreError::new(ErrorCode::ParseFailed, "Invalid host session state")
+            .with_details(error.to_string())
+    })?;
+    Ok(state
+        .processes
+        .iter()
+        .any(|process| process.process_id == id))
 }
 
 /// Runs an owned host process with byte-preserving output and optional input.

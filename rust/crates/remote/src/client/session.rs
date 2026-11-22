@@ -4,6 +4,8 @@
 //! request waiting for it, and each event either to the subscriber of its
 //! resource (`terminal.output` with `terminalId` 7 goes to the subscription
 //! for terminal 7) or, without one, to the session's general event channel.
+//! A reconnecting client can park the events of the resources an earlier
+//! connection created until it attaches to them (see [`RemoteSession::park`]).
 //!
 //! Every channel is bounded. A stalled resource loses its subscription instead
 //! of blocking the shared reader: its owner observes disconnection and reclaims
@@ -21,6 +23,7 @@
 //! register [`RemoteSession::on_closed`] to release them once the stream ends.
 
 use crate::client::connection_log::{ConnectionKind, ConnectionLog};
+use crate::client::routes::{route, Routes};
 use crate::client::transport::{TransportChain, TransportError};
 use crate::protocol::frame::{read_frame, skip_preamble, write_frame};
 use crate::protocol::methods::{
@@ -34,7 +37,7 @@ use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use std::io::{self, BufReader, Read, Write};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
@@ -87,6 +90,29 @@ impl Event {
     pub fn decode<T: DeserializeOwned>(&self) -> Result<T, ClientError> {
         serde_json::from_value(self.params.clone())
             .map_err(|error| ClientError::Protocol(format!("{}: {error}", self.event)))
+    }
+}
+
+/// Where a connection's event stream stands. It stays readable after the
+/// session is gone, so the next connection to the same persistent session
+/// resumes from it.
+#[derive(Clone, Debug, Default)]
+pub struct EventPosition {
+    seq: Arc<AtomicU64>,
+    discarded: Arc<AtomicBool>,
+}
+
+impl EventPosition {
+    /// Sequence number of the latest event received.
+    pub fn seq(&self) -> u64 {
+        self.seq.load(Ordering::Acquire)
+    }
+
+    /// Whether the stream ended while it kept events for a resource nobody
+    /// had attached to. The connection acknowledged them, so a later
+    /// connection's attach misses them.
+    pub fn discarded(&self) -> bool {
+        self.discarded.load(Ordering::Acquire)
     }
 }
 
@@ -177,7 +203,7 @@ struct Pending {
     on_closed: Vec<ClosedHook>,
 }
 
-type Routes = Mutex<HashMap<(String, u64), SyncSender<Event>>>;
+pub use crate::client::routes::{AttachRefusal, Attachment};
 
 /// Options for establishing a session.
 #[derive(Clone, Debug)]
@@ -348,8 +374,7 @@ pub struct RemoteSession {
     routes: Arc<Routes>,
     next_request: Arc<AtomicU64>,
     next_resource: AtomicU64,
-    /// Sequence number of the latest event received.
-    last_seq: Arc<AtomicU64>,
+    position: EventPosition,
     child: Mutex<Option<Child>>,
     stderr_tail: Arc<StderrTail>,
     hello: Option<HelloResult>,
@@ -555,7 +580,7 @@ impl RemoteSession {
         let (ready_sender, ready) = mpsc::channel();
         let outgoing = Arc::new(Outgoing::default());
         let next_request = Arc::new(AtomicU64::new(0));
-        let last_seq = Arc::new(AtomicU64::new(0));
+        let position = EventPosition::default();
         let writer = {
             let outgoing = Arc::clone(&outgoing);
             let pending = Arc::clone(&pending);
@@ -574,7 +599,7 @@ impl RemoteSession {
                 events: event_sender,
                 outgoing: Arc::clone(&outgoing),
                 next_request: Arc::clone(&next_request),
-                last_seq: Arc::clone(&last_seq),
+                position: position.clone(),
                 log: log.clone(),
             };
             thread::Builder::new()
@@ -594,7 +619,7 @@ impl RemoteSession {
             routes,
             next_request,
             next_resource: AtomicU64::new(1),
-            last_seq,
+            position,
             child: Mutex::new(child),
             stderr_tail,
             hello: None,
@@ -657,7 +682,14 @@ impl RemoteSession {
     /// to [`RemoteSession::resume`] on the next connection to continue
     /// without gaps or repeats.
     pub fn last_event_seq(&self) -> u64 {
-        self.last_seq.load(Ordering::Acquire)
+        self.position.seq()
+    }
+
+    /// Where this connection's event stream stands, readable after the
+    /// session is gone: the next connection to the same persistent session
+    /// resumes from it.
+    pub fn event_position(&self) -> EventPosition {
+        self.position.clone()
     }
 
     /// Handshake result, including the host capabilities.
@@ -681,15 +713,32 @@ impl RemoteSession {
     /// before creating the resource, so its first events are not missed.
     /// Dropping the receiver ends the subscription.
     pub fn subscribe(&self, family: &str, id: u64) -> Receiver<Event> {
-        let (sender, receiver) = mpsc::sync_channel(EVENT_CAPACITY);
-        lock(&self.routes).insert((family.to_owned(), id), sender);
-        receiver
+        lock(&self.routes).subscribe(family, id, EVENT_CAPACITY)
     }
 
     /// Ends the subscription of one resource; its later events go to the general
     /// event channel.
     pub fn unsubscribe(&self, family: &str, id: u64) {
-        lock(&self.routes).remove(&(family.to_owned(), id));
+        lock(&self.routes).unsubscribe(family, id);
+    }
+
+    /// Keeps the events of `family` resources that earlier connections to
+    /// this persistent session created, and that nobody receives yet, until
+    /// [`RemoteSession::attach`] takes them. Call it before
+    /// [`RemoteSession::resume`], connecting with [`ResumeMode::Deferred`],
+    /// so the replayed events are kept too.
+    pub fn park(&self, family: &str) {
+        let below = self.hello().session.next_resource_id;
+        lock(&self.routes).park(family, below);
+    }
+
+    /// Starts receiving the events of resource `id` of a parked family that
+    /// an earlier connection created: first the events kept since this
+    /// connection resumed, then the later ones, like [`RemoteSession::subscribe`].
+    /// Refused when another caller already receives its events, or nothing
+    /// keeps them for an attach.
+    pub fn attach(&self, family: &str, id: u64) -> Result<Attachment, AttachRefusal> {
+        lock(&self.routes).attach(family, id, EVENT_CAPACITY)
     }
 
     /// Sends a request and waits for its typed result.
@@ -860,7 +909,7 @@ struct ReaderContext {
     events: SyncSender<Event>,
     outgoing: Arc<Outgoing>,
     next_request: Arc<AtomicU64>,
-    last_seq: Arc<AtomicU64>,
+    position: EventPosition,
     log: ConnectionLog,
 }
 
@@ -902,7 +951,7 @@ fn read_loop(
         events,
         outgoing,
         next_request,
-        last_seq,
+        position,
         log,
     } = context;
     let mut reader = BufReader::new(reader);
@@ -934,11 +983,11 @@ fn read_loop(
                 }
             }
             Ok(Message::Event { event, params, seq }) => {
-                if !route(&routes, &events, Event { event, params, seq }) {
+                if !route(&routes, &events, Event { event, params, seq }, frame.len()) {
                     break "overflow".to_owned();
                 }
                 if let Some(seq) = seq {
-                    last_seq.store(seq, Ordering::Release);
+                    position.seq.store(seq, Ordering::Release);
                     if seq >= acknowledged + ACK_INTERVAL
                         && acknowledge(&outgoing, &next_request, seq)
                     {
@@ -954,7 +1003,9 @@ fn read_loop(
     log.stream_ended(&cause);
     close(&pending);
     // Ending every subscription tells consumers the stream is gone.
-    lock(&routes).clear();
+    if lock(&routes).close() {
+        position.discarded.store(true, Ordering::Release);
+    }
 }
 
 /// Queues `server.ack` without waiting for its response, which the reader
@@ -982,30 +1033,6 @@ fn write_loop(mut writer: Box<dyn Write + Send>, outgoing: &Outgoing, pending: &
             close(pending);
             return;
         }
-    }
-}
-
-fn route(routes: &Routes, events: &SyncSender<Event>, event: Event) -> bool {
-    let key = event.resource().map(|(family, id)| (family.to_owned(), id));
-    // Neither a resource nor the general consumer may block the sole response
-    // reader: a process owner needs that reader to acknowledge its kill request.
-    let subscriber = key.as_ref().and_then(|key| lock(routes).get(key).cloned());
-    match subscriber {
-        Some(subscriber) => {
-            match subscriber.try_send(event) {
-                Ok(()) => true,
-                Err(error) => {
-                    if let Some(key) = key {
-                        lock(routes).remove(&key);
-                    }
-                    // A live owner losing a frame must resynchronize. Dropping
-                    // a receiver intentionally only ends that subscription.
-                    matches!(error, mpsc::TrySendError::Disconnected(_))
-                }
-            }
-        }
-        // A dropped general receiver means nobody consumes these events.
-        None => !matches!(events.try_send(event), Err(mpsc::TrySendError::Full(_))),
     }
 }
 
@@ -1063,7 +1090,7 @@ fn abandon(child: Option<Child>) {
     }
 }
 
-fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+pub(super) fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -1213,65 +1240,6 @@ mod tests {
             seq: Some(2),
         };
         assert_eq!(unrelated.resource(), None);
-    }
-
-    #[test]
-    fn full_resource_queue_requires_resynchronization_without_blocking_replies() {
-        let routes = Mutex::new(HashMap::new());
-        let (full, stalled) = mpsc::sync_channel(1);
-        let (other, healthy) = mpsc::sync_channel(1);
-        let (general, _) = mpsc::sync_channel(1);
-        lock(&routes).insert(("process".into(), 7), full);
-        lock(&routes).insert(("process".into(), 8), other);
-        let event = |id| Event {
-            event: "process.output".into(),
-            params: json!({"processId": id, "data": ""}),
-            seq: None,
-        };
-        assert!(route(&routes, &general, event(7)));
-        assert!(!route(&routes, &general, event(7)));
-        assert!(!lock(&routes).contains_key(&("process".into(), 7)));
-        assert!(route(&routes, &general, event(8)));
-        assert_eq!(healthy.try_recv().unwrap().resource(), Some(("process", 8)));
-        assert!(stalled.try_recv().is_ok());
-        assert!(matches!(
-            stalled.try_recv(),
-            Err(mpsc::TryRecvError::Disconnected)
-        ));
-    }
-
-    #[test]
-    fn general_overflow_requires_resynchronization_instead_of_losing_watch_changes() {
-        let routes = Mutex::new(HashMap::new());
-        let (sender, receiver) = mpsc::sync_channel(1);
-        let event = || Event {
-            event: "watch.changed".into(),
-            params: json!({}),
-            seq: None,
-        };
-        assert!(route(&routes, &sender, event()));
-        assert!(!route(&routes, &sender, event()));
-        drop(receiver);
-        assert!(route(&routes, &sender, event()));
-    }
-
-    #[test]
-    fn dropped_resource_receiver_does_not_close_the_connection() {
-        let routes = Mutex::new(HashMap::new());
-        let (sender, receiver) = mpsc::sync_channel(1);
-        let (general, _) = mpsc::sync_channel(1);
-        lock(&routes).insert(("process".into(), 7), sender);
-        drop(receiver);
-        assert!(route(
-            &routes,
-            &general,
-            Event {
-                event: "process.output".into(),
-                params: json!({"processId": 7, "data": ""}),
-                seq: None,
-            }
-        ));
-        assert!(!lock(&routes).contains_key(&("process".into(), 7)));
     }
 
     #[test]

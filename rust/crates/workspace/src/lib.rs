@@ -39,6 +39,7 @@ pub mod port_records;
 pub mod preferences;
 pub mod probe;
 pub mod programs;
+mod resumption;
 mod scope;
 pub mod sessions;
 pub mod ssh_configuration;
