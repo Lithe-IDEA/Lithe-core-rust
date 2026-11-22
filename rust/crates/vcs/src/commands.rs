@@ -8,7 +8,7 @@
 use super::manifest::{built_in_git_markers, VcsProviderDeclaration, BUILT_IN_GIT};
 use super::model::{is_root_relative, Capabilities};
 use super::requests::{self, Operation};
-use super::roots::{self, Mapping, MarkerSet};
+use super::roots::{self, Mapping, MarkerSet, RootScanRequest, RootScanResult};
 use super::VcsManifest;
 use lithe_plugin_model::{decode_payload, is_official_namespace, outcome};
 use lithe_protocol::{CoreError, ErrorCode};
@@ -65,6 +65,14 @@ fn precedes(candidate: &Owner<'_>, current: &Owner<'_>) -> bool {
 /// Manifests the plugin host's validation (`M::validate`) rejects are reported
 /// in `rejected` instead of contributing providers.
 pub fn vcs_detect_roots_command<M: VcsManifest>(payload: Value) -> Result<Value, CoreError> {
+    vcs_detect_roots_using::<M>(payload, RootScanRequest::scan)
+}
+
+/// Selects providers locally, then sends only the filesystem scan to `scan`.
+pub fn vcs_detect_roots_using<M: VcsManifest>(
+    payload: Value,
+    scan: impl FnOnce(RootScanRequest) -> Result<RootScanResult, CoreError>,
+) -> Result<Value, CoreError> {
     let request: DetectRootsRequest = decode_payload(payload, "vcs.detectRoots")?;
     let workspace = PathBuf::from(&request.workspace_root);
     if !workspace.is_absolute() || request.workspace_root.contains('\0') {
@@ -73,10 +81,6 @@ pub fn vcs_detect_roots_command<M: VcsManifest>(payload: Value) -> Result<Value,
             "The workspace root must be an absolute path.",
         ));
     }
-    // Ancestors are read from the resolved location: a workspace opened
-    // through a link sits in the link target's working copy.
-    let workspace = workspace.canonicalize().unwrap_or(workspace);
-
     let mut rejected = Vec::new();
     let mut manifests = Vec::new();
     for (index, plugin) in request.plugins.into_iter().enumerate() {
@@ -119,14 +123,14 @@ pub fn vcs_detect_roots_command<M: VcsManifest>(payload: Value) -> Result<Value,
         "markers": git_markers,
     })];
     let mut sets = vec![MarkerSet {
-        vcs: BUILT_IN_GIT,
-        markers: &git_markers,
+        vcs: BUILT_IN_GIT.to_owned(),
+        markers: git_markers,
     }];
     for owner in owners.values() {
         providers.push(owner.declaration.descriptor(owner.plugin_id));
         sets.push(MarkerSet {
-            vcs: &owner.declaration.id,
-            markers: &owner.declaration.detection.markers,
+            vcs: owner.declaration.id.clone(),
+            markers: owner.declaration.detection.markers.clone(),
         });
     }
     let mappings: Vec<Mapping> = request
@@ -137,7 +141,11 @@ pub fn vcs_detect_roots_command<M: VcsManifest>(payload: Value) -> Result<Value,
             vcs: mapping.vcs,
         })
         .collect();
-    let detection = roots::detect(&workspace, &sets, &mappings);
+    let detection = scan(RootScanRequest {
+        workspace,
+        sets,
+        mappings,
+    })?;
     let roots: Vec<Value> = detection
         .roots
         .iter()

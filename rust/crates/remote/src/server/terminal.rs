@@ -6,9 +6,9 @@
 //! therefore behave as users expect.
 
 use crate::protocol::methods::{
-    self, decode_bytes, encode_bytes, ResourceLabel, TerminalExitEvent, TerminalOpenParams,
-    TerminalOpenResult, TerminalOutputEvent, TerminalParams, TerminalResizeParams, TerminalState,
-    TerminalWriteParams,
+    self, decode_bytes, encode_bytes, EnvironmentSource, ResourceLabel, TerminalExitEvent,
+    TerminalOpenParams, TerminalOpenResult, TerminalOutputEvent, TerminalParams,
+    TerminalResizeParams, TerminalState, TerminalWriteParams,
 };
 use crate::protocol::{ErrorCode, RemoteError};
 use crate::server::connection::Context;
@@ -69,7 +69,16 @@ impl TerminalTable {
         params: Value,
     ) -> Result<Value, RemoteError> {
         match method {
-            methods::TERMINAL_OPEN => to_value(self.open(&context.session, parse(params)?)?),
+            methods::TERMINAL_OPEN | methods::TERMINAL_OPEN_SCOPED => {
+                let params: TerminalOpenParams = parse(params)?;
+                if (method == methods::TERMINAL_OPEN_SCOPED) != params.scoped_cwd.is_some() {
+                    return Err(RemoteError::new(
+                        ErrorCode::InvalidRequest,
+                        "scopedCwd is required only by terminal.openScoped",
+                    ));
+                }
+                to_value(self.open(&context.session, params)?)
+            }
             methods::TERMINAL_WRITE => self.write(parse(params)?).map(|()| Value::Null),
             methods::TERMINAL_RESIZE => self.resize(parse(params)?).map(|()| Value::Null),
             methods::TERMINAL_CLOSE => self
@@ -133,14 +142,28 @@ impl TerminalTable {
                 (command, vec![shell])
             }
         };
-        let directory = match &params.cwd {
-            Some(cwd) => host_path(cwd)?,
-            None => account
-                .home_directory
-                .as_deref()
-                .map(std::path::PathBuf::from)
-                .unwrap_or_else(|| "/".into()),
-        };
+        if params.cwd.is_some() && params.scoped_cwd.is_some() {
+            return Err(RemoteError::new(
+                ErrorCode::InvalidRequest,
+                "cwd and scopedCwd cannot be combined",
+            ));
+        }
+        if let Some(scoped) = &params.scoped_cwd {
+            super::scoped_files::set_working_directory(&mut command, scoped)?;
+        } else {
+            command.current_dir(match &params.cwd {
+                Some(cwd) => host_path(cwd)?,
+                None => account
+                    .home_directory
+                    .as_deref()
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| "/".into()),
+            });
+        }
+        if params.environment == EnvironmentSource::Login {
+            let login = session.environment.resolve(session, false);
+            command.env_clear().envs(login.environment);
+        }
         let (master, slave) = platform::open_pty(params.columns, params.rows)
             .map_err(|error| crate::server::fs::io_error(error, ""))?;
         let stdio = |fd: &OwnedFd| -> Result<Stdio, RemoteError> {
@@ -149,12 +172,14 @@ impl TerminalTable {
                 .map_err(|error| crate::server::fs::io_error(error, ""))
         };
         command
-            .current_dir(directory)
             .env("TERM", DEFAULT_TERM)
             .envs(&params.env)
             .stdin(stdio(&slave)?)
             .stdout(stdio(&slave)?)
             .stderr(stdio(&slave)?);
+        for name in &params.unset_env {
+            command.env_remove(name);
+        }
         platform::prepare_child(&mut command, ChildKind::Terminal);
         let master = Arc::new(master);
         let io_failure = |error| crate::server::fs::io_error(error, "");

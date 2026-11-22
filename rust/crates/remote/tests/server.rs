@@ -30,6 +30,272 @@ fn code<T: std::fmt::Debug>(result: Result<T, ClientError>) -> ErrorCode {
 }
 
 #[test]
+fn project_plugin_settings_bind_to_the_host_root_and_exact_contents() {
+    use std::os::unix::fs::{symlink, PermissionsExt};
+
+    let fixture = TempDir::new("project-plugin-settings");
+    let root = fixture.path().join("project");
+    std::fs::create_dir(&root).unwrap();
+    let source = root.join(".lithe/plugin-settings.json");
+    let (session, _events) = connect();
+    let request = |operation| {
+        session.request_value(
+            methods::FS_PROJECT_PLUGIN_SETTINGS,
+            json!({"root": root, "operation": operation}),
+            STEP_TIMEOUT,
+        )
+    };
+    let read = || request(json!({"kind": "read"})).unwrap();
+    let publish = |snapshot: &serde_json::Value, content: Option<&str>| {
+        request(json!({"kind": "publish", "baseline": snapshot["baseline"], "content": content}))
+    };
+    let missing = read();
+    assert!(missing["text"].is_null());
+    assert!(!root.join(".lithe").exists());
+    let original = r#"{"dev.lithe.test.settings":{"flag":true}}"#;
+    assert_eq!(publish(&missing, Some(original)).unwrap(), true);
+    let original_snapshot = read();
+    assert_eq!(original_snapshot["text"], original);
+    assert_eq!(original_snapshot["path"], ".lithe/plugin-settings.json");
+    assert_eq!(publish(&original_snapshot, Some(original)).unwrap(), false);
+    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o440)).unwrap();
+    assert_eq!(code(publish(&read(), None)), ErrorCode::PermissionDenied);
+    assert_eq!(std::fs::read_to_string(&source).unwrap(), original);
+    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o640)).unwrap();
+
+    // Same-size external change defeats a size-based comparison.
+    let external = original.replace("true", "null");
+    std::fs::write(&source, &external).unwrap();
+    assert_eq!(code(publish(&original_snapshot, None)), ErrorCode::Conflict);
+    assert_eq!(std::fs::read_to_string(&source).unwrap(), external);
+    let changed = read();
+    assert_eq!(publish(&changed, Some(original)).unwrap(), true);
+    assert_eq!(
+        std::fs::metadata(&source).unwrap().permissions().mode() & 0o777,
+        0o640
+    );
+    let before_move = read();
+    std::fs::rename(&root, fixture.path().join("previous-project")).unwrap();
+    std::fs::create_dir_all(root.join(".lithe")).unwrap();
+    std::fs::write(&source, original).unwrap();
+    assert_eq!(code(publish(&before_move, None)), ErrorCode::Conflict);
+    assert_eq!(std::fs::read_to_string(&source).unwrap(), original);
+    let before_link = read();
+    std::fs::remove_file(&source).unwrap();
+    let outside = fixture.path().join("unrelated");
+    std::fs::write(&outside, original).unwrap();
+    symlink(&outside, &source).unwrap();
+    assert_eq!(
+        code(publish(&before_link, None)),
+        ErrorCode::PermissionDenied
+    );
+    assert_eq!(
+        code(request(json!({"kind": "read"}))),
+        ErrorCode::PermissionDenied
+    );
+    assert_eq!(std::fs::read_to_string(&outside).unwrap(), original);
+    std::fs::remove_file(&source).unwrap();
+    std::fs::write(&source, original).unwrap();
+    assert_eq!(publish(&read(), None).unwrap(), true);
+    assert!(read()["text"].is_null());
+    assert!(!source.exists());
+    session.shutdown(STEP_TIMEOUT);
+}
+
+#[test]
+fn run_configuration_edits_reject_a_stale_batch_before_publishing() {
+    let fixture = TempDir::new("run-configuration-edits");
+    let root = fixture.path();
+    let legacy = ".lithe/run/local.json";
+    let saved = ".lithe/run/local.yaml";
+    std::fs::create_dir_all(root.join(".lithe/run")).unwrap();
+    std::fs::write(root.join(legacy), "edited elsewhere").unwrap();
+    let (session, _events) = connect();
+    let apply = |changes| {
+        session.request_value(
+            methods::FS_APPLY_RUN_CONFIG_CHANGES,
+            json!({"root": root, "changes": changes}),
+            STEP_TIMEOUT,
+        )
+    };
+    let migrate = |base: &[u8]| {
+        json!([
+            {"path": saved, "baseSha256": null, "content": "migrated"},
+            {"path": legacy, "baseSha256": format!("{:x}", Sha256::digest(base)), "content": null}
+        ])
+    };
+
+    assert_eq!(code(apply(migrate(b"before editing"))), ErrorCode::Conflict);
+    assert!(!root.join(saved).exists());
+    assert_eq!(
+        std::fs::read_to_string(root.join(legacy)).unwrap(),
+        "edited elsewhere"
+    );
+
+    apply(migrate(b"edited elsewhere")).unwrap();
+    assert!(!root.join(legacy).exists());
+    assert_eq!(
+        std::fs::read_to_string(root.join(saved)).unwrap(),
+        "migrated"
+    );
+    assert_eq!(
+        code(apply(json!([{"path": ".lithe/unrelated",
+            "baseSha256": null, "content": "must not write"}]))),
+        ErrorCode::InvalidRequest
+    );
+    assert!(!root.join(".lithe/unrelated").exists());
+    session.shutdown(STEP_TIMEOUT);
+}
+
+#[test]
+fn scoped_files_read_bounded_prefixes_and_do_not_follow_workspace_links() {
+    use std::ffi::CString;
+    use std::os::unix::{ffi::OsStrExt, fs::symlink};
+
+    let fixture = TempDir::new("scoped-files");
+    let root = fixture.path().join("repo");
+    let other = fixture.path().join("outside");
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    std::fs::create_dir(&other).unwrap();
+    std::fs::write(root.join("src/file"), b"hello").unwrap();
+    std::fs::write(other.join("secret"), b"secret").unwrap();
+    symlink(&other, root.join("escape")).unwrap();
+    symlink(other.join("secret"), root.join("link")).unwrap();
+    symlink("src/file", root.join("internal-link")).unwrap();
+    let fifo = CString::new(root.join("fifo").as_os_str().as_bytes()).unwrap();
+    // SAFETY: fifo holds a NUL-terminated path in the test's private fixture.
+    assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+    let root_alias = fixture.path().join("repo-alias");
+    symlink(&root, &root_alias).unwrap();
+
+    let (session, _events) = connect();
+    let request = |path: &str, access: serde_json::Value| {
+        session.request_value(
+            methods::FS_SCOPED_FILE,
+            json!({"root":root_alias,"path":path,"access":access}),
+            STEP_TIMEOUT,
+        )
+    };
+    let list = json!({"kind":"list"});
+    let stat = json!({"kind":"stat"});
+    let read = json!({"kind":"read","length":5});
+    assert_eq!(
+        request("", list.clone()).unwrap(),
+        json!([{"name":"src","kind":"directory"}])
+    );
+    assert_eq!(
+        request("src", list.clone()).unwrap(),
+        json!([{"name":"file","kind":"file"}])
+    );
+    let metadata = request("src/file", stat.clone()).unwrap();
+    assert_eq!(metadata["kind"], "file");
+    assert_eq!(metadata["size"], 5);
+    assert!(metadata["modifiedMilliseconds"].is_i64());
+    assert_eq!(request("link", stat.clone()).unwrap()["kind"], "symlink");
+    assert_eq!(
+        request("src/file", read.clone()).unwrap(),
+        json!({"data":encode_bytes(b"hello"),"isTruncated":false})
+    );
+    assert_eq!(
+        request("src/file", json!({"kind":"read","length":4})).unwrap(),
+        json!({"data":encode_bytes(b"hell"),"isTruncated":true})
+    );
+    for path in [
+        "../outside/secret",
+        "/src/file",
+        "src/../src/file",
+        "src\\file",
+    ] {
+        assert_eq!(code(request(path, read.clone())), ErrorCode::InvalidPath);
+    }
+    for path in ["escape/secret", "link", "internal-link", "fifo"] {
+        assert_eq!(
+            code(request(path, read.clone())),
+            ErrorCode::PermissionDenied
+        );
+    }
+    assert_eq!(code(request("escape", list)), ErrorCode::PermissionDenied);
+    assert_eq!(
+        code(request("escape/secret", stat)),
+        ErrorCode::PermissionDenied
+    );
+    assert_eq!(
+        code(request("src/file/missing", read)),
+        ErrorCode::NotADirectory
+    );
+    for length in [0, methods::MAX_SCOPED_READ_BYTES + 1] {
+        assert_eq!(
+            code(request("src/file", json!({"kind":"read","length":length}))),
+            ErrorCode::TooLarge
+        );
+    }
+    session.shutdown(STEP_TIMEOUT);
+}
+
+#[test]
+fn scoped_search_matches_disk_text_and_bounds_results() {
+    let fixture = TempDir::new("scoped-search");
+    let root = fixture.path();
+    std::fs::create_dir(root.join("generated")).unwrap();
+    std::fs::write(root.join("generated/skip.txt"), "Needle").unwrap();
+    std::fs::write(root.join("other.md"), "Needle").unwrap();
+    std::fs::write(root.join("first.txt"), "header\r\nNeedle\r\nneedles\r\n").unwrap();
+    let encoded: Vec<u8> = std::iter::once(0xfeff)
+        .chain("needle\n".encode_utf16())
+        .flat_map(u16::to_le_bytes)
+        .collect();
+    std::fs::write(root.join("second.txt"), encoded).unwrap();
+    let (session, _events) = connect();
+    let request = |query: &str, text, case, words, regex| {
+        session.request_value(
+            methods::FS_SCOPED_SEARCH,
+            json!({
+                "root": root,
+                "hiddenDirectories": ["generated"],
+                "search": {
+                    "query": query, "fileMask": "*.txt", "text": text,
+                    "caseSensitive": case, "wholeWords": words, "regularExpression": regex
+                }
+            }),
+            STEP_TIMEOUT,
+        )
+    };
+    assert_eq!(
+        request("FIRST", false, false, false, false).unwrap()["matches"],
+        json!([{"path":"first.txt", "line":null, "preview":null}])
+    );
+    let result = request("^needle$", true, false, false, true).unwrap();
+    assert_eq!(result["isTruncated"], false);
+    assert_eq!(
+        result["matches"],
+        json!([
+            {"path":"first.txt", "line":2, "preview":"Needle"},
+            {"path":"second.txt", "line":1, "preview":"needle"}
+        ])
+    );
+    assert_eq!(
+        request("Needle", true, true, true, false).unwrap()["matches"],
+        json!([{"path":"first.txt", "line":2, "preview":"Needle"}])
+    );
+    assert_eq!(
+        code(request("[", true, false, false, true)),
+        ErrorCode::InvalidRequest
+    );
+    std::fs::write(
+        root.join("many.txt"),
+        "Needle\n".repeat(methods::MAX_SCOPED_SEARCH_RESULTS + 1),
+    )
+    .unwrap();
+    let capped = request("Needle", true, true, true, false).unwrap();
+    assert_eq!(capped["isTruncated"], true);
+    assert_eq!(
+        capped["matches"].as_array().unwrap().len(),
+        methods::MAX_SCOPED_SEARCH_RESULTS
+    );
+    session.shutdown(STEP_TIMEOUT);
+}
+
+#[test]
 fn staged_upload_checks_order_digest_and_atomic_no_replace_publication() {
     let root = TempDir::new("staged-upload");
     let (session, _events) = connect();

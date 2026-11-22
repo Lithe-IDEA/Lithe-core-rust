@@ -204,13 +204,16 @@ pub(super) fn parameters(
     Ok(SpawnParams {
         process_id: 0,
         argv,
+        command_candidates: Vec::new(),
         cwd: Some(
             host.remote_path(Path::new(root))
                 .to_string_lossy()
                 .into_owned(),
         ),
+        scoped_cwd: None,
         environment: EnvironmentSource::Login,
         env,
+        path_prepend: Vec::new(),
         pipe_stdin,
         label: None,
     })
@@ -275,9 +278,12 @@ fn remote_git_executable(
                 SpawnParams {
                     process_id: 0,
                     argv: vec![candidate.clone(), "--version".into()],
+                    command_candidates: Vec::new(),
                     cwd: None,
+                    scoped_cwd: None,
                     environment: EnvironmentSource::Login,
                     env: BTreeMap::new(),
+                    path_prepend: Vec::new(),
                     pipe_stdin: false,
                     label: None,
                 },

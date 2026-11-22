@@ -68,11 +68,7 @@ impl HostFixture {
     }
 
     fn request_at(&self, remote_root: &std::path::Path, command: &str, payload: Value) -> Value {
-        let response: Value = serde_json::from_str(&crate::execute_json(&json!({
-            "id": test_support::unique_id(), "command": command, "timeoutMilliseconds": 30_000,
-            "remoteWorkspace": {"sessionId": self.id, "localRoot": self.root.join("placeholder"), "remoteRoot": remote_root},
-            "payload": payload,
-        }).to_string())).unwrap();
+        let response = self.response_at(remote_root, command, payload);
         assert_eq!(response["ok"], true, "{command}: {response}");
         assert!(
             response["data"]["operationError"].is_null(),
@@ -81,11 +77,220 @@ impl HostFixture {
         response["data"].clone()
     }
 
+    fn response_at(&self, remote_root: &std::path::Path, command: &str, payload: Value) -> Value {
+        serde_json::from_str(&crate::execute_json(&json!({
+            "id": test_support::unique_id(), "command": command, "timeoutMilliseconds": 30_000,
+            "remoteWorkspace": {"sessionId": self.id, "localRoot": self.root.join("placeholder"), "remoteRoot": remote_root},
+            "payload": payload,
+        }).to_string())).unwrap()
+    }
+
     fn git(&self, args: &[&str]) -> Value {
         let data = self.call("git.command", json!({"arguments": args}));
         assert_eq!(data["exitCode"], 0, "{args:?}: {data}");
         data
     }
+}
+
+#[test]
+fn project_plugin_settings_use_the_captured_workspace_host() {
+    let host = HostFixture::new();
+    let cases: Value = serde_json::from_str(include_str!(
+        "../../../../fixtures/workspace/remote-plugin-settings-v1.json"
+    ))
+    .unwrap();
+    let source = host.root.join("host/.lithe/plugin-settings.json");
+    let placeholder = host.root.join("placeholder/.lithe/plugin-settings.json");
+    std::fs::create_dir(placeholder.parent().unwrap()).unwrap();
+    std::fs::write(&placeholder, "local sentinel").unwrap();
+
+    let initial = host.request("workspace.readPluginSettings", json!({}));
+    assert_eq!(initial["path"], cases["path"]);
+    assert_eq!(initial["text"], cases["missing"]);
+    assert!(initial["baseline"]["baseSha256"].is_null());
+    let write = json!({"baseline":initial["baseline"],"content":cases["content"]});
+    assert_eq!(
+        host.request("workspace.publishPluginSettings", write),
+        json!({"committed":true})
+    );
+    let saved = host.request("workspace.readPluginSettings", json!({}));
+    assert_eq!(saved["text"], cases["content"]);
+    assert_eq!(
+        std::fs::read_to_string(&source).unwrap(),
+        cases["content"].as_str().unwrap()
+    );
+    let stale = host.response_at(
+        &host.root.join("host"),
+        "workspace.publishPluginSettings",
+        json!({"baseline":initial["baseline"],"content":"{}"}),
+    );
+    assert_eq!(stale["error"]["code"], "process_failed", "{stale}");
+    let details: Value = serde_json::from_str(stale["error"]["details"].as_str().unwrap()).unwrap();
+    assert_eq!(details["remoteCode"], "CONFLICT", "{stale}");
+    assert_eq!(
+        std::fs::read_to_string(&source).unwrap(),
+        cases["content"].as_str().unwrap()
+    );
+    assert_eq!(
+        std::fs::read_to_string(&placeholder).unwrap(),
+        "local sentinel"
+    );
+}
+
+#[test]
+fn vcs_discovery_projects_real_host_roots_onto_the_bound_workspace() {
+    let host = HostFixture::new();
+    let real = host.root.join("host/checkout");
+    let opened = real.join("sub");
+    let remote = host.root.join("host/opened");
+    let client = host.root.join("placeholder");
+    std::fs::create_dir_all(real.join(".svn")).unwrap();
+    std::fs::create_dir_all(opened.join("nested/.git")).unwrap();
+    std::fs::create_dir_all(client.join("decoy/.git")).unwrap();
+    std::os::unix::fs::symlink(&opened, &remote).unwrap();
+    let manifest: Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../shared/plugins/contract/v1/fixtures/vcs/vcs-provider.plugin.json"
+    )))
+    .unwrap();
+    let answer = host.request_at(
+        &remote,
+        "vcs.detectRoots",
+        json!({"workspaceRoot":host.root.join("other-placeholder"),"plugins":[{"manifest":manifest}]}),
+    );
+    assert_eq!(answer["status"], "ok", "{answer}");
+    let enclosing = host
+        .root
+        .join("placeholder.lithe-remote-host")
+        .join(real.strip_prefix("/").unwrap());
+    assert_eq!(
+        answer["detection"]["roots"],
+        json!([
+            {"id":"..","vcs":"svn","path":enclosing,"mapped":false},
+            {"id":"nested","vcs":"git","path":client.join("nested"),"mapped":false}
+        ]),
+        "{answer}"
+    );
+}
+
+#[test]
+fn remote_toolchain_resolves_and_probes_in_the_host_directory() {
+    let host = HostFixture::new();
+    // A POSIX utility prints the actual working directory with a valid probe flag.
+    let module = host.root.join("host/version-2.1.0");
+    std::fs::create_dir(&module).unwrap();
+    let mut request = json!({
+        "registry": {"plugins": [{"manifest": {
+            "schemaVersion": 0, "id": "dev.lithe.test.remote-tool", "displayName": "Remote tool",
+            "version": "1.0.0", "pluginAPIVersion": 0, "requires": {"toolDefinitions": 0},
+            "vendor": {"id": "dev.lithe.test", "displayName": "Fixture", "signatureRequirement": "publisherPackage"},
+            "permissions": [],
+            "toolDefinitions": [{
+                "id": "fixture-tool", "displayName": "Fixture Tool", "icon": {"host": "plugin"},
+                "executableLayouts": [{"path": "bin/pwd"}],
+                "executables": [{"id": "cwd", "kind": "command", "command": "pwd"}],
+                "version": {"arguments": ["-P"], "pattern": "/version-([0-9.]+)"},
+                "commands": ["pwd"],
+                "launch": ["${executable}", "${arguments}"],
+                "pathPrepend": ["${home}/bin"]
+            }]
+        }}]},
+        "tool": "fixture-tool",
+        "directory": "version-2.1.0",
+        "projectCodeAllowed": true,
+        "minimumVersion": "2.0.0"
+    });
+    let resolved = host.request("toolchains.resolveRemote", request.clone());
+    let selection = &resolved["resolution"]["outcome"]["selection"];
+    assert_eq!(selection["version"], "2.1.0", "{resolved}");
+    assert!(
+        selection["executable"]
+            .as_str()
+            .unwrap()
+            .ends_with("/bin/pwd"),
+        "{resolved}"
+    );
+    assert_eq!(
+        selection["pathPrepend"][0],
+        format!(
+            "{}/bin",
+            selection["home"].as_str().unwrap().trim_end_matches('/')
+        ),
+        "{resolved}"
+    );
+
+    let mut root_probe = request.clone();
+    root_probe["directory"] = json!(".");
+    let resolved_root = host.request_at(&module, "toolchains.resolveRemote", root_probe);
+    assert_eq!(
+        resolved_root["resolution"]["outcome"]["selection"]["version"], "2.1.0",
+        "{resolved_root}"
+    );
+
+    let outside = host.root.join("version-4.0.0");
+    std::fs::create_dir(&outside).unwrap();
+    std::os::unix::fs::symlink(&outside, host.root.join("host/escape")).unwrap();
+    let mut unsafe_probe = request.clone();
+    unsafe_probe["directory"] = json!("escape");
+    let refused = host.response_at(
+        &host.root.join("host"),
+        "toolchains.resolveRemote",
+        unsafe_probe,
+    );
+    assert!(refused.get("error").is_some(), "{refused}");
+
+    request["minimumVersion"] = json!("3.0.0");
+    let unavailable = host.request("toolchains.resolveRemote", request);
+    assert_eq!(
+        unavailable["resolution"]["outcome"]["reason"]["code"], "versionUnsatisfied",
+        "{unavailable}"
+    );
+
+    let refused = host.response_at(
+        &host.root.join("host"),
+        "toolchains.resolveRemote",
+        json!({"registry": {"plugins": []}, "tool": "fixture-tool", "directory": "version-2.1.0"}),
+    );
+    assert_eq!(refused["error"]["code"], "not_supported", "{refused}");
+}
+
+#[test]
+fn remote_run_start_uses_the_host_directory_and_posix_scratch_paths() {
+    let host = HostFixture::new();
+    std::fs::create_dir(host.root.join("host/nested")).unwrap();
+    let manifest: Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../shared/plugins/contract/v1/fixtures/run/tool-reference-launch.plugin.json"
+    )))
+    .unwrap();
+    let mut payload = json!({
+        "manifest": manifest,
+        "workspaceRoot": host.root.join("placeholder"),
+        "temporaryDirectory": "/tmp/lithe-run\\",
+        "params": {
+            "label": "Remote run fixture",
+            "process": {
+                "executable": {"kind": "tool", "tool": "interpreter"},
+                "arguments": ["${temporaryFile:args.txt}"],
+                "workingDirectory": "nested",
+                "environment": {},
+            },
+            "temporaryFiles": [{"name": "args.txt", "contents": "remote"}],
+        },
+    });
+    let decoded = host.request("run.decodeStart", payload.clone());
+    assert_eq!(decoded["status"], "ok", "{decoded}");
+    assert_eq!(decoded["start"]["workingDirectory"], "nested");
+    assert_eq!(
+        decoded["start"]["arguments"],
+        json!(["/tmp/lithe-run\\/args.txt"])
+    );
+
+    std::fs::create_dir(host.root.join("placeholder/local-only")).unwrap();
+    payload["params"]["process"]["workingDirectory"] = json!("local-only");
+    let refused = host.request("run.decodeStart", payload);
+    assert_eq!(refused["status"], "rejected", "{refused}");
+    assert_eq!(refused["error"]["field"], "process", "{refused}");
 }
 
 #[test]
@@ -167,6 +372,7 @@ fn remote_run_configurations_resolve_and_plan_against_the_host() {
     let host = HostFixture::new();
     let root = host.root.join("host");
     let placeholder = host.root.join("placeholder");
+    let literal_argument = placeholder.join("opaque-argument");
     std::fs::create_dir_all(root.join("scripts")).unwrap();
     std::fs::create_dir_all(root.join("web")).unwrap();
     std::fs::write(
@@ -179,7 +385,7 @@ fn remote_run_configurations_resolve_and_plan_against_the_host() {
         ".lithe/run/configurations.yaml",
         &json!({"version": 2, "configurations": [
             {"id": "user:build", "name": "build", "provider": "process.shell",
-             "confidence": "declared", "cwd": "web",
+             "confidence": "declared", "cwd": "web", "args": [literal_argument],
              "extensions": {"process": {"script": "scripts/build.sh"}}},
             {"id": "user:inline", "name": "inline", "provider": "process.shell",
              "confidence": "declared", "extensions": {"process": {"text": "echo hi\n"}}},
@@ -210,7 +416,11 @@ fn remote_run_configurations_resolve_and_plan_against_the_host() {
     );
     let script = root.join("scripts/build.sh");
     assert_eq!(plan["executable"], json!({"path": "/bin/bash"}), "{plan}");
-    assert_eq!(plan["arguments"], json!(["-e", script]), "{plan}");
+    assert_eq!(
+        plan["arguments"],
+        json!(["-e", script, literal_argument]),
+        "{plan}"
+    );
     assert_eq!(plan["workingDirectory"], "web", "{plan}");
 
     // An inline script goes where the client asked, on the host.
@@ -913,6 +1123,185 @@ fn remote_workspace_file_limits_preserve_host_content_and_report_disconnects() {
     assert_eq!(std::fs::read_dir(local).unwrap().count(), 0);
 }
 
+#[test]
+fn remote_plugin_files_use_the_bound_root_and_preserve_the_plugin_contract() {
+    let host = HostFixture::new();
+    let root = host.root.join("host");
+    for dir in ["src", ".git"] {
+        std::fs::create_dir(root.join(dir)).unwrap();
+    }
+    for (name, contents) in [
+        ("file2", "éz".as_bytes()),
+        ("file10", b""),
+        ("src/binary", b"\x00\x01"),
+    ] {
+        std::fs::write(root.join(name), contents).unwrap();
+    }
+    std::fs::write(host.root.join("placeholder/file2"), b"wrong filesystem").unwrap();
+    std::os::unix::fs::symlink("../placeholder", root.join("escape")).unwrap();
+
+    let params = |path: &str, generation: u64, operation: Value| json!({"rootID":"r-test","generation":generation,"path":path,"operation":operation});
+    let call = |path, operation| host.request("workspace.pluginFile", params(path, 1, operation));
+    let first = call("", json!({"kind":"readDirectory","limit":2}));
+    assert_eq!(
+        first["entries"],
+        json!([
+            {"name":"src","kind":"directory","resource":{"rootID":"r-test","path":"src"}},
+            {"name":"file2","kind":"file","resource":{"rootID":"r-test","path":"file2"}}
+        ])
+    );
+    std::fs::remove_file(root.join("file2")).unwrap();
+    let second = call(
+        "",
+        json!({"kind":"readDirectory","cursor":first["nextCursor"]}),
+    );
+    assert_eq!(second["entries"][0]["name"], "file10");
+    assert!(second["nextCursor"].is_null());
+    let stale = host.response_at(
+        &root,
+        "workspace.pluginFile",
+        params(
+            "",
+            2,
+            json!({"kind":"readDirectory","cursor":first["nextCursor"]}),
+        ),
+    );
+    assert_eq!(stale["error"]["code"], "invalid_request");
+
+    std::fs::write(root.join("file2"), "é中z").unwrap();
+    let file = call("file2", json!({"kind":"readFile"}));
+    assert_eq!(file["text"], "é中z");
+    assert_eq!(file["byteCount"], 6);
+    assert_eq!(file["encoding"], "utf-8");
+    assert_eq!(file["identity"].as_str().unwrap().len(), 64);
+    let short = call("file2", json!({"kind":"readFile","maximumBytes":3}));
+    assert_eq!(short["text"], "é");
+    assert_eq!(short["byteCount"], 3);
+    assert_eq!(short["isTruncated"], true);
+    assert!(short["identity"].is_null());
+    let binary = call("src/binary", json!({"kind":"readFile"}));
+    assert_eq!(binary["base64"], methods::encode_bytes(b"\x00\x01"));
+    assert!(binary.get("text").is_none());
+    assert_eq!(
+        call("escape", json!({"kind":"stat"}))["kind"],
+        "symbolicLink"
+    );
+    let blocked = host.response_at(
+        &root,
+        "workspace.pluginFile",
+        params("escape/file2", 1, json!({"kind":"readFile"})),
+    );
+    assert_eq!(blocked["error"]["code"], "permission_denied");
+    let override_root = host.response_at(
+        &root,
+        "workspace.pluginFile",
+        params(
+            "file2",
+            1,
+            json!({"kind":"readFile","root":host.root.join("placeholder")}),
+        ),
+    );
+    assert_eq!(override_root["error"]["code"], "invalid_request");
+    let local: Value = serde_json::from_str(&crate::execute_json(
+        &json!({
+            "command":"workspace.pluginFile","payload":params("file2",1,json!({"kind":"readFile"}))
+        })
+        .to_string(),
+    ))
+    .unwrap();
+    assert_eq!(local["error"]["code"], "not_supported");
+}
+
+#[test]
+fn remote_plugin_editor_opens_only_documents_below_the_bound_root() {
+    let host = HostFixture::new();
+    let root = host.root.join("host");
+    let sibling = host.root.join("host-other");
+    std::fs::create_dir(&sibling).unwrap();
+    std::fs::write(sibling.join("main.txt"), b"outside").unwrap();
+    std::fs::write(root.join("main.txt"), b"inside").unwrap();
+    std::os::unix::fs::symlink(&sibling, root.join("link")).unwrap();
+    std::os::unix::fs::symlink(sibling.join("main.txt"), root.join("linked.txt")).unwrap();
+
+    let payload = |path: &std::path::Path, operation: Value| json!({"rootID":"r-test","generation":1,"path":path,"operation":operation});
+    let open = json!({"kind":"openDocument","maximumBytes":64});
+    let absolute = root.join("main.txt");
+    for path in [std::path::Path::new("main.txt"), absolute.as_path()] {
+        let document = host.request("workspace.pluginFile", payload(path, open.clone()));
+        assert_eq!(document["path"], "main.txt");
+        assert_eq!(document["base64"], methods::encode_bytes(b"inside"));
+        assert_eq!(document["isTruncated"], false);
+    }
+    for path in [
+        sibling.join("main.txt"),
+        root.join("link/main.txt"),
+        root.join("linked.txt"),
+    ] {
+        let response =
+            host.response_at(&root, "workspace.pluginFile", payload(&path, open.clone()));
+        assert_eq!(response["error"]["code"], "permission_denied", "{response}");
+    }
+    let parent = host.response_at(
+        &root,
+        "workspace.pluginFile",
+        payload(&root.join("../host-other/main.txt"), open),
+    );
+    assert_eq!(parent["error"]["code"], "invalid_request");
+    let backend_read = host.response_at(
+        &root,
+        "workspace.pluginFile",
+        payload(&absolute, json!({"kind":"readFile"})),
+    );
+    assert_eq!(backend_read["error"]["code"], "invalid_request");
+}
+
+#[test]
+fn remote_plugin_search_pages_bind_to_query_attachment_and_disk_prefix() {
+    let host = HostFixture::new();
+    let root = host.root.join("host");
+    for name in ["one.txt", "two.txt"] {
+        std::fs::write(root.join(name), "before\ntoken\n").unwrap();
+    }
+    std::fs::write(host.root.join("placeholder/local.txt"), "token").unwrap();
+    let payload = |query: &str, attachment: u64, cursor: Value| {
+        json!({
+            "rootID": "r-test", "generation": 1, "attachment": attachment, "path": "",
+            "operation": {"kind": "findText", "pattern": query, "limit": 1, "cursor": cursor},
+        })
+    };
+    let first = host.request("workspace.pluginFile", payload("token", 7, Value::Null));
+    assert_eq!(first["source"], "disk");
+    assert_eq!(first["isTruncated"], false);
+    assert_eq!(
+        first["matches"],
+        json!([{
+            "resource": {"rootID": "r-test", "path": "one.txt"},
+            "line": 2, "preview": "token", "range": null
+        }])
+    );
+    let cursor = &first["nextCursor"];
+    assert!(cursor.is_string());
+    let next = host.request("workspace.pluginFile", payload("token", 7, cursor.clone()));
+    assert_eq!(next["matches"][0]["resource"]["path"], "two.txt");
+    assert!(next["nextCursor"].is_null());
+
+    for (query, attachment) in [("before", 7), ("token", 8)] {
+        let invalid = host.response_at(
+            &root,
+            "workspace.pluginFile",
+            payload(query, attachment, cursor.clone()),
+        );
+        assert_eq!(invalid["error"]["code"], "invalid_request");
+    }
+    std::fs::remove_file(root.join("one.txt")).unwrap();
+    let stale = host.response_at(
+        &root,
+        "workspace.pluginFile",
+        payload("token", 7, cursor.clone()),
+    );
+    assert_eq!(stale["error"]["code"], "invalid_request");
+}
+
 // Build detection walks a remote project through the workspace adapter; this pins
 // that the shared traversal reads the host's tree, never the placeholder, and
 // fails instead of shrinking when the link drops.
@@ -1111,6 +1500,51 @@ fn native_plugin_upload_streams_beyond_one_frame_and_rejects_mismatch_without_pu
 }
 
 #[test]
+fn remote_build_model_plan_waits_for_declared_package_inputs() {
+    use lithe_plugin_manifest::DeclarativePluginManifest;
+
+    let host = HostFixture::new();
+    let workspace = serde_json::from_value(json!({"sessionId": host.id,
+        "localRoot": host.root.join("placeholder"), "remoteRoot": host.root.join("host")}))
+    .unwrap();
+    let _scope = lithe_workspace::Scope::begin(Some(workspace)).unwrap();
+    let manifest: Value = serde_json::from_str(include_str!(
+        "../../../../../shared/plugins/contract/v1/fixtures/build-systems/build-command-output-file.plugin.json"
+    ))
+    .unwrap();
+    let mut request = json!({
+        "manifest": manifest, "buildSystemID": "gradle", "request": {
+            "root": ".", "outputFile": "/remote/state/model.json", "projectCodeAllowed": true,
+        }
+    });
+    let plan = |request| {
+        lithe_build::build_model_plan_command::<DeclarativePluginManifest>(request).unwrap()
+    };
+    let probe = plan(request.clone());
+    assert_eq!(probe["status"], "ok", "{probe}");
+    assert_eq!(
+        probe["plan"]["requiredPackagePaths"],
+        json!(["lithe-model.init.gradle"])
+    );
+    assert!(probe["plan"].get("arguments").is_none());
+
+    request["request"]["pluginDirectory"] = json!("/remote/user/plugin");
+    let ready = plan(request.clone());
+    assert_eq!(ready["status"], "ok", "{ready}");
+    assert!(ready["plan"]["arguments"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("/remote/user/plugin/lithe-model.init.gradle")));
+
+    request["request"]["projectCodeAllowed"] = json!(false);
+    let refused = plan(request);
+    assert_eq!(
+        refused["error"]["code"], "plugin.build.untrustedWorkspace",
+        "{refused}"
+    );
+}
+
+#[test]
 fn plugin_stdio_uses_its_owned_host_and_reclaims_the_remote_process() {
     use lithe_lsp_transport::process::{LspProcessLauncher, LspProcessSpec, SystemProcessLauncher};
     use std::io::Read;
@@ -1119,10 +1553,18 @@ fn plugin_stdio_uses_its_owned_host_and_reclaims_the_remote_process() {
         "localRoot": host.root.join("placeholder"), "remoteRoot": host.root.join("host")}))
     .unwrap();
     let scope = lithe_workspace::Scope::begin(Some(workspace)).unwrap();
+    let tool_bin = host.root.join("host/tool-bin");
+    std::fs::create_dir(&tool_bin).unwrap();
     let streams = SystemProcessLauncher
         .launch(LspProcessSpec {
-            executable: "/bin/sh".into(),
-            arguments: vec!["-c".into(), "pwd >&2; cat".into()],
+            executable: Default::default(),
+            remote_commands: Vec::new(),
+            remote_executable: Some("/bin/sh".into()),
+            remote_path_prepend: vec![tool_bin.to_str().unwrap().into()],
+            arguments: vec![
+                "-c".into(),
+                "pwd >&2; printf '%s\n' \"${PATH%%:*}\" >&2; cat".into(),
+            ],
             working_directory: host.root.join("placeholder"),
             environment: Default::default(),
         })
@@ -1161,8 +1603,14 @@ fn plugin_stdio_uses_its_owned_host_and_reclaims_the_remote_process() {
     io_result.expect("remote stdio must reach EOF without a transport error");
     assert_eq!(stdout, input);
     assert_eq!(
-        String::from_utf8(stderr).unwrap().trim(),
-        host.root.join("host").to_str().unwrap()
+        String::from_utf8(stderr)
+            .unwrap()
+            .lines()
+            .collect::<Vec<_>>(),
+        [
+            host.root.join("host").to_str().unwrap(),
+            tool_bin.to_str().unwrap()
+        ]
     );
     assert_eq!(
         streams.handle.process_id(),

@@ -20,10 +20,11 @@ pub use breakpoint_relocation::{relocate_breakpoints, RelocateBreakpointsRequest
 pub use disassembly_paging::{plan_disassembly_window, reduce_disassembly_page};
 pub use endpoint::validate_adapter_endpoint;
 pub use engine::{
-    cancel_operation, create_session, data_breakpoint_info, destroy_session, disconnect, execute,
-    inspect, launch, receive, run_in_terminal_response, set_breakpoints, set_breakpoints_muted,
-    set_data_breakpoints, set_exception_breakpoints, set_function_breakpoints,
-    set_instruction_breakpoints, set_variable, start_debugging_response, stepping_filters,
+    cancel_operation, create_session, create_session_for_workspace, data_breakpoint_info,
+    destroy_session, disconnect, execute, inspect, launch, receive, run_in_terminal_response,
+    set_breakpoints, set_breakpoints_muted, set_data_breakpoints, set_exception_breakpoints,
+    set_function_breakpoints, set_instruction_breakpoints, set_variable, start_debugging_response,
+    stepping_filters,
 };
 pub use memory_window::{locate_memory_window, plan_memory_window};
 pub use shortcut::start_or_continue;

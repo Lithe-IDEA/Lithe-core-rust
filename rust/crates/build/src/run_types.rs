@@ -670,8 +670,18 @@ fn field_value_arguments(
 ) -> Validation<Vec<String>> {
     match value {
         DeclaredValue::Arguments(arguments) => Ok(arguments.clone()),
-        DeclaredValue::Text(text) if field.arguments.is_empty() => Ok(vec![text.clone()]),
         DeclaredValue::Text(text) => {
+            // Instance selection uses the document path. The tool interprets
+            // the field on its own host, including inside argument templates.
+            let host_path = matches!(field.kind, RunFieldKind::File | RunFieldKind::Directory)
+                .then(|| lithe_workspace::remote_path(Path::new(text)));
+            let text = host_path
+                .as_ref()
+                .and_then(|path| path.to_str())
+                .unwrap_or(text);
+            if field.arguments.is_empty() {
+                return Ok(vec![text.to_owned()]);
+            }
             let values = Values {
                 value: Some(text),
                 ..Values::default()

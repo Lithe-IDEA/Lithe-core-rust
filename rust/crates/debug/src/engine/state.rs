@@ -12,6 +12,8 @@ pub(crate) struct DebugSession {
     /// A failing launch operation already owns the session failure record.
     pub(crate) logged_terminal_failure: bool,
     pub(crate) root_path: String,
+    /// Document identity for an adapter that runs on the remote workspace host.
+    pub(crate) workspace_paths: Option<Workspace>,
     pub(crate) state: DebugSessionState,
     pub(crate) next_request_sequence: i64,
     pub(crate) next_event_sequence: u64,

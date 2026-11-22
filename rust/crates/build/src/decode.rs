@@ -167,6 +167,12 @@ impl Workspace {
         path.starts_with(&self.path).then_some(path)
     }
 
+    /// Resolves an existing directory on the host that owns the workspace.
+    pub(crate) fn directory(&self, relative: &str) -> Option<PathBuf> {
+        self.read_path(relative)
+            .filter(|path| matches!(fs::is_dir(path), Ok(true)))
+    }
+
     /// Workspace-relative form of a path a tool reported: absolute, or
     /// relative to `base` (itself workspace-relative). `None` when it leaves
     /// the workspace.

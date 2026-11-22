@@ -33,16 +33,46 @@ pub(super) fn dispatch(command: DebugCommand, id: Option<String>, payload: Value
             Ok(data) => CoreResponse::success(id, data),
             Err(error) => CoreResponse::failure(id, error),
         },
-        DebugCommand::AdaptersStartArguments => plugin_response(
-            id,
-            payload,
-            lithe_plugin_manifest::debug_start_arguments_command,
-        ),
-        DebugCommand::AdaptersExecutablePlan => plugin_response(
-            id,
-            payload,
-            lithe_plugin_manifest::debug_executable_plan_command,
-        ),
+        DebugCommand::AdaptersStartArguments => plugin_response(id, payload, |mut payload| {
+            // Translate the desktop's source facts before expanding any bindings.
+            // Adapter defaults and plugin-supplied DAP arguments are opaque.
+            if let Some(workspace) = lithe_workspace::current() {
+                if let Some(target) = payload.pointer_mut("/facts/target") {
+                    if target["kind"] == "file" {
+                        let paths = workspace.path_mapping();
+                        for field in ["path", "workingDirectory"] {
+                            if let Some(path) = target[field].as_str() {
+                                let host = paths.to_host_path(path).ok_or_else(|| {
+                                    CoreError::new(
+                                        ErrorCode::InvalidRequest,
+                                        "Debug target path is outside the workspace.",
+                                    )
+                                })?;
+                                target[field] = Value::String(host);
+                            }
+                        }
+                    }
+                }
+            }
+            lithe_plugin_manifest::debug_start_arguments_command(payload)
+        }),
+        DebugCommand::AdaptersExecutablePlan => plugin_response(id, payload, |mut payload| {
+            if let Some(workspace) = lithe_workspace::current() {
+                let paths = workspace.path_mapping();
+                for field in ["workspace", "targetPath"] {
+                    if let Some(path) = payload[field].as_str() {
+                        let host = paths.to_host_path(path).ok_or_else(|| {
+                            CoreError::new(
+                                ErrorCode::InvalidRequest,
+                                "Debug executable lookup path is outside the workspace.",
+                            )
+                        })?;
+                        payload[field] = Value::String(host);
+                    }
+                }
+            }
+            lithe_plugin_manifest::debug_executable_plan_command(payload)
+        }),
         DebugCommand::StartOrContinue => match crate::debug::start_or_continue(payload) {
             Ok(data) => CoreResponse::success(id, data),
             Err(error) => CoreResponse::failure(id, error),
@@ -61,8 +91,10 @@ pub(super) fn dispatch(command: DebugCommand, id: Option<String>, payload: Value
                     )
                     .with_details(error.to_string())
                 })
-                .and_then(crate::debug::create_session)
-            {
+                .and_then(|request| {
+                    let paths = lithe_workspace::current().map(|host| host.path_mapping());
+                    crate::debug::create_session_for_workspace(request, paths)
+                }) {
                 Ok(data) => CoreResponse::success(
                     id,
                     serde_json::to_value(data).expect("Debug session update should encode"),

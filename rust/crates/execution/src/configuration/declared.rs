@@ -543,7 +543,7 @@ impl DeclaredRunType {
                         field.kind,
                         DeclaredFieldKind::File | DeclaredFieldKind::Directory
                     ) {
-                        let path = process::file_path(workspace_root, &text, Platform::HOST);
+                        let path = process::file_path(workspace_root, &text, run_platform());
                         Some(DeclaredValue::Text(path.to_string_lossy().into_owned()))
                     } else {
                         Some(DeclaredValue::Text(text))
@@ -997,7 +997,7 @@ mod tests {
                 (
                     "file".to_string(),
                     DeclaredValue::Text(
-                        process::file_path(root, "a_test.go", Platform::HOST)
+                        process::file_path(root, "a_test.go", run_platform())
                             .to_string_lossy()
                             .into_owned()
                     )

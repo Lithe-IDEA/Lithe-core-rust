@@ -490,7 +490,7 @@ impl Shebang {
     pub(crate) fn of_file(path: &Path) -> Option<Self> {
         use std::io::Read;
         let mut head = Vec::with_capacity(SHEBANG_BYTES);
-        fs::File::open(path)
+        workspace_fs::File::open(path)
             .ok()?
             .take(SHEBANG_BYTES as u64)
             .read_to_end(&mut head)
@@ -621,7 +621,11 @@ pub(crate) fn program_reference(root: &Path, value: &str, platform: Platform) ->
 
 /// The native text of project-relative `/`-separated `value`.
 fn native_project_path(root: &Path, value: &str, platform: Platform) -> String {
-    join_native(&root.to_string_lossy(), value, platform)
+    join_native(
+        &lithe_workspace::remote_path(root).to_string_lossy(),
+        value,
+        platform,
+    )
 }
 
 /// The file a path value names, for reading it on this machine.
@@ -688,7 +692,7 @@ pub(crate) fn launch_plan(
     let (script, shebang) = match (options.script(), options.text()) {
         (Some(script), _) => {
             let file = file_path(root, script, platform);
-            if !fs::is_file(&file).unwrap_or(false) {
+            if !workspace_fs::is_file(&file)? {
                 return Err(
                     CoreError::new(ErrorCode::InvalidRequest, "Script file was not found")
                         .with_details(script),
@@ -762,7 +766,7 @@ fn require_program(
     platform: Platform,
 ) -> Result<(), CoreError> {
     if matches!(executable, Executable::Path(_))
-        && !fs::is_file(file_path(root, value, platform)).unwrap_or(false)
+        && !workspace_fs::is_file(file_path(root, value, platform))?
     {
         return Err(
             CoreError::new(ErrorCode::InvalidRequest, "Program was not found").with_details(value),

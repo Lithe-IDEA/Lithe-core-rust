@@ -50,6 +50,17 @@ impl DeclarativePluginManifest {
             let field = format!("settingActions[{index}]");
             action.validate(&field)?;
             if let Some(editor) = &action.source_editor {
+                if editor.remote_helper.is_some()
+                    && self
+                        .requires
+                        .get(lithe_plugin_model::capabilities::SOURCE_SETTINGS)
+                        != Some(&2)
+                {
+                    return Err(invalid(
+                        &field,
+                        "A remote settings helper requires sourceSettings 2.",
+                    ));
+                }
                 if self.backend.is_none() {
                     return Err(invalid(
                         &field,

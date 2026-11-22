@@ -11,7 +11,7 @@ use super::*;
 /// editors would otherwise be stored as a literal directory name.
 pub(crate) fn normalize_working_directory(root: &Path, value: &str) -> Result<String, CoreError> {
     normalize_project_directory(root, value).map_err(|error| {
-        if value.contains('$') && !fs::is_dir(root.join(value)).unwrap_or(false) {
+        if value.contains('$') && !workspace_fs::is_dir(root.join(value)).unwrap_or(false) {
             CoreError::new(
                 ErrorCode::InvalidRequest,
                 "Working directory variables are not supported; use a path relative to the project",
@@ -24,8 +24,10 @@ pub(crate) fn normalize_working_directory(root: &Path, value: &str) -> Result<St
 }
 
 pub(crate) fn normalize_project_directory(root: &Path, value: &str) -> Result<String, CoreError> {
+    let platform = run_platform();
+    let absolute = lithe_platform::paths::is_absolute_path(value, platform);
     let candidate = Path::new(value);
-    if (!candidate.is_absolute() && invalid_native_relative_path(value, Platform::HOST))
+    if (!absolute && invalid_native_relative_path(value, platform))
         || candidate
             .components()
             .any(|component| matches!(component, std::path::Component::ParentDir))
@@ -35,13 +37,13 @@ pub(crate) fn normalize_project_directory(root: &Path, value: &str) -> Result<St
             "Project configuration paths must stay inside the project",
         ));
     }
-    let canonical_root = fs::canonicalize(root)?;
-    let target = if candidate.is_absolute() {
-        candidate.to_path_buf()
+    let canonical_root = workspace_fs::canonicalize(root)?;
+    let target = if absolute {
+        process::file_path(root, value, platform)
     } else {
         root.join(candidate)
     };
-    let canonical_target = fs::canonicalize(&target).map_err(|error| {
+    let canonical_target = workspace_fs::canonicalize(&target).map_err(|error| {
         CoreError::new(
             ErrorCode::InvalidRequest,
             "Project configuration directory does not exist",
@@ -64,16 +66,17 @@ pub(crate) fn normalize_project_directory(root: &Path, value: &str) -> Result<St
 }
 
 pub(crate) fn project_directory_exists(root: &Path, value: &str) -> bool {
-    if invalid_native_relative_path(value, Platform::HOST) {
+    if invalid_native_relative_path(value, run_platform()) {
         return false;
     }
-    let Ok(canonical_root) = fs::canonicalize(root) else {
+    let Ok(canonical_root) = workspace_fs::canonicalize(root) else {
         return false;
     };
-    let Ok(canonical_target) = fs::canonicalize(root.join(value)) else {
+    let Ok(canonical_target) = workspace_fs::canonicalize(root.join(value)) else {
         return false;
     };
-    canonical_target.starts_with(canonical_root) && fs::is_dir(&canonical_target).unwrap_or(false)
+    canonical_target.starts_with(canonical_root)
+        && workspace_fs::is_dir(&canonical_target).unwrap_or(false)
 }
 
 /// Reads a sidecar document below `.lithe`, such as `project.json`, with the
@@ -111,14 +114,24 @@ pub(crate) fn generated_ids(root: &Path) -> BTreeSet<String> {
 
 pub(crate) fn existing_root(value: &str) -> Result<PathBuf, CoreError> {
     let path = PathBuf::from(value);
-    match fs::is_dir(&path) {
+    if let Some(host) = lithe_workspace::current() {
+        if host.local_workspace_path("").as_deref() != Some(path.as_path()) {
+            return Err(CoreError::new(
+                ErrorCode::InvalidRequest,
+                "Run configuration root does not match the remote workspace",
+            ));
+        }
+    }
+    match workspace_fs::is_dir(&path) {
         Ok(true) => {}
-        Err(error) if fs::is_transport_failure(&error) => return Err(CoreError::from(error)),
+        Err(error) if workspace_fs::is_transport_failure(&error) => {
+            return Err(CoreError::from(error))
+        }
         Ok(false) | Err(_) => {
             return Err(CoreError::new(
                 ErrorCode::WorkspaceNotFound,
                 "Project root does not exist",
-            ))
+            ));
         }
     }
     Ok(path)

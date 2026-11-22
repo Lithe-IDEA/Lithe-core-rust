@@ -11,6 +11,27 @@ use std::time::Duration;
 
 pub(crate) const OPERATING_SYSTEM: OperatingSystem = OperatingSystem::Macos;
 
+/// Copies extended attributes and ACLs without reading or replacing file data.
+pub(crate) fn copy_configuration_attributes(
+    source: std::os::fd::RawFd,
+    target: std::os::fd::RawFd,
+) -> io::Result<()> {
+    // SAFETY: the caller holds open descriptors for both regular files.
+    let status = unsafe {
+        libc::fcopyfile(
+            source,
+            target,
+            std::ptr::null_mut(),
+            libc::COPYFILE_ACL | libc::COPYFILE_XATTR,
+        )
+    };
+    if status == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
 /// macOS has no parent-death signal. Process groups are terminated when the
 /// server shuts down or its session expires; a kqueue-based supervisor that
 /// also covers a killed server is a later addition.

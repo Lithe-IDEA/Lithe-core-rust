@@ -1,0 +1,18 @@
+{
+  "terminalId": 1,
+  "argv": [
+    "/bin/sh",
+    "-c",
+    "test \"$LITHE_TERMINAL_TEST_VALUE\" = test-value && test -z \"${LITHE_TERMINAL_TEST_REMOVED+x}\" && pwd"
+  ],
+  "scopedCwd": {
+    "root": "/workspace",
+    "path": "src"
+  },
+  "env": {
+    "LITHE_TERMINAL_TEST_VALUE": "test-value"
+  },
+  "unsetEnv": ["LITHE_TERMINAL_TEST_REMOVED"],
+  "columns": 100,
+  "rows": 40
+}

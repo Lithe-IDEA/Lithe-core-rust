@@ -3,10 +3,12 @@ package io.github.litheidea.plugin.sdk;
 import static io.github.litheidea.plugin.sdk.Fixtures.map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -195,6 +197,19 @@ class BuildTest {
             assertEquals(map("exitCode", 3L, "output", "independent failure"), Fixtures.await(sibling, "sibling execution").get("result"));
             assertFalse(host.messages().stream().anyMatch(message -> Protocol.BUILD_PROGRESS.equals(message.get("method"))));
         } finally { release.countDown(); host.close(); }
+    }
+
+    @Test
+    void runPreparationPreservesOnlyValidExplicitPlacements() {
+        Map<String, Object> launch = new HashMap<>(LAUNCH);
+        for (String placement : Arrays.asList(Protocol.PLACEMENT_WORKSPACE, Protocol.PLACEMENT_UI)) {
+            launch.put("placement", placement);
+            assertEquals(launch, Backend.buildResult(Protocol.BUILD_PREPARE_RUN, launch));
+        }
+        for (String placement : Arrays.asList("remote", null)) {
+            launch.put("placement", placement);
+            assertThrows(PluginSdkError.class, () -> Backend.buildResult(Protocol.BUILD_PREPARE_RUN, launch));
+        }
     }
 
     @Test

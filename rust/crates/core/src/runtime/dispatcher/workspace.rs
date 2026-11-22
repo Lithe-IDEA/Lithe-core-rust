@@ -10,6 +10,14 @@ use crate::protocol::{CoreError, CoreResponse, ErrorCode, WorkspaceCommand};
 use lithe_git::{self as git, WorkspaceRepositoriesRequest};
 use serde_json::{json, Value};
 
+/// Confirmed publication of the project plugin preferences read by this editor.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct PluginSettingsPublication {
+    baseline: lithe_workspace::host::ProjectPluginSettingsBaseline,
+    content: Option<String>,
+}
+
 /// Runs one `workspace.*` command.
 pub(super) fn dispatch(
     command: WorkspaceCommand,
@@ -17,6 +25,50 @@ pub(super) fn dispatch(
     payload: Value,
 ) -> CoreResponse {
     match command {
+        WorkspaceCommand::PluginFile => plugin_response(id, payload, |payload| {
+            let request = serde_json::from_value(payload).map_err(|_| {
+                CoreError::new(ErrorCode::InvalidRequest, "Invalid plugin file request")
+            })?;
+            project::plugin_files::read(request)
+        }),
+        WorkspaceCommand::PluginWatchChanges => plugin_response(id, payload, |payload| {
+            let request = serde_json::from_value(payload).map_err(|_| {
+                CoreError::new(ErrorCode::InvalidRequest, "Invalid plugin watch events")
+            })?;
+            Ok(project::plugin_watch::changes(request))
+        }),
+        WorkspaceCommand::ReadConfiguration => plugin_response(id, payload, |payload| {
+            let request = serde_json::from_value(payload).map_err(|_| {
+                CoreError::new(
+                    ErrorCode::InvalidRequest,
+                    "Invalid workspace configuration request",
+                )
+            })?;
+            project::plugin_files::read_configuration(request)
+        }),
+        WorkspaceCommand::ReadPluginSettings => plugin_response(id, payload, |_| {
+            lithe_workspace::host::read_project_plugin_settings().map(|source| json!(source))
+        }),
+        WorkspaceCommand::PublishPluginSettings => plugin_response(id, payload, |payload| {
+            let request: PluginSettingsPublication =
+                serde_json::from_value(payload).map_err(|_| {
+                    CoreError::new(
+                        ErrorCode::InvalidRequest,
+                        "Invalid project plugin settings publication",
+                    )
+                })?;
+            lithe_workspace::host::publish_project_plugin_settings(
+                request.baseline,
+                request.content,
+            )
+            .map(|committed| json!({"committed": committed}))
+        }),
+        WorkspaceCommand::NativeSettings => plugin_response(id, payload, |payload| {
+            let operation = serde_json::from_value(payload).map_err(|_| {
+                CoreError::new(ErrorCode::InvalidRequest, "Invalid native settings request")
+            })?;
+            lithe_workspace::host::native_settings(operation)
+        }),
         WorkspaceCommand::SearchPresentation => match serde_json::from_value::<
             project::SearchPresentationRequest,
         >(payload)

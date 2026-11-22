@@ -23,6 +23,11 @@ public final class Protocol {
     public static final int LOGGING_VERSION = 0;
     public static final int KEYMAP_IMPORT_VERSION = 0;
 
+    /** Starts a contributed process on the workspace host. The default if omitted. */
+    public static final String PLACEMENT_WORKSPACE = "workspace";
+    /** Starts a contributed process on the machine running Lithe. */
+    public static final String PLACEMENT_UI = "ui";
+
     public static final String INITIALIZE = "initialize";
     public static final String INITIALIZED = "initialized";
     public static final String SHUTDOWN = "shutdown";

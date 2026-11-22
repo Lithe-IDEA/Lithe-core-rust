@@ -11,8 +11,8 @@
 
 use crate::protocol::methods::{
     self, decode_bytes, encode_bytes, EnvironmentSource, KillParams, OutputStream,
-    ProcessExitEvent, ProcessOutputEvent, ProcessParams, ProcessState, ResourceLabel, SpawnParams,
-    SpawnResult, WriteStdinParams,
+    ProcessDebugPortParams, ProcessExitEvent, ProcessOutputEvent, ProcessParams, ProcessState,
+    ResourceLabel, SpawnParams, SpawnResult, WriteStdinParams,
 };
 use crate::protocol::{ErrorCode, RemoteError};
 use crate::server::connection::Context;
@@ -131,10 +131,28 @@ impl ProcessTable {
         params: Value,
     ) -> Result<Value, RemoteError> {
         match method {
-            methods::PROCESS_SPAWN => to_value(self.spawn(&context.session, parse(params)?)?),
+            methods::PROCESS_RESOLVE_EXECUTABLE => {
+                to_value(resolve_executable(&context.session, parse(params)?)?)
+            }
+            methods::PROCESS_RESOLVE_DEBUG_LAUNCH => {
+                resolve_debug_launch(&context.session, parse(params)?)
+            }
+            methods::PROCESS_SPAWN | methods::PROCESS_SPAWN_SCOPED => {
+                let params: SpawnParams = parse(params)?;
+                if (method == methods::PROCESS_SPAWN_SCOPED) != params.scoped_cwd.is_some()
+                    || (params.scoped_cwd.is_some() && params.cwd.is_some())
+                {
+                    return Err(RemoteError::new(
+                        ErrorCode::InvalidRequest,
+                        "process.spawnScoped requires scopedCwd in place of cwd",
+                    ));
+                }
+                to_value(self.spawn(&context.session, params)?)
+            }
             methods::PROCESS_WRITE_STDIN => self.write_stdin(parse(params)?).map(|()| Value::Null),
             methods::PROCESS_CLOSE_STDIN => self.close_stdin(parse(params)?).map(|()| Value::Null),
             methods::PROCESS_KILL => self.kill(parse(params)?).map(|()| Value::Null),
+            methods::PROCESS_DEBUG_PORT_READY => to_value(self.debug_port_ready(parse(params)?)?),
             _ => Err(RemoteError::new(
                 ErrorCode::UnknownMethod,
                 format!("unknown method {method}"),
@@ -169,7 +187,27 @@ impl ProcessTable {
             return Err(RemoteError::new(ErrorCode::InvalidRequest, "argv is empty"));
         };
         validate_label(params.label.as_ref())?;
-        let mut command = Command::new(program);
+        let login = (params.environment == EnvironmentSource::Login)
+            .then(|| session.environment.resolve(session, false));
+        let selected = match params.command_candidates.as_slice() {
+            [] => program.clone(),
+            candidates => {
+                let login = login
+                    .as_ref()
+                    .filter(|_| program.is_empty())
+                    .ok_or_else(|| {
+                        RemoteError::new(
+                            ErrorCode::InvalidRequest,
+                            "Command candidates require an empty argv[0] and the login environment",
+                        )
+                    })?;
+                resolve_login_command(
+                    candidates,
+                    login.environment.get("PATH").map(String::as_str),
+                )?
+            }
+        };
+        let mut command = Command::new(&selected);
         command
             .args(arguments)
             .stdin(if params.pipe_stdin {
@@ -179,12 +217,23 @@ impl ProcessTable {
             })
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        if params.environment == EnvironmentSource::Login {
-            let login = session.environment.resolve(session, false);
+        let path = process_search_path(
+            &params.path_prepend,
+            effective_search_path(
+                params.env.get("PATH").map(String::as_str),
+                login.as_ref().map(|login| &login.environment),
+            ),
+        )?;
+        if let Some(login) = login {
             command.env_clear().envs(login.environment);
         }
         command.envs(&params.env);
-        if let Some(cwd) = &params.cwd {
+        if let Some(path) = path {
+            command.env("PATH", path);
+        }
+        if let Some(scoped) = &params.scoped_cwd {
+            super::scoped_files::set_working_directory(&mut command, scoped)?;
+        } else if let Some(cwd) = &params.cwd {
             command.current_dir(host_path(cwd)?);
         }
         platform::prepare_child(&mut command, ChildKind::Plain);
@@ -195,7 +244,7 @@ impl ProcessTable {
             None
         };
         let monitor = Self::monitor(session, params.process_id)?;
-        let program_name = program.clone();
+        let program_name = selected.clone();
         let mut child = session
             .spawner
             .run(move || command.spawn())
@@ -205,9 +254,11 @@ impl ProcessTable {
         let stdin = stdin_writer
             .zip(child.stdin.take())
             .map(|(writer, pipe)| writer.attach(pipe));
+        let mut argv = params.argv;
+        argv[0] = selected;
         let entry = RunningProcess {
             leader: Leader::new(pid),
-            argv: params.argv.clone(),
+            argv,
             label: params.label,
             stdin,
         };
@@ -293,8 +344,34 @@ impl ProcessTable {
         Ok(())
     }
 
-    /// Signals the whole session, also after the leader exited while other
-    /// members still run.
+    /// Inspects listeners without taking the debuggee's first connection.
+    fn debug_port_ready(&self, params: ProcessDebugPortParams) -> Result<bool, RemoteError> {
+        if params.port == 0 {
+            return Err(RemoteError::new(
+                ErrorCode::InvalidRequest,
+                "invalid debug port",
+            ));
+        }
+        let pid = self
+            .registry
+            .lock()
+            .get(&params.process_id)
+            .filter(|process| !process.leader.exited)
+            .map(|process| process.leader.pid)
+            .ok_or_else(|| self.registry.unknown(params.process_id))?;
+        let ports = platform::listening_ports().map_err(|error| io_error(error, ""))?;
+        let owners = platform::session_members(pid);
+        Ok(ports.iter().any(|port| {
+            port.port == params.port
+                && matches!(
+                    port.address.as_str(),
+                    "127.0.0.1" | "0.0.0.0" | "::ffff:127.0.0.1"
+                )
+                && port.pid.is_some_and(|owner| owners.contains(&owner))
+        }))
+    }
+
+    /// Signals the whole session, including members that outlived the leader.
     fn kill(&self, params: KillParams) -> Result<(), RemoteError> {
         // A session that emptied since the last check must not be signalled:
         // its id may already belong to an unrelated process.
@@ -388,6 +465,179 @@ pub(crate) fn terminate_groups<T>(
     if survivors > 0 {
         eprintln!("lithe-remote-server: {survivors} process groups did not exit after SIGKILL");
     }
+}
+
+/// Selects the explicit search path or the value inherited on the execution host.
+fn effective_search_path(
+    overlay: Option<&str>,
+    login: Option<&std::collections::BTreeMap<String, String>>,
+) -> Option<std::ffi::OsString> {
+    match (overlay, login) {
+        (Some(overlay), _) => Some(overlay.into()),
+        (None, Some(login)) => login.get("PATH").map(std::ffi::OsString::from),
+        (None, None) => std::env::var_os("PATH"),
+    }
+}
+
+/// Applies the toolchain's directory overlay to the effective search path.
+fn process_search_path(
+    path_prepend: &[String],
+    base: Option<std::ffi::OsString>,
+) -> Result<Option<std::ffi::OsString>, RemoteError> {
+    if path_prepend.is_empty() {
+        return Ok(None);
+    }
+    if path_prepend.len() > 64 {
+        return Err(RemoteError::new(
+            ErrorCode::InvalidRequest,
+            "Too many PATH entries",
+        ));
+    }
+    let mut paths = Vec::with_capacity(path_prepend.len());
+    for entry in path_prepend {
+        paths.push(host_path(entry)?);
+    }
+    if let Some(base) = base {
+        paths.extend(std::env::split_paths(&base).filter(|entry| !entry.as_os_str().is_empty()));
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    let combined =
+        std::env::join_paths(paths.into_iter().filter(|entry| seen.insert(entry.clone())))
+            .map_err(|_| {
+                RemoteError::new(ErrorCode::InvalidPath, "Invalid executable search path")
+            })?;
+    Ok(Some(combined))
+}
+
+/// Prepares launch values for DAP without exporting the user's login environment.
+fn resolve_debug_launch(
+    session: &Arc<Session>,
+    params: methods::ResolveDebugLaunchParams,
+) -> Result<Value, RemoteError> {
+    let (cwd, _) = super::scoped_files::open_working_directory(&params.scoped_cwd)?;
+    let path = if params.path_prepend.is_empty() {
+        params.path
+    } else {
+        let login = session.environment.resolve(session, false);
+        let base = effective_search_path(params.path.as_deref(), Some(&login.environment));
+        process_search_path(&params.path_prepend, base)?
+            .map(|path| path.to_string_lossy().into_owned())
+    };
+    Ok(json!({"cwd": cwd, "path": path}))
+}
+
+/// Performs only the filesystem checks and PATH lookup for a Core-planned candidate.
+fn resolve_executable(
+    session: &Arc<Session>,
+    params: methods::ResolveExecutableParams,
+) -> Result<Option<String>, RemoteError> {
+    use methods::ResolveExecutableParams::{Environment, Program, ProjectFile};
+    let path = match params {
+        Program { value, search_path } if !value.starts_with('/') => {
+            let search_path = search_path.or_else(|| {
+                session
+                    .environment
+                    .resolve(session, false)
+                    .environment
+                    .remove("PATH")
+            });
+            return match resolve_login_command(&[value], search_path.as_deref()) {
+                Ok(path) => Ok(Some(path)),
+                Err(error) if error.code == ErrorCode::NotFound => Ok(None),
+                Err(error) => Err(error),
+            };
+        }
+        Program { value, .. } => host_path(&value)?,
+        ProjectFile {
+            root,
+            path,
+            requires,
+        } => {
+            let root = host_path(&root)?;
+            let executable = root.join(executable_relative_path(&path)?);
+            if requires.len() > 64 {
+                return Err(RemoteError::new(
+                    ErrorCode::InvalidRequest,
+                    "Too many required files",
+                ));
+            }
+            for required in requires {
+                if !root.join(executable_relative_path(&required)?).is_file() {
+                    return Ok(None);
+                }
+            }
+            executable
+        }
+        Environment { variable, path } => {
+            let relative = executable_relative_path(&path)?;
+            let login = session.environment.resolve(session, false);
+            let Some(home) = login
+                .environment
+                .get(&variable)
+                .filter(|value| value.starts_with('/'))
+            else {
+                return Ok(None);
+            };
+            host_path(home)?.join(relative)
+        }
+    };
+    Ok(platform::executable_file(&path)
+        .then(|| path.into_os_string().into_string().ok())
+        .flatten())
+}
+
+/// Prevents a relative candidate from addressing a different root.
+fn executable_relative_path(value: &str) -> Result<&std::path::Path, RemoteError> {
+    let path = std::path::Path::new(value);
+    if value.is_empty()
+        || value.contains(['\0', '\\'])
+        || !path
+            .components()
+            .all(|part| matches!(part, std::path::Component::Normal(_)))
+    {
+        return Err(RemoteError::new(
+            ErrorCode::InvalidPath,
+            "Invalid relative executable path",
+        ));
+    }
+    Ok(path)
+}
+
+/// Looks only in absolute directories of the supplied host PATH.
+fn resolve_login_command(candidates: &[String], path: Option<&str>) -> Result<String, RemoteError> {
+    if candidates.len() > 32
+        || candidates.iter().any(|name| {
+            name.is_empty()
+                || name == "."
+                || name == ".."
+                || name.contains(['/', '\\', '\0'])
+                || name.chars().any(char::is_whitespace)
+        })
+    {
+        return Err(RemoteError::new(
+            ErrorCode::InvalidRequest,
+            "Invalid command candidates",
+        ));
+    }
+    let directories: Vec<_> = path
+        .into_iter()
+        .flat_map(std::env::split_paths)
+        .filter(|dir| dir.is_absolute())
+        .collect();
+    for candidate in candidates {
+        for directory in &directories {
+            let executable = directory.join(candidate);
+            if platform::executable_file(&executable) {
+                if let Ok(executable) = executable.into_os_string().into_string() {
+                    return Ok(executable);
+                }
+            }
+        }
+    }
+    Err(RemoteError::new(
+        ErrorCode::NotFound,
+        "None of the declared commands is on the host login PATH",
+    ))
 }
 
 pub(crate) fn spawn_error(program: &str, error: io::Error) -> RemoteError {

@@ -1365,6 +1365,47 @@ fn debug_adapter_launch_plan_carries_the_process_and_the_descriptor() {
 }
 
 #[test]
+fn debug_adapter_launch_plan_uses_the_declared_execution_host() {
+    let mut manifest = fixture("debug-adapter.plugin.json");
+    let plan = |manifest: &Value, probe: bool| {
+        language_server_launch_plan_command(json!({
+            "manifest": manifest,
+            "debugAdapterID": "example",
+            "request": {
+                "pluginDirectory": "/plugins/example",
+                "stateDirectory": "/state/example",
+                "architecture": "x86_64",
+                "remoteWorkspace": true,
+                "probeLocalPlacement": probe
+            },
+        }))
+        .expect("payload is well formed")
+    };
+    let default = plan(&manifest, false);
+    assert_eq!(
+        default["error"]["code"], "plugin.launch.platformUnavailable",
+        "{default}"
+    );
+
+    manifest["debugAdapters"][0]["launch"]["process"]["placement"] = json!("ui");
+    let ui_probe = plan(&manifest, true);
+    assert_eq!(ui_probe["plan"]["placement"], "ui", "{ui_probe}");
+    assert!(ui_probe["plan"]["launch"].is_null());
+    let ui = plan(&manifest, false);
+    assert_eq!(ui["plan"]["placement"], "ui", "{ui}");
+    assert_eq!(ui["plan"]["launch"]["kind"], "packaged");
+
+    let process = &mut manifest["debugAdapters"][0]["launch"]["process"];
+    process["placement"] = json!("workspace");
+    process["launch"] = json!({"kind":"systemCommand", "commands":["example-dap"]});
+    let workspace = plan(&manifest, true);
+    assert_eq!(workspace["plan"]["placement"], "workspace", "{workspace}");
+    assert_eq!(workspace["plan"]["launch"]["kind"], "systemCommand");
+    assert_eq!(workspace["plan"]["requiredDirectories"], json!([]));
+    assert_eq!(workspace["plan"]["debugAdapter"]["transport"], "stdio");
+}
+
+#[test]
 fn debug_adapter_launch_plan_refuses_unknown_adapters_and_mixed_selectors() {
     let request = json!({
         "pluginDirectory": "/plugins/example",

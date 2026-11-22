@@ -7,9 +7,12 @@ impl DebugSession {
     pub(crate) fn send_request(
         &mut self,
         command: &str,
-        arguments: Value,
+        mut arguments: Value,
         pending: PendingRequest,
     ) -> Result<(), CoreError> {
+        if let Some(paths) = &self.workspace_paths {
+            paths::outbound(paths, command, &mut arguments);
+        }
         let sequence = self.next_request_sequence;
         self.next_request_sequence += 1;
         let message = json!({
@@ -116,7 +119,10 @@ impl DebugSession {
             }
             return Ok(());
         }
-        let body = message.get("body").cloned().unwrap_or_else(|| json!({}));
+        let mut body = message.get("body").cloned().unwrap_or_else(|| json!({}));
+        if let Some(paths) = &self.workspace_paths {
+            paths::response(paths, &pending, &mut body);
+        }
         match pending {
             PendingRequest::Initialize => {
                 self.adapter_capabilities = body.as_object().cloned().unwrap_or_default();
@@ -274,7 +280,10 @@ impl DebugSession {
 
     fn handle_event(&mut self, message: &Value) -> Result<(), CoreError> {
         let event = required_str(message, "event")?;
-        let body = message.get("body").cloned().unwrap_or_else(|| json!({}));
+        let mut body = message.get("body").cloned().unwrap_or_else(|| json!({}));
+        if let Some(paths) = &self.workspace_paths {
+            paths::event(paths, event, &mut body);
+        }
         match event {
             "initialized" => {
                 self.did_receive_initialized = true;
@@ -409,7 +418,9 @@ impl DebugSession {
         let command = required_str(message, "command")?;
         if command == "runInTerminal" && self.supports_run_in_terminal_request {
             let arguments = message.get("arguments").unwrap_or(&Value::Null);
-            match parse_run_in_terminal_request(arguments) {
+            match parse_run_in_terminal_request(arguments)
+                .and_then(|request| self.prepare_run_in_terminal(request))
+            {
                 Ok(request) => {
                     let request_id = format!("runInTerminal-{request_sequence}");
                     if self
@@ -471,6 +482,34 @@ impl DebugSession {
             false,
             Some("This debug adapter request is not supported by Lithe."),
         )
+    }
+
+    /// Validates the reverse request against the capabilities of the remote terminal.
+    fn prepare_run_in_terminal(
+        &self,
+        mut request: DebugRunInTerminalRequest,
+    ) -> Result<DebugRunInTerminalRequest, CoreError> {
+        let Some(paths) = &self.workspace_paths else {
+            return Ok(request);
+        };
+        if request.kind != DebugRunInTerminalKind::Integrated {
+            return Err(invalid_request(
+                "Remote debugging uses an integrated terminal.",
+            ));
+        }
+        if request.args_can_be_interpreted_by_shell {
+            return Err(invalid_request(
+                "The remote debug terminal requires literal command arguments.",
+            ));
+        }
+        request.remote_directory = Some(if request.cwd.is_empty() {
+            String::new()
+        } else {
+            paths.remote_relative_path(&request.cwd).ok_or_else(|| {
+                invalid_request("The remote debug terminal directory must be inside the workspace.")
+            })?
+        });
+        Ok(request)
     }
 
     pub(crate) fn fail_pending_start_debugging_requests(
@@ -677,6 +716,7 @@ fn parse_run_in_terminal_request(value: &Value) -> Result<DebugRunInTerminalRequ
         kind,
         title,
         cwd,
+        remote_directory: None,
         args,
         environment,
         args_can_be_interpreted_by_shell,

@@ -995,7 +995,8 @@ function buildResult(method, result) {
       && (!isObject(result.executable) || !['toolchain', 'command'].includes(result.executable.kind)
         || typeof result.executable.value !== 'string' || typeof result.workingDirectory !== 'string'
         || !Array.isArray(result.arguments) || !result.arguments.every((value) => typeof value === 'string')
-        || !isObject(result.environment) || !Object.values(result.environment).every((value) => typeof value === 'string'))) {
+        || !isObject(result.environment) || !Object.values(result.environment).every((value) => typeof value === 'string')
+        || (result.placement !== undefined && !['workspace', 'ui'].includes(result.placement)))) {
     throw new PluginSdkError('sdk.build.invalidResult', `${method} needs a portable launch plan.`);
   }
   if (method === METHODS.buildPrepareDebug

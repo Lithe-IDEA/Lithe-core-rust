@@ -115,7 +115,7 @@ pub(crate) fn validate_configuration(configuration: &RunConfiguration) -> Result
     if super::process::is_process_provider(&configuration.provider) {
         super::process::validate(configuration, run_platform())?;
     }
-    if invalid_native_relative_path(&configuration.cwd, Platform::HOST) {
+    if invalid_native_relative_path(&configuration.cwd, run_platform()) {
         return Err(CoreError::new(
             ErrorCode::InvalidRequest,
             "Run configuration contains an invalid project-relative path",

@@ -10,10 +10,12 @@ use lithe_platform::paths::{
 };
 use lithe_platform::Platform;
 use lithe_protocol::{CoreError, ErrorCode};
-use lithe_workspace::fs;
+use lithe_workspace::fs as workspace_fs;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
+#[cfg(test)]
+use std::fs;
 use std::path::{Path, PathBuf};
 
 mod arrangement;

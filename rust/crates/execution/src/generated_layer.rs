@@ -24,24 +24,29 @@ fn layers() -> &'static Mutex<HashMap<PathBuf, Arc<RunConfigurationDocument>>> {
 /// Spellings of one workspace (a trailing separator, a symlinked path) share
 /// one layer.
 fn key(root: &Path) -> PathBuf {
+    if lithe_workspace::is_remote() {
+        return lithe_workspace::identity_key(&lithe_workspace::remote_path(root));
+    }
     fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf())
 }
 
 /// The document the latest generation produced for `root`, if any this session.
 pub(super) fn get(root: &Path) -> Option<Arc<RunConfigurationDocument>> {
+    let key = key(root);
     layers()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .get(&key(root))
+        .get(&key)
         .cloned()
 }
 
 /// Replaces the generated layer of `root`.
 pub(super) fn store(root: &Path, document: RunConfigurationDocument) {
+    let key = key(root);
     layers()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .insert(key(root), Arc::new(document));
+        .insert(key, Arc::new(document));
 }
 
 /// Replaces the generated layer of `root` as if generation had produced

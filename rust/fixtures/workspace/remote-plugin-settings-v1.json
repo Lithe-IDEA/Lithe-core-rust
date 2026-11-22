@@ -1,0 +1,5 @@
+{
+  "path": ".lithe/plugin-settings.json",
+  "missing": null,
+  "content": "{\"dev.lithe.test.settings\":{\"flag\":true}}"
+}

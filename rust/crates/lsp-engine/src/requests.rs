@@ -70,7 +70,21 @@ pub struct StartServerRequest {
     /// without it the backend cannot reach the server through the host.
     #[serde(default)]
     pub session_policy: Option<lithe_plugin_server_policy::SessionPolicy>,
+    #[serde(default)]
     pub(crate) executable_path: String,
+    /// Run a plugin's UI process locally while retaining the bound
+    /// workspace's identity for protocol mapping.
+    #[serde(default)]
+    pub(crate) ui_process: bool,
+    /// Candidate system commands to resolve on the bound remote workspace's login PATH.
+    #[serde(default)]
+    pub(crate) remote_commands: Vec<String>,
+    /// Absolute POSIX executable selected from the bound workspace's tools.
+    #[serde(default)]
+    pub(crate) remote_executable_path: Option<String>,
+    /// POSIX PATH entries supplied by the workspace tool selection.
+    #[serde(default)]
+    pub(crate) remote_path_prepend: Vec<String>,
     #[serde(default)]
     pub(crate) arguments: Vec<String>,
     #[serde(default)]

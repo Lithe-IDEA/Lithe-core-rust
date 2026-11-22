@@ -32,6 +32,9 @@ fn launch(
     let streams = SystemProcessLauncher
         .launch(LspProcessSpec {
             executable,
+            remote_commands: Vec::new(),
+            remote_executable: None,
+            remote_path_prepend: Vec::new(),
             arguments: arguments
                 .iter()
                 .map(|argument| argument.to_string())

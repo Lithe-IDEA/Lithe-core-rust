@@ -25,6 +25,12 @@ use std::time::{Duration, Instant};
 pub struct LspProcessSpec {
     /// Program to start.
     pub executable: PathBuf,
+    /// Bare commands to resolve on the remote login PATH when executable is empty.
+    pub remote_commands: Vec<String>,
+    /// An executable already resolved on the remote host, never mapped as a desktop path.
+    pub remote_executable: Option<String>,
+    /// POSIX search path prefixes from the selected remote toolchain.
+    pub remote_path_prepend: Vec<String>,
     /// Arguments after the program, one entry per argument.
     pub arguments: Vec<String>,
     /// Directory the process starts in.
@@ -102,6 +108,15 @@ impl LspProcessLauncher for SystemProcessLauncher {
     fn launch(&self, spec: LspProcessSpec) -> Result<LspProcessStreams, CoreError> {
         if let Some(host) = lithe_workspace::current() {
             return crate::remote_process::launch(host, spec);
+        }
+        if !spec.remote_commands.is_empty()
+            || spec.remote_executable.is_some()
+            || !spec.remote_path_prepend.is_empty()
+        {
+            return Err(CoreError::new(
+                ErrorCode::InvalidRequest,
+                "Remote process parameters require a remote workspace host",
+            ));
         }
         let mut command = language_server_command(&spec);
         command
@@ -412,6 +427,9 @@ mod tests {
     fn spec(executable: &str, arguments: &[&str]) -> LspProcessSpec {
         LspProcessSpec {
             executable: PathBuf::from(executable),
+            remote_commands: Vec::new(),
+            remote_executable: None,
+            remote_path_prepend: Vec::new(),
             arguments: arguments
                 .iter()
                 .map(|argument| argument.to_string())

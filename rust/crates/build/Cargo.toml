@@ -9,6 +9,7 @@ description = "Build systems declared by Lithe plugins: validation, static model
 base64 = "0.22"
 lithe-debug = { path = "../debug" }
 lithe-execution = { path = "../execution" }
+lithe-platform = { path = "../platform" }
 lithe-plugin-model = { path = "../plugin-model" }
 lithe-protocol = { path = "../protocol" }
 lithe-remote = { path = "../remote", default-features = false, features = ["client"] }

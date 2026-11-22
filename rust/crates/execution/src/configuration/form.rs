@@ -907,7 +907,7 @@ impl Common {
             "" | "." => ".".to_string(),
             value => normalize_working_directory(root, value).unwrap_or_else(|_| {
                 let target = process::file_path(root, value, run_platform());
-                let code = if fs::is_dir(&target).unwrap_or(false) {
+                let code = if workspace_fs::is_dir(&target).unwrap_or(false) {
                     "outsideProject"
                 } else {
                     "notFound"
@@ -1141,16 +1141,13 @@ fn stored_path(
     } else {
         root.join(value)
     };
-    let found = if directory {
-        fs::is_dir(&path)
-    } else {
-        fs::is_file(&path)
-    };
-    if !found.unwrap_or(false) {
+    if (directory && !workspace_fs::is_dir(&path).unwrap_or(false))
+        || (!directory && !workspace_fs::is_file(&path).unwrap_or(false))
+    {
         return Err("notFound");
     }
-    let canonical = fs::canonicalize(&path).map_err(|_| "notFound")?;
-    let canonical_root = fs::canonicalize(root).map_err(|_| "notFound")?;
+    let canonical = workspace_fs::canonicalize(&path).map_err(|_| "notFound")?;
+    let canonical_root = workspace_fs::canonicalize(root).map_err(|_| "notFound")?;
     if let Ok(relative) = canonical.strip_prefix(&canonical_root) {
         let relative = slash_separated_path(relative, platform);
         if relative.is_empty() {

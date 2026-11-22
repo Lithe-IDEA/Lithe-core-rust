@@ -11,6 +11,7 @@ lithe-diagnostics = { path = "../diagnostics" }
 lithe-platform = { path = "../platform" }
 lithe-plugin-model = { path = "../plugin-model" }
 lithe-protocol = { path = "../protocol" }
+lithe-workspace = { path = "../workspace" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 sha2 = "0.10"

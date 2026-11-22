@@ -81,6 +81,9 @@ pub struct DeclarativePluginManifest {
     /// The plugin's own process serving its pages; see `lithe_plugin_backend`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) backend: Option<lithe_plugin_backend::BackendDeclaration>,
+    /// Additional files or trees used only on the UI host.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) local_only_paths: Vec<String>,
     /// Tool policies owned by plugins, never a host-maintained definition table.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) tool_definitions: Vec<Value>,
@@ -473,6 +476,21 @@ impl DeclarativePluginManifest {
         }
         if let Some(backend) = &self.backend {
             programs.extend(lithe_plugin_backend::programs(backend));
+        }
+        for action in &self.setting_actions {
+            if let Some(helper) = action
+                .source_editor
+                .as_ref()
+                .and_then(|editor| editor.remote_helper.as_ref())
+            {
+                programs.push(json!({
+                    "kind": "settingsHelper",
+                    "actionID": action.id,
+                    "executable": helper.executable,
+                    "arguments": helper.arguments,
+                    "resources": helper.resources,
+                }));
+            }
         }
         for installer in &self.command_installers {
             programs.push(crate::command_installers::programs(installer));

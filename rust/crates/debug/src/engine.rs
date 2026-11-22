@@ -12,8 +12,10 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
 use lithe_diagnostics::channel::identity_segment;
 use lithe_protocol::{CoreError, ErrorCode};
+use lithe_workspace::Workspace;
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
 mod breakpoints;
@@ -21,6 +23,7 @@ mod execution;
 mod fields;
 mod inspection;
 mod messages;
+mod paths;
 mod state;
 mod step_filters;
 
@@ -36,9 +39,26 @@ static SESSIONS: OnceLock<Mutex<HashMap<String, DebugSession>>> = OnceLock::new(
 
 /// Creates a session and returns the framed DAP `initialize` request to send.
 pub fn create_session(request: CreateSessionRequest) -> Result<DebugSessionUpdate, CoreError> {
+    create_session_for_workspace(request, None)
+}
+
+/// Creates a session with the adapter's workspace path mapping, retained even
+/// if the window later disconnects or attaches to another host.
+pub fn create_session_for_workspace(
+    request: CreateSessionRequest,
+    workspace_paths: Option<Workspace>,
+) -> Result<DebugSessionUpdate, CoreError> {
     validate_identifier(&request.session_id, "sessionId")?;
     validate_identifier(&request.adapter_id, "adapterId")?;
     validate_path(&request.root_path, "rootPath")?;
+    if workspace_paths
+        .as_ref()
+        .is_some_and(|paths| paths.local_root() != Path::new(&request.root_path))
+    {
+        return Err(invalid_request(
+            "Debug rootPath must identify the remote workspace.",
+        ));
+    }
     let disabled_capabilities = validate_disabled(&request.disabled_capabilities)?;
     request
         .declared
@@ -65,6 +85,11 @@ pub fn create_session(request: CreateSessionRequest) -> Result<DebugSessionUpdat
                 "A child debug session needs a running parent session.",
             ));
         }
+        if parent.workspace_paths != workspace_paths {
+            return Err(invalid_request(
+                "A child debug session must use its parent's workspace.",
+            ));
+        }
         breakpoints_muted = parent.breakpoints_muted;
     }
     let mut session = DebugSession {
@@ -74,6 +99,7 @@ pub fn create_session(request: CreateSessionRequest) -> Result<DebugSessionUpdat
         logged_terminal_failure: false,
         adapter_id: request.adapter_id,
         root_path: request.root_path,
+        workspace_paths,
         state: DebugSessionState::Idle,
         next_request_sequence: 1,
         next_event_sequence: 1,

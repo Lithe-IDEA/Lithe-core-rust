@@ -7,12 +7,12 @@
 
 use super::decode;
 use super::run_preparation::{
-    output_encoding, process_fields, valid_configuration_type, DecodeRunPreparationRequest,
-    MAX_ARGUMENT_BYTES,
+    output_encoding, process_fields, process_placement, valid_configuration_type,
+    DecodeRunPreparationRequest, MAX_ARGUMENT_BYTES,
 };
 use super::BuildManifest;
-use lithe_plugin_model::is_function_id;
-use lithe_plugin_model::{decode_payload, outcome, PluginRejection, Validation};
+use lithe_plugin_model::process::ProcessPlacement;
+use lithe_plugin_model::{decode_payload, is_function_id, outcome, PluginRejection, Validation};
 use lithe_protocol::CoreError;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
@@ -103,9 +103,13 @@ fn decode_start(payload: &DecodeStartPayload, required_tools: &[String]) -> Vali
         .map_err(|_| invalid("params", "The run start parameters are malformed."))?;
     check_label(&params.label)?;
     let executable = executable(&params.process, required_tools)?;
+    let process = Value::Object(params.process.clone());
+    let placement = process_placement(&process)
+        .map_err(|()| invalid("process.placement", "The placement is workspace or ui."))?;
     let files = temporary_files(
         &params.temporary_files,
         payload.temporary_directory.as_deref(),
+        lithe_workspace::is_remote() && placement != Some(ProcessPlacement::Ui),
     )?;
     for key in params.process.keys() {
         if ![
@@ -114,6 +118,7 @@ fn decode_start(payload: &DecodeStartPayload, required_tools: &[String]) -> Vali
             "workingDirectory",
             "environment",
             "outputEncoding",
+            "placement",
         ]
         .contains(&key.as_str())
         {
@@ -123,19 +128,21 @@ fn decode_start(payload: &DecodeStartPayload, required_tools: &[String]) -> Vali
             ));
         }
     }
-    let output_encoding =
-        output_encoding(&Value::Object(params.process.clone())).map_err(|()| {
-            invalid(
-                "process.outputEncoding",
-                "The output encoding is not a supported encoding.",
-            )
-        })?;
-    let fields = process_fields(&DecodeRunPreparationRequest {
-        workspace_root: payload.workspace_root.clone(),
-        root: ".".to_string(),
-        result: Value::Object(params.process.clone()),
-        launch_options: None,
-    })
+    let output_encoding = output_encoding(&process).map_err(|()| {
+        invalid(
+            "process.outputEncoding",
+            "The output encoding is not a supported encoding.",
+        )
+    })?;
+    let fields = process_fields(
+        &DecodeRunPreparationRequest {
+            workspace_root: payload.workspace_root.clone(),
+            root: ".".to_string(),
+            result: process,
+            launch_options: None,
+        },
+        placement,
+    )
     .map_err(|_| {
         invalid(
             "process",
@@ -186,6 +193,9 @@ fn decode_start(payload: &DecodeStartPayload, required_tools: &[String]) -> Vali
     });
     if let Some(encoding) = output_encoding {
         start["outputEncoding"] = json!(encoding);
+    }
+    if let Some(placement) = placement {
+        start["placement"] = json!(placement);
     }
     if let Some(debug) = &params.debug {
         start["debug"] = start_debug(debug)?;
@@ -264,6 +274,7 @@ enum PlannedContents {
 fn temporary_files(
     files: &[TemporaryFile],
     directory: Option<&str>,
+    remote: bool,
 ) -> Validation<Vec<PlannedFile>> {
     if files.len() > MAX_TEMPORARY_FILES {
         return Err(invalid(
@@ -274,12 +285,21 @@ fn temporary_files(
     if files.is_empty() {
         return Ok(Vec::new());
     }
+    let separator = if remote {
+        '/'
+    } else {
+        std::path::MAIN_SEPARATOR
+    };
     let directory = directory
         .filter(|directory| {
             !directory.is_empty()
                 && directory.len() <= MAX_PACKAGED_PATH_BYTES
                 && !directory.contains('\0')
-                && std::path::Path::new(directory).is_absolute()
+                && if remote {
+                    directory.starts_with('/')
+                } else {
+                    std::path::Path::new(directory).is_absolute()
+                }
         })
         .ok_or_else(|| {
             invalid(
@@ -287,7 +307,11 @@ fn temporary_files(
                 "The host supplies an absolute temporary directory for temporary files.",
             )
         })?;
-    let directory = directory.trim_end_matches(['/', '\\']);
+    let directory = if remote {
+        directory.trim_end_matches('/')
+    } else {
+        directory.trim_end_matches(['/', '\\'])
+    };
     let mut names = BTreeSet::new();
     let mut planned = Vec::new();
     for (index, file) in files.iter().enumerate() {
@@ -300,7 +324,7 @@ fn temporary_files(
         let contents = temporary_contents(file, index)?;
         planned.push(PlannedFile {
             name: file.name.clone(),
-            path: format!("{directory}{}{}", std::path::MAIN_SEPARATOR, file.name),
+            path: format!("{directory}{separator}{}", file.name),
             contents,
         });
     }

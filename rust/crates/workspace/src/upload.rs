@@ -4,7 +4,9 @@
 use crate::host::request_cancellable;
 use crate::sessions::{lookup, request_error};
 use lithe_protocol::{cancellation, CoreError, ErrorCode};
+use lithe_remote::client::launch::Stage;
 use lithe_remote::protocol::methods;
+use lithe_request_context::events as execution_events;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::io::Read;
@@ -22,6 +24,8 @@ pub struct Request {
     path: String,
     sha256: String,
     mode: u32,
+    #[serde(default)]
+    report_progress: bool,
 }
 
 /// Uses handshake facts without running another shell or using the local platform.
@@ -75,9 +79,19 @@ pub fn upload(request: Request) -> Result<Value, CoreError> {
     let id = started["uploadId"]
         .as_u64()
         .ok_or_else(|| CoreError::new(ErrorCode::ParseFailed, "Missing upload identity"))?;
+    let report = |sent| {
+        if request.report_progress {
+            execution_events::emit(crate::sessions::stage_event(Stage::Uploading {
+                sent: sent as usize,
+                total: metadata.len() as usize,
+            }));
+        }
+    };
+    report(0);
     let result = (|| {
         let mut buffer = vec![0; methods::MAX_UPLOAD_CHUNK_BYTES];
         let mut offset = 0;
+        let mut reported = 0;
         loop {
             cancellation::check()?;
             let count = source.read(&mut buffer).map_err(source_error)?;
@@ -100,6 +114,10 @@ pub fn upload(request: Request) -> Result<Value, CoreError> {
                     ErrorCode::ParseFailed,
                     "Unexpected upload acknowledgement",
                 ));
+            }
+            if offset - reported >= 1 << 20 || offset == metadata.len() {
+                report(offset);
+                reported = offset;
             }
         }
         if offset != metadata.len() {

@@ -14,6 +14,7 @@ fn ready_capabilities() -> Value {
 pub(super) fn start_request(server: &ScriptedServer) -> StartServerRequest {
     let _ = server;
     StartServerRequest {
+        ui_process: false,
         provider_id: "gopls".to_string(),
         role: SessionRole::LanguageServer,
         log_subject: None,
@@ -26,6 +27,9 @@ pub(super) fn start_request(server: &ScriptedServer) -> StartServerRequest {
         keymap_import_providers: Vec::new(),
         session_policy: None,
         executable_path: "/usr/bin/scripted-server".to_string(),
+        remote_commands: Vec::new(),
+        remote_executable_path: None,
+        remote_path_prepend: Vec::new(),
         arguments: vec!["--stdio".to_string()],
         environment: BTreeMap::new(),
         root_uri: "file:///workspace".to_string(),
@@ -5025,6 +5029,10 @@ fn capability_discovery_reports_granted_editor_options() {
             action_source_bytes: 1024 * 1024,
             provider_types: vec!["hover".into(), "codeLens".into()],
         });
+        request.host_options.method_authorities.insert(
+            REGISTER_PROVIDERS.into(),
+            lithe_lsp_client::AuthoritySupport::Both,
+        );
     });
     harness.server.complete_initialize(json!({
         "experimental": { "litheFunctions": { "version": 0 } }
@@ -5039,7 +5047,7 @@ fn capability_discovery_reports_granted_editor_options() {
     assert_eq!(editor["methods"], json!([REGISTER_PROVIDERS]));
     assert_eq!(
         editor["options"],
-        json!({ "providerTypes": ["hover", "codeLens"] })
+        json!({ "providerTypes": ["hover", "codeLens"], "authorities": ["local", "remote"] })
     );
     assert!(reply["result"]["limits"]["editorActionSourceBytes"].is_null());
     harness.poll();
@@ -5047,6 +5055,60 @@ fn capability_discovery_reports_granted_editor_options() {
         .events
         .iter()
         .all(|event| event.kind != "hostRequest"));
+}
+
+/// A service reports exceptions only for methods the session may call.
+#[test]
+fn capability_discovery_reports_authority_by_granted_method() {
+    use lithe_lsp_client::AuthoritySupport::{Both, Local, Remote};
+
+    let get_paths = "lithe/host/workspace/getHostPaths";
+    let get_context = "lithe/host/workspace/getContext";
+    let editor_open = "lithe/host/editor/open";
+    let editor_active = "lithe/host/editor/getActive";
+    let hidden_read = "lithe/host/workspace/readFile";
+    let hidden_debug = "lithe/host/debug/start";
+    let mut harness = Harness::start(|request| {
+        request.plugin_id = Some(FUNCTION_PLUGIN.into());
+        request.host_services = ["workspace", get_paths, editor_open, editor_active]
+            .map(str::to_owned)
+            .to_vec();
+        request.host_options.method_authorities = [
+            (get_context, Both),
+            (get_paths, Remote),
+            (hidden_read, Local),
+            (editor_open, Local),
+            (editor_active, Both),
+            (hidden_debug, Local),
+        ]
+        .map(|(method, authority)| (method.to_owned(), authority))
+        .into_iter()
+        .collect();
+    });
+    harness.server.complete_initialize(json!({
+        "experimental": { "litheFunctions": { "version": 0 } }
+    }));
+    harness.await_state(LspLifecycleState::Ready);
+    harness.server.send(json!({
+        "jsonrpc": "2.0", "id": "caps", "method": "lithe/host/getCapabilities"
+    }));
+    let reply = await_reply(&harness, "caps");
+    let services = &reply["result"]["services"];
+    assert_eq!(
+        services["workspace"]["options"],
+        json!({
+            "authorities": ["local", "remote"],
+            "methodAuthorities": { (get_paths): ["remote"] },
+        })
+    );
+    assert_eq!(
+        services["editor"]["options"],
+        json!({
+            "authorities": ["local", "remote"],
+            "methodAuthorities": { (editor_open): ["local"] },
+        })
+    );
+    assert!(services["debug"].is_null());
 }
 
 /// Host options belong to a plugin backend and must be ones Core can

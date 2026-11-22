@@ -23,8 +23,8 @@ use std::path::{Path, PathBuf};
 // The default workspace exclusions live in `lithe-core-rules`, the only definition every host
 // shares: Core's own folders and the folder names the enabled plugins declare.
 use lithe_core_rules::visibility::{
-    self as shared_visibility, default_hidden_directories, disabled_built_ins, glob_matches,
-    is_disabled_directory, plugin_generated_directories,
+    self as shared_visibility, default_hidden_directories, disabled_built_ins, file_mask_allows,
+    is_disabled_directory, parse_file_mask, plugin_generated_directories,
 };
 
 mod events;
@@ -39,7 +39,9 @@ mod text_io;
 mod visibility;
 
 pub use events::*;
-pub use matcher::*;
+pub use lithe_text::search::is_plain_text;
+use lithe_text::search::{line_content, searchable_bytes_text, Matcher};
+pub(crate) use matcher::*;
 pub(crate) use paths::*;
 pub use replace::*;
 pub use requests::*;

@@ -159,6 +159,30 @@ fn main() {
         .function("files.nextChange", |_, context| next_change(context))
         .expect("valid function");
 
+    backend
+        .function("workspace.processRoots", |_, context| {
+            let reference = context
+                .workspace_context()
+                .ok_or_else(|| PluginError::new("sample.noWorkspace", "Open a workspace first."))?;
+            let host = context.host();
+            let workspace = host.workspace();
+            let full = workspace.get_context(reference)?;
+            let folders: Vec<_> = workspace
+                .process_roots(&full)?
+                .into_iter()
+                .map(|root| match root {
+                    lithe_plugin_sdk::ProcessRoot::Local { root_id, path } => {
+                        json!({ "rootID": root_id, "path": path })
+                    }
+                    lithe_plugin_sdk::ProcessRoot::Remote { root_id, host_path } => {
+                        json!({ "rootID": root_id, "hostPath": host_path })
+                    }
+                })
+                .collect();
+            Ok(json!(folders))
+        })
+        .expect("valid function");
+
     // The terminal API is a host service. The lifecycle sample deliberately
     // uses a harmless interactive client and display-only history; it never
     // executes retained text as input.

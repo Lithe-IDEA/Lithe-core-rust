@@ -160,6 +160,19 @@ Every path in `plugin.json` is relative to the package root, uses `/`, and may
 not contain `..`, a leading `/`, a backslash, or NUL. Packages may not contain
 symbolic links. A host treats an installed package as read-only.
 
+For a process on a remote workspace host, declare each package input through
+its launch fields or a fixed `${pluginDir}/path` in an argument. A path may name
+one file or a directory whose regular files, including nested files, are
+required. Keep backend and UI assets outside these directories, or list
+their files or subdirectories in `localOnlyPaths` when the same tree holds
+both kinds of resource. The host also keeps package metadata, translations,
+declared UI entries and icons, and the backend's declared package inputs
+local automatically. A remote command that directly requires a local-only
+path or a missing resource is refused. Empty directories are not inputs.
+For the same platform the desktop can use a verified snapshot of the installed
+package. A different platform uses the same approved release's marketplace
+archive for that platform and checks its published SHA-256 before extraction.
+
 ## Manifest
 
 | Field | Meaning |
@@ -180,6 +193,7 @@ symbolic links. A host treats an installed package as read-only.
 | `executionProviders` | At most one run/test provider per declared language. |
 | `settings` | User-adjustable plugin options. |
 | `ui` | Host-rendered tool windows and commands. |
+| `localOnlyPaths` | Optional list of up to 256 package-relative files or directory trees that must stay on the UI host. Use it for UI assets and backend dependencies not named individually by other declarations. |
 | `buildSystems` | Project-level build tools. |
 | `commandInstallers` | How the host installs a bare command a `systemCommand` launch needs; requires `commandInstallers: 0` and `commands.install`; see [Command installers](#command-installers). |
 | `managedRuntimes` | Pinned dependencies qualified by a packaged backend and installed in host-owned storage independent of plugin version; requires `managedRuntimes: 0` and `runtimes.install`; see [Managed runtimes](#managed-runtimes). |
@@ -487,6 +501,11 @@ declares. A server may declare:
   cannot widen it and a backend cannot step outside it.
 - A server with `remote: "unsupported"` is not started for a remote
   workspace: `lsp.startServer` answers `not_supported`.
+- The desktop host supports remote `systemCommand` launches that require
+  no package files or launch directories. It resolves commands in the
+  remote login environment. Global plugin settings come from the client,
+  and project settings come from the attached workspace host. A reconnect
+  starts a fresh session with the current project settings.
 
 What the engine enforces on `lsp.pluginServerRequest` and
 `lsp.pluginServerNotify`, the two commands behind the host methods:
@@ -761,7 +780,7 @@ declared rows.
 
 #### Source-backed settings editors
 
-An action may declare `sourceEditor: {"editFunction":"compiler.prepareSettings"}` and require `sourceSettings: 0` (or `1`, below)
+An action may declare `sourceEditor: {"editFunction":"compiler.prepareSettings"}` and require `sourceSettings: 0` (or `1` or `2`, below)
 alongside `settings: 0`. The host invokes the read function only after an
 explicit user action; opening its page must not run project wrappers or tools.
 The function must **only read** and return the
@@ -852,11 +871,59 @@ other failures use the existing action/SDK logging path. Staging is private,
 bounded, never reusable across worktrees, and removed on every terminal path.
 
 Invalid forms, edits or receipts return `plugin.settings.invalidSourceEditor`;
-unknown or revoked actions retain their existing errors. These editors are
-local-workspace operations; remote workspaces are not supported in version 0.
+unknown or revoked actions retain their existing errors. Versions 0 and 1 support local workspaces.
 Fixtures: [`settings-sources.json`](../../../../rust/fixtures/plugins/settings-sources.json)
 (version 0) and [`settings-sources-modules.json`](../../../../rust/fixtures/plugins/settings-sources-modules.json)
 (version 1: a `sidebar` of nested modules with sections, entry lists, attributes and a read-only module).
+
+##### Remote native settings (sourceSettings 2)
+
+To use the source editor in a remote Linux workspace, require `sourceSettings: 2`
+and add `remoteHelper` to its `sourceEditor`:
+
+```json
+{
+  "editFunction": "compiler.prepareSettings",
+  "remoteHelper": {
+    "executable": "bin/settings-helper",
+    "arguments": ["--json"],
+    "resources": ["lib/settings"]
+  }
+}
+```
+
+The local workflow still calls the plugin backend's read function and
+`editFunction`. In a trusted remote workspace the host runs the helper from the
+approved package variant for the remote platform. The executable and resources
+are normalized package-relative paths (up to 1024 UTF-8 bytes each). The helper
+executable appears in the install-time program review. Up to 32 literal arguments
+(at most 1024 UTF-8 bytes each, no NUL) and 32 resource paths may be declared.
+The working directory is the captured remote workspace root. The helper uses the
+remote login environment. The host appends the absolute path to a private
+`request.json` as the last argument. A run has a 60-second deadline and may emit
+one JSON response of up to 2 MiB on stdout. Do not return source contents or
+credentials. Stderr is excluded from the response.
+
+| Operation | Request and result |
+| --- | --- |
+| Read | `{operation:"read",context:{language,builds}}` returns the same version-0 source snapshot. After saving the host uses `readAfterSave` with the same context shape. The helper must refresh upstream facts on this read. |
+| Edit | `{operation:"editSource",sourceID,revision,values,hostPath,outputFile}` identifies one source. Both paths are absolute on the remote host. Verify the source revision, write the complete replacement only to the existing `outputFile` without CREATE or following symlinks, and return the same version-0 edit receipt. A no-op leaves the source untouched. |
+
+Remote snapshots include `scope` on each source. The `workspace` and `home`
+scopes take a normalized relative path under the remote workspace or login
+account home. The `hostReadOnly` scope takes an absolute path and requires
+`writable:false`. For editable sources the host resolves the native target,
+checks the revision against the snapshot, and shows the connection and file
+paths before the user confirms. File-list values and file or directory entries
+use paths as spelled on the remote host.
+
+The host prepares and verifies every staged replacement before it starts
+publishing. A changed source, a revoked workspace or package, a different
+attachment, or an unsafe destination aborts publication. If any files may have
+been published and verification fails, reload the form to establish fresh
+baselines. Successful saves include a new read that verifies the saved
+revisions. The source documents and replacement bytes remain on the remote
+host, and staging belongs to the captured connection.
 
 #### Translations
 
@@ -1110,6 +1177,14 @@ backend. They share one set of launch fields, one launch-template language and
 one launch plan. All of it belongs to the base contract (`pluginAPIVersion` 0):
 no capability is declared to use it.
 
+Language servers, build provider processes, VCS providers, and debug adapters
+can declare `placement` beside `launch`. The default, `"workspace"`, runs the
+process where the workspace lives. An explicit `"ui"` runs it on the machine
+running Lithe and uses that machine's platform, tools, and installed package.
+For remote workspaces, a UI process does not have a local copy of the remote
+working tree. The plugin backend serves all contexts from the UI machine and
+its declaration does not accept `placement`.
+
 | `launch.kind` | Starts |
 | --- | --- |
 | `packaged` | An executable inside the package: `{path}`. |
@@ -1184,11 +1259,12 @@ contains a machine path, and the host decides where state lives.
 
 | Variable | Value |
 | --- | --- |
-| `${pluginDir}` | Root of the installed, read-only package. It must be used at most once per value and be followed by a `/`-rooted path inside the package; that path may vary only by `${arch}`. |
+| `${pluginDir}` | Root of the read-only package on the process's host. For remote processes this is the verified deployment directory. Use it at most once per value, followed by a `/`-rooted package path that may vary by `${arch}` and `${os}`. |
 | `${stateDir}` | Writable directory the host keeps for this plugin's server and removes when the plugin is uninstalled. Not available in `validationArguments`. |
 | `${workspaceStateDir}` | Writable directory for the server's state of the current workspace. Not available in `validationArguments`, nor in a [plugin backend](#plugin-backend), which belongs to no workspace. |
 | `${logDir}` | Absolute current-session `plugins/<id>/files/` directory, explicitly supplied by the host as `logDirectory`. Available for language servers and plugin backends, never in `validationArguments`. The host creates it in writable log storage, outside the installed package; Core does not derive it from package resources. |
-| `${arch}` | Host CPU architecture: `arm64` or `x86_64`. |
+| `${arch}` | CPU architecture of the process's host: `arm64` or `x86_64`. |
+| `${os}` | Operating system of the process's host: `macos`, `windows`, or `linux`. Remote workspace processes use `linux`. |
 | `${setting:<id>}` | Current value of a declared [plugin setting](#plugin-settings). Not available in `validationArguments`, and never inside a package path. |
 
 `plugins.declarative.languageServerLaunchPlan` expands a server's launch. The
@@ -1283,13 +1359,19 @@ declaring one:
   `plugin.launch.notBackend`, so a host never runs an answer it did not ask
   for.
 
+For a remote workspace, the same resolver runs in the local plugin backend.
+`platform` identifies the remote Linux host and `tools` describes installations
+on that host. When the remote host has no plugin storage provisioned, the four
+directory fields are empty strings and `requiredDirectories` is empty. In this
+case the resolver can return a declared `tool` without `writablePaths`.
+
 `resolveParams`:
 
 | Field | Meaning |
 | --- | --- |
 | `serverID` | The server's `languageID`; also its ID in the `languageServer` host methods. |
 | `platform` | `{os, arch}`: the host operating system and CPU architecture (`arm64` or `x86_64`). |
-| `stateDirectory`, `workspaceStateDirectory`, `logDirectory`, `temporaryDirectory` | The writable directories of this start, absolute and outside the package and the application bundle. |
+| `stateDirectory`, `workspaceStateDirectory`, `logDirectory`, `temporaryDirectory` | The writable directories of this start, absolute and outside the package and the application bundle. An empty string means the remote host has not provisioned the directory. |
 | `settings` | The effective value of every declared plugin setting. |
 
 The answer is an object with these fields; an unknown field is refused.
@@ -2500,7 +2582,11 @@ and 64 KiB UTF-8 each, without NUL. The environment has at most 64 entries;
 keys match `[A-Za-z_][A-Za-z0-9_]*` with at most 128 bytes, values are strings
 of at most 64 KiB without NUL. The complete JSON is bounded at 32 MiB.
 `workingDirectory` must be an existing workspace-relative directory inside
-the selected instance, including after resolving filesystem aliases.
+the selected instance, including after resolving filesystem aliases. Omitted
+`placement` and explicit `"workspace"` use the workspace host. For a remote
+workspace, `placement: "ui"` requires `workingDirectory: "."` and no
+working-directory override. The UI process runs in a private local directory
+with locally resolved tools.
 
 `outputEncoding` is optional: the character encoding the process writes to
 stdout and stderr, for a provider that knows it, for example because it starts
@@ -3301,21 +3387,19 @@ both so the host can pass them to `debug.createSession`.
 
 An adapter that attaches to a debuggee on another machine (a JVM started with
 `-agentlib:jdwp`, a Node inspector, gdbserver) is an
-ordinary `attach` adapter whose `targetBindings` carry a `connection`. The
-adapter itself still runs on this machine, stdio or loopback as before; only
-the debuggee is remote. This is the adapter-to-debuggee endpoint, not the
-IDE-to-adapter DAP endpoint. By default, debugpy `--listen` starts a DAP adapter
-on the target machine: the IDE must connect to that adapter, not start another
-local adapter and merely pass it `connect.host` and `connect.port`.
+ordinary `attach` adapter whose `targetBindings` carry a `connection`. This
+binding configures the adapter-to-debuggee endpoint. The adapter's own
+transport and process placement control how the IDE reaches it.
 
-`connection` does not declare an external DAP endpoint or remote adapter
-execution (for example `ssh host gdb -i=dap`). These require separate host
-integration; this contract and its validation do not establish that support.
-The current transport scope is ordinary TCP connection and lifecycle, reusing
-the existing socket implementation and retaining stdio. It does not add proxy,
-tunnel, port-forwarding or SSH execution settings, or relax the loopback rule
-for language-server-provided DAP endpoints. Adapter-native source mapping should
-be reused where applicable, without translating the same path pair again in Core.
+In a remote workspace, `placement: "workspace"` (the default) starts the
+adapter on the workspace host. The desktop carries DAP stdio over the managed
+session and forwards an adapter's announced loopback TCP endpoint when it
+uses that transport. For a `placement: "ui"` adapter attaching to a target on
+the workspace host, the desktop confirms the target and supplies the local
+loopback end of a session tunnel in the connection binding. Adapter-native
+path mappings apply where the adapter handles them. The workspace adapter's
+DAP boundary maps workspace files and remote paths for breakpoints, sources
+and stack frames.
 
 The following illustrates nested argument binding and mapping shape, not a
 complete debugpy `--listen` connection configuration:
@@ -3931,8 +4015,9 @@ checks every request before the host sees it.
 
 ### Build configuration host service
 
-This service is available for local workspace contexts when advertised by
-`getCapabilities`. Each request carries `context: { contextID, generation }`.
+When advertised by `getCapabilities`, `getOptions` accepts local and remote
+workspace contexts. `watchConfiguration` accepts local contexts. Each
+request carries `context: { contextID, generation }`.
 
 | Request | Additional params | Result | Permission |
 | --- | --- | --- | --- |
@@ -3945,6 +4030,11 @@ This service is available for local workspace contexts when advertised by
   and declaration defaults, and checks the values against the manifest. No
   build model is loaded and no process is run. A foreign build-system ID
   returns `plugin.host.foreignContribution`.
+- For a remote context, the host reads `.lithe/build/options.json` on the
+  workspace host, with the same 1 MiB limit as for a local context. Client
+  preferences are scoped to that remote workspace and take precedence.
+  If the connection closes or changes during the request, the host returns
+  `plugin.host.remoteDisconnected`.
 - The watch covers the workspace's build preferences and up to four named
   configuration files. The supplied paths are absolute on the local host,
   normalized, at most 4096 UTF-8 bytes each, and may name files outside the
@@ -3990,7 +4080,14 @@ notifications.
   message), `errorDetailsBytes`, and `notificationBytes`. A backend must
   check `services` before it calls a method.
 - A service entry may also carry `options`: what the host declared for that
-  service. When `editor/registerActions` is granted, `services.editor.options`
+  service. `options.authorities` lists the supported workspace authority kinds
+  among the listed methods. In a service with mixed support,
+  `options.methodAuthorities` maps a full method name to a narrower list. Check
+  the method's list first, then the service's list. When neither is present,
+  the host has not advertised authority support for that method. A grant and a
+  matching authority still do not replace per-operation checks for trust,
+  connection state, or package availability.
+- When `editor/registerActions` is granted, `services.editor.options`
   has `actionIcons` (the icon tokens the host draws) and `limits` gains
   `editorActionSourceBytes` (the largest document the host sends a
   collector). When `editor/registerProviders` is granted,
@@ -4227,8 +4324,9 @@ use `{rootID, path}` from that plugin's `getFolders` response; paths use `/` and
 are relative to the root. A root ID is not a lifetime or an authorization token.
 Opening the same folder in two windows creates independent context-owned leases;
 closing one does not invalidate the other, and reopening works with generation 1
-in its new context. Remote contexts are explicitly refused by these
-methods. Unknown options fail before side effects with `unsupportedOption`.
+in its new context. Unknown options fail before side effects with
+`unsupportedOption`. A host that does not serve a method for the requested
+authority returns `plugin.host.authorityUnsupported`.
 
 | Methods (prefix `lithe/host/`) | Permission | Params in addition to `context` | Result |
 | --- | --- | --- | --- |
@@ -4251,6 +4349,30 @@ methods. Unknown options fail before side effects with `unsupportedOption`.
 | `preview/openHTML` | `preview.open` | HTML `resource,presentation?` (`editorAndPreview` or `previewOnly`), `range?` | open result plus `usesLiveBuffer:true,presentation`; explicitly changes the existing tab's presentation |
 | `browser/openExternal` | `browser.open` | exactly one of HTTP(S) `url` or HTML `resource`; `unsaved?` (`openSavedFile` or `requireSaved`) for a resource | `{opened:true,source:"web"|"disk",hasUnsavedChanges?}` |
 | `window/showInformation`, `window/showWarning`, `window/showError` | `window.messages` | `text,actions?` | `{selectedIndex}`; zero-based, or `null` on dismissal |
+
+For remote contexts, `workspace/readDirectory`, `workspace/stat`, and
+`workspace/readFile` run against the selected root on the connected host.
+Descendant symbolic links are never followed. An explicit stat of a symbolic
+link reports the link itself. A disconnected host returns
+`plugin.host.remoteDisconnected`. Directory cursors are scoped to the root,
+path, and context generation. A directory that exceeds the remote service
+listing budget returns `plugin.host.limitExceeded`.
+
+Remote `findFiles` and `findText` scan disk under the authorized root in one host
+request per page. The total is at most 200 matches per scan. A scan allows at most
+50,000 directory entries, 8 MiB of entry names, 64 MiB of file reads, 2 MiB per
+file and eight seconds of scanning. A text preview is at most 512 UTF-8 bytes.
+When work is skipped or a budget prevents a complete scan, `isTruncated` is true.
+Cursors bind the query, root, context generation, connection attachment and
+prefix already returned. Restart at the first page when the cursor is rejected.
+
+Remote `watch` observes files or directories using the workspace's existing
+watch stream. It emits paths relative to the root, with increasing sequences.
+When events are lost, a directory containing the target changes, or the host
+reconnects, `requiresRescan` requests a fresh read and `changedPaths` is empty.
+The subscription belongs to its backend session and workspace context and
+continues across reattachment of that context. Dispose it when it is no longer
+needed. At most 16 bounded watches may be held by the backend at a time.
 
 A document summary has `documentID,version,path,languageID,isReadOnly,isDirty,
 encoding,lineEnding`. `path` is workspace-relative or null for a document outside
@@ -4333,8 +4455,13 @@ without a machine-operation deadline, but cancellation/session/context closure
 still ends it. Native launch and process cleanup retain their own bounds.
 The host never types a launch into an existing shell or reads other terminals.
 There is no `sendText`, user-terminal enumeration, web emulator, or Docker
-special case. First release is local authority only; a remote context fails
-with `plugin.host.authorityUnsupported` instead of starting anything locally.
+special case. A trusted remote context starts its command in a PTY on the
+workspace host. Consent identifies that connection. Bare commands use the
+host's login environment, and overrides and removals apply there. The host
+opens the working directory relative to the workspace root without following
+symbolic links below the root. A disconnected or replaced attachment returns
+`plugin.host.remoteDisconnected` during consent. Every reopen requests fresh
+consent for the current attachment.
 
 Each handle belongs to one plugin backend session and one context generation.
 A handle from another plugin, context or replacement backend is `notFound`.
@@ -4453,6 +4580,24 @@ context it started in has closed.
   prepares the restart. Without `rerun` the entry cannot be rerun.
 - The reply carries an opaque `runID`. The host sends
   [`run/didExit`](#host-notifications) when the process ends.
+
+In a trusted remote context, `run/start` with a tool reference resolves the
+tool and its version in the requested directory on the workspace host.
+The remote server opens the working directory within the bound root without
+following symbolic links in the relative path, and starts the process with
+its login environment. A PATH explicitly set in `process.environment`
+takes precedence over the tool's PATH contributions. Temporary files are
+written on that host, with the same byte and substitution rules as a local
+run. The Run tab identifies the remote execution. Closing the workspace or
+losing or replacing the connection ends the run. When the connection is
+lost and no process status is available, `run/didExit` omits both
+`exitCode` and `signal`.
+
+Remote starts require workspace trust (`plugin.host.permissionDenied`).
+A disconnected or replaced attachment rejects an in-flight start with
+`plugin.host.remoteDisconnected`. Hosts without remote package deployment
+or debugging return `plugin.host.authorityUnsupported` for those parts of
+the request.
 
 `run/stop` stops a run by `runID` or a debug session by `sessionID` and answers
 `null`, also when it already ended. Cancelling the host request is the same as

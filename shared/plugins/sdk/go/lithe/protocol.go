@@ -17,6 +17,17 @@ const (
 	KeymapImportVersion = 0
 )
 
+// ProcessPlacement identifies the host that starts a contributed process.
+// Omit the placement field to use the workspace host.
+type ProcessPlacement string
+
+const (
+	// PlacementWorkspace runs the process on the machine that owns the workspace.
+	PlacementWorkspace ProcessPlacement = "workspace"
+	// PlacementUI runs the process on the machine running Lithe.
+	PlacementUI ProcessPlacement = "ui"
+)
+
 // JSON-RPC methods of the backend protocol.
 const (
 	methodInitialize     = "initialize"

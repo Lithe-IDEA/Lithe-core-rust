@@ -14,6 +14,15 @@
 
 ## 待合入
 
+- [桌面端 #2231](https://github.com/1lck/Lithe-IDEA/issues/2231)（API-30、API-40）：工作区进程可声明 `placement: "workspace" | "ui"`，默认在工作区所在主机运行。启动模板的 `${os}`、`${arch}` 和 `${pluginDir}` 随进程执行位置解析。四个 SDK 提供运行位置的值或类型。远端调试复用工作区会话传输 stdio 或转发 TCP，保留既有 attach 的 `connection` 绑定。沿用现有宿主方法和协议版本。
+
+- [桌面端 #2231](https://github.com/1lck/Lithe-IDEA/issues/2231)（API-19、API-40）：**`sourceSettings` 2** 为工具原生设置新增 `settingActions[].sourceEditor.remoteHelper`，运行事先审核的远端包程序。原配置和实际替换内容保留在远端，支持工作区、用户目录和只读主机路径。宿主显示写入目标并请求确认，保存后验证回读。沿用版本 0 的快照和收据格式，没有新增插件后端宿主方法或通知。
+
+- [桌面端 #2231](https://github.com/1lck/Lithe-IDEA/issues/2231)：远端进程的包资源可声明目录，Core 按验证后的文件清单展开。清单新增可选 `localOnlyPaths`，用于排除混合目录中的本机资源。远端构建模型命令的包内参数必须使用固定的包内路径。没有新增宿主方法或协议版本。
+
+- [桌面端 #2231](https://github.com/1lck/Lithe-IDEA/issues/2231)（API-07、API-08、API-25）：接入远程 `workspace/watch`、`findFiles` 和 `findText`，监听重连后请求重扫，搜索游标绑定连接与查询。后端语言服务器解析函数能返回在远端已安装的工具 ID。沿用现有方法与协议版本。
+
+- [桌面端 #2231](https://github.com/1lck/Lithe-IDEA/issues/2231)（API-01、API-37）：`getCapabilities` 增加可选的服务级 `options.authorities` 和方法级 `options.methodAuthorities`，供后端判断已经授权的方法适用于本地还是远程工作区。方法级声明优先。没有增加协议版本。
 - [#151](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/151)，[@xiaoyumuxi](https://github.com/xiaoyumuxi)，`pluginAPIVersion` 0 内的补充（API-05、API-35、API-40）：远程工作区上下文的 `authority` 新增 `platform: { os, arch }`，取值同托管运行时（`os` 为 `linux`，`arch` 为 `arm64` 或 `x86_64`），本地上下文没有这个字段。新增宿主方法 `workspace/getHostPaths`：返回远程上下文的根目录在远端主机上的绝对 POSIX 路径 `hostPath`，可选的 `rootIDs`（1–256 个不重复的根目录 ID）决定返回哪些根目录和顺序；它是 `workspace.metadata` 下单独的方法授权，本地上下文返回 `plugin.host.authorityUnsupported`，未知根目录返回 `plugin.host.notFound`；声明 `workspace.metadata` 的插件，启动计划的 `backend.hostServices` 因此多出 `lithe/host/workspace/getHostPaths`，宿主传给 `lsp.startServer` 时去掉自己没有注册处理器的方法授权，后端调用它们得到 `plugin.host.permissionDenied`。新增失败码 `plugin.host.remoteDisconnected`（`-32078`，操作进行中与远端主机断开）和 `plugin.host.platformUnavailable`（`-32079`，插件没有适合远端平台的程序包或托管运行时）。插件函数中转不再拒绝远程工作区的上下文，导出的 `context: "workspace"` 指两种来源的工作区，Core 不读也不改写参数和结果里的路径。四个官方 SDK 新增远端平台读取、`getHostPaths`、按来源选择进程所用路径的辅助方法和两个失败码，`path` 与 `hostPath` 是不同类型。没有新增能力版本、通知或 SDK 版本。
 - [#150](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/150)，[@Mucheen](https://github.com/Mucheen)，`runConfigurationTypes` 0 内的行为修正（API-29）。`build.runConfigurationPlan` 在工作目录为工作区根且没有匹配实例时，用唯一生效的文件字段解析后的工作区内目标定位最深的构建实例。`./` 等价于工作区根，指向工作区外的链接不参与定位。进程工作目录和执行前任务选择规则保持原样。没有新增宿主方法、通知或协议版本。
 

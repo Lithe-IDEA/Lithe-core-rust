@@ -93,12 +93,72 @@ pub struct HostOptions {
     /// Icons, source bound and provider types of the editor service.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub editor: Option<lithe_plugin_editor::actions::EditorHostOptions>,
+    /// Workspace authority support, keyed by the full host method name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub method_authorities: BTreeMap<String, AuthoritySupport>,
+}
+
+/// The workspace contexts a host method accepts.
+#[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum AuthoritySupport {
+    /// The method accepts a local workspace.
+    Local,
+    /// The method accepts a remote workspace.
+    Remote,
+    /// The method accepts either workspace authority.
+    Both,
+}
+
+impl AuthoritySupport {
+    fn kinds(self) -> Value {
+        match self {
+            Self::Local => serde_json::json!(["local"]),
+            Self::Remote => serde_json::json!(["remote"]),
+            Self::Both => serde_json::json!(["local", "remote"]),
+        }
+    }
 }
 
 impl HostOptions {
     /// Whether the host declared no options.
     pub fn is_empty(&self) -> bool {
-        self.editor.is_none()
+        self.editor.is_none() && self.method_authorities.is_empty()
+    }
+
+    /// Describes only the authority of methods that are in the session's
+    /// capability answer. A service lists their union, with narrower methods
+    /// carrying their own list.
+    pub fn report_authorities(&self, answer: &mut Value) {
+        let Some(services) = answer["services"].as_object_mut() else {
+            return;
+        };
+        for service in services.values_mut() {
+            let methods: Vec<_> = service["methods"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .filter_map(|method| Some((method, *self.method_authorities.get(method)?)))
+                .collect();
+            let Some((_, first)) = methods.first() else {
+                continue;
+            };
+            let authorities = if methods.iter().all(|(_, kind)| kind == first) {
+                *first
+            } else {
+                AuthoritySupport::Both
+            };
+            let overrides: serde_json::Map<String, Value> = methods
+                .into_iter()
+                .filter(|(_, kind)| *kind != authorities)
+                .map(|(method, kind)| (method.to_owned(), kind.kinds()))
+                .collect();
+            service["options"]["authorities"] = authorities.kinds();
+            if !overrides.is_empty() {
+                service["options"]["methodAuthorities"] = Value::Object(overrides);
+            }
+        }
     }
 }
 

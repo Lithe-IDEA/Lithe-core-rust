@@ -125,6 +125,30 @@ pub struct BuildSystemDeclaration {
     pub(crate) layout: Option<LayoutDeclaration>,
 }
 
+impl BuildSystemDeclaration {
+    /// Package icons used by the local build UI.
+    pub fn icon_paths(&self) -> impl Iterator<Item = &str> {
+        self.icon
+            .iter()
+            .chain(
+                self.options
+                    .iter()
+                    .filter_map(|option| option.icon.as_ref()),
+            )
+            .chain(
+                self.run_configuration_types
+                    .iter()
+                    .filter_map(|kind| kind.icon.as_ref()),
+            )
+            .chain(
+                self.before_launch_tasks
+                    .iter()
+                    .filter_map(|kind| kind.icon.as_ref()),
+            )
+            .flat_map(UIIcon::package_paths)
+    }
+}
+
 /// Validates and normalizes every build system of a manifest.
 /// Normalizes the tags a selected target must carry; they only make sense
 /// when the command can run on a target.

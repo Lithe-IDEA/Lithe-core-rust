@@ -10,6 +10,8 @@ description = "Workspace host routing for Lithe Core: remote sessions and the lo
 test-support = []
 
 [dependencies]
+lithe-document-uri = { path = "../document-uri" }
+percent-encoding = "2"
 lithe-diagnostics = { path = "../diagnostics" }
 lithe-git-host = { path = "../git-host" }
 lithe-platform = { path = "../platform" }

@@ -140,10 +140,11 @@ test('cancelling one build drops its progress while a sibling call completes', {
 
 test('invalid build replies fail without terminating the session or falling back', { timeout: 15000 }, async (t) => {
   let reply;
+  let runReply = { ...launch, executable: false };
   const backend = createBackend();
   backend.build.execute(() => reply);
   backend.build.discoverTests(() => ({ tests: [], format: 'wrong' }));
-  backend.build.prepareRun(() => ({ ...launch, executable: false }));
+  backend.build.prepareRun(() => runReply);
   const host = new TestHost(backend);
   t.after(() => host.close());
   await host.initialize({ litheBuild: { versions: [0] } });
@@ -153,6 +154,14 @@ test('invalid build replies fail without terminating the session or falling back
   }
   for (const method of ['discoverTests', 'prepareRun']) {
     assert.equal((await host.request(`lithe/build/${method}`, { operationID: 'wire-invalid' })).error.code, -32603);
+  }
+  for (const placement of ['workspace', 'ui']) {
+    runReply = { ...launch, placement };
+    assert.deepEqual((await host.request('lithe/build/prepareRun', { operationID: 'wire-placement' })).result, runReply);
+  }
+  for (const placement of ['remote', null]) {
+    runReply = { ...launch, placement };
+    assert.equal((await host.request('lithe/build/prepareRun', { operationID: 'wire-invalid-placement' })).error.code, -32603);
   }
   reply = { exitCode: 7, output: 'tool failure is a result' };
   assert.deepEqual((await host.request('lithe/build/execute', { operationID: 'wire-valid' })).result, reply);

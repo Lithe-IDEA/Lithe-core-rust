@@ -129,6 +129,7 @@
 | [Plugin settings](../../contract/v1/README.md#plugin-settings) | 设置的字段、类型、模板 `${setting:<id>}` 和使用规则 |
 | [Placement, scope, effect, and page buttons](../../contract/v1/README.md#placement-scope-effect-and-page-buttons) | 放置位置、层级、生效时机、页面按钮和校验规则 |
 | [Settings regions](../../contract/v1/README.md#settings-regions) | 设置区域的字段、关键词规则和放置 |
+| [远端原生设置](../../contract/v1/README.md#remote-native-settings-sourcesettings-2) | 设置辅助程序、远端文件作用域、保存确认和回读 |
 | [Plugin views](../../contract/v1/README.md#plugin-views) | 区域视图的事件、结果、控件、画布和预算 |
 | [Translations](../../contract/v1/README.md#translations) | 包内翻译文件的格式、语言候选顺序和拒绝规则 |
 | [Workspace configuration](../../contract/v1/README.md#workspace-configuration) | `workspaceConfiguration` 的展开和推送 |
@@ -165,7 +166,7 @@ A plugin declares, in its manifest, the options a user may change. The host draw
 | Capability | `settings`, version `0`. Expanding and pushing `workspaceConfiguration` is described in [Languages](languages.md) |
 | Protocol | None of its own; `settingActions` and settings-region views call the plugin's own [plugin functions](backend.md), and the Core command `plugins.ui.applyResult` checks view results |
 | API IDs | [API-19](../api-catalog.md#apis-usable-now): declarative settings and settings regions. Runtime reads, source inspection, writes, and change events are still planned. [API-37](../api-catalog.md#apis-usable-now): packaged translations of settings text |
-| Permissions | None. Settings never change which program runs, so they are not in the install review's program list |
+| Permissions | Remote native settings helpers are included in the package program review. Declarative preferences require no permissions. |
 | Activation | Not needed. Values take effect according to the setting's `effect`: at the next start, a model reload, the next run, or an `immediate` push |
 | Desktop | Declares `settings`: pages per language and build system, sections, every control type, the project layer, effects, page buttons, and settings regions `settingRegions` (search keywords and plugin views) are presented, in the interface language from the packaged translations `l10n/` |
 
@@ -282,6 +283,7 @@ The host stores one global value per plugin and setting, and a project value in 
 | [Plugin settings](../../contract/v1/README.md#plugin-settings) | Setting fields, types, the `${setting:<id>}` template, and use rules |
 | [Placement, scope, effect, and page buttons](../../contract/v1/README.md#placement-scope-effect-and-page-buttons) | Placement, layers, effect timing, page buttons, and validation rules |
 | [Settings regions](../../contract/v1/README.md#settings-regions) | Settings region fields, keyword rules, and placement |
+| [Remote native settings](../../contract/v1/README.md#remote-native-settings-sourcesettings-2) | Package helpers, host source scopes, save confirmation and read-back |
 | [Plugin views](../../contract/v1/README.md#plugin-views) | Events, results, controls, canvases, and budgets of region views |
 | [Translations](../../contract/v1/README.md#translations) | Packaged translation files: format, language candidate order, and rejection rules |
 | [Workspace configuration](../../contract/v1/README.md#workspace-configuration) | Expanding and pushing `workspaceConfiguration` |

@@ -542,6 +542,7 @@ or removing a command fails until the table changes in the same commit.
 | `toolchains.resolveConsumerPreferences` | Validate an inert consumer preference document and resolve one tool's explicit Run, consumer, directory or workspace choice while keeping workspace/consumer inheritance symbolic; no native files or launch authority |
 | `toolchains.editConsumerPreferences` | Edit or reset one exact consumer/directory tool preference; return the document and effective input without native writes |
 | `toolchains.resolve` | Resolve the fixed/project/global/automatic layers from one generation-bound snapshot, retaining nearest project candidates, unmet requirements, unavailable providers with their cause, conflicts and terminal fixed-value failures |
+| `toolchains.resolveRemote` | Resolve declared login environment and PATH installations on the bound workspace host, with version probes run on that host |
 | `toolchains.checkVersion` | Match captured output with an enabled plugin definition's version expression and compare generic numeric components with an optional minimum; never starts a probe |
 | `toolchains.discoveryPlan` | Return platform-filtered definition-owned scan declarations, layouts, probes, PATH entries, login-shell home variables, project-file candidates and budgets; never scans native directories |
 | `toolchains.candidates` | List one tool's root project-file candidates, login-shell homes (declared `environment` variables and, from the optional `commandHomes`, declared commands found on the PATH) and host-scanned installations with checked executables, versions or skip reasons, and the automatic-layer choice; never starts a probe. A shell home that checks out is also an `installations` entry with provider `host:shell`, once per canonical home, so a picker can offer every home the resolver may run; `selected` remains the automatic layer's own choice |
@@ -599,6 +600,9 @@ or removing a command fails until the table changes in the same commit.
 | `plugins.marketplace.validateIndex` | Validate a marketplace index and report each plugin's availability for one platform |
 | `plugins.marketplace.resolveSource` | Resolve a user-entered marketplace source to the index and companion recommendations URLs to fetch |
 | `plugins.marketplace.installReview` | List a package's permissions and programs, and those not yet approved |
+| `plugins.marketplace.selectRemoteVariant` | Select the compatible target archive for the approved installed release |
+| `plugins.marketplace.planRemoteDeployment` | Identify a deployment and select the process files from a verified inventory |
+| `plugins.marketplace.verifyRemoteVariant` | Validate a downloaded variant against the installed manifest and program approvals |
 | `plugins.marketplace.recommendForWorkspace` | Match sampled workspace files against marketplace recommendation catalogs and indexes |
 | `workspace.snapshot` | Enumerate visible workspace nodes and relative file paths; `nestedWorktrees` lists linked worktrees checked out inside their own repository, which are left out of the tree, files, and search index; hidden folders, Core's own and the ones enabled plugins declare through `workspace.configureVisibility`, are skipped without being read; `includeTree: false` returns only `files` and a childless `root`; `files` (and the tree, when included) keep the lowercase traversal order that bounded consumers such as Windows Quick Open rely on, not the natural display order of `workspace.listDirectories` |
 | `workspace.releaseIndexing` | Retire a policy and clear index/cache data at project close; accepts `root`, optional `ownerId`, and that owner's last observed `revision`, returns `released`; an old close must not retire a new generation |
@@ -606,6 +610,11 @@ or removing a command fails until the table changes in the same commit.
 | `workspace.refreshIndexing` | Refresh external Git decisions for a live `root`, `ownerId`, `revision` lease without changing preferences or release tokens; returns lazy `IndexingStatus` |
 | `workspace.filterChanges` | Filter an array of workspace-relative paths, or `{ paths, hiddenFilePatterns }` whose `!` entries turn default exclusions off, against Core's default hidden folders and patterns, including the folders enabled plugins declare; preserve order, spelling, and the empty root path. Native event loss bypasses filtering. Hosts relativize to the most specific explicit watch root and retain explicitly watched files |
 | `workspace.listDirectories` | Return one visible level of children for each requested workspace-relative directory (`""` is the root); missing, hidden, external/cyclic symlink, or nested-worktree paths are omitted; workspace-internal aliases are browsable and each listing reports `linked: true` when reached through an alias, and each listing reports the nested worktrees it left out. Child directories have `children: []` only when a shallow probe proves them visibly empty; otherwise children remain omitted (unloaded), with no recursive tree allocation. Children list directories first, then names in IDEA's natural file-name order (digit runs compare by value, case-insensitive, `-` next to `_`; fixture `rust/fixtures/workspace/file-name-order-v1.json`) |
+| `workspace.pluginFile` | Read a plugin-authorized file resource from the request’s bound remote workspace. Accepts `{rootID,generation,path,operation}` with a workspace-relative `path` and an operation of `{kind:"readDirectory",cursor?,limit?}`, `{kind:"stat"}`, or `{kind:"readFile",maximumBytes?}`. The desktop validates the caller’s grant and root ID before dispatch. Core uses the bound workspace for host and root selection and returns the [plugin file result](../../shared/plugins/contract/v1/README.md#public-document-file-and-window-methods) |
+| `workspace.pluginWatchChanges` | Project one batch of host watch paths into an authorized plugin subscription. Accepts `{rootID,hostRoot,path,directory,recursive,hostPaths,requiresRescan}` and returns `null` or `{rootID,changedPaths,requiresRescan}`. The desktop owns the subscription and supplies its captured remote root. The operation does no I/O |
+| `workspace.readConfiguration` | Read a scoped project settings source on the workspace host. Accepts `{path,maximumBytes}` and returns `{text}` with the UTF-8 source or `null` for a missing source in an accessible workspace. Unavailable workspaces, invalid sources and oversized files return errors |
+| `workspace.readPluginSettings` | Read the bound remote workspace's `.lithe/plugin-settings.json`. Accepts `{}` and returns `{path,text,baseline:{workspaceIdentity,baseSha256}}`; missing content and its digest are null. The desktop retains the baseline privately. |
+| `workspace.publishPluginSettings` | Publish the Core-planned plugin preferences. Accepts `{baseline,content}` with the original read baseline and replacement UTF-8 text or null to remove the file. Returns `{committed}` (false for an unchanged source). A different host directory or changed digest returns `process_failed` with `remoteCode: "CONFLICT"` in the JSON error details. This desktop command requires the same bound remote attachment. |
 | `workspace.orderEntries` | Order natively enumerated directory siblings |
 | `workspace.projectTree.rows` | Say which loaded project tree nodes show as rows, keep the selection on a row that shows, and find the row the top of the view was on, without reading the disk (from `lithe-project-tree`) |
 | `workspace.rowSelection.reduce` | Apply one plain, Cmd/Ctrl or Shift click, or the end of a batch, to the multi-selection of rows of workspace paths and return what a batch acts on (from `lithe-row-selection`) |
@@ -2905,10 +2914,11 @@ non-empty identifier of at most 512 bytes. Only a `start` event creates a
 transport. A callback for an unknown or released one is `ignored`, and `send`
 to it is `rejectedNotRunning`. `event.type` is one of:
 
-- `start { limits? }` begins a lifecycle; `limits` overrides any of the six
+- `start { limits?, directStream? }` begins a lifecycle; `limits` overrides any of the six
   defaults with an integer from 1 through 2147483647, otherwise
   `invalid_request`. A repeat while running is `ignored`. A `start` while the
-  previous lifecycle is draining replaces it.
+  previous lifecycle is draining replaces it. With `directStream: true`, the
+  connect deadline starts immediately and Core asks the host to open a stream.
 - `send { bytes }` queues one frame of that size. The host keeps the bytes in
   first-in, first-out order. An empty frame is accepted and queued as nothing.
 - `stop {}` is a user cancel: silent teardown, no termination.
@@ -2944,6 +2954,8 @@ rejects that one `send`.
   `purpose` is `discovery`, `connect`, `write` or `drain`. The host reports
   `timerFired` when an armed timer elapses.
 - `connect { host, port }` opens the socket; `port` is already 1 through 65535.
+- `openStream` opens a direct byte stream, such as a workspace process's stdio.
+  It reports `connectionReady`, `dataReceived`, `peerClosed` and `failed` as a socket does.
 - `write { writeId, bytes }` sends the oldest queued frame, which has that size,
   and reports `writeCompleted` or `failed`. At most one write is in flight.
 - `deliverData` forwards the received bytes to the owner.
@@ -2983,6 +2995,14 @@ command returns the same update shape: `{ sessionId, state, outboundFrames,
 events }`. The platform writes frames in array order and feeds received chunks
 back through `debug.receive` as `{ sessionId, dataBase64 }`; partial and
 consecutive messages are buffered and reduced in Rust.
+
+A host running the adapter on a remote workspace supplies the request
+envelope's `remoteWorkspace` on `debug.createSession`, with `rootPath`
+equal to its native document root. Core retains that mapping with the
+debug session. It projects outbound breakpoint sources, `program` and
+`cwd` into the host namespace and adapter source locations back into
+document paths. Further requests use the debug session ID, including when
+the original remote attachment has disconnected.
 
 When `supportsRunInTerminalRequest` is true, the initialize frame advertises
 the native host's terminal capability. An adapter `runInTerminal` reverse
@@ -3341,6 +3361,12 @@ session's child process, stdin/stdout/stderr, framing buffer, JSON-RPC request
 IDs, document versions, pending deadlines, capabilities, diagnostics, and
 graceful/forced termination.
 
+For a language server declaring remote support and launched with a remote
+workspace binding, `remoteCommands` can supply an ordered list of bare command
+names. In this mode `executablePath` must be empty. The remote host selects the
+first candidate it finds in an absolute directory on its login `PATH`.
+Launch environment overrides apply to the child after that selection.
+
 If ordinary `lsp.startServer` fails after process creation, Core retains any
 incomplete disposal in an internal cleanup backlog, since no session identity
 was returned to the caller. A subsequent explicit startup attempt retries at
@@ -3599,6 +3625,12 @@ with `result: { serverID, method, params? }` for the host to relay as
 `lsp.startServer` for a plugin-owned server whose manifest declares
 `remote: "unsupported"` fails with `not_supported` when the workspace is
 remote, before any process is started.
+
+For a remote plugin language server, the host passes an empty `executablePath`
+and either `remoteCommands` for login PATH discovery or
+`remoteExecutablePath` for a POSIX executable already selected on the workspace
+host. `remotePathPrepend` adds remote toolchain paths to the process environment.
+These fields require the remote workspace binding and a policy that supports it.
 
 A session that negotiated `litheFunctions` and holds the `functions`
 grant may call another plugin's exported function through the
@@ -5408,6 +5440,8 @@ base64 }], debug?, rerun? }`. A text file is written as UTF-8; a `base64` file
 holds bytes the host decodes and writes unchanged. The tool must be listed in the manifest's `requiresTools`, and the
 working directory must be a relative path of an existing directory inside
 `workspaceRoot`, which Core checks read-only the way it does for run preparation.
+When bound to a remote workspace, the host checks that directory and the
+temporary directory and substituted paths use the host's POSIX path syntax.
 `${temporaryFile:<name>}` in arguments and environment becomes a file path under
 `temporaryDirectory`, which the host supplies when the start has temporary files;
 Core writes nothing, the host writes `temporaryFiles`. A start Core refuses is
@@ -5442,6 +5476,32 @@ is one Core supports and every capability it requires is in `hostCapabilities`; 
 `installReview` accepts `{ manifest, expectedID?, expectedVersion?,
 approvedPrograms?, hostCapabilities? }` and returns `{ status: "ok", review: { id, version,
 permissions, programs, newPrograms } }`;
+`selectRemoteVariant` accepts
+`{ index, sourceKind, pluginID, version, installedPlatform, installedSha256, repository?, target: { os, arch }, hostCapabilities }`.
+The caller fetches only the installation's canonical marketplace index. Core
+requires the exact installed version, its approved archive hash listed for the
+desktop platform, the approved repository when recorded, and a compatible
+target archive. For Linux targets `arch: "x86_64"` maps to `linux-x64`, and
+`arch: "arm64"` maps to `linux-arm64`. The accepted result is
+`{ status: "ok", selection: { status: "available", version, pluginAPIVersion, releaseDate, downloadURL, sha256 } }`.
+After verifying the downloaded archive against that SHA-256, the caller passes
+its manifest to `verifyRemoteVariant` with
+`{ installedManifest, variantManifest, pluginID, version, approvedPrograms, hostCapabilities }`.
+That command returns `{ status: "ok", manifest }` only when both normalized
+declarations match, the variant is compatible with the host, and all programs
+were approved. An unavailable archive or refused declaration uses the normal
+`{ status: "rejected", error }` outcome.
+`planRemoteDeployment` accepts
+`{ archiveSha256?, installedTreeSha256?, manifest, target: { os, arch }, requiredPaths, archiveFiles? }`.
+Supply exactly one digest. For a marketplace variant, use the approved
+archive's SHA-256. For an installed package on the same platform, first
+verify a private snapshot against the recorded tree seal and review its
+manifest. That digest has a separate deployment identity from an archive.
+It returns `{ status: "ok", deployment: { sha256, paths } }`. With no inventory,
+`paths` is null and the digest can be looked up on the remote host before
+downloading. With the verified inventory, `paths` lists the selected files in
+sorted order. Each requirement names a file or a directory. Local-only paths
+are excluded and a missing input rejects the whole deployment.
 `recommendForWorkspace` accepts `{ platform, workspaceFiles, catalogs: [{ index, sourceKind, indexURL?, recommendations }], hostCapabilities?, installedPluginIDs?, dismissedPluginIDs? }`
 and returns `{ status: "ok", recommendation: { plugins: [{ plugin, matchedMarkers, matchedExtensions, marketplaceIndexURL? }], rejected } }`
 after validating each catalog, filtering to available/uninstalled/undismissed
@@ -5541,6 +5601,11 @@ user to trust the workspace before an action the user started.
 | `build.taskPlan` | plan fields plus `task`, `project?`, `target?`, `modelTask?`, `userArguments?` | command `plan` with `arguments`, `environment`, `workingDirectory`, `execution`, and `optionFingerprint`; a provider task instead returns `provider: {method: "lithe/build/execute", params}` with effective options, selected task/entities, user arguments and effect metadata |
 | `build.runConfigurationPlan` | `manifest`, `buildSystemID`, required `workspaceRoot`, and `request: {configurationId, localDocument?, instances: [{root, options?, modelInputs?}], pluginDirectory?, workspaceStateDirectory?, projectCodeAllowed?}` | `plan` as `build.taskPlan` returns it plus `runType: {pluginID, buildSystemID, type}`: the global arguments, then the type's `arguments` with the saved field values, the instance's options and the configuration's program arguments, at the configuration's working directory, with its environment over the options'. The deepest enclosing instance is selected by the working directory, then by the resolved target of the sole active file field if it is a file inside the workspace, the working directory resolves lexically to the workspace root, and no instance contains that directory. A sole instance works without a path match. The working directory is preserved. `plugin.build.invalidSelection` when no instance can be selected or the configuration belongs to another plugin or build system, `plugin.build.unavailable` when the type is no longer declared, `plugin.build.invalidRunConfiguration` with `field: values.<fieldID>` when a saved value no longer fits. A configuration that is missing, disabled, unavailable or of another provider fails the call |
 | `build.beforeLaunchTaskPlan` | `manifest`, `buildSystemID`, required `workspaceRoot`, and `request: {task, workingDirectory, instances: [{root, options?, modelInputs?}], pluginDirectory?, workspaceStateDirectory?, projectCodeAllowed?}`, with `task` and `workingDirectory` as `runConfig.beforeLaunch` returned the step | `plan` as `build.taskPlan` returns it plus `beforeLaunchTask: {pluginID, buildSystemID, type}`: the global arguments, then the task's `arguments` with the saved field values and the instance's options, at the step's working directory with the options' environment, as a `task` execution. The instance is the deepest enclosing the working directory, or the only one. `plugin.build.invalidSelection` when several exist and none holds the working directory or the task belongs to another plugin or build system, `plugin.build.unavailable` when the task is no longer declared, `plugin.build.invalidBeforeLaunchTask` with `field: values.<fieldID>` when a saved value no longer fits. A working directory outside the workspace fails the call |
+
+With a remote workspace binding, both declared plan commands read the saved
+configuration and validate paths through that workspace's host. File and
+directory field arguments use their absolute host paths. Freeform arguments
+and text fields retain their literal values.
 | `build.testPlan` | plan fields plus `project?`, `target?`, `suite?`, `case?`, `userArguments?`, `projects?` (the model's project directories) | command plan or `provider: {method: "lithe/build/test", params}`, plus `results`: `null`, `{ decoder, reports }` with workspace-relative globs (for the selected project, or for the root and every listed project when none is selected), or command-only `{ decoder: "hostIntegration" }`. Command filters that templates cannot place, such as a case without its suite when the tool only addresses `Suite#case`, are `plugin.build.invalidSelection`; Provider filters remain separate typed values and must be declared supported |
 | `build.testDiscoveryPlan` | Common plan fields, plus a fresh absolute `outputFile` for `test.discoveryCommand`, or optional `refresh` and `tool` for `test.discovery: true`. No project selection. | Command plan with argv, environment, instance working directory, `output: "outputFile"`, `decoder: "litheTestDiscovery"` and effect metadata, or `plan.provider` for `lithe/build/discoverTests` with the effective options. |
 | `build.decodeTestDiscovery` | Original common plan fields plus the same `outputFile` for a completed command or canonical inline `result` for a Provider. | `discovery.tests` with validated `{id, suite, case, project?, target?}` selectors. Bounded at 10,000 items and 32 MiB, deterministic and exactly runnable. Malformed results reject in full with `plugin.build.invalidOutput`. |
@@ -6231,8 +6296,8 @@ gone. Requests over it take `sessionId`:
 | `remote.hostInfo` | `{ sessionId }` | the original connection's handshake `host`, including OS, architecture, home and features |
 | `remote.uploadFile` | `{ sessionId, sourcePath, path, sha256, mode }` | verified `{ size, sha256 }` |
 | `remote.runWatch` | `{ sessionId, params: { root, excludeNames? } }` | waits until root removal or cancellation; relays `watch.started`, `watch.changed`, `watch.error` |
-| `remote.runProcess` | `{ sessionId, params: { argv, cwd?, environment?, env?, pipeStdin?, label? } }` | leader exit; relays `process.started`, `process.output`, `process.exit` |
-| `remote.runTerminal` | `{ sessionId, params: { argv?, cwd?, env?, columns, rows, label? } }` | leader exit; relays `terminal.started`, `terminal.output`, `terminal.exit` |
+| `remote.runProcess` | `{ sessionId, params: { argv, cwd?, scopedCwd?, environment?, env?, pipeStdin?, label? } }` | leader exit; relays `process.started`, `process.output`, `process.exit`. Use `scopedCwd: { root, path }` in place of `cwd` for a workspace-scoped spawn. An empty `path` selects the root. |
+| `remote.runTerminal` | `{ sessionId, params: { argv?, cwd?, scopedCwd?: { root, path }, environment?, env?, unsetEnv?, columns, rows, label? } }` | leader exit; relays `terminal.started`, `terminal.output`, `terminal.exit` |
 | `remote.captureProcess` | `{ sessionId, params, timeoutMilliseconds, maxOutputBytes }` | base64 `stdout`, `stderr`, nullable `exitCode` and `signal` |
 | `remote.runningPrograms` | `{ sessionId }` | `{ programs: [{ kind, id, argv, label, runningMs }] }`, processes first; `kind` is `process` or `terminal`, `label` the one the program started with or `null` |
 | `remote.endPrograms` | `{ sessionId, programs? }` | `{ ended }`: every running process gets `SIGTERM` for its process session and every terminal hangs up, or only those `programs` (`[{ kind, id }]` as `remote.runningPrograms` listed them) names; one that ended in the meantime or is not running is not counted, one that ignores the signal is still listed |
@@ -8499,6 +8564,14 @@ atomic publication, and reread after Save. Core owns the merge and bounds; the n
 owns read/write permissions, conflict detection and installation probing. Registrations
 contain no cached version authority and never modify SDK directories. This user-settings
 resource does not affect code signatures or update deltas.
+
+`toolchains.resolveRemote` requires a connected `remoteWorkspace` envelope and
+accepts `{registry, tool, directory, minimumVersion?, projectCodeAllowed}`. The directory is `.` or
+a path relative to the host workspace root. It resolves installations visible
+in the host login environment and returns the `toolchains.resolve` outcome
+shape, with executable and PATH additions expressed as host paths. The caller
+must set `projectCodeAllowed` for a trusted workspace because version probes
+execute programs.
 
 `toolchains.candidates` and `toolchains.resolve` accept optional `global:true` with
 `workspaceRoot:""`, allowing discovery and inspection before a project is open. Global mode

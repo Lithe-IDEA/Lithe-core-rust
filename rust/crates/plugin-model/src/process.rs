@@ -3,7 +3,7 @@
 //! launch declaration, one validation, and one install-review entry.
 //!
 //! Launch templates name host-owned locations (`${pluginDir}`,
-//! `${stateDir}`, `${workspaceStateDir}`, `${logDir}`, `${arch}`) and plugin
+//! `${stateDir}`, `${workspaceStateDir}`, `${logDir}`), execution platform facts, and plugin
 //! settings (`${setting:<id>}`), so a package never embeds a machine path.
 
 use crate::names::{is_bare_command, is_function_id, is_safe_relative_path};
@@ -18,6 +18,17 @@ use std::collections::BTreeSet;
 /// Prefix of a launch template variable that names a plugin setting.
 pub(crate) const SETTING_VARIABLE_PREFIX: &str = "setting:";
 
+/// Which host executes a process that serves a workspace.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ProcessPlacement {
+    /// Run on the workspace's host, including over a remote connection.
+    #[default]
+    Workspace,
+    /// Run on the host displaying the IDE.
+    Ui,
+}
+
 /// How the host starts a process that speaks the LSP base protocol. A
 /// language server and a build-system provider are the same kind of process,
 /// so both declare it with these fields and share their validation, install
@@ -28,6 +39,10 @@ pub(crate) const SETTING_VARIABLE_PREFIX: &str = "setting:";
 pub struct ServerProcess {
     /// Where the executable comes from.
     pub launch: LanguageServerLaunch,
+    /// An explicit placement for workspace processes. The plugin backend
+    /// serves multiple workspaces and always runs on the UI host.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub placement: Option<ProcessPlacement>,
     /// Arguments after the executable; launch templates are expanded.
     #[serde(default)]
     pub arguments: Vec<String>,
@@ -174,8 +189,10 @@ pub enum LaunchVariable {
     WorkspaceStateDir,
     /// Absolute session plugin files directory supplied by the writable storage adapter.
     LogDir,
-    /// Host CPU architecture, one of `KNOWN_ARCHITECTURES`.
+    /// Execution host CPU architecture, one of `KNOWN_ARCHITECTURES`.
     Arch,
+    /// Execution host operating system.
+    Os,
     /// Current value of the plugin setting with this ID.
     Setting(String),
 }
@@ -189,6 +206,7 @@ impl LaunchVariable {
             "workspaceStateDir" => Some(Self::WorkspaceStateDir),
             "logDir" => Some(Self::LogDir),
             "arch" => Some(Self::Arch),
+            "os" => Some(Self::Os),
             _ => name
                 .strip_prefix(SETTING_VARIABLE_PREFIX)
                 .filter(|id| is_setting_identifier(id))
@@ -249,6 +267,12 @@ impl ServerProcess {
         runtime_tools: RuntimeTools<'_>,
     ) -> Validation<()> {
         let noun = role.noun();
+        if role == ServerRole::Backend && self.placement.is_some() {
+            return Err(invalid(
+                format!("{field}.placement"),
+                "The plugin backend always runs on the UI host.",
+            ));
+        }
         match &self.launch {
             LanguageServerLaunch::Packaged { path } => {
                 if !is_safe_relative_path(path) {
@@ -527,6 +551,11 @@ impl ServerProcess {
             .collect()
     }
 
+    /// Reports whether the process also needs tools beyond the launch itself.
+    pub fn has_runtime_dependencies(&self) -> bool {
+        !self.runtime_dependencies.is_empty()
+    }
+
     /// Runtimes the host must discover for this process, sorted by tool. The
     /// launch runtime comes first in declaration terms but is merged here so
     /// hosts resolve every tool the same way. Every entry names a tool
@@ -743,7 +772,7 @@ pub(crate) fn validate_launch_template(
                 if package_reference {
                     return Err(invalid_template(
                         field.to_string(),
-                        "A package path may only vary by ${arch}.",
+                        "A package path may only vary by ${arch} and ${os}.",
                     ));
                 }
             }
@@ -759,7 +788,7 @@ pub(crate) fn validate_launch_template(
             }
             // Everything after `${pluginDir}` is a package path the host
             // verifies before launch, so it has to be `/`-rooted text and may
-            // only vary by architecture.
+            // only vary by the execution platform.
             TemplatePart::Variable(LaunchVariable::PluginDir) => {
                 let rooted = matches!(
                     parts.get(index + 1),
@@ -774,11 +803,12 @@ pub(crate) fn validate_launch_template(
                 package_reference = true;
             }
             TemplatePart::Variable(variable)
-                if package_reference && *variable != LaunchVariable::Arch =>
+                if package_reference
+                    && !matches!(variable, LaunchVariable::Arch | LaunchVariable::Os) =>
             {
                 return Err(invalid_template(
                     field.to_string(),
-                    "A package path may only vary by ${arch}.",
+                    "A package path may only vary by ${arch} and ${os}.",
                 ));
             }
             TemplatePart::Text(text)

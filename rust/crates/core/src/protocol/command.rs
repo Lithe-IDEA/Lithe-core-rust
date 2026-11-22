@@ -300,6 +300,12 @@ pub enum PluginsCommand {
     MarketplaceResolveSource,
     /// Lists a package's permissions and programs before installation (`plugins.marketplace.installReview`).
     MarketplaceInstallReview,
+    /// Selects the target archive for the approved installed release.
+    MarketplaceSelectRemoteVariant,
+    /// Checks that a target archive carries the approved declaration and programs.
+    MarketplaceVerifyRemoteVariant,
+    /// Plans the identity and paths of a remote resource deployment.
+    MarketplacePlanRemoteDeployment,
     /// Matches workspace file signals against marketplace recommendation catalogs (`plugins.marketplace.recommendForWorkspace`).
     MarketplaceRecommendForWorkspace,
 }
@@ -432,6 +438,8 @@ pub enum ToolchainsCommand {
     EditConsumerPreferences,
     /// Resolves the four toolchain layers from a captured value snapshot.
     Resolve,
+    /// Collects toolchain evidence and resolves it on the attached workspace host.
+    ResolveRemote,
     /// Checks a plugin-defined version probe without per-tool parsing.
     CheckVersion,
     /// Plans system scans solely from enabled tool definitions.
@@ -536,6 +544,18 @@ pub enum WorkspaceCommand {
     ReleaseIndexing,
     /// Lists the visible children of project directories (`workspace.listDirectories`).
     ListDirectories,
+    /// Reads an authorized remote plugin resource (`workspace.pluginFile`).
+    PluginFile,
+    /// Filters host watch events for a plugin subscription (`workspace.pluginWatchChanges`).
+    PluginWatchChanges,
+    /// Reads a settings source from a remote workspace (`workspace.readConfiguration`).
+    ReadConfiguration,
+    /// Captures the editable project preferences and their host revision.
+    ReadPluginSettings,
+    /// Publishes a confirmed edit of the project preferences on the captured host.
+    PublishPluginSettings,
+    /// Reads and publishes approved native configuration on the workspace host.
+    NativeSettings,
     /// Says which loaded project tree nodes show as rows and keeps the selection on one
     /// (`workspace.projectTree.rows`).
     ProjectTreeRows,
@@ -1266,6 +1286,7 @@ impl CoreCommand {
                 Some(Self::Toolchains(ToolchainsCommand::EditConsumerPreferences))
             }
             "toolchains.resolve" => Some(Self::Toolchains(ToolchainsCommand::Resolve)),
+            "toolchains.resolveRemote" => Some(Self::Toolchains(ToolchainsCommand::ResolveRemote)),
             "toolchains.checkVersion" => Some(Self::Toolchains(ToolchainsCommand::CheckVersion)),
             "toolchains.discoveryPlan" => Some(Self::Toolchains(ToolchainsCommand::DiscoveryPlan)),
             "toolchains.candidates" => Some(Self::Toolchains(ToolchainsCommand::Candidates)),
@@ -1340,6 +1361,15 @@ impl CoreCommand {
             "plugins.marketplace.installReview" => {
                 Some(Self::Plugins(PluginsCommand::MarketplaceInstallReview))
             }
+            "plugins.marketplace.selectRemoteVariant" => Some(Self::Plugins(
+                PluginsCommand::MarketplaceSelectRemoteVariant,
+            )),
+            "plugins.marketplace.planRemoteDeployment" => Some(Self::Plugins(
+                PluginsCommand::MarketplacePlanRemoteDeployment,
+            )),
+            "plugins.marketplace.verifyRemoteVariant" => Some(Self::Plugins(
+                PluginsCommand::MarketplaceVerifyRemoteVariant,
+            )),
             "plugins.marketplace.recommendForWorkspace" => Some(Self::Plugins(
                 PluginsCommand::MarketplaceRecommendForWorkspace,
             )),
@@ -1351,6 +1381,20 @@ impl CoreCommand {
             "workspace.refreshIndexing" => Some(Self::Workspace(WorkspaceCommand::RefreshIndexing)),
             "workspace.filterChanges" => Some(Self::Workspace(WorkspaceCommand::FilterChanges)),
             "workspace.listDirectories" => Some(Self::Workspace(WorkspaceCommand::ListDirectories)),
+            "workspace.pluginFile" => Some(Self::Workspace(WorkspaceCommand::PluginFile)),
+            "workspace.pluginWatchChanges" => {
+                Some(Self::Workspace(WorkspaceCommand::PluginWatchChanges))
+            }
+            "workspace.readConfiguration" => {
+                Some(Self::Workspace(WorkspaceCommand::ReadConfiguration))
+            }
+            "workspace.readPluginSettings" => {
+                Some(Self::Workspace(WorkspaceCommand::ReadPluginSettings))
+            }
+            "workspace.publishPluginSettings" => {
+                Some(Self::Workspace(WorkspaceCommand::PublishPluginSettings))
+            }
+            "workspace.nativeSettings" => Some(Self::Workspace(WorkspaceCommand::NativeSettings)),
             "workspace.projectTree.rows" => {
                 Some(Self::Workspace(WorkspaceCommand::ProjectTreeRows))
             }

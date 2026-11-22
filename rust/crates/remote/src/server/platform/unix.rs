@@ -1,12 +1,22 @@
 //! POSIX behavior shared by Linux and macOS hosts.
 
-use std::ffi::{CStr, OsStr};
+use std::ffi::{CStr, CString, OsStr};
 use std::fs;
 use std::io;
 use std::os::fd::{FromRawFd, OwnedFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
+
+/// Checks execution permission as the login account and excludes directories.
+pub(crate) fn executable_file(path: &Path) -> bool {
+    let Ok(name) = CString::new(path.as_os_str().as_bytes()) else {
+        return false;
+    };
+    // SAFETY: name owns a NUL-terminated path throughout the call.
+    let allowed = unsafe { libc::access(name.as_ptr(), libc::X_OK) == 0 };
+    allowed && fs::metadata(path).is_ok_and(|entry| entry.is_file())
+}
 
 /// Remote user facts. Environment variables win because `docker exec` and
 /// SSH set them for the session; the password database is the fallback for

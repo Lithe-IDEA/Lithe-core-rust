@@ -31,6 +31,13 @@ pub enum UIIconMode {
 }
 
 impl UIIcon {
+    /// Package files for the two appearances of a custom icon.
+    pub fn package_paths(&self) -> impl Iterator<Item = &str> {
+        [self.path.as_deref(), self.dark_path.as_deref()]
+            .into_iter()
+            .flatten()
+    }
+
     /// Native actions reuse the host vocabulary, without package resource loading.
     pub fn is_valid_host_icon(&self) -> bool {
         self.host.is_some() && self.validate().is_ok()

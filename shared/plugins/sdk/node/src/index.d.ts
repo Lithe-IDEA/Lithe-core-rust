@@ -114,7 +114,17 @@ export interface HostCapabilities {
   protocolVersion: number;
   backendAuthority: 'local';
   /** Each service this session may use, with the requests it may send and the notifications it may receive. */
-  services: Record<string, { methods: string[]; notifications: string[] }>;
+  services: Record<string, {
+    methods: string[];
+    notifications: string[];
+    options?: {
+      /** Workspace authorities accepted by at least one listed method. */
+      authorities?: ('local' | 'remote')[];
+      /** A narrower list for a method, keyed by its full name. */
+      methodAuthorities?: Record<string, ('local' | 'remote')[]>;
+      [key: string]: unknown;
+    };
+  }>;
   limits: {
     pendingHostRequests: number;
     functionResultBytes: number;
@@ -534,11 +544,15 @@ export interface BuildRunEntrypoints {
   version?: 0;
   entrypoints: { run: string; name: string; entrypoint: string; project: BuildSelection }[];
 }
+/** The machine that starts a contributed process. */
+export type ProcessPlacement = 'workspace' | 'ui';
 export interface BuildRunPreparation {
   executable: { kind: 'toolchain' | 'command'; value: string };
   arguments: string[];
   workingDirectory: string;
   environment: Record<string, string>;
+  /** Defaults to the workspace host. Use `ui` for a process on the machine running Lithe. */
+  placement?: ProcessPlacement;
 }
 export type BuildExecutionHandler = (params: BuildExecutionParams, context: BuildContext) => BuildExecutionResult | Promise<BuildExecutionResult>;
 export type BuildTestHandler = (params: BuildTestParams, context: BuildContext) => BuildExecutionResult | Promise<BuildExecutionResult>;

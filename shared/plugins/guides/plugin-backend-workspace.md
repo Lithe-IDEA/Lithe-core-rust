@@ -205,7 +205,8 @@
 参数、结果和上限的权威定义在[契约](../contract/v1/README.md#public-document-file-and-window-methods)。写后端时要注意：
 
 - 每个方法都要带 `context: { contextID, generation }`。文件用 `{ rootID, path }` 指明，`path` 用 `/`、相对于
-  `getFolders` 返回的根目录。这组方法明确拒绝远程工作区（`authorityUnsupported`）。
+  `getFolders` 返回的根目录。远程上下文中的目录读取、文件属性查询和文件读取由对应的远端主机处理。
+  各方法的远程支持情况见[远程工作区指南](plugin-backend-remote-workspaces.md)。
 - `workspace.metadata` 只给工作区信息，**不授权读文件**；读文件要另外声明 `workspace.files.read`。
 - 位置 `{ line, column }` 从 1 开始、按 UTF-16 计；范围是半开区间。
 - 单次读取最多返回 128 KiB：快照超出时得到 `limitExceeded`，读文件则用 `isTruncated` 标明截断。一批编辑或选区最多 1,000 项；目录分页默认 200 项、最多 1,000 项，搜索分页默认 100 项、最多 200 项；宿主侧的期限是 30 秒。
@@ -531,7 +532,8 @@ The host opens a set of public methods, each group behind a permission. `getCapa
 The [contract](../contract/v1/README.md#public-document-file-and-window-methods) is normative for params, results, and limits. When writing a backend:
 
 - Every method takes `context: { contextID, generation }`. Files are named by `{ rootID, path }`, where `path` uses `/` and is relative to
-  a root returned by `getFolders`. These methods refuse remote workspaces explicitly (`authorityUnsupported`).
+  a root returned by `getFolders`. Directory reads, stat, and file reads for remote contexts use the connected host.
+  See the [remote workspace guide](plugin-backend-remote-workspaces.md) for availability by method.
 - `workspace.metadata` only gives workspace information and **does not grant file reads**; declare `workspace.files.read` separately to read files.
 - Positions `{ line, column }` start at 1 and count UTF-16 units; ranges are half-open.
 - One read returns at most 128 KiB: an oversized snapshot gets `limitExceeded`, and a file read marks truncation with `isTruncated`. A batch of edits or selections has at most 1,000 items; a directory page defaults to 200 items and holds at most 1,000, a search page defaults to 100 and holds at most 200; the host-side deadline is 30 seconds.

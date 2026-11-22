@@ -10,6 +10,60 @@ use std::path::Path;
 use std::process::Command;
 
 pub(crate) const OPERATING_SYSTEM: OperatingSystem = OperatingSystem::Linux;
+
+/// Copies bounded extended attributes, including POSIX ACLs, by descriptor.
+pub(crate) fn copy_configuration_attributes(
+    source: std::os::fd::RawFd,
+    target: std::os::fd::RawFd,
+) -> io::Result<()> {
+    // Linux bounds both the returned name list and each value to 64 KiB.
+    const LIMIT: usize = 64 * 1024;
+    let mut names = vec![0u8; LIMIT];
+    // SAFETY: source is live and the buffer is writable for its full length.
+    let length = unsafe { libc::flistxattr(source, names.as_mut_ptr().cast(), names.len()) };
+    if length < 0 {
+        let error = io::Error::last_os_error();
+        return if error.raw_os_error() == Some(libc::ENOTSUP) {
+            Ok(())
+        } else {
+            Err(error)
+        };
+    }
+    if length == 0 {
+        return Ok(());
+    }
+    let mut value = vec![0u8; LIMIT];
+    for name in names[..length as usize].split_inclusive(|byte| *byte == 0) {
+        let name = std::ffi::CStr::from_bytes_with_nul(name)
+            .map_err(|_| io::Error::from(io::ErrorKind::InvalidData))?;
+        // SAFETY: source and the NUL-terminated name are live; value is writable.
+        let length = unsafe {
+            libc::fgetxattr(
+                source,
+                name.as_ptr(),
+                value.as_mut_ptr().cast(),
+                value.len(),
+            )
+        };
+        if length < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: target and name are live and the first length bytes are initialized.
+        if unsafe {
+            libc::fsetxattr(
+                target,
+                name.as_ptr(),
+                value.as_ptr().cast(),
+                length as usize,
+                0,
+            )
+        } != 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+    }
+    Ok(())
+}
 pub(crate) const ORPHAN_PROTECTION: OrphanProtection = OrphanProtection::ParentDeathSignal;
 
 /// TCP socket state `LISTEN` in `/proc/net/tcp`.

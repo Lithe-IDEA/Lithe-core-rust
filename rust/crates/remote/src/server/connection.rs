@@ -276,9 +276,19 @@ fn handle(context: &Context, method: &str, params: Value) -> Result<Value, Remot
         method if method.starts_with("fs.upload") => {
             session.uploads.handle(context, method, params)
         }
-        methods::FS_CREATE_RUN_DIRECTORY | methods::FS_RELEASE_RUN_DIRECTORY => {
+        methods::FS_CREATE_RUN_DIRECTORY
+        | methods::FS_CREATE_RUNTIME_STAGING
+        | methods::FS_RELEASE_RUN_DIRECTORY => {
             session.run_directories.handle(context, method, params)
         }
+        methods::FS_PLUGIN_DEPLOYMENT_LOOKUP
+        | methods::FS_PLUGIN_DEPLOYMENT_COMMIT
+        | methods::FS_PLUGIN_DEPLOYMENT_SWEEP
+        | methods::FS_MANAGED_RUNTIME_LOOKUP
+        | methods::FS_MANAGED_RUNTIME_COMMIT => {
+            session.plugin_deployments.handle(context, method, params)
+        }
+        methods::FS_NATIVE_SETTINGS => super::native_settings::handle(context, parse(params)?),
         method if method.starts_with("fs.") => fs::handle(method, params),
         method if method.starts_with("walk.") => session.walks.handle(context, method, params),
         method if method.starts_with("watch.") => session.watches.handle(context, method, params),
@@ -294,6 +304,7 @@ fn handle(context: &Context, method: &str, params: Value) -> Result<Value, Remot
         }
         methods::ENVIRONMENT_RESOLVE => environment::handle(session, params),
         methods::PORTS_LISTENING => ports::handle(session),
+        methods::PORTS_PICK_LOOPBACK => ports::pick_loopback(),
         _ => Err(RemoteError::new(
             ErrorCode::UnknownMethod,
             format!("unknown method {method}"),
@@ -380,11 +391,13 @@ impl ResourceOrder {
     fn prepare(session: &Arc<Session>, method: &str, params: &Value) -> Result<Self, RemoteError> {
         if matches!(
             method,
-            methods::FS_CREATE_RUN_DIRECTORY | methods::FS_RELEASE_RUN_DIRECTORY
+            methods::FS_CREATE_RUN_DIRECTORY
+                | methods::FS_CREATE_RUNTIME_STAGING
+                | methods::FS_RELEASE_RUN_DIRECTORY
         ) {
             let parsed: methods::RunDirectoryParams = parse(params.clone())?;
             crate::server::run_directory::validate(&parsed)?;
-            return if method == methods::FS_CREATE_RUN_DIRECTORY {
+            return if method != methods::FS_RELEASE_RUN_DIRECTORY {
                 Ok(Self::Start {
                     guard: session
                         .starts
@@ -401,9 +414,13 @@ impl ResourceOrder {
             };
         }
         let (family, field, start) = match method {
-            methods::PROCESS_SPAWN => ("process", "processId", true),
+            methods::PROCESS_SPAWN | methods::PROCESS_SPAWN_SCOPED => {
+                ("process", "processId", true)
+            }
             methods::PROCESS_KILL => ("process", "processId", false),
-            methods::TERMINAL_OPEN => ("terminal", "terminalId", true),
+            methods::TERMINAL_OPEN | methods::TERMINAL_OPEN_SCOPED => {
+                ("terminal", "terminalId", true)
+            }
             methods::TERMINAL_CLOSE => ("terminal", "terminalId", false),
             methods::WATCH_START => ("watch", "watchId", true),
             methods::WATCH_STOP => ("watch", "watchId", false),
