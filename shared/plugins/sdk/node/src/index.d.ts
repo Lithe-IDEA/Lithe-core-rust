@@ -659,7 +659,7 @@ export type ViewNode =
   /** settings only: the host's row for a declared setting. */
   | { type: 'setting'; id?: string; setting: string }
   /** settings only: the host's row for a tool the plugin defines or requires. */
-  | { type: 'tool'; id?: string; tool: string }
+  | { type: 'tool'; id?: string; tool: string; choose?: boolean }
   /** tool windows only. */
   | { type: 'tree'; id: string; label?: string; items: ViewTreeItem[] }
   | ViewCanvas;

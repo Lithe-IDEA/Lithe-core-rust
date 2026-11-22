@@ -5501,7 +5501,8 @@ holds golden `plugins.ui.applyResult` cases.
 `view: {function}` names a private [plugin function](#plugin-functions) of the
 plugin's own [backend](#plugin-backend) (letters and digits in dot-separated
 segments, at most 128 characters). A manifest with a view needs `backend`,
-`requires.ui: 0`, the `ui.contribute` permission, and, for a settings region,
+`requires.ui` (0, or 1 for a [tool picker](#tool-rows-and-pickers)), the
+`ui.contribute` permission, and, for a settings region,
 `requires.settings: 0`. A tool window still declares `onView:<id>`; a settings
 region starts the backend when its page opens. Results are described by
 [`plugin-ui.schema.json`](plugin-ui.schema.json); the rules JSON Schema cannot
@@ -5510,7 +5511,12 @@ express are listed below and enforced by Core.
 #### Events
 
 The host calls the view function through `lithe/function/invoke` once per
-event, with these params:
+event, with these params. A view shown for a workspace, such as a tool window
+or a settings page opened from a project window, is called with that window's
+[workspace context](#workspace-contexts-and-capability-discovery) as
+`params.context` of the invoke, so the backend can use it for host methods that
+take one, such as [`run/start`](#run-and-debug-sessions) in answer to a
+`click`; a view shown without a workspace is called without one.
 
 | Field | Meaning |
 | --- | --- |
@@ -5587,7 +5593,7 @@ view must pass every rule a whole view does.
 | `table` | 1–16 `columns` `{title, align}`, up to 256 `rows` | Read-only; each row has one single-line cell per column |
 | `banner` | `text`, `tone` | A message across the view |
 | `setting` | `setting` | The host's own row for a declared setting, exactly as the page draws it |
-| `tool` | `tool` | The host's row for a tool the plugin defines (`toolDefinitions`) or requires (`requiresTools`), as the toolchain pages draw it |
+| `tool` | `tool`, `choose` | The host's row for a tool the plugin defines (`toolDefinitions`) or requires (`requiresTools`), as the toolchain pages draw it; with `choose`, also its [picker](#tool-rows-and-pickers) |
 | `tree` | `id`, `label`, `items` `{id, label, icon, detail, expanded, children}` | An outline; sends `select` and `activate` |
 | `canvas` | Below | A vector scene |
 
@@ -5607,6 +5613,27 @@ which the host's Apply commits and Cancel discards, exactly as for the
 declared rows; a region never stores values of its own. Writing a tool's own
 configuration, such as a build file, stays a setting action of the plugin and
 follows [source-backed settings](#source-backed-settings-editors).
+
+#### Tool rows and pickers
+
+A `tool` row shows what the host resolves the tool to in the settings page's
+scope (the global settings, or the project of a project window): the version,
+the home, and the reason when nothing resolves. Pressing it opens the tool on
+the host's toolchain page.
+
+With `choose: true`, which needs `requires.ui: 1`, the row is also the tool's
+picker, like an interpreter menu: pressing it opens the host's choices for the
+tool in that scope, the same choices the toolchain page lists. They are the
+automatic choice, every installation the host found or the user added, with
+its version and source, and adding an installation directory, plus a way to
+the toolchain page. Choosing one edits the settings window's draft for the
+tool, which Apply commits and Cancel discards, as on the toolchain page; the
+row shows the pending choice until then. A region never stores the choice
+itself; once applied, the plugin's launches and runs receive the chosen
+installation as they receive any resolved tool (see
+[Tool references](#tool-references)). A plugin that writes `choose`
+with `requires.ui: 0` has the whole result refused with `plugin.ui.invalidView`
+at `choose`.
 
 #### Canvas
 

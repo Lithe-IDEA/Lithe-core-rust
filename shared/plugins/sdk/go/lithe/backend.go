@@ -1000,7 +1000,8 @@ func (c *Context) progress(message string, percentage *int) {
 func (c *Context) Host() *Host { return c.host }
 
 // WorkspaceContext is the { contextID, generation } of the window the call
-// came from; nil for calls without one, such as from the plugin's own UI.
+// came from; nil for calls from no workspace, such as a view or page shown
+// without one.
 func (c *Context) WorkspaceContext() *WorkspaceContext { return c.workspaceContext }
 
 // Caller is the plugin that called this function through Core's relay; nil

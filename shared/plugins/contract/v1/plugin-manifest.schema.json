@@ -54,7 +54,7 @@
         "toolchainProviders": { "enum": [0] },
         "keymapImportProviders": { "enum": [0] },
         "pluginFunctions": { "description": "Required exactly when pluginFunctions is present: functions this plugin's backend exports to other plugins, and exported functions it calls. Needs backend.", "enum": [0] },
-        "ui": { "description": "Required exactly when ui is present or a settings region declares a view. Covers tool windows with text, web content, or a plugin view, settings-region views, and backend-only commands.", "enum": [0] },
+        "ui": { "description": "Required exactly when ui is present or a settings region declares a view. Covers tool windows with text, web content, or a plugin view, settings-region views, and backend-only commands. Version 1 adds the tool picker (choose on a settings region's tool row).", "enum": [0, 1] },
         "vcsProviders": { "description": "Required exactly when vcsProviders is non-empty. The provider protocol itself is negotiated in initialize (https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/contracts/vcs-provider-v1.md).", "enum": [0] }
       }
     },

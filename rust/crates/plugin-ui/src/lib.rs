@@ -73,6 +73,9 @@ pub struct Context<'a> {
     pub actions: &'a [SettingAction],
     /// Tools the plugin defines or requires; tool rows name them.
     pub tools: &'a BTreeSet<String>,
+    /// The `ui` capability version the manifest declares (`requires.ui`); a
+    /// tool row with `choose` needs version 1.
+    pub ui_version: u32,
 }
 
 /// Checks a complete view against the vocabulary, the budgets and the
@@ -163,6 +166,7 @@ mod tests {
                 settings: &self.settings,
                 actions: &self.actions,
                 tools: &self.tools,
+                ui_version: 0,
             }
         }
     }
@@ -303,6 +307,33 @@ mod tests {
             ),
             "view[0].action"
         );
+    }
+
+    #[test]
+    fn a_tool_picker_needs_ui_1() {
+        let fixture = Fixture::new();
+        let picker = json!([{"type":"tool","tool":"maven","choose":true}]);
+        assert_eq!(
+            field(&fixture.context(Surface::Settings), picker.clone()),
+            "view[0].choose"
+        );
+        let settings = Context {
+            ui_version: 1,
+            ..fixture.context(Surface::Settings)
+        };
+        check(&settings, &picker).expect("tool picker with ui 1");
+        assert_eq!(
+            field(
+                &settings,
+                json!([{"type":"tool","tool":"maven","choose":"yes"}])
+            ),
+            "view[0].choose"
+        );
+        let tool_window = Context {
+            ui_version: 1,
+            ..fixture.context(Surface::ToolWindow)
+        };
+        assert_eq!(field(&tool_window, picker), "view[0]");
     }
 
     #[test]

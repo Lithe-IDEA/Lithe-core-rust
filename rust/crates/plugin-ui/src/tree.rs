@@ -161,13 +161,20 @@ impl<'c> Walk<'c> {
             }
             "tool" => {
                 self.settings_only(path, kind)?;
-                let map = object(value, path, &["type", "id", "tool"])?;
+                let map = object(value, path, &["type", "id", "tool", "choose"])?;
                 self.id(map, path, false)?;
                 let tool = string(map, path, "tool", true)?.unwrap_or_default();
                 if !self.context.tools.contains(tool) {
                     return Err(fail(
                         at(path, "tool"),
                         "A tool row names a tool this plugin defines or requires.",
+                    ));
+                }
+                boolean(map, path, "choose")?;
+                if map.contains_key("choose") && self.context.ui_version < 1 {
+                    return Err(fail(
+                        at(path, "choose"),
+                        "A tool row with choose needs ui 1 in requires.",
                     ));
                 }
                 Ok(())
