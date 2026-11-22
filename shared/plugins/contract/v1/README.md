@@ -5097,7 +5097,7 @@ ends only its call, reported like any unexpected failure.
 [`sdk/go`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/shared/plugins/sdk/go/README.md) is the Go SDK for
 [plugin backends](#plugin-backend), which ship as packaged executables. It
 implements this protocol with its host services and `litheKeymapImport`, but
-neither build nor VCS providers. It needs Go 1.22 or newer, uses only the
+neither build nor VCS providers. It needs Go 1.27.4 or newer, uses only the
 standard library, and is released as Go module tags
 (`shared/plugins/sdk/go/v<version>`) that plugins pin through `go.sum`. It
 enforces the same rules: on Unix it moves the protocol to a duplicate of the
