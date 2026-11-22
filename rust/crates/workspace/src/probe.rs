@@ -270,11 +270,13 @@ pub(crate) fn classify(exit: Option<ExitStatus>, stdout: &[u8], stderr: &[u8]) -
     }
 }
 
-/// Interprets a `wsl.exe` that exited before the server started. `wsl.exe`
-/// names its failures with stable error codes, such as
-/// `Wsl/Service/WSL_E_DISTRO_NOT_FOUND`, and may print them in UTF-16.
-pub(crate) fn classify_wsl(exit: Option<ExitStatus>, stderr: &[u8]) -> ProbeResult {
-    let text = lithe_remote::client::wsl::output_text(stderr);
+/// Interprets a `wsl.exe` that exited before the server started, from what
+/// it printed on standard output and standard error (see
+/// [`lithe_remote::client::wsl::failure_text`]). A distribution that is not
+/// installed is `Wsl/Service/WSL_E_DISTRO_NOT_FOUND`; other failures, such
+/// as an unknown user, keep `wsl.exe`'s message in the diagnostics.
+pub(crate) fn classify_wsl(exit: Option<ExitStatus>, stdout: &[u8], stderr: &[u8]) -> ProbeResult {
+    let text = lithe_remote::client::wsl::failure_text(stdout, stderr);
     let status = if text.contains("WSL_E_DISTRO_NOT_FOUND") {
         ProbeStatus::Unreachable
     } else {

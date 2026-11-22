@@ -908,7 +908,7 @@ fn connect_logged(
         };
     let launched = match result {
         Ok(launched) => launched,
-        Err(LaunchError::NoShell) => {
+        Err(LaunchError::NoShell { output }) => {
             // The client prints why it gave up only as it exits.
             let status = wait_for_exit(&mut child, EXIT_GRACE);
             reap(&tree, &mut child);
@@ -917,7 +917,7 @@ fn connect_logged(
                 (Client::Container, Some(container)) => {
                     classify_container(status, &stderr, container.engine)
                 }
-                (Client::Wsl, _) => classify_wsl(status, &stderr),
+                (Client::Wsl, _) => classify_wsl(status, &output, &stderr),
                 _ => classify(status, &[], &stderr),
             };
             // The engine on the host printed why it gave up, after the SSH

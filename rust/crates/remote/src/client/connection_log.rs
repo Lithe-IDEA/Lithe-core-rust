@@ -203,7 +203,7 @@ impl ConnectionLog {
     /// probe is left to the caller, which knows from the SSH process whether
     /// authentication, the host key or the network failed.
     pub(crate) fn launch_failed(&self, stage: &'static str, error: &LaunchError) {
-        if stage == "probe" && matches!(error, LaunchError::NoShell) {
+        if stage == "probe" && matches!(error, LaunchError::NoShell { .. }) {
             return;
         }
         let domain = match error {

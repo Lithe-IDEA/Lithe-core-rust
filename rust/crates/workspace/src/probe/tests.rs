@@ -393,32 +393,54 @@ fn connecting_to_a_wsl_distribution_runs_the_launch_through_wsl() {
     assert!(!seen.contains_key("SSH_ASKPASS_REQUIRE"), "{names:?}");
 }
 
-// `wsl.exe` prints its failures in UTF-16 with a stable error code; an
-// unknown distribution reads like an unknown host name.
+// `wsl.exe` prints its failures on standard output, in UTF-16 unless
+// `WSL_UTF8` is set, with a stable error code; an unknown distribution
+// reads like an unknown host name, whatever language the message is in.
 #[cfg(unix)]
 #[test]
 fn an_unknown_wsl_distribution_is_unreachable_with_readable_diagnostics() {
-    let message = "There is no distribution with the supplied name.\r\n\
+    let octal = |bytes: Vec<u8>| -> String {
+        bytes
+            .into_iter()
+            .map(|byte| format!("\\{byte:03o}"))
+            .collect()
+    };
+    let utf16 = |text: &str| octal(text.encode_utf16().flat_map(u16::to_le_bytes).collect());
+    let english = "There is no distribution with the supplied name.\r\n\
                    Error code: Wsl/Service/WSL_E_DISTRO_NOT_FOUND\r\n";
-    let escaped: String = message
-        .encode_utf16()
-        .flat_map(u16::to_le_bytes)
-        .map(|byte| format!("\\{byte:03o}"))
-        .collect();
+    let chinese =
+        "不存在具有所提供名称的分发。\r\n错误代码： Wsl/Service/WSL_E_DISTRO_NOT_FOUND\r\n";
+    for (name, printed, message) in [
+        ("remote-connect-wsl-missing", utf16(english), english),
+        ("remote-connect-wsl-missing-zh", utf16(chinese), chinese),
+        (
+            "remote-connect-wsl-missing-utf8",
+            octal(chinese.into()),
+            chinese,
+        ),
+    ] {
+        let wsl = FakeSsh::new(name, &format!("printf '{printed}'\nexit 1"));
+        let request = wsl_request(json!({ "distribution": "Missing" }));
+        let result = sessions::connect_with(request, Some(wsl.path())).unwrap();
+        let value = serde_json::to_value(result).unwrap();
+        assert_eq!(value["status"], "unreachable", "{name}");
+        assert_eq!(value["session"], serde_json::Value::Null, "{name}");
+        assert_eq!(value["diagnostics"], message.trim(), "{name}");
+    }
+    // An unknown user is another failure: `wsl.exe` names it on standard
+    // output and the distribution adds why on standard error.
+    let message = "User not found.\r\nError code: Wsl/WSL_E_USER_NOT_FOUND\r\n";
+    let relay = "<3>WSL (342 - Relay) ERROR: CreateProcessParseCommon:1067: getpwnam(nobody-here) failed 17";
     let wsl = FakeSsh::new(
-        "remote-connect-wsl-missing",
-        &format!("printf '{escaped}' >&2\nexit 1"),
+        "remote-connect-wsl-no-user",
+        &format!("printf '{}'\necho '{relay}' >&2\nexit 1", utf16(message)),
     );
-    let request = wsl_request(json!({ "distribution": "Missing" }));
-    let result = sessions::connect_with(request, Some(wsl.path())).unwrap();
-    let value = serde_json::to_value(result).unwrap();
-    assert_eq!(value["status"], "unreachable");
+    let request = wsl_request(json!({ "distribution": "Ubuntu", "user": "nobody-here" }));
+    let value =
+        serde_json::to_value(sessions::connect_with(request, Some(wsl.path())).unwrap()).unwrap();
+    assert_eq!(value["status"], "failed");
     assert_eq!(value["session"], serde_json::Value::Null);
-    assert_eq!(
-        value["diagnostics"],
-        "There is no distribution with the supplied name.\r\n\
-         Error code: Wsl/Service/WSL_E_DISTRO_NOT_FOUND"
-    );
+    assert_eq!(value["diagnostics"], format!("{}\n{relay}", message.trim()));
     // A silent failure still says which program gave up.
     let silent = FakeSsh::new("remote-connect-wsl-silent", "exit 3");
     let request = wsl_request(json!({ "distribution": "Ubuntu" }));
