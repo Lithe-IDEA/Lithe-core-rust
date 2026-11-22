@@ -401,6 +401,17 @@ pub struct HostCapabilities {
     /// Separator used by host paths. Always `/` for current hosts; carried so
     /// that clients do not hard-code it.
     pub path_separator: String,
+    /// Whether programs on this host can start Windows programs through WSL
+    /// interoperability. `Some(true)` when a `binfmt_misc` entry that WSL
+    /// registers is enabled: `WSLInterop`, or `WSLInterop-late`, the name some
+    /// WSL releases use on distributions that run systemd; either or both can
+    /// exist. `Some(false)` when such an entry exists but none is enabled.
+    /// `None` when there is no such entry: the host is not WSL, WSL did not
+    /// register one, a container does not see it, the host is macOS, or the
+    /// server predates the field. WSL is not a security boundary either way:
+    /// clients show this and never relax trust for it (S31).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub windows_interop: Option<bool>,
     /// How spawned processes are kept from outliving the server.
     pub process: ProcessCapabilities,
     /// How file changes are watched.
@@ -1458,5 +1469,31 @@ mod tests {
                 path: "/var/run/docker.sock".into()
             }
         );
+    }
+
+    // Servers before the field, and hosts outside WSL, send no
+    // `windowsInterop`; a WSL host sends it either way.
+    #[test]
+    fn windows_interop_is_omitted_unless_the_host_is_wsl() {
+        let host = json!({"os": "linux", "arch": "x86_64", "hostName": "test-host",
+            "userName": "dev", "homeDirectory": "/home/dev", "defaultShell": "/bin/sh",
+            "pathSeparator": "/", "process": {"orphanProtection": "parentDeathSignal"},
+            "watch": {"backend": "inotify", "directoryLimit": 128}, "features": []});
+        let older: HostCapabilities = serde_json::from_value(host.clone()).unwrap();
+        assert_eq!(older.windows_interop, None);
+        assert!(serde_json::to_value(&older)
+            .unwrap()
+            .get("windowsInterop")
+            .is_none());
+        for interop in [true, false] {
+            let mut wsl = host.clone();
+            wsl["windowsInterop"] = json!(interop);
+            let parsed: HostCapabilities = serde_json::from_value(wsl).unwrap();
+            assert_eq!(parsed.windows_interop, Some(interop));
+            assert_eq!(
+                serde_json::to_value(&parsed).unwrap()["windowsInterop"],
+                json!(interop)
+            );
+        }
     }
 }

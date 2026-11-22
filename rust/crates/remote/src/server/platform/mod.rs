@@ -71,6 +71,7 @@ pub(crate) fn host_capabilities() -> HostCapabilities {
         home_directory: account.home_directory,
         default_shell: account.shell,
         path_separator: "/".into(),
+        windows_interop: host::windows_interop(),
         process: ProcessCapabilities {
             orphan_protection: host::ORPHAN_PROTECTION,
         },

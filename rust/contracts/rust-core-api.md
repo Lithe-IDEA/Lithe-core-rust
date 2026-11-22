@@ -6124,9 +6124,12 @@ and `{ stage: "installed", uploaded }` once the server is in place, where
 failed attempt stops after the last stage reached, so a host without a
 matching build stops after `platformChecked`. The result is `{ status, session,
 host, diagnostics }`; `session` is `{ id, uploaded, hostName, userName,
-homeDirectory, sessionKey, sessionToken, resumed, keptPrograms }` and is set
-only for `connected`. A host without a matching build is
-`unsupportedPlatform` and nothing is uploaded.
+homeDirectory, windowsInterop, sessionKey, sessionToken, resumed, keptPrograms }`
+and is set only for `connected`. A host without a matching build is
+`unsupportedPlatform` and nothing is uploaded. `windowsInterop` is the host
+capability of the same name from the remote workspace protocol: `true` or
+`false` on WSL, `null` elsewhere. It is for display only; a WSL host gets no
+more trust than any other.
 
 The server runs a persistent session (`--connect <sessionKey>`, with
 `--state-dir <installRoot>` when one is given), so what it runs survives the

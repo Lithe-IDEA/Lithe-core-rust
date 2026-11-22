@@ -50,6 +50,11 @@ pub(crate) fn rename_no_replace(from: &Path, to: &Path) -> io::Result<()> {
     }
 }
 
+/// macOS hosts have no WSL, so no Windows interoperability.
+pub(crate) fn windows_interop() -> Option<bool> {
+    None
+}
+
 /// APFS and HFS+ volumes are case-insensitive by default but can be
 /// formatted case-sensitive, so the answer is per volume.
 pub(crate) fn case_sensitive(path: &Path) -> Option<bool> {
