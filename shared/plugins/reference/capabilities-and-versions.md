@@ -4,7 +4,7 @@
 
 ## 中文
 
-本页把插件会碰到的所有版本号放在一起：`pluginAPIVersion`、清单格式、各项能力、进程协议和文档格式。**它们都从 `0` 开始（仅下表显式列出 `1` 的能力已有新版本）。** 规范以 [`contract/v1/README.md`](../contract/v1/README.md) 的 [Versioning](../contract/v1/README.md#versioning)、[Capabilities](../contract/v1/README.md#capabilities)、[Host capabilities](../contract/v1/README.md#host-capabilities) 和 [Publishing](../contract/v1/README.md#publishing) 为准；本页与契约不一致时以契约为准，并请到 [Lithe-core-rust 的 Issues](https://github.com/Lithe-IDEA/Lithe-core-rust/issues) 反馈。
+本页把插件会碰到的所有版本号放在一起：`pluginAPIVersion`、清单格式、各项能力、进程协议和文档格式。**各系列从 `0` 开始，已有 `1`、`2` 等版本按下表和目标宿主的实际支持选择；不要一律填 `0`。** 规范以 [`contract/v1/README.md`](../contract/v1/README.md) 的 [Versioning](../contract/v1/README.md#versioning)、[Capabilities](../contract/v1/README.md#capabilities)、[Host capabilities](../contract/v1/README.md#host-capabilities) 和 [Publishing](../contract/v1/README.md#publishing) 为准；本页与契约不一致时以契约为准，并请到 [Lithe-core-rust 的 Issues](https://github.com/Lithe-IDEA/Lithe-core-rust/issues) 反馈。
 
 Core 列以本仓库 `main` 上的 Core 源码为准（[`capabilities.rs`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/crates/plugin-model/src/capabilities.rs) 的 `SUPPORTED_CAPABILITIES`，[`plugin-manifest/src/lib.rs`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/crates/plugin-manifest/src/lib.rs) 的 `SUPPORTED_PLUGIN_API_VERSIONS`）；Lithe 桌面端列以桌面端的[声明与说明](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go)为准。Core 能校验不等于宿主能运行：宿主未声明的能力不会提供给插件，市场按实际声明筛选版本。
 
@@ -21,7 +21,8 @@ Core 列以本仓库 `main` 上的 Core 源码为准（[`capabilities.rs`](https
 
 以后的变化遵循契约的规则：
 
-- 一次改动只给**一个**能力加一个新版本（`1`），清单段和协议一起变；没用到这次改动的插件继续写 `0`，在原来的宿主上继续可装。
+- 先在 API-01–44 所属领域复用和兼容扩展。插件、语言服务器、构建工具等特有需求不得提升任何系统 API 版本；公共、非特有的变化也只有在兼容扩展无法安全表达时才可提出升版，见 [API PR 提交指南](../guides/plugin-api-pr-guide.zh-CN.md#3-api-版本怎么处理)。
+- 确需引入新版本时，只涉及拥有公共变化的版本，清单段与所属协议保持一致；其他插件继续选择原来所需的已有版本，不回退或删除已有的 `1`、`2` 等版本。
 - 已发布的能力版本不改变含义，宿主一直支持它。
 - 插件只声明自己用到的能力，每个能力取能覆盖它用法的**最低**版本。没用到新内容就提高版本，只会让旧宿主装不上。
 - 把插件改到新的能力版本必须发新的插件版本；市场索引保留上一个旧要求的版本，旧宿主仍有版本可装。
@@ -36,7 +37,7 @@ Core 列以本仓库 `main` 上的 Core 源码为准（[`capabilities.rs`](https
 
 ### 能力版本（`requires`）
 
-每一行是一个能力。`requires` 必须**恰好**列出清单用到的能力：漏一个或多列一个都是 `plugin.manifest.invalid`；每个能力的值是能覆盖插件用法的最低版本，没有用到 `1` 的新内容就写 `0`。启动进程（[Process start](../contract/v1/README.md#process-start)）和可执行文件解析（[Executable resolution](../contract/v1/README.md#executable-resolution)）属于基础契约，不是能力；写 `requires.serverProcess` 会像未知能力一样被拒绝。
+每一行是一个能力。`requires` 必须**恰好**列出清单用到的能力：漏一个或多列一个都是 `plugin.manifest.invalid`；每个能力的值是能覆盖插件实际用法的已有最低版本，按下表选择 `0`、`1`、`2` 等取值。启动进程（[Process start](../contract/v1/README.md#process-start)）和可执行文件解析（[Executable resolution](../contract/v1/README.md#executable-resolution)）属于基础契约，不是能力；写 `requires.serverProcess` 会像未知能力一样被拒绝。
 
 | 版本 | 内容 | Core | Lithe 桌面端 | 详见 |
 | --- | --- | --- | --- | --- |
@@ -123,7 +124,7 @@ Node.js SDK 0.5.0、Java SDK 0.5.0、Rust SDK 0.4.0 和还没发布的 Go SDK �
 
 ## English
 
-This page puts every version number a plugin meets in one place: `pluginAPIVersion`, the manifest format, the capabilities, the process protocols, and the document formats. **Every version starts at `0` (only capabilities explicitly listed at `1` below have a newer version).** The normative text is [Versioning](../contract/v1/README.md#versioning), [Capabilities](../contract/v1/README.md#capabilities), [Host capabilities](../contract/v1/README.md#host-capabilities), and [Publishing](../contract/v1/README.md#publishing) in [`contract/v1/README.md`](../contract/v1/README.md). Where this page disagrees with the contract, the contract wins; please report it in the [Lithe-core-rust issues](https://github.com/Lithe-IDEA/Lithe-core-rust/issues).
+This page puts every version number a plugin meets in one place: `pluginAPIVersion`, the manifest format, the capabilities, the process protocols, and the document formats. **Each series starts at `0`; choose existing `1`, `2`, or later entries from the table and the target host's actual support rather than forcing every value to `0`.** The normative text is [Versioning](../contract/v1/README.md#versioning), [Capabilities](../contract/v1/README.md#capabilities), [Host capabilities](../contract/v1/README.md#host-capabilities), and [Publishing](../contract/v1/README.md#publishing) in [`contract/v1/README.md`](../contract/v1/README.md). Where this page disagrees with the contract, the contract wins; please report it in the [Lithe-core-rust issues](https://github.com/Lithe-IDEA/Lithe-core-rust/issues).
 
 The Core column follows the Core source on this repository's `main` (`SUPPORTED_CAPABILITIES` in [`capabilities.rs`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/crates/plugin-model/src/capabilities.rs), `SUPPORTED_PLUGIN_API_VERSIONS` in [`plugin-manifest/src/lib.rs`](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/rust/crates/plugin-manifest/src/lib.rs)); the Lithe desktop column follows the desktop client's [declarations and notes](https://github.com/1lck/Lithe-IDEA/blob/main/desktop/internal/pluginhost/pluginhost.go). Validating a capability is not running it: the marketplace offers only versions whose requirements the host declares.
 
@@ -140,7 +141,8 @@ A capability version decides **whether a plugin installs**; a protocol version d
 
 Future changes follow the contract's rules:
 
-- A change adds one new version (`1`) to exactly **one** capability, and the manifest section and the protocol move together. A plugin that does not use the change keeps `0` and stays installable wherever it was.
+- Reuse and compatibly extend the appropriate API-01–44 domain first. A requirement specific to a plugin, language server, or build tool must not raise any system API version. Even a public, non-specific change may propose a new version only when compatible extensions cannot express it safely; see the [API PR guide (Chinese)](../guides/plugin-api-pr-guide.zh-CN.md#3-api-版本怎么处理).
+- A necessary new version affects only the owner of that public change, with its manifest section and protocol kept together. Other plugins retain the existing versions they need; existing `1`, `2`, or later versions are not reset or removed.
 - A released capability version never changes meaning, and hosts keep supporting it.
 - A plugin declares only the capabilities it uses, each at the **lowest** version that covers its use. Raising one without using what it adds only cuts off older hosts.
 - Moving a plugin to a new capability version needs a new plugin version; the index keeps the last version with the previous requirements so older hosts still have one to install.
@@ -155,7 +157,7 @@ Future changes follow the contract's rules:
 
 ### Capability versions (`requires`)
 
-Each row is one capability. `requires` lists **exactly** the capabilities a manifest uses: leaving one out or listing an unused one is `plugin.manifest.invalid`; each value is the lowest version that covers the plugin's use, so `0` unless the plugin uses something a version `1` added. [Process start](../contract/v1/README.md#process-start) and [Executable resolution](../contract/v1/README.md#executable-resolution) belong to the base contract and are not capabilities; `requires.serverProcess` is refused like any unknown capability.
+Each row is one capability. `requires` lists **exactly** the capabilities a manifest uses: leaving one out or listing an unused one is `plugin.manifest.invalid`; each value is the lowest existing version that covers the plugin's actual use, selected from the `0`, `1`, `2`, or later entries below. [Process start](../contract/v1/README.md#process-start) and [Executable resolution](../contract/v1/README.md#executable-resolution) belong to the base contract and are not capabilities; `requires.serverProcess` is refused like any unknown capability.
 
 | Version | Content | Core | Lithe desktop | See |
 | --- | --- | --- | --- | --- |

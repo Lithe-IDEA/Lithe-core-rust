@@ -190,9 +190,9 @@ symbolic links. A host treats an installed package as read-only.
 
 Unknown fields are refused (`plugin.manifest.invalid`) so a host rejects a
 package instead of ignoring part of it. A new optional field in an existing
-section needs no new version; a change to what a section means gives the one
-capability that owns it version `1`, and only plugins that use that change
-declare it (see [Versioning](#versioning)).
+section needs no new version. A semantic change does not automatically justify
+a new capability version; it must satisfy [Versioning](#versioning). Existing
+versions and strict unknown-field rejection remain in force.
 
 ### Languages
 
@@ -959,14 +959,15 @@ files sorted by path, or an empty list when no project marker is present.
 
 ## Versioning
 
-Every version in this contract is `0`. A change adds a version to exactly one
-place, so a plugin states what it needs and a host states what it runs, each
-per capability.
+Version series start at `0`; several capabilities already support `1` or `2`.
+Use the [capability and protocol tables](../../reference/capabilities-and-versions.md)
+and the target host's actual declarations for existing support. A plugin states
+what it needs and a host states what it runs, each per capability.
 
 1. **Capabilities start at `0`.** A manifest lists the capabilities it uses in
-   `requires`, each with version `0`. A capability version names one manifest
-   section and, when the capability owns one, the runtime protocol that goes
-   with it.
+   `requires`, each at the lowest existing version that covers its actual use.
+   A capability version names one manifest section and, when the capability owns
+   one, the runtime protocol that goes with it.
 2. **A runtime protocol has no version of its own.** Its version is the owning
    capability's, and a host offers exactly that version
    (`{"versions": [<that version>]}`; the process answers `{"version": <that
@@ -978,11 +979,27 @@ per capability.
    all the others are `0`.
 3. **A host declares a capability version when it can serve every form of
    it.** See [Host capabilities](#host-capabilities).
-4. **A future change gives one capability version `1`.** The manifest section
-   and the protocol move together, a plugin that uses the change lists
-   `"<capability>": 1`, and every other plugin keeps `0` and stays installable
-   wherever it was. An additive optional field in an existing section or
-   message needs no new version.
+4. **Reuse and compatible extension come first.** API-01–44 classify domains,
+   not a closed method list. Add general methods, notifications, optional fields,
+   or declarations within the appropriate domain when existing interfaces are
+   insufficient. An additive optional field preserves its omission behavior
+   and needs no new version; strict unknown-field validation still applies.
+5. **Specific requirements must not raise any system API version.** This covers
+   plugin-, language-server-, and build-tool-specific needs, including base API,
+   schema, individual capability, process protocol, and public document-format
+   versions. Renaming a capability, protocol, or contract directory does not
+   bypass the restriction. Keep tool-specific knowledge in plugins or upstream
+   tools, with general typed declarations for data the host must understand.
+6. **Only a public, non-specific interface change may propose a new version,
+   and only when compatible extension cannot safely express it.** The PR must
+   explain the public use, why optional fields or discovery are insufficient,
+   why old behavior cannot remain, affected consumers, and migration. Only the
+   owner of that change may gain a version; unrelated versions stay unchanged.
+   Security requirements or an old host rejecting unknown fields do not alone
+   justify a new version. Existing `1`, `2`, and later versions remain valid.
+   The [API PR guide (Chinese)](../../guides/plugin-api-pr-guide.zh-CN.md)
+   describes compatibility, release order, diagnostics, error-code checks, and
+   support in all four official SDKs; new examples may follow later.
 
 `pluginAPIVersion` versions only the base fields: `schemaVersion`, `id`,
 `displayName`, `version`, `vendor`, `permissions`, `activationEvents`,
@@ -1014,7 +1031,7 @@ contract version: the plugin that exports the function owns it.
   lowerCamelCase identifiers of at most 64 characters; versions are
   non-negative integers.
 - Core reads `requires` before it decodes any section. A capability this
-  contract does not define, or a version other than `0`, is
+  contract does not define, or a version absent from its support table, is
   `plugin.api.unsupported` with `field: "requires.<capability>"`, even when the
   manifest also holds a section Core does not know, so the user learns which
   capability needs a newer Lithe instead of seeing an unknown field.
@@ -3810,9 +3827,10 @@ Two rules keep these directions from forming a loop:
   `pluginAPIVersion` nor any `requires` version. Only a function that
   another plugin may call, and a call to such a function, are declared, in
   [`pluginFunctions`](#cross-plugin-calls).
-- A new kind of domain implementation is a new version of the capability that
-  owns it, so only plugins that use it are filtered from hosts that cannot run
-  it.
+- A new kind of domain implementation follows [Versioning](#versioning); it
+  does not automatically require a new capability version. Prefer compatible
+  typed declarations and discovery, and define how an unsupported host refuses
+  or degrades the new path.
 
 ### Negotiation
 
