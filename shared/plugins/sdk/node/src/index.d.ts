@@ -334,7 +334,11 @@ export interface Host {
      * Permission `workspace.files.write`. Never overwrites: an existing
      * `resource` is `plugin.host.alreadyExists`. `text` is for a file only.
      */
-    create: Scoped<{ resource: WorkspaceResource; kind: 'file' | 'directory'; text?: string }, { resource: WorkspaceResource; kind: 'file' | 'directory' }>;
+    create: Scoped<
+      | { resource: WorkspaceResource; kind: 'file'; text?: string }
+      | { resource: WorkspaceResource; kind: 'directory' }
+      | { resource: WorkspaceResource; kind: 'symlink'; linkTarget: string },
+      { resource: WorkspaceResource; kind: 'file' | 'directory' | 'symlink' }>;
     /**
      * Permission `workspace.files.write`. `target` is the full new path. The
      * host saves the open documents under `resource` first; they follow the file.

@@ -917,9 +917,12 @@ impl Workspace {
             .scoped(methods::WORKSPACE_FIND_TEXT, context, params)
     }
 
-    /// `params`: `resource, kind` (`"file"` or `"directory"`), `text?` for a
-    /// file; answers `{ resource, kind }`. Never overwrites: an existing
-    /// resource is `plugin.host.alreadyExists`.
+    /// `params`: `resource, kind` (`"file"`, `"directory"` or `"symlink"`),
+    /// `text?` for a file, `linkTarget` for a symlink; answers
+    /// `{ resource, kind }`. A link stores `linkTarget` verbatim, absolute or
+    /// relative to the link's directory, and makes nothing outside the root
+    /// readable. Never overwrites: an existing resource is
+    /// `plugin.host.alreadyExists`.
     pub fn create(&self, context: &WorkspaceContext, params: Value) -> Result<Value, SdkError> {
         self.host.scoped(methods::WORKSPACE_CREATE, context, params)
     }

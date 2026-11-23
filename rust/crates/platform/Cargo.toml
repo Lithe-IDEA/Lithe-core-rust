@@ -3,13 +3,18 @@ name = "lithe-platform"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
-description = "Host platform rules as data: path comparison, Windows file names, Unix permissions, Unix socket peers and console-less processes"
+description = "Host platform rules as data: path comparison, Windows file names, Unix permissions, no-replace renames, symbolic links, Unix socket peers and console-less processes"
 
 [dependencies]
 
-# Only the Unix socket peer checks need a system call that std does not wrap.
+# The Unix socket peer checks and the no-replace rename need system calls
+# that std does not wrap.
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+# The no-replace rename calls MoveFileExW, which std does not wrap.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }
 
 # Its tests check `Platform::HOST` against the host they run on, so CI also
 # runs them on macOS and Windows (scripts/rust-core/affected-crates.mjs).

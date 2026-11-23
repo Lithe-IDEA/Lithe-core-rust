@@ -175,17 +175,8 @@ fn swap_ascii_case(name: &OsStr) -> Vec<u8> {
         .collect()
 }
 
-/// Fallback for hosts or filesystems without an atomic no-replace rename.
-/// The check and the rename are separate calls, so a concurrent creation of
-/// `to` can still be overwritten.
-pub(crate) fn rename_if_absent(from: &Path, to: &Path) -> io::Result<()> {
-    match fs::symlink_metadata(to) {
-        Ok(_) => Err(io::Error::from(io::ErrorKind::AlreadyExists)),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => fs::rename(from, to),
-        Err(error) => Err(error),
-    }
-}
-
+/// Only macOS asks a volume about case through a path-taking system call.
+#[cfg(target_os = "macos")]
 pub(crate) fn c_path(path: &Path) -> io::Result<std::ffi::CString> {
     std::ffi::CString::new(path.as_os_str().as_bytes())
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path contains NUL"))

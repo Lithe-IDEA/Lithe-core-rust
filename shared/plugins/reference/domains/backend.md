@@ -55,7 +55,7 @@
 | 凭据 | `credentials/get`、`set`、`delete` | `credentials.store` |
 | 工作区上下文 | `workspace/listContexts`、`getContext`、`getFolders` | `workspace.metadata` |
 | 文件与搜索 | `workspace/readDirectory`、`stat`、`readFile`、`watch`、`findFiles`、`findText` | `workspace.files.read`、`workspace.files.watch`、`workspace.search` |
-| 文件变更 | `workspace/create`、`rename`、`copy`、`trash`：不覆盖已有项，删除只移到系统废纸篓，见[契约](../../contract/v1/README.md#saving-documents-and-changing-files) | `workspace.files.write` |
+| 文件变更 | `workspace/create`（文件、目录或符号链接）、`rename`、`copy`、`trash`：不覆盖已有项，删除只移到系统废纸篓，见[契约](../../contract/v1/README.md#saving-documents-and-changing-files) | `workspace.files.write` |
 | 文档与编辑器 | `documents/*`、`editor/*`，见[编辑器](editor.md) | `documents.read`、`documents.save`、`editor.edit`、`editor.open`、`editor.actions`、`editor.providers` |
 | 预览、浏览器、窗口消息 | `preview/openHTML`、`browser/openExternal`、`window/*` | `preview.open`、`browser.open`、`window.messages` |
 | 原生终端 | `terminal/*` | `terminal.create` |
@@ -277,7 +277,7 @@ A backend sends requests to the host with the prefix `lithe/host/`. Each service
 | Credentials | `credentials/get`, `set`, `delete` | `credentials.store` |
 | Workspace contexts | `workspace/listContexts`, `getContext`, `getFolders` | `workspace.metadata` |
 | Files and search | `workspace/readDirectory`, `stat`, `readFile`, `watch`, `findFiles`, `findText` | `workspace.files.read`, `workspace.files.watch`, `workspace.search` |
-| File changes | `workspace/create`, `rename`, `copy`, `trash`: never over an existing item, and a delete only moves to the system trash; see the [contract](../../contract/v1/README.md#saving-documents-and-changing-files) | `workspace.files.write` |
+| File changes | `workspace/create` (a file, directory or symbolic link), `rename`, `copy`, `trash`: never over an existing item, and a delete only moves to the system trash; see the [contract](../../contract/v1/README.md#saving-documents-and-changing-files) | `workspace.files.write` |
 | Documents and editors | `documents/*`, `editor/*`; see [Editor](editor.md) | `documents.read`, `documents.save`, `editor.edit`, `editor.open`, `editor.actions`, `editor.providers` |
 | Preview, browser, window messages | `preview/openHTML`, `browser/openExternal`, `window/*` | `preview.open`, `browser.open`, `window.messages` |
 | Native terminals | `terminal/*` | `terminal.create` |

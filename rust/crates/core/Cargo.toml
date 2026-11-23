@@ -67,6 +67,8 @@ lithe-diagnostics = { path = "../diagnostics", features = ["test-support"] }
 lithe-execution = { path = "../execution", features = ["test-support"] }
 lithe-git = { path = "../git", features = ["test-support"] }
 lithe-lsp-transport = { path = "../lsp-transport", features = ["test-support"] }
+# The file-change tests create symbolic links the way the kernel does.
+lithe-platform = { path = "../platform" }
 lithe-project = { path = "../project", features = ["test-support"] }
 lithe-workspace = { path = "../workspace", features = ["test-support"] }
 serde_yaml_ng = "=0.10.0"
