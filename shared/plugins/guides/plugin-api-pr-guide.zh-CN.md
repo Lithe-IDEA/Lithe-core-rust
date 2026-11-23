@@ -125,7 +125,7 @@ PR 必须逐项回答：
 1. 在契约 README 写清参数、结果、错误码、权限、生命周期、缺省行为及平台限制；schema、fixture 和执行代码一致。
 2. 在对应 `guides/` 或 `reference/` 专题页补充用法，并从已有入口链接到新页面。仅写在 PR、实施计划、宿主源码或 Agent Note 中，不算公开契约。
 3. 更新 [协议更新记录](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/shared/plugins/reference/protocol-changelog.md)：修改协议或 API、PR、修改人（PR 作者）及合入日期。未合入就如实写“待合入”，合入时回填真实日期；没有新版本也要登记。确有新版本时，另更新“按协议查首次出现”。
-4. 新增或修改宿主方法、通知时，PR 正文逐个列出下表。Core 的 [API 总表](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/shared/plugins/reference/api-catalog.md)中英方法或通知表，以及更新记录的“宿主方法（按 API 编号）”索引同步逐项登记；同类方法分几次 PR 加入时，分别记自己的 PR。
+4. 新增或修改宿主方法、通知时，PR 正文逐个列出下表，按 API 编号升序排列，“用途”用中文，方法名保持真实协议名；没有编号的 `—` 放在最后。Core 的 [API 总表](https://github.com/Lithe-IDEA/Lithe-core-rust/blob/main/shared/plugins/reference/api-catalog.md)中英方法或通知表，以及更新记录的“宿主方法（按 API 编号）”索引同步逐项登记；同类方法分几次 PR 加入时，分别记自己的 PR。创建 PR 后将文档中的“本 PR”回填为真实编号；合入日期只在确认合并后回填。
 5. 搜索并检查所有受影响消费者；新增或修改的公共插件 API 在 Rust、Go、Node、Java 四个官方 SDK 中同步补齐，更新对应类型、专题说明和能力支持表。不能只补提出需求的插件所用语言。
 
 新增或修改方法、通知的表格格式如下；把每一项单独填一行：

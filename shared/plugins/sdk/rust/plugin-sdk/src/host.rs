@@ -1511,109 +1511,6 @@ fn relay_params(call: Value, serving: Option<&str>) -> Result<Value, SdkError> {
     Ok(Value::Object(relayed))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn contexts_are_references_or_full_contexts() {
-        let full = json!({ "contextID": "w1", "generation": 2, "name": "orders" });
-        let context = WorkspaceContext::from_value(&full).unwrap();
-        assert_eq!(
-            context.to_value(),
-            json!({ "contextID": "w1", "generation": 2 })
-        );
-        assert_eq!(WorkspaceContext::new("w1", 2).unwrap(), context);
-        // An invocation's context is exactly a reference.
-        assert_eq!(WorkspaceContext::from_reference(&full), None);
-        assert_eq!(
-            WorkspaceContext::from_reference(&context.to_value()),
-            Some(context)
-        );
-        for invalid in [
-            json!({ "contextID": "w1" }),
-            json!({ "contextID": "w1", "generation": 0 }),
-            json!({ "contextID": "../w", "generation": 1 }),
-            json!(null),
-        ] {
-            let error = WorkspaceContext::from_value(&invalid).unwrap_err();
-            assert_eq!(error.code(), "sdk.host.invalidContext", "{invalid}");
-        }
-        assert!(WorkspaceContext::new("", 1).is_err());
-    }
-
-    #[test]
-    fn a_relayed_call_keeps_only_the_fields_the_method_defines() {
-        let call = json!({
-            "pluginID": "dev.lithe.fixture.java", "functionID": "project.describe",
-            "params": { "caller": "data" }, "timeoutMilliseconds": 900000,
-            "parentOperationID": "17", "caller": { "pluginID": "forged" },
-            "context": { "contextID": "x" }, "extra": true
-        });
-        let expected = json!({
-            "pluginID": "dev.lithe.fixture.java", "functionID": "project.describe",
-            "params": { "caller": "data" }, "timeoutMilliseconds": 900000,
-            "parentOperationID": "17"
-        });
-        // Core passes a `caller` inside `params` unchanged; only a top-level one is refused.
-        assert_eq!(relay_params(call, Some("served")).unwrap(), expected);
-    }
-
-    #[test]
-    fn optional_fields_stay_out_and_the_parent_defaults_to_the_call_being_served() {
-        let call = json!({ "pluginID": "a.b", "functionID": "x.y" });
-        assert_eq!(relay_params(call.clone(), None).unwrap(), call);
-        let served = relay_params(call, Some("op-7")).unwrap();
-        assert_eq!(served["parentOperationID"], "op-7");
-        assert!(served.get("params").is_none());
-        assert!(served.get("timeoutMilliseconds").is_none());
-        let named = json!({ "pluginID": "a.b", "functionID": "x.y", "parentOperationID": "own" });
-        let relayed = relay_params(named, Some("op-7")).unwrap();
-        assert_eq!(relayed["parentOperationID"], "own");
-        // The host caps the timeout; the SDK sends what the plugin chose.
-        let mut slow = json!({ "pluginID": "a.b", "functionID": "x.y" });
-        slow["timeoutMilliseconds"] = json!(700000);
-        let relayed = relay_params(slow, None).unwrap();
-        assert_eq!(relayed["timeoutMilliseconds"], 700000);
-    }
-
-    #[test]
-    fn an_invalid_relayed_call_is_refused_before_anything_is_sent() {
-        let valid = json!({ "pluginID": "a.b", "functionID": "x.y" });
-        let with = |key: &str, value: Value| {
-            let mut call = valid.clone();
-            call[key] = value;
-            call
-        };
-        let without = |key: &str| {
-            let mut call = valid.clone();
-            call.as_object_mut().unwrap().remove(key);
-            call
-        };
-        for invalid in [
-            json!("x.y"),
-            json!(null),
-            without("pluginID"),
-            with("pluginID", json!("")),
-            with("pluginID", json!(7)),
-            without("functionID"),
-            with("functionID", json!("Not-Valid")),
-            with("params", json!([])),
-            with("params", json!(null)),
-            with("timeoutMilliseconds", json!(0)),
-            with("timeoutMilliseconds", json!(-1)),
-            with("timeoutMilliseconds", json!(1.5)),
-            with("timeoutMilliseconds", json!("5000")),
-            with("parentOperationID", json!("")),
-            with("parentOperationID", json!("p".repeat(129))),
-            with("parentOperationID", json!(12)),
-        ] {
-            let error = relay_params(invalid.clone(), Some("op-1")).unwrap_err();
-            assert_eq!(error.code(), "sdk.functions.invalidCall", "{invalid}");
-        }
-    }
-}
-
 /// Native views services with session-owned resources.
 pub struct Views {
     host: Host,
@@ -1729,5 +1626,108 @@ impl Network {
     /// Send a bounded HTTP request with host proxy policy. Permission `network.request`.
     pub fn request(&self, context: &WorkspaceContext, params: Value) -> Result<Value, SdkError> {
         self.host.scoped(methods::NETWORK_REQUEST, context, params)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn contexts_are_references_or_full_contexts() {
+        let full = json!({ "contextID": "w1", "generation": 2, "name": "orders" });
+        let context = WorkspaceContext::from_value(&full).unwrap();
+        assert_eq!(
+            context.to_value(),
+            json!({ "contextID": "w1", "generation": 2 })
+        );
+        assert_eq!(WorkspaceContext::new("w1", 2).unwrap(), context);
+        // An invocation's context is exactly a reference.
+        assert_eq!(WorkspaceContext::from_reference(&full), None);
+        assert_eq!(
+            WorkspaceContext::from_reference(&context.to_value()),
+            Some(context)
+        );
+        for invalid in [
+            json!({ "contextID": "w1" }),
+            json!({ "contextID": "w1", "generation": 0 }),
+            json!({ "contextID": "../w", "generation": 1 }),
+            json!(null),
+        ] {
+            let error = WorkspaceContext::from_value(&invalid).unwrap_err();
+            assert_eq!(error.code(), "sdk.host.invalidContext", "{invalid}");
+        }
+        assert!(WorkspaceContext::new("", 1).is_err());
+    }
+
+    #[test]
+    fn a_relayed_call_keeps_only_the_fields_the_method_defines() {
+        let call = json!({
+            "pluginID": "dev.lithe.fixture.java", "functionID": "project.describe",
+            "params": { "caller": "data" }, "timeoutMilliseconds": 900000,
+            "parentOperationID": "17", "caller": { "pluginID": "forged" },
+            "context": { "contextID": "x" }, "extra": true
+        });
+        let expected = json!({
+            "pluginID": "dev.lithe.fixture.java", "functionID": "project.describe",
+            "params": { "caller": "data" }, "timeoutMilliseconds": 900000,
+            "parentOperationID": "17"
+        });
+        // Core passes a `caller` inside `params` unchanged; only a top-level one is refused.
+        assert_eq!(relay_params(call, Some("served")).unwrap(), expected);
+    }
+
+    #[test]
+    fn optional_fields_stay_out_and_the_parent_defaults_to_the_call_being_served() {
+        let call = json!({ "pluginID": "a.b", "functionID": "x.y" });
+        assert_eq!(relay_params(call.clone(), None).unwrap(), call);
+        let served = relay_params(call, Some("op-7")).unwrap();
+        assert_eq!(served["parentOperationID"], "op-7");
+        assert!(served.get("params").is_none());
+        assert!(served.get("timeoutMilliseconds").is_none());
+        let named = json!({ "pluginID": "a.b", "functionID": "x.y", "parentOperationID": "own" });
+        let relayed = relay_params(named, Some("op-7")).unwrap();
+        assert_eq!(relayed["parentOperationID"], "own");
+        // The host caps the timeout; the SDK sends what the plugin chose.
+        let mut slow = json!({ "pluginID": "a.b", "functionID": "x.y" });
+        slow["timeoutMilliseconds"] = json!(700000);
+        let relayed = relay_params(slow, None).unwrap();
+        assert_eq!(relayed["timeoutMilliseconds"], 700000);
+    }
+
+    #[test]
+    fn an_invalid_relayed_call_is_refused_before_anything_is_sent() {
+        let valid = json!({ "pluginID": "a.b", "functionID": "x.y" });
+        let with = |key: &str, value: Value| {
+            let mut call = valid.clone();
+            call[key] = value;
+            call
+        };
+        let without = |key: &str| {
+            let mut call = valid.clone();
+            call.as_object_mut().unwrap().remove(key);
+            call
+        };
+        for invalid in [
+            json!("x.y"),
+            json!(null),
+            without("pluginID"),
+            with("pluginID", json!("")),
+            with("pluginID", json!(7)),
+            without("functionID"),
+            with("functionID", json!("Not-Valid")),
+            with("params", json!([])),
+            with("params", json!(null)),
+            with("timeoutMilliseconds", json!(0)),
+            with("timeoutMilliseconds", json!(-1)),
+            with("timeoutMilliseconds", json!(1.5)),
+            with("timeoutMilliseconds", json!("5000")),
+            with("parentOperationID", json!("")),
+            with("parentOperationID", json!("p".repeat(129))),
+            with("parentOperationID", json!(12)),
+        ] {
+            let error = relay_params(invalid.clone(), Some("op-1")).unwrap_err();
+            assert_eq!(error.code(), "sdk.functions.invalidCall", "{invalid}");
+        }
     }
 }

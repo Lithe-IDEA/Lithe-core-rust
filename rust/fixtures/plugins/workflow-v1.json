@@ -1,6 +1,11 @@
 {
   "cases": [
     {
+      "name": "browser resource defaults to requiring saved contents",
+      "request": {"operation":"prepare","method":"browser/openExternal","params":{"context":{"contextID":"workspace","generation":1},"resource":{"rootID":"root","path":"page.html"}}},
+      "result": {"params":{"context":{"contextID":"workspace","generation":1},"resource":{"rootID":"root","path":"page.html"},"unsaved":"requireSaved"},"limits":{"textBytes":131072,"httpHeaderBytes":16384,"outputLines":4000,"outputBytes":524288,"resources":16}}
+    },
+    {
       "name": "filter matches every word across item fields in source order",
       "request": {"operation":"quickPick","items":[{"label":"Alpha","description":"Rust"},{"label":"Beta","detail":"RUST"}],"query":"rust beta"},
       "result": {"indices":[1]}

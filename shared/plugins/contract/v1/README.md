@@ -4478,7 +4478,10 @@ the user closes the tab or context. They do not write workspace files or bundle
 resources. A new call with the same ID updates its tab. Inline Markdown cannot
 resolve local or relative resources; inline HTML serves only its supplied
 page and cannot read adjacent local files. Remote web content follows the
-existing preview policy. Resource previews use the live editor buffer.
+existing preview policy. Resource previews use the live editor buffer. Markdown
+resources require `.md`, `.markdown` or `.mdown`; HTML resources require `.html`,
+`.htm` or `.xhtml` (case-insensitive), otherwise `unsupportedOption` is returned
+before opening an editor tab.
 `presentation` defaults to `editorAndPreview`, or is `previewOnly`; `range`
 uses the normal one-based UTF-16 range and reveals its start as a caret.
 A missing native WebView may return `unsupportedOption` for HTML.

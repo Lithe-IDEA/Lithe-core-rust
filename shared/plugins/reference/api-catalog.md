@@ -90,7 +90,7 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | --- | --- | --- | --- | --- |
 | API-01、API-37 | `getCapabilities` | 查询协商的协议版本、后端运行位置（`backendAuthority`）、当前可用的服务和限制；由 Core 直接回答 | 每个插件会话都有 | 0 |
 | API-01 | `subscriptions/dispose` | 取消一个订阅，即 `workspace/watch`、`editor/registerActions`、`terminal/onExit` 返回的 `subscriptionID`；未知或已取消的 ID 也返回 `null` | 每个插件会话都有 | 0 |
-| API-03 | `statusBar/setItem` | 创建或替换状态项 | `statusBar.write` | 0 |
+| API-03 | `statusBar/setItem` | 创建或替换状态项；命令须属于本插件清单 | `statusBar.write` | 0 |
 | API-03 | `statusBar/removeItem` | 移除自己的状态项 | `statusBar.write` | 0 |
 | API-05 | `workspace/listContexts` | 列出当前的工作区上下文，带变化序号 `revision` | `workspace.metadata` | 0 |
 | API-05 | `workspace/getContext` | 读取一个工作区上下文 | `workspace.metadata` | 0 |
@@ -120,9 +120,9 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | API-13 | `views/refresh` | 使当前会话拥有的可见视图失效 | `views.refresh` | 0 |
 | API-15 | `editor/open` | 在编辑器中打开文件，没有缓冲区时从磁盘读取；可以前台或后台打开，并定位光标 | `editor.open` | 0 |
 | API-15 | `editor/reveal` | 参数和 `editor/open` 相同，但只处理已打开的文件；文件没打开时返回 `plugin.host.notFound`，不会从磁盘打开 | `editor.open` | 0 |
-| API-16 | `preview/openMarkdown` | 预览资源或只读内联 Markdown | `preview.open` | 0 |
-| API-16 | `preview/openHTML` | 预览 HTML 资源的实时缓冲区或只读内联文本（`editorAndPreview` 或 `previewOnly`） | `preview.open` | 0 |
-| API-16 | `browser/openExternal` | 在外部浏览器打开 HTTP(S) 地址或已保存的 HTML 文件 | `browser.open` | 0 |
+| API-16 | `preview/openMarkdown` | 预览 Markdown 资源（`.md`、`.markdown`、`.mdown`）或只读内联文本 | `preview.open` | 0 |
+| API-16 | `preview/openHTML` | 预览 HTML 资源（`.html`、`.htm`、`.xhtml`）的实时缓冲区或只读内联文本；默认 `editorAndPreview` | `preview.open` | 0 |
+| API-16 | `browser/openExternal` | 在外部浏览器打开 HTTP(S) 地址或已保存的 HTML 文件；默认 `requireSaved` | `browser.open` | 0 |
 | API-17 | `window/showQuickPick` | 选择一个或多个稳定条目 ID | `window.input` | 0 |
 | API-17 | `window/showInputBox` | 请求文本或掩码密码输入 | `window.input` | 0 |
 | API-17 | `window/showInformation` | 显示信息消息，可以带按钮，返回用户点的按钮序号 | `window.messages` | 0 |
@@ -292,7 +292,7 @@ Requests a backend sends to the host, all prefixed `lithe/host/`; the tables omi
 | --- | --- | --- | --- | --- |
 | API-01, API-37 | `getCapabilities` | Reports the negotiated protocol version, where the backend runs (`backendAuthority`), and the services and limits available now; Core answers it itself | Every plugin-owned session | 0 |
 | API-01 | `subscriptions/dispose` | Cancels a subscription, that is, a `subscriptionID` returned by `workspace/watch`, `editor/registerActions`, or `terminal/onExit`; an unknown or already disposed ID also returns `null` | Every plugin-owned session | 0 |
-| API-03 | `statusBar/setItem` | Create or replace a status item | `statusBar.write` | 0 |
+| API-03 | `statusBar/setItem` | Create or replace a status item; commands must belong to the plugin manifest | `statusBar.write` | 0 |
 | API-03 | `statusBar/removeItem` | Remove an owned status item | `statusBar.write` | 0 |
 | API-05 | `workspace/listContexts` | Lists the current workspace contexts with the change counter `revision` | `workspace.metadata` | 0 |
 | API-05 | `workspace/getContext` | Reads one workspace context | `workspace.metadata` | 0 |
@@ -322,9 +322,9 @@ Requests a backend sends to the host, all prefixed `lithe/host/`; the tables omi
 | API-13 | `views/refresh` | Invalidate a visible owned view instance | `views.refresh` | 0 |
 | API-15 | `editor/open` | Opens a file in the editor, reading it from disk when no buffer exists; opens it in the foreground or background and can place the caret | `editor.open` | 0 |
 | API-15 | `editor/reveal` | Takes the same params as `editor/open` but only handles files already open; a file that is not open returns `plugin.host.notFound` and is not opened from disk | `editor.open` | 0 |
-| API-16 | `preview/openMarkdown` | Show a resource or read-only inline Markdown | `preview.open` | 0 |
-| API-16 | `preview/openHTML` | Previews an HTML resource’s live buffer or read-only inline text (`editorAndPreview` or `previewOnly`) | `preview.open` | 0 |
-| API-16 | `browser/openExternal` | Opens an HTTP(S) URL or a saved HTML file in the external browser | `browser.open` | 0 |
+| API-16 | `preview/openMarkdown` | Show a Markdown resource (`.md`, `.markdown`, `.mdown`) or read-only inline text | `preview.open` | 0 |
+| API-16 | `preview/openHTML` | Preview an HTML resource (`.html`, `.htm`, `.xhtml`) live buffer or read-only inline text; defaults to `editorAndPreview` | `preview.open` | 0 |
+| API-16 | `browser/openExternal` | Open an HTTP(S) URL or a saved HTML file externally; defaults to `requireSaved` | `browser.open` | 0 |
 | API-17 | `window/showQuickPick` | Choose one or more stable item IDs | `window.input` | 0 |
 | API-17 | `window/showInputBox` | Request text or a masked password | `window.input` | 0 |
 | API-17 | `window/showInformation` | Shows an information message, optionally with buttons, and returns the index of the button the user chose | `window.messages` | 0 |
