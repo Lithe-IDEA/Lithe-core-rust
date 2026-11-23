@@ -4304,6 +4304,10 @@
           "description": "toolDefinitions 1: user (default) for a tool people run; plugin for a runtime the plugin runs for itself, such as a language server's JDK.",
           "enum": ["user", "plugin"]
         },
+        "executableLinksOutsideHome": {
+          "description": "toolDefinitions 0 addition: true lets the layout's program be a link to a regular executable file outside the home, such as a virtual environment's bin/python3 linking to its base interpreter. The directories between the home and the program must stay inside the home, the target must stay outside every workspace, and the program starts from its layout path beneath the home. Absent or false keeps the program inside the home.",
+          "type": "boolean"
+        },
         "executableLayouts": {
           "type": "array",
           "minItems": 1,

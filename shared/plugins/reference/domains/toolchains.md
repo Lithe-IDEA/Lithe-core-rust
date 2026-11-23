@@ -33,6 +33,8 @@
 
 外部安装报告的可执行文件是解析掉链接后的规范路径。例外是 `executableLayouts` 里的文件链接到另一个文件名：这时报告规范主目录下的布局路径。rustup 把 `cargo`、`rust-analyzer` 链接到自身，按启动时的名字决定运行哪个工具，从链接目标启动只会运行 rustup；版本探针和启动都用布局路径。
 
+外部安装的程序解析后默认必须在主目录内。虚拟环境的 `bin/python3` 链接到环境外的基础解释器，Homebrew 的 `libexec/bin/python3` 链接到 `libexec` 外的 framework，这类工具的定义写 `executableLinksOutsideHome: true`（`toolDefinitions` 0 内的补充，不升版本）。写了以后，程序可以经过一次或多次链接指向主目录外的普通可执行文件，但主目录到程序之间的各级目录（例如 `bin`）解析后必须仍在主目录内，主目录和链接目标都不能在工作区内。这类程序的版本探针和启动都用规范主目录下的布局路径，不用链接目标，所以 Python 仍能按启动路径找到环境的 `pyvenv.cfg` 和包。固定、`homeVariable`、发现规则和提供者报告都按这条规则检查；项目里的候选按 `projectKind` 的规则，不受这个字段影响。Core 早于这个字段的宿主会拒绝写了它的清单，所以用它的插件要求包含它的宿主版本。
+
 ### 选择顺序
 
 | 层 | 规则 |
@@ -222,6 +224,8 @@ The declarative primitives are frozen: root kinds are `home`, `environment`, and
 The first argument of the version probe `version.arguments` is a flag (`-version`, `--version`) or a subcommand (`version`, for a tool such as Go that prints its version only with `go version`); every later argument is a flag, and flags carry no `=value`. A bare word after the first argument is refused, so a probe never hands the tool an operand such as a script or a file.
 
 An external installation reports its canonical executable, with links resolved. The exception is a file in `executableLayouts` that links to a file with another name: Core then reports the layout path beneath the canonical home. rustup links `cargo` and `rust-analyzer` to itself and picks the tool from the name it starts with; started by the link target's name it runs rustup. Version probes and launches use the layout path.
+
+By default an external installation's program must resolve inside its home. A virtual environment's `bin/python3` links to its base interpreter outside the environment, and Homebrew's `libexec/bin/python3` links to the framework outside `libexec`; a definition for such a tool sets `executableLinksOutsideHome: true` (an addition within `toolDefinitions` 0, with no version bump). The program may then be a single-hop or multi-hop link to a regular executable file outside the home, but every directory between the home and the program (such as `bin`) must still resolve inside the home, and neither the home nor the link target may lie in a workspace. Version probes and launches use the layout path beneath the canonical home, not the link target, so Python still finds the environment's `pyvenv.cfg` and packages from the path it starts with. Pins, `homeVariable`, discovery and provider reports all go through this check; project candidates follow their `projectKind` rules and ignore the field. A host whose Core predates the field rejects manifests that set it, so a plugin that uses it requires a host release that has it.
 
 ### Selection order
 

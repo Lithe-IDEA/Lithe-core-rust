@@ -533,16 +533,30 @@ fn checked_installation(
             continue;
         }
         let executable = facts.executable(&path)?;
-        if !facts.within(&executable, &canonical_home)
-            || roots.iter().any(|root| facts.within(&executable, root))
-        {
-            return Err(reject(
+        let escapes = || {
+            reject(
                 UNSAFE,
                 "installation.executable",
                 "The executable escapes its installation or enters the workspace.",
-            ));
+            )
+        };
+        if roots.iter().any(|root| facts.within(&executable, root)) {
+            return Err(escapes());
         }
-        let executable = invoked_executable(&executable, &canonical_home, layout, facts)?;
+        if facts.within(&executable, &canonical_home) {
+            let executable = invoked_executable(&executable, &canonical_home, layout, facts)?;
+            return Ok(json!({"home":canonical_home,"executable":executable}));
+        }
+        // An environment's program links to its base interpreter outside the home. It
+        // starts from the layout path so the program still finds the environment it was
+        // started from; the canonical target would run the base installation instead.
+        if definition["executableLinksOutsideHome"] != true {
+            return Err(escapes());
+        }
+        let relative = layout["path"].as_str().unwrap_or("");
+        contained_parents(home, relative, &canonical_home, facts, roots)?;
+        let executable = paths::join(&canonical_home, relative, &facts.platform)
+            .ok_or_else(|| reject(UNSAFE, "executableLayouts", "Invalid executable layout."))?;
         return Ok(json!({"home":canonical_home,"executable":executable}));
     }
     Err(reject(
@@ -550,6 +564,36 @@ fn checked_installation(
         "installation.executable",
         "No validated executable matches the tool definition.",
     ))
+}
+
+/// Checks the directories between a home and its layout's program (such as `bin` in
+/// `bin/python3`) when the program links outside the home. Each one must be an observed
+/// directory that canonically stays inside the canonical home and outside every
+/// workspace, so the layout path beneath the canonical home names the file the facts
+/// checked and only the program itself leaves the home.
+fn contained_parents(
+    home: &str,
+    relative: &str,
+    canonical_home: &str,
+    facts: &Facts,
+    roots: &[String],
+) -> Validation<()> {
+    let segments: Vec<&str> = relative.split('/').collect();
+    for depth in 1..segments.len() {
+        let parent = paths::join(home, &segments[..depth].join("/"), &facts.platform)
+            .ok_or_else(|| reject(UNSAFE, "executableLayouts", "Invalid executable layout."))?;
+        let canonical = facts.canonical(&parent, Some("directory"))?;
+        if !facts.within(&canonical, canonical_home)
+            || roots.iter().any(|root| facts.within(&canonical, root))
+        {
+            return Err(reject(
+                UNSAFE,
+                "installation.executable",
+                "A directory of the executable layout escapes its installation.",
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// The path a checked installation's program starts from: its canonical target,
@@ -583,8 +627,8 @@ fn invoked_executable(
 
 /// Validates an external installation against trusted, authority-local native facts.
 /// Returns the canonical home and the executable to start (the canonical target, or the
-/// layout path when that target has another file name)
-/// without touching the native filesystem.
+/// layout path when that target has another file name or, for a definition that allows
+/// it, lies outside the home) without touching the native filesystem.
 /// Project-code candidates require their separate consumer trust policy.
 pub fn validate_installation(
     home: &str,

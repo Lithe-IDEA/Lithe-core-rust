@@ -29,7 +29,7 @@ does not gain definition-owned candidate fields (see
 [Executable resolution](../README.md#executable-resolution)).
 
 Definitions own IDs, labels/icons, optional display `category` and `audience`,
-`executableLayouts`, ordered `executables`,
+`executableLayouts`, optional `executableLinksOutsideHome`, ordered `executables`,
 `version`, `homeLayouts`, `discovery`, `homeVariable`, `commands`, `wrappers`,
 `exports`, `pathPrepend` and argv `launch`. Counts, relative paths, bounded globs,
 platforms, templates and version expressions are validated recursively; unknown
@@ -46,6 +46,16 @@ list shows the tool; resolution, pins and launches ignore them. Other values
 reject the manifest. They are `toolDefinitions` version 1: a manifest that sets
 either requires `toolDefinitions: 1`, and a host that supports only version 0
 does not install it. Definitions without them keep requiring `0`.
+
+`executableLinksOutsideHome` is a boolean added within `toolDefinitions` version 0.
+`true` lets an external installation's layout program link outside its home, as a
+virtual environment's `bin/python3` links to its base interpreter and Homebrew's
+`libexec/bin/python3` links to its framework. Absent or `false` keeps the program
+inside the home; other values reject the manifest. The field does not change project
+candidates, which follow their own `projectKind` rules, and it is never needed for a
+program that is a file inside its home. A host whose Core predates the field rejects
+manifests that set it, so a plugin that sets it requires a host release that has it.
+See [Pins and snapshot resolution](#pins-and-snapshot-resolution) for the checks.
 
 `version` is `{arguments, pattern}`. `arguments` lists one to eight distinct
 literal words of at most 64 bytes. The first is a flag (`-version`,
@@ -313,6 +323,21 @@ another name, the reported executable is that layout path beneath the canonical
 home instead: a multi-call program such as rustup links `cargo` to itself and picks
 the tool from the name it starts with, so starting the link target would run the
 wrong program. The facts still check the target's kind, mode and containment.
+
+Every external installation (pin, `fixed:{home}`, `homeVariable`, discovery and
+provider report) passes one check. The canonical home must lie outside every
+workspace, and the layout program must be a regular executable file, or a link to
+one, whose canonical target lies outside every workspace. The target must also stay
+inside the canonical home, unless the definition sets `executableLinksOutsideHome:
+true`. Then a single-hop or multi-hop link to a target outside the home is accepted
+when every directory between the home and the program (such as `bin`) is observed as
+a directory whose canonical path stays inside the canonical home and outside every
+workspace; an unobserved or escaping directory fails with `unsafePath`. Such a
+program reports, is probed at and starts from its layout path beneath the canonical
+home, never its target, so a virtual environment keeps finding its `pyvenv.cfg` and
+packages; `${home}` exports still name the home. A host observes each of those
+directories when it records a home's layout programs.
+
 Shell environment home variables and `commandHomes` come from the native login-shell
 adapter, not command-name guessing. An environment candidate selects only through
 its declared `path` layout.
