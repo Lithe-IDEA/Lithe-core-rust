@@ -14,7 +14,7 @@
 
 ## 待合入
 
-- 本 PR（关联 [1lck/Lithe-IDEA#2260](https://github.com/1lck/Lithe-IDEA/issues/2260)），`lithe-support[bot]`，**`toolchainProviders` 1 / `litheToolchains` 1**（API-23）：权限和 authority 错误改用 `-32080`、`-32081`，稳定字符串码不变。Core 按重新校验的清单版本解码；版本 0 保留 `-32070`、`-32071`，不同版本的号码互不接受。Rust SDK 保留版本 0 默认语义，通过 `Backend::toolchain_provider_version(ToolchainProviderVersion::V1)` 显式选择新版本；没有匹配的协商版本就不启用提供者。四个 SDK 的 `plugin.function.*` 号码不变。
+- [#182](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/182)（关联 [1lck/Lithe-IDEA#2260](https://github.com/1lck/Lithe-IDEA/issues/2260)），`lithe-support[bot]`，**`toolchainProviders` 1 / `litheToolchains` 1**（API-23）：权限和 authority 错误改用 `-32080`、`-32081`，稳定字符串码不变。Core 按重新校验的清单版本解码；版本 0 保留 `-32070`、`-32071`，不同版本的号码互不接受。Rust SDK 保留版本 0 默认语义，通过 `Backend::toolchain_provider_version(ToolchainProviderVersion::V1)` 显式选择新版本；没有匹配的协商版本就不启用提供者。四个 SDK 的 `plugin.function.*` 号码不变。
 - [#176](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/176)，[@xiaoyumuxi](https://github.com/xiaoyumuxi)，`languageServers` 0 内的说明补充（—）：写明后端决定启动方式的语言服务器在 `immediate` 设置变化时的行为。启动应答自带 `workspaceConfiguration` 时，宿主用这次启动的四个目录、工作区 `context` 和新的 `settings` 再调用一次启动函数，同样交给 `plugins.languageServers.decodeLaunch` 解码，只把计划里的 `workspaceConfiguration` 通过 `lsp.updateWorkspaceConfiguration` 发出（整体替换原配置），应答的其余部分等下次启动；应答不带时发送声明的展开，不再调用函数。所以这类启动函数每次启动可能被调用多次，安装或下载只应在缺少时进行。契约 README 的 Workspace configuration 和 Backend-resolved launch 两节、`reference/domains/languages.md` 与 `settings.md` 的中英文随之补充。桌面端实现见 1lck/Lithe-IDEA#2319。Core 代码、能力版本、宿主方法、通知和协议字段都不变。
 - [#175](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/175)，[@xiaoyumuxi](https://github.com/xiaoyumuxi)，`ui` 0 内的补充（API-13、API-23）：撤回 #174 新增的 `ui` 1，设置区域 `tool` 行的可选布尔字段 `choose` 改为 `ui` 0 内的补充，清单写 `requires.ui: 0` 即可使用。`capabilities.rs` 和清单 schema 的 `requires.ui` 回到只有 0，能力对照表删去 `ui` 1 一行。`choose` 不是布尔值时 Core 以 `plugin.ui.invalidView` 拒绝整个结果，位置指向 `choose`；旧宿主的 Core 不认识这个字段，同样会拒绝带它的视图，所以插件要等包含本改动的桌面端发布后再写。fixture `ui/view-results.json` 改为两个用例（接受选择器、`choose` 不是布尔值时拒绝），替换原来“`requires.ui` 为 0 时拒绝”的用例。`ui` 1 没有随任何宿主发布过。没有新增能力版本、宿主方法、通知或进程协议字段。
 - [#174](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/174)，[@xiaoyumuxi](https://github.com/xiaoyumuxi)，**`ui` 1**（API-13、API-23）：设置区域视图的 `tool` 行新增可选的布尔字段 `choose`，带上后这一行同时是该工具的选择器，像解释器下拉框一样列出自动选择、已发现和已添加的安装（带版本和来源）、添加目录和打开工具链页的入口；选择只改设置窗口的草稿，“应用”提交、“取消”丢弃，行上显示待提交的选择，应用后启动和运行拿到选中的安装。清单 `requires.ui` 为 0 时 Core 以 `plugin.ui.invalidView` 拒绝整个结果，位置指向 `choose`。契约 README 的插件视图一节补充：为某个工作区显示的视图（项目窗口里的工具窗口，或从项目窗口打开的设置页）调用时，带上该窗口的工作区上下文作为 invoke 的 `params.context`，后端可以在 `click` 里用它调用 `run/start` 等需要上下文的宿主方法；没有工作区时不带。fixture `ui/view-results.json` 新增一个用例，Node SDK 的视图节点类型加上 `choose`，Rust 和 Go SDK 的工作区上下文说明随之修正。没有新增宿主方法、通知或进程协议字段。（`ui` 1 已由 #175 撤回，`choose` 改为 `ui` 0 内的补充。）
@@ -77,7 +77,7 @@
 | `toolDefinitions` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `toolDefinitions` | 1 | 2026-11-18 | [#99](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/99) |
 | `toolchainProviders` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
-| `toolchainProviders` | 1 | 待合入 | 本 PR（[#2260](https://github.com/1lck/Lithe-IDEA/issues/2260)） |
+| `toolchainProviders` | 1 | 待合入 | [#182](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/182)（[#2260](https://github.com/1lck/Lithe-IDEA/issues/2260)） |
 | `ui` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `vcsProviders` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 
@@ -92,7 +92,7 @@
 | `litheBuild`（`buildProviders`） | 1 | 2026-11-18 | [#89](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/89) |
 | `litheVcs`（`vcsProviders`） | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `litheToolchains`（`toolchainProviders`） | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
-| `litheToolchains`（`toolchainProviders`） | 1 | 待合入 | 本 PR（[#2260](https://github.com/1lck/Lithe-IDEA/issues/2260)） |
+| `litheToolchains`（`toolchainProviders`） | 1 | 待合入 | [#182](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/182)（[#2260](https://github.com/1lck/Lithe-IDEA/issues/2260)） |
 | `litheKeymapImport`（`keymapImportProviders`） | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `litheLogging`（`pluginAPIVersion`） | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 
