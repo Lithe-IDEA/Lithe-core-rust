@@ -4844,7 +4844,9 @@ per workspace context:
     "hover": {"function": "keys.hover"},
     "completion": {"function": "keys.complete", "triggerCharacters": ["."]},
     "semanticTokens": {"function": "keys.tokens",
-      "legend": {"tokenTypes": ["property", "string"], "tokenModifiers": ["declaration"]}}
+      "legend": {"tokenTypes": ["property", "string"], "tokenModifiers": ["declaration"]}},
+    "colorDecorations": {"function": "rainbow.decorate",
+      "colorLegend": [{"id": "depth-0", "light": "#B03060", "dark": "#F08AAA"}]}
   }
 }
 ```
@@ -4857,16 +4859,27 @@ per workspace context:
   (optional leading dot) and literal file names, matched case-insensitively.
   A document matches when any entry matches. At most 32 registrations per
   plugin across contexts; duplicate IDs in a context are refused.
-- `providers` maps a provider type to `{function}`. The Lithe desktop host routes
+- `providers` maps a provider type to its function and any type-specific options. The Lithe desktop host routes
   `definition`, `hover`, `completion`, `codeLens`, `foldingRange`,
-  `semanticTokens` and `documentLink`. Completion may add 1 to 16
+  `semanticTokens`, `colorDecorations` and `documentLink`. Completion may add 1 to 16
   single-character `triggerCharacters`; semantic tokens must add their
-  `legend` (at most 64 types and 64 modifiers). A type outside the host's
+  `legend` (at most 64 types and 64 modifiers). `colorDecorations` adds a
+  `colorLegend` of 1 to 64 unique `{id, light, dark}` entries; each color is
+  `#RRGGBB`. The provider returns `{decorations: [{range, colorId}]}` with
+  nonempty, single-line, zero-based UTF-16 ranges. Ranges from one source may
+  touch but must not overlap. Each provider result is limited to 10,000 ranges.
+  A merged answer accepts at most 64 sources and 10,000 input ranges total;
+  its output is limited to 10,000 ranges and 1 MiB. A type
+  outside the host's
   `providerTypes` fails with `unsupportedOption` and
   `details.option: "providers.<type>"` before anything is registered.
   Diagnostics are not a provider type.
+- The [`colorDecorations` registration and result schema](editor-color-decorations.schema.json)
+  describes the provider-specific JSON shape. Registration itself remains a
+  runtime `editor/registerProviders` request and is validated by Core, not a
+  plugin manifest field.
 - The host calls the function through `lithe/function/invoke` with the
-  workspace context and `{documentID,version}`; definition, hover and
+  workspace context and `params: {document: {documentID, version}}`; definition, hover and
   completion add `position: {line,character}` (zero-based, UTF-16), and
   completion adds `triggerCharacter` when typing started it. The plugin reads
   the text with `documents/getSnapshot` and answers for that version.
@@ -4874,7 +4887,8 @@ per workspace context:
   `Location | Location[] | LocationLink[] | null`, `Hover | null`,
   `CompletionItem[] | CompletionList | null` (no `data`, `command` or resolve
   round trip), `CodeLens[] | null`, `FoldingRange[] | null`,
-  `SemanticTokens | null` indexed by the registered legend, and
+  `SemanticTokens | null` indexed by the registered legend,
+  `{decorations: [{range, colorId}]}` for `colorDecorations`, and
   `DocumentLink[] | null` with absolute targets. Every code lens carries its
   `command`, whose `command` is a function of the same plugin and whose
   `arguments` holds at most one params object; a click calls that function
@@ -4887,7 +4901,15 @@ per workspace context:
   server's; definitions add plugin locations to the server's (a location at
   the requested position itself yields to the plugin's); code lenses, folding
   ranges and links are added; semantic tokens apply only to files whose
-  language server has none. A plugin location equal to one already kept is
+  language server has none. Color decorations are independent of semantic
+  tokens and are merged across matching sources by
+  `plugins.editorProviders.decode` with `kind: "mergeColorDecorations"`.
+  The host supplies sources using the stable `sourceId` form
+  `<pluginID>/<registrationID>`. Core sorts sources by `sourceId` using
+  Unicode code-point order; the lexicographically earliest source wins at
+  each UTF-16 position, and later ranges are clipped to uncovered portions.
+  The merged result is sorted by line and start position and contains resolved
+  light/dark colors. A plugin location equal to one already kept is
   dropped. The merge is Core command `plugins.editorProviders.decode` with
   `kind: "mergeDefinitions"`, so every host merges definitions alike.
 - Validation is shared Core command `plugins.editorProviders.decode`. Cases:

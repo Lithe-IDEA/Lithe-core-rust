@@ -47,6 +47,18 @@ func main() {
 	}
 	backend := lithe.NewBackend("sample-backend").Version(version)
 
+	// A generic request supports new provider options without an SDK wrapper.
+	must(backend.Function("fixture.colors", func(params json.RawMessage, call *lithe.Context) (any, error) {
+		var value map[string]json.RawMessage
+		if err := json.Unmarshal(params, &value); err != nil {
+			return nil, err
+		}
+		if registration, ok := value["registration"]; ok {
+			return call.Host().Request("lithe/host/editor/registerProviders", registration)
+		}
+		return value["value"], nil
+	}))
+
 	// Exercised only when the Core end-to-end harness offers this provider.
 	must(backend.KeymapImportProvider("fixture", func(request lithe.KeymapImportRequest, call *lithe.Context) (any, error) {
 		files, err := request.ListInputs(call.Host())

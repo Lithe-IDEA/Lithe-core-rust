@@ -24,6 +24,10 @@ import { fileURLToPath } from 'node:url';
 import { createBackend, openStateStore, PluginError } from '../../../src/index.mjs';
 
 const backend = createBackend({ name: 'sample-build', version: '0.1.0' });
+// A generic request supports new provider options without an SDK wrapper.
+backend.function('fixture.colors', (params, context) => params.registration
+  ? context.host.request('lithe/host/editor/registerProviders', params.registration)
+  : params.value);
 // Exercised only when the Core end-to-end harness offers this provider.
 backend.keymapImportProvider('fixture', async (snapshot) => {
   const files = await snapshot.listInputs();

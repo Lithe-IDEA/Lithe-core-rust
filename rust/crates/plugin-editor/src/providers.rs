@@ -1,19 +1,18 @@
 //! Editor language-feature providers a plugin backend registers through
 //! `lithe/host/editor/registerProviders`.
 //!
-//! Core validates registrations and the LSP 3.17 shaped results of each
-//! provider function, and owns the per-type answer budgets. Hosts own the
-//! document versions, the calls and the merge with language-server results:
-//! a language server answers first and a plugin only supplements it. Core
-//! never interprets selectors, function names or result payloads beyond
-//! their shape, so no tool or language has a branch here.
+//! Core validates registrations and provider results, and owns the per-type
+//! answer budgets. Hosts own document versions and calls. Language-feature
+//! providers supplement language-server results; color decorations are merged
+//! in stable source order so overlapping plugin colors are deterministic.
+//! Core never interprets selectors, function names or tool-specific payloads.
 
 use crate::actions::{normalize_names, uri, Location, LspPosition, LspRange};
 use lithe_plugin_model::is_function_id;
 use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Provider types Core can validate, in the order the contract lists them.
 pub const PROVIDER_TYPES: &[&str] = &[
@@ -23,6 +22,7 @@ pub const PROVIDER_TYPES: &[&str] = &[
     "codeLens",
     "foldingRange",
     "semanticTokens",
+    "colorDecorations",
     "documentLink",
 ];
 
@@ -35,6 +35,10 @@ const MAX_COMPLETION_ITEMS: usize = 5000;
 const MAX_CODE_LENSES: usize = 1000;
 const MAX_FOLDING_RANGES: usize = 5000;
 const MAX_DOCUMENT_LINKS: usize = 1000;
+const MAX_COLOR_DECORATIONS: usize = 10_000;
+const MAX_COLOR_DECORATION_SOURCES: usize = 64;
+const MAX_COLOR_DECORATION_SOURCE_ID_BYTES: usize = 257;
+const MAX_MERGED_COLOR_DECORATIONS: usize = 10_000;
 const MAX_HOVER_BYTES: usize = 64 * 1024;
 /// Semantic token integers: five per token, 1 MiB of 4-byte integers.
 const MAX_SEMANTIC_TOKEN_INTEGERS: usize = 1024 * 1024 / 4;
@@ -81,6 +85,15 @@ struct Legend {
     token_modifiers: Vec<String>,
 }
 
+/// The light- and dark-appearance colors registered for one provider.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DecorationColor {
+    id: String,
+    light: String,
+    dark: String,
+}
+
 /// One provider entry: the plugin function the host calls and the options
 /// its type takes. `budgetMs` is Core's output, never the plugin's input.
 #[derive(Debug, Deserialize, Serialize)]
@@ -91,6 +104,8 @@ struct Provider {
     trigger_characters: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     legend: Option<Legend>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    color_legend: Option<Vec<DecorationColor>>,
     #[serde(default, skip_deserializing)]
     budget_ms: u64,
 }
@@ -118,6 +133,9 @@ struct Payload {
     /// For a semantic tokens result, the legend the provider registered.
     #[serde(default)]
     legend: Option<Legend>,
+    /// For a color decoration result, the colors declared by its registration.
+    #[serde(default)]
+    color_legend: Option<Vec<DecorationColor>>,
 }
 
 fn registration(value: Value, types: &[String]) -> Result<Value, CoreError> {
@@ -172,6 +190,7 @@ fn registration(value: Value, types: &[String]) -> Result<Value, CoreError> {
         let options_fit = match kind.as_str() {
             "completion" => {
                 provider.legend.is_none()
+                    && provider.color_legend.is_none()
                     && provider.trigger_characters.len() <= MAX_TRIGGER_CHARACTERS
                     && triggers.len() == provider.trigger_characters.len()
                     && provider.trigger_characters.iter().all(|character| {
@@ -183,9 +202,22 @@ fn registration(value: Value, types: &[String]) -> Result<Value, CoreError> {
             }
             "semanticTokens" => {
                 provider.trigger_characters.is_empty()
+                    && provider.color_legend.is_none()
                     && provider.legend.as_ref().is_some_and(legend_valid)
             }
-            _ => provider.trigger_characters.is_empty() && provider.legend.is_none(),
+            "colorDecorations" => {
+                provider.trigger_characters.is_empty()
+                    && provider.legend.is_none()
+                    && provider
+                        .color_legend
+                        .as_deref()
+                        .is_some_and(color_legend_valid)
+            }
+            _ => {
+                provider.trigger_characters.is_empty()
+                    && provider.legend.is_none()
+                    && provider.color_legend.is_none()
+            }
         };
         if !is_function_id(&provider.function) || !options_fit {
             return Err(invalid(format!("Invalid {kind} provider options.")));
@@ -212,6 +244,29 @@ fn legend_valid(legend: &Legend) -> bool {
             })
     };
     !legend.token_types.is_empty() && names(&legend.token_types) && names(&legend.token_modifiers)
+}
+
+fn color_legend_valid(colors: &[DecorationColor]) -> bool {
+    let ids: BTreeSet<&str> = colors.iter().map(|color| color.id.as_str()).collect();
+    !colors.is_empty()
+        && colors.len() <= MAX_LEGEND_ENTRIES
+        && ids.len() == colors.len()
+        && colors.iter().all(|color| {
+            identifier(&color.id)
+                && color.id.as_bytes()[0].is_ascii_alphanumeric()
+                && color
+                    .id
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+                && hex_color_valid(&color.light)
+                && hex_color_valid(&color.dark)
+        })
+}
+
+fn hex_color_valid(value: &str) -> bool {
+    value.len() == 7
+        && value.starts_with('#')
+        && value[1..].bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 fn range(value: &Value) -> Option<Value> {
@@ -521,6 +576,247 @@ fn semantic_tokens(value: Value, legend: Option<&Legend>) -> Result<Value, CoreE
     Ok(json!({ "data": integers }))
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ColorDecoration {
+    range: LspRange,
+    color_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ColorDecorationResult {
+    decorations: Vec<ColorDecoration>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct DecorationSpan {
+    line: u32,
+    start: u32,
+    end: u32,
+}
+
+#[derive(Debug)]
+struct ParsedColorDecoration {
+    span: DecorationSpan,
+    color_id: String,
+}
+
+fn parse_color_decorations(
+    value: Value,
+    colors: &[DecorationColor],
+) -> Result<Vec<ParsedColorDecoration>, CoreError> {
+    if !color_legend_valid(colors) {
+        return Err(invalid(
+            "A color decoration result needs its registered color legend.",
+        ));
+    }
+    let result: ColorDecorationResult = serde_json::from_value(value)
+        .map_err(|_| invalid("A color decoration result has a decorations array."))?;
+    if result.decorations.len() > MAX_COLOR_DECORATIONS {
+        return Err(invalid("A color decoration result exceeds 10000 ranges."));
+    }
+    let known_colors: BTreeSet<&str> = colors.iter().map(|color| color.id.as_str()).collect();
+    let mut decorations = Vec::with_capacity(result.decorations.len());
+    for decoration in result.decorations {
+        let range = decoration.range;
+        if !range.ordered()
+            || range.start.line != range.end.line
+            || range.start.character >= range.end.character
+            || !known_colors.contains(decoration.color_id.as_str())
+        {
+            return Err(invalid(
+                "A color decoration has a nonempty single-line range and a registered color ID.",
+            ));
+        }
+        decorations.push(ParsedColorDecoration {
+            span: DecorationSpan {
+                line: range.start.line,
+                start: range.start.character,
+                end: range.end.character,
+            },
+            color_id: decoration.color_id,
+        });
+    }
+    decorations.sort_by_key(|decoration| decoration.span);
+    if decorations
+        .windows(2)
+        .any(|pair| pair[0].span.line == pair[1].span.line && pair[0].span.end > pair[1].span.start)
+    {
+        return Err(invalid(
+            "Color decoration ranges from one source must not overlap.",
+        ));
+    }
+    Ok(decorations)
+}
+
+fn color_decorations(value: Value, colors: Option<&[DecorationColor]>) -> Result<Value, CoreError> {
+    let colors =
+        colors.ok_or_else(|| invalid("A color decoration result needs its color legend."))?;
+    let decorations = parse_color_decorations(value, colors)?;
+    Ok(json!({"decorations": decorations.iter().map(|decoration| {
+        let span = decoration.span;
+        json!({"range": {"start": {"line": span.line, "character": span.start},
+            "end": {"line": span.line, "character": span.end}}, "colorId": decoration.color_id})
+    }).collect::<Vec<_>>() }))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ColorDecorationSource {
+    source_id: String,
+    color_legend: Vec<DecorationColor>,
+    value: Value,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ColorDecorationMerge {
+    sources: Vec<ColorDecorationSource>,
+}
+
+#[derive(Default)]
+struct ColorDecorationEvents {
+    ends: Vec<usize>,
+    starts: Vec<(usize, String)>,
+}
+
+struct MergedColorDecoration {
+    source_id: String,
+    color_id: String,
+    light: String,
+    dark: String,
+    span: DecorationSpan,
+}
+
+/// Merges provider colors by stable source identity. The lexicographically
+/// earlier source wins at each UTF-16 position; later ranges are clipped to
+/// the still-uncovered portions.
+fn merge_color_decorations(value: Value) -> Result<Value, CoreError> {
+    let mut merge: ColorDecorationMerge = serde_json::from_value(value)
+        .map_err(|_| invalid("A color decoration merge has sources."))?;
+    if merge.sources.len() > MAX_COLOR_DECORATION_SOURCES {
+        return Err(invalid("A color decoration merge exceeds 64 sources."));
+    }
+    merge
+        .sources
+        .sort_by(|left, right| left.source_id.cmp(&right.source_id));
+    if merge.sources.iter().any(|source| {
+        source.source_id.is_empty()
+            || source.source_id.len() > MAX_COLOR_DECORATION_SOURCE_ID_BYTES
+            || source.source_id.chars().any(char::is_control)
+    }) || merge
+        .sources
+        .windows(2)
+        .any(|pair| pair[0].source_id == pair[1].source_id)
+    {
+        return Err(invalid(
+            "Color decoration source IDs must be unique and valid.",
+        ));
+    }
+
+    let mut events: BTreeMap<(u32, u32), ColorDecorationEvents> = BTreeMap::new();
+    let mut source_colors = Vec::with_capacity(merge.sources.len());
+    let mut input_count = 0usize;
+    for (source_index, source) in merge.sources.iter().enumerate() {
+        if !color_legend_valid(&source.color_legend) {
+            return Err(invalid(
+                "A color decoration source has an invalid color legend.",
+            ));
+        }
+        let decorations = parse_color_decorations(source.value.clone(), &source.color_legend)?;
+        input_count += decorations.len();
+        if input_count > MAX_COLOR_DECORATIONS {
+            return Err(invalid("A color decoration merge exceeds 10000 ranges."));
+        }
+        for decoration in decorations {
+            events
+                .entry((decoration.span.line, decoration.span.start))
+                .or_default()
+                .starts
+                .push((source_index, decoration.color_id));
+            events
+                .entry((decoration.span.line, decoration.span.end))
+                .or_default()
+                .ends
+                .push(source_index);
+        }
+        source_colors.push(
+            source
+                .color_legend
+                .iter()
+                .map(|color| (color.id.as_str(), color))
+                .collect::<BTreeMap<_, _>>(),
+        );
+    }
+
+    let mut active: BTreeMap<usize, String> = BTreeMap::new();
+    let mut active_line = None;
+    let mut merged: Vec<MergedColorDecoration> = Vec::new();
+    let mut positions = events.iter().peekable();
+    while let Some((&(line, character), event)) = positions.next() {
+        if active_line != Some(line) {
+            active.clear();
+            active_line = Some(line);
+        }
+        for source_index in &event.ends {
+            active.remove(source_index);
+        }
+        for (source_index, color_id) in &event.starts {
+            active.insert(*source_index, color_id.clone());
+        }
+        let Some((&(next_line, next_character), _)) = positions.peek() else {
+            continue;
+        };
+        if next_line != line || next_character <= character {
+            continue;
+        }
+        let Some((&source_index, color_id)) = active.first_key_value() else {
+            continue;
+        };
+        let source = &merge.sources[source_index];
+        let color = source_colors[source_index][color_id.as_str()];
+        let span = DecorationSpan {
+            line,
+            start: character,
+            end: next_character,
+        };
+        if let Some(previous) = merged.last_mut() {
+            if previous.source_id == source.source_id
+                && previous.color_id == *color_id
+                && previous.span.line == span.line
+                && previous.span.end == span.start
+            {
+                previous.span.end = span.end;
+                continue;
+            }
+        }
+        merged.push(MergedColorDecoration {
+            source_id: source.source_id.clone(),
+            color_id: color_id.clone(),
+            light: color.light.clone(),
+            dark: color.dark.clone(),
+            span,
+        });
+        if merged.len() > MAX_MERGED_COLOR_DECORATIONS {
+            return Err(invalid(
+                "A merged color decoration result exceeds 10000 ranges.",
+            ));
+        }
+    }
+    let result = json!({"decorations": merged.into_iter().map(|decoration| {
+        let span = decoration.span;
+        json!({"sourceId": decoration.source_id, "colorId": decoration.color_id,
+            "light": decoration.light, "dark": decoration.dark,
+            "range": {"start": {"line": span.line, "character": span.start},
+                "end": {"line": span.line, "character": span.end}}})
+    }).collect::<Vec<_>>() });
+    if result.to_string().len() > MAX_BYTES {
+        return Err(invalid("A merged color decoration result exceeds 1 MiB."));
+    }
+    Ok(result)
+}
+
 fn document_link(value: Value) -> Result<Value, CoreError> {
     let items = list(value, MAX_DOCUMENT_LINKS, "document link")?;
     let mut links = Vec::with_capacity(items.len());
@@ -599,11 +895,9 @@ fn merge_definitions(value: Value) -> Result<Value, CoreError> {
     Ok(json!({ "server": server, "plugin": plugin }))
 }
 
-/// Validates a provider registration (`kind: registration`, with the
-/// host's `types`) or one provider function's result (`kind: result`, with
-/// its `type` and, for semantic tokens, the registered `legend`). Results
-/// come back normalized. `kind: mergeDefinitions` applies the merge rule of
-/// definitions. No I/O occurs.
+/// Validates a provider registration or one provider function's result.
+/// Results come back normalized. Merge kinds apply deterministic cross-source
+/// rules for definitions and color decorations. No I/O occurs.
 pub fn decode_command(payload: Value) -> Result<Value, CoreError> {
     let payload: Payload = serde_json::from_value(payload)
         .map_err(|_| invalid("Invalid editor provider validation payload."))?;
@@ -615,6 +909,7 @@ pub fn decode_command(payload: Value) -> Result<Value, CoreError> {
             Ok(json!({ "registration": registration(payload.value, &payload.types)? }))
         }
         ("mergeDefinitions", None) => merge_definitions(payload.value),
+        ("mergeColorDecorations", None) => merge_color_decorations(payload.value),
         ("result", Some(kind)) => Ok(json!({ "result": match kind {
             "definition" => definition(payload.value)?,
             "hover" => hover(payload.value)?,
@@ -622,6 +917,7 @@ pub fn decode_command(payload: Value) -> Result<Value, CoreError> {
             "codeLens" => code_lens(payload.value)?,
             "foldingRange" => folding_range(payload.value)?,
             "semanticTokens" => semantic_tokens(payload.value, payload.legend.as_ref())?,
+            "colorDecorations" => color_decorations(payload.value, payload.color_legend.as_deref())?,
             "documentLink" => document_link(payload.value)?,
             _ => return Err(invalid("Unknown editor provider type.")),
         }})),
@@ -765,6 +1061,158 @@ mod tests {
         .map(|value| value["result"].clone())
     }
 
+    fn color_result(value: Value, color_legend: Value) -> Result<Value, CoreError> {
+        decode_command(
+            json!({"kind":"result","type":"colorDecorations","value":value,
+            "colorLegend":color_legend}),
+        )
+        .map(|value| value["result"].clone())
+    }
+
+    fn color_source(source_id: &str, color_id: &str, start: u32, end: u32) -> Value {
+        json!({"sourceId":source_id,
+            "colorLegend":[{"id":color_id,"light":"#112233","dark":"#445566"}],
+            "value":{"decorations":[{"range":{"start":{"line":0,"character":start},
+                "end":{"line":0,"character":end}},"colorId":color_id}]}})
+    }
+
+    #[test]
+    fn color_decoration_registration_results_and_merges_are_deterministic() {
+        let registration = decode_command(json!({"kind":"registration","types":types(),"value":{
+            "id":"rainbow","selector":{"fileExtensions":["rs"]},
+            "providers":{"colorDecorations":{"function":"rainbow.decorate","colorLegend":[
+                {"id":"depth-0","light":"#112233","dark":"#445566"}]}}
+        }}))
+        .unwrap();
+        assert_eq!(
+            registration["registration"]["providers"]["colorDecorations"]["budgetMs"],
+            2000
+        );
+
+        let colors = json!([{"id":"depth-0","light":"#112233","dark":"#445566"}]);
+        let decoration = |start, end| {
+            json!({"range":{"start":{"line":0,"character":start},
+            "end":{"line":0,"character":end}},"colorId":"depth-0"})
+        };
+        assert_eq!(
+            color_result(json!({"decorations":[decoration(2, 5)]}), colors.clone()).unwrap(),
+            json!({"decorations":[decoration(2, 5)]})
+        );
+        for value in [
+            json!({"decorations":[decoration(2, 2)]}),
+            json!({"decorations":[decoration(5, 2)]}),
+            json!({"decorations":[decoration(2, 5), decoration(4, 7)]}),
+            json!({"decorations":[{"range":{"start":{"line":0,"character":2},
+                "end":{"line":1,"character":0}},"colorId":"depth-0"}]}),
+            json!({"decorations":[{"range":{"start":{"line":0,"character":2},
+                "end":{"line":0,"character":5}},"colorId":"unknown"}]}),
+        ] {
+            assert!(color_result(value, colors.clone()).is_err());
+        }
+
+        let merged = decode_command(json!({"kind":"mergeColorDecorations","value":{"sources":[
+            {"sourceId":"z-plugin/1","colorLegend":[{"id":"z","light":"#112233","dark":"#445566"}],
+                "value":{"decorations":[{"range":{"start":{"line":0,"character":1},"end":{"line":0,"character":8}},"colorId":"z"}]}},
+            {"sourceId":"a-plugin/1","colorLegend":[{"id":"a","light":"#AABBCC","dark":"#DDEEFF"}],
+                "value":{"decorations":[{"range":{"start":{"line":0,"character":3},"end":{"line":0,"character":5}},"colorId":"a"}]}}
+        ]}})).unwrap();
+        assert_eq!(
+            merged["decorations"],
+            json!([
+                {"sourceId":"z-plugin/1","colorId":"z","light":"#112233","dark":"#445566",
+                    "range":{"start":{"line":0,"character":1},"end":{"line":0,"character":3}}},
+                {"sourceId":"a-plugin/1","colorId":"a","light":"#AABBCC","dark":"#DDEEFF",
+                    "range":{"start":{"line":0,"character":3},"end":{"line":0,"character":5}}},
+                {"sourceId":"z-plugin/1","colorId":"z","light":"#112233","dark":"#445566",
+                    "range":{"start":{"line":0,"character":5},"end":{"line":0,"character":8}}}
+            ])
+        );
+        let merged_reversed = decode_command(json!({"kind":"mergeColorDecorations","value":{"sources":[
+            {"sourceId":"a-plugin/1","colorLegend":[{"id":"a","light":"#AABBCC","dark":"#DDEEFF"}],
+                "value":{"decorations":[{"range":{"start":{"line":0,"character":3},"end":{"line":0,"character":5}},"colorId":"a"}]}},
+            color_source("z-plugin/1", "z", 1, 8)
+        ]}})).unwrap();
+        assert_eq!(merged_reversed, merged);
+    }
+
+    #[test]
+    fn color_decoration_legends_and_merge_limits_are_enforced() {
+        for colors in [
+            json!([]),
+            json!([{"id":"x","light":"red","dark":"#445566"}]),
+            json!([{"id":"x","light":"#112233","dark":"#445566"},{"id":"x","light":"#000000","dark":"#000000"}]),
+        ] {
+            assert!(decode_command(json!({"kind":"registration","types":types(),"value":{
+                "id":"rainbow","selector":{"fileExtensions":["rs"]},
+                "providers":{"colorDecorations":{"function":"rainbow.decorate","colorLegend":colors}}
+            }})).is_err());
+        }
+        assert!(
+            decode_command(json!({"kind":"mergeColorDecorations","value":{"sources":[
+                color_source("same", "x", 0, 1), color_source("same", "x", 2, 3)
+            ]}}))
+            .is_err()
+        );
+        assert!(
+            decode_command(json!({"kind":"mergeColorDecorations","value":{"sources":
+                vec![color_source("plugin", "x", 0, 1); MAX_COLOR_DECORATION_SOURCES + 1]
+            }}))
+            .is_err()
+        );
+        let long_source_id = "x".repeat(MAX_COLOR_DECORATION_SOURCE_ID_BYTES + 1);
+        assert!(
+            decode_command(json!({"kind":"mergeColorDecorations","value":{"sources":[
+                color_source(&long_source_id, "x", 0, 1)
+            ]}}))
+            .is_err()
+        );
+
+        let over_limit = (0..=MAX_COLOR_DECORATIONS)
+            .map(|index| {
+                json!({"range":{"start":{"line":0,"character":index * 2},
+                "end":{"line":0,"character":index * 2 + 1}},"colorId":"x"})
+            })
+            .collect::<Vec<_>>();
+        let colors = vec![DecorationColor {
+            id: "x".into(),
+            light: "#112233".into(),
+            dark: "#445566".into(),
+        }];
+        assert!(parse_color_decorations(json!({"decorations":over_limit}), &colors).is_err());
+
+        let many_ranges = (0..3000)
+            .map(|index| {
+                json!({"range":{"start":{"line":0,"character":index * 2},
+                "end":{"line":0,"character":index * 2 + 1}},"colorId":"x"})
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            decode_command(json!({"kind":"mergeColorDecorations","value":{"sources":[{
+                "sourceId":"x".repeat(MAX_COLOR_DECORATION_SOURCE_ID_BYTES),
+                "colorLegend":[{"id":"x","light":"#112233","dark":"#445566"}],
+                "value":{"decorations":many_ranges}
+            }]}}))
+            .is_err()
+        );
+
+        let many_ranges = |prefix: u32| {
+            (0..=MAX_COLOR_DECORATIONS / 2)
+                .map(|index| {
+                    let start = prefix + index as u32 * 2;
+                    json!({"range":{"start":{"line":0,"character":start},
+                        "end":{"line":0,"character":start + 1}},"colorId":"x"})
+                })
+                .collect::<Vec<_>>()
+        };
+        assert!(merge_color_decorations(json!({"sources":[
+            {"sourceId":"a","colorLegend":[{"id":"x","light":"#112233","dark":"#445566"}],
+                "value":{"decorations":many_ranges(0)}},
+            {"sourceId":"b","colorLegend":[{"id":"x","light":"#112233","dark":"#445566"}],
+                "value":{"decorations":many_ranges(MAX_COLOR_DECORATIONS as u32 + 2)}}
+        ]}))
+        .is_err());
+    }
+
     #[test]
     fn results_normalize_lsp_shapes() {
         let span = json!({"start":{"line":1,"character":2},"end":{"line":1,"character":8}});
@@ -901,11 +1349,27 @@ mod tests {
             if let Some(legend) = case.get("legend") {
                 payload["legend"] = legend.clone();
             }
+            if let Some(color_legend) = case.get("colorLegend") {
+                payload["colorLegend"] = color_legend.clone();
+            }
             let decoded = decode_command(payload);
             match case["expected"]["status"].as_str().unwrap() {
                 "accepted" => assert_eq!(
                     decoded.unwrap_or_else(|error| panic!("{name}: {error:?}"))["result"],
                     case["expected"]["value"],
+                    "{name}"
+                ),
+                _ => assert!(decoded.is_err(), "{name}"),
+            }
+        }
+        for case in fixture["merges"].as_array().unwrap() {
+            let name = case["name"].as_str().unwrap();
+            let decoded =
+                decode_command(json!({"kind":"mergeColorDecorations","value":case["value"]}));
+            match case["expected"]["status"].as_str().unwrap() {
+                "accepted" => assert_eq!(
+                    decoded.unwrap_or_else(|error| panic!("{name}: {error:?}"))["decorations"],
+                    case["expected"]["decorations"],
                     "{name}"
                 ),
                 _ => assert!(decoded.is_err(), "{name}"),
