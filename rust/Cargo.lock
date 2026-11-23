@@ -1438,6 +1438,7 @@ dependencies = [
  "lithe-protocol",
  "serde",
  "serde_json",
+ "url",
 ]
 
 [[package]]

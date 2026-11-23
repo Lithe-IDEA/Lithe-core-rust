@@ -573,3 +573,5 @@ package, and runs it through a real Core session of this checkout. It needs
 Go, Rust, Node.js 20.3 or newer, Java (`LITHE_PLUGIN_SDK_JAVA_RUNTIME` or
 `java` on `PATH`) and Maven; `LITHE_PLUGIN_SDK_GO_SAMPLE` names an already
 built `sample-backend`.
+
+Workflow host methods (quick pick, input, previews, diff, view refresh, output, progress, status, clipboard, reveal and HTTP) are documented in the [plugin workflow guide](../../guides/plugin-workflows.md). Discover each method before calling it; wrappers do not grant permissions.

@@ -31,6 +31,12 @@ pub enum ViewEventKind {
     Resize,
     /// The effective or draft setting values changed.
     Settings,
+    /// Backend invalidation of this instance.
+    Refresh,
+    /// A lazy branch changed its expanded state.
+    Expand,
+    /// The viewport reached the next page.
+    LoadMore,
 }
 
 impl ViewEventKind {
@@ -45,6 +51,9 @@ impl ViewEventKind {
             "viewport" => Self::Viewport,
             "resize" => Self::Resize,
             "settings" => Self::Settings,
+            "refresh" => Self::Refresh,
+            "expand" => Self::Expand,
+            "loadMore" => Self::LoadMore,
             _ => return None,
         })
     }
@@ -90,6 +99,8 @@ pub struct ViewEvent {
     pub setting: Option<String>,
     /// A select or activate event: the tree item ID.
     pub item: Option<String>,
+    /// Opaque continuation of a tree load-more event.
+    pub cursor: Option<String>,
     pub viewport: Option<Viewport>,
     /// The width in points the host lays the view out in, on every event
     /// from a host that reports it. List `resize` in a canvas's `on` only
@@ -177,6 +188,7 @@ impl ViewEvent {
             value,
             setting: optional("setting")?,
             item: optional("item")?,
+            cursor: optional("cursor")?,
             viewport,
             width,
         })

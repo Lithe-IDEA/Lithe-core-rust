@@ -279,6 +279,8 @@ export function createHost(channel, callSignal, parentOperationId) {
       dispose: async (subscriptionID) => channel.dispose(subscriptionID),
     }),
     workspace: Object.freeze({
+      reveal: scoped(HOST_METHODS.workspaceReveal),
+
       listContexts: async (options) => request(HOST_METHODS.workspaceListContexts, {}, options),
       getContext: async (context, options) =>
         request(HOST_METHODS.workspaceGetContext, { context: contextReference(context) }, options),
@@ -324,6 +326,8 @@ export function createHost(channel, callSignal, parentOperationId) {
       close: scoped(HOST_METHODS.documentsClose),
     }),
     editor: Object.freeze({
+      showDiff: scoped(HOST_METHODS.editorShowDiff),
+
       getActive: scoped(HOST_METHODS.editorGetActive),
       getSelections: scoped(HOST_METHODS.editorGetSelections),
       applyEdits: scoped(HOST_METHODS.editorApplyEdits),
@@ -334,7 +338,39 @@ export function createHost(channel, callSignal, parentOperationId) {
       registerActions: async (context, params, options) =>
         subscribe(HOST_METHODS.editorRegisterActions, { ...params, context: contextReference(context) }, undefined, options),
     }),
+    views: Object.freeze({
+      refresh: scoped(HOST_METHODS.viewsRefresh),
+    }),
+    output: Object.freeze({
+      create: scoped(HOST_METHODS.outputCreate),
+      append: scoped(HOST_METHODS.outputAppend),
+      clear: scoped(HOST_METHODS.outputClear),
+      show: scoped(HOST_METHODS.outputShow),
+      dispose: scoped(HOST_METHODS.outputDispose),
+    }),
+    progress: Object.freeze({
+      create: (context, params, onEvent, options) => subscribe(HOST_METHODS.progressCreate, { ...params, context: contextReference(context) }, onEvent, options),
+      report: scoped(HOST_METHODS.progressReport),
+      end: async (context, params, options) => {
+        const result = await scoped(HOST_METHODS.progressEnd)(context, params, options);
+        await channel.dispose(params.progressID);
+        return result;
+      },
+    }),
+    statusBar: Object.freeze({
+      setItem: scoped(HOST_METHODS.statusBarSetItem),
+      removeItem: scoped(HOST_METHODS.statusBarRemoveItem),
+    }),
+    clipboard: Object.freeze({
+      readText: scoped(HOST_METHODS.clipboardReadText),
+      writeText: scoped(HOST_METHODS.clipboardWriteText),
+    }),
+    network: Object.freeze({
+      request: scoped(HOST_METHODS.networkRequest),
+    }),
     preview: Object.freeze({
+      openMarkdown: scoped(HOST_METHODS.previewOpenMarkdown),
+
       openHTML: scoped(HOST_METHODS.previewOpenHTML),
     }),
     browser: Object.freeze({
@@ -350,6 +386,9 @@ export function createHost(channel, callSignal, parentOperationId) {
         subscribe(HOST_METHODS.terminalOnExit, { context: contextReference(context), terminalID }, onEvent, options),
     }),
     window: Object.freeze({
+      showQuickPick: scoped(HOST_METHODS.windowShowQuickPick),
+      showInputBox: scoped(HOST_METHODS.windowShowInputBox),
+
       showInformation: scoped(HOST_METHODS.windowShowInformation),
       showWarning: scoped(HOST_METHODS.windowShowWarning),
       showError: scoped(HOST_METHODS.windowShowError),

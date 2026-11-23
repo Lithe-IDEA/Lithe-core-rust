@@ -526,6 +526,7 @@ or removing a command fails until the table changes in the same commit.
 | `plugins.editorActions.decode` | Validate independent action registration, collection or click results |
 | `plugins.hostApi.describe` | Describe backend host methods and their required grants from Core's method table |
 | `plugins.hostApi.authorize` | Check a method, service and current session grants using Core's capability rules; the host still checks session and resource ownership |
+| `plugins.workflow` | Validate workflow requests and project native preview, input, output, progress, status and network plans |
 | `plugins.editorProviders.decode` | Validate editor provider registrations and provider function results |
 | `keymap.decodeImport` | Validate a normalized shortcut import against the host's action catalog |
 | `keymap.planImportSources` | Plan the selected provider's declared shortcut source inputs |
@@ -8826,3 +8827,19 @@ editor and may explicitly set selected default handlers. macOS associates conten
 types, so extensions sharing a type may change together. The installed package
 stays read-only. No regex or all-files catch-all
 registration is permitted. See [fixtures](../fixtures/application/file-associations-v1.json).
+
+## Plugin workflow projections (`plugins.workflow`)
+
+`operation:"prepare"` takes `{method,params,manifest?}` and returns strictly checked params
+and `{textBytes,httpHeaderBytes,outputLines,outputBytes,resources}` limits. Network and
+preview defaults, resource preview types and status command declarations are resolved
+here. `manifest` is the validated calling session manifest when `commandID` is used. `quickPick` takes `{items,query}` and returns source `indices`;
+`input` takes `{pick,value}` and returns `{valid}`. `status` takes bounded
+`items:[{id,priority}]` and returns ordered `ids`. `treePage` takes `{cursor,
+lastCursor,count,lastCount,rows,lastVisible}` and returns `{load}` only near the
+end when both cursor and retained count advance. `output` takes `{open,text}`
+and returns `{lines,open,maxLines,maxBytes}` as one bounded increment, never the
+retained history. Unknown operations/fields and malformed projection input fail
+with `invalid_request`. This hot path is excluded from request tracing; its text
+may contain secrets. Public backend methods and lifecycle are specified in the
+[plugin contract](../../shared/plugins/contract/v1/README.md#workflow-host-methods).

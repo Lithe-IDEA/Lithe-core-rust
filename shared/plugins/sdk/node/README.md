@@ -574,3 +574,5 @@ The tests use a bounded in-memory host (`test/harness.mjs`), which plugin
 authors can copy to test their own backends without starting Lithe. The
 end-to-end script needs Rust, Node.js 20.3 or newer, Go 1.27.4 or newer, Java
 (`LITHE_PLUGIN_SDK_JAVA_RUNTIME` or `java` on `PATH`) and Maven.
+
+Workflow host methods (quick pick, input, previews, diff, view refresh, output, progress, status, clipboard, reveal and HTTP) are documented in the [plugin workflow guide](../../guides/plugin-workflows.md). Discover each method before calling it; wrappers do not grant permissions.

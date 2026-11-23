@@ -153,6 +153,7 @@ pub(crate) fn is_hot(method: &str) -> bool {
             method,
             "document.classifyText"
                 | "document.lifecycle"
+                | "plugins.workflow"
                 | "markdown.render"
                 | "markdown.outline"
                 | "markdown.resolveReference"

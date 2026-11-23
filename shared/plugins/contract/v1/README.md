@@ -190,9 +190,9 @@ symbolic links. A host treats an installed package as read-only.
 
 Unknown fields are refused (`plugin.manifest.invalid`) so a host rejects a
 package instead of ignoring part of it. A new optional field in an existing
-section needs no new version; a change to what a section means gives the one
-capability that owns it version `1`, and only plugins that use that change
-declare it (see [Versioning](#versioning)).
+section needs no new version. A semantic change does not automatically justify
+a new capability version; it must satisfy [Versioning](#versioning). Existing
+versions and strict unknown-field rejection remain in force.
 
 ### Languages
 
@@ -959,14 +959,15 @@ files sorted by path, or an empty list when no project marker is present.
 
 ## Versioning
 
-Every version in this contract is `0`. A change adds a version to exactly one
-place, so a plugin states what it needs and a host states what it runs, each
-per capability.
+Version series start at `0`; several capabilities already support `1` or `2`.
+Use the [capability and protocol tables](../../reference/capabilities-and-versions.md)
+and the target host's actual declarations for existing support. A plugin states
+what it needs and a host states what it runs, each per capability.
 
 1. **Capabilities start at `0`.** A manifest lists the capabilities it uses in
-   `requires`, each with version `0`. A capability version names one manifest
-   section and, when the capability owns one, the runtime protocol that goes
-   with it.
+   `requires`, each at the lowest existing version that covers its actual use.
+   A capability version names one manifest section and, when the capability owns
+   one, the runtime protocol that goes with it.
 2. **A runtime protocol has no version of its own.** Its version is the owning
    capability's, and a host offers exactly that version
    (`{"versions": [<that version>]}`; the process answers `{"version": <that
@@ -978,11 +979,27 @@ per capability.
    all the others are `0`.
 3. **A host declares a capability version when it can serve every form of
    it.** See [Host capabilities](#host-capabilities).
-4. **A future change gives one capability version `1`.** The manifest section
-   and the protocol move together, a plugin that uses the change lists
-   `"<capability>": 1`, and every other plugin keeps `0` and stays installable
-   wherever it was. An additive optional field in an existing section or
-   message needs no new version.
+4. **Reuse and compatible extension come first.** API-01–44 classify domains,
+   not a closed method list. Add general methods, notifications, optional fields,
+   or declarations within the appropriate domain when existing interfaces are
+   insufficient. An additive optional field preserves its omission behavior
+   and needs no new version; strict unknown-field validation still applies.
+5. **Specific requirements must not raise any system API version.** This covers
+   plugin-, language-server-, and build-tool-specific needs, including base API,
+   schema, individual capability, process protocol, and public document-format
+   versions. Renaming a capability, protocol, or contract directory does not
+   bypass the restriction. Keep tool-specific knowledge in plugins or upstream
+   tools, with general typed declarations for data the host must understand.
+6. **Only a public, non-specific interface change may propose a new version,
+   and only when compatible extension cannot safely express it.** The PR must
+   explain the public use, why optional fields or discovery are insufficient,
+   why old behavior cannot remain, affected consumers, and migration. Only the
+   owner of that change may gain a version; unrelated versions stay unchanged.
+   Security requirements or an old host rejecting unknown fields do not alone
+   justify a new version. Existing `1`, `2`, and later versions remain valid.
+   The [API PR guide (Chinese)](../../guides/plugin-api-pr-guide.zh-CN.md)
+   describes compatibility, release order, diagnostics, error-code checks, and
+   support in all four official SDKs; new examples may follow later.
 
 `pluginAPIVersion` versions only the base fields: `schemaVersion`, `id`,
 `displayName`, `version`, `vendor`, `permissions`, `activationEvents`,
@@ -1014,7 +1031,7 @@ contract version: the plugin that exports the function owns it.
   lowerCamelCase identifiers of at most 64 characters; versions are
   non-negative integers.
 - Core reads `requires` before it decodes any section. A capability this
-  contract does not define, or a version other than `0`, is
+  contract does not define, or a version absent from its support table, is
   `plugin.api.unsupported` with `field: "requires.<capability>"`, even when the
   manifest also holds a section Core does not know, so the user learns which
   capability needs a newer Lithe instead of seeing an unknown field.
@@ -3832,9 +3849,10 @@ Two rules keep these directions from forming a loop:
   `pluginAPIVersion` nor any `requires` version. Only a function that
   another plugin may call, and a call to such a function, are declared, in
   [`pluginFunctions`](#cross-plugin-calls).
-- A new kind of domain implementation is a new version of the capability that
-  owns it, so only plugins that use it are filtered from hosts that cannot run
-  it.
+- A new kind of domain implementation follows [Versioning](#versioning); it
+  does not automatically require a new capability version. Prefer compatible
+  typed declarations and discovery, and define how an unsupported host refuses
+  or degrades the new path.
 
 ### Negotiation
 
@@ -4309,7 +4327,7 @@ methods. Unknown options fail before side effects with `unsupportedOption`.
 | `workspace/trash` | `workspace.files.write` | `resource` | `null` after moving it to the system trash |
 | `workspace/findText` | `workspace.search` | root `resource,pattern,fileMask?,caseSensitive?,wholeWords?,regularExpression?,cursor?,limit?` | same envelope, matches `{resource,line,preview,range:null}`; the upstream search owner currently reports lines, not exact match spans |
 | `editor/open`, `editor/reveal` | `editor.open` | `resource,activation?` (`select` or `background`), `range?,tab?` (`regular` only) | document identity/version and state, `wasAlreadyOpen,windowIsForeground,appliedSelection` |
-| `preview/openHTML` | `preview.open` | HTML `resource,presentation?` (`editorAndPreview` or `previewOnly`), `range?` | open result plus `usesLiveBuffer:true,presentation`; explicitly changes the existing tab's presentation |
+| `preview/openHTML`, `preview/openMarkdown` | `preview.open` | `resource` or inline `id,title,text`; `presentation?`, `range?` | open result plus `usesLiveBuffer:true,presentation`; see [Workflow host methods](#workflow-host-methods) |
 | `browser/openExternal` | `browser.open` | exactly one of HTTP(S) `url` or HTML `resource`; `unsaved?` (`openSavedFile` or `requireSaved`) for a resource | `{opened:true,source:"web"|"disk",hasUnsavedChanges?}` |
 | `window/showInformation`, `window/showWarning`, `window/showError` | `window.messages` | `text,actions?` | `{selectedIndex}`; zero-based, or `null` on dismissal |
 
@@ -4431,7 +4449,134 @@ On `versionConflict`, reread and recompute; on `contextExpired`, resolve the
 original target again, never substitute the focused window. `busy`/`rateLimited`
 may be retried with bounds; `permissionDenied`/`readOnly` need user intervention.
 
-#### Saving documents and changing files
+### Workflow host methods
+
+All requests below use `lithe/host/` and a live `context: {contextID,generation}`.
+Each permission requires `backend` and grants only its listed methods; aggregate
+service names do not grant them. Discover availability with `getCapabilities`.
+Unknown fields return `plugin.host.unsupportedOption`; wrong shapes, values,
+IDs or budgets return `plugin.host.invalidParams` before native side effects.
+Machine requests use the existing 30-second deadline. Quick pick and input box
+wait for the user without a machine deadline; cancellation, session end or
+context closure removes the queued prompt. Input shares window-message queue
+and frequency limits. Native hosts must own all tasks and release their leases.
+
+| Method | Permission | Fields besides `context` | Result |
+| --- | --- | --- | --- |
+| `window/showQuickPick` | `window.input` | `items`, `title?`, `placeholder?`, `canPickMany?` | `{selectedIDs:[id]}` or `null` when dismissed |
+| `window/showInputBox` | `window.input` | `title?`, `prompt?`, `placeholder?`, `value?`, `password?` | `{value:string}` or `null` when dismissed |
+| `preview/openMarkdown`, `preview/openHTML` | `preview.open` | exactly one of `resource` or `text`; inline also requires `id,title`; `presentation?`, `range?` | open result plus `usesLiveBuffer:true,presentation` |
+| `editor/showDiff` | `editor.open` | `original,modified`, `title?`, `originalTitle?`, `modifiedTitle?` | `{opened:true}` |
+| `views/refresh` | `views.refresh` | `instance` of an open view | `{refreshed:true}` |
+| `output/create` | `output.write` | `name` | `{channelID}` |
+| `output/append` | `output.write` | `channelID,text` | `null` |
+| `output/clear`, `output/show`, `output/dispose` | `output.write` | `channelID` | `null` |
+| `progress/create` | `window.progress` | `title,cancellable?` | `{progressID,subscriptionID}` (the same ID) |
+| `progress/report` | `window.progress` | `progressID,message?,percentage?` | `null` |
+| `progress/end` | `window.progress` | `progressID` | `null` |
+| `statusBar/setItem` | `statusBar.write` | `id,text,tooltip?,commandID?,priority?` | `{id}` |
+| `statusBar/removeItem` | `statusBar.write` | `id` | `null` |
+| `clipboard/readText` | `clipboard.read` | none | `{text}` |
+| `clipboard/writeText` | `clipboard.write` | `text` | `null` |
+| `workspace/reveal` | `workspace.reveal` | `resource` | `null` |
+| `network/request` | `network.request` | `url,method?,headers?,body?,timeoutMilliseconds?,maximumResponseBytes?` | `{status,headers,body,encoding}` |
+
+Quick-pick `items` contains at most 1000 objects `{id,label,description?,detail?,picked?}`.
+IDs are unique credential keys (1–128 ASCII letters, digits, `.`, `_`, `:`, `-`).
+Label/description allow 512 UTF-8 bytes, detail 1024; labels are nonempty.
+Filtering matches every case-insensitive query word against label/description/detail
+and keeps source order and stable IDs. Multiple selection returns IDs in source
+order. No selection returns an empty array. The query is at most 1024 bytes.
+Input text is at most 16 KiB; password fields are masked and reject nonempty
+prefills. Empty accepted text differs from dismissal. Titles/placeholders are
+at most 512 bytes, input prompt 2048; all are single-line without control characters.
+Secrets and input values never enter logs or host history.
+
+Inline previews and each diff side allow 128 KiB of UTF-8; inline IDs use the
+same credential-key alphabet and titles are nonempty, single-line, at most 256
+bytes. Diff titles are optional and at most 256 bytes. Inline previews are
+read-only, keyed within the requesting session and context, and remain until
+the user closes the tab or context. They do not write workspace files or bundle
+resources. A new call with the same ID updates its tab. Inline Markdown cannot
+resolve local or relative resources; inline HTML serves only its supplied
+page and cannot read adjacent local files. Remote web content follows the
+existing preview policy. Resource previews use the live editor buffer. Markdown
+resources require `.md`, `.markdown` or `.mdown`; HTML resources require `.html`,
+`.htm` or `.xhtml` (case-insensitive), otherwise `unsupportedOption` is returned
+before opening an editor tab.
+`presentation` defaults to `editorAndPreview`, or is `previewOnly`; `range`
+uses the normal one-based UTF-16 range and reveals its start as a caret.
+A missing native WebView may return `unsupportedOption` for HTML.
+
+Output, progress and status resources are session/context owned. There are at
+most 16 active limited registrations per backend session, shared with other
+limited registrations; overflow is `limitExceeded`. Foreign, expired or
+already removed workflow IDs return `notFound`. Context closure, disable,
+update and backend end release their UI resources. Output name and progress
+title are nonempty, single-line, at most 256 bytes. Output transfers contain
+at most 128 KiB; completed lines and unfinished tails retain at most 16 KiB
+per line, 4000 lines and 512 KiB per channel, dropping oldest content at UTF-8
+boundaries. `clear` also clears the unfinished line. `show` selects its channel.
+Progress `message` is at most 1024 bytes and `percentage` is finite in 0–100;
+omitted report fields keep their previous value. User cancellation emits one
+`subscriptions/notify` with `{subscriptionID,sequence:1,event:{cancelled:true}}`;
+further reports return `cancelled`, and the backend must end or dispose it.
+`subscriptions/dispose` also ends progress; SDK `progress.end` releases the
+local event route. Status IDs are opaque and namespaced by session/context;
+text is nonempty and at most 256 bytes, tooltip 1024, priority an integer in
+-1000–1000 (default 0). Higher priority displays first, ties use host-stable IDs.
+A `commandID`, if present, names a command declared by the same plugin.
+
+`views/refresh` only invalidates that plugin/session/context's visible instance;
+unknown or closed instances return `notFound`. Refreshes coalesce with in-flight
+calls and retain the old view until a valid result arrives. Tree items may set
+`hasChildren:true` before their children are available. Expanding/collapsing
+sends `{event:"expand",node,item,value:boolean}`. A tree may set an opaque
+`cursor` (at most 256 bytes). Near its last eight visible rows, the host sends
+`{event:"loadMore",node,cursor}`. The backend returns the entire retained
+range or patches it; the host never treats a result as an append-only page.
+Automatic loading stops if the cursor repeats or the top-level item count
+does not grow. No cursor means exhaustion. Failures retain the tree and require
+explicit Retry. Item IDs retain expansion/selection across replacement and
+refresh. Refresh invokes the view with `event:"refresh"` and the same instance.
+Existing view size, depth and item budgets still apply to the retained range.
+
+Clipboard text is at most 128 KiB; oversized reads return `limitExceeded` rather
+than truncate. No clipboard value is logged. `workspace/reveal` and resource
+browser/preview calls require a local, contained `{rootID,path}`; they reuse
+open-path canonical containment checks and their documented check-to-open race,
+not the stronger explicit file-read handle guarantee. Browser resources must
+be existing regular HTML files. `unsaved` defaults to `requireSaved`, which
+returns `busy` for a dirty/saving document; `openSavedFile` opens disk content
+and returns `hasUnsavedChanges`. The browser result uses `source:"disk"`.
+Neither choice silently saves. A URL request cannot include `resource` or
+`unsaved`, uses `source:"web"`, and accepts only HTTP(S) without userinfo.
+
+`network/request` runs on the desktop machine and uses its proxy configuration
+and platform certificate roots. It grants outbound HTTP(S), including local
+services; it does not grant file, process, browser-cookie, keychain or identity
+access. There is no shared cookie jar and no inherited browser authorization;
+plugins explicitly supply any Authorization/Cookie header from their own
+credentials. URL limit is 8192 bytes, no userinfo, control characters or fragment.
+Methods are GET (default), POST, PUT, PATCH, DELETE, HEAD, OPTIONS.
+At most 64 headers have token names up to 128 bytes and values up to 8192;
+CR/LF/NUL and Host, Connection, Content-Length, Transfer-Encoding,
+Proxy-Authorization, Proxy-Connection, Upgrade, Trailer and TE are refused.
+The body is UTF-8, at most 128 KiB. Timeout is an integer 1–30000 ms (default
+30000); response headers are bounded to 16 KiB by the transport; response body budget is 1–131072 bytes (default 131072). Redirects are
+returned without following, so secrets do not cross origins. HTTP 4xx/5xx are
+normal responses. `headers` maps names to arrays of strings; `body` is a string
+with `encoding:"utf8"` for valid UTF-8, otherwise standard `base64`.
+Oversized responses return `limitExceeded`; transport errors are `failed` with
+no URL/query/header/body details. Cancellation and timeout use the existing
+`cancelled` and `timeout` codes. Closing context/session cancels in-flight I/O.
+Remote backend callers may request desktop HTTP; resource operations still
+refuse remote authority. Downloads to files and authentication sessions are
+not part of this method.
+
+See [Plugin workflows](../../guides/plugin-workflows.md) for SDK usage.
+
+### Saving documents and changing files
 
 `documents.save` grants `documents/save`, `documents/saveAs` and
 `documents/close`. `workspace.files.write` grants `workspace/create`,

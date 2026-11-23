@@ -8,7 +8,7 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 
 读这张表前先知道三件事：
 
-- **本页描述契约，不描述某个宿主。** 所有 `lithe/host/*` 方法由 Rust Core 校验、宿主执行。当前的宿主是 Lithe 桌面端：它声明了哪些能力、哪些部分尚未呈现，见[版本对照页](capabilities-and-versions.md#能力版本requires)。包含 API-06–08 Core 与桌面改动的构建在窗口附着后提供本地工作区的 `workspace/readDirectory`、`stat`、`readFile`、`watch`、`findFiles`、`findText`；旧构建不会因此获得能力。`preview/openHTML` 尚未注册，申请对应权限的插件会被宿主拒绝。
+- **本页描述契约，不描述某个宿主。** 所有 `lithe/host/*` 方法由 Rust Core 校验、宿主执行。当前的宿主是 Lithe 桌面端：它声明了哪些能力、哪些部分尚未呈现，见[版本对照页](capabilities-and-versions.md#能力版本requires)。包含 API-06–08 Core 与桌面改动的构建在窗口附着后提供本地工作区的 `workspace/readDirectory`、`stat`、`readFile`、`watch`、`findFiles`、`findText`；旧构建不会因此获得能力。新增工作流方法需要包含本次 Core 和桌面接线的构建；旧宿主不因此获得新能力。
 - **运行时以 `getCapabilities` 为准。** 某个方法出现在本表，不代表当前宿主一定提供；后端调用前先查 `lithe/host/getCapabilities` 返回的 `services`。
 - **计划中的条目没有可用方法名。** 第二张表只描述要做的能力，不列候选方法名；在契约正式写入之前，不要按猜测的名字调用。
 
@@ -28,7 +28,7 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | --- | --- | --- | --- | --- | --- |
 | API-01 | 能力发现、激活与订阅 | 已公开 | [`getCapabilities`](../contract/v1/README.md#workspace-contexts-and-capability-discovery)、`backend` 的 `onWorkspaceOpen` 激活、`subscriptions/dispose` | 新安装的后端仍需重启后才能启动 | [插件后端](domains/backend.md) |
 | API-02 | 命令 | 部分完成 | [`ui` 不打开工具窗口的命令](../contract/v1/README.md#backend-only-commands)和 `commands/didRun` 通知 | 运行期动态注册命令、带返回结果的执行 | [界面](domains/ui.md) |
-| API-03 | 菜单、快捷键、上下文键、状态栏 | 部分完成 | 已有的命令放置位置（`ui.commands`） | 通用菜单、快捷键贡献、上下文键、状态栏 | [界面](domains/ui.md) |
+| API-03 | 菜单、快捷键、上下文键、状态栏 | 部分完成 | 已有的命令放置位置（`ui.commands`）；`statusBar/setItem`、`removeItem` | 通用菜单、快捷键贡献、上下文键 | [界面](domains/ui.md) |
 | API-04 | 工作区与文档事件 | 部分完成 | `workspace/didChangeContexts`、`workspace/watch` 的文件事件 | 文档、选区、活动编辑器的变化事件 | [插件后端](domains/backend.md) |
 | API-05 | 工作区上下文 | 已公开 | [`workspace/listContexts`、`getContext`、`getFolders`](../contract/v1/README.md#workspace-contexts-and-capability-discovery)，带 `contextID`/`generation` 与 `rootID` | — | [插件后端](domains/backend.md) |
 | API-06 | 文件读取 | 已公开 | [`workspace/readDirectory`、`stat`、`readFile`](../contract/v1/README.md#public-document-file-and-window-methods)；每次最多读 128 KiB；Core 执行有界分页和逐段拒绝链接的磁盘读取 | 远程工作区不支持；桌面端需包含 API-06 Core 与桌面改动的构建，Windows 原生行为待验收 | [插件后端](domains/backend.md) |
@@ -37,16 +37,17 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | API-09 | 文档与选区读取 | 已公开 | `documents/list`、`documents/getSnapshot`、`editor/getActive`、`editor/getSelections`，包含未保存状态、版本、编码、换行符 | — | [编辑器](domains/editor.md) |
 | API-10 | 版本化编辑 | 已公开 | `editor/applyEdits`、`replaceSelections`、`insertText`；校验版本，拒绝输入法组字中和只读文档，一批编辑是一次撤销 | — | [编辑器](domains/editor.md) |
 | API-11 | 保存与文件变更 | 已公开 | [`documents/save`、`saveAs`、`close`](../contract/v1/README.md#saving-documents-and-changing-files)（权限 `documents.save`）和 `workspace/create`、`rename`、`copy`、`trash`（权限 `workspace.files.write`）；经文档所有者保存，关闭前先保存，从不覆盖、不丢弃修改、不永久删除，删除只移到系统废纸篓；需要用户选择时直接拒绝，不弹询问 | 一次保存全部文档、永久删除；保存前事件见 API-43 | [编辑器](domains/editor.md)、[插件后端](domains/backend.md) |
-| API-12 | 多文件编辑、虚拟文档、diff | 部分完成 | [内容提供者 `documents/registerContentProvider`](../contract/v1/README.md#content-providers)：把一个 URI scheme 绑定到后端函数，打开该 scheme 的文档时宿主取只读内容（≤1 MiB，每个工作区窗口每个 scheme 一个） | 跨文件编辑、对比视图 | [编辑器](domains/editor.md) |
-| API-13 | 原生视图数据源 | 部分完成 | [插件视图](../contract/v1/README.md#plugin-views)：工具窗口和[设置区域](../contract/v1/README.md#settings-regions)里，后端视图函数（经 `lithe/function/invoke` 按事件调用）返回界面树（宿主控件、树、显示插件工具解析结果的工具行）和画布节点，或按节点 ID 的补丁；Core 命令 `plugins.ui.applyResult` 按预算和界面规则校验每个结果，宿主用原生控件绘制 | 插件主动推送视图、树的懒加载 | [界面](domains/ui.md) |
+| API-12 | 多文件编辑、虚拟文档、diff | 部分完成 | [内容提供者 `documents/registerContentProvider`](../contract/v1/README.md#content-providers)：把一个 URI scheme 绑定到后端函数，打开该 scheme 的文档时宿主取只读内容（≤1 MiB，每个工作区窗口每个 scheme 一个） ；`editor/showDiff` 对比有界只读内联文本 | 跨文件编辑 | [编辑器](domains/editor.md) |
+| API-13 | 原生视图数据源 | 部分完成 | [插件视图](../contract/v1/README.md#plugin-views)：工具窗口和[设置区域](../contract/v1/README.md#settings-regions)里，后端视图函数（经 `lithe/function/invoke` 按事件调用）返回界面树（宿主控件、树、显示插件工具解析结果的工具行）和画布节点，或按节点 ID 的补丁；Core 命令 `plugins.ui.applyResult` 按预算和界面规则校验每个结果，宿主用原生控件绘制 ；`views/refresh`、懒加载分支和游标分页 | 更细粒度的按父节点分页 | [界面](domains/ui.md) |
 | API-14 | 网页消息 | 部分完成 | [包内网页](../contract/v1/README.md#web-content)的桥接、状态和生命周期 | 通用的页面双向消息 | [界面](domains/ui.md) |
 | API-15 | 打开与定位 | 部分完成 | `editor/open`、`editor/reveal`，返回 `documentID` 和版本 | 传入范围时只把光标放到起点；不能替换预览标签 | [编辑器](domains/editor.md) |
-| API-16 | HTML 预览与外部浏览器 | 已公开 | `preview/openHTML`（`editorAndPreview` 或 `previewOnly`）、`browser/openExternal`（HTTP(S) 地址或已保存的 HTML） | Lithe 桌面端尚未注册 `preview/openHTML`，`browser/openExternal` 只接受 HTTP(S) 地址 | [编辑器](domains/editor.md) |
-| API-17 | 消息、选择、输入 | 部分完成 | `window/showInformation`、`showWarning`、`showError`，带按钮和取消 | 通用的快速选择、输入框、经授权的文件句柄 | [界面](domains/ui.md) |
+| API-16 | HTML 预览与外部浏览器 | 已公开 | `preview/openMarkdown`、`preview/openHTML`（资源或内联文本，`editorAndPreview` 或 `previewOnly`）、`browser/openExternal`（HTTP(S) 地址或已保存的 HTML） | 需要包含本次 Core 与桌面接线的构建；HTML 需要原生 WebView | [编辑器](domains/editor.md) |
+| API-17 | 消息、选择、输入 | 部分完成 | `window/showInformation`、`showWarning`、`showError`，带按钮和取消；`window/showQuickPick`、`showInputBox` | 经授权的文件句柄 | [界面](domains/ui.md) |
+| API-18 | 剪贴板、文件管理器 | 已公开 | `clipboard/readText`、`writeText`、`workspace/reveal` | 需原生桌面适配器 | [工作流](../guides/plugin-workflows.md) |
 | API-19 | 设置 | 部分完成 | [声明式设置 `settings`](../contract/v1/README.md#plugin-settings)；[设置区域 `settingRegions`](../contract/v1/README.md#settings-regions)：在语言、构建系统、编译器页或插件自己的设置标签上放搜索关键词和插件视图，设置搜索按关键词找到页面 | 运行期读取、查看来源、修改设置和设置变化事件 | [设置](domains/settings.md) |
 | API-20 | 存储 | 部分完成 | 插件级 `${stateDir}`、后端和工作区的可写目录（`stateDirectory`）、网页状态；语言服务器按工作区的状态目录，按声明的 [`state.retention`](../contract/v1/README.md#plugin-owned-sessions) 由宿主在后台回收（Core 决定） | 统一的键值存储、配额；用户可见的状态重置入口 | [插件后端](domains/backend.md) |
 | API-21 | 凭据 | 既有能力 | [`credentials/get`、`set`、`delete`](../contract/v1/README.md#host-services)，按插件隔离 | — | [插件后端](domains/backend.md) |
-| API-22 | 输出、日志、进度 | 部分完成 | [插件函数的进度和取消](../contract/v1/README.md#progress)；面向开发者的[结构化诊断日志 `litheLogging`](../contract/v1/README.md#structured-plugin-diagnostics)；[`languageServer/setStatus`](../contract/v1/README.md#language-server-host-methods) 在宿主状态界面显示插件自己的语言服务器准备状态（只有消息和百分比，没有 actions）；[`outputLinkMatchers`](../contract/v1/README.md#output-link-matchers)：插件声明的匹配器让 Run 与测试控制台的输出出现链接 | 独立的输出面板、面向用户的日志和进度 API | [插件后端](domains/backend.md) |
+| API-22 | 输出、日志、进度 | 部分完成 | [插件函数的进度和取消](../contract/v1/README.md#progress)；面向开发者的[结构化诊断日志 `litheLogging`](../contract/v1/README.md#structured-plugin-diagnostics)；[`languageServer/setStatus`](../contract/v1/README.md#language-server-host-methods) 在宿主状态界面显示插件自己的语言服务器准备状态（只有消息和百分比，没有 actions）；[`outputLinkMatchers`](../contract/v1/README.md#output-link-matchers)：插件声明的匹配器让 Run 与测试控制台的输出出现链接；`output/create / append / clear / show / dispose`、`progress/create / report / end` | 结构化输出附件 | [插件后端](domains/backend.md) |
 | API-23 | 工具链与受管进程 | 部分完成 | [进程启动](../contract/v1/README.md#process-start)、运行时解析、[共享可执行文件候选](../contract/v1/README.md#executable-resolution)、工具定义、工具链提供者（`toolchainProviders`）；[按工具定义 ID 引用运行时](../contract/v1/README.md#tool-references)（清单 `requiresTools`）；后端发起的[`run/start`、`run/stop` 和 `run/didExit` 通知](../contract/v1/README.md#run-and-debug-sessions)，由宿主拥有 Run 会话（权限 `run.start`；工具解析不到可执行文件时返回 `plugin.host.toolUnresolved`）；[安装缺失的命令](../contract/v1/README.md#command-installers)（`commandInstallers`，权限 `commands.install`；版本 1 增加[下载安装](../contract/v1/README.md#download-installers)）；[受管运行时](../contract/v1/README.md#managed-runtimes)（`managedRuntimes`，权限 `runtimes.install`，Core 计划与应答校验，无新增宿主 RPC） | 后端可调用的通用工具链和进程服务；保存固定（pin）、`toolchainConsumers`；Lithe 桌面端未声明 `commandInstallers` 1（下载安装） | [工具链](domains/toolchains.md) |
 | API-24 | 终端 | 部分完成 | [插件自有原生终端](../contract/v1/README.md#plugin-owned-native-terminals) `terminal/create`、`show`、`close`、`reopen`、`dispose`、`onExit`（本机工作区） | 向终端发送文本、读取终端输出 | [插件后端](domains/backend.md) |
 | API-25 | 语言、语法、LSP | 部分完成 | [语言](../contract/v1/README.md#languages)与[语言服务器](../contract/v1/README.md#language-servers)；[`languages` 的包内 TextMate 语法和编辑器配置](../contract/v1/README.md#grammars-and-editor-configuration)及[无后缀文件首行关联](../contract/v1/README.md#first-line-matching)；[编辑器语言功能 Provider `editor/registerProviders`](../contract/v1/README.md#editor-language-feature-providers)，把 `definition`、`hover`、`completion`、`codeLens`、`foldingRange`、`semanticTokens`、`colorDecorations`、`documentLink` 这 8 种类型绑定到普通插件函数；`colorDecorations` 通过颜色 legend 提供可与语义标记叠加的 UTF-16 颜色范围，语言服务器优先、插件结果只补充；插件自有的语言服务器会话：[`languageServers` 的会话声明](../contract/v1/README.md#plugin-owned-sessions)给出后端可用的请求、命令、转发通知，[`languageServer/request`、`notify`、`setStatus`](../contract/v1/README.md#language-server-host-methods) 与 `languageServer/didChangeState`、`languageServer/didReceiveNotification` 两个通知，会话策略由 Core 执行；[`launch.kind: "backend"`](../contract/v1/README.md#backend-resolved-launch) 由插件后端决定启动方式 | 符号、格式化、重命名、Code Action、签名帮助、内联提示、运行期传入 JSON 动态注册高亮；远程工作区中由后端决定启动方式的服务器 | [语言](domains/languages.md)、[编辑器](domains/editor.md) |
@@ -57,6 +58,7 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | API-33 | 项目生成器 | 既有能力 | [`projectGenerators`](../contract/v1/README.md#project-generators) | — | [项目生成器](domains/project-generators.md) |
 | API-35 | 插件间调用与依赖 | 部分完成 | 第一阶段：[`pluginFunctions`](../contract/v1/README.md#cross-plugin-calls)（清单 `exports`、`calls` 声明，不授予清单权限）与 [`functions/providers`、`functions/invoke`](../contract/v1/README.md#discovery-and-invocation)：经 Core 中转，调用另一个已启用插件导出的函数；信任不传递，不是安装依赖；远程工作区的上下文同样中转 | 依赖与导出的安装闭包、版本求解、远程 Provider；在只于启动时注册后端插件的宿主上，新安装或更新的后端插件要重启 Lithe 后才会出现在 `providers` 里（见 [Hot activation](../contract/v1/README.md#hot-activation)） | [插件后端](domains/backend.md) |
 | API-37 | 环境信息与语言包 | 部分完成 | `getCapabilities` 返回协议版本、可用方法、限制和后端运行位置（`backendAuthority`）；插件设置文字的[包内翻译 `l10n/<语言>.json`](../contract/v1/README.md#translations)，按界面语言挑选，缺的回退到清单原文；翻译可为设置区域追加其他语言的搜索关键词；插件视图事件带界面语言，后端按它返回文字 | 设置以外插件文字的翻译、环境信息、语言和主题变化事件 | [插件后端](domains/backend.md)、[设置](domains/settings.md) |
+| API-38 | 受管网络 | 部分完成 | `network/request`：可取消、有界 HTTP(S) | 下载文件、身份验证会话 | [工作流](../guides/plugin-workflows.md) |
 | API-40 | 工作区 authority | 部分完成 | [工作区上下文](../contract/v1/README.md#workspace-contexts-and-capability-discovery)带 `local` 或 `remote`，远程的另带远端主机的 `platform`（`os`、`arch`）；`workspace/getHostPaths` 单独给出根目录在远端主机上的路径；文件和编辑器方法对远程上下文明确返回 `plugin.host.authorityUnsupported`；远程专用的失败码 `remoteDisconnected`、`platformUnavailable` | 远程执行（进程、语言服务器、调试器在远端主机上运行）、贡献的运行位置 `placement` | [插件后端](domains/backend.md)、[远程工作区](../guides/plugin-backend-remote-workspaces.md) |
 | API-41 | 激活事件与启动预算 | 部分完成 | [`onWorkspaceOpen`](../contract/v1/README.md#permissions-and-activation)、`onCommand`、后台两路并发启动、`initialize` 超时、有界通知队列 | 按工作区内容匹配激活、全局冷启动预算 | [插件后端](domains/backend.md) |
 
@@ -64,13 +66,11 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 
 | ID | 名称 | 状态 | 计划提供 |
 | --- | --- | --- | --- |
-| API-18 | 剪贴板、Finder | 未做 | 剪贴板读写、在 Finder 中显示 |
 | API-26 | 诊断集合 | 未做 | 后端推送的诊断集合，带文档版本；现有的 LSP 诊断不属于这个 API |
 | API-28 | 自定义编辑器 | 未做 | 插件自有文档的编辑器，含保存、撤销、恢复 |
 | API-32 | 服务 | 未做 | 通用服务提供者（仍是提案） |
 | API-34 | IDE/AI/MCP | 未做 | 插件可用的 IDE、AI、MCP 能力与授权 |
 | API-36 | WASM | 未做 | WASM/WASI 运行时 |
-| API-38 | 受管网络 | 未做 | 宿主代为执行的网络请求和下载 |
 | API-39 | 身份验证 | 未做 | 身份验证会话和提供者 |
 | API-42 | 内置 Git 只读快照 | 未做 | 内置 Git 状态的只读快照和变化事件 |
 | API-43 | 保存前事件 | 未做 | 保存前事件，以及有时限的保存前编辑 |
@@ -90,6 +90,8 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | --- | --- | --- | --- | --- |
 | API-01、API-37 | `getCapabilities` | 查询协商的协议版本、后端运行位置（`backendAuthority`）、当前可用的服务和限制；由 Core 直接回答 | 每个插件会话都有 | 0 |
 | API-01 | `subscriptions/dispose` | 取消一个订阅，即 `workspace/watch`、`editor/registerActions`、`terminal/onExit` 返回的 `subscriptionID`；未知或已取消的 ID 也返回 `null` | 每个插件会话都有 | 0 |
+| API-03 | `statusBar/setItem` | 创建或替换状态项；命令须属于本插件清单 | `statusBar.write` | 0 |
+| API-03 | `statusBar/removeItem` | 移除自己的状态项 | `statusBar.write` | 0 |
 | API-05 | `workspace/listContexts` | 列出当前的工作区上下文，带变化序号 `revision` | `workspace.metadata` | 0 |
 | API-05 | `workspace/getContext` | 读取一个工作区上下文 | `workspace.metadata` | 0 |
 | API-05 | `workspace/getFolders` | 列出上下文的根目录，每个根目录带 `rootID` | `workspace.metadata` | 0 |
@@ -113,17 +115,33 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | API-11 | `workspace/rename` | 重命名或移动文件、目录；先保存其下打开的文档，文档跟着文件走 | `workspace.files.write` | 0 |
 | API-11 | `workspace/copy` | 复制文件或目录到一个不存在的目标，符号链接保持为链接 | `workspace.files.write` | 0 |
 | API-11 | `workspace/trash` | 先保存并关闭其下打开的文档，再把文件或目录移到系统废纸篓；不永久删除 | `workspace.files.write` | 0 |
+| API-12 | `editor/showDiff` | 对比两份只读内联文本 | `editor.open` | 0 |
 | API-12 | `documents/registerContentProvider` | 把一个 URI scheme 绑定到后端函数，打开该 scheme 的文档时宿主调用函数取只读内容（≤1 MiB），返回 `subscriptionID`；用 `subscriptions/dispose` 撤销 | `documents.contentProvider` | 0 |
+| API-13 | `views/refresh` | 使当前会话拥有的可见视图失效 | `views.refresh` | 0 |
 | API-15 | `editor/open` | 在编辑器中打开文件，没有缓冲区时从磁盘读取；可以前台或后台打开，并定位光标 | `editor.open` | 0 |
 | API-15 | `editor/reveal` | 参数和 `editor/open` 相同，但只处理已打开的文件；文件没打开时返回 `plugin.host.notFound`，不会从磁盘打开 | `editor.open` | 0 |
-| API-16 | `preview/openHTML` | 打开 HTML 文件的预览（`editorAndPreview` 或 `previewOnly`），预览使用实时缓冲区 | `preview.open` | 0 |
-| API-16 | `browser/openExternal` | 在外部浏览器打开 HTTP(S) 地址或已保存的 HTML 文件 | `browser.open` | 0 |
+| API-16 | `preview/openMarkdown` | 预览 Markdown 资源（`.md`、`.markdown`、`.mdown`）或只读内联文本 | `preview.open` | 0 |
+| API-16 | `preview/openHTML` | 预览 HTML 资源（`.html`、`.htm`、`.xhtml`）的实时缓冲区或只读内联文本；默认 `editorAndPreview` | `preview.open` | 0 |
+| API-16 | `browser/openExternal` | 在外部浏览器打开 HTTP(S) 地址或已保存的 HTML 文件；默认 `requireSaved` | `browser.open` | 0 |
+| API-17 | `window/showQuickPick` | 选择一个或多个稳定条目 ID | `window.input` | 0 |
+| API-17 | `window/showInputBox` | 请求文本或掩码密码输入 | `window.input` | 0 |
 | API-17 | `window/showInformation` | 显示信息消息，可以带按钮，返回用户点的按钮序号 | `window.messages` | 0 |
 | API-17 | `window/showWarning` | 显示警告消息，用法同 `showInformation` | `window.messages` | 0 |
 | API-17 | `window/showError` | 显示错误消息，用法同 `showInformation` | `window.messages` | 0 |
+| API-18 | `clipboard/readText` | 读取系统剪贴板文本 | `clipboard.read` | 0 |
+| API-18 | `clipboard/writeText` | 写入系统剪贴板文本 | `clipboard.write` | 0 |
+| API-18 | `workspace/reveal` | 在文件管理器中显示已保存资源 | `workspace.reveal` | 0 |
 | API-21 | `credentials/get` | 读取本插件保存的密钥，没有时为 `null` | `credentials.store` | 0 |
 | API-21 | `credentials/set` | 保存密钥，最多 16 KiB | `credentials.store` | 0 |
 | API-21 | `credentials/delete` | 删除密钥，没有保存过也返回 `null` | `credentials.store` | 0 |
+| API-22 | `output/create` | 创建独立输出通道 | `output.write` | 0 |
+| API-22 | `output/append` | 追加有界输出文本 | `output.write` | 0 |
+| API-22 | `output/clear` | 清空输出通道 | `output.write` | 0 |
+| API-22 | `output/show` | 显示输出通道 | `output.write` | 0 |
+| API-22 | `output/dispose` | 释放输出通道 | `output.write` | 0 |
+| API-22 | `progress/create` | 创建可取消的进度 | `window.progress` | 0 |
+| API-22 | `progress/report` | 更新进度消息和百分比 | `window.progress` | 0 |
+| API-22 | `progress/end` | 结束进度 | `window.progress` | 0 |
 | API-22、API-25 | `languageServer/setStatus` | 在宿主状态界面显示插件自己的语言服务器准备状态（`preparing`、`ready`、`degraded`、`failed`，可带消息和百分比） | `languageServer.request` | 0 |
 | API-23 | `run/start` | 启动宿主拥有的 Run 会话（Run 窗口条目、控制台、停止按钮）；可执行文件只能是工具定义 ID 或插件包内文件，可带临时文件、输出编码、调试和再次运行，返回 `runID` | `run.start` | 0 |
 | API-23 | `run/stop` | 按 `runID` 或 `sessionID` 停止本插件启动的运行或调试会话；不带 `context` | `run.start` | 0 |
@@ -143,6 +161,7 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | API-30 | `debug/start` | 在本插件自己声明的调试适配器上启动 launch 或 attach 调试会话，返回 `sessionID` | `debug.start` | 0 |
 | API-35 | `functions/providers` | 列出导出某函数、已启用、且不是调用方自己的插件及其导出版本 | 无清单权限，需在 `pluginFunctions.calls` 声明该函数 | 0 |
 | API-35 | `functions/invoke` | 经 Core 调用另一个插件导出的函数，可带 `parentOperationID` 标明所属调用链，返回 `{value}` | 无清单权限，需在 `pluginFunctions.calls` 声明该函数 | 0 |
+| API-38 | `network/request` | 使用宿主代理策略发送有界 HTTP 请求 | `network.request` | 0 |
 | API-40 | `workspace/getHostPaths` | 远程上下文的根目录在远端主机上的绝对路径 `hostPath`，可用 `rootIDs` 指定根目录和顺序；只用在远端运行的进程参数、工作目录和语言服务器、调试器配置里；本地上下文返回 `plugin.host.authorityUnsupported` | `workspace.metadata`，单独的方法授权（只有服务授权得到 `permissionDenied`） | 0 |
 
 快捷键导入提供者另有 `lithe/host/keymapImport/listInputs`、`lithe/host/keymapImport/readChunk` 两个方法，属于 `litheKeymapImport` 协议，不在 API-01–44 内，见[快捷键导入](domains/keymap-import.md)。
@@ -211,7 +230,7 @@ Status meanings:
 | --- | --- | --- | --- | --- | --- |
 | API-01 | Capability discovery, activation, subscriptions | Public | [`getCapabilities`](../contract/v1/README.md#workspace-contexts-and-capability-discovery), `onWorkspaceOpen` activation of `backend`, `subscriptions/dispose` | A newly installed backend still needs a restart before it can start | [Plugin backend](domains/backend.md) |
 | API-02 | Commands | Partial | [`ui` commands without a tool window](../contract/v1/README.md#backend-only-commands) and the `commands/didRun` notification | Registering commands at runtime, result-bearing execution | [UI](domains/ui.md) |
-| API-03 | Menus, keybindings, context keys, status bar | Partial | Existing command placements (`ui.commands`) | General menus, keybinding contributions, context keys, status bar | [UI](domains/ui.md) |
+| API-03 | Menus, keybindings, context keys, status bar | Partial | Existing command placements (`ui.commands`); `statusBar/setItem`, `removeItem` | General menus, keybinding contributions, context keys | [UI](domains/ui.md) |
 | API-04 | Workspace and document events | Partial | `workspace/didChangeContexts`, file events from `workspace/watch` | Document, selection, and active editor change events | [Plugin backend](domains/backend.md) |
 | API-05 | Workspace contexts | Public | [`workspace/listContexts`, `getContext`, `getFolders`](../contract/v1/README.md#workspace-contexts-and-capability-discovery) with `contextID`/`generation` and `rootID` | — | [Plugin backend](domains/backend.md) |
 | API-06 | File reads | Public | [`workspace/readDirectory`, `stat`, `readFile`](../contract/v1/README.md#public-document-file-and-window-methods); at most 128 KiB per read; Core executes bounded paging and disk reads that refuse link traversal | Remote workspaces are unsupported; the desktop needs both API-06 Core and desktop changes, and native Windows verification is pending | [Plugin backend](domains/backend.md) |
@@ -220,16 +239,17 @@ Status meanings:
 | API-09 | Documents and selections | Public | `documents/list`, `documents/getSnapshot`, `editor/getActive`, `editor/getSelections`, with dirty state, version, encoding, and line ending | — | [Editor](domains/editor.md) |
 | API-10 | Versioned edits | Public | `editor/applyEdits`, `replaceSelections`, `insertText`; version checks, refusal during IME composition and in read-only documents, one undo step per batch | — | [Editor](domains/editor.md) |
 | API-11 | Save and file operations | Public | [`documents/save`, `saveAs`, `close`](../contract/v1/README.md#saving-documents-and-changing-files) (permission `documents.save`) and `workspace/create`, `rename`, `copy`, `trash` (permission `workspace.files.write`); saves go through the document's owner, a close saves first, nothing is overwritten, discarded or deleted permanently, and a delete only moves to the system trash; a change that needs the user's choice is refused without asking | Saving all documents at once, permanent deletes; pre-save events are API-43 | [Editor](domains/editor.md), [Plugin backend](domains/backend.md) |
-| API-12 | Multi-file edits, virtual documents, diff | Partial | [Content providers `documents/registerContentProvider`](../contract/v1/README.md#content-providers): bind a URI scheme to a backend function, and the host fetches read-only content from it when a document of that scheme opens (≤1 MiB, one provider per scheme per workspace window) | Cross-file edits, a diff view | [Editor](domains/editor.md) |
-| API-13 | Native view data sources | Partial | [Plugin views](../contract/v1/README.md#plugin-views) in tool windows and [settings regions](../contract/v1/README.md#settings-regions): a backend view function, called through `lithe/function/invoke` once per event, returns a UI tree (host controls, trees, and tool rows showing how the plugin's tools resolve) and canvas nodes, or patches by node ID; the Core command `plugins.ui.applyResult` checks each result against budgets and surface rules, and the host draws it with native controls | Views pushed by the plugin on its own, lazy tree loading | [UI](domains/ui.md) |
+| API-12 | Multi-file edits, virtual documents, diff | Partial | [Content providers `documents/registerContentProvider`](../contract/v1/README.md#content-providers): bind a URI scheme to a backend function, and the host fetches read-only content from it when a document of that scheme opens (≤1 MiB, one provider per scheme per workspace window) ; `editor/showDiff` compares bounded read-only inline texts | Cross-file edits, a diff view | [Editor](domains/editor.md) |
+| API-13 | Native view data sources | Partial | [Plugin views](../contract/v1/README.md#plugin-views) in tool windows and [settings regions](../contract/v1/README.md#settings-regions): a backend view function, called through `lithe/function/invoke` once per event, returns a UI tree (host controls, trees, and tool rows showing how the plugin's tools resolve) and canvas nodes, or patches by node ID; the Core command `plugins.ui.applyResult` checks each result against budgets and surface rules, and the host draws it with native controls ; `views/refresh`, lazy branches and cursor pagination | Finer-grained per-parent pagination | [UI](domains/ui.md) |
 | API-14 | Webview messaging | Partial | The [package web page](../contract/v1/README.md#web-content) bridge, state, and lifecycle | General two-way page messaging | [UI](domains/ui.md) |
 | API-15 | Open and reveal | Partial | `editor/open` and `editor/reveal`, returning `documentID` and version | A range only places the caret at its start; no preview-tab replacement | [Editor](domains/editor.md) |
-| API-16 | HTML preview and external browser | Public | `preview/openHTML` (`editorAndPreview` or `previewOnly`), `browser/openExternal` (HTTP(S) URLs or saved HTML) | The Lithe desktop client does not register `preview/openHTML`, and its `browser/openExternal` accepts HTTP(S) URLs only | [Editor](domains/editor.md) |
-| API-17 | Messages, quick pick, input | Partial | `window/showInformation`, `showWarning`, `showError` with buttons and dismissal | General quick pick, input box, authorized file handles | [UI](domains/ui.md) |
+| API-16 | Markdown/HTML preview and external browser | Public | `preview/openMarkdown`, `preview/openHTML` (resources or inline text, `editorAndPreview` or `previewOnly`), `browser/openExternal` (HTTP(S) URLs or saved HTML) | Requires a build containing these Core methods and desktop adapters; HTML needs a native WebView | [Editor](domains/editor.md) |
+| API-17 | Messages, quick pick, input | Partial | `window/showInformation`, `showWarning`, `showError` with buttons and dismissal; `window/showQuickPick`, `showInputBox`| Authorized file handles | [UI](domains/ui.md) |
+| API-18 | Clipboard and file manager | Published | `clipboard/readText`, `writeText`, `workspace/reveal` | Requires native desktop adapters | [Workflows](../guides/plugin-workflows.md) |
 | API-19 | Settings | Partial | [Declarative settings `settings`](../contract/v1/README.md#plugin-settings); [settings regions `settingRegions`](../contract/v1/README.md#settings-regions): search keywords and plugin views on a language, build system or compiler page or on the plugin's own Settings tab, by which settings search finds the page | Reading, inspecting the source of, and updating settings at runtime, and settings change events | [Settings](domains/settings.md) |
 | API-20 | Storage | Partial | The plugin-wide `${stateDir}`, writable backend and workspace directories (`stateDirectory`), web page state; a language server's per-workspace state directories, which the host prunes in the background by the declared [`state.retention`](../contract/v1/README.md#plugin-owned-sessions) (Core decides) | A unified key-value store, quotas; a user-facing way to reset state | [Plugin backend](domains/backend.md) |
 | API-21 | Credentials | Existing | [`credentials/get`, `set`, `delete`](../contract/v1/README.md#host-services), isolated per plugin | — | [Plugin backend](domains/backend.md) |
-| API-22 | Output, log, progress | Partial | [Plugin function progress and cancellation](../contract/v1/README.md#progress); developer-facing [structured diagnostics `litheLogging`](../contract/v1/README.md#structured-plugin-diagnostics); [`languageServer/setStatus`](../contract/v1/README.md#language-server-host-methods) shows the plugin's own language server preparation state in the host's status UI (a message and a percentage only, no actions); [`outputLinkMatchers`](../contract/v1/README.md#output-link-matchers): matchers a plugin declares make output in the Run and Test consoles clickable | A dedicated output panel, user-facing log and progress APIs | [Plugin backend](domains/backend.md) |
+| API-22 | Output, log, progress | Partial | [Plugin function progress and cancellation](../contract/v1/README.md#progress); developer-facing [structured diagnostics `litheLogging`](../contract/v1/README.md#structured-plugin-diagnostics); [`languageServer/setStatus`](../contract/v1/README.md#language-server-host-methods) shows the plugin's own language server preparation state in the host's status UI (a message and a percentage only, no actions); [`outputLinkMatchers`](../contract/v1/README.md#output-link-matchers): matchers a plugin declares make output in the Run and Test consoles clickable；`output/create / append / clear / show / dispose`、`progress/create / report / end` | Structured output attachments | [Plugin backend](domains/backend.md) |
 | API-23 | Toolchains and managed processes | Partial | [Process start](../contract/v1/README.md#process-start), runtime resolution, [shared executable candidates](../contract/v1/README.md#executable-resolution), tool definitions, toolchain providers (`toolchainProviders`); [references to runtimes by tool-definition ID](../contract/v1/README.md#tool-references) (manifest `requiresTools`); backend-started [`run/start`, `run/stop`, and the `run/didExit` notification](../contract/v1/README.md#run-and-debug-sessions), where the host owns the Run session (permission `run.start`; a tool that resolves to no executable returns `plugin.host.toolUnresolved`); [installing missing commands](../contract/v1/README.md#command-installers) (`commandInstallers`, permission `commands.install`; version 1 adds [download installers](../contract/v1/README.md#download-installers)); [managed runtimes](../contract/v1/README.md#managed-runtimes) (`managedRuntimes`, permission `runtimes.install`, Core plans and reply validation with no new host RPC) | A general toolchain and process service backends can call; saving pins, `toolchainConsumers`; the Lithe desktop client does not declare `commandInstallers` 1 (download installers) | [Toolchains](domains/toolchains.md) |
 | API-24 | Terminals | Partial | [Plugin-owned native terminals](../contract/v1/README.md#plugin-owned-native-terminals) `terminal/create`, `show`, `close`, `reopen`, `dispose`, `onExit` (local workspaces) | Sending text to a terminal, reading its output | [Plugin backend](domains/backend.md) |
 | API-25 | Languages, grammars, LSP | Partial | [Languages](../contract/v1/README.md#languages) and [language servers](../contract/v1/README.md#language-servers); [packaged TextMate grammars and editor configuration in `languages`](../contract/v1/README.md#grammars-and-editor-configuration) and [first-line associations for extensionless files](../contract/v1/README.md#first-line-matching); [editor language-feature providers `editor/registerProviders`](../contract/v1/README.md#editor-language-feature-providers), binding 8 types (`definition`, `hover`, `completion`, `codeLens`, `foldingRange`, `semanticTokens`, `colorDecorations`, `documentLink`) to ordinary plugin functions; color ranges use a separate light/dark legend and merge across sources by stable `sourceId` lexical order; language-server answers take priority for language features, while color ranges layer independently over syntax and semantic tokens; plugin-owned language server sessions: [the session declaration of `languageServers`](../contract/v1/README.md#plugin-owned-sessions) lists the requests, commands, and forwarded notifications a backend may use, with [`languageServer/request`, `notify`, `setStatus`](../contract/v1/README.md#language-server-host-methods) and the `languageServer/didChangeState` and `languageServer/didReceiveNotification` notifications, and Core enforces the session policy; [`launch.kind: "backend"`](../contract/v1/README.md#backend-resolved-launch) lets the plugin backend decide how the server starts | Symbols, formatting, rename, code actions, signature help, inlay hints, dynamic registration of syntax highlighting from JSON passed at runtime; servers whose launch the backend decides in remote workspaces | [Languages](domains/languages.md), [Editor](domains/editor.md) |
@@ -240,6 +260,7 @@ Status meanings:
 | API-33 | Project generators | Existing | [`projectGenerators`](../contract/v1/README.md#project-generators) | — | [Project generators](domains/project-generators.md) |
 | API-35 | Cross-plugin calls and dependencies | Partial | Phase one: [`pluginFunctions`](../contract/v1/README.md#cross-plugin-calls) (`exports` and `calls` in the manifest, granting no manifest permission) and [`functions/providers` and `functions/invoke`](../contract/v1/README.md#discovery-and-invocation): Core relays a call to a function another enabled plugin exports; trust is not transitive and this is not an install dependency; calls for a remote workspace's context are relayed too | The install closure of dependencies and exports, version solving, remote providers; on a host that registers backend plugins only when it launches, a newly installed or updated backend plugin appears in `providers` only after Lithe restarts (see [Hot activation](../contract/v1/README.md#hot-activation)) | [Plugin backend](domains/backend.md) |
 | API-37 | Environment info and l10n | Partial | `getCapabilities` returns the protocol version, usable methods, limits, and where the backend runs (`backendAuthority`); [packaged translations `l10n/<language>.json`](../contract/v1/README.md#translations) of plugin settings text, chosen by interface language and falling back to the manifest text; translations may add search keywords in other languages to settings regions; plugin view events carry the interface language, and the backend returns text in it | Translations of plugin text beyond settings, environment info, language and theme change events | [Plugin backend](domains/backend.md), [Settings](domains/settings.md) |
+| API-38 | Managed network | Partial | `network/request`: bounded HTTP(S) with cancellation | File downloads and authentication sessions | [Workflows](../guides/plugin-workflows.md) |
 | API-40 | Workspace authority | Partial | [Workspace contexts](../contract/v1/README.md#workspace-contexts-and-capability-discovery) carry `local` or `remote`, and a remote one also the remote host's `platform` (`os`, `arch`); `workspace/getHostPaths` gives the roots' paths on the remote host on its own; file and editor methods refuse a remote context with `plugin.host.authorityUnsupported`; the remote failure codes `remoteDisconnected` and `platformUnavailable` | Remote execution (processes, language servers, and debuggers running on the remote host), the `placement` of contributions | [Plugin backend](domains/backend.md), [Remote workspaces](../guides/plugin-backend-remote-workspaces.md) |
 | API-41 | Activation events and startup budget | Partial | [`onWorkspaceOpen`](../contract/v1/README.md#permissions-and-activation), `onCommand`, two concurrent background starts, `initialize` timeout, bounded notification queues | Activation by workspace content, a global cold-start budget | [Plugin backend](domains/backend.md) |
 
@@ -247,13 +268,11 @@ Status meanings:
 
 | ID | Name | Status | Planned |
 | --- | --- | --- | --- |
-| API-18 | Clipboard and Finder | Not started | Reading and writing the clipboard, revealing in Finder |
 | API-26 | Diagnostics collections | Not started | Diagnostics collections pushed by a backend, with document versions; existing LSP diagnostics are not this API |
 | API-28 | Custom editors | Not started | Editors for plugin-owned documents, with save, undo, and restore |
 | API-32 | Services | Not started | General service providers (still a proposal) |
 | API-34 | IDE, AI, MCP | Not started | IDE, AI, and MCP capabilities for plugins, with authorization |
 | API-36 | WASM | Not started | A WASM/WASI runtime |
-| API-38 | Managed network | Not started | Network requests and downloads run by the host |
 | API-39 | Authentication | Not started | Authentication sessions and providers |
 | API-42 | Built-in Git read-only snapshot | Not started | A read-only snapshot of built-in Git state and change events |
 | API-43 | Will-save events | Not started | Will-save events and time-bounded edits before save |
@@ -273,6 +292,8 @@ Requests a backend sends to the host, all prefixed `lithe/host/`; the tables omi
 | --- | --- | --- | --- | --- |
 | API-01, API-37 | `getCapabilities` | Reports the negotiated protocol version, where the backend runs (`backendAuthority`), and the services and limits available now; Core answers it itself | Every plugin-owned session | 0 |
 | API-01 | `subscriptions/dispose` | Cancels a subscription, that is, a `subscriptionID` returned by `workspace/watch`, `editor/registerActions`, or `terminal/onExit`; an unknown or already disposed ID also returns `null` | Every plugin-owned session | 0 |
+| API-03 | `statusBar/setItem` | Create or replace a status item; commands must belong to the plugin manifest | `statusBar.write` | 0 |
+| API-03 | `statusBar/removeItem` | Remove an owned status item | `statusBar.write` | 0 |
 | API-05 | `workspace/listContexts` | Lists the current workspace contexts with the change counter `revision` | `workspace.metadata` | 0 |
 | API-05 | `workspace/getContext` | Reads one workspace context | `workspace.metadata` | 0 |
 | API-05 | `workspace/getFolders` | Lists the context's root folders, each with a `rootID` | `workspace.metadata` | 0 |
@@ -296,17 +317,33 @@ Requests a backend sends to the host, all prefixed `lithe/host/`; the tables omi
 | API-11 | `workspace/rename` | Renames or moves a file or directory; saves the open documents under it first, and they follow the file | `workspace.files.write` | 0 |
 | API-11 | `workspace/copy` | Copies a file or directory to a target that does not exist, keeping symbolic links as links | `workspace.files.write` | 0 |
 | API-11 | `workspace/trash` | Saves and closes the open documents under the resource, then moves it to the system trash; never deletes permanently | `workspace.files.write` | 0 |
+| API-12 | `editor/showDiff` | Compare two read-only inline texts | `editor.open` | 0 |
 | API-12 | `documents/registerContentProvider` | Binds a URI scheme to a backend function; when a document of that scheme opens, the host calls the function to get read-only content (≤1 MiB), and the call returns a `subscriptionID`, which `subscriptions/dispose` withdraws | `documents.contentProvider` | 0 |
+| API-13 | `views/refresh` | Invalidate a visible owned view instance | `views.refresh` | 0 |
 | API-15 | `editor/open` | Opens a file in the editor, reading it from disk when no buffer exists; opens it in the foreground or background and can place the caret | `editor.open` | 0 |
 | API-15 | `editor/reveal` | Takes the same params as `editor/open` but only handles files already open; a file that is not open returns `plugin.host.notFound` and is not opened from disk | `editor.open` | 0 |
-| API-16 | `preview/openHTML` | Opens a preview of an HTML file (`editorAndPreview` or `previewOnly`) that uses the live buffer | `preview.open` | 0 |
-| API-16 | `browser/openExternal` | Opens an HTTP(S) URL or a saved HTML file in the external browser | `browser.open` | 0 |
+| API-16 | `preview/openMarkdown` | Show a Markdown resource (`.md`, `.markdown`, `.mdown`) or read-only inline text | `preview.open` | 0 |
+| API-16 | `preview/openHTML` | Preview an HTML resource (`.html`, `.htm`, `.xhtml`) live buffer or read-only inline text; defaults to `editorAndPreview` | `preview.open` | 0 |
+| API-16 | `browser/openExternal` | Open an HTTP(S) URL or a saved HTML file externally; defaults to `requireSaved` | `browser.open` | 0 |
+| API-17 | `window/showQuickPick` | Choose one or more stable item IDs | `window.input` | 0 |
+| API-17 | `window/showInputBox` | Request text or a masked password | `window.input` | 0 |
 | API-17 | `window/showInformation` | Shows an information message, optionally with buttons, and returns the index of the button the user chose | `window.messages` | 0 |
 | API-17 | `window/showWarning` | Shows a warning message; used like `showInformation` | `window.messages` | 0 |
 | API-17 | `window/showError` | Shows an error message; used like `showInformation` | `window.messages` | 0 |
+| API-18 | `clipboard/readText` | Read system clipboard text | `clipboard.read` | 0 |
+| API-18 | `clipboard/writeText` | Write system clipboard text | `clipboard.write` | 0 |
+| API-18 | `workspace/reveal` | Reveal a saved resource in the file manager | `workspace.reveal` | 0 |
 | API-21 | `credentials/get` | Reads a secret this plugin stored, or `null` | `credentials.store` | 0 |
 | API-21 | `credentials/set` | Stores a secret of at most 16 KiB | `credentials.store` | 0 |
 | API-21 | `credentials/delete` | Deletes a secret; also returns `null` when nothing was stored | `credentials.store` | 0 |
+| API-22 | `output/create` | Create an independent output channel | `output.write` | 0 |
+| API-22 | `output/append` | Append bounded output text | `output.write` | 0 |
+| API-22 | `output/clear` | Clear an output channel | `output.write` | 0 |
+| API-22 | `output/show` | Show an output channel | `output.write` | 0 |
+| API-22 | `output/dispose` | Release an output channel | `output.write` | 0 |
+| API-22 | `progress/create` | Create cancellable progress | `window.progress` | 0 |
+| API-22 | `progress/report` | Update progress text or percentage | `window.progress` | 0 |
+| API-22 | `progress/end` | Release progress | `window.progress` | 0 |
 | API-22, API-25 | `languageServer/setStatus` | Shows the plugin's own language server preparation state (`preparing`, `ready`, `degraded`, `failed`, optionally with a message and a percentage) in the host's status UI | `languageServer.request` | 0 |
 | API-23 | `run/start` | Starts a host-owned Run session (Run window entry, console, Stop button); the executable can only be a tool-definition ID or a file inside the plugin package, and the call can carry temporary files, an output encoding, debugging, and rerun, and returns a `runID` | `run.start` | 0 |
 | API-23 | `run/stop` | Stops a run or debug session this plugin started, by `runID` or `sessionID`; takes no `context` | `run.start` | 0 |
@@ -326,6 +363,7 @@ Requests a backend sends to the host, all prefixed `lithe/host/`; the tables omi
 | API-30 | `debug/start` | Starts a launch or attach debug session on a debug adapter the plugin itself declares, and returns a `sessionID` | `debug.start` | 0 |
 | API-35 | `functions/providers` | Lists the enabled plugins, other than the caller, that export a function, with their exported versions | No manifest permission; the function must be declared in `pluginFunctions.calls` | 0 |
 | API-35 | `functions/invoke` | Calls a function another plugin exports, relayed by Core; can carry `parentOperationID` to name the call chain it belongs to, and returns `{value}` | No manifest permission; the function must be declared in `pluginFunctions.calls` | 0 |
+| API-38 | `network/request` | Send a bounded HTTP request with host proxy policy | `network.request` | 0 |
 | API-40 | `workspace/getHostPaths` | Gives the absolute paths `hostPath` of a remote context's root folders on the remote host, optionally for the roots `rootIDs` names, in that order; used only in the arguments, working directories, and language server or debugger configuration of what runs on that host; a local context gets `plugin.host.authorityUnsupported` | `workspace.metadata`, as a method grant of its own (the service grant alone gets `permissionDenied`) | 0 |
 
 Shortcut import providers also have two methods, `lithe/host/keymapImport/listInputs` and `lithe/host/keymapImport/readChunk`. They belong to the `litheKeymapImport` protocol, outside API-01–44; see [Shortcut import](domains/keymap-import.md).
@@ -365,3 +403,5 @@ Notifications the host sends to a backend (the backend answers none), also prefi
 | `functions/invoke` | `timeoutMilliseconds` defaults to 60000 ms, capped at 600000 ms; `parentOperationID` is 1–128 bytes |
 
 For failure codes and how to handle them, see the contract's [Outcomes and error codes](../contract/v1/README.md#outcomes-and-error-codes) and the [host failure table](../contract/v1/README.md#workspace-contexts-and-capability-discovery). Cancellation or timeout **does not promise rollback**: an edit may already have taken effect, so do not replay it automatically.
+
+宿主交互与联网的完整约束和用法 / Workflow and network details: [Plugin workflows](../guides/plugin-workflows.md).

@@ -1025,4 +1025,34 @@ class HostTest {
                 map("code", -32800L, "message", "Cancelled.", "data", map("code", "plugin.host.cancelled"))));
         assertEquals(1, host.close());
     }
+
+    @Test
+    void progressCancellationAndEndReleaseSubscription() {
+        Backend backend = Backend.create(null, null);
+        TestHost host = session(backend);
+        try {
+            CompletableFuture<Object> cancelled = new CompletableFuture<>();
+            CompletableFuture<Host.Subscription> creating = backend.host().progress().create(
+                    CONTEXT, map("title", "Index", "cancellable", true), event -> cancelled.complete(event.event()));
+            Map<String, Object> create = nextRequest(host, "lithe/host/progress/create");
+            assertEquals(map("context", CONTEXT, "title", "Index", "cancellable", true), create.get("params"));
+            host.send(map("id", create.get("id"), "result", map("progressID", "p1", "subscriptionID", "p1")));
+            Host.Subscription subscription = value(creating);
+            host.notify(Protocol.HOST_SUBSCRIPTION_NOTIFY, map("subscriptionID", "p1", "sequence", 1L,
+                    "event", map("cancelled", true)));
+            assertEquals(map("cancelled", true), value(cancelled));
+            CompletableFuture<Map<String, Object>> ending = backend.host().progress().end(CONTEXT, map("progressID", "p1"));
+            Map<String, Object> end = nextRequest(host, "lithe/host/progress/end");
+            assertEquals(map("context", CONTEXT, "progressID", "p1"), end.get("params"));
+            host.send(map("id", end.get("id"), "result", null));
+            Map<String, Object> dispose = nextRequest(host, Protocol.HOST_SUBSCRIPTIONS_DISPOSE);
+            assertEquals(map("subscriptionID", "p1"), dispose.get("params"));
+            assertTrue(subscription.isDisposed());
+            host.send(map("id", dispose.get("id"), "result", null));
+            value(ending);
+        } finally {
+            host.close();
+        }
+    }
+
 }
