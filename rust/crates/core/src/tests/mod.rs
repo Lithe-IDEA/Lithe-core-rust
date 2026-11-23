@@ -61,7 +61,6 @@ mod project;
 mod project_generators;
 mod project_tree;
 mod protocol;
-mod published_build_plugins;
 mod rank_names;
 #[cfg(unix)]
 mod remote_attach;
@@ -72,6 +71,7 @@ mod row_selection;
 mod run_configuration;
 mod run_configuration_arrangement;
 pub(crate) mod support;
+mod synthetic_build_plugins;
 mod toolchain_definitions;
 mod toolchain_pins;
 mod toolchain_queries;
