@@ -324,7 +324,8 @@
         "type": { "const": "tree" },
         "id": { "$ref": "#/$defs/id" },
         "label": { "$ref": "#/$defs/label" },
-        "items": { "type": "array", "items": { "$ref": "#/$defs/treeItem" } }
+        "items": { "type": "array", "items": { "$ref": "#/$defs/treeItem" } },
+        "cursor": { "description": "Opaque next-page cursor. The host emits loadMore near the real viewport edge, once per cursor. Omit when exhausted.", "type": "string", "minLength": 1, "maxLength": 256 }
       }
     },
     "treeItem": {
@@ -338,6 +339,7 @@
         "icon": { "$ref": "#/$defs/hostIcon" },
         "detail": { "$ref": "#/$defs/longLabel" },
         "expanded": { "type": "boolean" },
+        "hasChildren": { "description": "Shows a branch before children are loaded. Opening emits expand with value true; closing emits false.", "type": "boolean" },
         "children": { "type": "array", "items": { "$ref": "#/$defs/treeItem" } }
       }
     },

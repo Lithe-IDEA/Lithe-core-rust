@@ -418,6 +418,9 @@ public final class Host {
      * {@link #listContexts}.
      */
     public final class Workspace {
+        /** Reveal a saved resource in the file manager. Permission workspace.reveal. */
+        public CompletableFuture<Map<String,Object>> reveal(Map<String,?> context,Map<String,?> params) {return scoped(Protocol.HOST_WORKSPACE_REVEAL,context,params);}
+
         private Workspace() {}
 
         /** {@code { revision, contexts }}. */
@@ -609,6 +612,9 @@ public final class Host {
 
     /** The text editor. */
     public final class Editor {
+        /** Compare two read-only inline texts. Permission editor.open. */
+        public CompletableFuture<Map<String,Object>> showDiff(Map<String,?> context,Map<String,?> params) {return scoped(Protocol.HOST_EDITOR_SHOW_DIFF,context,params);}
+
         private Editor() {}
 
         /** The foreground text tab's document summary, or null. */
@@ -661,11 +667,14 @@ public final class Host {
         }
     }
 
-    /** HTML previews. */
+    /** Markdown and HTML previews. */
     public final class Preview {
+        /** Show a resource or read-only inline Markdown. Permission preview.open. */
+        public CompletableFuture<Map<String,Object>> openMarkdown(Map<String,?> context,Map<String,?> params) {return scoped(Protocol.HOST_PREVIEW_OPEN_MARKDOWN,context,params);}
+
         private Preview() {}
 
-        /** {@code params}: HTML {@code resource, presentation?, range?}. */
+        /** {@code params}: HTML {@code resource} or inline {@code id,title,text}, plus {@code presentation?,range?}. */
         public CompletableFuture<Map<String, Object>> openHtml(Map<String, ?> context, Map<String, ?> params) {
             return scoped(Protocol.HOST_PREVIEW_OPEN_HTML, context, params);
         }
@@ -716,6 +725,11 @@ public final class Host {
      * actions?}; answers {@code { selectedIndex }}, null on dismissal.
      */
     public final class Window {
+        /** Choose one or more stable item IDs. Permission window.input. */
+        public CompletableFuture<Map<String,Object>> showQuickPick(Map<String,?> context,Map<String,?> params) {return scoped(Protocol.HOST_WINDOW_SHOW_QUICK_PICK,context,params);}
+        /** Request text or a masked password. Permission window.input. */
+        public CompletableFuture<Map<String,Object>> showInputBox(Map<String,?> context,Map<String,?> params) {return scoped(Protocol.HOST_WINDOW_SHOW_INPUT_BOX,context,params);}
+
         private Window() {}
 
         public CompletableFuture<Map<String, Object>> showInformation(Map<String, ?> context, Map<String, ?> params) {
@@ -947,5 +961,63 @@ public final class Host {
         CompletableFuture<T> future = new CompletableFuture<>();
         future.completeExceptionally(error);
         return future;
+    }
+    /** Native views services. */
+    public Views views() {return new Views();}
+    public final class Views {
+        /** Invalidate a visible owned view instance. Permission views.refresh. */
+        public CompletableFuture<Map<String,Object>> refresh(Map<String,?> context,Map<String,?> params) {return scoped(Protocol.HOST_VIEWS_REFRESH,context,params);}
+    }
+    /** Native output services. */
+    public Output output() {return new Output();}
+    public final class Output {
+        /** Create an independent output channel. Permission output.write. */
+        public CompletableFuture<Map<String,Object>> create(Map<String,?> context,Map<String,?> params) {return scoped(Protocol.HOST_OUTPUT_CREATE,context,params);}
+        /** Append bounded output text. Permission output.write. */
+        public CompletableFuture<Map<String,Object>> append(Map<String,?> context,Map<String,?> params) {return scoped(Protocol.HOST_OUTPUT_APPEND,context,params);}
+        /** Clear an output channel. Permission output.write. */
+        public CompletableFuture<Map<String,Object>> clear(Map<String,?> context,Map<String,?> params) {return scoped(Protocol.HOST_OUTPUT_CLEAR,context,params);}
+        /** Show an output channel. Permission output.write. */
+        public CompletableFuture<Map<String,Object>> show(Map<String,?> context,Map<String,?> params) {return scoped(Protocol.HOST_OUTPUT_SHOW,context,params);}
+        /** Release an output channel. Permission output.write. */
+        public CompletableFuture<Map<String,Object>> dispose(Map<String,?> context,Map<String,?> params) {return scoped(Protocol.HOST_OUTPUT_DISPOSE,context,params);}
+    }
+    /** Native progress services. */
+    public Progress progress() {return new Progress();}
+    public final class Progress {
+        /** Create cancellable progress. Permission window.progress. */
+        public CompletableFuture<Subscription> create(Map<String,?> context,Map<String,?> params,Listener listener) {
+            Map<String,Object> message;
+            try { message = withContext(context, params); }
+            catch (PluginSdkError error) { return failed(error); }
+            return channel.subscribe(Protocol.HOST_PROGRESS_CREATE,message,listener,scope);
+        }
+        /** Update progress text or percentage. Permission window.progress. */
+        public CompletableFuture<Map<String,Object>> report(Map<String,?> context,Map<String,?> params) {return scoped(Protocol.HOST_PROGRESS_REPORT,context,params);}
+        /** Release progress. Permission window.progress. */
+        public CompletableFuture<Map<String,Object>> end(Map<String,?> context,Map<String,?> params) {return scoped(Protocol.HOST_PROGRESS_END,context,params).thenCompose(result ->
+                channel.dispose((String) params.get("progressID")).thenApply(ignored -> result));}
+    }
+    /** Native statusBar services. */
+    public StatusBar statusBar() {return new StatusBar();}
+    public final class StatusBar {
+        /** Create or replace a status item. Permission statusBar.write. */
+        public CompletableFuture<Map<String,Object>> setItem(Map<String,?> context,Map<String,?> params) {return scoped(Protocol.HOST_STATUS_BAR_SET_ITEM,context,params);}
+        /** Remove an owned status item. Permission statusBar.write. */
+        public CompletableFuture<Map<String,Object>> removeItem(Map<String,?> context,Map<String,?> params) {return scoped(Protocol.HOST_STATUS_BAR_REMOVE_ITEM,context,params);}
+    }
+    /** Native clipboard services. */
+    public Clipboard clipboard() {return new Clipboard();}
+    public final class Clipboard {
+        /** Read system clipboard text. Permission clipboard.read. */
+        public CompletableFuture<Map<String,Object>> readText(Map<String,?> context,Map<String,?> params) {return scoped(Protocol.HOST_CLIPBOARD_READ_TEXT,context,params);}
+        /** Write system clipboard text. Permission clipboard.write. */
+        public CompletableFuture<Map<String,Object>> writeText(Map<String,?> context,Map<String,?> params) {return scoped(Protocol.HOST_CLIPBOARD_WRITE_TEXT,context,params);}
+    }
+    /** Native network services. */
+    public Network network() {return new Network();}
+    public final class Network {
+        /** Send a bounded HTTP request with host proxy policy. Permission network.request. */
+        public CompletableFuture<Map<String,Object>> request(Map<String,?> context,Map<String,?> params) {return scoped(Protocol.HOST_NETWORK_REQUEST,context,params);}
     }
 }

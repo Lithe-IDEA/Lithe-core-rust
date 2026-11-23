@@ -437,7 +437,7 @@ func (h *Host) Documents() *Documents { return &Documents{host: h} }
 // Editor is the text editor.
 func (h *Host) Editor() *Editor { return &Editor{host: h} }
 
-// Preview is HTML previews.
+// Preview is Markdown and HTML previews.
 func (h *Host) Preview() *Preview { return &Preview{host: h} }
 
 // Browser is the system browser.
@@ -1165,10 +1165,10 @@ func (e *Editor) RegisterActions(context WorkspaceContext, params any) (*Subscri
 	return e.host.subscribe(methodEditorActions, value)
 }
 
-// Preview is HTML previews.
+// Preview is Markdown and HTML previews.
 type Preview struct{ host *Host }
 
-// OpenHTML takes an HTML resource, presentation?, range?.
+// OpenHTML takes an HTML resource or inline id/title/text, plus presentation?, range?.
 func (p *Preview) OpenHTML(context WorkspaceContext, params any) (json.RawMessage, error) {
 	return p.host.scoped(methodPreviewHTML, context, params)
 }
@@ -1341,4 +1341,156 @@ func relayParams(call any, serving string) (map[string]any, error) {
 		relayed["parentOperationID"] = serving
 	}
 	return relayed, nil
+}
+
+// ShowQuickPick: Choose one or more stable item IDs. Permission window.input.
+func (w *Window) ShowQuickPick(context WorkspaceContext, params any) (json.RawMessage, error) {
+	return w.host.scoped(methodWindowShowQuickPick, context, params)
+}
+
+// ShowInputBox: Request text or a masked password. Permission window.input.
+func (w *Window) ShowInputBox(context WorkspaceContext, params any) (json.RawMessage, error) {
+	return w.host.scoped(methodWindowShowInputBox, context, params)
+}
+
+// OpenMarkdown: Show a resource or read-only inline Markdown. Permission preview.open.
+func (w *Preview) OpenMarkdown(context WorkspaceContext, params any) (json.RawMessage, error) {
+	return w.host.scoped(methodPreviewOpenMarkdown, context, params)
+}
+
+// ShowDiff: Compare two read-only inline texts. Permission editor.open.
+func (w *Editor) ShowDiff(context WorkspaceContext, params any) (json.RawMessage, error) {
+	return w.host.scoped(methodEditorShowDiff, context, params)
+}
+
+// Views provides context-scoped views services.
+type Views struct{ host *Host }
+
+// Views returns native views services.
+func (h *Host) Views() *Views { return &Views{host: h} }
+
+// Refresh: Invalidate a visible owned view instance. Permission views.refresh.
+func (w *Views) Refresh(context WorkspaceContext, params any) (json.RawMessage, error) {
+	return w.host.scoped(methodViewsRefresh, context, params)
+}
+
+// Output provides context-scoped output services.
+type Output struct{ host *Host }
+
+// Output returns native output services.
+func (h *Host) Output() *Output { return &Output{host: h} }
+
+// Create: Create an independent output channel. Permission output.write.
+func (w *Output) Create(context WorkspaceContext, params any) (json.RawMessage, error) {
+	return w.host.scoped(methodOutputCreate, context, params)
+}
+
+// Append: Append bounded output text. Permission output.write.
+func (w *Output) Append(context WorkspaceContext, params any) (json.RawMessage, error) {
+	return w.host.scoped(methodOutputAppend, context, params)
+}
+
+// Clear: Clear an output channel. Permission output.write.
+func (w *Output) Clear(context WorkspaceContext, params any) (json.RawMessage, error) {
+	return w.host.scoped(methodOutputClear, context, params)
+}
+
+// Show: Show an output channel. Permission output.write.
+func (w *Output) Show(context WorkspaceContext, params any) (json.RawMessage, error) {
+	return w.host.scoped(methodOutputShow, context, params)
+}
+
+// Dispose: Release an output channel. Permission output.write.
+func (w *Output) Dispose(context WorkspaceContext, params any) (json.RawMessage, error) {
+	return w.host.scoped(methodOutputDispose, context, params)
+}
+
+// Progress provides context-scoped progress services.
+type Progress struct{ host *Host }
+
+// Progress returns native progress services.
+func (h *Host) Progress() *Progress { return &Progress{host: h} }
+
+// Create: Create cancellable progress. Permission window.progress.
+func (w *Progress) Create(context WorkspaceContext, params any) (*Subscription, error) {
+	value, err := toValue(params)
+	if err != nil {
+		return nil, invalidHostParams()
+	}
+	value, err = withContext(context, value)
+	if err != nil {
+		return nil, err
+	}
+	return w.host.subscribe(methodProgressCreate, value)
+}
+
+// Report: Update progress text or percentage. Permission window.progress.
+func (w *Progress) Report(context WorkspaceContext, params any) (json.RawMessage, error) {
+	return w.host.scoped(methodProgressReport, context, params)
+}
+
+// End: Release progress. Permission window.progress.
+func (w *Progress) End(context WorkspaceContext, params any) (json.RawMessage, error) {
+	value, err := toValue(params)
+	if err != nil {
+		return nil, invalidHostParams()
+	}
+	result, err := w.host.scoped(methodProgressEnd, context, value)
+	if err != nil {
+		return nil, err
+	}
+	object, _ := value.(map[string]any)
+	id, _ := object["progressID"].(string)
+	if err := w.host.shared.dispose(id, nil); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// StatusBar provides context-scoped statusBar services.
+type StatusBar struct{ host *Host }
+
+// StatusBar returns native statusBar services.
+func (h *Host) StatusBar() *StatusBar { return &StatusBar{host: h} }
+
+// SetItem: Create or replace a status item. Permission statusBar.write.
+func (w *StatusBar) SetItem(context WorkspaceContext, params any) (json.RawMessage, error) {
+	return w.host.scoped(methodStatusBarSetItem, context, params)
+}
+
+// RemoveItem: Remove an owned status item. Permission statusBar.write.
+func (w *StatusBar) RemoveItem(context WorkspaceContext, params any) (json.RawMessage, error) {
+	return w.host.scoped(methodStatusBarRemoveItem, context, params)
+}
+
+// Clipboard provides context-scoped clipboard services.
+type Clipboard struct{ host *Host }
+
+// Clipboard returns native clipboard services.
+func (h *Host) Clipboard() *Clipboard { return &Clipboard{host: h} }
+
+// ReadText: Read system clipboard text. Permission clipboard.read.
+func (w *Clipboard) ReadText(context WorkspaceContext, params any) (json.RawMessage, error) {
+	return w.host.scoped(methodClipboardReadText, context, params)
+}
+
+// WriteText: Write system clipboard text. Permission clipboard.write.
+func (w *Clipboard) WriteText(context WorkspaceContext, params any) (json.RawMessage, error) {
+	return w.host.scoped(methodClipboardWriteText, context, params)
+}
+
+// Reveal: Reveal a saved resource in the file manager. Permission workspace.reveal.
+func (w *Workspace) Reveal(context WorkspaceContext, params any) (json.RawMessage, error) {
+	return w.host.scoped(methodWorkspaceReveal, context, params)
+}
+
+// Network provides context-scoped network services.
+type Network struct{ host *Host }
+
+// Network returns native network services.
+func (h *Host) Network() *Network { return &Network{host: h} }
+
+// Request: Send a bounded HTTP request with host proxy policy. Permission network.request.
+func (w *Network) Request(context WorkspaceContext, params any) (json.RawMessage, error) {
+	return w.host.scoped(methodNetworkRequest, context, params)
 }

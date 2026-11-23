@@ -367,12 +367,13 @@ impl<'c> Walk<'c> {
         if self.context.surface != Surface::ToolWindow {
             return Err(fail(path, "Trees appear in tool windows."));
         }
-        let map = object(value, path, &["type", "id", "label", "items"])?;
+        let map = object(value, path, &["type", "id", "label", "items", "cursor"])?;
         self.id(map, path, true)?;
         line(map, path, "label", MAX_LABEL_CHARS, false)?;
         let items = map
             .get("items")
             .ok_or_else(|| fail(at(path, "items"), "Required."))?;
+        line(map, path, "cursor", 256, false)?;
         let mut ids = BTreeSet::new();
         let mut count = 0;
         tree_items(items, &at(path, "items"), 1, &mut ids, &mut count)
@@ -466,7 +467,15 @@ fn tree_items(
         let map = object(
             item,
             &item_path,
-            &["id", "label", "icon", "detail", "expanded", "children"],
+            &[
+                "id",
+                "label",
+                "icon",
+                "detail",
+                "expanded",
+                "children",
+                "hasChildren",
+            ],
         )?;
         let id = identifier(map, &item_path, "id", true)?.unwrap_or_default();
         if !ids.insert(id.to_owned()) {
@@ -478,6 +487,7 @@ fn tree_items(
         line(map, &item_path, "label", MAX_LABEL_CHARS * 2, true)?;
         line(map, &item_path, "detail", MAX_LABEL_CHARS * 2, false)?;
         boolean(map, &item_path, "expanded")?;
+        boolean(map, &item_path, "hasChildren")?;
         if let Some(icon) = string(map, &item_path, "icon", false)? {
             let host: Option<UIIcon> = serde_json::from_value(json!({"host": icon})).ok();
             if !host.is_some_and(|icon| icon.is_valid_host_icon()) {

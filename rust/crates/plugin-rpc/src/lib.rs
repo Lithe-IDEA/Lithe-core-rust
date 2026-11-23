@@ -21,6 +21,7 @@
 //! dispatchers.
 
 pub mod host_api;
+pub mod workflow;
 
 use lithe_plugin_language_servers::is_protocol_name;
 use lithe_plugin_model::capabilities::{
@@ -138,6 +139,15 @@ pub fn methods_for_permission(permission: &str) -> Vec<&'static str> {
 
 /// Permissions for the additive host services.
 pub const HOST_PERMISSIONS: &[&str] = &[
+    "window.input",
+    "views.refresh",
+    "output.write",
+    "window.progress",
+    "statusBar.write",
+    "clipboard.read",
+    "clipboard.write",
+    "workspace.reveal",
+    "network.request",
     "workspace.files.read",
     "workspace.files.watch",
     "build.options.read",

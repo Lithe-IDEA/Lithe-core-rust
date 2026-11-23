@@ -34,7 +34,10 @@ public final class ViewEvent {
          */
         RESIZE("resize"),
         /** The effective or draft setting values changed. */
-        SETTINGS("settings");
+        SETTINGS("settings"),
+        REFRESH("refresh"),
+        EXPAND("expand"),
+        LOAD_MORE("loadMore");
 
         private final String wireName;
 
@@ -100,6 +103,7 @@ public final class ViewEvent {
     private final Object value;
     private final String setting;
     private final String item;
+    private final String cursor;
     private final Viewport viewport;
     private final Double width;
 
@@ -127,6 +131,7 @@ public final class ViewEvent {
         }
         setting = optional(params, "setting");
         item = optional(params, "item");
+        cursor = optional(params, "cursor");
         Object box = params.get("viewport");
         if (box == null) {
             viewport = null;
@@ -211,6 +216,9 @@ public final class ViewEvent {
     }
 
     /** A select or activate event: the tree item ID; or null. */
+    /** Opaque tree continuation on loadMore; null otherwise. */
+    public String cursor() { return cursor; }
+
     public String item() {
         return item;
     }
