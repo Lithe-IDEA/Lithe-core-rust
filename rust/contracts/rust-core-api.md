@@ -467,6 +467,8 @@ or removing a command fails until the table changes in the same commit.
 
 | Command | Purpose |
 | --- | --- |
+| `application.fileAssociations.catalog` | Project the built-in highlighted text suffixes into native package formats |
+| `application.fileAssociations.plan` | Validate an explicit selection against current native association revisions |
 | `core.ping` | Verify the ABI and protocol version |
 | `ideHost.control` | Control the native IDE capability broker |
 | `ai.commitInputBudget` | Budget diff prefixes before crossing the native boundary |
@@ -8643,3 +8645,43 @@ permissions and environment-change notification. Inspect is read-only; only an
 explicit install/remove click publishes. Launcher resources live in user data,
 never the read-only installation. Removing registration deletes the owned launcher after removing its PATH entry. See
 [fixtures](../fixtures/application/cli-v1.json).
+
+## Built-in text file associations
+
+`application.fileAssociations.catalog` accepts `{languages: [{id, highlighted,
+extensions: string[]}]}` observed from the host's built-in syntax catalog. It
+returns `{formats: [{extension, language}]}` sorted by extension with first-source
+identity winning duplicates. Plugin contributions and filename/prefix-only rules
+are not inputs. Languages without a bundled grammar are omitted except
+`plaintext`. Only lowercase simple suffixes (a leading dot followed by ASCII
+letters or digits, then letters, digits, hyphens, underscores or plus signs)
+are registrable; compiled `.rlib` and
+compressed `.svgz` are omitted. Compound suffixes are covered by their final simple
+suffix when that suffix is declared, rather than claiming OS support for regexes.
+At most 128 languages and 512 input suffixes are accepted; suffixes are at most
+17 bytes including the leading dot (16 suffix characters), matching the native
+package manifest. Language identities are at most 64 ASCII identifier bytes.
+
+`application.fileAssociations.plan` accepts `{formats, selected: string[],
+baseline, current}`. Both observation arrays contain `{extension, defaultId,
+registration}`, where registration is an opaque revision of the host-owned native
+source. The adapter captures the baseline on read and rereads before an explicit
+Apply. Selected extensions must be unique, nonempty, and present in the catalog.
+Each selected extension requires one baseline and one current observation.
+Changes to default identities or registration revisions produce
+`{conflict: true, extensions: []}`. Otherwise the result is
+`{conflict: false, extensions: string[]}` in deterministic order. Invalid payloads
+fail with `invalid_request`; arrays are bounded to 512 entries, default identities
+to 32768 bytes and revision tokens to 128 bytes. Display names are not identity.
+
+Native hosts own actual Launch Services or per-user Windows registry I/O,
+readback, cancellation and partial-failure reporting. Opening settings is
+read-only; selecting checkboxes is draft UI state. Applying requests changes only
+for selected formats. Windows registers Open With candidates and a context verb
+under each owned ProgID, then opens system Default Apps for user confirmation; it
+never writes protected UserChoice. The standalone verb appears only for files
+associated with that ProgID. macOS registers the signed bundle as an alternate
+editor and may explicitly set selected default handlers. macOS associates content
+types, so extensions sharing a type may change together. The installed package
+stays read-only. No regex or all-files catch-all
+registration is permitted. See [fixtures](../fixtures/application/file-associations-v1.json).
