@@ -274,6 +274,7 @@ must(backend.OnCommand("db.refresh", func(_ string, workspace *lithe.WorkspaceCo
 | `Workspace().GetHostPaths(context, rootIDs...)`, `.ProcessRoots(context)` | Root paths on the remote host of a remote context; see [Remote workspaces](#remote-workspaces). |
 | `Workspace().ReadDirectory`, `.Stat`, `.ReadFile`, `.FindFiles`, `.FindText`, `.Watch` | Files of a local context, addressed as `{ rootID, path }` from `GetFolders`. |
 | `Documents().List`, `.GetSnapshot`; `Editor().GetActive`, `.GetSelections`, `.ApplyEdits`, `.ReplaceSelections`, `.InsertText`, `.Open`, `.Reveal`, `.RegisterActions` | Live documents and editors. Edits name the `expectedVersion` they were computed against. |
+| `Documents().Save`, `.SaveAs`, `.Close`; `Workspace().Create`, `.Rename`, `.Copy`, `.Trash` | Saves, closes, and file changes, with the `documents.save` and `workspace.files.write` permissions. Nothing is overwritten, discarded, or deleted permanently; see [saving documents and changing files](../../contract/v1/README.md#saving-documents-and-changing-files). |
 | `Preview().OpenHTML`, `Browser().OpenExternal`, `Window().ShowInformation`, `.ShowWarning`, `.ShowError` | Preview, browser, and messages. |
 | `Terminal().Create`, `.Show`, `.Close`, `.Reopen`, `.Dispose`, `.OnExit` | Native terminals; see [Native terminal API](#native-terminal-api). |
 | `Functions().Providers(functionID)`, `.Invoke(context, call)` | The plugins that export a function, and a call to one of them; see [Calling other plugins](#calling-other-plugins). |
@@ -303,7 +304,7 @@ What the SDK does for you, and what it leaves to you:
   reread and recompute; on `contextExpired` resolve the original target
   again, never the focused window; retry `busy` and `rateLimited` (after the
   `retryAfterMilliseconds` detail) with a bound; `permissionDenied` and
-  `readOnly` need the user. An unknown param is
+  `readOnly` need the user, and so does `diskChanged`; on `alreadyExists` pick another target. An unknown param is
   `plugin.host.unsupportedOption` naming it in the `option` detail, so you can
   retry without it. `lithe.HostErrorCodes` lists the codes and numbers the
   contract defines.

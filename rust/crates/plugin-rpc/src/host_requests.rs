@@ -67,9 +67,6 @@ pub(crate) enum HostParams {
     /// `plugin.host.invalidParams` or, for a field it does not know,
     /// `plugin.host.unsupportedOption` itself; for methods whose params
     /// Core cannot type without owning their domain.
-    // No row uses it yet; the file, editor, and window services that follow
-    // add their rows with it.
-    #[allow(dead_code)]
     Object,
 }
 
@@ -268,6 +265,33 @@ pub(crate) const HOST_METHODS: &[HostMethod] = &[
         permission: Some("workspace.search"),
         params: HostParams::Object,
     },
+    // Plan API-11: file changes the host makes on the backend's behalf. The
+    // host never overwrites a file, saves an open document before it moves
+    // or trashes its file, and moves to the trash instead of deleting.
+    HostMethod {
+        method: "lithe/host/workspace/create",
+        service: "workspace",
+        permission: Some(PERMISSION_WORKSPACE_FILES_WRITE),
+        params: HostParams::Object,
+    },
+    HostMethod {
+        method: "lithe/host/workspace/rename",
+        service: "workspace",
+        permission: Some(PERMISSION_WORKSPACE_FILES_WRITE),
+        params: HostParams::Object,
+    },
+    HostMethod {
+        method: "lithe/host/workspace/copy",
+        service: "workspace",
+        permission: Some(PERMISSION_WORKSPACE_FILES_WRITE),
+        params: HostParams::Object,
+    },
+    HostMethod {
+        method: "lithe/host/workspace/trash",
+        service: "workspace",
+        permission: Some(PERMISSION_WORKSPACE_FILES_WRITE),
+        params: HostParams::Object,
+    },
     HostMethod {
         method: "lithe/host/documents/list",
         service: "documents",
@@ -278,6 +302,26 @@ pub(crate) const HOST_METHODS: &[HostMethod] = &[
         method: "lithe/host/documents/getSnapshot",
         service: "documents",
         permission: Some("documents.read"),
+        params: HostParams::Object,
+    },
+    // Plan API-11: saving and closing an open document through its owner,
+    // which keeps the document's version, dirty state and undo history.
+    HostMethod {
+        method: "lithe/host/documents/save",
+        service: "documents",
+        permission: Some(PERMISSION_DOCUMENTS_SAVE),
+        params: HostParams::Object,
+    },
+    HostMethod {
+        method: "lithe/host/documents/saveAs",
+        service: "documents",
+        permission: Some(PERMISSION_DOCUMENTS_SAVE),
+        params: HostParams::Object,
+    },
+    HostMethod {
+        method: "lithe/host/documents/close",
+        service: "documents",
+        permission: Some(PERMISSION_DOCUMENTS_SAVE),
         params: HostParams::Object,
     },
     HostMethod {

@@ -303,6 +303,10 @@ export function createHost(channel, callSignal, parentOperationId) {
         subscribe(HOST_METHODS.workspaceWatch, { ...params, context: contextReference(context) }, onEvent, options),
       findFiles: scoped(HOST_METHODS.workspaceFindFiles),
       findText: scoped(HOST_METHODS.workspaceFindText),
+      create: scoped(HOST_METHODS.workspaceCreate),
+      rename: scoped(HOST_METHODS.workspaceRename),
+      copy: scoped(HOST_METHODS.workspaceCopy),
+      trash: scoped(HOST_METHODS.workspaceTrash),
     }),
     functions: Object.freeze({
       providers: async (functionID, options) => {
@@ -315,6 +319,9 @@ export function createHost(channel, callSignal, parentOperationId) {
     documents: Object.freeze({
       list: scoped(HOST_METHODS.documentsList),
       getSnapshot: scoped(HOST_METHODS.documentsGetSnapshot),
+      save: scoped(HOST_METHODS.documentsSave),
+      saveAs: scoped(HOST_METHODS.documentsSaveAs),
+      close: scoped(HOST_METHODS.documentsClose),
     }),
     editor: Object.freeze({
       getActive: scoped(HOST_METHODS.editorGetActive),

@@ -45,6 +45,8 @@ pub fn host_rpc_code(code: &str) -> i64 {
         // -32072 to -32077 are the toolchain provider protocol's.
         codes::HOST_REMOTE_DISCONNECTED => -32078,
         codes::HOST_PLATFORM_UNAVAILABLE => -32079,
+        codes::HOST_ALREADY_EXISTS => -32080,
+        codes::HOST_DISK_CHANGED => -32081,
         _ => -32603,
     }
 }
@@ -91,6 +93,8 @@ pub fn host_failure(code: Option<&str>) -> (&'static str, i64) {
         Some(codes::HOST_FOREIGN_CONTRIBUTION) => codes::HOST_FOREIGN_CONTRIBUTION,
         Some(codes::HOST_REMOTE_DISCONNECTED) => codes::HOST_REMOTE_DISCONNECTED,
         Some(codes::HOST_PLATFORM_UNAVAILABLE) => codes::HOST_PLATFORM_UNAVAILABLE,
+        Some(codes::HOST_ALREADY_EXISTS) => codes::HOST_ALREADY_EXISTS,
+        Some(codes::HOST_DISK_CHANGED) => codes::HOST_DISK_CHANGED,
         // A backend exit is reported to pages, never to the backend itself.
         Some(codes::BACKEND_EXITED) => codes::HOST_FAILED,
         _ => codes::HOST_FAILED,

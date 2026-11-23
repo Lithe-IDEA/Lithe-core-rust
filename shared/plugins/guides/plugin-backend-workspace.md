@@ -193,8 +193,10 @@
 | `credentials/get`、`credentials/set`、`credentials/delete` | `credentials.store` | 插件私有的密钥，存在平台的密钥库里，不在状态目录或插件包中；`key` 是 1–128 个字母、数字、`.`、`_`、`:`、`-`，密钥最多 16 KiB；卸载插件时删除 |
 | `documents/list`、`documents/getSnapshot`、`editor/getActive`、`editor/getSelections` | `documents.read` | 列出打开的文档，读编辑器里未保存的内容、当前标签页和选区 |
 | `editor/applyEdits`、`editor/replaceSelections`、`editor/insertText` | `editor.edit` | 带 `expectedVersion` 的编辑；一批编辑是一次原子操作、一步撤销 |
+| `documents/save`、`documents/saveAs`、`documents/close` | `documents.save` | 保存、另存为、关闭打开的文档；关闭前先保存，从不丢弃用户的修改 |
 | `workspace/readDirectory`、`workspace/stat`、`workspace/readFile` | `workspace.files.read` | 读磁盘上的目录和文件 |
 | `workspace/watch` | `workspace.files.watch` | 订阅文件变化，事件经 `subscriptions/notify` 送达 |
+| `workspace/create`、`workspace/rename`、`workspace/copy`、`workspace/trash` | `workspace.files.write` | 新建文件或目录、重命名、复制、移到系统废纸篓；从不覆盖已有文件，也不永久删除 |
 | `workspace/findFiles`、`workspace/findText` | `workspace.search` | 按文件名或内容搜索，分页返回 |
 | `editor/open`、`editor/reveal` | `editor.open` | 打开文件并定位到某处 |
 | `preview/openHTML` | `preview.open` | 用内置预览打开 HTML 文件 |
@@ -212,6 +214,7 @@
   遇到 `contextExpired` 要重新找到原来的目标，不要改用当前聚焦的窗口；`busy`、`rateLimited` 可以有限次重试；
   `permissionDenied`、`readOnly` 需要用户处理。
 - 后台没有挂载编辑器的文档可以列出和读取，但编辑与选区可能返回 `busy`。
+- 保存和文件变更不弹任何询问：目标已存在时得到 `alreadyExists`，文件在磁盘上被改过或删掉时 `save`、`close` 得到 `diskChanged` 且不写入，交给用户在编辑器里选择保留哪一版；未命名文档要用 `saveAs`，硬链接文件的保存要用户选择，二者都得到 `preconditionFailed`。`rename`、`trash` 先保存其下打开的文档，保存失败就什么都不动。规则见契约的[保存文档与变更文件](../contract/v1/README.md#saving-documents-and-changing-files)。
 - 消息有频率和排队上限（每插件 10 秒 5 条、最多 3 条待答；同一窗口最多 10 条；正文最多 2,000 个字符，按钮最多 3 个、每个最多 40 个字符），用户回答前请求一直挂起。
 
 另有几组方法，各自带权限，调用前同样先查 `getCapabilities.services`，清单条件见对应的契约章节：
@@ -252,6 +255,8 @@
 | `plugin.host.foreignContribution` | `-32026` | 指名的服务器或贡献属于别的插件 |
 | `plugin.host.remoteDisconnected` | `-32078` | 操作进行中和远端主机断开，不知道它是否已在远端生效；上下文恢复后先重新读取状态再决定，不要自动重放修改 |
 | `plugin.host.platformUnavailable` | `-32079` | 插件没有适合远端主机 `platform` 的程序包或托管运行时，所需进程无法在那里运行；告诉用户缺什么 |
+| `plugin.host.alreadyExists` | `-32080` | 新建、复制、重命名或另存为的目标已存在，宿主不会覆盖；换一个目标，或先问用户 |
+| `plugin.host.diskChanged` | `-32081` | 文件在文档读入后被磁盘上的改动修改或删除，什么都没写；由用户在编辑器里选择保留哪一版，不要重试保存 |
 
 `-32000` 到 `-32009` 留给后端自己的失败，宿主号码从 `-32010` 起。跨插件调用另有 `plugin.function.failed`（`-32070`）和 `plugin.function.invalidResult`（`-32071`），见第 11 节。
 
@@ -518,8 +523,10 @@ The host opens a set of public methods, each group behind a permission. `getCapa
 | `credentials/get`, `credentials/set`, `credentials/delete` | `credentials.store` | Secrets private to the plugin, kept in the platform's secret store, never in the state directory or the package; a `key` is 1 to 128 letters, digits, `.`, `_`, `:`, or `-`, a secret is at most 16 KiB; deleted when the plugin is uninstalled |
 | `documents/list`, `documents/getSnapshot`, `editor/getActive`, `editor/getSelections` | `documents.read` | List open documents; read unsaved editor content, the active tab, and selections |
 | `editor/applyEdits`, `editor/replaceSelections`, `editor/insertText` | `editor.edit` | Edits with `expectedVersion`; a batch is one atomic operation and one undo step |
+| `documents/save`, `documents/saveAs`, `documents/close` | `documents.save` | Save, save as, and close an open document; a close saves first and never discards the user's edits |
 | `workspace/readDirectory`, `workspace/stat`, `workspace/readFile` | `workspace.files.read` | Read directories and files on disk |
 | `workspace/watch` | `workspace.files.watch` | Subscribe to file changes; events arrive through `subscriptions/notify` |
+| `workspace/create`, `workspace/rename`, `workspace/copy`, `workspace/trash` | `workspace.files.write` | Create a file or directory, rename, copy, or move to the system trash; never overwrites a file or deletes permanently |
 | `workspace/findFiles`, `workspace/findText` | `workspace.search` | Search by file name or content, paged |
 | `editor/open`, `editor/reveal` | `editor.open` | Open a file and go to a location |
 | `preview/openHTML` | `preview.open` | Open an HTML file in the built-in preview |
@@ -537,6 +544,7 @@ The [contract](../contract/v1/README.md#public-document-file-and-window-methods)
   on `contextExpired`, find the original target again instead of switching to the focused window; `busy` and `rateLimited` may be retried a bounded number of times;
   `permissionDenied` and `readOnly` need the user.
 - Documents open in the background without a mounted editor can be listed and read, but edits and selections may return `busy`.
+- Saves and file changes never ask the user anything: an existing target gives `alreadyExists`; a file changed or deleted on disk gives `diskChanged` from `save` and `close`, with nothing written, and the user chooses in the editor which version to keep; an untitled document needs `saveAs`, and a hard-linked file's save needs the user's choice, both giving `preconditionFailed`. `rename` and `trash` save the open documents under the resource first and move nothing when a save fails. The rules are in the contract's [Saving documents and changing files](../contract/v1/README.md#saving-documents-and-changing-files).
 - Messages have rate and queue limits (5 per 10 seconds per plugin, at most 3 awaiting an answer, at most 10 per window; text of at most 2,000 characters, at most 3 buttons of at most 40 characters each), and the request stays pending until the user answers.
 
 Several more groups of methods, each behind its own permission, also need a `getCapabilities.services` check before calling; their manifest conditions are in the contract sections named below:
@@ -577,6 +585,8 @@ Host failures are typed: each JSON-RPC number maps one-to-one to an `error.data.
 | `plugin.host.foreignContribution` | `-32026` | The named server or contribution belongs to another plugin |
 | `plugin.host.remoteDisconnected` | `-32078` | The connection to the remote host was lost while the operation ran, so whether it took effect there is unknown; once the context is current, read the state again before deciding, and do not replay a change automatically |
 | `plugin.host.platformUnavailable` | `-32079` | The plugin has no package or managed runtime for the remote host's `platform`, so the process it needs cannot run there; tell the user what is missing |
+| `plugin.host.alreadyExists` | `-32080` | The target of a create, copy, rename, or save-as already exists, and the host never overwrites it; pick another target or ask the user first |
+| `plugin.host.diskChanged` | `-32081` | The file changed or was deleted on disk after the document read it, and nothing was written; the user chooses in the editor which version to keep, so do not retry the save |
 
 `-32000` through `-32009` are reserved for the backend's own failures; host numbers start at `-32010`. Cross-plugin calls add `plugin.function.failed` (`-32070`) and `plugin.function.invalidResult` (`-32071`); see section 11.
 

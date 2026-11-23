@@ -157,6 +157,8 @@ pub const HOST_PERMISSIONS: &[&str] = &[
     "debug.start",
     PERMISSION_LANGUAGE_SERVER_REQUEST,
     PERMISSION_DOCUMENTS_CONTENT_PROVIDER,
+    PERMISSION_DOCUMENTS_SAVE,
+    PERMISSION_WORKSPACE_FILES_WRITE,
 ];
 
 /// Permission of the `languageServer` host service (plan API-25): a backend
@@ -167,6 +169,17 @@ pub const PERMISSION_LANGUAGE_SERVER_REQUEST: &str = "languageServer.request";
 /// Permission of `documents/registerContentProvider` (plan API-12): the
 /// backend supplies the read-only text of URIs of a scheme it registers.
 pub(crate) const PERMISSION_DOCUMENTS_CONTENT_PROVIDER: &str = "documents.contentProvider";
+
+/// Permission of `documents/save`, `saveAs` and `close` (plan API-11): the
+/// backend asks the document's owner to write or close an open document. A
+/// close saves first; the owner never discards the user's edits for it.
+pub(crate) const PERMISSION_DOCUMENTS_SAVE: &str = "documents.save";
+
+/// Permission of `workspace/create`, `rename`, `copy` and `trash` (plan
+/// API-11): the backend changes files inside the context's root folders.
+/// None of them overwrites a file, and `trash` moves to the system trash
+/// instead of deleting.
+pub(crate) const PERMISSION_WORKSPACE_FILES_WRITE: &str = "workspace.files.write";
 
 const CREDENTIALS_GET: &str = "lithe/host/credentials/get";
 
@@ -309,6 +322,14 @@ pub mod codes {
     /// The plugin has no package or managed runtime for the remote host's
     /// platform, so the process the request needs cannot run there.
     pub const HOST_PLATFORM_UNAVAILABLE: &str = "plugin.host.platformUnavailable";
+    /// The file or folder the request would create, or the target of a
+    /// rename, copy or save as, already exists. The host never overwrites
+    /// it.
+    pub const HOST_ALREADY_EXISTS: &str = "plugin.host.alreadyExists";
+    /// The file on disk changed, or was deleted, after the document last
+    /// read or wrote it, so a save would overwrite a change the document
+    /// does not hold. Nothing was written; the user settles the conflict.
+    pub const HOST_DISK_CHANGED: &str = "plugin.host.diskChanged";
     /// A page's call or a host operation ended because the backend process
     /// exited. Reported by hosts to pages, never sent to a backend.
     pub const BACKEND_EXITED: &str = "plugin.backend.exited";
@@ -864,6 +885,98 @@ mod tests {
             .as_array()
             .unwrap()
             .contains(&json!(WORKSPACE_GET_HOST_PATHS)));
+    }
+
+    /// Saving and file changes are method grants of their own (plan
+    /// API-11): a session granted the `workspace` service, or only reading,
+    /// never writes, and each new failure code has a number of its own.
+    #[test]
+    fn saves_and_file_changes_are_method_grants_of_their_own() {
+        assert_eq!(
+            methods_for_permission(PERMISSION_DOCUMENTS_SAVE),
+            [
+                "lithe/host/documents/save",
+                "lithe/host/documents/saveAs",
+                "lithe/host/documents/close",
+            ]
+        );
+        let writes = methods_for_permission(PERMISSION_WORKSPACE_FILES_WRITE);
+        assert_eq!(
+            writes,
+            [
+                "lithe/host/workspace/create",
+                "lithe/host/workspace/rename",
+                "lithe/host/workspace/copy",
+                "lithe/host/workspace/trash",
+            ]
+        );
+        let context = json!({ "contextID": "w-3f2a", "generation": 2 });
+        let params = json!({ "context": context, "resource": { "rootID": "r0", "path": "a.txt" } });
+        let reading = BTreeSet::from([
+            HOST_SERVICE_WORKSPACE.to_string(),
+            "lithe/host/workspace/readFile".to_string(),
+        ]);
+        for method in &writes {
+            assert!(is_host_grant(method), "{method}");
+            assert_eq!(
+                host_request(method, Some(&params), Some(0), &reading)
+                    .unwrap_err()
+                    .code,
+                codes::HOST_PERMISSION_DENIED,
+                "{method}"
+            );
+            let granted = BTreeSet::from([method.to_string()]);
+            assert_eq!(
+                host_request(method, Some(&params), Some(0), &granted),
+                Ok(HostRoute::Forward(HOST_SERVICE_WORKSPACE)),
+                "{method}"
+            );
+        }
+        let save = BTreeSet::from(["lithe/host/documents/save".to_string()]);
+        assert_eq!(
+            host_request(
+                "lithe/host/documents/save",
+                Some(&json!({ "context": context, "documentID": "d1" })),
+                Some(0),
+                &save,
+            ),
+            Ok(HostRoute::Forward("documents"))
+        );
+        // Every code a host may report keeps a number of its own.
+        let host_codes = [
+            codes::HOST_UNAVAILABLE,
+            codes::HOST_INVALID_PARAMS,
+            codes::HOST_CANCELLED,
+            codes::HOST_PERMISSION_DENIED,
+            codes::HOST_CONTEXT_EXPIRED,
+            codes::HOST_AUTHORITY_UNSUPPORTED,
+            codes::HOST_VERSION_CONFLICT,
+            codes::HOST_LIMIT_EXCEEDED,
+            codes::HOST_TIMEOUT,
+            codes::HOST_NOT_FOUND,
+            codes::HOST_READ_ONLY,
+            codes::HOST_UNSUPPORTED_OPTION,
+            codes::HOST_PRECONDITION_FAILED,
+            codes::HOST_BUSY,
+            codes::HOST_RATE_LIMITED,
+            codes::HOST_LANGUAGE_SERVER_UNAVAILABLE,
+            codes::HOST_LANGUAGE_SERVER_ERROR,
+            codes::HOST_METHOD_NOT_DECLARED,
+            codes::HOST_TOOL_UNRESOLVED,
+            codes::HOST_FOREIGN_CONTRIBUTION,
+            codes::HOST_REMOTE_DISCONNECTED,
+            codes::HOST_PLATFORM_UNAVAILABLE,
+            codes::HOST_ALREADY_EXISTS,
+            codes::HOST_DISK_CHANGED,
+            codes::HOST_FAILED,
+        ];
+        for code in host_codes {
+            assert_eq!(host_failure(Some(code)).0, code, "{code}");
+        }
+        let numbers: BTreeSet<i64> = host_codes.iter().map(|code| host_rpc_code(code)).collect();
+        assert_eq!(numbers.len(), host_codes.len());
+        assert_eq!(host_rpc_code(codes::HOST_ALREADY_EXISTS), -32080);
+        assert_eq!(host_rpc_code(codes::HOST_DISK_CHANGED), -32081);
     }
 
     /// A message over the bound is cut at a character boundary, never inside
