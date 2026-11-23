@@ -47,6 +47,29 @@ fn remote_and_branch_refspec_components_do_not_follow_unix_filename_rules() {
     }
 }
 
+#[test]
+fn workspace_pathspecs_follow_platform_filename_rules() {
+    for path in ["a:b.txt", ":(glob)*.txt", ":(exclude)*.txt", r"D:\logs"] {
+        assert!(
+            super::is_safe_pathspec_for(path, lithe_platform::Platform::Unix),
+            "{path}"
+        );
+        assert!(
+            !super::is_safe_pathspec_for(path, lithe_platform::Platform::Windows),
+            "{path}"
+        );
+    }
+    for platform in lithe_platform::Platform::ALL {
+        assert!(super::is_safe_pathspec_for("src/main.rs", platform));
+        for invalid in ["", "/etc", "../secret", "a/../b", "a\0b"] {
+            assert!(
+                !super::is_safe_pathspec_for(invalid, platform),
+                "{invalid:?} on {platform:?}"
+            );
+        }
+    }
+}
+
 /// Only an exact `Name <email>` names an author; the options keep Git's order.
 #[test]
 fn commit_identity_requires_an_exact_author() {

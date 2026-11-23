@@ -459,7 +459,11 @@ pub(crate) fn empty_tree_oid(root: &str) -> Result<String, CoreError> {
 /// Workspace paths follow the host's filename rules, independently of Git refs.
 /// Callers passing these paths as pathspecs must keep Git's matching literal.
 pub(crate) fn is_safe_pathspec(path: &str) -> bool {
-    !invalid_native_relative_path(path, Platform::HOST)
+    is_safe_pathspec_for(path, Platform::HOST)
+}
+
+pub(crate) fn is_safe_pathspec_for(path: &str, platform: Platform) -> bool {
+    !invalid_native_relative_path(path, platform)
 }
 
 pub(crate) fn null_device() -> &'static str {

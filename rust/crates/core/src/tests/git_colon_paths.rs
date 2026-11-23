@@ -367,3 +367,91 @@ fn untracked_directory_and_diff_preserve_colon_children() {
         }
     }
 }
+
+#[test]
+fn selected_commit_keeps_colon_paths_literal() {
+    let repository = Repository::new("colon-commit");
+    repository.git(&["config", "user.name", "Fixture"]);
+    repository.git(&["config", "user.email", "fixture@example.invalid"]);
+    repository.git(&["config", "commit.gpgsign", "false"]);
+    for path in PATHS.into_iter().chain(["unselected.txt"]) {
+        repository.write(path, "initial\n");
+    }
+    repository.git(&["add", "--all"]);
+    repository.commit();
+
+    // Selected commit with pathspec-shaped names must not commit `unselected.txt`
+    // and must reconcile pre-staged colon paths in the real index.
+    for path in PATHS.into_iter().chain(["unselected.txt"]) {
+        repository.write(path, "committed\n");
+    }
+    repository.mutate("stage", &["a:b.txt", ":(exclude)*.txt"]);
+    let committed = repository.data(
+        "git.write",
+        json!({
+            "operation": "commit",
+            "message": "commit colon paths",
+            "paths": PATHS,
+        }),
+    );
+    assert_eq!(committed["exitCode"], 0, "{committed}");
+    assert!(committed["operationError"].is_null(), "{committed}");
+    assert_eq!(
+        repository.git(&[
+            "diff-tree",
+            "--no-commit-id",
+            "--name-only",
+            "-r",
+            "-z",
+            "HEAD"
+        ]),
+        ":(exclude)*.txt\0:(glob)*.txt\0D:\\logs\0a:b.txt\0"
+    );
+    assert_eq!(
+        fs::read_to_string(repository.0.join("unselected.txt")).unwrap(),
+        "committed\n"
+    );
+    assert_eq!(
+        repository.git(&["status", "--porcelain=v1", "-z"]),
+        " M unselected.txt\0"
+    );
+}
+
+#[test]
+fn stash_push_keeps_colon_paths_literal() {
+    let repository = Repository::new("colon-stash");
+    repository.git(&["config", "user.name", "Fixture"]);
+    repository.git(&["config", "user.email", "fixture@example.invalid"]);
+    repository.git(&["config", "commit.gpgsign", "false"]);
+    for path in PATHS.into_iter().chain(["unselected.txt"]) {
+        repository.write(path, "initial\n");
+    }
+    repository.git(&["add", "--all"]);
+    repository.commit();
+
+    // Selected stash push with pathspec-shaped names must leave `unselected.txt` modified.
+    for path in PATHS.into_iter().chain(["unselected.txt"]) {
+        repository.write(path, "stashed\n");
+    }
+    let stashed = repository.data(
+        "git.write",
+        json!({
+            "operation": "stashPush",
+            "message": "stash colon paths",
+            "paths": PATHS,
+        }),
+    );
+    assert_eq!(stashed["exitCode"], 0, "{stashed}");
+    assert!(stashed["operationError"].is_null(), "{stashed}");
+    for path in PATHS {
+        assert_eq!(
+            fs::read_to_string(repository.0.join(path)).unwrap(),
+            "initial\n",
+            "{path}"
+        );
+    }
+    assert_eq!(
+        fs::read_to_string(repository.0.join("unselected.txt")).unwrap(),
+        "stashed\n"
+    );
+}
