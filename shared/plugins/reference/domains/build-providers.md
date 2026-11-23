@@ -19,7 +19,7 @@
 | API 编号 | [API-29](../api-catalog.md#现在能用的-api)：构建、任务、测试、运行准备 |
 | 权限 | `process.build`；自有进程的提供者加 `languageServer.launch`；原生调试准备加 `debug.launch` |
 | 激活事件 | `onBuildSystem:<id>`；提供者在第一次由用户操作触发的构建请求时启动 |
-| 官方 SDK | [Node.js 0.5.0](../../sdk/node/README.md) 和 [Java 0.5.0](../../sdk/java/README.md) 有 `litheBuild` 的类型化处理器：模型、依赖、任务执行、测试执行、测试发现、运行准备、调试准备；原生配置（`lithe/build/configuration`、`editConfiguration`）没有类型化处理器。[Rust 0.4.0](../../sdk/rust/README.md) 没有构建提供者接口；`main` 上的 Rust SDK 源码有同样的类型化处理器（另含运行入口），随下一次 Rust SDK 发布提供。发布标签 `sdk-node-v0.5.0`、`sdk-java-v0.5.0`、`sdk-rust-v0.4.0`，见[官方 SDK](../capabilities-and-versions.md#官方-sdk) |
+| 官方 SDK | [Node.js 0.5.0](../../sdk/node/README.md) 和 [Java 0.5.0](../../sdk/java/README.md) 有 `litheBuild` 的类型化处理器：模型、依赖、任务执行、测试执行、测试发现、运行准备、调试准备；原生配置（`lithe/build/configuration`、`editConfiguration`）没有类型化处理器。[Rust 0.4.0](../../sdk/rust/README.md) 没有构建提供者接口；`main` 上的 Rust SDK 源码有同样的类型化处理器（另含运行入口），随下一次 Rust SDK 发布提供。Node.js 和 Rust 的发布标签为 `sdk-node-v0.5.0`、`sdk-rust-v0.4.0`；Java 按[获取说明](../../sdk/java/README.md#getting-the-sdk)固定 Core commit 引入源码，见[官方 SDK](../capabilities-and-versions.md#官方-sdk) |
 
 ### 两种形式
 
@@ -139,7 +139,7 @@ Some build tools expose their project model only through their own API (the Grad
 | API IDs | [API-29](../api-catalog.md#apis-usable-now): build, tasks, tests, run preparation |
 | Permissions | `process.build`; `languageServer.launch` for an own-process provider; `debug.launch` for native debug preparation |
 | Activation events | `onBuildSystem:<id>`; a provider starts on the first build request, which only a user action sends |
-| Official SDKs | [Node.js 0.5.0](../../sdk/node/README.md) and [Java 0.5.0](../../sdk/java/README.md) have typed `litheBuild` handlers: model, dependencies, task execution, test execution, test discovery, run preparation, and debug preparation; native configuration (`lithe/build/configuration`, `editConfiguration`) has no typed handler. [Rust 0.4.0](../../sdk/rust/README.md) has no build-provider interface; the Rust SDK source on `main` has the same typed handlers (plus run entrypoints), shipping in the next Rust SDK release. Released as `sdk-node-v0.5.0`, `sdk-java-v0.5.0`, and `sdk-rust-v0.4.0`; see [official SDKs](../capabilities-and-versions.md#official-sdks) |
+| Official SDKs | [Node.js 0.5.0](../../sdk/node/README.md) and [Java 0.5.0](../../sdk/java/README.md) have typed `litheBuild` handlers: model, dependencies, task execution, test execution, test discovery, run preparation, and debug preparation; native configuration (`lithe/build/configuration`, `editConfiguration`) has no typed handler. [Rust 0.4.0](../../sdk/rust/README.md) has no build-provider interface; the Rust SDK source on `main` has the same typed handlers (plus run entrypoints), shipping in the next Rust SDK release. Node.js and Rust use release tags `sdk-node-v0.5.0` and `sdk-rust-v0.4.0`; Java uses [sources from a pinned Core commit](../../sdk/java/README.md#getting-the-sdk); see [official SDKs](../capabilities-and-versions.md#official-sdks) |
 
 ### Two forms
 

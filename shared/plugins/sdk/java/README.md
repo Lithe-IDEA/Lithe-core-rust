@@ -135,16 +135,41 @@ backend.view("explorer.draw", (event, context) -> {
 
 ## Getting the SDK
 
-The SDK is released from this repository, tagged `sdk-java-v<version>`; the
-current release is
-[0.5.0](https://github.com/Lithe-IDEA/Lithe-core-rust/releases/tag/sdk-java-v0.5.0).
-A release ships `lithe-plugin-sdk-java-<version>.jar` and a `.sha256` file
-holding the JAR's SHA-256. The SDK is not published to a Maven repository. Use
-it like this:
+Use the SDK sources from a pinned commit of this repository. The `0.5.0` in
+[`pom.xml`](pom.xml) is the source version; there is no corresponding
+`sdk-java-v0.5.0` release to download. The SDK is not published to a Maven
+repository.
 
-1. Download the JAR during your plugin's build, never at runtime.
-2. Check the JAR against the SHA-256 you pinned in your repository.
-3. Shade it into your backend JAR, as the sample's `pom.xml` does.
+Vendor the SDK in your plugin repository:
+
+1. Check out the reviewed **full Core commit SHA**, rather than a moving
+   branch such as `main`. Copy the production sources from
+   [`plugin-sdk/src/main/java`](plugin-sdk/src/main/java) into
+   `vendor/lithe-plugin-sdk-java/src/main/java` in your plugin. Copy
+   [`shared/plugins/LICENSE`](../../LICENSE) to `vendor/LICENSE` as well.
+2. Record the inputs in `sdk.lock.json`: `schemaVersion: 1`,
+   `source.repository: "https://github.com/Lithe-IDEA/Lithe-core-rust"`,
+   `source.revision` containing that full commit SHA, and a `files` array
+   containing every copied file, including the license. Each entry records its
+   `upstream` path in Core, its `path` in your plugin, and the `sha256` of
+   the exact file bytes. Commit the sources, license, and lock together.
+3. Before compiling, verify every vendored file against the lock. Fail the
+   build on missing, changed, duplicate, or unpinned files. Normal builds
+   check the recorded hashes; they must not regenerate them. An SDK upgrade
+   deliberately updates the reviewed commit, copied files, and lock together,
+   removing files that the new revision no longer supplies.
+4. Compile the vendored sources together with your backend, targeting Java 8
+   (for example, `javac --release 8` with a newer JDK), and package all the
+   classes in the backend JAR. Include the SDK license in your plugin package.
+   If your build compiles the SDK as a separate local JAR, shade it into the
+   backend as [`examples/sample-build/pom.xml`](examples/sample-build/pom.xml)
+   does.
+
+The [Maven plugin's lock](https://github.com/Lithe-IDEA/lithe-plugin-maven/blob/d94e862198deca36e51eb3cbdfe4a2133ee887ae/sdk.lock.json)
+and [hash verifier](https://github.com/Lithe-IDEA/lithe-plugin-maven/blob/d94e862198deca36e51eb3cbdfe4a2133ee887ae/scripts/sdk/verify-sdk.mjs)
+show the lock format and build-time check. The
+[Tomcat plugin's packaging script](https://github.com/Lithe-IDEA/lithe-plugin-tomcat/blob/36c5b7ece9c6ec185f3ba16ac543e132bb4f0cf1/scripts/package.mjs)
+shows how to compile the vendored sources and include the SDK license.
 
 A plugin package is installed read-only and must run offline, so the backend
 JAR it starts must hold everything it loads.
