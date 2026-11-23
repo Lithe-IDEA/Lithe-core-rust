@@ -96,6 +96,36 @@ fn tool_definitions_declare_settings_category_and_audience() {
     }
 }
 
+/// `executableLinksOutsideHome` is an addition within version 0: a manifest that sets it
+/// still requires `toolDefinitions: 0`, and only a boolean is accepted.
+#[test]
+fn tool_definitions_may_let_their_program_link_outside_the_home_within_version_0() {
+    let mut linked = definition("dev.lithe.fixture.compiler:compiler");
+    linked["executableLinksOutsideHome"] = json!(true);
+    let plugin = manifest("dev.lithe.fixture.compiler", linked);
+    assert!(validate_manifest_value(plugin.clone()).is_ok());
+    let result = registry(
+        &json!({"plugins":[{"manifest":plugin}]}),
+        validated_manifest_json,
+    )
+    .unwrap();
+    assert_eq!(
+        result["definitions"][0]["definition"]["executableLinksOutsideHome"],
+        true
+    );
+    for value in [json!("true"), json!(1), json!(null)] {
+        let mut changed = definition("dev.lithe.fixture.compiler:compiler");
+        changed["executableLinksOutsideHome"] = value.clone();
+        let rejected = validate_declarations("dev.lithe.fixture.compiler", &[changed], &[])
+            .expect_err("only a boolean is accepted");
+        assert_eq!(
+            rejected.field.as_deref(),
+            Some("toolDefinitions.executableLinksOutsideHome"),
+            "{value}"
+        );
+    }
+}
+
 /// No plugin needs a host-attested origin for a short ID.
 #[test]
 fn registry_accepts_short_ids_from_any_enabled_plugin() {

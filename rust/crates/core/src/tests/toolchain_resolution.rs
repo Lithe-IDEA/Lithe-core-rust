@@ -886,6 +886,168 @@ fn toolchain_resolution_starts_a_multi_call_link_by_its_layout_name() {
     assert_eq!(selected["version"], "21.0.4");
 }
 
+/// An environment outside the workspace whose program links to its base installation,
+/// as `python -m venv` makes one on macOS and Linux.
+const ENVIRONMENT: &str = "/opt/lithe-fixtures/environments/app";
+
+/// Lets the fixture definition's program link outside its home.
+fn links_outside_home(value: &mut Value) {
+    value["registry"]["plugins"][0]["manifest"]["toolDefinitions"][0]
+        ["executableLinksOutsideHome"] = json!(true);
+}
+
+/// Records `home`, its `bin` directory resolving to `bin`, and `bin/java` resolving to
+/// `target`, the facts a host observes along the layout path, with a probe of the
+/// layout path.
+fn linked_home(value: &mut Value, home: &str, bin: &str, target: &str) {
+    value["filesystem"].as_array_mut().unwrap().extend([
+        fact(home, "directory", false),
+        json!({"path":format!("{home}/bin"),"canonicalPath":bin,"kind":"directory"}),
+        json!({"path":format!("{home}/bin/java"),"canonicalPath":target,"kind":"file","executable":true}),
+    ]);
+    value["probes"].as_array_mut().unwrap().push(
+        json!({"executable":format!("{home}/bin/java"),"output":"openjdk version \"21.0.4\"","exitCode":0}),
+    );
+}
+
+/// The reason a resolution with only an explicit `{home}` choice fails.
+fn fixed_home_failure(value: &Value, home: &str) -> Value {
+    let mut value = value.clone();
+    value["fixed"] = json!({ "home": home });
+    let result = resolve(&value);
+    assert_eq!(result["outcome"]["kind"], "terminalFailure", "{result}");
+    result["outcome"]["reason"]["code"].clone()
+}
+
+/// The environment's program starts from its layout path, not the base program it links
+/// to: Python finds `pyvenv.cfg` from the path it starts with, so the target would drop
+/// the environment. Without the field the same link is refused.
+#[test]
+fn toolchain_resolution_starts_an_environment_linked_outside_its_home_from_its_layout() {
+    let mut value = input();
+    installation(&mut value, HOME, "21.0.4");
+    let program = format!("{ENVIRONMENT}/bin/java");
+    linked_home(
+        &mut value,
+        ENVIRONMENT,
+        &format!("{ENVIRONMENT}/bin"),
+        &format!("{HOME}/bin/java"),
+    );
+    assert_eq!(fixed_home_failure(&value, ENVIRONMENT), "unsafePath");
+
+    links_outside_home(&mut value);
+    let mut unprobed = value.clone();
+    unprobed["fixed"] = json!({ "home": ENVIRONMENT });
+    unprobed["probes"] = json!([]);
+    let listed =
+        candidates_command(value_for_candidates(&unprobed), validated_manifest_json).unwrap();
+    assert!(
+        listed["candidates"]["skipped"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["reason"] == "probeFailed" && row["executable"] == program.as_str()),
+        "{listed}"
+    );
+    for (key, choice) in [
+        ("fixed", json!({ "home": ENVIRONMENT })),
+        ("environment", json!({ "JAVA_HOME": ENVIRONMENT })),
+    ] {
+        let mut routed = value.clone();
+        routed[key] = choice;
+        let result = resolve(&routed);
+        let selected = &result["outcome"]["selection"];
+        assert_eq!(selected["home"], ENVIRONMENT, "{key}: {result}");
+        assert_eq!(selected["executable"], program.as_str(), "{key}");
+        assert_eq!(
+            selected["environment"],
+            json!({"JAVA_HOME":ENVIRONMENT,"LITHE_JAVA_PATH":program}),
+            "{key}"
+        );
+        assert_eq!(
+            selected["pathPrepend"],
+            json!([format!("{ENVIRONMENT}/bin")]),
+            "{key}"
+        );
+    }
+}
+
+/// Homebrew's `libexec/bin/python3` links to its framework, a sibling of `libexec`.
+/// Discovery and a pin through the `opt` alias both select the canonical home and start
+/// the program from the layout path beneath it.
+#[test]
+fn toolchain_resolution_accepts_a_program_linked_to_a_sibling_of_its_home() {
+    let keg = "/opt/lithe-fixtures/cellar/tool/21.0.4";
+    let home = format!("{keg}/libexec");
+    let alias = "/opt/lithe-fixtures/opt/tool/libexec";
+    let target = format!("{keg}/Frameworks/bin/java21");
+    let mut value = input();
+    links_outside_home(&mut value);
+    linked_home(&mut value, &home, &format!("{home}/bin"), &target);
+    value["filesystem"].as_array_mut().unwrap().extend([
+        json!({"path":alias,"canonicalPath":home,"kind":"directory"}),
+        json!({"path":format!("{alias}/bin"),"canonicalPath":format!("{home}/bin"),"kind":"directory"}),
+        json!({"path":format!("{alias}/bin/java"),"canonicalPath":target,"kind":"file","executable":true}),
+    ]);
+    let program = format!("{home}/bin/java");
+    value["systemInstallations"] = json!([{"tool":"java","home":home}]);
+    let discovered = resolve(&value);
+    assert_eq!(
+        discovered["outcome"]["selection"]["executable"],
+        program.as_str(),
+        "{discovered}"
+    );
+    value["systemInstallations"] = json!([]);
+    value["local"] = json!({"version":1,"toolchains":{},"pins":{".":{"java":{"home":alias,"version":"21","provider":"host:manual"}}}});
+    let pinned = resolve(&value);
+    let selected = &pinned["outcome"]["selection"];
+    assert_eq!(selected["home"], home.as_str(), "{pinned}");
+    assert_eq!(selected["executable"], program.as_str());
+}
+
+/// The field lets only the program leave the home: a target in the workspace, a `bin`
+/// directory that links elsewhere and a `bin` directory the host did not observe are
+/// all refused before any probe.
+#[test]
+fn toolchain_resolution_refuses_links_outside_the_home_that_reach_the_workspace_or_skip_bin() {
+    let elsewhere = "/opt/lithe-fixtures/elsewhere/bin";
+    let cases = [
+        (
+            format!("{ENVIRONMENT}/bin"),
+            format!("{WORKSPACE}/tools/java"),
+            true,
+        ),
+        (elsewhere.to_owned(), format!("{elsewhere}/java"), true),
+        (
+            format!("{ENVIRONMENT}/bin"),
+            format!("{HOME}/bin/java"),
+            false,
+        ),
+    ];
+    for (bin, target, observed) in cases {
+        let mut value = input();
+        links_outside_home(&mut value);
+        installation(&mut value, HOME, "21.0.4");
+        linked_home(&mut value, ENVIRONMENT, &bin, &target);
+        value["filesystem"].as_array_mut().unwrap().extend([
+            fact(&format!("{WORKSPACE}/tools/java"), "file", true),
+            fact(elsewhere, "directory", false),
+            fact(&format!("{elsewhere}/java"), "file", true),
+        ]);
+        if !observed {
+            value["filesystem"]
+                .as_array_mut()
+                .unwrap()
+                .retain(|fact| fact["path"] != format!("{ENVIRONMENT}/bin").as_str());
+        }
+        assert_eq!(
+            fixed_home_failure(&value, ENVIRONMENT),
+            "unsafePath",
+            "{bin} -> {target}"
+        );
+    }
+}
+
 #[test]
 fn toolchain_resolution_definition_plugin_can_be_its_own_installation_provider() {
     let mut value = input();

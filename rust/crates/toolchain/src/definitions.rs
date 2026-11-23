@@ -426,6 +426,7 @@ fn definition(plugin_id: &str, value: &Value) -> Validation<()> {
             "launch",
             "category",
             "audience",
+            "executableLinksOutsideHome",
         ],
         &[
             "id",
@@ -472,6 +473,17 @@ fn definition(plugin_id: &str, value: &Value) -> Validation<()> {
                 "The audience must be user or plugin.",
             ));
         }
+    }
+    // Lets a program in the home link outside it, as a virtual environment's interpreter
+    // links to its base installation. Directories on the way stay checked.
+    if value
+        .get("executableLinksOutsideHome")
+        .is_some_and(|value| !value.is_boolean())
+    {
+        return Err(invalid(
+            "toolDefinitions.executableLinksOutsideHome",
+            "The field must be a boolean.",
+        ));
     }
     if let Some(icon) = value.get("icon") {
         let icon: UIIcon = serde_json::from_value(icon.clone())
