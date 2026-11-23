@@ -58,8 +58,15 @@ pub(crate) mod methods {
     pub const WORKSPACE_WATCH: &str = "lithe/host/workspace/watch";
     pub const WORKSPACE_FIND_FILES: &str = "lithe/host/workspace/findFiles";
     pub const WORKSPACE_FIND_TEXT: &str = "lithe/host/workspace/findText";
+    pub const WORKSPACE_CREATE: &str = "lithe/host/workspace/create";
+    pub const WORKSPACE_RENAME: &str = "lithe/host/workspace/rename";
+    pub const WORKSPACE_COPY: &str = "lithe/host/workspace/copy";
+    pub const WORKSPACE_TRASH: &str = "lithe/host/workspace/trash";
     pub const DOCUMENTS_LIST: &str = "lithe/host/documents/list";
     pub const DOCUMENTS_GET_SNAPSHOT: &str = "lithe/host/documents/getSnapshot";
+    pub const DOCUMENTS_SAVE: &str = "lithe/host/documents/save";
+    pub const DOCUMENTS_SAVE_AS: &str = "lithe/host/documents/saveAs";
+    pub const DOCUMENTS_CLOSE: &str = "lithe/host/documents/close";
     pub const EDITOR_REGISTER_ACTIONS: &str = "lithe/host/editor/registerActions";
     pub const EDITOR_GET_ACTIVE: &str = "lithe/host/editor/getActive";
     pub const EDITOR_GET_SELECTIONS: &str = "lithe/host/editor/getSelections";

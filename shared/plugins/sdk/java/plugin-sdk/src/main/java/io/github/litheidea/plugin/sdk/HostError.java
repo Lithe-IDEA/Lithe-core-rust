@@ -59,6 +59,8 @@ public final class HostError extends PluginSdkError {
         codes.put("plugin.function.invalidResult", -32071);
         codes.put("plugin.host.remoteDisconnected", -32078);
         codes.put("plugin.host.platformUnavailable", -32079);
+        codes.put("plugin.host.alreadyExists", -32080);
+        codes.put("plugin.host.diskChanged", -32081);
         CODES = Collections.unmodifiableMap(codes);
         Map<Integer, String> byNumber = new HashMap<>();
         for (Map.Entry<String, Integer> entry : codes.entrySet()) {

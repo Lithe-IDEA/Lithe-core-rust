@@ -916,6 +916,32 @@ impl Workspace {
         self.host
             .scoped(methods::WORKSPACE_FIND_TEXT, context, params)
     }
+
+    /// `params`: `resource, kind` (`"file"` or `"directory"`), `text?` for a
+    /// file; answers `{ resource, kind }`. Never overwrites: an existing
+    /// resource is `plugin.host.alreadyExists`.
+    pub fn create(&self, context: &WorkspaceContext, params: Value) -> Result<Value, SdkError> {
+        self.host.scoped(methods::WORKSPACE_CREATE, context, params)
+    }
+
+    /// `params`: `resource, target`, the full new path; answers
+    /// `{ resource }`. The host saves the open documents under `resource`
+    /// first, and they follow the file.
+    pub fn rename(&self, context: &WorkspaceContext, params: Value) -> Result<Value, SdkError> {
+        self.host.scoped(methods::WORKSPACE_RENAME, context, params)
+    }
+
+    /// `params`: `resource, target`, a path that does not exist; answers
+    /// `{ resource }` of the copy.
+    pub fn copy(&self, context: &WorkspaceContext, params: Value) -> Result<Value, SdkError> {
+        self.host.scoped(methods::WORKSPACE_COPY, context, params)
+    }
+
+    /// `params`: `resource`. Saves and closes its open documents, then moves
+    /// it to the system trash; nothing is deleted permanently.
+    pub fn trash(&self, context: &WorkspaceContext, params: Value) -> Result<Value, SdkError> {
+        self.host.scoped(methods::WORKSPACE_TRASH, context, params)
+    }
 }
 
 /// A path on the remote host of a `remote` workspace context, from
@@ -1084,6 +1110,26 @@ impl Documents {
     ) -> Result<Value, SdkError> {
         self.host
             .scoped(methods::DOCUMENTS_GET_SNAPSHOT, context, params)
+    }
+
+    /// `params`: `documentID, expectedVersion?`; answers `{ document }` after
+    /// the write. A file changed on disk is `plugin.host.diskChanged`, and
+    /// nothing is written.
+    pub fn save(&self, context: &WorkspaceContext, params: Value) -> Result<Value, SdkError> {
+        self.host.scoped(methods::DOCUMENTS_SAVE, context, params)
+    }
+
+    /// `params`: `documentID, target`, a path that does not exist; answers
+    /// `{ document }` of the new file, which the host opens.
+    pub fn save_as(&self, context: &WorkspaceContext, params: Value) -> Result<Value, SdkError> {
+        self.host
+            .scoped(methods::DOCUMENTS_SAVE_AS, context, params)
+    }
+
+    /// `params`: `documentID`. Saves the document, then closes its tab; it
+    /// never discards the user's edits.
+    pub fn close(&self, context: &WorkspaceContext, params: Value) -> Result<Value, SdkError> {
+        self.host.scoped(methods::DOCUMENTS_CLOSE, context, params)
     }
 }
 

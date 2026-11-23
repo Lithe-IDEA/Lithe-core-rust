@@ -100,7 +100,9 @@
           "run.start",
           "debug.start",
           "languageServer.request",
-          "documents.contentProvider"] }
+          "documents.contentProvider",
+          "documents.save",
+          "workspace.files.write"] }
     },
     "activationEvents": {
       "type": "array",

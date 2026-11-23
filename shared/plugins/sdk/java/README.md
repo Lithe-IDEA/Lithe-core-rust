@@ -296,6 +296,7 @@ call. See the [build configuration contract](../../contract/v1/README.md#build-c
 | `workspace().readDirectory`, `.stat`, `.readFile`, `.findFiles`, `.findText`, `.watch` | Files of a local context, addressed as `{ rootID, path }` from `getFolders`. |
 | `workspace().getHostPaths(context, rootIds)`, `.processRoots(fullContext)` | Root paths on the remote host of a remote context; see [Remote workspaces](#remote-workspaces). |
 | `documents().list`, `.getSnapshot`; `editor().getActive`, `.getSelections`, `.applyEdits`, `.replaceSelections`, `.insertText`, `.open`, `.reveal`, `.registerActions` | Live documents and editors. Edits name the `expectedVersion` they were computed against. |
+| `documents().save`, `.saveAs`, `.close`; `workspace().create`, `.rename`, `.copy`, `.trash` | Saves, closes, and file changes, with the `documents.save` and `workspace.files.write` permissions. Nothing is overwritten, discarded, or deleted permanently; see [saving documents and changing files](../../contract/v1/README.md#saving-documents-and-changing-files). |
 | `preview().openHtml`, `browser().openExternal`, `window().showInformation`, `.showWarning`, `.showError` | Preview, browser, and messages. |
 | `functions().providers(functionId)`, `.invoke(context, call)` | [Calls to other plugins' functions](#calling-other-plugins), relayed by Core. |
 | `request(method, params)`, `subscribe(method, params, listener)` | Any `lithe/host/*` method, including ones a later host adds. |
@@ -320,7 +321,7 @@ What the SDK does for you, and what it leaves to you:
   reread and recompute; on `contextExpired` resolve the original target
   again, never the focused window; retry `busy` and `rateLimited` (after
   `details().get("retryAfterMilliseconds")`) with a bound; `permissionDenied`
-  and `readOnly` need the user. An unknown param is
+  and `readOnly` need the user, and so does `diskChanged`; on `alreadyExists` pick another target. An unknown param is
   `plugin.host.unsupportedOption` naming it in `details().get("option")`, so
   you can retry without it.
 - **Cancellation has no rollback.** Cancelling the token given to

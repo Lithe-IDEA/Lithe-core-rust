@@ -1052,6 +1052,32 @@ func (w *Workspace) FindText(context WorkspaceContext, params any) (json.RawMess
 	return w.host.scoped(methodFindText, context, params)
 }
 
+// Create takes resource, kind ("file" or "directory") and text? for a file,
+// and answers { resource, kind }. It never overwrites: an existing resource is
+// plugin.host.alreadyExists.
+func (w *Workspace) Create(context WorkspaceContext, params any) (json.RawMessage, error) {
+	return w.host.scoped(methodCreate, context, params)
+}
+
+// Rename takes resource and target, the full new path, and answers
+// { resource }. The host saves the open documents under resource first, and
+// they follow the file.
+func (w *Workspace) Rename(context WorkspaceContext, params any) (json.RawMessage, error) {
+	return w.host.scoped(methodRename, context, params)
+}
+
+// Copy takes resource and target, a path that does not exist, and answers
+// { resource } of the copy.
+func (w *Workspace) Copy(context WorkspaceContext, params any) (json.RawMessage, error) {
+	return w.host.scoped(methodCopy, context, params)
+}
+
+// Trash takes resource and moves it to the system trash after saving and
+// closing its open documents; nothing is deleted permanently.
+func (w *Workspace) Trash(context WorkspaceContext, params any) (json.RawMessage, error) {
+	return w.host.scoped(methodTrash, context, params)
+}
+
 // Documents is open documents, read from their live buffers.
 type Documents struct{ host *Host }
 
@@ -1063,6 +1089,25 @@ func (d *Documents) List(context WorkspaceContext) (json.RawMessage, error) {
 // GetSnapshot takes documentID and answers { document, text }.
 func (d *Documents) GetSnapshot(context WorkspaceContext, params any) (json.RawMessage, error) {
 	return d.host.scoped(methodDocumentsSnap, context, params)
+}
+
+// Save takes documentID, expectedVersion? and answers { document } after the
+// write. A file changed on disk is plugin.host.diskChanged, and nothing is
+// written.
+func (d *Documents) Save(context WorkspaceContext, params any) (json.RawMessage, error) {
+	return d.host.scoped(methodDocumentsSave, context, params)
+}
+
+// SaveAs takes documentID and target, a path that does not exist, and answers
+// { document } of the new file, which the host opens.
+func (d *Documents) SaveAs(context WorkspaceContext, params any) (json.RawMessage, error) {
+	return d.host.scoped(methodDocumentsAs, context, params)
+}
+
+// Close takes documentID, saves the document and then closes its tab; it
+// never discards the user's edits.
+func (d *Documents) Close(context WorkspaceContext, params any) (json.RawMessage, error) {
+	return d.host.scoped(methodDocumentsClose, context, params)
 }
 
 // Editor is the text editor.

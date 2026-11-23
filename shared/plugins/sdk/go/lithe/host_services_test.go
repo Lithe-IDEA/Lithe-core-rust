@@ -803,6 +803,47 @@ func TestNativeTerminalMethodsKeepContextAndLiteralArguments(t *testing.T) {
 	s.close()
 }
 
+func TestSaveAndFileChangeMethodsCarryTheirParamsWithTheContext(t *testing.T) {
+	backend := lithe.NewBackend("file-changes-test")
+	host := backend.Handle().Host()
+	s := startSession(t, backend, []any{0})
+	resource := map[string]any{"rootID": "r1", "path": "src/a.txt"}
+	target := map[string]any{"rootID": "r1", "path": "src/b.txt"}
+	for _, call := range []struct {
+		method string
+		params map[string]any
+		run    func(map[string]any) (json.RawMessage, error)
+	}{
+		{"documents/save", map[string]any{"documentID": "d1", "expectedVersion": 3},
+			func(p map[string]any) (json.RawMessage, error) { return host.Documents().Save(testContext(), p) }},
+		{"documents/saveAs", map[string]any{"documentID": "d1", "target": target},
+			func(p map[string]any) (json.RawMessage, error) { return host.Documents().SaveAs(testContext(), p) }},
+		{"documents/close", map[string]any{"documentID": "d1"},
+			func(p map[string]any) (json.RawMessage, error) { return host.Documents().Close(testContext(), p) }},
+		{"workspace/create", map[string]any{"resource": resource, "kind": "file", "text": "x"},
+			func(p map[string]any) (json.RawMessage, error) { return host.Workspace().Create(testContext(), p) }},
+		{"workspace/rename", map[string]any{"resource": resource, "target": target},
+			func(p map[string]any) (json.RawMessage, error) { return host.Workspace().Rename(testContext(), p) }},
+		{"workspace/copy", map[string]any{"resource": resource, "target": target},
+			func(p map[string]any) (json.RawMessage, error) { return host.Workspace().Copy(testContext(), p) }},
+		{"workspace/trash", map[string]any{"resource": resource},
+			func(p map[string]any) (json.RawMessage, error) { return host.Workspace().Trash(testContext(), p) }},
+	} {
+		operation := background(func() (json.RawMessage, error) { return call.run(call.params) })
+		request := s.take("lithe/host/" + call.method)
+		eq(t, at(request, "params", "context"), `{"contextID": "w1", "generation": 2}`)
+		for key, value := range call.params {
+			want, _ := json.Marshal(value)
+			eq(t, at(request, "params", key), string(want))
+		}
+		s.reply(request, nil)
+		result := done(t, operation)
+		must(t, result.err)
+		eq(t, result.value, `null`)
+	}
+	s.close()
+}
+
 func TestHostPathRootIDsCoreRefusesFailLocallyAndTheAnswerHoldsHostPaths(t *testing.T) {
 	backend := lithe.NewBackend("test-backend")
 	workspace := backend.Handle().Host().Workspace()
