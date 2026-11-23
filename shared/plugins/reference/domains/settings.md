@@ -69,7 +69,7 @@
 
 由 Core 在校验时检查的放置和使用规则：
 
-- `immediate` 设置只能出现在语言服务器的 `workspaceConfiguration` 里，它从不进入命令行或 `initializationOptions`，所以修改它从不需要新进程。
+- `immediate` 设置只能出现在语言服务器的 `workspaceConfiguration` 里，它从不进入命令行或 `initializationOptions`，所以修改它从不需要新进程。[后端决定启动方式](languages.md#后端决定启动方式launchkind-backend)的服务器，启动函数也会收到 `immediate` 设置；设置变化时，只有函数重新给出的 `workspaceConfiguration` 立即生效。
 - `text`、`file`、`directory` 设置只能是一个完整的模板值，或某个 `name=` 参数的值，不能是较长参数的一部分。
 
 ### 设置区域
@@ -222,7 +222,7 @@ A setting may also say where it is shown and when a change takes effect. The hos
 
 Placement and use rules that Core checks at validation:
 
-- An `immediate` setting may appear only in a language server's `workspaceConfiguration`. It never reaches a command line or `initializationOptions`, so a change never needs a new process.
+- An `immediate` setting may appear only in a language server's `workspaceConfiguration`. It never reaches a command line or `initializationOptions`, so a change never needs a new process. A [backend-resolved launch](languages.md#backend-resolved-launch-launchkind-backend) function receives `immediate` settings too; when one changes, only the `workspaceConfiguration` the function gives again takes effect at once.
 - A `text`, `file`, or `directory` setting is a whole template value, or the value of one `name=` argument; it is never part of a longer argument.
 
 ### Settings regions
