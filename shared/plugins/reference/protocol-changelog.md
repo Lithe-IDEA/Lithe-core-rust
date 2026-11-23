@@ -14,7 +14,7 @@
 
 ## 待合入
 
-- 插件市场增量索引 `schemaVersion` 0（—）。主索引格式不变，`resolveSource` 额外提供 `deltasURL`，新增桌面 Core 命令 `selectDelta` 和 `applyDelta`。增量补丁重建市场已记录摘要的完整 ZIP，继续使用既有安装审查。
+- [#187](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/187)，[@Mucheen](https://github.com/Mucheen)，插件市场增量索引 `schemaVersion` **0**（—）。主索引格式不变，`resolveSource` 额外提供 `deltasURL`，新增桌面 Core 命令 `selectDelta` 和 `applyDelta`。增量补丁重建市场已记录摘要的完整 ZIP，继续使用既有安装审查。
 
 - [#184](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/184)，[@xiaoyumuxi](https://github.com/xiaoyumuxi)，`pluginAPIVersion` 0 内的补充（API-11）：`workspace/create` 的 `kind` 新增 `symlink`，配合新字段 `linkTarget`（1–4096 字节，不含 NUL）新建符号链接。链接原样保存目标，可以是绝对路径，也可以相对链接所在目录，可以指向根目录外或不存在的路径；新建链接不放宽任何检查，`workspace/readFile`、列表和 `editor/open` 仍做根目录检查，也不能穿过离开根目录的父目录新建任何东西；Windows 上目标里的 `/` 存成 `\`，目标是已存在的目录就建目录链接，否则建文件链接，系统拒绝建链接时返回 `failed`。API-11 七个方法的参数改为在路由前严格检查：`resource`、`target` 只能是 `{rootID,path}`，路径只有一种写法（`/` 分隔，没有空段、`.`、`..`，最长 4096 字节，Windows 上不能原样保存的名字也拒绝），移动的目标在同一根目录且不在源之内，`create` 的字段必须和 `kind` 一致，否则返回 `invalidParams`。fixture `backend/function-protocol.json` 新增 3 个用例，四个官方 SDK 的 `create` 注释写明 `symlink`，Node 类型按 `kind` 分成三种参数形状。Rust Core 新增内核命令 `workspace.createEntry`、`renameEntry`、`copyEntry`、`resolveEntry` 和错误码 `entry_not_found`、`entry_exists`，路径解析、不覆盖的重命名、符号链接和复制都在 Core 里完成，宿主只负责文档、视图和系统废纸篓。桌面端接入见 [1lck/Lithe-IDEA#2358](https://github.com/1lck/Lithe-IDEA/pull/2358)。没有新增能力版本、宿主方法、通知或 SDK 版本。
 - [#183](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/183)，[@xiaoyumuxi](https://github.com/xiaoyumuxi)，`pluginAPIVersion` 0 内的补充（API-11）：新增宿主方法 `documents/save`、`documents/saveAs`、`documents/close`（新权限 `documents.save`）和 `workspace/create`、`workspace/rename`、`workspace/copy`、`workspace/trash`（新权限 `workspace.files.write`）。每个权限只授予自己的方法，原有权限（包括聚合的 `workspace` 授权和 `documents.read`）都不授予它们。宿主经文档所有者保存，保留版本、撤销记录和语言会话；`close` 先保存再关闭，从不丢弃修改；`saveAs`、`create`、`rename`、`copy` 的目标已存在时失败，从不覆盖；`trash` 只移到系统废纸篓，没有永久删除；`rename`、`trash` 先保存其下打开的文档，保存失败就不动。这些方法不弹询问：需要用户选择的情形（未命名文档、硬链接文件、文件在磁盘上已改变）直接拒绝。新增失败码 `plugin.host.alreadyExists`（`-32080`，目标已存在）和 `plugin.host.diskChanged`（`-32081`，文件在磁盘上被改动或删除，没有写入）。清单 schema 的权限枚举加上两个新权限，fixture `backend/function-protocol.json` 新增 4 个宿主请求用例和 2 个失败码用例，`rust/fixtures/plugins/host-api-v1.json` 新增 4 个授权用例。四个官方 SDK 新增 7 个方法的封装和两个失败码。桌面端实现见 [1lck/Lithe-IDEA#2358](https://github.com/1lck/Lithe-IDEA/pull/2358)。没有新增能力版本、通知或 SDK 版本。
@@ -44,6 +44,7 @@
 
 | `litheSettingsSources`、`litheSettingsSourceEdit` | 0 | 2026-11-15 | [#57](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/57) |
 | 市场推荐索引 `schemaVersion` | 0 | 2026-11-20 | [#130](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/130) |
+| 市场增量索引 `schemaVersion` | 0 | 待合入 | [#187](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/187) |
 
 ### 能力版本（`requires`）
 
