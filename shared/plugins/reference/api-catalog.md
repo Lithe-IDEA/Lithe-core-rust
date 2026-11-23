@@ -93,12 +93,12 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | API-05 | `workspace/listContexts` | 列出当前的工作区上下文，带变化序号 `revision` | `workspace.metadata` | 0 |
 | API-05 | `workspace/getContext` | 读取一个工作区上下文 | `workspace.metadata` | 0 |
 | API-05 | `workspace/getFolders` | 列出上下文的根目录，每个根目录带 `rootID` | `workspace.metadata` | 0 |
-| API-06 | `workspace/readDirectory` | 分页列出目录项 | `workspace.files.read` | 0 |
-| API-06 | `workspace/stat` | 读取文件或目录的类型、大小和修改时间 | `workspace.files.read` | 0 |
-| API-06 | `workspace/readFile` | 读取磁盘上的文件，返回文本或 base64，超过上限时截断 | `workspace.files.read` | 0 |
-| API-07 | `workspace/watch` | 监听文件或目录的变化，事件经 `subscriptions/notify` 送达 | `workspace.files.watch` | 0 |
-| API-08 | `workspace/findFiles` | 在一个根目录下按名称查找文件，分页 | `workspace.search` | 0 |
-| API-08 | `workspace/findText` | 在磁盘内容中搜索文本，按行返回匹配，分页 | `workspace.search` | 0 |
+| API-06 | `workspace/readDirectory` | 分页列出目录项；执行/校验补充见 [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.read` | 0 |
+| API-06 | `workspace/stat` | 读取文件或目录的类型、大小和修改时间；执行/校验补充见 [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.read` | 0 |
+| API-06 | `workspace/readFile` | 读取磁盘上的文件，返回文本或 base64，超过上限时截断；执行/校验补充见 [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.read` | 0 |
+| API-07 | `workspace/watch` | 监听文件或目录的变化，事件经 `subscriptions/notify` 送达；执行/校验补充见 [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.watch` | 0 |
+| API-08 | `workspace/findFiles` | 在一个根目录下按名称查找文件，分页；执行/校验补充见 [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.search` | 0 |
+| API-08 | `workspace/findText` | 在磁盘内容中搜索文本，按行返回匹配，分页；执行/校验补充见 [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.search` | 0 |
 | API-09 | `documents/list` | 列出已打开文档的摘要 | `documents.read` | 0 |
 | API-09 | `documents/getSnapshot` | 读取文档当前缓冲区的全文，包含未保存的修改 | `documents.read` | 0 |
 | API-09 | `editor/getActive` | 读取前台文本标签的文档摘要，没有时为 `null` | `documents.read` | 0 |
@@ -276,12 +276,12 @@ Requests a backend sends to the host, all prefixed `lithe/host/`; the tables omi
 | API-05 | `workspace/listContexts` | Lists the current workspace contexts with the change counter `revision` | `workspace.metadata` | 0 |
 | API-05 | `workspace/getContext` | Reads one workspace context | `workspace.metadata` | 0 |
 | API-05 | `workspace/getFolders` | Lists the context's root folders, each with a `rootID` | `workspace.metadata` | 0 |
-| API-06 | `workspace/readDirectory` | Lists directory entries page by page | `workspace.files.read` | 0 |
-| API-06 | `workspace/stat` | Reads the kind, size, and modification time of a file or directory | `workspace.files.read` | 0 |
-| API-06 | `workspace/readFile` | Reads a file from disk as text or base64, truncated past the limit | `workspace.files.read` | 0 |
-| API-07 | `workspace/watch` | Watches a file or directory for changes; events arrive through `subscriptions/notify` | `workspace.files.watch` | 0 |
-| API-08 | `workspace/findFiles` | Finds files by name under one root, page by page | `workspace.search` | 0 |
-| API-08 | `workspace/findText` | Searches disk content for text and returns matching lines, page by page | `workspace.search` | 0 |
+| API-06 | `workspace/readDirectory` | Lists directory entries page by page; execution/validation details in [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.read` | 0 |
+| API-06 | `workspace/stat` | Reads the kind, size, and modification time of a file or directory; execution/validation details in [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.read` | 0 |
+| API-06 | `workspace/readFile` | Reads a file from disk as text or base64, truncated past the limit; execution/validation details in [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.read` | 0 |
+| API-07 | `workspace/watch` | Watches a file or directory for changes; events arrive through `subscriptions/notify`; execution/validation details in [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.watch` | 0 |
+| API-08 | `workspace/findFiles` | Finds files by name under one root, page by page; execution/validation details in [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.search` | 0 |
+| API-08 | `workspace/findText` | Searches disk content for text and returns matching lines, page by page; execution/validation details in [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.search` | 0 |
 | API-09 | `documents/list` | Lists summaries of the open documents | `documents.read` | 0 |
 | API-09 | `documents/getSnapshot` | Reads the full text of a document's current buffer, unsaved changes included | `documents.read` | 0 |
 | API-09 | `editor/getActive` | Reads the document summary of the foreground text tab, or `null` | `documents.read` | 0 |
