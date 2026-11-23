@@ -298,6 +298,10 @@ pub enum PluginsCommand {
     EditorProvidersDecode,
     /// Validates and filters a marketplace index (`plugins.marketplace.validateIndex`).
     MarketplaceValidateIndex,
+    /// Selects an optional, exact-base marketplace delta.
+    MarketplaceSelectDelta,
+    /// Rebuilds and verifies a marketplace ZIP in private staging.
+    MarketplaceApplyDelta,
     /// Resolves a user-entered marketplace source URL (`plugins.marketplace.resolveSource`).
     MarketplaceResolveSource,
     /// Lists a package's permissions and programs before installation (`plugins.marketplace.installReview`).
@@ -1364,6 +1368,12 @@ impl CoreCommand {
             "project.extractArchive" => Some(Self::ProjectExtractArchive),
             "plugins.marketplace.validateIndex" => {
                 Some(Self::Plugins(PluginsCommand::MarketplaceValidateIndex))
+            }
+            "plugins.marketplace.selectDelta" => {
+                Some(Self::Plugins(PluginsCommand::MarketplaceSelectDelta))
+            }
+            "plugins.marketplace.applyDelta" => {
+                Some(Self::Plugins(PluginsCommand::MarketplaceApplyDelta))
             }
             "plugins.marketplace.resolveSource" => {
                 Some(Self::Plugins(PluginsCommand::MarketplaceResolveSource))

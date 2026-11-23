@@ -8,6 +8,10 @@
 //! start, so macOS and Windows present the same catalog and the same trust
 //! prompts. The contract lives in `shared/plugins/contract/v1/`.
 
+mod delta;
+
+pub use delta::{apply_delta_command, select_delta_command};
+
 use lithe_plugin_manifest::{validate_manifest_value, SUPPORTED_PLUGIN_API_VERSIONS};
 use lithe_plugin_model::capabilities::{self, HostCapabilities, Requires};
 use lithe_plugin_model::{
@@ -28,6 +32,7 @@ pub const MARKETPLACE_RECOMMENDATIONS_SCHEMA_VERSION: u64 = 0;
 pub const REPOSITORY_INDEX_FILE_NAME: &str = "lithe-plugin-index.json";
 /// Companion workspace-recommendation file resolved beside a marketplace index.
 pub const REPOSITORY_RECOMMENDATIONS_FILE_NAME: &str = "lithe-plugin-recommendations.json";
+const DELTAS_FILE_NAME: &str = "lithe-plugin-deltas.json";
 /// Platforms with a Lithe host today. Other well-formed identifiers are
 /// accepted so an index can list future platforms without breaking older
 /// hosts; they simply never match.
@@ -552,7 +557,8 @@ fn resolve_source(input: &str, commit: Option<&str>) -> Validation<Value> {
         (
             json!({
                 "indexURL": index_url,
-                "recommendationsURL": sibling_recommendations_url(&index_url),
+                "recommendationsURL": sibling_url(&index_url, REPOSITORY_RECOMMENDATIONS_FILE_NAME),
+                "deltasURL": sibling_url(&index_url, DELTAS_FILE_NAME),
                 "repository": repository.web_url(),
                 "displayName": format!("{}/{}", repository.owner, repository.name),
             }),
@@ -574,7 +580,8 @@ fn resolve_source(input: &str, commit: Option<&str>) -> Validation<Value> {
         (
             json!({
                 "indexURL": index_url.as_str(),
-                "recommendationsURL": sibling_recommendations_url(index_url.as_str()),
+                "recommendationsURL": sibling_url(index_url.as_str(), REPOSITORY_RECOMMENDATIONS_FILE_NAME),
+                "deltasURL": if index_url.query().is_none() { sibling_url(index_url.as_str(), DELTAS_FILE_NAME) } else { String::new() },
                 "repository": repository.as_ref().map(GitHubRepository::web_url),
                 "displayName": repository
                     .map(|repository| format!("{}/{}", repository.owner, repository.name))
@@ -597,7 +604,8 @@ fn resolve_source(input: &str, commit: Option<&str>) -> Validation<Value> {
             );
             json!({
                 "commit": commit,
-                "recommendationsURL": sibling_recommendations_url(&index_url),
+                "recommendationsURL": sibling_url(&index_url, REPOSITORY_RECOMMENDATIONS_FILE_NAME),
+                "deltasURL": sibling_url(&index_url, DELTAS_FILE_NAME),
                 "indexURL": index_url,
             })
         });
@@ -643,9 +651,8 @@ fn is_object_name(value: &str) -> bool {
     matches!(value.len(), 40 | 64) && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
-/// Derives the companion `lithe-plugin-recommendations.json` URL in the same
-/// directory as a validated `indexURL`, dropping any query or fragment.
-fn sibling_recommendations_url(index_url: &str) -> String {
+/// Resolves a companion in a validated index's directory, without the index query or fragment.
+fn sibling_url(index_url: &str, name: &str) -> String {
     let Ok(mut url) = Url::parse(index_url) else {
         return String::new();
     };
@@ -654,7 +661,7 @@ fn sibling_recommendations_url(index_url: &str) -> String {
     if let Ok(mut segments) = url.path_segments_mut() {
         segments.pop_if_empty();
         segments.pop();
-        segments.push(REPOSITORY_RECOMMENDATIONS_FILE_NAME);
+        segments.push(name);
     }
     url.to_string()
 }
@@ -797,29 +804,28 @@ fn parse_repository(value: &str) -> Option<GitHubRepository> {
 /// of exactly the entry's repository, so an index cannot point a plugin at
 /// another project's release.
 fn is_release_asset(value: &str, repository: &GitHubRepository) -> bool {
-    let Some(url) = parse_https(value) else {
-        return false;
-    };
+    release_asset_tag(value, repository, ".zip").is_some()
+}
+
+fn release_asset_tag(value: &str, repository: &GitHubRepository, suffix: &str) -> Option<String> {
+    let url = parse_https(value)?;
     if !url
         .host_str()
         .is_some_and(|host| host.eq_ignore_ascii_case("github.com"))
         || url.query().is_some()
         || url.fragment().is_some()
     {
-        return false;
+        return None;
     }
-    let Some(segments) = url.path_segments().map(Iterator::collect::<Vec<_>>) else {
-        return false;
-    };
+    let segments: Vec<_> = url.path_segments()?.collect();
     match segments.as_slice() {
-        [owner, name, "releases", "download", tag, asset] => {
-            repository_from_parts(owner, name)
-                .is_some_and(|candidate| candidate.same_as(repository))
-                && is_path_component(tag)
-                && is_path_component(asset)
-                && asset.to_ascii_lowercase().ends_with(".zip")
-        }
-        _ => false,
+        [owner, name, "releases", "download", tag, asset] => (repository_from_parts(owner, name)
+            .is_some_and(|candidate| candidate.same_as(repository))
+            && is_path_component(tag)
+            && is_path_component(asset)
+            && asset.to_ascii_lowercase().ends_with(suffix))
+        .then(|| (*tag).to_owned()),
+        _ => None,
     }
 }
 

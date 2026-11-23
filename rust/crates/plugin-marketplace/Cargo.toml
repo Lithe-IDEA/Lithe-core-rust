@@ -12,3 +12,5 @@ lithe-protocol = { path = "../protocol" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 url = "2.5"
+sha2 = "0.10"
+zstd = { version = "0.13", default-features = false }

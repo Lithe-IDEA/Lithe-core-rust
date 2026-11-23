@@ -600,6 +600,8 @@ or removing a command fails until the table changes in the same commit.
 | `project.extractArchive` | Extract a downloaded project archive into the staging directory, refusing unsafe entries |
 | `plugins.marketplace.validateIndex` | Validate a marketplace index and report each plugin's availability for one platform |
 | `plugins.marketplace.resolveSource` | Resolve a user-entered marketplace source to the index and companion recommendations URLs to fetch |
+| `plugins.marketplace.selectDelta` | Select an exact-base delta from a marketplace companion |
+| `plugins.marketplace.applyDelta` | Rebuild a marketplace ZIP in caller-owned private staging |
 | `plugins.marketplace.installReview` | List a package's permissions and programs, and those not yet approved |
 | `plugins.marketplace.recommendForWorkspace` | Match sampled workspace files against marketplace recommendation catalogs and indexes |
 | `workspace.snapshot` | Enumerate visible workspace nodes and relative file paths; `nestedWorktrees` lists linked worktrees checked out inside their own repository, which are left out of the tree, files, and search index; hidden folders, Core's own and the ones enabled plugins declare through `workspace.configureVisibility`, are skipped without being read; `includeTree: false` returns only `files` and a childless `root`; `files` (and the tree, when included) keep the lowercase traversal order that bounded consumers such as Windows Quick Open rely on, not the natural display order of `workspace.listDirectories` |
@@ -5453,7 +5455,21 @@ See the plugin contract's
 [output link matchers](../../shared/plugins/contract/v1/README.md#output-link-matchers).
 
 
-The `plugins.marketplace.*` commands are equally pure: hosts fetch indexes and
+`resolveSource` also provides `deltasURL` beside the canonical and pinned
+index URLs. `selectDelta` takes
+`{index, pluginID, platform, repository, fromVersion, fromSHA256, toVersion, toSHA256, archiveURL}`
+and returns `{status: "ok", patch}`, with `patch` set to null when the base and
+target have no applicable delta. The index is the optional companion described
+in the [plugin marketplace contract](../../shared/plugins/contract/v1/README.md#delta-archives).
+
+`applyDelta` takes `{patch, basePath, patchPath, outputPath}` and returns
+`{status: "ok", applied: true}` after verifying the base, patch and rebuilt ZIP.
+The paths are local and absolute. The output path must be absent in the caller's
+private staging directory. The caller removes staging on error or cancellation.
+A malformed or mismatched selection or reconstruction uses `plugin.delta.invalid`.
+Both commands are desktop-only Core commands and are not callable by a plugin.
+
+Hosts fetch marketplace indexes and
 archives and pass the parsed JSON. `validateIndex` accepts
 `{ index, sourceKind: "official" | "thirdParty", platform, hostCapabilities? }`
 and returns `{ status: "ok", index: { plugins, rejected } }` with per-entry

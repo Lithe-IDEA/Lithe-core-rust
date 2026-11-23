@@ -166,6 +166,12 @@ pub(super) fn dispatch(
             payload,
             lithe_plugin_marketplace::validate_index_command,
         ),
+        PluginsCommand::MarketplaceSelectDelta => {
+            plugin_response(id, payload, lithe_plugin_marketplace::select_delta_command)
+        }
+        PluginsCommand::MarketplaceApplyDelta => {
+            plugin_response(id, payload, lithe_plugin_marketplace::apply_delta_command)
+        }
         PluginsCommand::MarketplaceResolveSource => plugin_response(
             id,
             payload,
