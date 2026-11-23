@@ -3598,7 +3598,7 @@ fn a_query_reaches_only_a_selected_provider_and_returns_the_raw_response() {
         .expect("initialize should have been written");
     assert_eq!(
         initialize["params"]["capabilities"]["experimental"]["litheToolchains"],
-        json!({ "versions": [0], "providers": ["mise"] })
+        json!({ "versions": [0, 1], "providers": ["mise"] })
     );
     let event = harness
         .await_event(|event| event.kind == "toolchainProviders")

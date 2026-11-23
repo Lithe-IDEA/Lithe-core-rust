@@ -236,26 +236,69 @@ fn toolchain_queries_refuse_mismatched_rpc_and_operation_generations() {
 
 #[test]
 fn toolchain_queries_keep_every_error_mapping_unique_and_validate_the_pair() {
-    let mut numbers = std::collections::BTreeSet::new();
-    for mut response in error_responses() {
+    for version in [0, 1] {
+        let mut numbers = std::collections::BTreeSet::new();
+        for mut response in error_responses(version) {
+            let mut value = input();
+            value["registry"]["plugins"][1]["manifest"]["requires"]["toolchainProviders"] =
+                json!(version);
+            response["id"] = value["request"]["id"].clone();
+            response["error"]["data"]["operationID"] =
+                value["request"]["params"]["operationID"].clone();
+            value["response"] = response;
+            let error = query::decode(&value, validated_manifest_json).unwrap_err();
+            assert_eq!(
+                Some(error.code()),
+                value["response"]["error"]["data"]["code"].as_str()
+            );
+            let number = query::rpc_code_for_version(error.code(), version).unwrap();
+            assert_eq!(value["response"]["error"]["code"], number);
+            assert!(numbers.insert(number));
+            if version == 0 {
+                assert_eq!(query::rpc_code(error.code()), Some(number));
+            } else {
+                for relayed in ["plugin.function.failed", "plugin.function.invalidResult"] {
+                    assert_ne!(number, lithe_plugin_rpc::host_rpc_code(relayed));
+                }
+            }
+            value["response"]["error"]["code"] = json!(-1);
+            assert_eq!(
+                query::decode(&value, validated_manifest_json)
+                    .unwrap_err()
+                    .code(),
+                "plugin.toolchain.invalidReply"
+            );
+        }
+    }
+    assert_eq!(
+        query::rpc_code_for_version("plugin.toolchain.timeout", 2),
+        None
+    );
+}
+
+#[test]
+fn toolchain_queries_bind_error_numbers_to_the_declared_capability_version() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../fixtures/toolchains/error-code-versions.json"
+    ))
+    .unwrap();
+    for case in fixture["cases"].as_array().unwrap() {
         let mut value = input();
-        response["id"] = value["request"]["id"].clone();
-        response["error"]["data"]["operationID"] =
-            value["request"]["params"]["operationID"].clone();
-        value["response"] = response;
-        let error = query::decode(&value, validated_manifest_json).unwrap_err();
-        assert_eq!(
-            Some(error.code()),
-            value["response"]["error"]["data"]["code"].as_str()
-        );
-        let number = query::rpc_code(error.code()).unwrap();
-        assert!(numbers.insert(number));
-        value["response"]["error"]["code"] = json!(-1);
+        value["registry"]["plugins"][1]["manifest"]["requires"]["toolchainProviders"] =
+            case["version"].clone();
+        value["response"] = json!({
+            "jsonrpc": "2.0", "id": value["request"]["id"],
+            "error": {"code": case["number"], "message": "Fixture diagnostic.", "data": {
+                "code": case["code"], "operationID": "query-1", "providerID": "mise"
+            }}
+        });
         assert_eq!(
             query::decode(&value, validated_manifest_json)
                 .unwrap_err()
                 .code(),
-            "plugin.toolchain.invalidReply"
+            case["expected"].as_str().unwrap(),
+            "{}",
+            case["name"]
         );
     }
 }

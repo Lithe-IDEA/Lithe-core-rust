@@ -4,7 +4,7 @@ mod common;
 
 use common::Host;
 use lithe_plugin_sdk::toolchains::{
-    ToolchainInstallation, ToolchainQueryError, ToolchainQueryResult,
+    ToolchainInstallation, ToolchainProviderVersion, ToolchainQueryError, ToolchainQueryResult,
 };
 use lithe_plugin_sdk::Backend;
 use serde_json::{json, Value};
@@ -20,12 +20,16 @@ fn query(provider: &str) -> Value {
 }
 
 fn initialize(host: &mut Host, providers: Value, version: u64) -> Value {
+    initialize_versions(host, providers, json!([version]))
+}
+
+fn initialize_versions(host: &mut Host, providers: Value, versions: Value) -> Value {
     host.request(
         0,
         "initialize",
         json!({"capabilities": {"experimental": {
             "litheLogging": {"versions": [0]},
-            "litheToolchains": {"versions": [version], "providers": providers}
+            "litheToolchains": {"versions": versions, "providers": providers}
         }}}),
     );
     host.answer(0).0["result"]["capabilities"]["experimental"]["litheToolchains"].clone()
@@ -136,6 +140,65 @@ fn declines_an_unoffered_protocol_version() {
         .unwrap();
     let mut host = Host::start(backend);
     assert!(initialize(&mut host, json!(["fixture"]), 1).is_null());
+    host.request(1, "toolchains/query", query("fixture"));
+    assert_eq!(host.answer(1).0["error"]["code"], -32601);
+    finish(host);
+}
+
+#[test]
+fn version_one_requires_an_explicit_choice_and_keeps_legacy_sources_compatible() {
+    // The first case deliberately uses the old constructor: recompiling a
+    // version-0 provider with a newer SDK must not change its wire protocol.
+    for (configured, version, permission, authority) in [
+        (None, 0, -32070, -32071),
+        (Some(ToolchainProviderVersion::V0), 0, -32070, -32071),
+        (Some(ToolchainProviderVersion::V1), 1, -32080, -32081),
+    ] {
+        let mut backend = Backend::new("test-backend");
+        if let Some(configured) = configured {
+            backend = backend.toolchain_provider_version(configured);
+        }
+        backend
+            .toolchain_provider("fixture", |_, _| Err(ToolchainQueryError::PermissionDenied))
+            .unwrap();
+        let mut host = Host::start(backend);
+        assert_eq!(
+            initialize_versions(&mut host, json!(["fixture"]), json!([0, 1])),
+            json!({"version": version, "providers": ["fixture"]})
+        );
+        host.request("denied", "toolchains/query", query("fixture"));
+        let denied = host.answer("denied").0;
+        assert_eq!(denied["error"]["code"], permission);
+        assert_eq!(
+            denied["error"]["data"],
+            json!({
+                "code": "plugin.toolchain.permissionDenied", "operationID": "query-1", "providerID": "fixture"
+            })
+        );
+        let mut remote = query("fixture");
+        remote["authority"] = json!({"kind": "remote", "id": "remote-1"});
+        host.request("remote", "toolchains/query", remote);
+        let unsupported = host.answer("remote").0;
+        assert_eq!(unsupported["error"]["code"], authority);
+        assert_eq!(
+            unsupported["error"]["data"],
+            json!({
+                "code": "plugin.toolchain.authorityUnsupported", "operationID": "query-1", "providerID": "fixture"
+            })
+        );
+        finish(host);
+    }
+}
+
+#[test]
+fn version_one_does_not_downgrade_when_only_legacy_is_offered() {
+    let mut backend =
+        Backend::new("test-backend").toolchain_provider_version(ToolchainProviderVersion::V1);
+    backend
+        .toolchain_provider("fixture", |_, _| panic!("unnegotiated handler ran"))
+        .unwrap();
+    let mut host = Host::start(backend);
+    assert!(initialize(&mut host, json!(["fixture"]), 0).is_null());
     host.request(1, "toolchains/query", query("fixture"));
     assert_eq!(host.answer(1).0["error"]["code"], -32601);
     finish(host);

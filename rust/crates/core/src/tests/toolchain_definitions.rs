@@ -460,6 +460,30 @@ fn production_toolchain_fixtures_require_explicit_host_capabilities() {
     }
 }
 
+#[test]
+fn toolchain_provider_version_one_is_not_admitted_by_a_legacy_only_host() {
+    let mut manifest: Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../shared/plugins/contract/v1/fixtures/toolchains/toolchain-provider.plugin.json"
+    )))
+    .unwrap();
+    manifest["requires"]["toolchainProviders"] = json!(1);
+    let legacy = validate_command(json!({
+        "manifest": manifest,
+        "hostCapabilities": {"backend": [0], "toolchainProviders": [0]}
+    }))
+    .unwrap();
+    assert_eq!(legacy["status"], "rejected");
+    assert_eq!(legacy["error"]["code"], "plugin.api.unsupported");
+    assert_eq!(legacy["error"]["field"], "requires.toolchainProviders");
+    let current = validate_command(json!({
+        "manifest": manifest,
+        "hostCapabilities": {"backend": [0], "toolchainProviders": [0, 1]}
+    }))
+    .unwrap();
+    assert_eq!(current["status"], "ok", "{current}");
+}
+
 /// Launches, tool references, and executable candidates belong to the base
 /// contract, so naming them in `requires` is refused.
 #[test]

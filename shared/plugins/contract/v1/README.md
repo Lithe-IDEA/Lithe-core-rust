@@ -64,7 +64,7 @@ does not add a built-in tool-definition table or interpret version-manager
 configuration formats.
 
 The [implemented Core contract](toolchains/README.md) accepts `toolDefinitions: 0`
-and `toolchainProviders: 0` declarations and provides the `toolchains.*` commands
+and `toolchainProviders: 0` or `1` declarations and provides the `toolchains.*` commands
 listed there. Tool-definition candidates follow
 [Executable resolution](#executable-resolution) and do not admit new sources into
 existing Build candidate sets. Definitions are entirely
@@ -184,7 +184,7 @@ symbolic links. A host treats an installed package as read-only.
 | `commandInstallers` | How the host installs a bare command a `systemCommand` launch needs; requires `commandInstallers: 0` and `commands.install`; see [Command installers](#command-installers). |
 | `managedRuntimes` | Pinned dependencies qualified by a packaged backend and installed in host-owned storage independent of plugin version; requires `managedRuntimes: 0` and `runtimes.install`; see [Managed runtimes](#managed-runtimes). |
 | `toolDefinitions` | Plugin-owned tool policy ([Core foundation](toolchains/README.md)); requires `toolDefinitions: 0`, or `1` when a definition sets the settings-list `category` or `audience`; a host may offer read-only discovery and resolve Build and run tools. |
-| `toolchainProviders` | Backend fact-provider declarations ([Core foundation](toolchains/README.md)); requires `toolchainProviders: 0`, `backend: 0` and `toolchains.provide`. |
+| `toolchainProviders` | Backend fact-provider declarations ([Core foundation](toolchains/README.md)); requires `toolchainProviders: 0` or `1`, `backend: 0` and `toolchains.provide`. Version 1 uses distinct permission and authority error numbers. |
 | `keymapImportProviders` | Independent shortcut import providers; requires `keymapImportProviders: 0`, `backend: 0` and `keymaps.provide`. A host provides access to explicitly selected sources. |
 | `pluginFunctions` | [Functions the plugin exports to, and calls from, other plugins](#cross-plugin-calls); requires `pluginFunctions: 0` and `backend: 0`, and grants no permission. A host that advertises this capability relays the calls. |
 
@@ -974,7 +974,8 @@ per capability.
    `buildProviders`, `litheFunctions` from `backend`, `litheVcs` from
    `vcsProviders`, the toolchain provider protocol from `toolchainProviders`,
    `litheKeymapImport` from `keymapImportProviders`, and `litheLogging` from
-   `pluginAPIVersion`. `litheBuild` is at `1`; all the others are `0`.
+   `pluginAPIVersion`. `litheBuild` and `litheToolchains` support `0` and `1`;
+   all the others are `0`.
 3. **A host declares a capability version when it can serve every form of
    it.** See [Host capabilities](#host-capabilities).
 4. **A future change gives one capability version `1`.** The manifest section

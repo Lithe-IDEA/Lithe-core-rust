@@ -17,7 +17,7 @@ Core 列以本仓库 `main` 上的 Core 源码为准（[`capabilities.rs`](https
 | 进程协议版本 `experimental.lithe*` | 不写进清单；进程启动时在 LSP `initialize` 里协商 | 宿主给出版本列表，后端从中选一个 | 该协议不启用，例如不向这个进程发构建请求 |
 | 文档格式版本 | 各文档自己的 `schemaVersion` 或 `version` 字段 | Core | 解析失败 |
 
-能力版本决定**能不能安装**；协议版本决定**进程启动后能说什么**。进程协议没有独立的版本，它的版本就是拥有它的能力的版本，宿主给出的列表恰好是这一个版本。
+能力版本决定**能不能安装**；协议版本决定**进程启动后能说什么**。进程协议没有独立的版本，它的版本就是拥有它的能力的版本，宿主给出的列表来自 Core 对该能力的支持表。
 
 以后的变化遵循契约的规则：
 
@@ -68,7 +68,8 @@ Core 列以本仓库 `main` 上的 Core 源码为准（[`capabilities.rs`](https
 | `backend` `0` | [`backend`](../contract/v1/README.md#plugin-backend)：插件自己的长驻进程，带或不带页面启动，按权限提供宿主服务，说 `litheFunctions` | ✅ | ✅¹ | [插件后端与插件函数](domains/backend.md) |
 | `toolDefinitions` `0` | `toolDefinitions[]`：[工具身份、布局、发现和四层候选](../contract/v1/toolchains/README.md) | ✅ | ✅¹ | [工具链](domains/toolchains.md) |
 | `toolDefinitions` `1` | 在 `0` 之上加：工具定义的 `category`（设置页「工具链」里的分组）和 `audience`（`plugin` 表示插件自用的运行时，单独放在最后一组），只影响显示位置 | ✅ | 未声明 | [Settings list](../contract/v1/toolchains/README.md#settings-list) |
-| `toolchainProviders` `0` | `toolchainProviders[]`：[提供者声明和按权限校验应答](../contract/v1/toolchains/README.md)；说 `litheToolchains` | ✅ | 未声明 | [工具链](domains/toolchains.md) |
+| `toolchainProviders` `0` | `toolchainProviders[]`：[提供者声明和按权限校验应答](../contract/v1/toolchains/README.md)；说 `litheToolchains` | ✅ | ✅ | [工具链](domains/toolchains.md) |
+| `toolchainProviders` `1` | 权限和 authority 错误改为独立号码 `-32080`、`-32081`，稳定字符串码不变；版本 0 保留旧码 | ✅ | 未声明 | [工具链](domains/toolchains.md) |
 | `pluginFunctions` `0` | 清单顶层 [`pluginFunctions`](../contract/v1/README.md#cross-plugin-calls)：导出的函数（`exports`）和要调用的其他插件函数（`calls`）；不授予任何清单权限，调用经 Core 中转 | ✅ | ✅¹ | [插件后端与插件函数](domains/backend.md) |
 | `keymapImportProviders` `0` | `keymapImportProviders[]`：[独立的快捷键导入提供者](../contract/v1/README.md#shortcut-import-providers-core-foundation)；说 `litheKeymapImport` | ✅ | 未声明 | [快捷键导入](domains/keymap-import.md) |
 
@@ -92,7 +93,7 @@ Core 列以本仓库 `main` 上的 Core 源码为准（[`capabilities.rs`](https
 | `litheBuild` `0`（`buildProviders`） | `lithe/build/*`：模型与依赖、任务执行、测试执行与发现、运行准备、原生调试准备、只读模型输入、原生配置、内联测试报告、语义测试选择器、类型化运行选项、注册表连接调试。提供给构建提供者 | ✅ | ✅¹ | [Build providers](../contract/v1/README.md#build-providers) |
 | `litheBuild` `1`（`buildProviders`） | 在 `0` 之上加 `lithe/build/runEntrypoints`：按源文件找运行入口 | ✅ | ✅ | [Run entrypoints](../contract/v1/README.md#run-entrypoints-buildproviders-1) |
 | `litheVcs` `0`（`vcsProviders`） | VCS 提供者的能力和请求（`lithe/vcs/*`）。提供给 VCS 提供者 | ✅ | ✅¹ | [VCS providers](../contract/v1/README.md#vcs-providers) |
-| `litheToolchains` `0`（`toolchainProviders`） | `toolchains/query`；后端从声明的提供者中选出子集。提供给声明了工具链提供者的插件会话 | ✅ | 未声明 | [Provider backend negotiation](../contract/v1/toolchains/README.md#provider-backend-negotiation) |
+| `litheToolchains` `0`、`1`（`toolchainProviders`） | `toolchains/query`；后端从声明的提供者中选出子集。提供给声明了工具链提供者的插件会话 | ✅ | 版本 `0` | [Provider backend negotiation](../contract/v1/toolchains/README.md#provider-backend-negotiation) |
 | `litheKeymapImport` `0`（`keymapImportProviders`） | 后端从声明的提供者中选出要启用的子集；`lithe/keymap/import`。提供给声明了 `keymapImportProviders` 的插件会话 | ✅ | 未声明 | [Shortcut import](../contract/v1/README.md#shortcut-import-providers-core-foundation) |
 | `litheLogging` `0`（`pluginAPIVersion`） | 结构化诊断通知 `lithe/log`；官方 SDK 要求宿主提供它，否则拒绝初始化。提供给每个插件拥有的进程 | ✅ | ✅ | [Structured diagnostics](../contract/v1/README.md#structured-plugin-diagnostics) |
 
@@ -135,7 +136,7 @@ The Core column follows the Core source on this repository's `main` (`SUPPORTED_
 | Process protocol version `experimental.lithe*` | Not in the manifest; negotiated in LSP `initialize` when the process starts | The host offers a list, the backend picks one | The protocol is not enabled, for example no build request goes to that process |
 | Document format version | The document's own `schemaVersion` or `version` field | Core | Decoding fails |
 
-A capability version decides **whether a plugin installs**; a protocol version decides **what a running process can say**. A process protocol has no version of its own: its version is that of the capability that owns it, and the host offers exactly that one version.
+A capability version decides **whether a plugin installs**; a protocol version decides **what a running process can say**. A process protocol has no version of its own: its version is that of the capability that owns it, and the host's offer comes from Core's support table for that capability.
 
 Future changes follow the contract's rules:
 
@@ -186,7 +187,8 @@ Each row is one capability. `requires` lists **exactly** the capabilities a mani
 | `backend` `0` | [`backend`](../contract/v1/README.md#plugin-backend): the plugin's own long-lived process, started with or without a page, serving the host services its permissions grant and speaking `litheFunctions` | ✅ | ✅¹ | [Plugin backend and plugin functions](domains/backend.md) |
 | `toolDefinitions` `0` | `toolDefinitions[]`: [tool identities, layouts, discovery, and four-layer candidates](../contract/v1/toolchains/README.md) | ✅ | ✅¹ | [Toolchains](domains/toolchains.md) |
 | `toolDefinitions` `1` | Adds to `0`: a definition's `category` (its group in the settings page's Toolchains list) and `audience` (`plugin` for a runtime a plugin runs for itself, shown in its own last group); display placement only | ✅ | Not declared | [Settings list](../contract/v1/toolchains/README.md#settings-list) |
-| `toolchainProviders` `0` | `toolchainProviders[]`: [provider declarations and permission-bound answer validation](../contract/v1/toolchains/README.md); they speak `litheToolchains` | ✅ | Not declared | [Toolchains](domains/toolchains.md) |
+| `toolchainProviders` `0` | `toolchainProviders[]`: [provider declarations and permission-bound answer validation](../contract/v1/toolchains/README.md); they speak `litheToolchains` | ✅ | ✅ | [Toolchains](domains/toolchains.md) |
+| `toolchainProviders` `1` | Distinct permission and authority error numbers `-32080` and `-32081`, with unchanged stable string codes; version 0 retains the legacy numbers | ✅ | Not declared | [Toolchains](domains/toolchains.md) |
 | `pluginFunctions` `0` | The manifest's top-level [`pluginFunctions`](../contract/v1/README.md#cross-plugin-calls): the functions the plugin exports (`exports`) and the functions of other plugins it calls (`calls`); grants no manifest permission, and Core relays the calls | ✅ | ✅¹ | [Plugin backend and plugin functions](domains/backend.md) |
 | `keymapImportProviders` `0` | `keymapImportProviders[]`: [independent shortcut import providers](../contract/v1/README.md#shortcut-import-providers-core-foundation); they speak `litheKeymapImport` | ✅ | Not declared | [Shortcut import](domains/keymap-import.md) |
 
@@ -210,7 +212,7 @@ These protocols are negotiated when a process starts and never appear in the man
 | `litheBuild` `0` (`buildProviders`) | `lithe/build/*`: model and dependencies, task execution, test execution and discovery, run preparation, native debug preparation, read-only model inputs, native configuration, inline test reports, semantic test selectors, typed run options, registry connection debugging. Offered to build providers | ✅ | ✅¹ | [Build providers](../contract/v1/README.md#build-providers) |
 | `litheBuild` `1` (`buildProviders`) | Adds `lithe/build/runEntrypoints` to `0`: the run entrypoints of a source file | ✅ | ✅ | [Run entrypoints](../contract/v1/README.md#run-entrypoints-buildproviders-1) |
 | `litheVcs` `0` (`vcsProviders`) | VCS provider capabilities and requests (`lithe/vcs/*`). Offered to VCS providers | ✅ | ✅¹ | [VCS providers](../contract/v1/README.md#vcs-providers) |
-| `litheToolchains` `0` (`toolchainProviders`) | `toolchains/query`; the backend selects a subset of its declared providers. Offered to plugin sessions that declare toolchain providers | ✅ | Not declared | [Provider backend negotiation](../contract/v1/toolchains/README.md#provider-backend-negotiation) |
+| `litheToolchains` `0`, `1` (`toolchainProviders`) | `toolchains/query`; the backend selects a subset of its declared providers. Offered to plugin sessions that declare toolchain providers | ✅ | Version `0` | [Provider backend negotiation](../contract/v1/toolchains/README.md#provider-backend-negotiation) |
 | `litheKeymapImport` `0` (`keymapImportProviders`) | The backend selects a subset of its declared providers; `lithe/keymap/import`. Offered to plugin sessions with declared `keymapImportProviders` | ✅ | Not declared | [Shortcut import](../contract/v1/README.md#shortcut-import-providers-core-foundation) |
 | `litheLogging` `0` (`pluginAPIVersion`) | Structured diagnostic notification `lithe/log`; the official SDKs require the host to offer it and refuse to initialize otherwise. Offered to every plugin-owned process | ✅ | ✅ | [Structured diagnostics](../contract/v1/README.md#structured-plugin-diagnostics) |
 

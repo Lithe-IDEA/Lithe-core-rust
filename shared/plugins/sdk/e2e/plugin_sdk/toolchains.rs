@@ -14,10 +14,10 @@ pub fn run(executable: &str) {
     let manifest = json!({
         "schemaVersion": 0, "pluginAPIVersion": 0,
         "id": plugin_id, "displayName": "SDK toolchain fixture", "version": "1.0.0",
-        "requires": {"backend": 0, "toolchainProviders": 0},
+        "requires": {"backend": 0, "toolchainProviders": 1},
         "vendor": {"id": "org.example", "displayName": "Fixture publisher", "signatureRequirement": "publisherPackage"},
         "permissions": ["backend.launch", "toolchains.provide"],
-        "toolchainProviders": [{"id": "fixture", "displayName": "SDK fixture", "tools": ["fixture-runtime"]}],
+        "toolchainProviders": [{"id": "fixture", "displayName": "SDK fixture", "tools": ["fixture-denied", "fixture-runtime"]}],
         "backend": {"launch": {"kind": "packaged", "path": "bin/sample-backend"}, "arguments": ["--state", "${stateDir}"]},
     });
     let registry = json!({"plugins": [{"manifest": manifest}]});
@@ -27,6 +27,7 @@ pub fn run(executable: &str) {
         validated["registry"]["providers"][0]["provider"]["id"],
         "fixture"
     );
+    assert_eq!(validated["registry"]["providers"][0]["version"], 1);
     let started = core(
         "lsp.startServer",
         json!({
@@ -69,7 +70,7 @@ pub fn run(executable: &str) {
     let decoded = core(
         "toolchains.decodeReply",
         json!({
-            "registry": registry, "pluginID": plugin_id, "currentGeneration": 3,
+            "registry": registry.clone(), "pluginID": plugin_id, "currentGeneration": 3,
             "request": {"jsonrpc": "2.0", "id": wire["id"], "method": "toolchains/query", "params": params},
             "response": wire["response"], "platform": "macos", "filesystem": [],
         }),
@@ -78,5 +79,34 @@ pub fn run(executable: &str) {
     assert_eq!(decoded["snapshot"]["installations"], json!([]));
     assert_eq!(decoded["snapshot"]["statements"], json!([]));
     assert_eq!(decoded["snapshot"]["watch"], json!([]));
+
+    let denied_operation = "sdk-toolchain-denied";
+    let mut denied_params = params;
+    denied_params["operationID"] = json!(denied_operation);
+    denied_params["tools"] = json!(["fixture-denied"]);
+    core(
+        "lsp.toolchainRequest",
+        json!({
+            "sessionId": session.id, "operationId": denied_operation, "params": denied_params,
+            "timeoutMilliseconds": 5000,
+        }),
+    );
+    let denied = session.completion(denied_operation);
+    assert!(denied.get("error").is_none(), "{denied}");
+    let wire = &denied["result"]["value"];
+    assert_eq!(wire["response"]["error"]["code"], -32080);
+    let decoded = core(
+        "toolchains.decodeReply",
+        json!({
+            "registry": registry, "pluginID": plugin_id, "currentGeneration": 3,
+            "request": {"jsonrpc": "2.0", "id": wire["id"], "method": "toolchains/query", "params": denied_params},
+            "response": wire["response"], "platform": "macos", "filesystem": [],
+        }),
+    );
+    assert_eq!(decoded["status"], "rejected", "{decoded}");
+    assert_eq!(
+        decoded["error"]["code"],
+        "plugin.toolchain.permissionDenied"
+    );
     session.stop();
 }

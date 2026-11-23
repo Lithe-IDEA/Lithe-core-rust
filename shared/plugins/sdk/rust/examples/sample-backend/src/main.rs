@@ -13,7 +13,9 @@
 //!   (`files.nextChange`), answers its command with a message in the window
 //!   it ran in, and lists the open workspaces when they change.
 
-use lithe_plugin_sdk::toolchains::{ToolchainQueryError, ToolchainQueryResult};
+use lithe_plugin_sdk::toolchains::{
+    ToolchainProviderVersion, ToolchainQueryError, ToolchainQueryResult,
+};
 use lithe_plugin_sdk::{
     BackendHandle, Cancelled, Context, FunctionError, PluginError, SdkError, Value,
 };
@@ -36,8 +38,9 @@ fn main() {
             std::process::exit(2);
         }
     };
-    let mut backend =
-        lithe_plugin_sdk::Backend::new("sample-backend").version(env!("CARGO_PKG_VERSION"));
+    let mut backend = lithe_plugin_sdk::Backend::new("sample-backend")
+        .version(env!("CARGO_PKG_VERSION"))
+        .toolchain_provider_version(ToolchainProviderVersion::V1);
 
     // Exercised only when the Core end-to-end harness offers this provider.
     backend.keymap_import_provider("fixture", |snapshot, context| {
@@ -50,6 +53,9 @@ fn main() {
     backend
         .toolchain_provider("fixture", |query, cancellation| {
             cancellation.check()?;
+            if query.tools == ["fixture-denied"] {
+                return Err(ToolchainQueryError::PermissionDenied);
+            }
             if query.tools != ["fixture-runtime"] {
                 return Err(ToolchainQueryError::InvalidParams);
             }

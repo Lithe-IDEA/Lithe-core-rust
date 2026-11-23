@@ -219,14 +219,27 @@ fn object_keys(
     Ok(())
 }
 
-/// Maps each query error to one stable JSON-RPC number without transport work.
+/// Maps a query error to the published version 0 number without transport work.
+/// New callers with a manifest version use [`rpc_code_for_version`].
 pub fn rpc_code(code: &str) -> Option<i64> {
+    rpc_code_for_version(code, 0)
+}
+
+/// Maps a stable query error using the manifest's `toolchainProviders` version.
+/// Unknown versions or error names have no mapping. Version 0 retains its
+/// published numbers; version 1 no longer overlaps relayed function failures.
+pub fn rpc_code_for_version(code: &str, version: u32) -> Option<i64> {
+    if !matches!(version, 0 | 1) {
+        return None;
+    }
     Some(match code {
         "plugin.toolchain.methodUnavailable" => -32601,
         INVALID => -32602,
         "plugin.toolchain.cancelled" => -32800,
-        "plugin.toolchain.permissionDenied" => -32070,
-        "plugin.toolchain.authorityUnsupported" => -32071,
+        "plugin.toolchain.permissionDenied" if version == 0 => -32070,
+        "plugin.toolchain.permissionDenied" => -32080,
+        "plugin.toolchain.authorityUnsupported" if version == 0 => -32071,
+        "plugin.toolchain.authorityUnsupported" => -32081,
         "plugin.toolchain.timeout" => -32072,
         "plugin.toolchain.providerUnavailable" => -32073,
         REPLY => -32074,
@@ -237,7 +250,7 @@ pub fn rpc_code(code: &str) -> Option<i64> {
     })
 }
 
-fn error_reply(response: &Value, params: &Params) -> Validation<Value> {
+fn error_reply(response: &Value, params: &Params, version: u32) -> Validation<Value> {
     let error = &response["error"];
     object_keys(
         error,
@@ -253,7 +266,7 @@ fn error_reply(response: &Value, params: &Params) -> Validation<Value> {
         REPLY,
     )?;
     let code = data["code"].as_str().unwrap_or("");
-    if rpc_code(code) != error["code"].as_i64()
+    if rpc_code_for_version(code, version) != error["code"].as_i64()
         || data["operationID"] != params.operation_id
         || data["providerID"] != params.provider_id
         || !error["message"]
@@ -274,8 +287,8 @@ fn error_reply(response: &Value, params: &Params) -> Validation<Value> {
         Some(-32601) => "plugin.toolchain.methodUnavailable",
         Some(-32602) => INVALID,
         Some(-32800) => "plugin.toolchain.cancelled",
-        Some(-32070) => "plugin.toolchain.permissionDenied",
-        Some(-32071) => "plugin.toolchain.authorityUnsupported",
+        Some(-32070 | -32080) => "plugin.toolchain.permissionDenied",
+        Some(-32071 | -32081) => "plugin.toolchain.authorityUnsupported",
         Some(-32072) => "plugin.toolchain.timeout",
         Some(-32073) => "plugin.toolchain.providerUnavailable",
         Some(-32074) => REPLY,
@@ -835,6 +848,11 @@ pub fn decode(input: &Value, validate_manifest: ManifestValidator) -> Validation
                 "The enabled provider is not in the revalidated registry.",
             )
         })?;
+    // The registry is rebuilt from complete validated manifests above. Neither
+    // an error number nor provider-owned response data can choose its version.
+    let provider_version = provider["version"]
+        .as_u64()
+        .expect("validated toolchain capability version") as u32;
     let provider = &provider["provider"];
     let declared: BTreeSet<&str> = provider["tools"]
         .as_array()
@@ -885,7 +903,7 @@ pub fn decode(input: &Value, validate_manifest: ManifestValidator) -> Validation
         ));
     }
     if response.get("error").is_some() {
-        return error_reply(response, params);
+        return error_reply(response, params, provider_version);
     }
     let reply: Reply = serde_json::from_value(response["result"].clone()).map_err(|_| {
         reject(

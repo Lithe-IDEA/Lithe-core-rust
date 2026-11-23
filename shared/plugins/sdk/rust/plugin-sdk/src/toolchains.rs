@@ -1,4 +1,4 @@
-//! Typed handler inputs and outputs for the version 0 toolchain provider protocol.
+//! Typed handler inputs and outputs for the versioned toolchain provider protocol.
 
 use crate::Cancelled;
 use serde::{Deserialize, Serialize};
@@ -6,13 +6,32 @@ use serde_json::{json, Value};
 
 pub(crate) const METHOD: &str = "toolchains/query";
 pub(crate) const CAPABILITY: &str = "litheToolchains";
-pub(crate) const VERSION: u64 = 0;
 pub(crate) const MAX_PROVIDERS: usize = 8;
 pub(crate) const MAX_RUNNING_QUERIES: usize = 8;
 pub(crate) const MAX_REPLY_BYTES: usize = 1024 * 1024;
 const MAX_INSTALLATIONS: usize = 512;
 const MAX_STATEMENTS: usize = 256;
 const MAX_WATCH_PATHS: usize = 256;
+
+/// The `requires.toolchainProviders` version declared by this backend's manifest.
+/// Version 0 remains the default so upgrading the SDK does not change a plugin's
+/// protocol. Version 1 separates toolchain failures from relayed function errors.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ToolchainProviderVersion {
+    /// The published protocol, including the legacy -32070/-32071 errors.
+    V0,
+    /// The same query protocol with permission/authority errors -32080/-32081.
+    V1,
+}
+
+impl ToolchainProviderVersion {
+    pub(crate) fn number(self) -> u64 {
+        match self {
+            Self::V0 => 0,
+            Self::V1 => 1,
+        }
+    }
+}
 
 /// A query routed to a provider selected during initialization.
 #[derive(Debug, Deserialize)]
@@ -125,7 +144,12 @@ impl From<Cancelled> for ToolchainQueryError {
 }
 
 impl ToolchainQueryError {
-    pub(crate) fn response(self, operation: &str, provider: &str) -> Value {
+    pub(crate) fn response(
+        self,
+        operation: &str,
+        provider: &str,
+        version: ToolchainProviderVersion,
+    ) -> Value {
         let (number, code, message) = match self {
             Self::MethodUnavailable => (
                 -32601,
@@ -139,12 +163,18 @@ impl ToolchainQueryError {
             ),
             Self::Cancelled => (-32800, "cancelled", "The toolchain query was cancelled."),
             Self::PermissionDenied => (
-                -32070,
+                match version {
+                    ToolchainProviderVersion::V0 => -32070,
+                    ToolchainProviderVersion::V1 => -32080,
+                },
                 "permissionDenied",
                 "The toolchain query was not permitted.",
             ),
             Self::AuthorityUnsupported => (
-                -32071,
+                match version {
+                    ToolchainProviderVersion::V0 => -32071,
+                    ToolchainProviderVersion::V1 => -32081,
+                },
                 "authorityUnsupported",
                 "The provider accepts only local queries.",
             ),

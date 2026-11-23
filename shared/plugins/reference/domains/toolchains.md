@@ -9,13 +9,13 @@
 | 项目 | 内容 |
 | --- | --- |
 | 清单字段 | `toolDefinitions[]`（工具定义）、`toolchainProviders[]`（工具链提供者）、顶层 `requiresTools`（启动时引用的工具定义 ID） |
-| 能力 | `toolDefinitions` 0（用到 `category`、`audience` 时为 1）；`toolchainProviders` 0（还需要 `backend` 0） |
-| 协议 | 工具链提供者协议 `litheToolchains`，版本 `0`：宿主通过 `toolchains/query` 向提供者的后端查询。协商见[契约](../../contract/v1/toolchains/README.md#provider-backend-negotiation) |
+| 能力 | `toolDefinitions` 0（用到 `category`、`audience` 时为 1）；`toolchainProviders` 0 或 1（还需要 `backend` 0） |
+| 协议 | 工具链提供者协议 `litheToolchains`，版本 `0` 或 `1`：宿主通过 `toolchains/query` 向提供者的后端查询。协商见[契约](../../contract/v1/toolchains/README.md#provider-backend-negotiation) |
 | API 编号 | [API-23](../api-catalog.md#现在能用的-api)：工具链与受管进程（部分完成） |
 | 权限 | 工具定义不需要权限；提供者需要 `backend.launch` 和 `toolchains.provide` |
 | 激活事件 | 不需要。提供者由宿主的第一次查询唤起，不需要页面或启动事件 |
 | 后端启动 | 提供者的后端只能是包内可执行文件（`packaged`），或包内运行时（`runtime` 加 `packagedRuntime`），不能依赖需要发现的运行时 |
-| 桌面端 | 声明 `toolDefinitions`；未声明 `toolchainProviders`，见“桌面端现状” |
+| 桌面端 | 声明 `toolDefinitions` 和 `toolchainProviders` 0；后者的版本 1 尚未声明，见“桌面端现状” |
 | 官方 SDK | [Rust SDK](../../sdk/rust/README.md#toolchain-providers) 提供类型化的 `toolchains/query`、能力协商和取消处理。Go、Node 和 Java 后端自行处理该协议 |
 
 ### 两条安装来源
@@ -86,15 +86,15 @@
 | 身份 | JSON-RPC `id`、`operationID`、`generation`、`providerID` 必须和请求一致；数字 `1` 和字符串 `"1"` 是不同的 ID；远程 authority 一律拒绝 |
 | 版本要求 | `request` 的写法对 Core 不透明（例如 `lts`），宿主不解释；`installation: null` 表示要求没有被满足 |
 
-提供者可以在 JSON-RPC 错误里使用下面的错误码，`decodeReply` 按这张表校验（一个数字只对应一个语义）：
+下面是版本 1 的 JSON-RPC 错误码。`decodeReply` 从重新校验的清单读取 `requires.toolchainProviders`，再校验数字与稳定字符串码。版本 0 继续使用 `-32070`（permissionDenied）、`-32071`（authorityUnsupported），其余号码相同；两个版本不能混用这两组号码。原样转发的 `plugin.function.*` 错误在两个版本里都被拒绝为 `plugin.toolchain.invalidReply`。
 
-| JSON-RPC | 语义码 | 含义 |
+| JSON-RPC（版本 1） | 语义码 | 含义 |
 | --- | --- | --- |
 | `-32601` | `plugin.toolchain.methodUnavailable` | 查询方法或能力没有协商 |
 | `-32602` | `plugin.toolchain.invalidParams` | 请求格式错误或声明的输入无效 |
 | `-32800` | `plugin.toolchain.cancelled` | 调用方取消了请求 |
-| `-32070` | `plugin.toolchain.permissionDenied` | 缺少权限、审查或启用状态 |
-| `-32071` | `plugin.toolchain.authorityUnsupported` | 没有这个 authority 的适配器 |
+| `-32080` | `plugin.toolchain.permissionDenied` | 缺少权限、审查或启用状态 |
+| `-32081` | `plugin.toolchain.authorityUnsupported` | 没有这个 authority 的适配器 |
 | `-32072` | `plugin.toolchain.timeout` | 超过本地截止时间 |
 | `-32073` | `plugin.toolchain.providerUnavailable` | 后端启动失败、断开或上游查询失败 |
 | `-32074` | `plugin.toolchain.invalidReply` | 应答格式错误，或安装引用了别的工具 |
@@ -149,7 +149,7 @@ Core 的 `plugins.managedRuntimes.plan` 选择准确平台并生成缓存键，`
 | 用途 | Lithe 桌面端 |
 | --- | --- |
 | 工具定义（`toolDefinitions`） | 已声明（macOS、Windows、Linux）。设置页发现、项目环境信任、目录固定保存，以及构建、运行、调试、语言服务器和新建项目选择工具，都通过共享 Core 解析器完成 |
-| 工具链提供者（`toolchainProviders`） | 未声明。提供者查询路线不可用，需要它的插件不会被提供安装 |
+| 工具链提供者（`toolchainProviders`） | 已声明 `0`，按需通过共享插件后端查询，并由 Core 校验原始应答与本机文件系统事实；版本 `1` 尚未声明 |
 | 安装缺失的命令（`commandInstallers`） | 已声明 `0`。插件管理页展示工具、命令行、网络与目标目录，用户确认后安装到受管目录或工具默认目录；下载安装（`1`）由配套宿主接入后声明 |
 | 语言服务器的 `{kind: "tool"}` 启动 | 按工作区工具链四层选择解析后启动（见[语言](languages.md)） |
 | `toolchainConsumers`、提供者热激活 | 契约尚未提供 |
@@ -201,13 +201,13 @@ A plugin can tell Lithe what a tool (a JDK, Maven, Node, Go and so on) looks lik
 | Item | Value |
 | --- | --- |
 | Manifest fields | `toolDefinitions[]`, `toolchainProviders[]`, and the top-level `requiresTools` (tool-definition IDs that launches reference) |
-| Capabilities | `toolDefinitions` 0; `toolchainProviders` 0 (also needs `backend` 0) |
-| Protocol | The toolchain provider protocol `litheToolchains`, version `0`: the host queries the provider's backend with `toolchains/query`. Negotiation is in the [contract](../../contract/v1/toolchains/README.md#provider-backend-negotiation) |
+| Capabilities | `toolDefinitions` 0; `toolchainProviders` 0 or 1 (also needs `backend` 0) |
+| Protocol | The toolchain provider protocol `litheToolchains`, version `0` or `1`: the host queries the provider's backend with `toolchains/query`. Negotiation is in the [contract](../../contract/v1/toolchains/README.md#provider-backend-negotiation) |
 | API IDs | [API-23](../api-catalog.md#apis-usable-now): toolchains and managed processes (partly complete) |
 | Permissions | None for definitions; a provider needs `backend.launch` and `toolchains.provide` |
 | Activation | None needed. The host's first query starts a provider; no page or startup event is needed |
 | Backend launch | The provider's backend must be `packaged`, or `runtime` with `packagedRuntime`, and must not depend on a discovered runtime |
-| Desktop | Declares `toolDefinitions`; does not declare `toolchainProviders`. See "Desktop status" |
+| Desktop | Declares `toolDefinitions` and `toolchainProviders` 0; version 1 of the latter is not declared yet. See "Desktop status" |
 | Official SDKs | The [Rust SDK](../../sdk/rust/README.md#toolchain-providers) handles typed `toolchains/query`, negotiation, and cancellation. Go, Node, and Java backends handle the protocol directly |
 
 ### Two installation routes
@@ -278,15 +278,15 @@ Every command accepts UTF-8 JSON, has a 4 MiB input budget, and performs no nati
 | Identity | The JSON-RPC `id`, `operationID`, `generation`, and `providerID` must match the request. The number `1` and the string `"1"` are different IDs. Remote authorities are always refused |
 | Version requirements | `request` is opaque to Core (for example `lts`) and the host does not interpret it. `installation: null` means the requirement is unmet |
 
-A provider may use these codes in its JSON-RPC errors; `decodeReply` validates against this table, and each number has one meaning:
+These are the version 1 JSON-RPC error numbers. `decodeReply` reads `requires.toolchainProviders` from the revalidated manifest before checking the number and stable code. Version 0 retains `-32070` (permissionDenied) and `-32071` (authorityUnsupported); the other numbers are identical. A provider cannot mix the two versions' numbers. Forwarded `plugin.function.*` errors are rejected as `plugin.toolchain.invalidReply` in both versions.
 
-| JSON-RPC | Semantic code | Meaning |
+| JSON-RPC (version 1) | Semantic code | Meaning |
 | --- | --- | --- |
 | `-32601` | `plugin.toolchain.methodUnavailable` | The query method or capability was not negotiated |
 | `-32602` | `plugin.toolchain.invalidParams` | Malformed request or invalid declared input |
 | `-32800` | `plugin.toolchain.cancelled` | The caller cancelled the request |
-| `-32070` | `plugin.toolchain.permissionDenied` | A permission, review, or enabled-state prerequisite is missing |
-| `-32071` | `plugin.toolchain.authorityUnsupported` | The provider has no adapter for this authority |
+| `-32080` | `plugin.toolchain.permissionDenied` | A permission, review, or enabled-state prerequisite is missing |
+| `-32081` | `plugin.toolchain.authorityUnsupported` | The provider has no adapter for this authority |
 | `-32072` | `plugin.toolchain.timeout` | The local deadline passed |
 | `-32073` | `plugin.toolchain.providerUnavailable` | The backend failed to start or disconnected, or its upstream query failed |
 | `-32074` | `plugin.toolchain.invalidReply` | Malformed reply, or an installation refers to another tool |
@@ -341,7 +341,7 @@ Core's `plugins.managedRuntimes.plan` selects the exact platform and generates c
 | Use | Lithe desktop |
 | --- | --- |
 | Tool definitions (`toolDefinitions`) | Declared (macOS, Windows, and Linux). Settings discovery, workspace project-environment trust, saving pins, and Build, Run, Debug, language-server, and project-generator tool selection all go through the shared Core resolver |
-| Toolchain providers (`toolchainProviders`) | Not declared. The provider query route is unavailable, and a plugin that needs it is not offered for installation |
+| Toolchain providers (`toolchainProviders`) | Declares `0`: queries the shared plugin backend on demand and passes raw replies and native filesystem facts to Core for validation; version `1` is not declared yet |
 | Installing missing commands (`commandInstallers`) | `0` declared. Plugin management displays the tool, command line, network use, and target directory, and installs into the managed directory or tool default directory after user confirmation; download installers (`1`) are declared with companion host integration |
 | Language server `{kind: "tool"}` launch | Resolved through the workspace's four toolchain layers and started (see [Languages](languages.md)) |
 | `toolchainConsumers`, live provider activation | Not provided by the contract yet |

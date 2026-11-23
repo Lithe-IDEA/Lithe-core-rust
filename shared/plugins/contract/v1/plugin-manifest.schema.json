@@ -51,7 +51,7 @@
         "settings": { "description": "Required exactly when settings, settingActions or settingRegions is non-empty. Covers integer, enum, boolean, multiSelect, text, file, and directory options, scope, effect, page, section, settingActions, and settingRegions.", "enum": [0] },
         "sourceSettings": { "description": "Required exactly when a setting action declares sourceEditor. Native-source settings projection, compiler placement, confirmed staging and read-back. Version 1 adds sidebar groups, nested sources, field sections and entry lists.", "enum": [0, 1] },
         "toolDefinitions": { "description": "Required exactly when toolDefinitions is present. Version 1 adds the display-only category and audience of a definition.", "enum": [0, 1] },
-        "toolchainProviders": { "enum": [0] },
+        "toolchainProviders": { "description": "Version 1 uses distinct permission and authority error numbers (-32080/-32081); version 0 keeps -32070/-32071.", "enum": [0, 1] },
         "keymapImportProviders": { "enum": [0] },
         "pluginFunctions": { "description": "Required exactly when pluginFunctions is present: functions this plugin's backend exports to other plugins, and exported functions it calls. Needs backend.", "enum": [0] },
         "ui": { "description": "Required exactly when ui is present or a settings region declares a view. Covers tool windows with text, web content, or a plugin view, settings-region views, and backend-only commands.", "enum": [0] },
