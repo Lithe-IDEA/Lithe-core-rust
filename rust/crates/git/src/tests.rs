@@ -12,6 +12,64 @@ use lithe_protocol::{CoreError, ErrorCode};
 use serde_json::Value;
 use std::path::PathBuf;
 
+#[test]
+fn local_branch_names_reject_colon_refspecs_on_every_platform() {
+    assert_eq!(
+        super::local_branch_name("refs/heads/topic/nested").unwrap(),
+        "topic/nested"
+    );
+    for name in ["topic:main", ":main", "topic:refs/heads/main"] {
+        let error = super::local_branch_name(&format!("refs/heads/{name}")).unwrap_err();
+        assert!(
+            matches!(error.code, ErrorCode::InvalidRequest),
+            "{name}: {error:?}"
+        );
+    }
+}
+
+#[test]
+fn remote_and_branch_refspec_components_do_not_follow_unix_filename_rules() {
+    for name in ["origin", "origin/team", "topic/nested", "@"] {
+        assert!(super::is_safe_refspec_name(name), "{name}");
+    }
+    for name in [
+        "",
+        "/topic",
+        "../topic",
+        "topic/../main",
+        "origin:topic",
+        ":main",
+        "topic:refs/heads/main",
+        "topic\\main",
+        "topic\0main",
+    ] {
+        assert!(!super::is_safe_refspec_name(name), "{name:?}");
+    }
+}
+
+#[test]
+fn workspace_pathspecs_follow_platform_filename_rules() {
+    for path in ["a:b.txt", ":(glob)*.txt", ":(exclude)*.txt", r"D:\logs"] {
+        assert!(
+            super::is_safe_pathspec_for(path, lithe_platform::Platform::Unix),
+            "{path}"
+        );
+        assert!(
+            !super::is_safe_pathspec_for(path, lithe_platform::Platform::Windows),
+            "{path}"
+        );
+    }
+    for platform in lithe_platform::Platform::ALL {
+        assert!(super::is_safe_pathspec_for("src/main.rs", platform));
+        for invalid in ["", "/etc", "../secret", "a/../b", "a\0b"] {
+            assert!(
+                !super::is_safe_pathspec_for(invalid, platform),
+                "{invalid:?} on {platform:?}"
+            );
+        }
+    }
+}
+
 /// Only an exact `Name <email>` names an author; the options keep Git's order.
 #[test]
 fn commit_identity_requires_an_exact_author() {

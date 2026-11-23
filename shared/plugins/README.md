@@ -182,7 +182,7 @@ SDK 与插件后端在构建时下载，并按锁定的 SHA-256（或 Git commit
 | [`plugin-index.schema.json`](contract/v1/plugin-index.schema.json) | `lithe-plugin-index.json` 的 JSON Schema |
 | [`plugin-ui.schema.json`](contract/v1/plugin-ui.schema.json) | 插件视图（工具窗口和设置区域）的视图函数返回的界面树、画布节点和补丁的 JSON Schema |
 | [`plugin-l10n.schema.json`](contract/v1/plugin-l10n.schema.json) | 插件翻译文件 `l10n/<语言>.json` 的 JSON Schema |
-| [`toolchains/`](contract/v1/toolchains/README.md) | 插件提供的工具链：工具定义、版本管理器提供方、提供方后端协商（`litheToolchains`）、查询与回复校验（含稳定失败码）、固定值（pin）和四层解析。Core 实现这些命令；Lithe 桌面端声明 `toolDefinitions`，未声明 `toolchainProviders` |
+| [`toolchains/`](contract/v1/toolchains/README.md) | 插件提供的工具链：工具定义、版本管理器提供方、提供方后端协商（`litheToolchains`）、查询与回复校验（含稳定失败码）、固定值（pin）和四层解析。Core 实现这些命令；Lithe 桌面端声明 `toolDefinitions` 和 `toolchainProviders` 0，后者的版本 1 尚未声明 |
 | [`fixtures/`](contract/v1/fixtures) | 标准用例，按功能分目录（`manifest`、`languages`、`backend`、`build-systems`、`build-providers`、`marketplace` 等），和 [reference 功能页](reference/README.md#功能页)一一对应：合法和非法的清单、命令和构建规划、插件函数协议、市场索引，以及 Lithe 对每个用例的预期结果 |
 
 fixture 放在 `fixtures/<功能>/` 下，文件按演示的能力命名，例如 `build-systems/build-command-stdout.plugin.json` 演示“解码命令的标准输出”。它们借 Cargo、Go、Gradle、Maven 等真实工具作为输入，但不是这些插件本身；要参考完整插件，看[示例插件](#示例插件)。每个目录的文件和用例数量见对应功能页的“示例与用例”。
@@ -403,7 +403,7 @@ The plugin contract defines the meaning, validation rules, and error codes of ev
 | [`plugin-index.schema.json`](contract/v1/plugin-index.schema.json) | JSON Schema for `lithe-plugin-index.json` |
 | [`plugin-ui.schema.json`](contract/v1/plugin-ui.schema.json) | JSON Schema for the UI trees, canvas nodes and patches a plugin view function returns, in tool windows and settings regions |
 | [`plugin-l10n.schema.json`](contract/v1/plugin-l10n.schema.json) | JSON Schema for a plugin's translation file `l10n/<language>.json` |
-| [`toolchains/`](contract/v1/toolchains/README.md) | Plugin-owned toolchains: tool definitions, version manager providers, provider backend negotiation (`litheToolchains`), query and reply validation (with stable failure codes), pins, and four-layer resolution. Core implements these commands; the Lithe desktop client declares `toolDefinitions` and does not declare `toolchainProviders` |
+| [`toolchains/`](contract/v1/toolchains/README.md) | Plugin-owned toolchains: tool definitions, version manager providers, provider backend negotiation (`litheToolchains`), query and reply validation (with stable failure codes), pins, and four-layer resolution. Core implements these commands; the Lithe desktop client declares `toolDefinitions` and `toolchainProviders` 0, but not version 1 of the latter |
 | [`fixtures/`](contract/v1/fixtures) | Conformance cases in one directory per feature (`manifest`, `languages`, `backend`, `build-systems`, `build-providers`, `marketplace`, and so on), matching the [reference feature pages](reference/README.md#feature-pages): valid and invalid manifests, command and build plans, plugin function protocol, marketplace indexes, and Lithe's expected result for each case |
 
 Fixtures live under `fixtures/<feature>/` and are named for the capability they demonstrate; for example `build-systems/build-command-stdout.plugin.json` demonstrates decoding a command's standard output. They use real tools such as Cargo, Go, Gradle, and Maven as inputs but are not those plugins; for complete plugins, see the [example plugins](#example-plugins). Each feature page's "Examples and cases" section lists its files and case counts.

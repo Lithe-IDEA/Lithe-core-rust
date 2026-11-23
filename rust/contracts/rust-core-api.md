@@ -3464,10 +3464,11 @@ operation. See the [provider execution contract](../../shared/plugins/contract/v
 `lsp.toolchainRequest` accepts `{ sessionId, operationId?, params,
 timeoutMilliseconds? }` and returns `{ operationId }`. `lsp.startServer` takes
 `toolchainProviders`, the manifest's provider IDs; only a plugin-owned session
-with some offers `capabilities.experimental.litheToolchains: { versions: [0],
-providers }`. A backend that answers `{ version: 0, providers }` with a non-empty,
+with some offers `capabilities.experimental.litheToolchains: { versions: [0, 1],
+providers }`. A backend answers
+`{ version, providers }` with its manifest's `toolchainProviders` version. A non-empty,
 duplicate-free subset of the offer emits a `toolchainProviders` runtime event
-with `result: { providers }`; any other answer enables none. A request whose
+with `result: { providers }`; an unsupported version or invalid subset enables none. A request whose
 `params.providerID` was not negotiated is `not_supported` with details
 `plugin.toolchain.providerUnavailable`, and nothing is written. The
 `requestCompleted` event carries `result.value: { id, response }`: the JSON-RPC

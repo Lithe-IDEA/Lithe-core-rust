@@ -2,6 +2,16 @@
 
 use super::*;
 
+/// Guards names combined into refspecs independently of filesystem path rules.
+/// Git forbids colons and backslashes in ref names on every platform; complete
+/// reference syntax is still checked by the existing `check-ref-format` calls.
+pub(crate) fn is_safe_refspec_name(name: &str) -> bool {
+    !name.is_empty()
+        && !name.starts_with('/')
+        && !name.split('/').any(|component| component == "..")
+        && !name.contains([':', '\\', '\0'])
+}
+
 #[derive(Clone)]
 pub(crate) struct ValidatedGitReference {
     pub(crate) full_name: String,

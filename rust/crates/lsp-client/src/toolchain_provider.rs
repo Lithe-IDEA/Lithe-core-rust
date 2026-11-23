@@ -83,21 +83,23 @@ mod tests {
         assert_eq!(key, "litheToolchains");
         assert_eq!(
             offer,
-            json!({ "versions": [0], "providers": ["asdf", "mise"] })
+            json!({ "versions": [0, 1], "providers": ["asdf", "mise"] })
         );
     }
 
     #[test]
     fn negotiation_accepts_only_a_complete_subset_of_the_offer() {
-        assert_eq!(
-            negotiate(
-                &answer(json!({ "version": 0, "providers": ["mise"], "future": true })),
-                &offered()
-            ),
-            Some(vec!["mise".to_string()])
-        );
+        for version in [0, 1] {
+            assert_eq!(
+                negotiate(
+                    &answer(json!({ "version": version, "providers": ["mise"], "future": true })),
+                    &offered()
+                ),
+                Some(vec!["mise".to_string()])
+            );
+        }
         for rejected in [
-            json!({ "version": 1, "providers": ["mise"] }),
+            json!({ "version": 2, "providers": ["mise"] }),
             json!({ "version": 0 }),
             json!({ "version": 0, "providers": [] }),
             json!({ "version": 0, "providers": "mise" }),

@@ -42,7 +42,8 @@ pub fn host_rpc_code(code: &str) -> i64 {
         // must tell the provider's error from Core's by the number alone.
         codes::FAILED => -32070,
         codes::INVALID_RESULT => -32071,
-        // -32072 to -32077 are the toolchain provider protocol's.
+        // Toolchains own -32072..=-32077 and, since capability version 1,
+        // -32082/-32083. Only legacy version 0 overlaps -32070/-32071.
         codes::HOST_REMOTE_DISCONNECTED => -32078,
         codes::HOST_PLATFORM_UNAVAILABLE => -32079,
         codes::HOST_ALREADY_EXISTS => -32080,

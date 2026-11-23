@@ -581,7 +581,14 @@ fn write_with_trace(request: GitWriteRequest) -> Result<GitCommandResponse, Core
                     "--pathspec-from-file=-".into(),
                     "--pathspec-file-nul".into(),
                 ]);
-                return execute_git(&root, &arguments, Some(nul_pathspec_input(&paths)));
+                let literal = [("GIT_LITERAL_PATHSPECS".to_string(), "1".to_string())];
+                return execute_git_with_environment(
+                    &root,
+                    &arguments,
+                    Some(nul_pathspec_input(&paths)),
+                    false,
+                    &literal,
+                );
             }
         }
         "operationContinue" | "operationAbort" | "operationSkip" => {

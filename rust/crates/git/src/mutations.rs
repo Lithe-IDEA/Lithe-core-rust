@@ -1,6 +1,6 @@
 //! Shared Git mutation helpers kept outside the command facade.
 
-use super::{capture_git_with_options, is_safe_pathspec};
+use super::{capture_git_with_options, is_safe_refspec_name};
 use lithe_protocol::{CoreError, ErrorCode};
 
 use super::{
@@ -94,8 +94,8 @@ pub(super) fn remote_branch_components(
     if branch.is_empty()
         || remote.starts_with('-')
         || branch.starts_with('-')
-        || !is_safe_pathspec(remote)
-        || !is_safe_pathspec(branch)
+        || !is_safe_refspec_name(remote)
+        || !is_safe_refspec_name(branch)
     {
         return Err(CoreError::new(
             ErrorCode::InvalidRequest,

@@ -12,15 +12,15 @@ runs the definition's version probe on executables Core returns from
 settings detections are never used as launch permits. A host that also declares
 `toolchainProviders` starts or reuses each enabled provider's plugin backend,
 sends `toolchains/query` through `lsp.toolchainRequest`, and passes every raw
-reply with native facts to `decodeReply` (the desktop client does not declare
-`toolchainProviders` yet, so packages requiring it are not offered for
-installation there). The manifest shape is
+reply with native facts to `decodeReply`. The desktop client declares
+`toolchainProviders: 0`; version 1 requires a host that also advertises it.
+The manifest shape is
 [plugin-manifest.schema.json](../plugin-manifest.schema.json).
 
 ## Manifest admission and registry
 
 `toolDefinitions[]` needs `requires.toolDefinitions: 0`. `toolchainProviders[]`
-needs `requires.toolchainProviders: 0`, `backend: 0`, and permissions
+needs `requires.toolchainProviders: 0` or `1`, `backend: 0`, and permissions
 `backend.launch` / `toolchains.provide`. Capability lists are exact: missing or
 unused capabilities reject the manifest. A definition/provider alone is a valid
 contribution. Executable candidate sets keep their strict source types; the
@@ -149,7 +149,9 @@ Every `registry` input is the raw `{plugins:[{manifest}]}` request of the enable
 plugins, not a previously normalized result. Core revalidates complete production
 manifests; the host supplies no proof of a plugin's origin, and a plugin's own
 claim of one is not read. Output is `{definitions:[{pluginID,definition}],
-providers:[{pluginID,provider}],conflicts:[{tool,pluginIDs}]}` in stable order.
+providers:[{pluginID,version,provider}],conflicts:[{tool,pluginIDs}]}` in stable
+order. A provider row's `version` is its revalidated manifest's
+`requires.toolchainProviders`, never a number claimed by a query response.
 
 A short ID defined by more than one enabled plugin belongs to none of them. Core
 registers none of those definitions and registers every other definition as
@@ -178,18 +180,20 @@ at least one provider is offered the protocol, in the client capabilities of
 `initialize`:
 
 ```json
-{"experimental": {"litheToolchains": {"versions": [0], "providers": ["first", "second"]}}}
+{"experimental": {"litheToolchains": {"versions": [0, 1], "providers": ["first", "second"]}}}
 ```
 
 `providers` lists the declared IDs in sorted order. The backend selects in the
 server capabilities of its `initialize` result:
 
 ```json
-{"experimental": {"litheToolchains": {"version": 0, "providers": ["first"]}}}
+{"experimental": {"litheToolchains": {"version": 1, "providers": ["first"]}}}
 ```
 
 The protocol has no version of its own: its version is that of the
-`toolchainProviders` capability, `0`. `version` must be an offered version and
+`toolchainProviders` capability, `0` or `1`. The backend selects the version
+its manifest declares; version 0 backends remain supported without changing
+their error numbers. `version` must be an offered version and
 `providers` a non-empty list of
 offered IDs without repeats; other fields are ignored. Any other answer, including
 an unoffered version, an undeclared, repeated or non-string ID, or an empty list,
@@ -261,8 +265,10 @@ A provider that cannot answer returns a JSON-RPC `error` instead of `result`.
 `error` has exactly `{code,message,data}`, and `data` has `{code,operationID,
 providerID}` plus an optional `details`:
 
-- `code` is a number from the table below and `data.code` is the stable code
-  on its row. Each number has exactly one stable code.
+- `code` is a number for the manifest's `requires.toolchainProviders` version
+  and `data.code` is the stable code on its row. Version 1 gives the two
+  toolchain-specific failures their own numbers, distinct from plugin-function
+  relay failures. The decoder derives the version from the revalidated registry.
 - `operationID` and `providerID` equal those of the request `params`.
 - `message` is non-empty diagnostic text of at most 1,024 UTF-8 bytes without
   control characters. It is shown as provider text and never selects behavior.
@@ -274,19 +280,26 @@ An error reply that breaks any of these rules, including an unknown number or a
 number that does not match `data.code`, is refused as
 `plugin.toolchain.invalidReply`.
 
-| JSON-RPC | Stable code | Meaning |
+| JSON-RPC (version 1) | Stable code | Meaning |
 | --- | --- | --- |
 | `-32601` | `plugin.toolchain.methodUnavailable` | The backend does not serve the query method |
 | `-32602` | `plugin.toolchain.invalidParams` | Malformed request or invalid declared input |
 | `-32800` | `plugin.toolchain.cancelled` | The caller cancelled the request |
-| `-32070` | `plugin.toolchain.permissionDenied` | A permission, review or enabled-state prerequisite is missing |
-| `-32071` | `plugin.toolchain.authorityUnsupported` | The provider cannot serve the requested authority |
+| `-32082` | `plugin.toolchain.permissionDenied` | A permission, review or enabled-state prerequisite is missing |
+| `-32083` | `plugin.toolchain.authorityUnsupported` | The provider cannot serve the requested authority |
 | `-32072` | `plugin.toolchain.timeout` | The local deadline passed |
 | `-32073` | `plugin.toolchain.providerUnavailable` | The backend failed to start, disconnected, or its upstream query failed |
 | `-32074` | `plugin.toolchain.invalidReply` | Malformed reply, or an installation reference to another tool |
 | `-32075` | `plugin.toolchain.limitExceeded` | A reply, scan or watch budget was exceeded |
 | `-32076` | `plugin.toolchain.unsafePath` | A path is not absolute, escapes its containment or fails executable checks |
 | `-32077` | `plugin.toolchain.operationExpired` | The context or generation was already stale when the query was sent |
+
+Version 0 keeps `-32070` for `plugin.toolchain.permissionDenied` and `-32071`
+for `plugin.toolchain.authorityUnsupported`; all other rows are identical. A
+version 0 provider using the new numbers, or a version 1 provider using the old
+ones, is rejected as `plugin.toolchain.invalidReply`. The stable string codes
+do not change. A relayed `plugin.function.failed` or `plugin.function.invalidResult`
+error is not a toolchain error in either version: its `data.code` fails validation.
 
 A missing installation, an incompatible version or conflicting requirements are
 not errors: report them in `result` (an unmet requirement has
