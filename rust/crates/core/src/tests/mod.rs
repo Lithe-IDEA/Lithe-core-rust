@@ -12,6 +12,7 @@ mod directory_actions;
 mod document_uri;
 mod editor_dispatch;
 mod execution_commands;
+mod file_changes;
 mod file_name_order;
 mod file_operations;
 mod git;

@@ -1052,9 +1052,11 @@ func (w *Workspace) FindText(context WorkspaceContext, params any) (json.RawMess
 	return w.host.scoped(methodFindText, context, params)
 }
 
-// Create takes resource, kind ("file" or "directory") and text? for a file,
-// and answers { resource, kind }. It never overwrites: an existing resource is
-// plugin.host.alreadyExists.
+// Create takes resource, kind ("file", "directory" or "symlink"), text? for a
+// file and linkTarget for a symlink, and answers { resource, kind }. A link
+// stores linkTarget verbatim, absolute or relative to the link's directory,
+// and makes nothing outside the root readable. It never overwrites: an
+// existing resource is plugin.host.alreadyExists.
 func (w *Workspace) Create(context WorkspaceContext, params any) (json.RawMessage, error) {
 	return w.host.scoped(methodCreate, context, params)
 }

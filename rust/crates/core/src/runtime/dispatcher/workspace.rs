@@ -165,6 +165,26 @@ pub(super) fn dispatch(
             payload,
             crate::project::file_operations::plan_paste_command,
         ),
+        WorkspaceCommand::CreateEntry => plugin_response(
+            id,
+            payload,
+            crate::project::file_changes::create_entry_command,
+        ),
+        WorkspaceCommand::RenameEntry => plugin_response(
+            id,
+            payload,
+            crate::project::file_changes::rename_entry_command,
+        ),
+        WorkspaceCommand::CopyEntry => plugin_response(
+            id,
+            payload,
+            crate::project::file_changes::copy_entry_command,
+        ),
+        WorkspaceCommand::ResolveEntry => plugin_response(
+            id,
+            payload,
+            crate::project::file_changes::resolve_entry_command,
+        ),
         WorkspaceCommand::ReduceDirectoryAction => plugin_response(
             id,
             payload,

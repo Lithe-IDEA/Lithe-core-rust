@@ -196,7 +196,7 @@
 | `documents/save`、`documents/saveAs`、`documents/close` | `documents.save` | 保存、另存为、关闭打开的文档；关闭前先保存，从不丢弃用户的修改 |
 | `workspace/readDirectory`、`workspace/stat`、`workspace/readFile` | `workspace.files.read` | 读磁盘上的目录和文件 |
 | `workspace/watch` | `workspace.files.watch` | 订阅文件变化，事件经 `subscriptions/notify` 送达 |
-| `workspace/create`、`workspace/rename`、`workspace/copy`、`workspace/trash` | `workspace.files.write` | 新建文件或目录、重命名、复制、移到系统废纸篓；从不覆盖已有文件，也不永久删除 |
+| `workspace/create`、`workspace/rename`、`workspace/copy`、`workspace/trash` | `workspace.files.write` | 新建文件、目录或符号链接，重命名、复制、移到系统废纸篓；从不覆盖已有文件，也不永久删除。符号链接原样保存目标路径，不会让根目录外的文件变得可读 |
 | `workspace/findFiles`、`workspace/findText` | `workspace.search` | 按文件名或内容搜索，分页返回 |
 | `editor/open`、`editor/reveal` | `editor.open` | 打开文件并定位到某处 |
 | `preview/openHTML` | `preview.open` | 用内置预览打开 HTML 文件 |
@@ -526,7 +526,7 @@ The host opens a set of public methods, each group behind a permission. `getCapa
 | `documents/save`, `documents/saveAs`, `documents/close` | `documents.save` | Save, save as, and close an open document; a close saves first and never discards the user's edits |
 | `workspace/readDirectory`, `workspace/stat`, `workspace/readFile` | `workspace.files.read` | Read directories and files on disk |
 | `workspace/watch` | `workspace.files.watch` | Subscribe to file changes; events arrive through `subscriptions/notify` |
-| `workspace/create`, `workspace/rename`, `workspace/copy`, `workspace/trash` | `workspace.files.write` | Create a file or directory, rename, copy, or move to the system trash; never overwrites a file or deletes permanently |
+| `workspace/create`, `workspace/rename`, `workspace/copy`, `workspace/trash` | `workspace.files.write` | Create a file, directory or symbolic link, rename, copy, or move to the system trash; never overwrites a file or deletes permanently. A link stores its target as given and makes no file outside the root readable |
 | `workspace/findFiles`, `workspace/findText` | `workspace.search` | Search by file name or content, paged |
 | `editor/open`, `editor/reveal` | `editor.open` | Open a file and go to a location |
 | `preview/openHTML` | `preview.open` | Open an HTML file in the built-in preview |

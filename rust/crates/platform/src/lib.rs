@@ -12,6 +12,7 @@
 //! host to observe them live in the `lithe-platform-tests` package.
 
 pub mod cli;
+pub mod entries;
 pub mod fs;
 pub mod names;
 pub mod paths;

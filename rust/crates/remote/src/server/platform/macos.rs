@@ -33,23 +33,6 @@ pub(crate) fn prepare_child(command: &mut Command, kind: ChildKind) {
     }
 }
 
-pub(crate) fn rename_no_replace(from: &Path, to: &Path) -> io::Result<()> {
-    let from_c = unix::c_path(from)?;
-    let to_c = unix::c_path(to)?;
-    // SAFETY: both pointers reference NUL-terminated strings that outlive the
-    // call.
-    let status = unsafe { libc::renamex_np(from_c.as_ptr(), to_c.as_ptr(), libc::RENAME_EXCL) };
-    if status == 0 {
-        return Ok(());
-    }
-    let error = io::Error::last_os_error();
-    match error.raw_os_error() {
-        // Volumes such as SMB or FAT mounts may not support RENAME_EXCL.
-        Some(libc::ENOTSUP) | Some(libc::EINVAL) => unix::rename_if_absent(from, to),
-        _ => Err(error),
-    }
-}
-
 /// macOS hosts have no WSL, so no Windows interoperability.
 pub(crate) fn windows_interop() -> Option<bool> {
     None

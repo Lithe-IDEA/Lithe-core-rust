@@ -67,6 +67,12 @@ pub(crate) fn check_host_params(
             &["context", "serverID", "state", "message", "percentage"]
         }
         HostParams::ContentProvider => &["context", "scheme", "function"],
+        HostParams::DocumentSave => &["context", "documentID", "expectedVersion"],
+        HostParams::DocumentSaveAs => &["context", "documentID", "target"],
+        HostParams::DocumentClose => &["context", "documentID"],
+        HostParams::WorkspaceCreate => &["context", "resource", "kind", "text", "linkTarget"],
+        HostParams::WorkspaceMove => &["context", "resource", "target"],
+        HostParams::WorkspaceTrash => &["context", "resource"],
         HostParams::Object => {
             return match params.get("context") {
                 Some(context) if !is_context_reference(context) => {
@@ -249,7 +255,146 @@ pub(crate) fn check_host_params(
                 ));
             }
         }
+        HostParams::DocumentSave
+        | HostParams::DocumentSaveAs
+        | HostParams::DocumentClose
+        | HostParams::WorkspaceCreate
+        | HostParams::WorkspaceMove
+        | HostParams::WorkspaceTrash => check_file_change_params(rule, params, &invalid)?,
         HostParams::Empty | HostParams::Object => {}
+    }
+    Ok(())
+}
+
+/// Most UTF-8 bytes of `text` that `workspace/create` writes, the same
+/// bound as a document snapshot, so the request stays well under the 1 MiB
+/// limit after JSON escaping.
+pub const MAX_CREATED_FILE_TEXT_BYTES: usize = 128 * 1024;
+
+/// Most bytes of a resource path or a symbolic link's target.
+pub const MAX_FILE_CHANGE_PATH_BYTES: usize = 4096;
+
+const RESOURCE_MESSAGE: &str = "A resource is exactly {rootID, path}: a root ID of 1-128 ASCII letters, digits, '.', '_', ':' or '-', and a '/'-separated path of up to 4096 bytes below the root with no empty, '.' or '..' component.";
+
+/// The `{rootID, path}` at `key`, or `None` when it is malformed. The root
+/// itself (`path: ""`) is malformed: no file change creates, moves or
+/// trashes a root.
+fn entry_resource<'a>(
+    params: &'a serde_json::Map<String, Value>,
+    key: &str,
+) -> Option<(&'a str, &'a str)> {
+    let resource = params.get(key)?.as_object()?;
+    if resource.len() != 2 {
+        return None;
+    }
+    let root_id = resource.get("rootID")?.as_str()?;
+    let path = resource.get("path")?.as_str()?;
+    (is_credential_key(root_id)
+        && path.len() <= MAX_FILE_CHANGE_PATH_BYTES
+        && !lithe_platform::paths::invalid_entry_path(path, lithe_platform::Platform::HOST))
+    .then_some((root_id, path))
+}
+
+/// Checks the params of the API-11 saves and file changes, so a host acts
+/// only on a document ID, one root's paths it can name in one spelling, and
+/// a `kind` with the fields that kind takes. Whether the document, root and
+/// paths exist is the host's answer.
+fn check_file_change_params(
+    rule: HostParams,
+    params: &serde_json::Map<String, Value>,
+    invalid: &dyn Fn(&'static str) -> HostRequestRefusal,
+) -> Result<(), HostRequestRefusal> {
+    if !params.get("context").is_some_and(is_context_reference) {
+        return Err(invalid(CONTEXT_REFERENCE_MESSAGE));
+    }
+    if matches!(
+        rule,
+        HostParams::DocumentSave | HostParams::DocumentSaveAs | HostParams::DocumentClose
+    ) {
+        if !params
+            .get("documentID")
+            .and_then(Value::as_str)
+            .is_some_and(|id| !id.is_empty())
+        {
+            return Err(invalid("documentID must name an open document."));
+        }
+        if params
+            .get("expectedVersion")
+            .is_some_and(|version| version.as_u64().is_none())
+        {
+            return Err(invalid("expectedVersion is a whole number."));
+        }
+        if rule == HostParams::DocumentSaveAs && entry_resource(params, "target").is_none() {
+            return Err(invalid(RESOURCE_MESSAGE));
+        }
+        return Ok(());
+    }
+    let Some((root_id, path)) = entry_resource(params, "resource") else {
+        return Err(invalid(RESOURCE_MESSAGE));
+    };
+    match rule {
+        HostParams::WorkspaceMove => {
+            let Some((target_root_id, target)) = entry_resource(params, "target") else {
+                return Err(invalid(RESOURCE_MESSAGE));
+            };
+            if target_root_id != root_id {
+                return Err(invalid("The target must be in the resource's root."));
+            }
+            if target
+                .strip_prefix(path)
+                .is_some_and(|rest| rest.starts_with('/'))
+            {
+                return Err(invalid("The target cannot be inside the resource."));
+            }
+        }
+        HostParams::WorkspaceCreate => {
+            let kind = params.get("kind").and_then(Value::as_str);
+            let text = params.get("text");
+            let link_target = params.get("linkTarget");
+            match kind {
+                Some("file") => {
+                    if link_target.is_some() {
+                        return Err(invalid("Only a symlink takes linkTarget."));
+                    }
+                    match text {
+                        None => {}
+                        Some(Value::String(text)) if text.len() <= MAX_CREATED_FILE_TEXT_BYTES => {}
+                        Some(Value::String(_)) => {
+                            return Err(HostRequestRefusal {
+                                rpc_code: host_rpc_code(codes::HOST_LIMIT_EXCEEDED),
+                                code: codes::HOST_LIMIT_EXCEEDED,
+                                message: "text is over 128 KiB of UTF-8.",
+                                details: Some(
+                                    json!({ "maximumBytes": MAX_CREATED_FILE_TEXT_BYTES }),
+                                ),
+                            });
+                        }
+                        Some(_) => return Err(invalid("text must be a string.")),
+                    }
+                }
+                Some("directory") => {
+                    if text.is_some() || link_target.is_some() {
+                        return Err(invalid("A directory takes neither text nor linkTarget."));
+                    }
+                }
+                Some("symlink") => {
+                    if text.is_some() {
+                        return Err(invalid("Only a file takes text."));
+                    }
+                    if !link_target.and_then(Value::as_str).is_some_and(|target| {
+                        !target.is_empty()
+                            && target.len() <= MAX_FILE_CHANGE_PATH_BYTES
+                            && !target.contains('\0')
+                    }) {
+                        return Err(invalid(
+                            "A symlink takes linkTarget: 1-4096 bytes without NUL.",
+                        ));
+                    }
+                }
+                _ => return Err(invalid("kind is file, directory or symlink.")),
+            }
+        }
+        _ => {}
     }
     Ok(())
 }

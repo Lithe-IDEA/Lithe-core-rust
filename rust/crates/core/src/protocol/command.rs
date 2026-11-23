@@ -548,6 +548,15 @@ pub enum WorkspaceCommand {
     RankNames,
     /// Plans the name of a duplicated project item (`workspace.planDuplicate`).
     PlanDuplicate,
+    /// Creates a file, directory or symbolic link below a root
+    /// (`workspace.createEntry`).
+    CreateEntry,
+    /// Renames an entry without replacing one (`workspace.renameEntry`).
+    RenameEntry,
+    /// Copies an entry without replacing one (`workspace.copyEntry`).
+    CopyEntry,
+    /// Names an existing entry below a root (`workspace.resolveEntry`).
+    ResolveEntry,
     /// Plans the destination names of pasted project items (`workspace.planPaste`).
     PlanPaste,
     /// Applies a directory role, exclusion or cancel action (`workspace.reduceDirectoryAction`).
@@ -1364,6 +1373,10 @@ impl CoreCommand {
             "workspace.orderEntries" => Some(Self::Workspace(WorkspaceCommand::OrderEntries)),
             "workspace.rankNames" => Some(Self::Workspace(WorkspaceCommand::RankNames)),
             "workspace.planDuplicate" => Some(Self::Workspace(WorkspaceCommand::PlanDuplicate)),
+            "workspace.createEntry" => Some(Self::Workspace(WorkspaceCommand::CreateEntry)),
+            "workspace.renameEntry" => Some(Self::Workspace(WorkspaceCommand::RenameEntry)),
+            "workspace.copyEntry" => Some(Self::Workspace(WorkspaceCommand::CopyEntry)),
+            "workspace.resolveEntry" => Some(Self::Workspace(WorkspaceCommand::ResolveEntry)),
             "workspace.planPaste" => Some(Self::Workspace(WorkspaceCommand::PlanPaste)),
             "workspace.reduceDirectoryAction" => {
                 Some(Self::Workspace(WorkspaceCommand::ReduceDirectoryAction))

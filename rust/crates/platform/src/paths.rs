@@ -82,6 +82,24 @@ pub fn invalid_relative_path(value: &str, platform: Platform) -> bool {
         })
 }
 
+/// Whether `/`-separated `value` fails to name one entry below a root on
+/// `platform` in exactly one spelling.
+///
+/// It fails [`invalid_relative_path`], or a component is empty or `.`, so
+/// `a//b`, `./a` and `a/` are refused instead of read as `a/b` and `a`. On
+/// Windows each component must also be a name Windows stores as written
+/// ([`crate::names::is_portable_windows_component`]): a device name or a
+/// trailing `.` or space would name another file than the one asked for.
+pub fn invalid_entry_path(value: &str, platform: Platform) -> bool {
+    invalid_relative_path(value, platform)
+        || value.split('/').any(|component| {
+            component.is_empty()
+                || component == "."
+                || (platform.is_windows()
+                    && !crate::names::is_portable_windows_component(component))
+        })
+}
+
 /// [`invalid_relative_path`] for native text, such as a path a user typed,
 /// that may spell `platform`'s own separators.
 pub fn invalid_native_relative_path(value: &str, platform: Platform) -> bool {
@@ -160,12 +178,37 @@ pub fn native_path_from_bytes(bytes: &[u8]) -> Option<&Path> {
 #[cfg(test)]
 mod tests {
     use super::{
-        invalid_native_relative_path, invalid_portable_relative_path, invalid_relative_path,
-        is_absolute_path, is_separator, join_native, native_path_from_bytes, path_list_separator,
-        relative_path_contains, slash_separated, slash_separated_path,
+        invalid_entry_path, invalid_native_relative_path, invalid_portable_relative_path,
+        invalid_relative_path, is_absolute_path, is_separator, join_native, native_path_from_bytes,
+        path_list_separator, relative_path_contains, slash_separated, slash_separated_path,
     };
     use crate::Platform;
     use std::path::Path;
+
+    #[test]
+    fn an_entry_path_has_one_spelling() {
+        for platform in Platform::ALL {
+            for valid in ["a", "a/b.txt", ".gitignore", "a/..b", "a b/c"] {
+                assert!(!invalid_entry_path(valid, platform), "{valid} {platform:?}");
+            }
+            for invalid in ["", "/a", "a//b", "./a", "a/.", "a/", "a/../b", "..", "a\0b"] {
+                assert!(
+                    invalid_entry_path(invalid, platform),
+                    "{invalid} {platform:?}"
+                );
+            }
+        }
+        for windows_only in [r"a\b", "c:x", "CON", "nul.txt", "a/b.", "a /b", "a|b"] {
+            assert!(
+                invalid_entry_path(windows_only, Platform::Windows),
+                "{windows_only}"
+            );
+            assert!(
+                !invalid_entry_path(windows_only, Platform::Unix),
+                "{windows_only}"
+            );
+        }
+    }
 
     #[test]
     fn the_root_contains_every_path() {
