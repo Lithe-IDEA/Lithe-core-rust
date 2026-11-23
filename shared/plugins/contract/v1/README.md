@@ -4305,7 +4305,7 @@ methods. Unknown options fail before side effects with `unsupportedOption`.
 | `workspace/trash` | `workspace.files.write` | `resource` | `null` after moving it to the system trash |
 | `workspace/findText` | `workspace.search` | root `resource,pattern,fileMask?,caseSensitive?,wholeWords?,regularExpression?,cursor?,limit?` | same envelope, matches `{resource,line,preview,range:null}`; the upstream search owner currently reports lines, not exact match spans |
 | `editor/open`, `editor/reveal` | `editor.open` | `resource,activation?` (`select` or `background`), `range?,tab?` (`regular` only) | document identity/version and state, `wasAlreadyOpen,windowIsForeground,appliedSelection` |
-| `preview/openHTML`, `preview/openMarkdown` | `preview.open` | `resource` or inline `id,title,text`; `presentation?`, `range?` | `{opened:true}`; see [Workflow host methods](#workflow-host-methods) |
+| `preview/openHTML`, `preview/openMarkdown` | `preview.open` | `resource` or inline `id,title,text`; `presentation?`, `range?` | open result plus `usesLiveBuffer:true,presentation`; see [Workflow host methods](#workflow-host-methods) |
 | `browser/openExternal` | `browser.open` | exactly one of HTTP(S) `url` or HTML `resource`; `unsaved?` (`openSavedFile` or `requireSaved`) for a resource | `{opened:true,source:"web"|"disk",hasUnsavedChanges?}` |
 | `window/showInformation`, `window/showWarning`, `window/showError` | `window.messages` | `text,actions?` | `{selectedIndex}`; zero-based, or `null` on dismissal |
 

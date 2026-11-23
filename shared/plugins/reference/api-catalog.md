@@ -121,7 +121,7 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | API-15 | `editor/open` | 在编辑器中打开文件，没有缓冲区时从磁盘读取；可以前台或后台打开，并定位光标 | `editor.open` | 0 |
 | API-15 | `editor/reveal` | 参数和 `editor/open` 相同，但只处理已打开的文件；文件没打开时返回 `plugin.host.notFound`，不会从磁盘打开 | `editor.open` | 0 |
 | API-16 | `preview/openMarkdown` | 预览资源或只读内联 Markdown | `preview.open` | 0 |
-| API-16 | `preview/openHTML` | 打开 HTML 文件的预览（`editorAndPreview` 或 `previewOnly`），预览使用实时缓冲区 | `preview.open` | 0 |
+| API-16 | `preview/openHTML` | 预览 HTML 资源的实时缓冲区或只读内联文本（`editorAndPreview` 或 `previewOnly`） | `preview.open` | 0 |
 | API-16 | `browser/openExternal` | 在外部浏览器打开 HTTP(S) 地址或已保存的 HTML 文件 | `browser.open` | 0 |
 | API-17 | `window/showQuickPick` | 选择一个或多个稳定条目 ID | `window.input` | 0 |
 | API-17 | `window/showInputBox` | 请求文本或掩码密码输入 | `window.input` | 0 |
@@ -243,7 +243,7 @@ Status meanings:
 | API-13 | Native view data sources | Partial | [Plugin views](../contract/v1/README.md#plugin-views) in tool windows and [settings regions](../contract/v1/README.md#settings-regions): a backend view function, called through `lithe/function/invoke` once per event, returns a UI tree (host controls, trees, and tool rows showing how the plugin's tools resolve) and canvas nodes, or patches by node ID; the Core command `plugins.ui.applyResult` checks each result against budgets and surface rules, and the host draws it with native controls ; `views/refresh`, lazy branches and cursor pagination | Finer-grained per-parent pagination | [UI](domains/ui.md) |
 | API-14 | Webview messaging | Partial | The [package web page](../contract/v1/README.md#web-content) bridge, state, and lifecycle | General two-way page messaging | [UI](domains/ui.md) |
 | API-15 | Open and reveal | Partial | `editor/open` and `editor/reveal`, returning `documentID` and version | A range only places the caret at its start; no preview-tab replacement | [Editor](domains/editor.md) |
-| API-16 | HTML preview and external browser | Public | `preview/openHTML` (`editorAndPreview` or `previewOnly`), `browser/openExternal` (HTTP(S) URLs or saved HTML) | The Lithe desktop client does not register `preview/openHTML`, and its `browser/openExternal` accepts HTTP(S) URLs only | [Editor](domains/editor.md) |
+| API-16 | Markdown/HTML preview and external browser | Public | `preview/openMarkdown`, `preview/openHTML` (resources or inline text, `editorAndPreview` or `previewOnly`), `browser/openExternal` (HTTP(S) URLs or saved HTML) | Requires a build containing these Core methods and desktop adapters; HTML needs a native WebView | [Editor](domains/editor.md) |
 | API-17 | Messages, quick pick, input | Partial | `window/showInformation`, `showWarning`, `showError` with buttons and dismissal; `window/showQuickPick`, `showInputBox`| Authorized file handles | [UI](domains/ui.md) |
 | API-18 | Clipboard and file manager | Published | `clipboard/readText`, `writeText`, `workspace/reveal` | Requires native desktop adapters | [Workflows](../guides/plugin-workflows.md) |
 | API-19 | Settings | Partial | [Declarative settings `settings`](../contract/v1/README.md#plugin-settings); [settings regions `settingRegions`](../contract/v1/README.md#settings-regions): search keywords and plugin views on a language, build system or compiler page or on the plugin's own Settings tab, by which settings search finds the page | Reading, inspecting the source of, and updating settings at runtime, and settings change events | [Settings](domains/settings.md) |
@@ -323,7 +323,7 @@ Requests a backend sends to the host, all prefixed `lithe/host/`; the tables omi
 | API-15 | `editor/open` | Opens a file in the editor, reading it from disk when no buffer exists; opens it in the foreground or background and can place the caret | `editor.open` | 0 |
 | API-15 | `editor/reveal` | Takes the same params as `editor/open` but only handles files already open; a file that is not open returns `plugin.host.notFound` and is not opened from disk | `editor.open` | 0 |
 | API-16 | `preview/openMarkdown` | Show a resource or read-only inline Markdown | `preview.open` | 0 |
-| API-16 | `preview/openHTML` | Opens a preview of an HTML file (`editorAndPreview` or `previewOnly`) that uses the live buffer | `preview.open` | 0 |
+| API-16 | `preview/openHTML` | Previews an HTML resource’s live buffer or read-only inline text (`editorAndPreview` or `previewOnly`) | `preview.open` | 0 |
 | API-16 | `browser/openExternal` | Opens an HTTP(S) URL or a saved HTML file in the external browser | `browser.open` | 0 |
 | API-17 | `window/showQuickPick` | Choose one or more stable item IDs | `window.input` | 0 |
 | API-17 | `window/showInputBox` | Request text or a masked password | `window.input` | 0 |

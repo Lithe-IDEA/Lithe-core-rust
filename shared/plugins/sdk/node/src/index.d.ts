@@ -388,7 +388,7 @@ export interface Host {
       options?: HostRequestOptions,
     ): Promise<Subscription>;
   };
-  /** Permission `preview.open`. */
+  /** Permission `views.refresh`. */
   readonly views: {
     refresh: Scoped<{instance:string},{refreshed:true}>;
   };
@@ -415,6 +415,7 @@ export interface Host {
   readonly network: {
     request: Scoped<{url:string;method?:'GET'|'POST'|'PUT'|'PATCH'|'DELETE'|'HEAD'|'OPTIONS';headers?:Record<string,string>;body?:string;timeoutMilliseconds?:number;maximumResponseBytes?:number},{status:number;headers:Record<string,string[]>;body:string;encoding:'utf8'|'base64'}>;
   };
+  /** Permission `preview.open`. */
   readonly preview: {
     openMarkdown: Scoped<PreviewParams,JsonObject>;
 
