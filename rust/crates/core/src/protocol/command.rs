@@ -53,6 +53,8 @@ pub struct RequestOrigin {
 pub enum CoreCommand {
     /// Plans CLI launch and native shell registration (`application.cli.*`).
     ApplicationCli,
+    /// Plans built-in text format registration (`application.fileAssociations.*`).
+    ApplicationFileAssociations,
     /// Controls the native IDE capability broker (`ideHost.control`).
     IdeHostControl,
     /// Reports the Core and protocol versions (`core.ping`).
@@ -1126,6 +1128,8 @@ impl CoreCommand {
             "application.cli.planLaunch"
             | "application.cli.openTarget"
             | "application.cli.editRegistration" => Some(Self::ApplicationCli),
+            "application.fileAssociations.catalog" => Some(Self::ApplicationFileAssociations),
+            "application.fileAssociations.plan" => Some(Self::ApplicationFileAssociations),
             "core.ping" => Some(Self::Ping),
             "ideHost.control" => Some(Self::IdeHostControl),
             "ai.commitInputBudget" => Some(Self::Ai(AiCommand::CommitInputBudget)),

@@ -171,6 +171,9 @@ fn execute_parsed(mut parsed: CoreRequest, document: Option<&str>) -> CoreRespon
     let preserve_workspace_outcome =
         matches!(command, CoreCommand::Git(GitCommand::WorkspaceCommitStep));
     let response = match command {
+        CoreCommand::ApplicationFileAssociations => {
+            rules_response(id, &parsed.command, parsed.payload)
+        }
         CoreCommand::ApplicationCli => rules_response(id, &parsed.command, parsed.payload),
         CoreCommand::IdeHostControl => {
             let action = parsed.payload["action"].as_str().unwrap_or("");
