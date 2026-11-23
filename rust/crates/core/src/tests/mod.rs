@@ -19,6 +19,8 @@ mod git;
 mod git_branch_delete;
 mod git_change_targets;
 mod git_changed_file_groups;
+#[cfg(unix)]
+mod git_colon_paths;
 mod git_diff_blocks;
 mod git_fetch;
 mod git_fetch_plan;

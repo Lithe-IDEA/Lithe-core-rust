@@ -304,6 +304,7 @@ fn line_history_merge_ranges(
         let listing = readonly_command(GitCommandRequest {
             root: root.to_string(),
             arguments: vec![
+                "--literal-pathspecs".to_string(),
                 "log".to_string(),
                 "--first-parent".to_string(),
                 "--format=%H".to_string(),
@@ -633,8 +634,9 @@ pub fn line_history(request: GitLineHistoryRequest) -> Result<GitLineHistoryResp
     }
 
     // One process traces every interval; `-L` emits only hunks intersecting
-    // the traced lines, and `--first-parent` pins the merge semantics.
-    let mut arguments = vec!["log".to_string()];
+    // the traced lines, and `--first-parent` pins the merge semantics. Even
+    // -L's filename can activate pathspec magic unless Git is in literal mode.
+    let mut arguments = vec!["--literal-pathspecs".to_string(), "log".to_string()];
     for (start, end) in &intervals {
         arguments.push(format!("-L{start},{end}:{}", request.path));
     }

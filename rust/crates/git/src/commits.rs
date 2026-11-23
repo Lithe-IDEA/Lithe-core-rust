@@ -391,12 +391,14 @@ pub(crate) fn commit_selected_paths(
         "--pathspec-from-file=-".to_string(),
         "--pathspec-file-nul".to_string(),
     ];
+    let mut stage_environment = environment.clone();
+    stage_environment.push(("GIT_LITERAL_PATHSPECS".to_string(), "1".to_string()));
     let staged = execute_git_with_environment(
         root,
         &stage_arguments,
         Some(pathspec_input.clone()),
         false,
-        &environment,
+        &stage_environment,
     )?;
     if staged.exit_code != 0 {
         return Ok(staged);
@@ -498,7 +500,8 @@ pub(crate) fn commit_selected_paths(
 
     // Reconcile only committed paths in the real index. Unrelated staging that
     // another Git process created while hooks ran remains intact.
-    let mut reconciled = execute_git(
+    let literal = [("GIT_LITERAL_PATHSPECS".to_string(), "1".to_string())];
+    let mut reconciled = execute_git_with_environment(
         root,
         &[
             "reset".to_string(),
@@ -508,6 +511,8 @@ pub(crate) fn commit_selected_paths(
             "--pathspec-file-nul".to_string(),
         ],
         Some(pathspec_input),
+        false,
+        &literal,
     )?;
     if reconciled.exit_code != 0 {
         reconciled.warnings.push(GitOperationWarning::new(

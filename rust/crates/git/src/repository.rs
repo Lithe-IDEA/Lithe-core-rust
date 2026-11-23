@@ -3,7 +3,7 @@
 
 use super::*;
 use lithe_platform::names::is_reserved_device_name;
-use lithe_platform::paths::{slash_separated, slash_separated_path};
+use lithe_platform::paths::{invalid_native_relative_path, slash_separated, slash_separated_path};
 use lithe_platform::Platform;
 
 /// Discovers Git repositories for an opened workspace using shared traversal rules.
@@ -456,12 +456,14 @@ pub(crate) fn empty_tree_oid(root: &str) -> Result<String, CoreError> {
     Ok(oid.to_string())
 }
 
+/// Workspace paths follow the host's filename rules, independently of Git refs.
+/// Callers passing these paths as pathspecs must keep Git's matching literal.
 pub(crate) fn is_safe_pathspec(path: &str) -> bool {
-    let normalized = slash_separated(path, Platform::HOST);
-    !normalized.is_empty()
-        && !normalized.starts_with('/')
-        && !normalized.split('/').any(|component| component == "..")
-        && !normalized.contains(':')
+    is_safe_pathspec_for(path, Platform::HOST)
+}
+
+pub(crate) fn is_safe_pathspec_for(path: &str, platform: Platform) -> bool {
+    !invalid_native_relative_path(path, platform)
 }
 
 pub(crate) fn null_device() -> &'static str {

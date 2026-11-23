@@ -196,6 +196,8 @@ pub(crate) fn diff_impl(request: GitDiffRequest) -> Result<GitDiffResponse, Core
     if request.include_file_sections {
         configure_structured_diff(&mut arguments);
     }
+    // A selected filename such as `:(glob)*.txt` must not expand to other files.
+    arguments.insert(0, "--literal-pathspecs".into());
     let root = validate_root(&request.root)?;
     let mut output = if expands_untracked_directories {
         GitProcessOutput {
@@ -226,6 +228,7 @@ pub(crate) fn diff_impl(request: GitDiffRequest) -> Result<GitDiffResponse, Core
         let untracked_paths = readonly_command(GitCommandRequest {
             root: root.clone(),
             arguments: vec![
+                "--literal-pathspecs".into(),
                 "ls-files".into(),
                 "--others".into(),
                 "--exclude-standard".into(),
@@ -353,6 +356,7 @@ fn worktree_snapshot_diff(
     if request.include_file_sections {
         configure_structured_diff(&mut arguments);
     }
+    arguments.insert(0, "--literal-pathspecs".into());
     let mut output = capture_git_with_environment(root, &arguments, None, true, &environment)?;
     if output.exit_code != 0 {
         return Err(
@@ -378,6 +382,7 @@ fn worktree_snapshot_diff(
     };
     let mut section_bytes = sections.as_ref().map(structured_file_bytes).unwrap_or(0);
     let untracked_arguments = vec![
+        "--literal-pathspecs".into(),
         "ls-files".into(),
         "--others".into(),
         "--exclude-standard".into(),
