@@ -62,6 +62,21 @@ pub(crate) enum HostParams {
     FunctionProviders,
     /// `{ pluginID, functionID, context, params?, timeoutMilliseconds? }`.
     FunctionInvoke,
+    /// `{ context, documentID, expectedVersion? }` (plan API-11).
+    DocumentSave,
+    /// `{ context, documentID, target }`: a save to a new file of the same
+    /// root's files (plan API-11).
+    DocumentSaveAs,
+    /// `{ context, documentID }` (plan API-11).
+    DocumentClose,
+    /// `{ context, resource, kind, text?, linkTarget? }`: a new file,
+    /// directory or symbolic link below a root (plan API-11).
+    WorkspaceCreate,
+    /// `{ context, resource, target }`: a rename or copy within one root
+    /// (plan API-11).
+    WorkspaceMove,
+    /// `{ context, resource }`: a move to the system trash (plan API-11).
+    WorkspaceTrash,
     /// Any object whose `context`, when present, is a well-formed
     /// reference. The service checks the rest and answers
     /// `plugin.host.invalidParams` or, for a field it does not know,
@@ -272,25 +287,25 @@ pub(crate) const HOST_METHODS: &[HostMethod] = &[
         method: "lithe/host/workspace/create",
         service: "workspace",
         permission: Some(PERMISSION_WORKSPACE_FILES_WRITE),
-        params: HostParams::Object,
+        params: HostParams::WorkspaceCreate,
     },
     HostMethod {
         method: "lithe/host/workspace/rename",
         service: "workspace",
         permission: Some(PERMISSION_WORKSPACE_FILES_WRITE),
-        params: HostParams::Object,
+        params: HostParams::WorkspaceMove,
     },
     HostMethod {
         method: "lithe/host/workspace/copy",
         service: "workspace",
         permission: Some(PERMISSION_WORKSPACE_FILES_WRITE),
-        params: HostParams::Object,
+        params: HostParams::WorkspaceMove,
     },
     HostMethod {
         method: "lithe/host/workspace/trash",
         service: "workspace",
         permission: Some(PERMISSION_WORKSPACE_FILES_WRITE),
-        params: HostParams::Object,
+        params: HostParams::WorkspaceTrash,
     },
     HostMethod {
         method: "lithe/host/documents/list",
@@ -310,19 +325,19 @@ pub(crate) const HOST_METHODS: &[HostMethod] = &[
         method: "lithe/host/documents/save",
         service: "documents",
         permission: Some(PERMISSION_DOCUMENTS_SAVE),
-        params: HostParams::Object,
+        params: HostParams::DocumentSave,
     },
     HostMethod {
         method: "lithe/host/documents/saveAs",
         service: "documents",
         permission: Some(PERMISSION_DOCUMENTS_SAVE),
-        params: HostParams::Object,
+        params: HostParams::DocumentSaveAs,
     },
     HostMethod {
         method: "lithe/host/documents/close",
         service: "documents",
         permission: Some(PERMISSION_DOCUMENTS_SAVE),
-        params: HostParams::Object,
+        params: HostParams::DocumentClose,
     },
     HostMethod {
         method: "lithe/host/editor/registerActions",

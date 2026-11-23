@@ -534,8 +534,10 @@ public final class Host {
         }
 
         /**
-         * Permission {@code workspace.files.write}. {@code params}: {@code resource, kind} ({@code "file"} or
-         * {@code "directory"}) and {@code text?} for a file; answers {@code { resource, kind }}. An existing
+         * Permission {@code workspace.files.write}. {@code params}: {@code resource, kind} ({@code "file"},
+         * {@code "directory"} or {@code "symlink"}), {@code text?} for a file and {@code linkTarget} for a
+         * symlink; answers {@code { resource, kind }}. A link stores {@code linkTarget} verbatim, absolute or
+         * relative to the link's directory, and makes nothing outside the root readable. An existing
          * {@code resource} fails with {@code plugin.host.alreadyExists}; nothing is overwritten.
          */
         public CompletableFuture<Map<String, Object>> create(Map<String, ?> context, Map<String, ?> params) {

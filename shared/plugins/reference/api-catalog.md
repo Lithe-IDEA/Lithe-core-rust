@@ -109,7 +109,7 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | API-11 | `documents/save` | 保存打开的文档，写入当前全部内容；可带 `expectedVersion`；文件在磁盘上变了时返回 `plugin.host.diskChanged`，不写入 | `documents.save` | 0 |
 | API-11 | `documents/saveAs` | 把文档当前内容写到一个不存在的新文件并打开它；目标已存在时返回 `plugin.host.alreadyExists` | `documents.save` | 0 |
 | API-11 | `documents/close` | 先保存再关闭文档的标签，从不丢弃修改 | `documents.save` | 0 |
-| API-11 | `workspace/create` | 新建文件（可带不超过 128 KiB 的文本）或目录，不覆盖已有项 | `workspace.files.write` | 0 |
+| API-11 | `workspace/create` | 新建文件（可带不超过 128 KiB 的文本）、目录或符号链接，不覆盖已有项 | `workspace.files.write` | 0 |
 | API-11 | `workspace/rename` | 重命名或移动文件、目录；先保存其下打开的文档，文档跟着文件走 | `workspace.files.write` | 0 |
 | API-11 | `workspace/copy` | 复制文件或目录到一个不存在的目标，符号链接保持为链接 | `workspace.files.write` | 0 |
 | API-11 | `workspace/trash` | 先保存并关闭其下打开的文档，再把文件或目录移到系统废纸篓；不永久删除 | `workspace.files.write` | 0 |
@@ -292,7 +292,7 @@ Requests a backend sends to the host, all prefixed `lithe/host/`; the tables omi
 | API-11 | `documents/save` | Saves an open document, writing all of its current text; takes an optional `expectedVersion`; when the file changed on disk it returns `plugin.host.diskChanged` and writes nothing | `documents.save` | 0 |
 | API-11 | `documents/saveAs` | Writes the document's current text to a new file that does not exist and opens it; an existing target returns `plugin.host.alreadyExists` | `documents.save` | 0 |
 | API-11 | `documents/close` | Saves the document, then closes its tab; never discards edits | `documents.save` | 0 |
-| API-11 | `workspace/create` | Creates a file (optionally with at most 128 KiB of text) or a directory, never over an existing item | `workspace.files.write` | 0 |
+| API-11 | `workspace/create` | Creates a file (optionally with at most 128 KiB of text), a directory or a symbolic link, never over an existing item | `workspace.files.write` | 0 |
 | API-11 | `workspace/rename` | Renames or moves a file or directory; saves the open documents under it first, and they follow the file | `workspace.files.write` | 0 |
 | API-11 | `workspace/copy` | Copies a file or directory to a target that does not exist, keeping symbolic links as links | `workspace.files.write` | 0 |
 | API-11 | `workspace/trash` | Saves and closes the open documents under the resource, then moves it to the system trash; never deletes permanently | `workspace.files.write` | 0 |

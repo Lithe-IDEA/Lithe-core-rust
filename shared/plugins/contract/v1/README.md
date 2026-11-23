@@ -4280,7 +4280,7 @@ methods. Unknown options fail before side effects with `unsupportedOption`.
 | `workspace/readFile` | `workspace.files.read` | `resource,maximumBytes?` | `{resource,source:"disk",byteCount,isTruncated,identity,text?,encoding?,base64?}` |
 | `workspace/watch` | `workspace.files.watch` | `resource,recursive?` (default false) | `{subscriptionID}`; events contain `{rootID,changedPaths,requiresRescan}` |
 | `workspace/findFiles` | `workspace.search` | `resource` naming the root (`path:""`), `query,fileMask?,cursor?,limit?` | `{matches:[<resource>],nextCursor,isTruncated,source:"disk"}` |
-| `workspace/create` | `workspace.files.write` | `resource,kind` (`file` or `directory`), `text?` (files only) | `{resource,kind}`; never overwrites |
+| `workspace/create` | `workspace.files.write` | `resource,kind` (`file`, `directory` or `symlink`), `text?` (files only), `linkTarget` (symlinks only) | `{resource,kind}`; never overwrites |
 | `workspace/rename` | `workspace.files.write` | `resource,target` | `{resource}` of the target; open documents follow |
 | `workspace/copy` | `workspace.files.write` | `resource,target` | `{resource}` of the copy; never overwrites |
 | `workspace/trash` | `workspace.files.write` | `resource` | `null` after moving it to the system trash |
@@ -4365,22 +4365,35 @@ deadline, and a change that would need the user's choice is refused instead:
 | `documents/save` | `notFound` (no such document); `versionConflict` with `details.currentVersion` when `expectedVersion` is given and differs; `busy` (IME composition); `preconditionFailed` (an untitled document, which needs `saveAs`; a document with no file, such as a virtual one; a hard-linked file, whose save the user must choose); `diskChanged`; `failed` (the write failed; the user also sees the host's save-failed notice) |
 | `documents/saveAs` | `notFound` (no such document, or the target's parent directory does not exist); `alreadyExists`; `busy` (IME composition, or a save of the document is running); `failed` |
 | `documents/close` | the errors of `save`; `preconditionFailed` is not among them, since an untitled or virtual document closes without a write (an untitled document keeps its draft) |
-| `workspace/create` | `notFound` (the parent directory does not exist); `alreadyExists`; `limitExceeded` (`text` is over 128 KiB of UTF-8); `failed` |
+| `workspace/create` | `notFound` (the parent directory does not exist); `alreadyExists`; `limitExceeded` (`text` is over 128 KiB of UTF-8); `failed` (including a system that refuses to create a link, such as Windows without Developer Mode or administrator rights) |
 | `workspace/rename` | `notFound` (the resource or the target's parent); `alreadyExists`; `diskChanged`, `busy` or `failed` from saving an open document; `failed` |
 | `workspace/copy` | `notFound` (the resource or the target's parent); `alreadyExists`; `failed` |
 | `workspace/trash` | `notFound`; `diskChanged`, `busy` or `failed` from saving an open document; `failed` (the system trash refused the item) |
 
 Paths: `resource` and `target` are `{rootID,path}` resources of one root, and
-`target` is the full new path, not a directory to move into. The root itself
-(`path:""`) cannot be created, renamed, copied or trashed, and a target inside
-its own source is refused; both are `invalidParams`. The target's parent must
+`target` is the full new path, not a directory to move into. A path has one
+spelling: `/`-separated components, none empty, `.` or `..`, at most 4,096
+bytes, and on Windows none that Windows cannot store as written (a reserved
+name such as `CON`, a trailing dot or space, or one of `\ : * ? " < > |`).
+The root itself (`path:""`) cannot be created, renamed, copied or trashed, and
+a target inside its own source is refused; these are `invalidParams`. The target's parent must
 exist; nothing creates missing directories. The host checks that the parent of
 each path resolves inside the root, and acts on the last component itself: a
 symbolic link is renamed, copied or trashed as a link, never as the file it
 points to. A copy keeps symbolic links inside a copied directory as links.
 
 `create` writes `text` as UTF-8, or makes an empty file; a directory takes no
-`text`. It does not open the file; call `editor/open` for that. `saveAs` writes
+`text`. It does not open the file; call `editor/open` for that. A symbolic link
+takes `linkTarget`, 1 to 4,096 bytes without NUL, and no `text`; `linkTarget` on
+a file or directory is `invalidParams`. The link stores `linkTarget` verbatim:
+an absolute path, or one relative to the directory that holds the link, which
+may lead outside the root or to nothing. Creating a link grants nothing:
+`workspace/readFile`, listings and `editor/open` keep their own containment
+checks, so a link to a file outside the root does not make that file readable,
+and no file is ever created through a parent directory that leaves the root.
+On Windows each `/` in `linkTarget` is stored as `\`, and the link is a
+directory link when `linkTarget` names an existing directory at creation,
+otherwise a file link. `saveAs` writes
 the document's current text as UTF-8 with its line endings, then opens the new
 file and selects it; the original document stays open and unchanged, except
 that an untitled document whose text did not change during the write closes,

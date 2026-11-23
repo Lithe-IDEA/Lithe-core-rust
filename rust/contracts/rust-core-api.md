@@ -614,6 +614,10 @@ or removing a command fails until the table changes in the same commit.
 | `workspace.rankNames` | Pure ranking of candidate names that the platform enumerates itself (`{ query, candidates: [{ name, path? }], context: { openPaths, recentPaths }, limitPerTier? }`). Use it only for lists Core cannot index: Windows remote/WSL roots, symbol lists, navigator lists. Roots Core indexes go through `workspace.searchEverywhere`, so an inventory is never sent back to Core. Returns `matches: [{ index, degree, tier, nameMatchRanges }]` ordered by degree, open/recent tier, recency, then file-name order (fixture `rust/fixtures/search/rank-names-v1.json`) |
 | `workspace.planDuplicate` | Name the copy of one project item next to its source (`foo.txt` → `foo copy.txt`, then `foo copy 2.txt`) from the sibling names the host has seen to exist |
 | `workspace.planPaste` | Name pasted project items in one destination directory: a free name is kept, a taken one gets the copy suffix, and earlier items of the same paste count as taken |
+| `workspace.createEntry` | Create one file, directory or symbolic link below a workspace root without replacing anything |
+| `workspace.renameEntry` | Rename one entry to a new path of the same root without replacing anything; a link is renamed as a link |
+| `workspace.copyEntry` | Copy one entry, a directory with everything in it, to a new path of the same root without replacing anything; links stay links |
+| `workspace.resolveEntry` | Name one existing entry below a workspace root without following it |
 | `workspace.reduceDirectoryAction` | Apply "set role", "exclude" or "cancel exclusion" to a root's persisted directory rules and return the complete state to persist |
 | `workspace.relocateDirectoryRules` | Move (or drop, after a delete) the directory rule keys of a renamed, moved or deleted subtree, optionally into another workspace root's rules |
 | `workspace.repositories` | Discover deterministic Git repository roots for an opened workspace |
@@ -7440,6 +7444,38 @@ to exist, creates the copy without replacing anything (`FileManager.copyItem`, w
 `create_new` and `MoveFileEx` without replacement on Windows) and, when that fails because the name
 appeared meanwhile, adds the name to `existing` and plans again. After 512 rounds the host reports
 the stable `destination_exists` error. Cases are in `rust/fixtures/workspace/file-copy-names-v1.json`.
+
+`workspace.createEntry`, `workspace.renameEntry`, `workspace.copyEntry` and `workspace.resolveEntry`
+change and name entries below a local workspace root on a plugin's behalf (plan API-11). Each takes
+`root`, the absolute path of the root as the host spells it, and `path`, the entry below it.
+`createEntry` takes `{ root, path, kind, text?, linkTarget? }`: `kind` is `file`, `directory` or
+`symlink`; a file takes optional UTF-8 `text`, and a link takes the `linkTarget` it stores verbatim,
+absolute or relative to the link's directory, which may leave the root or name nothing. On Windows each
+`/` of `linkTarget` is stored as `\`, and the link is a directory link when the target is an existing
+directory at creation, otherwise a file link. `renameEntry` and `copyEntry` take
+`{ root, path, target }`, `target` being the full new path in the same root; `resolveEntry` takes
+`{ root, path }`. Every command returns `{ path, fullPath, kind }`: `fullPath` is spelled from the
+`root` the host sent, as its open documents name the entry, and `kind` is `file`, `directory`,
+`symlink` or `other`.
+
+A path is `/`-separated with no empty, `.` or `..` component, and on Windows every component must be
+one Windows stores as written (no reserved name such as `CON`, no trailing dot or space, none of
+`\ : * ? " < > |`); the root itself is not an entry. The directory holding the entry must exist and
+resolve inside the root, so no entry is created or moved through a link that leaves it; the last
+component is never followed, so a link is renamed, copied or resolved as a link, and a copied
+directory keeps its links as links. Nothing is replaced: macOS and Linux rename with one exclusive
+system call (`renamex_np` with `RENAME_EXCL`, `renameat2` with `RENAME_NOREPLACE`) and fall back to a
+check before the rename on volumes that refuse it; Windows renames with `MoveFileExW` without
+`MOVEFILE_REPLACE_EXISTING`. A rename that only changes the case of a name on a file system that
+ignores case is not a collision, and a target naming the source itself is. A directory is never moved
+or copied into itself. A copy that fails part way removes what it created.
+
+Errors are `invalid_request` (a malformed path or root, fields that do not match the `kind`, a
+directory moved into itself), `permission_denied` (a parent that resolves outside the root),
+`workspace_not_found` (no root), `entry_not_found` (no entry, or no parent directory), `entry_exists`
+(the target exists), and `unknown` with the system's message in `details` for anything else, such as
+Windows refusing to create a link without Developer Mode or elevation. Saving and moving the open
+documents under an entry, the system trash and refreshing the project tree stay with the host.
 
 `history.planEvent` takes `{ event }` and returns `{ snapshots: [{ source, reason }] }`. `source` says
 whose text the host records: `beforeChange` (the text an event replaces), `afterChange` (the text it

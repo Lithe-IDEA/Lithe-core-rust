@@ -405,6 +405,9 @@ meaning; `lithe_protocol::ErrorCode` documents when it is reported:
 - `git_untrusted_workspace`: the workspace is not trusted, so Git did not start
 - `parse_failed`
 - `encoding_unmappable`
+- `entry_not_found`: a file change names a path, or a target's parent
+  directory, that does not exist below its root; nothing changed
+- `entry_exists`: a file change's target already exists; nothing was replaced
 - `cancelled`
 - `timed_out`
 - `connection_closed`: the remote connection the request names closed or was lost
