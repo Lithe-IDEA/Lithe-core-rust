@@ -62,14 +62,26 @@ pub(crate) enum HostParams {
     FunctionProviders,
     /// `{ pluginID, functionID, context, params?, timeoutMilliseconds? }`.
     FunctionInvoke,
+    /// `{ context, documentID, expectedVersion? }` (plan API-11).
+    DocumentSave,
+    /// `{ context, documentID, target }`: a save to a new file of the same
+    /// root's files (plan API-11).
+    DocumentSaveAs,
+    /// `{ context, documentID }` (plan API-11).
+    DocumentClose,
+    /// `{ context, resource, kind, text?, linkTarget? }`: a new file,
+    /// directory or symbolic link below a root (plan API-11).
+    WorkspaceCreate,
+    /// `{ context, resource, target }`: a rename or copy within one root
+    /// (plan API-11).
+    WorkspaceMove,
+    /// `{ context, resource }`: a move to the system trash (plan API-11).
+    WorkspaceTrash,
     /// Any object whose `context`, when present, is a well-formed
     /// reference. The service checks the rest and answers
     /// `plugin.host.invalidParams` or, for a field it does not know,
     /// `plugin.host.unsupportedOption` itself; for methods whose params
     /// Core cannot type without owning their domain.
-    // No row uses it yet; the file, editor, and window services that follow
-    // add their rows with it.
-    #[allow(dead_code)]
     Object,
 }
 
@@ -268,6 +280,33 @@ pub(crate) const HOST_METHODS: &[HostMethod] = &[
         permission: Some("workspace.search"),
         params: HostParams::Object,
     },
+    // Plan API-11: file changes the host makes on the backend's behalf. The
+    // host never overwrites a file, saves an open document before it moves
+    // or trashes its file, and moves to the trash instead of deleting.
+    HostMethod {
+        method: "lithe/host/workspace/create",
+        service: "workspace",
+        permission: Some(PERMISSION_WORKSPACE_FILES_WRITE),
+        params: HostParams::WorkspaceCreate,
+    },
+    HostMethod {
+        method: "lithe/host/workspace/rename",
+        service: "workspace",
+        permission: Some(PERMISSION_WORKSPACE_FILES_WRITE),
+        params: HostParams::WorkspaceMove,
+    },
+    HostMethod {
+        method: "lithe/host/workspace/copy",
+        service: "workspace",
+        permission: Some(PERMISSION_WORKSPACE_FILES_WRITE),
+        params: HostParams::WorkspaceMove,
+    },
+    HostMethod {
+        method: "lithe/host/workspace/trash",
+        service: "workspace",
+        permission: Some(PERMISSION_WORKSPACE_FILES_WRITE),
+        params: HostParams::WorkspaceTrash,
+    },
     HostMethod {
         method: "lithe/host/documents/list",
         service: "documents",
@@ -279,6 +318,26 @@ pub(crate) const HOST_METHODS: &[HostMethod] = &[
         service: "documents",
         permission: Some("documents.read"),
         params: HostParams::Object,
+    },
+    // Plan API-11: saving and closing an open document through its owner,
+    // which keeps the document's version, dirty state and undo history.
+    HostMethod {
+        method: "lithe/host/documents/save",
+        service: "documents",
+        permission: Some(PERMISSION_DOCUMENTS_SAVE),
+        params: HostParams::DocumentSave,
+    },
+    HostMethod {
+        method: "lithe/host/documents/saveAs",
+        service: "documents",
+        permission: Some(PERMISSION_DOCUMENTS_SAVE),
+        params: HostParams::DocumentSaveAs,
+    },
+    HostMethod {
+        method: "lithe/host/documents/close",
+        service: "documents",
+        permission: Some(PERMISSION_DOCUMENTS_SAVE),
+        params: HostParams::DocumentClose,
     },
     HostMethod {
         method: "lithe/host/editor/registerActions",

@@ -170,4 +170,32 @@ async function remoteRoots(context: WorkspaceContext) {
   const unavailable: -32079 = HOST_ERRORS['plugin.host.platformUnavailable'];
   void failure; void unavailable;
 }
+
+async function fileChanges(context: WorkspaceContext) {
+  const resource = { rootID: context.folders[0]!.rootID, path: 'notes/today.md' };
+  const created = await backend.host.workspace.create(context, { resource, kind: 'file', text: '# Today' });
+  const kind: 'file' | 'directory' | 'symlink' = created.kind;
+  void kind;
+  await backend.host.workspace.create(context, { resource, kind: 'symlink', linkTarget: '../shared/today.md' });
+  // @ts-expect-error A created item is a file, a directory or a symbolic link.
+  await backend.host.workspace.create(context, { resource, kind: 'link' });
+  // @ts-expect-error A symbolic link names its target.
+  await backend.host.workspace.create(context, { resource, kind: 'symlink' });
+  // @ts-expect-error Only a file takes text.
+  await backend.host.workspace.create(context, { resource, kind: 'directory', text: 'x' });
+  await backend.host.workspace.rename(context, { resource, target: { ...resource, path: 'notes/done.md' } });
+  await backend.host.workspace.copy(context, { resource, target: { ...resource, path: 'notes/copy.md' } });
+  const trashed: null = await backend.host.workspace.trash(context, { resource });
+  void trashed;
+  const saved = await backend.host.documents.save(context, { documentID: 'd1', expectedVersion: 2 });
+  const dirty: boolean = saved.document.isDirty;
+  void dirty;
+  await backend.host.documents.saveAs(context, { documentID: 'd1', target: resource });
+  const closed: null = await backend.host.documents.close(context, { documentID: 'd1' });
+  void closed;
+  const exists: -32080 = HOST_ERRORS['plugin.host.alreadyExists'];
+  const changed: -32081 = HOST_ERRORS['plugin.host.diskChanged'];
+  void exists; void changed;
+}
+void fileChanges;
 void remoteRoots;

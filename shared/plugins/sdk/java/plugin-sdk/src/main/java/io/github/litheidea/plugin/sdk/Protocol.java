@@ -71,8 +71,15 @@ public final class Protocol {
     public static final String HOST_WORKSPACE_WATCH = "lithe/host/workspace/watch";
     public static final String HOST_WORKSPACE_FIND_FILES = "lithe/host/workspace/findFiles";
     public static final String HOST_WORKSPACE_FIND_TEXT = "lithe/host/workspace/findText";
+    public static final String HOST_WORKSPACE_CREATE = "lithe/host/workspace/create";
+    public static final String HOST_WORKSPACE_RENAME = "lithe/host/workspace/rename";
+    public static final String HOST_WORKSPACE_COPY = "lithe/host/workspace/copy";
+    public static final String HOST_WORKSPACE_TRASH = "lithe/host/workspace/trash";
     public static final String HOST_DOCUMENTS_LIST = "lithe/host/documents/list";
     public static final String HOST_DOCUMENTS_GET_SNAPSHOT = "lithe/host/documents/getSnapshot";
+    public static final String HOST_DOCUMENTS_SAVE = "lithe/host/documents/save";
+    public static final String HOST_DOCUMENTS_SAVE_AS = "lithe/host/documents/saveAs";
+    public static final String HOST_DOCUMENTS_CLOSE = "lithe/host/documents/close";
     public static final String HOST_EDITOR_REGISTER_ACTIONS = "lithe/host/editor/registerActions";
     public static final String HOST_EDITOR_GET_ACTIVE = "lithe/host/editor/getActive";
     public static final String HOST_EDITOR_GET_SELECTIONS = "lithe/host/editor/getSelections";

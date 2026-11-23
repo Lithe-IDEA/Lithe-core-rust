@@ -971,6 +971,7 @@ dependencies = [
  "lithe-lsp-policy",
  "lithe-lsp-transport",
  "lithe-network",
+ "lithe-platform",
  "lithe-plugin-content-providers",
  "lithe-plugin-editor",
  "lithe-plugin-function-relay",
@@ -1248,6 +1249,7 @@ name = "lithe-platform"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "windows-sys",
 ]
 
 [[package]]
@@ -1415,6 +1417,7 @@ dependencies = [
 name = "lithe-plugin-rpc"
 version = "0.1.0"
 dependencies = [
+ "lithe-platform",
  "lithe-plugin-keymap-import",
  "lithe-plugin-language-servers",
  "lithe-plugin-model",

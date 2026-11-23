@@ -21,6 +21,26 @@
       "expected": { "allowed": true }
     },
     {
+      "name": "a read grant does not grant file changes",
+      "input": { "method": "lithe/host/workspace/create", "service": "workspace", "grants": ["workspace", "lithe/host/workspace/readFile"] },
+      "expected": { "allowed": false, "code": "plugin.host.permissionDenied" }
+    },
+    {
+      "name": "the file-change grant admits its own method",
+      "input": { "method": "lithe/host/workspace/trash", "service": "workspace", "grants": ["lithe/host/workspace/trash"] },
+      "expected": { "allowed": true }
+    },
+    {
+      "name": "a document read grant does not grant saving",
+      "input": { "method": "lithe/host/documents/save", "service": "documents", "grants": ["lithe/host/documents/getSnapshot"] },
+      "expected": { "allowed": false, "code": "plugin.host.permissionDenied" }
+    },
+    {
+      "name": "the save grant admits saving",
+      "input": { "method": "lithe/host/documents/save", "service": "documents", "grants": ["lithe/host/documents/save"] },
+      "expected": { "allowed": true }
+    },
+    {
       "name": "a method cannot be attributed to another service",
       "input": { "method": "lithe/host/editor/applyEdits", "service": "workspace", "grants": ["workspace"] },
       "expected": { "allowed": false, "code": "plugin.host.unavailable" }

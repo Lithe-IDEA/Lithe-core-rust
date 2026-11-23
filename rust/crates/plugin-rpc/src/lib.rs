@@ -157,6 +157,8 @@ pub const HOST_PERMISSIONS: &[&str] = &[
     "debug.start",
     PERMISSION_LANGUAGE_SERVER_REQUEST,
     PERMISSION_DOCUMENTS_CONTENT_PROVIDER,
+    PERMISSION_DOCUMENTS_SAVE,
+    PERMISSION_WORKSPACE_FILES_WRITE,
 ];
 
 /// Permission of the `languageServer` host service (plan API-25): a backend
@@ -167,6 +169,17 @@ pub const PERMISSION_LANGUAGE_SERVER_REQUEST: &str = "languageServer.request";
 /// Permission of `documents/registerContentProvider` (plan API-12): the
 /// backend supplies the read-only text of URIs of a scheme it registers.
 pub(crate) const PERMISSION_DOCUMENTS_CONTENT_PROVIDER: &str = "documents.contentProvider";
+
+/// Permission of `documents/save`, `saveAs` and `close` (plan API-11): the
+/// backend asks the document's owner to write or close an open document. A
+/// close saves first; the owner never discards the user's edits for it.
+pub(crate) const PERMISSION_DOCUMENTS_SAVE: &str = "documents.save";
+
+/// Permission of `workspace/create`, `rename`, `copy` and `trash` (plan
+/// API-11): the backend changes files inside the context's root folders.
+/// None of them overwrites a file, and `trash` moves to the system trash
+/// instead of deleting.
+pub(crate) const PERMISSION_WORKSPACE_FILES_WRITE: &str = "workspace.files.write";
 
 const CREDENTIALS_GET: &str = "lithe/host/credentials/get";
 
@@ -309,6 +322,14 @@ pub mod codes {
     /// The plugin has no package or managed runtime for the remote host's
     /// platform, so the process the request needs cannot run there.
     pub const HOST_PLATFORM_UNAVAILABLE: &str = "plugin.host.platformUnavailable";
+    /// The file or folder the request would create, or the target of a
+    /// rename, copy or save as, already exists. The host never overwrites
+    /// it.
+    pub const HOST_ALREADY_EXISTS: &str = "plugin.host.alreadyExists";
+    /// The file on disk changed, or was deleted, after the document last
+    /// read or wrote it, so a save would overwrite a change the document
+    /// does not hold. Nothing was written; the user settles the conflict.
+    pub const HOST_DISK_CHANGED: &str = "plugin.host.diskChanged";
     /// A page's call or a host operation ended because the backend process
     /// exited. Reported by hosts to pages, never sent to a backend.
     pub const BACKEND_EXITED: &str = "plugin.backend.exited";
@@ -864,6 +885,312 @@ mod tests {
             .as_array()
             .unwrap()
             .contains(&json!(WORKSPACE_GET_HOST_PATHS)));
+    }
+
+    /// Saving and file changes are method grants of their own (plan
+    /// API-11): a session granted the `workspace` service, or only reading,
+    /// never writes, and each new failure code has a number of its own.
+    fn file_change_refusal(method: &str, params: Value) -> Option<&'static str> {
+        let granted = BTreeSet::from([method.to_string()]);
+        host_request(method, Some(&params), Some(0), &granted)
+            .err()
+            .map(|refusal| refusal.code)
+    }
+
+    #[test]
+    fn file_changes_name_one_spelling_of_one_root() {
+        let context = json!({ "contextID": "w-3f2a", "generation": 2 });
+        let create = "lithe/host/workspace/create";
+        let with_path = |path: &str| json!({ "context": context, "resource": { "rootID": "r0", "path": path }, "kind": "directory" });
+        for path in ["src", "src/main.rs", ".config/a b"] {
+            assert_eq!(file_change_refusal(create, with_path(path)), None, "{path}");
+        }
+        let too_long = "a/".repeat(2048) + "b";
+        for path in [
+            "",
+            "/a",
+            "a//b",
+            "./a",
+            "a/",
+            "a/../b",
+            "..",
+            too_long.as_str(),
+        ] {
+            assert_eq!(
+                file_change_refusal(create, with_path(path)),
+                Some(codes::HOST_INVALID_PARAMS),
+                "{path}"
+            );
+        }
+        for resource in [
+            json!({ "rootID": "r0" }),
+            json!({ "rootID": "", "path": "a" }),
+            json!({ "rootID": "r0", "path": "a", "extra": true }),
+            json!("r0/a"),
+        ] {
+            assert_eq!(
+                file_change_refusal(
+                    create,
+                    json!({ "context": context, "resource": resource, "kind": "directory" })
+                ),
+                Some(codes::HOST_INVALID_PARAMS),
+                "{resource}"
+            );
+        }
+        assert_eq!(
+            file_change_refusal(
+                "lithe/host/workspace/trash",
+                json!({ "resource": { "rootID": "r0", "path": "a" } })
+            ),
+            Some(codes::HOST_INVALID_PARAMS)
+        );
+        assert_eq!(
+            file_change_refusal(
+                "lithe/host/workspace/trash",
+                json!({ "context": context, "resource": { "rootID": "r0", "path": "a" }, "permanent": true })
+            ),
+            Some(codes::HOST_UNSUPPORTED_OPTION)
+        );
+    }
+
+    #[test]
+    fn a_move_stays_in_its_root_and_outside_its_source() {
+        let context = json!({ "contextID": "w-3f2a", "generation": 2 });
+        let resource = json!({ "rootID": "r0", "path": "src" });
+        for method in ["lithe/host/workspace/rename", "lithe/host/workspace/copy"] {
+            let moving = |target: Value| json!({ "context": context, "resource": resource, "target": target });
+            for path in ["lib", "src2", "source/src", "SRC"] {
+                assert_eq!(
+                    file_change_refusal(method, moving(json!({ "rootID": "r0", "path": path }))),
+                    None,
+                    "{method} {path}"
+                );
+            }
+            // The same path is the disk's `alreadyExists`, not malformed.
+            assert_eq!(
+                file_change_refusal(method, moving(json!({ "rootID": "r0", "path": "src" }))),
+                None
+            );
+            for target in [
+                json!({ "rootID": "r0", "path": "src/inner" }),
+                json!({ "rootID": "r1", "path": "lib" }),
+                json!({ "rootID": "r0", "path": "" }),
+            ] {
+                assert_eq!(
+                    file_change_refusal(method, moving(target.clone())),
+                    Some(codes::HOST_INVALID_PARAMS),
+                    "{method} {target}"
+                );
+            }
+            assert_eq!(
+                file_change_refusal(method, json!({ "context": context, "resource": resource })),
+                Some(codes::HOST_INVALID_PARAMS)
+            );
+        }
+    }
+
+    #[test]
+    fn a_created_entry_takes_the_fields_of_its_kind() {
+        let context = json!({ "contextID": "w-3f2a", "generation": 2 });
+        let create = |fields: Value| {
+            let mut params =
+                json!({ "context": context, "resource": { "rootID": "r0", "path": "a" } });
+            for (key, value) in fields.as_object().expect("fields") {
+                params[key] = value.clone();
+            }
+            file_change_refusal("lithe/host/workspace/create", params)
+        };
+        for fields in [
+            json!({ "kind": "file" }),
+            json!({ "kind": "file", "text": "" }),
+            json!({ "kind": "file", "text": "x".repeat(MAX_CREATED_FILE_TEXT_BYTES) }),
+            json!({ "kind": "directory" }),
+            json!({ "kind": "symlink", "linkTarget": "../outside/file.txt" }),
+            json!({ "kind": "symlink", "linkTarget": "/absolute/path" }),
+        ] {
+            assert_eq!(create(fields.clone()), None, "{fields}");
+        }
+        for fields in [
+            json!({}),
+            json!({ "kind": "hardlink" }),
+            json!({ "kind": "file", "text": 1 }),
+            json!({ "kind": "file", "linkTarget": "x" }),
+            json!({ "kind": "directory", "text": "" }),
+            json!({ "kind": "directory", "linkTarget": "x" }),
+            json!({ "kind": "symlink" }),
+            json!({ "kind": "symlink", "linkTarget": "" }),
+            json!({ "kind": "symlink", "linkTarget": "a\u{0}b" }),
+            json!({ "kind": "symlink", "linkTarget": "x".repeat(MAX_FILE_CHANGE_PATH_BYTES + 1) }),
+            json!({ "kind": "symlink", "linkTarget": "x", "text": "" }),
+        ] {
+            assert_eq!(
+                create(fields.clone()),
+                Some(codes::HOST_INVALID_PARAMS),
+                "{fields}"
+            );
+        }
+        let oversized = "x".repeat(MAX_CREATED_FILE_TEXT_BYTES + 1);
+        let granted = BTreeSet::from(["lithe/host/workspace/create".to_string()]);
+        let refusal = host_request(
+            "lithe/host/workspace/create",
+            Some(&json!({ "context": context, "resource": { "rootID": "r0", "path": "a" }, "kind": "file", "text": oversized })),
+            Some(0),
+            &granted,
+        )
+        .unwrap_err();
+        assert_eq!(refusal.code, codes::HOST_LIMIT_EXCEEDED);
+        assert_eq!(refusal.rpc_code, host_rpc_code(codes::HOST_LIMIT_EXCEEDED));
+    }
+
+    #[test]
+    fn a_save_names_a_document_and_save_as_a_new_path() {
+        let context = json!({ "contextID": "w-3f2a", "generation": 2 });
+        let save = "lithe/host/documents/save";
+        let save_as = "lithe/host/documents/saveAs";
+        let close = "lithe/host/documents/close";
+        let target = json!({ "rootID": "r0", "path": "copy.txt" });
+        for (method, params) in [
+            (save, json!({ "context": context, "documentID": "d1" })),
+            (
+                save,
+                json!({ "context": context, "documentID": "d1", "expectedVersion": 4 }),
+            ),
+            (
+                save_as,
+                json!({ "context": context, "documentID": "d1", "target": target }),
+            ),
+            (close, json!({ "context": context, "documentID": "d1" })),
+        ] {
+            assert_eq!(
+                file_change_refusal(method, params.clone()),
+                None,
+                "{method} {params}"
+            );
+        }
+        for (method, params) in [
+            (save, json!({ "context": context })),
+            (save, json!({ "context": context, "documentID": "" })),
+            (
+                save,
+                json!({ "context": context, "documentID": "d1", "expectedVersion": -1 }),
+            ),
+            (save_as, json!({ "context": context, "documentID": "d1" })),
+            (
+                save_as,
+                json!({ "context": context, "documentID": "d1", "target": { "rootID": "r0", "path": "../x" } }),
+            ),
+            (close, json!({ "documentID": "d1" })),
+        ] {
+            assert_eq!(
+                file_change_refusal(method, params.clone()),
+                Some(codes::HOST_INVALID_PARAMS),
+                "{method} {params}"
+            );
+        }
+        assert_eq!(
+            file_change_refusal(
+                close,
+                json!({ "context": context, "documentID": "d1", "force": true })
+            ),
+            Some(codes::HOST_UNSUPPORTED_OPTION)
+        );
+    }
+
+    #[test]
+    fn saves_and_file_changes_are_method_grants_of_their_own() {
+        assert_eq!(
+            methods_for_permission(PERMISSION_DOCUMENTS_SAVE),
+            [
+                "lithe/host/documents/save",
+                "lithe/host/documents/saveAs",
+                "lithe/host/documents/close",
+            ]
+        );
+        let writes = methods_for_permission(PERMISSION_WORKSPACE_FILES_WRITE);
+        assert_eq!(
+            writes,
+            [
+                "lithe/host/workspace/create",
+                "lithe/host/workspace/rename",
+                "lithe/host/workspace/copy",
+                "lithe/host/workspace/trash",
+            ]
+        );
+        let context = json!({ "contextID": "w-3f2a", "generation": 2 });
+        let resource = json!({ "rootID": "r0", "path": "a.txt" });
+        let target = json!({ "rootID": "r0", "path": "b.txt" });
+        let reading = BTreeSet::from([
+            HOST_SERVICE_WORKSPACE.to_string(),
+            "lithe/host/workspace/readFile".to_string(),
+        ]);
+        for method in &writes {
+            assert!(is_host_grant(method), "{method}");
+            let params = match *method {
+                "lithe/host/workspace/create" => {
+                    json!({ "context": context, "resource": resource, "kind": "file" })
+                }
+                "lithe/host/workspace/trash" => json!({ "context": context, "resource": resource }),
+                _ => json!({ "context": context, "resource": resource, "target": target }),
+            };
+            assert_eq!(
+                host_request(method, Some(&params), Some(0), &reading)
+                    .unwrap_err()
+                    .code,
+                codes::HOST_PERMISSION_DENIED,
+                "{method}"
+            );
+            let granted = BTreeSet::from([method.to_string()]);
+            assert_eq!(
+                host_request(method, Some(&params), Some(0), &granted),
+                Ok(HostRoute::Forward(HOST_SERVICE_WORKSPACE)),
+                "{method}"
+            );
+        }
+        let save = BTreeSet::from(["lithe/host/documents/save".to_string()]);
+        assert_eq!(
+            host_request(
+                "lithe/host/documents/save",
+                Some(&json!({ "context": context, "documentID": "d1" })),
+                Some(0),
+                &save,
+            ),
+            Ok(HostRoute::Forward("documents"))
+        );
+        // Every code a host may report keeps a number of its own.
+        let host_codes = [
+            codes::HOST_UNAVAILABLE,
+            codes::HOST_INVALID_PARAMS,
+            codes::HOST_CANCELLED,
+            codes::HOST_PERMISSION_DENIED,
+            codes::HOST_CONTEXT_EXPIRED,
+            codes::HOST_AUTHORITY_UNSUPPORTED,
+            codes::HOST_VERSION_CONFLICT,
+            codes::HOST_LIMIT_EXCEEDED,
+            codes::HOST_TIMEOUT,
+            codes::HOST_NOT_FOUND,
+            codes::HOST_READ_ONLY,
+            codes::HOST_UNSUPPORTED_OPTION,
+            codes::HOST_PRECONDITION_FAILED,
+            codes::HOST_BUSY,
+            codes::HOST_RATE_LIMITED,
+            codes::HOST_LANGUAGE_SERVER_UNAVAILABLE,
+            codes::HOST_LANGUAGE_SERVER_ERROR,
+            codes::HOST_METHOD_NOT_DECLARED,
+            codes::HOST_TOOL_UNRESOLVED,
+            codes::HOST_FOREIGN_CONTRIBUTION,
+            codes::HOST_REMOTE_DISCONNECTED,
+            codes::HOST_PLATFORM_UNAVAILABLE,
+            codes::HOST_ALREADY_EXISTS,
+            codes::HOST_DISK_CHANGED,
+            codes::HOST_FAILED,
+        ];
+        for code in host_codes {
+            assert_eq!(host_failure(Some(code)).0, code, "{code}");
+        }
+        let numbers: BTreeSet<i64> = host_codes.iter().map(|code| host_rpc_code(code)).collect();
+        assert_eq!(numbers.len(), host_codes.len());
+        assert_eq!(host_rpc_code(codes::HOST_ALREADY_EXISTS), -32080);
+        assert_eq!(host_rpc_code(codes::HOST_DISK_CHANGED), -32081);
     }
 
     /// A message over the bound is cut at a character boundary, never inside

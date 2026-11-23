@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -27,6 +28,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -124,6 +126,46 @@ class HostTest {
             Map<String, Object> reopen = nextRequest(host, Protocol.HOST_TERMINAL_REOPEN);
             host.send(map("id", reopen.get("id"), "result", map("terminalID", "owned", "generation", 2L, "restoredContextBytes", 4096L)));
             assertEquals(2L, value(reopening).get("generation"));
+        } finally { host.close(); }
+    }
+
+    @Test
+    void saveAndFileChangeMethodsCarryTheirParamsWithTheContext() {
+        Backend backend = Backend.create(null, null);
+        TestHost host = session(backend);
+        try {
+            Map<String, Object> resource = map("rootID", "r1", "path", "src/a.txt");
+            Map<String, Object> target = map("rootID", "r1", "path", "src/b.txt");
+            Host.Workspace workspace = backend.host().workspace();
+            Host.Documents documents = backend.host().documents();
+            Map<String, Object> calls = new LinkedHashMap<>();
+            calls.put(Protocol.HOST_DOCUMENTS_SAVE, map("documentID", "d1", "expectedVersion", 3L));
+            calls.put(Protocol.HOST_DOCUMENTS_SAVE_AS, map("documentID", "d1", "target", target));
+            calls.put(Protocol.HOST_DOCUMENTS_CLOSE, map("documentID", "d1"));
+            calls.put(Protocol.HOST_WORKSPACE_CREATE, map("resource", resource, "kind", "file", "text", "x"));
+            calls.put(Protocol.HOST_WORKSPACE_RENAME, map("resource", resource, "target", target));
+            calls.put(Protocol.HOST_WORKSPACE_COPY, map("resource", resource, "target", target));
+            calls.put(Protocol.HOST_WORKSPACE_TRASH, map("resource", resource));
+            Map<String, BiFunction<Map<String, ?>, Map<String, ?>, CompletableFuture<Map<String, Object>>>> wrappers =
+                    new LinkedHashMap<>();
+            wrappers.put(Protocol.HOST_DOCUMENTS_SAVE, documents::save);
+            wrappers.put(Protocol.HOST_DOCUMENTS_SAVE_AS, documents::saveAs);
+            wrappers.put(Protocol.HOST_DOCUMENTS_CLOSE, documents::close);
+            wrappers.put(Protocol.HOST_WORKSPACE_CREATE, workspace::create);
+            wrappers.put(Protocol.HOST_WORKSPACE_RENAME, workspace::rename);
+            wrappers.put(Protocol.HOST_WORKSPACE_COPY, workspace::copy);
+            wrappers.put(Protocol.HOST_WORKSPACE_TRASH, workspace::trash);
+            for (Map.Entry<String, Object> call : calls.entrySet()) {
+                String method = call.getKey();
+                Map<String, Object> params = object(call.getValue());
+                CompletableFuture<Map<String, Object>> answer = wrappers.get(method).apply(CONTEXT, params);
+                Map<String, Object> request = nextRequest(host, method);
+                Map<String, Object> expected = new LinkedHashMap<>(params);
+                expected.put("context", CONTEXT);
+                assertEquals(expected, object(request.get("params")), method);
+                host.send(map("id", request.get("id"), "result", null));
+                assertNull(value(answer), method);
+            }
         } finally { host.close(); }
     }
 

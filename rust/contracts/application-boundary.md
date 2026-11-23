@@ -405,6 +405,9 @@ meaning; `lithe_protocol::ErrorCode` documents when it is reported:
 - `git_untrusted_workspace`: the workspace is not trusted, so Git did not start
 - `parse_failed`
 - `encoding_unmappable`
+- `entry_not_found`: a file change names a path, or a target's parent
+  directory, that does not exist below its root; nothing changed
+- `entry_exists`: a file change's target already exists; nothing was replaced
 - `cancelled`
 - `timed_out`
 - `connection_closed`: the remote connection the request names closed or was lost
@@ -621,3 +624,16 @@ never cached authority about an executable. A project may override the global
 default, while running processes retain their launch environment. Native SDK
 probing, cancellation and filesystem permissions remain adapter responsibilities;
 neither these commands nor runtime consumers write into SDKs or installed bundles.
+
+### System file-association ownership
+
+Built-in syntax metadata is a host observation; Core owns the bounded text-format
+projection, deduplication and conflict-checked explicit selection plan through
+`application.fileAssociations.*`. Native adapters read the actual OS defaults and
+owned registration, publish only after the user applies the selection, then read
+back. They do not maintain a preference that pretends to be the system default.
+Windows protected defaults require system user confirmation; native registration
+must not write UserChoice. macOS declares alternate editors at build time and
+uses Launch Services at runtime without changing bundle resources. OS-opened
+regular files enter the same isolated document policy as CLI-opened files, never
+implicitly opening or indexing the parent directory.
