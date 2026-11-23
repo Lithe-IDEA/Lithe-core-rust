@@ -24,6 +24,9 @@ use std::sync::Arc;
 /// small enough to keep each frame far below the size limit.
 const BATCH_ENTRIES: usize = 2000;
 
+/// Relative path bytes per batch; JSON can escape each byte into six bytes.
+const BATCH_PATH_BYTES: usize = 1024 * 1024;
+
 pub(crate) struct WalkTable {
     registry: Registry<RunningWalk>,
 }
@@ -141,6 +144,7 @@ impl Walker {
             unreadable_directories: 0,
         };
         let mut batch = Vec::with_capacity(BATCH_ENTRIES);
+        let mut batch_bytes = 0;
         // Each stack frame is a directory's remaining, reverse-sorted
         // children, so popping yields name order depth-first.
         let mut stack: Vec<Vec<(String, PathBuf, FileKind)>> = Vec::new();
@@ -161,18 +165,31 @@ impl Walker {
                 done.truncated = true;
                 break;
             }
+            if relative.len() > BATCH_PATH_BYTES {
+                // A single entry can exceed the budget even in an empty
+                // batch. Report a partial walk instead of emitting a frame
+                // the writer cannot serialize.
+                done.truncated = true;
+                break;
+            }
             done.total += 1;
             let descend = kind == FileKind::Directory
                 && !path
                     .file_name()
                     .and_then(|name| name.to_str())
                     .is_some_and(|name| self.excludes.contains(name));
+            if batch_bytes + relative.len() > BATCH_PATH_BYTES {
+                self.flush(session, &mut batch);
+                batch_bytes = 0;
+            }
+            batch_bytes += relative.len();
             batch.push(WalkEntry {
                 path: relative.clone(),
                 kind,
             });
             if batch.len() >= BATCH_ENTRIES {
                 self.flush(session, &mut batch);
+                batch_bytes = 0;
             }
             if descend {
                 match self.children(&path, &relative, &mut done) {

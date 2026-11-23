@@ -151,7 +151,7 @@ fn daemon_name(key: &str, executable_sha256: &str) -> String {
 
 /// Creates `path` with mode 0700, or verifies an existing one is a real
 /// directory owned by the user that nobody else can write to.
-fn private_directory(path: &Path) -> io::Result<()> {
+pub(super) fn private_directory(path: &Path) -> io::Result<()> {
     match fs::DirBuilder::new()
         .recursive(true)
         .mode(0o700)

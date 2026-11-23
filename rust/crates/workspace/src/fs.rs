@@ -318,6 +318,7 @@ impl Read for File {
                 let observed = methods::FileVersion {
                     size: result.metadata.size,
                     modified_ms: result.metadata.modified_ms,
+                    revision: result.metadata.revision.clone(),
                 };
                 if version.as_ref().is_some_and(|first| *first != observed) {
                     return Err(io::Error::new(
@@ -429,7 +430,7 @@ pub fn append(path_value: &Path, bytes: &[u8]) -> io::Result<()> {
             content.extend_from_slice(bytes);
             check_write_size(content.len() as u64)?;
             rpc::<Value>(&host, methods::FS_WRITE_FILE, json!({"path": remote, "data": methods::encode_bytes(&content),
-                "expected": previous.map(|value| methods::FileVersion { size: value.size, modified_ms: value.modified_ms })})).map(|_| ())
+                "expected": previous.map(|value| methods::FileVersion { size: value.size, modified_ms: value.modified_ms, revision: value.revision })})).map(|_| ())
         }
         None => {
             use std::io::Write;

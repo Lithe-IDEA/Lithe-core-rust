@@ -18,7 +18,7 @@ mod unix;
 #[cfg(unix)]
 use unix as channel;
 #[cfg(windows)]
-mod windows;
+pub(crate) mod windows;
 #[cfg(windows)]
 use windows as channel;
 #[cfg(test)]

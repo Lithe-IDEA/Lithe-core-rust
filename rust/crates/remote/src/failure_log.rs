@@ -149,6 +149,7 @@ pub(crate) fn client_category(error: &crate::client::session::ClientError) -> St
     use crate::client::session::ClientError;
     match error {
         ClientError::Timeout => "timeout".into(),
+        ClientError::Cancelled => "cancelled".into(),
         ClientError::Disconnected { .. } => "closed".into(),
         ClientError::Transport(_) => "transport".into(),
         ClientError::Spawn(error) => format!("{:?}", error.kind()),

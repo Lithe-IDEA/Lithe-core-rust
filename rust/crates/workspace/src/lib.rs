@@ -43,6 +43,7 @@ mod resumption;
 mod scope;
 pub mod sessions;
 pub mod ssh_configuration;
+mod ssh_evidence;
 #[cfg(feature = "test-support")]
 pub mod test_support;
 pub mod trust;

@@ -51,6 +51,25 @@ const CREATE_ATTEMPTS: usize = 4;
 /// How long the helper waits for a free pipe instance.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// Creates a directory with the same protected owner-only DACL as AskPass.
+pub(crate) fn private_directory(path: &std::path::Path) -> io::Result<()> {
+    use windows_sys::Win32::Storage::FileSystem::CreateDirectoryW;
+    let descriptor = Descriptor::owner_only(&CurrentUser::query()?)?;
+    let attributes = SECURITY_ATTRIBUTES {
+        nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+        lpSecurityDescriptor: descriptor.0 .0,
+        bInheritHandle: 0,
+    };
+    let path = wide(path.as_os_str());
+    // SAFETY: both the NUL-terminated path and security descriptor outlive
+    // this call; CreateDirectoryW copies the descriptor into the directory.
+    if unsafe { CreateDirectoryW(path.as_ptr(), &attributes) } == 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
 /// Listening pipe for one session. Dropping it closes the last listening
 /// instance, which removes the pipe name once accepted instances close too.
 pub(super) struct Listener {

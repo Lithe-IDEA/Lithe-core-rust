@@ -6140,7 +6140,8 @@ and `{ stage: "installed", uploaded }` once the server is in place, where
 failed attempt stops after the last stage reached, so a host without a
 matching build stops after `platformChecked`. The result is `{ status, session,
 host, diagnostics }`; `session` is `{ id, uploaded, hostName, userName,
-homeDirectory, windowsInterop, sessionKey, sessionToken, resumed, keptPrograms }`
+homeDirectory, windowsInterop, sessionKey, sessionToken, sessionBinding?,
+resumeConsumed, resumed, keptPrograms }`
 and is set only for `connected`. A host without a matching build is
 `unsupportedPlatform` and nothing is uploaded. `windowsInterop` is the host
 capability of the same name from the remote workspace protocol: `true` or
@@ -6152,7 +6153,16 @@ The server runs a persistent session (`--connect <sessionKey>`, with
 connection. `sessionKey` names that session and `sessionToken` is the secret
 that attaches to it again; the client stores the token like a password and
 never logs it. To attach to a session an earlier connection kept, pass
-`resume: { key, token }` with the values it returned. `resumed` tells whether
+`resume: { key, token, binding? }` with the values it returned. The opaque
+64-hexadecimal `sessionBinding` binds the explicit transport chain, the actual
+OpenSSH-authenticated host name, port, account, peer address and host-key
+fingerprint, and the final server's account-local state identity. Before sending
+an old key or token, the same connection must produce an identical binding.
+Legacy records without a binding, a changed target, or unavailable evidence
+start a fresh session without sending the old credentials. `resumeConsumed`
+tells the native credential store whether Core attempted those credentials;
+only then may it remove the old record. A mismatched record remains available
+for the original target. `resumed` tells whether
 this connection attached to it; `keptPrograms` lists the processes and
 terminals it still runs, as `remote.runningPrograms` does, and is empty for
 a new session. When the host refuses the token, because the session ended
@@ -6162,7 +6172,15 @@ user authenticates again but is never locked out; that connection reports
 characters or not made of ASCII letters, digits, `.`, `_` and `-`, or a token
 that is empty, longer than 128 characters or not hexadecimal, is
 `invalid_request` with `{ field: "resume", reason: "invalid" }`, before
-OpenSSH or `wsl.exe` starts.
+OpenSSH or `wsl.exe` starts. A present binding must be 64 hexadecimal characters.
+
+OpenSSH supplies identity evidence on the actual connection, with connection
+multiplexing disabled; Core does not pre-read `ssh -G` or weaken the user's
+host-key policy. ProxyCommand and ProxyJump connections remain usable, but
+unverifiable evidence gives no reusable `sessionBinding` and no automatic
+credential recovery. Such a connection also receives a fresh trust identity.
+The current private `-E` evidence file bounds reads to 64 KiB but does not bound
+OpenSSH's writes; correcting this resource lifetime remains a release blocker.
 
 Instead of `connection`, the request may name a WSL distribution on this
 Windows machine as `wsl: { distribution, user? }`, where `distribution` is a
@@ -6247,8 +6265,8 @@ gone. Requests over it take `sessionId`:
 | Command | Request | Result |
 | --- | --- | --- |
 | `remote.readDir` | `{ sessionId, path }` | the remote protocol's `fs.readDir` result |
-| `remote.readFile` | `{ sessionId, path }` | `{ data (base64), size, modifiedMs }`; files over 16 MiB are `not_supported` |
-| `remote.writeFile` | `{ sessionId, path, data, expected? }` | `{ status: "saved", size, modifiedMs }` or `{ status: "conflict" }` |
+| `remote.readFile` | `{ sessionId, path }` | `{ data (base64), size, modifiedMs, revision? }`; files over 16 MiB are `not_supported` |
+| `remote.writeFile` | `{ sessionId, path, data, expected?, root? }` | `{ status: "saved", size, modifiedMs, revision? }` or `{ status: "conflict" }` |
 | `remote.hostRequest` | `{ sessionId, method, params }` | the finite host method's result, including JSON `null` |
 | `remote.hostInfo` | `{ sessionId }` | the original connection's handshake `host`, including OS, architecture, home and features |
 | `remote.uploadFile` | `{ sessionId, sourcePath, path, sha256, mode }` | verified `{ size, sha256 }` |
@@ -6261,11 +6279,30 @@ gone. Requests over it take `sessionId`:
 | `remote.endPrograms` | `{ sessionId, programs? }` | `{ ended }`: every running process gets `SIGTERM` for its process session and every terminal hangs up, or only those `programs` (`[{ kind, id }]` as `remote.runningPrograms` listed them) names; one that ended in the meantime or is not running is not counted, one that ignores the signal is still listed |
 
 `remote.writeFile` replaces the file atomically on the host. With
-`expected` (`{ size, modifiedMs }` from the read) a changed file is a
+`expected` (`{ size, modifiedMs, revision? }` from the read) a changed file is a
 `conflict`; without it the file must not exist yet. A missing path is
 `workspace_not_found`, a denied one `permission_denied`. A broken connection
 fails with `connection_closed` and is forgotten, so the host reconnects; an
 unknown or closed `sessionId` is also `connection_closed`.
+
+Editor saves send `root`, the workspace's absolute host root. The host must
+advertise `guardedWrites`; otherwise Core returns `not_supported` without
+sending an unscoped write. Descendant directory and leaf symlinks, path escapes
+and `..` are refused. General explicit host writes without `root` retain their
+existing outside-workspace and leaf-link behavior. The opaque `revision` is
+returned unchanged from the opened host file and compared exactly. Cooperating
+Lithe daemons serialize saves and recheck after staging; an external writer
+that ignores their advisory lock still has the final check-to-rename window.
+See the [remote protocol](remote-workspace-protocol-v1.md) for the path and
+conflict-protection limits.
+
+`remote.readFile` applies a cumulative 16 MiB decoded-content limit and a
+120-second overall read deadline, with each chunk limited to 30 seconds.
+Cancellation is checked between chunks and at most every 50 ms while waiting
+for a reply; dropping a pending chunk withdraws unsent work and ignores late
+replies without closing the connection. The read validates chunk progress, EOF
+and file revisions, rejecting a changed file instead of returning mixed content.
+It does not perform a preliminary uncancellable `stat` outside that deadline.
 
 `remote.hostRequest` accepts finite filesystem, environment and port queries,
 `server.state` (what still runs, with the `label` given at start, so the host
@@ -6451,12 +6488,15 @@ one is (see "Global SDK registrations without an open project"), but its
 decisions are separate and never carry over. They are keyed by the
 connection's **target** and the workspace's **real path** on the host:
 
-- The target is `{ hops, userId? }`. Each hop keeps only what chooses where
+- The target is `{ hops, userId?, identity? }`. Each hop keeps only what chooses where
   it ends: `{ ssh: { destination, port?, portOption?, user?, proxyJump? } }`
   (the first `Port`, `User` and `ProxyJump` options, as ssh uses them) or
   `{ container: { engine, program, container, user? } }`. Keys, timeouts,
   keep-alive, working directories and environment are not part of it.
-  `userId` is the server's numeric account from `server.hello`. Targets match
+  `userId` is the server's numeric account from `server.hello`. `identity` is
+  the verified session binding described above, or a fresh connection-local
+  identity when that binding is unavailable. Legacy targets without it remain
+  readable and revocable but cannot authorize new connections. Targets match
   exactly: another host, account, port, route or container asks again, and so
   does a spelling that may reach the same account, such as `dev@box` against
   `box` with `User=dev`.

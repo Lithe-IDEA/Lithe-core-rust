@@ -133,6 +133,8 @@ pub enum ClientError {
     },
     /// No response arrived in time. A late response is discarded.
     Timeout,
+    /// The caller cancelled an operation; its pending request is withdrawn.
+    Cancelled,
     /// The peer sent something that is not this protocol.
     Protocol(String),
 }
@@ -150,6 +152,7 @@ impl fmt::Display for ClientError {
                 write!(formatter, "the remote connection closed: {diagnostics}")
             }
             Self::Timeout => formatter.write_str("the remote server did not answer in time"),
+            Self::Cancelled => formatter.write_str("the remote operation was cancelled"),
             Self::Protocol(message) => write!(formatter, "remote protocol error: {message}"),
         }
     }
@@ -163,6 +166,7 @@ impl ClientError {
     pub fn failure_category(&self) -> String {
         match self {
             Self::Timeout => "timeout".into(),
+            Self::Cancelled => "cancelled".into(),
             Self::Disconnected { .. } => "closed".into(),
             Self::Transport(_) => "transport".into(),
             Self::Spawn(_) => "spawn".into(),
@@ -1196,6 +1200,31 @@ mod tests {
         assert!(lock(&request.frame).is_some());
         drop(request);
         assert_eq!(lock(&outgoing.state).frames.len(), 1);
+    }
+
+    #[test]
+    fn cancelling_a_whole_file_read_withdraws_the_pending_chunk() {
+        // No transport thread: the queued request deterministically marks the
+        // first pending poll, after which the caller cancels without a reply.
+        let session = RemoteSession {
+            outgoing: Arc::default(),
+            pending: Arc::default(),
+            routes: Arc::default(),
+            next_request: Arc::new(AtomicU64::new(0)),
+            next_resource: AtomicU64::new(1),
+            position: EventPosition::default(),
+            child: Mutex::new(None),
+            stderr_tail: Arc::new(StderrTail::finished()),
+            hello: None,
+            log: ConnectionLog::begin(ConnectionKind::Ssh),
+        };
+        let result = session.read_file_limited("/file", 1024, Duration::from_secs(1), || {
+            !lock(&session.outgoing.state).frames.is_empty()
+        });
+        assert!(matches!(result, Err(ClientError::Cancelled)), "{result:?}");
+        assert!(lock(&session.pending).waiting.is_empty());
+        assert!(lock(&session.outgoing.state).frames.is_empty());
+        assert!(!session.is_closed());
     }
 
     #[test]
