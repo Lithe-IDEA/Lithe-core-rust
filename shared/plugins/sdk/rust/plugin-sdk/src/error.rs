@@ -91,7 +91,7 @@ pub mod sdk_codes {
 
 /// Stable `plugin.host.*` failure codes and their JSON-RPC numbers. A later
 /// host adds codes at numbers no code of the contract uses yet.
-pub const HOST_ERROR_CODES: [(&str, i64); 23] = [
+pub const HOST_ERROR_CODES: [(&str, i64); 25] = [
     ("plugin.host.unavailable", -32601),
     ("plugin.host.invalidParams", -32602),
     ("plugin.host.failed", -32603),
@@ -115,6 +115,8 @@ pub const HOST_ERROR_CODES: [(&str, i64); 23] = [
     ("plugin.host.foreignContribution", -32026),
     ("plugin.host.remoteDisconnected", -32078),
     ("plugin.host.platformUnavailable", -32079),
+    ("plugin.host.alreadyExists", -32080),
+    ("plugin.host.diskChanged", -32081),
 ];
 
 /// The `plugin.function.*` failures a relayed call from another plugin may
@@ -337,7 +339,7 @@ mod tests {
 
     #[test]
     fn the_host_and_relay_tables_hold_every_documented_code_once() {
-        assert_eq!(HOST_ERROR_CODES.len(), 23);
+        assert_eq!(HOST_ERROR_CODES.len(), 25);
         assert_eq!(RELAY_ERROR_CODES.len(), 11);
         let mut codes = std::collections::BTreeSet::new();
         let mut numbers = std::collections::BTreeSet::new();

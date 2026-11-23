@@ -290,6 +290,7 @@ backend.onCommand('db.refresh', async ({ workspaceContext }) => {
 | `workspace.getHostPaths(context, { rootIDs? })`, `.processRoots(context)` | The root folders of a remote context on the remote host, as `HostPath` values; `processRoots` gives the path a process uses for either authority. See [Remote workspaces](#remote-workspaces). |
 | `workspace.readDirectory`, `.stat`, `.readFile`, `.findFiles`, `.findText`, `.watch` | Files of a local context, addressed as `{ rootID, path }` from `getFolders`. |
 | `documents.list`, `.getSnapshot`; `editor.getActive`, `.getSelections`, `.applyEdits`, `.replaceSelections`, `.insertText`, `.open`, `.reveal`, `.registerActions` | Live documents and editors. Edits name the `expectedVersion` they were computed against. |
+| `documents.save`, `.saveAs`, `.close`; `workspace.create`, `.rename`, `.copy`, `.trash` | Saves, closes, and file changes, with the `documents.save` and `workspace.files.write` permissions. Nothing is overwritten, discarded, or deleted permanently; see [saving documents and changing files](../../contract/v1/README.md#saving-documents-and-changing-files). |
 | `preview.openHTML`, `browser.openExternal`, `window.showInformation`, `.showWarning`, `.showError` | Preview, browser, and messages. |
 | `functions.providers(functionID)` | The enabled plugins that export a function: `{ providers: [{ pluginID, version }] }`. See [Calling other plugins](#calling-other-plugins). |
 | `functions.invoke(context, call)` | Calls one provider's exported function in a workspace context: `{ value }`. `call` is `{ pluginID, functionID, params?, timeoutMilliseconds?, parentOperationID? }`. |
@@ -316,7 +317,7 @@ What the SDK does for you, and what it leaves to you:
   `HostError`. On `versionConflict` reread and recompute; on `contextExpired`
   resolve the original target again, never the focused window; retry `busy`
   and `rateLimited` (after `details.retryAfterMilliseconds`) with a bound;
-  `permissionDenied` and `readOnly` need the user. An unknown param is
+  `permissionDenied` and `readOnly` need the user, and so does `diskChanged`; on `alreadyExists` pick another target. An unknown param is
   `plugin.host.unsupportedOption` naming it in `details.option`, so you can
   retry without it.
 - **Cancellation has no rollback.** Aborting a request's signal, or ending

@@ -53,6 +53,8 @@ pub struct RequestOrigin {
 pub enum CoreCommand {
     /// Plans CLI launch and native shell registration (`application.cli.*`).
     ApplicationCli,
+    /// Plans built-in text format registration (`application.fileAssociations.*`).
+    ApplicationFileAssociations,
     /// Controls the native IDE capability broker (`ideHost.control`).
     IdeHostControl,
     /// Reports the Core and protocol versions (`core.ping`).
@@ -548,6 +550,15 @@ pub enum WorkspaceCommand {
     RankNames,
     /// Plans the name of a duplicated project item (`workspace.planDuplicate`).
     PlanDuplicate,
+    /// Creates a file, directory or symbolic link below a root
+    /// (`workspace.createEntry`).
+    CreateEntry,
+    /// Renames an entry without replacing one (`workspace.renameEntry`).
+    RenameEntry,
+    /// Copies an entry without replacing one (`workspace.copyEntry`).
+    CopyEntry,
+    /// Names an existing entry below a root (`workspace.resolveEntry`).
+    ResolveEntry,
     /// Plans the destination names of pasted project items (`workspace.planPaste`).
     PlanPaste,
     /// Applies a directory role, exclusion or cancel action (`workspace.reduceDirectoryAction`).
@@ -1126,6 +1137,8 @@ impl CoreCommand {
             "application.cli.planLaunch"
             | "application.cli.openTarget"
             | "application.cli.editRegistration" => Some(Self::ApplicationCli),
+            "application.fileAssociations.catalog" => Some(Self::ApplicationFileAssociations),
+            "application.fileAssociations.plan" => Some(Self::ApplicationFileAssociations),
             "core.ping" => Some(Self::Ping),
             "ideHost.control" => Some(Self::IdeHostControl),
             "ai.commitInputBudget" => Some(Self::Ai(AiCommand::CommitInputBudget)),
@@ -1364,6 +1377,10 @@ impl CoreCommand {
             "workspace.orderEntries" => Some(Self::Workspace(WorkspaceCommand::OrderEntries)),
             "workspace.rankNames" => Some(Self::Workspace(WorkspaceCommand::RankNames)),
             "workspace.planDuplicate" => Some(Self::Workspace(WorkspaceCommand::PlanDuplicate)),
+            "workspace.createEntry" => Some(Self::Workspace(WorkspaceCommand::CreateEntry)),
+            "workspace.renameEntry" => Some(Self::Workspace(WorkspaceCommand::RenameEntry)),
+            "workspace.copyEntry" => Some(Self::Workspace(WorkspaceCommand::CopyEntry)),
+            "workspace.resolveEntry" => Some(Self::Workspace(WorkspaceCommand::ResolveEntry)),
             "workspace.planPaste" => Some(Self::Workspace(WorkspaceCommand::PlanPaste)),
             "workspace.reduceDirectoryAction" => {
                 Some(Self::Workspace(WorkspaceCommand::ReduceDirectoryAction))

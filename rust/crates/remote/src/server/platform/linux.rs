@@ -44,34 +44,6 @@ pub(crate) fn prepare_child(command: &mut Command, kind: ChildKind) {
     }
 }
 
-/// Atomic rename that fails when `to` exists. `renameat2` is called through
-/// `syscall` because musl and older glibc builds may lack the wrapper.
-pub(crate) fn rename_no_replace(from: &Path, to: &Path) -> io::Result<()> {
-    let from_c = unix::c_path(from)?;
-    let to_c = unix::c_path(to)?;
-    // SAFETY: both pointers reference NUL-terminated strings that outlive the
-    // call; the remaining arguments are plain integers.
-    let status = unsafe {
-        libc::syscall(
-            libc::SYS_renameat2,
-            libc::AT_FDCWD,
-            from_c.as_ptr(),
-            libc::AT_FDCWD,
-            to_c.as_ptr(),
-            libc::RENAME_NOREPLACE,
-        )
-    };
-    if status == 0 {
-        return Ok(());
-    }
-    let error = io::Error::last_os_error();
-    match error.raw_os_error() {
-        // Kernels before 3.15 lack the call; some filesystems reject the flag.
-        Some(libc::ENOSYS) | Some(libc::EINVAL) => unix::rename_if_absent(from, to),
-        _ => Err(error),
-    }
-}
-
 pub(crate) fn case_sensitive(path: &Path) -> Option<bool> {
     unix::probe_case_sensitivity(path)
 }

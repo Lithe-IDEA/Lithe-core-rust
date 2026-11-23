@@ -55,8 +55,15 @@ export const HOST_METHODS = Object.freeze({
   workspaceWatch: 'lithe/host/workspace/watch',
   workspaceFindFiles: 'lithe/host/workspace/findFiles',
   workspaceFindText: 'lithe/host/workspace/findText',
+  workspaceCreate: 'lithe/host/workspace/create',
+  workspaceRename: 'lithe/host/workspace/rename',
+  workspaceCopy: 'lithe/host/workspace/copy',
+  workspaceTrash: 'lithe/host/workspace/trash',
   documentsList: 'lithe/host/documents/list',
   documentsGetSnapshot: 'lithe/host/documents/getSnapshot',
+  documentsSave: 'lithe/host/documents/save',
+  documentsSaveAs: 'lithe/host/documents/saveAs',
+  documentsClose: 'lithe/host/documents/close',
   editorRegisterActions: 'lithe/host/editor/registerActions',
   editorGetActive: 'lithe/host/editor/getActive',
   editorGetSelections: 'lithe/host/editor/getSelections',
@@ -128,6 +135,8 @@ export const HOST_ERRORS = Object.freeze({
   'plugin.function.invalidResult': -32071,
   'plugin.host.remoteDisconnected': -32078,
   'plugin.host.platformUnavailable': -32079,
+  'plugin.host.alreadyExists': -32080,
+  'plugin.host.diskChanged': -32081,
 });
 
 /**

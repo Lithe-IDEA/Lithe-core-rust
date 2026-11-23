@@ -68,7 +68,7 @@ func TestHostFailuresKeepTheirCodeOrTakeItFromTheNumber(t *testing.T) {
 }
 
 func TestTheHostAndRelayTablesHoldEveryDocumentedCodeOnce(t *testing.T) {
-	if len(HostErrorCodes) != 23 || len(RelayErrorCodes) != 11 {
+	if len(HostErrorCodes) != 25 || len(RelayErrorCodes) != 11 {
 		t.Fatalf("tables hold %d and %d codes", len(HostErrorCodes), len(RelayErrorCodes))
 	}
 	codes := map[string]bool{}

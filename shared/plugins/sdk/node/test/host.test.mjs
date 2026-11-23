@@ -444,6 +444,30 @@ test('native terminal wrappers keep argv and context, and subscribe to one owned
   } finally { await host.close(); }
 });
 
+test('save and file-change wrappers send their params with the context', { timeout: 5000 }, async () => {
+  const { backend, host } = await session();
+  try {
+    const resource = { rootID: 'r1', path: 'src/a.txt' };
+    const target = { rootID: 'r1', path: 'src/b.txt' };
+    const calls = [
+      ['documents/save', backend.host.documents.save, { documentID: 'd1', expectedVersion: 3 }],
+      ['documents/saveAs', backend.host.documents.saveAs, { documentID: 'd1', target }],
+      ['documents/close', backend.host.documents.close, { documentID: 'd1' }],
+      ['workspace/create', backend.host.workspace.create, { resource, kind: 'file', text: 'x' }],
+      ['workspace/rename', backend.host.workspace.rename, { resource, target }],
+      ['workspace/copy', backend.host.workspace.copy, { resource, target }],
+      ['workspace/trash', backend.host.workspace.trash, { resource }],
+    ];
+    for (const [method, call, params] of calls) {
+      const answer = call(CONTEXT, params);
+      const sent = await nextRequest(host, `lithe/host/${method}`);
+      assert.deepEqual(sent.params, { ...params, context: CONTEXT }, method);
+      host.send({ id: sent.id, result: null });
+      assert.equal(await answer, null, method);
+    }
+  } finally { await host.close(); }
+});
+
 const RELAY_PROVIDERS = 'lithe/host/functions/providers';
 const RELAY_INVOKE = 'lithe/host/functions/invoke';
 /** The provider and function the fixture's relay cases name. */

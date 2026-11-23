@@ -467,6 +467,8 @@ or removing a command fails until the table changes in the same commit.
 
 | Command | Purpose |
 | --- | --- |
+| `application.fileAssociations.catalog` | Project the built-in highlighted text suffixes into native package formats |
+| `application.fileAssociations.plan` | Validate an explicit selection against current native association revisions |
 | `core.ping` | Verify the ABI and protocol version |
 | `ideHost.control` | Control the native IDE capability broker |
 | `ai.commitInputBudget` | Budget diff prefixes before crossing the native boundary |
@@ -612,6 +614,10 @@ or removing a command fails until the table changes in the same commit.
 | `workspace.rankNames` | Pure ranking of candidate names that the platform enumerates itself (`{ query, candidates: [{ name, path? }], context: { openPaths, recentPaths }, limitPerTier? }`). Use it only for lists Core cannot index: Windows remote/WSL roots, symbol lists, navigator lists. Roots Core indexes go through `workspace.searchEverywhere`, so an inventory is never sent back to Core. Returns `matches: [{ index, degree, tier, nameMatchRanges }]` ordered by degree, open/recent tier, recency, then file-name order (fixture `rust/fixtures/search/rank-names-v1.json`) |
 | `workspace.planDuplicate` | Name the copy of one project item next to its source (`foo.txt` → `foo copy.txt`, then `foo copy 2.txt`) from the sibling names the host has seen to exist |
 | `workspace.planPaste` | Name pasted project items in one destination directory: a free name is kept, a taken one gets the copy suffix, and earlier items of the same paste count as taken |
+| `workspace.createEntry` | Create one file, directory or symbolic link below a workspace root without replacing anything |
+| `workspace.renameEntry` | Rename one entry to a new path of the same root without replacing anything; a link is renamed as a link |
+| `workspace.copyEntry` | Copy one entry, a directory with everything in it, to a new path of the same root without replacing anything; links stay links |
+| `workspace.resolveEntry` | Name one existing entry below a workspace root without following it |
 | `workspace.reduceDirectoryAction` | Apply "set role", "exclude" or "cancel exclusion" to a root's persisted directory rules and return the complete state to persist |
 | `workspace.relocateDirectoryRules` | Move (or drop, after a delete) the directory rule keys of a renamed, moved or deleted subtree, optionally into another workspace root's rules |
 | `workspace.repositories` | Discover deterministic Git repository roots for an opened workspace |
@@ -7439,6 +7445,38 @@ to exist, creates the copy without replacing anything (`FileManager.copyItem`, w
 appeared meanwhile, adds the name to `existing` and plans again. After 512 rounds the host reports
 the stable `destination_exists` error. Cases are in `rust/fixtures/workspace/file-copy-names-v1.json`.
 
+`workspace.createEntry`, `workspace.renameEntry`, `workspace.copyEntry` and `workspace.resolveEntry`
+change and name entries below a local workspace root on a plugin's behalf (plan API-11). Each takes
+`root`, the absolute path of the root as the host spells it, and `path`, the entry below it.
+`createEntry` takes `{ root, path, kind, text?, linkTarget? }`: `kind` is `file`, `directory` or
+`symlink`; a file takes optional UTF-8 `text`, and a link takes the `linkTarget` it stores verbatim,
+absolute or relative to the link's directory, which may leave the root or name nothing. On Windows each
+`/` of `linkTarget` is stored as `\`, and the link is a directory link when the target is an existing
+directory at creation, otherwise a file link. `renameEntry` and `copyEntry` take
+`{ root, path, target }`, `target` being the full new path in the same root; `resolveEntry` takes
+`{ root, path }`. Every command returns `{ path, fullPath, kind }`: `fullPath` is spelled from the
+`root` the host sent, as its open documents name the entry, and `kind` is `file`, `directory`,
+`symlink` or `other`.
+
+A path is `/`-separated with no empty, `.` or `..` component, and on Windows every component must be
+one Windows stores as written (no reserved name such as `CON`, no trailing dot or space, none of
+`\ : * ? " < > |`); the root itself is not an entry. The directory holding the entry must exist and
+resolve inside the root, so no entry is created or moved through a link that leaves it; the last
+component is never followed, so a link is renamed, copied or resolved as a link, and a copied
+directory keeps its links as links. Nothing is replaced: macOS and Linux rename with one exclusive
+system call (`renamex_np` with `RENAME_EXCL`, `renameat2` with `RENAME_NOREPLACE`) and fall back to a
+check before the rename on volumes that refuse it; Windows renames with `MoveFileExW` without
+`MOVEFILE_REPLACE_EXISTING`. A rename that only changes the case of a name on a file system that
+ignores case is not a collision, and a target naming the source itself is. A directory is never moved
+or copied into itself. A copy that fails part way removes what it created.
+
+Errors are `invalid_request` (a malformed path or root, fields that do not match the `kind`, a
+directory moved into itself), `permission_denied` (a parent that resolves outside the root),
+`workspace_not_found` (no root), `entry_not_found` (no entry, or no parent directory), `entry_exists`
+(the target exists), and `unknown` with the system's message in `details` for anything else, such as
+Windows refusing to create a link without Developer Mode or elevation. Saving and moving the open
+documents under an entry, the system trash and refreshing the project tree stay with the host.
+
 `history.planEvent` takes `{ event }` and returns `{ snapshots: [{ source, reason }] }`. `source` says
 whose text the host records: `beforeChange` (the text an event replaces), `afterChange` (the text it
 produced) or `editorBuffer` (unsaved editor text that is discarded). A save or auto-save records
@@ -8591,3 +8629,43 @@ permissions and environment-change notification. Inspect is read-only; only an
 explicit install/remove click publishes. Launcher resources live in user data,
 never the read-only installation. Removing registration deletes the owned launcher after removing its PATH entry. See
 [fixtures](../fixtures/application/cli-v1.json).
+
+## Built-in text file associations
+
+`application.fileAssociations.catalog` accepts `{languages: [{id, highlighted,
+extensions: string[]}]}` observed from the host's built-in syntax catalog. It
+returns `{formats: [{extension, language}]}` sorted by extension with first-source
+identity winning duplicates. Plugin contributions and filename/prefix-only rules
+are not inputs. Languages without a bundled grammar are omitted except
+`plaintext`. Only lowercase simple suffixes (a leading dot followed by ASCII
+letters or digits, then letters, digits, hyphens, underscores or plus signs)
+are registrable; compiled `.rlib` and
+compressed `.svgz` are omitted. Compound suffixes are covered by their final simple
+suffix when that suffix is declared, rather than claiming OS support for regexes.
+At most 128 languages and 512 input suffixes are accepted; suffixes are at most
+17 bytes including the leading dot (16 suffix characters), matching the native
+package manifest. Language identities are at most 64 ASCII identifier bytes.
+
+`application.fileAssociations.plan` accepts `{formats, selected: string[],
+baseline, current}`. Both observation arrays contain `{extension, defaultId,
+registration}`, where registration is an opaque revision of the host-owned native
+source. The adapter captures the baseline on read and rereads before an explicit
+Apply. Selected extensions must be unique, nonempty, and present in the catalog.
+Each selected extension requires one baseline and one current observation.
+Changes to default identities or registration revisions produce
+`{conflict: true, extensions: []}`. Otherwise the result is
+`{conflict: false, extensions: string[]}` in deterministic order. Invalid payloads
+fail with `invalid_request`; arrays are bounded to 512 entries, default identities
+to 32768 bytes and revision tokens to 128 bytes. Display names are not identity.
+
+Native hosts own actual Launch Services or per-user Windows registry I/O,
+readback, cancellation and partial-failure reporting. Opening settings is
+read-only; selecting checkboxes is draft UI state. Applying requests changes only
+for selected formats. Windows registers Open With candidates and a context verb
+under each owned ProgID, then opens system Default Apps for user confirmation; it
+never writes protected UserChoice. The standalone verb appears only for files
+associated with that ProgID. macOS registers the signed bundle as an alternate
+editor and may explicitly set selected default handlers. macOS associates content
+types, so extensions sharing a type may change together. The installed package
+stays read-only. No regex or all-files catch-all
+registration is permitted. See [fixtures](../fixtures/application/file-associations-v1.json).
