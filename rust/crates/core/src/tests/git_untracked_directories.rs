@@ -247,13 +247,13 @@ fn summarized_directory_supports_diff_stage_and_discard_as_a_unit() {
 // `:` cannot appear in a Windows file name.
 #[cfg(not(windows))]
 #[test]
-fn summarized_directory_diff_fails_instead_of_dropping_a_file_it_cannot_export() {
+fn summarized_directory_diff_preserves_colon_named_files() {
     let repository = Repository::new("untracked-unexportable");
     repository.write("generated/a.txt", "alpha\n");
     repository.write("generated/bad:name.txt", "kept\n");
 
-    // Shelve would save the patch and then clean `generated/`, so a patch
-    // without `bad:name.txt` would delete that file without a copy.
+    // Shelve saves the patch before cleaning `generated/`. A colon is a
+    // supported Unix filename, so both files must be captured in that patch.
     let response: Value = serde_json::from_str(&execute_json(
         &json!({
             "command": "git.diff",
@@ -263,7 +263,11 @@ fn summarized_directory_diff_fails_instead_of_dropping_a_file_it_cannot_export()
         .to_string(),
     ))
     .unwrap();
-    assert_eq!(response["ok"], false, "{response}");
+    assert_eq!(response["ok"], true, "{response}");
+    let patch = response["data"]["patch"].as_str().unwrap();
+    assert!(patch.contains("+alpha"), "{patch}");
+    assert!(patch.contains("b/generated/bad:name.txt"), "{patch}");
+    assert!(patch.contains("+kept"), "{patch}");
     assert!(repository.0.join("generated/bad:name.txt").exists());
 }
 

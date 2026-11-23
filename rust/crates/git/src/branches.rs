@@ -434,7 +434,7 @@ pub(crate) fn local_branch_name(reference: &str) -> Result<String, CoreError> {
                 "Only local branches support this Git operation",
             )
         })?;
-    if !is_safe_pathspec(branch) {
+    if !is_safe_refspec_name(branch) {
         return Err(CoreError::new(
             ErrorCode::InvalidRequest,
             "Invalid Git branch name",
