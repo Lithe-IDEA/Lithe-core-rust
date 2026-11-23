@@ -300,13 +300,14 @@ export interface Host {
       entries: { name: string; resource: WorkspaceResource; kind: string }[];
       nextCursor: string | null;
     }>;
-    stat: Scoped<{ resource: WorkspaceResource }, { resource: WorkspaceResource; kind: string; size: number; modifiedMilliseconds: number }>;
+    stat: Scoped<{ resource: WorkspaceResource }, { resource: WorkspaceResource; kind: string; size: number; modifiedMilliseconds: number | null }>;
     readFile: Scoped<{ resource: WorkspaceResource; maximumBytes?: number }, {
       resource: WorkspaceResource;
       source: 'disk';
       byteCount: number;
       isTruncated: boolean;
-      identity: JsonValue;
+      /** Identity of the returned byte prefix, including whether an unread suffix exists. */
+      identity: { sha256: string; byteCount: number; isTruncated: boolean };
       text?: string;
       encoding?: string;
       base64?: string;

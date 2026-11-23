@@ -81,7 +81,7 @@ Core 列以本仓库 `main` 上的 Core 源码为准（[`capabilities.rs`](https
 - 插件声明的运行配置类型只能运行，不能调试。
 - 不属于任何工具窗口的 `ui` 命令。
 - VCS 提供者的逐行追溯（annotation）、文件历史、文件操作、元数据监听、认证、历史提交差异、项目树与编辑器行号栏状态，以及 `lithe/vcs/execution` 控制台输出。
-- 后端宿主服务：工作区文件与搜索（`workspace/readDirectory`、`stat`、`readFile`、`watch`、`findFiles`、`findText`）和 `preview/openHTML` 尚未注册，请求这些权限的插件被拒绝。`workspace/getHostPaths` 也尚未注册，`supports` 返回 false；它和 `listContexts` 共用 `workspace.metadata`，所以声明该权限的插件不会因此被拒绝，见[远程工作区](../guides/plugin-backend-remote-workspaces.md)。运行期以 `lithe/host/getCapabilities` 的返回为准，见 [API 总表](api-catalog.md)。
+- 后端宿主服务：包含 API-06–08 Core 与桌面改动的构建在窗口附着后提供本地磁盘 `workspace/readDirectory`、`stat`、`readFile`、`watch`、`findFiles`、`findText`；远程工作区明确拒绝，旧构建不提供。`preview/openHTML` 尚未注册，请求这些权限的插件被拒绝。`workspace/getHostPaths` 也尚未注册，`supports` 返回 false；它和 `listContexts` 共用 `workspace.metadata`，所以声明该权限的插件不会因此被拒绝，见[远程工作区](../guides/plugin-backend-remote-workspaces.md)。运行期以 `lithe/host/getCapabilities` 的返回为准，见 [API 总表](api-catalog.md)。
 
 ### 进程协议版本
 
@@ -200,7 +200,7 @@ Each row is one capability. `requires` lists **exactly** the capabilities a mani
 - Run configuration types a plugin declares run but cannot be debugged.
 - `ui` commands that belong to no tool window.
 - For VCS providers: annotation, file history, file operations, metadata watching, authentication, history entry diffs, status in the project tree and the editor gutter, and `lithe/vcs/execution` console output.
-- Backend host services: the workspace file and search methods (`workspace/readDirectory`, `stat`, `readFile`, `watch`, `findFiles`, `findText`) and `preview/openHTML` are not registered, so a plugin that asks for one of those permissions is refused. `workspace/getHostPaths` is not registered either, so `supports` is false for it; it shares `workspace.metadata` with `listContexts`, so a plugin that declares that permission is not refused for it, see [remote workspaces](../guides/plugin-backend-remote-workspaces.md). At runtime, the reply of `lithe/host/getCapabilities` is authoritative; see the [API catalog](api-catalog.md).
+- Backend host services: builds containing both API-06–08 Core and desktop changes provide local disk `workspace/readDirectory`, `stat`, `readFile`, `watch`, `findFiles`, and `findText` once a window attaches. Remote workspaces are refused and older builds do not provide these methods. `preview/openHTML` is not registered, so a plugin that asks for one of those permissions is refused. `workspace/getHostPaths` is not registered either, so `supports` is false for it; it shares `workspace.metadata` with `listContexts`, so a plugin that declares that permission is not refused for it, see [remote workspaces](../guides/plugin-backend-remote-workspaces.md). At runtime, the reply of `lithe/host/getCapabilities` is authoritative; see the [API catalog](api-catalog.md).
 
 ### Process protocol versions
 

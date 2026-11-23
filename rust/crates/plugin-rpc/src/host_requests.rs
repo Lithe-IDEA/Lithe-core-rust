@@ -77,6 +77,18 @@ pub(crate) enum HostParams {
     WorkspaceMove,
     /// `{ context, resource }`: a move to the system trash (plan API-11).
     WorkspaceTrash,
+    /// `{ context, resource, cursor?, limit? }` (plan API-06).
+    WorkspaceReadDirectory,
+    /// `{ context, resource }`, including the root (plan API-06).
+    WorkspaceStat,
+    /// `{ context, resource, maximumBytes? }` (plan API-06).
+    WorkspaceReadFile,
+    /// `{ context, resource, recursive? }` (plan API-07).
+    WorkspaceWatch,
+    /// `{ context, resource, query, fileMask?, cursor?, limit? }` (plan API-08).
+    WorkspaceFindFiles,
+    /// A bounded text search at the workspace root (plan API-08).
+    WorkspaceFindText,
     /// Any object whose `context`, when present, is a well-formed
     /// reference. The service checks the rest and answers
     /// `plugin.host.invalidParams` or, for a field it does not know,
@@ -248,37 +260,37 @@ pub(crate) const HOST_METHODS: &[HostMethod] = &[
         method: "lithe/host/workspace/readDirectory",
         service: "workspace",
         permission: Some("workspace.files.read"),
-        params: HostParams::Object,
+        params: HostParams::WorkspaceReadDirectory,
     },
     HostMethod {
         method: "lithe/host/workspace/stat",
         service: "workspace",
         permission: Some("workspace.files.read"),
-        params: HostParams::Object,
+        params: HostParams::WorkspaceStat,
     },
     HostMethod {
         method: "lithe/host/workspace/readFile",
         service: "workspace",
         permission: Some("workspace.files.read"),
-        params: HostParams::Object,
+        params: HostParams::WorkspaceReadFile,
     },
     HostMethod {
         method: "lithe/host/workspace/watch",
         service: "workspace",
         permission: Some("workspace.files.watch"),
-        params: HostParams::Object,
+        params: HostParams::WorkspaceWatch,
     },
     HostMethod {
         method: "lithe/host/workspace/findFiles",
         service: "workspace",
         permission: Some("workspace.search"),
-        params: HostParams::Object,
+        params: HostParams::WorkspaceFindFiles,
     },
     HostMethod {
         method: "lithe/host/workspace/findText",
         service: "workspace",
         permission: Some("workspace.search"),
-        params: HostParams::Object,
+        params: HostParams::WorkspaceFindText,
     },
     // Plan API-11: file changes the host makes on the backend's behalf. The
     // host never overwrites a file, saves an open document before it moves
@@ -639,5 +651,129 @@ mod build_configuration_tests {
             host_request(watch, Some(&files), Some(0), &granted).unwrap(),
             HostRoute::Forward("build")
         );
+    }
+}
+
+#[cfg(test)]
+mod workspace_read_tests {
+    use super::*;
+
+    #[test]
+    fn workspace_read_methods_check_options_context_resources_and_bounds() {
+        let context = json!({"contextID":"context-1","generation":1});
+        for (method, extra) in [
+            (
+                "lithe/host/workspace/readDirectory",
+                json!({"cursor":"opaque","limit":1000}),
+            ),
+            ("lithe/host/workspace/stat", json!({})),
+            ("lithe/host/workspace/watch", json!({"recursive":true})),
+            (
+                "lithe/host/workspace/findFiles",
+                json!({"query":"alpha","limit":200}),
+            ),
+            (
+                "lithe/host/workspace/findText",
+                json!({"pattern":"alpha","wholeWords":true}),
+            ),
+            (
+                "lithe/host/workspace/readFile",
+                json!({"maximumBytes":131072}),
+            ),
+        ] {
+            let granted = [method.to_owned()].into_iter().collect();
+            let mut params =
+                json!({"context":context,"resource":{"rootID":"root-1","path":"src/a"}});
+            if method.ends_with("findFiles") || method.ends_with("findText") {
+                params["resource"]["path"] = json!("");
+            }
+            for (key, value) in extra.as_object().unwrap() {
+                params[key] = value.clone();
+            }
+            assert_eq!(
+                host_request(method, Some(&params), Some(0), &granted).unwrap(),
+                HostRoute::Forward("workspace")
+            );
+            let mut unknown = params.clone();
+            unknown["unknown"] = json!(true);
+            assert_eq!(
+                host_request(method, Some(&unknown), Some(0), &granted)
+                    .unwrap_err()
+                    .code,
+                codes::HOST_UNSUPPORTED_OPTION
+            );
+            let mut unknown = params.clone();
+            unknown["resource"]["unknown"] = json!(true);
+            assert_eq!(
+                host_request(method, Some(&unknown), Some(0), &granted)
+                    .unwrap_err()
+                    .code,
+                codes::HOST_UNSUPPORTED_OPTION
+            );
+            for resource in [
+                json!({"rootID":"other","path":"../escape"}),
+                json!({"rootID":"","path":"a"}),
+                json!({"rootID":"root-1","path":"a\\b"}),
+            ] {
+                let mut invalid = params.clone();
+                invalid["resource"] = resource;
+                assert_eq!(
+                    host_request(method, Some(&invalid), Some(0), &granted)
+                        .unwrap_err()
+                        .code,
+                    codes::HOST_INVALID_PARAMS
+                );
+            }
+            let mut invalid = params.clone();
+            invalid["context"] = Value::Null;
+            assert_eq!(
+                host_request(method, Some(&invalid), Some(0), &granted)
+                    .unwrap_err()
+                    .code,
+                codes::HOST_INVALID_PARAMS
+            );
+        }
+        for (method, key, value) in [
+            ("lithe/host/workspace/readDirectory", "limit", json!(0)),
+            ("lithe/host/workspace/readDirectory", "limit", json!(1001)),
+            ("lithe/host/workspace/readDirectory", "cursor", json!(null)),
+            (
+                "lithe/host/workspace/readFile",
+                "maximumBytes",
+                json!(131073),
+            ),
+            ("lithe/host/workspace/watch", "recursive", json!("true")),
+            ("lithe/host/workspace/findFiles", "limit", json!(201)),
+            ("lithe/host/workspace/findText", "wholeWords", json!(1)),
+            ("lithe/host/workspace/findText", "pattern", json!("")),
+            (
+                "lithe/host/workspace/findFiles",
+                "resource",
+                json!({"rootID":"r1","path":"sub"}),
+            ),
+        ] {
+            let mut params = json!({"context":context,"resource":{"rootID":"root-1","path":"a"}});
+            if method.ends_with("findFiles") || method.ends_with("findText") {
+                params["resource"]["path"] = json!("");
+                params[if method.ends_with("findFiles") {
+                    "query"
+                } else {
+                    "pattern"
+                }] = json!("alpha");
+            }
+            params[key] = value;
+            assert_eq!(
+                host_request(
+                    method,
+                    Some(&params),
+                    Some(0),
+                    &[method.to_owned()].into_iter().collect()
+                )
+                .unwrap_err()
+                .code,
+                codes::HOST_INVALID_PARAMS,
+                "{method}: {params}"
+            );
+        }
     }
 }

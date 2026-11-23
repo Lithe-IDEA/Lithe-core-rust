@@ -81,3 +81,6 @@ mod toolchain_queries;
 mod toolchain_resolution;
 mod toolchain_vectors;
 mod vcs;
+
+mod workspace_find_watch;
+mod workspace_read;

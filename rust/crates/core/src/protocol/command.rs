@@ -536,6 +536,20 @@ pub enum WorkspaceCommand {
     RefreshIndexing,
     /// Releases an indexing generation when its project closes.
     ReleaseIndexing,
+    /// Reads a bounded no-follow directory page (`workspace.readDirectory`).
+    ReadDirectory,
+    /// Stats a workspace entry without following its leaf (`workspace.stat`).
+    Stat,
+    /// Reads bounded disk bytes without following links (`workspace.readFile`).
+    ReadFile,
+    /// Searches plugin-visible disk file names (`workspace.findFiles`).
+    FindFiles,
+    /// Searches plugin-visible disk text (`workspace.findText`).
+    FindText,
+    /// Validates a native workspace watch target (`workspace.watchPlan`).
+    WatchPlan,
+    /// Projects a native watch batch (`workspace.watchEvents`).
+    WatchEvents,
     /// Lists the visible children of project directories (`workspace.listDirectories`).
     ListDirectories,
     /// Says which loaded project tree nodes show as rows and keeps the selection on one
@@ -1367,6 +1381,13 @@ impl CoreCommand {
             }
             "workspace.refreshIndexing" => Some(Self::Workspace(WorkspaceCommand::RefreshIndexing)),
             "workspace.filterChanges" => Some(Self::Workspace(WorkspaceCommand::FilterChanges)),
+            "workspace.findFiles" => Some(Self::Workspace(WorkspaceCommand::FindFiles)),
+            "workspace.findText" => Some(Self::Workspace(WorkspaceCommand::FindText)),
+            "workspace.watchPlan" => Some(Self::Workspace(WorkspaceCommand::WatchPlan)),
+            "workspace.watchEvents" => Some(Self::Workspace(WorkspaceCommand::WatchEvents)),
+            "workspace.readDirectory" => Some(Self::Workspace(WorkspaceCommand::ReadDirectory)),
+            "workspace.stat" => Some(Self::Workspace(WorkspaceCommand::Stat)),
+            "workspace.readFile" => Some(Self::Workspace(WorkspaceCommand::ReadFile)),
             "workspace.listDirectories" => Some(Self::Workspace(WorkspaceCommand::ListDirectories)),
             "workspace.projectTree.rows" => {
                 Some(Self::Workspace(WorkspaceCommand::ProjectTreeRows))

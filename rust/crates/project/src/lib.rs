@@ -29,6 +29,9 @@ mod search_languages;
 mod search_paging;
 mod search_preferences;
 mod search_presentation;
+pub mod workspace_find;
+pub mod workspace_read;
+pub mod workspace_watch;
 
 pub use document_lifecycle::*;
 pub use files::*;
