@@ -406,7 +406,11 @@ Core expands it with the merged settings
 requests by section path from it, and sends
 `workspace/didChangeConfiguration` after `initialized`. Hosts send a new
 value with `lsp.updateWorkspaceConfiguration` when an `immediate` setting
-changes; the running server receives it without a restart.
+changes; the running server receives it without a restart. The value
+replaces the whole configuration. For a server whose
+[backend-resolved launch](#backend-resolved-launch) answer carried its own
+`workspaceConfiguration`, the new value comes from the launch function
+again, not from the declaration.
 
 #### Indexing exclusions
 
@@ -1282,6 +1286,16 @@ declaring one:
   starts it like any other. A server that is not launched by the backend is
   `plugin.launch.notBackend`, so a host never runs an answer it did not ask
   for.
+- When an `immediate` setting changes while the server runs and its answer
+  carried `workspaceConfiguration`, the host calls `function` again with the
+  running start's directories, the workspace `context` and the new
+  `settings`, decodes the answer the same way, and sends only the plan's
+  `workspaceConfiguration` with `lsp.updateWorkspaceConfiguration`. The rest
+  of the answer waits for the next start. A function whose answer carries
+  `workspaceConfiguration` is therefore called more than once per start; one
+  that installs or downloads does so only when something is missing. When the
+  answer has no `workspaceConfiguration`, the host sends the declaration's
+  expansion and does not call the function again.
 
 `resolveParams`:
 

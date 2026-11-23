@@ -89,7 +89,7 @@
 
 #### 工作区配置（`workspaceConfiguration`）
 
-语言服务器可以声明 `workspaceConfiguration`：一个对象，其中的字符串叶子可以是 `${setting:<id>}`。Core 用合并后的设置展开它，按节路径回答服务器的 `workspace/configuration` 请求，并在 `initialized` 之后发送 `workspace/didChangeConfiguration`。`immediate` 设置变化时，宿主通过 `lsp.updateWorkspaceConfiguration` 推送新值，运行中的服务器无需重启即可收到。
+语言服务器可以声明 `workspaceConfiguration`：一个对象，其中的字符串叶子可以是 `${setting:<id>}`。Core 用合并后的设置展开它，按节路径回答服务器的 `workspace/configuration` 请求，并在 `initialized` 之后发送 `workspace/didChangeConfiguration`。`immediate` 设置变化时，宿主通过 `lsp.updateWorkspaceConfiguration` 推送新值，运行中的服务器无需重启即可收到。新值整体替换原来的配置；[由后端决定启动方式](#后端决定启动方式launchkind-backend)、且应答自带 `workspaceConfiguration` 的服务器，新值由启动函数重新给出，不用声明的展开。
 
 #### 索引排除（`indexingExclusions`）
 
@@ -126,6 +126,7 @@
 | 调用 | 宿主建好四个目录，必要时启动插件后端，用 `lithe/function/invoke` 调用 `function`，参数是 `resolveParams`（`serverID`、`platform`、四个目录、`settings`）和工作区 `context`。调用失败、超时，或工作区代次已变，这次启动就不产生进程 |
 | 应答 | `executable`（`{kind: "packaged", path}` 是包内只读文件；`{kind: "tool", tool}` 是插件自己定义的工具，由宿主按工具解析）、`arguments`、`environment`、`initializationOptions`、`workspaceConfiguration`、`gates`（最多 8 个）、`writablePaths`（最多 32 个，都在四个目录之内）；不认识的字段会被拒绝 |
 | 解码 | 宿主把 `{manifest, languageID, request, result}` 交给 `plugins.languageServers.decodeLaunch`，得到普通的启动计划（`launch` 为 `packaged` 或 `tool`），`sessionPolicy` 另带应答的 `gates` |
+| 设置立即生效 | 服务器运行中 `immediate` 设置变化、且应答自带 `workspaceConfiguration` 时，宿主用这次启动的四个目录、工作区 `context` 和新的 `settings` 再调用一次 `function`，同样解码，只把计划里的 `workspaceConfiguration` 通过 `lsp.updateWorkspaceConfiguration` 发出；应答的其余部分等下次启动才生效。所以这类函数每次启动可能被调用多次，安装或下载只应在缺少时进行。应答不带 `workspaceConfiguration` 时，宿主发送声明的展开，不再调用函数 |
 | 拒绝码 | `plugin.launch.invalidResult`、`plugin.launch.outsidePackage`、`plugin.launch.undeclaredTool`、`plugin.launch.unwritablePath`、`plugin.launch.invalidRequest`、`plugin.launch.unavailable`、`plugin.launch.notBackend`、`plugin.launch.untrustedWorkspace`（工作区未信任；用户在两步之间撤销信任时，第二步同样拒绝） |
 
 ### 插件自有会话（`languageServers` 的会话字段）
@@ -372,7 +373,7 @@ A plugin that declares a language owns its process-backed features: the host sto
 
 #### Workspace configuration
 
-A language server may declare `workspaceConfiguration`, an object whose string leaves may be `${setting:<id>}` templates. Core expands it with the merged settings, answers the server's `workspace/configuration` requests by section path, and sends `workspace/didChangeConfiguration` after `initialized`. When an `immediate` setting changes, the host sends the new value with `lsp.updateWorkspaceConfiguration`, and the running server receives it without a restart.
+A language server may declare `workspaceConfiguration`, an object whose string leaves may be `${setting:<id>}` templates. Core expands it with the merged settings, answers the server's `workspace/configuration` requests by section path, and sends `workspace/didChangeConfiguration` after `initialized`. When an `immediate` setting changes, the host sends the new value with `lsp.updateWorkspaceConfiguration`, and the running server receives it without a restart. The value replaces the whole configuration. For a [backend-resolved launch](#backend-resolved-launch-launchkind-backend) whose answer carried its own `workspaceConfiguration`, the launch function gives the new value again, not the declaration.
 
 #### Indexing exclusions (`indexingExclusions`)
 
@@ -409,6 +410,7 @@ When a server's command line depends on what is known only at start (a version i
 | Call | The host creates the four directories, starts the plugin backend if needed, and calls `function` through `lithe/function/invoke` with `resolveParams` (`serverID`, `platform`, the four directories, `settings`) and the workspace `context`. A failed or timed-out call, or a changed workspace generation, ends the start without a process |
 | Answer | `executable` (`{kind: "packaged", path}` is a read-only file in the package; `{kind: "tool", tool}` names a tool definition of the plugin, which the host resolves), `arguments`, `environment`, `initializationOptions`, `workspaceConfiguration`, `gates` (at most 8), and `writablePaths` (at most 32, all inside the four directories). An unknown field is refused |
 | Decoding | The host passes `{manifest, languageID, request, result}` to `plugins.languageServers.decodeLaunch`, which returns an ordinary launch plan (`launch` is `packaged` or `tool`); its `sessionPolicy` also carries the answer's `gates` |
+| Immediate settings | When an `immediate` setting changes while the server runs and its answer carried `workspaceConfiguration`, the host calls `function` again with the running start's four directories, the workspace `context` and the new `settings`, decodes the answer the same way, and sends only the plan's `workspaceConfiguration` with `lsp.updateWorkspaceConfiguration`; the rest of the answer waits for the next start. Such a function may therefore be called more than once per start, and should install or download only what is missing. When the answer has no `workspaceConfiguration`, the host sends the declaration's expansion and does not call the function again |
 | Rejections | `plugin.launch.invalidResult`, `plugin.launch.outsidePackage`, `plugin.launch.undeclaredTool`, `plugin.launch.unwritablePath`, `plugin.launch.invalidRequest`, `plugin.launch.unavailable`, `plugin.launch.notBackend`, `plugin.launch.untrustedWorkspace` (the workspace is not trusted; the second step refuses too when the user revoked trust between the steps) |
 
 ### Plugin-owned sessions
