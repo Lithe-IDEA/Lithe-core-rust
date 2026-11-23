@@ -135,12 +135,17 @@ Declare the same provider ID in the manifest's
 [`toolchainProviders`](../../contract/v1/toolchains/README.md#provider-backend-negotiation)
 and via `Backend::toolchain_provider`. The host offers the IDs it recognizes at
 initialization. The SDK selects registered IDs in the offer and routes each
-query to that handler:
+query to that handler. Existing code defaults to version 0. To use
+`requires.toolchainProviders: 1`, explicitly select the same version before
+listening; upgrading the SDK alone never changes a provider's protocol:
 
 ```rust
-use lithe_plugin_sdk::{toolchains::ToolchainQueryResult, Backend};
+use lithe_plugin_sdk::{
+    toolchains::{ToolchainProviderVersion, ToolchainQueryResult}, Backend,
+};
 
-let mut backend = Backend::new("version-manager");
+let mut backend = Backend::new("version-manager")
+    .toolchain_provider_version(ToolchainProviderVersion::V1);
 backend.toolchain_provider("manager", |_query, cancellation| {
     cancellation.check()?;
     // Read this manager's own data for query.tools and query.workspace.
@@ -148,13 +153,18 @@ backend.toolchain_provider("manager", |_query, cancellation| {
 }).expect("valid provider ID");
 ```
 
+The SDK negotiates only the configured version: version 1 does not silently
+fall back to version 0 on an older host. Version 1 encodes `PermissionDenied`
+as `-32082` and `AuthorityUnsupported` as `-32083`; version 0 retains `-32070`
+and `-32071`. All stable string codes and other error numbers are unchanged.
+
 Handlers return installations, version statements and watch paths. An empty
 result is valid. Set a statement's `installation` to `None` for an unmet
 requirement. Use `ToolchainQueryError` for a query failure and check the
 cancellation token during potentially long scans. The host observes native
 filesystem facts, and Core validates the returned candidates with those facts.
-The desktop does not yet declare this capability. The Rust SDK end-to-end test
-runs the protocol through Core.
+The desktop declares version 0 only; version 1 is not yet declared. The Rust SDK
+end-to-end test runs the protocol through Core.
 
 ## Shortcut import providers
 

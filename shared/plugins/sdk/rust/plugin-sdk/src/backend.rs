@@ -74,6 +74,8 @@ pub(crate) struct State {
     selected_keymap_providers: BTreeSet<String>,
     toolchain_providers: BTreeMap<String, ToolchainHandler>,
     selected_toolchain_providers: BTreeSet<String>,
+    /// The manifest's toolchain capability version; never upgraded by an offer.
+    toolchain_provider_version: toolchains::ToolchainProviderVersion,
     /// Build-provider handlers, by wire method.
     build_handlers: BTreeMap<&'static str, BuildHandler>,
     /// The negotiated `litheBuild` version, when the backend has build
@@ -170,6 +172,7 @@ impl Backend {
                     selected_keymap_providers: BTreeSet::new(),
                     toolchain_providers: BTreeMap::new(),
                     selected_toolchain_providers: BTreeSet::new(),
+                    toolchain_provider_version: toolchains::ToolchainProviderVersion::V0,
                     build_handlers: BTreeMap::new(),
                     build_version: None,
                     logging: false,
@@ -289,6 +292,15 @@ impl Backend {
         );
         drop(state);
         Ok(self)
+    }
+
+    /// Selects the manifest's `requires.toolchainProviders` version before listening.
+    /// The default is [`toolchains::ToolchainProviderVersion::V0`]. A backend only
+    /// negotiates this version; it does not downgrade or upgrade its error codes
+    /// when a host offers a different version.
+    pub fn toolchain_provider_version(self, version: toolchains::ToolchainProviderVersion) -> Self {
+        lock(&self.shared.state).toolchain_provider_version = version;
+        self
     }
 
     /// Registers a provider ID declared in the plugin manifest. The handler
@@ -785,8 +797,8 @@ impl Backend {
                 }
             }
         }
-        if let Some(offer) =
-            toolchain_offer.filter(|offer| offers(Some(offer), toolchains::VERSION))
+        if let Some(offer) = toolchain_offer
+            .filter(|offer| offers(Some(offer), state.toolchain_provider_version.number()))
         {
             if let Some(providers) = offer["providers"]
                 .as_array()
@@ -801,7 +813,7 @@ impl Backend {
                 if !state.selected_toolchain_providers.is_empty() {
                     experimental.insert(
                         toolchains::CAPABILITY.into(),
-                        json!({"version": toolchains::VERSION, "providers": state.selected_toolchain_providers}),
+                        json!({"version": state.toolchain_provider_version.number(), "providers": state.selected_toolchain_providers}),
                     );
                 }
             }
@@ -1062,6 +1074,7 @@ impl Shared {
     }
 
     fn invoke_toolchain(shared: &Arc<Self>, id: Value, params: Value) {
+        let version = lock(&shared.state).toolchain_provider_version;
         let query = match ToolchainQuery::parse(&params) {
             Ok(query) => query,
             Err(error) => {
@@ -1070,6 +1083,7 @@ impl Shared {
                     Err(error.response(
                         params["operationID"].as_str().unwrap_or_default(),
                         params["providerID"].as_str().unwrap_or_default(),
+                        version,
                     )),
                 );
             }
@@ -1113,7 +1127,7 @@ impl Shared {
             Err(error) => {
                 return shared.respond(
                     &id,
-                    Err(error.response(&query.operation_id, &query.provider_id)),
+                    Err(error.response(&query.operation_id, &query.provider_id, version)),
                 )
             }
         };
@@ -1149,7 +1163,7 @@ impl Shared {
                     Ok(response) => worker.write(&response),
                     Err(error) => worker.respond(
                         &thread_id,
-                        Err(error.response(&query.operation_id, &query.provider_id)),
+                        Err(error.response(&query.operation_id, &query.provider_id, version)),
                     ),
                 }
             });
@@ -1157,7 +1171,8 @@ impl Shared {
             lock(&shared.state).incoming.remove(&key);
             shared.respond(
                 &id,
-                Err(ToolchainQueryError::ProviderUnavailable.response(&operation, &provider)),
+                Err(ToolchainQueryError::ProviderUnavailable
+                    .response(&operation, &provider, version)),
             );
         }
     }

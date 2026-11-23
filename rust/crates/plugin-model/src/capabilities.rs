@@ -121,6 +121,8 @@ pub const PLUGIN_FUNCTIONS: &str = "pluginFunctions";
 /// `audience` that place a tool in the settings list.
 pub const TOOL_DEFINITIONS: &str = "toolDefinitions";
 /// Backend facts that can influence the executable selected for a defined tool.
+/// Version 1 gives permission and authority failures distinct JSON-RPC numbers,
+/// leaving version 0's published error mapping unchanged.
 pub const TOOLCHAIN_PROVIDERS: &str = "toolchainProviders";
 /// `outputLinkMatchers[]`: patterns that turn console output into links; see
 /// `lithe_plugin_output_links`.
@@ -149,7 +151,7 @@ pub const SUPPORTED_CAPABILITIES: &[(&str, &[u32])] = &[
     (SETTINGS, &[0]),
     (SOURCE_SETTINGS, &[0, 1]),
     (TOOL_DEFINITIONS, &[0, 1]),
-    (TOOLCHAIN_PROVIDERS, &[0]),
+    (TOOLCHAIN_PROVIDERS, &[0, 1]),
     (UI, &[0]),
     (VCS_PROVIDERS, &[0]),
 ];

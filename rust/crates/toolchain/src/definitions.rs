@@ -802,7 +802,8 @@ pub fn registry(input: &Value, validate_manifest: ManifestValidator) -> Validati
             definitions.push(json!({"pluginID":plugin_id,"definition":normalized}));
         }
         for provider in optional_list(&manifest, "toolchainProviders", 8)? {
-            providers.push(json!({"pluginID":plugin_id,"provider":provider}));
+            providers.push(json!({"pluginID":plugin_id,
+                "version":manifest["requires"]["toolchainProviders"],"provider":provider}));
         }
         if definitions.len() > 512 || providers.len() > 256 {
             return Err(invalid(
