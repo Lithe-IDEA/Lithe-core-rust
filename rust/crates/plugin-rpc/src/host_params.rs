@@ -72,7 +72,24 @@ pub(crate) fn check_host_params(
         HostParams::DocumentClose => &["context", "documentID"],
         HostParams::WorkspaceCreate => &["context", "resource", "kind", "text", "linkTarget"],
         HostParams::WorkspaceMove => &["context", "resource", "target"],
-        HostParams::WorkspaceTrash => &["context", "resource"],
+        HostParams::WorkspaceTrash | HostParams::WorkspaceStat => &["context", "resource"],
+        HostParams::WorkspaceReadDirectory => &["context", "resource", "cursor", "limit"],
+        HostParams::WorkspaceReadFile => &["context", "resource", "maximumBytes"],
+        HostParams::WorkspaceWatch => &["context", "resource", "recursive"],
+        HostParams::WorkspaceFindFiles => &[
+            "context", "resource", "query", "fileMask", "cursor", "limit",
+        ],
+        HostParams::WorkspaceFindText => &[
+            "context",
+            "resource",
+            "pattern",
+            "fileMask",
+            "caseSensitive",
+            "wholeWords",
+            "regularExpression",
+            "cursor",
+            "limit",
+        ],
         HostParams::Object => {
             return match params.get("context") {
                 Some(context) if !is_context_reference(context) => {
@@ -261,6 +278,12 @@ pub(crate) fn check_host_params(
         | HostParams::WorkspaceCreate
         | HostParams::WorkspaceMove
         | HostParams::WorkspaceTrash => check_file_change_params(rule, params, &invalid)?,
+        HostParams::WorkspaceReadDirectory
+        | HostParams::WorkspaceStat
+        | HostParams::WorkspaceReadFile
+        | HostParams::WorkspaceWatch
+        | HostParams::WorkspaceFindFiles
+        | HostParams::WorkspaceFindText => check_workspace_read_params(rule, params, &invalid)?,
         HostParams::Empty | HostParams::Object => {}
     }
     Ok(())
@@ -616,4 +639,111 @@ pub fn attach_caller(invoke_params: &mut Value, caller: Option<&str>) {
     if let Some(params) = invoke_params.as_object_mut() {
         params.insert("caller".to_string(), json!({ "pluginID": caller }));
     }
+}
+
+/// Checks the read surface before forwarding it to a context-owning host.
+fn check_workspace_read_params(
+    rule: HostParams,
+    params: &serde_json::Map<String, Value>,
+    invalid: &dyn Fn(&'static str) -> HostRequestRefusal,
+) -> Result<(), HostRequestRefusal> {
+    if !params.get("context").is_some_and(is_context_reference) {
+        return Err(invalid(CONTEXT_REFERENCE_MESSAGE));
+    }
+    let resource = params
+        .get("resource")
+        .and_then(Value::as_object)
+        .ok_or_else(|| invalid(RESOURCE_MESSAGE))?;
+    if let Some(option) = resource
+        .keys()
+        .find(|key| !["rootID", "path"].contains(&key.as_str()))
+    {
+        return Err(HostRequestRefusal {
+            rpc_code: host_rpc_code(codes::HOST_UNSUPPORTED_OPTION),
+            code: codes::HOST_UNSUPPORTED_OPTION,
+            message: "Resource names an option this host does not support.",
+            details: Some(json!({"option": format!("resource.{option}")})),
+        });
+    }
+    let valid = resource
+        .get("rootID")
+        .and_then(Value::as_str)
+        .is_some_and(is_credential_key)
+        && resource
+            .get("path")
+            .and_then(Value::as_str)
+            .is_some_and(|path| {
+                path.len() <= MAX_FILE_CHANGE_PATH_BYTES
+                    && !path.contains('\\')
+                    && (path.is_empty() && rule != HostParams::WorkspaceReadFile
+                        || !lithe_platform::paths::invalid_entry_path(
+                            path,
+                            lithe_platform::Platform::HOST,
+                        ))
+            });
+    if !valid {
+        return Err(invalid(RESOURCE_MESSAGE));
+    }
+    if params.get("cursor").is_some_and(|value| {
+        !value
+            .as_str()
+            .is_some_and(|text| !text.is_empty() && text.len() <= 8192)
+    }) {
+        return Err(invalid(
+            "cursor must be a nonempty string of at most 8192 bytes.",
+        ));
+    }
+    let search = matches!(
+        rule,
+        HostParams::WorkspaceFindFiles | HostParams::WorkspaceFindText
+    );
+    if search {
+        if resource.get("path").and_then(Value::as_str) != Some("") {
+            return Err(invalid("A search resource must name the workspace root."));
+        }
+        let key = if rule == HostParams::WorkspaceFindFiles {
+            "query"
+        } else {
+            "pattern"
+        };
+        if !params
+            .get(key)
+            .and_then(Value::as_str)
+            .is_some_and(|value| !value.is_empty() && value.len() <= 4096)
+        {
+            return Err(invalid("The search query must contain 1-4096 UTF-8 bytes."));
+        }
+        if params
+            .get("fileMask")
+            .is_some_and(|value| !value.as_str().is_some_and(|value| value.len() <= 4096))
+        {
+            return Err(invalid(
+                "fileMask must be a string of at most 4096 UTF-8 bytes.",
+            ));
+        }
+    }
+    for key in [
+        "recursive",
+        "caseSensitive",
+        "wholeWords",
+        "regularExpression",
+    ] {
+        if params.get(key).is_some_and(|value| !value.is_boolean()) {
+            return Err(invalid("Search and watch flags must be booleans."));
+        }
+    }
+    for (key, maximum) in [
+        ("limit", if search { 200 } else { 1000 }),
+        ("maximumBytes", 128 * 1024),
+    ] {
+        if params
+            .get(key)
+            .is_some_and(|value| !value.as_u64().is_some_and(|n| (1..=maximum).contains(&n)))
+        {
+            return Err(invalid(
+                "limit is outside the supported page size or maximumBytes is outside 1-131072.",
+            ));
+        }
+    }
+    Ok(())
 }

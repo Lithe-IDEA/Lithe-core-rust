@@ -8,7 +8,7 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 
 读这张表前先知道三件事：
 
-- **本页描述契约，不描述某个宿主。** 所有 `lithe/host/*` 方法由 Rust Core 校验、宿主执行。当前的宿主是 Lithe 桌面端：它声明了哪些能力、哪些部分尚未呈现，见[版本对照页](capabilities-and-versions.md#能力版本requires)。Lithe 桌面端目前没有注册 `workspace/readDirectory`、`stat`、`readFile`、`watch`、`findFiles`、`findText` 和 `preview/openHTML`，申请对应权限的插件会被宿主拒绝。
+- **本页描述契约，不描述某个宿主。** 所有 `lithe/host/*` 方法由 Rust Core 校验、宿主执行。当前的宿主是 Lithe 桌面端：它声明了哪些能力、哪些部分尚未呈现，见[版本对照页](capabilities-and-versions.md#能力版本requires)。包含 API-06–08 Core 与桌面改动的构建在窗口附着后提供本地工作区的 `workspace/readDirectory`、`stat`、`readFile`、`watch`、`findFiles`、`findText`；旧构建不会因此获得能力。`preview/openHTML` 尚未注册，申请对应权限的插件会被宿主拒绝。
 - **运行时以 `getCapabilities` 为准。** 某个方法出现在本表，不代表当前宿主一定提供；后端调用前先查 `lithe/host/getCapabilities` 返回的 `services`。
 - **计划中的条目没有可用方法名。** 第二张表只描述要做的能力，不列候选方法名；在契约正式写入之前，不要按猜测的名字调用。
 
@@ -31,9 +31,9 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | API-03 | 菜单、快捷键、上下文键、状态栏 | 部分完成 | 已有的命令放置位置（`ui.commands`） | 通用菜单、快捷键贡献、上下文键、状态栏 | [界面](domains/ui.md) |
 | API-04 | 工作区与文档事件 | 部分完成 | `workspace/didChangeContexts`、`workspace/watch` 的文件事件 | 文档、选区、活动编辑器的变化事件 | [插件后端](domains/backend.md) |
 | API-05 | 工作区上下文 | 已公开 | [`workspace/listContexts`、`getContext`、`getFolders`](../contract/v1/README.md#workspace-contexts-and-capability-discovery)，带 `contextID`/`generation` 与 `rootID` | — | [插件后端](domains/backend.md) |
-| API-06 | 文件读取 | 已公开 | [`workspace/readDirectory`、`stat`、`readFile`](../contract/v1/README.md#public-document-file-and-window-methods)；每次最多读 128 KiB | Lithe 桌面端尚未注册这三个方法 | [插件后端](domains/backend.md) |
-| API-07 | 文件监听 | 已公开 | `workspace/watch` 加 `subscriptions/notify`、`dispose`；上下文或会话结束时回收，溢出时要求重扫 | Lithe 桌面端尚未注册 `workspace/watch` | [插件后端](domains/backend.md) |
-| API-08 | 搜索 | 部分完成 | `workspace/findFiles`、`findText`，分页、可取消 | 只搜磁盘内容，不含未保存的修改；匹配的精确范围目前是 `null`；Lithe 桌面端尚未注册这两个方法 | [插件后端](domains/backend.md) |
+| API-06 | 文件读取 | 已公开 | [`workspace/readDirectory`、`stat`、`readFile`](../contract/v1/README.md#public-document-file-and-window-methods)；每次最多读 128 KiB；Core 执行有界分页和逐段拒绝链接的磁盘读取 | 远程工作区不支持；桌面端需包含 API-06 Core 与桌面改动的构建，Windows 原生行为待验收 | [插件后端](domains/backend.md) |
+| API-07 | 文件监听 | 已公开 | `workspace/watch` 加 `subscriptions/notify`、`dispose`；上下文或会话结束时回收，溢出时要求重扫 | 远程工作区不支持；需包含 API-07 Core 与桌面改动的构建，macOS 原生事件已验证，Windows 原生验证未执行 | [插件后端](domains/backend.md) |
+| API-08 | 搜索 | 部分完成 | `workspace/findFiles`、`findText`，分页、可取消 | 只搜磁盘内容，不含未保存的修改；匹配的精确范围目前是 `null`；需包含 API-08 Core 与桌面改动的构建，仅支持本地工作区 | [插件后端](domains/backend.md) |
 | API-09 | 文档与选区读取 | 已公开 | `documents/list`、`documents/getSnapshot`、`editor/getActive`、`editor/getSelections`，包含未保存状态、版本、编码、换行符 | — | [编辑器](domains/editor.md) |
 | API-10 | 版本化编辑 | 已公开 | `editor/applyEdits`、`replaceSelections`、`insertText`；校验版本，拒绝输入法组字中和只读文档，一批编辑是一次撤销 | — | [编辑器](domains/editor.md) |
 | API-11 | 保存与文件变更 | 已公开 | [`documents/save`、`saveAs`、`close`](../contract/v1/README.md#saving-documents-and-changing-files)（权限 `documents.save`）和 `workspace/create`、`rename`、`copy`、`trash`（权限 `workspace.files.write`）；经文档所有者保存，关闭前先保存，从不覆盖、不丢弃修改、不永久删除，删除只移到系统废纸篓；需要用户选择时直接拒绝，不弹询问 | 一次保存全部文档、永久删除；保存前事件见 API-43 | [编辑器](domains/editor.md)、[插件后端](domains/backend.md) |
@@ -93,12 +93,12 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | API-05 | `workspace/listContexts` | 列出当前的工作区上下文，带变化序号 `revision` | `workspace.metadata` | 0 |
 | API-05 | `workspace/getContext` | 读取一个工作区上下文 | `workspace.metadata` | 0 |
 | API-05 | `workspace/getFolders` | 列出上下文的根目录，每个根目录带 `rootID` | `workspace.metadata` | 0 |
-| API-06 | `workspace/readDirectory` | 分页列出目录项 | `workspace.files.read` | 0 |
-| API-06 | `workspace/stat` | 读取文件或目录的类型、大小和修改时间 | `workspace.files.read` | 0 |
-| API-06 | `workspace/readFile` | 读取磁盘上的文件，返回文本或 base64，超过上限时截断 | `workspace.files.read` | 0 |
-| API-07 | `workspace/watch` | 监听文件或目录的变化，事件经 `subscriptions/notify` 送达 | `workspace.files.watch` | 0 |
-| API-08 | `workspace/findFiles` | 在一个根目录下按名称查找文件，分页 | `workspace.search` | 0 |
-| API-08 | `workspace/findText` | 在磁盘内容中搜索文本，按行返回匹配，分页 | `workspace.search` | 0 |
+| API-06 | `workspace/readDirectory` | 分页列出目录项；执行/校验补充见 [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.read` | 0 |
+| API-06 | `workspace/stat` | 读取文件或目录的类型、大小和修改时间；执行/校验补充见 [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.read` | 0 |
+| API-06 | `workspace/readFile` | 读取磁盘上的文件，返回文本或 base64，超过上限时截断；执行/校验补充见 [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.read` | 0 |
+| API-07 | `workspace/watch` | 监听文件或目录的变化，事件经 `subscriptions/notify` 送达；执行/校验补充见 [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.watch` | 0 |
+| API-08 | `workspace/findFiles` | 在一个根目录下按名称查找文件，分页；执行/校验补充见 [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.search` | 0 |
+| API-08 | `workspace/findText` | 在磁盘内容中搜索文本，按行返回匹配，分页；执行/校验补充见 [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.search` | 0 |
 | API-09 | `documents/list` | 列出已打开文档的摘要 | `documents.read` | 0 |
 | API-09 | `documents/getSnapshot` | 读取文档当前缓冲区的全文，包含未保存的修改 | `documents.read` | 0 |
 | API-09 | `editor/getActive` | 读取前台文本标签的文档摘要，没有时为 `null` | `documents.read` | 0 |
@@ -191,7 +191,7 @@ Lithe numbers its public plugin APIs API-01 to API-44 in the [API implementation
 
 Three things to know before reading the tables:
 
-- **This page describes the contract, not one host.** Rust Core checks every `lithe/host/*` method and the host executes it. The current host is the Lithe desktop client: which capabilities it declares and which parts it does not present yet are in the [version page](capabilities-and-versions.md#capability-versions-requires). The Lithe desktop client does not register `workspace/readDirectory`, `stat`, `readFile`, `watch`, `findFiles`, `findText`, or `preview/openHTML` today, and the host refuses a plugin that asks for the matching permission.
+- **This page describes the contract, not one host.** Rust Core checks every `lithe/host/*` method and the host executes it. The current host is the Lithe desktop client: which capabilities it declares and which parts it does not present yet are in the [version page](capabilities-and-versions.md#capability-versions-requires). Builds containing both the API-06–08 Core and desktop changes provide `workspace/readDirectory`, `stat`, `readFile`, `watch`, `findFiles`, and `findText` for local workspaces once a window attaches; older builds do not gain these methods. `preview/openHTML` is not registered, and the host refuses a plugin that asks for the matching permission.
 - **At runtime, `getCapabilities` decides.** A method listed here is not necessarily offered by the current host; check `services` from `lithe/host/getCapabilities` before calling it.
 - **Planned entries have no usable method names.** The second table only describes the capability to come and lists no candidate method names; until the contract defines them, do not call guessed names.
 
@@ -214,9 +214,9 @@ Status meanings:
 | API-03 | Menus, keybindings, context keys, status bar | Partial | Existing command placements (`ui.commands`) | General menus, keybinding contributions, context keys, status bar | [UI](domains/ui.md) |
 | API-04 | Workspace and document events | Partial | `workspace/didChangeContexts`, file events from `workspace/watch` | Document, selection, and active editor change events | [Plugin backend](domains/backend.md) |
 | API-05 | Workspace contexts | Public | [`workspace/listContexts`, `getContext`, `getFolders`](../contract/v1/README.md#workspace-contexts-and-capability-discovery) with `contextID`/`generation` and `rootID` | — | [Plugin backend](domains/backend.md) |
-| API-06 | File reads | Public | [`workspace/readDirectory`, `stat`, `readFile`](../contract/v1/README.md#public-document-file-and-window-methods); at most 128 KiB per read | The Lithe desktop client does not register these three methods | [Plugin backend](domains/backend.md) |
-| API-07 | File watching | Public | `workspace/watch` with `subscriptions/notify` and `dispose`; reclaimed when the context or session ends, with a rescan request on overflow | The Lithe desktop client does not register `workspace/watch` | [Plugin backend](domains/backend.md) |
-| API-08 | Search | Partial | `workspace/findFiles` and `findText`, paged and cancellable | Searches disk content only, not unsaved changes; the exact match range is `null` for now; the Lithe desktop client does not register these two methods | [Plugin backend](domains/backend.md) |
+| API-06 | File reads | Public | [`workspace/readDirectory`, `stat`, `readFile`](../contract/v1/README.md#public-document-file-and-window-methods); at most 128 KiB per read; Core executes bounded paging and disk reads that refuse link traversal | Remote workspaces are unsupported; the desktop needs both API-06 Core and desktop changes, and native Windows verification is pending | [Plugin backend](domains/backend.md) |
+| API-07 | File watching | Public | `workspace/watch` with `subscriptions/notify` and `dispose`; reclaimed when the context or session ends, with a rescan request on overflow | Remote workspaces are unsupported; requires both API-07 Core and desktop changes. Native macOS events are verified; native Windows verification was not run | [Plugin backend](domains/backend.md) |
+| API-08 | Search | Partial | `workspace/findFiles` and `findText`, paged and cancellable | Searches disk content only, not unsaved changes; the exact match range is `null` for now; requires both API-08 Core and desktop changes, for local workspaces only | [Plugin backend](domains/backend.md) |
 | API-09 | Documents and selections | Public | `documents/list`, `documents/getSnapshot`, `editor/getActive`, `editor/getSelections`, with dirty state, version, encoding, and line ending | — | [Editor](domains/editor.md) |
 | API-10 | Versioned edits | Public | `editor/applyEdits`, `replaceSelections`, `insertText`; version checks, refusal during IME composition and in read-only documents, one undo step per batch | — | [Editor](domains/editor.md) |
 | API-11 | Save and file operations | Public | [`documents/save`, `saveAs`, `close`](../contract/v1/README.md#saving-documents-and-changing-files) (permission `documents.save`) and `workspace/create`, `rename`, `copy`, `trash` (permission `workspace.files.write`); saves go through the document's owner, a close saves first, nothing is overwritten, discarded or deleted permanently, and a delete only moves to the system trash; a change that needs the user's choice is refused without asking | Saving all documents at once, permanent deletes; pre-save events are API-43 | [Editor](domains/editor.md), [Plugin backend](domains/backend.md) |
@@ -276,12 +276,12 @@ Requests a backend sends to the host, all prefixed `lithe/host/`; the tables omi
 | API-05 | `workspace/listContexts` | Lists the current workspace contexts with the change counter `revision` | `workspace.metadata` | 0 |
 | API-05 | `workspace/getContext` | Reads one workspace context | `workspace.metadata` | 0 |
 | API-05 | `workspace/getFolders` | Lists the context's root folders, each with a `rootID` | `workspace.metadata` | 0 |
-| API-06 | `workspace/readDirectory` | Lists directory entries page by page | `workspace.files.read` | 0 |
-| API-06 | `workspace/stat` | Reads the kind, size, and modification time of a file or directory | `workspace.files.read` | 0 |
-| API-06 | `workspace/readFile` | Reads a file from disk as text or base64, truncated past the limit | `workspace.files.read` | 0 |
-| API-07 | `workspace/watch` | Watches a file or directory for changes; events arrive through `subscriptions/notify` | `workspace.files.watch` | 0 |
-| API-08 | `workspace/findFiles` | Finds files by name under one root, page by page | `workspace.search` | 0 |
-| API-08 | `workspace/findText` | Searches disk content for text and returns matching lines, page by page | `workspace.search` | 0 |
+| API-06 | `workspace/readDirectory` | Lists directory entries page by page; execution/validation details in [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.read` | 0 |
+| API-06 | `workspace/stat` | Reads the kind, size, and modification time of a file or directory; execution/validation details in [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.read` | 0 |
+| API-06 | `workspace/readFile` | Reads a file from disk as text or base64, truncated past the limit; execution/validation details in [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.read` | 0 |
+| API-07 | `workspace/watch` | Watches a file or directory for changes; events arrive through `subscriptions/notify`; execution/validation details in [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.watch` | 0 |
+| API-08 | `workspace/findFiles` | Finds files by name under one root, page by page; execution/validation details in [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.search` | 0 |
+| API-08 | `workspace/findText` | Searches disk content for text and returns matching lines, page by page; execution/validation details in [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.search` | 0 |
 | API-09 | `documents/list` | Lists summaries of the open documents | `documents.read` | 0 |
 | API-09 | `documents/getSnapshot` | Reads the full text of a document's current buffer, unsaved changes included | `documents.read` | 0 |
 | API-09 | `editor/getActive` | Reads the document summary of the foreground text tab, or `null` | `documents.read` | 0 |

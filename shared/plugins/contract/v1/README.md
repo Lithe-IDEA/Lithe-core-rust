@@ -4314,6 +4314,84 @@ listing/search/watch, not authorization for explicit reads. Open/browser paths
 retain the existing canonical containment checks and their documented
 check-to-open race; native backends are not OS-sandboxed.
 
+Workspace disk reads (API-06) require exactly `{rootID,path}`. `path` is at
+most 4096 UTF-8 bytes, uses `/`, and has no empty, `.` or `..` component,
+backslash, absolute prefix or NUL. On Windows, reserved device names, alternate
+data streams, trailing dots/spaces and other non-storable names are refused.
+`path:""` names the root for `readDirectory` and `stat`, but not `readFile`.
+Unknown top-level or resource fields return `unsupportedOption`; malformed
+paths, cursors and bounds return `invalidParams`. Missing roots/entries return
+`notFound`, filesystem access failures and attempted link traversal return
+`permissionDenied`, and other I/O failures return `failed`. Remote contexts
+return `authorityUnsupported` before any local I/O.
+
+`readDirectory.limit` is an integer in 1–1000 (default 200). Entries are ordered
+by their UTF-8 name bytes, omit symbolic links/reparse points, names that cannot
+be represented as a resource, and the workspace's effective hidden rules.
+A page may be shorter than `limit` to respect the serialized response budget.
+`nextCursor` is an opaque string, or null when exhausted. It is bound to the
+root, directory and filters, and resumes strictly after the last returned name;
+changing a directory between pages can omit newly inserted earlier names. It
+is a live listing, not a retained snapshot. `stat` reports the leaf itself
+(`file`, `directory`, `symlink` or `other`), with byte `size` and epoch
+`modifiedMilliseconds` (null when unavailable); no ancestor link is followed.
+
+`readFile.maximumBytes` is an integer in 1–131072 (default 131072).
+`byteCount` counts the returned raw prefix bytes. `isTruncated` is true when
+at least one additional byte was observed. `identity` is
+`{sha256,byteCount,isTruncated}`, where `sha256` is lowercase SHA-256 of exactly
+the returned bytes, never a claim about an unread suffix or an atomic whole-file
+snapshot. Valid UTF-8 containing no control characters other than tab, CR and
+LF returns `text` and `encoding:"utf-8"`, preserving any UTF-8 BOM. Every other
+prefix returns standard `base64` instead, including UTF-8 cut mid-character.
+Exactly one of `text` and `base64` is present. Only regular files can be read;
+there is no buffer fallback, encoding guessing or lossy substitution. Unix
+opens every plugin-supplied component relative to a held directory descriptor
+with `O_NOFOLLOW`; Windows rejects reparse points and holds directory ancestors
+without write/delete sharing until the operation finishes.
+
+Workspace search and watches (API-07/08) use the same strict resource paths,
+local authority and no-follow policy as disk reads. Unknown fields are
+`unsupportedOption`; malformed flags/bounds/queries/cursors and invalid regex
+are `invalidParams`. A missing target is `notFound`, access/link traversal is
+`permissionDenied`, and other I/O failures are `failed`.
+
+- `findFiles` and `findText` require a root resource (`path:""`). `query` or
+  `pattern` must contain 1–4096 UTF-8 bytes; `fileMask` has a 4096-byte maximum
+  and is a comma-separated list of basename globs such as `*.md,*.txt`.
+  File-name search is case insensitive. Text search defaults all flags to false
+  and uses the existing workspace matcher's literal/regex semantics; regex mode
+  uses the expression's own word boundaries. Pages default to 100 and accept
+  1–200, with at most 200 results across continuations. Results sort by UTF-8
+  path bytes then one-based line. Text results contain one hit per line,
+  `range:null`, and a trimmed preview capped at 500 characters. Search reads
+  disk only, applies effective hidden/indexing/Git-ignore rules, never follows
+  links, omits binary/undecodable files, and uses the existing search text
+  decoder. A text file is limited to 2 MiB and directory depth to 128. These
+  omissions or the overall hit cap set `isTruncated:true`; no exact count is
+  claimed. A page may be smaller than requested to fit the response budget.
+  `nextCursor` is null on exhaustion; it binds root, query/options and effective
+  policy and resumes after the last result without a retained snapshot.
+  Page size may change, but changing the query or policy invalidates the cursor.
+- `watch` accepts an existing regular file or directory and defaults `recursive`
+  to false. File watches observe replacement/removal of that file; directory
+  watches observe immediate entries or the subtree when recursive. Events carry
+  root-relative, sorted and deduplicated `changedPaths` with the calling
+  plugin's `rootID`. Hidden entries and linked descendants are omitted.
+  Native streams may coalesce changes, report directories instead of every
+  descendant, or lose names; `requiresRescan:true` means reread the watched
+  scope. Registration emits an initial rescan event to close the setup gap.
+  A batch has at most 1000 paths and 900 KiB; overflow also requests rescan.
+  At most 16 limited native subscriptions may be held by a backend session;
+  excess registration returns `limitExceeded`. Disposal is idempotent and
+  checked against the caller's plugin/session. Context closure, backend exit
+  or plugin stop releases the stream; notifications stop before disposal
+  returns. If the workspace root is deleted or replaced, the host emits a final
+  rescan and releases the old stream; register again after rereading the scope.
+  Sequence starts at 1, increments per emitted notification, and never
+  transfers to a replacement session/context. Registration and notifications
+  use native filesystem events, with no idle polling or filesystem writes.
+
 Machine host requests have a 30-second host deadline. User-choice messages wait
 until the user answers, the request is cancelled, or the context/session closes.
 Messages retain the per-plugin/window rate and queue limits (5/10 seconds,

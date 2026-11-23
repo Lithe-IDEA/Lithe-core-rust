@@ -25,6 +25,12 @@ backend.function('query.run', async (_params, context) => {
   if (!root) return null;
   const file = await context.host.workspace.readFile(workspace, { resource: { rootID: root.rootID, path: 'README.md' }, maximumBytes: 4096 });
   const truncated: boolean = file.isTruncated;
+  const identity: { sha256: string; byteCount: number; isTruncated: boolean } = file.identity;
+  const entry = await context.host.workspace.stat(workspace, { resource: file.resource });
+  const modified: number | null = entry.modifiedMilliseconds;
+  // @ts-expect-error Modification time can be unavailable or before the epoch.
+  const knownModified: number = entry.modifiedMilliseconds;
+  void identity; void modified; void knownModified;
   const { selectedIndex } = await context.host.window.showInformation(workspace, { text: 'Done', actions: ['Open'] });
   const choice: number | null = selectedIndex;
   return { truncated, choice };

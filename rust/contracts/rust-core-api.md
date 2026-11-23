@@ -607,6 +607,13 @@ or removing a command fails until the table changes in the same commit.
 | `workspace.configureIndexing` | Install a process-local, canonical-root indexing policy before workspace consumers run; returns a monotonic revision, effective directory reasons and Git failure state; see `rust/fixtures/workspace/indexing-policy-v1.json` |
 | `workspace.refreshIndexing` | Refresh external Git decisions for a live `root`, `ownerId`, `revision` lease without changing preferences or release tokens; returns lazy `IndexingStatus` |
 | `workspace.filterChanges` | Filter an array of workspace-relative paths, or `{ paths, hiddenFilePatterns }` whose `!` entries turn default exclusions off, against Core's default hidden folders and patterns, including the folders enabled plugins declare; preserve order, spelling, and the empty root path. Native event loss bypasses filtering. Hosts relativize to the most specific explicit watch root and retain explicitly watched files |
+| `workspace.findFiles` | Bounded plugin disk file-name search with a query-bound cursor (API-08) |
+| `workspace.findText` | Bounded plugin disk text search, without dirty buffers (API-08) |
+| `workspace.watchPlan` | Validate a local watch target before native registration (API-07) |
+| `workspace.watchEvents` | Filter and bound one native root-relative event batch (API-07) |
+| `workspace.readDirectory` | Return one bounded no-follow disk directory page for API-06; see Workspace disk reads below |
+| `workspace.stat` | Stat a workspace leaf without following it or any ancestor link (API-06) |
+| `workspace.readFile` | Read at most 128 KiB of regular-file disk bytes without following links (API-06) |
 | `workspace.listDirectories` | Return one visible level of children for each requested workspace-relative directory (`""` is the root); missing, hidden, external/cyclic symlink, or nested-worktree paths are omitted; workspace-internal aliases are browsable and each listing reports `linked: true` when reached through an alias, and each listing reports the nested worktrees it left out. Child directories have `children: []` only when a shallow probe proves them visibly empty; otherwise children remain omitted (unloaded), with no recursive tree allocation. Children list directories first, then names in IDEA's natural file-name order (digit runs compare by value, case-insensitive, `-` next to `_`; fixture `rust/fixtures/workspace/file-name-order-v1.json`) |
 | `workspace.orderEntries` | Order natively enumerated directory siblings |
 | `workspace.projectTree.rows` | Say which loaded project tree nodes show as rows, keep the selection on a row that shows, and find the row the top of the view was on, without reading the disk (from `lithe-project-tree`) |
@@ -7491,6 +7498,93 @@ to exist, creates the copy without replacing anything (`FileManager.copyItem`, w
 `create_new` and `MoveFileEx` without replacement on Windows) and, when that fails because the name
 appeared meanwhile, adds the name to `existing` and plans again. After 512 rounds the host reports
 the stable `destination_exists` error. Cases are in `rust/fixtures/workspace/file-copy-names-v1.json`.
+
+### Plugin workspace search and watches
+
+`workspace.findFiles` takes `{root,query,fileMask?,cursor?,limit?,hiddenDirectoryNames?,hiddenFilePatterns?}`.
+`workspace.findText` takes `{root,pattern,fileMask?,caseSensitive?,wholeWords?,regularExpression?,cursor?,limit?,hiddenDirectoryNames?,hiddenFilePatterns?}`.
+Queries/patterns are nonempty and at most 4096 UTF-8 bytes; masks have the same
+byte cap. Limits default to 100 and accept 1–200. Matching reuses the workspace
+literal/regular-expression matcher and comma-separated basename globs. Files
+sort by UTF-8 relative path bytes, text hits by path then one-based line, one
+hit per line with `range:null` and a trimmed preview of at most 500 characters.
+The returned envelope is `{matches,nextCursor,isTruncated,source:"disk"}`;
+file matches are `{path}`, text matches are `{path,line,preview,range:null}`.
+
+Search walks no-follow handles, applies shared hidden rules and the installed
+indexing exclusion policy (including its Git-ignore decisions), skips links and
+special entries, and consults no dirty buffer. File contents use the existing
+search text decoder, with binary and undecodable files omitted. At most 2 MiB
+are read per text file, with one sentinel byte; traversal depth caps at 128.
+Oversized files, deeper directories and an overall 200-hit cap set
+`isTruncated:true`. At most a page plus one candidate is retained; serialized
+pages reserve host envelopes under 900 KiB. A live cursor binds canonical root,
+query/options, effective visibility and indexing generation, keeps no server
+snapshot, and resumes after the last result; page size may change. A changed
+query/policy or malformed cursor uses `invalid_request`; invalid regex uses
+`parse_failed`. Cancellation and a 30-second deadline are checked per entry,
+chunk and line; native syscalls can still block. I/O failures are returned,
+except concurrently vanished entries. Remote workspaces are unsupported.
+
+`workspace.watchPlan` takes `{root,path,recursive?}` (false by default) and
+returns `{root,path,isDirectory,recursive}` with a canonical root. Targets
+must exist and be a regular file or directory, with no plugin-supplied link
+component. The native adapter watches root changes, checks the root/target
+identity again after registration, and owns the native stream and its cleanup.
+`workspace.watchEvents` takes this plan plus `paths`, optional
+`requiresRescan`, `hiddenDirectoryNames`, `hiddenFilePatterns`. It returns
+`{changedPaths,requiresRescan}` with sorted, deduplicated, root-relative visible
+names. File watches select the exact file; directory watches select immediate
+children or descendants when recursive. Ancestor changes request a rescan.
+Deleted names remain valid, existing ancestor links/reparse points are rejected,
+and leaf links are omitted. Native loss, malformed names, more than 1000 input
+paths or the 900 KiB event budget set `requiresRescan:true`. This command is
+untraced because it runs on each native watch batch. Native registration and
+plugin/context/session ownership remain in the desktop adapter, without polling,
+filesystem writes or retained file content.
+
+Fixture: `rust/fixtures/workspace/find-watch-v1.json`.
+
+### Workspace disk reads
+
+`workspace.readDirectory` takes `{root,path,cursor?,limit?,hiddenDirectoryNames?,hiddenFilePatterns?}`.
+`workspace.stat` takes `{root,path}` and `workspace.readFile` takes
+`{root,path,maximumBytes?}`. `root` is an absolute authorized local directory;
+`path` is a strictly `/`-separated path below it, at most 4096 UTF-8 bytes with
+no backslash, NUL, absolute prefix, empty, `.` or `..` component. Empty path names
+the root for listing/stat only. Windows components obey native storable-name rules.
+Unknown payload fields and invalid bounds fail with `invalid_request`.
+
+Listing defaults to 200, accepts 1–1000, and retains at most `limit + 1` ordered
+candidates while streaming a directory. It applies shared effective hidden rules,
+omits links/reparse points and unrepresentable paths, and returns
+`{entries:[{name,path,kind}],nextCursor}`. Entries sort by UTF-8 name bytes.
+A serialized page has a 900 KiB budget, reserving space for host resource envelopes,
+so a page may be shorter than its limit. Cursors bind canonical root, directory and
+filters and resume after the last name, without keeping a server-side snapshot.
+`stat` returns `{path,kind,size,modifiedMilliseconds}`; `kind` is `file`,
+`directory`, `symlink` or `other`, and unavailable/pre-epoch timestamps are null.
+The leaf's own metadata is returned; ancestor links are refused.
+
+Reading accepts `maximumBytes` in 1–131072, default 131072, and returns
+`{path,source:"disk",byteCount,isTruncated,identity,text?,encoding?,base64?}`.
+It reads at most the limit plus one byte, discards the sentinel and hashes only
+the returned prefix. `identity` is `{sha256,byteCount,isTruncated}` and describes
+those exact bytes, not an atomic whole-file snapshot. Strict UTF-8 without control
+characters except tab/CR/LF returns text with `encoding:"utf-8"` (BOM preserved);
+all other prefixes, including incomplete UTF-8, use standard base64. Exactly one
+of text/base64 is present. No editor buffer is consulted.
+
+Unix walks held directory descriptors with `openat/O_NOFOLLOW`; Windows rejects
+reparse points and retains directory handles without write/delete sharing.
+Non-regular files cannot be read. These commands reject `remoteWorkspace` before
+local I/O. Missing roots use `workspace_not_found`, missing entries use
+`entry_not_found`, link traversal and access failures use `permission_denied`,
+and other I/O failures use `unknown`. Enumeration and chunk reads check cancellation
+and a 30-second deadline; native filesystem calls may still block in the kernel.
+The host checks context/root ownership and wraps returned paths as resources;
+it maps the Core errors to the public API-06 errors.
+Fixture: `rust/fixtures/workspace/read-v1.json`.
 
 `workspace.createEntry`, `workspace.renameEntry`, `workspace.copyEntry` and `workspace.resolveEntry`
 change and name entries below a local workspace root on a plugin's behalf (plan API-11). Each takes

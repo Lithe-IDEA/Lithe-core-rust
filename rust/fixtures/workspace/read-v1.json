@@ -1,0 +1,198 @@
+{
+  "directoryFirst": [
+    {
+      "name": "a.txt",
+      "path": "a.txt",
+      "kind": "file"
+    },
+    {
+      "name": "b.txt",
+      "path": "b.txt",
+      "kind": "file"
+    }
+  ],
+  "directoryLast": [
+    {
+      "name": "c.txt",
+      "path": "c.txt",
+      "kind": "file"
+    }
+  ],
+  "files": [
+    {
+      "id": "utf8",
+      "bytes": [
+        104,
+        101,
+        108,
+        108,
+        111,
+        10
+      ],
+      "expected": {
+        "text": "hello\n",
+        "encoding": "utf-8",
+        "source": "disk",
+        "byteCount": 6,
+        "isTruncated": false,
+        "identity": {
+          "sha256": "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03",
+          "byteCount": 6,
+          "isTruncated": false
+        }
+      }
+    },
+    {
+      "id": "empty",
+      "bytes": [],
+      "expected": {
+        "text": "",
+        "encoding": "utf-8",
+        "byteCount": 0,
+        "isTruncated": false,
+        "identity": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "byteCount": 0,
+          "isTruncated": false
+        }
+      }
+    },
+    {
+      "id": "binary",
+      "bytes": [
+        0,
+        255,
+        65
+      ],
+      "expected": {
+        "base64": "AP9B",
+        "byteCount": 3,
+        "isTruncated": false,
+        "identity": {
+          "sha256": "a90a10503fbfc95789ff38a1bb5039cb71869ab9c0eb1cb51c4a9099f2933c6b",
+          "byteCount": 3,
+          "isTruncated": false
+        }
+      }
+    },
+    {
+      "id": "utf8-boundary",
+      "bytes": [
+        65,
+        228,
+        184,
+        173
+      ],
+      "maximumBytes": 3,
+      "expected": {
+        "base64": "QeS4",
+        "byteCount": 3,
+        "isTruncated": true,
+        "identity": {
+          "sha256": "33c840794ad07fdbba9882a959c865994d36b551bc2c72ca92e533de1cd914e6",
+          "byteCount": 3,
+          "isTruncated": true
+        }
+      }
+    },
+    {
+      "id": "exact-limit",
+      "bytes": [
+        65,
+        66,
+        67
+      ],
+      "maximumBytes": 3,
+      "expected": {
+        "text": "ABC",
+        "byteCount": 3,
+        "isTruncated": false,
+        "identity": {
+          "sha256": "b5d4045c3f466fa91fe2cc6abe79232a1a57cdf104f7a26e716e0a1e2789df78",
+          "byteCount": 3,
+          "isTruncated": false
+        }
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "command": "workspace.stat",
+      "request": {
+        "path": "../outside"
+      }
+    },
+    {
+      "command": "workspace.stat",
+      "request": {
+        "path": "/outside"
+      }
+    },
+    {
+      "command": "workspace.stat",
+      "request": {
+        "path": "a//b"
+      }
+    },
+    {
+      "command": "workspace.stat",
+      "request": {
+        "path": "./a"
+      }
+    },
+    {
+      "command": "workspace.stat",
+      "request": {
+        "path": "a\\b"
+      }
+    },
+    {
+      "command": "workspace.readDirectory",
+      "request": {
+        "path": "",
+        "limit": 0
+      }
+    },
+    {
+      "command": "workspace.readDirectory",
+      "request": {
+        "path": "",
+        "limit": 1001
+      }
+    },
+    {
+      "command": "workspace.readDirectory",
+      "request": {
+        "path": "",
+        "cursor": "garbage"
+      }
+    },
+    {
+      "command": "workspace.readFile",
+      "request": {
+        "path": ""
+      }
+    },
+    {
+      "command": "workspace.readFile",
+      "request": {
+        "path": "input",
+        "maximumBytes": 0
+      }
+    },
+    {
+      "command": "workspace.readFile",
+      "request": {
+        "path": "input",
+        "maximumBytes": 131073
+      }
+    },
+    {
+      "command": "workspace.readFile",
+      "request": {
+        "path": "input",
+        "unknown": true
+      }
+    }
+  ]
+}
