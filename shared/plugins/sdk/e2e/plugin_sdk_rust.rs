@@ -9,6 +9,14 @@
 mod plugin_sdk;
 
 #[test]
+fn the_rust_sdk_registers_and_answers_color_decorations() {
+    let Some(executable) = std::env::var_os("LITHE_PLUGIN_SDK_RUST_SAMPLE") else {
+        return;
+    };
+    plugin_sdk::colors::run("rust", &executable.to_string_lossy(), &[]);
+}
+
+#[test]
 fn the_rust_sdk_toolchain_provider_negotiates_and_answers_through_core() {
     let Some(executable) = std::env::var_os("LITHE_PLUGIN_SDK_RUST_SAMPLE") else {
         return;

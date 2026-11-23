@@ -20,6 +20,7 @@
 #![allow(dead_code)]
 
 pub mod backend;
+pub mod colors;
 pub mod keymap;
 pub mod native_build;
 pub mod toolchains;
@@ -456,7 +457,10 @@ pub fn run_sample_scenario(sample: &Sample) {
     }
 
     let mut session = Session::start(&plugin_id, runtime, &arguments, &workspace);
-    assert_eq!(session.functions(), ["snapshot.read", "workspace.build"]);
+    assert_eq!(
+        session.functions(),
+        ["fixture.colors", "snapshot.read", "workspace.build"]
+    );
 
     // Typed build requests: Core plans them and decodes the answers. The fixture workspace is
     // the test's own, so it is trusted: a plan that runs the workspace's code needs that.

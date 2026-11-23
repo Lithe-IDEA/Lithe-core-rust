@@ -5389,10 +5389,11 @@ actions section.
 (the provider types the host routes) and returns `{registration}` with
 lowercased literal selectors and Core's per-type `budgetMs`; a type outside
 `types` is `not_supported` with details `providers.<type>`. It also accepts
-`{kind:"result",type,value,legend?}` (one provider function's LSP 3.17 shaped
-result; semantic tokens need the registered legend) and returns `{result}`
-normalized to `{locations}`, `{contents,range?}`, `{isIncomplete,items}`,
-`{lenses}`, `{ranges}`, `{data}` or `{links}`. Hosts own calls, budgets,
+`{kind:"result",type,value,legend?,colorLegend?}` (one provider function's
+result; semantic tokens need the registered token legend and color decorations
+need the registered color legend) and returns `{result}` normalized to
+`{locations}`, `{contents,range?}`, `{isIncomplete,items}`, `{lenses}`,
+`{ranges}`, `{data}`, `{decorations}` or `{links}`. Hosts own calls, budgets,
 stale-version drops and the merge after language-server answers; see the
 plugin contract's editor language-feature providers section. The definition
 merge is Core's too: `{kind:"mergeDefinitions",value:{documentUri,position,server,plugin}}`
@@ -5400,7 +5401,12 @@ takes the language server's and the plugins' validated `Location[]` and returns
 the indices each side keeps as `{server,plugin}`. The server's answer comes
 first; a plugin location equal to one already kept is dropped, and a server
 location that covers the requested position itself (the caret already sits on
-the declaration) yields when a plugin answered.
+the declaration) yields when a plugin answered. Color decorations also merge
+in Core: `{kind:"mergeColorDecorations",value:{sources:[{sourceId,colorLegend,value}]}}`
+validates each source's light/dark color legend and non-overlapping, single-line
+UTF-16 ranges, sorts sources by `sourceId`, and clips later ranges where an
+earlier source already covers a position. The ordered result is
+`{decorations:[{sourceId,colorId,light,dark,range}]}`.
 
 `toolchains.instantiateLaunch` accepts `{ registry, tool, executable, home?,
 entry?, runtimeArguments, arguments }` and returns `{ status: "ok", launch:
