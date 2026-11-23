@@ -8245,9 +8245,13 @@ entries reject with `plugin.toolchain.invalidDocument`.
 and returns `{status:"ok",edit:{document,documentChanged,ignoreDocument,ignoreChanged}}`.
 A semantic no-op preserves both exact sources, including absence. A changed
 pin document is serialized deterministically; the ignore matcher preserves
-an already effective ignore rule or appends `/toolchains/local.json` after any
-negation, preserving existing text and newline convention. Ignore parsing is
-bounded to 4096 lines when preparing a changed pin document; NUL and invalid patterns reject with
+already effective rules for `.gitignore` itself and `toolchains/local.json`,
+appending only the missing `/.gitignore` and `/toolchains/local.json` rules after
+any negation, in that order. These root-anchored rules do not hide team-shared
+configuration or nested ignore files. Existing text, UTF-8 BOM and newline
+convention are preserved; repeated maintenance does not append duplicate rules.
+Ignore parsing is bounded to 4096 lines when preparing a changed pin document;
+NUL and invalid patterns reject with
 `plugin.toolchain.invalidIgnore`. Input and output budgets reject with
 `plugin.toolchain.limitExceeded`; invalid request shapes use
 `plugin.toolchain.invalidParams`. The matcher never reads files or global rules.

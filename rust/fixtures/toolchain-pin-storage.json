@@ -189,7 +189,7 @@
         "edit": {
           "document": "{\"pins\":{\".\":{\"dev.example:compiler\":{\"home\":\"/fixture/tool\",\"provider\":\"host:system\",\"version\":\"1.0\"}}},\"toolchains\":{},\"version\":1}",
           "documentChanged": true,
-          "ignoreDocument": "/toolchains/local.json\n",
+          "ignoreDocument": "/.gitignore\n/toolchains/local.json\n",
           "ignoreChanged": true
         }
       }
@@ -217,7 +217,7 @@
         "edit": {
           "document": "{\"pins\":{\".\":{\"dev.example:compiler\":{\"home\":\"/fixture/tool\",\"provider\":\"host:system\",\"version\":\"1.0\"}}},\"toolchains\":{},\"version\":1}",
           "documentChanged": true,
-          "ignoreDocument": "# user notes\n/toolchains/local.json\n",
+          "ignoreDocument": "# user notes\n/.gitignore\n/toolchains/local.json\n",
           "ignoreChanged": true
         }
       }
@@ -245,13 +245,13 @@
         "edit": {
           "document": "{\"pins\":{\".\":{\"dev.example:compiler\":{\"home\":\"/fixture/tool\",\"provider\":\"host:system\",\"version\":\"1.0\"}}},\"toolchains\":{},\"version\":1}",
           "documentChanged": true,
-          "ignoreDocument": "/toolchains/local.json\n!/toolchains/local.json\n/toolchains/local.json\n",
+          "ignoreDocument": "/toolchains/local.json\n!/toolchains/local.json\n/.gitignore\n/toolchains/local.json\n",
           "ignoreChanged": true
         }
       }
     },
     {
-      "name": "wildcard-already-ignores",
+      "name": "wildcard-already-ignores-pin-source",
       "command": "toolchains.editPinSources",
       "input": {
         "document": "{\"toolchains\":{},\"version\":1}",
@@ -273,8 +273,8 @@
         "edit": {
           "document": "{\"pins\":{\".\":{\"dev.example:compiler\":{\"home\":\"/fixture/tool\",\"provider\":\"host:system\",\"version\":\"1.0\"}}},\"toolchains\":{},\"version\":1}",
           "documentChanged": true,
-          "ignoreDocument": "**/local.json\n",
-          "ignoreChanged": false
+          "ignoreDocument": "**/local.json\n/.gitignore\n",
+          "ignoreChanged": true
         }
       }
     },
@@ -301,7 +301,7 @@
         "edit": {
           "document": "{\"pins\":{\".\":{\"dev.example:compiler\":{\"home\":\"/fixture/tool\",\"provider\":\"host:system\",\"version\":\"1.0\"}}},\"toolchains\":{},\"version\":1}",
           "documentChanged": true,
-          "ignoreDocument": "# user notes\r\n/toolchains/local.json\r\n",
+          "ignoreDocument": "# user notes\r\n/.gitignore\r\n/toolchains/local.json\r\n",
           "ignoreChanged": true
         }
       }
@@ -329,7 +329,7 @@
         "edit": {
           "document": "{\"pins\":{\".\":{\"dev.example:compiler\":{\"home\":\"/fixture/tool\",\"provider\":\"host:system\",\"version\":\"1.0\"}}},\"toolchains\":{},\"version\":1}",
           "documentChanged": true,
-          "ignoreDocument": "# user notes\n/toolchains/local.json\n",
+          "ignoreDocument": "# user notes\n/.gitignore\n/toolchains/local.json\n",
           "ignoreChanged": true
         }
       }
@@ -357,8 +357,8 @@
         "edit": {
           "document": "{\"pins\":{\".\":{\"dev.example:compiler\":{\"home\":\"/fixture/tool\",\"provider\":\"host:system\",\"version\":\"1.0\"}}},\"toolchains\":{},\"version\":1}",
           "documentChanged": true,
-          "ignoreDocument": "﻿/toolchains/local.json\n",
-          "ignoreChanged": false
+          "ignoreDocument": "﻿/toolchains/local.json\n/.gitignore\n",
+          "ignoreChanged": true
         }
       }
     },
@@ -441,7 +441,119 @@
         "edit": {
           "document": "{\"pins\":{\"nested\":{\"dev.example:compiler\":{\"home\":\"/fixture/tool\",\"provider\":\"host:system\",\"version\":\"1.0\"}}},\"toolchains\":{\"legacy\":{\"home\":\"/fixture/legacy\"}},\"version\":1}",
           "documentChanged": true,
-          "ignoreDocument": "/toolchains/local.json\n",
+          "ignoreDocument": "/toolchains/local.json\n/.gitignore\n",
+          "ignoreChanged": true
+        }
+      }
+    },
+    {
+      "name": "self-ignore-already-effective",
+      "command": "toolchains.editPinSources",
+      "input": {
+        "document": "{\"toolchains\":{},\"version\":1}",
+        "ignoreDocument": ".gitignore\n/toolchains/local.json\n",
+        "directory": ".",
+        "edits": [
+          {
+            "tool": "dev.example:compiler",
+            "pin": {
+              "home": "/fixture/tool",
+              "version": "1.0",
+              "provider": "host:system"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "edit": {
+          "document": "{\"pins\":{\".\":{\"dev.example:compiler\":{\"home\":\"/fixture/tool\",\"provider\":\"host:system\",\"version\":\"1.0\"}}},\"toolchains\":{},\"version\":1}",
+          "documentChanged": true,
+          "ignoreDocument": ".gitignore\n/toolchains/local.json\n",
+          "ignoreChanged": false
+        }
+      }
+    },
+    {
+      "name": "self-ignore-after-later-negation",
+      "command": "toolchains.editPinSources",
+      "input": {
+        "document": "{\"toolchains\":{},\"version\":1}",
+        "ignoreDocument": "/.gitignore\n!/.gitignore\n/toolchains/local.json\n",
+        "directory": ".",
+        "edits": [
+          {
+            "tool": "dev.example:compiler",
+            "pin": {
+              "home": "/fixture/tool",
+              "version": "1.0",
+              "provider": "host:system"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "edit": {
+          "document": "{\"pins\":{\".\":{\"dev.example:compiler\":{\"home\":\"/fixture/tool\",\"provider\":\"host:system\",\"version\":\"1.0\"}}},\"toolchains\":{},\"version\":1}",
+          "documentChanged": true,
+          "ignoreDocument": "/.gitignore\n!/.gitignore\n/toolchains/local.json\n/.gitignore\n",
+          "ignoreChanged": true
+        }
+      }
+    },
+    {
+      "name": "both-ignored-by-existing-wildcard",
+      "command": "toolchains.editPinSources",
+      "input": {
+        "document": "{\"toolchains\":{},\"version\":1}",
+        "ignoreDocument": "*\n",
+        "directory": ".",
+        "edits": [
+          {
+            "tool": "dev.example:compiler",
+            "pin": {
+              "home": "/fixture/tool",
+              "version": "1.0",
+              "provider": "host:system"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "edit": {
+          "document": "{\"pins\":{\".\":{\"dev.example:compiler\":{\"home\":\"/fixture/tool\",\"provider\":\"host:system\",\"version\":\"1.0\"}}},\"toolchains\":{},\"version\":1}",
+          "documentChanged": true,
+          "ignoreDocument": "*\n",
+          "ignoreChanged": false
+        }
+      }
+    },
+    {
+      "name": "bom-crlf-rules-already-effective",
+      "command": "toolchains.editPinSources",
+      "input": {
+        "document": "{\"toolchains\":{},\"version\":1}",
+        "ignoreDocument": "﻿/.gitignore\r\n/toolchains/local.json\r\n",
+        "directory": ".",
+        "edits": [
+          {
+            "tool": "dev.example:compiler",
+            "pin": {
+              "home": "/fixture/tool",
+              "version": "1.0",
+              "provider": "host:system"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "edit": {
+          "document": "{\"pins\":{\".\":{\"dev.example:compiler\":{\"home\":\"/fixture/tool\",\"provider\":\"host:system\",\"version\":\"1.0\"}}},\"toolchains\":{},\"version\":1}",
+          "documentChanged": true,
+          "ignoreDocument": "﻿/.gitignore\r\n/toolchains/local.json\r\n",
           "ignoreChanged": false
         }
       }

@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 
 const DOCUMENT_PATH: &str = ".lithe/toolchains/local.json";
 const IGNORE_PATH: &str = ".lithe/.gitignore";
-const IGNORE_ENTRY: &str = "/toolchains/local.json";
+const IGNORE_ENTRIES: [&str; 2] = ["/.gitignore", "/toolchains/local.json"];
 const MAX_DOCUMENT_BYTES: usize = 1024 * 1024;
 const MAX_IGNORE_BYTES: usize = 64 * 1024;
 const MAX_IGNORE_LINES: usize = 4096;
@@ -163,32 +163,102 @@ fn prepare_ignore(original: Option<&str>) -> Validation<(String, bool)> {
         builder.add_line(None, line).map_err(|_| invalid_ignore())?;
     }
     let matcher = builder.build().map_err(|_| invalid_ignore())?;
-    if matcher
-        .matched_path_or_any_parents("toolchains/local.json", false)
-        .is_ignore()
-    {
-        return Ok((content.to_owned(), false));
-    }
     let newline = if content.contains("\r\n") {
         "\r\n"
     } else {
         "\n"
     };
     let mut updated = content.to_owned();
-    if !updated.is_empty() && !updated.ends_with('\n') {
+    for entry in IGNORE_ENTRIES {
+        if matcher
+            .matched_path_or_any_parents(&entry[1..], false)
+            .is_ignore()
+        {
+            continue;
+        }
+        if !updated.is_empty() && !updated.ends_with('\n') {
+            updated.push_str(newline);
+        }
+        updated.push_str(entry);
         updated.push_str(newline);
     }
-    updated.push_str(IGNORE_ENTRY);
-    updated.push_str(newline);
     if updated.len() > MAX_IGNORE_BYTES || updated.lines().count() > MAX_IGNORE_LINES {
         return Err(limit("ignoreDocument"));
     }
-    Ok((updated, true))
+    let changed = updated.len() != content.len();
+    Ok((updated, changed))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn generated_ignore_file_hides_itself_without_hiding_shared_configuration() {
+        let (content, changed) = prepare_ignore(None).unwrap();
+        assert!(changed);
+        assert_eq!(content, "/.gitignore\n/toolchains/local.json\n");
+
+        let mut builder = GitignoreBuilder::new("");
+        for line in content.lines() {
+            builder.add_line(None, line).unwrap();
+        }
+        let matcher = builder.build().unwrap();
+        for path in [".gitignore", "toolchains/local.json"] {
+            assert!(matcher.matched_path_or_any_parents(path, false).is_ignore());
+        }
+        for path in [
+            "run/shared.json",
+            "toolchains/shared.json",
+            "nested/.gitignore",
+        ] {
+            assert!(!matcher.matched_path_or_any_parents(path, false).is_ignore());
+        }
+        assert_eq!(prepare_ignore(Some(&content)).unwrap(), (content, false));
+    }
+
+    #[test]
+    fn ignore_maintenance_preserves_text_and_only_appends_missing_effective_rules() {
+        for (before, appended) in [
+            ("/toolchains/local.json\n", "/.gitignore\n"),
+            (".gitignore\n", "/toolchains/local.json\n"),
+            (".gitignore\n/toolchains/local.json\n", ""),
+            ("*\n", ""),
+            ("**/local.json\n", "/.gitignore\n"),
+            (
+                "/.gitignore\n!/.gitignore\n/toolchains/local.json\n",
+                "/.gitignore\n",
+            ),
+            ("# user notes", "\n/.gitignore\n/toolchains/local.json\n"),
+            ("\u{feff}/toolchains/local.json\r\n", "/.gitignore\r\n"),
+            ("\u{feff}/.gitignore\r\n/toolchains/local.json\r\n", ""),
+        ] {
+            let expected = format!("{before}{appended}");
+            let (content, changed) = prepare_ignore(Some(before)).unwrap();
+            assert_eq!(content, expected, "source: {before:?}");
+            assert_eq!(changed, !appended.is_empty(), "source: {before:?}");
+            assert_eq!(prepare_ignore(Some(&content)).unwrap(), (content, false));
+        }
+    }
+
+    #[test]
+    fn self_ignore_growth_obeys_the_existing_byte_and_line_budgets() {
+        let at_line_limit = format!(
+            "/toolchains/local.json\n{}",
+            "#\n".repeat(MAX_IGNORE_LINES - 1)
+        );
+        let at_byte_limit = format!(
+            "/toolchains/local.json\n#{}",
+            "x".repeat(MAX_IGNORE_BYTES - "/toolchains/local.json\n#".len())
+        );
+        assert_eq!(at_byte_limit.len(), MAX_IGNORE_BYTES);
+        for content in [at_line_limit, at_byte_limit] {
+            let Err(failure) = prepare_ignore(Some(&content)) else {
+                panic!("appending self-ignore must respect the source budget");
+            };
+            assert_eq!(failure.code(), "plugin.toolchain.limitExceeded");
+        }
+    }
 
     #[test]
     fn ignore_growth_cannot_publish_a_document_the_next_edit_would_refuse() {
