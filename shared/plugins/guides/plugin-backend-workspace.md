@@ -13,8 +13,7 @@
 > 四个官方 SDK 都实现了本篇的协议：Node.js SDK 0.5.0、Java SDK 0.5.0、Rust SDK 0.4.0 和 Go SDK（还没有发布标签）
 > （见各自 README 的 Host services：[Node.js](../sdk/node/README.md#host-services)、[Java](../sdk/java/README.md#host-services)、
 > [Rust](../sdk/rust/README.md#host-services)、[Go](../sdk/go/README.md#host-services)；发布页：[sdk-node-v0.5.0](https://github.com/Lithe-IDEA/Lithe-core-rust/releases/tag/sdk-node-v0.5.0)、
-> [sdk-java-v0.5.0](https://github.com/Lithe-IDEA/Lithe-core-rust/releases/tag/sdk-java-v0.5.0)、
-> [sdk-rust-v0.4.0](https://github.com/Lithe-IDEA/Lithe-core-rust/releases/tag/sdk-rust-v0.4.0)）。用其他语言需要自己处理下文的请求和通知。
+> [sdk-rust-v0.4.0](https://github.com/Lithe-IDEA/Lithe-core-rust/releases/tag/sdk-rust-v0.4.0)；Java SDK [固定 Core commit 引入源码](../sdk/java/README.md#getting-the-sdk)）。用其他语言需要自己处理下文的请求和通知。
 > 各能力在 Core 和桌面端的支持情况见[能力与协议版本对照](../reference/capabilities-and-versions.md)。对契约有疑问，请到
 > [Lithe-core-rust 的 Issues](https://github.com/Lithe-IDEA/Lithe-core-rust/issues) 反馈。
 
@@ -339,8 +338,7 @@ The [contract](../contract/v1/README.md#backend-lifecycle-and-workspace-contexts
 > All four official SDKs implement the protocol in this guide: Node.js SDK 0.5.0, Java SDK 0.5.0, Rust SDK 0.4.0, and the Go SDK (not tagged yet)
 > (see Host services in each README: [Node.js](../sdk/node/README.md#host-services), [Java](../sdk/java/README.md#host-services),
 > [Rust](../sdk/rust/README.md#host-services), [Go](../sdk/go/README.md#host-services); release pages: [sdk-node-v0.5.0](https://github.com/Lithe-IDEA/Lithe-core-rust/releases/tag/sdk-node-v0.5.0),
-> [sdk-java-v0.5.0](https://github.com/Lithe-IDEA/Lithe-core-rust/releases/tag/sdk-java-v0.5.0),
-> [sdk-rust-v0.4.0](https://github.com/Lithe-IDEA/Lithe-core-rust/releases/tag/sdk-rust-v0.4.0)). With another language, handle the requests and notifications below yourself.
+> [sdk-rust-v0.4.0](https://github.com/Lithe-IDEA/Lithe-core-rust/releases/tag/sdk-rust-v0.4.0); Java uses [sources from a pinned Core commit](../sdk/java/README.md#getting-the-sdk)). With another language, handle the requests and notifications below yourself.
 > For how far Core and the desktop support each capability, see the [capability and protocol versions](../reference/capabilities-and-versions.md). Questions about the contract go to
 > [Lithe-core-rust Issues](https://github.com/Lithe-IDEA/Lithe-core-rust/issues).
 

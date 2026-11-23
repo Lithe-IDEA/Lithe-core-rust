@@ -8,7 +8,7 @@
 
 宿主必须在 initialize 中提供 `capabilities.experimental.litheLogging.versions: [0]`，SDK 回复 `capabilities.experimental.litheLogging.version: 0`。缺少协议时，SDK 拒绝初始化；不自动退回其他日志方式。初始化尚未协商时的失败只通过原有 RPC 错误与宿主进程生命周期记录，不能提前发送未协商的日志通知。
 
-本文的 API 由 Node.js SDK 0.5.0、Java SDK 0.5.0、Rust SDK 0.4.0 和 Go SDK 提供，前三个的发布标签分别为 `sdk-node-v0.5.0`、`sdk-java-v0.5.0` 和 `sdk-rust-v0.4.0`；Go SDK 的版本是模块标签 `shared/plugins/sdk/go/v<版本>`，目前还没有打过标签。插件在构建输入中锁定对应的 release tag 与 SHA-256（Go 由 `go.sum` 锁定），不要引用开发机的绝对 path 依赖。这些 SDK 要求宿主提供 `litheLogging` 0；在提供它的 Lithe 稳定版发布之前，用这些 SDK 构建的插件把 GitHub Release 标为预发布。
+本文的 API 由 Node.js SDK 0.5.0、Java SDK 0.5.0、Rust SDK 0.4.0 和 Go SDK 提供，Node.js 和 Rust 的发布标签分别为 `sdk-node-v0.5.0` 和 `sdk-rust-v0.4.0`；Java SDK [固定 Core commit 引入源码](../sdk/java/README.md#getting-the-sdk)；Go SDK 的版本是模块标签 `shared/plugins/sdk/go/v<版本>`，目前还没有打过标签。插件在构建输入中锁定对应的 release tag 与 SHA-256（Java 源码用 `sdk.lock.json` 固定 Core commit 和逐文件哈希，Go 由 `go.sum` 锁定），不要引用开发机的绝对 path 依赖。这些 SDK 要求宿主提供 `litheLogging` 0；在提供它的 Lithe 稳定版发布之前，用这些 SDK 构建的插件把 GitHub Release 标为预发布。
 
 ### 每种事实与级别
 
@@ -104,7 +104,7 @@ Plugins use `litheLogging` 0 and `lithe/log` to send restricted operation facts.
 
 The host must offer `capabilities.experimental.litheLogging.versions: [0]` in initialize, and the SDK replies with `capabilities.experimental.litheLogging.version: 0`. When the protocol is missing, the SDK refuses to initialize; it does not fall back to another logging path. A failure before initialization has negotiated logging is recorded only through the existing RPC error and the host's process lifecycle; the plugin must not send a log notification before negotiation.
 
-The APIs in this guide are provided by Node.js SDK 0.5.0, Java SDK 0.5.0, Rust SDK 0.4.0, and the Go SDK. The first three have release tags `sdk-node-v0.5.0`, `sdk-java-v0.5.0`, and `sdk-rust-v0.4.0`; the Go SDK's versions are the module tags `shared/plugins/sdk/go/v<version>`, and none has been pushed yet. Pin the matching release tag and SHA-256 in your build inputs (for Go, `go.sum` pins it); do not depend on an absolute path on a development machine. These SDKs require the host to offer `litheLogging` 0; until a stable Lithe release offers it, mark the GitHub Release of a plugin built with these SDKs as a prerelease.
+The APIs in this guide are provided by Node.js SDK 0.5.0, Java SDK 0.5.0, Rust SDK 0.4.0, and the Go SDK. Node.js and Rust have release tags `sdk-node-v0.5.0` and `sdk-rust-v0.4.0`; Java uses [sources from a pinned Core commit](../sdk/java/README.md#getting-the-sdk); the Go SDK's versions are the module tags `shared/plugins/sdk/go/v<version>`, and none has been pushed yet. Pin the matching release tag and SHA-256 in your build inputs (for Java sources, `sdk.lock.json` pins the Core commit and per-file hashes; for Go, `go.sum` pins it); do not depend on an absolute path on a development machine. These SDKs require the host to offer `litheLogging` 0; until a stable Lithe release offers it, mark the GitHub Release of a plugin built with these SDKs as a prerelease.
 
 ### Facts and levels
 
