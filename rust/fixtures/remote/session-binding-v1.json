@@ -1,0 +1,18 @@
+{
+  "protocolVersion": 1,
+  "session": {
+    "id": "fixture-session",
+    "sessionKey": "fixture-key",
+    "sessionToken": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "sessionBinding": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "resumeConsumed": true,
+    "resumed": true,
+    "keptPrograms": []
+  },
+  "cases": [
+    { "id": "legacy", "binding": null, "actual": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "consumed": false },
+    { "id": "same-target", "binding": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "actual": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "consumed": true },
+    { "id": "unverified", "binding": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "actual": null, "consumed": false },
+    { "id": "changed-target", "binding": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "actual": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "consumed": false }
+  ]
+}

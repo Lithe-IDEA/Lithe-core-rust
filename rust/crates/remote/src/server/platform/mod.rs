@@ -53,6 +53,7 @@ pub(crate) fn host_capabilities() -> HostCapabilities {
     let account = unix::current_account();
     let mut features = vec![
         Feature::Filesystem,
+        Feature::GuardedWrites,
         Feature::Upload,
         Feature::RunDirectories,
         Feature::Walk,

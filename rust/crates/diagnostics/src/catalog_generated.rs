@@ -1543,6 +1543,19 @@ pub static EVENTS: &[EventMetadata] = &[
         owner: "lithe-core",
     },
     EventMetadata {
+        id: "remote.session.identity_rejected",
+        channel: "remote",
+        level: LogLevel::Warn,
+        message: "Remote identity could not authorize automatic session recovery",
+        fields: &[
+            FieldMetadata { name: "error", field_type: FieldType::Error, required: true, description: "Controlled identity category without host names, fingerprints or credentials", reason: None },
+            FieldMetadata { name: "stage", field_type: FieldType::Token, required: true, description: "Identity validation or resume binding stage", reason: None },
+        ],
+        span: None,
+        rate: 60,
+        owner: "lithe-core",
+    },
+    EventMetadata {
         id: "remote.session.state_failed",
         channel: "remote",
         level: LogLevel::Warn,

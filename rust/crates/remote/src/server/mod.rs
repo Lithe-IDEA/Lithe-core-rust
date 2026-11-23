@@ -33,6 +33,7 @@ mod resources;
 mod run_directory;
 mod session;
 mod spawner;
+mod target_identity;
 mod terminal;
 mod threads;
 mod tunnel;
@@ -42,6 +43,7 @@ mod watch;
 
 pub use daemon::{run_daemon, run_proxy, PersistentOptions};
 pub use environment::print_environment;
+pub use target_identity::print as print_target_identity;
 
 use crate::protocol::methods::ServerIdentity;
 use crate::protocol::{ErrorCode, RemoteError, PROTOCOL_VERSION};

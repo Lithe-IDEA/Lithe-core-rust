@@ -26,8 +26,11 @@ use crate::programs::RunningProgram;
 use lithe_git_host::ProcessTree;
 use lithe_protocol::{CoreError, ErrorCode};
 use lithe_remote::client::connections::{ConnectionError, Reason, SshConnection};
-use lithe_remote::client::launch::{launch, launch_command, LaunchError, Launched, Stage};
+use lithe_remote::client::launch::{
+    bound_launch_command, launch_bound, LaunchError, Launched, Stage,
+};
 use lithe_remote::client::session::{ClientError, ConnectOptions, ResumeMode};
+use lithe_remote::client::ssh_identity;
 use lithe_remote::client::trust::Target;
 use lithe_remote::client::{
     wsl, ArtifactError, ConnectionKind, ConnectionLog, ContainerConnection, ForwardSet, Hop,
@@ -114,13 +117,17 @@ pub struct ConnectRequest {
 }
 
 /// A persistent session `remote.connect` returned earlier.
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ResumeInput {
     /// [`OpenedSession::session_key`].
     key: String,
     /// [`OpenedSession::session_token`]; a secret.
     token: SessionToken,
+    /// Opaque identity returned with this token. Legacy records are never
+    /// sent automatically, even when their saved connection id matches.
+    #[serde(default)]
+    binding: Option<String>,
 }
 
 /// Longest session key, which the server limits too.
@@ -144,7 +151,7 @@ impl ResumeInput {
         let token_valid = !token.is_empty()
             && token.len() <= MAX_SESSION_TOKEN_CHARS
             && token.chars().all(|c| c.is_ascii_hexdigit());
-        if key_valid && token_valid {
+        if key_valid && token_valid && self.binding.as_deref().is_none_or(methods::is_sha256_hex) {
             return Ok(());
         }
         Err(crate::connections::invalid_request(ConnectionError {
@@ -173,6 +180,11 @@ pub struct OpenedSession {
     /// Secret a later `resume` presents; the client stores it like a
     /// password and never logs it.
     session_token: Option<SessionToken>,
+    /// Reusable verified identity; absent when only this connection is known.
+    session_binding: Option<String>,
+    /// The supplied resume belonged to this verified target and was tried.
+    /// A mismatched or legacy record remains in the native secret store.
+    resume_consumed: bool,
     /// Whether this connection attached to the session `resume` named.
     /// `false` after a `resume` means that session had ended, or belonged
     /// to another client, and a new one started.
@@ -649,6 +661,13 @@ pub(crate) fn connect_with(
         // The session under that key belongs to another client, or replaced
         // the one the token was issued for.
         result = connect_logged(&request, None, client, program, &log, &mut refused);
+        if let Ok(ConnectResult {
+            session: Some(session),
+            ..
+        }) = &mut result
+        {
+            session.resume_consumed = true;
+        }
     }
     match &result {
         Ok(result) => {
@@ -691,11 +710,6 @@ fn connect_logged(
     if let Some(resume) = resume {
         resume.check()?;
     }
-    let session_key = resume.map_or_else(nonce, |resume| resume.key.clone());
-    let mut server_arguments = vec!["--connect", session_key.as_str()];
-    if let Some(root) = request.install_root.as_deref() {
-        server_arguments.extend(["--state-dir", root]);
-    }
     // Only the build for the host's platform is read and checked, once the
     // probe reports it; here the targets and hashes are just validated.
     let servers = request
@@ -722,15 +736,27 @@ fn connect_logged(
     let _connecting = ConnectingGuard::enter();
 
     let chain = TransportChain::new(chain_hops(request, program)?);
-    let argv = chain
-        .command(&launch_command(
-            request.install_root.as_deref(),
-            &server_arguments,
-        ))
+    let evidence = if client == Client::Ssh {
+        Some(crate::ssh_evidence::Evidence::new().map_err(|error| {
+            CoreError::new(
+                ErrorCode::ProcessStartFailed,
+                "Could not prepare SSH identity evidence",
+            )
+            .with_details(error.to_string())
+        })?)
+    } else {
+        None
+    };
+    let evidence = Arc::new(Mutex::new(evidence));
+    let mut argv = chain
+        .command(&bound_launch_command(request.install_root.as_deref()))
         .map_err(|error| {
             CoreError::new(ErrorCode::InvalidRequest, client.invalid())
                 .with_details(error.to_string())
         })?;
+    if let Some(evidence) = evidence.lock().unwrap_or_else(|p| p.into_inner()).as_ref() {
+        argv.splice(1..1, evidence.arguments());
+    }
     let (program, arguments) = argv.split_first().expect("a hop always produces a command");
     let mut process = Command::new(program);
     process
@@ -773,6 +799,7 @@ fn connect_logged(
         CoreError::new(ErrorCode::ProcessStartFailed, client.supervise_failed())
             .with_details(error.to_string())
     })?;
+    let ssh_pid = child.id();
     let stderr_tail = Arc::new(Mutex::new(VecDeque::new()));
     let stderr_reader = Mutex::new(
         child
@@ -791,6 +818,9 @@ fn connect_logged(
     // its stages over.
     let (stage_sender, stages) = mpsc::channel();
     let launch_log = log.clone();
+    let resume_for_launch = resume.cloned();
+    let chain_target = Target::new(&chain, None);
+    let evidence_for_launch = Arc::clone(&evidence);
     std::thread::spawn(move || {
         let artifact_for = |report: &lithe_remote::client::bootstrap::ProbeReport| {
             let target = report.target()?;
@@ -810,7 +840,8 @@ fn connect_logged(
                 }
             }
         };
-        let result = launch(
+        let mut selected = None;
+        let result = launch_bound(
             &mut output,
             &mut input,
             artifact_for,
@@ -819,16 +850,42 @@ fn connect_logged(
                 // log-exempt: User cancellation: abandon drops the stage receiver before killing the SSH tree.
                 let _ = stage_sender.send(stage);
             },
+            |server_identity| {
+                let actual = evidence_for_launch
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .as_mut()
+                    .and_then(|evidence| evidence.identity(ssh_pid));
+                let binding = if client == Client::Ssh && actual.is_none() {
+                    None
+                } else {
+                    Some(ssh_identity::digest(&(
+                        &chain_target,
+                        actual,
+                        server_identity,
+                    )))
+                };
+                let consumed = resume_for_launch
+                    .as_ref()
+                    .is_some_and(|resume| resume_matches(resume, binding.as_deref()));
+                let key = if consumed {
+                    resume_for_launch.as_ref().unwrap().key.clone()
+                } else {
+                    nonce()
+                };
+                selected = Some((key.clone(), binding, consumed));
+                key
+            },
         );
         // log-exempt: User cancellation: abandon drops the launch receiver before killing the SSH tree.
-        let _ = finished.send((result, output, input));
+        let _ = finished.send((result, output, input, selected));
     });
     let deadline = Instant::now() + CONNECT_DEADLINE;
     let abandon = |error: CoreError, child: &mut Child| {
         reap(&tree, child);
         Err(error)
     };
-    let (result, output, input) = loop {
+    let (result, output, input, selected) = loop {
         if let Err(error) = lithe_protocol::cancellation::check() {
             return abandon(error, &mut child);
         }
@@ -895,12 +952,15 @@ fn connect_logged(
                 );
             }
         }
-        let bytes: Vec<u8> = tail
+        let mut bytes: Vec<u8> = tail
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .iter()
             .copied()
             .collect();
+        if let Some(evidence) = evidence.lock().unwrap_or_else(|p| p.into_inner()).as_mut() {
+            bytes.extend(evidence.diagnostics());
+        }
         bytes
     };
     let failed =
@@ -971,6 +1031,8 @@ fn connect_logged(
         }
     };
     let Launched { report, uploaded } = launched;
+    let (session_key, session_binding, resume_consumed) =
+        selected.expect("bound launch selects a key before returning");
     let host = ProbedHost {
         server_target: report.target().map(ServerTarget::rust_target),
         system: report.system,
@@ -980,7 +1042,9 @@ fn connect_logged(
     };
     let options = ConnectOptions {
         handshake_timeout: HANDSHAKE_TIMEOUT,
-        session_token: resume.map(|resume| resume.token.clone()),
+        session_token: resume
+            .filter(|_| resume_consumed)
+            .map(|resume| resume.token.clone()),
         // Events start only after process events are parked below, so the
         // ones a resumed session replays wait for `remote.attachProcess`.
         resume: ResumeMode::Deferred,
@@ -990,7 +1054,7 @@ fn connect_logged(
     let (session, events) = match RemoteSession::from_streams(output, input, &options) {
         Ok(value) => value,
         Err(error) => {
-            *refused = resume.is_some()
+            *refused = resume_consumed
                 && matches!(
                     &error,
                     ClientError::Remote(remote)
@@ -1052,6 +1116,27 @@ fn connect_logged(
         Vec::new()
     };
     let id = nonce();
+    let mut trust_target = Target::new(&chain, capabilities.user_id);
+    trust_target.identity = Some(
+        session_binding
+            .clone()
+            .unwrap_or_else(|| ssh_identity::digest(&nonce())),
+    );
+    if session_binding.is_none() {
+        lithe_diagnostics::core_events::recovery_failed(
+            "remote.session.identity_rejected",
+            "identity",
+            "unverified_route",
+            "ssh",
+        );
+    } else if resume.is_some() && !resume_consumed {
+        lithe_diagnostics::core_events::recovery_failed(
+            "remote.session.identity_rejected",
+            "resume",
+            "binding_mismatch",
+            "core",
+        );
+    }
     registry()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -1059,7 +1144,7 @@ fn connect_logged(
             id.clone(),
             Arc::new(Connection::new(
                 session,
-                Target::new(&chain, capabilities.user_id),
+                trust_target,
                 ConnectionTransport::Process {
                     child: Mutex::new(child),
                     tree,
@@ -1081,12 +1166,47 @@ fn connect_logged(
             windows_interop: capabilities.windows_interop,
             session_key,
             session_token: info.session_token,
+            session_binding,
+            resume_consumed,
             resumed: info.resumed,
             kept_programs,
         }),
         host: Some(host),
         diagnostics: String::new(),
     })
+}
+
+/// A saved connection id is only a lookup hint, never authority to send a
+/// token. Both sides must name the same verified identity before writing.
+fn resume_matches(resume: &ResumeInput, binding: Option<&str>) -> bool {
+    binding.is_some() && resume.binding.as_deref() == binding
+}
+
+#[cfg(test)]
+mod identity_tests {
+    use super::*;
+
+    #[test]
+    fn legacy_changed_and_unverified_targets_never_receive_tokens() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../fixtures/remote/session-binding-v1.json"
+        ))
+        .unwrap();
+        for case in fixture["cases"].as_array().unwrap() {
+            let resume = ResumeInput {
+                key: fixture["session"]["sessionKey"].as_str().unwrap().into(),
+                token: SessionToken::new(fixture["session"]["sessionToken"].as_str().unwrap()),
+                binding: case["binding"].as_str().map(str::to_owned),
+            };
+            resume.check().unwrap();
+            assert_eq!(
+                resume_matches(&resume, case["actual"].as_str()),
+                case["consumed"].as_bool().unwrap(),
+                "{}",
+                case["id"]
+            );
+        }
+    }
 }
 
 /// `remote.readDir`: one directory on a connected host.
@@ -1130,31 +1250,34 @@ pub struct ReadFileRequest {
 /// The version identifies the read for a later conflict-checked write.
 pub fn read_file(request: ReadFileRequest) -> Result<serde_json::Value, CoreError> {
     let connection = lookup(&request.session_id)?;
-    let metadata = connection
-        .session
-        .stat(&request.path)
-        .map_err(|error| request_error(&request.session_id, error))?;
-    if metadata.size > MAX_EDIT_BYTES {
-        return Err(
-            CoreError::new(ErrorCode::NotSupported, "The file is too large to open")
-                .with_details(format!("{} bytes", metadata.size)),
-        );
+    // The read reports metadata from its opened file. A separate stat would
+    // race that open and wait outside the read's cancellation and deadline.
+    let mut stopped = None;
+    let read = connection.session.read_file_limited(
+        &request.path,
+        MAX_EDIT_BYTES as usize,
+        Duration::from_secs(120),
+        || {
+            stopped = lithe_protocol::cancellation::check().err();
+            stopped.is_some()
+        },
+    );
+    if let Some(error) = stopped {
+        return Err(error);
     }
-    let (content, metadata) = connection
-        .session
-        .read_file(&request.path)
-        .map_err(|error| request_error(&request.session_id, error))?;
-    // The file may have grown since `stat`.
-    if content.len() as u64 > MAX_EDIT_BYTES {
-        return Err(
+    let (content, metadata) = read.map_err(|error| {
+        if matches!(&error, ClientError::Remote(remote) if remote.code == RemoteErrorCode::TooLarge)
+        {
             CoreError::new(ErrorCode::NotSupported, "The file is too large to open")
-                .with_details(format!("{} bytes", content.len())),
-        );
-    }
+        } else {
+            request_error(&request.session_id, error)
+        }
+    })?;
     Ok(serde_json::json!({
         "data": methods::encode_bytes(&content),
         "size": metadata.size,
         "modifiedMs": metadata.modified_ms,
+        "revision": metadata.revision,
     }))
 }
 
@@ -1170,6 +1293,9 @@ pub struct WriteFileRequest {
     /// the result is `conflict`; when absent, the file must not exist yet.
     #[serde(default)]
     expected: Option<methods::FileVersion>,
+    /// Editor workspace boundary; absent for explicit general host writes.
+    #[serde(default)]
+    root: Option<String>,
 }
 
 /// Saves a file atomically on the host: `{ status: "saved", size,
@@ -1177,6 +1303,19 @@ pub struct WriteFileRequest {
 /// read or, for a new file, when one appeared.
 pub fn write_file(request: WriteFileRequest) -> Result<serde_json::Value, CoreError> {
     let connection = lookup(&request.session_id)?;
+    if request.root.is_some()
+        && !connection
+            .session
+            .hello()
+            .host
+            .features
+            .contains(&methods::Feature::GuardedWrites)
+    {
+        return Err(CoreError::new(
+            ErrorCode::NotSupported,
+            "The host server does not support scoped saves",
+        ));
+    }
     let content = methods::decode_bytes(&request.data).map_err(|error| {
         CoreError::new(
             ErrorCode::InvalidRequest,
@@ -1188,6 +1327,7 @@ pub fn write_file(request: WriteFileRequest) -> Result<serde_json::Value, CoreEr
         expected: request.expected,
         overwrite: false,
         create_parents: false,
+        root: request.root,
     };
     // The whole file travels in one request, so the deadline grows with it.
     let timeout =
@@ -1198,6 +1338,7 @@ pub fn write_file(request: WriteFileRequest) -> Result<serde_json::Value, CoreEr
         expected: options.expected,
         overwrite: options.overwrite,
         create_parents: options.create_parents,
+        root: options.root,
     };
     let written = connection
         .session
@@ -1215,6 +1356,7 @@ pub fn write_file(request: WriteFileRequest) -> Result<serde_json::Value, CoreEr
             "status": "saved",
             "size": metadata.size,
             "modifiedMs": metadata.modified_ms,
+            "revision": metadata.revision,
         })),
         Err(ClientError::Remote(error))
             if matches!(
@@ -1350,6 +1492,9 @@ pub fn request_error(session_id: &str, error: ClientError) -> CoreError {
             ErrorCode::TimedOut,
             "The remote host did not answer in time",
         ),
+        ClientError::Cancelled => {
+            CoreError::new(ErrorCode::Cancelled, "The remote operation was cancelled")
+        }
         ClientError::Disconnected { diagnostics } => {
             // A broken connection cannot recover.
             forget(session_id);

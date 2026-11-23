@@ -64,6 +64,10 @@ pub struct Target {
     /// naming them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user_id: Option<u32>,
+    /// Actual authenticated target digest, or a connection-local digest when
+    /// reusable evidence is unavailable. Absent only in legacy records.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<String>,
 }
 
 /// The fields of one hop that choose where it ends. Keys, timeouts,
@@ -163,7 +167,11 @@ impl Target {
                 }),
             })
             .collect();
-        Self { hops, user_id }
+        Self {
+            hops,
+            user_id,
+            identity: None,
+        }
     }
 
     /// Refuses targets no transport chain produces: too many hops, empty,
@@ -178,7 +186,11 @@ impl Target {
                 && !value.chars().any(char::is_control)
         };
         let optional = |value: &Option<String>| value.as_deref().is_none_or(field);
-        let valid = self.hops.len() <= MAX_HOPS
+        let valid = self
+            .identity
+            .as_deref()
+            .is_none_or(crate::protocol::methods::is_sha256_hex)
+            && self.hops.len() <= MAX_HOPS
             && self.hops.iter().enumerate().all(|(index, hop)| match hop {
                 TargetHop::Ssh(hop) => {
                     field(&hop.destination)
@@ -632,6 +644,27 @@ mod tests {
 
     fn devbox() -> Target {
         target(vec![Hop::Ssh(ssh("dev@box"))], Some(1000))
+    }
+
+    #[test]
+    fn authenticated_targets_do_not_inherit_alias_only_decisions() {
+        let legacy = devbox();
+        let mut decisions = Decisions::parse(None).unwrap();
+        trust(&mut decisions, &legacy, "/srv/app", false);
+        let bound = |identity: &str| {
+            let mut value = serde_json::to_value(&legacy).unwrap();
+            value["identity"] = json!(identity);
+            serde_json::from_value::<Target>(value).unwrap()
+        };
+        let first = bound(&"a".repeat(64));
+        let rebound = bound(&"b".repeat(64));
+        assert_eq!(state(&decisions, &first, "/srv/app"), TrustState::Unknown);
+        trust(&mut decisions, &first, "/srv/app", false);
+        assert_eq!(state(&decisions, &first, "/srv/app"), TrustState::Trusted);
+        assert_eq!(state(&decisions, &rebound, "/srv/app"), TrustState::Unknown);
+        let reloaded = Decisions::parse(Some(&decisions.text().unwrap())).unwrap();
+        assert_eq!(state(&reloaded, &first, "/srv/app"), TrustState::Trusted);
+        assert_eq!(state(&reloaded, &rebound, "/srv/app"), TrustState::Unknown);
     }
 
     fn trust(decisions: &mut Decisions, target: &Target, path: &str, location: bool) {

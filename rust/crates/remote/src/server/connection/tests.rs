@@ -6,6 +6,29 @@ use std::time::Instant;
 
 const STEP: Duration = Duration::from_secs(5);
 
+// An oversized result must fail only its request; the next reply still arrives.
+#[test]
+fn oversized_response_preserves_the_writer_for_the_next_request() {
+    let (send, receive) = mpsc::sync_channel(3);
+    send.send(Outgoing::Message(Message::success(
+        1,
+        json!("x".repeat(crate::protocol::frame::MAX_FRAME_BYTES)),
+    )))
+    .unwrap();
+    send.send(Outgoing::Message(Message::success(2, json!({}))))
+        .unwrap();
+    send.send(Outgoing::Close).unwrap();
+    let mut bytes = Vec::new();
+    write_loop(&mut bytes, receive).unwrap();
+    let mut input = std::io::Cursor::new(bytes);
+    let first: Message = serde_json::from_slice(&read_frame(&mut input).unwrap().unwrap()).unwrap();
+    assert!(
+        matches!(first, Message::Response { id: 1, error: Some(error), .. } if error.code == ErrorCode::TooLarge)
+    );
+    let next: Message = serde_json::from_slice(&read_frame(&mut input).unwrap().unwrap()).unwrap();
+    assert_eq!(next, Message::success(2, json!({})));
+}
+
 #[test]
 fn cancellation_waits_for_process_terminal_and_watch_publication() {
     let root = WatchRoot::new();

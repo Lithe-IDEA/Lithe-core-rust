@@ -20,10 +20,10 @@ use crate::server::session::Session;
 use crate::server::threads::Parked;
 use crate::server::{parse, to_value};
 use serde_json::Value;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
-use std::sync::Arc;
+use std::sync::mpsc::{RecvTimeoutError, SendError};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 const QUIET_PERIOD: Duration = Duration::from_millis(50);
@@ -32,6 +32,15 @@ const MAX_BATCH_DELAY: Duration = Duration::from_millis(250);
 /// Changes per batch before the batch degrades to `overflow`. Beyond this
 /// a rescan is cheaper for the client than applying individual changes.
 const MAX_BATCH_CHANGES: usize = 5000;
+
+/// Path bytes before JSON escaping (at most sixfold). Leaves frame headroom
+/// for change kinds and the envelope even for control characters in names.
+const MAX_BATCH_PATH_BYTES: usize = 1024 * 1024;
+
+/// Backend pressure is bounded separately from the coalesced event frame.
+const MAX_RAW_CHANGES: usize = 2048;
+const MAX_RAW_PATH_BYTES: usize = 1024 * 1024;
+const MAX_LIMIT_MESSAGE_CHARS: usize = 1024;
 
 /// A change as reported by a backend, before coalescing.
 pub(crate) enum RawEvent {
@@ -76,8 +85,142 @@ impl Excludes {
     }
 }
 
-/// Receives raw events from a backend thread.
-pub(crate) type Sink = Sender<RawEvent>;
+/// Nonblocking backend queue. Control events survive a full change queue.
+pub(crate) struct Sink(Arc<RawQueue>);
+
+pub(crate) struct RawReceiver(Arc<RawQueue>);
+
+struct RawQueue {
+    state: Mutex<RawState>,
+    ready: Condvar,
+}
+
+/// Change paths are bounded by both count and bytes; overflow is sticky until read.
+struct RawState {
+    changes: VecDeque<(PathBuf, ChangeKind)>,
+    bytes: usize,
+    overflow: bool,
+    limit: Option<String>,
+    root_removed: bool,
+    closed: bool,
+    receiving: bool,
+}
+
+fn raw_channel() -> (Sink, RawReceiver) {
+    let queue = Arc::new(RawQueue {
+        state: Mutex::new(RawState {
+            changes: VecDeque::new(),
+            bytes: 0,
+            overflow: false,
+            limit: None,
+            root_removed: false,
+            closed: false,
+            receiving: true,
+        }),
+        ready: Condvar::new(),
+    });
+    (Sink(Arc::clone(&queue)), RawReceiver(queue))
+}
+
+impl Sink {
+    pub(crate) fn send(&self, event: RawEvent) -> Result<(), SendError<RawEvent>> {
+        let mut state = crate::server::lock(&self.0.state);
+        if !state.receiving {
+            return Err(SendError(event));
+        }
+        match event {
+            RawEvent::Change(path, kind) if !state.overflow => {
+                let bytes = path.as_os_str().len();
+                if state.changes.len() >= MAX_RAW_CHANGES
+                    || state.bytes.saturating_add(bytes) > MAX_RAW_PATH_BYTES
+                {
+                    state.changes.clear();
+                    state.bytes = 0;
+                    state.overflow = true;
+                } else {
+                    state.bytes += bytes;
+                    state.changes.push_back((path, kind));
+                }
+            }
+            RawEvent::Change(..) => {}
+            RawEvent::Overflow => {
+                state.changes.clear();
+                state.bytes = 0;
+                state.overflow = true;
+            }
+            RawEvent::LimitReached(message) => {
+                state.limit = Some(message.chars().take(MAX_LIMIT_MESSAGE_CHARS).collect());
+            }
+            RawEvent::RootRemoved => state.root_removed = true,
+        }
+        self.0.ready.notify_one();
+        Ok(())
+    }
+}
+
+impl Drop for Sink {
+    fn drop(&mut self) {
+        crate::server::lock(&self.0.state).closed = true;
+        self.0.ready.notify_one();
+    }
+}
+
+impl RawReceiver {
+    fn recv(&self) -> Result<RawEvent, RecvTimeoutError> {
+        self.receive(None)
+    }
+
+    fn recv_timeout(&self, timeout: Duration) -> Result<RawEvent, RecvTimeoutError> {
+        self.receive(Some(Instant::now() + timeout))
+    }
+
+    fn receive(&self, deadline: Option<Instant>) -> Result<RawEvent, RecvTimeoutError> {
+        let mut state = crate::server::lock(&self.0.state);
+        loop {
+            if std::mem::take(&mut state.overflow) {
+                return Ok(RawEvent::Overflow);
+            }
+            if let Some((path, kind)) = state.changes.pop_front() {
+                state.bytes -= path.as_os_str().len();
+                return Ok(RawEvent::Change(path, kind));
+            }
+            if let Some(message) = state.limit.take() {
+                return Ok(RawEvent::LimitReached(message));
+            }
+            if std::mem::take(&mut state.root_removed) {
+                return Ok(RawEvent::RootRemoved);
+            }
+            if state.closed {
+                return Err(RecvTimeoutError::Disconnected);
+            }
+            state = if let Some(deadline) = deadline {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    return Err(RecvTimeoutError::Timeout);
+                }
+                self.0
+                    .ready
+                    .wait_timeout(state, remaining)
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .0
+            } else {
+                self.0
+                    .ready
+                    .wait(state)
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+            };
+        }
+    }
+}
+
+impl Drop for RawReceiver {
+    fn drop(&mut self) {
+        let mut state = crate::server::lock(&self.0.state);
+        state.receiving = false;
+        state.changes.clear();
+        state.bytes = 0;
+    }
+}
 
 pub(crate) struct WatchTable {
     registry: Registry<RunningWatch>,
@@ -157,12 +300,12 @@ impl WatchTable {
         let watch_id = params.watch_id;
         let coalescer = {
             let session = Arc::clone(session);
-            Parked::start("remote-watch", move |raw: Receiver<RawEvent>| {
+            Parked::start("remote-watch", move |raw: RawReceiver| {
                 coalesce(raw, |batch| deliver(&session, watch_id, batch));
             })?
         };
         let excludes = Arc::new(Excludes::new(root.clone(), params.exclude_names));
-        let (sink, raw) = mpsc::channel();
+        let (sink, raw) = raw_channel();
         let (backend, watched_directories) = watcher::start(root, &params.root, excludes, sink)?;
         self.registry.insert(
             watch_id,
@@ -216,6 +359,7 @@ fn deliver(session: &Session, watch_id: u64, delivery: Delivery) {
 #[derive(Default)]
 struct Batch {
     changes: BTreeMap<PathBuf, ChangeKind>,
+    bytes: usize,
     overflow: bool,
 }
 
@@ -232,9 +376,13 @@ impl Batch {
             (Some(ChangeKind::Deleted), ChangeKind::Created) => ChangeKind::Modified,
             (_, kind) => kind,
         };
+        if !self.changes.contains_key(&path) {
+            self.bytes = self.bytes.saturating_add(path.as_os_str().len());
+        }
         self.changes.insert(path, merged);
-        if self.changes.len() > MAX_BATCH_CHANGES {
+        if self.changes.len() > MAX_BATCH_CHANGES || self.bytes > MAX_BATCH_PATH_BYTES {
             self.changes.clear();
+            self.bytes = 0;
             self.overflow = true;
         }
     }
@@ -258,7 +406,7 @@ impl Batch {
 }
 
 /// Merges raw events into batches until the backend closes the channel.
-pub(crate) fn coalesce(raw: Receiver<RawEvent>, mut deliver: impl FnMut(Delivery)) {
+pub(crate) fn coalesce(raw: RawReceiver, mut deliver: impl FnMut(Delivery)) {
     let mut batch = Batch::default();
     loop {
         // Wait for the first event of a batch without a deadline.
@@ -272,6 +420,7 @@ pub(crate) fn coalesce(raw: Receiver<RawEvent>, mut deliver: impl FnMut(Delivery
                 Some(RawEvent::Change(path, kind)) => batch.add(path, kind),
                 Some(RawEvent::Overflow) => {
                     batch.changes.clear();
+                    batch.bytes = 0;
                     batch.overflow = true;
                 }
                 Some(RawEvent::LimitReached(message)) => {
@@ -317,6 +466,50 @@ pub(crate) fn coalesce(raw: Receiver<RawEvent>, mut deliver: impl FnMut(Delivery
 mod tests {
     use super::*;
 
+    #[test]
+    fn raw_backpressure_preserves_overflow_and_root_removal() {
+        let (sender, receiver) = raw_channel();
+        for index in 0..=MAX_RAW_CHANGES {
+            sender
+                .send(RawEvent::Change(
+                    format!("/w/{index}").into(),
+                    ChangeKind::Modified,
+                ))
+                .unwrap();
+        }
+        sender
+            .send(RawEvent::LimitReached("watch limit".into()))
+            .unwrap();
+        sender.send(RawEvent::RootRemoved).unwrap();
+        drop(sender);
+        let mut deliveries = Vec::new();
+        coalesce(receiver, |delivery| deliveries.push(delivery));
+        assert!(deliveries
+            .iter()
+            .any(|delivery| matches!(delivery, Delivery::Changes { overflow: true, .. })));
+        assert!(deliveries
+            .iter()
+            .any(|delivery| matches!(delivery, Delivery::Error(WatchErrorCode::LimitReached, _))));
+        assert!(matches!(
+            deliveries.last(),
+            Some(Delivery::Error(WatchErrorCode::RootRemoved, _))
+        ));
+    }
+
+    #[test]
+    fn a_batch_with_long_paths_requires_a_rescan_before_it_exceeds_the_frame_budget() {
+        let mut batch = Batch::default();
+        for index in 0..300 {
+            batch.add(
+                format!("/w/{index}/{}", "x".repeat(4096)).into(),
+                ChangeKind::Modified,
+            );
+        }
+        assert!(
+            matches!(batch.take(), Some(Delivery::Changes { changes, overflow: true }) if changes.is_empty())
+        );
+    }
+
     fn changes_of(deliveries: &[Delivery]) -> Vec<(String, ChangeKind)> {
         deliveries
             .iter()
@@ -335,7 +528,7 @@ mod tests {
     // `modified` and one `created`, not the raw sequence.
     #[test]
     fn bursts_merge_into_one_sorted_batch() {
-        let (sender, receiver) = mpsc::channel();
+        let (sender, receiver) = raw_channel();
         for (path, kind) in [
             ("/w/b.txt", ChangeKind::Deleted),
             ("/w/a.txt", ChangeKind::Created),
@@ -358,7 +551,7 @@ mod tests {
 
     #[test]
     fn lost_events_turn_the_batch_into_an_overflow() {
-        let (sender, receiver) = mpsc::channel();
+        let (sender, receiver) = raw_channel();
         sender
             .send(RawEvent::Change("/w/a".into(), ChangeKind::Created))
             .unwrap();

@@ -10,6 +10,7 @@ pub mod failure_log;
 
 pub mod authentication;
 pub mod configuration;
+pub mod private_directory;
 
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};

@@ -4,7 +4,7 @@
 //! - `--connect <key>`: relay standard streams to the persistent session
 //!   `<key>`, starting its daemon when needed. This is what transports run.
 //! - `--daemon <key>`: the persistent session itself, started by `--connect`.
-//! - `--identity`, `--version`, `--print-environment`: helpers for the
+//! - `--identity`, `--target-identity`, `--version`, `--print-environment`: helpers for the
 //!   bootstrapper and for environment resolution.
 //!
 //! Nothing but protocol bytes may reach standard output in `--stdio` and
@@ -15,7 +15,7 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: lithe-remote-server --stdio | --connect <key> [--state-dir <dir>] | --daemon <key> [--state-dir <dir>] | --identity | --version | --print-environment";
+const USAGE: &str = "usage: lithe-remote-server --stdio | --connect <key> [--state-dir <dir>] | --daemon <key> [--state-dir <dir>] | --target-identity --state-dir <dir> | --identity | --version | --print-environment";
 
 fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
@@ -34,6 +34,9 @@ fn main() -> ExitCode {
                 .map_err(io::Error::from)
                 .and_then(|()| writeln!(stdout))
         }),
+        ["--target-identity", "--state-dir", root] => {
+            lithe_remote::server::print_target_identity(std::path::Path::new(root))
+        }
         ["--version"] => writeln!(io::stdout(), "{}", env!("CARGO_PKG_VERSION")),
         ["--print-environment"] => lithe_remote::server::print_environment(),
         _ => {

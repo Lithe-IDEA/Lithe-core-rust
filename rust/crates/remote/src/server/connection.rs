@@ -7,7 +7,7 @@
 //! complete in any order; `process.kill` and `terminal.close` are among them
 //! because finding every member of a session scans the process table.
 
-use crate::protocol::frame::{read_frame, write_frame};
+use crate::protocol::frame::{read_frame, write_frame, MAX_FRAME_BYTES};
 use crate::protocol::methods::{
     self, AckParams, HelloParams, HelloResult, ResumeParams, ResumeResult, SessionInfo,
 };
@@ -496,10 +496,52 @@ mod tests;
 
 fn write_loop(mut output: impl Write, receiver: Receiver<Outgoing>) -> io::Result<()> {
     while let Ok(Outgoing::Message(message)) = receiver.recv() {
-        let payload = serde_json::to_vec(&message).map_err(io::Error::from)?;
+        let mut payload = Vec::new();
+        if let Err(error) = serde_json::to_writer(FrameBuffer(&mut payload), &message) {
+            if payload.len() < MAX_FRAME_BYTES {
+                return Err(io::Error::from(error));
+            }
+            match message {
+                Message::Response { id, .. } => {
+                    payload = serde_json::to_vec(&Message::failure(
+                        id,
+                        RemoteError::new(
+                            ErrorCode::TooLarge,
+                            "the response exceeds the frame limit",
+                        ),
+                    ))
+                    .map_err(io::Error::from)?;
+                }
+                _ => {
+                    // Events have no request id for a recoverable error response.
+                    // Their producers must bound batches; never silently discard one.
+                    return Err(io::Error::from(error));
+                }
+            }
+        }
         write_frame(&mut output, &payload).map_err(|error| io::Error::other(error.to_string()))?;
     }
     Ok(())
+}
+
+/// Stops serialization before an oversized response allocates another full frame.
+struct FrameBuffer<'a>(&'a mut Vec<u8>);
+
+impl Write for FrameBuffer<'_> {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        let remaining = MAX_FRAME_BYTES - self.0.len();
+        self.0
+            .extend_from_slice(&bytes[..bytes.len().min(remaining)]);
+        if bytes.len() > remaining {
+            Err(io::Error::other("frame budget exceeded"))
+        } else {
+            Ok(bytes.len())
+        }
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 pub(crate) fn respond(id: u64, reply: Result<Value, RemoteError>) -> Message {

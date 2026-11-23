@@ -107,6 +107,50 @@ pub fn launch_command(root: Option<&str>, server_arguments: &[&str]) -> Vec<Stri
     command
 }
 
+/// Launches a persistent session only after the client has compared the
+/// identity on this same stream. No old key or token is sent before then.
+pub fn bound_launch_command(root: Option<&str>) -> Vec<String> {
+    let mut command = launch_command(root, &[]);
+    command[2] = LAUNCH_SCRIPT.replace(
+        "shift; exec \"$exe\" \"$@\"",
+        "target=$(\"$exe\" --target-identity --state-dir \"$root\") || exit 95; echo \"LITHE-TARGET $target\"; read key || exit 96; exec \"$exe\" --connect \"$key\" --state-dir \"$root\"",
+    );
+    command
+}
+
+/// Installs the server, reads its account-local identity and lets the caller
+/// select a fresh or previously bound key before the daemon is contacted.
+pub fn launch_bound(
+    output: &mut impl Read,
+    input: &mut impl Write,
+    artifact_for: impl FnOnce(&ProbeReport) -> Option<ServerArtifact>,
+    log: &ConnectionLog,
+    stage: impl FnMut(Stage),
+    select_key: impl FnOnce(&str) -> String,
+) -> Result<Launched, LaunchError> {
+    let launched = launch(output, input, artifact_for, log, stage)?;
+    let line = read_line(output, 128)?
+        .ok_or_else(|| LaunchError::Protocol("missing target identity".into()))?;
+    let text = std::str::from_utf8(&line)
+        .map_err(|_| LaunchError::Protocol("invalid target identity".into()))?;
+    let identity = text
+        .strip_prefix("LITHE-TARGET ")
+        .filter(|value| crate::protocol::methods::is_sha256_hex(value))
+        .ok_or_else(|| LaunchError::Protocol("invalid target identity".into()))?;
+    let key = select_key(identity);
+    if key.is_empty()
+        || key.len() > 64
+        || !key
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || b"._-".contains(&c))
+    {
+        return Err(LaunchError::Protocol("invalid session key".into()));
+    }
+    writeln!(input, "{key}").map_err(LaunchError::Io)?;
+    input.flush().map_err(LaunchError::Io)?;
+    Ok(launched)
+}
+
 /// What happened before the server took over the stream.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Launched {
