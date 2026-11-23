@@ -8810,3 +8810,18 @@ editor and may explicitly set selected default handlers. macOS associates conten
 types, so extensions sharing a type may change together. The installed package
 stays read-only. No regex or all-files catch-all
 registration is permitted. See [fixtures](../fixtures/application/file-associations-v1.json).
+
+## Plugin workflow projections (`plugins.workflow`)
+
+`operation:"prepare"` takes `{method,params}` and returns strictly checked params
+and `{textBytes,outputLines,outputBytes,resources}` limits. Network defaults are
+resolved here. `quickPick` takes `{items,query}` and returns source `indices`;
+`input` takes `{pick,value}` and returns `{valid}`. `status` takes bounded
+`items:[{id,priority}]` and returns ordered `ids`. `treePage` takes `{cursor,
+lastCursor,count,lastCount,rows,lastVisible}` and returns `{load}` only near the
+end when both cursor and retained count advance. `output` takes `{open,text}`
+and returns `{lines,open,maxLines,maxBytes}` as one bounded increment, never the
+retained history. Unknown operations/fields and malformed projection input fail
+with `invalid_request`. This hot path is excluded from request tracing; its text
+may contain secrets. Public backend methods and lifecycle are specified in the
+[plugin contract](../../shared/plugins/contract/v1/README.md#workflow-host-methods).

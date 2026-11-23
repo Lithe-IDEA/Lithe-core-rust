@@ -89,6 +89,8 @@ pub(crate) enum HostParams {
     WorkspaceFindFiles,
     /// A bounded text search at the workspace root (plan API-08).
     WorkspaceFindText,
+    /// Strict, bounded interactive, presentation and managed-network requests.
+    Workflow,
     /// Any object whose `context`, when present, is a well-formed
     /// reference. The service checks the rest and answers
     /// `plugin.host.invalidParams` or, for a field it does not know,
@@ -112,6 +114,120 @@ pub(crate) struct HostMethod {
 /// service adds its rows here, its grant to `GRANTABLE_HOST_SERVICES` and
 /// the manifest permission, and its handler to the host's dispatcher.
 pub(crate) const HOST_METHODS: &[HostMethod] = &[
+    HostMethod {
+        method: "lithe/host/window/showQuickPick",
+        service: "window",
+        permission: Some("window.input"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/window/showInputBox",
+        service: "window",
+        permission: Some("window.input"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/preview/openMarkdown",
+        service: "preview",
+        permission: Some("preview.open"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/editor/showDiff",
+        service: "editor",
+        permission: Some("editor.open"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/views/refresh",
+        service: "views",
+        permission: Some("views.refresh"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/output/create",
+        service: "output",
+        permission: Some("output.write"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/output/append",
+        service: "output",
+        permission: Some("output.write"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/output/clear",
+        service: "output",
+        permission: Some("output.write"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/output/show",
+        service: "output",
+        permission: Some("output.write"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/output/dispose",
+        service: "output",
+        permission: Some("output.write"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/progress/create",
+        service: "progress",
+        permission: Some("window.progress"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/progress/report",
+        service: "progress",
+        permission: Some("window.progress"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/progress/end",
+        service: "progress",
+        permission: Some("window.progress"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/statusBar/setItem",
+        service: "statusBar",
+        permission: Some("statusBar.write"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/statusBar/removeItem",
+        service: "statusBar",
+        permission: Some("statusBar.write"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/clipboard/readText",
+        service: "clipboard",
+        permission: Some("clipboard.read"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/clipboard/writeText",
+        service: "clipboard",
+        permission: Some("clipboard.write"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/workspace/reveal",
+        service: "workspace",
+        permission: Some("workspace.reveal"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/network/request",
+        service: "network",
+        permission: Some("network.request"),
+        params: HostParams::Workflow,
+    },
     HostMethod {
         method: RUN_START,
         service: HOST_SERVICE_RUN,
@@ -409,13 +525,13 @@ pub(crate) const HOST_METHODS: &[HostMethod] = &[
         method: "lithe/host/preview/openHTML",
         service: "preview",
         permission: Some("preview.open"),
-        params: HostParams::Object,
+        params: HostParams::Workflow,
     },
     HostMethod {
         method: "lithe/host/browser/openExternal",
         service: "browser",
         permission: Some("browser.open"),
-        params: HostParams::Object,
+        params: HostParams::Workflow,
     },
     HostMethod {
         method: "lithe/host/window/showInformation",
@@ -534,7 +650,11 @@ pub fn host_request(
             details: None,
         });
     }
-    check_host_params(entry.params, params)?;
+    if entry.params == HostParams::Workflow {
+        workflow::check_params(method, params.unwrap_or(&Value::Null))?;
+    } else {
+        check_host_params(entry.params, params)?;
+    }
     if entry.method == GET_CAPABILITIES {
         return Ok(HostRoute::Answer(capabilities_answer(version, granted)));
     }

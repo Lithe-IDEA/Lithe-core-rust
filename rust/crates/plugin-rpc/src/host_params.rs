@@ -30,6 +30,7 @@ pub(crate) fn check_host_params(
         _ => return Err(invalid("Params must be an object.")),
     };
     let allowed: &[&str] = match rule {
+        HostParams::Workflow => return Err(invalid("Workflow validation requires a method.")),
         HostParams::Empty => &[],
         HostParams::Credential { with_secret: true } => &["key", "secret"],
         HostParams::Credential { with_secret: false } => &["key"],
@@ -284,7 +285,7 @@ pub(crate) fn check_host_params(
         | HostParams::WorkspaceWatch
         | HostParams::WorkspaceFindFiles
         | HostParams::WorkspaceFindText => check_workspace_read_params(rule, params, &invalid)?,
-        HostParams::Empty | HostParams::Object => {}
+        HostParams::Empty | HostParams::Object | HostParams::Workflow => {}
     }
     Ok(())
 }

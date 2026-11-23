@@ -14,6 +14,8 @@
 
 ## 待合入
 
+- 本 PR（合入日期待合并时填写），[@xiaoyumuxi](https://github.com/xiaoyumuxi)，`pluginAPIVersion` 0 / `litheFunctions` 0 内补充（API-03/12/13/16/17/18/22/38）：新增 19 个独立授权方法，补齐输入、内联只读预览、文本对比、视图刷新、输出、可取消进度、状态项、剪贴板、文件管理器和有界 HTTP；已有 HTML 预览新增内联来源，浏览器资源形式补齐已保存/拒绝未保存语义。树新增 `hasChildren`、`cursor` 和 `expand`、`loadMore`、`refresh` 事件；后端保留完整已加载范围，分页无进展停止，失败显式重试。共享 `plugins.workflow` 负责严格参数、默认值、限额、搜索、排序、分页和输出增量，四种官方 SDK 同步包装与事件。没有新协议版本；宿主可用方法仍由 `getCapabilities` 发现。
+
 - [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190)，[@xiaoyumuxi](https://github.com/xiaoyumuxi)（API-07/08，`pluginAPIVersion` 0 内补充）：Core 新增 `workspace.watchPlan`、`workspace.watchEvents`、`workspace.findFiles`、`workspace.findText`，宿主方法保持原名和权限。路由前严格校验监听与搜索参数，复用文件匹配、编码和隐藏/索引规则，以 no-follow 句柄处理实时磁盘；搜索分页有查询绑定游标、200 条总上限、取消和 30 秒预算，监听投影有排序去重、隐藏过滤和溢出重扫。桌面使用 Viva 原生事件，订阅受插件/会话/上下文约束，注册后先发重扫，释放前停止通知；无空闲轮询。macOS 原生事件与资源释放已验证，Windows 原生验证本轮未执行。没有新增协议版本、宿主方法或通知；合入日期在合并时补齐。
 
 - [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190)，[@xiaoyumuxi](https://github.com/xiaoyumuxi)（API-06，`pluginAPIVersion` 0 内补充）：Core 新增 `workspace.readDirectory`、`workspace.stat`、`workspace.readFile` 三个执行命令；宿主方法保持原名和权限。路由前严格校验上下文、资源、未知字段与分页/读取上限。补齐 no-follow、Windows reparse point、稳定有界分页、磁盘 UTF-8/base64 和截断前缀 identity 的公开行为及共享 fixture；Node SDK 同步明确前缀 identity 类型与可空修改时间；其他 SDK 保留通用 JSON 返回值。没有新增协议版本、方法或通知。合入日期在合并时补齐。
@@ -112,6 +114,8 @@
 | API-01、API-37 | `getCapabilities` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-01 | `subscriptions/dispose` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-02 | `commands/didRun`（通知） | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
+| API-03 | `statusBar/setItem` | 0 | 待合入 | 本 PR |
+| API-03 | `statusBar/removeItem` | 0 | 待合入 | 本 PR |
 | API-04、API-05 | `workspace/didChangeContexts`（通知） | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-05 | `workspace/listContexts` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-05 | `workspace/getContext` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
@@ -125,8 +129,6 @@
 | API-07 | `workspace/watch` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-07 | `workspace/watch` | 0（执行/校验补充） | 待合入 | [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) |
 | API-07、API-24 | `subscriptions/notify`（通知） | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
-| API-29 | `build/getOptions` | 0 | 2026-11-21 | [#155](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/155) |
-| API-29 | `build/watchConfiguration` | 0 | 2026-11-21 | [#155](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/155) |
 | API-08 | `workspace/findFiles` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-08 | `workspace/findFiles` | 0（执行/校验补充） | 待合入 | [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) |
 | API-08 | `workspace/findText` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
@@ -145,21 +147,41 @@
 | API-11 | `workspace/rename` | 0 | 待合入 | [#183](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/183) |
 | API-11 | `workspace/copy` | 0 | 待合入 | [#183](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/183) |
 | API-11 | `workspace/trash` | 0 | 待合入 | [#183](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/183) |
+| API-12 | `editor/showDiff` | 0 | 待合入 | 本 PR |
 | API-12 | `documents/registerContentProvider` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
+| API-13 | `views/refresh` | 0 | 待合入 | 本 PR |
 | API-15 | `editor/open` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-15 | `editor/reveal` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
+| API-16 | `preview/openMarkdown` | 0 | 待合入 | 本 PR |
+| API-16 | `preview/openHTML`（内联来源） | 0 | 待合入 | 本 PR |
+| API-16 | `browser/openExternal`（资源打开） | 0 | 待合入 | 本 PR |
 | API-16 | `preview/openHTML` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-16 | `browser/openExternal` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
+| API-17 | `window/showQuickPick` | 0 | 待合入 | 本 PR |
+| API-17 | `window/showInputBox` | 0 | 待合入 | 本 PR |
 | API-17 | `window/showInformation` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-17 | `window/showWarning` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-17 | `window/showError` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
+| API-18 | `clipboard/readText` | 0 | 待合入 | 本 PR |
+| API-18 | `clipboard/writeText` | 0 | 待合入 | 本 PR |
+| API-18 | `workspace/reveal` | 0 | 待合入 | 本 PR |
 | API-21 | `credentials/get` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-21 | `credentials/set` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-21 | `credentials/delete` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
+| API-22 | `output/create` | 0 | 待合入 | 本 PR |
+| API-22 | `output/append` | 0 | 待合入 | 本 PR |
+| API-22 | `output/clear` | 0 | 待合入 | 本 PR |
+| API-22 | `output/show` | 0 | 待合入 | 本 PR |
+| API-22 | `output/dispose` | 0 | 待合入 | 本 PR |
+| API-22 | `progress/create` | 0 | 待合入 | 本 PR |
+| API-22 | `progress/report` | 0 | 待合入 | 本 PR |
+| API-22 | `progress/end` | 0 | 待合入 | 本 PR |
 | API-22、API-25 | `languageServer/setStatus` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-23 | `run/start` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-23 | `run/stop` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-23 | `run/didExit`（通知） | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
+| API-23 | `run/start`：`temporaryFiles` 增加 `{name, base64}` 字节文件 | 0 | 2026-11-13 | [#23](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/23) |
+| API-23 | `run/start`：`process.outputEncoding` 可选声明 | 0 | 2026-11-20 | [#128](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/128) |
 | API-24 | `terminal/create` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-24 | `terminal/show` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-24 | `terminal/close` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
@@ -172,15 +194,16 @@
 | API-25 | `languageServer/didChangeState`（通知） | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-25 | `languageServer/didReceiveNotification`（通知） | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-27 | `editor/registerActions` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
+| API-29 | `build/getOptions` | 0 | 2026-11-21 | [#155](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/155) |
+| API-29 | `build/watchConfiguration` | 0 | 2026-11-21 | [#155](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/155) |
+| API-29 | `lithe/build/prepareRun`：返回值 `outputEncoding` 可选声明（提供者方法） | `litheBuild` 0、1 | 2026-11-20 | [#128](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/128) |
 | API-30 | `debug/start` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-35 | `functions/providers` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-35 | `functions/invoke` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
+| API-38 | `network/request` | 0 | 待合入 | 本 PR |
+| API-40 | `workspace/getHostPaths` | 0 | 待合入 | [#151](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/151) |
 | — | `keymapImport/listInputs` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | — | `keymapImport/readChunk` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
-| API-23 | `run/start`：`temporaryFiles` 增加 `{name, base64}` 字节文件 | 0 | 2026-11-13 | [#23](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/23) |
-| API-23 | `run/start`：`process.outputEncoding` 可选声明 | 0 | 2026-11-20 | [#128](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/128) |
-| API-29 | `lithe/build/prepareRun`：返回值 `outputEncoding` 可选声明（提供者方法） | `litheBuild` 0、1 | 2026-11-20 | [#128](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/128) |
-| API-40 | `workspace/getHostPaths` | 0 | 待合入 | [#151](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/151) |
 
 ## 时间线（新的在上）
 

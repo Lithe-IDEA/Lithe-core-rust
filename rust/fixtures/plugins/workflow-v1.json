@@ -1,0 +1,34 @@
+{
+  "cases": [
+    {
+      "name": "filter matches every word across item fields in source order",
+      "request": {"operation":"quickPick","items":[{"label":"Alpha","description":"Rust"},{"label":"Beta","detail":"RUST"}],"query":"rust beta"},
+      "result": {"indices":[1]}
+    },
+    {
+      "name": "input refuses multiline values",
+      "request": {"operation":"input","pick":false,"value":"a\nb"},
+      "result": {"valid":false}
+    },
+    {
+      "name": "page starts near the last visible rows",
+      "request": {"operation":"treePage","cursor":"page-2","lastCursor":"","count":20,"lastCount":0,"rows":40,"lastVisible":32},
+      "result": {"load":true}
+    },
+    {
+      "name": "page waits until the viewport approaches its end",
+      "request": {"operation":"treePage","cursor":"page-2","lastCursor":"","count":20,"lastCount":0,"rows":40,"lastVisible":31},
+      "result": {"load":false}
+    },
+    {
+      "name": "changed cursor without retained range growth stops automatic paging",
+      "request": {"operation":"treePage","cursor":"page-3","lastCursor":"page-2","count":20,"lastCount":20,"rows":40,"lastVisible":39},
+      "result": {"load":false}
+    },
+    {
+      "name": "repeated cursor stops paging even if item count grows",
+      "request": {"operation":"treePage","cursor":"page-2","lastCursor":"page-2","count":40,"lastCount":20,"rows":40,"lastVisible":39},
+      "result": {"load":false}
+    }
+  ]
+}

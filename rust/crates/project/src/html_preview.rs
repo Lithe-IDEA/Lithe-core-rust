@@ -135,6 +135,13 @@ pub enum HtmlPreviewResource {
 
 /// The site of a document, or `None` for a document that is not an absolute file path.
 pub fn html_preview_site(request: HtmlPreviewSiteRequest) -> Option<HtmlPreviewSite> {
+    if request.document_path.starts_with("lithe-plugin-preview:") {
+        return Some(HtmlPreviewSite {
+            root: String::new(),
+            address: "index.html".into(),
+            mime: "text/html; charset=utf-8".into(),
+        });
+    }
     let document = Path::new(&request.document_path);
     let (_, root) = document_scope(document, request.workspace_root.as_deref())?;
     let relative = names(document.strip_prefix(root).ok()?)?;
@@ -159,6 +166,13 @@ pub fn html_preview_site(request: HtmlPreviewSiteRequest) -> Option<HtmlPreviewS
 /// symbolic links are resolved, so neither `..` nor a link inside the root reaches a file outside
 /// it or a hidden one.
 pub fn resolve_html_preview_request(request: HtmlPreviewRequest) -> HtmlPreviewResource {
+    if request.document_path.starts_with("lithe-plugin-preview:") {
+        return if request.path == "index.html" || request.path.is_empty() {
+            HtmlPreviewResource::Document
+        } else {
+            HtmlPreviewResource::None
+        };
+    }
     let document = Path::new(&request.document_path);
     let Some((folder, root)) = document_scope(document, request.workspace_root.as_deref()) else {
         return HtmlPreviewResource::None;
@@ -296,6 +310,39 @@ mod tests {
     };
     use std::fs;
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn inline_preview_serves_only_the_supplied_document() {
+        let document = "lithe-plugin-preview://session/context/page";
+        let site = html_preview_site(HtmlPreviewSiteRequest {
+            document_path: document.into(),
+            workspace_root: Some("/workspace".into()),
+        })
+        .unwrap();
+        assert_eq!(site.root, "");
+        assert_eq!(site.address, "index.html");
+        for path in [
+            "",
+            "index.html",
+            "secret.txt",
+            "../secret.txt",
+            "/etc/hosts",
+        ] {
+            let result = resolve_html_preview_request(HtmlPreviewRequest {
+                document_path: document.into(),
+                workspace_root: Some("/workspace".into()),
+                path: path.into(),
+            });
+            assert_eq!(
+                result,
+                if path.is_empty() || path == "index.html" {
+                    HtmlPreviewResource::Document
+                } else {
+                    HtmlPreviewResource::None
+                }
+            );
+        }
+    }
 
     /// The path of slash-separated `relative` under `base`, in the platform's own separators.
     fn under(base: &Path, relative: &str) -> PathBuf {

@@ -40,6 +40,26 @@ export const METHODS = Object.freeze({
  * method, and `getCapabilities` says which ones this session may call.
  */
 export const HOST_METHODS = Object.freeze({
+  windowShowQuickPick: 'lithe/host/window/showQuickPick',
+  windowShowInputBox: 'lithe/host/window/showInputBox',
+  previewOpenMarkdown: 'lithe/host/preview/openMarkdown',
+  editorShowDiff: 'lithe/host/editor/showDiff',
+  viewsRefresh: 'lithe/host/views/refresh',
+  outputCreate: 'lithe/host/output/create',
+  outputAppend: 'lithe/host/output/append',
+  outputClear: 'lithe/host/output/clear',
+  outputShow: 'lithe/host/output/show',
+  outputDispose: 'lithe/host/output/dispose',
+  progressCreate: 'lithe/host/progress/create',
+  progressReport: 'lithe/host/progress/report',
+  progressEnd: 'lithe/host/progress/end',
+  statusBarSetItem: 'lithe/host/statusBar/setItem',
+  statusBarRemoveItem: 'lithe/host/statusBar/removeItem',
+  clipboardReadText: 'lithe/host/clipboard/readText',
+  clipboardWriteText: 'lithe/host/clipboard/writeText',
+  workspaceReveal: 'lithe/host/workspace/reveal',
+  networkRequest: 'lithe/host/network/request',
+
   credentialsGet: 'lithe/host/credentials/get',
   credentialsSet: 'lithe/host/credentials/set',
   credentialsDelete: 'lithe/host/credentials/delete',

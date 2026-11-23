@@ -12,6 +12,9 @@ pub(super) fn dispatch(
     payload: Value,
 ) -> CoreResponse {
     match command {
+        PluginsCommand::Workflow => {
+            plugin_response(id, payload, lithe_plugin_rpc::workflow::command)
+        }
         PluginsCommand::UIApplyResult => {
             plugin_response(id, payload, lithe_plugin_manifest::apply_result_command)
         }

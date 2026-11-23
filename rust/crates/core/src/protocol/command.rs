@@ -217,6 +217,8 @@ pub enum AiCommand {
 #[derive(Debug, Clone)]
 /// The `plugins.*` commands; their names live in [`CoreCommand::parse`].
 pub enum PluginsCommand {
+    /// Plans bounded plugin interactions and projects their native input/output.
+    Workflow,
     /// Validates and normalizes a declarative plugin manifest (`plugins.declarative.validate`).
     DeclarativeValidate,
     /// Checks what a backend returned for a plugin view and gives the whole view to draw (`plugins.ui.applyResult`).
@@ -1167,6 +1169,7 @@ impl CoreCommand {
             "plugins.declarative.validate" => {
                 Some(Self::Plugins(PluginsCommand::DeclarativeValidate))
             }
+            "plugins.workflow" => Some(Self::Plugins(PluginsCommand::Workflow)),
             "plugins.ui.applyResult" => Some(Self::Plugins(PluginsCommand::UIApplyResult)),
             "plugins.web.open" => Some(Self::Plugins(PluginsCommand::WebOpen)),
             "plugins.web.close" => Some(Self::Plugins(PluginsCommand::WebClose)),
