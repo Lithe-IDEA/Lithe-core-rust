@@ -6,6 +6,8 @@ license = "Apache-2.0"
 description = "Plugin backend JSON-RPC: litheFunctions negotiation, function calls, the host-method and host-notification catalog and its grants"
 
 [dependencies]
+# Resource paths of file changes are checked with the host's file-name rules.
+lithe-platform = { path = "../platform" }
 lithe-plugin-keymap-import = { path = "../plugin-keymap-import" }
 lithe-plugin-language-servers = { path = "../plugin-language-servers" }
 lithe-plugin-model = { path = "../plugin-model" }

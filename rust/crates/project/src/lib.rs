@@ -11,6 +11,7 @@ pub mod directory_actions;
 mod document_lifecycle;
 pub mod document_save_batch;
 mod encoding;
+pub mod file_changes;
 pub mod file_name_order;
 pub mod file_operations;
 pub mod files;

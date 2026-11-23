@@ -330,11 +330,41 @@ export interface Host {
       cursor?: string;
       limit?: number;
     }, FindPage<{ resource: WorkspaceResource; line: number; preview: string; range: TextRange | null }>>;
+    /**
+     * Permission `workspace.files.write`. Never overwrites: an existing
+     * `resource` is `plugin.host.alreadyExists`. `text` is for a file only.
+     */
+    create: Scoped<
+      | { resource: WorkspaceResource; kind: 'file'; text?: string }
+      | { resource: WorkspaceResource; kind: 'directory' }
+      | { resource: WorkspaceResource; kind: 'symlink'; linkTarget: string },
+      { resource: WorkspaceResource; kind: 'file' | 'directory' | 'symlink' }>;
+    /**
+     * Permission `workspace.files.write`. `target` is the full new path. The
+     * host saves the open documents under `resource` first; they follow the file.
+     */
+    rename: Scoped<{ resource: WorkspaceResource; target: WorkspaceResource }, { resource: WorkspaceResource }>;
+    /** Permission `workspace.files.write`. `target` must not exist. */
+    copy: Scoped<{ resource: WorkspaceResource; target: WorkspaceResource }, { resource: WorkspaceResource }>;
+    /**
+     * Permission `workspace.files.write`. Saves and closes the open documents
+     * under `resource`, then moves it to the system trash; nothing is deleted permanently.
+     */
+    trash: Scoped<{ resource: WorkspaceResource }, null>;
   };
-  /** Permission `documents.read`. */
+  /** Permission `documents.read`, and `documents.save` for `save`, `saveAs` and `close`. */
   readonly documents: {
     list: ScopedOptional<JsonObject, { documents: DocumentSummary[] }>;
     getSnapshot: Scoped<{ documentID: string }, { document: DocumentSummary; text: string }>;
+    /**
+     * Writes the document's current text. A file changed on disk is
+     * `plugin.host.diskChanged`, and nothing is written.
+     */
+    save: Scoped<{ documentID: string; expectedVersion?: number }, { document: DocumentSummary }>;
+    /** Writes to `target`, which must not exist, and opens the new file. */
+    saveAs: Scoped<{ documentID: string; target: WorkspaceResource }, { document: DocumentSummary }>;
+    /** Saves the document, then closes its tab; never discards the user's edits. */
+    close: Scoped<{ documentID: string }, null>;
   };
   readonly editor: {
     getActive: ScopedOptional<JsonObject, DocumentSummary | null>;
@@ -903,6 +933,8 @@ export const HOST_ERRORS: Readonly<{
   'plugin.function.invalidResult': -32071;
   'plugin.host.remoteDisconnected': -32078;
   'plugin.host.platformUnavailable': -32079;
+  'plugin.host.alreadyExists': -32080;
+  'plugin.host.diskChanged': -32081;
 }>;
 
 /** Host request method names. */
@@ -911,7 +943,9 @@ export const HOST_METHODS: Readonly<Record<
   | 'workspaceListContexts' | 'workspaceGetContext' | 'workspaceGetFolders' | 'workspaceGetHostPaths'
   | 'workspaceReadDirectory'
   | 'workspaceStat' | 'workspaceReadFile' | 'workspaceWatch' | 'workspaceFindFiles' | 'workspaceFindText'
-  | 'documentsList' | 'documentsGetSnapshot' | 'editorRegisterActions' | 'editorGetActive'
+  | 'workspaceCreate' | 'workspaceRename' | 'workspaceCopy' | 'workspaceTrash'
+  | 'documentsList' | 'documentsGetSnapshot' | 'documentsSave' | 'documentsSaveAs' | 'documentsClose'
+  | 'editorRegisterActions' | 'editorGetActive'
   | 'editorGetSelections' | 'editorApplyEdits' | 'editorReplaceSelections' | 'editorInsertText'
   | 'editorOpen' | 'editorReveal' | 'previewOpenHTML' | 'browserOpenExternal'
   | 'windowShowInformation' | 'windowShowWarning' | 'windowShowError'

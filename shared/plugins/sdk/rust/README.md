@@ -155,7 +155,7 @@ backend.toolchain_provider("manager", |_query, cancellation| {
 
 The SDK negotiates only the configured version: version 1 does not silently
 fall back to version 0 on an older host. Version 1 encodes `PermissionDenied`
-as `-32080` and `AuthorityUnsupported` as `-32081`; version 0 retains `-32070`
+as `-32082` and `AuthorityUnsupported` as `-32083`; version 0 retains `-32070`
 and `-32071`. All stable string codes and other error numbers are unchanged.
 
 Handlers return installations, version statements and watch paths. An empty
@@ -163,8 +163,8 @@ result is valid. Set a statement's `installation` to `None` for an unmet
 requirement. Use `ToolchainQueryError` for a query failure and check the
 cancellation token during potentially long scans. The host observes native
 filesystem facts, and Core validates the returned candidates with those facts.
-The desktop does not yet declare this capability. The Rust SDK end-to-end test
-runs the protocol through Core.
+The desktop declares version 0 only; version 1 is not yet declared. The Rust SDK
+end-to-end test runs the protocol through Core.
 
 ## Shortcut import providers
 
@@ -383,6 +383,7 @@ backend
 | `workspace().read_directory`, `.stat`, `.read_file`, `.find_files`, `.find_text`, `.watch` | Files of a local context, addressed as `{ rootID, path }` from `get_folders`. |
 | `workspace().get_host_paths(&context, root_ids)`, `.process_roots(&full_context)` | Root paths on the remote host of a remote context; see [Remote workspaces](#remote-workspaces). |
 | `documents().list`, `.get_snapshot`; `editor().get_active`, `.get_selections`, `.apply_edits`, `.replace_selections`, `.insert_text`, `.open`, `.reveal`, `.register_actions` | Live documents and editors. Edits name the `expectedVersion` they were computed against. |
+| `documents().save`, `.save_as`, `.close`; `workspace().create`, `.rename`, `.copy`, `.trash` | Saves, closes, and file changes, with the `documents.save` and `workspace.files.write` permissions. Nothing is overwritten, discarded, or deleted permanently; see [saving documents and changing files](../../contract/v1/README.md#saving-documents-and-changing-files). |
 | `preview().open_html`, `browser().open_external`, `window().show_information`, `.show_warning`, `.show_error` | Preview, browser, and messages. |
 | `functions().providers(function_id)`, `.invoke(&context, call)` | The plugins that export a function, and a call to one of them; see [Calling other plugins](#calling-other-plugins). |
 | `request(method, params)`, `subscribe(method, params)` | Any `lithe/host/*` method, including ones a later host adds. |
@@ -410,7 +411,7 @@ What the SDK does for you, and what it leaves to you:
   kept as sent. On `versionConflict` reread and recompute; on
   `contextExpired` resolve the original target again, never the focused
   window; retry `busy` and `rateLimited` (after the `retryAfterMilliseconds` detail) with a
-  bound; `permissionDenied` and `readOnly` need the user. An unknown param is
+  bound; `permissionDenied` and `readOnly` need the user, and so does `diskChanged`; on `alreadyExists` pick another target. An unknown param is
   `plugin.host.unsupportedOption` naming it in the `option` detail, so you can
   retry without it.
 - **Cancellation has no rollback.** Cancelling the token given to

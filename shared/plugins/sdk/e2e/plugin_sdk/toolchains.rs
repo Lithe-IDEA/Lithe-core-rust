@@ -94,7 +94,7 @@ pub fn run(executable: &str) {
     let denied = session.completion(denied_operation);
     assert!(denied.get("error").is_none(), "{denied}");
     let wire = &denied["result"]["value"];
-    assert_eq!(wire["response"]["error"]["code"], -32080);
+    assert_eq!(wire["response"]["error"]["code"], -32082);
     let decoded = core(
         "toolchains.decodeReply",
         json!({

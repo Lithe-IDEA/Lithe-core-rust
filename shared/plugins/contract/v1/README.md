@@ -4141,6 +4141,8 @@ notifications.
   | `plugin.host.foreignContribution` | `-32026` | The named server or contribution belongs to another plugin |
   | `plugin.host.remoteDisconnected` | `-32078` | The connection to the remote host was lost while the operation ran; whether it took effect on the host is unknown, and the backend asks again once the context is current |
   | `plugin.host.platformUnavailable` | `-32079` | The plugin has no package or managed runtime for the remote host's `platform`, so the process the request needs cannot run there |
+  | `plugin.host.alreadyExists` | `-32080` | The target of a create, copy, rename or save-as already exists; the host never overwrites it |
+  | `plugin.host.diskChanged` | `-32081` | The file changed or was deleted on disk after the document read it; nothing was written, and the user chooses which version to keep |
 
   JSON-RPC reserves `-32768` to `-32000` for the protocol and lets
   implementations define `-32099` to `-32000` as server errors. `-32000`
@@ -4264,6 +4266,9 @@ methods. Unknown options fail before side effects with `unsupportedOption`.
 | --- | --- | --- | --- |
 | `documents/list` | `documents.read` | none | `{documents:[<summary>]}` |
 | `documents/getSnapshot` | `documents.read` | `documentID` | `{document:<summary>, text}` from the dirty live buffer |
+| `documents/save` | `documents.save` | `documentID,expectedVersion?` | `{document:<summary>}` after the write, `isDirty:false`; see [Saving documents and changing files](#saving-documents-and-changing-files) |
+| `documents/saveAs` | `documents.save` | `documentID,target` (a `{rootID,path}` that does not exist) | `{document:<summary>}` of the new file, opened and selected |
+| `documents/close` | `documents.save` | `documentID` | `null` after saving the document and closing its tab |
 | `editor/registerActions` | `editor.actions` (+ `documents.read`) | `id,function,selector` | `{subscriptionID}`; independent editor actions, see below |
 | `editor/registerProviders` | `editor.providers` (+ `documents.read`) | `id,selector,providers` | `{subscriptionID}`; editor language-feature providers, see below |
 | `editor/getActive` | `documents.read` | none | summary of the foreground text tab, or `null` |
@@ -4276,6 +4281,10 @@ methods. Unknown options fail before side effects with `unsupportedOption`.
 | `workspace/readFile` | `workspace.files.read` | `resource,maximumBytes?` | `{resource,source:"disk",byteCount,isTruncated,identity,text?,encoding?,base64?}` |
 | `workspace/watch` | `workspace.files.watch` | `resource,recursive?` (default false) | `{subscriptionID}`; events contain `{rootID,changedPaths,requiresRescan}` |
 | `workspace/findFiles` | `workspace.search` | `resource` naming the root (`path:""`), `query,fileMask?,cursor?,limit?` | `{matches:[<resource>],nextCursor,isTruncated,source:"disk"}` |
+| `workspace/create` | `workspace.files.write` | `resource,kind` (`file`, `directory` or `symlink`), `text?` (files only), `linkTarget` (symlinks only) | `{resource,kind}`; never overwrites |
+| `workspace/rename` | `workspace.files.write` | `resource,target` | `{resource}` of the target; open documents follow |
+| `workspace/copy` | `workspace.files.write` | `resource,target` | `{resource}` of the copy; never overwrites |
+| `workspace/trash` | `workspace.files.write` | `resource` | `null` after moving it to the system trash |
 | `workspace/findText` | `workspace.search` | root `resource,pattern,fileMask?,caseSensitive?,wholeWords?,regularExpression?,cursor?,limit?` | same envelope, matches `{resource,line,preview,range:null}`; the upstream search owner currently reports lines, not exact match spans |
 | `editor/open`, `editor/reveal` | `editor.open` | `resource,activation?` (`select` or `background`), `range?,tab?` (`regular` only) | document identity/version and state, `wasAlreadyOpen,windowIsForeground,appliedSelection` |
 | `preview/openHTML` | `preview.open` | HTML `resource,presentation?` (`editorAndPreview` or `previewOnly`), `range?` | open result plus `usesLiveBuffer:true,presentation`; explicitly changes the existing tab's presentation |
@@ -4321,6 +4330,80 @@ may already have committed. The SDK must not replay a mutation on these failures
 On `versionConflict`, reread and recompute; on `contextExpired`, resolve the
 original target again, never substitute the focused window. `busy`/`rateLimited`
 may be retried with bounds; `permissionDenied`/`readOnly` need user intervention.
+
+#### Saving documents and changing files
+
+`documents.save` grants `documents/save`, `documents/saveAs` and
+`documents/close`. `workspace.files.write` grants `workspace/create`,
+`workspace/rename`, `workspace/copy` and `workspace/trash`. Neither grants
+any other method, and no other permission grants these; a plugin that only
+reads keeps reading. The host makes each change through the same owner as the
+user's command, so a saved document keeps its version, undo history and
+language session, and an open document follows its file when the file moves.
+
+None of these methods asks the user anything. They have the 30-second machine
+deadline, and a change that would need the user's choice is refused instead:
+
+- **Nothing is overwritten.** `saveAs`, `create`, `rename` and `copy` fail with
+  `alreadyExists` when the target exists. A rename that changes only the case
+  of a name on a case-insensitive file system is not a collision.
+- **Nothing is discarded.** `save` writes the document's current text, including
+  edits the user made after the plugin asked; a save already running finishes
+  first, and the result reports the version that was written. `close` saves
+  first and closes only after the save succeeds and the file on disk matches
+  the document. `rename` and `trash` save the open documents under the resource
+  first; when one of those saves fails, nothing is moved.
+- **Nothing is deleted.** `trash` moves the file or directory to the system
+  trash, from which the user restores it. Its open documents are saved and
+  their tabs close. There is no permanent delete.
+- **A disk change is the user's to resolve.** When the file changed or was
+  deleted on disk after the document read it, `save` and `close` fail with
+  `diskChanged` and write nothing; the editor keeps showing the user its own
+  choice between the two versions.
+
+| Method | Errors in addition to `invalidParams`, `contextExpired`, `authorityUnsupported` and `permissionDenied` |
+| --- | --- |
+| `documents/save` | `notFound` (no such document); `versionConflict` with `details.currentVersion` when `expectedVersion` is given and differs; `busy` (IME composition); `preconditionFailed` (an untitled document, which needs `saveAs`; a document with no file, such as a virtual one; a hard-linked file, whose save the user must choose); `diskChanged`; `failed` (the write failed; the user also sees the host's save-failed notice) |
+| `documents/saveAs` | `notFound` (no such document, or the target's parent directory does not exist); `alreadyExists`; `busy` (IME composition, or a save of the document is running); `failed` |
+| `documents/close` | the errors of `save`; `preconditionFailed` is not among them, since an untitled or virtual document closes without a write (an untitled document keeps its draft) |
+| `workspace/create` | `notFound` (the parent directory does not exist); `alreadyExists`; `limitExceeded` (`text` is over 128 KiB of UTF-8); `failed` (including a system that refuses to create a link, such as Windows without Developer Mode or administrator rights) |
+| `workspace/rename` | `notFound` (the resource or the target's parent); `alreadyExists`; `diskChanged`, `busy` or `failed` from saving an open document; `failed` |
+| `workspace/copy` | `notFound` (the resource or the target's parent); `alreadyExists`; `failed` |
+| `workspace/trash` | `notFound`; `diskChanged`, `busy` or `failed` from saving an open document; `failed` (the system trash refused the item) |
+
+Paths: `resource` and `target` are `{rootID,path}` resources of one root, and
+`target` is the full new path, not a directory to move into. A path has one
+spelling: `/`-separated components, none empty, `.` or `..`, at most 4,096
+bytes, and on Windows none that Windows cannot store as written (a reserved
+name such as `CON`, a trailing dot or space, or one of `\ : * ? " < > |`).
+The root itself (`path:""`) cannot be created, renamed, copied or trashed, and
+a target inside its own source is refused; these are `invalidParams`. The target's parent must
+exist; nothing creates missing directories. The host checks that the parent of
+each path resolves inside the root, and acts on the last component itself: a
+symbolic link is renamed, copied or trashed as a link, never as the file it
+points to. A copy keeps symbolic links inside a copied directory as links.
+
+`create` writes `text` as UTF-8, or makes an empty file; a directory takes no
+`text`. It does not open the file; call `editor/open` for that. A symbolic link
+takes `linkTarget`, 1 to 4,096 bytes without NUL, and no `text`; `linkTarget` on
+a file or directory is `invalidParams`. The link stores `linkTarget` verbatim:
+an absolute path, or one relative to the directory that holds the link, which
+may lead outside the root or to nothing. Creating a link grants nothing:
+`workspace/readFile`, listings and `editor/open` keep their own containment
+checks, so a link to a file outside the root does not make that file readable,
+and no file is ever created through a parent directory that leaves the root.
+On Windows each `/` in `linkTarget` is stored as `\`, and the link is a
+directory link when `linkTarget` names an existing directory at creation,
+otherwise a file link. `saveAs` writes
+the document's current text as UTF-8 with its line endings, then opens the new
+file and selects it; the original document stays open and unchanged, except
+that an untitled document whose text did not change during the write closes,
+as it does for the user's Save As. `rename`, `copy` and `trash` refresh the
+project tree and version control status as the user's commands do.
+
+On cancellation or timeout, the change may already be on disk; read the target
+back with `workspace/stat` before retrying. Watch events report these changes
+like any other.
 
 ### Plugin-owned native terminals
 
@@ -5263,6 +5346,8 @@ command payload is a Core `invalid_request` failure instead.
 | `plugin.host.foreignContribution` | Core | The named language server belongs to another plugin |
 | `plugin.host.remoteDisconnected` | Host | The connection to the remote host was lost while the operation ran |
 | `plugin.host.platformUnavailable` | Host | The plugin has no package or managed runtime for the remote host's platform |
+| `plugin.host.alreadyExists` | Host | The target of a file change already exists |
+| `plugin.host.diskChanged` | Host | A save found the file changed or deleted on disk and wrote nothing |
 | `plugin.backend.exited` | Host | A page's call, or a host operation for the backend, ended because the backend process exited |
 
 Host-facing plugin states are `notInstalled`, `installed` (enabled or

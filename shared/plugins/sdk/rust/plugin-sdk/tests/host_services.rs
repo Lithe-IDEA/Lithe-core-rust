@@ -784,6 +784,60 @@ fn native_terminal_methods_keep_context_and_literal_arguments() {
 }
 
 #[test]
+fn save_and_file_change_methods_carry_their_params_with_the_context() {
+    let backend = Backend::new("file-changes-test");
+    let handle = backend.handle();
+    let mut session = Session::start(backend);
+    let resource = json!({ "rootID": "r1", "path": "src/a.txt" });
+    let target = json!({ "rootID": "r1", "path": "src/b.txt" });
+    let calls = [
+        (
+            "documents/save",
+            json!({ "documentID": "d1", "expectedVersion": 3 }),
+        ),
+        (
+            "documents/saveAs",
+            json!({ "documentID": "d1", "target": target }),
+        ),
+        ("documents/close", json!({ "documentID": "d1" })),
+        (
+            "workspace/create",
+            json!({ "resource": resource, "kind": "file", "text": "x" }),
+        ),
+        (
+            "workspace/rename",
+            json!({ "resource": resource, "target": target }),
+        ),
+        (
+            "workspace/copy",
+            json!({ "resource": resource, "target": target }),
+        ),
+        ("workspace/trash", json!({ "resource": resource })),
+    ];
+    for (method, params) in calls {
+        let host = handle.host();
+        let sent = params.clone();
+        let operation = background(move || match method {
+            "documents/save" => host.documents().save(&context(), sent),
+            "documents/saveAs" => host.documents().save_as(&context(), sent),
+            "documents/close" => host.documents().close(&context(), sent),
+            "workspace/create" => host.workspace().create(&context(), sent),
+            "workspace/rename" => host.workspace().rename(&context(), sent),
+            "workspace/copy" => host.workspace().copy(&context(), sent),
+            _ => host.workspace().trash(&context(), sent),
+        });
+        let request = session.take(&format!("lithe/host/{method}"));
+        assert_eq!(request["params"]["context"], context().to_value());
+        for (key, value) in params.as_object().unwrap() {
+            assert_eq!(&request["params"][key], value, "{method} {key}");
+        }
+        session.reply(&request, Value::Null);
+        assert_eq!(done(&operation).unwrap(), Value::Null);
+    }
+    session.close();
+}
+
+#[test]
 fn host_path_root_ids_core_refuses_fail_locally_and_the_answer_holds_host_paths() {
     let backend = Backend::new("test-backend");
     let host = backend.handle().host();

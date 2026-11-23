@@ -1,0 +1,423 @@
+{
+  "version": 1,
+  "catalog": [
+    {
+      "name": "only built-in highlighted text and plain text, sorted and deduplicated",
+      "payload": {
+        "languages": [
+          {
+            "id": "rust",
+            "highlighted": true,
+            "extensions": [
+              ".rs",
+              ".rlib"
+            ]
+          },
+          {
+            "id": "xml",
+            "highlighted": true,
+            "extensions": [
+              ".xml",
+              ".svgz"
+            ]
+          },
+          {
+            "id": "kotlin",
+            "highlighted": true,
+            "extensions": [
+              ".kts",
+              ".gradle.kts"
+            ]
+          },
+          {
+            "id": "less",
+            "highlighted": false,
+            "extensions": [
+              ".less"
+            ]
+          },
+          {
+            "id": "plaintext",
+            "highlighted": false,
+            "extensions": [
+              ".txt"
+            ]
+          },
+          {
+            "id": "another",
+            "highlighted": true,
+            "extensions": [
+              ".rs"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "formats": [
+          {
+            "extension": ".kts",
+            "language": "kotlin"
+          },
+          {
+            "extension": ".rs",
+            "language": "rust"
+          },
+          {
+            "extension": ".txt",
+            "language": "plaintext"
+          },
+          {
+            "extension": ".xml",
+            "language": "xml"
+          }
+        ]
+      }
+    },
+    {
+      "name": "native package suffix syntax includes C++ and has a sixteen-character bound",
+      "payload": {
+        "languages": [
+          {
+            "id": "cpp",
+            "highlighted": true,
+            "extensions": [
+              ".c++",
+              ".h++",
+              ".abcdefghijklmnop",
+              ".abcdefghijklmnopq",
+              "._hidden",
+              ".+suffix",
+              ".Upper",
+              ".compound.ext"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "formats": [
+          {
+            "extension": ".abcdefghijklmnop",
+            "language": "cpp"
+          },
+          {
+            "extension": ".c++",
+            "language": "cpp"
+          },
+          {
+            "extension": ".h++",
+            "language": "cpp"
+          }
+        ]
+      }
+    }
+  ],
+  "plans": [
+    {
+      "name": "sorted explicit registration",
+      "payload": {
+        "formats": [
+          {
+            "extension": ".rs",
+            "language": "rust"
+          },
+          {
+            "extension": ".txt",
+            "language": "plaintext"
+          }
+        ],
+        "selected": [
+          ".txt",
+          ".rs"
+        ],
+        "baseline": [
+          {
+            "extension": ".rs",
+            "defaultId": "other.editor",
+            "registration": "rev1"
+          },
+          {
+            "extension": ".txt",
+            "defaultId": "lithe.editor",
+            "registration": "rev2"
+          }
+        ],
+        "current": [
+          {
+            "extension": ".rs",
+            "defaultId": "other.editor",
+            "registration": "rev1"
+          },
+          {
+            "extension": ".txt",
+            "defaultId": "lithe.editor",
+            "registration": "rev2"
+          }
+        ]
+      },
+      "expected": {
+        "conflict": false,
+        "extensions": [
+          ".rs",
+          ".txt"
+        ]
+      }
+    },
+    {
+      "name": "reject changed defaultId",
+      "payload": {
+        "formats": [
+          {
+            "extension": ".rs",
+            "language": "rust"
+          },
+          {
+            "extension": ".txt",
+            "language": "plaintext"
+          }
+        ],
+        "selected": [
+          ".txt",
+          ".rs"
+        ],
+        "baseline": [
+          {
+            "extension": ".rs",
+            "defaultId": "other.editor",
+            "registration": "rev1"
+          },
+          {
+            "extension": ".txt",
+            "defaultId": "lithe.editor",
+            "registration": "rev2"
+          }
+        ],
+        "current": [
+          {
+            "extension": ".rs",
+            "defaultId": "changed.editor",
+            "registration": "rev1"
+          },
+          {
+            "extension": ".txt",
+            "defaultId": "lithe.editor",
+            "registration": "rev2"
+          }
+        ]
+      },
+      "expected": {
+        "conflict": true,
+        "extensions": []
+      }
+    },
+    {
+      "name": "reject changed registration",
+      "payload": {
+        "formats": [
+          {
+            "extension": ".rs",
+            "language": "rust"
+          },
+          {
+            "extension": ".txt",
+            "language": "plaintext"
+          }
+        ],
+        "selected": [
+          ".txt",
+          ".rs"
+        ],
+        "baseline": [
+          {
+            "extension": ".rs",
+            "defaultId": "other.editor",
+            "registration": "rev1"
+          },
+          {
+            "extension": ".txt",
+            "defaultId": "lithe.editor",
+            "registration": "rev2"
+          }
+        ],
+        "current": [
+          {
+            "extension": ".rs",
+            "defaultId": "other.editor",
+            "registration": "rev3"
+          },
+          {
+            "extension": ".txt",
+            "defaultId": "lithe.editor",
+            "registration": "rev2"
+          }
+        ]
+      },
+      "expected": {
+        "conflict": true,
+        "extensions": []
+      }
+    }
+  ],
+  "errors": [
+    {
+      "name": "unknown selection",
+      "command": "application.fileAssociations.plan",
+      "payload": {
+        "formats": [
+          {
+            "extension": ".rs",
+            "language": "rust"
+          },
+          {
+            "extension": ".txt",
+            "language": "plaintext"
+          }
+        ],
+        "selected": [
+          ".exe"
+        ],
+        "baseline": [
+          {
+            "extension": ".rs",
+            "defaultId": "other.editor",
+            "registration": "rev1"
+          },
+          {
+            "extension": ".txt",
+            "defaultId": "lithe.editor",
+            "registration": "rev2"
+          }
+        ],
+        "current": [
+          {
+            "extension": ".rs",
+            "defaultId": "other.editor",
+            "registration": "rev1"
+          },
+          {
+            "extension": ".txt",
+            "defaultId": "lithe.editor",
+            "registration": "rev2"
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty selection",
+      "command": "application.fileAssociations.plan",
+      "payload": {
+        "formats": [
+          {
+            "extension": ".rs",
+            "language": "rust"
+          },
+          {
+            "extension": ".txt",
+            "language": "plaintext"
+          }
+        ],
+        "selected": [],
+        "baseline": [
+          {
+            "extension": ".rs",
+            "defaultId": "other.editor",
+            "registration": "rev1"
+          },
+          {
+            "extension": ".txt",
+            "defaultId": "lithe.editor",
+            "registration": "rev2"
+          }
+        ],
+        "current": [
+          {
+            "extension": ".rs",
+            "defaultId": "other.editor",
+            "registration": "rev1"
+          },
+          {
+            "extension": ".txt",
+            "defaultId": "lithe.editor",
+            "registration": "rev2"
+          }
+        ]
+      }
+    },
+    {
+      "name": "duplicate selection",
+      "command": "application.fileAssociations.plan",
+      "payload": {
+        "formats": [
+          {
+            "extension": ".rs",
+            "language": "rust"
+          },
+          {
+            "extension": ".txt",
+            "language": "plaintext"
+          }
+        ],
+        "selected": [
+          ".rs",
+          ".rs"
+        ],
+        "baseline": [
+          {
+            "extension": ".rs",
+            "defaultId": "other.editor",
+            "registration": "rev1"
+          },
+          {
+            "extension": ".txt",
+            "defaultId": "lithe.editor",
+            "registration": "rev2"
+          }
+        ],
+        "current": [
+          {
+            "extension": ".rs",
+            "defaultId": "other.editor",
+            "registration": "rev1"
+          },
+          {
+            "extension": ".txt",
+            "defaultId": "lithe.editor",
+            "registration": "rev2"
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing observations",
+      "command": "application.fileAssociations.plan",
+      "payload": {
+        "formats": [
+          {
+            "extension": ".rs",
+            "language": "rust"
+          },
+          {
+            "extension": ".txt",
+            "language": "plaintext"
+          }
+        ],
+        "selected": [
+          ".txt",
+          ".rs"
+        ],
+        "baseline": [
+          {
+            "extension": ".rs",
+            "defaultId": "other.editor",
+            "registration": "rev1"
+          },
+          {
+            "extension": ".txt",
+            "defaultId": "lithe.editor",
+            "registration": "rev2"
+          }
+        ],
+        "current": []
+      }
+    }
+  ]
+}

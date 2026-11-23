@@ -69,7 +69,7 @@ Core 列以本仓库 `main` 上的 Core 源码为准（[`capabilities.rs`](https
 | `toolDefinitions` `0` | `toolDefinitions[]`：[工具身份、布局、发现和四层候选](../contract/v1/toolchains/README.md) | ✅ | ✅¹ | [工具链](domains/toolchains.md) |
 | `toolDefinitions` `1` | 在 `0` 之上加：工具定义的 `category`（设置页「工具链」里的分组）和 `audience`（`plugin` 表示插件自用的运行时，单独放在最后一组），只影响显示位置 | ✅ | 未声明 | [Settings list](../contract/v1/toolchains/README.md#settings-list) |
 | `toolchainProviders` `0` | `toolchainProviders[]`：[提供者声明和按权限校验应答](../contract/v1/toolchains/README.md)；说 `litheToolchains` | ✅ | ✅ | [工具链](domains/toolchains.md) |
-| `toolchainProviders` `1` | 权限和 authority 错误改为独立号码 `-32080`、`-32081`，稳定字符串码不变；版本 0 保留旧码 | ✅ | 未声明 | [工具链](domains/toolchains.md) |
+| `toolchainProviders` `1` | 权限和 authority 错误改为独立号码 `-32082`、`-32083`，稳定字符串码不变；版本 0 保留旧码 | ✅ | 未声明 | [工具链](domains/toolchains.md) |
 | `pluginFunctions` `0` | 清单顶层 [`pluginFunctions`](../contract/v1/README.md#cross-plugin-calls)：导出的函数（`exports`）和要调用的其他插件函数（`calls`）；不授予任何清单权限，调用经 Core 中转 | ✅ | ✅¹ | [插件后端与插件函数](domains/backend.md) |
 | `keymapImportProviders` `0` | `keymapImportProviders[]`：[独立的快捷键导入提供者](../contract/v1/README.md#shortcut-import-providers-core-foundation)；说 `litheKeymapImport` | ✅ | 未声明 | [快捷键导入](domains/keymap-import.md) |
 
@@ -188,7 +188,7 @@ Each row is one capability. `requires` lists **exactly** the capabilities a mani
 | `toolDefinitions` `0` | `toolDefinitions[]`: [tool identities, layouts, discovery, and four-layer candidates](../contract/v1/toolchains/README.md) | ✅ | ✅¹ | [Toolchains](domains/toolchains.md) |
 | `toolDefinitions` `1` | Adds to `0`: a definition's `category` (its group in the settings page's Toolchains list) and `audience` (`plugin` for a runtime a plugin runs for itself, shown in its own last group); display placement only | ✅ | Not declared | [Settings list](../contract/v1/toolchains/README.md#settings-list) |
 | `toolchainProviders` `0` | `toolchainProviders[]`: [provider declarations and permission-bound answer validation](../contract/v1/toolchains/README.md); they speak `litheToolchains` | ✅ | ✅ | [Toolchains](domains/toolchains.md) |
-| `toolchainProviders` `1` | Distinct permission and authority error numbers `-32080` and `-32081`, with unchanged stable string codes; version 0 retains the legacy numbers | ✅ | Not declared | [Toolchains](domains/toolchains.md) |
+| `toolchainProviders` `1` | Distinct permission and authority error numbers `-32082` and `-32083`, with unchanged stable string codes; version 0 retains the legacy numbers | ✅ | Not declared | [Toolchains](domains/toolchains.md) |
 | `pluginFunctions` `0` | The manifest's top-level [`pluginFunctions`](../contract/v1/README.md#cross-plugin-calls): the functions the plugin exports (`exports`) and the functions of other plugins it calls (`calls`); grants no manifest permission, and Core relays the calls | ✅ | ✅¹ | [Plugin backend and plugin functions](domains/backend.md) |
 | `keymapImportProviders` `0` | `keymapImportProviders[]`: [independent shortcut import providers](../contract/v1/README.md#shortcut-import-providers-core-foundation); they speak `litheKeymapImport` | ✅ | Not declared | [Shortcut import](domains/keymap-import.md) |
 

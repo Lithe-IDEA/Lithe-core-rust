@@ -11,8 +11,8 @@
 | 清单字段 | 没有专用字段；用 `backend` 加下面的权限 |
 | 能力 | `requires.backend: 0`，见[能力与协议版本](../capabilities-and-versions.md) |
 | 协议 | `litheFunctions`，版本 `0` |
-| API 编号 | API-09、10、12、15、16、25、27，见 [API 总表](../api-catalog.md) |
-| 权限 | `documents.read`、`editor.edit`、`editor.open`、`preview.open`、`browser.open`、`editor.actions`（同时需要 `documents.read`）、`editor.providers`（同时需要 `documents.read`）、`documents.contentProvider`（只授予 `documents/registerContentProvider`，不授予读写文档） |
+| API 编号 | API-09、10、11、12、15、16、25、27，见 [API 总表](../api-catalog.md) |
+| 权限 | `documents.read`、`editor.edit`、`documents.save`、`editor.open`、`preview.open`、`browser.open`、`editor.actions`（同时需要 `documents.read`）、`editor.providers`（同时需要 `documents.read`）、`documents.contentProvider`（只授予 `documents/registerContentProvider`，不授予读写文档） |
 | 激活事件 | 与后端相同：`onWorkspaceOpen`、`onCommand:<id>` 或网页调用 |
 | Lithe 桌面端 | 已声明 `backend`；各方法是否可用由后端用 `getCapabilities` 在运行时发现，见[宿主现状](#宿主现状) |
 
@@ -22,6 +22,7 @@
 | --- | --- | --- | --- |
 | `documents/list`、`documents/getSnapshot`、`editor/getActive`、`editor/getSelections` | `documents.read` | API-09 | 包含未保存状态、版本、编码、换行符；快照最多 128 KiB |
 | `editor/applyEdits`、`editor/replaceSelections`、`editor/insertText` | `editor.edit` | API-10 | 校验文档版本；输入法组字中和只读文档会被拒绝；一批编辑是一次撤销 |
+| `documents/save`、`documents/saveAs`、`documents/close` | `documents.save` | API-11 | 经文档所有者保存，版本、撤销记录和语言会话不变；关闭前先保存，从不丢弃修改；另存为的目标必须不存在；文件在磁盘上变了时返回 `diskChanged`，不写入；不弹任何询问，见[契约](../../contract/v1/README.md#saving-documents-and-changing-files) |
 | `editor/open`、`editor/reveal` | `editor.open` | API-15 | 返回 `documentID` 和版本；传入范围时只把光标放到起点 |
 | `preview/openHTML` | `preview.open` | API-16 | `editorAndPreview` 或 `previewOnly` |
 | `browser/openExternal` | `browser.open` | API-16 | HTTP(S) 地址或已保存的 HTML |
@@ -100,8 +101,8 @@ Through the plugin-function protocol, a plugin backend reads open documents and 
 | Manifest field | None of its own; use `backend` with the permissions below |
 | Capability | `requires.backend: 0`; see [capabilities and protocol versions](../capabilities-and-versions.md) |
 | Protocol | `litheFunctions`, version `0` |
-| API IDs | API-09, 10, 12, 15, 16, 25, 27; see the [API catalog](../api-catalog.md) |
-| Permissions | `documents.read`, `editor.edit`, `editor.open`, `preview.open`, `browser.open`, `editor.actions` (also needs `documents.read`), `editor.providers` (also needs `documents.read`), `documents.contentProvider` (grants only `documents/registerContentProvider`, not reading or editing documents) |
+| API IDs | API-09, 10, 11, 12, 15, 16, 25, 27; see the [API catalog](../api-catalog.md) |
+| Permissions | `documents.read`, `editor.edit`, `documents.save`, `editor.open`, `preview.open`, `browser.open`, `editor.actions` (also needs `documents.read`), `editor.providers` (also needs `documents.read`), `documents.contentProvider` (grants only `documents/registerContentProvider`, not reading or editing documents) |
 | Activation | As for the backend: `onWorkspaceOpen`, `onCommand:<id>`, or a page call |
 | Lithe desktop | Declares `backend`; a backend finds which methods are usable with `getCapabilities` at runtime. See [Host status](#host-status) |
 
@@ -111,6 +112,7 @@ Through the plugin-function protocol, a plugin backend reads open documents and 
 | --- | --- | --- | --- |
 | `documents/list`, `documents/getSnapshot`, `editor/getActive`, `editor/getSelections` | `documents.read` | API-09 | Includes unsaved state, version, encoding, line endings; snapshots up to 128 KiB |
 | `editor/applyEdits`, `editor/replaceSelections`, `editor/insertText` | `editor.edit` | API-10 | Checks the document version; refused during IME composition and on read-only documents; one batch is one undo step |
+| `documents/save`, `documents/saveAs`, `documents/close` | `documents.save` | API-11 | Saves through the document's owner, keeping its version, undo history and language session; a close saves first and never discards edits; a save-as target must not exist; a file changed on disk returns `diskChanged` with nothing written; nothing asks the user, see the [contract](../../contract/v1/README.md#saving-documents-and-changing-files) |
 | `editor/open`, `editor/reveal` | `editor.open` | API-15 | Returns `documentID` and version; a range only places the caret at its start |
 | `preview/openHTML` | `preview.open` | API-16 | `editorAndPreview` or `previewOnly` |
 | `browser/openExternal` | `browser.open` | API-16 | An HTTP(S) URL or saved HTML |

@@ -20,7 +20,7 @@ const MAX_WATCH_PATHS: usize = 256;
 pub enum ToolchainProviderVersion {
     /// The published protocol, including the legacy -32070/-32071 errors.
     V0,
-    /// The same query protocol with permission/authority errors -32080/-32081.
+    /// The same query protocol with permission/authority errors -32082/-32083.
     V1,
 }
 
@@ -165,7 +165,7 @@ impl ToolchainQueryError {
             Self::PermissionDenied => (
                 match version {
                     ToolchainProviderVersion::V0 => -32070,
-                    ToolchainProviderVersion::V1 => -32080,
+                    ToolchainProviderVersion::V1 => -32082,
                 },
                 "permissionDenied",
                 "The toolchain query was not permitted.",
@@ -173,7 +173,7 @@ impl ToolchainQueryError {
             Self::AuthorityUnsupported => (
                 match version {
                     ToolchainProviderVersion::V0 => -32071,
-                    ToolchainProviderVersion::V1 => -32081,
+                    ToolchainProviderVersion::V1 => -32083,
                 },
                 "authorityUnsupported",
                 "The provider accepts only local queries.",

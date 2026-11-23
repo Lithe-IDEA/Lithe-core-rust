@@ -79,8 +79,8 @@ pub(super) fn error_responses(version: u32) -> Vec<Value> {
         (-32601, "methodUnavailable"),
         (-32602, "invalidParams"),
         (-32800, "cancelled"),
-        (-32080, "permissionDenied"),
-        (-32081, "authorityUnsupported"),
+        (-32082, "permissionDenied"),
+        (-32083, "authorityUnsupported"),
         (-32072, "timeout"),
         (-32073, "providerUnavailable"),
         (-32074, "invalidReply"),
@@ -93,8 +93,8 @@ pub(super) fn error_responses(version: u32) -> Vec<Value> {
         .zip(100..)
         .map(|(&(number, name), id)| {
             let number = match (version, number) {
-                (0, -32080) => -32070,
-                (0, -32081) => -32071,
+                (0, -32082) => -32070,
+                (0, -32083) => -32071,
                 _ => number,
             };
             json!({"jsonrpc":"2.0","id":id,"error":{"code":number,"message":"Fixture diagnostic.",

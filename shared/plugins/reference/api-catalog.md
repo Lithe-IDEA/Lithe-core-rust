@@ -36,6 +36,7 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | API-08 | 搜索 | 部分完成 | `workspace/findFiles`、`findText`，分页、可取消 | 只搜磁盘内容，不含未保存的修改；匹配的精确范围目前是 `null`；Lithe 桌面端尚未注册这两个方法 | [插件后端](domains/backend.md) |
 | API-09 | 文档与选区读取 | 已公开 | `documents/list`、`documents/getSnapshot`、`editor/getActive`、`editor/getSelections`，包含未保存状态、版本、编码、换行符 | — | [编辑器](domains/editor.md) |
 | API-10 | 版本化编辑 | 已公开 | `editor/applyEdits`、`replaceSelections`、`insertText`；校验版本，拒绝输入法组字中和只读文档，一批编辑是一次撤销 | — | [编辑器](domains/editor.md) |
+| API-11 | 保存与文件变更 | 已公开 | [`documents/save`、`saveAs`、`close`](../contract/v1/README.md#saving-documents-and-changing-files)（权限 `documents.save`）和 `workspace/create`、`rename`、`copy`、`trash`（权限 `workspace.files.write`）；经文档所有者保存，关闭前先保存，从不覆盖、不丢弃修改、不永久删除，删除只移到系统废纸篓；需要用户选择时直接拒绝，不弹询问 | 一次保存全部文档、永久删除；保存前事件见 API-43 | [编辑器](domains/editor.md)、[插件后端](domains/backend.md) |
 | API-12 | 多文件编辑、虚拟文档、diff | 部分完成 | [内容提供者 `documents/registerContentProvider`](../contract/v1/README.md#content-providers)：把一个 URI scheme 绑定到后端函数，打开该 scheme 的文档时宿主取只读内容（≤1 MiB，每个工作区窗口每个 scheme 一个） | 跨文件编辑、对比视图 | [编辑器](domains/editor.md) |
 | API-13 | 原生视图数据源 | 部分完成 | [插件视图](../contract/v1/README.md#plugin-views)：工具窗口和[设置区域](../contract/v1/README.md#settings-regions)里，后端视图函数（经 `lithe/function/invoke` 按事件调用）返回界面树（宿主控件、树、显示插件工具解析结果的工具行）和画布节点，或按节点 ID 的补丁；Core 命令 `plugins.ui.applyResult` 按预算和界面规则校验每个结果，宿主用原生控件绘制 | 插件主动推送视图、树的懒加载 | [界面](domains/ui.md) |
 | API-14 | 网页消息 | 部分完成 | [包内网页](../contract/v1/README.md#web-content)的桥接、状态和生命周期 | 通用的页面双向消息 | [界面](domains/ui.md) |
@@ -63,7 +64,6 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 
 | ID | 名称 | 状态 | 计划提供 |
 | --- | --- | --- | --- |
-| API-11 | 保存与文件变更 | 未做 | 保存、另存为、关闭，以及工作区文件的创建、改名、删除 |
 | API-18 | 剪贴板、Finder | 未做 | 剪贴板读写、在 Finder 中显示 |
 | API-26 | 诊断集合 | 未做 | 后端推送的诊断集合，带文档版本；现有的 LSP 诊断不属于这个 API |
 | API-28 | 自定义编辑器 | 未做 | 插件自有文档的编辑器，含保存、撤销、恢复 |
@@ -106,6 +106,13 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | API-10 | `editor/applyEdits` | 按范围批量编辑，先校验 `expectedVersion` | `editor.edit` | 0 |
 | API-10 | `editor/replaceSelections` | 替换选区的文本：一个替换文本用于全部选区，或每个选区一个 | `editor.edit` | 0 |
 | API-10 | `editor/insertText` | 在指定位置插入文本 | `editor.edit` | 0 |
+| API-11 | `documents/save` | 保存打开的文档，写入当前全部内容；可带 `expectedVersion`；文件在磁盘上变了时返回 `plugin.host.diskChanged`，不写入 | `documents.save` | 0 |
+| API-11 | `documents/saveAs` | 把文档当前内容写到一个不存在的新文件并打开它；目标已存在时返回 `plugin.host.alreadyExists` | `documents.save` | 0 |
+| API-11 | `documents/close` | 先保存再关闭文档的标签，从不丢弃修改 | `documents.save` | 0 |
+| API-11 | `workspace/create` | 新建文件（可带不超过 128 KiB 的文本）、目录或符号链接，不覆盖已有项 | `workspace.files.write` | 0 |
+| API-11 | `workspace/rename` | 重命名或移动文件、目录；先保存其下打开的文档，文档跟着文件走 | `workspace.files.write` | 0 |
+| API-11 | `workspace/copy` | 复制文件或目录到一个不存在的目标，符号链接保持为链接 | `workspace.files.write` | 0 |
+| API-11 | `workspace/trash` | 先保存并关闭其下打开的文档，再把文件或目录移到系统废纸篓；不永久删除 | `workspace.files.write` | 0 |
 | API-12 | `documents/registerContentProvider` | 把一个 URI scheme 绑定到后端函数，打开该 scheme 的文档时宿主调用函数取只读内容（≤1 MiB），返回 `subscriptionID`；用 `subscriptions/dispose` 撤销 | `documents.contentProvider` | 0 |
 | API-15 | `editor/open` | 在编辑器中打开文件，没有缓冲区时从磁盘读取；可以前台或后台打开，并定位光标 | `editor.open` | 0 |
 | API-15 | `editor/reveal` | 参数和 `editor/open` 相同，但只处理已打开的文件；文件没打开时返回 `plugin.host.notFound`，不会从磁盘打开 | `editor.open` | 0 |
@@ -212,6 +219,7 @@ Status meanings:
 | API-08 | Search | Partial | `workspace/findFiles` and `findText`, paged and cancellable | Searches disk content only, not unsaved changes; the exact match range is `null` for now; the Lithe desktop client does not register these two methods | [Plugin backend](domains/backend.md) |
 | API-09 | Documents and selections | Public | `documents/list`, `documents/getSnapshot`, `editor/getActive`, `editor/getSelections`, with dirty state, version, encoding, and line ending | — | [Editor](domains/editor.md) |
 | API-10 | Versioned edits | Public | `editor/applyEdits`, `replaceSelections`, `insertText`; version checks, refusal during IME composition and in read-only documents, one undo step per batch | — | [Editor](domains/editor.md) |
+| API-11 | Save and file operations | Public | [`documents/save`, `saveAs`, `close`](../contract/v1/README.md#saving-documents-and-changing-files) (permission `documents.save`) and `workspace/create`, `rename`, `copy`, `trash` (permission `workspace.files.write`); saves go through the document's owner, a close saves first, nothing is overwritten, discarded or deleted permanently, and a delete only moves to the system trash; a change that needs the user's choice is refused without asking | Saving all documents at once, permanent deletes; pre-save events are API-43 | [Editor](domains/editor.md), [Plugin backend](domains/backend.md) |
 | API-12 | Multi-file edits, virtual documents, diff | Partial | [Content providers `documents/registerContentProvider`](../contract/v1/README.md#content-providers): bind a URI scheme to a backend function, and the host fetches read-only content from it when a document of that scheme opens (≤1 MiB, one provider per scheme per workspace window) | Cross-file edits, a diff view | [Editor](domains/editor.md) |
 | API-13 | Native view data sources | Partial | [Plugin views](../contract/v1/README.md#plugin-views) in tool windows and [settings regions](../contract/v1/README.md#settings-regions): a backend view function, called through `lithe/function/invoke` once per event, returns a UI tree (host controls, trees, and tool rows showing how the plugin's tools resolve) and canvas nodes, or patches by node ID; the Core command `plugins.ui.applyResult` checks each result against budgets and surface rules, and the host draws it with native controls | Views pushed by the plugin on its own, lazy tree loading | [UI](domains/ui.md) |
 | API-14 | Webview messaging | Partial | The [package web page](../contract/v1/README.md#web-content) bridge, state, and lifecycle | General two-way page messaging | [UI](domains/ui.md) |
@@ -239,7 +247,6 @@ Status meanings:
 
 | ID | Name | Status | Planned |
 | --- | --- | --- | --- |
-| API-11 | Save and file operations | Not started | Save, save as, close, and creating, renaming, and deleting workspace files |
 | API-18 | Clipboard and Finder | Not started | Reading and writing the clipboard, revealing in Finder |
 | API-26 | Diagnostics collections | Not started | Diagnostics collections pushed by a backend, with document versions; existing LSP diagnostics are not this API |
 | API-28 | Custom editors | Not started | Editors for plugin-owned documents, with save, undo, and restore |
@@ -282,6 +289,13 @@ Requests a backend sends to the host, all prefixed `lithe/host/`; the tables omi
 | API-10 | `editor/applyEdits` | Applies a batch of range edits after checking `expectedVersion` | `editor.edit` | 0 |
 | API-10 | `editor/replaceSelections` | Replaces the text of selections: one replacement for all of them, or one per selection | `editor.edit` | 0 |
 | API-10 | `editor/insertText` | Inserts text at a position | `editor.edit` | 0 |
+| API-11 | `documents/save` | Saves an open document, writing all of its current text; takes an optional `expectedVersion`; when the file changed on disk it returns `plugin.host.diskChanged` and writes nothing | `documents.save` | 0 |
+| API-11 | `documents/saveAs` | Writes the document's current text to a new file that does not exist and opens it; an existing target returns `plugin.host.alreadyExists` | `documents.save` | 0 |
+| API-11 | `documents/close` | Saves the document, then closes its tab; never discards edits | `documents.save` | 0 |
+| API-11 | `workspace/create` | Creates a file (optionally with at most 128 KiB of text), a directory or a symbolic link, never over an existing item | `workspace.files.write` | 0 |
+| API-11 | `workspace/rename` | Renames or moves a file or directory; saves the open documents under it first, and they follow the file | `workspace.files.write` | 0 |
+| API-11 | `workspace/copy` | Copies a file or directory to a target that does not exist, keeping symbolic links as links | `workspace.files.write` | 0 |
+| API-11 | `workspace/trash` | Saves and closes the open documents under the resource, then moves it to the system trash; never deletes permanently | `workspace.files.write` | 0 |
 | API-12 | `documents/registerContentProvider` | Binds a URI scheme to a backend function; when a document of that scheme opens, the host calls the function to get read-only content (≤1 MiB), and the call returns a `subscriptionID`, which `subscriptions/dispose` withdraws | `documents.contentProvider` | 0 |
 | API-15 | `editor/open` | Opens a file in the editor, reading it from disk when no buffer exists; opens it in the foreground or background and can place the caret | `editor.open` | 0 |
 | API-15 | `editor/reveal` | Takes the same params as `editor/open` but only handles files already open; a file that is not open returns `plugin.host.notFound` and is not opened from disk | `editor.open` | 0 |

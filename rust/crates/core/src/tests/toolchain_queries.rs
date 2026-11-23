@@ -256,9 +256,47 @@ fn toolchain_queries_keep_every_error_mapping_unique_and_validate_the_pair() {
             assert!(numbers.insert(number));
             if version == 0 {
                 assert_eq!(query::rpc_code(error.code()), Some(number));
-            } else {
-                for relayed in ["plugin.function.failed", "plugin.function.invalidResult"] {
-                    assert_ne!(number, lithe_plugin_rpc::host_rpc_code(relayed));
+            } else if (-32099..=-32000).contains(&number) {
+                use lithe_plugin_rpc::codes;
+                for host_or_relay in [
+                    codes::HOST_PERMISSION_DENIED,
+                    codes::HOST_CONTEXT_EXPIRED,
+                    codes::HOST_AUTHORITY_UNSUPPORTED,
+                    codes::HOST_VERSION_CONFLICT,
+                    codes::HOST_LIMIT_EXCEEDED,
+                    codes::HOST_TIMEOUT,
+                    codes::HOST_NOT_FOUND,
+                    codes::HOST_READ_ONLY,
+                    codes::HOST_UNSUPPORTED_OPTION,
+                    codes::HOST_PRECONDITION_FAILED,
+                    codes::HOST_BUSY,
+                    codes::HOST_RATE_LIMITED,
+                    codes::HOST_LANGUAGE_SERVER_UNAVAILABLE,
+                    codes::HOST_LANGUAGE_SERVER_ERROR,
+                    codes::HOST_METHOD_NOT_DECLARED,
+                    codes::HOST_TOOL_UNRESOLVED,
+                    codes::HOST_FOREIGN_CONTRIBUTION,
+                    codes::NOT_DECLARED,
+                    codes::NOT_EXPORTED,
+                    codes::PROVIDER_DISABLED,
+                    codes::VERSION_MISMATCH,
+                    codes::CALL_CYCLE,
+                    codes::DEPTH_EXCEEDED,
+                    codes::TOO_MANY_CALLS,
+                    codes::PAYLOAD_TOO_LARGE,
+                    codes::PROVIDER_UNAVAILABLE,
+                    codes::FAILED,
+                    codes::INVALID_RESULT,
+                    codes::HOST_REMOTE_DISCONNECTED,
+                    codes::HOST_PLATFORM_UNAVAILABLE,
+                    codes::HOST_ALREADY_EXISTS,
+                    codes::HOST_DISK_CHANGED,
+                ] {
+                    assert_ne!(
+                        number,
+                        lithe_plugin_rpc::host_rpc_code(host_or_relay),
+                        "version 1 toolchain code {number} collides with {host_or_relay}"
+                    );
                 }
             }
             value["response"]["error"]["code"] = json!(-1);

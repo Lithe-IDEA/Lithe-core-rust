@@ -15,6 +15,7 @@ pub mod cli;
 mod dispatch;
 pub mod editor;
 mod error;
+pub mod file_associations;
 pub mod file_names;
 pub mod keymap;
 pub mod visibility;

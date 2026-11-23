@@ -43,9 +43,11 @@ pub fn host_rpc_code(code: &str) -> i64 {
         codes::FAILED => -32070,
         codes::INVALID_RESULT => -32071,
         // Toolchains own -32072..=-32077 and, since capability version 1,
-        // -32080/-32081. Only legacy version 0 overlaps -32070/-32071.
+        // -32082/-32083. Only legacy version 0 overlaps -32070/-32071.
         codes::HOST_REMOTE_DISCONNECTED => -32078,
         codes::HOST_PLATFORM_UNAVAILABLE => -32079,
+        codes::HOST_ALREADY_EXISTS => -32080,
+        codes::HOST_DISK_CHANGED => -32081,
         _ => -32603,
     }
 }
@@ -92,6 +94,8 @@ pub fn host_failure(code: Option<&str>) -> (&'static str, i64) {
         Some(codes::HOST_FOREIGN_CONTRIBUTION) => codes::HOST_FOREIGN_CONTRIBUTION,
         Some(codes::HOST_REMOTE_DISCONNECTED) => codes::HOST_REMOTE_DISCONNECTED,
         Some(codes::HOST_PLATFORM_UNAVAILABLE) => codes::HOST_PLATFORM_UNAVAILABLE,
+        Some(codes::HOST_ALREADY_EXISTS) => codes::HOST_ALREADY_EXISTS,
+        Some(codes::HOST_DISK_CHANGED) => codes::HOST_DISK_CHANGED,
         // A backend exit is reported to pages, never to the backend itself.
         Some(codes::BACKEND_EXITED) => codes::HOST_FAILED,
         _ => codes::HOST_FAILED,

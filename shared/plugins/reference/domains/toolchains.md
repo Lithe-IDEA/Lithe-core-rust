@@ -93,8 +93,8 @@
 | `-32601` | `plugin.toolchain.methodUnavailable` | 查询方法或能力没有协商 |
 | `-32602` | `plugin.toolchain.invalidParams` | 请求格式错误或声明的输入无效 |
 | `-32800` | `plugin.toolchain.cancelled` | 调用方取消了请求 |
-| `-32080` | `plugin.toolchain.permissionDenied` | 缺少权限、审查或启用状态 |
-| `-32081` | `plugin.toolchain.authorityUnsupported` | 没有这个 authority 的适配器 |
+| `-32082` | `plugin.toolchain.permissionDenied` | 缺少权限、审查或启用状态 |
+| `-32083` | `plugin.toolchain.authorityUnsupported` | 没有这个 authority 的适配器 |
 | `-32072` | `plugin.toolchain.timeout` | 超过本地截止时间 |
 | `-32073` | `plugin.toolchain.providerUnavailable` | 后端启动失败、断开或上游查询失败 |
 | `-32074` | `plugin.toolchain.invalidReply` | 应答格式错误，或安装引用了别的工具 |
@@ -285,8 +285,8 @@ These are the version 1 JSON-RPC error numbers. `decodeReply` reads `requires.to
 | `-32601` | `plugin.toolchain.methodUnavailable` | The query method or capability was not negotiated |
 | `-32602` | `plugin.toolchain.invalidParams` | Malformed request or invalid declared input |
 | `-32800` | `plugin.toolchain.cancelled` | The caller cancelled the request |
-| `-32080` | `plugin.toolchain.permissionDenied` | A permission, review, or enabled-state prerequisite is missing |
-| `-32081` | `plugin.toolchain.authorityUnsupported` | The provider has no adapter for this authority |
+| `-32082` | `plugin.toolchain.permissionDenied` | A permission, review, or enabled-state prerequisite is missing |
+| `-32083` | `plugin.toolchain.authorityUnsupported` | The provider has no adapter for this authority |
 | `-32072` | `plugin.toolchain.timeout` | The local deadline passed |
 | `-32073` | `plugin.toolchain.providerUnavailable` | The backend failed to start or disconnected, or its upstream query failed |
 | `-32074` | `plugin.toolchain.invalidReply` | Malformed reply, or an installation refers to another tool |

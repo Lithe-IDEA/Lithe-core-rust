@@ -2,16 +2,18 @@
   "cases": [
     {"name":"legacy permission", "version":0, "number":-32070, "code":"plugin.toolchain.permissionDenied", "expected":"plugin.toolchain.permissionDenied"},
     {"name":"legacy authority", "version":0, "number":-32071, "code":"plugin.toolchain.authorityUnsupported", "expected":"plugin.toolchain.authorityUnsupported"},
-    {"name":"version 1 permission", "version":1, "number":-32080, "code":"plugin.toolchain.permissionDenied", "expected":"plugin.toolchain.permissionDenied"},
-    {"name":"version 1 authority", "version":1, "number":-32081, "code":"plugin.toolchain.authorityUnsupported", "expected":"plugin.toolchain.authorityUnsupported"},
-    {"name":"legacy rejects new permission number", "version":0, "number":-32080, "code":"plugin.toolchain.permissionDenied", "expected":"plugin.toolchain.invalidReply"},
-    {"name":"legacy rejects new authority number", "version":0, "number":-32081, "code":"plugin.toolchain.authorityUnsupported", "expected":"plugin.toolchain.invalidReply"},
+    {"name":"version 1 permission", "version":1, "number":-32082, "code":"plugin.toolchain.permissionDenied", "expected":"plugin.toolchain.permissionDenied"},
+    {"name":"version 1 authority", "version":1, "number":-32083, "code":"plugin.toolchain.authorityUnsupported", "expected":"plugin.toolchain.authorityUnsupported"},
+    {"name":"legacy rejects new permission number", "version":0, "number":-32082, "code":"plugin.toolchain.permissionDenied", "expected":"plugin.toolchain.invalidReply"},
+    {"name":"legacy rejects new authority number", "version":0, "number":-32083, "code":"plugin.toolchain.authorityUnsupported", "expected":"plugin.toolchain.invalidReply"},
+    {"name":"version 1 rejects host alreadyExists number", "version":1, "number":-32080, "code":"plugin.toolchain.permissionDenied", "expected":"plugin.toolchain.invalidReply"},
+    {"name":"version 1 rejects host diskChanged number", "version":1, "number":-32081, "code":"plugin.toolchain.authorityUnsupported", "expected":"plugin.toolchain.invalidReply"},
     {"name":"version 1 rejects legacy permission number", "version":1, "number":-32070, "code":"plugin.toolchain.permissionDenied", "expected":"plugin.toolchain.invalidReply"},
     {"name":"version 1 rejects legacy authority number", "version":1, "number":-32071, "code":"plugin.toolchain.authorityUnsupported", "expected":"plugin.toolchain.invalidReply"},
     {"name":"legacy rejects relayed function failure", "version":0, "number":-32070, "code":"plugin.function.failed", "expected":"plugin.toolchain.invalidReply"},
     {"name":"version 1 rejects relayed function failure", "version":1, "number":-32070, "code":"plugin.function.failed", "expected":"plugin.toolchain.invalidReply"},
     {"name":"legacy rejects relayed invalid result", "version":0, "number":-32071, "code":"plugin.function.invalidResult", "expected":"plugin.toolchain.invalidReply"},
     {"name":"version 1 rejects relayed invalid result", "version":1, "number":-32071, "code":"plugin.function.invalidResult", "expected":"plugin.toolchain.invalidReply"},
-    {"name":"unknown capability version", "version":2, "number":-32080, "code":"plugin.toolchain.permissionDenied", "expected":"plugin.api.unsupported"}
+    {"name":"unknown capability version", "version":2, "number":-32082, "code":"plugin.toolchain.permissionDenied", "expected":"plugin.api.unsupported"}
   ]
 }

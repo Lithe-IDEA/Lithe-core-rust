@@ -4,6 +4,7 @@
 //! dependencies are built once.
 
 mod askpass;
+mod entries;
 mod git_executable;
 mod lsp_process;
 mod permissions;

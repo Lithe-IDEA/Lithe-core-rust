@@ -152,7 +152,7 @@ fn version_one_requires_an_explicit_choice_and_keeps_legacy_sources_compatible()
     for (configured, version, permission, authority) in [
         (None, 0, -32070, -32071),
         (Some(ToolchainProviderVersion::V0), 0, -32070, -32071),
-        (Some(ToolchainProviderVersion::V1), 1, -32080, -32081),
+        (Some(ToolchainProviderVersion::V1), 1, -32082, -32083),
     ] {
         let mut backend = Backend::new("test-backend");
         if let Some(configured) = configured {

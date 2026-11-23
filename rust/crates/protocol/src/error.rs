@@ -65,6 +65,13 @@ pub enum ErrorCode {
     /// `file.write` text contains characters the requested encoding cannot
     /// represent; nothing is written and no character is substituted.
     EncodingUnmappable,
+    /// A `workspace.createEntry`, `renameEntry`, `copyEntry` or
+    /// `resolveEntry` path does not exist below its root, or the directory
+    /// that would hold its target does not. Nothing changed.
+    EntryNotFound,
+    /// A `workspace.createEntry`, `renameEntry` or `copyEntry` target already
+    /// exists. Nothing was replaced.
+    EntryExists,
     /// The caller cooperatively cancelled the operation.
     Cancelled,
     /// The operation exceeded its declared deadline.

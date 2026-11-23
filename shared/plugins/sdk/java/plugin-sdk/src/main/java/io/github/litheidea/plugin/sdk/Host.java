@@ -532,6 +532,39 @@ public final class Host {
         public CompletableFuture<Map<String, Object>> findText(Map<String, ?> context, Map<String, ?> params) {
             return scoped(Protocol.HOST_WORKSPACE_FIND_TEXT, context, params);
         }
+
+        /**
+         * Permission {@code workspace.files.write}. {@code params}: {@code resource, kind} ({@code "file"},
+         * {@code "directory"} or {@code "symlink"}), {@code text?} for a file and {@code linkTarget} for a
+         * symlink; answers {@code { resource, kind }}. A link stores {@code linkTarget} verbatim, absolute or
+         * relative to the link's directory, and makes nothing outside the root readable. An existing
+         * {@code resource} fails with {@code plugin.host.alreadyExists}; nothing is overwritten.
+         */
+        public CompletableFuture<Map<String, Object>> create(Map<String, ?> context, Map<String, ?> params) {
+            return scoped(Protocol.HOST_WORKSPACE_CREATE, context, params);
+        }
+
+        /**
+         * Permission {@code workspace.files.write}. {@code params}: {@code resource, target}, the full new path;
+         * answers {@code { resource }}. The host saves the open documents under {@code resource} first, and they
+         * follow the move.
+         */
+        public CompletableFuture<Map<String, Object>> rename(Map<String, ?> context, Map<String, ?> params) {
+            return scoped(Protocol.HOST_WORKSPACE_RENAME, context, params);
+        }
+
+        /** Permission {@code workspace.files.write}. {@code params}: {@code resource, target}; answers {@code { resource }}. */
+        public CompletableFuture<Map<String, Object>> copy(Map<String, ?> context, Map<String, ?> params) {
+            return scoped(Protocol.HOST_WORKSPACE_COPY, context, params);
+        }
+
+        /**
+         * Permission {@code workspace.files.write}. {@code params}: {@code resource}; answers null. The host saves
+         * and closes the open documents under it, then moves it to the system trash.
+         */
+        public CompletableFuture<Map<String, Object>> trash(Map<String, ?> context, Map<String, ?> params) {
+            return scoped(Protocol.HOST_WORKSPACE_TRASH, context, params);
+        }
     }
 
     /** Open documents, read from their live buffers. */
@@ -546,6 +579,31 @@ public final class Host {
         /** {@code params}: {@code documentID}; answers {@code { document, text }}. */
         public CompletableFuture<Map<String, Object>> getSnapshot(Map<String, ?> context, Map<String, ?> params) {
             return scoped(Protocol.HOST_DOCUMENTS_GET_SNAPSHOT, context, params);
+        }
+
+        /**
+         * Permission {@code documents.save}. {@code params}: {@code documentID, expectedVersion?}; answers
+         * {@code { document }}. A file changed on disk fails with {@code plugin.host.diskChanged}, and nothing is
+         * written.
+         */
+        public CompletableFuture<Map<String, Object>> save(Map<String, ?> context, Map<String, ?> params) {
+            return scoped(Protocol.HOST_DOCUMENTS_SAVE, context, params);
+        }
+
+        /**
+         * Permission {@code documents.save}. {@code params}: {@code documentID, target}, which must not exist;
+         * answers {@code { document }} of the new file, which the host opens.
+         */
+        public CompletableFuture<Map<String, Object>> saveAs(Map<String, ?> context, Map<String, ?> params) {
+            return scoped(Protocol.HOST_DOCUMENTS_SAVE_AS, context, params);
+        }
+
+        /**
+         * Permission {@code documents.save}. {@code params}: {@code documentID}; answers null. The host saves the
+         * document first and never discards the user's edits.
+         */
+        public CompletableFuture<Map<String, Object>> close(Map<String, ?> context, Map<String, ?> params) {
+            return scoped(Protocol.HOST_DOCUMENTS_CLOSE, context, params);
         }
     }
 

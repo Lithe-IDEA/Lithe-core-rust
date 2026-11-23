@@ -285,8 +285,8 @@ number that does not match `data.code`, is refused as
 | `-32601` | `plugin.toolchain.methodUnavailable` | The backend does not serve the query method |
 | `-32602` | `plugin.toolchain.invalidParams` | Malformed request or invalid declared input |
 | `-32800` | `plugin.toolchain.cancelled` | The caller cancelled the request |
-| `-32080` | `plugin.toolchain.permissionDenied` | A permission, review or enabled-state prerequisite is missing |
-| `-32081` | `plugin.toolchain.authorityUnsupported` | The provider cannot serve the requested authority |
+| `-32082` | `plugin.toolchain.permissionDenied` | A permission, review or enabled-state prerequisite is missing |
+| `-32083` | `plugin.toolchain.authorityUnsupported` | The provider cannot serve the requested authority |
 | `-32072` | `plugin.toolchain.timeout` | The local deadline passed |
 | `-32073` | `plugin.toolchain.providerUnavailable` | The backend failed to start, disconnected, or its upstream query failed |
 | `-32074` | `plugin.toolchain.invalidReply` | Malformed reply, or an installation reference to another tool |
