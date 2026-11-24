@@ -3723,8 +3723,17 @@ session, and versioned diagnostics must match the current document version.
 The client reducer, raw JSON-RPC message, frame, and parser functions are
 internal Rust implementation seams; they are not public application commands.
 Completion, hover, navigation, edit, hint, folding, and code-lens responses are
-normalized by Rust before they cross the application boundary. Unknown server
-requests receive JSON-RPC `Method not found` instead of being silently ignored.
+normalized by Rust before they cross the application boundary. Hover results are
+`{ hover: { contents, isMarkdown, range } | null }`. LSP `MarkedString` strings
+remain Markdown; `{ language, value }` entries become fenced code blocks retaining
+the language identifier, with a fence longer than any backtick run in the code.
+`MarkupContent` follows its explicit `kind`, so `plaintext` is not interpreted as
+Markdown. `MarkedString[]` entries retain their order and are joined with blank
+lines as Markdown. The host uses a block's language identifier to select an
+available syntax grammar, independently of the hovered document's language.
+See [hover content fixtures](../fixtures/lsp/hover-contents-v1.json).
+Unknown server requests receive JSON-RPC `Method not found` instead of being
+silently ignored.
 
 The `history.*` commands accept an adapter-selected `storageRoot`; history
 metadata never stores an absolute workspace or storage path. `history.record`
