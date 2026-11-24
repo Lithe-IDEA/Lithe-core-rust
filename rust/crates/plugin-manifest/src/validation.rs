@@ -130,20 +130,6 @@ impl DeclarativePluginManifest {
         if self
             .build_systems
             .iter()
-            .any(|system| system.has_generated_run_configuration_types())
-            && self
-                .requires
-                .get(capabilities::RUN_CONFIGURATION_TYPES)
-                .is_none_or(|version| *version < 1)
-        {
-            return Err(invalid(
-                "requires.runConfigurationTypes",
-                "Run entries targeting a runConfigurationType need runConfigurationTypes 1.",
-            ));
-        }
-        if self
-            .build_systems
-            .iter()
             .any(|system| system.has_run_entrypoints())
             && self
                 .requires

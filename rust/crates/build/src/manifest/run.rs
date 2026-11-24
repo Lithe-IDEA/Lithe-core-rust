@@ -35,15 +35,15 @@ pub(crate) struct RunDeclaration {
     /// project. It applies to no target and is never listed per target.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub(crate) entrypoints: bool,
-    /// `runConfigurationTypes` 1: ID of a `runConfigurationTypes` entry in
-    /// this build system. Each matching target materializes a generated
-    /// configuration of that declared kind instead of a raw command or
-    /// provider run, sharing the kind's icon, group and editor form.
+    /// ID of a `runConfigurationTypes` entry in this build system. Each
+    /// matching target materializes a generated configuration of that declared
+    /// kind instead of a raw command or provider run, sharing the kind's icon,
+    /// group and editor form.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) configuration_type: Option<String>,
-    /// `runConfigurationTypes` 1: initial field values for `configurationType`,
-    /// keyed by declared field ID. String values and `arguments` list items
-    /// may reference target and project template variables.
+    /// Initial field values for `configurationType`, keyed by declared field
+    /// ID. String values and `arguments` list items may reference target and
+    /// project template variables.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub(crate) values: BTreeMap<String, Value>,
 }

@@ -3078,9 +3078,9 @@ The type's text is translated in the package's `l10n/<language>.json` under
 [Translations](#translations). A file that does not fit is refused whole
 with `plugin.build.invalidLocalization`, and the manifest's text is shown.
 
-#### Auto-discovered run configurations (`runConfigurationTypes: 1`)
+#### Auto-discovered run configurations
 
-With `runConfigurationTypes: 1`, a `buildSystems[].run[]` declaration may set
+Within `runConfigurationTypes: 0`, a `buildSystems[].run[]` declaration may set
 `configurationType` (naming one `runConfigurationTypes[].id` of the same build
 system) and optional `values` (a map from declared field ID to initial value).
 Each model target matching `fromTargets.tags` then materializes a generated
@@ -3097,9 +3097,11 @@ same group, icon, editor form, and `build.runConfigurationPlan` launch flow:
 }]
 ```
 
-- Requires `fromTargets` and `requires.runConfigurationTypes: 1`; `source: "provider"`,
+- Requires `fromTargets` and `requires.runConfigurationTypes: 0`; `source: "provider"`,
   `debug`, `entrypoints`, `fromTasks`, `arguments`, `extension`, and `execution`
   are refused (execution comes from the target `runConfigurationTypes` entry).
+  Older hosts that predate these fields refuse the manifest with
+  `plugin.manifest.invalid`.
 - Each key of `values` must name a declared field of `configurationType` with a
   matching JSON type (`string` for `text`/`choice`/`file`/`directory`, `boolean`
   for `checkbox`, array of strings for `arguments`). String values, `arguments`

@@ -189,12 +189,6 @@ pub fn validate_declarations(
 }
 
 impl BuildSystemDeclaration {
-    /// Whether a run targets a declared `runConfigurationTypes` kind from the
-    /// build model, which `runConfigurationTypes` 1 introduced.
-    pub fn has_generated_run_configuration_types(&self) -> bool {
-        self.run.iter().any(|run| run.configuration_type.is_some())
-    }
-
     /// Whether a run starts entrypoints the provider finds in files, which
     /// `buildProviders` 1 introduced.
     pub fn has_run_entrypoints(&self) -> bool {

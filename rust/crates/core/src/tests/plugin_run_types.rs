@@ -844,7 +844,7 @@ fn generated_run_type_manifest() -> Value {
         "pluginAPIVersion": 0,
         "requires": {
             "buildSystems": 0,
-            "runConfigurationTypes": 1
+            "runConfigurationTypes": 0
         },
         "vendor": {
             "id": "dev.lithe.test",
@@ -913,7 +913,7 @@ fn generated_run_type_manifest() -> Value {
 }
 
 #[test]
-fn run_configuration_types_v1_validates_run_declarations() {
+fn run_configuration_types_generated_runs_are_validated() {
     let validate = |manifest: Value| {
         call(
             "plugins.declarative.validate",
@@ -925,10 +925,13 @@ fn run_configuration_types_v1_validates_run_declarations() {
     let valid = validate(generated_run_type_manifest());
     assert_eq!(valid["status"], "ok", "{valid}");
 
-    // Version 0 refuses configurationType on buildSystems[].run[].
-    let mut requires_v0 = generated_run_type_manifest();
-    requires_v0["requires"]["runConfigurationTypes"] = json!(0);
-    let outcome = validate(requires_v0);
+    // Omitting requires.runConfigurationTypes is rejected.
+    let mut missing_cap = generated_run_type_manifest();
+    missing_cap["requires"]
+        .as_object_mut()
+        .unwrap()
+        .remove("runConfigurationTypes");
+    let outcome = validate(missing_cap);
     assert_eq!(outcome["status"], "rejected", "{outcome}");
     assert_eq!(outcome["error"]["code"], "plugin.manifest.invalid");
 
