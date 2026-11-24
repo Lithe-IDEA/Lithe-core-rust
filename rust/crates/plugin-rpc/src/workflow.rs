@@ -364,7 +364,8 @@ pub fn command(payload: Value) -> Result<Value, CoreError> {
     let p = payload.as_object().ok_or_else(core_invalid)?;
     match p.get("operation").and_then(Value::as_str) {
         Some("prepare") => {
-            object(&payload, &["operation", "method", "params"]).map_err(|_| core_invalid())?;
+            object(&payload, &["operation", "method", "params", "manifest"])
+                .map_err(|_| core_invalid())?;
             let method = p
                 .get("method")
                 .and_then(Value::as_str)
@@ -374,6 +375,62 @@ pub fn command(payload: Value) -> Result<Value, CoreError> {
                 CoreError::new(ErrorCode::InvalidRequest, failure.message)
                     .with_details(failure.code)
             })?;
+            let name = method.strip_prefix("lithe/host/").unwrap_or(method);
+            if name == "statusBar/setItem" {
+                if let Some(id) = params.get("commandID").and_then(Value::as_str) {
+                    let declared = p
+                        .get("manifest")
+                        .and_then(|m| m.pointer("/ui/commands"))
+                        .and_then(Value::as_array)
+                        .is_some_and(|commands| {
+                            commands.iter().any(|c| c["id"].as_str() == Some(id))
+                        });
+                    if !declared {
+                        return Err(CoreError::new(
+                            ErrorCode::InvalidRequest,
+                            "The status command is not declared by this plugin.",
+                        )
+                        .with_details(codes::HOST_INVALID_PARAMS));
+                    }
+                }
+            }
+            if matches!(
+                name,
+                "preview/openMarkdown" | "preview/openHTML" | "browser/openExternal"
+            ) {
+                if let Some(path) = params.pointer("/resource/path").and_then(Value::as_str) {
+                    let extension = path
+                        .rsplit('.')
+                        .next()
+                        .unwrap_or_default()
+                        .to_ascii_lowercase();
+                    let supported = if name == "preview/openMarkdown" {
+                        matches!(extension.as_str(), "md" | "markdown" | "mdown")
+                    } else {
+                        matches!(extension.as_str(), "html" | "htm" | "xhtml")
+                    };
+                    if !supported {
+                        return Err(CoreError::new(
+                            ErrorCode::InvalidRequest,
+                            "The resource does not support this preview kind.",
+                        )
+                        .with_details(codes::HOST_UNSUPPORTED_OPTION));
+                    }
+                }
+                if name.starts_with("preview/") {
+                    params
+                        .as_object_mut()
+                        .ok_or_else(core_invalid)?
+                        .entry("presentation")
+                        .or_insert(json!("editorAndPreview"));
+                } else if params.get("resource").is_some() {
+                    params
+                        .as_object_mut()
+                        .ok_or_else(core_invalid)?
+                        .entry("unsaved")
+                        .or_insert(json!("requireSaved"));
+                }
+            }
             if method.ends_with("network/request") {
                 let map = params.as_object_mut().ok_or_else(core_invalid)?;
                 map.entry("method").or_insert(json!("GET"));
@@ -599,6 +656,37 @@ mod tests {
         let result = command(json!({"operation":"output","open":"first","text":format!(" second\n{}", "字".repeat(20_000))})).unwrap();
         assert_eq!(result["lines"], json!(["first second"]));
         assert!(result["open"].as_str().unwrap().len() <= OUTPUT_LINE_BYTES);
+    }
+
+    #[test]
+    fn native_plans_check_preview_type_and_own_command_before_side_effects() {
+        let context = json!({"contextID":"workspace","generation":1});
+        let preview = json!({"operation":"prepare","method":"preview/openHTML","params":{
+            "context":context,"resource":{"rootID":"root","path":"notes.txt"}}});
+        assert!(command(preview.clone()).is_err());
+        let mut valid = preview;
+        valid["params"]["resource"]["path"] = json!("page.HTML");
+        assert_eq!(
+            command(valid).unwrap()["params"]["presentation"],
+            "editorAndPreview"
+        );
+        let mut browser = json!({"operation":"prepare","method":"browser/openExternal","params":{
+            "context":context,"resource":{"rootID":"root","path":"page.html"}}});
+        assert_eq!(
+            command(browser.clone()).unwrap()["params"]["unsaved"],
+            "requireSaved"
+        );
+        browser["params"]["unsaved"] = json!("openSavedFile");
+        assert_eq!(
+            command(browser).unwrap()["params"]["unsaved"],
+            "openSavedFile"
+        );
+        let mut status = json!({"operation":"prepare","method":"statusBar/setItem","params":{
+            "context":context,"id":"state","text":"Ready","commandID":"run"},
+            "manifest":{"ui":{"commands":[{"id":"other"}]}}});
+        assert!(command(status.clone()).is_err());
+        status["manifest"]["ui"]["commands"][0]["id"] = json!("run");
+        assert!(command(status).is_ok());
     }
 
     #[test]

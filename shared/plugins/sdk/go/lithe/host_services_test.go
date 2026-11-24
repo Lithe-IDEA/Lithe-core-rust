@@ -1277,3 +1277,39 @@ func TestCancellingACallCancelsTheRelayedCallItWaitsOn(t *testing.T) {
 	eq(t, cancels, encode(t, []any{map[string]any{"id": request["id"]}}))
 	s.close()
 }
+
+func TestProgressCancellationAndEndReleaseSubscription(t *testing.T) {
+	backend := lithe.NewBackend("test-backend")
+	host := backend.Handle().Host()
+	s := startSession(t, backend, []any{0})
+	creating := background(func() (*lithe.Subscription, error) {
+		return host.Progress().Create(testContext(), map[string]any{"title": "Index", "cancellable": true})
+	})
+	create := s.take("lithe/host/progress/create")
+	eq(t, create["params"], `{"context":{"contextID":"w1","generation":2},"title":"Index","cancellable":true}`)
+	s.reply(create, map[string]any{"progressID": "p1", "subscriptionID": "p1"})
+	result := done(t, creating)
+	must(t, result.err)
+	subscription := result.value
+	s.notify("lithe/host/subscriptions/notify", map[string]any{"subscriptionID": "p1", "sequence": 1, "event": map[string]bool{"cancelled": true}})
+	event, err := subscription.RecvTimeout(wait)
+	must(t, err)
+	eq(t, j(t, string(event.Event())), `{"cancelled":true}`)
+	ending := background(func() (json.RawMessage, error) {
+		return host.Progress().End(testContext(), map[string]any{"progressID": "p1"})
+	})
+	end := s.take("lithe/host/progress/end")
+	eq(t, end["params"], `{"context":{"contextID":"w1","generation":2},"progressID":"p1"}`)
+	s.reply(end, nil)
+	dispose := s.take("lithe/host/subscriptions/dispose")
+	eq(t, dispose["params"], `{"subscriptionID":"p1"}`)
+	if !subscription.IsDisposed() {
+		t.Fatal("ending progress left subscription live")
+	}
+	s.reply(dispose, nil)
+	must(t, done(t, ending).err)
+	if _, err := subscription.RecvTimeout(wait); !errors.Is(err, lithe.ErrSubscriptionDisposed) {
+		t.Fatalf("ended subscription: %v", err)
+	}
+	s.close()
+}

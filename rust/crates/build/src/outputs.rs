@@ -178,13 +178,14 @@ pub(crate) fn source_marker(
 
 /// The model with the run entries derived from it.
 pub(crate) fn model_value(
+    plugin_id: &str,
     build_system: &BuildSystemDeclaration,
     model: &BuildModel,
     root: &str,
     options: &BTreeMap<String, Value>,
     source: Option<&str>,
 ) -> Validation<Value> {
-    let run = plans::run_entries(build_system, model, root, options, source)?;
+    let run = plans::run_entries(plugin_id, build_system, model, root, options, source)?;
     let mut value =
         serde_json::to_value(model).map_err(|error| decode::invalid_output(error.to_string()))?;
     value["run"] = json!(run);
@@ -200,6 +201,7 @@ pub(crate) fn model_value(
 
 /// `build.decodeModel`.
 pub(crate) fn decode_model(
+    plugin_id: &str,
     build_system: &BuildSystemDeclaration,
     request: &DecodeModelRequest,
 ) -> Validation<Value> {
@@ -215,6 +217,7 @@ pub(crate) fn decode_model(
     )?;
     let source = source_marker(build_system, &workspace, &root);
     model_value(
+        plugin_id,
         build_system,
         &model,
         &root,

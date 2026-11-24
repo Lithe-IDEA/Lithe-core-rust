@@ -93,7 +93,7 @@ pub fn editor_form(request: EditorFormRequest) -> Result<Value, CoreError> {
     let run_types = &request.run_types;
     let (editor, mut values) = match request.configuration_id.as_deref() {
         Some(id) => {
-            let saved = SavedEntry::find(&layers, id)?;
+            let saved = SavedEntry::find(&root, &layers, id)?;
             let editor = saved.editor(run_types)?;
             if request.provider.is_some()
                 && !Editor::new(
@@ -186,7 +186,7 @@ pub fn save_configuration(request: SaveConfigurationRequest) -> Result<Value, Co
     let layers = read_layers(&root, None, None)?;
     let saved = match request.configuration_id.as_deref() {
         Some(id) => {
-            let saved = SavedEntry::find(&layers, id)?;
+            let saved = SavedEntry::find(&root, &layers, id)?;
             if !saved.editor(run_types)?.same(editor) {
                 return Err(different_provider());
             }
@@ -264,10 +264,14 @@ pub fn save_configuration(request: SaveConfigurationRequest) -> Result<Value, Co
         "args",
         (!stored.arguments.is_empty()).then(|| json!(stored.arguments)),
     );
+    let keep_root_cwd = saved
+        .as_ref()
+        .and_then(|saved| saved.generated_cwd.as_deref())
+        .is_some_and(|cwd| cwd != ".");
     set_or_remove(
         object,
         "cwd",
-        (stored.working_directory != ".").then(|| json!(stored.working_directory)),
+        (stored.working_directory != "." || keep_root_cwd).then(|| json!(stored.working_directory)),
     );
     set_or_remove(
         object,
@@ -495,42 +499,65 @@ fn set_or_remove(object: &mut serde_json::Map<String, Value>, key: &str, value: 
     }
 }
 
-/// A saved configuration as both layers hold it.
+/// A configuration as the generated, project and local layers hold it.
 struct SavedEntry {
     id: String,
-    /// The project entry with the local entry merged over it.
+    /// The generated entry (if any) with the project and local entries merged over it.
     merged: Value,
     /// Whether the project layer holds it.
     in_project: bool,
+    /// Working directory of the underlying generated entry, so overriding it
+    /// back to `.` writes `"cwd": "."` instead of dropping the key.
+    generated_cwd: Option<String>,
 }
 
 impl SavedEntry {
-    fn find(layers: &Layers, id: &str) -> Result<Self, CoreError> {
+    fn find(root: &Path, layers: &Layers, id: &str) -> Result<Self, CoreError> {
         let item = |document: &Value| {
             document["configurations"]
                 .as_array()
                 .and_then(|items| items.iter().find(|item| item["id"] == id))
                 .cloned()
         };
+        let generated = generated_layer::get(root).and_then(|document| {
+            document
+                .configurations
+                .iter()
+                .find(|configuration| configuration.id == id)
+                .map(|configuration| {
+                    (
+                        configuration.cwd.clone(),
+                        serde_json::to_value(configuration).expect("run configuration encodes"),
+                    )
+                })
+        });
+        let (generated_cwd, generated_entry) = match generated {
+            Some((cwd, entry)) => (Some(cwd), Some(entry)),
+            None => (None, None),
+        };
         let project = item(&layers.project.document);
         let local = item(&layers.local.document);
-        let merged = match (project.clone(), local) {
-            (Some(mut merged), Some(local)) => {
-                merge_configuration_value(&mut merged, &local)?;
-                merged
+        let mut merged: Option<Value> = None;
+        for entry in [generated_entry, project.clone(), local]
+            .into_iter()
+            .flatten()
+        {
+            match &mut merged {
+                Some(current) => merge_configuration_value(current, &entry)?,
+                None => merged = Some(entry),
             }
-            (Some(entry), None) | (None, Some(entry)) => entry,
-            (None, None) => {
-                return Err(CoreError::new(
-                    ErrorCode::InvalidRequest,
-                    "Run configuration was not found",
-                ))
-            }
+        }
+        let Some(merged) = merged else {
+            return Err(CoreError::new(
+                ErrorCode::InvalidRequest,
+                "Run configuration was not found",
+            ));
         };
         Ok(Self {
             id: id.to_string(),
             merged,
             in_project: project.is_some(),
+            generated_cwd,
         })
     }
 

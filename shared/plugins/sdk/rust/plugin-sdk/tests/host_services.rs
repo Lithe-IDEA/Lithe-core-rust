@@ -1352,3 +1352,49 @@ fn cancelling_a_call_cancels_the_relayed_call_it_waits_on() {
     assert_eq!(cancels, [json!({ "id": request["id"] })]);
     session.close();
 }
+
+#[test]
+fn progress_cancellation_and_end_release_the_subscription() {
+    let backend = Backend::new("test-backend");
+    let host = backend.handle().host();
+    let mut session = Session::start(backend);
+    let creating = {
+        let host = host.clone();
+        background(move || {
+            host.progress()
+                .create(&context(), json!({"title":"Index","cancellable":true}))
+        })
+    };
+    let create = session.take("lithe/host/progress/create");
+    assert_eq!(
+        create["params"],
+        json!({"context":context().to_value(),"title":"Index","cancellable":true})
+    );
+    session.reply(&create, json!({"progressID":"p1","subscriptionID":"p1"}));
+    let subscription = done(&creating).unwrap();
+    session.host.notify(
+        "lithe/host/subscriptions/notify",
+        json!({"subscriptionID":"p1","sequence":1,"event":{"cancelled":true}}),
+    );
+    assert_eq!(
+        subscription.recv_timeout(WAIT).unwrap().event(),
+        &json!({"cancelled":true})
+    );
+    let ending = background(move || host.progress().end(&context(), json!({"progressID":"p1"})));
+    let end = session.take("lithe/host/progress/end");
+    assert_eq!(
+        end["params"],
+        json!({"context":context().to_value(),"progressID":"p1"})
+    );
+    session.reply(&end, Value::Null);
+    let dispose = session.take("lithe/host/subscriptions/dispose");
+    assert_eq!(dispose["params"], json!({"subscriptionID":"p1"}));
+    assert!(subscription.is_disposed());
+    session.reply(&dispose, Value::Null);
+    done(&ending).unwrap();
+    assert_eq!(
+        subscription.recv_timeout(WAIT),
+        Err(RecvTimeoutError::Disconnected)
+    );
+    session.close();
+}

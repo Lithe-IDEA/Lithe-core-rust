@@ -822,3 +822,32 @@ test('a relayed call holds one of the 16 host request slots until Core answers',
   assert.equal(outcomes[0].status, 'fulfilled');
   assert.ok(outcomes.slice(1).every((outcome) => outcome.status === 'rejected' && outcome.reason.code === 'sdk.session.closed'));
 });
+
+
+test('progress cancellation is delivered and ending releases its subscription', async () => {
+  const { backend, host } = await session();
+  try {
+    const cancelled = gate();
+    const creating = backend.host.progress.create(CONTEXT, { title: 'Index', cancellable: true }, (event) => {
+      assert.deepEqual(event, { cancelled: true });
+      cancelled.open();
+    });
+    const create = await nextRequest(host, 'lithe/host/progress/create');
+    assert.deepEqual(create.params, { context: CONTEXT, title: 'Index', cancellable: true });
+    host.send({ id: create.id, result: { progressID: 'p1', subscriptionID: 'p1' } });
+    const subscription = await creating;
+    host.notify('lithe/host/subscriptions/notify', { subscriptionID: 'p1', sequence: 1, event: { cancelled: true } });
+    await withTimeout(cancelled.opened, 'progress cancellation');
+    const ending = backend.host.progress.end(CONTEXT, { progressID: 'p1' });
+    const end = await nextRequest(host, 'lithe/host/progress/end');
+    assert.deepEqual(end.params, { context: CONTEXT, progressID: 'p1' });
+    host.send({ id: end.id, result: null });
+    const dispose = await nextRequest(host, 'lithe/host/subscriptions/dispose');
+    assert.deepEqual(dispose.params, { subscriptionID: 'p1' });
+    assert.equal(subscription.disposed, true);
+    host.send({ id: dispose.id, result: null });
+    await ending;
+  } finally {
+    await host.close();
+  }
+});

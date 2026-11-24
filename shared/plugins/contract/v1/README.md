@@ -3100,6 +3100,42 @@ The type's text is translated in the package's `l10n/<language>.json` under
 [Translations](#translations). A file that does not fit is refused whole
 with `plugin.build.invalidLocalization`, and the manifest's text is shown.
 
+#### Auto-discovered run configurations
+
+Within `runConfigurationTypes: 0`, a `buildSystems[].run[]` declaration may set
+`configurationType` (naming one `runConfigurationTypes[].id` of the same build
+system) and optional `values` (a map from declared field ID to initial value).
+Each model target matching `fromTargets.tags` then materializes a generated
+`build.run-type` configuration instead of a separate `build.provider` or raw
+command entry, so discovered targets and user-created configurations share the
+same group, icon, editor form, and `build.runConfigurationPlan` launch flow:
+
+```json
+"run": [{
+  "id": "target",
+  "fromTargets": { "tags": ["target"] },
+  "configurationType": "target",
+  "values": { "targets": ["${target.name}"] }
+}]
+```
+
+- Requires `fromTargets` and `requires.runConfigurationTypes: 0`; `source: "provider"`,
+  `debug`, `entrypoints`, `fromTasks`, `arguments`, `extension`, and `execution`
+  are refused (execution comes from the target `runConfigurationTypes` entry).
+  Older hosts that predate these fields refuse the manifest with
+  `plugin.manifest.invalid`.
+- Each key of `values` must name a declared field of `configurationType` with a
+  matching JSON type (`string` for `text`/`choice`/`file`/`directory`, `boolean`
+  for `checkbox`, array of strings for `arguments`). String values, `arguments`
+  items, and optional `name` may use `${root}`, `${project.*}`, and
+  `${target.*}` template variables. Every visible `required` field without a
+  default must be supplied.
+- Core expands `values` when decoding the model (`model.run[].runType`) and
+  materializes deterministic `generated:run-type:<hash>` configurations in
+  `runConfig.generate`. Opening one in `runConfig.editorForm` and saving with
+  `runConfig.saveConfiguration` writes user overrides under that ID to the
+  plugin's run document (`.lithe/run/plugin/<pluginID>.local.toml` or `.toml`).
+
 ### Before-launch tasks
 
 `beforeLaunchTasks` adds kinds of step to the *Before launch* list every run
@@ -4500,7 +4536,10 @@ the user closes the tab or context. They do not write workspace files or bundle
 resources. A new call with the same ID updates its tab. Inline Markdown cannot
 resolve local or relative resources; inline HTML serves only its supplied
 page and cannot read adjacent local files. Remote web content follows the
-existing preview policy. Resource previews use the live editor buffer.
+existing preview policy. Resource previews use the live editor buffer. Markdown
+resources require `.md`, `.markdown` or `.mdown`; HTML resources require `.html`,
+`.htm` or `.xhtml` (case-insensitive), otherwise `unsupportedOption` is returned
+before opening an editor tab.
 `presentation` defaults to `editorAndPreview`, or is `previewOnly`; `range`
 uses the normal one-based UTF-16 range and reveals its start as a caret.
 A missing native WebView may return `unsupportedOption` for HTML.
