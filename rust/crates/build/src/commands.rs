@@ -410,11 +410,13 @@ pub fn build_dependency_plan_command<M: BuildManifest>(payload: Value) -> Result
 
 /// `build.decodeModel`: the normalized model and its run entries.
 pub fn build_decode_model_command<M: BuildManifest>(payload: Value) -> Result<Value, CoreError> {
-    with_build_system::<M, _>(
+    with_manifest::<M, _>(
         payload,
         "build.decodeModel",
         "model",
-        |build_system, request: &DecodeModelRequest| outputs::decode_model(build_system, request),
+        |build_system, request: &DecodeModelRequest, manifest| {
+            outputs::decode_model(manifest.id(), build_system, request)
+        },
     )
 }
 

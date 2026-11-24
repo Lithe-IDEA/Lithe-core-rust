@@ -834,3 +834,377 @@ fn set(manifest: &mut Value, pointer: &str, value: Value) {
         _ => panic!("{parent} is not a container"),
     }
 }
+
+fn generated_run_type_manifest() -> Value {
+    json!({
+        "schemaVersion": 0,
+        "id": "dev.lithe.test.generated-run-types",
+        "displayName": "Synthetic Task Tool",
+        "version": "1.0.0",
+        "pluginAPIVersion": 0,
+        "requires": {
+            "buildSystems": 0,
+            "runConfigurationTypes": 0
+        },
+        "vendor": {
+            "id": "dev.lithe.test",
+            "displayName": "Synthetic",
+            "signatureRequirement": "publisherPackage"
+        },
+        "permissions": ["process.build"],
+        "activationEvents": ["onBuildSystem:tasker"],
+        "buildSystems": [{
+            "id": "tasker",
+            "displayName": "Tasker",
+            "detection": { "markers": ["Taskfile"] },
+            "invocation": {
+                "executables": [{ "kind": "command", "command": "tasker" }]
+            },
+            "model": {
+                "source": "command",
+                "arguments": ["--dump"],
+                "output": "stdout",
+                "decoder": "litheBuildModel",
+                "executesProjectCode": false,
+                "mayUseNetwork": false
+            },
+            "runConfigurationTypes": [{
+                "id": "target",
+                "displayName": "Tasker Target",
+                "execution": "task",
+                "fields": [
+                    {
+                        "id": "targets",
+                        "title": "Targets",
+                        "kind": "arguments",
+                        "required": true
+                    },
+                    {
+                        "id": "profile",
+                        "title": "Profile",
+                        "kind": "choice",
+                        "choices": [
+                            { "value": "default", "title": "Default" },
+                            { "value": "release", "title": "Release" }
+                        ],
+                        "arguments": ["--profile", "${value}"]
+                    },
+                    {
+                        "id": "flags",
+                        "title": "Flags",
+                        "kind": "text",
+                        "arguments": ["--flag", "${value}"]
+                    }
+                ],
+                "arguments": ["${field:profile}", "${field:flags}", "${field:targets}", "${userArguments}"]
+            }],
+            "run": [{
+                "id": "target",
+                "fromTargets": { "tags": ["target"] },
+                "configurationType": "target",
+                "values": {
+                    "targets": ["${target.name}"],
+                    "profile": "release",
+                    "flags": "${target.property:defaultFlag}"
+                }
+            }]
+        }]
+    })
+}
+
+#[test]
+fn run_configuration_types_generated_runs_are_validated() {
+    let validate = |manifest: Value| {
+        call(
+            "plugins.declarative.validate",
+            json!({ "manifest": manifest }),
+        )["data"]
+            .clone()
+    };
+
+    let valid = validate(generated_run_type_manifest());
+    assert_eq!(valid["status"], "ok", "{valid}");
+
+    // Omitting requires.runConfigurationTypes is rejected.
+    let mut missing_cap = generated_run_type_manifest();
+    missing_cap["requires"]
+        .as_object_mut()
+        .unwrap()
+        .remove("runConfigurationTypes");
+    let outcome = validate(missing_cap);
+    assert_eq!(outcome["status"], "rejected", "{outcome}");
+    assert_eq!(outcome["error"]["code"], "plugin.manifest.invalid");
+
+    // Unknown configurationType, invalid field/type/choice, missing required, forbidden combos.
+    let cases = [
+        (
+            "unknown configurationType",
+            "/buildSystems/0/run/0/configurationType",
+            json!("missing"),
+        ),
+        (
+            "unknown field in values",
+            "/buildSystems/0/run/0/values/unknown",
+            json!("x"),
+        ),
+        (
+            "mismatched type for arguments field",
+            "/buildSystems/0/run/0/values/targets",
+            json!("build"),
+        ),
+        (
+            "unknown choice literal",
+            "/buildSystems/0/run/0/values/profile",
+            json!("nightly"),
+        ),
+        (
+            "missing required field value",
+            "/buildSystems/0/run/0/values",
+            json!({ "profile": "default" }),
+        ),
+        (
+            "forbidden provider source",
+            "/buildSystems/0/run/0/source",
+            json!("provider"),
+        ),
+        (
+            "forbidden execution override",
+            "/buildSystems/0/run/0/execution",
+            json!("application"),
+        ),
+        (
+            "forbidden raw arguments",
+            "/buildSystems/0/run/0/arguments",
+            json!(["run"]),
+        ),
+    ];
+    for (name, pointer, value) in cases {
+        let mut bad = generated_run_type_manifest();
+        set(&mut bad, pointer, value);
+        let outcome = validate(bad);
+        assert_eq!(outcome["status"], "rejected", "{name}: {outcome}");
+        assert_eq!(
+            outcome["error"]["code"], "plugin.manifest.invalid",
+            "{name}: {outcome}"
+        );
+    }
+
+    // `values` without `configurationType` is rejected.
+    let mut values_without_type = generated_run_type_manifest();
+    let run = values_without_type["buildSystems"][0]["run"][0]
+        .as_object_mut()
+        .unwrap();
+    run.remove("configurationType");
+    run.insert("arguments".into(), json!(["${target.name}"]));
+    let outcome = validate(values_without_type);
+    assert_eq!(outcome["status"], "rejected", "{outcome}");
+    assert_eq!(outcome["error"]["code"], "plugin.manifest.invalid");
+}
+
+#[test]
+fn generated_run_type_decodes_generates_edits_launches_and_copies() {
+    let root = temporary_root("generated-run-type-flow");
+    let _cleanup = Cleanup(root.clone());
+    fs::create_dir_all(root.join("sub")).unwrap();
+    fs::write(root.join("sub/Taskfile"), "build:\n\techo hi\n").unwrap();
+
+    let manifest = generated_run_type_manifest();
+    let run_type_plugins = json!({ "plugins": [{ "manifest": manifest }] });
+
+    // 1. Decode model: Core expands templates into `model.run[].runType`.
+    let raw_model = json!({
+        "format": "litheBuildModel",
+        "version": 0,
+        "projects": [{
+            "id": "sub",
+            "name": "sub",
+            "path": "."
+        }],
+        "targets": [{
+            "id": "sub:build",
+            "projectID": "sub",
+            "name": "build",
+            "path": ".",
+            "tags": ["target"],
+            "properties": { "defaultFlag": "fast" }
+        }]
+    })
+    .to_string();
+    let decoded = call(
+        "build.decodeModel",
+        json!({
+            "manifest": manifest,
+            "buildSystemID": "tasker",
+            "request": {
+                "workspaceRoot": root,
+                "root": "sub",
+                "output": raw_model,
+            },
+        }),
+    );
+    assert_eq!(decoded["ok"], true, "{decoded}");
+    let run_entries = decoded["data"]["model"]["run"].as_array().unwrap();
+    assert_eq!(run_entries.len(), 1, "{decoded}");
+    let entry = &run_entries[0];
+    assert_eq!(entry["provider"], "build.run-type");
+    assert_eq!(entry["name"], "build");
+    assert_eq!(entry["cwd"], "sub");
+    assert_eq!(entry["execution"], "task");
+    assert_eq!(
+        entry["runType"],
+        json!({
+            "pluginID": "dev.lithe.test.generated-run-types",
+            "buildSystemID": "tasker",
+            "type": "target",
+            "values": {
+                "targets": ["build"],
+                "profile": "release",
+                "flags": "fast"
+            }
+        })
+    );
+
+    // 2. Generate and resolve: materializes a `generated:run-type:*` configuration.
+    let snapshot = json!([{
+        "projectPath": "sub",
+        "name": entry["name"],
+        "cwd": entry["cwd"],
+        "execution": entry["execution"],
+        "selector": entry["id"],
+        "runType": entry["runType"],
+    }]);
+    let generated = call(
+        "runConfig.generate",
+        json!({ "root": root, "providerRuns": snapshot }),
+    );
+    assert_eq!(generated["ok"], true, "{generated}");
+    let gen_id = generated["data"]["generated"]["configurations"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(gen_id.starts_with("generated:run-type:"), "{gen_id}");
+
+    let resolved = call("runConfig.resolve", json!({ "root": root }));
+    assert_eq!(resolved["ok"], true, "{resolved}");
+    let config = resolved["data"]["configurations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["id"] == gen_id)
+        .expect("generated run-type configuration resolves");
+    assert_eq!(config["provider"], "build.run-type");
+    assert_eq!(config["cwd"], "sub");
+    assert_eq!(config["plugin"]["id"], "dev.lithe.test.generated-run-types");
+    assert!(config["availability"].is_null());
+
+    // 3. Plan launch directly from the generated configuration.
+    let initial_plan = call(
+        "build.runConfigurationPlan",
+        json!({
+            "manifest": manifest,
+            "buildSystemID": "tasker",
+            "workspaceRoot": root,
+            "request": super::support::trusted(json!({
+                "configurationId": gen_id,
+                "instances": [{ "root": "sub" }],
+            })),
+        }),
+    );
+    assert_eq!(initial_plan["ok"], true, "{initial_plan}");
+    assert_eq!(initial_plan["data"]["status"], "ok", "{initial_plan}");
+    assert_eq!(
+        initial_plan["data"]["plan"]["arguments"],
+        json!(["--profile", "release", "--flag", "fast", "build"])
+    );
+    assert_eq!(initial_plan["data"]["plan"]["workingDirectory"], "sub");
+
+    // 4. Open editor form on the generated entry, clear optional `flags`, and
+    // reset `workingDirectory` from `sub` back to `.` — neither generated value
+    // may leak back after merge.
+    let form = call(
+        "runConfig.editorForm",
+        json!({
+            "root": root,
+            "configurationId": gen_id,
+            "runTypePlugins": run_type_plugins,
+        }),
+    );
+    assert_eq!(form["ok"], true, "{form}");
+    assert_eq!(form["data"]["values"]["field:targets"], "build");
+    assert_eq!(form["data"]["values"]["field:flags"], "fast");
+    assert_eq!(form["data"]["values"]["workingDirectory"], "sub");
+
+    let saved = call(
+        "runConfig.saveConfiguration",
+        json!({
+            "root": root,
+            "provider": "build.run-type",
+            "runType": {
+                "pluginID": "dev.lithe.test.generated-run-types",
+                "buildSystemID": "tasker",
+                "type": "target"
+            },
+            "configurationId": gen_id,
+            "runTypePlugins": run_type_plugins,
+            "values": {
+                "name": "build-custom",
+                "workingDirectory": ".",
+                "field:targets": "build test",
+                "field:profile": "default",
+                "field:flags": "",
+                "programArguments": "--verbose",
+            },
+        }),
+    );
+    assert_eq!(saved["data"]["status"], "saved", "{saved}");
+    assert_eq!(saved["data"]["id"], gen_id);
+    assert_eq!(
+        changed_run_paths(&saved["data"]),
+        vec![".lithe/run/plugin/dev.lithe.test.generated-run-types.local.toml"]
+    );
+    apply_run_changes(&root, &saved["data"]);
+
+    let edited_plan = call(
+        "build.runConfigurationPlan",
+        json!({
+            "manifest": manifest,
+            "buildSystemID": "tasker",
+            "workspaceRoot": root,
+            "request": super::support::trusted(json!({
+                "configurationId": gen_id,
+                "instances": [{ "root": "sub" }],
+            })),
+        }),
+    );
+    assert_eq!(edited_plan["ok"], true, "{edited_plan}");
+    assert_eq!(edited_plan["data"]["status"], "ok", "{edited_plan}");
+    assert_eq!(
+        edited_plan["data"]["plan"]["arguments"],
+        json!(["--profile", "default", "build", "test", "--verbose"])
+    );
+    assert_eq!(edited_plan["data"]["plan"]["workingDirectory"], ".");
+
+    // 5. Copy the generated configuration into a standalone user configuration.
+    let copied = call(
+        "runConfig.copyConfiguration",
+        json!({
+            "root": root,
+            "configurationId": gen_id,
+            "name": "My Build Copy",
+        }),
+    );
+    assert_eq!(copied["ok"], true, "{copied}");
+    let copy_id = copied["data"]["id"].as_str().unwrap();
+    assert!(copy_id.starts_with("user:"), "{copy_id}");
+    apply_run_changes(&root, &copied["data"]);
+
+    let after_copy = call("runConfig.resolve", json!({ "root": root }));
+    let ids: Vec<&str> = after_copy["data"]["configurations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|item| item["id"].as_str())
+        .collect();
+    assert!(ids.contains(&gen_id.as_str()), "{ids:?}");
+    assert!(ids.contains(&copy_id), "{ids:?}");
+}

@@ -238,8 +238,8 @@ impl BuildSystemDeclaration {
         self.validate_invocation(field, &option_ids, context)?;
         let model_templates = self.validate_tasks(field, &option_ids)?;
         self.validate_model(field, &option_ids)?;
-        self.validate_run(field, &option_ids, &model_templates)?;
         self.validate_run_types(field, &option_ids)?;
+        self.validate_run(field, &option_ids, &model_templates)?;
         self.validate_test(field, &option_ids)?;
         self.validate_diagnostics(field)?;
         self.validate_dependencies(field, &option_ids)?;

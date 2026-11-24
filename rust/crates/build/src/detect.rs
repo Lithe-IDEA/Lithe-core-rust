@@ -124,7 +124,14 @@ fn instance(
     if matches!(declaration.model, Some(ModelSource::Static { .. })) {
         let source = source_marker(declaration, workspace, root);
         match read_model(declaration, workspace, root, None, None, None).and_then(|model| {
-            let value = model_value(declaration, &model, root, stored, source.as_deref())?;
+            let value = model_value(
+                owner.plugin_id,
+                declaration,
+                &model,
+                root,
+                stored,
+                source.as_deref(),
+            )?;
             Ok((model, value))
         }) {
             Ok((model, value)) => {
