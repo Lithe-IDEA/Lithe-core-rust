@@ -5046,9 +5046,18 @@ workspace context:
   with the same rules and IDs unique within the action, offered in the action's
   menu after the action itself (for example Debug or Test beside Run).
 - The Lithe desktop host draws `run`, `run-all`, `debug`, `test`, `test-passed`,
-  `test-failed`, `test-skipped`, `navigate-super` and `navigate-implementations`.
+  `test-failed`, `test-skipped`, `navigate-super`, `navigate-implementations`,
+  `navigate-implemented`, `navigate-implementing`, `navigate-overridden`, and
+  `navigate-overriding`.
   An icon names a picture, not an operation: a test icon does not make the
   action a test, and the host never starts anything because of an icon.
+  For gutter navigation, `navigate-implemented` / `navigate-implementing` depict
+  interface or contract implementations (downward to implementations, upward to
+  implemented contracts), and `navigate-overridden` / `navigate-overriding` depict
+  inheritance overrides (downward to overrides, upward to super declarations).
+  Plugins should inspect `services.editor.options.actionIcons` returned by
+  `lithe/host/getCapabilities` and fall back to `navigate-implementations` or
+  `navigate-super` when running on an older host that omits the finer tokens.
 - Each invocation target is a currently registered function of the same plugin;
   `params` is a plugin-private JSON object. The host stores it behind an opaque
   per-batch action key, never accepts invocation payloads from the web editor, and

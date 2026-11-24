@@ -646,6 +646,56 @@ mod tests {
         assert!(unknown.validate().is_err());
     }
 
+    #[test]
+    fn host_options_support_all_desktop_action_icons_within_limit() {
+        let desktop_icons = vec![
+            "run".to_string(),
+            "run-all".to_string(),
+            "debug".to_string(),
+            "test".to_string(),
+            "test-passed".to_string(),
+            "test-failed".to_string(),
+            "test-skipped".to_string(),
+            "navigate-super".to_string(),
+            "navigate-implementations".to_string(),
+            "navigate-implemented".to_string(),
+            "navigate-implementing".to_string(),
+            "navigate-overridden".to_string(),
+            "navigate-overriding".to_string(),
+        ];
+        let options = EditorHostOptions {
+            action_icons: desktop_icons.clone(),
+            action_source_bytes: MAX_SOURCE_BYTES,
+            provider_types: vec![],
+        };
+        options.validate().unwrap();
+        let mut reported = json!({"services":{"editor":{"methods":[]}},"limits":{}});
+        let granted = BTreeSet::from([REGISTER_ACTIONS.to_string()]);
+        options.report(&mut reported, &granted);
+        assert_eq!(
+            reported["services"]["editor"]["options"]["actionIcons"],
+            json!(desktop_icons)
+        );
+        let decoded = decode_command(json!({
+            "version": 0,
+            "kind": "actions",
+            "icons": desktop_icons,
+            "sourceBytes": MAX_SOURCE_BYTES,
+            "text": "interface S {}\n",
+            "value": {
+                "actions": [{
+                    "id": "nav",
+                    "range": {"start": {"line": 1, "column": 1}, "end": {"line": 1, "column": 10}},
+                    "title": "Go to implementations",
+                    "icon": "navigate-implemented",
+                    "invoke": {"functionID": "nav.invoke"}
+                }]
+            }
+        }))
+        .unwrap();
+        assert_eq!(decoded["actions"][0]["icon"], "navigate-implemented");
+    }
+
     /// The shared contract fixture: what a host that declared these icons
     /// accepts, normalizes or rejects whole.
     #[test]

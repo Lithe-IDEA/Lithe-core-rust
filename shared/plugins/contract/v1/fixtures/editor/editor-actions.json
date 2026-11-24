@@ -2,7 +2,21 @@
   "schemaVersion": 1,
   "description": "Editor action validation through `plugins.editorActions.decode`. Every case is sent as the request `{version, kind, icons, sourceBytes, text, value}`: `version` is required and is `0` (Core accepts only `0`, otherwise `Unsupported editor action validation version.`); `icons` and `sourceBytes` are the `host` members below, which the host declared in getCapabilities (`services.editor.options.actionIcons` and `limits.editorActionSourceBytes`); `kind` is `actions` for a collector result (one-based UTF-16 positions in `text`) or `invokeResult` for the result of a clicked action or alternative. Accepted cases list the normalized value; rejected cases reject the whole result.",
   "host": {
-    "actionIcons": ["run", "run-all", "debug", "test", "test-passed", "test-failed", "test-skipped", "navigate-super", "navigate-implementations"],
+    "actionIcons": [
+      "run",
+      "run-all",
+      "debug",
+      "test",
+      "test-passed",
+      "test-failed",
+      "test-skipped",
+      "navigate-super",
+      "navigate-implementations",
+      "navigate-implemented",
+      "navigate-implementing",
+      "navigate-overridden",
+      "navigate-overriding"
+    ],
     "actionSourceBytes": 1048576
   },
   "cases": [
@@ -55,6 +69,28 @@
         "status": "accepted",
         "value": [
           { "id": "TestParse", "range": { "start": { "line": 1, "column": 1 }, "end": { "line": 1, "column": 15 } }, "title": "Run TestParse", "icon": "test-failed", "invoke": { "functionID": "go.markers.invoke", "params": { "test": "TestParse" } } }
+        ]
+      }
+    },
+    {
+      "name": "navigation markers distinguish interface implementations and inheritance overrides",
+      "kind": "actions",
+      "text": "interface Service { void run(); }\nclass Impl implements Service {\n  public void run() {}\n}\nclass Base { void step() {} }\nclass Sub extends Base {\n  void step() {}\n}\n",
+      "value": {
+        "actions": [
+          { "id": "iface-down", "range": { "start": { "line": 1, "column": 1 }, "end": { "line": 1, "column": 10 } }, "title": "Go to implementations", "icon": "navigate-implemented", "invoke": { "functionID": "nav.invoke", "params": { "direction": "down", "relation": "interface" } } },
+          { "id": "impl-up", "range": { "start": { "line": 3, "column": 1 }, "end": { "line": 3, "column": 2 } }, "title": "Go to interface declaration", "icon": "navigate-implementing", "invoke": { "functionID": "nav.invoke", "params": { "direction": "up", "relation": "interface" } } },
+          { "id": "base-down", "range": { "start": { "line": 5, "column": 1 }, "end": { "line": 5, "column": 6 } }, "title": "Go to overriding subclasses", "icon": "navigate-overridden", "invoke": { "functionID": "nav.invoke", "params": { "direction": "down", "relation": "inheritance" } } },
+          { "id": "sub-up", "range": { "start": { "line": 7, "column": 1 }, "end": { "line": 7, "column": 2 } }, "title": "Go to super method", "icon": "navigate-overriding", "invoke": { "functionID": "nav.invoke", "params": { "direction": "up", "relation": "inheritance" } } }
+        ]
+      },
+      "expected": {
+        "status": "accepted",
+        "value": [
+          { "id": "iface-down", "range": { "start": { "line": 1, "column": 1 }, "end": { "line": 1, "column": 10 } }, "title": "Go to implementations", "icon": "navigate-implemented", "invoke": { "functionID": "nav.invoke", "params": { "direction": "down", "relation": "interface" } } },
+          { "id": "impl-up", "range": { "start": { "line": 3, "column": 1 }, "end": { "line": 3, "column": 2 } }, "title": "Go to interface declaration", "icon": "navigate-implementing", "invoke": { "functionID": "nav.invoke", "params": { "direction": "up", "relation": "interface" } } },
+          { "id": "base-down", "range": { "start": { "line": 5, "column": 1 }, "end": { "line": 5, "column": 6 } }, "title": "Go to overriding subclasses", "icon": "navigate-overridden", "invoke": { "functionID": "nav.invoke", "params": { "direction": "down", "relation": "inheritance" } } },
+          { "id": "sub-up", "range": { "start": { "line": 7, "column": 1 }, "end": { "line": 7, "column": 2 } }, "title": "Go to super method", "icon": "navigate-overriding", "invoke": { "functionID": "nav.invoke", "params": { "direction": "up", "relation": "inheritance" } } }
         ]
       }
     },
