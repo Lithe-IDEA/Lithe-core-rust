@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 0,
+  "patches": [
+    {
+      "pluginID": "io.example.delta",
+      "platform": "darwin-arm64",
+      "fromVersion": "1.0.0",
+      "fromSHA256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "toVersion": "1.1.0",
+      "toSHA256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "toSize": 4096,
+      "format": "zstd-prefix",
+      "downloadURL": "https://github.com/example/delta/releases/download/v1.1.0/delta-darwin-arm64.from-1.0.0.zip.zst",
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "size": 124
+    }
+  ]
+}

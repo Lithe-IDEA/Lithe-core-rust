@@ -1889,6 +1889,28 @@ plugins and their release archives. Hosts fetch, cache, and download; Rust
 Core decides validity and availability through `plugins.marketplace.*` so
 every product shows the same catalog and the same install review.
 
+### Delta archives
+
+A marketplace can publish [`lithe-plugin-deltas.json`](plugin-delta-index.schema.json)
+beside its version-0 index. The main index remains authoritative for version,
+host compatibility, permissions review and the full archive digest. GitHub
+companions use the commit that supplied the main index. A source containing a
+query has no delta companion, so private link credentials need not travel to it.
+
+A `zstd-prefix` entry transforms the exact base ZIP into the target ZIP. The
+publisher creates it with Zstandard `--patch-from=OLD.zip`. The asset must end
+in `.zip.zst` and belong to the same GitHub Release as the target archive. The
+base and target must refer to the same plugin and platform, with a strictly newer
+target. An entry binds both archive SHA-256 digests, target byte size, patch URL,
+patch SHA-256 and patch byte size. ZIPs up to 64 MiB and patches up to 75% of the
+target byte count are eligible. The decoder allows a 128 MiB maximum window.
+
+The host uses a cached base only from the installed version's approved source.
+Missing, unsupported or invalid deltas lead to ordinary full downloads.
+Cancellation ends the operation. The host verifies the target ZIP through the
+same installation path regardless of how it obtained the archive. A delta
+grants no extra permission or right to change marketplace source.
+
 ### Sources
 
 - The host ships one **official** source: the index at

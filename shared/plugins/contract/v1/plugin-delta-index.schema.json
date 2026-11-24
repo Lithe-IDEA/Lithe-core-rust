@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Lithe-IDEA/Lithe-core-rust/main/shared/plugins/contract/v1/plugin-delta-index.schema.json",
+  "title": "Lithe plugin marketplace delta index",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "patches"],
+  "properties": {
+    "schemaVersion": { "const": 0 },
+    "patches": { "type": "array", "maxItems": 20000, "items": { "$ref": "#/$defs/patch" } }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "version": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$" },
+    "patch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pluginID", "platform", "fromVersion", "fromSHA256", "toVersion", "toSHA256", "toSize", "format", "downloadURL", "sha256", "size"],
+      "properties": {
+        "pluginID": { "type": "string", "pattern": "^[a-z0-9.-]+$" },
+        "platform": { "type": "string", "pattern": "^[a-z0-9]+-[a-z0-9]+$" },
+        "fromVersion": { "$ref": "#/$defs/version" },
+        "fromSHA256": { "$ref": "#/$defs/sha256" },
+        "toVersion": { "$ref": "#/$defs/version" },
+        "toSHA256": { "$ref": "#/$defs/sha256" },
+        "toSize": { "type": "integer", "minimum": 1, "maximum": 67108864 },
+        "format": { "const": "zstd-prefix" },
+        "downloadURL": { "type": "string", "format": "uri", "pattern": "^https://github\\.com/" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "size": { "type": "integer", "minimum": 1, "maximum": 50331648 }
+      }
+    }
+  }
+}
