@@ -526,6 +526,7 @@ or removing a command fails until the table changes in the same commit.
 | `plugins.editorActions.decode` | Validate independent action registration, collection or click results |
 | `plugins.hostApi.describe` | Describe backend host methods and their required grants from Core's method table |
 | `plugins.hostApi.authorize` | Check a method, service and current session grants using Core's capability rules; the host still checks session and resource ownership |
+| `plugins.workflow` | Validate host workflow requests and project bounded inputs, pagination, and output |
 | `plugins.editorProviders.decode` | Validate editor provider registrations and provider function results |
 | `keymap.decodeImport` | Validate a normalized shortcut import against the host's action catalog |
 | `keymap.planImportSources` | Plan the selected provider's declared shortcut source inputs |
