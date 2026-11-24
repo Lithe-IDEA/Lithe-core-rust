@@ -11,8 +11,8 @@
 use super::decode::{self, join_relative};
 use super::manifest::{
     BuildExecution, BuildSystemDeclaration, DependenciesSource, ExecutableCandidate, ModelSource,
-    OutputChannel, ProviderDeclaration, RunDeclaration, Scope, TaskSource, TestDeclaration,
-    TestFilter, TestResultsSource, WorkingDirectory,
+    OutputChannel, ProviderDeclaration, RunDeclaration, RunTypeRole, Scope, TaskSource,
+    TestDeclaration, TestFilter, TestResultsSource, WorkingDirectory,
 };
 use super::model::{entry_id, BuildModel, ModelProject};
 use super::options::{self, OptionContribution};
@@ -1113,12 +1113,14 @@ struct EntryParts<'a> {
     arguments: Vec<String>,
     execution: BuildExecution,
     extension: Map<String, Value>,
+    run_type: Option<Value>,
     binding: (&'static str, String),
 }
 
 /// Run entries at the given options, from every run declaration. Entries
 /// whose templates need a value the model did not record are left out.
 pub(crate) fn run_entries(
+    plugin_id: &str,
     build_system: &BuildSystemDeclaration,
     model: &BuildModel,
     root: &str,
@@ -1185,6 +1187,21 @@ pub(crate) fn run_entries(
                 let mut values = context.values(&[]);
                 values.project = Some(project_selection.selected());
                 values.target = Some(target_selection.selected());
+                if let Some(type_id) = run.configuration_type.as_deref() {
+                    if let Some(entry) = run_type_entry_parts(
+                        plugin_id,
+                        build_system,
+                        run,
+                        type_id,
+                        project,
+                        &values,
+                        &target.name,
+                        ("targetID", target.id.clone()),
+                    ) {
+                        parts.push(entry);
+                    }
+                    continue;
+                }
                 if let Some(entry) = entry_parts(
                     &context,
                     run,
@@ -1251,8 +1268,13 @@ pub(crate) fn run_entries(
             WorkingDirectory::Project => part.project.path.clone(),
             WorkingDirectory::Root => context.root.clone(),
         };
-        let provider = format!("{}.{}", build_system.id, part.run.id);
-        let id = entry_id(&provider, &cwd, &part.name);
+        let id_namespace = format!("{}.{}", build_system.id, part.run.id);
+        let provider = if part.run_type.is_some() {
+            lithe_execution::RUN_TYPE_PROVIDER.to_string()
+        } else {
+            id_namespace.clone()
+        };
+        let id = entry_id(&id_namespace, &cwd, &part.name);
         if !seen.insert(id.clone()) {
             continue;
         }
@@ -1261,10 +1283,10 @@ pub(crate) fn run_entries(
             "name": part.name,
             "provider": provider,
             "execution": part.execution,
-            "command": command,
+            "command": if part.run_type.is_some() { None } else { command },
             "args": part.arguments,
             "cwd": cwd,
-            "env": context.contribution.environment,
+            "env": if part.run_type.is_some() { json!({}) } else { json!(context.contribution.environment) },
             "source": source,
             "buildSystem": {
                 "id": build_system.id,
@@ -1274,6 +1296,9 @@ pub(crate) fn run_entries(
                 "optionFingerprint": context.fingerprint,
             },
         });
+        if let Some(run_type) = part.run_type {
+            entry["runType"] = run_type;
+        }
         if !part.extension.is_empty() {
             entry["extensions"] = json!({ build_system.id.clone(): part.extension });
         }
@@ -1281,6 +1306,57 @@ pub(crate) fn run_entries(
     }
     entries.sort_by(|left, right| (left.0, &left.1, &left.2).cmp(&(right.0, &right.1, &right.2)));
     Ok(entries.into_iter().map(|(_, _, _, entry)| entry).collect())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_type_entry_parts<'a>(
+    plugin_id: &str,
+    build_system: &BuildSystemDeclaration,
+    run: &'a RunDeclaration,
+    type_id: &str,
+    project: &'a ModelProject,
+    values: &Values<'_>,
+    default_name: &str,
+    binding: (&'static str, String),
+) -> Option<EntryParts<'a>> {
+    let declared = build_system.run_type(RunTypeRole::Configuration, type_id)?;
+    let name = match &run.name {
+        Some(name) => template::expand_text(name, values).ok()?,
+        None => default_name.to_string(),
+    };
+    let mut expanded_values = Map::new();
+    for (field_id, raw) in &run.values {
+        let expanded = match raw {
+            Value::String(text) => Value::String(template::expand_text(text, values).ok()?),
+            Value::Bool(flag) => Value::Bool(*flag),
+            Value::Array(items) => {
+                let mut out = Vec::with_capacity(items.len());
+                for item in items {
+                    let text = item.as_str()?;
+                    out.push(Value::String(template::expand_text(text, values).ok()?));
+                }
+                Value::Array(out)
+            }
+            _ => return None,
+        };
+        expanded_values.insert(field_id.clone(), expanded);
+    }
+    let run_type = json!({
+        "pluginID": plugin_id,
+        "buildSystemID": build_system.id,
+        "type": type_id,
+        "values": expanded_values,
+    });
+    Some(EntryParts {
+        run,
+        project,
+        name,
+        arguments: Vec::new(),
+        execution: declared.execution.unwrap_or(BuildExecution::Application),
+        extension: Map::new(),
+        run_type: Some(run_type),
+        binding,
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1315,6 +1391,7 @@ fn entry_parts<'a>(
         arguments: argv,
         execution,
         extension,
+        run_type: None,
         binding,
     })
 }

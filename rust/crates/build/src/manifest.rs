@@ -189,6 +189,12 @@ pub fn validate_declarations(
 }
 
 impl BuildSystemDeclaration {
+    /// Whether a run targets a declared `runConfigurationTypes` kind from the
+    /// build model, which `runConfigurationTypes` 1 introduced.
+    pub fn has_generated_run_configuration_types(&self) -> bool {
+        self.run.iter().any(|run| run.configuration_type.is_some())
+    }
+
     /// Whether a run starts entrypoints the provider finds in files, which
     /// `buildProviders` 1 introduced.
     pub fn has_run_entrypoints(&self) -> bool {
@@ -238,8 +244,8 @@ impl BuildSystemDeclaration {
         self.validate_invocation(field, &option_ids, context)?;
         let model_templates = self.validate_tasks(field, &option_ids)?;
         self.validate_model(field, &option_ids)?;
-        self.validate_run(field, &option_ids, &model_templates)?;
         self.validate_run_types(field, &option_ids)?;
+        self.validate_run(field, &option_ids, &model_templates)?;
         self.validate_test(field, &option_ids)?;
         self.validate_diagnostics(field)?;
         self.validate_dependencies(field, &option_ids)?;

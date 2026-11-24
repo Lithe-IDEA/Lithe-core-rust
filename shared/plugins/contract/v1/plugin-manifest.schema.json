@@ -10,6 +10,7 @@
     {"if": {"required": ["outputLinkMatchers"]}, "then": {"properties": {"requires": {"required": ["outputLinkMatchers"]}}}},
     {"if": {"required": ["toolDefinitions"]}, "then": {"properties": {"requires": {"required": ["toolDefinitions"]}}}},
     {"if": {"required": ["buildSystems"], "properties": {"buildSystems": {"contains": {"required": ["runConfigurationTypes"]}}}}, "then": {"properties": {"requires": {"required": ["runConfigurationTypes"]}}}},
+    {"if": {"required": ["buildSystems"], "properties": {"buildSystems": {"contains": {"required": ["run"], "properties": {"run": {"contains": {"required": ["configurationType"]}}}}}}}, "then": {"properties": {"requires": {"required": ["runConfigurationTypes"], "properties": {"runConfigurationTypes": {"const": 1}}}}}},
     {"if": {"required": ["buildSystems"], "properties": {"buildSystems": {"contains": {"required": ["beforeLaunchTasks"]}}}}, "then": {"properties": {"requires": {"required": ["beforeLaunchTasks"]}}}},
     {"if": {"required": ["buildSystems"], "properties": {"buildSystems": {"contains": {"required": ["test"], "properties": {"test": {"required": ["discoveryCommand"]}}}}}}, "then": {"properties": {"requires": {"required": ["buildSystems"], "properties": {"buildSystems": {"const": 1}}}}}},
     {"if": {"required": ["commandInstallers"]}, "then": {"required": ["permissions"], "properties": {"requires": {"required": ["commandInstallers"]}, "permissions": {"contains": {"const": "commands.install"}}}}},
@@ -47,7 +48,7 @@
         "outputLinkMatchers": { "description": "Required exactly when outputLinkMatchers is non-empty.", "enum": [0] },
         "packageTrust": { "description": "Required exactly when vendor.bundledSignatureRequirement is present.", "enum": [0] },
         "projectGenerators": { "description": "Entries of the New Project window: fields, requirements, and steps, with tool fields that pick tool installations.", "enum": [0] },
-        "runConfigurationTypes": { "description": "Required exactly when any buildSystems[].runConfigurationTypes is non-empty: kinds of run configuration the user creates in the Run/Debug Configurations dialog, drawn from declared fields and run through a declared command line. Needs buildSystems.", "enum": [0] },
+        "runConfigurationTypes": { "description": "Required exactly when any buildSystems[].runConfigurationTypes is non-empty: kinds of run configuration the user creates in the Run/Debug Configurations dialog, drawn from declared fields and run through a declared command line. Version 1 adds buildSystems[].run[].configurationType and values so auto-discovered model targets materialize entries of a declared run configuration type. Needs buildSystems.", "enum": [0, 1] },
         "settings": { "description": "Required exactly when settings, settingActions or settingRegions is non-empty. Covers integer, enum, boolean, multiSelect, text, file, and directory options, scope, effect, page, section, settingActions, and settingRegions.", "enum": [0] },
         "sourceSettings": { "description": "Required exactly when a setting action declares sourceEditor. Native-source settings projection, compiler placement, confirmed staging and read-back. Version 1 adds sidebar groups, nested sources, field sections and entry lists.", "enum": [0, 1] },
         "toolDefinitions": { "description": "Required exactly when toolDefinitions is present. Version 1 adds the display-only category and audience of a definition.", "enum": [0, 1] },
@@ -3498,6 +3499,27 @@
               "entrypoints": {
                 "description": "buildProviders 1: a provider application that starts an entrypoint lithe/build/runEntrypoints names in a source file, in its project and without a target. Requires source provider; refuses fromTargets, fromTasks, arguments, extension, native debug and a service or task execution. Registry connection debugging requires buildSystems 2.",
                 "type": "boolean"
+              },
+              "configurationType": {
+                "description": "runConfigurationTypes 1: ID of a buildSystems[].runConfigurationTypes entry in the same build system. Each matching target materializes a generated build.run-type configuration sharing that kind's group, icon, editor form, and command-line launch plan. Requires fromTargets and refuses source provider, debug, entrypoints, fromTasks, arguments, extension, and execution.",
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$",
+                "maxLength": 64
+              },
+              "values": {
+                "description": "runConfigurationTypes 1: initial field values for configurationType, keyed by declared field ID. String values and arguments list items may reference ${root}, ${project.*}, and ${target.*} template variables.",
+                "type": "object",
+                "additionalProperties": {
+                  "oneOf": [
+                    { "type": "string", "maxLength": 1024 },
+                    { "type": "boolean" },
+                    {
+                      "type": "array",
+                      "maxItems": 64,
+                      "items": { "type": "string", "maxLength": 1024 }
+                    }
+                  ]
+                }
               }
             },
             "if": { "required": ["entrypoints"], "properties": { "entrypoints": { "const": true } } },

@@ -198,6 +198,12 @@ pub(crate) fn merge_extensions(
             .entry(namespace.clone())
             .or_insert_with(|| json!({}));
         match (slot.as_object_mut(), value.as_object()) {
+            (Some(_), Some(incoming)) if namespace == "build" && incoming.contains_key("type") => {
+                // A saved `build.run-type` reference is a complete set of field
+                // values; replacing it wholesale ensures cleared optional fields
+                // do not leak back from an underlying generated entry.
+                *slot = value.clone();
+            }
             (Some(existing), Some(incoming)) => {
                 for (key, item) in incoming {
                     if namespace == "build-run" && key == "tools" {

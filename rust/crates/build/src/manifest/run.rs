@@ -35,6 +35,17 @@ pub(crate) struct RunDeclaration {
     /// project. It applies to no target and is never listed per target.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub(crate) entrypoints: bool,
+    /// `runConfigurationTypes` 1: ID of a `runConfigurationTypes` entry in
+    /// this build system. Each matching target materializes a generated
+    /// configuration of that declared kind instead of a raw command or
+    /// provider run, sharing the kind's icon, group and editor form.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) configuration_type: Option<String>,
+    /// `runConfigurationTypes` 1: initial field values for `configurationType`,
+    /// keyed by declared field ID. String values and `arguments` list items
+    /// may reference target and project template variables.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(crate) values: BTreeMap<String, Value>,
 }
 
 /// Native launch binds a local adapter; connection attach names a public registry type.
@@ -106,6 +117,71 @@ impl BuildSystemDeclaration {
                     format!("{field}.id"),
                     "Run IDs are unique identifiers that start with a letter.",
                 ));
+            }
+            if !run.values.is_empty() && run.configuration_type.is_none() {
+                return Err(invalid(
+                    format!("{field}.values"),
+                    "Run field values require configurationType.",
+                ));
+            }
+            if let Some(type_id) = run.configuration_type.as_deref() {
+                if run.source == TaskSource::Provider
+                    || run.debug.is_some()
+                    || run.entrypoints
+                    || run.from_tasks.is_some()
+                    || !run.arguments.is_empty()
+                    || !run.extension.is_empty()
+                    || run.execution.is_some()
+                {
+                    return Err(invalid(
+                        &field,
+                        "A run entry with configurationType uses target tags, field values, and the declared type's command line.",
+                    ));
+                }
+                let Some(targets) = &mut run.from_targets else {
+                    return Err(invalid(
+                        format!("{field}.fromTargets"),
+                        "A run entry with configurationType requires fromTargets.",
+                    ));
+                };
+                if targets.tags.is_empty()
+                    || targets.tags.len() > MAX_LIST
+                    || targets.tags.iter().any(|tag| !is_tag(tag))
+                {
+                    return Err(invalid(
+                        format!("{field}.fromTargets.tags"),
+                        "fromTargets needs one or more tag identifiers.",
+                    ));
+                }
+                targets.tags = sorted_unique(std::mem::take(&mut targets.tags));
+                let Some(run_type) = self
+                    .run_configuration_types
+                    .iter()
+                    .find(|declared| declared.id == type_id)
+                else {
+                    return Err(invalid(
+                        format!("{field}.configurationType"),
+                        format!(
+                            "configurationType {type_id} is not declared in runConfigurationTypes."
+                        ),
+                    ));
+                };
+                let allowed = Allowed {
+                    root: true,
+                    project: Availability::Always,
+                    target: Availability::Always,
+                    ..Allowed::none()
+                };
+                if let Some(name) = &run.name {
+                    template::validate_text(name, &allowed, &format!("{field}.name"))?;
+                }
+                validate_run_type_values(
+                    run_type,
+                    &run.values,
+                    &allowed,
+                    &format!("{field}.values"),
+                )?;
+                continue;
             }
             if run.debug.is_some() && run.source != TaskSource::Provider {
                 return Err(invalid(
@@ -258,4 +334,126 @@ impl BuildSystemDeclaration {
         }
         Ok(())
     }
+}
+
+/// Checks `values` of a `buildSystems[].run[]` entry that targets `run_type`.
+fn validate_run_type_values(
+    run_type: &RunTypeDeclaration,
+    values: &BTreeMap<String, Value>,
+    allowed: &Allowed<'_>,
+    field: &str,
+) -> Validation<()> {
+    for (id, value) in values {
+        let value_field = format!("{field}.{id}");
+        let Some(declared) = run_type.fields.iter().find(|entry| entry.id == *id) else {
+            return Err(invalid(
+                value_field,
+                format!(
+                    "{id} is not a field of runConfigurationType {}.",
+                    run_type.id
+                ),
+            ));
+        };
+        match (declared.kind, value) {
+            (
+                RunFieldKind::Text
+                | RunFieldKind::Choice
+                | RunFieldKind::File
+                | RunFieldKind::Directory,
+                Value::String(text),
+            ) => {
+                if text.len() > MAX_TEXT || text.contains('\0') {
+                    return Err(invalid(value_field, "Field value is invalid."));
+                }
+                template::validate_text(text, allowed, &value_field)?;
+                if declared.kind == RunFieldKind::Choice
+                    && !text.contains("${")
+                    && !declared.choices.iter().any(|choice| choice.value == *text)
+                {
+                    return Err(invalid(
+                        value_field,
+                        "Choice field value must match one of the declared choices.",
+                    ));
+                }
+            }
+            (RunFieldKind::Checkbox, Value::Bool(_)) => {}
+            (RunFieldKind::Arguments, Value::Array(items)) => {
+                if items.len() > 64 {
+                    return Err(invalid(value_field, "Too many arguments in field value."));
+                }
+                for (item_index, item) in items.iter().enumerate() {
+                    let Some(text) = item.as_str() else {
+                        return Err(invalid(
+                            format!("{value_field}[{item_index}]"),
+                            "Arguments field values must be strings.",
+                        ));
+                    };
+                    if text.len() > MAX_TEXT || text.contains('\0') {
+                        return Err(invalid(
+                            format!("{value_field}[{item_index}]"),
+                            "Field value is invalid.",
+                        ));
+                    }
+                    template::validate_text(
+                        text,
+                        allowed,
+                        &format!("{value_field}[{item_index}]"),
+                    )?;
+                }
+            }
+            _ => {
+                return Err(invalid(
+                    value_field,
+                    "Field value does not match the declared field kind.",
+                ));
+            }
+        }
+    }
+
+    // Ensure every visible required field without a default is supplied.
+    let mut effective: BTreeMap<&str, Value> = BTreeMap::new();
+    for declared in &run_type.fields {
+        let visible = declared.visible_when.as_ref().is_none_or(|condition| {
+            effective
+                .get(condition.field.as_str())
+                .is_some_and(|actual| *actual == condition.equals)
+        });
+        if !visible {
+            continue;
+        }
+        let chosen = values
+            .get(&declared.id)
+            .cloned()
+            .or_else(|| declared.default.clone())
+            .or_else(|| {
+                (declared.kind == RunFieldKind::Choice)
+                    .then(|| {
+                        declared
+                            .choices
+                            .first()
+                            .map(|choice| Value::String(choice.value.clone()))
+                    })
+                    .flatten()
+            })
+            .or_else(|| (declared.kind == RunFieldKind::Checkbox).then_some(Value::Bool(false)));
+        let empty = match &chosen {
+            None => true,
+            Some(Value::String(text)) => text.trim().is_empty(),
+            Some(Value::Array(items)) => items.is_empty(),
+            Some(_) => false,
+        };
+        if declared.required && empty {
+            return Err(invalid(
+                format!("{field}.{}", declared.id),
+                format!(
+                    "Required field {} of runConfigurationType {} must have a value or default.",
+                    declared.id, run_type.id
+                ),
+            ));
+        }
+        if let Some(chosen) = chosen {
+            effective.insert(&declared.id, chosen);
+        }
+    }
+    Ok(())
 }
