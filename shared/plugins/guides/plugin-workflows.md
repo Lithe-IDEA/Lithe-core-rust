@@ -30,6 +30,8 @@ try {
 
 `showInputBox` 的 `password:true` 用于明确向用户索取一个秘密，不预填、不记录；保存应调用本插件的 `credentials.set`。HTTP 不自动读取浏览器 Cookie，也不共享其他插件或宿主业务的凭据。默认返回重定向而不跟随，插件检查状态后自行决定下一步。网络请求由桌面发出，远程后端需要访问远端网络时使用自己的网络实现。
 
+状态项的 `commandID` 只能引用本插件清单声明的命令。资源预览按 Markdown 或 HTML 的扩展名选择对应方法；省略呈现方式时显示编辑器和预览。浏览器打开资源默认要求缓冲区已保存；仅在明确希望打开磁盘旧内容时传 `unsaved: "openSavedFile"`，宿主不会自动保存。
+
 树先返回已加载条目和 `cursor`。`expand` 再加载某父节点的子项；`loadMore` 返回累积范围或补丁，并更新 cursor。`views.refresh(workspace,{instance:event.instance})` 使当前显示失效；刷新后使用稳定 item ID 保留选择和展开。不要把每页当成新的整棵树而丢掉先前条目。
 
 ## English
@@ -50,6 +52,8 @@ Create output/progress per task and release them when finished. The subscription
 ID returned by progress creation is also its progress ID. SDK end methods dispose
 the local route; disposal of the subscription also ends the native progress.
 Use cancellation events to abort your own operation.
+
+Status commands must be declared by the same plugin. Use the preview method matching the resource extension; omitted presentation shows the editor and preview. Opening a browser resource defaults to requiring saved contents. Pass `unsaved: "openSavedFile"` only to explicitly open the disk version; the host never saves automatically.
 
 For lazy trees, return retained items and an opaque cursor. On expand/loadMore,
 return the full accumulated range or patches and advance the cursor. A repeated
