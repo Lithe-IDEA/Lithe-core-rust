@@ -121,7 +121,7 @@ impl Directory {
                 if matches!(component, std::path::Component::Prefix(_)) {
                     continue;
                 }
-                let handle = windows_open(&path, false)?;
+                let handle = windows_open(&path, WindowsOpen::Directory)?;
                 let info = metadata(handle.metadata()?);
                 if info.kind == Kind::Symlink {
                     return Err(link_refused());
@@ -152,7 +152,7 @@ impl Directory {
         #[cfg(windows)]
         {
             let path = self.path.join(name);
-            let handle = windows_open(&path, false)?;
+            let handle = windows_open(&path, WindowsOpen::Directory)?;
             let info = metadata(handle.metadata()?);
             if info.kind == Kind::Symlink {
                 return Err(link_refused());
@@ -174,7 +174,7 @@ impl Directory {
         #[cfg(unix)]
         let handle = unix_open(&self.handle, name, libc::O_NONBLOCK)?;
         #[cfg(windows)]
-        let handle = windows_open(&self.path.join(name), true)?;
+        let handle = windows_open(&self.path.join(name), WindowsOpen::File)?;
         let info = metadata(handle.metadata()?);
         if info.kind == Kind::Symlink {
             return Err(link_refused());
@@ -206,7 +206,7 @@ impl Directory {
         }
         #[cfg(windows)]
         {
-            windows_open(&self.path.join(name), false)?
+            windows_open(&self.path.join(name), WindowsOpen::Metadata)?
                 .metadata()
                 .map(metadata)
         }
@@ -382,24 +382,33 @@ unsafe fn errno() -> *mut i32 {
 }
 
 #[cfg(windows)]
-fn windows_open(path: &Path, read: bool) -> io::Result<File> {
+enum WindowsOpen {
+    Directory,
+    File,
+    Metadata,
+}
+
+#[cfg(windows)]
+fn windows_open(path: &Path, purpose: WindowsOpen) -> io::Result<File> {
     use std::os::windows::fs::OpenOptionsExt;
     use windows_sys::Win32::Storage::FileSystem::{
         FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES,
-        FILE_SHARE_READ, FILE_SHARE_WRITE,
+        FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TRAVERSE,
     };
     let mut options = std::fs::OpenOptions::new();
-    if read {
-        options.read(true);
-    } else {
-        options.access_mode(FILE_READ_ATTRIBUTES);
+    match purpose {
+        // Attribute-only handles do not enforce sharing. Traversal makes the
+        // directory's rename share restriction effective without listing it.
+        WindowsOpen::Directory => options
+            .access_mode(FILE_READ_ATTRIBUTES | FILE_TRAVERSE)
+            .share_mode(FILE_SHARE_READ),
+        WindowsOpen::File => options
+            .read(true)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE),
+        WindowsOpen::Metadata => options
+            .access_mode(FILE_READ_ATTRIBUTES)
+            .share_mode(FILE_SHARE_READ),
     }
-    options
-        .share_mode(if read {
-            FILE_SHARE_READ | FILE_SHARE_WRITE
-        } else {
-            FILE_SHARE_READ
-        })
-        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
-        .open(path)
+    .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+    .open(path)
 }
