@@ -3,6 +3,18 @@
   "root": "remote",
   "events": [
     {
+      "id": "remote.session.identity_rejected",
+      "channel": "remote",
+      "level": "warn",
+      "message": "Remote identity could not authorize automatic session recovery",
+      "fields": {
+        "stage": {"type": "token", "required": true, "description": "Identity validation or resume binding stage"},
+        "error": {"type": "error", "required": true, "description": "Controlled identity category without host names, fingerprints or credentials"}
+      },
+      "rate": 60,
+      "owner": "lithe-core"
+    },
+    {
       "id": "remote.process.cleanup_failed",
       "channel": "remote",
       "level": "warn",

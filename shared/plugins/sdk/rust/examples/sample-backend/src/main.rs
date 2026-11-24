@@ -63,6 +63,18 @@ fn main() {
         })
         .expect("valid toolchain fixture provider");
 
+    // A generic request supports new provider options without an SDK wrapper.
+    backend
+        .function("fixture.colors", |params, context| {
+            if let Some(registration) = params.get("registration") {
+                return Ok(context
+                    .host()
+                    .request("lithe/host/editor/registerProviders", registration.clone())?);
+            }
+            Ok(params["value"].clone())
+        })
+        .expect("valid color fixture function");
+
     let notes = Arc::clone(&state);
     backend
         .function("note.save", move |params, context| {

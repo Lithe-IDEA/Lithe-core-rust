@@ -2,25 +2,33 @@
 //!
 //! The server acts with the remote user's own permissions, exactly like the
 //! shell the user could open over the same transport. It therefore does not
-//! confine paths to the workspace; the client decides which paths it shows.
+//! confine general host operations to a workspace; editor saves explicitly
+//! carry a root and refuse descendant symbolic links at publication.
 
 use crate::protocol::methods::{
-    self, decode_bytes, encode_bytes, CopyParams, CopyResult, CreateDirParams, DirectoryEntry,
-    FileKind, FileMetadata, PathParams, ReadDirResult, ReadFileParams, ReadFileResult,
-    RealPathResult, RemoveParams, RenameParams, SetPermissionsParams, VolumeInfo, WriteFileParams,
+    self, encode_bytes, CopyParams, CopyResult, CreateDirParams, DirectoryEntry, FileKind,
+    FileMetadata, PathParams, ReadDirResult, ReadFileParams, ReadFileResult, RealPathResult,
+    RemoveParams, RenameParams, SetPermissionsParams, VolumeInfo, WriteFileParams,
     MAX_TRANSFER_BYTES,
 };
 use crate::protocol::{ErrorCode, RemoteError};
 use crate::server::{parse, platform, to_value};
 use serde_json::{json, Value};
-use std::fs::{self, File, OpenOptions};
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::fs::{self, OpenOptions};
+use std::io::{self, Read, Seek, SeekFrom};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::UNIX_EPOCH;
 
 static TEMPORARY_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Bounds synchronous listings; recursive indexes use streaming walk batches.
+const MAX_DIRECTORY_ENTRIES: usize = 20_000;
+/// Reserve framing and result-envelope space around serialized entries.
+const DIRECTORY_ENVELOPE_BYTES: usize = 1024;
+
+mod guarded_write;
 
 pub(crate) fn handle(method: &str, params: Value) -> Result<Value, RemoteError> {
     match method {
@@ -125,6 +133,7 @@ fn describe(path: &Path, metadata: &fs::Metadata) -> FileMetadata {
             .ok()
             .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
             .and_then(|duration| i64::try_from(duration.as_millis()).ok()),
+        revision: Some(revision(metadata)),
         readonly: metadata.permissions().readonly(),
         mode: metadata.mode() & 0o7777,
         symlink_target,
@@ -133,6 +142,19 @@ fn describe(path: &Path, metadata: &fs::Metadata) -> FileMetadata {
             .then(|| fs::metadata(path).ok().map(|target| target.mode() & 0o7777))
             .flatten(),
     }
+}
+
+fn revision(metadata: &fs::Metadata) -> String {
+    format!(
+        "{:x}:{:x}:{:x}:{:x}:{:x}:{:x}:{:x}",
+        metadata.dev(),
+        metadata.ino(),
+        metadata.len(),
+        metadata.mtime(),
+        metadata.mtime_nsec(),
+        metadata.ctime(),
+        metadata.ctime_nsec()
+    )
 }
 
 pub(crate) fn kind_of(file_type: &fs::FileType) -> FileKind {
@@ -148,11 +170,29 @@ pub(crate) fn kind_of(file_type: &fs::FileType) -> FileKind {
 }
 
 fn read_dir(params: PathParams) -> Result<ReadDirResult, RemoteError> {
+    read_dir_bounded(
+        params,
+        MAX_DIRECTORY_ENTRIES,
+        crate::protocol::frame::MAX_FRAME_BYTES - DIRECTORY_ENVELOPE_BYTES,
+    )
+}
+
+fn read_dir_bounded(
+    params: PathParams,
+    max_entries: usize,
+    max_bytes: usize,
+) -> Result<ReadDirResult, RemoteError> {
     let path = host_path(&params.path)?;
     let listing = fs::read_dir(&path).map_err(|error| io_error(error, &params.path))?;
     let mut entries = Vec::new();
     let mut skipped_non_utf8 = 0;
+    let mut bytes = 0;
+    let mut examined = 0;
     for entry in listing {
+        examined += 1;
+        if examined > max_entries {
+            return Err(too_large(examined as u64));
+        }
         let entry = entry.map_err(|error| io_error(error, &params.path))?;
         let Ok(name) = entry.file_name().into_string() else {
             skipped_non_utf8 += 1;
@@ -163,10 +203,18 @@ fn read_dir(params: PathParams) -> Result<ReadDirResult, RemoteError> {
         let Ok(metadata) = fs::symlink_metadata(entry.path()) else {
             continue;
         };
-        entries.push(DirectoryEntry {
+        let described = DirectoryEntry {
             metadata: describe(&entry.path(), &metadata),
             name,
-        });
+        };
+        bytes += serde_json::to_vec(&described)
+            .expect("directory entries serialize")
+            .len()
+            + 1;
+        if bytes > max_bytes {
+            return Err(too_large(bytes as u64));
+        }
+        entries.push(described);
     }
     entries.sort_by(|left, right| left.name.cmp(&right.name));
     Ok(ReadDirResult {
@@ -226,111 +274,7 @@ fn read_file(params: ReadFileParams) -> Result<ReadFileResult, RemoteError> {
 /// link itself intact. The rename gives the file a new inode, which breaks
 /// hard links, the same trade-off other editors' safe-write mode makes.
 fn write_file(params: WriteFileParams) -> Result<FileMetadata, RemoteError> {
-    let data = decode_bytes(&params.data)
-        .map_err(|error| RemoteError::new(ErrorCode::InvalidRequest, error.to_string()))?;
-    if data.len() as u64 > MAX_TRANSFER_BYTES {
-        return Err(too_large(data.len() as u64));
-    }
-    let requested = host_path(&params.path)?;
-    let target = match fs::symlink_metadata(&requested) {
-        Ok(metadata) if metadata.file_type().is_symlink() => {
-            fs::canonicalize(&requested).map_err(|error| io_error(error, &params.path))?
-        }
-        _ => requested,
-    };
-    let current = match fs::metadata(&target) {
-        Ok(metadata) => Some(metadata),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
-        Err(error) => return Err(io_error(error, &params.path)),
-    };
-    if let Some(metadata) = &current {
-        if metadata.is_dir() {
-            return Err(RemoteError::new(
-                ErrorCode::IsADirectory,
-                "cannot replace a directory with a file",
-            ));
-        }
-    }
-    match (&params.expected, &current) {
-        (Some(expected), Some(metadata)) => {
-            let found = describe(&target, metadata);
-            if found.size != expected.size || found.modified_ms != expected.modified_ms {
-                return Err(RemoteError::new(
-                    ErrorCode::Conflict,
-                    "the file changed since it was read",
-                )
-                .with_details(json!({ "size": found.size, "modifiedMs": found.modified_ms })));
-            }
-        }
-        (Some(_), None) => {
-            return Err(RemoteError::new(
-                ErrorCode::Conflict,
-                "the file was deleted since it was read",
-            ))
-        }
-        (None, Some(_)) if !params.overwrite => {
-            return Err(RemoteError::new(
-                ErrorCode::AlreadyExists,
-                "the file already exists",
-            ))
-        }
-        _ => {}
-    }
-
-    let parent = target
-        .parent()
-        .ok_or_else(|| RemoteError::new(ErrorCode::InvalidPath, "cannot write the root"))?;
-    if params.create_parents {
-        fs::create_dir_all(parent).map_err(|error| io_error(error, &params.path))?;
-    }
-    let name = target
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let temporary = parent.join(format!(
-        ".{name}.lithe-{}-{}.tmp",
-        std::process::id(),
-        TEMPORARY_FILE_COUNTER.fetch_add(1, Ordering::Relaxed)
-    ));
-    // Without `expected` or `overwrite` the request only creates. The
-    // existence check above cannot protect the commit from a concurrent
-    // creation of the same path, so the commit itself must refuse to replace.
-    let create_only = params.expected.is_none() && !params.overwrite;
-    let written = write_temporary(&temporary, &data, current.as_ref()).and_then(|()| {
-        if create_only {
-            platform::rename_no_replace(&temporary, &target)
-        } else {
-            fs::rename(&temporary, &target)
-        }
-    });
-    if let Err(error) = written {
-        let _ = fs::remove_file(&temporary);
-        return Err(io_error(error, &params.path));
-    }
-    stat(&target, &params.path)
-}
-
-/// Writes the replacement content. When a file is replaced, the temporary
-/// file is created with at most the original's permission bits, so content
-/// of an owner-only file is never readable by other users through the
-/// temporary name; the umask can only remove bits, and the exact original
-/// mode is restored before the rename publishes the file.
-fn write_temporary(path: &Path, data: &[u8], replaced: Option<&fs::Metadata>) -> io::Result<()> {
-    let mut file = create_temporary(path, replaced)?;
-    file.write_all(data)?;
-    if let Some(metadata) = replaced {
-        file.set_permissions(metadata.permissions())?;
-    }
-    file.sync_all()
-}
-
-fn create_temporary(path: &Path, replaced: Option<&fs::Metadata>) -> io::Result<File> {
-    let mode = replaced.map_or(0o666, |metadata| metadata.permissions().mode() & 0o777);
-    OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(mode)
-        .open(path)
+    guarded_write::write(params)
 }
 
 fn create_dir(params: CreateDirParams) -> Result<(), RemoteError> {
@@ -615,6 +559,89 @@ pub(crate) fn io_error(error: io::Error, path: &str) -> RemoteError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::methods::decode_bytes;
+    use std::fs::File;
+
+    #[test]
+    fn directory_listing_stops_at_entry_and_serialized_byte_budgets() {
+        let directory = std::env::temp_dir().join(format!(
+            "lithe-list-budget-{}-{}",
+            std::process::id(),
+            TEMPORARY_FILE_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let _cleanup = RemoveOnDrop(directory.clone());
+        fs::write(directory.join("one"), b"1").unwrap();
+        fs::write(directory.join("two"), b"2").unwrap();
+        let params = || PathParams {
+            path: directory.to_str().unwrap().into(),
+        };
+        assert_eq!(
+            read_dir_bounded(params(), 1, 4096).unwrap_err().code,
+            ErrorCode::TooLarge
+        );
+        assert_eq!(
+            read_dir_bounded(params(), 10, 1).unwrap_err().code,
+            ErrorCode::TooLarge
+        );
+        assert_eq!(
+            read_dir_bounded(params(), 10, 4096).unwrap().entries.len(),
+            2
+        );
+    }
+
+    #[test]
+    fn scoped_save_refuses_a_symlink_in_a_parent_directory() {
+        let directory = std::env::temp_dir().join(format!(
+            "lithe-scoped-save-{}",
+            TEMPORARY_FILE_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir_all(directory.join("workspace")).unwrap();
+        fs::create_dir_all(directory.join("outside")).unwrap();
+        let _cleanup = RemoveOnDrop(directory.clone());
+        std::os::unix::fs::symlink(directory.join("outside"), directory.join("workspace/link"))
+            .unwrap();
+        let result = write_file(
+            serde_json::from_value(json!({
+                "path": directory.join("workspace/link/new"), "root": directory.join("workspace"),
+                "data": encode_bytes(b"must stay inside")
+            }))
+            .unwrap(),
+        );
+        assert!(result.is_err(), "scoped save followed a parent symlink");
+        assert!(!directory.join("outside/new").exists());
+    }
+
+    #[test]
+    fn precise_revision_detects_same_size_and_restored_modification_time() {
+        let directory = std::env::temp_dir().join(format!(
+            "lithe-revision-save-{}",
+            TEMPORARY_FILE_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let _cleanup = RemoveOnDrop(directory.clone());
+        let path = directory.join("file");
+        fs::write(&path, b"old").unwrap();
+        let before = fs::metadata(&path).unwrap();
+        let observed = describe(&path, &before);
+        let replacement = directory.join("replacement");
+        fs::write(&replacement, b"new").unwrap();
+        File::options()
+            .write(true)
+            .open(&replacement)
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(before.modified().unwrap()))
+            .unwrap();
+        fs::rename(replacement, &path).unwrap();
+        let result = write_file(
+            serde_json::from_value(json!({"path": path,
+            "data": encode_bytes(b"mine"), "expected": {"size": observed.size,
+            "modifiedMs": observed.modified_ms, "revision": observed.revision}}))
+            .unwrap(),
+        );
+        assert_eq!(result.unwrap_err().code, ErrorCode::Conflict);
+        assert_eq!(fs::read(path).unwrap(), b"new");
+    }
 
     #[test]
     fn link_metadata_reports_target_permissions_not_symlink_permissions() {
@@ -638,28 +665,6 @@ mod tests {
             describe(&link, &fs::symlink_metadata(&link).unwrap()).symlink_target_mode,
             None
         );
-    }
-
-    // Other users must not be able to open the temporary file while it holds
-    // the new content of an owner-only file; tightening the mode afterwards
-    // would not revoke a descriptor they already opened.
-    #[test]
-    fn temporary_file_for_an_owner_only_file_starts_owner_only() {
-        let directory = std::env::temp_dir().join(format!(
-            "lithe-remote-fs-mode-{}-{}",
-            std::process::id(),
-            TEMPORARY_FILE_COUNTER.fetch_add(1, Ordering::Relaxed)
-        ));
-        fs::create_dir_all(&directory).unwrap();
-        let _cleanup = RemoveOnDrop(directory.clone());
-        let original = directory.join("secret");
-        fs::write(&original, b"old").unwrap();
-        fs::set_permissions(&original, fs::Permissions::from_mode(0o600)).unwrap();
-        let replaced = fs::metadata(&original).unwrap();
-
-        let temporary = directory.join("secret.tmp");
-        let file = create_temporary(&temporary, Some(&replaced)).unwrap();
-        assert_eq!(file.metadata().unwrap().permissions().mode() & 0o777, 0o600);
     }
 
     fn read_whole(path: &Path) -> Result<ReadFileResult, RemoteError> {

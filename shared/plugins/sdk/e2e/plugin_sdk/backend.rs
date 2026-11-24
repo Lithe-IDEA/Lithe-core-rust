@@ -61,6 +61,7 @@ pub fn run_backend_scenario(package: &Path) {
         [
             "fail.unexpectedly",
             "files.nextChange",
+            "fixture.colors",
             "note.read",
             "note.save",
             "secret.check",

@@ -153,6 +153,7 @@ pub(crate) fn is_hot(method: &str) -> bool {
             method,
             "document.classifyText"
                 | "document.lifecycle"
+                | "plugins.workflow"
                 | "markdown.render"
                 | "markdown.outline"
                 | "markdown.resolveReference"
@@ -195,7 +196,7 @@ pub(crate) fn is_hot(method: &str) -> bool {
         // File watchers forward one batch per debounce window.
         || matches!(
             method,
-            "workspace.filterChanges" | "lsp.workspaceFilesChanged" | "git.classifyMetadataChanges"
+            "workspace.watchEvents" | "workspace.filterChanges" | "lsp.workspaceFilesChanged" | "git.classifyMetadataChanges"
         )
         // The status bar sums the instance's memory every few seconds while it is shown,
         // and active runs probe their process tree's listening ports periodically.

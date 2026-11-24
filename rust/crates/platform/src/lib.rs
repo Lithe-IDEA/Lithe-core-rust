@@ -17,6 +17,7 @@ pub mod fs;
 pub mod names;
 pub mod paths;
 pub mod process;
+pub mod scoped_read;
 #[cfg(unix)]
 pub mod socket;
 

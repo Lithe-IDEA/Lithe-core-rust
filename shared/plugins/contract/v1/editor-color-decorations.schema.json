@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Lithe-IDEA/Lithe-core-rust/main/shared/plugins/contract/v1/editor-color-decorations.schema.json",
+  "title": "Editor color decoration provider (plugin contract v1)",
+  "description": "Registration options and function result for the colorDecorations provider on editor/registerProviders. Core enforces cross-field rules JSON Schema cannot express, including unique color IDs, same-line ordered UTF-16 ranges, non-overlap within one source, and the 10,000-decoration budget.",
+  "$defs": {
+    "color": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "light", "dark"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "light": { "$ref": "#/$defs/rgb" },
+        "dark": { "$ref": "#/$defs/rgb" }
+      }
+    },
+    "rgb": {
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{6}$",
+      "description": "An opaque RGB foreground color in #RRGGBB form."
+    },
+    "colorLegend": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": { "$ref": "#/$defs/color" },
+      "description": "Color IDs must be unique within the provider registration."
+    },
+    "position": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["line", "character"],
+      "properties": {
+        "line": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+        "character": { "type": "integer", "minimum": 0, "maximum": 4294967295 }
+      },
+      "description": "A zero-based LSP position; character counts UTF-16 code units."
+    },
+    "range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "$ref": "#/$defs/position" },
+        "end": { "$ref": "#/$defs/position" }
+      },
+      "description": "Core requires a nonempty, ordered range on one line."
+    },
+    "decoration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["range", "colorId"],
+      "properties": {
+        "range": { "$ref": "#/$defs/range" },
+        "colorId": { "type": "string", "minLength": 1, "maxLength": 128 }
+      },
+      "description": "colorId must name an entry in the registration's colorLegend."
+    }
+  },
+  "oneOf": [
+    {
+      "title": "Registration options",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["function", "colorLegend"],
+      "properties": {
+        "function": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^([a-z][A-Za-z0-9]*)(\\.[a-z][A-Za-z0-9]*)*$"
+        },
+        "colorLegend": { "$ref": "#/$defs/colorLegend" }
+      }
+    },
+    {
+      "title": "Provider function result",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decorations"],
+      "properties": {
+        "decorations": {
+          "type": "array",
+          "maxItems": 10000,
+          "items": { "$ref": "#/$defs/decoration" },
+          "description": "Ranges from this provider may touch but must not overlap."
+        }
+      }
+    }
+  ]
+}

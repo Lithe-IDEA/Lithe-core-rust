@@ -55,8 +55,9 @@ pub use error::{
     sdk_codes, Cancelled, FunctionError, PluginError, SdkError, HOST_ERROR_CODES, RELAY_ERROR_CODES,
 };
 pub use host::{
-    Browser, Credentials, Documents, Editor, Event, Functions, Host, HostFolder, HostPath, Preview,
-    ProcessRoot, Subscription, Subscriptions, Terminal, Window, Workspace, WorkspaceContext,
+    Browser, Clipboard, Credentials, Documents, Editor, Event, Functions, Host, HostFolder,
+    HostPath, Network, Output, Preview, ProcessRoot, Progress, StatusBar, Subscription,
+    Subscriptions, Terminal, Views, Window, Workspace, WorkspaceContext,
 };
 pub use protocol::{is_command_id, is_credential_key, is_function_id, is_plugin_error_code};
 pub use serde_json::Value;

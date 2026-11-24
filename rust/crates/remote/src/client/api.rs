@@ -50,6 +50,8 @@ pub struct WriteOptions {
     pub overwrite: bool,
     /// Create missing parent directories first.
     pub create_parents: bool,
+    /// Optional editor boundary; every descendant directory must be a real directory.
+    pub root: Option<String>,
 }
 
 /// What to run in [`RemoteSession::spawn`].
@@ -209,20 +211,74 @@ impl RemoteSession {
     /// Reads a whole file in chunks. Fails with `CONFLICT` when the file
     /// changes while it is being read, rather than returning a mixture.
     pub fn read_file(&self, path: &str) -> Result<(Vec<u8>, FileMetadata), ClientError> {
+        self.read_file_with_budget(path, usize::MAX, None, || false)
+    }
+
+    /// Reads within a cumulative byte budget and one overall deadline. Cancellation
+    /// is observed between chunks and at most every 50 ms while a reply is pending.
+    pub fn read_file_limited(
+        &self,
+        path: &str,
+        limit: usize,
+        timeout: Duration,
+        cancelled: impl FnMut() -> bool,
+    ) -> Result<(Vec<u8>, FileMetadata), ClientError> {
+        let deadline = Instant::now().checked_add(timeout).ok_or_else(|| {
+            ClientError::Protocol("the read deadline cannot be represented".into())
+        })?;
+        self.read_file_with_budget(path, limit, Some(deadline), cancelled)
+    }
+
+    fn read_file_with_budget(
+        &self,
+        path: &str,
+        limit: usize,
+        deadline: Option<Instant>,
+        mut cancelled: impl FnMut() -> bool,
+    ) -> Result<(Vec<u8>, FileMetadata), ClientError> {
         let mut content = Vec::new();
         let mut first: Option<FileMetadata> = None;
         loop {
-            let chunk: ReadFileResult = self.call(
+            if cancelled() {
+                return Err(ClientError::Cancelled);
+            }
+            let remaining = deadline.map_or(REQUEST_TIMEOUT, |deadline| {
+                deadline.saturating_duration_since(Instant::now())
+            });
+            if remaining.is_zero() {
+                return Err(ClientError::Timeout);
+            }
+            let length = MAX_TRANSFER_BYTES
+                .min(limit.saturating_sub(content.len()).saturating_add(1) as u64);
+            let pending = self.begin_request_value(
                 methods::FS_READ_FILE,
-                &ReadFileParams {
+                serde_json::to_value(ReadFileParams {
                     path: path.into(),
                     offset: content.len() as u64,
-                    length: MAX_TRANSFER_BYTES,
-                },
+                    length,
+                })
+                .expect("read parameters serialize"),
+                remaining.min(REQUEST_TIMEOUT),
             )?;
+            let chunk: ReadFileResult = loop {
+                if cancelled() {
+                    return Err(ClientError::Cancelled);
+                }
+                if let Some(value) = pending.poll(Duration::from_millis(50))? {
+                    break serde_json::from_value(value)
+                        .map_err(|error| ClientError::Protocol(error.to_string()))?;
+                }
+            };
+            if chunk.metadata.size > limit as u64 {
+                return Err(ClientError::Remote(RemoteError::new(
+                    ErrorCode::TooLarge,
+                    "the file exceeds the read budget",
+                )));
+            }
             if let Some(first) = &first {
                 if first.size != chunk.metadata.size
                     || first.modified_ms != chunk.metadata.modified_ms
+                    || first.revision != chunk.metadata.revision
                 {
                     return Err(ClientError::Remote(RemoteError::new(
                         ErrorCode::Conflict,
@@ -230,7 +286,25 @@ impl RemoteSession {
                     )));
                 }
             }
-            content.extend(decode(&chunk.data)?);
+            let bytes = decode(&chunk.data)?;
+            let total = content
+                .len()
+                .checked_add(bytes.len())
+                .ok_or_else(|| ClientError::Protocol("invalid read size".into()))?;
+            if total > limit {
+                return Err(ClientError::Remote(RemoteError::new(
+                    ErrorCode::TooLarge,
+                    "the file exceeds the read budget",
+                )));
+            }
+            if bytes.len() as u64 > length
+                || total as u64 > chunk.metadata.size
+                || chunk.eof != (total as u64 == chunk.metadata.size)
+                || (bytes.is_empty() && !chunk.eof)
+            {
+                return Err(ClientError::Protocol("invalid read progress".into()));
+            }
+            content.extend_from_slice(&bytes);
             let eof = chunk.eof;
             first.get_or_insert(chunk.metadata);
             if eof {
@@ -246,6 +320,18 @@ impl RemoteSession {
         content: &[u8],
         options: WriteOptions,
     ) -> Result<FileMetadata, ClientError> {
+        if options.root.is_some()
+            && !self
+                .hello()
+                .host
+                .features
+                .contains(&methods::Feature::GuardedWrites)
+        {
+            return Err(ClientError::Remote(RemoteError::new(
+                ErrorCode::Unsupported,
+                "the server does not support scoped saves",
+            )));
+        }
         self.call(
             methods::FS_WRITE_FILE,
             &WriteFileParams {
@@ -254,6 +340,7 @@ impl RemoteSession {
                 expected: options.expected,
                 overwrite: options.overwrite,
                 create_parents: options.create_parents,
+                root: options.root,
             },
         )
     }

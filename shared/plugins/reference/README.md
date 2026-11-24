@@ -15,6 +15,7 @@
 | 每个协议、能力和 API 是哪天、哪个 PR 改的 | [插件协议更新记录](protocol-changelog.md)（只有中文） |
 | 某个功能的字段、宿主现状、契约章节和示例 | 下方的功能页 |
 | 一步步做出一个插件 | [开发指南](../guides/) |
+| 为插件扩展 API 并提交 PR | [API PR 提交指南](../guides/plugin-api-pr-guide.zh-CN.md) |
 
 ### 功能页
 
@@ -61,6 +62,7 @@ This directory organizes the plugin contract by feature: what each numbered API 
 | When, and in which PR, each protocol, capability, and API changed | [Plugin protocol changelog](protocol-changelog.md) (Chinese only) |
 | A feature's fields, host status, contract sections, and examples | The feature pages below |
 | Building a plugin step by step | [Guides](../guides/) |
+| Extending an API for a plugin and submitting a PR | [API PR guide (Chinese)](../guides/plugin-api-pr-guide.zh-CN.md) |
 
 ### Feature pages
 

@@ -147,6 +147,33 @@
       "surface": {"toolWindowID": "dev.lithe.fixture.view-panel.missing"},
       "result": {"view": []},
       "expected": {"status": "rejected", "field": "surface.toolWindowID"}
+    },
+    {
+      "name": "lazy trees retain opaque continuation and unloaded branch hints",
+      "surface": {
+        "toolWindowID": "dev.lithe.fixture.view-panel.explorer"
+      },
+      "result": {
+        "view": [
+          {
+            "type": "tree",
+            "id": "entries",
+            "cursor": "page-2",
+            "items": [
+              {
+                "id": "branch",
+                "label": "Branch",
+                "hasChildren": true
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "changed": true,
+        "view": "result.view"
+      }
     }
   ]
 }

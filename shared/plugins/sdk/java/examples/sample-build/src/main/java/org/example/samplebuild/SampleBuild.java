@@ -106,6 +106,10 @@ public final class SampleBuild {
 
         backend.function("workspace.build", this::build);
         backend.function("snapshot.read", (params, context) -> store.read("snapshot", null));
+        // A generic request supports new provider options without an SDK wrapper.
+        backend.function("fixture.colors", (params, context) -> params.containsKey("registration")
+                ? context.host().request("lithe/host/editor/registerProviders", params.get("registration")).join()
+                : params.get("value"));
         backend.listen();
     }
 

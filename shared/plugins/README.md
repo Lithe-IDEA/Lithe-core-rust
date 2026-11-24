@@ -17,6 +17,7 @@
 | 参考现成插件 | [示例插件](#示例插件) |
 | 查 API-01–44 现在能用什么、每种能力和协议的版本、Core 和 Lithe 桌面端支持哪些 | [插件参考](reference/README.md) |
 | 查字段的准确含义 | [插件契约](#插件契约) |
+| 为插件需要的公共 API 提 PR | [API PR 提交指南（中文）](guides/plugin-api-pr-guide.zh-CN.md) |
 | 修改契约、指南或 SDK，在本地验证 | [贡献与维护](#贡献与维护) |
 
 ### 插件是什么
@@ -56,12 +57,12 @@ Lithe 读取并校验 `plugin.json`，然后自己启动其中声明的外部进
 | --- | --- | --- |
 | `schemaVersion` | `0` | 清单的文件格式 |
 | `pluginAPIVersion` | `0` | 插件 API 版本，Lithe 据此判断能不能读你的清单 |
-| `requires` | 每个用到的能力写 `0` | 你的插件用了哪些能力；Lithe 只在支持这些能力时才提供安装 |
+| `requires` | 每个用到的能力取已有的最低可用版本 | 你的插件用了哪些能力；Lithe 只在支持这些能力时才提供安装 |
 | `version` | 你自己定 | 你的插件自己的版本 |
 
 `requires` 必须**恰好**列出实际用到的能力：漏一个或多列一个，清单都会被拒绝。例如只用声明式构建系统时写 `"requires": { "buildSystems": 0 }`，不要多写。
 
-能力以后可能出新版本。一次改动只给一个能力加一个新版本，没用到它的插件继续写 `0`，继续可以安装。每个能力的内容、Core 的支持表和 Lithe 桌面端是否声明它，见[能力与协议版本对照](reference/capabilities-and-versions.md#能力版本requires)；Lithe 桌面端没有声明的能力，需要它的插件不会被提供安装。
+已有的能力版本继续保留，按实际用法选择最低可用版本；用到 `1`、`2` 才有的行为时如实声明，不强制填 `0`。新增能力先复用 API-01–44，在所属领域兼容扩展；工具特有需求不得提升任何系统 API 版本，公共变化也要先证明兼容扩展不足，详见 [API PR 提交指南](guides/plugin-api-pr-guide.zh-CN.md)。每个能力的内容、Core 的支持表和 Lithe 桌面端是否声明它，见[能力与协议版本对照](reference/capabilities-and-versions.md#能力版本requires)；Lithe 桌面端没有声明的能力，需要它的插件不会被提供安装。
 
 ### 在编辑器里校验 plugin.json
 
@@ -193,6 +194,8 @@ fixture 放在 `fixtures/<功能>/` 下，文件按演示的能力命名，例�
 
 ### 贡献与维护
 
+为插件补充公共 API 前，先读 [API PR 提交指南](guides/plugin-api-pr-guide.zh-CN.md)：包括领域复用、版本限制、兼容与发布顺序、统一日志定位及脱敏、错误码查重，以及四个官方 SDK 的同步交付；example 可以后补。
+
 修改契约、指南、参考或 SDK 的 PR 提到 [Core 仓库](https://github.com/Lithe-IDEA/Lithe-core-rust)，和对应的 Rust Core 改动放在同一个 PR 里。下面的命令都在 **Core 仓库的根目录**运行；CI 工作流是仓库根的 `.github/workflows/plugins-verify.yml`，每次涉及 `shared/plugins/` 或 `rust/` 的提交都会运行它们。
 
 | 命令 | 作用 |
@@ -238,6 +241,7 @@ Writing, testing, and publishing a plugin all happen in **your own repository**.
 | Learn from existing plugins | [Example plugins](#example-plugins) |
 | See what API-01–44 offer today, the version of each capability and protocol, and what Core and the Lithe desktop client support | [Plugin reference](reference/README.md) |
 | Look up the exact meaning of a field | [Plugin contract](#plugin-contract) |
+| Propose a public API extension for a plugin | [API PR guide (Chinese)](guides/plugin-api-pr-guide.zh-CN.md) |
 | Change the contract, guides, or SDKs and verify locally | [Contributing and maintenance](#contributing-and-maintenance) |
 
 ### What a plugin is
@@ -277,12 +281,12 @@ When you need run, test, or build tool integration, read the [build, run, and te
 | --- | --- | --- |
 | `schemaVersion` | `0` | The manifest file format |
 | `pluginAPIVersion` | `0` | The plugin API version; Lithe uses it to decide whether it can read your manifest |
-| `requires` | `0` for each capability you use | Which capabilities your plugin uses; Lithe offers the plugin for installation only where it supports them |
+| `requires` | The lowest existing version that covers each capability you use | Which capabilities your plugin uses; Lithe offers the plugin for installation only where it supports them |
 | `version` | Your choice | Your plugin's own version |
 
 `requires` must list **exactly** the capabilities you use: leaving one out or listing one extra gets the manifest rejected. For example, a plugin that only uses declarative build systems writes `"requires": { "buildSystems": 0 }` and nothing more.
 
-A capability may get a new version later. One change adds a new version to exactly one capability, and a plugin that does not use it keeps writing `0` and stays installable. For what each capability covers, Core's support table, and whether the Lithe desktop client declares it, see [Capability and protocol versions](reference/capabilities-and-versions.md#capability-versions-requires); a plugin that needs a capability the Lithe desktop client does not declare is not offered for installation there.
+Keep existing capability versions and select the lowest that covers the actual use; declare `1` or `2` when its behavior is needed rather than forcing every value to `0`. Reuse API-01–44 and extend the appropriate domain compatibly. Tool-specific requirements must not raise any system API version; even a public change must first show why a compatible extension is insufficient. See the [API PR guide (Chinese)](guides/plugin-api-pr-guide.zh-CN.md). For what each capability covers, Core's support table, and whether the Lithe desktop client declares it, see [Capability and protocol versions](reference/capabilities-and-versions.md#capability-versions-requires); a plugin that needs a capability the Lithe desktop client does not declare is not offered for installation there.
 
 ### Validate plugin.json in your editor
 
@@ -413,6 +417,8 @@ Lithe's Rust Core enforces the contract. The contract, guides, reference, offici
 For questions or suggestions about the contract, [open an issue in the Core repository](https://github.com/Lithe-IDEA/Lithe-core-rust/issues).
 
 ### Contributing and maintenance
+
+Before extending a public plugin API, read the [API PR guide (Chinese)](guides/plugin-api-pr-guide.zh-CN.md): domain reuse, version restrictions, compatibility and release order, useful unified logs with redaction, error-code uniqueness, and support in all four official SDKs in the same PR. New examples may follow later.
 
 A PR that changes the contract, guides, reference, or SDKs goes to the [Core repository](https://github.com/Lithe-IDEA/Lithe-core-rust), in the same PR as the matching Rust Core change. Run the commands below at the **root of the Core repository**; CI runs them from `.github/workflows/plugins-verify.yml` at the repository root on every change that touches `shared/plugins/` or `rust/`.
 

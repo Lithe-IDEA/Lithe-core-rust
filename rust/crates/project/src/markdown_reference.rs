@@ -118,6 +118,9 @@ pub fn resolve_reference(request: MarkdownReferenceRequest) -> MarkdownReference
         }
         return web_address(purpose, reference);
     }
+    if request.document_path.starts_with("lithe-plugin-preview:") {
+        return MarkdownReference::None;
+    }
     let written = reference.split(['?', '#']).next().unwrap_or_default();
     let Some(decoded) = percent_decode(written) else {
         return MarkdownReference::None;
@@ -283,6 +286,26 @@ mod tests {
     };
     use std::fs;
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn inline_markdown_cannot_reach_workspace_files() {
+        for reference in [
+            "secret.txt",
+            "../secret.txt",
+            "/etc/hosts",
+            "file:///etc/hosts",
+        ] {
+            assert_eq!(
+                resolve_reference(MarkdownReferenceRequest {
+                    document_path: "lithe-plugin-preview://session/context/page".into(),
+                    workspace_root: Some("/workspace".into()),
+                    reference: reference.into(),
+                    purpose: MarkdownReferencePurpose::Link,
+                }),
+                MarkdownReference::None
+            );
+        }
+    }
 
     /// A temporary workspace with `docs/guide.md`, `docs/logo.png`, `assets/badge.svg`, a text
     /// file and, outside it, `secret.png`.

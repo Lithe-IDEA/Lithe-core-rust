@@ -34,11 +34,14 @@ const (
 	ViewResize ViewEventKind = "resize"
 	// ViewSettings: the effective or draft setting values changed.
 	ViewSettings ViewEventKind = "settings"
+	ViewRefresh  ViewEventKind = "refresh"
+	ViewExpand   ViewEventKind = "expand"
+	ViewLoadMore ViewEventKind = "loadMore"
 )
 
 func parseViewEventKind(name string) (ViewEventKind, bool) {
 	switch kind := ViewEventKind(name); kind {
-	case ViewOpen, ViewClose, ViewClick, ViewChange, ViewSelect, ViewActivate, ViewViewport, ViewResize, ViewSettings:
+	case ViewOpen, ViewClose, ViewClick, ViewChange, ViewSelect, ViewActivate, ViewViewport, ViewResize, ViewSettings, ViewRefresh, ViewExpand, ViewLoadMore:
 		return kind, true
 	}
 	return "", false
@@ -92,7 +95,9 @@ type ViewEvent struct {
 	// Setting is the setting ID of a change of a control bound to one.
 	Setting string
 	// Item is the tree item ID of a select or activate event.
-	Item     string
+	Item string
+	// Cursor is the opaque continuation of a tree loadMore event.
+	Cursor   string
 	Viewport *Viewport
 	// Width is the width in points the host lays the view out in, on every
 	// event from a host that reports it. List resize in a canvas's on only
@@ -214,7 +219,7 @@ func parseViewEvent(params any) (*ViewEvent, error) {
 	default:
 		return nil, invalidViewEvent()
 	}
-	for key, target := range map[string]*string{"node": &event.Node, "canvas": &event.Canvas, "setting": &event.Setting, "item": &event.Item} {
+	for key, target := range map[string]*string{"node": &event.Node, "canvas": &event.Canvas, "setting": &event.Setting, "item": &event.Item, "cursor": &event.Cursor} {
 		if *target, _, err = optionalString(object, key); err != nil {
 			return nil, err
 		}

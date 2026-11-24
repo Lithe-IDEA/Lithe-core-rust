@@ -69,6 +69,7 @@ pub mod prompt;
 mod routes;
 pub mod session;
 pub mod ssh_config;
+pub mod ssh_identity;
 pub mod transport;
 pub mod trust;
 pub mod wsl;

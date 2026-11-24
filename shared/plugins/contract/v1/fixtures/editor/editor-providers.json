@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "description": "lithe/host/editor/registerProviders validation. `host.providerTypes` is what the host declared in getCapabilities (`services.editor.options.providerTypes`). Registration cases carry the method params without `context`; result cases carry one provider function's LSP 3.17 shaped result and the normalized value the host merges after the language server's own answer. Positions are zero-based LSP positions. A rejected registration names the host failure code; a rejected result is dropped whole.",
+  "description": "lithe/host/editor/registerProviders validation. `host.providerTypes` is what the host declared in getCapabilities (`services.editor.options.providerTypes`). Registration cases carry method params without `context`; result cases carry provider results and the normalized value the host merges. Positions are zero-based LSP positions. Color decoration results use single-line UTF-16 ranges, and merge cases define deterministic source priority. A rejected registration names the host failure code; a rejected result is dropped whole.",
   "host": {
-    "providerTypes": ["definition", "hover", "completion", "codeLens", "foldingRange", "semanticTokens", "documentLink"]
+    "providerTypes": ["definition", "hover", "completion", "codeLens", "foldingRange", "semanticTokens", "colorDecorations", "documentLink"]
   },
   "registrations": [
     {
@@ -37,6 +37,16 @@
       "name": "a provider type the host does not route",
       "params": { "id": "message-keys", "selector": { "fileExtensions": ["properties"] }, "providers": { "signatureHelp": { "function": "keys.signature" } } },
       "expected": { "status": "rejected", "code": "plugin.host.unsupportedOption", "details": { "option": "providers.signatureHelp" } }
+    },
+    {
+      "name": "color decorations declare light and dark colors",
+      "params": { "id": "rainbow", "selector": { "fileExtensions": ["rs"] }, "providers": { "colorDecorations": { "function": "rainbow.decorate", "colorLegend": [{ "id": "depth-0", "light": "#112233", "dark": "#445566" }, { "id": "depth-1", "light": "#AABBCC", "dark": "#DDEEFF" }] } } },
+      "expected": { "status": "accepted", "registration": { "id": "rainbow", "selector": { "languages": [], "fileExtensions": ["rs"], "fileNames": [] }, "providers": { "colorDecorations": { "function": "rainbow.decorate", "colorLegend": [{ "id": "depth-0", "light": "#112233", "dark": "#445566" }, { "id": "depth-1", "light": "#AABBCC", "dark": "#DDEEFF" }], "budgetMs": 2000 } } } }
+    },
+    {
+      "name": "color decoration legend IDs are unique",
+      "params": { "id": "rainbow", "selector": { "fileExtensions": ["rs"] }, "providers": { "colorDecorations": { "function": "rainbow.decorate", "colorLegend": [{ "id": "depth", "light": "#112233", "dark": "#445566" }, { "id": "depth", "light": "#AABBCC", "dark": "#DDEEFF" }] } } },
+      "expected": { "status": "rejected", "code": "plugin.host.invalidParams" }
     },
     {
       "name": "diagnostics are not a provider",
@@ -117,6 +127,27 @@
       "expected": { "status": "rejected" }
     },
     {
+      "name": "color decorations return legend IDs and normalized UTF-16 ranges",
+      "type": "colorDecorations",
+      "colorLegend": [{ "id": "depth-0", "light": "#112233", "dark": "#445566" }],
+      "value": { "decorations": [{ "range": { "start": { "line": 2, "character": 1 }, "end": { "line": 2, "character": 4 } }, "colorId": "depth-0" }] },
+      "expected": { "status": "accepted", "value": { "decorations": [{ "range": { "start": { "line": 2, "character": 1 }, "end": { "line": 2, "character": 4 } }, "colorId": "depth-0" }] } }
+    },
+    {
+      "name": "color decorations reject unknown IDs",
+      "type": "colorDecorations",
+      "colorLegend": [{ "id": "depth-0", "light": "#112233", "dark": "#445566" }],
+      "value": { "decorations": [{ "range": { "start": { "line": 0, "character": 1 }, "end": { "line": 0, "character": 4 } }, "colorId": "missing" }] },
+      "expected": { "status": "rejected" }
+    },
+    {
+      "name": "color decoration ranges cannot overlap within one source",
+      "type": "colorDecorations",
+      "colorLegend": [{ "id": "depth-0", "light": "#112233", "dark": "#445566" }],
+      "value": { "decorations": [{ "range": { "start": { "line": 0, "character": 1 }, "end": { "line": 0, "character": 4 } }, "colorId": "depth-0" }, { "range": { "start": { "line": 0, "character": 3 }, "end": { "line": 0, "character": 5 } }, "colorId": "depth-0" }] },
+      "expected": { "status": "rejected" }
+    },
+    {
       "name": "a document link needs an absolute target",
       "type": "documentLink",
       "value": [ { "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 4 } }, "target": "messages.properties" } ],
@@ -127,6 +158,28 @@
       "type": "documentLink",
       "value": [ { "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 4 } }, "target": "file:///workspace/messages.properties", "tooltip": "Open bundle" } ],
       "expected": { "status": "accepted", "value": { "links": [ { "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 4 } }, "target": "file:///workspace/messages.properties", "tooltip": "Open bundle" } ] } }
+    }
+  ],
+  "merges": [
+    {
+      "name": "earlier source wins and later ranges are clipped",
+      "value": { "sources": [
+        { "sourceId": "plugin-z/registration", "colorLegend": [{ "id": "z", "light": "#112233", "dark": "#445566" }], "value": { "decorations": [{ "range": { "start": { "line": 0, "character": 1 }, "end": { "line": 0, "character": 8 } }, "colorId": "z" }] } },
+        { "sourceId": "plugin-a/registration", "colorLegend": [{ "id": "a", "light": "#AABBCC", "dark": "#DDEEFF" }], "value": { "decorations": [{ "range": { "start": { "line": 0, "character": 3 }, "end": { "line": 0, "character": 5 } }, "colorId": "a" }] } }
+      ] },
+      "expected": { "status": "accepted", "decorations": [
+        { "sourceId": "plugin-z/registration", "colorId": "z", "light": "#112233", "dark": "#445566", "range": { "start": { "line": 0, "character": 1 }, "end": { "line": 0, "character": 3 } } },
+        { "sourceId": "plugin-a/registration", "colorId": "a", "light": "#AABBCC", "dark": "#DDEEFF", "range": { "start": { "line": 0, "character": 3 }, "end": { "line": 0, "character": 5 } } },
+        { "sourceId": "plugin-z/registration", "colorId": "z", "light": "#112233", "dark": "#445566", "range": { "start": { "line": 0, "character": 5 }, "end": { "line": 0, "character": 8 } } }
+      ] }
+    },
+    {
+      "name": "duplicate source IDs are rejected",
+      "value": { "sources": [
+        { "sourceId": "same", "colorLegend": [{ "id": "x", "light": "#112233", "dark": "#445566" }], "value": { "decorations": [] } },
+        { "sourceId": "same", "colorLegend": [{ "id": "x", "light": "#112233", "dark": "#445566" }], "value": { "decorations": [] } }
+      ] },
+      "expected": { "status": "rejected" }
     }
   ]
 }

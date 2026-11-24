@@ -77,6 +77,20 @@ pub(crate) enum HostParams {
     WorkspaceMove,
     /// `{ context, resource }`: a move to the system trash (plan API-11).
     WorkspaceTrash,
+    /// `{ context, resource, cursor?, limit? }` (plan API-06).
+    WorkspaceReadDirectory,
+    /// `{ context, resource }`, including the root (plan API-06).
+    WorkspaceStat,
+    /// `{ context, resource, maximumBytes? }` (plan API-06).
+    WorkspaceReadFile,
+    /// `{ context, resource, recursive? }` (plan API-07).
+    WorkspaceWatch,
+    /// `{ context, resource, query, fileMask?, cursor?, limit? }` (plan API-08).
+    WorkspaceFindFiles,
+    /// A bounded text search at the workspace root (plan API-08).
+    WorkspaceFindText,
+    /// Strict, bounded interactive, presentation and managed-network requests.
+    Workflow,
     /// Any object whose `context`, when present, is a well-formed
     /// reference. The service checks the rest and answers
     /// `plugin.host.invalidParams` or, for a field it does not know,
@@ -100,6 +114,120 @@ pub(crate) struct HostMethod {
 /// service adds its rows here, its grant to `GRANTABLE_HOST_SERVICES` and
 /// the manifest permission, and its handler to the host's dispatcher.
 pub(crate) const HOST_METHODS: &[HostMethod] = &[
+    HostMethod {
+        method: "lithe/host/window/showQuickPick",
+        service: "window",
+        permission: Some("window.input"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/window/showInputBox",
+        service: "window",
+        permission: Some("window.input"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/preview/openMarkdown",
+        service: "preview",
+        permission: Some("preview.open"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/editor/showDiff",
+        service: "editor",
+        permission: Some("editor.open"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/views/refresh",
+        service: "views",
+        permission: Some("views.refresh"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/output/create",
+        service: "output",
+        permission: Some("output.write"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/output/append",
+        service: "output",
+        permission: Some("output.write"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/output/clear",
+        service: "output",
+        permission: Some("output.write"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/output/show",
+        service: "output",
+        permission: Some("output.write"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/output/dispose",
+        service: "output",
+        permission: Some("output.write"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/progress/create",
+        service: "progress",
+        permission: Some("window.progress"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/progress/report",
+        service: "progress",
+        permission: Some("window.progress"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/progress/end",
+        service: "progress",
+        permission: Some("window.progress"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/statusBar/setItem",
+        service: "statusBar",
+        permission: Some("statusBar.write"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/statusBar/removeItem",
+        service: "statusBar",
+        permission: Some("statusBar.write"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/clipboard/readText",
+        service: "clipboard",
+        permission: Some("clipboard.read"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/clipboard/writeText",
+        service: "clipboard",
+        permission: Some("clipboard.write"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/workspace/reveal",
+        service: "workspace",
+        permission: Some("workspace.reveal"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/network/request",
+        service: "network",
+        permission: Some("network.request"),
+        params: HostParams::Workflow,
+    },
     HostMethod {
         method: RUN_START,
         service: HOST_SERVICE_RUN,
@@ -248,37 +376,37 @@ pub(crate) const HOST_METHODS: &[HostMethod] = &[
         method: "lithe/host/workspace/readDirectory",
         service: "workspace",
         permission: Some("workspace.files.read"),
-        params: HostParams::Object,
+        params: HostParams::WorkspaceReadDirectory,
     },
     HostMethod {
         method: "lithe/host/workspace/stat",
         service: "workspace",
         permission: Some("workspace.files.read"),
-        params: HostParams::Object,
+        params: HostParams::WorkspaceStat,
     },
     HostMethod {
         method: "lithe/host/workspace/readFile",
         service: "workspace",
         permission: Some("workspace.files.read"),
-        params: HostParams::Object,
+        params: HostParams::WorkspaceReadFile,
     },
     HostMethod {
         method: "lithe/host/workspace/watch",
         service: "workspace",
         permission: Some("workspace.files.watch"),
-        params: HostParams::Object,
+        params: HostParams::WorkspaceWatch,
     },
     HostMethod {
         method: "lithe/host/workspace/findFiles",
         service: "workspace",
         permission: Some("workspace.search"),
-        params: HostParams::Object,
+        params: HostParams::WorkspaceFindFiles,
     },
     HostMethod {
         method: "lithe/host/workspace/findText",
         service: "workspace",
         permission: Some("workspace.search"),
-        params: HostParams::Object,
+        params: HostParams::WorkspaceFindText,
     },
     // Plan API-11: file changes the host makes on the backend's behalf. The
     // host never overwrites a file, saves an open document before it moves
@@ -397,13 +525,13 @@ pub(crate) const HOST_METHODS: &[HostMethod] = &[
         method: "lithe/host/preview/openHTML",
         service: "preview",
         permission: Some("preview.open"),
-        params: HostParams::Object,
+        params: HostParams::Workflow,
     },
     HostMethod {
         method: "lithe/host/browser/openExternal",
         service: "browser",
         permission: Some("browser.open"),
-        params: HostParams::Object,
+        params: HostParams::Workflow,
     },
     HostMethod {
         method: "lithe/host/window/showInformation",
@@ -522,7 +650,11 @@ pub fn host_request(
             details: None,
         });
     }
-    check_host_params(entry.params, params)?;
+    if entry.params == HostParams::Workflow {
+        workflow::check_params(method, params.unwrap_or(&Value::Null))?;
+    } else {
+        check_host_params(entry.params, params)?;
+    }
     if entry.method == GET_CAPABILITIES {
         return Ok(HostRoute::Answer(capabilities_answer(version, granted)));
     }
@@ -639,5 +771,129 @@ mod build_configuration_tests {
             host_request(watch, Some(&files), Some(0), &granted).unwrap(),
             HostRoute::Forward("build")
         );
+    }
+}
+
+#[cfg(test)]
+mod workspace_read_tests {
+    use super::*;
+
+    #[test]
+    fn workspace_read_methods_check_options_context_resources_and_bounds() {
+        let context = json!({"contextID":"context-1","generation":1});
+        for (method, extra) in [
+            (
+                "lithe/host/workspace/readDirectory",
+                json!({"cursor":"opaque","limit":1000}),
+            ),
+            ("lithe/host/workspace/stat", json!({})),
+            ("lithe/host/workspace/watch", json!({"recursive":true})),
+            (
+                "lithe/host/workspace/findFiles",
+                json!({"query":"alpha","limit":200}),
+            ),
+            (
+                "lithe/host/workspace/findText",
+                json!({"pattern":"alpha","wholeWords":true}),
+            ),
+            (
+                "lithe/host/workspace/readFile",
+                json!({"maximumBytes":131072}),
+            ),
+        ] {
+            let granted = [method.to_owned()].into_iter().collect();
+            let mut params =
+                json!({"context":context,"resource":{"rootID":"root-1","path":"src/a"}});
+            if method.ends_with("findFiles") || method.ends_with("findText") {
+                params["resource"]["path"] = json!("");
+            }
+            for (key, value) in extra.as_object().unwrap() {
+                params[key] = value.clone();
+            }
+            assert_eq!(
+                host_request(method, Some(&params), Some(0), &granted).unwrap(),
+                HostRoute::Forward("workspace")
+            );
+            let mut unknown = params.clone();
+            unknown["unknown"] = json!(true);
+            assert_eq!(
+                host_request(method, Some(&unknown), Some(0), &granted)
+                    .unwrap_err()
+                    .code,
+                codes::HOST_UNSUPPORTED_OPTION
+            );
+            let mut unknown = params.clone();
+            unknown["resource"]["unknown"] = json!(true);
+            assert_eq!(
+                host_request(method, Some(&unknown), Some(0), &granted)
+                    .unwrap_err()
+                    .code,
+                codes::HOST_UNSUPPORTED_OPTION
+            );
+            for resource in [
+                json!({"rootID":"other","path":"../escape"}),
+                json!({"rootID":"","path":"a"}),
+                json!({"rootID":"root-1","path":"a\\b"}),
+            ] {
+                let mut invalid = params.clone();
+                invalid["resource"] = resource;
+                assert_eq!(
+                    host_request(method, Some(&invalid), Some(0), &granted)
+                        .unwrap_err()
+                        .code,
+                    codes::HOST_INVALID_PARAMS
+                );
+            }
+            let mut invalid = params.clone();
+            invalid["context"] = Value::Null;
+            assert_eq!(
+                host_request(method, Some(&invalid), Some(0), &granted)
+                    .unwrap_err()
+                    .code,
+                codes::HOST_INVALID_PARAMS
+            );
+        }
+        for (method, key, value) in [
+            ("lithe/host/workspace/readDirectory", "limit", json!(0)),
+            ("lithe/host/workspace/readDirectory", "limit", json!(1001)),
+            ("lithe/host/workspace/readDirectory", "cursor", json!(null)),
+            (
+                "lithe/host/workspace/readFile",
+                "maximumBytes",
+                json!(131073),
+            ),
+            ("lithe/host/workspace/watch", "recursive", json!("true")),
+            ("lithe/host/workspace/findFiles", "limit", json!(201)),
+            ("lithe/host/workspace/findText", "wholeWords", json!(1)),
+            ("lithe/host/workspace/findText", "pattern", json!("")),
+            (
+                "lithe/host/workspace/findFiles",
+                "resource",
+                json!({"rootID":"r1","path":"sub"}),
+            ),
+        ] {
+            let mut params = json!({"context":context,"resource":{"rootID":"root-1","path":"a"}});
+            if method.ends_with("findFiles") || method.ends_with("findText") {
+                params["resource"]["path"] = json!("");
+                params[if method.ends_with("findFiles") {
+                    "query"
+                } else {
+                    "pattern"
+                }] = json!("alpha");
+            }
+            params[key] = value;
+            assert_eq!(
+                host_request(
+                    method,
+                    Some(&params),
+                    Some(0),
+                    &[method.to_owned()].into_iter().collect()
+                )
+                .unwrap_err()
+                .code,
+                codes::HOST_INVALID_PARAMS,
+                "{method}: {params}"
+            );
+        }
     }
 }

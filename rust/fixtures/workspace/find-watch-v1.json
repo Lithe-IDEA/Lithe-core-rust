@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "path": "a.txt",
+      "text": "alpha\nBETA alpha\n"
+    },
+    {
+      "path": "src/b.txt",
+      "text": "alpha\n"
+    },
+    {
+      "path": "z.md",
+      "text": "alpha\n"
+    },
+    {
+      "path": ".git/hidden.txt",
+      "text": "alpha\n"
+    }
+  ],
+  "fileRequest": {
+    "query": ".txt",
+    "limit": 1
+  },
+  "filePaths": [
+    "a.txt",
+    "src/b.txt"
+  ],
+  "textRequest": {
+    "pattern": "alpha",
+    "fileMask": "*.txt",
+    "limit": 2
+  },
+  "textMatches": [
+    {
+      "path": "a.txt",
+      "line": 1,
+      "preview": "alpha",
+      "range": null
+    },
+    {
+      "path": "a.txt",
+      "line": 2,
+      "preview": "BETA alpha",
+      "range": null
+    },
+    {
+      "path": "src/b.txt",
+      "line": 1,
+      "preview": "alpha",
+      "range": null
+    }
+  ],
+  "watch": {
+    "paths": [
+      "src/b.txt",
+      "a.txt",
+      "src/b.txt",
+      ".git/hidden.txt"
+    ],
+    "expected": {
+      "changedPaths": [
+        "a.txt",
+        "src/b.txt"
+      ],
+      "requiresRescan": false
+    }
+  }
+}

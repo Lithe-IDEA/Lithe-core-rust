@@ -11,6 +11,21 @@
 mod plugin_sdk;
 
 #[test]
+fn the_java_sdk_registers_and_answers_color_decorations() {
+    let (Some(java), Some(jar)) = (
+        std::env::var_os("LITHE_PLUGIN_SDK_JAVA"),
+        std::env::var_os("LITHE_PLUGIN_SDK_JAVA_SAMPLE"),
+    ) else {
+        return;
+    };
+    plugin_sdk::colors::run(
+        "java",
+        &java.to_string_lossy(),
+        &["-jar".into(), jar.to_string_lossy().into_owned()],
+    );
+}
+
+#[test]
 fn the_java_sdk_import_provider_reads_a_selected_source_through_core() {
     let (Some(java), Some(jar)) = (
         std::env::var_os("LITHE_PLUGIN_SDK_JAVA"),

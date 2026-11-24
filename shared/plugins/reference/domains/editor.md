@@ -27,7 +27,7 @@
 | `preview/openHTML` | `preview.open` | API-16 | `editorAndPreview` 或 `previewOnly` |
 | `browser/openExternal` | `browser.open` | API-16 | HTTP(S) 地址或已保存的 HTML |
 | `editor/registerActions` | `editor.actions` + `documents.read` | API-27 | 先用 `getCapabilities` 发现，再按工作区上下文注册；动作绑定普通函数和文件范围，不依赖 LSP、构建或运行。动作可以带多个图标、最多 4 个 `alternatives` 和点击结果 `reveal`，可用图标由宿主在 `services.editor.options.actionIcons` 中声明 |
-| `editor/registerProviders` | `editor.providers` + `documents.read` | API-25 | 先用 `getCapabilities` 发现方法和 `services.editor.options.providerTypes`，再按工作区上下文注册；把 `definition`、`hover`、`completion`、`codeLens`、`foldingRange`、`semanticTokens`、`documentLink` 这 7 种类型绑定到普通函数，不在 `providerTypes` 中的类型返回 `unsupportedOption`；语言服务器的结果优先，插件结果只补充；预算由宿主决定 |
+| `editor/registerProviders` | `editor.providers` + `documents.read` | API-25 | 先用 `getCapabilities` 发现方法和 `services.editor.options.providerTypes`，再按工作区上下文注册；把 `definition`、`hover`、`completion`、`codeLens`、`foldingRange`、`semanticTokens`、`colorDecorations`、`documentLink` 这 8 种类型绑定到普通函数；颜色范围通过单独的 `colorLegend` 定义明暗色并可与语义标记叠加；不在 `providerTypes` 中的类型返回 `unsupportedOption`；语言服务器的语言功能结果优先，插件结果只补充；预算由宿主决定 |
 
 所有方法都要带 `context: {contextID, generation}`；除 `documents/registerContentProvider` 外，远程工作区上下文返回 `plugin.host.authorityUnsupported`。`documents/registerContentProvider` 见下一节。
 
@@ -39,7 +39,7 @@
 | 图标 | `icon` 是宿主声明的展示标记，图标只表示一张图，不表示操作：测试图标不会让动作变成测试，宿主也不会因为图标启动任何东西 |
 | 采集与点击 | 采集只读，不能发网络请求或执行业务；编辑会立即让旧动作失效并取消旧的采集；点击时宿主再次校验文档、上下文、会话和注册。点击要运行或调试代码，应在 `getCapabilities` 列出 `run/start`、`debug/start` 后通过这两个方法发起，让运行出现在宿主的 Run 和 Debug 窗口里，见[调试适配器](debug-adapters.md) |
 | 动作校验 | 共享的 Core 命令 `plugins.editorActions.decode`，请求带 `version`（必须为 `0`）、`kind`（`registration`、`actions` 或 `invokeResult`）、宿主声明的 `icons` 和 `sourceBytes` |
-| Provider 合并 | 语言服务器的结果在先：悬浮段落和补全项跟在语言服务器之后，定义把插件位置加到服务器的位置上，代码镜头、折叠范围和链接直接加入，语义标记只用于语言服务器没有语义标记的文件；合并由 Core 命令 `plugins.editorProviders.decode`（`kind: "mergeDefinitions"`）完成，所以每个宿主合并结果一致 |
+| Provider 合并 | 语言服务器的结果在先：悬浮段落和补全项跟在语言服务器之后，定义把插件位置加到服务器的位置上，代码镜头、折叠范围和链接直接加入，语义标记只用于语言服务器没有语义标记的文件；颜色范围不取代语义标记。Core 命令 `plugins.editorProviders.decode` 的 `kind: "mergeColorDecorations"` 按 `<pluginID>/<registrationID>` 的字典序合并颜色来源，较早来源在重叠位置优先，后续范围裁切为未覆盖部分 |
 | 预算 | 悬浮和补全 400 ms，定义 1500 ms，其余 2000 ms；迟到的或属于旧文档版本的答案被无声丢弃；注册不能自定预算 |
 | 没有这些方法的宿主 | `getCapabilities` 没有列出 `editor/registerActions` 或 `editor/registerProviders` 时宿主不呈现对应功能，插件仍保留自己的命令和窗口入口；不认识 `editor.actions` 或 `editor.providers` 权限的宿主拒绝安装该包，不会悄悄授予 |
 
@@ -70,7 +70,7 @@
 | --- | --- |
 | [Public document, file and window methods](../../contract/v1/README.md#public-document-file-and-window-methods) | 文档、编辑、打开、预览、浏览器方法的参数、限制和失败码 |
 | [Independent editor actions](../../contract/v1/README.md#independent-editor-actions) | `editor/registerActions` 的注册、范围、调用和撤回，以及图标、`alternatives` 和点击结果 |
-| [Editor language-feature providers](../../contract/v1/README.md#editor-language-feature-providers) | `editor/registerProviders` 的注册、选择器、结果形状、预算和合并规则 |
+| [Editor language-feature providers](../../contract/v1/README.md#editor-language-feature-providers) | `editor/registerProviders` 的注册、选择器、结果形状、预算和合并规则，包括 [color decorations schema](../../contract/v1/editor-color-decorations.schema.json) |
 | [Content providers](../../contract/v1/README.md#content-providers) | `documents/registerContentProvider` 的 scheme 规则、调用、只读文档和撤回 |
 | [Workspace contexts and capability discovery](../../contract/v1/README.md#workspace-contexts-and-capability-discovery) | `contextID`/`generation` 与 `getCapabilities` |
 | [Outcomes and error codes](../../contract/v1/README.md#outcomes-and-error-codes) | 结果与错误码 |
@@ -82,7 +82,7 @@
 | [`editor/editor-actions.plugin.json`](../../contract/v1/fixtures/editor/editor-actions.plugin.json) | `backend` 加 `editor.actions`、`documents.read`：`onWorkspaceOpen` 启动后注册编辑器动作 |
 | [`editor/editor-actions.json`](../../contract/v1/fixtures/editor/editor-actions.json) | `plugins.editorActions.decode` 的 8 个 Core 用例：宿主声明的图标和源码上限、`alternatives`、点击结果 `reveal`，以及整个结果被拒绝的情形 |
 | [`editor/editor-providers.plugin.json`](../../contract/v1/fixtures/editor/editor-providers.plugin.json) | `backend` 加 `editor.providers`、`documents.read`：`onWorkspaceOpen` 启动后注册编辑器语言功能 Provider |
-| [`editor/editor-providers.json`](../../contract/v1/fixtures/editor/editor-providers.json) | 注册与结果的 Core 用例：6 个注册用例（选择器和类型校验、`unsupportedOption`）和 11 个结果用例（7 种类型的结果形状与被丢弃的结果） |
+| [`editor/editor-providers.json`](../../contract/v1/fixtures/editor/editor-providers.json) | Core 注册、结果与合并用例：8 个注册用例、14 个结果用例，以及颜色来源排序、裁切和重复来源 ID 校验 |
 | [`backend/command-backend.plugin.json`](../../contract/v1/fixtures/backend/command-backend.plugin.json) | 无工具窗口的 `ui` 命令读取文档并编辑 |
 | [`backend/function-protocol.json`](../../contract/v1/fixtures/backend/function-protocol.json) | `editor/applyEdits`、`editor/registerActions` 的标准请求与回复，以及 `versionConflict`、`readOnly` 等宿主失败码；还有 `documents/registerContentProvider` 的用例：需要 `documents.contentProvider` 授权、聚合名 `documents` 不够、保留 scheme、大写或数字开头的 scheme、非法函数名、缺少 `context` |
 
@@ -117,7 +117,7 @@ Through the plugin-function protocol, a plugin backend reads open documents and 
 | `preview/openHTML` | `preview.open` | API-16 | `editorAndPreview` or `previewOnly` |
 | `browser/openExternal` | `browser.open` | API-16 | An HTTP(S) URL or saved HTML |
 | `editor/registerActions` | `editor.actions` + `documents.read` | API-27 | Discover it with `getCapabilities`, then register per workspace context; actions bind ordinary functions and file scopes, independent of LSP, build, or run. An action can carry multiple icons, up to 4 `alternatives`, and a click result `reveal`; the host declares the usable icons in `services.editor.options.actionIcons` |
-| `editor/registerProviders` | `editor.providers` + `documents.read` | API-25 | Discover the method and `services.editor.options.providerTypes` with `getCapabilities`, then register per workspace context; binds the 7 types `definition`, `hover`, `completion`, `codeLens`, `foldingRange`, `semanticTokens`, and `documentLink` to ordinary functions, and a type outside `providerTypes` returns `unsupportedOption`; language-server results come first and plugin results only add to them; the host sets the budgets |
+| `editor/registerProviders` | `editor.providers` + `documents.read` | API-25 | Discover the method and `services.editor.options.providerTypes` with `getCapabilities`, then register per workspace context; binds the 8 types `definition`, `hover`, `completion`, `codeLens`, `foldingRange`, `semanticTokens`, `colorDecorations`, and `documentLink` to ordinary functions; color ranges use a separate `colorLegend` for light and dark appearances and can layer over semantic tokens; a type outside `providerTypes` returns `unsupportedOption`; language-server language-feature results come first and plugin results only add to them; the host sets the budgets |
 
 Every method takes `context: {contextID, generation}`; except for `documents/registerContentProvider`, a remote workspace context returns `plugin.host.authorityUnsupported`. `documents/registerContentProvider` is described in the next section.
 
@@ -129,7 +129,7 @@ Every method takes `context: {contextID, generation}`; except for `documents/reg
 | Icons | `icon` is a presentation token the host declares; an icon names a picture, not an operation: a test icon does not make the action a test, and the host never starts anything because of an icon |
 | Collection and click | Collection is read-only, with no network request or business execution; an edit invalidates the old actions immediately and cancels older collection; a click makes the host validate document, context, session, and registration again. A click that runs or debugs code should use `run/start` and `debug/start` once `getCapabilities` lists them, so the run appears in the host's Run and Debug windows; see [Debug adapters](debug-adapters.md) |
 | Action validation | The shared Core command `plugins.editorActions.decode`; its request carries `version` (must be `0`), `kind` (`registration`, `actions`, or `invokeResult`), and the host-declared `icons` and `sourceBytes` |
-| Provider merging | Language-server results come first: hover sections and completion items follow the server's, definitions add plugin locations to the server's, code lenses, folding ranges, and links are added, and semantic tokens apply only to files whose language server has none; the merge is the Core command `plugins.editorProviders.decode` with `kind: "mergeDefinitions"`, so every host merges alike |
+| Provider merging | Language-server results come first: hover sections and completion items follow the server's, definitions add plugin locations to the server's, code lenses, folding ranges, and links are added, and semantic tokens apply only to files whose language server has none; color ranges do not replace semantic tokens. The Core command `plugins.editorProviders.decode` with `kind: "mergeColorDecorations"` merges colors by `<pluginID>/<registrationID>` in lexical order; the earlier source wins at overlapping positions and later ranges are clipped to uncovered portions |
 | Budgets | Hover and completion 400 ms, definition 1500 ms, the rest 2000 ms; a late answer, or one for an older document version, is dropped without an error; a registration cannot set its own budget |
 | A host without these methods | A host whose `getCapabilities` does not list `editor/registerActions` or `editor/registerProviders` presents no such feature, and the plugin keeps its own command and window entry points; a host that does not recognize the `editor.actions` or `editor.providers` permission refuses the package instead of granting it silently |
 
@@ -160,7 +160,7 @@ A language server may hand out documents that have no file (such as the decompil
 | --- | --- |
 | [Public document, file and window methods](../../contract/v1/README.md#public-document-file-and-window-methods) | Parameters, limits, and failure codes for document, edit, open, preview, and browser methods |
 | [Independent editor actions](../../contract/v1/README.md#independent-editor-actions) | Registering, scoping, invoking, and withdrawing `editor/registerActions`, plus icons, `alternatives`, and click results |
-| [Editor language-feature providers](../../contract/v1/README.md#editor-language-feature-providers) | Registering `editor/registerProviders`, selectors, result shapes, budgets, and merge rules |
+| [Editor language-feature providers](../../contract/v1/README.md#editor-language-feature-providers) | Registering `editor/registerProviders`, selectors, result shapes, budgets, and merge rules, including the [color decorations schema](../../contract/v1/editor-color-decorations.schema.json) |
 | [Content providers](../../contract/v1/README.md#content-providers) | Scheme rules, invoking, read-only documents, and withdrawing for `documents/registerContentProvider` |
 | [Workspace contexts and capability discovery](../../contract/v1/README.md#workspace-contexts-and-capability-discovery) | `contextID`/`generation` and `getCapabilities` |
 | [Outcomes and error codes](../../contract/v1/README.md#outcomes-and-error-codes) | Outcomes and error codes |
@@ -172,7 +172,7 @@ A language server may hand out documents that have no file (such as the decompil
 | [`editor/editor-actions.plugin.json`](../../contract/v1/fixtures/editor/editor-actions.plugin.json) | `backend` with `editor.actions` and `documents.read`: registers editor actions after `onWorkspaceOpen` |
 | [`editor/editor-actions.json`](../../contract/v1/fixtures/editor/editor-actions.json) | 8 Core cases for `plugins.editorActions.decode`: the host-declared icons and source limit, `alternatives`, click-result `reveal`, and results refused whole |
 | [`editor/editor-providers.plugin.json`](../../contract/v1/fixtures/editor/editor-providers.plugin.json) | `backend` with `editor.providers` and `documents.read`: registers editor language-feature providers after `onWorkspaceOpen` |
-| [`editor/editor-providers.json`](../../contract/v1/fixtures/editor/editor-providers.json) | Core cases for registrations and results: 6 registration cases (selector and type validation, `unsupportedOption`) and 11 result cases (result shapes for the 7 types, and dropped results) |
+| [`editor/editor-providers.json`](../../contract/v1/fixtures/editor/editor-providers.json) | Core cases for registrations, results, and merges, including color legend and range validation and stable source priority |
 | [`backend/command-backend.plugin.json`](../../contract/v1/fixtures/backend/command-backend.plugin.json) | A `ui` command without a tool window that reads and edits documents |
 | [`backend/function-protocol.json`](../../contract/v1/fixtures/backend/function-protocol.json) | Canonical requests and replies for `editor/applyEdits` and `editor/registerActions`, plus host failure codes such as `versionConflict` and `readOnly`; also the `documents/registerContentProvider` cases: it needs the `documents.contentProvider` grant, the aggregate `documents` name is not enough, reserved schemes, an uppercase or digit-first scheme, a malformed function name, and a missing `context` |
 

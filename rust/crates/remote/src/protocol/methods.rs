@@ -480,6 +480,8 @@ pub enum WatchBackend {
 pub enum Feature {
     /// `fs.*` methods.
     Filesystem,
+    /// Scoped editor saves with precise revisions and directory-handle publication.
+    GuardedWrites,
     /// Bounded staged uploads with SHA-256 and atomic no-replace publication.
     Upload,
     /// Session-owned private run directories reclaimed when the session ends.
@@ -634,6 +636,9 @@ pub struct FileMetadata {
     /// stay exact in JavaScript numbers, which a future TypeScript client
     /// relies on.
     pub modified_ms: Option<i64>,
+    /// Opaque host file identity and nanosecond timestamps; absent on older servers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
     /// No write permission bit is set.
     pub readonly: bool,
     /// Permission bits (`0o755` style), for executable markers and
@@ -707,10 +712,14 @@ pub struct FileVersion {
     pub size: u64,
     /// Modification time in milliseconds the client last saw.
     pub modified_ms: Option<i64>,
+    /// Opaque revision returned with the content; compared exactly when supplied.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
 }
 
 /// Parameters of `fs.writeFile`. The file is replaced atomically through a
-/// temporary sibling, and writes go through symbolic links.
+/// temporary sibling. Scoped editor writes refuse symbolic links; explicit
+/// unscoped host writes retain leaf-link behavior.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WriteFileParams {
@@ -729,6 +738,10 @@ pub struct WriteFileParams {
     /// Create missing parent directories first.
     #[serde(default)]
     pub create_parents: bool,
+    /// Optional absolute workspace boundary. Descendant symlinks and `..` are refused.
+    /// Requires `guardedWrites`; clients must not silently retry without it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root: Option<String>,
 }
 
 /// Parameters of `fs.createDir`.

@@ -13,6 +13,7 @@ clients. Design rationale lives in
 | --- | --- |
 | `lithe-remote-server --stdio` | Ends with the connection, terminating everything it started. |
 | `lithe-remote-server --connect <key> [--state-dir <dir>]` | Persistent: relays to the daemon of session `<key>`, starting it if needed. |
+| `lithe-remote-server --target-identity --state-dir <dir>` | Prints the non-secret identity of the final account's server state before a client chooses a session key. |
 
 `<key>` is 1–64 characters from `[A-Za-z0-9._-]`. The daemon keeps its
 socket, lock and log under `<dir>` (default `$HOME/.lithe-server`) in
@@ -49,6 +50,11 @@ Other clients should do the same.
 2. Every following unit is a frame: a 4-byte big-endian length and that many
    bytes of UTF-8 JSON. Frames larger than 16 MiB are rejected.
 3. Closing the client-to-server stream is a disconnect.
+
+The reference server bounds response serialization to the frame limit. A result
+that exceeds it becomes a `TOO_LARGE` error for that request, and subsequent
+responses remain usable. Event producers bound their own batches; events cannot
+be replaced by a request error and are never silently discarded by the writer.
 
 All traffic, including tunnels, uses this stream. The server listens on a
 network port only for a forwarding rule the user added (`listener.open`, see
@@ -126,7 +132,7 @@ subscribe before creating the resource.
 | `fs.stat` | `path` | metadata of the path itself (links not followed) |
 | `fs.readDir` | `path` | `entries` sorted by name byte order, `skippedNonUtf8` |
 | `fs.readFile` | `path`, `offset`, `length` (≤ 8 MiB) | `data`, `eof`, `metadata`; only a regular file is read |
-| `fs.writeFile` | `path`, `data` (≤ 8 MiB), `expected?`, `overwrite`, `createParents` | metadata after the write |
+| `fs.writeFile` | `path`, `data` (≤ 8 MiB), `expected?`, `overwrite`, `createParents`, `root?` | metadata after the write |
 | `fs.createDir` | `path`, `recursive`, `mode?` (at most `0o7777`) | `null` |
 | `fs.remove` | `path`, `recursive` | `null`; links are removed, never followed |
 | `fs.rename` | `from`, `to`, `overwrite` | `null` |
@@ -168,6 +174,15 @@ subscribe before creating the resource.
 opened file, so a FIFO without a writer never holds the request and a path
 replaced between `fs.stat` and the read is still checked. A directory fails
 with `IS_A_DIRECTORY`; sockets, FIFOs and devices fail with `UNSUPPORTED`.
+Metadata includes optional `revision`, an opaque identity incorporating the
+host's file identity, size and precise modification/change timestamps. Clients
+compare it exactly and return it in `expected`; they must not interpret its
+encoding. Older servers may omit it.
+
+`fs.readDir` examines at most 20,000 directory entries, including names that are
+not UTF-8, and bounds serialized entries below the frame limit with space for
+the response envelope. Exceeding either budget returns `TOO_LARGE` rather than
+a successful partial listing. Recursive indexes should use `walk.start`.
 
 `fs.copy` refuses, with `INVALID_REQUEST`, to copy a file onto itself —
 directly, through a symbolic link in either direction or onto a hard link —
@@ -184,13 +199,36 @@ the remote account, never to the client placeholder or installation. A host
 without usable trash storage returns an error and retains the original entry;
 it does not fall back to permanent deletion.
 
-`fs.writeFile` replaces the file atomically through a temporary sibling and
-writes through symbolic links. With `expected` (`size`, `modifiedMs`) it fails
-with `CONFLICT` unless the file still matches; without it, an existing file is
-only replaced when `overwrite` is set. A write with neither `expected` nor
-`overwrite` only creates: when two such writes race, exactly one succeeds and
-the other fails with `ALREADY_EXISTS`. When a file is replaced, the temporary
-file never has broader permissions than the original.
+`fs.writeFile` replaces the file atomically through a temporary sibling. With
+`expected` (`size`, `modifiedMs`, optional `revision`) it fails with `CONFLICT`
+unless the file still matches; without it, an existing file is only replaced
+when `overwrite` is set. The revision catches an inode replacement or precise
+timestamp change even when size and millisecond modification time are unchanged.
+A write with neither `expected` nor `overwrite` publishes by atomic no-replace
+linking: a concurrently created destination is retained and the write fails
+with `ALREADY_EXISTS`. A replacement's temporary file is created with permissions
+no broader than the original, before any content is written.
+
+The optional `root` requires the `guardedWrites` feature. Editor clients send
+their workspace root and refuse an older server instead of retrying without the
+boundary. The requested path must be lexically below that root with no `..`
+components. The server resolves the root, opens it through directory handles,
+and opens each descendant directory without following symbolic links. The leaf
+must not be a symbolic link either. Missing descendants are created only with
+`createParents` and are reopened without following links. Staging and publication
+use the same parent handle; refused boundary or symlink crossings return
+`PERMISSION_DENIED`. Without `root`, explicit general host writes retain their
+ability to write outside a workspace and through an existing leaf link.
+
+Cooperating Lithe daemons serialize writes to the same directory with a
+five-second advisory-lock deadline. The server rechecks the version after
+staging and syncing, immediately before publication. POSIX rename provides no
+version-based compare-and-swap: an external writer that ignores this lock can
+still change a file between that final check and replacement. Directory handles
+also do not sandbox a hostile same-user process that moves an already-open
+directory outside the root. These are limits of conflict and path protection,
+not guarantees of isolation from the remote account itself. Failed saves reclaim
+their temporary files; a crash can leave one behind.
 
 Hosts advertising `features: ["upload", ...]` accept staged uploads without
 increasing the frame limit. Upload IDs are server-assigned and owned by the
@@ -274,6 +312,15 @@ environment and caches it for the session. `process.spawn` with
 
 `watch.changed` batches are coalesced and sorted by path. With `overflow`
 changes were lost and the client must rescan the watched tree.
+The reference backend queue retains at most 2,048 changes and 1 MiB of raw
+path bytes without blocking the native watcher. Pressure clears those changes
+and preserves an overflow marker, watch-limit notice and root-removal notice.
+Coalesced batches hold at most 5,000 distinct changes and 1 MiB of path bytes
+before JSON escaping; a larger batch becomes an empty overflow batch.
+
+`walk.entries` batches hold at most 2,000 entries and 1 MiB of relative-path
+bytes before JSON escaping. A single path beyond that budget ends the walk with
+`truncated: true`; it is not sent as an oversized event.
 
 ## Listeners
 
@@ -389,6 +436,21 @@ includes the server version, so a client upgrade starts a new daemon rather
 than reaching an older one.
 
 ## Server identity
+
+`--target-identity --state-dir <dir>` prints 64 hexadecimal characters derived
+from a random marker, the current numeric user ID and the canonical state root.
+The marker is `target-identity-v1` in the private state directory, created as
+an owner-only regular file without following symbolic links and published
+without replacing another launcher's marker. Later launches validate ownership,
+permissions and length before reading it. This is persistent account-local
+state, not a secret or hardware identity: copying the marker to a clone with
+the same account and path also copies that identity.
+
+The reference bootstrap prints `LITHE-TARGET <identity>` after installation
+and waits for a session key on the same authenticated stream before executing
+`--connect`. The client combines this marker with the actual OpenSSH identity
+and explicit route before selecting any previously stored key or token. The
+marker does not replace SSH host-key authentication.
 
 `lithe-remote-server --identity` prints one JSON line with `serverVersion`,
 `protocolVersion` and `sha256` of the executable itself. A binary is never

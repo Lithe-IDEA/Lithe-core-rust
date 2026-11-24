@@ -609,6 +609,13 @@ or removing a command fails until the table changes in the same commit.
 | `workspace.configureIndexing` | Install a process-local, canonical-root indexing policy before workspace consumers run; returns a monotonic revision, effective directory reasons and Git failure state; see `rust/fixtures/workspace/indexing-policy-v1.json` |
 | `workspace.refreshIndexing` | Refresh external Git decisions for a live `root`, `ownerId`, `revision` lease without changing preferences or release tokens; returns lazy `IndexingStatus` |
 | `workspace.filterChanges` | Filter an array of workspace-relative paths, or `{ paths, hiddenFilePatterns }` whose `!` entries turn default exclusions off, against Core's default hidden folders and patterns, including the folders enabled plugins declare; preserve order, spelling, and the empty root path. Native event loss bypasses filtering. Hosts relativize to the most specific explicit watch root and retain explicitly watched files |
+| `workspace.findFiles` | Bounded plugin disk file-name search with a query-bound cursor (API-08) |
+| `workspace.findText` | Bounded plugin disk text search, without dirty buffers (API-08) |
+| `workspace.watchPlan` | Validate a local watch target before native registration (API-07) |
+| `workspace.watchEvents` | Filter and bound one native root-relative event batch (API-07) |
+| `workspace.readDirectory` | Return one bounded no-follow disk directory page for API-06; see Workspace disk reads below |
+| `workspace.stat` | Stat a workspace leaf without following it or any ancestor link (API-06) |
+| `workspace.readFile` | Read at most 128 KiB of regular-file disk bytes without following links (API-06) |
 | `workspace.listDirectories` | Return one visible level of children for each requested workspace-relative directory (`""` is the root); missing, hidden, external/cyclic symlink, or nested-worktree paths are omitted; workspace-internal aliases are browsable and each listing reports `linked: true` when reached through an alias, and each listing reports the nested worktrees it left out. Child directories have `children: []` only when a shallow probe proves them visibly empty; otherwise children remain omitted (unloaded), with no recursive tree allocation. Children list directories first, then names in IDEA's natural file-name order (digit runs compare by value, case-insensitive, `-` next to `_`; fixture `rust/fixtures/workspace/file-name-order-v1.json`) |
 | `workspace.orderEntries` | Order natively enumerated directory siblings |
 | `workspace.projectTree.rows` | Say which loaded project tree nodes show as rows, keep the selection on a row that shows, and find the row the top of the view was on, without reading the disk (from `lithe-project-tree`) |
@@ -5391,10 +5398,11 @@ actions section.
 (the provider types the host routes) and returns `{registration}` with
 lowercased literal selectors and Core's per-type `budgetMs`; a type outside
 `types` is `not_supported` with details `providers.<type>`. It also accepts
-`{kind:"result",type,value,legend?}` (one provider function's LSP 3.17 shaped
-result; semantic tokens need the registered legend) and returns `{result}`
-normalized to `{locations}`, `{contents,range?}`, `{isIncomplete,items}`,
-`{lenses}`, `{ranges}`, `{data}` or `{links}`. Hosts own calls, budgets,
+`{kind:"result",type,value,legend?,colorLegend?}` (one provider function's
+result; semantic tokens need the registered token legend and color decorations
+need the registered color legend) and returns `{result}` normalized to
+`{locations}`, `{contents,range?}`, `{isIncomplete,items}`, `{lenses}`,
+`{ranges}`, `{data}`, `{decorations}` or `{links}`. Hosts own calls, budgets,
 stale-version drops and the merge after language-server answers; see the
 plugin contract's editor language-feature providers section. The definition
 merge is Core's too: `{kind:"mergeDefinitions",value:{documentUri,position,server,plugin}}`
@@ -5402,7 +5410,12 @@ takes the language server's and the plugins' validated `Location[]` and returns
 the indices each side keeps as `{server,plugin}`. The server's answer comes
 first; a plugin location equal to one already kept is dropped, and a server
 location that covers the requested position itself (the caret already sits on
-the declaration) yields when a plugin answered.
+the declaration) yields when a plugin answered. Color decorations also merge
+in Core: `{kind:"mergeColorDecorations",value:{sources:[{sourceId,colorLegend,value}]}}`
+validates each source's light/dark color legend and non-overlapping, single-line
+UTF-16 ranges, sorts sources by `sourceId`, and clips later ranges where an
+earlier source already covers a position. The ordered result is
+`{decorations:[{sourceId,colorId,light,dark,range}]}`.
 
 `toolchains.instantiateLaunch` accepts `{ registry, tool, executable, home?,
 entry?, runtimeArguments, arguments }` and returns `{ status: "ok", launch:
@@ -6150,7 +6163,8 @@ and `{ stage: "installed", uploaded }` once the server is in place, where
 failed attempt stops after the last stage reached, so a host without a
 matching build stops after `platformChecked`. The result is `{ status, session,
 host, diagnostics }`; `session` is `{ id, uploaded, hostName, userName,
-homeDirectory, windowsInterop, sessionKey, sessionToken, resumed, keptPrograms }`
+homeDirectory, windowsInterop, sessionKey, sessionToken, sessionBinding?,
+resumeConsumed, resumed, keptPrograms }`
 and is set only for `connected`. A host without a matching build is
 `unsupportedPlatform` and nothing is uploaded. `windowsInterop` is the host
 capability of the same name from the remote workspace protocol: `true` or
@@ -6162,7 +6176,16 @@ The server runs a persistent session (`--connect <sessionKey>`, with
 connection. `sessionKey` names that session and `sessionToken` is the secret
 that attaches to it again; the client stores the token like a password and
 never logs it. To attach to a session an earlier connection kept, pass
-`resume: { key, token }` with the values it returned. `resumed` tells whether
+`resume: { key, token, binding? }` with the values it returned. The opaque
+64-hexadecimal `sessionBinding` binds the explicit transport chain, the actual
+OpenSSH-authenticated host name, port, account, peer address and host-key
+fingerprint, and the final server's account-local state identity. Before sending
+an old key or token, the same connection must produce an identical binding.
+Legacy records without a binding, a changed target, or unavailable evidence
+start a fresh session without sending the old credentials. `resumeConsumed`
+tells the native credential store whether Core attempted those credentials;
+only then may it remove the old record. A mismatched record remains available
+for the original target. `resumed` tells whether
 this connection attached to it; `keptPrograms` lists the processes and
 terminals it still runs, as `remote.runningPrograms` does, and is empty for
 a new session. When the host refuses the token, because the session ended
@@ -6172,7 +6195,15 @@ user authenticates again but is never locked out; that connection reports
 characters or not made of ASCII letters, digits, `.`, `_` and `-`, or a token
 that is empty, longer than 128 characters or not hexadecimal, is
 `invalid_request` with `{ field: "resume", reason: "invalid" }`, before
-OpenSSH or `wsl.exe` starts.
+OpenSSH or `wsl.exe` starts. A present binding must be 64 hexadecimal characters.
+
+OpenSSH supplies identity evidence on the actual connection, with connection
+multiplexing disabled; Core does not pre-read `ssh -G` or weaken the user's
+host-key policy. ProxyCommand and ProxyJump connections remain usable, but
+unverifiable evidence gives no reusable `sessionBinding` and no automatic
+credential recovery. Such a connection also receives a fresh trust identity.
+The current private `-E` evidence file bounds reads to 64 KiB but does not bound
+OpenSSH's writes; correcting this resource lifetime remains a release blocker.
 
 Instead of `connection`, the request may name a WSL distribution on this
 Windows machine as `wsl: { distribution, user? }`, where `distribution` is a
@@ -6257,8 +6288,8 @@ gone. Requests over it take `sessionId`:
 | Command | Request | Result |
 | --- | --- | --- |
 | `remote.readDir` | `{ sessionId, path }` | the remote protocol's `fs.readDir` result |
-| `remote.readFile` | `{ sessionId, path }` | `{ data (base64), size, modifiedMs }`; files over 16 MiB are `not_supported` |
-| `remote.writeFile` | `{ sessionId, path, data, expected? }` | `{ status: "saved", size, modifiedMs }` or `{ status: "conflict" }` |
+| `remote.readFile` | `{ sessionId, path }` | `{ data (base64), size, modifiedMs, revision? }`; files over 16 MiB are `not_supported` |
+| `remote.writeFile` | `{ sessionId, path, data, expected?, root? }` | `{ status: "saved", size, modifiedMs, revision? }` or `{ status: "conflict" }` |
 | `remote.hostRequest` | `{ sessionId, method, params }` | the finite host method's result, including JSON `null` |
 | `remote.hostInfo` | `{ sessionId }` | the original connection's handshake `host`, including OS, architecture, home and features |
 | `remote.uploadFile` | `{ sessionId, sourcePath, path, sha256, mode }` | verified `{ size, sha256 }` |
@@ -6271,11 +6302,30 @@ gone. Requests over it take `sessionId`:
 | `remote.endPrograms` | `{ sessionId, programs? }` | `{ ended }`: every running process gets `SIGTERM` for its process session and every terminal hangs up, or only those `programs` (`[{ kind, id }]` as `remote.runningPrograms` listed them) names; one that ended in the meantime or is not running is not counted, one that ignores the signal is still listed |
 
 `remote.writeFile` replaces the file atomically on the host. With
-`expected` (`{ size, modifiedMs }` from the read) a changed file is a
+`expected` (`{ size, modifiedMs, revision? }` from the read) a changed file is a
 `conflict`; without it the file must not exist yet. A missing path is
 `workspace_not_found`, a denied one `permission_denied`. A broken connection
 fails with `connection_closed` and is forgotten, so the host reconnects; an
 unknown or closed `sessionId` is also `connection_closed`.
+
+Editor saves send `root`, the workspace's absolute host root. The host must
+advertise `guardedWrites`; otherwise Core returns `not_supported` without
+sending an unscoped write. Descendant directory and leaf symlinks, path escapes
+and `..` are refused. General explicit host writes without `root` retain their
+existing outside-workspace and leaf-link behavior. The opaque `revision` is
+returned unchanged from the opened host file and compared exactly. Cooperating
+Lithe daemons serialize saves and recheck after staging; an external writer
+that ignores their advisory lock still has the final check-to-rename window.
+See the [remote protocol](remote-workspace-protocol-v1.md) for the path and
+conflict-protection limits.
+
+`remote.readFile` applies a cumulative 16 MiB decoded-content limit and a
+120-second overall read deadline, with each chunk limited to 30 seconds.
+Cancellation is checked between chunks and at most every 50 ms while waiting
+for a reply; dropping a pending chunk withdraws unsent work and ignores late
+replies without closing the connection. The read validates chunk progress, EOF
+and file revisions, rejecting a changed file instead of returning mixed content.
+It does not perform a preliminary uncancellable `stat` outside that deadline.
 
 `remote.hostRequest` accepts finite filesystem, environment and port queries,
 `server.state` (what still runs, with the `label` given at start, so the host
@@ -6461,12 +6511,15 @@ one is (see "Global SDK registrations without an open project"), but its
 decisions are separate and never carry over. They are keyed by the
 connection's **target** and the workspace's **real path** on the host:
 
-- The target is `{ hops, userId? }`. Each hop keeps only what chooses where
+- The target is `{ hops, userId?, identity? }`. Each hop keeps only what chooses where
   it ends: `{ ssh: { destination, port?, portOption?, user?, proxyJump? } }`
   (the first `Port`, `User` and `ProxyJump` options, as ssh uses them) or
   `{ container: { engine, program, container, user? } }`. Keys, timeouts,
   keep-alive, working directories and environment are not part of it.
-  `userId` is the server's numeric account from `server.hello`. Targets match
+  `userId` is the server's numeric account from `server.hello`. `identity` is
+  the verified session binding described above, or a fresh connection-local
+  identity when that binding is unavailable. Legacy targets without it remain
+  readable and revocable but cannot authorize new connections. Targets match
   exactly: another host, account, port, route or container asks again, and so
   does a spelling that may reach the same account, such as `dev@box` against
   `box` with `User=dev`.
@@ -7461,6 +7514,93 @@ to exist, creates the copy without replacing anything (`FileManager.copyItem`, w
 `create_new` and `MoveFileEx` without replacement on Windows) and, when that fails because the name
 appeared meanwhile, adds the name to `existing` and plans again. After 512 rounds the host reports
 the stable `destination_exists` error. Cases are in `rust/fixtures/workspace/file-copy-names-v1.json`.
+
+### Plugin workspace search and watches
+
+`workspace.findFiles` takes `{root,query,fileMask?,cursor?,limit?,hiddenDirectoryNames?,hiddenFilePatterns?}`.
+`workspace.findText` takes `{root,pattern,fileMask?,caseSensitive?,wholeWords?,regularExpression?,cursor?,limit?,hiddenDirectoryNames?,hiddenFilePatterns?}`.
+Queries/patterns are nonempty and at most 4096 UTF-8 bytes; masks have the same
+byte cap. Limits default to 100 and accept 1–200. Matching reuses the workspace
+literal/regular-expression matcher and comma-separated basename globs. Files
+sort by UTF-8 relative path bytes, text hits by path then one-based line, one
+hit per line with `range:null` and a trimmed preview of at most 500 characters.
+The returned envelope is `{matches,nextCursor,isTruncated,source:"disk"}`;
+file matches are `{path}`, text matches are `{path,line,preview,range:null}`.
+
+Search walks no-follow handles, applies shared hidden rules and the installed
+indexing exclusion policy (including its Git-ignore decisions), skips links and
+special entries, and consults no dirty buffer. File contents use the existing
+search text decoder, with binary and undecodable files omitted. At most 2 MiB
+are read per text file, with one sentinel byte; traversal depth caps at 128.
+Oversized files, deeper directories and an overall 200-hit cap set
+`isTruncated:true`. At most a page plus one candidate is retained; serialized
+pages reserve host envelopes under 900 KiB. A live cursor binds canonical root,
+query/options, effective visibility and indexing generation, keeps no server
+snapshot, and resumes after the last result; page size may change. A changed
+query/policy or malformed cursor uses `invalid_request`; invalid regex uses
+`parse_failed`. Cancellation and a 30-second deadline are checked per entry,
+chunk and line; native syscalls can still block. I/O failures are returned,
+except concurrently vanished entries. Remote workspaces are unsupported.
+
+`workspace.watchPlan` takes `{root,path,recursive?}` (false by default) and
+returns `{root,path,isDirectory,recursive}` with a canonical root. Targets
+must exist and be a regular file or directory, with no plugin-supplied link
+component. The native adapter watches root changes, checks the root/target
+identity again after registration, and owns the native stream and its cleanup.
+`workspace.watchEvents` takes this plan plus `paths`, optional
+`requiresRescan`, `hiddenDirectoryNames`, `hiddenFilePatterns`. It returns
+`{changedPaths,requiresRescan}` with sorted, deduplicated, root-relative visible
+names. File watches select the exact file; directory watches select immediate
+children or descendants when recursive. Ancestor changes request a rescan.
+Deleted names remain valid, existing ancestor links/reparse points are rejected,
+and leaf links are omitted. Native loss, malformed names, more than 1000 input
+paths or the 900 KiB event budget set `requiresRescan:true`. This command is
+untraced because it runs on each native watch batch. Native registration and
+plugin/context/session ownership remain in the desktop adapter, without polling,
+filesystem writes or retained file content.
+
+Fixture: `rust/fixtures/workspace/find-watch-v1.json`.
+
+### Workspace disk reads
+
+`workspace.readDirectory` takes `{root,path,cursor?,limit?,hiddenDirectoryNames?,hiddenFilePatterns?}`.
+`workspace.stat` takes `{root,path}` and `workspace.readFile` takes
+`{root,path,maximumBytes?}`. `root` is an absolute authorized local directory;
+`path` is a strictly `/`-separated path below it, at most 4096 UTF-8 bytes with
+no backslash, NUL, absolute prefix, empty, `.` or `..` component. Empty path names
+the root for listing/stat only. Windows components obey native storable-name rules.
+Unknown payload fields and invalid bounds fail with `invalid_request`.
+
+Listing defaults to 200, accepts 1–1000, and retains at most `limit + 1` ordered
+candidates while streaming a directory. It applies shared effective hidden rules,
+omits links/reparse points and unrepresentable paths, and returns
+`{entries:[{name,path,kind}],nextCursor}`. Entries sort by UTF-8 name bytes.
+A serialized page has a 900 KiB budget, reserving space for host resource envelopes,
+so a page may be shorter than its limit. Cursors bind canonical root, directory and
+filters and resume after the last name, without keeping a server-side snapshot.
+`stat` returns `{path,kind,size,modifiedMilliseconds}`; `kind` is `file`,
+`directory`, `symlink` or `other`, and unavailable/pre-epoch timestamps are null.
+The leaf's own metadata is returned; ancestor links are refused.
+
+Reading accepts `maximumBytes` in 1–131072, default 131072, and returns
+`{path,source:"disk",byteCount,isTruncated,identity,text?,encoding?,base64?}`.
+It reads at most the limit plus one byte, discards the sentinel and hashes only
+the returned prefix. `identity` is `{sha256,byteCount,isTruncated}` and describes
+those exact bytes, not an atomic whole-file snapshot. Strict UTF-8 without control
+characters except tab/CR/LF returns text with `encoding:"utf-8"` (BOM preserved);
+all other prefixes, including incomplete UTF-8, use standard base64. Exactly one
+of text/base64 is present. No editor buffer is consulted.
+
+Unix walks held directory descriptors with `openat/O_NOFOLLOW`; Windows rejects
+reparse points and retains directory handles without write/delete sharing.
+Non-regular files cannot be read. These commands reject `remoteWorkspace` before
+local I/O. Missing roots use `workspace_not_found`, missing entries use
+`entry_not_found`, link traversal and access failures use `permission_denied`,
+and other I/O failures use `unknown`. Enumeration and chunk reads check cancellation
+and a 30-second deadline; native filesystem calls may still block in the kernel.
+The host checks context/root ownership and wraps returned paths as resources;
+it maps the Core errors to the public API-06 errors.
+Fixture: `rust/fixtures/workspace/read-v1.json`.
 
 `workspace.createEntry`, `workspace.renameEntry`, `workspace.copyEntry` and `workspace.resolveEntry`
 change and name entries below a local workspace root on a plugin's behalf (plan API-11). Each takes
@@ -8686,3 +8826,18 @@ editor and may explicitly set selected default handlers. macOS associates conten
 types, so extensions sharing a type may change together. The installed package
 stays read-only. No regex or all-files catch-all
 registration is permitted. See [fixtures](../fixtures/application/file-associations-v1.json).
+
+## Plugin workflow projections (`plugins.workflow`)
+
+`operation:"prepare"` takes `{method,params}` and returns strictly checked params
+and `{textBytes,outputLines,outputBytes,resources}` limits. Network defaults are
+resolved here. `quickPick` takes `{items,query}` and returns source `indices`;
+`input` takes `{pick,value}` and returns `{valid}`. `status` takes bounded
+`items:[{id,priority}]` and returns ordered `ids`. `treePage` takes `{cursor,
+lastCursor,count,lastCount,rows,lastVisible}` and returns `{load}` only near the
+end when both cursor and retained count advance. `output` takes `{open,text}`
+and returns `{lines,open,maxLines,maxBytes}` as one bounded increment, never the
+retained history. Unknown operations/fields and malformed projection input fail
+with `invalid_request`. This hot path is excluded from request tracing; its text
+may contain secrets. Public backend methods and lifecycle are specified in the
+[plugin contract](../../shared/plugins/contract/v1/README.md#workflow-host-methods).

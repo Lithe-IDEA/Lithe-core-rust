@@ -548,3 +548,5 @@ The end-to-end script needs Rust, Node.js 20.3 or newer, Go 1.27.4 or newer, Jav
 (`LITHE_PLUGIN_SDK_JAVA_RUNTIME` or `java` on `PATH`) and Maven;
 `LITHE_PLUGIN_SDK_JAVA_SAMPLE` and `LITHE_PLUGIN_SDK_JAVA_NATIVE_SAMPLE` name
 already built sample JARs.
+
+Workflow host methods (quick pick, input, previews, diff, view refresh, output, progress, status, clipboard, reveal and HTTP) are documented in the [plugin workflow guide](../../guides/plugin-workflows.md). Discover each method before calling it; wrappers do not grant permissions.

@@ -493,6 +493,36 @@ impl Host {
         Editor { host: self.clone() }
     }
 
+    /// Native views services; each method requires its own grant.
+    pub fn views(&self) -> Views {
+        Views { host: self.clone() }
+    }
+
+    /// Native output services; each method requires its own grant.
+    pub fn output(&self) -> Output {
+        Output { host: self.clone() }
+    }
+
+    /// Native progress services; each method requires its own grant.
+    pub fn progress(&self) -> Progress {
+        Progress { host: self.clone() }
+    }
+
+    /// Native statusBar services; each method requires its own grant.
+    pub fn status_bar(&self) -> StatusBar {
+        StatusBar { host: self.clone() }
+    }
+
+    /// Native clipboard services; each method requires its own grant.
+    pub fn clipboard(&self) -> Clipboard {
+        Clipboard { host: self.clone() }
+    }
+
+    /// Native network services; each method requires its own grant.
+    pub fn network(&self) -> Network {
+        Network { host: self.clone() }
+    }
+
     pub fn preview(&self) -> Preview {
         Preview { host: self.clone() }
     }
@@ -806,6 +836,11 @@ pub struct Workspace {
 }
 
 impl Workspace {
+    /// Reveal a saved resource in the file manager. Permission `workspace.reveal`.
+    pub fn reveal(&self, context: &WorkspaceContext, params: Value) -> Result<Value, SdkError> {
+        self.host.scoped(methods::WORKSPACE_REVEAL, context, params)
+    }
+
     /// `{ revision, contexts }`.
     pub fn list_contexts(&self) -> Result<Value, SdkError> {
         self.host
@@ -1142,6 +1177,11 @@ pub struct Editor {
 }
 
 impl Editor {
+    /// Compare two read-only inline texts. Permission `editor.open`.
+    pub fn show_diff(&self, context: &WorkspaceContext, params: Value) -> Result<Value, SdkError> {
+        self.host.scoped(methods::EDITOR_SHOW_DIFF, context, params)
+    }
+
     /// The foreground text tab's document summary, or `Value::Null`.
     pub fn get_active(&self, context: &WorkspaceContext) -> Result<Value, SdkError> {
         self.host
@@ -1212,13 +1252,23 @@ impl Editor {
     }
 }
 
-/// HTML previews.
+/// Markdown and HTML previews.
 pub struct Preview {
     host: Host,
 }
 
 impl Preview {
-    /// `params`: HTML `resource, presentation?, range?`.
+    /// Show a resource or read-only inline Markdown. Permission `preview.open`.
+    pub fn open_markdown(
+        &self,
+        context: &WorkspaceContext,
+        params: Value,
+    ) -> Result<Value, SdkError> {
+        self.host
+            .scoped(methods::PREVIEW_OPEN_MARKDOWN, context, params)
+    }
+
+    /// `params`: HTML `resource` or inline `id,title,text`, plus `presentation?,range?`.
     pub fn open_html(&self, context: &WorkspaceContext, params: Value) -> Result<Value, SdkError> {
         self.host
             .scoped(methods::PREVIEW_OPEN_HTML, context, params)
@@ -1249,6 +1299,25 @@ pub struct Window {
 }
 
 impl Window {
+    /// Choose one or more stable item IDs. Permission `window.input`.
+    pub fn show_quick_pick(
+        &self,
+        context: &WorkspaceContext,
+        params: Value,
+    ) -> Result<Value, SdkError> {
+        self.host
+            .scoped(methods::WINDOW_SHOW_QUICK_PICK, context, params)
+    }
+    /// Request text or a masked password. Permission `window.input`.
+    pub fn show_input_box(
+        &self,
+        context: &WorkspaceContext,
+        params: Value,
+    ) -> Result<Value, SdkError> {
+        self.host
+            .scoped(methods::WINDOW_SHOW_INPUT_BOX, context, params)
+    }
+
     pub fn show_information(
         &self,
         context: &WorkspaceContext,
@@ -1542,5 +1611,123 @@ mod tests {
             let error = relay_params(invalid.clone(), Some("op-1")).unwrap_err();
             assert_eq!(error.code(), "sdk.functions.invalidCall", "{invalid}");
         }
+    }
+}
+
+/// Native views services with session-owned resources.
+pub struct Views {
+    host: Host,
+}
+impl Views {
+    /// Invalidate a visible owned view instance. Permission `views.refresh`.
+    pub fn refresh(&self, context: &WorkspaceContext, params: Value) -> Result<Value, SdkError> {
+        self.host.scoped(methods::VIEWS_REFRESH, context, params)
+    }
+}
+
+/// Native output services with session-owned resources.
+pub struct Output {
+    host: Host,
+}
+impl Output {
+    /// Create an independent output channel. Permission `output.write`.
+    pub fn create(&self, context: &WorkspaceContext, params: Value) -> Result<Value, SdkError> {
+        self.host.scoped(methods::OUTPUT_CREATE, context, params)
+    }
+    /// Append bounded output text. Permission `output.write`.
+    pub fn append(&self, context: &WorkspaceContext, params: Value) -> Result<Value, SdkError> {
+        self.host.scoped(methods::OUTPUT_APPEND, context, params)
+    }
+    /// Clear an output channel. Permission `output.write`.
+    pub fn clear(&self, context: &WorkspaceContext, params: Value) -> Result<Value, SdkError> {
+        self.host.scoped(methods::OUTPUT_CLEAR, context, params)
+    }
+    /// Show an output channel. Permission `output.write`.
+    pub fn show(&self, context: &WorkspaceContext, params: Value) -> Result<Value, SdkError> {
+        self.host.scoped(methods::OUTPUT_SHOW, context, params)
+    }
+    /// Release an output channel. Permission `output.write`.
+    pub fn dispose(&self, context: &WorkspaceContext, params: Value) -> Result<Value, SdkError> {
+        self.host.scoped(methods::OUTPUT_DISPOSE, context, params)
+    }
+}
+
+/// Native progress services with session-owned resources.
+pub struct Progress {
+    host: Host,
+}
+impl Progress {
+    /// Create cancellable progress. Permission `window.progress`.
+    pub fn create(
+        &self,
+        context: &WorkspaceContext,
+        params: Value,
+    ) -> Result<Subscription, SdkError> {
+        self.host
+            .subscribe(methods::PROGRESS_CREATE, with_context(context, params)?)
+    }
+    /// Update progress text or percentage. Permission `window.progress`.
+    pub fn report(&self, context: &WorkspaceContext, params: Value) -> Result<Value, SdkError> {
+        self.host.scoped(methods::PROGRESS_REPORT, context, params)
+    }
+    /// Release progress. Permission `window.progress`.
+    pub fn end(&self, context: &WorkspaceContext, params: Value) -> Result<Value, SdkError> {
+        let id = params
+            .get("progressID")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        let result = self.host.scoped(methods::PROGRESS_END, context, params)?;
+        self.host.shared.dispose(&id, None)?;
+        Ok(result)
+    }
+}
+
+/// Native statusBar services with session-owned resources.
+pub struct StatusBar {
+    host: Host,
+}
+impl StatusBar {
+    /// Create or replace a status item. Permission `statusBar.write`.
+    pub fn set_item(&self, context: &WorkspaceContext, params: Value) -> Result<Value, SdkError> {
+        self.host
+            .scoped(methods::STATUS_BAR_SET_ITEM, context, params)
+    }
+    /// Remove an owned status item. Permission `statusBar.write`.
+    pub fn remove_item(
+        &self,
+        context: &WorkspaceContext,
+        params: Value,
+    ) -> Result<Value, SdkError> {
+        self.host
+            .scoped(methods::STATUS_BAR_REMOVE_ITEM, context, params)
+    }
+}
+
+/// Native clipboard services with session-owned resources.
+pub struct Clipboard {
+    host: Host,
+}
+impl Clipboard {
+    /// Read system clipboard text. Permission `clipboard.read`.
+    pub fn read_text(&self, context: &WorkspaceContext, params: Value) -> Result<Value, SdkError> {
+        self.host
+            .scoped(methods::CLIPBOARD_READ_TEXT, context, params)
+    }
+    /// Write system clipboard text. Permission `clipboard.write`.
+    pub fn write_text(&self, context: &WorkspaceContext, params: Value) -> Result<Value, SdkError> {
+        self.host
+            .scoped(methods::CLIPBOARD_WRITE_TEXT, context, params)
+    }
+}
+
+/// Native network services with session-owned resources.
+pub struct Network {
+    host: Host,
+}
+impl Network {
+    /// Send a bounded HTTP request with host proxy policy. Permission `network.request`.
+    pub fn request(&self, context: &WorkspaceContext, params: Value) -> Result<Value, SdkError> {
+        self.host.scoped(methods::NETWORK_REQUEST, context, params)
     }
 }

@@ -7,6 +7,21 @@
 mod plugin_sdk;
 
 #[test]
+fn the_node_sdk_registers_and_answers_color_decorations() {
+    let Some(node) = plugin_sdk::node_from_environment("Node color providers") else {
+        return;
+    };
+    let script = plugin_sdk::repository_path("sdk/node/examples/sample-build/backend/main.mjs");
+    // Node's command-line resolver cannot use Windows extended-length paths.
+    // The existing URI adapter gives it the equivalent ordinary native path.
+    let uri = lithe_document_uri::DocumentPathPlatform::Auto
+        .document_uri(&script.to_string_lossy())
+        .expect("sample URI");
+    let script = lithe_document_uri::file_path_from_uri(&uri);
+    plugin_sdk::colors::run("node", &node, &[script]);
+}
+
+#[test]
 fn the_node_sdk_import_provider_reads_a_selected_source_through_core() {
     let Some(node) = plugin_sdk::node_from_environment("the Node keymap provider") else {
         return;

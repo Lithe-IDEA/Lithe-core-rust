@@ -9,5 +9,6 @@ mod git_executable;
 mod lsp_process;
 mod permissions;
 mod process_tree;
+mod scoped_read;
 mod socket;
 mod support;

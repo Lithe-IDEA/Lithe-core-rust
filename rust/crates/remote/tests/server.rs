@@ -30,6 +30,111 @@ fn code<T: std::fmt::Debug>(result: Result<T, ClientError>) -> ErrorCode {
 }
 
 #[test]
+fn limited_file_reads_enforce_bytes_deadline_and_cancellation() {
+    let root = TempDir::new("limited-read");
+    let path = root.join("file");
+    std::fs::write(&path, b"a small file").unwrap();
+    let (session, _events) = connect();
+    assert_eq!(
+        code(session.read_file_limited(&path, 3, STEP_TIMEOUT, || false)),
+        ErrorCode::TooLarge
+    );
+    assert!(matches!(
+        session.read_file_limited(&path, 100, STEP_TIMEOUT, || true),
+        Err(ClientError::Cancelled)
+    ));
+    assert!(matches!(
+        session.read_file_limited(&path, 100, std::time::Duration::ZERO, || false),
+        Err(ClientError::Timeout)
+    ));
+    assert_eq!(
+        session
+            .read_file_limited(&path, 100, STEP_TIMEOUT, || false)
+            .unwrap()
+            .0,
+        b"a small file"
+    );
+    assert!(session.ping().is_ok());
+    session.shutdown(STEP_TIMEOUT);
+}
+
+#[test]
+fn scoped_saves_keep_regular_files_inside_and_refuse_parent_and_leaf_links() {
+    let root = TempDir::new("scoped-save");
+    std::fs::create_dir(root.join("workspace")).unwrap();
+    std::fs::create_dir(root.join("outside")).unwrap();
+    std::os::unix::fs::symlink(root.join("outside"), root.join("workspace/link")).unwrap();
+    std::fs::write(root.join("outside/file"), b"outside").unwrap();
+    std::os::unix::fs::symlink(root.join("outside/file"), root.join("workspace/leaf")).unwrap();
+    let (session, _events) = connect();
+    for path in [
+        root.join("workspace/link/file"),
+        root.join("workspace/leaf"),
+        root.join("workspace/../outside/file"),
+    ] {
+        assert_eq!(
+            code(session.write_file(
+                &path,
+                b"mine",
+                WriteOptions {
+                    root: Some(root.join("workspace")),
+                    overwrite: true,
+                    ..WriteOptions::default()
+                }
+            )),
+            ErrorCode::PermissionDenied
+        );
+    }
+    let path = root.join("workspace/file");
+    let metadata = session
+        .write_file(
+            &path,
+            b"one",
+            WriteOptions {
+                root: Some(root.join("workspace")),
+                ..WriteOptions::default()
+            },
+        )
+        .unwrap();
+    session
+        .write_file(
+            &path,
+            b"two",
+            WriteOptions {
+                root: Some(root.join("workspace")),
+                expected: Some(FileVersion {
+                    size: metadata.size,
+                    modified_ms: metadata.modified_ms,
+                    revision: metadata.revision,
+                }),
+                ..WriteOptions::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(std::fs::read(path).unwrap(), b"two");
+    session
+        .write_file(
+            &root.join("workspace/new/nested/file"),
+            b"created",
+            WriteOptions {
+                root: Some(root.join("workspace")),
+                create_parents: true,
+                ..WriteOptions::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        std::fs::read(root.join("workspace/new/nested/file")).unwrap(),
+        b"created"
+    );
+    assert_eq!(
+        std::fs::read(root.join("outside/file")).unwrap(),
+        b"outside"
+    );
+    session.shutdown(STEP_TIMEOUT);
+}
+
+#[test]
 fn staged_upload_checks_order_digest_and_atomic_no_replace_publication() {
     let root = TempDir::new("staged-upload");
     let (session, _events) = connect();
@@ -342,6 +447,7 @@ fn files_are_written_atomically_and_guarded_against_concurrent_changes() {
         expected: Some(FileVersion {
             size: created.size,
             modified_ms: created.modified_ms,
+            revision: created.revision.clone(),
         }),
         ..WriteOptions::default()
     };

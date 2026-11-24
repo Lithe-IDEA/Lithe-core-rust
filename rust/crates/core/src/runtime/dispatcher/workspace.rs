@@ -17,6 +17,27 @@ pub(super) fn dispatch(
     payload: Value,
 ) -> CoreResponse {
     match command {
+        WorkspaceCommand::FindFiles => {
+            plugin_response(id, payload, project::workspace_find::find_files_command)
+        }
+        WorkspaceCommand::FindText => {
+            plugin_response(id, payload, project::workspace_find::find_text_command)
+        }
+        WorkspaceCommand::WatchPlan => {
+            plugin_response(id, payload, project::workspace_watch::plan_command)
+        }
+        WorkspaceCommand::WatchEvents => {
+            plugin_response(id, payload, project::workspace_watch::events_command)
+        }
+        WorkspaceCommand::ReadDirectory => {
+            plugin_response(id, payload, project::workspace_read::read_directory_command)
+        }
+        WorkspaceCommand::Stat => {
+            plugin_response(id, payload, project::workspace_read::stat_command)
+        }
+        WorkspaceCommand::ReadFile => {
+            plugin_response(id, payload, project::workspace_read::read_file_command)
+        }
         WorkspaceCommand::SearchPresentation => match serde_json::from_value::<
             project::SearchPresentationRequest,
         >(payload)

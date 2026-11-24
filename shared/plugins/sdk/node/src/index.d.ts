@@ -272,6 +272,8 @@ export interface Host {
     dispose(subscriptionID: string): Promise<void>;
   };
   readonly workspace: {
+    reveal: Scoped<{resource:WorkspaceResource},null>;
+
     /** Permission `workspace.metadata`. Entries carry no `stateDirectory`. */
     listContexts(options?: HostRequestOptions): Promise<{ revision: number; contexts: WorkspaceContext[] }>;
     getContext(context: ContextReference, options?: HostRequestOptions): Promise<WorkspaceContext>;
@@ -300,13 +302,14 @@ export interface Host {
       entries: { name: string; resource: WorkspaceResource; kind: string }[];
       nextCursor: string | null;
     }>;
-    stat: Scoped<{ resource: WorkspaceResource }, { resource: WorkspaceResource; kind: string; size: number; modifiedMilliseconds: number }>;
+    stat: Scoped<{ resource: WorkspaceResource }, { resource: WorkspaceResource; kind: string; size: number; modifiedMilliseconds: number | null }>;
     readFile: Scoped<{ resource: WorkspaceResource; maximumBytes?: number }, {
       resource: WorkspaceResource;
       source: 'disk';
       byteCount: number;
       isTruncated: boolean;
-      identity: JsonValue;
+      /** Identity of the returned byte prefix, including whether an unread suffix exists. */
+      identity: { sha256: string; byteCount: number; isTruncated: boolean };
       text?: string;
       encoding?: string;
       base64?: string;
@@ -367,6 +370,8 @@ export interface Host {
     close: Scoped<{ documentID: string }, null>;
   };
   readonly editor: {
+    showDiff: Scoped<{original:string;modified:string;title?:string;originalTitle?:string;modifiedTitle?:string},{opened:true}>;
+
     getActive: ScopedOptional<JsonObject, DocumentSummary | null>;
     getSelections: Scoped<{ documentID: string }, { documentID: string; version: number; selections: TextSelection[]; primaryIndex: number }>;
     /** Permission `editor.edit`. Not replayed on cancellation or timeout: the edit may have committed. */
@@ -383,9 +388,38 @@ export interface Host {
       options?: HostRequestOptions,
     ): Promise<Subscription>;
   };
+  /** Permission `views.refresh`. */
+  readonly views: {
+    refresh: Scoped<{instance:string},{refreshed:true}>;
+  };
+  readonly output: {
+    create: Scoped<{name:string},{channelID:string}>;
+    append: Scoped<{channelID:string;text:string},null>;
+    clear: Scoped<{channelID:string},null>;
+    show: Scoped<{channelID:string},null>;
+    dispose: Scoped<{channelID:string},null>;
+  };
+  readonly progress: {
+    create(context: ContextReference, params: {title:string;cancellable?:boolean}, onEvent?: (event: {cancelled:true}, metadata: SubscriptionEventInfo) => void, options?: HostRequestOptions): Promise<Subscription>;
+    report: Scoped<{progressID:string;message?:string;percentage?:number},null>;
+    end: Scoped<{progressID:string},null>;
+  };
+  readonly statusBar: {
+    setItem: Scoped<{id:string;text:string;tooltip?:string;commandID?:string;priority?:number},{id:string}>;
+    removeItem: Scoped<{id:string},null>;
+  };
+  readonly clipboard: {
+    readText: Scoped<JsonObject,{text:string}>;
+    writeText: Scoped<{text:string},null>;
+  };
+  readonly network: {
+    request: Scoped<{url:string;method?:'GET'|'POST'|'PUT'|'PATCH'|'DELETE'|'HEAD'|'OPTIONS';headers?:Record<string,string>;body?:string;timeoutMilliseconds?:number;maximumResponseBytes?:number},{status:number;headers:Record<string,string[]>;body:string;encoding:'utf8'|'base64'}>;
+  };
   /** Permission `preview.open`. */
   readonly preview: {
-    openHTML: Scoped<{ resource: WorkspaceResource; presentation?: 'editorAndPreview' | 'previewOnly'; range?: TextRange }, JsonObject>;
+    openMarkdown: Scoped<PreviewParams,JsonObject>;
+
+    openHTML: Scoped<PreviewParams,JsonObject>;
   };
   /** Permission `browser.open`; exactly one of `url` or `resource`. */
   readonly browser: {
@@ -420,6 +454,9 @@ export interface Host {
   };
   /** Permission `window.messages`. `selectedIndex` is zero-based, or null on dismissal. */
   readonly window: {
+    showQuickPick: Scoped<{title?:string;placeholder?:string;items:QuickPickItem[];canPickMany?:boolean},{selectedIDs:string[]}|null>;
+    showInputBox: Scoped<{title?:string;prompt?:string;placeholder?:string;value?:string;password?:boolean},{value:string}|null>;
+
     showInformation: Scoped<{ text: string; actions?: string[] }, { selectedIndex: number | null }>;
     showWarning: Scoped<{ text: string; actions?: string[] }, { selectedIndex: number | null }>;
     showError: Scoped<{ text: string; actions?: string[] }, { selectedIndex: number | null }>;
@@ -629,7 +666,7 @@ export interface VcsTraits {
 // the result it returns. contract/v1/plugin-ui.schema.json is the authority;
 // Core's plugins.ui.applyResult enforces the rules a type cannot express.
 
-export type ViewEventKind = 'open' | 'close' | 'click' | 'change' | 'select' | 'activate' | 'viewport' | 'resize' | 'settings';
+export type ViewEventKind = 'open' | 'close' | 'click' | 'change' | 'select' | 'activate' | 'viewport' | 'resize' | 'settings' | 'refresh' | 'expand' | 'loadMore';
 
 /** Params of one call to a view function. */
 export interface ViewEvent {
@@ -652,6 +689,8 @@ export interface ViewEvent {
   setting?: string;
   /** `select`, `activate`: the tree item ID. */
   item?: string;
+  /** Opaque continuation of a tree loadMore event. */
+  cursor?: string;
   /** `viewport`: the visible part of the canvas, in view-box coordinates. */
   viewport?: { x: number; y: number; width: number; height: number };
   /**
@@ -691,7 +730,7 @@ export type ViewNode =
   /** settings only: the host's row for a tool the plugin defines or requires. */
   | { type: 'tool'; id?: string; tool: string; choose?: boolean }
   /** tool windows only. */
-  | { type: 'tree'; id: string; label?: string; items: ViewTreeItem[] }
+  | { type: 'tree'; id: string; label?: string; items: ViewTreeItem[]; cursor?: string }
   | ViewCanvas;
 
 /** A control shows its own `value` or edits a declared `setting` (settings only), never both. */
@@ -719,6 +758,7 @@ export interface ViewTreeItem {
   icon?: string;
   detail?: string;
   expanded?: boolean;
+  hasChildren?: boolean;
   children?: ViewTreeItem[];
 }
 
@@ -985,3 +1025,8 @@ export const LIMITS: Readonly<{
   relayMaxTimeoutMilliseconds: number;
   maxParentOperationIdBytes: number;
 }>;
+
+/** A stable item in a bounded searchable native picker. */
+export interface QuickPickItem {id:string;label:string;description?:string;detail?:string;picked?:boolean}
+/** Exactly one saved resource or an inline read-only document. */
+export type PreviewParams = ({resource:WorkspaceResource}|{id:string;title:string;text:string}) & {presentation?:'editorAndPreview'|'previewOnly';range?:TextRange};

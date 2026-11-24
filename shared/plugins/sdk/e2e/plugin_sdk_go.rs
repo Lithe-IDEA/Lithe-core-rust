@@ -10,6 +10,14 @@
 mod plugin_sdk;
 
 #[test]
+fn the_go_sdk_registers_and_answers_color_decorations() {
+    let Some(executable) = std::env::var_os("LITHE_PLUGIN_SDK_GO_SAMPLE") else {
+        return;
+    };
+    plugin_sdk::colors::run("go", &executable.to_string_lossy(), &[]);
+}
+
+#[test]
 fn the_go_sdk_import_provider_reads_a_selected_source_through_core() {
     let Some(executable) = std::env::var_os("LITHE_PLUGIN_SDK_GO_SAMPLE") else {
         return;
