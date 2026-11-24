@@ -33,6 +33,32 @@ fn document_uri_identity_keeps_reserved_characters_distinct() {
 }
 
 #[test]
+fn client_hover_contents_match_fixture() {
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../../fixtures/lsp/hover-contents-v1.json")).unwrap();
+    let mut mismatches = Vec::new();
+    for case in fixture["cases"].as_array().unwrap() {
+        let actual = lsp_feature_result_for_method(
+            Some("textDocument/hover"),
+            Some(&case["result"]),
+            &Default::default(),
+        )
+        .unwrap();
+        if actual["hover"] != case["expected"] {
+            mismatches.push(json!({
+                "name": case["name"],
+                "expected": case["expected"],
+                "actual": actual["hover"]
+            }));
+        }
+    }
+    assert!(
+        mismatches.is_empty(),
+        "hover normalization: {mismatches:#?}"
+    );
+}
+
+#[test]
 fn client_core_initializes_and_applies_server_capabilities() {
     let initialized = client_initialize(ClientInitializeRequest {
         state: LspClientState::default(),

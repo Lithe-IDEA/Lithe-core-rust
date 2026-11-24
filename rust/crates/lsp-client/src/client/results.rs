@@ -180,11 +180,25 @@ fn parse_hover(result: &Value) -> Option<Value> {
     }))
 }
 
+// LSP MarkedString is Markdown, either directly or as a language-tagged code block.
+// Only MarkupContent uses `kind` to explicitly select plaintext instead.
 fn hover_contents(value: &Value) -> Option<(String, bool)> {
     match value {
-        Value::String(text) => Some((text.clone(), false)),
+        Value::String(text) => Some((text.clone(), true)),
         Value::Object(object) => {
             if let Some(value) = object.get("value").and_then(Value::as_str) {
+                if let Some(language) = object.get("language").and_then(Value::as_str) {
+                    // A longer fence keeps backticks in the code from closing the block.
+                    let longest = value.split(|c| c != '`').map(str::len).max().unwrap_or(0);
+                    let fence = "`".repeat(longest.max(2) + 1);
+                    return Some((
+                        format!(
+                            "{fence}{language}\n{}\n{fence}",
+                            value.trim_end_matches('\n')
+                        ),
+                        true,
+                    ));
+                }
                 let is_markdown = object
                     .get("kind")
                     .and_then(Value::as_str)
