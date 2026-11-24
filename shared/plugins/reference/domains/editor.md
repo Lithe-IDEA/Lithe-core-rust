@@ -80,7 +80,7 @@
 | 文件 | 内容 |
 | --- | --- |
 | [`editor/editor-actions.plugin.json`](../../contract/v1/fixtures/editor/editor-actions.plugin.json) | `backend` 加 `editor.actions`、`documents.read`：`onWorkspaceOpen` 启动后注册编辑器动作 |
-| [`editor/editor-actions.json`](../../contract/v1/fixtures/editor/editor-actions.json) | `plugins.editorActions.decode` 的 8 个 Core 用例：宿主声明的图标和源码上限、`alternatives`、点击结果 `reveal`，以及整个结果被拒绝的情形 |
+| [`editor/editor-actions.json`](../../contract/v1/fixtures/editor/editor-actions.json) | `plugins.editorActions.decode` 的 9 个 Core 用例：宿主声明的图标（含接口实现/继承覆写导航图标）和源码上限、`alternatives`、点击结果 `reveal`，以及整个结果被拒绝的情形 |
 | [`editor/editor-providers.plugin.json`](../../contract/v1/fixtures/editor/editor-providers.plugin.json) | `backend` 加 `editor.providers`、`documents.read`：`onWorkspaceOpen` 启动后注册编辑器语言功能 Provider |
 | [`editor/editor-providers.json`](../../contract/v1/fixtures/editor/editor-providers.json) | Core 注册、结果与合并用例：8 个注册用例、14 个结果用例，以及颜色来源排序、裁切和重复来源 ID 校验 |
 | [`backend/command-backend.plugin.json`](../../contract/v1/fixtures/backend/command-backend.plugin.json) | 无工具窗口的 `ui` 命令读取文档并编辑 |
@@ -170,7 +170,7 @@ A language server may hand out documents that have no file (such as the decompil
 | File | Content |
 | --- | --- |
 | [`editor/editor-actions.plugin.json`](../../contract/v1/fixtures/editor/editor-actions.plugin.json) | `backend` with `editor.actions` and `documents.read`: registers editor actions after `onWorkspaceOpen` |
-| [`editor/editor-actions.json`](../../contract/v1/fixtures/editor/editor-actions.json) | 8 Core cases for `plugins.editorActions.decode`: the host-declared icons and source limit, `alternatives`, click-result `reveal`, and results refused whole |
+| [`editor/editor-actions.json`](../../contract/v1/fixtures/editor/editor-actions.json) | 9 Core cases for `plugins.editorActions.decode`: the host-declared icons (including interface implementation and inheritance override navigation tokens) and source limit, `alternatives`, click-result `reveal`, and results refused whole |
 | [`editor/editor-providers.plugin.json`](../../contract/v1/fixtures/editor/editor-providers.plugin.json) | `backend` with `editor.providers` and `documents.read`: registers editor language-feature providers after `onWorkspaceOpen` |
 | [`editor/editor-providers.json`](../../contract/v1/fixtures/editor/editor-providers.json) | Core cases for registrations, results, and merges, including color legend and range validation and stable source priority |
 | [`backend/command-backend.plugin.json`](../../contract/v1/fixtures/backend/command-backend.plugin.json) | A `ui` command without a tool window that reads and edits documents |
