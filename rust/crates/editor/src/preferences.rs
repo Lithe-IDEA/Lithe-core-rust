@@ -17,6 +17,8 @@ const DARK_BRACKET_COLORS: &[&str] = &[
 struct Stored {
     line_numbers: Option<bool>,
     whitespace: Option<bool>,
+    indent_guides: Option<bool>,
+    rainbow_indent_guides: Option<bool>,
     inlay_hints: Option<bool>,
     cursor_style: Option<String>,
     cursor_blink: Option<bool>,
@@ -55,9 +57,14 @@ pub fn resolve_command(payload: Value) -> Result<Value, CoreError> {
         Some("underline") => "underline",
         _ => "line",
     };
+    let indent_guides = stored.indent_guides.unwrap_or(true);
+    let rainbow_indent_guides = stored.rainbow_indent_guides.unwrap_or(false);
     Ok(json!({
         "lineNumbers":stored.line_numbers.unwrap_or(true),
         "whitespace":stored.whitespace.unwrap_or(false),
+        "indentGuides":indent_guides,
+        "rainbowIndentGuides":rainbow_indent_guides,
+        "rainbowIndentGuidesEffective":indent_guides && rainbow_indent_guides,
         "inlayHints":stored.inlay_hints.unwrap_or(true),
         "cursorStyle":style,
         "cursorBlink":stored.cursor_blink.unwrap_or(true),
@@ -79,6 +86,9 @@ mod tests {
         let value = resolve_command(json!({})).unwrap();
         assert_eq!(value["lineNumbers"], true);
         assert_eq!(value["whitespace"], false);
+        assert_eq!(value["indentGuides"], true);
+        assert_eq!(value["rainbowIndentGuides"], false);
+        assert_eq!(value["rainbowIndentGuidesEffective"], false);
         assert_eq!(value["inlayHints"], true);
         assert_eq!(value["cursorStyle"], "line");
         assert_eq!(value["cursorBlink"], true);
@@ -94,6 +104,20 @@ mod tests {
             json!(DARK_BRACKET_COLORS)
         );
     }
+    #[test]
+    fn rainbow_indent_guides_keep_the_choice_when_guides_are_hidden() {
+        for indent_guides in [false, true] {
+            let value = resolve_command(json!({
+                "indentGuides": indent_guides,
+                "rainbowIndentGuides": true,
+            }))
+            .unwrap();
+            assert_eq!(value["indentGuides"], indent_guides);
+            assert_eq!(value["rainbowIndentGuides"], true);
+            assert_eq!(value["rainbowIndentGuidesEffective"], indent_guides);
+        }
+    }
+
     #[test]
     fn corrupted_values_are_bounded_without_replacing_valid_choices() {
         let value = resolve_command(json!({"lineNumbers":false,"inlayHints":false,"cursorStyle":"unknown","cursorBlink":false,"autoSaveDelayMilliseconds":1})).unwrap();

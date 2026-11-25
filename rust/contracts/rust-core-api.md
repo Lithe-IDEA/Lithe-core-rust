@@ -8612,11 +8612,15 @@ replacement fails atomically. Invalid requests return `invalid_request` with sta
 Source, query and replacement are never included in errors or diagnostic logs.
 
 `editor.preferences.resolve` accepts optional `lineNumbers`, `whitespace`, `inlayHints`,
+`indentGuides`, `rainbowIndentGuides`,
 `cursorStyle` (`line`, `block`, `underline`), `cursorBlink`, `autoSaveDelayMilliseconds`,
 `rainbowBrackets`, `rainbowVariables`, `rainbowBracketLightColors` and
 `rainbowBracketDarkColors`.
 It returns actual values and minimum/maximum delay. Defaults: true, false, true, line,
 true, 1500 ms; unknown styles resolve to line and delay clamps to 250–60,000 ms.
+Indent guides default to enabled and rainbow indent guides default to disabled.
+The result returns both choices independently and adds `rainbowIndentGuidesEffective`,
+which is true when both choices are enabled.
 Rainbow brackets and variable coloring are independent options that default to
 disabled and share the light and dark palettes. Each palette accepts one to eight
 `#RRGGBB` strings with optional surrounding whitespace and case-insensitive ASCII
