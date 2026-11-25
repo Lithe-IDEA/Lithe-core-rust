@@ -2,7 +2,7 @@
 
 use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 /// Maximum number of bracket tokens and colors in one request.
 pub const MAX_BRACKETS: usize = 10_000;
