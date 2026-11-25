@@ -51,10 +51,10 @@ const CREATE_ATTEMPTS: usize = 4;
 /// How long the helper waits for a free pipe instance.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// Creates a directory with the same protected owner-only DACL as AskPass.
+/// Creates a directory with a protected owner-only DACL inherited by files created inside it.
 pub(crate) fn private_directory(path: &std::path::Path) -> io::Result<()> {
     use windows_sys::Win32::Storage::FileSystem::CreateDirectoryW;
-    let descriptor = Descriptor::owner_only(&CurrentUser::query()?)?;
+    let descriptor = Descriptor::owner_only_directory(&CurrentUser::query()?)?;
     let attributes = SECURITY_ATTRIBUTES {
         nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
         lpSecurityDescriptor: descriptor.0 .0,
@@ -371,10 +371,18 @@ struct Descriptor(Local);
 impl Descriptor {
     fn owner_only(user: &CurrentUser) -> io::Result<Self> {
         let sid = user.sid_string()?;
-        let sddl: Vec<u16> = format!("O:{sid}D:P(A;;GA;;;{sid})")
-            .encode_utf16()
-            .chain([0])
-            .collect();
+        Self::from_sddl(&format!("O:{sid}D:P(A;;GA;;;{sid})"))
+    }
+
+    fn owner_only_directory(user: &CurrentUser) -> io::Result<Self> {
+        let sid = user.sid_string()?;
+        // OICI ensures files and subdirectories created inside inherit the
+        // owner-only protected DACL instead of falling back to the default DACL.
+        Self::from_sddl(&format!("O:{sid}D:P(A;OICI;GA;;;{sid})"))
+    }
+
+    fn from_sddl(text: &str) -> io::Result<Self> {
+        let sddl: Vec<u16> = text.encode_utf16().chain([0]).collect();
         let mut descriptor: PSECURITY_DESCRIPTOR = null_mut();
         // SAFETY: the SDDL string is NUL-terminated and the out-pointer
         // references a live local.
