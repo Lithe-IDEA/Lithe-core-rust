@@ -307,11 +307,18 @@ mod editor_essentials_tests {
             let response: Value =
                 unsafe { serde_json::from_str(CStr::from_ptr(pointer).to_str().unwrap()).unwrap() };
             unsafe { lithe_core_free_string(pointer) };
-            assert_eq!(
-                response["data"], case["expected"],
-                "{}: {}",
-                case["name"], response
-            );
+            if let Some(error_code) = case["errorCode"].as_str() {
+                assert_eq!(response["ok"], false, "{}: {response}", case["name"]);
+                assert_eq!(response["error"]["code"], error_code, "{}", case["name"]);
+                assert_eq!(
+                    response["error"]["details"], case["errorDetails"],
+                    "{}",
+                    case["name"]
+                );
+            } else {
+                assert_eq!(response["ok"], true, "{}: {response}", case["name"]);
+                assert_eq!(response["data"], case["expected"], "{}", case["name"]);
+            }
         }
     }
     #[test]

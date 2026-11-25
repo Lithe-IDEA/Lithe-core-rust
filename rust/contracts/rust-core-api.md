@@ -8595,19 +8595,25 @@ Cancellation uses the operation ID registry, including cancellation checks betwe
 The host must run on a worker and guard the document snapshot and query generation before
 applying ranges or a replacement. This ABI adds no public plugin host methods.
 
-The payload is `{query, caseSensitive?:false, wholeWord?:false, regex?:false,
+The payload is `{query, caseSensitive?:false, wholeWord?:false, wholeIdentifier?:false, regex?:false,
 range?:{start,end}, replacement?:string, replaceStart?:number, caret?:0, backwards?:false}`.
 All offsets are original UTF-8 byte offsets, half-open and on rune boundaries. An omitted
 range searches the whole snapshot. Regex uses Unicode case folding/word boundaries and
 multiline anchors; regex replacement expands `$1`/`${name}` captures; literal replacement
 preserves dollar signs. `replaceStart` selects only that match; omitted means replace all.
+For literal searches, `wholeIdentifier` checks both ends of a match against Unicode
+`ID_Continue`, join controls and `$`, including adjacent characters outside a
+scoped search. It takes precedence over `wholeWord`. Setting both
+`wholeIdentifier` and `regex` to true returns `invalid_request` with
+`regex_with_whole_identifier` in the details.
 Results are `{matches:[{start,end}],edits:[{start,end,text}],selected:number|null,truncated}`.
 Scoped requests also return `range`, adjusted for the planned replacement lengths so the
 selection remains valid after applying a bulk edit.
 Limits: 64 MiB source, 4096-byte query, 10,000 returned matches, 8 MiB total inserted text,
 1 MiB compiled regex and 2 MiB DFA. A truncated search is useful for navigation but bulk
 replacement fails atomically. Invalid requests return `invalid_request` with stable details:
-`invalid_request`, `missing_document`, `invalid_range`, `invalid_pattern`, `query_too_large`,
+`invalid_request`, `missing_document`, `invalid_range`, `invalid_pattern`,
+`regex_with_whole_identifier`, `query_too_large`,
 `source_too_large`, `source_too_large_or_invalid`, `replacement_too_large`, `too_many_matches`.
 Source, query and replacement are never included in errors or diagnostic logs.
 

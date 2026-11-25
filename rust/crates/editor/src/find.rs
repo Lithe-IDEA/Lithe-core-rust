@@ -4,9 +4,10 @@
 //! keeps no text cache, and returns only byte ranges and requested replacements.
 
 use lithe_protocol::{cancellation, CoreError, ErrorCode};
-use regex::RegexBuilder;
+use regex::{Regex, RegexBuilder};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use std::sync::LazyLock;
 
 const MAX_SOURCE_BYTES: usize = 64 * 1024 * 1024;
 const MAX_QUERY_BYTES: usize = 4096;
@@ -21,6 +22,9 @@ struct Request {
     case_sensitive: bool,
     #[serde(default)]
     whole_word: bool,
+    /// For literal searches, treat Unicode ID_Continue, join controls and dollar signs as identifier continuations.
+    #[serde(default)]
+    whole_identifier: bool,
     #[serde(default)]
     regex: bool,
     range: Option<Range>,
@@ -48,6 +52,17 @@ fn invalid(reason: &str) -> CoreError {
     .with_details(reason)
 }
 
+fn identifier_continues(character: char) -> bool {
+    if character.is_ascii() {
+        return character.is_ascii_alphanumeric() || matches!(character, '_' | '$');
+    }
+    static NON_ASCII_CONTINUATION: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"\A[\p{ID_Continue}\p{Join_Control}]\z")
+            .expect("identifier continuation uses supported Unicode properties")
+    });
+    NON_ASCII_CONTINUATION.is_match(character.encode_utf8(&mut [0; 4]))
+}
+
 /// Finds matches in the borrowed document `source` and, when a replacement is
 /// requested, plans the edits (`editor.find`).
 ///
@@ -58,6 +73,9 @@ fn invalid(reason: &str) -> CoreError {
 pub fn command(payload: Value, source: Option<&str>) -> Result<Value, CoreError> {
     let request: Request =
         serde_json::from_value(payload).map_err(|_| invalid("invalid_request"))?;
+    if request.whole_identifier && request.regex {
+        return Err(invalid("regex_with_whole_identifier"));
+    }
     let source = source.ok_or_else(|| invalid("missing_document"))?;
     if source.len() > MAX_SOURCE_BYTES {
         return Err(invalid("source_too_large"));
@@ -84,7 +102,7 @@ pub fn command(payload: Value, source: Option<&str>) -> Result<Value, CoreError>
     } else {
         regex::escape(&request.query)
     };
-    if request.whole_word {
+    if request.whole_word && !request.whole_identifier {
         pattern = format!(r"\b(?:{pattern})\b");
     }
     let matcher = RegexBuilder::new(&pattern)
@@ -103,15 +121,28 @@ pub fn command(payload: Value, source: Option<&str>) -> Result<Value, CoreError>
     let mut removed_bytes = 0;
     for captures in matcher.captures_iter(text) {
         cancellation::check()?;
-        if matches.len() == MAX_MATCHES {
-            truncated = true;
-            break;
-        }
         let m = captures
             .get(0)
             .expect("a successful capture has a whole match");
         let at = start + m.start();
-        matches.push(json!({"start":at, "end":start + m.end()}));
+        let through = start + m.end();
+        if request.whole_identifier
+            && (source[..at]
+                .chars()
+                .next_back()
+                .is_some_and(identifier_continues)
+                || source[through..]
+                    .chars()
+                    .next()
+                    .is_some_and(identifier_continues))
+        {
+            continue;
+        }
+        if matches.len() == MAX_MATCHES {
+            truncated = true;
+            break;
+        }
+        matches.push(json!({"start":at, "end":through}));
         if let Some(replacement) = &request.replacement {
             if request.replace_start.is_some_and(|wanted| wanted != at) {
                 continue;
@@ -127,7 +158,7 @@ pub fn command(payload: Value, source: Option<&str>) -> Result<Value, CoreError>
             if replacement_bytes > MAX_REPLACEMENT_BYTES {
                 return Err(invalid("replacement_too_large"));
             }
-            edits.push(json!({"start":at, "end":start + m.end(), "text":inserted}));
+            edits.push(json!({"start":at, "end":through, "text":inserted}));
         }
     }
     if truncated && request.replacement.is_some() && request.replace_start.is_none() {
@@ -194,6 +225,59 @@ mod tests {
         )
         .unwrap();
         assert_eq!(result["edits"], json!([{"start":14,"end":17,"text":"$1"}]));
+    }
+
+    #[test]
+    fn whole_identifier_treats_dollar_as_continuation() {
+        let text = "$name $$name $name$ $nameSuffix name name$ $name";
+        for (query, ranges) in [
+            ("$name", json!([{"start":0,"end":5},{"start":43,"end":48}])),
+            ("name", json!([{"start":32,"end":36}])),
+        ] {
+            let result = command(
+                json!({"query":query,"caseSensitive":true,"wholeIdentifier":true}),
+                Some(text),
+            )
+            .unwrap();
+            assert_eq!(result["matches"], ranges);
+        }
+    }
+
+    #[test]
+    fn whole_identifier_uses_unicode_identifier_continuations() {
+        let source = "foo ℘foo a·b ℘foo a·b b foo";
+        for (query, ranges) in [
+            ("foo", json!([{"start":0,"end":3},{"start":30,"end":33}])),
+            ("℘foo", json!([{"start":4,"end":10},{"start":16,"end":22}])),
+            ("a·b", json!([{"start":11,"end":15},{"start":23,"end":27}])),
+            ("b", json!([{"start":28,"end":29}])),
+        ] {
+            let result = command(
+                json!({"query":query,"caseSensitive":true,"wholeIdentifier":true}),
+                Some(source),
+            )
+            .unwrap();
+            assert_eq!(result["matches"], ranges, "query {query}");
+        }
+        let scoped = command(
+            json!({"query":"foo","wholeIdentifier":true,"range":{"start":7,"end":10}}),
+            Some(source),
+        )
+        .unwrap();
+        assert_eq!(scoped["matches"], json!([]));
+    }
+
+    #[test]
+    fn whole_identifier_rejects_regex() {
+        let error = command(
+            json!({"query":"foo(?:-bar)?","regex":true,"wholeIdentifier":true}),
+            Some("foo-barSuffix"),
+        )
+        .unwrap_err();
+        assert_eq!(
+            error.details.as_deref(),
+            Some("regex_with_whole_identifier")
+        );
     }
 
     #[test]
