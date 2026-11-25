@@ -242,6 +242,9 @@ pub(crate) enum ConnectionTransport {
     Process {
         child: Mutex<Child>,
         tree: ProcessTree,
+        /// Private SSH evidence directory, kept until `end_transport` has
+        /// stopped the client so Windows does not fail to delete an open log.
+        evidence: Mutex<Option<Arc<crate::ssh_evidence::Evidence>>>,
     },
     #[cfg(feature = "test-support")]
     InProcess,
@@ -314,7 +317,11 @@ impl Connection {
     /// host outlives it.
     fn end_transport(&self) {
         match &self.transport {
-            ConnectionTransport::Process { child, tree } => {
+            ConnectionTransport::Process {
+                child,
+                tree,
+                evidence,
+            } => {
                 let mut child = child
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -336,6 +343,12 @@ impl Connection {
                 if let Err(error) = tree.terminate(EXIT_GRACE) {
                     record_cleanup_io("tree-terminate", &error);
                 }
+                // Drop the private evidence directory after the SSH process has
+                // exited so Windows can remove the `-E` log file cleanly.
+                evidence
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .take();
             }
             #[cfg(feature = "test-support")]
             ConnectionTransport::InProcess => {}
@@ -737,24 +750,25 @@ fn connect_logged(
 
     let chain = TransportChain::new(chain_hops(request, program)?);
     let evidence = if client == Client::Ssh {
-        Some(crate::ssh_evidence::Evidence::new().map_err(|error| {
-            CoreError::new(
-                ErrorCode::ProcessStartFailed,
-                "Could not prepare SSH identity evidence",
-            )
-            .with_details(error.to_string())
-        })?)
+        Some(Arc::new(crate::ssh_evidence::Evidence::new().map_err(
+            |error| {
+                CoreError::new(
+                    ErrorCode::ProcessStartFailed,
+                    "Could not prepare SSH identity evidence",
+                )
+                .with_details(error.to_string())
+            },
+        )?))
     } else {
         None
     };
-    let evidence = Arc::new(Mutex::new(evidence));
     let mut argv = chain
         .command(&bound_launch_command(request.install_root.as_deref()))
         .map_err(|error| {
             CoreError::new(ErrorCode::InvalidRequest, client.invalid())
                 .with_details(error.to_string())
         })?;
-    if let Some(evidence) = evidence.lock().unwrap_or_else(|p| p.into_inner()).as_ref() {
+    if let Some(evidence) = evidence.as_ref() {
         argv.splice(1..1, evidence.arguments());
     }
     let (program, arguments) = argv.split_first().expect("a hop always produces a command");
@@ -820,7 +834,7 @@ fn connect_logged(
     let launch_log = log.clone();
     let resume_for_launch = resume.cloned();
     let chain_target = Target::new(&chain, None);
-    let evidence_for_launch = Arc::clone(&evidence);
+    let evidence_for_launch = evidence.clone();
     std::thread::spawn(move || {
         let artifact_for = |report: &lithe_remote::client::bootstrap::ProbeReport| {
             let target = report.target()?;
@@ -852,9 +866,7 @@ fn connect_logged(
             },
             |server_identity| {
                 let actual = evidence_for_launch
-                    .lock()
-                    .unwrap_or_else(|p| p.into_inner())
-                    .as_mut()
+                    .as_ref()
                     .and_then(|evidence| evidence.identity(ssh_pid));
                 let binding = if client == Client::Ssh && actual.is_none() {
                     None
@@ -958,7 +970,7 @@ fn connect_logged(
             .iter()
             .copied()
             .collect();
-        if let Some(evidence) = evidence.lock().unwrap_or_else(|p| p.into_inner()).as_mut() {
+        if let Some(evidence) = evidence.as_ref() {
             bytes.extend(evidence.diagnostics());
         }
         bytes
@@ -1148,6 +1160,7 @@ fn connect_logged(
                 ConnectionTransport::Process {
                     child: Mutex::new(child),
                     tree,
+                    evidence: Mutex::new(evidence),
                 },
                 History {
                     resumed: info.resumed,
