@@ -63,7 +63,11 @@
         "cursorBlink": true,
         "autoSaveDelayMilliseconds": 1500,
         "minimumAutoSaveDelayMilliseconds": 250,
-        "maximumAutoSaveDelayMilliseconds": 60000
+        "maximumAutoSaveDelayMilliseconds": 60000,
+        "rainbowBrackets": false,
+        "rainbowVariables": false,
+        "rainbowBracketLightColors": ["#A4262C", "#0657A4", "#6D3298", "#00695C", "#8A5200", "#394B68"],
+        "rainbowBracketDarkColors": ["#FF8A80", "#82B1FF", "#D7A9FF", "#5CE1C4", "#FFBF69", "#A6B8D4"]
       }
     },
     {

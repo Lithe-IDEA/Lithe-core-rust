@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "uri": "file:///workspace/main.go",
+  "position": {"line": 1, "utf16Column": 8},
+  "serverResult": [
+    {"range": {"start": {"line": 1, "character": 7}, "end": {"line": 1, "character": 11}}, "kind": 3},
+    {"range": {"start": {"line": 2, "character": 15}, "end": {"line": 2, "character": 19}}},
+    {"range": {"start": {"line": 3, "character": 9}, "end": {"line": 3, "character": 8}}},
+    {"range": {"start": {"line": -1, "character": 2}, "end": {"line": 3, "character": 8}}},
+    {"range": {"start": {"line": 3, "character": 8}, "end": {"line": 3, "character": 8}}},
+    {"range": {"start": {"line": 3}, "end": {"line": 3, "character": 8}}},
+    {"kind": 2}
+  ],
+  "expected": {
+    "ranges": [
+      {"start": {"line": 1, "utf16Column": 7}, "end": {"line": 1, "utf16Column": 11}},
+      {"start": {"line": 2, "utf16Column": 15}, "end": {"line": 2, "utf16Column": 19}}
+    ]
+  }
+}

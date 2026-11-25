@@ -74,6 +74,7 @@ pub fn client_initialize_for_plugin(
                     "typeDefinition": { "dynamicRegistration": true },
                     "implementation": { "dynamicRegistration": true },
                     "references": { "dynamicRegistration": true },
+                    "documentHighlight": { "dynamicRegistration": true },
                     "rename": { "dynamicRegistration": true },
                     "formatting": { "dynamicRegistration": true },
                     "rangeFormatting": { "dynamicRegistration": true },

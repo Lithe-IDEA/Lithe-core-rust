@@ -39,6 +39,9 @@ pub(crate) fn lsp_feature_result_for_method(
         Some("textDocument/documentSymbol") => Some(json!({
             "symbols": parse_document_symbols(result)
         })),
+        Some("textDocument/documentHighlight") => Some(json!({
+            "ranges": parse_document_highlights(result)
+        })),
         Some("textDocument/inlayHint") => Some(json!({
             "hints": parse_inlay_hints(result)
         })),
@@ -711,6 +714,23 @@ fn parse_document_symbol(item: &Value) -> Option<Value> {
         "containerName": container.and_then(Value::as_str),
         "children": children
     }))
+}
+
+/// Retains only nonempty, ordered ranges and bounds the payload sent to the editor.
+fn parse_document_highlights(result: &Value) -> Vec<LspRangeResponse> {
+    const MAX_HIGHLIGHTS: usize = 4096;
+    result
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|highlight| {
+            let range = parse_lsp_range(highlight.get("range")?)?;
+            let start = (range.start.line, range.start.utf16_column);
+            let end = (range.end.line, range.end.utf16_column);
+            (start.0 >= 0 && start.1 >= 0 && end.1 >= 0 && start < end).then_some(range)
+        })
+        .take(MAX_HIGHLIGHTS)
+        .collect()
 }
 
 fn parse_folding_ranges(result: &Value) -> Vec<LspFoldingRangeResponse> {

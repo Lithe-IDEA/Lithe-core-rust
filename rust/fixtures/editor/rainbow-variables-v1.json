@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "command": "editor.rainbowVariables",
+  "maxVariables": 10000,
+  "maxNameBytes": 256,
+  "cases": [
+    {
+      "name": "case-sensitive-same-name-colors",
+      "payload": {
+        "variables": [
+          { "start": 0, "end": 5, "name": "value" },
+          { "start": 7, "end": 12, "name": "other" },
+          { "start": 13, "end": 18, "name": "value" },
+          { "start": 18, "end": 23, "name": "Value" },
+          { "start": 25, "end": 31, "name": "变量" }
+        ]
+      },
+      "expected": {
+        "colors": [
+          { "start": 0, "end": 5, "color": 1113510858 },
+          { "start": 7, "end": 12, "color": 3363671541 },
+          { "start": 13, "end": 18, "color": 1113510858 },
+          { "start": 18, "end": 23, "color": 3511155050 },
+          { "start": 25, "end": 31, "color": 4246680784 }
+        ]
+      }
+    },
+    {
+      "name": "no-tokens",
+      "payload": { "variables": [] },
+      "expected": { "colors": [] }
+    },
+    {
+      "name": "empty-range",
+      "payload": { "variables": [{ "start": 0, "end": 0, "name": "" }] },
+      "expectedError": "invalid_request"
+    },
+    {
+      "name": "reversed-range",
+      "payload": { "variables": [{ "start": 2, "end": 0, "name": "a" }] },
+      "expectedError": "invalid_request"
+    },
+    {
+      "name": "range-name-byte-length-mismatch",
+      "payload": { "variables": [{ "start": 0, "end": 2, "name": "变量" }] },
+      "expectedError": "invalid_request"
+    },
+    {
+      "name": "overlapping-ranges",
+      "payload": {
+        "variables": [
+          { "start": 1, "end": 6, "name": "value" },
+          { "start": 5, "end": 10, "name": "other" }
+        ]
+      },
+      "expectedError": "invalid_request"
+    }
+  ]
+}

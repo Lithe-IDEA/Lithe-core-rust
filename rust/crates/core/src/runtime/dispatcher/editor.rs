@@ -33,6 +33,12 @@ pub(super) fn dispatch(
         EditorCommand::PreferencesResolve => {
             plugin_response(id, payload, lithe_editor::preferences::resolve_command)
         }
+        EditorCommand::RainbowBrackets => {
+            plugin_response(id, payload, lithe_editor::rainbow_brackets::color_command)
+        }
+        EditorCommand::RainbowVariables => {
+            plugin_response(id, payload, lithe_editor::rainbow_variables::color_command)
+        }
         EditorCommand::RecentReduce => {
             plugin_response(id, payload, lithe_editor::recent::reduce_command)
         }

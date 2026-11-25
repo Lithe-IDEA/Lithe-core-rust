@@ -1,8 +1,53 @@
 //! The `editor.*` commands through the JSON dispatcher: shared fixtures for
-//! navigation input, text edit plans and navigation history, and the request
-//! envelope for malformed payloads.
+//! navigation input, text edit plans, navigation history and rainbow coloring.
 
 use serde_json::{json, Value};
+
+#[test]
+fn rainbow_brackets_match_shared_fixture() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../fixtures/editor/rainbow-brackets-v1.json"
+    ))
+    .unwrap();
+    assert_eq!(
+        fixture["maxBrackets"],
+        lithe_editor::rainbow_brackets::MAX_BRACKETS
+    );
+    assert_rainbow_fixture(&fixture);
+}
+
+#[test]
+fn rainbow_variables_match_shared_fixture() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../fixtures/editor/rainbow-variables-v1.json"
+    ))
+    .unwrap();
+    assert_eq!(
+        fixture["maxVariables"],
+        lithe_editor::rainbow_variables::MAX_VARIABLES
+    );
+    assert_eq!(
+        fixture["maxNameBytes"],
+        lithe_editor::rainbow_variables::MAX_NAME_BYTES
+    );
+    assert_rainbow_fixture(&fixture);
+}
+
+fn assert_rainbow_fixture(fixture: &Value) {
+    for case in fixture["cases"].as_array().unwrap() {
+        let response: Value = serde_json::from_str(&crate::execute_json(
+            &json!({"command": fixture["command"], "payload": case["payload"]}).to_string(),
+        ))
+        .unwrap();
+        if let Some(code) = case.get("expectedError") {
+            assert_eq!(response["ok"], false, "{}: {response}", case["name"]);
+            assert_eq!(response["error"]["code"], *code, "{}", case["name"]);
+        } else {
+            assert_eq!(response["ok"], true, "{}: {response}", case["name"]);
+            assert_eq!(response["data"], case["expected"], "{}", case["name"]);
+        }
+    }
+}
 
 #[test]
 fn navigation_input_matches_shared_fixture() {

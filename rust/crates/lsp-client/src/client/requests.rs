@@ -42,6 +42,7 @@ pub(crate) fn feature_request_params(request: &ClientFeatureRequest) -> Result<V
         | "textDocument/definition"
         | "textDocument/declaration"
         | "textDocument/typeDefinition"
+        | "textDocument/documentHighlight"
         | "textDocument/implementation" => Ok(json!({
             "textDocument": text_document,
             "position": lsp_position_json(required_position(request)?)

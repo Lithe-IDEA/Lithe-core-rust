@@ -1,6 +1,6 @@
 //! Editor commands owned by Rust Core: deterministic line edits, find,
 //! plugin text edit plans, navigation input and history, editor
-//! preferences, recent files and crash-recovery decisions.
+//! preferences, rainbow coloring, recent files and crash-recovery decisions.
 //!
 //! Hosts apply the returned replacements and states through their own text
 //! engine. The `editor.*` JSON commands are dispatched by `lithe-core`.
@@ -10,6 +10,8 @@ pub mod line_edit;
 pub mod navigation_history;
 pub mod navigation_input;
 pub mod preferences;
+pub mod rainbow_brackets;
+pub mod rainbow_variables;
 pub mod recent;
 pub mod recovery;
 pub mod reference_location;

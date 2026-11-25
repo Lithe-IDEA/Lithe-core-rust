@@ -2253,6 +2253,58 @@ fn partial_frames_are_buffered_and_consecutive_frames_arrive_in_order() {
     assert_eq!(harness.snapshot().state, LspLifecycleState::Ready);
 }
 
+#[test]
+fn document_highlight_routes_and_normalizes_document_ranges() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../fixtures/lsp/document-highlight-v1.json"
+    ))
+    .unwrap();
+    let method = "textDocument/documentHighlight";
+    let uri = fixture["uri"].as_str().unwrap();
+    let mut harness = Harness::start(|_| {});
+    let initialize = harness.server.await_request("initialize").unwrap();
+    assert_eq!(
+        harness.written_request(&initialize)["params"]["capabilities"]["textDocument"]
+            ["documentHighlight"]["dynamicRegistration"],
+        true
+    );
+    harness
+        .server
+        .complete_initialize(json!({"documentHighlightProvider": true}));
+    harness.await_state(LspLifecycleState::Ready);
+    harness.sync(
+        uri,
+        "package main\nvar a, name = 0, \"text\"\nvar _ = \"😀\" + name",
+    );
+
+    let line = fixture["position"]["line"].as_i64().unwrap();
+    let column = fixture["position"]["utf16Column"].as_i64().unwrap();
+    for (index, (server_result, expected)) in [
+        (fixture["serverResult"].clone(), fixture["expected"].clone()),
+        (Value::Null, json!({"ranges": []})),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let operation =
+            harness.request_at(LspSemanticOperation::DocumentHighlight, uri, line, column);
+        let request = harness.server.await_request_at(method, index).unwrap();
+        assert_eq!(
+            harness.written_request(&request)["params"],
+            json!({"textDocument": {"uri": uri}, "position": {"line": line, "character": column}})
+        );
+        harness
+            .server
+            .send(json!({"jsonrpc": "2.0", "id": request, "result": server_result}));
+        let done = harness.await_event(|event| {
+            event.kind == "requestCompleted"
+                && event.operation_id.as_deref() == Some(operation.as_str())
+        });
+        assert_eq!(done.method.as_deref(), Some(method));
+        assert_eq!(done.result.as_ref(), Some(&expected));
+    }
+}
+
 /// Criterion 14: dynamic registration and unregistration change availability.
 #[test]
 fn features_event_reports_completion_trigger_characters() {
