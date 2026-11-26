@@ -78,6 +78,12 @@ pub(crate) fn feature_names_from_capabilities(capabilities: &Value) -> Vec<Strin
         "referencesProvider",
         "references",
     );
+    add_capability(
+        &mut values,
+        capabilities,
+        "documentHighlightProvider",
+        "documentHighlight",
+    );
     add_capability(&mut values, capabilities, "hoverProvider", "hover");
     add_capability(
         &mut values,
@@ -436,6 +442,7 @@ pub(crate) fn feature_name_for_method(method: &str) -> Option<&'static str> {
         "textDocument/typeDefinition" => Some("typeDefinition"),
         "textDocument/implementation" => Some("implementation"),
         "textDocument/references" => Some("references"),
+        "textDocument/documentHighlight" => Some("documentHighlight"),
         "textDocument/hover" => Some("hover"),
         "textDocument/signatureHelp" => Some("signatureHelp"),
         "textDocument/completion" => Some("completion"),

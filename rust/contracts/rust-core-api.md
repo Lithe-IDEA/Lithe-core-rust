@@ -724,6 +724,8 @@ or removing a command fails until the table changes in the same commit.
 | `editor.copyReferenceLocation` | Format a one-based line reference from normalized document symbols; fall back to a file path when no containing symbol exists |
 | `editor.find` | Find text or plans bounded replacements in a borrowed document |
 | `editor.preferences.resolve` | Resolve persisted editor presentation preferences |
+| `editor.rainbowBrackets` | Match bounded structural bracket tokens and assign their nesting depths |
+| `editor.rainbowVariables` | Assign stable palette values to bounded variable tokens |
 | `editor.recent.reduce` | Reduce and queries bounded recent-file history |
 | `editor.recovery.decide` | Decide how a native checkpoint should recover |
 | `keymap.schemes.reduce` | Reduce named shortcut schemes (from `lithe-core-rules`) |
@@ -3662,10 +3664,17 @@ the operation-specific URI, position, range, diagnostics, item, action, hint, or
 command fields, and returns `{ operationId }`. Supported operations include
 completion and resolve, hover, signature help (`signatureHelp`), definition/declaration/type-definition, references,
 implementation, rename, formatting, range formatting, document symbols, code actions and resolve, execute command,
-inlay hints and resolve (`inlayHints`, `resolveInlayHint`), full-document semantic tokens, folding ranges, document links
+inlay hints and resolve (`inlayHints`, `resolveInlayHint`), document highlights
+(`documentHighlight`, result `{ ranges: [{ start, end, kind? }], truncated }`),
+full-document semantic tokens, folding ranges, document links
 (`documentLinks`, result `{ links: [{ range, target, tooltip }] }`; `target` is null
 until a server supplies it, and entries without a range are dropped), workspace
 symbols (`workspaceSymbols`, see below), code lens, and provider virtual documents.
+Document highlight ranges preserve the optional LSP kind (`1` Text, `2` Read,
+`3` Write); an absent or invalid kind is omitted. Positions use zero-based
+`line` / `utf16Column`. Nonempty, valid ranges are retained in server order,
+with at most 4096 returned; `truncated` is true when another valid range was
+omitted. A null result returns `{ ranges: [], truncated: false }`.
 For code actions, `diagnostics` contains the original `LspClientDiagnostic`
 objects returned by Core: nullable integer `severity`, `tags`, and
 `relatedInformation` remain intact, and every range uses zero-based `line` /
@@ -6878,6 +6887,19 @@ Missing means `true`, the previous behaviour; the usages shown from a
 declaration (`lsp.declarationOrUsages`) pass `false` so the language server
 leaves the declaration out. Other operations ignore the field.
 
+Operation `documentHighlight` (`textDocument/documentHighlight`) takes a
+document `uri` and a zero-based `position` with a UTF-16 column. Core advertises
+dynamic registration. The operation is offered when the server declares
+`documentHighlightProvider` or dynamically registers the method. The asynchronous
+completion carries `{ ranges: [{ start, end, kind? }], truncated }` for occurrences in that document.
+Ranges use `line` and `utf16Column` and retain server order, up to 4096 valid
+nonempty ranges. Invalid entries are dropped, and a null or non-array result
+returns `{ ranges: [], truncated: false }`. Core retains valid optional server
+highlight kinds (`1` Text, `2` Read, `3` Write); absent or invalid kinds are
+omitted. `truncated` is true only when another valid nonempty range exceeded
+the 4096-entry budget.
+Fixture: `rust/fixtures/lsp/document-highlight-v1.json`.
+
 Completion requests accept optional `completionContext` with LSP `triggerKind`
 (`1` invoked, `2` trigger character, `3` incomplete-list refresh) and
 `triggerCharacter` (required and one character for kind `2`). Missing context
@@ -8656,26 +8678,89 @@ Cancellation uses the operation ID registry, including cancellation checks betwe
 The host must run on a worker and guard the document snapshot and query generation before
 applying ranges or a replacement. This ABI adds no public plugin host methods.
 
-The payload is `{query, caseSensitive?:false, wholeWord?:false, regex?:false,
+The payload is `{query, caseSensitive?:false, wholeWord?:false, wholeIdentifier?:false, regex?:false,
 range?:{start,end}, replacement?:string, replaceStart?:number, caret?:0, backwards?:false}`.
 All offsets are original UTF-8 byte offsets, half-open and on rune boundaries. An omitted
 range searches the whole snapshot. Regex uses Unicode case folding/word boundaries and
 multiline anchors; regex replacement expands `$1`/`${name}` captures; literal replacement
 preserves dollar signs. `replaceStart` selects only that match; omitted means replace all.
+For literal searches, `wholeIdentifier` checks an edge only when that edge of
+the match is itself Unicode `ID_Continue`, a join control or `$`; it must not
+touch another identifier continuation, including outside a scoped search.
+Punctuation edges may touch any character. A rejected candidate resumes after
+its initial identifier run (or one character after a punctuation start), so an
+overlapping valid match is retained. Rejected candidates that rescan bytes are
+limited to 100,000 retries and then report `truncated: true`; pure identifier
+queries skip each run in linear time without spending that retry budget.
+It takes precedence over `wholeWord`. Setting both
+`wholeIdentifier` and `regex` to true returns `invalid_request` with
+`regex_with_whole_identifier` in the details.
 Results are `{matches:[{start,end}],edits:[{start,end,text}],selected:number|null,truncated}`.
 Scoped requests also return `range`, adjusted for the planned replacement lengths so the
 selection remains valid after applying a bulk edit.
 Limits: 64 MiB source, 4096-byte query, 10,000 returned matches, 8 MiB total inserted text,
 1 MiB compiled regex and 2 MiB DFA. A truncated search is useful for navigation but bulk
 replacement fails atomically. Invalid requests return `invalid_request` with stable details:
-`invalid_request`, `missing_document`, `invalid_range`, `invalid_pattern`, `query_too_large`,
+`invalid_request`, `missing_document`, `invalid_range`, `invalid_pattern`,
+`regex_with_whole_identifier`, `query_too_large`,
 `source_too_large`, `source_too_large_or_invalid`, `replacement_too_large`, `too_many_matches`.
 Source, query and replacement are never included in errors or diagnostic logs.
 
 `editor.preferences.resolve` accepts optional `lineNumbers`, `whitespace`, `inlayHints`,
-`cursorStyle` (`line`, `block`, `underline`), `cursorBlink` and `autoSaveDelayMilliseconds`.
-It returns actual values and minimum/maximum delay. Defaults: true, false, true, line,
-true, 1500 ms; unknown styles resolve to line and delay clamps to 250–60,000 ms.
+`indentGuides`, `rainbowIndentGuides`,
+`cursorStyle` (`line`, `block`, `underline`), `cursorBlink`, `autoSaveDelayMilliseconds`,
+`rainbowBrackets`, `rainbowVariables`, `rainbowLightColors` and
+`rainbowDarkColors`.
+It returns actual values and minimum/maximum delay. Defaults by field:
+`lineNumbers: true`, `whitespace: false`, `indentGuides: true`,
+`rainbowIndentGuides: false`, `inlayHints: true`, `cursorStyle: "line"`,
+`cursorBlink: true`, `autoSaveDelayMilliseconds: 1500`, `rainbowBrackets: false`
+and `rainbowVariables: false`. Unknown styles resolve to line and delay clamps
+to 250–60,000 ms. Unknown stored fields are ignored so a newer client's
+preferences do not discard known choices when read by an older client.
+The result returns both choices independently and adds `rainbowIndentGuidesEffective`,
+which is true when both choices are enabled.
+Rainbow brackets and variable coloring are independent options that default to
+disabled and share the light and dark palettes. Each palette accepts one to eight
+`#RRGGBB` strings with optional surrounding whitespace and case-insensitive ASCII
+hex. Core returns uppercase values. An absent, empty or malformed palette uses
+the default palette for that theme, independently of the other theme.
+An explicitly malformed palette records the WARN catalog fact
+`editor.preferences.palette_fallback_selected`, with only `palette: light|dark`
+and `reason: invalid_palette`; absence uses the normal default without a warning.
+
+`editor.rainbowBrackets` accepts `{brackets:[{offset,bracket}]}` and returns
+`{colors:[{offset,depth,matchOffset?}]}` in input order, omitting unmatched closers.
+Offsets are zero-based UTF-8 byte
+positions and must increase strictly. The offset and the exclusive end of its
+one-byte range must fit an unsigned 32-bit integer. Allowed tokens are `()[]{}`,
+with at most 10,000 tokens per request. The host supplies tokens from its
+language tokenizer and omits tokens in comments or literals. Each opener is
+colored by its zero-based nesting depth, and a matching closer uses the same
+depth. Both ends of a matched pair include the other end's byte offset as
+`matchOffset`. An unmatched opener keeps its color and has no `matchOffset`.
+A closer pairs with the innermost opener of its kind. Intervening unclosed
+openers are removed from the active stack but retain their original depth and
+have no match; subsequent pairs resume at the recovered nesting depth. A closer
+with no opener of its kind is omitted. Kind counts avoid searching unmatched
+stacks and each opener is removed at most once, so recovery is O(n).
+Core returns `invalid_request` for invalid token data or offsets and for
+requests that exceed the token limit. Executable vectors:
+`rust/fixtures/editor/rainbow-brackets-v1.json` (JSON dispatcher tests).
+
+`editor.rainbowVariables` accepts `{variables:[{start,end,name}]}` and returns
+`{colors:[{start,end,color}]}` in input order. The host supplies variable tokens
+classified by its language or semantic tokenizer. The `start` and `end` values
+are unsigned 32-bit UTF-8 byte offsets forming a nonempty half-open range. The
+ranges must be in document order and must not overlap. A request is limited to
+10,000 ranges. Each name must contain 1–256 UTF-8 bytes and match the length of
+its range. Core computes `color` as unsigned 32-bit FNV-1a over the exact name
+bytes, preserving case, followed by Murmur3 fmix32: XOR-shift 16, multiply by
+`0x85EBCA6B`, XOR-shift 13, multiply by `0xC2B2AE35`, then XOR-shift 16 (all
+multiplication wraps to 32 bits). A host takes the result modulo the active palette
+length. Core returns `invalid_request` for malformed requests and bounds
+violations. Executable vectors: `rust/fixtures/editor/rainbow-variables-v1.json`
+(JSON dispatcher tests).
 
 `editor.recent.reduce` accepts `entries`, optional `event:{kind,path,name,line,column}`,
 `query` and `onlyEdited`. It returns bounded `entries` and filtered `results`. Paths are

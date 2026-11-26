@@ -1,0 +1,84 @@
+{
+  "version": 1,
+  "command": "editor.rainbowBrackets",
+  "maxBrackets": 10000,
+  "cases": [
+    {
+      "name": "nested-and-sibling-pairs",
+      "payload": {
+        "brackets": [
+          { "offset": 0, "bracket": "{" },
+          { "offset": 9, "bracket": "[" },
+          { "offset": 12, "bracket": "(" },
+          { "offset": 13, "bracket": ")" },
+          { "offset": 15, "bracket": "]" },
+          { "offset": 19, "bracket": "[" },
+          { "offset": 22, "bracket": "]" },
+          { "offset": 23, "bracket": "}" }
+        ]
+      },
+      "expected": {
+        "colors": [
+          { "offset": 0, "depth": 0, "matchOffset": 23 },
+          { "offset": 9, "depth": 1, "matchOffset": 15 },
+          { "offset": 12, "depth": 2, "matchOffset": 13 },
+          { "offset": 13, "depth": 2, "matchOffset": 12 },
+          { "offset": 15, "depth": 1, "matchOffset": 9 },
+          { "offset": 19, "depth": 1, "matchOffset": 22 },
+          { "offset": 22, "depth": 1, "matchOffset": 19 },
+          { "offset": 23, "depth": 0, "matchOffset": 0 }
+        ]
+      }
+    },
+    {
+      "name": "unmatched-closers-and-openers",
+      "payload": {
+        "brackets": [
+          { "offset": 0, "bracket": "]" },
+          { "offset": 2, "bracket": "{" },
+          { "offset": 3, "bracket": "[" },
+          { "offset": 4, "bracket": "}" },
+          { "offset": 5, "bracket": "]" },
+          { "offset": 6, "bracket": "(" }
+        ]
+      },
+      "expected": {
+        "colors": [
+          { "offset": 2, "depth": 0, "matchOffset": 4 },
+          { "offset": 3, "depth": 1 },
+          { "offset": 4, "depth": 0, "matchOffset": 2 },
+          { "offset": 6, "depth": 0 }
+        ]
+      }
+    },
+    {
+      "name": "no-tokens",
+      "payload": { "brackets": [] },
+      "expected": { "colors": [] }
+    },
+    {
+      "name": "unsupported-token",
+      "payload": { "brackets": [{ "offset": 3, "bracket": "<" }] },
+      "expectedError": "invalid_request"
+    },
+    {
+      "name": "duplicate-offset",
+      "payload": {
+        "brackets": [{ "offset": 0, "bracket": "(" }, { "offset": 0, "bracket": ")" }]
+      },
+      "expectedError": "invalid_request"
+    },
+    {
+      "name": "descending-offset",
+      "payload": {
+        "brackets": [{ "offset": 2, "bracket": "(" }, { "offset": 1, "bracket": ")" }]
+      },
+      "expectedError": "invalid_request"
+    },
+    {
+      "name": "unrepresentable-range-end",
+      "payload": { "brackets": [{ "offset": 4294967295, "bracket": "(" }] },
+      "expectedError": "invalid_request"
+    }
+  ]
+}

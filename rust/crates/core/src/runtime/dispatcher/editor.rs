@@ -4,6 +4,8 @@ use super::{plugin_response, rules_response};
 use crate::protocol::{CoreError, CoreResponse, EditorCommand, ErrorCode};
 use serde_json::Value;
 
+const PALETTE_FALLBACK_EVENT: &str = "editor.preferences.palette_fallback_selected";
+
 /// Runs one `editor.*` command.
 pub(super) fn dispatch(
     command: EditorCommand,
@@ -30,8 +32,28 @@ pub(super) fn dispatch(
             Ok(data) => CoreResponse::success(id, data),
             Err(error) => CoreResponse::failure(id, error),
         },
-        EditorCommand::PreferencesResolve => {
-            plugin_response(id, payload, lithe_editor::preferences::resolve_command)
+        EditorCommand::PreferencesResolve => plugin_response(id, payload, |payload| {
+            lithe_editor::preferences::resolve_command_with_fallback(payload, |palette| {
+                let fields = std::collections::BTreeMap::from([
+                    ("palette".into(), serde_json::json!(palette)),
+                    ("reason".into(), serde_json::json!("invalid_palette")),
+                ]);
+                if lithe_diagnostics::core_events::record(
+                    PALETTE_FALLBACK_EVENT,
+                    fields,
+                    lithe_request_context::trace::current().op,
+                )
+                .is_err()
+                {
+                    lithe_diagnostics::core_events::note_dropped();
+                }
+            })
+        }),
+        EditorCommand::RainbowBrackets => {
+            plugin_response(id, payload, lithe_editor::rainbow_brackets::color_command)
+        }
+        EditorCommand::RainbowVariables => {
+            plugin_response(id, payload, lithe_editor::rainbow_variables::color_command)
         }
         EditorCommand::RecentReduce => {
             plugin_response(id, payload, lithe_editor::recent::reduce_command)

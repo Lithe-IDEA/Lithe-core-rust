@@ -669,6 +669,10 @@ pub enum EditorCommand {
     Find,
     /// Resolves persisted editor presentation preferences (`editor.preferences.resolve`).
     PreferencesResolve,
+    /// Assigns nesting depths to structural bracket tokens (`editor.rainbowBrackets`).
+    RainbowBrackets,
+    /// Assigns stable, spelling-based colors to variable tokens (`editor.rainbowVariables`).
+    RainbowVariables,
     /// Reduces and queries bounded recent-file history (`editor.recent.reduce`).
     RecentReduce,
     /// Decides how a native checkpoint should recover (`editor.recovery.decide`).
@@ -1556,6 +1560,8 @@ impl CoreCommand {
             }
             "editor.find" => Some(Self::Editor(EditorCommand::Find)),
             "editor.preferences.resolve" => Some(Self::Editor(EditorCommand::PreferencesResolve)),
+            "editor.rainbowBrackets" => Some(Self::Editor(EditorCommand::RainbowBrackets)),
+            "editor.rainbowVariables" => Some(Self::Editor(EditorCommand::RainbowVariables)),
             "editor.recent.reduce" => Some(Self::Editor(EditorCommand::RecentReduce)),
             "editor.recovery.decide" => Some(Self::Editor(EditorCommand::RecoveryDecide)),
             "keymap.schemes.reduce" => Some(Self::Keymap(KeymapCommand::SchemesReduce)),

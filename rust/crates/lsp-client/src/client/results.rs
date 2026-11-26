@@ -39,6 +39,7 @@ pub(crate) fn lsp_feature_result_for_method(
         Some("textDocument/documentSymbol") => Some(json!({
             "symbols": parse_document_symbols(result)
         })),
+        Some("textDocument/documentHighlight") => Some(parse_document_highlights(result)),
         Some("textDocument/inlayHint") => Some(json!({
             "hints": parse_inlay_hints(result)
         })),
@@ -713,6 +714,35 @@ fn parse_document_symbol(item: &Value) -> Option<Value> {
     }))
 }
 
+/// Retains only nonempty, ordered ranges and bounds the payload sent to the editor.
+fn parse_document_highlights(result: &Value) -> Value {
+    const MAX_HIGHLIGHTS: usize = 4096;
+    let mut highlights = result
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|highlight| {
+            let range = parse_lsp_range(highlight.get("range")?)?;
+            let start = (range.start.line, range.start.utf16_column);
+            let end = (range.end.line, range.end.utf16_column);
+            if start.0 < 0 || start.1 < 0 || end.1 < 0 || start >= end {
+                return None;
+            }
+            let mut value = json!(range);
+            if let Some(kind) = highlight
+                .get("kind")
+                .and_then(Value::as_u64)
+                .filter(|kind| (1..=3).contains(kind))
+            {
+                value["kind"] = json!(kind);
+            }
+            Some(value)
+        });
+    let ranges: Vec<_> = highlights.by_ref().take(MAX_HIGHLIGHTS).collect();
+    let truncated = highlights.next().is_some();
+    json!({"ranges":ranges, "truncated":truncated})
+}
+
 fn parse_folding_ranges(result: &Value) -> Vec<LspFoldingRangeResponse> {
     result
         .as_array()
@@ -1027,4 +1057,42 @@ fn parse_lsp_position_value(value: &Value) -> Option<Value> {
             .and_then(Value::as_i64)
             .unwrap_or(0)
     }))
+}
+
+#[cfg(test)]
+mod highlight_tests {
+    use super::*;
+
+    #[test]
+    fn document_highlights_keep_optional_kinds_and_report_only_valid_range_truncation() {
+        let entry = |kind: Value| json!({"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"kind":kind});
+        let result = lsp_feature_result_for_method(
+            Some("textDocument/documentHighlight"),
+            Some(&json!([
+                entry(json!(1)),
+                entry(json!(2)),
+                entry(json!(3)),
+                entry(json!(9))
+            ])),
+            &BTreeMap::new(),
+        )
+        .unwrap();
+        assert_eq!(result["truncated"], false);
+        for index in 0..3 {
+            assert_eq!(result["ranges"][index]["kind"], index + 1);
+        }
+        assert!(result["ranges"][3].get("kind").is_none());
+        for (count, truncated) in [(4096, false), (4097, true)] {
+            let mut entries = vec![entry(json!(3)); count];
+            entries.insert(0, json!({"kind":1}));
+            let value = lsp_feature_result_for_method(
+                Some("textDocument/documentHighlight"),
+                Some(&json!(entries)),
+                &BTreeMap::new(),
+            )
+            .unwrap();
+            assert_eq!(value["ranges"].as_array().unwrap().len(), 4096);
+            assert_eq!(value["truncated"], truncated);
+        }
+    }
 }

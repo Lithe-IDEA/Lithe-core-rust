@@ -1,8 +1,88 @@
 //! The `editor.*` commands through the JSON dispatcher: shared fixtures for
-//! navigation input, text edit plans and navigation history, and the request
-//! envelope for malformed payloads.
+//! navigation input, text edit plans, navigation history and rainbow coloring.
 
 use serde_json::{json, Value};
+
+#[test]
+fn malformed_rainbow_palettes_record_a_private_fallback_fact_per_theme() {
+    let (response, facts) = lithe_diagnostics::core_events::capture::run(false, || {
+        crate::execute_json(
+            &json!({"command":"editor.preferences.resolve","payload":{
+                "rainbowLightColors":["private-invalid-color"],
+                "rainbowDarkColors":[],"lineNumbers":false,"futureOption":true
+            }})
+            .to_string(),
+        )
+    });
+    let response: Value = serde_json::from_str(&response).unwrap();
+    assert_eq!(response["ok"], true);
+    assert_eq!(response["data"]["lineNumbers"], false);
+    let fallbacks: Vec<_> = facts
+        .iter()
+        .filter(|fact| fact.event == "editor.preferences.palette_fallback_selected")
+        .collect();
+    assert_eq!(fallbacks.len(), 2);
+    for (fact, theme) in fallbacks.iter().zip(["light", "dark"]) {
+        assert_eq!(fact.level, lithe_diagnostics::record::LogLevel::Warn);
+        assert_eq!(fact.fields["palette"], theme);
+        assert_eq!(fact.fields["reason"], "invalid_palette");
+        assert_eq!(fact.fields.len(), 2);
+    }
+    let (_, facts) = lithe_diagnostics::core_events::capture::run(false, || {
+        crate::execute_json(
+            &json!({"command":"editor.preferences.resolve","payload":{}}).to_string(),
+        )
+    });
+    assert!(facts
+        .iter()
+        .all(|fact| fact.event != "editor.preferences.palette_fallback_selected"));
+}
+
+#[test]
+fn rainbow_brackets_match_shared_fixture() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../fixtures/editor/rainbow-brackets-v1.json"
+    ))
+    .unwrap();
+    assert_eq!(
+        fixture["maxBrackets"],
+        lithe_editor::rainbow_brackets::MAX_BRACKETS
+    );
+    assert_rainbow_fixture(&fixture);
+}
+
+#[test]
+fn rainbow_variables_match_shared_fixture() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../fixtures/editor/rainbow-variables-v1.json"
+    ))
+    .unwrap();
+    assert_eq!(
+        fixture["maxVariables"],
+        lithe_editor::rainbow_variables::MAX_VARIABLES
+    );
+    assert_eq!(
+        fixture["maxNameBytes"],
+        lithe_editor::rainbow_variables::MAX_NAME_BYTES
+    );
+    assert_rainbow_fixture(&fixture);
+}
+
+fn assert_rainbow_fixture(fixture: &Value) {
+    for case in fixture["cases"].as_array().unwrap() {
+        let response: Value = serde_json::from_str(&crate::execute_json(
+            &json!({"command": fixture["command"], "payload": case["payload"]}).to_string(),
+        ))
+        .unwrap();
+        if let Some(code) = case.get("expectedError") {
+            assert_eq!(response["ok"], false, "{}: {response}", case["name"]);
+            assert_eq!(response["error"]["code"], *code, "{}", case["name"]);
+        } else {
+            assert_eq!(response["ok"], true, "{}: {response}", case["name"]);
+            assert_eq!(response["data"], case["expected"], "{}", case["name"]);
+        }
+    }
+}
 
 #[test]
 fn navigation_input_matches_shared_fixture() {

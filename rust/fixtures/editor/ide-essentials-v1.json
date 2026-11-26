@@ -2,6 +2,50 @@
   "version": 1,
   "cases": [
     {
+      "name": "whole-identifier-rejects-regex",
+      "command": "editor.find",
+      "document": "foo-barSuffix",
+      "payload": {
+        "query": "foo(?:-bar)?",
+        "regex": true,
+        "wholeIdentifier": true
+      },
+      "errorCode": "invalid_request",
+      "errorDetails": "regex_with_whole_identifier"
+    },
+    {
+      "name": "whole-identifier-with-dollar",
+      "command": "editor.find",
+      "document": "$name $$name $nameSuffix name $name",
+      "payload": {
+        "query": "$name",
+        "caseSensitive": true,
+        "wholeIdentifier": true
+      },
+      "expected": {
+        "matches": [{"start": 0, "end": 5}, {"start": 30, "end": 35}],
+        "edits": [],
+        "selected": 0,
+        "truncated": false
+      }
+    },
+    {
+      "name": "whole-identifier-with-unicode-continuation",
+      "command": "editor.find",
+      "document": "foo ℘foo a·b ℘foo a·b b foo",
+      "payload": {
+        "query": "foo",
+        "caseSensitive": true,
+        "wholeIdentifier": true
+      },
+      "expected": {
+        "matches": [{"start": 0, "end": 3}, {"start": 30, "end": 33}],
+        "edits": [],
+        "selected": 0,
+        "truncated": false
+      }
+    },
+    {
       "name": "unicode-original-byte-offsets",
       "command": "editor.find",
       "document": "😀 αβ αβ",
@@ -58,12 +102,44 @@
       "expected": {
         "lineNumbers": true,
         "whitespace": false,
+        "indentGuides": true,
+        "rainbowIndentGuides": false,
+        "rainbowIndentGuidesEffective": false,
         "inlayHints": true,
         "cursorStyle": "line",
         "cursorBlink": true,
         "autoSaveDelayMilliseconds": 1500,
         "minimumAutoSaveDelayMilliseconds": 250,
-        "maximumAutoSaveDelayMilliseconds": 60000
+        "maximumAutoSaveDelayMilliseconds": 60000,
+        "rainbowBrackets": false,
+        "rainbowVariables": false,
+        "rainbowLightColors": ["#A4262C", "#0657A4", "#6D3298", "#00695C", "#8A5200", "#394B68"],
+        "rainbowDarkColors": ["#FF8A80", "#82B1FF", "#D7A9FF", "#5CE1C4", "#FFBF69", "#A6B8D4"]
+      }
+    },
+    {
+      "name": "hidden-indent-guides-preserve-rainbow-choice",
+      "command": "editor.preferences.resolve",
+      "payload": {
+        "indentGuides": false,
+        "rainbowIndentGuides": true
+      },
+      "expected": {
+        "lineNumbers": true,
+        "whitespace": false,
+        "indentGuides": false,
+        "rainbowIndentGuides": true,
+        "rainbowIndentGuidesEffective": false,
+        "inlayHints": true,
+        "cursorStyle": "line",
+        "cursorBlink": true,
+        "autoSaveDelayMilliseconds": 1500,
+        "minimumAutoSaveDelayMilliseconds": 250,
+        "maximumAutoSaveDelayMilliseconds": 60000,
+        "rainbowBrackets": false,
+        "rainbowVariables": false,
+        "rainbowLightColors": ["#A4262C", "#0657A4", "#6D3298", "#00695C", "#8A5200", "#394B68"],
+        "rainbowDarkColors": ["#FF8A80", "#82B1FF", "#D7A9FF", "#5CE1C4", "#FFBF69", "#A6B8D4"]
       }
     },
     {

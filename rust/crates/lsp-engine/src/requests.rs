@@ -199,6 +199,8 @@ pub enum LspSemanticOperation {
     TypeDefinition,
     /// `textDocument/references`.
     References,
+    /// `textDocument/documentHighlight`: occurrences in the current document.
+    DocumentHighlight,
     /// `textDocument/implementation`.
     Implementation,
     /// `textDocument/rename`.

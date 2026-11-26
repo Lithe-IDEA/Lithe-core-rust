@@ -83,6 +83,7 @@ pub(crate) fn validate_lsp_method(method: &str) -> Result<(), CoreError> {
         | "textDocument/typeDefinition"
         | "textDocument/implementation"
         | "textDocument/references"
+        | "textDocument/documentHighlight"
         | "textDocument/rename"
         | "textDocument/formatting"
         | "textDocument/rangeFormatting"
