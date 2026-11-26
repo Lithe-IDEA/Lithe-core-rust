@@ -17,11 +17,11 @@
       },
       "expected": {
         "colors": [
-          { "start": 0, "end": 5, "color": 1113510858 },
-          { "start": 7, "end": 12, "color": 3363671541 },
-          { "start": 13, "end": 18, "color": 1113510858 },
-          { "start": 18, "end": 23, "color": 3511155050 },
-          { "start": 25, "end": 31, "color": 4246680784 }
+          { "start": 0, "end": 5, "color": 1743838389 },
+          { "start": 7, "end": 12, "color": 3468624197 },
+          { "start": 13, "end": 18, "color": 1743838389 },
+          { "start": 18, "end": 23, "color": 1520666834 },
+          { "start": 25, "end": 31, "color": 3554379875 }
         ]
       }
     },

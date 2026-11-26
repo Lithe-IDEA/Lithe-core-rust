@@ -2281,7 +2281,7 @@ fn document_highlight_routes_and_normalizes_document_ranges() {
     let column = fixture["position"]["utf16Column"].as_i64().unwrap();
     for (index, (server_result, expected)) in [
         (fixture["serverResult"].clone(), fixture["expected"].clone()),
-        (Value::Null, json!({"ranges": []})),
+        (Value::Null, json!({"ranges": [], "truncated": false})),
     ]
     .into_iter()
     .enumerate()

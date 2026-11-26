@@ -80,12 +80,40 @@ fn name_color(name: &str) -> u32 {
         hash ^= u32::from(byte);
         hash = hash.wrapping_mul(0x0100_0193);
     }
-    hash
+    // Murmur3 fmix32 diffuses the low bits before the host takes a palette
+    // modulus, so similar spellings do not systematically share a slot.
+    hash ^= hash >> 16;
+    hash = hash.wrapping_mul(0x85eb_ca6b);
+    hash ^= hash >> 13;
+    hash = hash.wrapping_mul(0xc2b2_ae35);
+    hash ^ (hash >> 16)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn similar_names_distribute_across_eight_color_slots() {
+        let names = ["user1", "user9", "a", "i", "arg0", "arg8", "x", "p"];
+        let colors = names.map(name_color);
+        assert_eq!(
+            colors,
+            [
+                3_385_640_019,
+                1_105_349_995,
+                444_641_715,
+                1_311_273_838,
+                2_657_546_199,
+                1_664_241_451,
+                794_621_484,
+                2_710_276_834
+            ]
+        );
+        let slots: std::collections::BTreeSet<_> =
+            colors.map(|color| color % 8).into_iter().collect();
+        assert!(slots.len() >= 5, "similar spellings use {slots:?}");
+    }
 
     #[test]
     fn enforces_token_and_name_budgets() {
@@ -95,7 +123,7 @@ mod tests {
         let result = color_command(json!({"variables":&variables})).unwrap();
         let colors = result["colors"].as_array().unwrap();
         assert_eq!(colors.len(), MAX_VARIABLES);
-        assert_eq!(colors[MAX_VARIABLES - 1]["color"], 3_826_002_220_u32);
+        assert_eq!(colors[MAX_VARIABLES - 1]["color"], 444_641_715_u32);
 
         variables.push(json!({"start":MAX_VARIABLES,"end":MAX_VARIABLES+1,"name":"a"}));
         let error = color_command(json!({"variables":variables})).unwrap_err();

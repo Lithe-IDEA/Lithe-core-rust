@@ -163,6 +163,26 @@
       "fields": {},
       "rate": 60,
       "owner": "Lithe"
+    },
+    {
+      "id": "editor.preferences.palette_fallback_selected",
+      "channel": "editor",
+      "level": "warn",
+      "message": "Invalid {palette} rainbow palette replaced with its default",
+      "fields": {
+        "palette": {
+          "type": "token",
+          "required": true,
+          "description": "Theme of the invalid stored rainbow palette, either light or dark"
+        },
+        "reason": {
+          "type": "token",
+          "required": true,
+          "description": "Controlled fallback reason for this palette, currently invalid_palette"
+        }
+      },
+      "rate": 60,
+      "owner": "lithe-core"
     }
   ]
 }

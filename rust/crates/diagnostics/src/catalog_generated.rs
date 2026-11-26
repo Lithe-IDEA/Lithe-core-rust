@@ -563,6 +563,19 @@ pub static EVENTS: &[EventMetadata] = &[
         owner: "Lithe",
     },
     EventMetadata {
+        id: "editor.preferences.palette_fallback_selected",
+        channel: "editor",
+        level: LogLevel::Warn,
+        message: "Invalid {palette} rainbow palette replaced with its default",
+        fields: &[
+            FieldMetadata { name: "palette", field_type: FieldType::Token, required: true, description: "Theme of the invalid stored rainbow palette, either light or dark", reason: None },
+            FieldMetadata { name: "reason", field_type: FieldType::Token, required: true, description: "Controlled fallback reason for this palette, currently invalid_palette", reason: None },
+        ],
+        span: None,
+        rate: 60,
+        owner: "lithe-core",
+    },
+    EventMetadata {
         id: "editor.recovery.applied",
         channel: "editor",
         level: LogLevel::Info,

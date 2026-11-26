@@ -4,6 +4,41 @@
 use serde_json::{json, Value};
 
 #[test]
+fn malformed_rainbow_palettes_record_a_private_fallback_fact_per_theme() {
+    let (response, facts) = lithe_diagnostics::core_events::capture::run(false, || {
+        crate::execute_json(
+            &json!({"command":"editor.preferences.resolve","payload":{
+                "rainbowLightColors":["private-invalid-color"],
+                "rainbowDarkColors":[],"lineNumbers":false,"futureOption":true
+            }})
+            .to_string(),
+        )
+    });
+    let response: Value = serde_json::from_str(&response).unwrap();
+    assert_eq!(response["ok"], true);
+    assert_eq!(response["data"]["lineNumbers"], false);
+    let fallbacks: Vec<_> = facts
+        .iter()
+        .filter(|fact| fact.event == "editor.preferences.palette_fallback_selected")
+        .collect();
+    assert_eq!(fallbacks.len(), 2);
+    for (fact, theme) in fallbacks.iter().zip(["light", "dark"]) {
+        assert_eq!(fact.level, lithe_diagnostics::record::LogLevel::Warn);
+        assert_eq!(fact.fields["palette"], theme);
+        assert_eq!(fact.fields["reason"], "invalid_palette");
+        assert_eq!(fact.fields.len(), 2);
+    }
+    let (_, facts) = lithe_diagnostics::core_events::capture::run(false, || {
+        crate::execute_json(
+            &json!({"command":"editor.preferences.resolve","payload":{}}).to_string(),
+        )
+    });
+    assert!(facts
+        .iter()
+        .all(|fact| fact.event != "editor.preferences.palette_fallback_selected"));
+}
+
+#[test]
 fn rainbow_brackets_match_shared_fixture() {
     let fixture: Value = serde_json::from_str(include_str!(
         "../../../../fixtures/editor/rainbow-brackets-v1.json"

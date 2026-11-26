@@ -44,10 +44,10 @@
       },
       "expected": {
         "colors": [
-          { "offset": 2, "depth": 0 },
-          { "offset": 3, "depth": 1, "matchOffset": 5 },
-          { "offset": 5, "depth": 1, "matchOffset": 3 },
-          { "offset": 6, "depth": 1 }
+          { "offset": 2, "depth": 0, "matchOffset": 4 },
+          { "offset": 3, "depth": 1 },
+          { "offset": 4, "depth": 0, "matchOffset": 2 },
+          { "offset": 6, "depth": 0 }
         ]
       }
     },
