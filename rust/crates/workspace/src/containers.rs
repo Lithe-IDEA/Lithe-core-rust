@@ -26,6 +26,9 @@ const LIST_TIMEOUT: Duration = Duration::from_secs(15);
 pub struct ListRequest {
     /// Engine whose CLI lists the containers.
     pub engine: ContainerEngine,
+    /// Explicit local or WSL runtime; sessionId remains mutually exclusive.
+    #[serde(default)]
+    pub runtime: Option<crate::container_runtimes::RuntimeTarget>,
     /// Connected session whose host runs the engine; this machine when
     /// absent.
     #[serde(default)]
@@ -61,6 +64,23 @@ pub(crate) fn list_with(
     let mut argv = list_command(request.engine);
     if let Some(program) = program {
         argv[0] = program.into();
+    }
+    if let Some(runtime) = request.runtime {
+        if request.session_id.is_some() || runtime.engine != request.engine {
+            return Err(CoreError::new(
+                ErrorCode::InvalidRequest,
+                "Conflicting container runtime",
+            ));
+        }
+        let Some(outcome) = crate::container_runtimes::capture(&runtime, &argv, LIST_TIMEOUT)?
+        else {
+            return Ok(Containers::default());
+        };
+        return Ok(answer(
+            outcome.status.is_some_and(|s| s.success()),
+            &outcome.stdout,
+            &outcome.stderr,
+        ));
     }
     match request.session_id {
         None => list_here(&argv),
@@ -225,6 +245,7 @@ mod tests {
         ListRequest {
             engine,
             session_id: None,
+            runtime: None,
         }
     }
 

@@ -383,6 +383,18 @@ pub(super) fn dispatch(command: RemoteCommand, id: Option<String>, payload: Valu
                 })
             },
         ),
+        RemoteCommand::ContainerRuntimes => match lithe_workspace::container_runtimes::discover() {
+            Ok(result) => {
+                CoreResponse::success(id, serde_json::to_value(result).expect("runtimes encode"))
+            }
+            Err(error) => CoreResponse::failure(id, error),
+        },
+        RemoteCommand::DevcontainerPrepare => {
+            answer(id, payload, "Invalid dev container form", |request| {
+                lithe_workspace::devcontainers::prepare(request)
+                    .map(|result| serde_json::to_value(result).expect("form encodes"))
+            })
+        }
         RemoteCommand::DevcontainerConfigs => answer(
             id,
             payload,

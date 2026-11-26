@@ -40,6 +40,9 @@ const MAX_TEXT_BYTES: usize = 256;
 pub struct ContainerConnection {
     /// Engine whose CLI runs `exec`.
     pub engine: ContainerEngine,
+    /// Explicit Docker context; omitted preserves the engine environment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context: Option<String>,
     /// Container name or id, as `ps` lists it.
     pub container: String,
     /// `user`, `uid` or `user:group` passed as `--user`; the image's default
@@ -81,9 +84,27 @@ impl ContainerConnection {
             }
         }
         let mut hop = ContainerHop::new(self.engine, container);
+        if self
+            .context
+            .as_deref()
+            .is_some_and(|name| !is_context_name(name) || self.engine != ContainerEngine::Docker)
+        {
+            return Err(ConnectionError::at("context", Reason::Invalid));
+        }
+        hop.context = self.context.clone();
         hop.user = user.map(Into::into);
         Ok(hop)
     }
+}
+
+/// A bounded Docker context name that cannot be interpreted as a CLI option.
+pub fn is_context_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 128
+        && !name.starts_with('-')
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
 }
 
 /// One running container in a listing.
@@ -176,6 +197,7 @@ mod tests {
     fn connection(container: &str, user: Option<&str>) -> ContainerConnection {
         ContainerConnection {
             engine: ContainerEngine::Docker,
+            context: None,
             container: container.into(),
             user: user.map(Into::into),
         }
@@ -217,6 +239,62 @@ mod tests {
                 "{refused:?}"
             );
         }
+    }
+
+    #[test]
+    fn docker_context_is_kept_for_exec_identity_and_trust() {
+        let connection = ContainerConnection {
+            context: Some("orbstack".into()),
+            ..connection("api", None)
+        };
+        let hop = connection.hop().unwrap();
+        let chain = crate::client::transport::TransportChain::new(vec![
+            crate::client::transport::Hop::Container(hop),
+        ]);
+        assert_eq!(
+            chain.command(&["true".into()]).unwrap(),
+            vec![
+                "docker",
+                "--context",
+                "orbstack",
+                "exec",
+                "-i",
+                "api",
+                "true"
+            ]
+        );
+        assert_eq!(chain.identity(), "docker[orbstack]:api");
+        let trusted = crate::client::trust::Target::new(&chain, None);
+        assert!(trusted.validate().is_ok());
+        let mut invalid = trusted.clone();
+        if let crate::client::trust::TargetHop::Container(hop) = &mut invalid.hops[0] {
+            hop.engine = "podman".into();
+        }
+        assert!(invalid.validate().is_err());
+        assert_ne!(
+            crate::client::trust::Target::new(&chain, None),
+            crate::client::trust::Target::new(
+                &crate::client::transport::TransportChain::new(vec![
+                    crate::client::transport::Hop::Container(ContainerHop::new(
+                        ContainerEngine::Docker,
+                        "api"
+                    ))
+                ]),
+                None
+            )
+        );
+        assert!(ContainerConnection {
+            context: Some("--host=evil".into()),
+            ..connection.clone()
+        }
+        .hop()
+        .is_err());
+        assert!(ContainerConnection {
+            engine: ContainerEngine::Podman,
+            ..connection
+        }
+        .hop()
+        .is_err());
     }
 
     #[test]

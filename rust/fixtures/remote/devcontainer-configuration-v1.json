@@ -1,0 +1,34 @@
+{
+  "cases": [
+    {
+      "id": "image-and-loopback-ports",
+      "form": {
+        "name": "API",
+        "image": "debian:bookworm-slim",
+        "remoteUser": "dev",
+        "ports": "3000, 8080 3000",
+        "postCreateCommand": "echo ready"
+      },
+      "path": ".devcontainer/devcontainer.json",
+      "configuration": {
+        "image": "debian:bookworm-slim",
+        "name": "API",
+        "remoteUser": "dev",
+        "postCreateCommand": "echo ready",
+        "appPort": ["127.0.0.1:3000:3000", "127.0.0.1:8080:8080"]
+      }
+    },
+    {
+      "id": "workspace-relative-dockerfile",
+      "form": {"dockerfile": "docker/Dockerfile", "buildContext": "."},
+      "path": ".devcontainer/devcontainer.json",
+      "configuration": {"build": {"dockerfile": "../docker/Dockerfile", "context": "../."}}
+    },
+    {"id": "no-source", "form": {}, "invalidField": "image"},
+    {"id": "two-sources", "form": {"image": "debian", "dockerfile": "Dockerfile"}, "invalidField": "image"},
+    {"id": "outside-workspace", "form": {"dockerfile": "../../Dockerfile"}, "invalidField": "dockerfile"},
+    {"id": "invalid-port", "form": {"image": "debian", "ports": "70000"}, "invalidField": "ports"}
+  ],
+  "connection": {"engine": "docker", "context": "orbstack", "container": "api", "user": "dev"},
+  "identity": "docker[orbstack]:dev@api"
+}

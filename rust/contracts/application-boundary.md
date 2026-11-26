@@ -63,6 +63,7 @@ this lifecycle protection; actual symbol computation remains upstream-owned.
 | Feature | Shared input/output | Platform-owned implementation |
 | --- | --- | --- |
 | Workspace | visible snapshot, relative paths, file metadata, deterministic ordering | workspace root selection, native dialogs, and watchers |
+| Dev Containers | read-only local/WSL runtime discovery, explicit engine/context/distribution targets, basic-form validation and standard configuration, trusted official-CLI lifecycle, context-aware connection and trust | folder picker, draft UI, confirmed atomic configuration publication outside installed resources, upstream CLI availability and platform filesystem access |
 | Documents | relative-path validation, decoded text, selected encoding, dirty/save state, and conflict outcome | native byte conversion, atomic write, and external-change notifications |
 | Search | query matching, deterministic result ordering, symbols, and replacement preview | workspace lifecycle and optional index persistence |
 | Git | workspace commit plans with optional immutable ChangeList path scopes, dependency ordering, guarded steps and partial-success retry, changes, commits, branches, diffs, reviewed history actions and recovery, worktree listing and safe management, worktree-aware PR publication context, validation, and mutation results | Git executable discovery, credentials, process environment, opening checkout paths, local ChangeList selection and preference persistence |
@@ -85,6 +86,23 @@ Core rejects edits for stale or unknown versioned documents. A native host check
 that its editor snapshots still match those versions before touching files or
 buffers, and stops pending work when Core revokes a delivered request. The
 [Core commands reference](rust-core-api.md#commands) specifies the event and reply shapes.
+
+### Dev Container configuration and execution environment
+
+The same explicit runtime target follows discovery, configuration lookup, build,
+inspection and connection. Docker contexts remain child-local and trust keys
+include the context and WSL distribution, so identically named containers in
+different daemons cannot share authority. Discovery is bounded and never switches
+the user's global context. A missing or stopped daemon remains visible to the UI.
+
+The basic form renders a standard workspace-owned `devcontainer.json` through
+`remote.devcontainerPrepare`; it does not execute code or write files. Only the
+native client's confirmed Create action publishes it, refusing existing content
+and installation roots. Building still requires the workspace's trust decision,
+and the reference CLI remains responsible for the specification's lifecycle,
+mounts, features and compose behavior. Windows WSL targets use that distribution's
+CLI and path translation. See the [command contract](rust-core-api.md#dev-containers)
+and [shared form examples](../fixtures/remote/devcontainer-configuration-v1.json).
 
 ### Application update channels
 

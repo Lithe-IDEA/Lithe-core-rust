@@ -1096,6 +1096,10 @@ pub enum RemoteCommand {
     /// Lists the `devcontainer.json` files of a local folder
     /// (`remote.devcontainerConfigs`).
     DevcontainerConfigs,
+    /// Discovers local and WSL container runtimes (remote.containerRuntimes).
+    ContainerRuntimes,
+    /// Renders a standard devcontainer.json from a basic form without I/O.
+    DevcontainerPrepare,
     /// Builds or reuses and starts a local folder's dev container with the
     /// Dev Container CLI (`remote.devcontainerUp`).
     DevcontainerUp,
@@ -1717,6 +1721,8 @@ impl CoreCommand {
                 Some(Self::Remote(RemoteCommand::ListWslDistributions))
             }
             "remote.listContainers" => Some(Self::Remote(RemoteCommand::ListContainers)),
+            "remote.containerRuntimes" => Some(Self::Remote(RemoteCommand::ContainerRuntimes)),
+            "remote.devcontainerPrepare" => Some(Self::Remote(RemoteCommand::DevcontainerPrepare)),
             "remote.devcontainerConfigs" => Some(Self::Remote(RemoteCommand::DevcontainerConfigs)),
             "remote.devcontainerUp" => Some(Self::Remote(RemoteCommand::DevcontainerUp)),
             "remote.preferences" => Some(Self::Remote(RemoteCommand::Preferences)),
