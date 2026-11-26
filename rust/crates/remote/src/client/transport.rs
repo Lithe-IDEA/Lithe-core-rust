@@ -213,7 +213,7 @@ pub(crate) const MAX_WSL_USER_BYTES: usize = 32;
 
 /// A WSL distribution name: ASCII letters, digits, `.`, `_` and `-`, starting
 /// with a letter or digit, which is what `wsl.exe --import` accepts.
-pub(crate) fn is_wsl_distribution(name: &str) -> bool {
+pub fn is_wsl_distribution(name: &str) -> bool {
     name.len() <= MAX_WSL_DISTRIBUTION_BYTES && is_plain_name(name)
 }
 
@@ -282,6 +282,8 @@ pub struct ContainerHop {
     pub engine: ContainerEngine,
     /// Engine CLI executable. Defaults to the engine name.
     pub program: String,
+    /// Explicit Docker context, applied before exec without changing global configuration.
+    pub context: Option<String>,
     /// Container name or id.
     pub container: String,
     /// `user`, `uid` or `user:group`; the image default when absent.
@@ -299,6 +301,7 @@ impl ContainerHop {
         Self {
             engine,
             program: engine.name().into(),
+            context: None,
             container: container.into(),
             user: None,
             working_directory: None,
@@ -323,8 +326,8 @@ pub(crate) fn is_container_name(name: &str) -> bool {
 
 /// A `--user` value for `exec`: a name or uid, optionally `:group`, from
 /// ASCII letters, digits, `_`, `.`, `:` and `-`, not starting with `-`, at
-/// most [`MAX_CONTAINER_USER_BYTES`] long.
-pub(crate) fn is_container_user(user: &str) -> bool {
+/// most 64 bytes long.
+pub fn is_container_user(user: &str) -> bool {
     !user.is_empty()
         && user.len() <= MAX_CONTAINER_USER_BYTES
         && !user.starts_with('-')
@@ -454,7 +457,10 @@ impl TransportChain {
                     Some(port) => format!("ssh:{}:{port}", hop.destination),
                     None => format!("ssh:{}", hop.destination),
                 },
-                Hop::Container(hop) => format!("{}:{}", hop.engine.name(), hop.container),
+                Hop::Container(hop) => match &hop.context {
+                    Some(context) => format!("{}[{context}]:{}", hop.engine.name(), hop.container),
+                    None => format!("{}:{}", hop.engine.name(), hop.container),
+                },
                 Hop::Wsl(hop) => match &hop.user {
                     Some(user) => format!("wsl:{user}@{}", hop.distribution),
                     None => format!("wsl:{}", hop.distribution),
@@ -583,7 +589,16 @@ fn container_command(hop: &ContainerHop, inner: Vec<Word>) -> Result<Vec<Word>, 
             reason: format!("invalid container name {:?}", hop.container),
         });
     }
-    let mut command = vec![hop.program.clone(), "exec".into(), "-i".into()];
+    let mut command = vec![hop.program.clone()];
+    if let Some(context) = &hop.context {
+        if hop.engine != ContainerEngine::Docker || !super::container::is_context_name(context) {
+            return Err(TransportError::InvalidHop {
+                reason: "invalid Docker context".into(),
+            });
+        }
+        command.extend(["--context".into(), context.clone()]);
+    }
+    command.extend(["exec".into(), "-i".into()]);
     if let Some(user) = &hop.user {
         if !is_container_user(user) {
             return Err(TransportError::InvalidHop {

@@ -112,6 +112,9 @@ pub struct ContainerTarget {
     pub engine: String,
     /// Engine CLI executable. Docker-compatible CLIs reach different daemons.
     pub program: String,
+    /// Docker context choosing the daemon; absent in legacy targets.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context: Option<String>,
     /// Container name or id.
     pub container: String,
     /// `user`, `uid` or `user:group` given to `exec`.
@@ -158,6 +161,7 @@ impl Target {
                 Hop::Container(hop) => TargetHop::Container(ContainerTarget {
                     engine: hop.engine.name().into(),
                     program: hop.program.clone(),
+                    context: hop.context.clone(),
                     container: hop.container.clone(),
                     user: hop.user.clone(),
                 }),
@@ -202,6 +206,9 @@ impl Target {
                 TargetHop::Container(hop) => {
                     matches!(hop.engine.as_str(), "docker" | "podman")
                         && field(&hop.program)
+                        && hop.context.as_deref().is_none_or(|name| {
+                            hop.engine == "docker" && super::container::is_context_name(name)
+                        })
                         && field(&hop.container)
                         && optional(&hop.user)
                 }

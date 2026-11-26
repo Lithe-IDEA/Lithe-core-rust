@@ -851,8 +851,10 @@ or removing a command fails until the table changes in the same commit.
 | `remote.mottyHosts` | List the SSH hosts saved in Motty for an import |
 | `remote.listWslDistributions` | List the WSL distributions installed on this Windows machine |
 | `remote.listContainers` | List the running Docker or Podman containers on this machine or a connected host |
-| `remote.devcontainerConfigs` | List the `devcontainer.json` files of a local folder |
-| `remote.devcontainerUp` | Build or reuse and start a trusted local folder's dev container with the Dev Container CLI |
+| `remote.containerRuntimes` | Discover local Docker contexts and Windows WSL engines without switching the active context |
+| `remote.devcontainerPrepare` | Validate a basic form and render standard workspace-owned `devcontainer.json` without I/O |
+| `remote.devcontainerConfigs` | List the `devcontainer.json` files of a local or WSL folder |
+| `remote.devcontainerUp` | Build or reuse and start a trusted local or WSL folder's dev container with the Dev Container CLI |
 | `remote.preferences` | Read the remote workspace settings and what each automatic value resolves to |
 | `remote.editPreferences` | Set the SSH program, the reconnect limit, whether reverse forwards are allowed or what closing a connection does to its programs, or make one automatic again |
 | `remote.runningPrograms` | List the processes and terminals a connection's host session still runs |
@@ -5995,15 +5997,17 @@ its redacted message for display; it is never logged. Cancellation and the
 bound are `cancelled` and `timed_out`. Nothing is saved: the window lists
 the distributions each time it opens.
 
-`remote.listContainers` takes `{ engine, sessionId? }`, where `engine` is
+`remote.listContainers` takes `{ engine, sessionId?, runtime? }`, where `engine` is
 `docker` or `podman`, and returns `{ available, containers, diagnostics }`.
 Core runs `<engine> ps --no-trunc --format '{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}'`,
 at most 15 seconds: on this machine in Core's own environment (the login
 shell's `PATH` the application put in front, and variables such as
-`DOCKER_HOST`) when `sessionId` is absent, and otherwise on that
-connection's host in the server's environment, the same one the connection
-later enters the container from. Only running containers are listed, since
-Lithe never starts, creates or changes a container. `containers` are
+`DOCKER_HOST`) when both `sessionId` and `runtime` are absent, and otherwise on that
+connection's host in the server's environment when `sessionId` is present.
+`runtime` selects the exact local or WSL environment described below; it is
+mutually exclusive with `sessionId` and its engine must match `engine`, or the
+request is `invalid_request`. Only running containers are listed; this command
+does not start or change them. `containers` are
 `{ id, name, image, status }` in the engine's order, at most 256 and from at
 most 256 KiB of output: `id` is the full id, `name` the first of the
 container's names, and `image` and `status` the engine's text without
@@ -6019,14 +6023,73 @@ container listing request"), so a request cannot pick the program; an unknown
 
 #### Dev Containers
 
-A local folder's dev container is built and started by the reference Dev
+A local or WSL folder's dev container is built and started by the reference Dev
 Container CLI (`devcontainer`, from `@devcontainers/cli`; `devcontainer.cmd`
-on Windows) on `PATH`, then entered like any running container with
+on Windows) on the selected environment's `PATH`, then entered like any running container with
 `remote.connect`'s `container`. Lithe does not interpret the configuration
-and adds no mounts or options to it.
+and adds no mounts or options to the CLI invocation. The basic form produces
+standard configuration before the CLI runs, and agents may edit the same file.
 
-`remote.devcontainerConfigs` takes `{ folder }`, an absolute folder on this
-machine, and returns `{ configs }`: `{ path, name? }` for each regular file in
+`remote.containerRuntimes` takes no payload and returns `{ runtimes,
+selectedRuntime, diagnostics }`. Each runtime is `{ id, engine, context?, wsl?,
+label, current, available, diagnostics }`; `id` is opaque. `label` is the
+engine's context description or name, so OrbStack and Docker Desktop are shown
+using their real contexts rather than application-installation heuristics.
+`available` means a read-only `info` probe answered successfully. An installed
+context whose daemon is stopped remains listed with its redacted diagnostics.
+Labels omit control characters and keep at most 128 characters from the upstream description.
+Missing optional CLIs produce no runtime. `diagnostics` on the result contains
+redacted failures or limits not associated with a particular runtime. Diagnostics
+are for display; callers record failure categories without upstream text.
+
+Discovery reads native `docker context ls --format '{{json .}}'` and Podman's
+CLI, then on Windows up to eight user WSL distributions from
+`remote.listWslDistributions`, looking for those same engines. Context listing
+is bounded to five seconds and each daemon probe to three seconds. At most 24
+targets are probed within a 60-second budget; WSL enumeration has its independent
+15-second bound. A partial discovery returns the usable results and a diagnostic.
+Only `unix://` and `npipe://` Docker endpoints are offered: a remote daemon cannot
+bind-mount this workspace. No daemon is explicitly started and the global Docker
+context is never changed. `selectedRuntime` prefers a usable current native
+context, then the first usable runtime, then the first listed runtime, and is
+`null` for an empty list. Cancellation is `cancelled`.
+
+A runtime target is `{ engine: "docker"|"podman", context?, wsl? }`.
+`context` is Docker-only, one to 128 ASCII letters, digits, `_`, `-` or `.`,
+and cannot start with `-`; `wsl` is a valid distribution name. Invalid targets
+are `invalid_request`. Explicit contexts set `DOCKER_CONTEXT` only on the child
+and remove inherited `DOCKER_HOST`, `DOCKER_TLS_VERIFY` and `DOCKER_CERT_PATH`.
+WSL commands use `wsl.exe --distribution <wsl> --exec …`, with the context applied
+by `env`; paths are arguments, never interpolated into shell source. Omitted
+targets preserve the original native behavior and environment.
+
+`remote.devcontainerPrepare` accepts `{ name?, image?, dockerfile?, buildContext?,
+remoteUser?, workspaceFolder?, ports?, postCreateCommand? }`, with empty defaults,
+and returns `{ path: ".devcontainer/devcontainer.json", content }`. It performs
+no I/O and runs nothing. Exactly one of `image` and `dockerfile` must be nonempty.
+Dockerfile and build-context paths are workspace-relative, without absolute
+paths, backslashes or `..` components; an empty context means `.`. Core writes
+the standard `build` paths relative to the destination configuration. Optional
+fields use standard Dev Container properties; blank values are omitted. `ports`
+accepts comma or whitespace separated ports from 1 to 65535, deduplicated to at
+most 64, published as `appPort` loopback bindings such as
+`127.0.0.1:3000:3000`. A container user follows the `remote.connect` user syntax
+and a nonempty workspace folder is an absolute POSIX path. String limits in
+bytes are image 512, each build path 1024, name 128, user 64, workspace folder
+4096 and post-create command 8192. Refused values are `invalid_request` with
+JSON `details: { field }` identifying the form field. Unknown fields are refused.
+
+Native clients publish this document only after the explicit Create action,
+atomically and without overwriting an existing file or following a path outside
+the workspace. The configuration belongs to the user's workspace, never the app
+bundle or installation directory; drafts and cancellation publish nothing.
+
+`remote.devcontainerConfigs` takes `{ folder, runtime? }`, an absolute folder on this
+machine or the selected WSL distribution, and returns `{ nativeFolder, configs }`:
+`nativeFolder` is the native path used by the desktop for trust and confirmed
+publication. For WSL, absolute Windows paths are translated using that distribution's
+`wslpath -a -u`; absolute Linux paths are accepted directly, and `wslpath -w`
+returns their native Windows path. `{ path, name? }` lists each regular file in
 the places the specification searches, in this order:
 `.devcontainer/devcontainer.json`, `.devcontainer.json`, then
 `.devcontainer/<subfolder>/devcontainer.json` for at most 64 subfolders in
@@ -6036,11 +6099,13 @@ JSON with comments and trailing commas, without control characters and at
 most 128 bytes; it is absent when the file is larger than 1 MiB, resolves
 outside the folder, cannot be read or has no non-empty string `name`. A
 relative or empty `folder` is `invalid_request`; a folder that does not
-exist is `workspace_not_found`. Reading starts nothing.
+exist is `workspace_not_found`. WSL enumeration uses a fixed read-only script
+with NUL-delimited paths and returns paths without reading optional names;
+paths containing control characters are omitted. Reading starts no project code.
 
-`remote.devcontainerUp` takes `{ folder, config?, engine,
+`remote.devcontainerUp` takes `{ folder, config?, engine, runtime?,
 projectCodeAllowed }` and returns `{ container?, diagnostics }`. Building runs
-the folder's code on this machine (`initializeCommand`, Dockerfiles, feature
+the folder's code in the selected environment (`initializeCommand`, Dockerfiles, feature
 scripts), so when `projectCodeAllowed` is `false` nothing starts and the
 request fails with `devcontainer_untrusted_folder`; native clients pass the
 folder's trust decision, as for Git. `config` must be one of the `path`s
@@ -6048,7 +6113,9 @@ folder's trust decision, as for Git. `config` must be one of the `path`s
 `invalid_request`; without it the CLI searches the folder itself. Core runs
 `devcontainer up --workspace-folder <folder> [--config <folder>/<config>]`,
 adding `--docker-path podman` after `up` for `engine: "podman"`, on this
-machine in Core's own environment, for at most one hour. Each line the CLI
+machine or selected WSL distribution, for at most one hour. `runtime.engine`
+must match `engine`. Build, name inspection and subsequent connection must use
+the same target; WSL requires the Linux CLI inside that distribution. Each line the CLI
 logs to standard error is sent as a `{ type: "devcontainerOutput", text }`
 event, redacted, at most 4096 bytes per event and 2 MiB in all; after that
 one `{ type: "devcontainerOutput", truncated: true }` event follows and later
@@ -6057,11 +6124,12 @@ lines are dropped. The log is shown, never logged.
 The result is the last line of standard output that is a JSON object with an
 `outcome`:
 
-- `success`: `container` is `{ engine, container, containerId, user?,
+- `success`: `container` is `{ engine, runtime?, container, containerId, user?,
   workspaceFolder }`. `containerId` is the CLI's container id, `container` the
   name `<engine> inspect --format '{{.Name}}'` gives within 15 seconds
   (without Docker's leading `/`), or the id when it gives none, `user` the
-  configuration's `remoteUser`, and `workspaceFolder` the absolute
+  configuration's `remoteUser`, `runtime` the unchanged explicit target (absent
+  for legacy requests), and `workspaceFolder` the absolute
   `remoteWorkspaceFolder` to open. A container id that is not a container
   name, a user `exec` cannot take, or a folder that is not absolute is
   `parse_failed`, and so is a successful exit without a result line.
@@ -6072,7 +6140,8 @@ The result is the last line of standard output that is a JSON object with an
 A missing CLI is `runtime_missing`; any other field is `invalid_request`
 ("Invalid dev container start request"), so a request cannot add mounts or
 pick the program; cancellation and the bound are `cancelled` and
-`timed_out`. Nothing is saved.
+`timed_out`. The up command saves no Lithe connection record; the upstream CLI
+owns its container and project lifecycle effects.
 
 #### Remote workspace preferences
 
@@ -6232,11 +6301,11 @@ the distribution and the account (`{ wsl: { distribution, user } }` as the
 first and only hop).
 
 The request may also name a running container as `container: { engine,
-container, user? }`, where `engine` is `docker` or `podman`, `container` a
+context?, container, user? }`, where `engine` is `docker` or `podman`, `container` a
 name or id such as `remote.listContainers` returned, and `user` a user, uid or
 `user:group` inside it (the image's default user when absent or empty). Next
 to `connection` or `wsl` the container is on that host: the remote command
-becomes `<engine> exec -i [-u <user>] <container> …` there, after the login.
+becomes `<engine> [--context <context>] exec -i [-u <user>] <container> …` there, after the login.
 On its own the container is on this machine, and Core starts that command
 itself in place of OpenSSH, with its own environment so the engine finds its
 service. Core only enters the running container: it never starts, creates or
@@ -6252,8 +6321,12 @@ over SSH; and other failures are `failed` with the engine's message in
 nothing). The connection log's `transport` is `container`, `ssh-container` or
 `wsl-container`, without the container's name. Trust decisions name the
 container after the other hops, as `{ container: { engine, program,
-container, user? } }`, so a decision never carries over to another container
-or account.
+context?, container, user? } }`, so a decision never carries over to another container,
+Docker context or account. A context follows the runtime target's Docker-only
+validation. Explicit-context identities use `docker[context]:[user@]container`;
+omitting it preserves the original `engine:[user@]container` identity and behavior.
+For a runtime with `wsl`, clients also pass `wsl: { distribution }` on connect,
+so inspection, connection and trust name the same distribution and context.
 
 A request that names both `connection` and `wsl` is `invalid_request` with
 `details` `{ field: "wsl", reason: "invalid" }`, and one that names none of

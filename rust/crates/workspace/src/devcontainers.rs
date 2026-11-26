@@ -1,6 +1,5 @@
-//! `remote.devcontainerConfigs` and `remote.devcontainerUp`: a local
-//! folder's Dev Container, built and started by the reference Dev Container
-//! CLI, for the connection window.
+//! A local or WSL folder's Dev Container, configured through a basic form
+//! and built and started by the reference Dev Container CLI.
 //!
 //! The window lists the folder's `devcontainer.json` files, then asks for
 //! `up` with the one the user picked. The CLI builds or reuses the container
@@ -8,13 +7,15 @@
 //! lifecycle commands; its log streams to the window as `devcontainerOutput`
 //! events, redacted and never logged. The result names the container, the
 //! user and the workspace folder inside it, which the window then enters
-//! with `remote.connect`'s `container` and opens. Nothing is saved.
+//! with `remote.connect`'s `container` and opens. Only the host's explicit
+//! Create action publishes the standard document rendered by [`prepare`].
 //!
 //! Building runs the folder's code on this machine (`initializeCommand`,
 //! Dockerfiles, feature scripts), so `up` runs only when the host says the
 //! folder is trusted (`projectCodeAllowed`), the same rule as Git. Lithe
 //! itself adds no mounts and no options to the configuration (S32).
 
+use crate::container_runtimes::RuntimeTarget;
 use lithe_protocol::{CoreError, ErrorCode};
 use lithe_remote::client::devcontainer::{
     discover, name_command, parse_name, parse_up_result, up_command, UpFailure,
@@ -24,7 +25,6 @@ use lithe_request_context::events as execution_events;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::{Duration, Instant};
 
 /// How long `up` may take: pulling images and building them can take many
@@ -47,12 +47,17 @@ const MAX_LINE_BYTES: usize = 4096;
 pub struct ConfigsRequest {
     /// Absolute folder on this machine.
     pub folder: String,
+    /// Environment owning the folder; omitted is this machine.
+    #[serde(default)]
+    pub runtime: Option<RuntimeTarget>,
 }
 
 /// `remote.devcontainerConfigs` result.
 #[derive(Debug, Default, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Configs {
+    /// Native path the desktop uses for trust and confirmed configuration publication.
+    pub native_folder: String,
     /// The folder's configurations in the order the specification searches
     /// them; empty when it has none.
     pub configs: Vec<DevcontainerConfig>,
@@ -70,6 +75,9 @@ pub struct UpRequest {
     pub config: Option<String>,
     /// Engine the CLI builds and runs the container with.
     pub engine: ContainerEngine,
+    /// Explicit environment selected from discovery; omitted preserves legacy behavior.
+    #[serde(default)]
+    pub runtime: Option<RuntimeTarget>,
     /// Whether the user trusts the folder, so its code may run here.
     pub project_code_allowed: bool,
 }
@@ -93,6 +101,9 @@ pub struct Up {
 pub struct Devcontainer {
     /// Engine that runs the container.
     pub engine: ContainerEngine,
+    /// Exact environment used to build and inspect this container.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<RuntimeTarget>,
     /// The container's name, or its id when the engine did not name it.
     pub container: String,
     /// Full container id.
@@ -106,9 +117,31 @@ pub struct Devcontainer {
 
 /// The configurations of the folder `request` names.
 pub fn configs(request: ConfigsRequest) -> Result<Configs, CoreError> {
-    let folder = local_folder(&request.folder)?;
+    let target = request.runtime.unwrap_or(RuntimeTarget {
+        engine: ContainerEngine::Docker,
+        context: None,
+        wsl: None,
+    });
+    target.validate()?;
+    let resolved = resolve_folder(&request.folder, &target)?;
+    let native_folder = match target.wsl.as_deref() {
+        Some(_) => {
+            let argv = vec!["wslpath".into(), "-w".into(), resolved.clone()];
+            let outcome = crate::container_runtimes::capture(&target, &argv, NAME_TIMEOUT)?
+                .filter(|outcome| outcome.status.is_some_and(|status| status.success()))
+                .ok_or_else(|| {
+                    CoreError::new(
+                        ErrorCode::InvalidRequest,
+                        "Cannot resolve the native WSL workspace folder",
+                    )
+                })?;
+            String::from_utf8_lossy(&outcome.stdout).trim().to_owned()
+        }
+        None => resolved.clone(),
+    };
     Ok(Configs {
-        configs: discover(&folder),
+        native_folder,
+        configs: configs_for_resolved(&resolved, &target)?,
     })
 }
 
@@ -126,25 +159,46 @@ pub(crate) fn up_with(request: UpRequest, program: Option<&str>) -> Result<Up, C
             "The folder is not trusted, so its dev container was not built or started",
         ));
     }
-    let folder = local_folder(&request.folder)?;
+    let target = request.runtime.clone().unwrap_or(RuntimeTarget {
+        engine: request.engine,
+        context: None,
+        wsl: None,
+    });
+    target.validate()?;
+    if target.engine != request.engine {
+        return Err(CoreError::new(
+            ErrorCode::InvalidRequest,
+            "Runtime engine mismatch",
+        ));
+    }
+    let resolved_folder = resolve_folder(&request.folder, &target)?;
+    let folder = PathBuf::from(&resolved_folder);
+    let listed = configs_for(&request.folder, &target)?;
     let config = match request.config.as_deref() {
         None => None,
         Some(config) => {
-            if !discover(&folder).iter().any(|listed| listed.path == config) {
+            if !listed.iter().any(|listed| listed.path == config) {
                 return Err(CoreError::new(
                     ErrorCode::InvalidRequest,
                     "The configuration is not one of the folder's devcontainer.json files",
                 ));
             }
-            Some(folder.join(config).to_string_lossy().into_owned())
+            Some(if target.wsl.is_some() {
+                format!("{}/{}", resolved_folder.trim_end_matches('/'), config)
+            } else {
+                folder.join(config).to_string_lossy().into_owned()
+            })
         }
     };
     let mut argv = up_command(request.engine, &folder.to_string_lossy(), config.as_deref());
     if let Some(program) = program {
         argv[0] = program.into();
     }
+    if target.wsl.is_some() {
+        argv[0] = "devcontainer".into();
+    }
     let mut log = Log::default();
-    let outcome = run_here(&argv, UP_TIMEOUT, |stream, bytes| {
+    let outcome = run_target(&target, &argv, UP_TIMEOUT, |stream, bytes| {
         if matches!(stream, lithe_git_host::Stream::Stderr) {
             log.push(bytes);
         }
@@ -159,11 +213,12 @@ pub(crate) fn up_with(request: UpRequest, program: Option<&str>) -> Result<Up, C
     log.finish();
     match parse_up_result(&outcome.stdout) {
         Ok(started) => {
-            let container = container_name(request.engine, &started.container_id, program)
+            let container = container_name(&target, &started.container_id, program)
                 .unwrap_or_else(|| started.container_id.clone());
             Ok(Up {
                 container: Some(Devcontainer {
                     engine: request.engine,
+                    runtime: request.runtime,
                     container,
                     container_id: started.container_id,
                     user: started.remote_user,
@@ -179,6 +234,15 @@ pub(crate) fn up_with(request: UpRequest, program: Option<&str>) -> Result<Up, C
             printed.push('\n');
             printed.push_str(&message);
             Ok(failed(&printed))
+        }
+        Err(UpFailure::Missing)
+            if target.wsl.is_some()
+                && outcome.status.and_then(|status| status.code()) == Some(127) =>
+        {
+            Err(CoreError::new(
+                ErrorCode::RuntimeMissing,
+                "The Dev Container CLI is not installed in the selected WSL distribution",
+            ))
         }
         Err(UpFailure::Missing) if !outcome.status.is_some_and(|status| status.success()) => {
             let mut printed = String::from_utf8_lossy(&outcome.stdout).into_owned();
@@ -219,19 +283,19 @@ fn local_folder(folder: &str) -> Result<PathBuf, CoreError> {
 }
 
 /// The name the engine gives container `id`, when it answers in time.
-fn container_name(engine: ContainerEngine, id: &str, program: Option<&str>) -> Option<String> {
-    let mut argv = name_command(engine, id);
+fn container_name(target: &RuntimeTarget, id: &str, program: Option<&str>) -> Option<String> {
+    let mut argv = name_command(target.engine, id);
     if let Some(program) = program {
         argv[0] = program.into();
     }
-    let outcome = run_here(&argv, NAME_TIMEOUT, |_, _| {}).ok()?;
+    let outcome = run_target(target, &argv, NAME_TIMEOUT, |_, _| {}).ok()?;
     if !outcome.status.is_some_and(|status| status.success()) {
         return None;
     }
     parse_name(&outcome.stdout)
 }
 
-/// Why [`run_here`] has no outcome.
+/// Why [`run_target`] has no outcome.
 enum Ran {
     /// Cancelled, out of time or failed while running.
     Stopped(CoreError),
@@ -242,14 +306,13 @@ enum Ran {
 /// Runs `argv` on this machine, in Core's own environment, which holds the
 /// login shell's `PATH` and the variables, such as `DOCKER_HOST`, that
 /// choose the engine.
-fn run_here(
+fn run_target(
+    target: &RuntimeTarget,
     argv: &[String],
     timeout: Duration,
     output: impl FnMut(lithe_git_host::Stream, &[u8]),
 ) -> Result<lithe_git_host::Outcome, Ran> {
-    let (program, arguments) = argv.split_first().expect("the command names a program");
-    let mut process = Command::new(program);
-    process.args(arguments);
+    let mut process = target.command(argv).map_err(Ran::Stopped)?;
     let deadline = Instant::now() + timeout;
     let mut stop = None;
     let outcome = lithe_git_host::run(
@@ -274,7 +337,11 @@ fn run_here(
     }
     match outcome.failure {
         None => Ok(outcome),
-        Some(lithe_git_host::Failure::Start(_)) => Err(Ran::Missing),
+        Some(lithe_git_host::Failure::Start(error))
+            if error.kind() == std::io::ErrorKind::NotFound =>
+        {
+            Err(Ran::Missing)
+        }
         Some(failure) => Err(Ran::Stopped(
             CoreError::new(ErrorCode::ProcessFailed, "The Dev Container CLI failed")
                 .with_details(format!("{failure:?}")),
@@ -380,6 +447,7 @@ mod tests {
                 folder: self.folder.to_string_lossy().into_owned(),
                 config: config.map(Into::into),
                 engine: ContainerEngine::Podman,
+                runtime: None,
                 project_code_allowed: trusted,
             }
         }
@@ -408,6 +476,7 @@ printf '{"outcome":"success","containerId":"abc123","remoteUser":"vscode","remot
             Up {
                 container: Some(Devcontainer {
                     engine: ContainerEngine::Podman,
+                    runtime: None,
                     container: "eager_turing".into(),
                     container_id: "abc123".into(),
                     user: Some("vscode".into()),
@@ -491,6 +560,7 @@ exit 1"#,
     fn configurations_are_listed_for_absolute_existing_folders() {
         let fixture = Fixture::new("configs", STARTED, "exit 0");
         let listed = configs(ConfigsRequest {
+            runtime: None,
             folder: fixture.folder.to_string_lossy().into_owned(),
         })
         .unwrap();
@@ -502,6 +572,7 @@ exit 1"#,
             }]
         );
         let relative = configs(ConfigsRequest {
+            runtime: None,
             folder: "app".into(),
         });
         assert!(matches!(
@@ -509,6 +580,7 @@ exit 1"#,
             ErrorCode::InvalidRequest
         ));
         let absent = configs(ConfigsRequest {
+            runtime: None,
             folder: fixture.root.join("absent").to_string_lossy().into_owned(),
         });
         assert!(matches!(
@@ -592,4 +664,247 @@ exit 1"#,
         assert_eq!(events[sent]["truncated"], true);
         assert!(events[sent].get("text").is_none());
     }
+}
+
+#[cfg(test)]
+#[path = "devcontainers/tests.rs"]
+mod form_tests;
+
+/// Basic form fields. The resulting document remains the official CLI's input.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields, default)]
+pub struct PrepareRequest {
+    /// Optional human-readable configuration name.
+    pub name: String,
+    /// Image reference, mutually exclusive with dockerfile.
+    pub image: String,
+    /// Workspace-relative Dockerfile path.
+    pub dockerfile: String,
+    /// Workspace-relative build context; defaults to the workspace root.
+    pub build_context: String,
+    /// Container account, empty to preserve the image default.
+    pub remote_user: String,
+    /// Absolute workspace path in the container, empty to preserve the CLI default.
+    pub workspace_folder: String,
+    /// Comma or whitespace separated TCP port numbers published with loopback appPort bindings.
+    pub ports: String,
+    /// Explicit user-authored command executed after creation by the official CLI.
+    pub post_create_command: String,
+}
+
+/// A validated, standard configuration to publish only after explicit user confirmation.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Prepared {
+    /// Workspace-relative write destination; never inside the application installation.
+    pub path: String,
+    /// Pretty-printed JSON consumed by agents and the reference CLI alike.
+    pub content: String,
+}
+
+/// Validates form input and renders standard devcontainer.json without performing I/O.
+pub fn prepare(request: PrepareRequest) -> Result<Prepared, CoreError> {
+    let invalid = |field| {
+        CoreError::new(
+            ErrorCode::InvalidRequest,
+            "Invalid dev container configuration field",
+        )
+        .with_details(json!({"field":field}).to_string())
+    };
+    let image = request.image.trim();
+    let dockerfile = request.dockerfile.trim();
+    if image.is_empty() == dockerfile.is_empty() {
+        return Err(invalid("image"));
+    }
+    let mut value = serde_json::Map::new();
+    if !image.is_empty() {
+        if image.len() > 512
+            || image.starts_with('-')
+            || image.chars().any(char::is_whitespace)
+            || image.chars().any(char::is_control)
+        {
+            return Err(invalid("image"));
+        }
+        value.insert("image".into(), json!(image));
+    } else {
+        let relative = |text: &str| {
+            !text.is_empty()
+                && text.len() <= 1024
+                && !text.starts_with('/')
+                && !text.contains('\\')
+                && !text.contains(':')
+                && !text.chars().any(char::is_control)
+                && text.split('/').all(|part| part != "..")
+        };
+        if !relative(dockerfile) {
+            return Err(invalid("dockerfile"));
+        }
+        let context = if request.build_context.trim().is_empty() {
+            "."
+        } else {
+            request.build_context.trim()
+        };
+        if !relative(context) {
+            return Err(invalid("buildContext"));
+        }
+        // Both paths are relative to .devcontainer/devcontainer.json, not the workspace.
+        value.insert(
+            "build".into(),
+            json!({"dockerfile":format!("../{dockerfile}"),"context":format!("../{context}")}),
+        );
+    }
+    for (key, text, maximum) in [
+        ("name", request.name.trim(), 128),
+        ("remoteUser", request.remote_user.trim(), 64),
+        ("workspaceFolder", request.workspace_folder.trim(), 4096),
+        (
+            "postCreateCommand",
+            request.post_create_command.trim(),
+            8192,
+        ),
+    ] {
+        if text.len() > maximum || text.contains('\0') {
+            return Err(invalid(key));
+        }
+        if key == "remoteUser"
+            && !text.is_empty()
+            && !lithe_remote::client::transport::is_container_user(text)
+        {
+            return Err(invalid(key));
+        }
+        if key == "workspaceFolder"
+            && !text.is_empty()
+            && (!text.starts_with('/') || text.chars().any(char::is_control))
+        {
+            return Err(invalid(key));
+        }
+        if !text.is_empty() {
+            value.insert(key.into(), json!(text));
+        }
+    }
+    let mut ports = Vec::<u16>::new();
+    for port in request
+        .ports
+        .split(|c: char| c == ',' || c.is_whitespace())
+        .filter(|p| !p.is_empty())
+    {
+        let port = port
+            .parse::<u16>()
+            .ok()
+            .filter(|p| *p != 0)
+            .ok_or_else(|| invalid("ports"))?;
+        if !ports.contains(&port) {
+            ports.push(port);
+        }
+        if ports.len() > 64 {
+            return Err(invalid("ports"));
+        }
+    }
+    if !ports.is_empty() {
+        value.insert(
+            "appPort".into(),
+            json!(ports
+                .into_iter()
+                .map(|port| format!("127.0.0.1:{port}:{port}"))
+                .collect::<Vec<_>>()),
+        );
+    }
+    Ok(Prepared {
+        path: ".devcontainer/devcontainer.json".into(),
+        content: format!(
+            "{}\n",
+            serde_json::to_string_pretty(&value).expect("configuration encodes")
+        ),
+    })
+}
+
+/// Resolves a Windows folder in WSL without assuming its automount prefix.
+fn resolve_folder(folder: &str, target: &RuntimeTarget) -> Result<String, CoreError> {
+    if target.wsl.is_none() {
+        return Ok(local_folder(folder)?.to_string_lossy().into_owned());
+    }
+    if folder.is_empty() || folder.len() > 4096 || folder.chars().any(char::is_control) {
+        return Err(CoreError::new(
+            ErrorCode::InvalidRequest,
+            "Invalid WSL workspace folder",
+        ));
+    }
+    if folder.starts_with('/') {
+        return Ok(folder.into());
+    }
+    if !lithe_platform::paths::is_absolute_path(folder, lithe_platform::Platform::Windows) {
+        return Err(CoreError::new(
+            ErrorCode::InvalidRequest,
+            "The WSL workspace folder must be an absolute Linux or Windows path",
+        ));
+    }
+    let argv = vec!["wslpath".into(), "-a".into(), "-u".into(), folder.into()];
+    let result = crate::container_runtimes::capture(target, &argv, NAME_TIMEOUT)?
+        .filter(|o| o.status.is_some_and(|s| s.success()))
+        .ok_or_else(|| {
+            CoreError::new(
+                ErrorCode::InvalidRequest,
+                "Cannot resolve the folder in WSL",
+            )
+        })?;
+    let resolved = String::from_utf8_lossy(&result.stdout).trim().to_string();
+    if !resolved.starts_with('/') {
+        return Err(CoreError::new(
+            ErrorCode::InvalidRequest,
+            "Invalid WSL workspace folder",
+        ));
+    }
+    Ok(resolved)
+}
+
+fn configs_for(folder: &str, target: &RuntimeTarget) -> Result<Vec<DevcontainerConfig>, CoreError> {
+    target.validate()?;
+    let folder = resolve_folder(folder, target)?;
+    configs_for_resolved(&folder, target)
+}
+
+fn configs_for_resolved(
+    folder: &str,
+    target: &RuntimeTarget,
+) -> Result<Vec<DevcontainerConfig>, CoreError> {
+    if target.wsl.is_none() {
+        return Ok(discover(Path::new(folder)));
+    }
+    // Positional arguments keep workspace paths out of shell source. Enumeration is read-only.
+    let script = r#"cd -- "$1" || exit 3
+for file in .devcontainer/devcontainer.json .devcontainer.json .devcontainer/*/devcontainer.json; do
+ [ ! -f "$file" ] || printf '%s\0' "$file"
+done"#;
+    let argv = vec![
+        "sh".into(),
+        "-c".into(),
+        script.into(),
+        "lithe-configs".into(),
+        folder.into(),
+    ];
+    let outcome = crate::container_runtimes::capture(target, &argv, NAME_TIMEOUT)?
+        .ok_or_else(|| CoreError::new(ErrorCode::RuntimeMissing, "WSL is unavailable"))?;
+    if !outcome.status.is_some_and(|s| s.success()) {
+        return Err(CoreError::new(
+            ErrorCode::WorkspaceNotFound,
+            "The folder does not exist in WSL",
+        ));
+    }
+    let mut found = Vec::new();
+    for path in String::from_utf8_lossy(&outcome.stdout)
+        .split('\0')
+        .filter(|path| !path.is_empty() && !path.chars().any(char::is_control))
+        .take(66)
+    {
+        if !found
+            .iter()
+            .any(|config: &DevcontainerConfig| config.path == path)
+        {
+            found.push(DevcontainerConfig {
+                path: path.into(),
+                name: None,
+            });
+        }
+    }
+    Ok(found)
 }
