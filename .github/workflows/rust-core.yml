@@ -86,16 +86,12 @@ jobs:
         with:
           components: clippy, rustfmt
           targets: x86_64-pc-windows-msvc
-      # Only downloaded crates are cached: build output would not fit the
-      # repository cache quota next to the SDK end-to-end cache.
-      - uses: actions/cache@v6
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-          key: rust-core-cargo-${{ hashFiles('rust/Cargo.lock', 'scripts/rust-core/comment-lexer/Cargo.lock') }}
-          restore-keys: rust-core-cargo-
+          workspaces: rust -> target
+          shared-key: rust-core-linux
+          cache-on-failure: true
 
       - name: Check formatting
         run: cargo fmt --manifest-path rust/Cargo.toml --all -- --check
@@ -148,6 +144,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@1.100.0
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust -> target
+          shared-key: rust-core-host
+          cache-on-failure: true
 
       - name: Test
         run: |

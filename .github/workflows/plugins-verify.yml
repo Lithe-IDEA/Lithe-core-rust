@@ -52,6 +52,8 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 20
+          cache: npm
+          cache-dependency-path: shared/plugins/sdk/node/package-lock.json
 
       - name: Test
         run: node --test shared/plugins/sdk/node/test/*.test.mjs
@@ -79,6 +81,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+          cache: maven
 
       - name: Build and test on Java 8
         env:
@@ -94,6 +97,12 @@ jobs:
       # The SDK supports Rust 1.87 and newer: the tests run on that release,
       # and formatting and lints on the toolchain rust-toolchain.toml pins.
       - uses: dtolnay/rust-toolchain@1.87
+      - name: Cache Rust SDK dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: shared/plugins/sdk/rust -> target
+          shared-key: sdk-rust
+          cache-on-failure: true
       - name: Test on the oldest supported Rust
         run: cargo +1.87 test --locked --manifest-path shared/plugins/sdk/rust/Cargo.toml
       - uses: dtolnay/rust-toolchain@1.100.0
@@ -137,6 +146,8 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 20
+          cache: npm
+          cache-dependency-path: shared/plugins/sdk/node/package-lock.json
       - name: Set up Java 8 runtime
         id: java8
         uses: actions/setup-java@v5
@@ -148,6 +159,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+          cache: maven
       - uses: dtolnay/rust-toolchain@1.100.0
       # The Go sample builds with the release the SDK's go.mod names.
       - uses: actions/setup-go@v7
@@ -155,15 +167,14 @@ jobs:
           go-version-file: shared/plugins/sdk/go/go.mod
           cache: false
 
-      - uses: actions/cache@v6
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            rust/target
-            shared/plugins/sdk/rust/target
-          key: sdk-e2e-${{ runner.os }}-${{ hashFiles('rust/Cargo.lock', 'shared/plugins/sdk/rust/Cargo.lock') }}
-          restore-keys: sdk-e2e-${{ runner.os }}-
+          workspaces: |
+            rust -> target
+            shared/plugins/sdk/rust -> target
+          shared-key: sdk-e2e
+          cache-on-failure: true
 
       - name: Run the SDK scenarios against this Core
         env:
