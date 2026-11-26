@@ -9,6 +9,10 @@ publish = false
 [features]
 mcp = ["dep:rmcp", "dep:reqwest"]
 
+[package.metadata.lithe-ci]
+hosts = ["windows"]
+test-features = ["mcp"]
+
 [dependencies]
 axum = "0.8"
 fs2 = "0.4"
@@ -26,5 +30,11 @@ name = "lithe-mcp"
 path = "src/bin/lithe-mcp.rs"
 required-features = ["mcp"]
 
+[[test]]
+name = "mcp_protocol"
+required-features = ["mcp"]
+
 [dev-dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
+tempfile = "3"
+tokio = { version = "1", features = ["io-util", "process"] }

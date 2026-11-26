@@ -6,7 +6,6 @@
     "ttlMs": 0,
     "cacheScope": "private"
   },
-  "toolCount": 17,
   "modes": [
     "legacy",
     "modern",
