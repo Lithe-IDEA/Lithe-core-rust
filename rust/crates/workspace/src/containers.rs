@@ -257,21 +257,6 @@ printf 'abc123\tweb,alias\tnginx:1\tUp 2 hours\n'"#,
     }
 
     #[test]
-    fn failed_listings_are_available_with_the_message_and_no_containers() {
-        let fake = FakeEngine::new(
-            "stopped",
-            "printf 'Cannot connect to the Docker daemon. Is the docker daemon running?\\n' >&2\nexit 1",
-        );
-        let listed = list_with(here(ContainerEngine::Docker), Some(&fake.program)).unwrap();
-        assert!(listed.available);
-        assert!(listed.containers.is_empty());
-        assert_eq!(
-            listed.diagnostics,
-            "Cannot connect to the Docker daemon. Is the docker daemon running?"
-        );
-    }
-
-    #[test]
     fn a_missing_engine_is_unavailable() {
         let fake = FakeEngine::new("missing", "exit 0");
         let missing = fake.root.join("absent").to_string_lossy().into_owned();
@@ -290,5 +275,28 @@ printf 'abc123\tweb,alias\tnginx:1\tUp 2 hours\n'"#,
         assert!(decode(serde_json::json!({"engine": "nerdctl"})).is_err());
         assert!(decode(serde_json::json!({"engine": "docker", "program": "sh"})).is_err());
         assert!(decode(serde_json::json!({})).is_err());
+    }
+}
+
+#[cfg(test)]
+mod result_tests {
+    use super::*;
+
+    #[test]
+    fn failed_listings_are_available_with_the_message_and_no_containers() {
+        // This contract concerns an engine that ran and exited nonzero. A
+        // freshly written executable adds an unrelated spawn failure boundary;
+        // CLI launch and arguments are covered by the Unix fixture above.
+        let listed = answer(
+            false,
+            b"",
+            b"Cannot connect to the Docker daemon. Is the docker daemon running?\n",
+        );
+        assert!(listed.available);
+        assert!(listed.containers.is_empty());
+        assert_eq!(
+            listed.diagnostics,
+            "Cannot connect to the Docker daemon. Is the docker daemon running?"
+        );
     }
 }
