@@ -1,4 +1,5 @@
 use crate::execute_json;
+use lithe_plugin_rpc::workflow::{check_params, DIRECTORY_TYPE_ICONS};
 use serde_json::{json, Value};
 
 fn execute(command: &str, payload: Value) -> Value {
@@ -58,6 +59,18 @@ fn relocate_matches_the_shared_fixture() {
             "{}",
             case["id"]
         );
+    }
+}
+
+#[test]
+fn resolve_matches_the_shared_fixture() {
+    for case in fixture()["resolve"].as_array().unwrap() {
+        let response = execute(
+            "workspace.resolveDirectoryPresentation",
+            case["request"].clone(),
+        );
+        assert_eq!(response["ok"], true, "{}: {response}", case["id"]);
+        assert_eq!(response["data"], case["response"], "{}", case["id"]);
     }
 }
 
@@ -428,4 +441,137 @@ fn plugin_directory_types_and_marks_resolve_with_layer_precedence() {
     assert!(excluded.contains(&json!("vendor/out")));
     assert!(excluded.contains(&json!(".cache/v1")));
     assert!(!excluded.contains(&json!("generated/api")));
+}
+
+/// Whatever `workspace/setDirectoryTypes` and `workspace/setDirectoryMarks` accept from a
+/// plugin must also resolve, so one plugin's registration can never make the host's
+/// presentation request fail for every other layer.
+#[test]
+fn plugin_contributions_the_rpc_accepts_always_resolve() {
+    let context = json!({"contextID": "workspace", "generation": 1});
+    let base =
+        json!({"id": "plugin.sample", "name": "Sample", "icon": "folder", "color": "#0d9488"});
+    let long_id = format!("plugin.{}", "a".repeat(57));
+    let too_long_id = format!("plugin.{}", "a".repeat(58));
+    let mut types = Vec::new();
+    let mut vary = |field: &str, values: Vec<Value>| {
+        for value in values {
+            let mut item = base.clone();
+            item[field] = value;
+            types.push(item);
+        }
+    };
+    let icons = DIRECTORY_TYPE_ICONS
+        .iter()
+        .copied()
+        .chain(["module", "package", "bogus", ""]);
+    vary("icon", icons.map(|icon| json!(icon)).collect());
+    vary(
+        "name",
+        ["Sample", "  Padded  ", " ", "", "\t"]
+            .map(|name| json!(name))
+            .into_iter()
+            .chain([json!("n".repeat(64)), json!("n".repeat(65))])
+            .collect(),
+    );
+    vary(
+        "color",
+        ["#0D9488", "#0d948", "0d9488", " #0d9488", "#0d9488 "]
+            .map(|color| json!(color))
+            .into(),
+    );
+    vary(
+        "tag",
+        vec![json!(""), json!("t".repeat(24)), json!("t".repeat(25))],
+    );
+    vary(
+        "matchGlob",
+        vec![
+            json!("gen/**"),
+            json!("g".repeat(256)),
+            json!("g".repeat(257)),
+        ],
+    );
+    vary(
+        "id",
+        vec![
+            json!("plugin.a-b_c.d"),
+            json!("plugin."),
+            json!("plugin.A"),
+            json!("custom.a"),
+            json!(long_id),
+            json!(too_long_id),
+        ],
+    );
+    let mut accepted = 0;
+    for item in types {
+        let params = json!({"context": context, "types": [item]});
+        if check_params("lithe/host/workspace/setDirectoryTypes", &params).is_err() {
+            continue;
+        }
+        accepted += 1;
+        let mut contributed = item.clone();
+        contributed["pluginId"] = json!("com.example.sample");
+        let response = execute(
+            "workspace.resolveDirectoryPresentation",
+            json!({"rules": {}, "pluginTypes": [contributed], "paths": ["x"]}),
+        );
+        assert_eq!(response["ok"], true, "{item}: {response}");
+    }
+    assert!(accepted > DIRECTORY_TYPE_ICONS.len(), "{accepted}");
+
+    let mut marks = Vec::new();
+    let paths = [
+        "src",
+        "src/main",
+        "a b",
+        "目录/子目录",
+        "a:b",
+        "a/./b",
+        ".",
+        "a//b",
+    ];
+    for path in paths
+        .map(|path| json!(path))
+        .into_iter()
+        .chain([json!("x".repeat(1024))])
+    {
+        marks.push(json!({"path": path, "role": "sources"}));
+    }
+    let roles = [
+        "plain",
+        "sources",
+        "tests",
+        "resources",
+        "testResources",
+        "generated",
+        "excluded",
+        "module",
+        "package",
+        "plugin.sample",
+        "custom.sample",
+        "bogus",
+    ];
+    for role in roles {
+        marks.push(json!({"path": "x", "role": role}));
+    }
+    for color in ["#ABCDEF", "#abc", "red"] {
+        marks.push(json!({"path": "x", "role": "sources", "color": color}));
+    }
+    let mut accepted = 0;
+    for mark in marks {
+        let params = json!({"context": context, "marks": [mark]});
+        if check_params("lithe/host/workspace/setDirectoryMarks", &params).is_err() {
+            continue;
+        }
+        accepted += 1;
+        let mut contributed = mark.clone();
+        contributed["pluginId"] = json!("com.example.sample");
+        let response = execute(
+            "workspace.resolveDirectoryPresentation",
+            json!({"rules": {}, "pluginMarks": [contributed], "paths": ["x"]}),
+        );
+        assert_eq!(response["ok"], true, "{mark}: {response}");
+    }
+    assert!(accepted > 10, "{accepted}");
 }

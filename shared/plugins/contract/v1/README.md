@@ -4585,6 +4585,36 @@ text is nonempty and at most 256 bytes, tooltip 1024, priority an integer in
 -1000–1000 (default 0). Higher priority displays first, ties use host-stable IDs.
 A `commandID`, if present, names a command declared by the same plugin.
 
+`workspace/setDirectoryTypes` and `workspace/setDirectoryMarks` each replace
+the whole list this session registered in this context: a new call overwrites
+the previous list and an empty list removes it. Each method holds one of the
+16 limited registrations from its first call; context closure, disable, update
+and backend end remove what it registered. Nothing is persisted or written to
+project files. `count` is the number of entries in the call. A type has a
+unique `id`: `plugin.` followed by lowercase ASCII letters, digits, `.`, `_` or
+`-`, at most 64 bytes in total. `name` is nonempty after trimming, single-line,
+at most 64 bytes; `tag` is at most 24 bytes; `icon` is one of `folder`,
+`sources`, `tests`, `resources`, `generated`, `excluded`, `star`, `book`,
+`archive`, `database` or `gear`; `color` is `#rrggbb`. `matchGlob` is at most
+256 bytes of comma-separated patterns with `*`, `?` and `**`; a pattern with a
+`/` matches the workspace-relative path, one without matches the directory name.
+A mark has a unique workspace-relative `path`: nonempty, at most 1024 bytes,
+`/`-separated, without a leading or trailing `/`, an empty, `.` or `..`
+segment, `\`, `:` or a control character. Its `role` is `plain`, `sources`,
+`tests`, `resources`, `testResources`, `generated`, `excluded` or a `plugin.*`
+ID, which may name a type another plugin registers; a mark whose type no live
+session registered displays as a plain folder. `color` is optional `#rrggbb`.
+
+The host merges every live registration below the user's own marks, colors and
+cancelled exclusions and the project's shared directory rules, and above
+glob-matched types and `.gitignore`. When two plugins register the same type ID
+or mark the same path, the registration of the plugin whose ID sorts first wins.
+A directory marked `excluded`, or with a type whose `excludeIndexing` is true,
+leaves indexing and project search; so does a directory such a type's
+`matchGlob` matches. The permission prompt states this. Users may also assign a
+plugin type from the project tree; that assignment is the user's own mark and
+remains after the plugin stops.
+
 `views/refresh` only invalidates that plugin/session/context's visible instance;
 unknown or closed instances return `notFound`. Refreshes coalesce with in-flight
 calls and retain the old view until a valid result arrives. Tree items may set

@@ -15,8 +15,14 @@
 //!   move, drops them after a delete, or hands them to the state of another workspace
 //!   root.
 //! - `workspace.resolveDirectoryPresentation` merges user rules, optional shared project
-//!   rules, glob-matched custom types and Git-ignored paths into deterministic per-path
-//!   tree presentation metadata and manual indexing exclusions.
+//!   rules, optional plugin-contributed directory types and marks, glob-matched custom
+//!   types and Git-ignored paths into deterministic per-path tree presentation metadata
+//!   and manual indexing exclusions. Layers win in the order user > shared > plugin >
+//!   glob > vcs > plain.
+//!
+//! Plugin types and marks are never persisted: the host keeps what each plugin session
+//! registered through `workspace/setDirectoryTypes` and `workspace/setDirectoryMarks`, drops
+//! it when the session ends, and sends the live set with every resolve request.
 //!
 //! Directory keys are compared as paths: with `caseInsensitive` set, keys that differ only
 //! by case name the same directory. Stored keys keep the spelling they were written with.
@@ -44,6 +50,9 @@ const MAX_TYPE_NAME_LEN: usize = 64;
 const MAX_TYPE_TAG_LEN: usize = 24;
 /// Maximum byte length of a custom type match glob pattern.
 const MAX_GLOB_LEN: usize = 256;
+/// Largest number of plugin-contributed directory types one resolve request may carry,
+/// summed over every plugin session the host forwards.
+const MAX_PLUGIN_TYPES: usize = 256;
 
 /// Built-in directory roles recognized by Core.
 const BUILTIN_ROLES: [&str; 9] = [
@@ -58,7 +67,8 @@ const BUILTIN_ROLES: [&str; 9] = [
     "package",
 ];
 
-/// Icon names allowed for custom directory types.
+/// Icon names allowed for custom and plugin directory types. `lithe-plugin-rpc` keeps the
+/// same list for `workspace/setDirectoryTypes`; `lithe-core` tests that the two agree.
 const ALLOWED_ICONS: [&str; 11] = [
     "folder",
     "sources",
@@ -201,35 +211,47 @@ struct RelocateRequest {
     target: Option<Rules>,
 }
 
-/// A directory type dynamically contributed by a plugin session.
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
+/// A directory type dynamically contributed by a plugin session. The derived order (plugin
+/// ID first, then type ID) decides which duplicate contribution wins.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct PluginDirectoryType {
     /// Contributing plugin identifier.
     plugin_id: String,
     /// Type identifier starting with `plugin.` (for example `plugin.migrations`).
     id: String,
+    /// Human-readable name displayed in menus and settings; blank names are refused.
     name: String,
+    /// Optional short label shown beside directory names in the project tree.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     tag: String,
+    /// Built-in icon identifier from [`ALLOWED_ICONS`].
     icon: String,
+    /// `#rrggbb` accent color; resolved entries carry it in lowercase.
     color: String,
+    /// Whether rows of this type receive a subtle background tint.
     #[serde(default)]
     tint_bg: bool,
+    /// Whether the directory name text is tinted with `color`.
     #[serde(default)]
     tint_text: bool,
+    /// Whether descendant rows inherit the background tint.
     #[serde(default)]
     inherit_bg: bool,
+    /// Whether directories of this type are excluded from workspace indexing and search.
     #[serde(default)]
     exclude_indexing: bool,
+    /// Whether directories of this type carry a generated/read-only hint.
     #[serde(default)]
     read_only_hint: bool,
+    /// Optional comma-separated workspace-relative glob patterns for automatic matching.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     match_glob: String,
 }
 
-/// A directory mark dynamically contributed by a plugin session for one workspace-relative path.
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
+/// A directory mark dynamically contributed by a plugin session for one workspace-relative
+/// path. The derived order (plugin ID first, then path) decides which duplicate mark wins.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct PluginDirectoryMark {
     /// Contributing plugin identifier.
@@ -262,7 +284,8 @@ struct ResolvePresentationRequest {
     git_excluded: Vec<String>,
     #[serde(default)]
     case_insensitive: bool,
-    /// Workspace-relative paths (directories or files) to resolve presentation for.
+    /// Workspace-relative paths (directories or files) to resolve presentation for. It may
+    /// be omitted or empty: `manualExcludedDirectories` still covers every explicit mark.
     #[serde(default)]
     paths: Vec<String>,
 }
@@ -544,8 +567,12 @@ pub fn relocate_command(payload: Value) -> Result<Value, CoreError> {
 }
 
 /// Resolves deterministic presentation metadata and effective manual indexing exclusions
-/// across local user rules, optional shared project rules, glob-matched custom types and
-/// `.gitignore` exclusions (`workspace.resolveDirectoryPresentation`).
+/// across local user rules, optional shared project rules, plugin-contributed types and
+/// marks, glob-matched custom types and `.gitignore` exclusions
+/// (`workspace.resolveDirectoryPresentation`).
+///
+/// When two plugins contribute the same `plugin.*` type ID or mark the same path, the entry
+/// of the plugin whose ID sorts first wins, so the result does not depend on request order.
 pub fn resolve_presentation_command(payload: Value) -> Result<Value, CoreError> {
     let request: ResolvePresentationRequest = parse(payload)?;
     validate_rules(&request.rules)?;
@@ -558,7 +585,7 @@ pub fn resolve_presentation_command(payload: Value) -> Result<Value, CoreError> 
             "Too many paths in directory presentation request",
         ));
     }
-    if request.plugin_types.len() > 256 {
+    if request.plugin_types.len() > MAX_PLUGIN_TYPES {
         return Err(CoreError::new(
             ErrorCode::InvalidRequest,
             "Too many plugin directory types in presentation request",
@@ -575,7 +602,7 @@ pub fn resolve_presentation_command(payload: Value) -> Result<Value, CoreError> 
     let mut custom_types: BTreeMap<String, CustomDirectoryType> = BTreeMap::new();
     let mut plugin_type_owners: BTreeMap<String, String> = BTreeMap::new();
     let mut sorted_plugin_types = request.plugin_types;
-    sorted_plugin_types.sort_by(|a, b| a.plugin_id.cmp(&b.plugin_id).then(a.id.cmp(&b.id)));
+    sorted_plugin_types.sort();
     for pt in sorted_plugin_types {
         if pt.plugin_id.trim().is_empty() {
             return Err(CoreError::new(
@@ -595,6 +622,12 @@ pub fn resolve_presentation_command(payload: Value) -> Result<Value, CoreError> 
             return Err(CoreError::new(
                 ErrorCode::InvalidRequest,
                 "Invalid plugin directory type tag or matchGlob",
+            ));
+        }
+        if !ALLOWED_ICONS.contains(&pt.icon.as_str()) {
+            return Err(CoreError::new(
+                ErrorCode::InvalidRequest,
+                "Plugin directory type icon must be a built-in icon",
             ));
         }
         if !custom_types.contains_key(&pt.id) {
@@ -649,7 +682,7 @@ pub fn resolve_presentation_command(payload: Value) -> Result<Value, CoreError> 
     let mut plugin_marks_map: BTreeMap<String, (String, String)> = BTreeMap::new();
     let mut plugin_colors_map: BTreeMap<String, (String, String)> = BTreeMap::new();
     let mut sorted_plugin_marks = request.plugin_marks;
-    sorted_plugin_marks.sort_by(|a, b| a.plugin_id.cmp(&b.plugin_id).then(a.path.cmp(&b.path)));
+    sorted_plugin_marks.sort();
     for pm in &sorted_plugin_marks {
         if pm.plugin_id.trim().is_empty() {
             return Err(CoreError::new(
@@ -658,7 +691,8 @@ pub fn resolve_presentation_command(payload: Value) -> Result<Value, CoreError> 
             ));
         }
         validate_path(&pm.path)?;
-        if !BUILTIN_ROLES.contains(&pm.role.as_str()) && validate_plugin_type_id(&pm.role).is_err() {
+        if !BUILTIN_ROLES.contains(&pm.role.as_str()) && validate_plugin_type_id(&pm.role).is_err()
+        {
             return Err(CoreError::new(
                 ErrorCode::InvalidRequest,
                 "Plugin directory mark role must be a built-in role or plugin.* type ID",
@@ -723,7 +757,10 @@ pub fn resolve_presentation_command(payload: Value) -> Result<Value, CoreError> 
             &git_excluded,
         );
         if resolved.excluded
-            && matches!(resolved.source.as_str(), "user" | "shared" | "plugin" | "glob")
+            && matches!(
+                resolved.source.as_str(),
+                "user" | "shared" | "plugin" | "glob"
+            )
             && !user_included.contains(&ident.key(raw_path))
         {
             manual_excluded.insert(raw_path.clone());
@@ -777,11 +814,19 @@ fn resolve_one(
 
     // Determine direct role, winning source, and optional contributing plugin ID.
     let (role, mut source, plugin_id) = if let Some(role) = user_role {
-        (role.clone(), "user".to_owned(), plugin_type_owners.get(role).cloned())
+        (
+            role.clone(),
+            "user".to_owned(),
+            plugin_type_owners.get(role).cloned(),
+        )
     } else if user_color.is_some() {
         ("plain".to_owned(), "user".to_owned(), None)
     } else if let Some(role) = shared_role {
-        (role.clone(), "shared".to_owned(), plugin_type_owners.get(role).cloned())
+        (
+            role.clone(),
+            "shared".to_owned(),
+            plugin_type_owners.get(role).cloned(),
+        )
     } else if shared_color.is_some() {
         ("plain".to_owned(), "shared".to_owned(), None)
     } else if let Some((role, pid)) = plugin_mark {
@@ -789,7 +834,11 @@ fn resolve_one(
     } else if let Some((_, pid)) = plugin_color {
         ("plain".to_owned(), "plugin".to_owned(), Some(pid.clone()))
     } else if let Some(ct) = glob_type {
-        (ct.id.clone(), "glob".to_owned(), plugin_type_owners.get(&ct.id).cloned())
+        (
+            ct.id.clone(),
+            "glob".to_owned(),
+            plugin_type_owners.get(&ct.id).cloned(),
+        )
     } else if is_vcs_excluded {
         ("excluded".to_owned(), "vcs".to_owned(), None)
     } else {
@@ -805,11 +854,13 @@ fn resolve_one(
         .or_else(|| plugin_color.map(|(c, _)| c.clone()))
         .or(base_color);
 
-    let direct_bg = if user_color.is_some() || shared_color.is_some() || plugin_color.is_some() || base_tint_bg {
-        effective_color.clone()
-    } else {
-        None
-    };
+    let direct_bg =
+        if user_color.is_some() || shared_color.is_some() || plugin_color.is_some() || base_tint_bg
+        {
+            effective_color.clone()
+        } else {
+            None
+        };
 
     // Walk ancestors (nearest first) for inherited background tint and exclusion state.
     let mut bg_color = direct_bg;
@@ -1149,9 +1200,9 @@ fn validate_plugin_type_id(id: &str) -> Result<(), CoreError> {
     };
     if rest.is_empty()
         || id.len() > MAX_TYPE_ID_LEN
-        || !rest
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'_' | b'-' | b'.'))
+        || !rest.bytes().all(|b| {
+            b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'_' | b'-' | b'.')
+        })
     {
         return Err(CoreError::new(
             ErrorCode::InvalidRequest,
