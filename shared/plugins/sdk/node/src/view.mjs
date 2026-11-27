@@ -4,8 +4,11 @@
 
 import { PluginSdkError } from './errors.mjs';
 
-const KINDS = new Set(['open', 'close', 'click', 'change', 'select', 'activate', 'viewport', 'resize', 'settings']);
-const OPTIONAL_TEXT = ['node', 'canvas', 'setting', 'item'];
+const KINDS = new Set([
+  'open', 'close', 'click', 'change', 'select', 'activate', 'viewport', 'resize', 'settings',
+  'refresh', 'expand', 'loadMore',
+]);
+const OPTIONAL_TEXT = ['node', 'canvas', 'setting', 'item', 'cursor'];
 
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
 const isAbsent = (value) => value === undefined || value === null;

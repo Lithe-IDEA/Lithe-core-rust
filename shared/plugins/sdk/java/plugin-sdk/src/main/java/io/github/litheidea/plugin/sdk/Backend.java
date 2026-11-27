@@ -817,7 +817,7 @@ public final class Backend {
                 handler = commandId instanceof String ? commandHandlers.get(commandId) : null;
             }
             if (handler == null) {
-                diagnostics().degraded("notification", "command_unhandled");
+                diagnostics().failed("notification", "command_unhandled");
                 return;
             }
             Map<String, Object> context = workspaceContext(params.get("context"));

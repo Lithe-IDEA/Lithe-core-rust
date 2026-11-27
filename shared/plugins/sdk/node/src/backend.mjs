@@ -599,7 +599,7 @@ class Backend {
       handler = this.#commandHandlers.get(params.commandID);
       event = { commandID: params.commandID, workspaceContext: isContextReference(params.context) ? params.context : null };
       if (!handler) {
-        this.#diagnostics().degraded('notification', 'command_unhandled');
+        this.#diagnostics().terminal('notification', { code: 'command_unhandled' }, 0);
         return;
       }
     } else if (method === HOST_NOTIFICATIONS.didChangeContexts) {
