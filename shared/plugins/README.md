@@ -138,7 +138,7 @@ SDK 与插件后端在构建时下载，并按锁定的 SHA-256（或 Git commit
 | --- | --- |
 | [Lua](https://github.com/Lithe-IDEA/lithe-plugin-lua) | **模板**；随包附带语言服务器（LuaLS），运行当前文件 |
 | [Go](https://github.com/Lithe-IDEA/lithe-plugin-go) | 使用用户自己安装的 gopls，运行 main 包和 `go test` |
-| [PHP](https://github.com/Lithe-IDEA/lithe-plugin-php) | 使用用户自己安装的 Intelephense（许可证不允许随包分发），PHPUnit |
+| [PHP](https://github.com/Lithe-IDEA/lithe-plugin-php) | 通过系统命令启动语言服务器，声明式运行和测试 |
 | [Gradle](https://github.com/Lithe-IDEA/lithe-plugin-gradle) | 纯声明式构建系统，不需要后端 |
 | [Maven](https://github.com/Lithe-IDEA/lithe-plugin-maven) | 用 Java SDK 写的构建后端 |
 | [Cargo](https://github.com/Lithe-IDEA/lithe-plugin-cargo) | 用 Node.js SDK 写的构建后端和插件设置 |
@@ -362,7 +362,7 @@ The [Maven plugin](https://github.com/Lithe-IDEA/lithe-plugin-maven)'s `sdk.lock
 | --- | --- |
 | [Lua](https://github.com/Lithe-IDEA/lithe-plugin-lua) | **Template**; a packaged language server (LuaLS) and running the current file |
 | [Go](https://github.com/Lithe-IDEA/lithe-plugin-go) | The user's own gopls installation, running the main package and `go test` |
-| [PHP](https://github.com/Lithe-IDEA/lithe-plugin-php) | The user's own Intelephense installation (its license forbids bundling), PHPUnit |
+| [PHP](https://github.com/Lithe-IDEA/lithe-plugin-php) | A system-command language server and declarative run and test actions |
 | [Gradle](https://github.com/Lithe-IDEA/lithe-plugin-gradle) | A purely declarative build system with no backend |
 | [Maven](https://github.com/Lithe-IDEA/lithe-plugin-maven) | A build backend written with the Java SDK |
 | [Cargo](https://github.com/Lithe-IDEA/lithe-plugin-cargo) | A build backend and plugin settings written with the Node.js SDK |

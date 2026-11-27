@@ -171,8 +171,8 @@ mod tests {
     #[test]
     fn github_repository_accepts_only_owner_and_name_urls() {
         assert_eq!(
-            github_repository("https://github.com/Lithe-IDEA/lithe-plugin-java"),
-            Some(("Lithe-IDEA", "lithe-plugin-java"))
+            github_repository("https://github.com/Fixture-Owner/synthetic-repository"),
+            Some(("Fixture-Owner", "synthetic-repository"))
         );
         assert_eq!(
             github_repository("https://github.com/a.b/c_d/"),
