@@ -4535,6 +4535,8 @@ and frequency limits. Native hosts must own all tasks and release their leases.
 | `clipboard/readText` | `clipboard.read` | none | `{text}` |
 | `clipboard/writeText` | `clipboard.write` | `text` | `null` |
 | `workspace/reveal` | `workspace.reveal` | `resource` | `null` |
+| `workspace/setDirectoryTypes` | `workspace.directoryMarks` | `types` (`[{id,name,tag?,icon,color,tintBg?,tintText?,inheritBg?,excludeIndexing?,readOnlyHint?,matchGlob?}]`, max 32; `id` starts with `plugin.`) | `{count}` |
+| `workspace/setDirectoryMarks` | `workspace.directoryMarks` | `marks` (`[{path,role,color?}]`, max 500; `role` is a built-in role or `plugin.*` type ID) | `{count}` |
 | `network/request` | `network.request` | `url,method?,headers?,body?,timeoutMilliseconds?,maximumResponseBytes?` | `{status,headers,body,encoding}` |
 
 Quick-pick `items` contains at most 1000 objects `{id,label,description?,detail?,picked?}`.

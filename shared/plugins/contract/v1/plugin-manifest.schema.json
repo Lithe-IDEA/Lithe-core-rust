@@ -102,7 +102,7 @@
           "languageServer.request",
           "documents.contentProvider",
           "documents.save",
-          "workspace.files.write", "window.input", "views.refresh", "output.write", "window.progress", "statusBar.write", "clipboard.read", "clipboard.write", "workspace.reveal", "network.request"] }
+          "workspace.files.write", "window.input", "views.refresh", "output.write", "window.progress", "statusBar.write", "clipboard.read", "clipboard.write", "workspace.reveal", "workspace.directoryMarks", "network.request"] }
     },
     "activationEvents": {
       "type": "array",

@@ -333,3 +333,99 @@ fn custom_icons_can_be_added_referenced_and_deleted_with_fallback() {
     assert!(deleted["data"]["rules"].get("customIcons").is_none());
     assert_eq!(deleted["data"]["rules"]["customTypes"][0]["icon"], "folder");
 }
+
+#[test]
+fn plugin_directory_types_and_marks_resolve_with_layer_precedence() {
+    let empty = json!({"marks": {}, "includedDirectories": [], "previousRoles": {}});
+
+    // User can manually assign a plugin.* role to a folder.
+    let user_assigned = execute(
+        "workspace.reduceDirectoryAction",
+        json!({
+            "path": "manual-plugin",
+            "action": {"kind": "setRole", "role": "plugin.migrations"},
+            "rules": empty
+        }),
+    );
+    assert_eq!(user_assigned["ok"], true, "{user_assigned}");
+    let rules = user_assigned["data"]["rules"].clone();
+
+    // User also overrides a plugin-excluded folder back to sources.
+    let user_override = execute(
+        "workspace.reduceDirectoryAction",
+        json!({
+            "path": "generated/api",
+            "action": {"kind": "setRole", "role": "sources"},
+            "rules": rules
+        }),
+    );
+    assert_eq!(user_override["ok"], true, "{user_override}");
+    let rules = user_override["data"]["rules"].clone();
+
+    let resolved = execute(
+        "workspace.resolveDirectoryPresentation",
+        json!({
+            "rules": rules,
+            "pluginTypes": [
+                {
+                    "pluginId": "com.example.sql",
+                    "id": "plugin.migrations",
+                    "name": "SQL Migrations",
+                    "tag": "migrations",
+                    "icon": "database",
+                    "color": "#0d9488",
+                    "tintBg": true,
+                    "inheritBg": true
+                },
+                {
+                    "pluginId": "com.example.gen",
+                    "id": "plugin.cache",
+                    "name": "Build Cache",
+                    "tag": "cache",
+                    "icon": "archive",
+                    "color": "#64748b",
+                    "excludeIndexing": true,
+                    "matchGlob": ".cache/**"
+                }
+            ],
+            "pluginMarks": [
+                {"pluginId": "com.example.sql", "path": "db/migrations", "role": "plugin.migrations"},
+                {"pluginId": "com.example.gen", "path": "generated/api", "role": "plugin.cache"},
+                {"pluginId": "com.example.gen", "path": "vendor/out", "role": "excluded"}
+            ],
+            "paths": [
+                "db/migrations",
+                "manual-plugin",
+                "generated/api",
+                "vendor/out",
+                ".cache/v1"
+            ]
+        }),
+    );
+    assert_eq!(resolved["ok"], true, "{resolved}");
+    let entries = &resolved["data"]["entries"];
+
+    // 1. Plugin mark resolves with plugin source and pluginId.
+    assert_eq!(entries["db/migrations"]["role"], "plugin.migrations");
+    assert_eq!(entries["db/migrations"]["source"], "plugin");
+    assert_eq!(entries["db/migrations"]["pluginId"], "com.example.sql");
+    assert_eq!(entries["db/migrations"]["tag"], "migrations");
+
+    // 2. User manually assigning plugin.migrations resolves with user source and plugin styling.
+    assert_eq!(entries["manual-plugin"]["role"], "plugin.migrations");
+    assert_eq!(entries["manual-plugin"]["source"], "user");
+    assert_eq!(entries["manual-plugin"]["icon"], "database");
+
+    // 3. User override beats plugin-excluding mark and removes it from manualExcludedDirectories.
+    assert_eq!(entries["generated/api"]["role"], "sources");
+    assert_eq!(entries["generated/api"]["source"], "user");
+    assert_eq!(entries["generated/api"]["excluded"], false);
+
+    // 4. Plugin-marked excluded directory & plugin glob-excluded directory appear in manualExcludedDirectories.
+    let excluded = resolved["data"]["manualExcludedDirectories"]
+        .as_array()
+        .unwrap();
+    assert!(excluded.contains(&json!("vendor/out")));
+    assert!(excluded.contains(&json!(".cache/v1")));
+    assert!(!excluded.contains(&json!("generated/api")));
+}

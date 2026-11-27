@@ -201,6 +201,48 @@ struct RelocateRequest {
     target: Option<Rules>,
 }
 
+/// A directory type dynamically contributed by a plugin session.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct PluginDirectoryType {
+    /// Contributing plugin identifier.
+    plugin_id: String,
+    /// Type identifier starting with `plugin.` (for example `plugin.migrations`).
+    id: String,
+    name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    tag: String,
+    icon: String,
+    color: String,
+    #[serde(default)]
+    tint_bg: bool,
+    #[serde(default)]
+    tint_text: bool,
+    #[serde(default)]
+    inherit_bg: bool,
+    #[serde(default)]
+    exclude_indexing: bool,
+    #[serde(default)]
+    read_only_hint: bool,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    match_glob: String,
+}
+
+/// A directory mark dynamically contributed by a plugin session for one workspace-relative path.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct PluginDirectoryMark {
+    /// Contributing plugin identifier.
+    plugin_id: String,
+    /// Workspace-relative directory path.
+    path: String,
+    /// Built-in role or `plugin.*` type ID.
+    role: String,
+    /// Optional `#rrggbb` color override.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    color: Option<String>,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ResolvePresentationRequest {
@@ -209,6 +251,12 @@ struct ResolvePresentationRequest {
     /// Optional project-shared rules (e.g. `.lithe/directories.json`, lower than user rules).
     #[serde(default)]
     shared_rules: Option<Rules>,
+    /// Optional plugin-contributed directory types (lower than user/shared custom types).
+    #[serde(default)]
+    plugin_types: Vec<PluginDirectoryType>,
+    /// Optional plugin-contributed directory marks (lower than user/shared marks, above glob/VCS).
+    #[serde(default)]
+    plugin_marks: Vec<PluginDirectoryMark>,
     /// Workspace-relative directories currently excluded by `.gitignore`.
     #[serde(default)]
     git_excluded: Vec<String>,
@@ -223,10 +271,13 @@ struct ResolvePresentationRequest {
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct ResolvedDirectoryEntry {
-    /// Effective role or custom type ID (`plain` when unmarked).
+    /// Effective role or custom/plugin type ID (`plain` when unmarked).
     role: String,
-    /// Winning layer: `user`, `shared`, `glob`, `vcs`, `inherited`, or `plain`.
+    /// Winning layer: `user`, `shared`, `plugin`, `glob`, `vcs`, `inherited`, or `plain`.
     source: String,
+    /// Contributing plugin ID when `source == "plugin"` or a `plugin.*` type matched.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    plugin_id: Option<String>,
     /// Resolved icon identifier for directories.
     icon: String,
     /// Optional `#rrggbb` accent color for the directory icon or text.
@@ -501,10 +552,16 @@ pub fn resolve_presentation_command(payload: Value) -> Result<Value, CoreError> 
     if let Some(shared) = &request.shared_rules {
         validate_rules(shared)?;
     }
-    if request.paths.len() + request.git_excluded.len() > MAX_ENTRIES {
+    if request.paths.len() + request.git_excluded.len() + request.plugin_marks.len() > MAX_ENTRIES {
         return Err(CoreError::new(
             ErrorCode::InvalidRequest,
             "Too many paths in directory presentation request",
+        ));
+    }
+    if request.plugin_types.len() > 256 {
+        return Err(CoreError::new(
+            ErrorCode::InvalidRequest,
+            "Too many plugin directory types in presentation request",
         ));
     }
     for path in request.paths.iter().chain(&request.git_excluded) {
@@ -513,8 +570,53 @@ pub fn resolve_presentation_command(payload: Value) -> Result<Value, CoreError> 
 
     let ident = Identity(request.case_insensitive);
 
-    // Merge custom types deterministically: local user definitions override shared ones.
+    // Merge custom and plugin types deterministically:
+    // plugin types (sorted by pluginId, id) < shared custom types < local user custom types.
     let mut custom_types: BTreeMap<String, CustomDirectoryType> = BTreeMap::new();
+    let mut plugin_type_owners: BTreeMap<String, String> = BTreeMap::new();
+    let mut sorted_plugin_types = request.plugin_types;
+    sorted_plugin_types.sort_by(|a, b| a.plugin_id.cmp(&b.plugin_id).then(a.id.cmp(&b.id)));
+    for pt in sorted_plugin_types {
+        if pt.plugin_id.trim().is_empty() {
+            return Err(CoreError::new(
+                ErrorCode::InvalidRequest,
+                "Plugin directory type requires pluginId",
+            ));
+        }
+        validate_plugin_type_id(&pt.id)?;
+        let normalized_color = normalize_hex_color(&pt.color)?;
+        if pt.name.trim().is_empty() || pt.name.len() > MAX_TYPE_NAME_LEN {
+            return Err(CoreError::new(
+                ErrorCode::InvalidRequest,
+                "Invalid plugin directory type name",
+            ));
+        }
+        if pt.tag.len() > MAX_TYPE_TAG_LEN || pt.match_glob.len() > MAX_GLOB_LEN {
+            return Err(CoreError::new(
+                ErrorCode::InvalidRequest,
+                "Invalid plugin directory type tag or matchGlob",
+            ));
+        }
+        if !custom_types.contains_key(&pt.id) {
+            plugin_type_owners.insert(pt.id.clone(), pt.plugin_id.clone());
+            custom_types.insert(
+                pt.id.clone(),
+                CustomDirectoryType {
+                    id: pt.id,
+                    name: pt.name.trim().to_owned(),
+                    tag: pt.tag.trim().to_owned(),
+                    icon: pt.icon,
+                    color: normalized_color,
+                    tint_bg: pt.tint_bg,
+                    tint_text: pt.tint_text,
+                    inherit_bg: pt.inherit_bg,
+                    exclude_indexing: pt.exclude_indexing,
+                    read_only_hint: pt.read_only_hint,
+                    match_glob: pt.match_glob.trim().to_owned(),
+                },
+            );
+        }
+    }
     if let Some(shared) = &request.shared_rules {
         for item in &shared.custom_types {
             custom_types.insert(item.id.clone(), item.clone());
@@ -543,26 +645,65 @@ pub fn resolve_presentation_command(payload: Value) -> Result<Value, CoreError> 
         .as_ref()
         .map(|r| index_map(&r.colors, &ident))
         .unwrap_or_default();
+
+    let mut plugin_marks_map: BTreeMap<String, (String, String)> = BTreeMap::new();
+    let mut plugin_colors_map: BTreeMap<String, (String, String)> = BTreeMap::new();
+    let mut sorted_plugin_marks = request.plugin_marks;
+    sorted_plugin_marks.sort_by(|a, b| a.plugin_id.cmp(&b.plugin_id).then(a.path.cmp(&b.path)));
+    for pm in &sorted_plugin_marks {
+        if pm.plugin_id.trim().is_empty() {
+            return Err(CoreError::new(
+                ErrorCode::InvalidRequest,
+                "Plugin directory mark requires pluginId",
+            ));
+        }
+        validate_path(&pm.path)?;
+        if !BUILTIN_ROLES.contains(&pm.role.as_str()) && validate_plugin_type_id(&pm.role).is_err() {
+            return Err(CoreError::new(
+                ErrorCode::InvalidRequest,
+                "Plugin directory mark role must be a built-in role or plugin.* type ID",
+            ));
+        }
+        let key = ident.key(&pm.path);
+        plugin_marks_map
+            .entry(key.clone())
+            .or_insert_with(|| (pm.role.clone(), pm.plugin_id.clone()));
+        if let Some(ref raw_color) = pm.color {
+            let normalized = normalize_hex_color(raw_color)?;
+            plugin_colors_map
+                .entry(key)
+                .or_insert_with(|| (normalized, pm.plugin_id.clone()));
+        }
+    }
+
     let git_excluded: BTreeSet<String> =
         request.git_excluded.iter().map(|p| ident.key(p)).collect();
 
-    // Compute manual exclusions from user + shared marks (including custom types with
-    // `excludeIndexing: true`) so indexing stays aligned with presentation.
+    // Compute manual exclusions from user + shared + plugin marks (including custom/plugin
+    // types with `excludeIndexing: true`) so indexing stays aligned with presentation.
     let mut manual_excluded = BTreeSet::new();
-    for (raw_path, role) in request
-        .shared_rules
+    for raw_path in sorted_plugin_marks
         .iter()
-        .flat_map(|r| r.marks.iter())
-        .chain(request.rules.marks.iter())
+        .map(|m| m.path.as_str())
+        .chain(
+            request
+                .shared_rules
+                .iter()
+                .flat_map(|r| r.marks.keys().map(String::as_str)),
+        )
+        .chain(request.rules.marks.keys().map(String::as_str))
     {
         let key = ident.key(raw_path);
-        let effective_role = user_marks.get(&key).or_else(|| shared_marks.get(&key));
+        let effective_role = user_marks
+            .get(&key)
+            .map(String::as_str)
+            .or_else(|| shared_marks.get(&key).map(String::as_str))
+            .or_else(|| plugin_marks_map.get(&key).map(|(r, _)| r.as_str()));
         if let Some(effective) = effective_role {
             if role_excludes_indexing(effective, &custom_types) && !user_included.contains(&key) {
-                manual_excluded.insert(raw_path.clone());
+                manual_excluded.insert(raw_path.to_owned());
             }
         }
-        let _ = role;
     }
 
     let mut entries = BTreeMap::new();
@@ -571,15 +712,18 @@ pub fn resolve_presentation_command(payload: Value) -> Result<Value, CoreError> 
             raw_path,
             &ident,
             &custom_types,
+            &plugin_type_owners,
             &user_marks,
             &user_colors,
             &user_included,
             &shared_marks,
             &shared_colors,
+            &plugin_marks_map,
+            &plugin_colors_map,
             &git_excluded,
         );
         if resolved.excluded
-            && matches!(resolved.source.as_str(), "user" | "shared" | "glob")
+            && matches!(resolved.source.as_str(), "user" | "shared" | "plugin" | "glob")
             && !user_included.contains(&ident.key(raw_path))
         {
             manual_excluded.insert(raw_path.clone());
@@ -598,11 +742,14 @@ fn resolve_one(
     raw_path: &str,
     ident: &Identity,
     custom_types: &BTreeMap<String, CustomDirectoryType>,
+    plugin_type_owners: &BTreeMap<String, String>,
     user_marks: &BTreeMap<String, String>,
     user_colors: &BTreeMap<String, String>,
     user_included: &BTreeSet<String>,
     shared_marks: &BTreeMap<String, String>,
     shared_colors: &BTreeMap<String, String>,
+    plugin_marks: &BTreeMap<String, (String, String)>,
+    plugin_colors: &BTreeMap<String, (String, String)>,
     git_excluded: &BTreeSet<String>,
 ) -> ResolvedDirectoryEntry {
     let key = ident.key(raw_path);
@@ -610,11 +757,15 @@ fn resolve_one(
     let user_color = user_colors.get(&key);
     let shared_role = shared_marks.get(&key);
     let shared_color = shared_colors.get(&key);
+    let plugin_mark = plugin_marks.get(&key);
+    let plugin_color = plugin_colors.get(&key);
     let glob_type = find_glob_match(raw_path, custom_types, ident.0);
     let is_vcs_excluded = git_excluded.contains(&key) && !user_included.contains(&key);
 
     // Determine fallback role (what would apply if the user clears their local override).
     let auto_fallback_role = if let Some(role) = shared_role {
+        Some(role.clone())
+    } else if let Some((role, _)) = plugin_mark {
         Some(role.clone())
     } else if let Some(ct) = glob_type {
         Some(ct.id.clone())
@@ -624,21 +775,25 @@ fn resolve_one(
         None
     };
 
-    // Determine direct role and winning source.
-    let (role, mut source) = if let Some(role) = user_role {
-        (role.clone(), "user".to_owned())
+    // Determine direct role, winning source, and optional contributing plugin ID.
+    let (role, mut source, plugin_id) = if let Some(role) = user_role {
+        (role.clone(), "user".to_owned(), plugin_type_owners.get(role).cloned())
     } else if user_color.is_some() {
-        ("plain".to_owned(), "user".to_owned())
+        ("plain".to_owned(), "user".to_owned(), None)
     } else if let Some(role) = shared_role {
-        (role.clone(), "shared".to_owned())
+        (role.clone(), "shared".to_owned(), plugin_type_owners.get(role).cloned())
     } else if shared_color.is_some() {
-        ("plain".to_owned(), "shared".to_owned())
+        ("plain".to_owned(), "shared".to_owned(), None)
+    } else if let Some((role, pid)) = plugin_mark {
+        (role.clone(), "plugin".to_owned(), Some(pid.clone()))
+    } else if let Some((_, pid)) = plugin_color {
+        ("plain".to_owned(), "plugin".to_owned(), Some(pid.clone()))
     } else if let Some(ct) = glob_type {
-        (ct.id.clone(), "glob".to_owned())
+        (ct.id.clone(), "glob".to_owned(), plugin_type_owners.get(&ct.id).cloned())
     } else if is_vcs_excluded {
-        ("excluded".to_owned(), "vcs".to_owned())
+        ("excluded".to_owned(), "vcs".to_owned(), None)
     } else {
-        ("plain".to_owned(), "plain".to_owned())
+        ("plain".to_owned(), "plain".to_owned(), None)
     };
 
     let (icon, base_color, base_tint_bg, tint_text, tag, mut excluded, read_only_hint) =
@@ -647,9 +802,10 @@ fn resolve_one(
     let effective_color = user_color
         .cloned()
         .or_else(|| shared_color.cloned())
+        .or_else(|| plugin_color.map(|(c, _)| c.clone()))
         .or(base_color);
 
-    let direct_bg = if user_color.is_some() || shared_color.is_some() || base_tint_bg {
+    let direct_bg = if user_color.is_some() || shared_color.is_some() || plugin_color.is_some() || base_tint_bg {
         effective_color.clone()
     } else {
         None
@@ -663,6 +819,7 @@ fn resolve_one(
             .get(&anc_key)
             .or_else(|| shared_marks.get(&anc_key))
             .cloned()
+            .or_else(|| plugin_marks.get(&anc_key).map(|(r, _)| r.clone()))
             .or_else(|| find_glob_match(&ancestor, custom_types, ident.0).map(|ct| ct.id.clone()))
             .or_else(|| {
                 if git_excluded.contains(&anc_key) && !user_included.contains(&anc_key) {
@@ -673,7 +830,8 @@ fn resolve_one(
             });
         let anc_color_override = user_colors
             .get(&anc_key)
-            .or_else(|| shared_colors.get(&anc_key));
+            .or_else(|| shared_colors.get(&anc_key))
+            .or_else(|| plugin_colors.get(&anc_key).map(|(c, _)| c));
 
         if let Some(ref ar) = anc_role {
             if role_excludes_indexing(ar, custom_types) {
@@ -702,6 +860,7 @@ fn resolve_one(
     ResolvedDirectoryEntry {
         role,
         source,
+        plugin_id,
         icon,
         color: effective_color,
         bg_color,
@@ -976,7 +1135,30 @@ fn validate_path(path: &str) -> Result<(), CoreError> {
 }
 
 fn is_known_role(role: &str, custom_types: &[CustomDirectoryType]) -> bool {
-    BUILTIN_ROLES.contains(&role) || custom_types.iter().any(|ct| ct.id == role)
+    BUILTIN_ROLES.contains(&role)
+        || custom_types.iter().any(|ct| ct.id == role)
+        || validate_plugin_type_id(role).is_ok()
+}
+
+fn validate_plugin_type_id(id: &str) -> Result<(), CoreError> {
+    let Some(rest) = id.strip_prefix("plugin.") else {
+        return Err(CoreError::new(
+            ErrorCode::InvalidRequest,
+            "Plugin directory type ID must start with 'plugin.'",
+        ));
+    };
+    if rest.is_empty()
+        || id.len() > MAX_TYPE_ID_LEN
+        || !rest
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'_' | b'-' | b'.'))
+    {
+        return Err(CoreError::new(
+            ErrorCode::InvalidRequest,
+            "Invalid plugin directory type ID",
+        ));
+    }
+    Ok(())
 }
 
 fn validate_custom_type_id(id: &str) -> Result<(), CoreError> {
