@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "docComments": [
+    {
+      "name": "javadoc-unclosed-p-anchor-links-pre-and-tags",
+      "shellKind": "block-star",
+      "dialect": "javadoc-html",
+      "language": "java",
+      "source": "/**\n * Resizable-array implementation of the {@code List} interface.\n *\n * <p><strong>Note that this implementation is not synchronized.</strong>\n * Wrap using {@link Collections#synchronizedList Collections.synchronizedList}:<pre>\n *   List list = Collections.synchronizedList(new ArrayList(...));</pre>\n *\n * <p id=\"fail-fast\">\n * The iterators returned by this class's {@link #iterator() iterator} and\n * {@link #listIterator(int) listIterator} methods are <em>fail-fast</em>.\n *\n * <p>Note that the fail-fast behavior cannot be guaranteed.\n *\n * @param <E> the type of elements in this list\n * @author Josh Bloch\n * @author Neal Gafter\n * @see Collection\n * @see List\n * @since 1.2\n */",
+      "expectFallback": false,
+      "expectAnchors": ["fail-fast"],
+      "expectBlockKinds": [
+        "paragraph",
+        "paragraph",
+        "code",
+        "paragraph",
+        "paragraph",
+        "labeled",
+        "labeled",
+        "labeled",
+        "labeled"
+      ]
+    },
+    {
+      "name": "javadoc-html-scope-across-protected-code-and-literal",
+      "shellKind": "block-star",
+      "dialect": "javadoc-html",
+      "language": "java",
+      "source": "/** <em>before {@code <E>} after</em> {@literal A<B>C} */",
+      "expectFallback": false,
+      "expectAnchors": [],
+      "expectBlockKinds": ["paragraph"]
+    },
+    {
+      "name": "javadoc-table-with-protected-slot",
+      "shellKind": "block-star",
+      "dialect": "javadoc-html",
+      "language": "java",
+      "source": "/** <table><tr><th>Op</th><th>Cost</th></tr><tr><td>{@code get(i)}</td><td>O(1)</td></tr></table> */",
+      "expectFallback": false,
+      "expectAnchors": [],
+      "expectBlockKinds": ["table"]
+    },
+    {
+      "name": "javadoc-dangerous-script-dropped-safely",
+      "shellKind": "block-star",
+      "dialect": "javadoc-html",
+      "language": "java",
+      "source": "/** Safe <script>alert(1); {@code secret}</script> text */",
+      "expectFallback": false,
+      "expectAnchors": [],
+      "expectBlockKinds": ["paragraph"],
+      "forbidSubstrings": ["alert(1)", "secret", "x-lithe-slot"]
+    },
+    {
+      "name": "javadoc-malformed-attr-swallowing-slot-falls-back-to-source",
+      "shellKind": "block-star",
+      "dialect": "javadoc-html",
+      "language": "java",
+      "source": "/** <a href=\"{@code broken}\">text */",
+      "expectFallback": true,
+      "expectFallbackReason": "slot_fidelity_failed"
+    },
+    {
+      "name": "rust-line-slash-markdown-with-html",
+      "shellKind": "line-slash",
+      "dialect": "markdown-html",
+      "language": "rust",
+      "source": "/// Summary with <em>emphasis</em> and `code`.\n///\n/// ```rust\n/// let x: Vec<u8> = Vec::new();\n/// ```",
+      "expectFallback": false,
+      "expectAnchors": [],
+      "expectBlockKinds": ["paragraph", "code"]
+    }
+  ],
+  "hoverDocs": [
+    {
+      "name": "hover-cross-node-html-and-markdown-and-escaped-entities",
+      "isMarkdown": true,
+      "language": "java",
+      "contents": "<em>text</em> and <a href=\"https://example.com\">**label**</a> and *before <em>inside* after*\n\n&lt;em&gt;escaped&lt;/em&gt;\n\n`<p>code</p>`",
+      "expectFallback": false,
+      "expectBlockKinds": ["paragraph", "paragraph", "paragraph"],
+      "forbidSubstrings": ["x-lithe-slot"]
+    },
+    {
+      "name": "hover-plaintext-never-interprets-html",
+      "isMarkdown": false,
+      "language": "java",
+      "contents": "<p><em>**plain**</em></p>",
+      "expectFallback": false,
+      "expectBlockKinds": ["code"],
+      "expectFirstCodeText": "<p><em>**plain**</em></p>"
+    },
+    {
+      "name": "hover-rcdata-swallowing-slot-degrades-without-text-loss",
+      "isMarkdown": true,
+      "language": "java",
+      "contents": "prefix <textarea>`kept`</textarea> suffix",
+      "expectFallback": false,
+      "expectFallbackReason": "slot_fidelity_failed",
+      "expectSubstrings": ["prefix", "kept", "suffix"],
+      "forbidSubstrings": ["x-lithe-slot"]
+    }
+  ]
+}

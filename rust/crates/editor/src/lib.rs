@@ -5,6 +5,7 @@
 //! Hosts apply the returned replacements and states through their own text
 //! engine. The `editor.*` JSON commands are dispatched by `lithe-core`.
 
+pub mod doc_render;
 pub mod find;
 pub mod line_edit;
 pub mod navigation_history;

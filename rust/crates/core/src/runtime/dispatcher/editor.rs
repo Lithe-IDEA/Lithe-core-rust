@@ -32,6 +32,18 @@ pub(super) fn dispatch(
             Ok(data) => CoreResponse::success(id, data),
             Err(error) => CoreResponse::failure(id, error),
         },
+        EditorCommand::RenderDocComment => {
+            match lithe_editor::doc_render::render_doc_comment_command(payload, document) {
+                Ok(data) => CoreResponse::success(id, data),
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
+        EditorCommand::RenderHoverDoc => {
+            match lithe_editor::doc_render::render_hover_doc_command(payload, document) {
+                Ok(data) => CoreResponse::success(id, data),
+                Err(error) => CoreResponse::failure(id, error),
+            }
+        }
         EditorCommand::PreferencesResolve => plugin_response(id, payload, |payload| {
             lithe_editor::preferences::resolve_command_with_fallback(payload, |palette| {
                 let fields = std::collections::BTreeMap::from([
