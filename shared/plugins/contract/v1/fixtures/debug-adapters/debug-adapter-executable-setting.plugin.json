@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 0,
+  "id": "dev.lithe.fixture.debug-adapter-executable-setting",
+  "displayName": "Debug Adapter Executable Setting Fixture",
+  "version": "0.1.0",
+  "pluginAPIVersion": 0,
+  "requires": { "debugAdapters": 0, "settings": 0 },
+  "vendor": {
+    "id": "org.example",
+    "displayName": "Example",
+    "signatureRequirement": "publisherPackage"
+  },
+  "permissions": ["debug.launch"],
+  "activationEvents": ["onDebug:example"],
+  "settings": [
+    {
+      "id": "debuggerPath",
+      "type": "file",
+      "title": "Debugger",
+      "default": "",
+      "effect": "nextRun"
+    }
+  ],
+  "debugAdapters": [
+    {
+      "id": "example",
+      "displayName": "Example Debugger",
+      "launch": {
+        "executableSetting": "debuggerPath",
+        "process": {
+          "launch": { "kind": "systemCommand", "commands": ["example-dap"] }
+        },
+        "transport": "stdio"
+      }
+    }
+  ]
+}

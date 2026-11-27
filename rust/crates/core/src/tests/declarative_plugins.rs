@@ -1365,6 +1365,55 @@ fn debug_adapter_launch_plan_carries_the_process_and_the_descriptor() {
 }
 
 #[test]
+fn debug_adapter_launch_plan_reads_only_its_global_executable_setting() {
+    let manifest: Value = serde_json::from_str(contract_file!(
+        "fixtures/debug-adapters/debug-adapter-executable-setting.plugin.json"
+    ))
+    .unwrap();
+    let plan = |settings: Value| {
+        language_server_launch_plan_command(json!({
+            "manifest": manifest,
+            "debugAdapterID": "example",
+            "request": {
+                "pluginDirectory": "/plugins/example", "stateDirectory": "/state/example",
+                "architecture": "arm64", "settings": settings,
+                "projectSettings": { "debuggerPath": "/project/untrusted" }
+            },
+        }))
+        .expect("payload is well formed")
+    };
+    for settings in [json!({}), json!({ "debuggerPath": "" })] {
+        let result = plan(settings);
+        assert_eq!(result["status"], "ok", "{result}");
+        assert_eq!(
+            result["plan"]["launch"],
+            json!({ "kind": "systemCommand", "commands": ["example-dap"] })
+        );
+    }
+    for path in ["/tools/my debugger", r"C:\Tools\my debugger.exe"] {
+        let result = plan(json!({ "debuggerPath": path }));
+        assert_eq!(result["status"], "ok", "{result}");
+        assert_eq!(result["plan"]["launch"]["configuredExecutable"], path);
+    }
+    let result = plan(json!({ "debuggerPath": "relative/adapter" }));
+    assert_eq!(
+        result["error"]["code"], "plugin.launch.invalidRequest",
+        "{result}"
+    );
+    assert_eq!(result["error"]["field"], "settings.debuggerPath");
+
+    for (field, value) in [("scope", json!("project")), ("effect", json!("restart"))] {
+        let mut invalid = manifest.clone();
+        invalid["settings"][0][field] = value;
+        let result = validate_command(json!({ "manifest": invalid })).unwrap();
+        assert_eq!(
+            result["error"]["field"], "debugAdapters[0].launch.executableSetting",
+            "{result}"
+        );
+    }
+}
+
+#[test]
 fn debug_adapter_launch_plan_refuses_unknown_adapters_and_mixed_selectors() {
     let request = json!({
         "pluginDirectory": "/plugins/example",

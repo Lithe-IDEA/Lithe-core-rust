@@ -142,6 +142,27 @@ pub(crate) fn debug_adapter_launch_plan(
             hosting_language_server_plan(manifest, language_id, request)?
         }
     };
+    if let Some(id) = &adapter.launch.executable_setting {
+        let setting = manifest
+            .settings
+            .iter()
+            .find(|setting| setting.id == *id)
+            .ok_or_else(|| {
+                PluginRejection::new(
+                    "plugin.launch.unavailable",
+                    format!("The debug adapter {adapter_id} references an undeclared executable setting."),
+                )
+            })?;
+        let path = setting
+            .executable_value(request.layers().global.get(id))
+            .map_err(|error| PluginRejection {
+                code: "plugin.launch.invalidRequest",
+                ..error
+            })?;
+        if let Some(path) = path {
+            plan["launch"]["configuredExecutable"] = json!(path);
+        }
+    }
     plan["debugAdapter"] = adapter.plan_descriptor(&manifest.id);
     Ok(plan)
 }

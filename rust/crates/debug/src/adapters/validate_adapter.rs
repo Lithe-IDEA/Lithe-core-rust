@@ -199,6 +199,9 @@ pub fn programs(adapter: &DebugAdapterDeclaration) -> Vec<Value> {
     program["debugAdapter"] = json!(adapter.id);
     program["transport"] = json!(adapter.launch.transport);
     program["endpoint"] = json!(adapter.launch.endpoint);
+    if let Some(setting) = &adapter.launch.executable_setting {
+        program["executableSetting"] = json!(setting);
+    }
     let mut programs = vec![program];
     if let Some(DebugProcess::Server(process)) = &adapter.launch.process {
         programs.extend(process.runtime_programs());

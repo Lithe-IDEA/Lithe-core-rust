@@ -59,7 +59,7 @@ impl LanguageServerLaunchPlanRequest {
         Ok(())
     }
 
-    fn layers(&self) -> SettingLayers<'_> {
+    pub(crate) fn layers(&self) -> SettingLayers<'_> {
         SettingLayers {
             global: &self.settings,
             project: &self.project_settings,
