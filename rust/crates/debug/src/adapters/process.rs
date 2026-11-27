@@ -19,6 +19,9 @@ pub struct DebugLaunch {
     /// own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub process: Option<DebugProcess>,
+    /// Global file setting that can override a bare system command at launch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executable_setting: Option<String>,
     pub(crate) transport: DebugTransport,
     /// Required by, and only allowed for, the TCP transports.
     #[serde(default, skip_serializing_if = "Option::is_none")]

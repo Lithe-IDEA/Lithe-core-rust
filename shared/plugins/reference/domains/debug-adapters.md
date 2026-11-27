@@ -116,6 +116,7 @@ Core 只把 `localhost`、`127.0.0.0/8`、`::1` 判为本机；其他主机都�
 | [Remote attach](../../contract/v1/README.md#remote-attach) | `connection` 绑定、四种路径映射、目标格式、本机判定、拒绝层次 |
 | [Native debug preparation](../../contract/v1/README.md#native-debug-preparation) | 构建提供者准备原生调试目标 |
 | [Registry connection debugging](../../contract/v1/README.md#registry-connection-debugging) | 服务运行按配置类型选择 attach 适配器 |
+| [适配器程序路径](../../contract/v1/README.md#adapter-executable-setting) | `launch.executableSetting` 指向用户全局文件设置，选择本机命令型调试适配器 |
 | [Permissions and activation](../../contract/v1/README.md#permissions-and-activation) | `debug.launch`、`debug.attach`、`debug.start`、`onDebug:<id>` |
 
 ### 示例与用例
@@ -255,6 +256,7 @@ The other rules of `run/start`, `run/stop`, and `run/didExit` are in [Plugin bac
 | [Remote attach](../../contract/v1/README.md#remote-attach) | The `connection` binding, the four mapping shapes, the target format, local detection, refusal layers |
 | [Native debug preparation](../../contract/v1/README.md#native-debug-preparation) | Build providers preparing native debug targets |
 | [Registry connection debugging](../../contract/v1/README.md#registry-connection-debugging) | Service runs choosing an attach adapter by configuration type |
+| [Adapter executable setting](../../contract/v1/README.md#adapter-executable-setting) | `launch.executableSetting` selects a local system-command adapter through a global file setting |
 | [Permissions and activation](../../contract/v1/README.md#permissions-and-activation) | `debug.launch`, `debug.attach`, `debug.start`, `onDebug:<id>` |
 
 ### Examples and cases

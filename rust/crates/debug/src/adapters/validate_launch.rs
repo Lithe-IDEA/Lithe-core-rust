@@ -117,6 +117,21 @@ impl DebugLaunch {
                 ));
             }
         }
+        if let Some(setting) = &self.executable_setting {
+            use lithe_plugin_model::process::LanguageServerLaunch;
+            let setting_field = format!("{field}.executableSetting");
+            if !matches!(&self.process, Some(DebugProcess::Server(process))
+                if matches!(process.launch, LanguageServerLaunch::SystemCommand { .. }))
+            {
+                return Err(invalid(
+                    setting_field,
+                    "Only a systemCommand debug process can select its executable from a setting.",
+                ));
+            }
+            if !context.declared_settings.is_executable(setting) {
+                return Err(invalid(setting_field, "The executable setting must be a global file setting with an empty default and effect reload or nextRun."));
+            }
+        }
         match (self.transport, &self.endpoint) {
             (DebugTransport::Stdio, None) => Ok(()),
             (DebugTransport::Stdio, Some(_)) => Err(invalid(

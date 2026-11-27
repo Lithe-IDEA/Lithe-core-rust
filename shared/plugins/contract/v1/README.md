@@ -3368,6 +3368,26 @@ adapter serves `attach`), and one `onDebug:<id>` activation event per adapter.
 | `launch.endpoint` for `tcpAnnounced` | The host reads the adapter's `stream` line by line. The first line that contains `prefix` is the announcement: the rest of that line after the prefix, without surrounding whitespace, is a port from 1 to 65535 (`port`, on `127.0.0.1`) or `host:port` with a loopback host, IPv6 in brackets (`hostPort`, for example Delve's `DAP server listening at: 127.0.0.1:54321`). Any other announcement fails the start, and so does no announcement within 10 seconds. The adapter's other output goes to the Debug Console. |
 | `launch.endpoint` for `tcpLanguageServer` | For an adapter that lives inside a language server and has no process of its own (the Java Debug Server runs in JDT LS). `languageID` names a `languageServers[]` entry of the same plugin; `command` (1–128 characters of letters, digits, `.`, `_`, `:`, `-`) is the `workspace/executeCommand` the host sends to that server for each session. The server answers with the loopback port to connect to, as an integer or a numeric string from 1 to 65535. The host starts the language server for the workspace first, as it does for editing. The command is part of what the user reviews at install and update, and changing it asks again. |
 
+### Adapter executable setting
+
+`launch.executableSetting` can name a global `file` setting of the plugin
+with an empty default and effect `reload` or `nextRun`. It is valid for a
+`systemCommand` adapter process. See the
+[executable setting fixture](fixtures/debug-adapters/debug-adapter-executable-setting.plugin.json).
+
+Core reads the user settings layer and adds `launch.configuredExecutable` to
+the system-command plan for a nonempty absolute path. An invalid stored value
+returns `plugin.launch.invalidRequest` on `settings.<id>`. The host checks that
+the file is executable on its platform. An unusable path fails the start.
+Omitting the field or leaving the setting empty preserves the declared command
+lookup and command installers. The process uses the same arguments and
+lifecycle. The setting is included in install and update review under
+`debug.launch`.
+
+The setting selects the adapter process on the machine that starts it. Remote
+attach keeps the debuggee's separate endpoint and confirmation rules. Hosts
+that predate this declaration reject the manifest.
+
 ### Adapter features and defaults
 
 A host never recognizes an adapter by its ID. What is specific to an adapter

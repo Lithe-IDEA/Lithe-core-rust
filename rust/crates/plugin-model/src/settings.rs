@@ -360,7 +360,7 @@ struct SettingOption {
 /// Setting IDs a template may name, with the restrictions their kinds carry.
 #[derive(Debug, Clone, Default)]
 pub struct DeclaredSettings {
-    /// Global paths that may explicitly select a build executable.
+    /// Global paths that may explicitly select an executable.
     executables: BTreeSet<String>,
     /// Settings a launch reads when it starts.
     launch: BTreeSet<String>,
@@ -374,7 +374,7 @@ pub struct DeclaredSettings {
 }
 
 impl DeclaredSettings {
-    /// Whether the global file setting may select the build executable.
+    /// Whether the global file setting may select an executable.
     pub fn is_executable(&self, id: &str) -> bool {
         self.executables.contains(id)
     }

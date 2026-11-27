@@ -573,6 +573,30 @@
       "properties": {
         "process": {
           "$ref": "#/$defs/debugProcess"
+        },
+        "executableSetting": {
+          "description": "A global file setting with an empty default and effect reload or nextRun. Only for a systemCommand adapter process.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "if": {
+        "required": ["executableSetting"]
+      },
+      "then": {
+        "required": ["process"],
+        "properties": {
+          "process": {
+            "required": ["launch"],
+            "properties": {
+              "launch": {
+                "required": ["kind"],
+                "properties": {
+                  "kind": { "const": "systemCommand" }
+                }
+              }
+            }
+          }
         }
       },
       "oneOf": [
