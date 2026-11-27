@@ -133,6 +133,12 @@ async fn check_session(mode: &'static str) {
                 );
             }
         }
+        // Both platforms currently expose the full catalog. A restricted
+        // descriptor makes a cached or unfiltered tools/list observable.
+        let restricted = json!([hosts["windows"][0]]);
+        write_descriptor(&restricted);
+        let list = client.request("tools/list", params).await;
+        assert_eq!(tool_names(&list["tools"]), tool_names(&restricted));
     }))
     .await;
     timeout(Duration::from_secs(5), child.kill())
