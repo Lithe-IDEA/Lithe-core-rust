@@ -120,7 +120,7 @@ impl Agents {
             .map(drop)
     }
 
-    /// The usage totals `{ sinceMs, untilMs, summaries, rateLimits }` for
+    /// The usage totals `{ sinceMs, untilMs, summaries, speeds, rateLimits }` for
     /// `{ groupBy, sinceMs?, untilMs?, utcOffsetSeconds? }`.
     pub fn usage(&self, params: Value) -> Result<Value, SdkError> {
         match self.host.request(methods::AGENTS_USAGE, params)? {

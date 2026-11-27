@@ -1037,7 +1037,7 @@ public final class Host {
         }
 
         /**
-         * {@code { sinceMs, untilMs, summaries, rateLimits }} for
+         * {@code { sinceMs, untilMs, summaries, speeds, rateLimits }} for
          * {@code { groupBy, sinceMs?, untilMs?, utcOffsetSeconds? }}.
          */
         public CompletableFuture<Map<String, Object>> usage(Map<String, ?> params) {

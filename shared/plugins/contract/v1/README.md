@@ -3867,7 +3867,7 @@ host never sees them):
 | --- | --- | --- | --- |
 | `lithe/host/agents/write` | `agents.native` | `{session, lines}` | `{}` |
 | `lithe/host/agents/report` | `agents.native` | `{session, events}` | `{}` |
-| `lithe/host/agents/usage` | `agents.usage.read` | `{sinceMs?, untilMs?, groupBy, utcOffsetSeconds?}` | `{sinceMs, untilMs, summaries, rateLimits}` |
+| `lithe/host/agents/usage` | `agents.usage.read` | `{sinceMs?, untilMs?, groupBy, utcOffsetSeconds?}` | `{sinceMs, untilMs, summaries, speeds, rateLimits}` |
 
 - `write` takes 1–256 lines of at most 16 MiB together, none with a line
   break; Core adds the newline. More than 64 writes waiting for the CLI is
@@ -3880,6 +3880,7 @@ host never sees them):
   records the user enabled, grouped by `day`, `agent` or `model`, between
   `sinceMs` and `untilMs` (default the 30 days before tomorrow, at most 366
   days; `utcOffsetSeconds` within ±14 hours sets the day boundary).
+  `speeds` ranks the models of the same calls by median output speed.
   `rateLimits` holds the latest quota windows of the agents the user may run
   or read. While the records are being written the answer is `-32020`; before
   they are opened, `-32601`; a failed read, `-32603`. It never carries
@@ -3981,8 +3982,15 @@ cost?, firstStartedAtMs, lastStartedAtMs}`. `key` is `{kind: "day", date}`,
 agent, sessionID}` or `{kind: "cwd", cwd?}`. `cost` is `{usd, basis:
 "apiPriceEquivalent", pricedCalls, unpricedCalls, approximateCalls}`: what
 the tokens would cost at the API prices of `pricesFile`, not what the user
-paid. Rate limits are `{atMs, windows, plan?, pluginID, agentID}`; Core keeps
-the latest per agent in `rate-limits.json` in the cache directory.
+paid. `stats` and `usage` also answer `speeds`, the models ranked fastest
+first by the median output speed of their calls, each `{model, calls,
+medianTokensPerSecond, lowerBound}`. A call's speed is its output tokens per
+second after the first token; a call without a first-token time counts only
+with at least 1000 output tokens over at least a second, as a lower bound, and
+then `lowerBound` is true. Calls with fewer than 100 output tokens, failed
+calls and speeds above 10000 tokens per second are left out. Rate limits are
+`{atMs, windows, plan?, pluginID, agentID}`; Core keeps the latest per agent
+in `rate-limits.json` in the cache directory.
 
 `agentSessions.*` refusals: `agentSessions.notConfigured`,
 `agentSessions.invalidDirectory`, `agentSessions.invalidEnvironment`,

@@ -19,7 +19,7 @@ use crate::catalog::{record_key, split_record_key, CatalogAgent};
 use crate::events::{check_rate_limits, RateLimits, RateWindow, MAX_RATE_WINDOWS};
 use crate::{log, now_ms, Runtime};
 use lithe_agent_sessions::pricing::PriceTable;
-use lithe_agent_sessions::stats::{GroupBy, Summarizer};
+use lithe_agent_sessions::stats::{GroupBy, SpeedRanker, Summarizer};
 use lithe_agent_sessions::{
     discover, ByteRange, CallFilter, ScanChunk, ScanOutput, SearchQuery, SessionFilter,
     SessionParser, SessionSource, SessionStore, MAX_SEARCH_HITS, MAX_SESSIONS_PAGE,
@@ -573,8 +573,8 @@ impl Records {
                     "Group by day, agent, model, session or cwd.",
                 )
             })?;
-        let summaries = match allowed_agents(runtime, request.agents) {
-            None => json!([]),
+        let (summaries, speeds) = match allowed_agents(runtime, request.agents) {
+            None => (json!([]), json!([])),
             Some(agents) => {
                 let filter = CallFilter {
                     agents,
@@ -589,28 +589,37 @@ impl Records {
         };
         Ok(json!({
             "summaries": summaries,
+            "speeds": speeds,
             "rateLimits": self.rate_limit_entries(runtime),
         }))
     }
 
+    /// The summaries of the calls `filter` selects, grouped by `group_by`,
+    /// and the models ranked by median output speed over the same calls.
     fn summarize(
         &self,
         store: &SessionStore,
         filter: &CallFilter,
         group_by: GroupBy,
-    ) -> Result<Value, CoreError> {
+    ) -> Result<(Value, Value), CoreError> {
         let prices = self.prices.read().unwrap_or_else(PoisonError::into_inner);
         let mut summarizer = Summarizer::new(group_by, prices.as_ref());
+        let mut speeds = SpeedRanker::default();
         store.for_each_call(filter, |entry| {
             summarizer.add(&entry);
+            speeds.add(&entry.call);
             Ok(())
         })?;
-        Ok(serde_json::to_value(summarizer.finish()).unwrap_or_else(|_| json!([])))
+        Ok((
+            serde_json::to_value(summarizer.finish()).unwrap_or_else(|_| json!([])),
+            serde_json::to_value(speeds.finish()).unwrap_or_else(|_| json!([])),
+        ))
     }
 
     /// Answers `lithe/host/agents/usage` for a plugin granted
     /// `agents.usage.read`: totals of the readable agents, grouped by day,
-    /// agent or model, and their rate limits. It carries no conversation text,
+    /// agent or model, the models' median output speeds, and the agents'
+    /// rate limits. It carries no conversation text,
     /// titles, session IDs or directories. Runs with the asking backend's
     /// session lock held, so it never waits for the cache.
     pub fn usage(&self, runtime: &Runtime, params: &Value) -> Result<Value, AgentHostFailure> {
@@ -645,8 +654,8 @@ impl Records {
             .iter()
             .map(CatalogAgent::record_key)
             .collect();
-        let summaries = if agents.is_empty() {
-            json!([])
+        let (summaries, speeds) = if agents.is_empty() {
+            (json!([]), json!([]))
         } else {
             let reader = match self.reader.try_lock() {
                 Ok(reader) => reader,
@@ -678,6 +687,7 @@ impl Records {
             "sinceMs": since_ms,
             "untilMs": until_ms,
             "summaries": summaries,
+            "speeds": speeds,
             "rateLimits": self.rate_limit_entries(runtime),
         }))
     }

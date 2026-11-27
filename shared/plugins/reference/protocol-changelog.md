@@ -14,6 +14,8 @@
 
 ## 待合入
 
+- [#SPEEDS](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/SPEEDS)（待合入），[@xiaoyumuxi](https://github.com/xiaoyumuxi)，`agents` 0 内补充（API-45）：`agents/usage` 与 `agentSessions.stats` 的回答新增 `speeds`，按模型列出同一批调用首个令牌之后输出速度的中位数（`{model, calls, medianTokensPerSecond, lowerBound}`，最快的在前），四种官方 SDK 的说明同步。旧宿主不返回该字段，插件应按缺失处理。
+
 - [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216)（待合入），[@xiaoyumuxi](https://github.com/xiaoyumuxi)，新增能力 **`agents` 0**（API-45）：清单 `agents[]` 声明用户自己安装的 Agent CLI、它的运行形式（`native`、`acp`、`terminal`、`update`）和会话来源 `sessionSources`；新增权限 `agents.run`、`agents.native`、`agents.sessions.read`、`agents.usage.read` 与激活事件 `onAgent:<id>`，多声明或少声明都拒绝。`litheFunctions` 0 内新增宿主方法 `agents/write`、`agents/report`、`agents/usage`（Core 直接回答，宿主收不到）和通知 `agents/didStart`、`didOutput`、`didPrompt`、`didCancel`、`didDecidePermission`、`didExit`。Core 新增 `agent-runtime`（启动和回收 CLI 进程、校验会话事件、有界事件队列）与宿主命令 `agents.*`、`agentSessions.*`，会话记录的分组键改为 `sessionID`；安装审查新增 `agent`、`agentSessions` 两类程序；新增 `fixtures/agents/` 两个清单和 23 个拒绝用例，四种官方 SDK 同步封装。版本 0 不运行 ACP 客户端，会话只在可信的本地工作区运行。
 
 - [#215](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/215)（待合入），[@xiaoyumuxi](https://github.com/xiaoyumuxi)，`pluginAPIVersion` 0 / `litheFunctions` 0 内补充（API-05）：新增宿主方法 `workspace/setDirectoryTypes` 与 `workspace/setDirectoryMarks`（新权限 `workspace.directoryMarks`），允许插件后端在当前工作区上下文注册自定义目录类型（最多 32 个，`id` 以 `plugin.` 开头）与动态目录标记（最多 500 条）；`workspace.resolveDirectoryPresentation` 新增可选 `pluginTypes` 与 `pluginMarks` 字段及输出可选 `pluginId`，按 `user > shared > plugin > glob > vcs > plain` 确定性合并呈现与索引排除，并允许用户手动分配 `plugin.*` 角色；插件提交时的校验与解析器一致，宿主保存下来的登记不会让整次解析失败；清单 schema 与四种官方 SDK（Rust、Go、Node、Java）同步补齐。无新增能力版本、协议版本或 SDK 版本。
@@ -227,6 +229,7 @@
 | API-45 | `agents/write` | 0 | 待合入 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
 | API-45 | `agents/report` | 0 | 待合入 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
 | API-45 | `agents/usage` | 0 | 待合入 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
+| API-45 | `agents/usage` | 0（回答新增 `speeds`） | 待合入 | [#SPEEDS](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/SPEEDS) |
 | API-45 | `agents/didStart`（通知） | 0 | 待合入 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
 | API-45 | `agents/didOutput`（通知） | 0 | 待合入 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
 | API-45 | `agents/didPrompt`（通知） | 0 | 待合入 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |

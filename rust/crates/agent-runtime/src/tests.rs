@@ -174,6 +174,8 @@ fn scan(params: &Value) -> Value {
                 "startedAtMs": record["at"],
                 "model": record["model"],
                 "tokens": { "input": record["input"], "output": record["output"] },
+                "firstTokenMs": record["first"],
+                "durationMs": record["duration"],
                 "range": range,
             })),
             Some("limits") => {
@@ -1222,7 +1224,7 @@ fn write_session_file(harness: &Harness, now: i64) -> PathBuf {
     let lines = [
         json!({ "type": "session", "id": "s1", "cwd": "/work/project", "at": now }),
         json!({ "type": "user", "session": "s1", "text": "hello from the user", "at": now }),
-        json!({ "type": "call", "session": "s1", "key": "c1", "model": "sample-model", "input": 100, "output": 20, "at": now }),
+        json!({ "type": "call", "session": "s1", "key": "c1", "model": "sample-model", "input": 100, "output": 300, "first": 500, "duration": 2500, "at": now }),
         json!({ "type": "limits", "at": now, "used": 40.0 }),
     ];
     let text: String = lines.iter().map(|line| format!("{line}\n")).collect();
@@ -1287,6 +1289,9 @@ fn records_sync_list_search_read_and_sum_through_the_plugin() {
     let stats = harness.run("agentSessions.stats", json!({ "groupBy": "model" }));
     assert_eq!(stats["summaries"][0]["calls"], 1, "{stats}");
     assert_eq!(stats["summaries"][0]["tokens"]["input"], 100, "{stats}");
+    // 300 output tokens in the 2 seconds after the first token.
+    let speed = json!([{ "model": "sample-model", "calls": 1, "medianTokensPerSecond": 150.0, "lowerBound": false }]);
+    assert_eq!(stats["speeds"], speed, "{stats}");
     assert_eq!(
         stats["rateLimits"][0]["windows"][0]["usedPercent"], 40.0,
         "{stats}"
@@ -1299,6 +1304,7 @@ fn records_sync_list_search_read_and_sum_through_the_plugin() {
         .answer(AGENTS_USAGE, json!({ "groupBy": "agent" }))
         .expect("usage");
     assert_eq!(usage["summaries"][0]["calls"], 1, "{usage}");
+    assert_eq!(usage["speeds"], speed, "{usage}");
     let text = usage.to_string();
     for private in ["\"s1\"", "/work/project", "hello", "s1.jsonl"] {
         assert!(!text.contains(private), "usage carries {private}: {text}");
