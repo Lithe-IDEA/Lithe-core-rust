@@ -16,7 +16,7 @@
 2. **结果取决于真实操作系统的行为**（进程树、job object、权限位、batch 启动、可执行文件查找等）：放进 [`rust/crates/platform-tests/tests/platform/`](rust/crates/platform-tests/tests/platform) 里对应主题的模块。需要被启动的程序时，给 `lithe-platform-fixture` 增加一种模式。不要把这类测试写在被测 crate 里，也不要在其他 crate 里加 `#[cfg(windows)]`、`#[cfg(target_os = "macos")]` 之类的测试。
 3. **只借用 Unix 才有的夹具**（符号链接、权限位）来验证本 crate 自己的逻辑，并且 Linux 上会运行的 `#[cfg(unix)]` 测试：可以留在本 crate。如果 Windows 上应有另一种结果，那个结果按第 2 条写进 `lithe-platform-tests`。
 4. **测试里的 `cfg!`** 只能把夹具改成本机格式，例如 Windows 绝对路径要带盘符；不能用它为不同系统选择不同的预期结果。预期随系统变化的断言属于第 2 条。
-5. **例外**：crate 的集成测试必须启动本包的可执行文件时，因为 `CARGO_BIN_EXE_*` 只对同一个包可见，测试无法搬走。这种 crate 在自己的 `Cargo.toml` 声明主机。目前只有 [`lithe-remote`](rust/crates/remote)：它的服务端运行在 Linux 和 macOS 主机上。新增例外要在 PR 里说明为什么不能放进 `lithe-platform-tests`。
+5. **例外**：crate 的集成测试必须启动本包的可执行文件时，因为 `CARGO_BIN_EXE_*` 只对同一个包可见，测试无法搬走。这种 crate 在自己的 `Cargo.toml` 声明主机。例如 [`lithe-remote`](rust/crates/remote) 启动远端服务端，[`lithe-ide-host`](rust/crates/ide-host) 启动 `lithe-mcp` 验证 stdio 协议。新增例外要在 PR 里说明为什么不能放进 `lithe-platform-tests`。
 
 [`scripts/rust-core/verify-platform-tests.mjs`](scripts/rust-core/verify-platform-tests.mjs) 检查的是：有没有测试在所属 crate 的每台 CI 主机上都被 `cfg` 编译掉，或者被 `cfg_attr(…, ignore)` 忽略。这样的测试在 CI 里永远不会运行，检查会失败。CI 的 `Select crates` 作业每次都运行这项检查。加 `--list` 会列出所有只在部分主机上运行的测试。第 3、4 条要看测试的意图，脚本判断不了，由评审把关。
 
@@ -28,7 +28,7 @@ hosts = ["macos", "windows"]   # 除 Linux 外，还要在这些主机上运行�
 test-features = ["server"]     # 测试需要的 feature，在每台主机上都启用
 ```
 
-`hosts` 只接受 `macos` 和 `windows`；每个 crate 都会在 Linux 上测试，不必声明。目前声明主机的 crate 有 `lithe-platform`、`lithe-platform-tests` 和 `lithe-remote`。声明主机后，每个影响到该 crate 的 PR 都会多占用 macOS 或 Windows runner，所以只能用于上一节允许的情况。
+`hosts` 只接受 `macos` 和 `windows`；每个 crate 都会在 Linux 上测试，不必声明。声明主机后，每个影响到该 crate 的 PR 都会多占用 macOS 或 Windows runner，所以只能用于上一节允许的情况。
 
 ## CI 怎样只运行受影响的 crate
 
@@ -85,7 +85,7 @@ Take the first rule that applies:
 2. **A result that depends on the real operating system** (process trees, job objects, permission bits, batch launches, executable lookup and the like): add it to the module for that subject under [`rust/crates/platform-tests/tests/platform/`](rust/crates/platform-tests/tests/platform). When a test needs a program to start, add a mode to `lithe-platform-fixture`. Do not write such tests in the crate under test, and do not add `#[cfg(windows)]`, `#[cfg(target_os = "macos")]` or similar tests to any other crate.
 3. **A `#[cfg(unix)]` test that only borrows a Unix fixture** (a symbolic link, permission bits) to check the crate's own logic, and that runs on Linux: it may stay in its crate. If Windows should behave differently, that result goes into `lithe-platform-tests` under rule 2.
 4. **`cfg!` in a test** may only convert a fixture to the host's form, for example give a Windows absolute path its drive. It must not choose a different expected result per system; such assertions fall under rule 2.
-5. **Exception**: when a crate's integration tests must start the crate's own executable, they cannot move, because `CARGO_BIN_EXE_*` is visible only within the package. Such a crate declares its hosts in its own `Cargo.toml`. Today only [`lithe-remote`](rust/crates/remote) does, because its server runs on Linux and macOS hosts. A new exception explains in its pull request why the tests cannot go into `lithe-platform-tests`.
+5. **Exception**: when a crate's integration tests must start the crate's own executable, they cannot move, because `CARGO_BIN_EXE_*` is visible only within the package. Such a crate declares its hosts in its own `Cargo.toml`. For example, [`lithe-remote`](rust/crates/remote) starts the remote server and [`lithe-ide-host`](rust/crates/ide-host) starts `lithe-mcp` to exercise its stdio protocol. A new exception explains in its pull request why the tests cannot go into `lithe-platform-tests`.
 
 [`scripts/rust-core/verify-platform-tests.mjs`](scripts/rust-core/verify-platform-tests.mjs) fails when a test is compiled out by `cfg`, or ignored by `cfg_attr(…, ignore)`, on every CI host of its crate, because CI would never run it. The `Select crates` job runs it on every change. `--list` also prints every test that runs on only some hosts. Rules 3 and 4 are about a test's intent, which the script cannot judge; review enforces them.
 
@@ -97,7 +97,7 @@ hosts = ["macos", "windows"]   # hosts that also run the crate's tests, besides 
 test-features = ["server"]     # features the tests need, enabled on every host
 ```
 
-`hosts` accepts `macos` and `windows`; every crate is tested on Linux without declaring it. Today `lithe-platform`, `lithe-platform-tests` and `lithe-remote` declare hosts. A declaration makes every pull request that affects the crate use a macOS or Windows runner, so it is only for the cases the previous section allows.
+`hosts` accepts `macos` and `windows`; every crate is tested on Linux without declaring it. A declaration makes every pull request that affects the crate use a macOS or Windows runner, so it is only for the cases the previous section allows.
 
 ## How CI runs only the affected crates
 
