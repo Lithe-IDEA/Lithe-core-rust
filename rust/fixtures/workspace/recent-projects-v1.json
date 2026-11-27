@@ -65,11 +65,112 @@
       },
       "expected": {
         "entries": [
-          { "path": "/work/old", "lastOpenedAt": 100, "pinned": true },
+          { "path": "/work/old", "lastOpenedAt": 100, "pinned": true, "pinOrder": 1 },
           { "path": "/work/new", "lastOpenedAt": 900, "pinned": false }
         ],
         "added": [],
         "removed": []
+      }
+    },
+    {
+      "name": "pinning an older project puts it before an existing pin",
+      "request": {
+        "entries": [
+          { "path": "/work/new", "lastOpenedAt": 900, "pinned": true, "pinOrder": 4 },
+          { "path": "/work/old", "lastOpenedAt": 100, "pinned": false }
+        ],
+        "action": { "kind": "togglePinned", "path": "/work/old" }
+      },
+      "expected": {
+        "entries": [
+          { "path": "/work/old", "lastOpenedAt": 100, "pinned": true, "pinOrder": 5 },
+          { "path": "/work/new", "lastOpenedAt": 900, "pinned": true, "pinOrder": 4 }
+        ],
+        "added": [],
+        "removed": []
+      }
+    },
+    {
+      "name": "repeated pin intent leaves existing pin order alone",
+      "request": {
+        "entries": [
+          { "path": "/work/new", "lastOpenedAt": 900, "pinned": true, "pinOrder": 5 },
+          { "path": "/work/old", "lastOpenedAt": 100, "pinned": true, "pinOrder": 4 }
+        ],
+        "action": { "kind": "setPinned", "path": "/work/old", "pinned": true }
+      },
+      "expected": {
+        "entries": [
+          { "path": "/work/new", "lastOpenedAt": 900, "pinned": true, "pinOrder": 5 },
+          { "path": "/work/old", "lastOpenedAt": 100, "pinned": true, "pinOrder": 4 }
+        ],
+        "added": [],
+        "removed": []
+      }
+    },
+    {
+      "name": "reopening a pin preserves its pin order and labels",
+      "request": {
+        "entries": [
+          { "path": "/work/research", "lastOpenedAt": 60, "pinned": true, "pinOrder": 2 },
+          { "path": "/work/docs", "lastOpenedAt": 100, "pinned": true, "pinOrder": 1, "tags": ["Docs"] }
+        ],
+        "action": { "kind": "record", "path": "/work/docs", "openedAt": 200 }
+      },
+      "expected": {
+        "entries": [
+          { "path": "/work/research", "lastOpenedAt": 60, "pinned": true, "pinOrder": 2 },
+          { "path": "/work/docs", "lastOpenedAt": 200, "pinned": true, "pinOrder": 1, "tags": ["Docs"] }
+        ],
+        "added": [],
+        "removed": []
+      }
+    },
+    {
+      "name": "setting tags trims and folds duplicates",
+      "request": {
+        "entries": [{ "path": "/work/alpha", "lastOpenedAt": 100 }],
+        "action": { "kind": "setTags", "path": "/work/alpha", "tags": [" Work ", "work", "个人", " "] }
+      },
+      "expected": {
+        "entries": [{ "path": "/work/alpha", "lastOpenedAt": 100, "pinned": false, "tags": ["Work", "个人"] }],
+        "added": [],
+        "removed": []
+      }
+    },
+    {
+      "name": "the same folder on two transports has distinct history entries",
+      "request": {
+        "entries": [
+          { "path": "remote:4:west/repo", "lastOpenedAt": 100, "remote": { "connectionId": "west", "name": "West", "folder": "/repo", "sshConnectionId": "west" } }
+        ],
+        "action": { "kind": "recordRemote", "openedAt": 200, "remote": { "connectionId": "east", "name": "East", "folder": "/repo", "sshConnectionId": "east" } }
+      },
+      "expected": {
+        "entries": [
+          { "path": "remote:4:east/repo", "lastOpenedAt": 200, "pinned": false, "remote": { "connectionId": "east", "name": "East", "folder": "/repo", "sshConnectionId": "east" } },
+          { "path": "remote:4:west/repo", "lastOpenedAt": 100, "pinned": false, "remote": { "connectionId": "west", "name": "West", "folder": "/repo", "sshConnectionId": "west" } }
+        ],
+        "added": ["remote:4:east/repo"],
+        "removed": []
+      }
+    },
+    {
+      "name": "tag and text filters compose across local and remote projects",
+      "request": {
+        "entries": [
+          { "path": "/work/alpha", "lastOpenedAt": 300, "tags": ["Docs"] },
+          { "path": "remote:4:east/repo", "lastOpenedAt": 200, "tags": ["docs", "Remote"], "remote": { "connectionId": "east", "name": "East", "folder": "/repo", "sshConnectionId": "east" } },
+          { "path": "/work/east", "lastOpenedAt": 100, "tags": ["Research"] }
+        ],
+        "action": { "kind": "filter", "query": " EAST ", "tag": "DOCS" }
+      },
+      "expected": {
+        "entries": [],
+        "added": [],
+        "removed": [],
+        "visible": [1],
+        "tags": ["Docs", "Remote", "Research"]
       }
     },
     {

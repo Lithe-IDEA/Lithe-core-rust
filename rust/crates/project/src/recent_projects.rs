@@ -20,6 +20,9 @@ const MAX_ENTRIES: usize = 1024;
 const MAX_ACTION_PATHS: usize = 1024;
 /// Upper bound for one path identity in UTF-8 bytes.
 const MAX_PATH_BYTES: usize = 4096;
+const MAX_TAGS: usize = 16;
+const MAX_TAG_BYTES: usize = 64;
+const MAX_REMOTE_ID_BYTES: usize = 1024;
 
 /// One retained project identity. `path` is the host's normalized root path
 /// and is compared byte for byte; `lastOpenedAt` is milliseconds since the
@@ -35,6 +38,63 @@ pub struct RecentProjectEntry {
     /// Pinned projects sort first and never count against the capacity.
     #[serde(default)]
     pub pinned: bool,
+    /// Explicit pin order. Older entries without an order retain their recency order.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pin_order: Option<u64>,
+    /// User-provided category names, in the order they entered them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+    /// Reopen information for a remote project. Local projects omit this field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote: Option<RecentRemoteProject>,
+}
+
+/// A remote folder and its reconnect route. Credentials stay in the host's connection store.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RecentRemoteProject {
+    /// Stable identity of the full transport chain.
+    pub connection_id: String,
+    /// Display name of the connection at the time of the last open.
+    pub name: String,
+    /// Absolute path on the remote host.
+    pub folder: String,
+    /// Saved SSH connection ID, for SSH and containers on an SSH host.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssh_connection_id: Option<String>,
+    /// Windows distribution and optional account, when using a WSL transport.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wsl: Option<RecentWslRoute>,
+    /// Engine and container ID, when the folder is inside a container.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub container: Option<RecentContainerRoute>,
+}
+
+/// Host-owned WSL locator. Remote connection validation runs when the host reopens the item.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RecentWslRoute {
+    /// Name used by the platform to select a distribution.
+    pub distribution: String,
+    /// Optional account in that distribution.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub user: String,
+}
+
+/// Host-owned container locator. Remote connection validation runs when the host reopens the item.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RecentContainerRoute {
+    /// CLI engine that owns the container.
+    pub engine: String,
+    /// Container identifier used by the engine.
+    pub container: String,
+    /// Optional engine context.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub context: String,
+    /// Optional account in the container.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub user: String,
 }
 
 /// One user or host action applied to the stored list.
@@ -49,6 +109,21 @@ pub enum RecentProjectsAction {
         #[serde(rename = "openedAt")]
         opened_at: i64,
     },
+    /// Record a successfully opened folder using its transport and remote path as identity.
+    RecordRemote {
+        /// The folder and reconnect route.
+        remote: RecentRemoteProject,
+        /// Open time in milliseconds since the Unix epoch.
+        #[serde(rename = "openedAt")]
+        opened_at: i64,
+    },
+    /// Replace the tags on an existing project.
+    SetTags {
+        /// Entry identity returned by an earlier reduction.
+        path: String,
+        /// Raw labels to trim, validate, and deduplicate.
+        tags: Vec<String>,
+    },
     /// Projects removed by the user or found unavailable by the host.
     Remove {
         /// Root paths to drop.
@@ -58,6 +133,13 @@ pub enum RecentProjectsAction {
     TogglePinned {
         /// Root path whose pin flips.
         path: String,
+    },
+    /// Applies an explicit menu intent, even if its window was showing an older list.
+    SetPinned {
+        /// Entry identity returned by an earlier reduction.
+        path: String,
+        /// Desired pin state.
+        pinned: bool,
     },
     /// Adds projects discovered elsewhere (for example another IDE) that are
     /// not already listed. The first import is stamped `openedAt` and each
@@ -69,8 +151,30 @@ pub enum RecentProjectsAction {
         #[serde(rename = "openedAt")]
         opened_at: i64,
     },
+    /// Merge dated local entries from an older client while retaining current metadata.
+    ImportEntries {
+        /// Imported local project paths and their open times.
+        entries: Vec<ImportedRecentProject>,
+    },
+    /// Project a text and tag filter over the supplied entries, without mutating them.
+    Filter {
+        /// Case-insensitive substring matched against path, connection name and labels.
+        query: String,
+        /// Case-insensitive exact category, or empty to include all categories.
+        tag: String,
+    },
     /// Re-applies ordering, deduplication, and capacity to a loaded list.
     Normalize,
+}
+
+/// Local history imported from an earlier client.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportedRecentProject {
+    /// Host-normalized local project root.
+    pub path: String,
+    /// Open time recorded by the earlier client.
+    pub last_opened_at: i64,
 }
 
 /// `workspace.recentProjects.reduce` request.
@@ -97,6 +201,12 @@ pub struct RecentProjectsResponse {
     pub added: Vec<String>,
     /// Paths this reduction dropped.
     pub removed: Vec<String>,
+    /// Row offsets in the supplied list, present only for a filter.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub visible: Option<Vec<usize>>,
+    /// Distinct category names across the supplied list, present only for a filter.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
 }
 
 /// JSON entry point for `workspace.recentProjects.reduce`.
@@ -122,6 +232,17 @@ pub fn reduce(request: RecentProjectsRequest) -> Result<RecentProjectsResponse, 
     for entry in &request.entries {
         validate_path(&entry.path)?;
         validate_time(entry.last_opened_at)?;
+        validate_tags(&entry.tags)?;
+        if let Some(remote) = &entry.remote {
+            validate_remote(remote)?;
+            if entry.path != remote_identity(remote) {
+                return Err(invalid("Remote project identity does not match its route"));
+            }
+        }
+    }
+
+    if let RecentProjectsAction::Filter { query, tag } = request.action {
+        return Ok(filter(request.entries, &query, &tag));
     }
 
     let mut entries = deduplicate(request.entries);
@@ -131,18 +252,20 @@ pub fn reduce(request: RecentProjectsRequest) -> Result<RecentProjectsResponse, 
         RecentProjectsAction::Record { path, opened_at } => {
             validate_path(&path)?;
             validate_time(opened_at)?;
-            let pinned = match entries.iter().position(|entry| entry.path == path) {
-                Some(index) => entries.remove(index).pinned,
-                None => false,
-            };
-            entries.insert(
-                0,
-                RecentProjectEntry {
-                    path,
-                    last_opened_at: opened_at,
-                    pinned,
-                },
-            );
+            record(&mut entries, path, opened_at, None);
+        }
+        RecentProjectsAction::RecordRemote { remote, opened_at } => {
+            validate_remote(&remote)?;
+            validate_time(opened_at)?;
+            let path = remote_identity(&remote);
+            record(&mut entries, path, opened_at, Some(remote));
+        }
+        RecentProjectsAction::SetTags { path, tags } => {
+            validate_path(&path)?;
+            let tags = normalize_tags(tags)?;
+            if let Some(entry) = entries.iter_mut().find(|entry| entry.path == path) {
+                entry.tags = tags;
+            }
         }
         RecentProjectsAction::Remove { paths } => {
             validate_paths(&paths)?;
@@ -151,8 +274,15 @@ pub fn reduce(request: RecentProjectsRequest) -> Result<RecentProjectsResponse, 
         }
         RecentProjectsAction::TogglePinned { path } => {
             validate_path(&path)?;
-            if let Some(entry) = entries.iter_mut().find(|entry| entry.path == path) {
-                entry.pinned = !entry.pinned;
+            if let Some(index) = entries.iter().position(|entry| entry.path == path) {
+                let pinned = !entries[index].pinned;
+                set_pinned(&mut entries, index, pinned);
+            }
+        }
+        RecentProjectsAction::SetPinned { path, pinned } => {
+            validate_path(&path)?;
+            if let Some(index) = entries.iter().position(|entry| entry.path == path) {
+                set_pinned(&mut entries, index, pinned);
             }
         }
         RecentProjectsAction::Import { paths, opened_at } => {
@@ -166,12 +296,32 @@ pub fn reduce(request: RecentProjectsRequest) -> Result<RecentProjectsResponse, 
                         path,
                         last_opened_at: opened_at.saturating_sub(offset).max(0),
                         pinned: false,
+                        pin_order: None,
+                        tags: Vec::new(),
+                        remote: None,
                     });
                     offset += 1;
                 }
             }
         }
+        RecentProjectsAction::ImportEntries { entries: imported } => {
+            if imported.len() > MAX_ACTION_PATHS {
+                return Err(invalid("Too many imported recent projects"));
+            }
+            for entry in imported {
+                validate_path(&entry.path)?;
+                validate_time(entry.last_opened_at)?;
+                if let Some(known) = entries.iter_mut().find(|known| known.path == entry.path) {
+                    if known.remote.is_none() {
+                        known.last_opened_at = known.last_opened_at.max(entry.last_opened_at);
+                    }
+                } else {
+                    record(&mut entries, entry.path, entry.last_opened_at, None);
+                }
+            }
+        }
         RecentProjectsAction::Normalize => {}
+        RecentProjectsAction::Filter { .. } => unreachable!("filter returns before mutation"),
     }
 
     let retained = order_and_limit(entries, capacity);
@@ -191,7 +341,138 @@ pub fn reduce(request: RecentProjectsRequest) -> Result<RecentProjectsResponse, 
         entries: retained,
         added,
         removed,
+        visible: None,
+        tags: None,
     })
+}
+
+fn set_pinned(entries: &mut Vec<RecentProjectEntry>, index: usize, pinned: bool) {
+    if entries[index].pinned == pinned {
+        return;
+    }
+    if !pinned {
+        entries[index].pinned = false;
+        entries[index].pin_order = None;
+        return;
+    }
+    let mut entry = entries.remove(index);
+    entry.pinned = true;
+    entry.pin_order = Some(
+        entries
+            .iter()
+            .filter_map(|item| item.pin_order)
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1),
+    );
+    entries.insert(0, entry);
+}
+
+fn record(
+    entries: &mut Vec<RecentProjectEntry>,
+    path: String,
+    opened_at: i64,
+    remote: Option<RecentRemoteProject>,
+) {
+    let mut entry = match entries.iter().position(|entry| entry.path == path) {
+        Some(index) => entries.remove(index),
+        None => RecentProjectEntry {
+            path,
+            last_opened_at: opened_at,
+            pinned: false,
+            pin_order: None,
+            tags: Vec::new(),
+            remote: None,
+        },
+    };
+    entry.last_opened_at = opened_at;
+    if remote.is_some() {
+        entry.remote = remote;
+    }
+    entries.insert(0, entry);
+}
+
+fn filter(entries: Vec<RecentProjectEntry>, query: &str, tag: &str) -> RecentProjectsResponse {
+    let query = query.trim().to_lowercase();
+    let tag = tag.trim().to_lowercase();
+    let mut tags = std::collections::BTreeMap::new();
+    let mut visible = Vec::new();
+    for (index, entry) in entries.iter().enumerate() {
+        let mut tag_matches = tag.is_empty();
+        let mut query_matches = if let Some(remote) = &entry.remote {
+            remote.folder.to_lowercase().contains(&query)
+                || remote.name.to_lowercase().contains(&query)
+        } else {
+            entry.path.to_lowercase().contains(&query)
+        };
+        for label in &entry.tags {
+            let key = label.to_lowercase();
+            tag_matches |= key == tag;
+            query_matches |= key.contains(&query);
+            tags.entry(key).or_insert_with(|| label.clone());
+        }
+        if tag_matches && query_matches {
+            visible.push(index);
+        }
+    }
+    RecentProjectsResponse {
+        entries: Vec::new(),
+        added: Vec::new(),
+        removed: Vec::new(),
+        visible: Some(visible),
+        tags: Some(tags.into_values().collect()),
+    }
+}
+
+fn remote_identity(remote: &RecentRemoteProject) -> String {
+    // Length-prefix the transport to disambiguate delimiters inside IDs and paths.
+    format!(
+        "remote:{}:{}{}",
+        remote.connection_id.len(),
+        remote.connection_id,
+        remote.folder
+    )
+}
+
+fn validate_remote(remote: &RecentRemoteProject) -> Result<(), CoreError> {
+    if remote.connection_id.is_empty()
+        || remote.connection_id.len() > MAX_REMOTE_ID_BYTES
+        || remote.name.len() > MAX_REMOTE_ID_BYTES
+        || !remote.folder.starts_with('/')
+        || (remote.ssh_connection_id.is_none()
+            && remote.wsl.is_none()
+            && remote.container.is_none())
+        || (remote.ssh_connection_id.is_some() && remote.wsl.is_some())
+    {
+        return Err(invalid("Remote project route is invalid"));
+    }
+    validate_path(&remote_identity(remote))
+}
+
+fn normalize_tags(tags: Vec<String>) -> Result<Vec<String>, CoreError> {
+    let mut seen = HashSet::new();
+    let tags: Vec<String> = tags
+        .iter()
+        .map(|tag| tag.trim())
+        .filter(|tag| !tag.is_empty() && seen.insert(tag.to_lowercase()))
+        .map(str::to_owned)
+        .collect();
+    validate_tags(&tags)?;
+    Ok(tags)
+}
+
+fn validate_tags(tags: &[String]) -> Result<(), CoreError> {
+    if tags.len() > MAX_TAGS
+        || tags.iter().any(|tag| {
+            tag.is_empty()
+                || tag.len() > MAX_TAG_BYTES
+                || tag.contains(',')
+                || tag.chars().any(char::is_control)
+        })
+    {
+        return Err(invalid("Recent project tags are invalid"));
+    }
+    Ok(())
 }
 
 /// Keeps the newest record of each path; the first occurrence wins a tie.
@@ -211,7 +492,12 @@ fn order_and_limit(entries: Vec<RecentProjectEntry>, capacity: usize) -> Vec<Rec
     let (mut pinned, mut unpinned): (Vec<_>, Vec<_>) =
         entries.into_iter().partition(|entry| entry.pinned);
     // `sort_by_key` is stable, so equal timestamps keep the caller's order.
-    pinned.sort_by_key(|entry| std::cmp::Reverse(entry.last_opened_at));
+    pinned.sort_by_key(|entry| {
+        std::cmp::Reverse((
+            entry.pin_order,
+            entry.pin_order.is_none().then_some(entry.last_opened_at),
+        ))
+    });
     unpinned.sort_by_key(|entry| std::cmp::Reverse(entry.last_opened_at));
     unpinned.truncate(capacity);
     // Pins are exempt from the capacity but still bounded by the input limit.

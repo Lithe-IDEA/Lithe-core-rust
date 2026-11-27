@@ -631,7 +631,7 @@ or removing a command fails until the table changes in the same commit.
 | `workspace.reduceDirectoryAction` | Apply "set role", "exclude" or "cancel exclusion" to a root's persisted directory rules and return the complete state to persist |
 | `workspace.relocateDirectoryRules` | Move (or drop, after a delete) the directory rule keys of a renamed, moved or deleted subtree, optionally into another workspace root's rules |
 | `workspace.repositories` | Discover deterministic Git repository roots for an opened workspace |
-| `workspace.recentProjects.reduce` | Apply one record, remove, pin, import, or normalize action to the recent project list and return the retained order |
+| `workspace.recentProjects.reduce` | Apply one history mutation or compute a recent project filter projection |
 | `workspace.searchIndex.warm` | Build or reuses the workspace search index |
 | `workspace.searchIndex.update` | Apply changed paths to the search index |
 | `workspace.searchIndex.invalidate` | Drop a workspace's cached search index |
@@ -947,21 +947,40 @@ opened workspace is a subdirectory of the repository; all Git change paths are
 relative to that repository root. `git.status.ahead` and `behind` report the
 current branch's tracking counts and are zero when no upstream is configured.
 `workspace.recentProjects.reduce` accepts `{ entries, action, capacity? }` and
-returns `{ entries, added, removed }`. Entries are `{ path, lastOpenedAt, pinned }`
-where `path` is the host's normalized root identity compared byte for byte and
-`lastOpenedAt` is non-negative Unix milliseconds from the host clock (missing
-means oldest). `action.kind` is `record { path, openedAt }` (moves the project
-first and keeps its pin), `remove { paths }`, `togglePinned { path }` (unknown
-paths are ignored), `import { paths, openedAt }` (adds only unlisted paths, the
-first stamped `openedAt` and each later one a millisecond older), or `normalize`.
-Core keeps the newest record of duplicated paths, orders pinned projects first
-and then by descending `lastOpenedAt` with ties in caller order, and keeps at
-most `capacity` unpinned projects (default 20, range 1–200); pins never count
-against it. `added` and `removed` list paths the reduction introduced or dropped
-so hosts attach or discard their own metadata (names, icons, branches). Empty,
-NUL-containing or over-4,096-byte paths, negative times and out-of-range
-capacities return `invalid_request`. Hosts own persistence and which roots are
-worth recording; menus may show fewer rows than are retained. See
+returns `{ entries, added, removed }`. A local entry has its normalized root
+`path`, `lastOpenedAt` in Unix milliseconds (missing means oldest) and
+`pinned`. Optional entry fields are `pinOrder`, `tags`, and `remote`.
+The host treats remote `path` as opaque. Core derives it from the full
+transport identity and the absolute POSIX folder. A `remote` record includes
+`connectionId`, `name`, `folder`, and a combination of `sshConnectionId`, `wsl`
+(distribution and optional user), and `container` (engine, identifier,
+optional context and user). SSH records refer to the saved connection by ID.
+Authentication settings and session tokens stay in their existing stores.
+
+`action.kind` accepts `record { path, openedAt }`,
+`recordRemote { remote, openedAt }`, `remove { paths }`, `togglePinned { path }`,
+`setPinned { path, pinned }`,
+`setTags { path, tags }`, `import { paths, openedAt }`,
+`importEntries { entries: [{ path, lastOpenedAt }] }`, `normalize`, or
+`filter { query, tag }`. Setting a pin to its current state preserves its rank. Explicit pins sort by descending pin order. Existing
+pins without one keep their recency order after explicit pins. Reopening
+preserves pin order and tags. Setting tags trims and deduplicates labels
+case-insensitively and supports clearing them with an empty array. At most 16
+non-empty, comma-free labels of up to 64 UTF-8 bytes each are retained per
+entry. Importing dated local entries preserves metadata already in the list.
+
+The filter is read-only and returns `visible` offsets into the supplied entries
+and the distinct `tags` across the entire list. It combines a case-insensitive
+substring of path, connection display name, or tags with an optional
+case-insensitive exact tag. With a filter, `entries`, `added`, and `removed`
+are empty.
+
+Core keeps the newest record of duplicated paths, sorts unpinned projects by
+most recently opened with ties in caller order, and keeps at most `capacity`
+unpinned projects (default 20, range 1–200). Pins are exempt. `added` and
+`removed` name the paths introduced or dropped by a mutation. Invalid paths,
+timestamps, routes, labels, or capacities return `invalid_request`. Hosts own
+persistence and decide which successfully opened projects to record. See
 `rust/fixtures/workspace/recent-projects-v1.json`.
 
 `workspace.rowSelection.reduce` accepts `{ rows, selection?, action }` and returns
