@@ -451,6 +451,7 @@ fn remote_identity(remote: &RecentRemoteProject) -> String {
 fn validate_remote(remote: &RecentRemoteProject) -> Result<(), CoreError> {
     if remote.connection_id.is_empty()
         || remote.connection_id.len() > MAX_REMOTE_ID_BYTES
+        || remote.connection_id.contains('\0')
         || remote.name.len() > MAX_REMOTE_ID_BYTES
         || !remote.folder.starts_with('/')
         || (remote.ssh_connection_id.is_none()

@@ -310,6 +310,17 @@
   ],
   "invalid": [
     {
+      "name": "a remote connection identity cannot contain NUL",
+      "request": {
+        "entries": [],
+        "action": {
+          "kind": "recordRemote",
+          "openedAt": 1,
+          "remote": { "connectionId": "saved\u0000demo", "name": "Synthetic host", "folder": "/workspace", "sshConnectionId": "saved-demo" }
+        }
+      }
+    },
+    {
       "name": "empty path",
       "request": { "entries": [], "action": { "kind": "record", "path": "", "openedAt": 1 } }
     },

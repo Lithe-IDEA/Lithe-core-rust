@@ -952,7 +952,8 @@ returns `{ entries, added, removed }`. A local entry has its normalized root
 `pinned`. Optional entry fields are `pinOrder`, `tags`, and `remote`.
 The host treats remote `path` as opaque. Core derives it from the full
 transport identity (up to 1024 UTF-8 bytes) and the absolute POSIX folder (up to
-4096 UTF-8 bytes). The derived key may be longer than a local path. A `remote` record includes
+4096 UTF-8 bytes). Both reject NUL. The derived key may be longer than a local
+path. A `remote` record includes
 `connectionId`, `name`, `folder`, and a combination of `sshConnectionId`, `wsl`
 (distribution and optional user), and `container` (engine, identifier,
 optional context and user). SSH records refer to the saved connection by ID.
