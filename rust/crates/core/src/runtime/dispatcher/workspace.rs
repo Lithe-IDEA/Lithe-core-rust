@@ -216,6 +216,11 @@ pub(super) fn dispatch(
             payload,
             crate::project::directory_actions::relocate_command,
         ),
+        WorkspaceCommand::ResolveDirectoryPresentation => plugin_response(
+            id,
+            payload,
+            crate::project::directory_actions::resolve_presentation_command,
+        ),
         WorkspaceCommand::Repositories => {
             match serde_json::from_value::<WorkspaceRepositoriesRequest>(payload)
                 .map_err(|error| {

@@ -628,8 +628,9 @@ or removing a command fails until the table changes in the same commit.
 | `workspace.renameEntry` | Rename one entry to a new path of the same root without replacing anything; a link is renamed as a link |
 | `workspace.copyEntry` | Copy one entry, a directory with everything in it, to a new path of the same root without replacing anything; links stay links |
 | `workspace.resolveEntry` | Name one existing entry below a workspace root without following it |
-| `workspace.reduceDirectoryAction` | Apply "set role", "exclude" or "cancel exclusion" to a root's persisted directory rules and return the complete state to persist |
+| `workspace.reduceDirectoryAction` | Apply role, custom type, color override, exclusion, clear mark or cancel exclusion to a root's persisted directory rules and return the complete state to persist |
 | `workspace.relocateDirectoryRules` | Move (or drop, after a delete) the directory rule keys of a renamed, moved or deleted subtree, optionally into another workspace root's rules |
+| `workspace.resolveDirectoryPresentation` | Resolve deterministic per-path presentation (icon, color, background tint, tag, source, exclusion) and manual indexing exclusions across user rules, shared rules, glob matches and Git ignores |
 | `workspace.repositories` | Discover deterministic Git repository roots for an opened workspace |
 | `workspace.recentProjects.reduce` | Apply one history mutation or compute a recent project filter projection |
 | `workspace.searchIndex.warm` | Build or reuses the workspace search index |
@@ -7634,14 +7635,23 @@ and releases only the last holder; window destruction also revokes late registra
 
 `workspace.reduceDirectoryAction` takes `{ path, action, caseInsensitive?, rules }`, where
 `path` is workspace-relative (`.` is the root), `action` is `{ kind: "setRole", role }`,
-`{ kind: "exclude" }` or `{ kind: "cancelExclusion" }`, and `rules` is the root's persisted
-`{ marks, includedDirectories, previousRoles }`. It returns `{ changed, rules }`; hosts persist
-`rules` verbatim and skip the write when `changed` is false. Excluding remembers the replaced role in
-`previousRoles` and canceling a manual exclusion restores it. `workspace.relocateDirectoryRules`
-takes `{ source, destination?, caseInsensitive?, rules, target? }` and returns `{ rules, target }`:
-keys at or below `source` leave `rules`, reappear under `destination` (in `target` for a move across
-workspace roots) and are dropped when there is no destination. Request and response pairs are pinned
-by `rust/fixtures/workspace/directory-rules-v1.json`.
+`{ kind: "exclude" }`, `{ kind: "cancelExclusion" }`, `{ kind: "clearMark" }`,
+`{ kind: "setColor", color }`, `{ kind: "upsertCustomType", directoryType }` or
+`{ kind: "deleteCustomType", id }`, and `rules` is the root's persisted
+`{ marks, includedDirectories, previousRoles, customTypes?, colors? }`. Built-in roles are
+`plain`, `sources`, `tests`, `resources`, `testResources`, `generated`, `excluded`, `module`,
+and `package`; `setRole` also accepts any `custom.*` ID defined in `customTypes`. It returns
+`{ changed, rules }`; hosts persist `rules` verbatim and skip the write when `changed` is false.
+Excluding remembers the replaced role in `previousRoles` and canceling a manual exclusion
+restores it. `workspace.relocateDirectoryRules` takes
+`{ source, destination?, caseInsensitive?, rules, target? }` and returns `{ rules, target }`:
+keys at or below `source` (including `colors`) leave `rules`, reappear under `destination`
+(in `target` for a move across workspace roots) and are dropped when there is no destination.
+`workspace.resolveDirectoryPresentation` takes
+`{ rules, sharedRules?, gitExcluded?, caseInsensitive?, paths }` and returns
+`{ entries, manualExcludedDirectories }`, merging layers in order `user > shared > glob > vcs`
+with ancestor background tint and exclusion inheritance. Base request and response pairs are
+pinned by `rust/fixtures/workspace/directory-rules-v1.json`.
 
 `workspace.planDuplicate` takes `{ name, isDirectory, existing?, caseInsensitive? }` and returns
 `{ name }`; `workspace.planPaste` takes `{ items: [{ name, isDirectory }], existing?, caseInsensitive? }`
