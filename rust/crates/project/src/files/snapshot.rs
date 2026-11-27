@@ -91,7 +91,8 @@ pub fn list_directories(
                 path: relative_path(&path, &root),
                 name: node_name(&path),
                 is_directory,
-                children: if is_directory
+                children: if !request.defer_empty_check
+                    && is_directory
                     && !crate::indexing::is_excluded(&root, &path, true).unwrap_or(true)
                     && directory_is_visibly_empty(&path, &root, &rules)
                 {

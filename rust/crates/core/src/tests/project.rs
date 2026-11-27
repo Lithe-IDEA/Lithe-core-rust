@@ -498,6 +498,21 @@ fn list_directories_marks_only_visibly_empty_directories_as_leaves() {
         .find(|child| child["name"] == "parent")
         .unwrap();
     assert!(parent.get("children").is_none());
+    let deferred = core_data(
+        "deferred-leaves",
+        "workspace.listDirectories",
+        serde_json::json!({
+            "root": root, "paths": ["", "hidden-only"], "hiddenFilePatterns": ["*.tmp"],
+            "deferEmptyCheck": true
+        }),
+    );
+    let direct = deferred["directories"][0]["children"].as_array().unwrap();
+    assert_eq!(direct.len(), children.len());
+    assert!(direct.iter().all(|child| child.get("children").is_none()));
+    assert_eq!(
+        deferred["directories"][1]["children"],
+        serde_json::json!([])
+    );
     fs::remove_dir_all(root).unwrap();
 }
 
