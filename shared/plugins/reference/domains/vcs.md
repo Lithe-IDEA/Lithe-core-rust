@@ -13,7 +13,7 @@
 | 协议 | `litheVcs` 0：宿主在 `initialize` 里提供 `capabilities.experimental.litheVcs: {"versions": [0]}`，提供者回答 `{"version": 0, "vcs", "capabilities"}`，见[进程协议版本](../capabilities-and-versions.md#进程协议版本) |
 | API 编号 | [API-31](../api-catalog.md#现在能用的-api)：VCS 提供者。读取内置 Git 的公共接口是另一项（API-42，计划中） |
 | 权限 | `process.vcs`、`languageServer.launch` |
-| 激活事件 | `onVcsRoot:<id>`；根目录检测只看标记文件，不启动进程，找到该 VCS 的根目录后才启动提供者。目录标记（如 `.svn`）是 VCS 元数据，插件启用期间所有工作区都会隐藏，Search Everywhere 也不列出其中的文件名 |
+| 激活事件 | `onVcsRoot:<id>`；根目录检测只看标记文件，不启动进程，找到该 VCS 的根目录后才启动提供者。目录标记是 VCS 元数据，插件启用期间所有工作区都会隐藏，Search Everywhere 也不列出其中的文件名 |
 | Lithe 桌面端 | 未声明 `vcsProviders`，安装时拒绝需要它的包 |
 | 官方 SDK | [Node SDK](../../sdk/node/README.md#a-vcs-provider) 0.5.0 实现 `litheVcs` 0；Java、Rust、Go SDK 不实现 |
 
@@ -58,7 +58,7 @@
 
 ## English
 
-A plugin can implement a provider for a version control system other than Git (Subversion is the first). A provider is an LSP base-protocol process, the same kind as a [build provider](build-providers.md), and answers requests of one VCS-neutral model: roots, file status, base content, history, annotation, check-in, rollback, and update. The version control UI, diff views, and commit window belong to the host; the UI decides what to show from the capabilities the provider negotiated, never from the VCS name. Git is served by built-in support, and the ID `git` is reserved.
+A plugin can implement a provider for a version control system other than Git. A provider is an LSP base-protocol process, the same kind as a [build provider](build-providers.md), and answers requests of one VCS-neutral model: roots, file status, base content, history, annotation, check-in, rollback, and update. The version control UI, diff views, and commit window belong to the host; the UI decides what to show from the capabilities the provider negotiated. Git is served by built-in support, and the ID `git` is reserved.
 
 | Item | Value |
 | --- | --- |
@@ -67,7 +67,7 @@ A plugin can implement a provider for a version control system other than Git (S
 | Protocols | `litheVcs` 0: the host offers `capabilities.experimental.litheVcs: {"versions": [0]}` in `initialize`, and the provider answers `{"version": 0, "vcs", "capabilities"}`; see [process protocol versions](../capabilities-and-versions.md#process-protocol-versions) |
 | API IDs | [API-31](../api-catalog.md#apis-usable-now): VCS providers. Public reads of the built-in Git are a separate item (API-42, planned) |
 | Permissions | `process.vcs`, `languageServer.launch` |
-| Activation events | `onVcsRoot:<id>`; root detection reads marker files only and starts no process, and a provider starts only after a root of its VCS is found. Directory markers, such as `.svn`, are VCS metadata: every workspace hides them while the plugin is enabled, and Search Everywhere never lists their file names |
+| Activation events | `onVcsRoot:<id>`; root detection reads marker files only and starts no process, and a provider starts only after a root of its VCS is found. Directory markers are VCS metadata. Every workspace hides them while the plugin is enabled, and Search Everywhere omits their files |
 | Lithe desktop | Does not declare `vcsProviders`; packages that require it are refused before installation |
 | Official SDKs | The [Node SDK](../../sdk/node/README.md#a-vcs-provider) 0.5.0 implements `litheVcs` 0; the Java, Rust, and Go SDKs do not |
 
