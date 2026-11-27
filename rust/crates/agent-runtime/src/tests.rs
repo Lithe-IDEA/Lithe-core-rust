@@ -1170,6 +1170,33 @@ fn output_the_backend_cannot_take_ends_the_session() {
 }
 
 #[test]
+fn a_session_whose_output_thread_cannot_start_ends_as_failed() {
+    let mut harness = Harness::new("output-thread-refused", ALL_GRANTS);
+    crate::live::REFUSED_THREADS.with(|refused| refused.borrow_mut().push("agent-output"));
+    let session = harness.start();
+    crate::live::REFUSED_THREADS.with(|refused| refused.borrow_mut().clear());
+    harness.next_event(&session, "started");
+    let exited = harness.next_event(&session, "exited");
+    assert_eq!(exited["reason"], "failed");
+    assert!(harness.sessions().is_empty());
+    assert_eq!(
+        harness.link.await_notice(AGENTS_DID_EXIT, |_| true)["session"],
+        json!(session)
+    );
+}
+
+#[test]
+fn a_session_whose_error_reader_cannot_start_ends_as_failed() {
+    let mut harness = Harness::new("errors-thread-refused", ALL_GRANTS);
+    crate::live::REFUSED_THREADS.with(|refused| refused.borrow_mut().push("agent-errors"));
+    let session = harness.start();
+    crate::live::REFUSED_THREADS.with(|refused| refused.borrow_mut().clear());
+    let exited = harness.next_event(&session, "exited");
+    assert_eq!(exited["reason"], "failed");
+    assert!(harness.sessions().is_empty());
+}
+
+#[test]
 fn a_backend_that_stops_while_the_session_starts_ends_the_cli() {
     let harness = Harness::new("start-refused", ALL_GRANTS);
     harness.link.refuse(Some(AGENTS_DID_START));

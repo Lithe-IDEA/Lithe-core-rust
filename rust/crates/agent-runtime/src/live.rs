@@ -607,17 +607,32 @@ fn start_checked(runtime: &Arc<Runtime>, request: StartRequest) -> Result<Value,
         ],
     );
 
+    // A stream thread that cannot start ends the session as failed: without
+    // its input the CLI never gets the backend's writes, and without a stderr
+    // reader the CLI can block on a full pipe. The session already started,
+    // so the host still gets its `exited` event.
     let handle = streams.handle.clone();
-    spawn("agent-input", move || write_input(handle, input_queue));
+    let input_started = spawn("agent-input", move || write_input(handle, input_queue));
     let errors_session = session.clone();
     let errors = streams.errors;
-    spawn("agent-errors", move || read_errors(&errors_session, errors));
+    let errors_started = spawn("agent-errors", move || read_errors(&errors_session, errors));
+    if !(input_started && errors_started) {
+        session.mark_end(EndReason::Failed);
+        session.handle.terminate();
+    }
     let output_runtime = runtime.clone();
+    let output_session = session.clone();
     let output = streams.output;
-    spawn("agent-output", move || {
-        read_output(&output_runtime, &session, output);
-        finish(&output_runtime, &session);
+    let output_started = spawn("agent-output", move || {
+        read_output(&output_runtime, &output_session, output);
+        finish(&output_runtime, &output_session);
     });
+    if !output_started {
+        // Only the output thread ends a session, so end this one here.
+        session.mark_end(EndReason::Failed);
+        session.handle.terminate();
+        finish(runtime, &session);
+    }
     Ok(json!({ "session": id, "mode": "native" }))
 }
 
@@ -649,11 +664,24 @@ fn check_environment(environment: &BTreeMap<String, String>) -> Result<(), CoreE
     }
 }
 
-fn spawn(name: &str, work: impl FnOnce() + Send + 'static) {
-    // A thread that cannot start leaves the session without that stream; the
-    // output thread is the one that matters, and its failure ends the session
-    // through the process's own exit.
-    let _ = thread::Builder::new().name(name.to_string()).spawn(work);
+#[cfg(test)]
+thread_local! {
+    /// Thread names [`spawn`] refuses on this thread, standing in for a
+    /// thread the system cannot start.
+    pub(crate) static REFUSED_THREADS: std::cell::RefCell<Vec<&'static str>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Starts a named thread; false when the system could not start it.
+fn spawn(name: &'static str, work: impl FnOnce() + Send + 'static) -> bool {
+    #[cfg(test)]
+    if REFUSED_THREADS.with(|refused| refused.borrow().contains(&name)) {
+        return false;
+    }
+    thread::Builder::new()
+        .name(name.to_string())
+        .spawn(work)
+        .is_ok()
 }
 
 fn write_input(handle: Arc<dyn LspProcessHandle>, queue: Receiver<Vec<String>>) {
@@ -993,7 +1021,7 @@ pub(crate) fn close(runtime: &Arc<Runtime>, payload: Value) -> Result<Value, Cor
     session.mark_end(EndReason::Closed);
     session.handle.close_input();
     let handle = session.handle.clone();
-    spawn("agent-close", move || {
+    let waiting = spawn("agent-close", move || {
         let deadline = Instant::now() + CLOSE_GRACE;
         while handle.exit_status().is_none() && Instant::now() < deadline {
             thread::sleep(Duration::from_millis(50));
@@ -1002,6 +1030,10 @@ pub(crate) fn close(runtime: &Arc<Runtime>, payload: Value) -> Result<Value, Cor
             handle.terminate();
         }
     });
+    if !waiting {
+        // Nothing can wait out the grace period, so end the CLI now.
+        session.handle.terminate();
+    }
     Ok(json!({}))
 }
 

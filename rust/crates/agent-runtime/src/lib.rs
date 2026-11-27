@@ -5,7 +5,7 @@
 //! everything that touches the machine. It starts the CLI, writes its input
 //! and reads its output, reads the session files, and keeps the cache; the
 //! plugin backend only translates. It turns the CLI's lines into Lithe's
-//! session events ([`events`]) and session-file lines into records.
+//! session events (the `events` module) and session-file lines into records.
 //!
 //! Core knows no agent: every agent-specific name, argument, protocol and file
 //! layout comes from a plugin manifest and its backend.
@@ -20,7 +20,7 @@
 //!
 //! - Only a request the user started may start a session, send a prompt or
 //!   answer a permission request. Sessions run only in trusted local
-//!   workspaces, at most [`live::MAX_SESSIONS_PER_AGENT`] per agent.
+//!   workspaces, at most four per agent.
 //! - The executable is always the agent's declared tool, as the host resolved
 //!   it. The plugin chooses arguments only, never the environment.
 //! - Session records are read only for agents the user granted

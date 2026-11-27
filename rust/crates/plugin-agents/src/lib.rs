@@ -83,21 +83,29 @@ const USER_HOME_VARIABLE: &str = "${userHome}";
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AgentDeclaration {
+    /// The agent's ID, unique within the plugin.
     pub id: String,
+    /// The name Lithe shows for the agent.
     pub display_name: String,
+    /// The icon Lithe shows for the agent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<UIIcon>,
     /// One of the plugin's `requiresTools`: the only executable any form of
     /// this agent runs.
     pub tool: String,
+    /// The native form: the backend speaks the CLI's own protocol.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub native: Option<NativeDeclaration>,
+    /// The ACP form: the arguments that start the CLI's ACP server.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub acp: Option<ArgumentsDeclaration>,
+    /// The terminal form: the arguments that start the CLI's own interface.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub terminal: Option<ArgumentsDeclaration>,
+    /// How the user updates the CLI.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub update: Option<UpdateDeclaration>,
+    /// Where the CLI keeps its session files.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub session_sources: Vec<SessionSourceDeclaration>,
 }
@@ -106,7 +114,10 @@ pub struct AgentDeclaration {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NativeDeclaration {
+    /// The backend function that answers the launch arguments.
     pub function: String,
+    /// How long Core waits for that function; see
+    /// [`NativeDeclaration::timeout_milliseconds`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timeout_milliseconds: Option<u64>,
 }
@@ -123,6 +134,7 @@ impl NativeDeclaration {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ArgumentsDeclaration {
+    /// The arguments, after the tool's path.
     pub arguments: Vec<String>,
 }
 
@@ -131,6 +143,7 @@ pub struct ArgumentsDeclaration {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UpdateDeclaration {
+    /// The arguments of the update command, after the tool's path.
     pub arguments: Vec<String>,
 }
 
@@ -146,11 +159,13 @@ pub enum SessionFormat {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SessionSourceDeclaration {
+    /// The source's ID, unique within the agent.
     pub id: String,
     /// Root candidates. The first one whose variables all resolve is used.
     pub roots: Vec<String>,
     /// Root-relative glob patterns of the files to read.
     pub include: Vec<String>,
+    /// The format of the files.
     pub format: SessionFormat,
     /// Backend function that parses new lines of one file.
     pub scan: String,
@@ -471,6 +486,7 @@ pub fn resolve_root(
 /// agent's tool. The tool itself is not in the answer's control.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NativeLaunch {
+    /// The arguments, after the tool's path.
     pub arguments: Vec<String>,
 }
 

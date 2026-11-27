@@ -52,11 +52,14 @@ pub struct AgentBackend<'a> {
 /// `plugin.host.*` or `plugin.agents.*` code, sent as `error.data.code`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentHostFailure {
+    /// The stable refusal code.
     pub code: String,
+    /// English text sent to the backend as the error message.
     pub message: String,
 }
 
 impl AgentHostFailure {
+    /// A refusal with `code` and `message`.
     pub fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
             code: code.into(),
@@ -228,6 +231,7 @@ pub struct AgentCallFailure {
     /// A `plugin.function.*` code, or the engine's code when the call could
     /// not be sent.
     pub code: String,
+    /// The error message the call ended with.
     pub message: String,
     /// The plugin's own error code, when the function returned one.
     pub plugin_error_code: Option<String>,
