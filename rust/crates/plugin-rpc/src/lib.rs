@@ -147,6 +147,7 @@ pub const HOST_PERMISSIONS: &[&str] = &[
     "clipboard.read",
     "clipboard.write",
     "workspace.reveal",
+    "workspace.directoryMarks",
     "network.request",
     "workspace.files.read",
     "workspace.files.watch",

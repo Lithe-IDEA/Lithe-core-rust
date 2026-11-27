@@ -95,6 +95,8 @@ Lithe 的插件公共 API 按 [API 实施计划](https://github.com/1lck/Lithe-I
 | API-05 | `workspace/listContexts` | 列出当前的工作区上下文，带变化序号 `revision` | `workspace.metadata` | 0 |
 | API-05 | `workspace/getContext` | 读取一个工作区上下文 | `workspace.metadata` | 0 |
 | API-05 | `workspace/getFolders` | 列出上下文的根目录，每个根目录带 `rootID` | `workspace.metadata` | 0 |
+| API-05 | `workspace/setDirectoryTypes` | 注册或替换本插件会话在当前上下文提供的自定义目录类型（最多 32 个，`id` 以 `plugin.` 开头） | `workspace.directoryMarks` | 0 |
+| API-05 | `workspace/setDirectoryMarks` | 注册或替换本插件会话在当前上下文的动态目录标记与可选配色（最多 500 条），优先级低于用户与项目共享规则、高于 Glob 与 `.gitignore` | `workspace.directoryMarks` | 0 |
 | API-06 | `workspace/readDirectory` | 分页列出目录项；执行/校验补充见 [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.read` | 0 |
 | API-06 | `workspace/stat` | 读取文件或目录的类型、大小和修改时间；执行/校验补充见 [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.read` | 0 |
 | API-06 | `workspace/readFile` | 读取磁盘上的文件，返回文本或 base64，超过上限时截断；执行/校验补充见 [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.read` | 0 |
@@ -297,6 +299,8 @@ Requests a backend sends to the host, all prefixed `lithe/host/`; the tables omi
 | API-05 | `workspace/listContexts` | Lists the current workspace contexts with the change counter `revision` | `workspace.metadata` | 0 |
 | API-05 | `workspace/getContext` | Reads one workspace context | `workspace.metadata` | 0 |
 | API-05 | `workspace/getFolders` | Lists the context's root folders, each with a `rootID` | `workspace.metadata` | 0 |
+| API-05 | `workspace/setDirectoryTypes` | Registers or replaces this plugin session's contributed directory types for the context (up to 32; `id` starts with `plugin.`) | `workspace.directoryMarks` | 0 |
+| API-05 | `workspace/setDirectoryMarks` | Registers or replaces this plugin session's dynamic directory marks and optional colors for the context (up to 500); precedence sits below user/shared rules and above glob/VCS | `workspace.directoryMarks` | 0 |
 | API-06 | `workspace/readDirectory` | Lists directory entries page by page; execution/validation details in [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.read` | 0 |
 | API-06 | `workspace/stat` | Reads the kind, size, and modification time of a file or directory; execution/validation details in [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.read` | 0 |
 | API-06 | `workspace/readFile` | Reads a file from disk as text or base64, truncated past the limit; execution/validation details in [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) | `workspace.files.read` | 0 |

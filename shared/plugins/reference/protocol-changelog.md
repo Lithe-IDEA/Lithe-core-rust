@@ -14,6 +14,8 @@
 
 ## 待合入
 
+- [#215](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/215)（待合入），[@xiaoyumuxi](https://github.com/xiaoyumuxi)，`pluginAPIVersion` 0 / `litheFunctions` 0 内补充（API-05）：新增宿主方法 `workspace/setDirectoryTypes` 与 `workspace/setDirectoryMarks`（新权限 `workspace.directoryMarks`），允许插件后端在当前工作区上下文注册自定义目录类型（最多 32 个，`id` 以 `plugin.` 开头）与动态目录标记（最多 500 条）；`workspace.resolveDirectoryPresentation` 新增可选 `pluginTypes` 与 `pluginMarks` 字段及输出可选 `pluginId`，按 `user > shared > plugin > glob > vcs > plain` 确定性合并呈现与索引排除，并允许用户手动分配 `plugin.*` 角色；插件提交时的校验与解析器一致，宿主保存下来的登记不会让整次解析失败；清单 schema 与四种官方 SDK（Rust、Go、Node、Java）同步补齐。无新增能力版本、协议版本或 SDK 版本。
+
 - [#207](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/207)（待合入），[@1lck](https://github.com/1lck)，`debugAdapters` 0（API-30）增加可选 `launch.executableSetting`。命令型适配器可读取用户全局文件路径，留空沿用原命令查找；旧宿主会拒绝包含该声明的清单。无新增方法、通知或能力版本。
 
 - [#198](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/198)（2026-11-24），[@1lck](https://github.com/1lck)，`pluginAPIVersion` 0 / `litheFunctions` 0 内补充（API-27）：`editor/registerActions` 的 `services.editor.options.actionIcons` 新增四个通用行首导航图标 token：`navigate-implemented`（接口/契约有子实现，向下）、`navigate-implementing`（实现接口/契约，向上）、`navigate-overridden`（父类/方法被覆写，向下）、`navigate-overriding`（覆写父类声明，向上），保留已有 `navigate-super` 与 `navigate-implementations` 向后兼容。`plugins.editorActions.decode` 仍由宿主声明的 `actionIcons` 列表动态校验，插件通过 `getCapabilities` 发现是否支持新 token，在旧宿主上回退到原有图标；契约 README、领域参考与 `fixtures/editor/editor-actions.json` 同步更新。没有新增能力版本、协议版本、宿主方法、通知或 SDK 版本。
@@ -132,6 +134,8 @@
 | API-05 | `workspace/listContexts` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-05 | `workspace/getContext` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-05 | `workspace/getFolders` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
+| API-05 | `workspace/setDirectoryTypes` | 0 | 待合入 | [#215](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/215) |
+| API-05 | `workspace/setDirectoryMarks` | 0 | 待合入 | [#215](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/215) |
 | API-06 | `workspace/readDirectory` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-06 | `workspace/readDirectory` | 0（执行/校验补充） | 待合入 | [#190](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/190) |
 | API-06 | `workspace/stat` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |

@@ -273,6 +273,8 @@ export interface Host {
   };
   readonly workspace: {
     reveal: Scoped<{resource:WorkspaceResource},null>;
+    setDirectoryTypes: Scoped<{types:JsonObject[]},{count:number}>;
+    setDirectoryMarks: Scoped<{marks:JsonObject[]},{count:number}>;
 
     /** Permission `workspace.metadata`. Entries carry no `stateDirectory`. */
     listContexts(options?: HostRequestOptions): Promise<{ revision: number; contexts: WorkspaceContext[] }>;

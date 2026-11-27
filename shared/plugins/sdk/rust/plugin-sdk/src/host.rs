@@ -841,6 +841,26 @@ impl Workspace {
         self.host.scoped(methods::WORKSPACE_REVEAL, context, params)
     }
 
+    /// Registers or replaces this plugin session's contributed directory types for `context`.
+    pub fn set_directory_types(
+        &self,
+        context: &WorkspaceContext,
+        params: Value,
+    ) -> Result<Value, SdkError> {
+        self.host
+            .scoped(methods::WORKSPACE_SET_DIRECTORY_TYPES, context, params)
+    }
+
+    /// Registers or replaces this plugin session's dynamic directory marks for `context`.
+    pub fn set_directory_marks(
+        &self,
+        context: &WorkspaceContext,
+        params: Value,
+    ) -> Result<Value, SdkError> {
+        self.host
+            .scoped(methods::WORKSPACE_SET_DIRECTORY_MARKS, context, params)
+    }
+
     /// `{ revision, contexts }`.
     pub fn list_contexts(&self) -> Result<Value, SdkError> {
         self.host
