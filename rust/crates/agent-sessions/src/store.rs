@@ -252,6 +252,7 @@ pub struct SessionEntry {
     /// The agent that ran the session.
     pub agent: String,
     /// The session, in the agent's own ID format.
+    #[serde(rename = "sessionID")]
     pub session_id: String,
     /// The file the other fields come from: the first, by path, of the files
     /// that describe the session, or of those that only mention it.
@@ -260,6 +261,7 @@ pub struct SessionEntry {
     pub file_count: u64,
     /// The session this one was resumed or forked from.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "parentSessionID")]
     pub parent_session_id: Option<String>,
     /// The working directory the agent ran in.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -302,6 +304,7 @@ pub struct SearchHit {
     /// The session file.
     pub path: String,
     /// The session the text belongs to.
+    #[serde(rename = "sessionID")]
     pub session_id: String,
     /// When the text was written, when the parser knew.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1191,7 +1194,7 @@ fn validate(output: ScanOutput, start: u64, end: u64) -> Result<ScanOutput, Core
     let in_chunk =
         |range: ByteRange| range.start < range.end && start <= range.start && range.end <= end;
     for session in &output.sessions {
-        check_id(&session.session_id, "sessions[].sessionId")?;
+        check_id(&session.session_id, "sessions[].sessionID")?;
         check_optional_id(
             session.parent_session_id.as_deref(),
             "sessions[].parentSessionId",
@@ -1208,9 +1211,9 @@ fn validate(output: ScanOutput, start: u64, end: u64) -> Result<ScanOutput, Core
     }
     for call in &output.calls {
         check_id(&call.key, "calls[].key")?;
-        check_id(&call.session_id, "calls[].sessionId")?;
-        check_optional_id(call.thread_id.as_deref(), "calls[].threadId")?;
-        check_optional_id(call.request_id.as_deref(), "calls[].requestId")?;
+        check_id(&call.session_id, "calls[].sessionID")?;
+        check_optional_id(call.thread_id.as_deref(), "calls[].threadID")?;
+        check_optional_id(call.request_id.as_deref(), "calls[].requestID")?;
         for (label, field) in [
             (&call.requested_model, "calls[].requestedModel"),
             (&call.model, "calls[].model"),
@@ -1230,7 +1233,7 @@ fn validate(output: ScanOutput, start: u64, end: u64) -> Result<ScanOutput, Core
         }
     }
     for span in &output.spans {
-        check_id(&span.session_id, "spans[].sessionId")?;
+        check_id(&span.session_id, "spans[].sessionID")?;
         if !in_chunk(span.range) {
             return Err(invalid_output("spans[].range is outside the chunk"));
         }

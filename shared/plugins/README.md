@@ -15,7 +15,7 @@
 | 需要自己的后端进程 | [插件后端 SDK](#插件后端-sdk可选) |
 | 接入宿主日志、排查插件故障 | [插件接入统一日志](guides/plugin-logging.md) |
 | 参考现成插件 | [示例插件](#示例插件) |
-| 查 API-01–44 现在能用什么、每种能力和协议的版本、Core 和 Lithe 桌面端支持哪些 | [插件参考](reference/README.md) |
+| 查 API-01–45 现在能用什么、每种能力和协议的版本、Core 和 Lithe 桌面端支持哪些 | [插件参考](reference/README.md) |
 | 查字段的准确含义 | [插件契约](#插件契约) |
 | 为插件需要的公共 API 提 PR | [API PR 提交指南（中文）](guides/plugin-api-pr-guide.zh-CN.md) |
 | 修改契约、指南或 SDK，在本地验证 | [贡献与维护](#贡献与维护) |
@@ -62,7 +62,7 @@ Lithe 读取并校验 `plugin.json`，然后自己启动其中声明的外部进
 
 `requires` 必须**恰好**列出实际用到的能力：漏一个或多列一个，清单都会被拒绝。例如只用声明式构建系统时写 `"requires": { "buildSystems": 0 }`，不要多写。
 
-已有的能力版本继续保留，按实际用法选择最低可用版本；用到 `1`、`2` 才有的行为时如实声明，不强制填 `0`。新增能力先复用 API-01–44，在所属领域兼容扩展；工具特有需求不得提升任何系统 API 版本，公共变化也要先证明兼容扩展不足，详见 [API PR 提交指南](guides/plugin-api-pr-guide.zh-CN.md)。每个能力的内容、Core 的支持表和 Lithe 桌面端是否声明它，见[能力与协议版本对照](reference/capabilities-and-versions.md#能力版本requires)；Lithe 桌面端没有声明的能力，需要它的插件不会被提供安装。
+已有的能力版本继续保留，按实际用法选择最低可用版本；用到 `1`、`2` 才有的行为时如实声明，不强制填 `0`。新增能力先复用 API-01–45，在所属领域兼容扩展；工具特有需求不得提升任何系统 API 版本，公共变化也要先证明兼容扩展不足，详见 [API PR 提交指南](guides/plugin-api-pr-guide.zh-CN.md)。每个能力的内容、Core 的支持表和 Lithe 桌面端是否声明它，见[能力与协议版本对照](reference/capabilities-and-versions.md#能力版本requires)；Lithe 桌面端没有声明的能力，需要它的插件不会被提供安装。
 
 ### 在编辑器里校验 plugin.json
 
@@ -167,7 +167,7 @@ SDK 与插件后端在构建时下载，并按锁定的 SHA-256（或 Git commit
 
 | 页面 | 内容 |
 | --- | --- |
-| [插件 API 总表](reference/api-catalog.md) | API-01–44 每一项现在能用的方法、尚未提供的部分和对应功能页 |
+| [插件 API 总表](reference/api-catalog.md) | API-01–45 每一项现在能用的方法、尚未提供的部分和对应功能页 |
 | [能力与协议版本对照](reference/capabilities-and-versions.md) | `requires` 能力版本、进程协议版本、文档格式版本，对照 Core 和 Lithe 桌面端支持哪些 |
 | [插件协议更新记录](reference/protocol-changelog.md) | 每个协议、能力和 API 是哪天、哪个 PR 改的，以及每个版本首次出现在哪个 PR；只有中文 |
 | [功能页](reference/README.md#功能页) | 15 个功能各一页：字段、宿主现状、契约章节、示例与用例 |
@@ -239,7 +239,7 @@ Writing, testing, and publishing a plugin all happen in **your own repository**.
 | Run a backend process of your own | [Plugin backend SDKs](#plugin-backend-sdks-optional) |
 | Connect to host logging and diagnose plugin failures | [Plugin logging](guides/plugin-logging.md) |
 | Learn from existing plugins | [Example plugins](#example-plugins) |
-| See what API-01–44 offer today, the version of each capability and protocol, and what Core and the Lithe desktop client support | [Plugin reference](reference/README.md) |
+| See what API-01–45 offer today, the version of each capability and protocol, and what Core and the Lithe desktop client support | [Plugin reference](reference/README.md) |
 | Look up the exact meaning of a field | [Plugin contract](#plugin-contract) |
 | Propose a public API extension for a plugin | [API PR guide (Chinese)](guides/plugin-api-pr-guide.zh-CN.md) |
 | Change the contract, guides, or SDKs and verify locally | [Contributing and maintenance](#contributing-and-maintenance) |
@@ -286,7 +286,7 @@ When you need run, test, or build tool integration, read the [build, run, and te
 
 `requires` must list **exactly** the capabilities you use: leaving one out or listing one extra gets the manifest rejected. For example, a plugin that only uses declarative build systems writes `"requires": { "buildSystems": 0 }` and nothing more.
 
-Keep existing capability versions and select the lowest that covers the actual use; declare `1` or `2` when its behavior is needed rather than forcing every value to `0`. Reuse API-01–44 and extend the appropriate domain compatibly. Tool-specific requirements must not raise any system API version; even a public change must first show why a compatible extension is insufficient. See the [API PR guide (Chinese)](guides/plugin-api-pr-guide.zh-CN.md). For what each capability covers, Core's support table, and whether the Lithe desktop client declares it, see [Capability and protocol versions](reference/capabilities-and-versions.md#capability-versions-requires); a plugin that needs a capability the Lithe desktop client does not declare is not offered for installation there.
+Keep existing capability versions and select the lowest that covers the actual use; declare `1` or `2` when its behavior is needed rather than forcing every value to `0`. Reuse API-01–45 and extend the appropriate domain compatibly. Tool-specific requirements must not raise any system API version; even a public change must first show why a compatible extension is insufficient. See the [API PR guide (Chinese)](guides/plugin-api-pr-guide.zh-CN.md). For what each capability covers, Core's support table, and whether the Lithe desktop client declares it, see [Capability and protocol versions](reference/capabilities-and-versions.md#capability-versions-requires); a plugin that needs a capability the Lithe desktop client does not declare is not offered for installation there.
 
 ### Validate plugin.json in your editor
 
@@ -391,7 +391,7 @@ Lithe Store maintains the listing rules: [Publishing community plugins](https://
 
 | Page | Covers |
 | --- | --- |
-| [Plugin API catalog](reference/api-catalog.md) | For each of API-01–44, the methods usable today, what is still missing, and its feature page |
+| [Plugin API catalog](reference/api-catalog.md) | For each of API-01–45, the methods usable today, what is still missing, and its feature page |
 | [Capability and protocol versions](reference/capabilities-and-versions.md) | `requires` capability versions, process protocol versions, and document format versions, compared across Core and the Lithe desktop client |
 | [Plugin protocol changelog](reference/protocol-changelog.md) | When, and in which PR, each protocol, capability, and API changed, and the PR that introduced each version; Chinese only |
 | [Feature pages](reference/README.md#feature-pages) | One page for each of 15 features: fields, host status, contract sections, examples and cases |

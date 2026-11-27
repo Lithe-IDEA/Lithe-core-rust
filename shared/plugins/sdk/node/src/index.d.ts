@@ -436,6 +436,18 @@ export interface Host {
    * `sdk.functions.invalidCall`, or `sdk.host.invalidContext` for the
    * context, before anything is sent.
    */
+  /**
+   * Native agent sessions and usage totals (plan API-45). Core answers it;
+   * `write` and `report` need `agents.native`, `usage` `agents.usage.read`.
+   */
+  readonly agents: {
+    /** Writes 1-256 lines, without line breaks, to the standard input of `session`'s CLI. */
+    write(session: string, lines: string[], options?: HostRequestOptions): Promise<void>;
+    /** Reports 1-256 events of `session`; one refused event refuses them all. */
+    report(session: string, events: AgentSessionEvent[], options?: HostRequestOptions): Promise<void>;
+    /** Usage totals of the agents' sessions. */
+    usage(params: AgentUsageParams, options?: HostRequestOptions): Promise<AgentUsageResult>;
+  };
   readonly functions: {
     /** The enabled plugins other than this one that export `functionID`. */
     providers(functionID: string, options?: HostRequestOptions): Promise<FunctionProvidersResult>;
@@ -890,6 +902,11 @@ export interface Backend {
   onCommand(commandID: string, handler: (event: CommandEvent) => unknown): Backend;
   /** Handles `lithe/host/workspace/didChangeContexts`. */
   onContextsChanged(handler: (event: { revision: number }) => unknown): Backend;
+  /**
+   * Translates the native sessions of the plugin's agents (plan API-45): one
+   * handler per session, called one notification at a time in Core's order.
+   */
+  onAgentSessions(start: (start: AgentSessionStart, session: AgentSessionHandle) => AgentSession | Promise<AgentSession>): Backend;
   /** Handles a `lithe/host/*` notification a later host adds. */
   onHostNotification(method: string, handler: (params: JsonObject) => unknown): Backend;
   onInitialize(hook: (event: { params: JsonObject; negotiated: Negotiated }) => unknown): Backend;
@@ -902,6 +919,60 @@ export interface Backend {
 }
 
 export function createBackend(options?: BackendOptions): Backend;
+
+/** What `lithe/host/agents/didStart` says about a session Core started. */
+export interface AgentSessionStart {
+  /** Core's ID of the session, such as `agent-1`. */
+  session: string;
+  /** The `agents[].id` from the manifest. */
+  agentID: string;
+  /** The working directory the CLI runs in. */
+  cwd: string;
+  /** The CLI's own session ID to resume, or null. */
+  resume: string | null;
+}
+
+/**
+ * The plugin's translation of one native session. Each call waits for the
+ * one before; a rejected `prompt` ends its turn as failed.
+ */
+export interface AgentSession {
+  /** Lines the CLI wrote to standard output, without line breaks. */
+  output(lines: string[]): unknown;
+  /** The user's prompt for `turn`; write what the CLI expects. */
+  prompt(turn: number, text: string): unknown;
+  /** The user cancelled `turn`. */
+  cancel?(turn: number): unknown;
+  /** The user answered permission request `permission` with `option`. */
+  decidePermission(turn: number, permission: string, option: string): unknown;
+  /** The CLI ended; the session gets no further calls. */
+  exited?(exitCode: number | null): unknown;
+}
+
+/** The host methods of one agent session. */
+export interface AgentSessionHandle {
+  readonly id: string;
+  readonly host: Host;
+  write(lines: string[], options?: HostRequestOptions): Promise<void>;
+  report(events: AgentSessionEvent[], options?: HostRequestOptions): Promise<void>;
+}
+
+/** A session event, as the contract README's Native sessions lists them, such as `{ kind: 'turnEnded', turn, reason }`. */
+export type AgentSessionEvent = JsonObject & { kind: string };
+
+export interface AgentUsageParams {
+  groupBy: 'day' | 'agent' | 'model';
+  sinceMs?: number;
+  untilMs?: number;
+  utcOffsetSeconds?: number;
+}
+
+export interface AgentUsageResult extends JsonObject {
+  sinceMs: number;
+  untilMs: number;
+  summaries: JsonObject[];
+  rateLimits: JsonObject[];
+}
 
 export class PluginError extends Error {
   constructor(code: string, message: string, options?: { cause?: unknown });
@@ -992,7 +1063,8 @@ export const HOST_METHODS: Readonly<Record<
   | 'editorOpen' | 'editorReveal' | 'previewOpenHTML' | 'browserOpenExternal'
   | 'windowShowInformation' | 'windowShowWarning' | 'windowShowError'
   | 'terminalCreate' | 'terminalShow' | 'terminalClose' | 'terminalReopen' | 'terminalDispose' | 'terminalOnExit'
-  | 'functionsProviders' | 'functionsInvoke',
+  | 'functionsProviders' | 'functionsInvoke'
+  | 'agentsWrite' | 'agentsReport' | 'agentsUsage',
   string
 >>;
 

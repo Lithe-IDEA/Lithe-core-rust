@@ -154,6 +154,14 @@ test('a view event without its required shape is refused', () => {
   assert.equal(checkViewEvent(parsed), parsed);
   const resize = event({ event: 'resize', width: 340 });
   assert.equal(checkViewEvent(resize), resize);
+  // Tree events, as the Rust, Go and Java SDKs parse them.
+  for (const tree of [
+    event({ event: 'refresh' }),
+    event({ event: 'expand', node: 'files', item: 'src', value: true }),
+    event({ event: 'loadMore', node: 'files', cursor: 'page-2' }),
+  ]) {
+    assert.equal(checkViewEvent(tree), tree);
+  }
   for (const params of [
     null,
     [],
@@ -164,6 +172,7 @@ test('a view event without its required shape is refused', () => {
     event({ surface: {} }),
     event({ settings: { effective: {} } }),
     event({ node: 3 }),
+    event({ event: 'loadMore', node: 'files', cursor: 2 }),
     event({ value: ['a'] }),
     event({ viewport: { x: 0 } }),
     event({ width: 'wide' }),

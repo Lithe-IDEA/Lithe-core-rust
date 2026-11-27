@@ -11,7 +11,7 @@
 | 文件 | `plugin.json`（[`plugin-manifest.schema.json`](../../contract/v1/plugin-manifest.schema.json)）；发布者签名 `lithe-plugin-signature.json`（见[包信任](package-trust.md)） |
 | 基础字段 | `schemaVersion`、`id`、`displayName`、`version`、`pluginAPIVersion`、`requires`、`requiresTools`、`vendor`、`permissions`、`activationEvents` |
 | 版本 | `schemaVersion` 和 `pluginAPIVersion` 都固定为 `0`。`requires` 列出清单用到的每个能力，版本都是 `0`。新的能力版本只加给发生变化的那一个能力，其他能力仍写 `0`（规则见[版本与能力](../capabilities-and-versions.md)） |
-| API 编号 | 不在 API-01–44 内，属于安装和打包层面的契约 |
+| API 编号 | 不在 API-01–45 内，属于安装和打包层面的契约 |
 | 宿主 | Lithe 桌面端。声明的能力见下文“能力与宿主” |
 
 ### 清单字段归属
@@ -123,7 +123,7 @@ Every plugin package has a `plugin.json` at its root. It says who the plugin is,
 | Files | `plugin.json` ([`plugin-manifest.schema.json`](../../contract/v1/plugin-manifest.schema.json)); publisher signature `lithe-plugin-signature.json` (see [Package trust](package-trust.md)) |
 | Base fields | `schemaVersion`, `id`, `displayName`, `version`, `pluginAPIVersion`, `requires`, `requiresTools`, `vendor`, `permissions`, `activationEvents` |
 | Versions | `schemaVersion` and `pluginAPIVersion` are always `0`. `requires` lists every capability the manifest uses, each at version `0`. A new capability version is added only to the one capability that changes; the others stay `0` (rules in [Versions and capabilities](../capabilities-and-versions.md)) |
-| API IDs | Outside API-01–44; this is an installation and packaging contract |
+| API IDs | Outside API-01–45; this is an installation and packaging contract |
 | Host | Lithe desktop. The capabilities it declares are listed below under "Capabilities and host" |
 
 ### Which page owns each manifest field

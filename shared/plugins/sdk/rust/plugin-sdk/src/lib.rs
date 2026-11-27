@@ -15,6 +15,10 @@
 //!   subscriptions, the commands and context changes the host notifies, and
 //!   calls to the functions other plugins export through Core's relay
 //!   ([`Functions`]) with the [`Caller`] of a function called that way;
+//! - **[Agent sessions](Backend::on_agent_sessions)**: native sessions of
+//!   the plugin's agent CLIs, translated in order, and the [`Agents`]
+//!   service that writes to the CLI, reports session events, and reads
+//!   usage totals (plan API-45);
 //! - **`litheKeymapImport`**: shortcut import providers;
 //! - **`litheToolchains`**: [toolchain discovery providers](toolchains);
 //! - **`litheBuild`**: a build provider's typed `lithe/build/*` requests,
@@ -33,6 +37,7 @@
 //!
 //! See [`Backend`] for a minimal backend.
 
+mod agents;
 mod backend;
 mod build;
 mod diagnostics;
@@ -45,6 +50,7 @@ mod stdio;
 pub mod toolchains;
 pub mod view;
 
+pub use agents::{AgentSession, AgentSessionHandle, AgentSessionStart, Agents};
 pub use backend::{
     Backend, BackendHandle, Caller, Cancellation, Context, Initialize, KeymapImportRequest,
     KeymapSourceFile,

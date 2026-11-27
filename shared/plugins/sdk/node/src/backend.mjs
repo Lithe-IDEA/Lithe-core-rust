@@ -16,6 +16,7 @@ import { HostError, PluginError, PluginSdkError, toResponseError } from './error
 import { createHost, HostChannel } from './host.mjs';
 import { killAllProcesses, runProcess } from './process.mjs';
 import {
+  AGENT_NOTIFICATIONS,
   BUILD_VERSION,
   boundedText,
   ERROR_CODES,
@@ -48,6 +49,9 @@ const BUILD_FORMATS = Object.freeze({
 
 /** Host notifications the SDK routes itself; see `onCommand`, `onContextsChanged`, and `host.subscribe`. */
 const ROUTED_NOTIFICATIONS = Object.freeze(Object.values(HOST_NOTIFICATIONS));
+
+/** Native agent session notifications, routed by `onAgentSessions`. */
+const AGENT_METHODS = Object.freeze(Object.values(AGENT_NOTIFICATIONS));
 
 /** VCS capabilities that describe the VCS rather than a request it answers. */
 const VCS_TRAITS = Object.freeze(['push', 'staging']);
@@ -88,6 +92,10 @@ class Backend {
   #commandHandlers = new Map();
   #contextsHandler = null;
   #hostNotificationHandlers = new Map();
+  /** `onAgentSessions`'s start function, or null. */
+  #agentStarter = null;
+  /** Live agent sessions by session ID: `{ handler, tail }`, where `tail` runs its notifications in order. */
+  #agentSessions = new Map();
   #channel;
   #initializeHooks = [];
   #shutdownHooks = [];
@@ -299,8 +307,27 @@ class Backend {
   }
 
   /**
+   * Translates the native sessions of the plugin's agents (plan API-45). For
+   * each `lithe/host/agents/didStart`, `start({ session, agentID, cwd,
+   * resume }, handle)` makes the session's handler, which then gets the
+   * session's `didOutput`, `didPrompt`, `didCancel`, `didDecidePermission`
+   * and `didExit` one at a time, in the order Core sent them: each call
+   * waits for the promise of the one before. The handler has
+   * `output(lines)`, `prompt(turn, text)` and `decidePermission(turn,
+   * permission, option)`, and may have `cancel(turn)` and `exited(exitCode)`.
+   * `handle` has `id`, `host`, `write(lines)` and `report(events)`. When
+   * `start` fails, or a prompt fails, the SDK reports `turnEnded` with reason
+   * `failed` for the turn. A later registration replaces the earlier one.
+   */
+  onAgentSessions(start) {
+    if (typeof start !== 'function') throw new TypeError('An agent session start must be a function.');
+    this.#agentStarter = start;
+    return this;
+  }
+
+  /**
    * Handles a `lithe/host/*` notification a later host adds. Commands,
-   * context changes, and subscription events have their own APIs.
+   * context changes, subscription events, and agent sessions have their own APIs.
    */
   onHostNotification(method, handler) {
     if (typeof method !== 'string' || !method.startsWith('lithe/host/')) {
@@ -308,6 +335,9 @@ class Backend {
     }
     if (ROUTED_NOTIFICATIONS.includes(method)) {
       throw new PluginSdkError('sdk.method.reserved', `${method} is routed by the SDK; use onCommand, onContextsChanged, or host.subscribe.`);
+    }
+    if (AGENT_METHODS.includes(method)) {
+      throw new PluginSdkError('sdk.method.reserved', `${method} is routed by the SDK; use onAgentSessions.`);
     }
     if (typeof handler !== 'function') throw new TypeError('A handler must be a function.');
     this.#hostNotificationHandlers.set(method, handler);
@@ -438,6 +468,8 @@ class Backend {
           pending.reject(new PluginSdkError('sdk.session.closed', 'The session ended.'));
         }
         this.#outgoing.clear();
+        // Sessions still open get no further notifications.
+        this.#agentSessions.clear();
         input.off?.('data', onData);
         resolve(code);
         exit?.(code);
@@ -557,13 +589,17 @@ class Backend {
       this.#channel.deliver(params);
       return;
     }
+    if (AGENT_METHODS.includes(method)) {
+      this.#agentNotification(method, params);
+      return;
+    }
     let handler;
     let event = params;
     if (method === HOST_NOTIFICATIONS.commandDidRun) {
       handler = this.#commandHandlers.get(params.commandID);
       event = { commandID: params.commandID, workspaceContext: isContextReference(params.context) ? params.context : null };
       if (!handler) {
-        this.#diagnostics().degraded('notification', 'command_unhandled');
+        this.#diagnostics().terminal('notification', { code: 'command_unhandled' }, 0);
         return;
       }
     } else if (method === HOST_NOTIFICATIONS.didChangeContexts) {
@@ -575,6 +611,64 @@ class Backend {
     Promise.resolve()
       .then(() => handler(event))
       .catch((error) => this.#diagnostics().terminal('notification', { code: failureKind(error) }, 0));
+  }
+
+  /**
+   * Hands one `lithe/host/agents/did*` notification to its session. Core
+   * checked its shape; a notification of a session the SDK did not start is
+   * dropped.
+   */
+  #agentNotification(method, params) {
+    const session = typeof params.session === 'string' ? params.session : '';
+    const failed = (code) => this.#diagnostics().terminal('notification', { code }, 0);
+    if (method === AGENT_NOTIFICATIONS.didStart) {
+      const start = this.#agentStarter;
+      if (!start) {
+        failed('agent_unhandled');
+        return;
+      }
+      const handle = agentSessionHandle(session, this.host);
+      const entry = { handler: null, tail: null };
+      entry.tail = Promise.resolve()
+        .then(() => start({
+          session,
+          agentID: typeof params.agentID === 'string' ? params.agentID : '',
+          cwd: typeof params.cwd === 'string' ? params.cwd : '',
+          resume: typeof params.resume === 'string' ? params.resume : null,
+        }, handle))
+        .then((handler) => {
+          if (!isObject(handler)) throw new TypeError('An agent session start returned no handler.');
+          entry.handler = handler;
+        })
+        .catch((error) => failed(failureKind(error)));
+      this.#agentSessions.set(session, entry);
+      return;
+    }
+    const entry = this.#agentSessions.get(session);
+    if (method === AGENT_NOTIFICATIONS.didExit) this.#agentSessions.delete(session);
+    if (!entry) {
+      if (this.#agentStarter) failed('agent_session_unknown');
+      return;
+    }
+    const prompt = method === AGENT_NOTIFICATIONS.didPrompt;
+    const turn = Number.isSafeInteger(params.turn) ? params.turn : 0;
+    entry.tail = entry.tail.then(async () => {
+      const { handler } = entry;
+      let ok = handler !== null;
+      if (ok) {
+        try {
+          await deliverAgentNotification(handler, method, params, turn);
+        } catch (error) {
+          ok = false;
+          failed(failureKind(error));
+        }
+      }
+      if (!ok && prompt) {
+        // No handler runs the turn, so it ends here. The handler may have
+        // ended it already; Core then refuses the second end.
+        await this.host.agents.report(session, [{ kind: 'turnEnded', turn, reason: 'failed' }]).catch(() => {});
+      }
+    });
   }
 
   async #initialize(id, params) {
@@ -1010,6 +1104,35 @@ function buildResult(method, result) {
     throw new PluginSdkError('sdk.build.invalidResult', `${method} exceeds the build-result size limit.`);
   }
   return document;
+}
+
+/** The host methods of one agent session. */
+function agentSessionHandle(session, host) {
+  return Object.freeze({
+    id: session,
+    host,
+    /** `lithe/host/agents/write`: 1-256 lines for the CLI's standard input, without line breaks. */
+    write: (lines, options) => host.agents.write(session, lines, options),
+    /** `lithe/host/agents/report`: 1-256 session events, applied together. */
+    report: (events, options) => host.agents.report(session, events, options),
+  });
+}
+
+/** Calls the handler method one agent notification is for. */
+async function deliverAgentNotification(handler, method, params, turn) {
+  const text = (value) => (typeof value === 'string' ? value : '');
+  switch (method) {
+    case AGENT_NOTIFICATIONS.didOutput:
+      return handler.output(Array.isArray(params.lines) ? params.lines.map(text) : []);
+    case AGENT_NOTIFICATIONS.didPrompt:
+      return handler.prompt(turn, text(params.text));
+    case AGENT_NOTIFICATIONS.didCancel:
+      return handler.cancel?.(turn);
+    case AGENT_NOTIFICATIONS.didDecidePermission:
+      return handler.decidePermission(turn, text(params.permission), text(params.option));
+    default:
+      return handler.exited?.(Number.isSafeInteger(params.exitCode) ? params.exitCode : null);
+  }
 }
 
 function isObject(value) {

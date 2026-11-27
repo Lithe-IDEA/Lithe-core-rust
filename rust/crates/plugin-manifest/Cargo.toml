@@ -9,6 +9,7 @@ description = "Declarative plugin manifests: validation, normalization and the r
 lithe-build = { path = "../build" }
 lithe-debug = { path = "../debug" }
 lithe-platform = { path = "../platform" }
+lithe-plugin-agents = { path = "../plugin-agents" }
 lithe-plugin-backend = { path = "../plugin-backend" }
 lithe-plugin-functions = { path = "../plugin-functions" }
 lithe-plugin-grammar = { path = "../plugin-grammar" }

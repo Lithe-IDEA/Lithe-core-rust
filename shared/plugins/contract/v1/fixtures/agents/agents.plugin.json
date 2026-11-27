@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 0,
+  "id": "dev.lithe.fixture.agents",
+  "displayName": "Agents",
+  "version": "1.0.0",
+  "pluginAPIVersion": 0,
+  "requires": {
+    "agents": 0,
+    "backend": 0
+  },
+  "requiresTools": [
+    "example-agent"
+  ],
+  "vendor": {
+    "id": "org.example",
+    "displayName": "Example",
+    "signatureRequirement": "publisherPackage"
+  },
+  "permissions": [
+    "agents.native",
+    "agents.run",
+    "agents.sessions.read",
+    "agents.usage.read",
+    "backend.launch"
+  ],
+  "activationEvents": [
+    "onAgent:example"
+  ],
+  "languages": [],
+  "agents": [
+    {
+      "id": "example",
+      "displayName": "Example Agent",
+      "tool": "example-agent",
+      "native": {
+        "function": "example.launch",
+        "timeoutMilliseconds": 20000
+      },
+      "terminal": {
+        "arguments": []
+      },
+      "update": {
+        "arguments": [
+          "update"
+        ]
+      },
+      "sessionSources": [
+        {
+          "id": "projects",
+          "roots": [
+            "${env:EXAMPLE_HOME}/sessions",
+            "${userHome}/.example/sessions"
+          ],
+          "include": [
+            "**/*.jsonl"
+          ],
+          "format": "jsonLines",
+          "scan": "example.sessions.scan",
+          "read": "example.sessions.read"
+        }
+      ]
+    }
+  ],
+  "backend": {
+    "launch": {
+      "kind": "packaged",
+      "path": "bin/backend"
+    },
+    "arguments": [
+      "--stdio"
+    ]
+  }
+}

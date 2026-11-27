@@ -44,6 +44,7 @@ pub fn validate_manifest_value(value: Value) -> Validation<DeclarativePluginMani
             "keymapImportProviders",
             lithe_plugin_keymap_import::MAX_PROVIDERS,
         ),
+        ("agents", lithe_plugin_agents::MAX_AGENTS),
     ] {
         if value.get(field).is_some_and(|section| {
             !section
@@ -191,6 +192,7 @@ impl DeclarativePluginManifest {
             && self.toolchain_providers.is_empty()
             && self.keymap_import_providers.is_empty()
             && self.output_link_matchers.is_empty()
+            && self.agents.is_empty()
             // A backend may be the whole plugin: it starts on a workspace.
             && self.backend.is_none()
         {
@@ -282,6 +284,8 @@ impl DeclarativePluginManifest {
             // Console links alone are a complete plugin: Core matches them.
             && self.output_link_matchers.is_empty()
             && self.backend.is_none()
+            // A terminal-only agent is a complete plugin: Core runs its tool.
+            && self.agents.is_empty()
             // A grammar alone is a complete highlighting plugin.
             && !self
                 .languages
@@ -318,6 +322,13 @@ impl DeclarativePluginManifest {
             lithe_plugin_keymap_import::validate_declarations(&mut self.keymap_import_providers)?;
             self.validate_packaged_provider_backend()?;
         }
+        lithe_plugin_agents::validate_declarations(
+            &mut self.agents,
+            &lithe_plugin_agents::DeclarationContext {
+                required_tools: &required_tools,
+                has_backend: self.backend.is_some(),
+            },
+        )?;
         self.validate_plugin_functions()?;
         if let Some(backend) = &self.backend {
             backend.validate(&lithe_plugin_backend::DeclarationContext {
@@ -353,7 +364,10 @@ impl DeclarativePluginManifest {
                         .any(|server| server.process.is_backend_launch())
                     || self.plugin_functions.as_ref().is_some_and(
                         lithe_plugin_functions::PluginFunctionsDeclaration::exports_any,
-                    ),
+                    )
+                    // Core starts the backend to launch a native session or
+                    // index session files.
+                    || lithe_plugin_agents::uses_backend(&self.agents),
                 runtime_tools,
             })?;
         }
@@ -467,6 +481,7 @@ impl DeclarativePluginManifest {
                 capabilities::PLUGIN_FUNCTIONS,
                 self.plugin_functions.is_some(),
             ),
+            (capabilities::AGENTS, !self.agents.is_empty()),
         ];
         sections
             .into_iter()
@@ -594,6 +609,11 @@ impl DeclarativePluginManifest {
             }
             for command in &ui.commands {
                 expected.insert(format!("onCommand:{}", command.id));
+            }
+        }
+        for agent in &self.agents {
+            if agent.needs_backend() {
+                expected.insert(lithe_plugin_agents::activation_event(agent));
             }
         }
         self.activation_events = sorted_unique(std::mem::take(&mut self.activation_events));

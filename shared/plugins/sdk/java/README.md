@@ -204,6 +204,7 @@ stderr fallback and no plugin-owned file writer.
 | `onCommand(commandId, handler)` | Runs `handler.handle(commandId, workspaceContext)` when the user runs one of the plugin's commands. |
 | `onContextsChanged(handler)` | `lithe/host/workspace/didChangeContexts` with its `{ revision }`. |
 | `onHostNotification(method, handler)` | A `lithe/host/*` notification a later host adds. The three this SDK routes itself are reserved. |
+| `onAgentSessions(start)` | Translates the native sessions of the plugin's agents; see [Native agent sessions](#native-agent-sessions). |
 | `onInitialize(hook)`, `onShutdown(hook)` | Lifecycle hooks. `onInitialize` receives the `initialize` params and what was negotiated. |
 | `onRequest(method, handler)`, `onNotification(method, handler)` | Ordinary LSP methods. Lifecycle and `lithe/*` methods are reserved. |
 | `sendRequest`, `sendNotification` | Ordinary LSP messages to the host. `lithe/*` methods are reserved. |
@@ -299,6 +300,7 @@ call. See the [build configuration contract](../../contract/v1/README.md#build-c
 | `documents().save`, `.saveAs`, `.close`; `workspace().create`, `.rename`, `.copy`, `.trash` | Saves, closes, and file changes, with the `documents.save` and `workspace.files.write` permissions. Nothing is overwritten, discarded, or deleted permanently; see [saving documents and changing files](../../contract/v1/README.md#saving-documents-and-changing-files). |
 | `preview().openHtml`, `browser().openExternal`, `window().showInformation`, `.showWarning`, `.showError` | Preview, browser, and messages. |
 | `functions().providers(functionId)`, `.invoke(context, call)` | [Calls to other plugins' functions](#calling-other-plugins), relayed by Core. |
+| `agents().write(session, lines)`, `.report(session, events)`, `.usage(params)` | Native agent sessions and usage totals, as `CompletableFuture`s; see [Native agent sessions](#native-agent-sessions). |
 | `request(method, params)`, `subscribe(method, params, listener)` | Any `lithe/host/*` method, including ones a later host adds. |
 | `subscriptions().dispose(id)` | Ends a subscription; `Subscription.dispose()` does the same. |
 | `withCancellation(cancellation)` | The same services, cancelled together with `cancellation`. |
@@ -528,6 +530,81 @@ The SDK includes wrappers for plugin-owned native terminal create/show/close,
 reopen with bounded display history, disposal and exit subscriptions. They
 require `terminal.create`. See
 [the native terminal guide](../../guides/native-terminals.md).
+
+## Native agent sessions
+
+A plugin whose [agent](../../contract/v1/README.md#agents) declares `native`
+(plan API-45) translates between the agent CLI's own protocol and Lithe's
+[session events](../../contract/v1/README.md#native-sessions). Core starts the
+CLI with the command line the `native` function answered; the backend only
+reads the lines the CLI writes, reports events, and writes the CLI's standard
+input. It never sees the CLI's environment or credentials.
+
+The example below is for a fictional CLI that writes JSON lines
+`{"type":"text","text":…}` and `{"type":"done"}` and reads `{"prompt":…}`.
+
+```java
+backend.onAgentSessions((start, session) -> new AgentSession() {
+    private long turn;
+
+    @Override
+    public void prompt(long next, String text) throws Exception {
+        turn = next;
+        session.write(Collections.singletonList(Json.stringify(map("prompt", text)))).join();
+    }
+
+    @Override
+    public void output(List<String> lines) throws Exception {
+        List<Object> events = new ArrayList<>();
+        for (String raw : lines) {
+            Map<String, Object> line;
+            try {
+                line = Json.object(Json.parse(raw));
+            } catch (Json.JsonException notJson) {
+                continue;
+            }
+            if ("text".equals(line.get("type"))) {
+                events.add(map("kind", "message", "turn", turn, "role", "assistant",
+                        "messageID", "reply-" + turn, "text", line.get("text"), "delta", true));
+            } else if ("done".equals(line.get("type"))) {
+                events.add(map("kind", "turnEnded", "turn", turn, "reason", "completed"));
+            }
+        }
+        if (!events.isEmpty()) {
+            session.report(events).join();
+        }
+    }
+
+    @Override
+    public void decidePermission(long turn, String permission, String option) throws Exception {
+        session.write(Collections.singletonList(Json.stringify(map("permission", permission, "option", option))))
+                .join();
+    }
+});
+```
+
+`map` stands for a helper that builds a `LinkedHashMap` from key-value pairs.
+`AgentSessionStart` carries `session()`, `agentId()`, `cwd()` and `resume()`
+(the CLI's own session ID when the user resumes one, or null). `cancel` and
+`exited` have empty defaults. `host().agents()` offers the same `write` and
+`report` for any session ID, and `usage(params)` for usage totals.
+
+- Each session has its own worker. `didStart` makes the session's handler;
+  the session's `didOutput`, `didPrompt`, `didCancel`, `didDecidePermission`
+  and `didExit` then reach it one at a time, in the order Core sent them, so
+  a handler may wait for host requests. Other sessions keep running.
+- When making the handler fails, or a prompt fails, the SDK reports
+  `turnEnded` with reason `failed` for the turn and logs the failure. Other
+  failures are only logged; a cancellation is not logged.
+- A notification for a session that never started, or one that already
+  exited, is logged as `agent_session_unknown`. A started session without a
+  registration is logged as `agent_unhandled`.
+- The six `lithe/host/agents/did*` notifications reach only this API;
+  registering one with `onHostNotification` fails with `sdk.method.reserved`.
+- `write` and `report` need `agents.native` and act only on the plugin's own
+  sessions. `usage` needs `agents.usage.read` and answers
+  `{sinceMs, untilMs, summaries, rateLimits}`: numbers and model names only,
+  never conversation text, titles, session IDs or directories.
 
 ## Testing
 

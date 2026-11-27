@@ -9,10 +9,12 @@
 
 时间线的两列这样读：
 
-- **API 编号**：这个 PR 涉及的 API-01–44 规划编号，来自 [API 实施计划](https://github.com/1lck/Lithe-IDEA/blob/main/docs/development/macos-plugin-api-plan.md)，和协议版本、能力版本分开记录。— 表示没有改到具体 API，例如清单、市场、包信任、SDK 或契约文档整理。
+- **API 编号**：这个 PR 涉及的 API-01–45 规划编号，来自 [API 实施计划](https://github.com/1lck/Lithe-IDEA/blob/main/docs/development/macos-plugin-api-plan.md)，和协议版本、能力版本分开记录。— 表示没有改到具体 API，例如清单、市场、包信任、SDK 或契约文档整理。
 - **协议 / 能力**：**加粗**的是这个 PR 新增的版本号；没有加粗的，是同一版本内的补充、宿主接入或说明修正。
 
 ## 待合入
+
+- [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216)（待合入），[@xiaoyumuxi](https://github.com/xiaoyumuxi)，新增能力 **`agents` 0**（API-45）：清单 `agents[]` 声明用户自己安装的 Agent CLI、它的运行形式（`native`、`acp`、`terminal`、`update`）和会话来源 `sessionSources`；新增权限 `agents.run`、`agents.native`、`agents.sessions.read`、`agents.usage.read` 与激活事件 `onAgent:<id>`，多声明或少声明都拒绝。`litheFunctions` 0 内新增宿主方法 `agents/write`、`agents/report`、`agents/usage`（Core 直接回答，宿主收不到）和通知 `agents/didStart`、`didOutput`、`didPrompt`、`didCancel`、`didDecidePermission`、`didExit`。Core 新增 `agent-runtime`（启动和回收 CLI 进程、校验会话事件、有界事件队列）与宿主命令 `agents.*`、`agentSessions.*`，会话记录的分组键改为 `sessionID`；安装审查新增 `agent`、`agentSessions` 两类程序；新增 `fixtures/agents/` 两个清单和 23 个拒绝用例，四种官方 SDK 同步封装。版本 0 不运行 ACP 客户端，会话只在可信的本地工作区运行。
 
 - [#215](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/215)（待合入），[@xiaoyumuxi](https://github.com/xiaoyumuxi)，`pluginAPIVersion` 0 / `litheFunctions` 0 内补充（API-05）：新增宿主方法 `workspace/setDirectoryTypes` 与 `workspace/setDirectoryMarks`（新权限 `workspace.directoryMarks`），允许插件后端在当前工作区上下文注册自定义目录类型（最多 32 个，`id` 以 `plugin.` 开头）与动态目录标记（最多 500 条）；`workspace.resolveDirectoryPresentation` 新增可选 `pluginTypes` 与 `pluginMarks` 字段及输出可选 `pluginId`，按 `user > shared > plugin > glob > vcs > plain` 确定性合并呈现与索引排除，并允许用户手动分配 `plugin.*` 角色；插件提交时的校验与解析器一致，宿主保存下来的登记不会让整次解析失败；清单 schema 与四种官方 SDK（Rust、Go、Node、Java）同步补齐。无新增能力版本、协议版本或 SDK 版本。
 
@@ -71,6 +73,7 @@
 | 能力 | 版本 | 日期 | PR |
 | --- | --- | --- | --- |
 | `backend` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
+| `agents` | 0 | 待合入 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
 | `buildModelInputs` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `buildProviders` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | `buildProviders` | 1 | 2026-11-18 | [#89](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/89) |
@@ -120,7 +123,7 @@
 
 ### 宿主方法（按 API 编号）
 
-向后兼容地新增宿主方法、通知或可选字段时不升版本（见契约 [Extending the host services](../contract/v1/README.md#extending-the-host-services)），上面的版本表看不出某个方法是什么时候加的，所以宿主方法和通知在这里逐个登记。一个 API 编号下可以有多个方法，每个方法一行，记首次加入的日期和 PR；后续的执行或行为补充另加一行，保留首次记录。方法名省略前缀 `lithe/host/`；用途和权限见 [API 总表](api-catalog.md#已公开的宿主方法)。`keymapImport/*` 属于 `litheKeymapImport` 协议，不在 API-01–44 内。`functions/providers`、`functions/invoke` 是 `litheFunctions` 里的跨插件调用，只对声明了至少一个 `calls` 的后端开放。
+向后兼容地新增宿主方法、通知或可选字段时不升版本（见契约 [Extending the host services](../contract/v1/README.md#extending-the-host-services)），上面的版本表看不出某个方法是什么时候加的，所以宿主方法和通知在这里逐个登记。一个 API 编号下可以有多个方法，每个方法一行，记首次加入的日期和 PR；后续的执行或行为补充另加一行，保留首次记录。方法名省略前缀 `lithe/host/`；用途和权限见 [API 总表](api-catalog.md#已公开的宿主方法)。`keymapImport/*` 属于 `litheKeymapImport` 协议，不在 API-01–45 内。`functions/providers`、`functions/invoke` 是 `litheFunctions` 里的跨插件调用，只对声明了至少一个 `calls` 的后端开放。
 
 | API | 方法 | 协议 | 日期 | PR |
 | --- | --- | --- | --- | --- |
@@ -221,6 +224,15 @@
 | API-35 | `functions/invoke` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | API-38 | `network/request` | 0 | 2026-11-23 | [#193](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/193) |
 | API-40 | `workspace/getHostPaths` | 0 | 待合入 | [#151](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/151) |
+| API-45 | `agents/write` | 0 | 待合入 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
+| API-45 | `agents/report` | 0 | 待合入 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
+| API-45 | `agents/usage` | 0 | 待合入 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
+| API-45 | `agents/didStart`（通知） | 0 | 待合入 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
+| API-45 | `agents/didOutput`（通知） | 0 | 待合入 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
+| API-45 | `agents/didPrompt`（通知） | 0 | 待合入 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
+| API-45 | `agents/didCancel`（通知） | 0 | 待合入 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
+| API-45 | `agents/didDecidePermission`（通知） | 0 | 待合入 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
+| API-45 | `agents/didExit`（通知） | 0 | 待合入 | [#216](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/216) |
 | — | `keymapImport/listInputs` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 | — | `keymapImport/readChunk` | 0 | 2026-11-11 | [#17](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/17) |
 
@@ -338,7 +350,7 @@
 修改 `shared/plugins/contract/v1/`、`rust/crates/plugin-model/src/capabilities.rs` 或 `rust/crates/plugin-rpc/src/` 的 Core PR，在**同一个 PR** 里更新本页：
 
 1. 把这个 PR 补到时间线最上面（按合入日期分组）：PR、修改人、API 编号、协议 / 能力、改了什么。不升版的兼容扩展同样登记；是否允许引入新版本，先按契约 [Versioning](../contract/v1/README.md#versioning) 和 [API PR 提交指南](../guides/plugin-api-pr-guide.zh-CN.md#3-api-版本怎么处理) 判断，不能照搬历史升版先例。确有新版本时才加粗，并写进“按协议查首次出现”里的对应表；所属能力与进程协议保持一致。
-2. “API 编号”填这个 PR 涉及的全部 API-01–44 编号，取自 PR 描述里的“原计划编号”。PR 没写时按 [API 实施计划](https://github.com/1lck/Lithe-IDEA/blob/main/docs/development/macos-plugin-api-plan.md) 判断，不要自编新号；不属于任何编号的写 —。
+2. “API 编号”填这个 PR 涉及的全部 API-01–45 编号，取自 PR 描述里的“原计划编号”。PR 没写时按 [API 实施计划](https://github.com/1lck/Lithe-IDEA/blob/main/docs/development/macos-plugin-api-plan.md) 判断，不要自编新号；不属于任何编号的写 —。
 3. PR 新增或修改了宿主方法或通知时，每个方法在“宿主方法（按 API 编号）”表里加一行，写明 API 编号、协议、日期和 PR；同时在 [API 总表](api-catalog.md#已公开的宿主方法)的中英两张方法表里各加一行，写明用途、权限和协议。同一个 API 下的方法分几个 PR 加入时，各自登记自己的 PR。
 4. “修改人”填 PR 作者的 GitHub 账号，写成 `[@账号](https://github.com/账号)`。账号可以这样查：
 

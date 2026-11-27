@@ -480,6 +480,22 @@ or removing a command fails until the table changes in the same commit.
 | `ai.pullRequest.decode` | Decode a strict pull request title and description |
 | `ai.inlineEdit.plan` | Plan a credential-free inline edit request |
 | `ai.inlineEdit.decode` | Decode the replacement text of an inline edit response |
+| `agents.configure` | Load the agents enabled plugins declare, with the permissions the user granted |
+| `agents.catalog` | List the configured agents |
+| `agents.sessions` | List the live agent sessions |
+| `agents.start` | Start a native agent session the user asked for |
+| `agents.prompt` | Send the user's prompt to a live agent session |
+| `agents.cancel` | Ask the agent backend to cancel the turn in progress |
+| `agents.respondPermission` | Answer a pending agent permission request |
+| `agents.close` | End a live agent session |
+| `agents.waitEvents` | Wait, bounded, for agent session events after a sequence |
+| `agentSessions.configure` | Open the agent session record cache |
+| `agentSessions.sync` | Read one agent's changed session files through its plugin |
+| `agentSessions.forget` | Drop one agent's cached session records |
+| `agentSessions.list` | List recorded agent sessions |
+| `agentSessions.search` | Search recorded agent session text |
+| `agentSessions.read` | Read one recorded range as messages |
+| `agentSessions.stats` | Sum recorded agent usage with the latest rate limits |
 | `plugins.declarative.validate` | Validate and normalize a declarative plugin manifest |
 | `plugins.ui.applyResult` | Check a backend result for a plugin view and return the whole view to draw |
 | `plugins.web.open` | Register a plugin page for a web tool window |

@@ -27,6 +27,10 @@ pub enum HostRoute {
     /// answers it. The host sees only the start request for a provider whose
     /// backend is not running.
     Relay,
+    /// An agent-session method (plan API-45): Core's agent runtime checks
+    /// that the session belongs to the backend and answers it. The host never
+    /// sees the request.
+    Agents,
 }
 
 /// How Core checks the params of one host method before the host sees them.
@@ -591,7 +595,37 @@ pub(crate) const HOST_METHODS: &[HostMethod] = &[
         permission: Some(PERMISSION_DOCUMENTS_CONTENT_PROVIDER),
         params: HostParams::ContentProvider,
     },
+    // Plan API-45: the native relay of the plugin's own agent sessions, and
+    // the usage totals of consented agents. Core's agent runtime answers
+    // them and checks session ownership.
+    HostMethod {
+        method: AGENTS_WRITE,
+        service: HOST_SERVICE_AGENTS,
+        permission: Some(PERMISSION_AGENTS_NATIVE),
+        params: HostParams::Object,
+    },
+    HostMethod {
+        method: AGENTS_REPORT,
+        service: HOST_SERVICE_AGENTS,
+        permission: Some(PERMISSION_AGENTS_NATIVE),
+        params: HostParams::Object,
+    },
+    HostMethod {
+        method: AGENTS_USAGE,
+        service: HOST_SERVICE_AGENTS,
+        permission: Some(PERMISSION_AGENTS_USAGE),
+        params: HostParams::Object,
+    },
 ];
+
+/// Writes lines to the standard input of one of the backend's agent CLIs.
+pub const AGENTS_WRITE: &str = "lithe/host/agents/write";
+
+/// Reports session events the backend translated from CLI output.
+pub const AGENTS_REPORT: &str = "lithe/host/agents/report";
+
+/// Reads usage and quota totals of the agents the user consented to.
+pub const AGENTS_USAGE: &str = "lithe/host/agents/usage";
 
 /// Host service of the plugin's own language servers (plan API-25).
 pub(crate) const HOST_SERVICE_LANGUAGE_SERVER: &str = "languageServer";
@@ -672,6 +706,9 @@ pub fn host_request(
     }
     if entry.service == HOST_SERVICE_FUNCTIONS {
         return Ok(HostRoute::Relay);
+    }
+    if entry.service == HOST_SERVICE_AGENTS {
+        return Ok(HostRoute::Agents);
     }
     Ok(HostRoute::Forward(entry.service))
 }

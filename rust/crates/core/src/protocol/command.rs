@@ -63,6 +63,9 @@ pub enum CoreCommand {
     SearchActions,
     /// AI commit, pull request and inline edit planning run by `lithe-ai` (`ai.*`).
     Ai(AiCommand),
+    /// Agent catalog and live sessions (`agents.*`) and local session records
+    /// (`agentSessions.*`), run by `lithe-agent-runtime` (plan API-45).
+    Agents(AgentsCommand),
     /// Plugin manifests, plugin views and web content, plugin settings, installed
     /// plugins and the marketplace (`plugins.*`).
     Plugins(PluginsCommand),
@@ -212,6 +215,68 @@ pub enum AiCommand {
     InlineEditPlan,
     /// Decodes the replacement text of an inline edit response (`ai.inlineEdit.decode`).
     InlineEditDecode,
+}
+
+#[derive(Debug, Clone, Copy)]
+/// The `agents.*` and `agentSessions.*` commands; their names live in
+/// [`CoreCommand::parse`].
+pub enum AgentsCommand {
+    /// Loads the agents of enabled plugins with their grants (`agents.configure`).
+    Configure,
+    /// Lists the configured agents (`agents.catalog`).
+    Catalog,
+    /// Lists the live sessions (`agents.sessions`).
+    Sessions,
+    /// Starts a native session the user asked for (`agents.start`).
+    Start,
+    /// Sends the user's prompt to a live session (`agents.prompt`).
+    Prompt,
+    /// Asks the backend to cancel the turn in progress (`agents.cancel`).
+    Cancel,
+    /// Answers a pending permission request (`agents.respondPermission`).
+    RespondPermission,
+    /// Ends a live session (`agents.close`).
+    Close,
+    /// Waits, bounded, for session events after a sequence (`agents.waitEvents`).
+    WaitEvents,
+    /// Opens the session record cache (`agentSessions.configure`).
+    RecordsConfigure,
+    /// Reads one agent's changed session files through its plugin (`agentSessions.sync`).
+    RecordsSync,
+    /// Drops one agent's cached records (`agentSessions.forget`).
+    RecordsForget,
+    /// Lists recorded sessions (`agentSessions.list`).
+    RecordsList,
+    /// Searches recorded session text (`agentSessions.search`).
+    RecordsSearch,
+    /// Reads one recorded range as messages (`agentSessions.read`).
+    RecordsRead,
+    /// Sums recorded usage with the latest rate limits (`agentSessions.stats`).
+    RecordsStats,
+}
+
+impl AgentsCommand {
+    /// The stable command name `lithe-agent-runtime` runs.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Configure => "agents.configure",
+            Self::Catalog => "agents.catalog",
+            Self::Sessions => "agents.sessions",
+            Self::Start => "agents.start",
+            Self::Prompt => "agents.prompt",
+            Self::Cancel => "agents.cancel",
+            Self::RespondPermission => "agents.respondPermission",
+            Self::Close => "agents.close",
+            Self::WaitEvents => "agents.waitEvents",
+            Self::RecordsConfigure => "agentSessions.configure",
+            Self::RecordsSync => "agentSessions.sync",
+            Self::RecordsForget => "agentSessions.forget",
+            Self::RecordsList => "agentSessions.list",
+            Self::RecordsSearch => "agentSessions.search",
+            Self::RecordsRead => "agentSessions.read",
+            Self::RecordsStats => "agentSessions.stats",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1180,6 +1245,22 @@ impl CoreCommand {
             "ai.pullRequest.decode" => Some(Self::Ai(AiCommand::PullRequestDecode)),
             "ai.inlineEdit.plan" => Some(Self::Ai(AiCommand::InlineEditPlan)),
             "ai.inlineEdit.decode" => Some(Self::Ai(AiCommand::InlineEditDecode)),
+            "agents.configure" => Some(Self::Agents(AgentsCommand::Configure)),
+            "agents.catalog" => Some(Self::Agents(AgentsCommand::Catalog)),
+            "agents.sessions" => Some(Self::Agents(AgentsCommand::Sessions)),
+            "agents.start" => Some(Self::Agents(AgentsCommand::Start)),
+            "agents.prompt" => Some(Self::Agents(AgentsCommand::Prompt)),
+            "agents.cancel" => Some(Self::Agents(AgentsCommand::Cancel)),
+            "agents.respondPermission" => Some(Self::Agents(AgentsCommand::RespondPermission)),
+            "agents.close" => Some(Self::Agents(AgentsCommand::Close)),
+            "agents.waitEvents" => Some(Self::Agents(AgentsCommand::WaitEvents)),
+            "agentSessions.configure" => Some(Self::Agents(AgentsCommand::RecordsConfigure)),
+            "agentSessions.sync" => Some(Self::Agents(AgentsCommand::RecordsSync)),
+            "agentSessions.forget" => Some(Self::Agents(AgentsCommand::RecordsForget)),
+            "agentSessions.list" => Some(Self::Agents(AgentsCommand::RecordsList)),
+            "agentSessions.search" => Some(Self::Agents(AgentsCommand::RecordsSearch)),
+            "agentSessions.read" => Some(Self::Agents(AgentsCommand::RecordsRead)),
+            "agentSessions.stats" => Some(Self::Agents(AgentsCommand::RecordsStats)),
             "plugins.declarative.validate" => {
                 Some(Self::Plugins(PluginsCommand::DeclarativeValidate))
             }

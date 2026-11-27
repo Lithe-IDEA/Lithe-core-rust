@@ -75,6 +75,11 @@ pub(crate) fn push_request_event(
         );
         return;
     }
+    // A call of Core's agent runtime: its caller waits for it, not the host.
+    if agent_host::is_agent_operation_id(operation_id) {
+        agent_host::finish_call(operation_id, method, result, error);
+        return;
+    }
     enqueue_request_completed(session, state, operation_id, method, result, error);
 }
 

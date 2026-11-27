@@ -408,6 +408,12 @@ impl RuntimeSession {
                         event.method.as_deref().unwrap_or_default(),
                         &event.result.unwrap_or_default(),
                     )?);
+                } else if event.kind == lithe_lsp_client::AGENT_HOST_REQUEST_EVENT {
+                    outbound.extend(agent_host::answer_request(
+                        self,
+                        event.method.as_deref().unwrap_or_default(),
+                        &event.result.unwrap_or_default(),
+                    )?);
                 } else if event.kind == "functionProgress" {
                     push_function_progress_locked(self, &mut state, event.result);
                 } else if event.kind == "buildProgress" {
