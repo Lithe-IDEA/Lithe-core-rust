@@ -64,6 +64,8 @@ const PERMISSION_COMMAND_INSTALL: &str = "commands.install";
 const PERMISSION_RUNTIME_INSTALL: &str = "runtimes.install";
 
 const KNOWN_PERMISSIONS: &[&str] = &[
+    lithe_plugin_agents::PERMISSION_AGENTS_RUN,
+    lithe_plugin_agents::PERMISSION_AGENTS_SESSIONS,
     PERMISSION_BACKEND,
     PERMISSION_BUILD,
     PERMISSION_COMMAND_INSTALL,
@@ -265,6 +267,7 @@ impl DeclarativePluginManifest {
                 "debug.start starts the plugin's own debug adapters; declare one or remove the permission.",
             ));
         }
+        self.require_agent_permissions(&mut required)?;
         // The backend reaches only the servers whose session fields expose
         // them; the grant without one would show the user a capability
         // nothing exercises.
@@ -295,6 +298,39 @@ impl DeclarativePluginManifest {
                     "plugin.permission.undeclared",
                     "permissions",
                     format!("The plugin uses {permission} without declaring the permission."),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Ties `agents[]` to its permissions: running the agents' tools, reading
+    /// their session files, and translating native sessions. A permission
+    /// nothing exercises is refused.
+    fn require_agent_permissions(&self, required: &mut BTreeSet<&'static str>) -> Validation<()> {
+        let needs = [
+            (
+                lithe_plugin_agents::PERMISSION_AGENTS_RUN,
+                !self.agents.is_empty(),
+            ),
+            (
+                lithe_plugin_agents::PERMISSION_AGENTS_SESSIONS,
+                self.agents
+                    .iter()
+                    .any(|agent| !agent.session_sources.is_empty()),
+            ),
+            (
+                lithe_plugin_rpc::PERMISSION_AGENTS_NATIVE,
+                lithe_plugin_agents::has_native(&self.agents),
+            ),
+        ];
+        for (permission, used) in needs {
+            if used {
+                required.insert(permission);
+            } else if self.permissions.iter().any(|p| p == permission) {
+                return Err(invalid(
+                    "permissions",
+                    format!("{permission} is used by an agent that needs it; declare one or remove the permission."),
                 ));
             }
         }

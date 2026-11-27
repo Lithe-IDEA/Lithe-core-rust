@@ -69,6 +69,7 @@ static ENGINE: OnceLock<LspEngine> = OnceLock::new();
 
 mod relay_hub;
 use relay_hub::RelayHub;
+pub mod agent_host;
 mod function_provider;
 pub use function_provider::function_provider_command;
 
@@ -278,10 +279,22 @@ pub fn plugin_function_request(
         .operation_id
         .clone()
         .unwrap_or_else(|| engine().next_operation_id());
+    refuse_agent_operation(&operation_id)?;
     engine()
         .session(&request.session_id)?
         .function_request(request, operation_id.clone(), None)?;
     Ok(OperationResponse { operation_id })
+}
+
+/// The host may not start or cancel a call of Core's agent runtime.
+fn refuse_agent_operation(operation_id: &str) -> Result<(), CoreError> {
+    if agent_host::is_agent_operation_id(operation_id) {
+        return Err(CoreError::new(
+            ErrorCode::InvalidRequest,
+            "This language-server operation ID is reserved for agent sessions.",
+        ));
+    }
+    Ok(())
 }
 
 /// Sends one request of a plugin backend to the plugin's own language server.
@@ -317,6 +330,7 @@ pub fn configure_function_relay(
 
 /// Cancels a pending semantic request in both client state and the server.
 pub fn cancel_operation(request: CancelOperationRequest) -> Result<(), CoreError> {
+    refuse_agent_operation(&request.operation_id)?;
     engine()
         .session(&request.session_id)?
         .cancel_operation(&request.operation_id)

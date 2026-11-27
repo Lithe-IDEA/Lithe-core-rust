@@ -193,6 +193,28 @@ impl ScriptedServer {
         })
     }
 
+    /// Blocks until the raw bytes written so far satisfy `done`, for
+    /// processes that are not framed as JSON-RPC, such as line-based CLIs.
+    pub fn await_written_bytes(&self, done: impl Fn(&[u8]) -> bool) -> bool {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut written = self.shared.written.lock().unwrap();
+        loop {
+            if done(&written) {
+                return true;
+            }
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return false;
+            }
+            written = self
+                .shared
+                .written_changed
+                .wait_timeout(written, remaining)
+                .unwrap()
+                .0;
+        }
+    }
+
     fn await_written_message(&self, find: impl Fn(&[Value]) -> Option<Value>) -> Option<Value> {
         let deadline = Instant::now() + Duration::from_secs(5);
         let mut written = self.shared.written.lock().unwrap();

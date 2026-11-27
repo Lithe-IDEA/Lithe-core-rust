@@ -325,6 +325,21 @@ pub fn client_apply_server_message_for_plugin(
                         })),
                         error: None,
                     }),
+                    // An agent-session method: Core's agent runtime answers it,
+                    // so like a relayed call it never reaches the host.
+                    Ok(lithe_plugin_rpc::HostRoute::Agents) => events.push(LspClientEvent {
+                        kind: crate::AGENT_HOST_REQUEST_EVENT.to_string(),
+                        request_id: None,
+                        method: Some(method.to_string()),
+                        uri: None,
+                        version: None,
+                        diagnostics: None,
+                        result: Some(json!({
+                            "id": id,
+                            "params": message.get("params").cloned().unwrap_or(Value::Null),
+                        })),
+                        error: None,
+                    }),
                     Err(refusal) => {
                         let mut data = json!({ "code": refusal.code });
                         if let Some(details) = refusal.details {

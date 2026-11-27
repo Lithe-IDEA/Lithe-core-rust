@@ -102,6 +102,9 @@ pub struct DeclarativePluginManifest {
     /// functions it calls; see `lithe_plugin_functions`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) plugin_functions: Option<lithe_plugin_functions::PluginFunctionsDeclaration>,
+    /// Agent command-line tools the plugin drives; see `lithe_plugin_agents`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) agents: Vec<lithe_plugin_agents::AgentDeclaration>,
 }
 
 /// UI supplied by plugins. The host owns every window shell: docking, title,
@@ -388,6 +391,11 @@ impl DeclarativePluginManifest {
         &self.requires
     }
 
+    /// The agent command-line tools the plugin drives (plan API-45).
+    pub fn agents(&self) -> &[lithe_plugin_agents::AgentDeclaration] {
+        &self.agents
+    }
+
     /// Host services the plugin's backend may request, sorted; empty without
     /// a backend. Each is granted by one permission.
     pub(crate) fn backend_host_services(&self) -> Vec<&'static str> {
@@ -479,6 +487,9 @@ impl DeclarativePluginManifest {
         }
         if let Some(runtimes) = &self.managed_runtimes {
             programs.extend(runtimes.programs());
+        }
+        for agent in &self.agents {
+            programs.extend(lithe_plugin_agents::programs(agent));
         }
         // Order by kind, then language or tool, then the full serialized
         // value as a total tie-breaker; duplicates (two servers needing the

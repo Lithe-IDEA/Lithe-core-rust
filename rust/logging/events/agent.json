@@ -1,5 +1,100 @@
 {
   "version": 1,
   "root": "agent",
-  "events": []
+  "events": [
+    {
+      "id": "agent.session.started",
+      "channel": "agent",
+      "level": "info",
+      "message": "Agent session started",
+      "fields": {
+        "plugin": {"type": "id", "required": true, "description": "Validated plugin identity that declares the agent"},
+        "agent": {"type": "id", "required": true, "description": "Agent ID the plugin declares"},
+        "session": {"type": "id", "required": true, "description": "Opaque session ID Core assigned; never the agent CLI's own session ID"},
+        "mode": {"type": "token", "required": true, "description": "Connection mode Core selected, e.g. native"}
+      },
+      "rate": 60,
+      "owner": "lithe-core"
+    },
+    {
+      "id": "agent.session.start_failed",
+      "channel": "agent",
+      "level": "warn",
+      "message": "Agent session could not start",
+      "fields": {
+        "plugin": {"type": "id", "required": true, "description": "Validated plugin identity that declares the agent"},
+        "agent": {"type": "id", "required": true, "description": "Agent ID the plugin declares"},
+        "reason": {"type": "token", "required": true, "description": "Stable refusal or failure code; excludes paths, arguments and CLI output"}
+      },
+      "rate": 60,
+      "owner": "lithe-core"
+    },
+    {
+      "id": "agent.session.finished",
+      "channel": "agent",
+      "level": "info",
+      "message": "Agent session ended",
+      "fields": {
+        "session": {"type": "id", "required": true, "description": "Opaque session ID Core assigned"},
+        "reason": {"type": "token", "required": true, "description": "Why the session ended: exited, closed, backendEnded or failed"},
+        "exit_code": {"type": "int", "required": false, "description": "Exit code of the agent CLI; absent when a signal ended it"},
+        "duration": {"type": "duration", "required": true, "description": "Milliseconds the session ran"}
+      },
+      "rate": 60,
+      "owner": "lithe-core"
+    },
+    {
+      "id": "agent.report.rejected",
+      "channel": "agent",
+      "level": "warn",
+      "message": "Agent plugin reported an invalid session event",
+      "fields": {
+        "plugin": {"type": "id", "required": true, "description": "Validated plugin identity of the reporting backend"},
+        "code": {"type": "token", "required": true, "description": "Stable rejection code; the event content is never logged"}
+      },
+      "rate": 60,
+      "owner": "lithe-core"
+    },
+    {
+      "id": "agent.records.updated",
+      "channel": "agent",
+      "level": "info",
+      "message": "Agent session records synchronized",
+      "fields": {
+        "plugin": {"type": "id", "required": true, "description": "Validated plugin identity that declares the agent"},
+        "agent": {"type": "id", "required": true, "description": "Agent ID the plugin declares"},
+        "files_read": {"type": "int", "required": true, "description": "Session files read in this sync"},
+        "files_failed": {"type": "int", "required": true, "description": "Session files that could not be read or parsed"},
+        "duration": {"type": "duration", "required": true, "description": "Milliseconds the sync took"}
+      },
+      "rate": 60,
+      "owner": "lithe-core"
+    },
+    {
+      "id": "agent.records.sync_failed",
+      "channel": "agent",
+      "level": "warn",
+      "message": "Agent session records could not be synchronized",
+      "fields": {
+        "plugin": {"type": "id", "required": true, "description": "Validated plugin identity that declares the agent"},
+        "agent": {"type": "id", "required": true, "description": "Agent ID the plugin declares"},
+        "reason": {"type": "token", "required": true, "description": "Stable failure code; excludes paths and session content"}
+      },
+      "rate": 60,
+      "owner": "lithe-core"
+    },
+    {
+      "id": "agent.records.removed",
+      "channel": "agent",
+      "level": "info",
+      "message": "Agent session records removed from the cache",
+      "fields": {
+        "plugin": {"type": "id", "required": true, "description": "Validated plugin identity that declares the agent"},
+        "agent": {"type": "id", "required": true, "description": "Agent ID the plugin declares"},
+        "files": {"type": "int", "required": true, "description": "Session files whose records were dropped"}
+      },
+      "rate": 60,
+      "owner": "lithe-core"
+    }
+  ]
 }

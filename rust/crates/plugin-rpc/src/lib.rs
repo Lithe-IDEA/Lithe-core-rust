@@ -169,7 +169,22 @@ pub const HOST_PERMISSIONS: &[&str] = &[
     PERMISSION_DOCUMENTS_CONTENT_PROVIDER,
     PERMISSION_DOCUMENTS_SAVE,
     PERMISSION_WORKSPACE_FILES_WRITE,
+    PERMISSION_AGENTS_NATIVE,
+    PERMISSION_AGENTS_USAGE,
 ];
+
+/// Host service of agent sessions (plan API-45). Core answers its methods
+/// itself; the host never sees them.
+pub const HOST_SERVICE_AGENTS: &str = "agents";
+
+/// Permission of `lithe/host/agents/write` and `lithe/host/agents/report`
+/// (plan API-45): the backend translates the native sessions of its own
+/// agents and receives their `lithe/host/agents/did*` notifications.
+pub const PERMISSION_AGENTS_NATIVE: &str = "agents.native";
+
+/// Permission of `lithe/host/agents/usage` (plan API-45): usage and quota
+/// totals of the agents the user consented to, numbers and model names only.
+pub const PERMISSION_AGENTS_USAGE: &str = "agents.usage.read";
 
 /// Permission of the `languageServer` host service (plan API-25): a backend
 /// may send requests and notifications to, and report the status of, the

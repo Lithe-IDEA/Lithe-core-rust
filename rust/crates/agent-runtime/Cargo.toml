@@ -1,0 +1,26 @@
+[package]
+name = "lithe-agent-runtime"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Agent CLI sessions Core runs for agent plugins (plan API-45): the CLI processes, Lithe's session events, and the local session records"
+publish = false
+
+[dependencies]
+lithe-agent-sessions = { path = "../agent-sessions" }
+lithe-diagnostics = { path = "../diagnostics" }
+lithe-lsp-engine = { path = "../lsp-engine" }
+lithe-lsp-transport = { path = "../lsp-transport" }
+lithe-plugin-agents = { path = "../plugin-agents" }
+lithe-plugin-manifest = { path = "../plugin-manifest" }
+lithe-plugin-model = { path = "../plugin-model" }
+lithe-plugin-rpc = { path = "../plugin-rpc" }
+lithe-protocol = { path = "../protocol" }
+lithe-request-context = { path = "../request-context" }
+lithe-workspace = { path = "../workspace" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[dev-dependencies]
+lithe-diagnostics = { path = "../diagnostics", features = ["test-support"] }
+lithe-lsp-transport = { path = "../lsp-transport", features = ["test-support"] }

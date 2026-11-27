@@ -129,10 +129,16 @@ pub const TOOLCHAIN_PROVIDERS: &str = "toolchainProviders";
 /// `outputLinkMatchers[]`: patterns that turn console output into links; see
 /// `lithe_plugin_output_links`.
 pub const OUTPUT_LINK_MATCHERS: &str = "outputLinkMatchers";
+/// `agents[]`: agent command-line tools the plugin drives, their native,
+/// ACP and terminal forms, and the session files Core indexes; see
+/// `lithe_plugin_agents`. The native relay (`lithe/host/agents/*`) speaks
+/// this version.
+pub const AGENTS: &str = "agents";
 
 /// Capability versions this Core build validates and plans. A later version
 /// of a capability is appended to its list.
 pub const SUPPORTED_CAPABILITIES: &[(&str, &[u32])] = &[
+    (AGENTS, &[0]),
     (BACKEND, &[0]),
     (BEFORE_LAUNCH_TASKS, &[0]),
     (BUILD_MODEL_INPUTS, &[0]),
