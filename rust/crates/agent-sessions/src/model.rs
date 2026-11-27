@@ -73,9 +73,11 @@ pub struct CallRecord {
     /// once.
     pub key: String,
     /// The session the request belongs to, in the agent's own ID format.
+    #[serde(rename = "sessionID")]
     pub session_id: String,
     /// The thread or sub-agent within the session, when the agent has them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "threadID")]
     pub thread_id: Option<String>,
     /// When the request started, in milliseconds since the Unix epoch (UTC).
     pub started_at_ms: i64,
@@ -113,6 +115,7 @@ pub struct CallRecord {
     pub compaction: bool,
     /// The provider's request ID, kept for matching with provider dashboards.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "requestID")]
     pub request_id: Option<String>,
     /// A short category of the failure when the request failed, as the agent
     /// names it (for example `rateLimited`). Never the error message.
@@ -128,9 +131,11 @@ pub struct CallRecord {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SessionMeta {
     /// The session, in the agent's own ID format.
+    #[serde(rename = "sessionID")]
     pub session_id: String,
     /// The session this one was resumed or forked from.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "parentSessionID")]
     pub parent_session_id: Option<String>,
     /// The working directory the agent ran in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -155,6 +160,7 @@ pub struct SessionMeta {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct IndexSpan {
     /// The session the text belongs to.
+    #[serde(rename = "sessionID")]
     pub session_id: String,
     /// When the text was written, in milliseconds since the Unix epoch.
     /// Search lists newer text first.

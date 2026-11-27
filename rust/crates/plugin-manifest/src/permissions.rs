@@ -330,7 +330,7 @@ impl DeclarativePluginManifest {
             } else if self.permissions.iter().any(|p| p == permission) {
                 return Err(invalid(
                     "permissions",
-                    format!("{permission} is used by an agent that needs it; declare one or remove the permission."),
+                    format!("{permission} is declared, but no agent needs it."),
                 ));
             }
         }

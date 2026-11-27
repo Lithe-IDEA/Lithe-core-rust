@@ -14,6 +14,7 @@ crate-type = ["rlib", "staticlib"]
 plugin-sdk-e2e = []
 
 [dependencies]
+lithe-agent-runtime = { path = "../agent-runtime" }
 lithe-ai = { path = "../ai" }
 lithe-build = { path = "../build" }
 lithe-core-rules = { path = "../core-rules" }

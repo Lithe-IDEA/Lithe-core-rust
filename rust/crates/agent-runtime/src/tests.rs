@@ -150,19 +150,19 @@ fn scan(params: &Value) -> Value {
         };
         match record["type"].as_str() {
             Some("session") => sessions.push(json!({
-                "sessionId": record["id"],
+                "sessionID": record["id"],
                 "cwd": record["cwd"],
                 "startedAtMs": record["at"],
                 "updatedAtMs": record["at"],
             })),
             Some("user") => {
                 sessions.push(json!({
-                    "sessionId": record["session"],
+                    "sessionID": record["session"],
                     "updatedAtMs": record["at"],
                     "titleRange": range,
                 }));
                 spans.push(json!({
-                    "sessionId": record["session"],
+                    "sessionID": record["session"],
                     "atMs": record["at"],
                     "range": range,
                     "text": record["text"],
@@ -170,7 +170,7 @@ fn scan(params: &Value) -> Value {
             }
             Some("call") => calls.push(json!({
                 "key": record["key"],
-                "sessionId": record["session"],
+                "sessionID": record["session"],
                 "startedAtMs": record["at"],
                 "model": record["model"],
                 "tokens": { "input": record["input"], "output": record["output"] },
@@ -1230,7 +1230,7 @@ fn records_sync_list_search_read_and_sum_through_the_plugin() {
 
     let sessions = harness.run("agentSessions.list", json!({ "titles": true }))["sessions"].clone();
     assert_eq!(sessions.as_array().map(Vec::len), Some(1), "{sessions}");
-    assert_eq!(sessions[0]["sessionId"], "s1");
+    assert_eq!(sessions[0]["sessionID"], "s1");
     assert_eq!(sessions[0]["pluginID"], PLUGIN);
     assert_eq!(sessions[0]["agentID"], AGENT);
     assert_eq!(sessions[0]["cwd"], "/work/project");
@@ -1240,7 +1240,7 @@ fn records_sync_list_search_read_and_sum_through_the_plugin() {
 
     let hits = harness.run("agentSessions.search", json!({ "text": "hello" }))["hits"].clone();
     assert_eq!(hits.as_array().map(Vec::len), Some(1), "{hits}");
-    assert_eq!(hits[0]["sessionId"], "s1");
+    assert_eq!(hits[0]["sessionID"], "s1");
     let read = harness.run(
         "agentSessions.read",
         json!({ "agent": AGENT_KEY, "path": hits[0]["path"], "range": hits[0]["range"] }),
