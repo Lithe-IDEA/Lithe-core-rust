@@ -585,6 +585,8 @@ pub enum WorkspaceCommand {
     ReduceDirectoryAction,
     /// Migrates directory rules after a move or delete (`workspace.relocateDirectoryRules`).
     RelocateDirectoryRules,
+    /// Resolves per-path directory presentation and manual indexing exclusions (`workspace.resolveDirectoryPresentation`).
+    ResolveDirectoryPresentation,
     /// Filter ordinary workspace-relative event paths using shared defaults.
     FilterChanges,
     /// Finds Git repositories that belong to an opened workspace (`workspace.repositories`).
@@ -1430,6 +1432,9 @@ impl CoreCommand {
             "workspace.relocateDirectoryRules" => {
                 Some(Self::Workspace(WorkspaceCommand::RelocateDirectoryRules))
             }
+            "workspace.resolveDirectoryPresentation" => Some(Self::Workspace(
+                WorkspaceCommand::ResolveDirectoryPresentation,
+            )),
             "workspace.repositories" => Some(Self::Workspace(WorkspaceCommand::Repositories)),
             "workspace.recentProjects.reduce" => {
                 Some(Self::Workspace(WorkspaceCommand::RecentProjectsReduce))
