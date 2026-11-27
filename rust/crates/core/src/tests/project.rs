@@ -2159,6 +2159,130 @@ fn recent_project_reductions_match_shared_fixture() {
 }
 
 #[test]
+fn recent_project_tag_save_checks_the_editors_snapshot() {
+    let entries = serde_json::json!([{ "path": "/demo", "tags": ["First window"] }]);
+    for snapshot in [serde_json::json!([]), serde_json::json!(["Original"])] {
+        let stale = call(
+            "workspace.recentProjects.reduce",
+            serde_json::json!({"entries": entries, "action": {"kind": "setTags", "path": "/demo",
+                "tags": ["Second window"], "expectedTags": snapshot}}),
+        );
+        assert_eq!(
+            stale["error"]["code"], "recent_project_tags_changed",
+            "{stale}"
+        );
+    }
+    let removed = call(
+        "workspace.recentProjects.reduce",
+        serde_json::json!({"entries": [], "action": {"kind": "setTags", "path": "/demo",
+            "tags": ["Second window"], "expectedTags": []}}),
+    );
+    assert_eq!(
+        removed["error"]["code"], "recent_project_tags_changed",
+        "{removed}"
+    );
+    let current = call(
+        "workspace.recentProjects.reduce",
+        serde_json::json!({"entries": entries, "action": {"kind": "setTags", "path": "/demo",
+            "tags": [], "expectedTags": ["First window"]}}),
+    );
+    assert_eq!(
+        current["data"]["entries"],
+        serde_json::json!([{"path": "/demo",
+        "lastOpenedAt": 0, "pinned": false}]),
+        "{current}"
+    );
+}
+
+#[test]
+fn recent_project_filter_folds_greek_sigma_in_paths_and_tags() {
+    let filtered = call(
+        "workspace.recentProjects.reduce",
+        serde_json::json!({"entries": [
+            {"path": "/ΟΣ", "tags": ["ΟΣ"]},
+            {"path": "/other", "tags": ["οσ"]},
+            {"path": "/Σ", "tags": ["daily"]}
+        ], "action": {"kind": "filter", "query": "Σ", "tag": "ος"}}),
+    );
+    assert_eq!(
+        filtered["data"]["visible"],
+        serde_json::json!([0, 1]),
+        "{filtered}"
+    );
+    assert_eq!(filtered["data"]["selectedTag"], "ΟΣ", "{filtered}");
+    assert_eq!(
+        filtered["data"]["tags"],
+        serde_json::json!(["daily", "ΟΣ"]),
+        "{filtered}"
+    );
+    let path_only = call(
+        "workspace.recentProjects.reduce",
+        serde_json::json!({"entries": [{"path": "/ΟΣ"}],
+            "action": {"kind": "filter", "query": "Σ", "tag": ""}}),
+    );
+    assert_eq!(
+        path_only["data"]["visible"],
+        serde_json::json!([0]),
+        "{path_only}"
+    );
+    let set = call(
+        "workspace.recentProjects.reduce",
+        serde_json::json!({"entries": [{"path": "/demo"}], "action": {"kind": "setTags",
+            "path": "/demo", "tags": ["Σ", "σ", "ς"]}}),
+    );
+    assert_eq!(
+        set["data"]["entries"][0]["tags"],
+        serde_json::json!(["Σ"]),
+        "{set}"
+    );
+}
+
+#[test]
+fn recent_project_ssh_rebind_keeps_legacy_and_previous_target_metadata_separate() {
+    let reduce = |entries: &Value, action: Value| {
+        let response = call(
+            "workspace.recentProjects.reduce",
+            serde_json::json!({"entries": entries, "action": action}),
+        );
+        assert_eq!(response["ok"], true, "{response}");
+        response["data"]["entries"].clone()
+    };
+    let mut remote = serde_json::json!({"connectionId": "saved-demo", "sshConnectionId": "saved-demo",
+        "folder": "/project", "name": "Saved host"});
+    let entries = reduce(
+        &serde_json::json!([]),
+        serde_json::json!({"kind": "recordRemote", "openedAt": 1, "remote": remote}),
+    );
+    let legacy_key = entries[0]["path"].clone();
+    remote["sshTargetFingerprint"] = serde_json::json!("a".repeat(64));
+    let entries = reduce(
+        &entries,
+        serde_json::json!({"kind": "recordRemote", "openedAt": 2, "remote": remote}),
+    );
+    let original_key = entries[0]["path"].clone();
+    assert_ne!(original_key, legacy_key);
+    let entries = reduce(
+        &entries,
+        serde_json::json!({"kind": "setPinned", "path": original_key, "pinned": true}),
+    );
+    let entries = reduce(
+        &entries,
+        serde_json::json!({"kind": "setTags", "path": original_key, "tags": ["Old host"]}),
+    );
+    remote["sshTargetFingerprint"] = serde_json::json!("b".repeat(64));
+    let entries = reduce(
+        &entries,
+        serde_json::json!({"kind": "recordRemote", "openedAt": 3, "remote": remote}),
+    );
+    assert_eq!(entries.as_array().unwrap().len(), 3);
+    assert_eq!(entries[0]["path"], original_key);
+    assert_eq!(entries[0]["tags"], serde_json::json!(["Old host"]));
+    assert_eq!(entries[1]["pinned"], false);
+    assert!(entries[1]["tags"].is_null());
+    assert_eq!(entries[2]["path"], legacy_key);
+}
+
+#[test]
 fn recent_projects_default_capacity_keeps_the_newest_unpinned_projects() {
     // The fixture documents the default; this guards the shared constant
     // without a 21-entry JSON case.
@@ -2183,6 +2307,34 @@ fn recent_projects_default_capacity_keeps_the_newest_unpinned_projects() {
     assert_eq!(kept.len(), capacity);
     assert_eq!(kept[0]["path"], format!("/p{capacity}"));
     assert_eq!(response["data"]["removed"], serde_json::json!(["/p0"]));
+}
+
+#[test]
+fn recent_project_remote_key_can_include_the_full_remote_path() {
+    use serde_json::json;
+
+    let folder = format!("/{}", vec!["a".repeat(255); 16].join("/"));
+    assert_eq!(folder.len(), 4096);
+    let recorded = call(
+        "workspace.recentProjects.reduce",
+        json!({"entries": [], "action": {"kind": "recordRemote", "openedAt": 1,
+            "remote": {"connectionId": "saved-demo", "sshConnectionId": "saved-demo",
+                "name": "Synthetic host", "folder": folder, "sshTargetFingerprint": "a".repeat(64)}}}),
+    );
+    assert_eq!(recorded["ok"], true, "{recorded}");
+    let entries = &recorded["data"]["entries"];
+    let key = &entries[0]["path"];
+    assert!(key.as_str().unwrap().len() > 4096);
+    let pinned = call(
+        "workspace.recentProjects.reduce",
+        json!({"entries": entries, "action": {"kind": "setPinned", "path": key, "pinned": true}}),
+    );
+    assert_eq!(pinned["data"]["entries"][0]["pinned"], true, "{pinned}");
+    let removed = call(
+        "workspace.recentProjects.reduce",
+        json!({"entries": &pinned["data"]["entries"], "action": {"kind": "remove", "paths": [key]}}),
+    );
+    assert_eq!(removed["data"]["entries"], json!([]), "{removed}");
 }
 
 fn hex_bytes(hex: &str) -> Vec<u8> {

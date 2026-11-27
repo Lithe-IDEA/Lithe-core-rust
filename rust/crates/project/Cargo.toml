@@ -13,6 +13,7 @@ test-support = []
 [dependencies]
 ammonia = "4.1.4"
 base64 = "0.22"
+caseless = "0.2.2"
 comrak = { version = "0.54.0", default-features = false, features = ["shortcodes"] }
 encoding_rs = "0.8"
 lithe-core-rules = { path = "../core-rules" }
