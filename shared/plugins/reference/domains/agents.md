@@ -14,6 +14,7 @@
 | 权限 | `agents.run`（有 Agent 就必须声明）；`agents.native`（有 `native`）；`agents.sessions.read`（有 `sessionSources`）；`agents.usage.read`（读用量汇总，需要后端，没有 Agent 的插件也可以声明）。多声明或少声明都会被拒绝 |
 | 激活事件 | 声明了 `native` 或 `sessionSources` 的 Agent 必须有 `onAgent:<id>`，其他 Agent 不能有 |
 | 后端启动 | 只有终端形式的 Agent 不需要后端 |
+| 官方 SDK | [Rust](../../sdk/rust/README.md#native-agent-sessions)、[Go](../../sdk/go/README.md#native-agent-sessions)、[Node.js](../../sdk/node/README.md#native-agent-sessions)、[Java](../../sdk/java/README.md#native-agent-sessions) 的 `main` 源码都有原生会话接口（`onAgentSessions`，Rust 是 `on_agent_sessions`）和 `agents` 宿主服务（`write`、`report`、`usage`），随各 SDK 的下一次发布提供；已发布的 SDK 版本没有 |
 | 安装审查 | 每种运行形式列成一条 `agent` 程序，每个会话来源列成一条 `agentSessions` 程序，用户安装前看到 CLI 会被怎样运行、哪些目录会被读取 |
 | Lithe 桌面端 | 接入中，尚未声明 `agents` |
 
@@ -55,6 +56,7 @@
 | [`agents/agents.plugin.json`](../../contract/v1/fixtures/agents/agents.plugin.json) | 一个带原生会话、终端形式、更新命令和一个会话来源的 Agent |
 | [`agents/terminal-agent.plugin.json`](../../contract/v1/fixtures/agents/terminal-agent.plugin.json) | 只有终端形式、不需要后端的 Agent |
 | [`manifest/invalid-manifests.json`](../../contract/v1/fixtures/manifest/invalid-manifests.json) | 以这两个清单为基础的拒绝用例 |
+| [`agents/native-session.json`](../../contract/v1/fixtures/agents/native-session.json) | 原生会话通知和每个会话的处理器依次收到的调用、启动或提示失败时报告的 `turnEnded`、`agents` 宿主方法的请求；四个 SDK 的测试都用它 |
 
 ---
 
@@ -70,6 +72,7 @@ A plugin can connect an agent command-line tool that the user installed and sign
 | Permissions | `agents.run` (required whenever there are agents); `agents.native` (with `native`); `agents.sessions.read` (with `sessionSources`); `agents.usage.read` (reads usage totals, needs a backend, and may be declared by a plugin without agents). Declaring one too many or one too few is refused |
 | Activation events | An agent that declares `native` or `sessionSources` needs `onAgent:<id>`; other agents may not have one |
 | Backend launch | A terminal-only agent needs no backend |
+| Official SDKs | The [Rust](../../sdk/rust/README.md#native-agent-sessions), [Go](../../sdk/go/README.md#native-agent-sessions), [Node.js](../../sdk/node/README.md#native-agent-sessions), and [Java](../../sdk/java/README.md#native-agent-sessions) SDK sources on `main` have the native session interface (`onAgentSessions`, `on_agent_sessions` in Rust) and the `agents` host service (`write`, `report`, `usage`), shipping in each SDK's next release; released SDK versions do not |
 | Install review | Each form is an `agent` program and each session source an `agentSessions` program, so the user sees how the CLI will run and which directories will be read before installing |
 | Lithe desktop | Integration in progress; does not declare `agents` yet |
 
@@ -111,3 +114,4 @@ The tool always comes from the plugin's `requiresTools`: the host discovers it a
 | [`agents/agents.plugin.json`](../../contract/v1/fixtures/agents/agents.plugin.json) | An agent with a native session, a terminal form, an update command, and one session source |
 | [`agents/terminal-agent.plugin.json`](../../contract/v1/fixtures/agents/terminal-agent.plugin.json) | A terminal-only agent without a backend |
 | [`manifest/invalid-manifests.json`](../../contract/v1/fixtures/manifest/invalid-manifests.json) | Rejection cases built on these two manifests |
+| [`agents/native-session.json`](../../contract/v1/fixtures/agents/native-session.json) | Native-session notifications with the calls each session's handler receives, the `turnEnded` reports of failed starts and prompts, and the `agents` host method requests; all four SDKs test against it |

@@ -47,6 +47,11 @@ public final class Diagnostics {
         return token(fallback, 128) ? fallback : null;
     }
 
+    /** {@code operationFailed} with a fixed code, for a failure no exception carries. */
+    void failed(String operation, String code) {
+        record("operationFailed", operation, code, null, 0L);
+    }
+
     void terminal(String operation, Throwable failure, long started) {
         String code = null;
         if (failure != null) {

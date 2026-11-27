@@ -8,6 +8,7 @@
 //! Contract: `contract/v1/README.md`, "Host services" and the host sections
 //! after it.
 
+use crate::agents::Agents;
 use crate::backend::{lock, Cancellation, Phase, Shared, State};
 use crate::error::{sdk_codes, SdkError};
 use crate::protocol::{
@@ -537,6 +538,12 @@ impl Host {
 
     pub fn window(&self) -> Window {
         Window { host: self.clone() }
+    }
+
+    /// The `agents` service of native agent sessions and usage totals
+    /// (plan API-45); Core answers it, and each method needs its own grant.
+    pub fn agents(&self) -> Agents {
+        Agents { host: self.clone() }
     }
 
     /// Calls to other plugins' functions through Core.

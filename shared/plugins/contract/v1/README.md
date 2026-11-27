@@ -34,7 +34,7 @@ This directory is the cross-platform source of truth:
 | `fixtures/run/` | Run sessions and console links: `tool-reference-launch` names its runtimes by tool-definition ID and declares output link matchers; `run-start.json` holds what `run.decodeStart` returns for each case, including the rejections, and `output-link-matchers.json` the golden matches and resolutions |
 | `fixtures/vcs/` | A version control provider |
 | `fixtures/keymap-import/` | Two independent shortcut import providers sharing one packaged backend |
-| `fixtures/agents/` | `agents.plugin.json`: an agent with native, terminal and update forms and a session source, served by its backend; `terminal-agent.plugin.json`: a terminal-only agent without a backend. Their rejections are in `fixtures/manifest/invalid-manifests.json` |
+| `fixtures/agents/` | `agents.plugin.json`: an agent with native, terminal and update forms and a session source, served by its backend; `terminal-agent.plugin.json`: a terminal-only agent without a backend. Their rejections are in `fixtures/manifest/invalid-manifests.json`; `native-session.json` holds golden native-session notifications with the calls each session's handler receives, the reports of failed starts and prompts, and the `agents` host method requests |
 | `fixtures/project-generators/` | Project generators: template files (`templates/`), a scaffolding command, and an archive download; `project-generator-tool-field.plugin.json` with `templates/tool-field/` picks tool installations with `tool` fields; `project-plans.json` holds golden `project.*` form evaluations, generation plans, and name checks, and a case's optional `manifest` names the fixture it runs against (`project-generator.plugin.json` by default) |
 | `fixtures/toolchains/` | Production-shape fixtures for tool definitions and a packaged toolchain provider; they require `toolDefinitions` and `toolchainProviders`, which a host advertises only when it implements them |
 | `fixtures/package-trust/` | `publisher-bundled.plugin.json` and `signature-vectors.json`: public cross-platform vectors for the package publisher signature: the RFC 8032 test key, a fixed package with non-ASCII file names, its canonical payload, RFC 8032 deterministic signature, and content digest. Both platforms must build the same canonical payload and digest and accept the recorded signature; signers that add randomness, such as CryptoKit, check the signature by verification instead of byte comparison |
@@ -3855,6 +3855,10 @@ Notifications Core sends (the host may not send them):
   `outputLineDropped`; a notification the backend does not take ends the
   session as failed.
 - `didExit` is not sent when the session ended because the backend did.
+- The official SDKs route these notifications to one handler per session,
+  in order, and report `turnEnded` with reason `failed` when the handler
+  cannot be made or a prompt fails. Fixture:
+  `fixtures/agents/native-session.json`.
 
 Host methods the backend sends (service `agents`; Core answers them, the
 host never sees them):

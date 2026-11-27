@@ -244,6 +244,8 @@ type Backend struct {
 	commands          map[string]CommandHandler
 	contextsChanged   NotificationHandler
 	hostNotifications map[string]NotificationHandler
+	agentSessions     AgentSessionStarter
+	agentWorkers      agentWorkers
 }
 
 // NewBackend returns a backend; name is reported as serverInfo.name.
@@ -369,13 +371,17 @@ func (b *Backend) OnContextsChanged(handler NotificationHandler) {
 }
 
 // OnHostNotification handles a lithe/host/* notification a later host adds.
-// Commands, context changes and subscription events have their own APIs.
+// Commands, context changes, subscription events and agent sessions have
+// their own APIs.
 func (b *Backend) OnHostNotification(method string, handler NotificationHandler) error {
 	if !strings.HasPrefix(method, hostPrefix) {
 		return newSdkError("sdk.method.invalid", method+" is not a host notification.")
 	}
 	if method == methodContexts || method == methodNotify || method == methodCommandRan {
 		return newSdkError("sdk.method.reserved", method+" is routed by the SDK; use OnCommand, OnContextsChanged, or Host.Subscribe.")
+	}
+	if isAgentNotification(method) {
+		return newSdkError("sdk.method.reserved", method+" is routed by the SDK; use OnAgentSessions.")
 	}
 	b.hostNotifications[method] = handler
 	return nil
@@ -407,6 +413,8 @@ func (b *Backend) Serve(input io.Reader, output io.Writer) int {
 	s.outputMu.Lock()
 	s.output = bufio.NewWriter(output)
 	s.outputMu.Unlock()
+	// Agent sessions still open when serving ends get no further notices.
+	defer b.agentWorkers.closeAll()
 	reader := bufio.NewReader(input)
 	for {
 		message, err := readFrame(reader)
@@ -517,6 +525,9 @@ func (b *Backend) hostNotification(method string, params any) {
 	switch method {
 	case methodNotify:
 		s.deliver(object)
+	case methodAgentsDidStart, methodAgentsDidOutput, methodAgentsDidPrompt,
+		methodAgentsDidCancel, methodAgentsDidDecide, methodAgentsDidExit:
+		b.routeAgentNotification(method, object)
 	case methodCommandRan:
 		commandID, _ := object["commandID"].(string)
 		handler := b.commands[commandID]

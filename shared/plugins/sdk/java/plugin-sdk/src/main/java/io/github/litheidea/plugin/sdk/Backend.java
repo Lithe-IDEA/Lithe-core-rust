@@ -144,6 +144,15 @@ public final class Backend {
         void handle(String commandId, Map<String, Object> workspaceContext) throws Exception;
     }
 
+    /**
+     * Makes the translation of a native agent session Core started. A failure
+     * or null leaves the session without a handler: its turns end as failed.
+     */
+    @FunctionalInterface
+    public interface AgentSessionStarter {
+        AgentSession start(AgentSessionStart start, AgentSessionHandle session) throws Exception;
+    }
+
     /** Runs before the {@code initialize} answer. */
     @FunctionalInterface
     public interface InitializeHook {
@@ -219,6 +228,7 @@ public final class Backend {
     private final Map<String, NotificationHandler> notificationHandlers = new HashMap<>();
     private final Map<String, CommandHandler> commandHandlers = new HashMap<>();
     private final Map<String, NotificationHandler> hostNotificationHandlers = new HashMap<>();
+    private final AgentSessions agentSessions = new AgentSessions(this);
     private NotificationHandler contextsHandler;
     private final List<InitializeHook> initializeHooks = new ArrayList<>();
     private final List<ShutdownHook> shutdownHooks = new ArrayList<>();
@@ -443,7 +453,8 @@ public final class Backend {
 
     /**
      * Handles a {@code lithe/host/*} notification a later host adds. Commands,
-     * context changes, and subscription events have their own APIs.
+     * context changes, subscription events, and agent sessions have their own
+     * APIs.
      */
     public Backend onHostNotification(String method, NotificationHandler handler) {
         if (method == null || !method.startsWith(Protocol.HOST_PREFIX)) {
@@ -454,12 +465,34 @@ public final class Backend {
             throw new PluginSdkError("sdk.method.reserved",
                     method + " is routed by the SDK; use onCommand, onContextsChanged, or Host.subscribe.");
         }
+        if (AgentSessions.NOTIFICATIONS.contains(method)) {
+            throw new PluginSdkError("sdk.method.reserved", method + " is routed by the SDK; use onAgentSessions.");
+        }
         if (handler == null) {
             throw new IllegalArgumentException("A handler must not be null.");
         }
         synchronized (lock) {
             hostNotificationHandlers.put(method, handler);
         }
+        return this;
+    }
+
+    /**
+     * Translates the native sessions of the plugin's agents (plan API-45).
+     * For each {@code lithe/host/agents/didStart}, {@code starter} makes the
+     * session's {@link AgentSession} on a worker of the session's own, which
+     * then gets the session's {@code didOutput}, {@code didPrompt},
+     * {@code didCancel}, {@code didDecidePermission} and {@code didExit} one
+     * at a time, in the order Core sent them. When the start fails, or a
+     * prompt fails, the SDK reports {@code turnEnded} with reason
+     * {@code failed} for the turn. A later registration replaces the earlier
+     * one.
+     */
+    public Backend onAgentSessions(AgentSessionStarter starter) {
+        if (starter == null) {
+            throw new IllegalArgumentException("A starter must not be null.");
+        }
+        agentSessions.starter(starter);
         return this;
     }
 
@@ -789,6 +822,10 @@ public final class Backend {
             }
             Map<String, Object> context = workspaceContext(params.get("context"));
             notifyHandler(method, () -> handler.handle((String) commandId, context));
+            return;
+        }
+        if (AgentSessions.NOTIFICATIONS.contains(method)) {
+            agentSessions.route(method, params, executor);
             return;
         }
         NotificationHandler handler;
@@ -1266,6 +1303,8 @@ public final class Backend {
         }
         channel.close();
         cancelAll("The session ended.");
+        // Agent sessions still open get no further notices.
+        agentSessions.closeAll();
         Processes.killAll();
         for (Pending request : pending) {
             request.future.completeExceptionally(new PluginSdkError("sdk.session.closed", "The session ended."));

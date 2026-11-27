@@ -7,6 +7,10 @@
 //! Contract: `contract/v1/README.md` ("Plugin backend", "Plugin functions",
 //! and "Host services").
 
+use crate::agents::{
+    is_agent_notification, AgentFactory, AgentSession, AgentSessionHandle, AgentSessionStart,
+    AgentWorkers,
+};
 use crate::build::{self, BuildContext};
 use crate::diagnostics::{Diagnostics, OPERATIONS};
 use crate::error::{
@@ -157,6 +161,8 @@ pub struct Backend {
     commands: HashMap<String, CommandHandler>,
     contexts_changed: Option<NotificationHandler>,
     host_notifications: HashMap<String, NotificationHandler>,
+    agent_sessions: Option<AgentFactory>,
+    agent_workers: AgentWorkers,
 }
 
 impl Backend {
@@ -196,6 +202,8 @@ impl Backend {
             commands: HashMap::new(),
             contexts_changed: None,
             host_notifications: HashMap::new(),
+            agent_sessions: None,
+            agent_workers: AgentWorkers::default(),
         }
     }
 
@@ -475,8 +483,31 @@ impl Backend {
         self
     }
 
+    /// Translates the native sessions of the plugin's agents (plan API-45).
+    /// For each `lithe/host/agents/didStart`, `start` makes the session's
+    /// [`AgentSession`] on a thread of the session's own, which then gets the
+    /// session's `didOutput`, `didPrompt`, `didCancel`,
+    /// `didDecidePermission` and `didExit` one at a time, in the order Core
+    /// sent them. When `start` fails, or a prompt fails, the SDK reports
+    /// `turnEnded` with reason `failed` for the turn. A later registration
+    /// replaces the earlier one.
+    pub fn on_agent_sessions<F>(&mut self, start: F) -> &mut Self
+    where
+        F: Fn(
+                AgentSessionStart,
+                AgentSessionHandle,
+            ) -> Result<Box<dyn AgentSession>, FunctionError>
+            + Send
+            + Sync
+            + 'static,
+    {
+        self.agent_sessions = Some(Arc::new(start));
+        self
+    }
+
     /// Handles a `lithe/host/*` notification a later host adds. Commands,
-    /// context changes, and subscription events have their own APIs.
+    /// context changes, subscription events and agent sessions have their
+    /// own APIs.
     pub fn on_host_notification<F>(
         &mut self,
         method: &str,
@@ -501,6 +532,12 @@ impl Backend {
             return Err(SdkError::new(
                 "sdk.method.reserved",
                 format!("{method} is routed by the SDK; use on_command, on_contexts_changed, or Host::subscribe."),
+            ));
+        }
+        if is_agent_notification(method) {
+            return Err(SdkError::new(
+                "sdk.method.reserved",
+                format!("{method} is routed by the SDK; use on_agent_sessions."),
             ));
         }
         self.host_notifications
@@ -667,6 +704,10 @@ impl Backend {
         }
         match method {
             methods::SUBSCRIPTION_NOTIFY => self.shared.deliver(params),
+            method if is_agent_notification(method) => {
+                self.agent_workers
+                    .route(&self.shared, self.agent_sessions.as_ref(), method, params)
+            }
             methods::COMMAND_DID_RUN => {
                 let command_id = params["commandID"].as_str().unwrap_or_default();
                 let Some(handler) = self.commands.get(command_id).cloned() else {
@@ -1458,7 +1499,7 @@ fn check_new_function(id: &str, functions: &BTreeMap<String, Handler>) -> Result
 
 // Failure values can contain user data. Never format their messages or panic payloads
 // into diagnostics; preserve the existing response contract separately.
-fn failure_kind(error: &FunctionError) -> &'static str {
+pub(crate) fn failure_kind(error: &FunctionError) -> &'static str {
     match error {
         FunctionError::Plugin(_) => "plugin_error",
         FunctionError::Internal(_) => "internal_error",

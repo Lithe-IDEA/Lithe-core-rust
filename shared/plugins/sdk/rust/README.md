@@ -316,6 +316,7 @@ fallback and no plugin-owned file writer.
 | `handle.function_ids()`, `handle.functions_version()` | What the backend serves, and `Some(0)` when the host offered `litheFunctions` (otherwise `None`). |
 | `backend.on_command(id, handler)` | Runs `Fn(&str, Option<WorkspaceContext>)` when the user runs one of the plugin's commands. |
 | `backend.on_contexts_changed(handler)`, `backend.on_host_notification(method, handler)` | Handle `lithe/host/workspace/didChangeContexts` and any other `lithe/host/*` notification a later host adds. |
+| `backend.on_agent_sessions(start)` | Translates the native sessions of the plugin's agents; see [Native agent sessions](#native-agent-sessions). |
 | `handle.host()`, `context.host()` | The [host services](#host-services). `handle.host()` is bound to no call. |
 | `handle.credentials()`, `context.credentials()` | Shorthand for `host().credentials()`. |
 | `backend.build_model(handler)` and the other `build_*` methods | Declare the typed build requests; see [Build providers](#build-providers). |
@@ -378,6 +379,7 @@ backend
 | `Host` member | Purpose |
 | --- | --- |
 | `credentials().get(key)`, `.set(key, secret)`, `.delete(key)` | Secrets in the platform's store; see [Credentials](#credentials). |
+| `agents().write(session, lines)`, `.report(session, events)`, `.usage(params)` | Native agent sessions and usage totals; see [Native agent sessions](#native-agent-sessions). |
 | `capabilities()`, `supports(method)` | What this session may call, from `lithe/host/getCapabilities` (asked once). |
 | `workspace().list_contexts()`, `.get_context(&context)`, `.get_folders(&context)` | Workspace contexts; only `get_context` returns, and creates, the context's `stateDirectory`. |
 | `workspace().read_directory`, `.stat`, `.read_file`, `.find_files`, `.find_text`, `.watch` | Files of a local context, addressed as `{ rootID, path }` from `get_folders`. |
@@ -645,6 +647,88 @@ reopen with bounded display history, disposal and exit subscriptions. They are
 host methods discovered through `capabilities()`; they require a host that
 offers them and the `terminal.create` permission. See
 [the native terminal guide](../../guides/native-terminals.md).
+
+## Native agent sessions
+
+A plugin whose [agent](../../contract/v1/README.md#agents) declares `native`
+(plan API-45) translates between the agent CLI's own protocol and Lithe's
+[session events](../../contract/v1/README.md#native-sessions). Core starts the
+CLI with the command line the `native` function answered; the backend only
+reads the lines the CLI writes, reports events, and writes the CLI's standard
+input. It never sees the CLI's environment or credentials.
+
+The example below is for a fictional CLI that writes JSON lines
+`{"type":"text","text":…}` and `{"type":"done"}` and reads `{"prompt":…}`.
+
+```rust
+use lithe_plugin_sdk::{AgentSession, AgentSessionHandle, Backend, FunctionError};
+use serde_json::{json, Value};
+
+struct Translator {
+    session: AgentSessionHandle,
+    turn: u64,
+}
+
+impl AgentSession for Translator {
+    fn prompt(&mut self, turn: u64, text: String) -> Result<(), FunctionError> {
+        self.turn = turn;
+        self.session.write(&[json!({ "prompt": text }).to_string()])?;
+        Ok(())
+    }
+
+    fn output(&mut self, lines: Vec<String>) -> Result<(), FunctionError> {
+        let mut events = Vec::new();
+        for line in lines {
+            let Ok(line) = serde_json::from_str::<Value>(&line) else { continue };
+            match line["type"].as_str() {
+                Some("text") => events.push(json!({
+                    "kind": "message", "turn": self.turn, "role": "assistant",
+                    "messageID": format!("reply-{}", self.turn), "text": line["text"], "delta": true,
+                })),
+                Some("done") => events.push(json!({ "kind": "turnEnded", "turn": self.turn, "reason": "completed" })),
+                _ => {}
+            }
+        }
+        if !events.is_empty() {
+            self.session.report(&events)?;
+        }
+        Ok(())
+    }
+
+    fn decide_permission(&mut self, _turn: u64, permission: String, option: String) -> Result<(), FunctionError> {
+        self.session.write(&[json!({ "permission": permission, "option": option }).to_string()])?;
+        Ok(())
+    }
+}
+
+fn main() {
+    let mut backend = Backend::new("example-agent");
+    backend.on_agent_sessions(|_start, session| Ok(Box::new(Translator { session, turn: 0 })));
+    std::process::exit(backend.listen());
+}
+```
+
+`AgentSessionStart` carries `session`, `agent_id`, `cwd` and `resume` (the
+CLI's own session ID when the user resumes one). `cancel` and `exited` have
+empty defaults. `handle.host().agents()` offers the same `write` and `report`
+for any session ID, and `usage(params)` for usage totals.
+
+- Each session has its own worker. `didStart` makes the session's handler;
+  the session's `didOutput`, `didPrompt`, `didCancel`, `didDecidePermission`
+  and `didExit` then reach it one at a time, in the order Core sent them, so
+  a handler may wait for host requests. Other sessions keep running.
+- When making the handler fails, or a prompt fails, the SDK reports
+  `turnEnded` with reason `failed` for the turn and logs the failure. Other
+  failures are only logged; a cancellation is not logged.
+- A notification for a session that never started, or one that already
+  exited, is logged as `agent_session_unknown`. A started session without a
+  registration is logged as `agent_unhandled`.
+- The six `lithe/host/agents/did*` notifications reach only this API;
+  registering one with `on_host_notification` fails with `sdk.method.reserved`.
+- `write` and `report` need `agents.native` and act only on the plugin's own
+  sessions. `usage` needs `agents.usage.read` and answers
+  `{sinceMs, untilMs, summaries, rateLimits}`: numbers and model names only,
+  never conversation text, titles, session IDs or directories.
 
 ## Testing
 
