@@ -2001,7 +2001,12 @@ Each visible row carries `commitHash`, integer `lane` and `laneCount`, a signed
 `colorId`, `layoutIndex`, `incomingLaneColors`, `parentEdges` (`id`, `parentHash`,
 `targetLane`, `colorId`, `isMissing`, `isDotted`), typed `labels`, and
 `printElements` (the up and down half-edges with `position`, `adjacentPosition`,
-`colorId`, `isDotted`, `isMissing`, `hasArrow`, `isTerminal`, `targetHash`). Hosts own
+`colorId`, `isDotted`, `isMissing`, `hasArrow`, `isTerminal`, `targetHash`, and
+`hoverChain`). Every half-edge in a contiguous unbranched path has the same positive
+`hoverChain`, scoped to this projection. A row has that field when its commit has one
+visible child and its only parent route has a loaded visible endpoint. Branch
+points, merges, and endpoints split paths and omit the row field. A missing-parent
+route has its own ID. Hosts own
 pixels, curves, and the mapping from a color ID to a theme color; `colorId` `0` means
 an unreferenced fragment. Requests over 100,000 commits, the largest Git Log a
 `git.historyPage` stream reads, fail with `invalid_request`.
