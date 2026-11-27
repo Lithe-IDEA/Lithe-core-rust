@@ -106,6 +106,8 @@ public final class Protocol {
     public static final String HOST_CLIPBOARD_READ_TEXT = "lithe/host/clipboard/readText";
     public static final String HOST_CLIPBOARD_WRITE_TEXT = "lithe/host/clipboard/writeText";
     public static final String HOST_WORKSPACE_REVEAL = "lithe/host/workspace/reveal";
+    public static final String HOST_WORKSPACE_SET_DIRECTORY_TYPES = "lithe/host/workspace/setDirectoryTypes";
+    public static final String HOST_WORKSPACE_SET_DIRECTORY_MARKS = "lithe/host/workspace/setDirectoryMarks";
     public static final String HOST_NETWORK_REQUEST = "lithe/host/network/request";
     public static final String HOST_PREVIEW_OPEN_HTML = "lithe/host/preview/openHTML";
     public static final String HOST_BROWSER_OPEN_EXTERNAL = "lithe/host/browser/openExternal";

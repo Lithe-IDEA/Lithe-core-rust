@@ -280,6 +280,8 @@ export function createHost(channel, callSignal, parentOperationId) {
     }),
     workspace: Object.freeze({
       reveal: scoped(HOST_METHODS.workspaceReveal),
+      setDirectoryTypes: scoped(HOST_METHODS.workspaceSetDirectoryTypes),
+      setDirectoryMarks: scoped(HOST_METHODS.workspaceSetDirectoryMarks),
 
       listContexts: async (options) => request(HOST_METHODS.workspaceListContexts, {}, options),
       getContext: async (context, options) =>

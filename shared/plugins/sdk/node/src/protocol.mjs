@@ -58,6 +58,8 @@ export const HOST_METHODS = Object.freeze({
   clipboardReadText: 'lithe/host/clipboard/readText',
   clipboardWriteText: 'lithe/host/clipboard/writeText',
   workspaceReveal: 'lithe/host/workspace/reveal',
+  workspaceSetDirectoryTypes: 'lithe/host/workspace/setDirectoryTypes',
+  workspaceSetDirectoryMarks: 'lithe/host/workspace/setDirectoryMarks',
   networkRequest: 'lithe/host/network/request',
 
   credentialsGet: 'lithe/host/credentials/get',

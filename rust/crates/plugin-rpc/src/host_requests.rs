@@ -227,6 +227,18 @@ pub(crate) const HOST_METHODS: &[HostMethod] = &[
         params: HostParams::Workflow,
     },
     HostMethod {
+        method: "lithe/host/workspace/setDirectoryTypes",
+        service: "workspace",
+        permission: Some("workspace.directoryMarks"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
+        method: "lithe/host/workspace/setDirectoryMarks",
+        service: "workspace",
+        permission: Some("workspace.directoryMarks"),
+        params: HostParams::Workflow,
+    },
+    HostMethod {
         method: "lithe/host/network/request",
         service: "network",
         permission: Some("network.request"),

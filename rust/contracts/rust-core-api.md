@@ -646,7 +646,7 @@ or removing a command fails until the table changes in the same commit.
 | `workspace.resolveEntry` | Name one existing entry below a workspace root without following it |
 | `workspace.reduceDirectoryAction` | Apply role, custom type, color override, exclusion, clear mark or cancel exclusion to a root's persisted directory rules and return the complete state to persist |
 | `workspace.relocateDirectoryRules` | Move (or drop, after a delete) the directory rule keys of a renamed, moved or deleted subtree, optionally into another workspace root's rules |
-| `workspace.resolveDirectoryPresentation` | Resolve deterministic per-path presentation (icon, color, background tint, tag, source, exclusion) and manual indexing exclusions across user rules, shared rules, glob matches and Git ignores |
+| `workspace.resolveDirectoryPresentation` | Resolve deterministic per-path presentation (icon, color, background tint, tag, source, exclusion) and manual indexing exclusions across user rules, shared rules, plugin-contributed types and marks, glob matches and Git ignores |
 | `workspace.repositories` | Discover deterministic Git repository roots for an opened workspace |
 | `workspace.recentProjects.reduce` | Apply one history mutation or compute a recent project filter projection |
 | `workspace.searchIndex.warm` | Build or reuses the workspace search index |
@@ -7656,7 +7656,8 @@ and releases only the last holder; window destruction also revokes late registra
 `{ kind: "deleteCustomType", id }`, and `rules` is the root's persisted
 `{ marks, includedDirectories, previousRoles, customTypes?, colors? }`. Built-in roles are
 `plain`, `sources`, `tests`, `resources`, `testResources`, `generated`, `excluded`, `module`,
-and `package`; `setRole` also accepts any `custom.*` ID defined in `customTypes`. It returns
+and `package`; `setRole` also accepts any `custom.*` ID defined in `customTypes` and any
+well-formed `plugin.*` ID, which a plugin may contribute later or never. It returns
 `{ changed, rules }`; hosts persist `rules` verbatim and skip the write when `changed` is false.
 Excluding remembers the replaced role in `previousRoles` and canceling a manual exclusion
 restores it. `workspace.relocateDirectoryRules` takes
@@ -7664,10 +7665,20 @@ restores it. `workspace.relocateDirectoryRules` takes
 keys at or below `source` (including `colors`) leave `rules`, reappear under `destination`
 (in `target` for a move across workspace roots) and are dropped when there is no destination.
 `workspace.resolveDirectoryPresentation` takes
-`{ rules, sharedRules?, gitExcluded?, caseInsensitive?, paths }` and returns
-`{ entries, manualExcludedDirectories }`, merging layers in order `user > shared > glob > vcs`
-with ancestor background tint and exclusion inheritance. Base request and response pairs are
-pinned by `rust/fixtures/workspace/directory-rules-v1.json`.
+`{ rules, sharedRules?, pluginTypes?, pluginMarks?, gitExcluded?, caseInsensitive?, paths? }`
+and returns `{ entries, manualExcludedDirectories }`, merging layers in order
+`user > shared > plugin > glob > vcs` with ancestor background tint and exclusion inheritance.
+`pluginTypes` holds at most 256 `{ pluginId, id, name, tag?, icon, color, tintBg?, tintText?,
+inheritBg?, excludeIndexing?, readOnlyHint?, matchGlob? }` entries whose `id` starts with
+`plugin.`; `pluginMarks` holds `{ pluginId, path, role, color? }` entries whose `role` is a
+built-in role or a `plugin.*` ID. Both are what live plugin sessions registered through
+`workspace/setDirectoryTypes` and `workspace/setDirectoryMarks`; Core never persists them.
+When two plugins contribute the same type ID or path, the plugin ID that sorts first wins.
+Each entry carries `pluginId` when its role or type came from a plugin. `paths` may be omitted
+or empty, but not `null`: `manualExcludedDirectories` still lists every explicitly marked
+directory whose effective role excludes indexing, and adds glob-matched directories only for
+the `paths` given. Request and response pairs, including the plugin layers, are pinned by
+`rust/fixtures/workspace/directory-rules-v1.json`.
 
 `workspace.planDuplicate` takes `{ name, isDirectory, existing?, caseInsensitive? }` and returns
 `{ name }`; `workspace.planPaste` takes `{ items: [{ name, isDirectory }], existing?, caseInsensitive? }`

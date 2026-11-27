@@ -420,6 +420,8 @@ public final class Host {
     public final class Workspace {
         /** Reveal a saved resource in the file manager. Permission workspace.reveal. */
         public CompletableFuture<Map<String,Object>> reveal(Map<String,?> context,Map<String,?> params) {return scoped(Protocol.HOST_WORKSPACE_REVEAL,context,params);}
+        public CompletableFuture<Map<String,Object>> setDirectoryTypes(Map<String,?> context,Map<String,?> params) {return scoped(Protocol.HOST_WORKSPACE_SET_DIRECTORY_TYPES,context,params);}
+        public CompletableFuture<Map<String,Object>> setDirectoryMarks(Map<String,?> context,Map<String,?> params) {return scoped(Protocol.HOST_WORKSPACE_SET_DIRECTORY_MARKS,context,params);}
 
         private Workspace() {}
 

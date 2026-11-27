@@ -107,7 +107,7 @@
           "languageServer.request",
           "documents.contentProvider",
           "documents.save",
-          "workspace.files.write", "window.input", "views.refresh", "output.write", "window.progress", "statusBar.write", "clipboard.read", "clipboard.write", "workspace.reveal", "network.request", "agents.run", "agents.native", "agents.sessions.read", "agents.usage.read"] }
+          "workspace.files.write", "window.input", "views.refresh", "output.write", "window.progress", "statusBar.write", "clipboard.read", "clipboard.write", "workspace.reveal", "workspace.directoryMarks", "network.request", "agents.run", "agents.native", "agents.sessions.read", "agents.usage.read"] }
     },
     "activationEvents": {
       "type": "array",

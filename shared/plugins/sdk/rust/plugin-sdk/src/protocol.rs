@@ -93,6 +93,8 @@ pub(crate) mod methods {
     pub const CLIPBOARD_READ_TEXT: &str = "lithe/host/clipboard/readText";
     pub const CLIPBOARD_WRITE_TEXT: &str = "lithe/host/clipboard/writeText";
     pub const WORKSPACE_REVEAL: &str = "lithe/host/workspace/reveal";
+    pub const WORKSPACE_SET_DIRECTORY_TYPES: &str = "lithe/host/workspace/setDirectoryTypes";
+    pub const WORKSPACE_SET_DIRECTORY_MARKS: &str = "lithe/host/workspace/setDirectoryMarks";
     pub const NETWORK_REQUEST: &str = "lithe/host/network/request";
     pub const PREVIEW_OPEN_HTML: &str = "lithe/host/preview/openHTML";
     pub const BROWSER_OPEN_EXTERNAL: &str = "lithe/host/browser/openExternal";
