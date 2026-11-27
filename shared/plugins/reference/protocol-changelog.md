@@ -14,7 +14,7 @@
 
 ## 待合入
 
-- 本 PR（待合入），[@1lck](https://github.com/1lck)，`debugAdapters` 0（API-30）增加可选 `launch.executableSetting`。命令型适配器可读取用户全局文件路径，留空沿用原命令查找；旧宿主会拒绝包含该声明的清单。无新增方法、通知或能力版本。
+- [#207](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/207)（待合入），[@1lck](https://github.com/1lck)，`debugAdapters` 0（API-30）增加可选 `launch.executableSetting`。命令型适配器可读取用户全局文件路径，留空沿用原命令查找；旧宿主会拒绝包含该声明的清单。无新增方法、通知或能力版本。
 
 - [#198](https://github.com/Lithe-IDEA/Lithe-core-rust/pull/198)（2026-11-24），[@1lck](https://github.com/1lck)，`pluginAPIVersion` 0 / `litheFunctions` 0 内补充（API-27）：`editor/registerActions` 的 `services.editor.options.actionIcons` 新增四个通用行首导航图标 token：`navigate-implemented`（接口/契约有子实现，向下）、`navigate-implementing`（实现接口/契约，向上）、`navigate-overridden`（父类/方法被覆写，向下）、`navigate-overriding`（覆写父类声明，向上），保留已有 `navigate-super` 与 `navigate-implementations` 向后兼容。`plugins.editorActions.decode` 仍由宿主声明的 `actionIcons` 列表动态校验，插件通过 `getCapabilities` 发现是否支持新 token，在旧宿主上回退到原有图标；契约 README、领域参考与 `fixtures/editor/editor-actions.json` 同步更新。没有新增能力版本、协议版本、宿主方法、通知或 SDK 版本。
 
