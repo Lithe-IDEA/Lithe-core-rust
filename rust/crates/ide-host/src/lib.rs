@@ -48,6 +48,18 @@ struct Pending {
     claimed: bool,
     created: Instant,
 }
+
+impl Pending {
+    /// Both delivery modes spend the original enqueue budget, including time in the queue.
+    fn claim(&mut self, id: &str) -> Value {
+        self.claimed = true;
+        json!({
+            "requestID": id, "name": self.call.name, "arguments": self.call.arguments,
+            "remainingMilliseconds": REQUEST_TIMEOUT.saturating_sub(self.created.elapsed()).as_millis() as u64
+        })
+    }
+}
+
 /// Native push notification. The receiver must claim the request before executing it.
 /// Returning an error fails only that delivery; it never replays an operation.
 pub type RequestDispatcher = Arc<dyn Fn(String) -> Result<(), String> + Send + Sync>;
@@ -503,11 +515,10 @@ pub fn execute(action: &str, args: Value) -> Result<Value, String> {
         "claim" => {
             let request_id = args["requestID"].as_str().ok_or("Missing requestID")?;
             prune_pending(&mut pending);
-            let request = pending.get_mut(request_id).filter(|p| !p.claimed).map(|p| {
-                p.claimed = true;
-                json!({"requestID":request_id,"name":p.call.name,"arguments":p.call.arguments,
-                        "remainingMilliseconds":REQUEST_TIMEOUT.saturating_sub(p.created.elapsed()).as_millis() as u64})
-            });
+            let request = pending
+                .get_mut(request_id)
+                .filter(|p| !p.claimed)
+                .map(|p| p.claim(request_id));
             Ok(json!({"request":request}))
         }
         "poll" => {
@@ -521,10 +532,7 @@ pub fn execute(action: &str, args: Value) -> Result<Value, String> {
                 .iter_mut()
                 .filter(|(_, p)| !p.claimed)
                 .take(1)
-                .map(|(id, p)| {
-                    p.claimed = true;
-                    json!({"requestID":id,"name":p.call.name,"arguments":p.call.arguments})
-                })
+                .map(|(id, p)| p.claim(id))
                 .collect();
             Ok(json!({"requests":requests}))
         }
@@ -608,9 +616,31 @@ mod tests {
             tokio::time::timeout(Duration::from_secs(3), broker.queued.notified())
                 .await
                 .unwrap();
+            let expected: Value =
+                serde_json::from_str(include_str!("../../../fixtures/ide-api/poll.json")).unwrap();
+            let remaining = expected["requests"][0]["remainingMilliseconds"]
+                .as_u64()
+                .unwrap();
+            let age = REQUEST_TIMEOUT - Duration::from_millis(remaining);
+            let id = {
+                let mut pending = broker.pending.lock().unwrap();
+                let (id, request) = pending.iter_mut().next().unwrap();
+                request.created = Instant::now() - age;
+                id.clone()
+            };
             let requests = execute("poll", json!({"hostID":fixture.id})).unwrap();
             let request = &requests["requests"][0];
-            assert_eq!(request["name"], "lithe_project_inspect");
+            let budget = request["remainingMilliseconds"].as_u64().unwrap();
+            assert!(budget > 0 && budget <= remaining);
+            // Only the random request ID and the time spent reaching poll vary.
+            let mut expected = expected;
+            expected["requests"][0]["requestID"] = json!(id);
+            expected["requests"][0]["remainingMilliseconds"] = json!(budget);
+            assert_eq!(requests, expected);
+            assert!(
+                execute("claim", json!({"hostID":fixture.id,"requestID":id})).unwrap()["request"]
+                    .is_null()
+            );
             execute("respond",json!({"hostID":fixture.id,"requestID":request["requestID"],"result":{"workspaceID":"fixture-project"}})).unwrap();
         };
         let (response, ()) = tokio::join!(response, application);

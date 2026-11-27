@@ -1,0 +1,10 @@
+{
+  "requests": [
+    {
+      "requestID": "fixture-request",
+      "name": "lithe_project_inspect",
+      "arguments": {},
+      "remainingMilliseconds": 30000
+    }
+  ]
+}
