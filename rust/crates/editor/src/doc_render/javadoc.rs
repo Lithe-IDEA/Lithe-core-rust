@@ -227,22 +227,25 @@ fn fallback_response(err: LowerError) -> DocRenderResponse {
 }
 
 /// Splits the main description from top-level Javadoc block tags (`@tag ...`)
-/// while ignoring `@` markers inside `<pre>` or inline `{@...}` tags.
+/// while ignoring `@` markers inside `<pre>` or multi-line inline `{@...}` tags.
 fn split_block_tags(body: &str) -> (String, Vec<(String, String)>) {
     let mut main_lines: Vec<&str> = Vec::new();
     let mut tags: Vec<(String, Vec<&str>)> = Vec::new();
     let mut in_pre = false;
+    let mut inline_tag_depth: usize = 0;
 
     for line in body.split('\n') {
         let trimmed = line.trim_start();
-        if !in_pre {
+        if !in_pre && inline_tag_depth == 0 {
             if let Some((tag_name, rest)) = parse_block_tag_line(trimmed) {
                 tags.push((tag_name.to_ascii_lowercase(), vec![rest]));
                 in_pre = update_pre_state(in_pre, rest);
+                inline_tag_depth = update_inline_tag_depth(inline_tag_depth, rest);
                 continue;
             }
         }
         in_pre = update_pre_state(in_pre, line);
+        inline_tag_depth = update_inline_tag_depth(inline_tag_depth, line);
         if let Some((_, ref mut lines)) = tags.last_mut() {
             lines.push(line);
         } else {
@@ -256,6 +259,32 @@ fn split_block_tags(body: &str) -> (String, Vec<(String, String)>) {
         .map(|(name, lines)| (name, lines.join("\n")))
         .collect();
     (main_body, joined_tags)
+}
+
+fn update_inline_tag_depth(mut depth: usize, line: &str) -> usize {
+    let bytes = line.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if depth == 0 {
+            if bytes[i] == b'{'
+                && i + 2 < bytes.len()
+                && bytes[i + 1] == b'@'
+                && bytes[i + 2].is_ascii_alphabetic()
+            {
+                depth = 1;
+                i += 2;
+                continue;
+            }
+        } else {
+            match bytes[i] {
+                b'{' => depth = depth.saturating_add(1),
+                b'}' => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+        }
+        i += 1;
+    }
+    depth
 }
 
 fn parse_block_tag_line(trimmed: &str) -> Option<(&str, &str)> {
@@ -542,11 +571,12 @@ fn build_inline_tag_slot(kind: &str, content: &str) -> Option<ProtectedSlot> {
             } else {
                 display_name_for_symbol(target)
             };
+            let scheme_prefix = target.get(..8).unwrap_or(target).to_ascii_lowercase();
             let link = if target.is_empty() {
                 None
-            } else if target.starts_with("http://")
-                || target.starts_with("https://")
-                || target.starts_with("mailto:")
+            } else if scheme_prefix.starts_with("http://")
+                || scheme_prefix.starts_with("https://")
+                || scheme_prefix.starts_with("mailto:")
             {
                 classify_href(target)
             } else {

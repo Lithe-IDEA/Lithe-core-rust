@@ -828,6 +828,53 @@ mod tests {
         }
     }
 
+    #[test]
+    fn review_edge_cases_multiline_code_annotation_dl_paragraphs_uppercase_url_and_nested_fallback()
+    {
+        // 1. Multi-line {@code ...} containing a line starting with @Override must not split as a block tag.
+        let src = "/**\n * Example:\n * {@code\n * @Override\n * public String toString() { return \"\"; }\n * }\n * See {@link HTTPS://example.com/docs Docs}.\n * @since 2.0\n */";
+        let res = render_doc_comment(src, "block-star", "javadoc-html", "java").unwrap();
+        assert!(!res.fallback_to_source);
+        let encoded = serde_json::to_string(&res).unwrap();
+        assert!(encoded.contains("@Override"));
+        assert!(!encoded.contains("\"@override\""));
+        assert!(encoded.contains("\"kind\":\"external\""));
+        assert!(encoded.contains("HTTPS://example.com/docs"));
+        assert!(res
+            .blocks
+            .iter()
+            .any(|b| matches!(b, DocBlock::Labeled { tag_kind, .. } if tag_kind == "since")));
+
+        // 2. HTML <dl> with <dd><p>...</p></dd> keeps paragraphs inside the Labeled value column.
+        let dl_src =
+            "/**\n * <dl><dt>Term</dt><dd><p>First line</p><p>Second line</p></dd></dl>\n */";
+        let dl_res = render_doc_comment(dl_src, "block-star", "javadoc-html", "java").unwrap();
+        assert!(!dl_res.fallback_to_source);
+        assert_eq!(dl_res.blocks.len(), 1);
+        match &dl_res.blocks[0] {
+            DocBlock::Labeled {
+                label_text, spans, ..
+            } => {
+                assert_eq!(label_text, "Term");
+                let combined: String = spans.iter().map(|s| s.text.as_str()).collect();
+                assert!(combined.contains("First line"));
+                assert!(combined.contains("Second line"));
+            }
+            other => panic!("expected Labeled block for <dl>, got {other:?}"),
+        }
+
+        // 3. Hover AST fallback preserves nested sub-list items and fenced code blocks inside a list item.
+        let hover_src = "- outer\n  - nested item\n\n  ```rust\n  let v = 1;\n  ```\n\nprefix <textarea>`kept`</textarea> suffix";
+        let hover_res = render_hover_doc(hover_src, true, "rust").unwrap();
+        assert_eq!(
+            hover_res.fallback_reason.as_deref(),
+            Some("slot_fidelity_failed")
+        );
+        let hover_json = serde_json::to_string(&hover_res).unwrap();
+        assert!(hover_json.contains("nested item"));
+        assert!(hover_json.contains("let v = 1;"));
+    }
+
     fn block_kind_name(block: &DocBlock) -> &'static str {
         match block {
             DocBlock::Paragraph { .. } => "paragraph",

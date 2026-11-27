@@ -1260,13 +1260,23 @@ impl<'a> DomLowerer<'a> {
                             spans: Vec::new(),
                         });
                     }
-                    self.walk_children(&child, depth + 1, style.clone(), quote, list_level, false)?;
-                    current_term = self.take_trimmed_spans();
+                    current_term = self.lower_subtree_as_inline_spans(
+                        &child,
+                        depth + 1,
+                        style,
+                        quote,
+                        list_level,
+                    )?;
                     continue;
                 }
                 if tag == "dd" {
-                    self.walk_children(&child, depth + 1, style.clone(), quote, list_level, false)?;
-                    let value = self.take_trimmed_spans();
+                    let value = self.lower_subtree_as_inline_spans(
+                        &child,
+                        depth + 1,
+                        style,
+                        quote,
+                        list_level,
+                    )?;
                     let term = mem::take(&mut current_term);
                     if !term.is_empty() || !value.is_empty() {
                         self.push_block(DocBlock::Labeled {
@@ -1291,6 +1301,47 @@ impl<'a> DomLowerer<'a> {
             });
         }
         Ok(())
+    }
+
+    /// Lowers a container subtree (such as `<dt>`, `<dd>`, or `<td>`) to inline
+    /// spans, folding any nested block elements (e.g. `<p>` inside `<dd>`) back
+    /// into inline runs instead of leaking them ahead of the enclosing block.
+    fn lower_subtree_as_inline_spans(
+        &mut self,
+        node: &Handle,
+        depth: usize,
+        style: &InlineStyle,
+        quote: usize,
+        list_level: usize,
+    ) -> Result<Vec<DocSpan>, CoreError> {
+        let saved_buf = mem::take(&mut self.inline_buf);
+        let saved_blocks_len = self.blocks.len();
+        self.walk_children(node, depth, style.clone(), quote, list_level, false)?;
+        let mut tail_spans = self.take_trimmed_spans();
+        if self.blocks.len() > saved_blocks_len {
+            let extra: Vec<DocBlock> = self.blocks.drain(saved_blocks_len..).collect();
+            let mut merged = Vec::new();
+            for blk in extra {
+                append_block_as_inline_spans(blk, &mut merged);
+            }
+            if !tail_spans.is_empty() {
+                if !merged.is_empty() {
+                    merged.push(DocSpan {
+                        text: "\n".to_owned(),
+                        bold: false,
+                        italic: false,
+                        strike: false,
+                        code: false,
+                        link: None,
+                    });
+                }
+                merged.extend(tail_spans);
+            }
+            tail_spans = merged;
+        }
+        self.inline_buf = saved_buf;
+        trim_edge_whitespace(&mut tail_spans);
+        Ok(tail_spans)
     }
 
     fn lower_table(

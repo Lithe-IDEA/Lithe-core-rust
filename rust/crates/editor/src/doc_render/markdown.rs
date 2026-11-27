@@ -450,6 +450,7 @@ fn lower_ast_fallback<'a>(
                     0
                 };
                 let mut spans = Vec::new();
+                let mut nested_blocks = Vec::new();
                 for child in item.children() {
                     if matches!(child.data.borrow().value, NodeValue::Paragraph) {
                         collect_ast_inline(
@@ -461,6 +462,8 @@ fn lower_ast_fallback<'a>(
                             &mut spans,
                             span_budget,
                         );
+                    } else {
+                        nested_blocks.push(child);
                     }
                 }
                 trim_edge_whitespace(&mut spans);
@@ -471,6 +474,17 @@ fn lower_ast_fallback<'a>(
                         number: num,
                         spans,
                     });
+                }
+                let next_level = (level + 1).min(8);
+                for nested in nested_blocks {
+                    lower_ast_fallback(
+                        nested,
+                        default_code_lang,
+                        quote,
+                        next_level,
+                        blocks,
+                        span_budget,
+                    );
                 }
             }
         }
