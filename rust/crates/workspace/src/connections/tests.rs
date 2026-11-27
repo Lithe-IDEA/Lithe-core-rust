@@ -42,6 +42,43 @@ fn saving_returns_the_document_to_write_and_the_new_id() {
 }
 
 #[test]
+fn saved_target_fingerprint_changes_only_with_the_route() {
+    let first = edit(edit_request(json!({
+        "document": null,
+        "save": { "name": "Build box", "connection": { "host": "build.example", "user": "dev" } },
+    })))
+    .unwrap();
+    let id = &first["id"];
+    let fingerprint = first["connections"][0]["targetFingerprint"]
+        .as_str()
+        .unwrap();
+    assert_eq!(fingerprint.len(), 64);
+    assert!(!first["document"].as_str().unwrap().contains(fingerprint));
+    let revise = |connection: Value| {
+        let response = edit(edit_request(json!({
+            "document": first["document"],
+            "save": { "id": id, "name": "Renamed", "connection": connection },
+        })))
+        .unwrap();
+        assert_eq!(response["connections"][0]["id"], *id);
+        response["connections"][0]["targetFingerprint"].clone()
+    };
+    assert_eq!(
+        revise(json!({"host": "build.example", "user": "dev",
+        "authentication": "agent", "connectTimeoutSeconds": 20})),
+        fingerprint
+    );
+    for connection in [
+        json!({"host": "new.example", "user": "dev"}),
+        json!({"host": "build.example", "user": "ops"}),
+        json!({"host": "build.example", "user": "dev", "port": 2222}),
+        json!({"host": "build.example", "user": "dev", "proxyJump": "jump.example"}),
+    ] {
+        assert_ne!(revise(connection), fingerprint);
+    }
+}
+
+#[test]
 fn colors_and_groups_are_saved_and_listed_by_section() {
     let first = edit(edit_request(json!({
         "document": null,

@@ -10,7 +10,8 @@
 use crate::sessions::nonce;
 use lithe_protocol::{CoreError, ErrorCode};
 use lithe_remote::client::connections::{
-    self, Color, ConnectionError, Connections, ImportEntry, Label, LabelFill, Reason, SshConnection,
+    self, Color, ConnectionError, Connections, ImportEntry, Label, LabelFill, Reason,
+    SavedConnection, SshConnection,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -105,6 +106,26 @@ const STORAGE: Storage = Storage {
     maximum_bytes: connections::MAX_BYTES,
 };
 
+/// API projection. Keep the derived identity out of the on-disk document.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ListedConnection<'a> {
+    #[serde(flatten)]
+    entry: &'a SavedConnection,
+    target_fingerprint: String,
+}
+
+fn listed_connections(connections: &Connections) -> Vec<ListedConnection<'_>> {
+    connections
+        .entries()
+        .iter()
+        .map(|entry| ListedConnection {
+            entry,
+            target_fingerprint: entry.connection().target_fingerprint(),
+        })
+        .collect()
+}
+
 /// Reads the document. `sections` lists the entry ids by group, in the
 /// order the window shows them.
 pub fn list(request: ListRequest) -> Result<Value, CoreError> {
@@ -116,7 +137,7 @@ pub fn list(request: ListRequest) -> Result<Value, CoreError> {
         None => connections.sections(),
     };
     Ok(json!({
-        "connections": connections.entries(),
+        "connections": listed_connections(&connections),
         "sections": sections,
         "storage": STORAGE,
     }))
@@ -193,7 +214,7 @@ pub fn edit(request: EditRequest) -> Result<Value, CoreError> {
     let mut result = json!({
         "changed": changed,
         "document": document,
-        "connections": after.entries(),
+        "connections": listed_connections(&after),
         "sections": after.sections(),
     });
     if let Some(id) = id {

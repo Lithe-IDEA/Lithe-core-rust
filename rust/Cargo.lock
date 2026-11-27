@@ -1506,6 +1506,7 @@ version = "0.1.0"
 dependencies = [
  "ammonia",
  "base64",
+ "caseless",
  "comrak",
  "encoding_rs",
  "lithe-core-rules",

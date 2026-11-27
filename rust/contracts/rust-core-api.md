@@ -956,13 +956,18 @@ transport identity (up to 1024 UTF-8 bytes) and the absolute POSIX folder (up to
 path. A `remote` record includes
 `connectionId`, `name`, `folder`, and a combination of `sshConnectionId`, `wsl`
 (distribution and optional user), and `container` (engine, identifier,
-optional context and user). SSH records refer to the saved connection by ID.
-Authentication settings and session tokens stay in their existing stores.
+optional context and user). New SSH records include the saved connection's
+opaque `sshTargetFingerprint`, which is part of the history key. The host
+checks it against the current saved route before reopening the folder. Legacy
+SSH entries remain readable and removable. Reopening a legacy entry requires
+choosing the folder again through Remote Development so the host can record
+its current route. Authentication settings and session tokens stay in their
+existing stores.
 
 `action.kind` accepts `record { path, openedAt }`,
 `recordRemote { remote, openedAt }`, `remove { paths }`, `togglePinned { path }`,
 `setPinned { path, pinned }`,
-`setTags { path, tags }`, `import { paths, openedAt }`,
+`setTags { path, tags, expectedTags? }`, `import { paths, openedAt }`,
 `importEntries { entries: [{ path, lastOpenedAt }] }`, `normalize`, or
 `filter { query, tag }`. Setting a pin to its current state preserves its rank. Explicit pins sort by descending pin order. Existing
 pins without one keep their recency order after explicit pins. Reopening
@@ -970,7 +975,10 @@ preserves pin order and tags, and an older open event cannot replace a newer
 open time or its remote route. Setting tags trims and deduplicates labels
 case-insensitively and supports clearing them with an empty array. At most 16
 non-empty, comma-free labels of up to 64 UTF-8 bytes each are retained per
-entry. Importing dated local entries preserves metadata already in the list.
+entry. When `expectedTags` is supplied, it must match the current ordered
+labels exactly. A missing entry or changed labels returns
+`recent_project_tags_changed` without a write. Importing dated local entries
+preserves metadata already in the list.
 
 The filter is read-only and returns `visible` offsets into the supplied entries
 and the distinct `tags` across the entire list. It combines a case-insensitive
@@ -5861,7 +5869,7 @@ validates the document and applies every edit.
 `remote.connections` accepts `{ document: string|null }` and returns
 `{ connections, sections, storage: { relativePath: "remote/connections.json",
 maximumBytes: 262144 } }`. `connections` is the list in the user's order;
-each entry is `{ id, name, connection, color?, group?, recentFolders? }`,
+each entry is `{ id, name, connection, targetFingerprint, color?, group?, recentFolders? }`,
 where `connection` is the object `remote.probe` takes and `recentFolders`
 holds at most 10 normalized absolute host paths, most recent first. `color`
 is one of `red`, `orange`, `yellow`, `green`, `blue` and `purple`; clients
@@ -5878,7 +5886,10 @@ given and do not regroup or reorder the entries.
 
 An entry also carries `lastConnectedAt`, seconds since the Unix epoch of the
 last session opened over it, once one has. Replacing the entry's target
-clears it with the recent folders.
+clears it with the recent folders. `targetFingerprint` is a derived, lowercase
+hex digest of the saved host, port, user and proxy jump, shared by the list and
+edit responses. The connection document does not contain it. The fingerprint
+identifies saved routing settings. OpenSSH still authenticates the server.
 
 `remote.connections` also takes an optional `query` of at most 256
 characters. With one, `sections` keeps only the entries whose name, group

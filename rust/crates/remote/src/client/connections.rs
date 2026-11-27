@@ -384,10 +384,22 @@ impl SshConnection {
     /// Whether `other` reaches another host or account: remembered folders
     /// belong to the target, not to the name.
     fn same_target(&self, other: &Self) -> bool {
-        self.host == other.host
-            && self.port == other.port
-            && self.user == other.user
-            && self.proxy_jump == other.proxy_jump
+        self.target() == other.target()
+    }
+
+    fn target(&self) -> (&str, Option<u16>, Option<&str>, Option<&str>) {
+        (
+            &self.host,
+            self.port,
+            self.user.as_deref(),
+            self.proxy_jump.as_deref(),
+        )
+    }
+
+    /// Saved routing identity, independent of the connection label and authentication settings.
+    /// This identifies the configured route; OpenSSH still verifies the server.
+    pub fn target_fingerprint(&self) -> String {
+        crate::client::ssh_identity::digest(&("saved-ssh-target", self.target()))
     }
 
     /// A connection to `host` with every other field left to the SSH

@@ -72,6 +72,9 @@ pub enum ErrorCode {
     /// A `workspace.createEntry`, `renameEntry` or `copyEntry` target already
     /// exists. Nothing was replaced.
     EntryExists,
+    /// The project or its tags changed after a recent-project tag editor opened.
+    /// The guarded update was not applied.
+    RecentProjectTagsChanged,
     /// The caller cooperatively cancelled the operation.
     Cancelled,
     /// The operation exceeded its declared deadline.

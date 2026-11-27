@@ -5,6 +5,7 @@
 //! survive, in what order, and how pins interact with the retention capacity,
 //! so every platform keeps the same set after the same sequence of actions.
 
+use caseless::default_case_fold_str;
 use lithe_protocol::{CoreError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -23,8 +24,9 @@ const MAX_PATH_BYTES: usize = 4096;
 const MAX_TAGS: usize = 16;
 const MAX_TAG_BYTES: usize = 64;
 const MAX_REMOTE_ID_BYTES: usize = 1024;
-// The generated key also includes the length prefix: "remote:1024:" at most.
-const MAX_RECENT_KEY_BYTES: usize = "remote:1024:".len() + MAX_REMOTE_ID_BYTES + MAX_PATH_BYTES;
+const SSH_TARGET_FINGERPRINT_BYTES: usize = 64;
+const MAX_RECENT_KEY_BYTES: usize =
+    "remote:ssh:1024:".len() + MAX_REMOTE_ID_BYTES + SSH_TARGET_FINGERPRINT_BYTES + MAX_PATH_BYTES;
 
 /// One retained project identity. `path` is the host's normalized root path
 /// and is compared byte for byte; `lastOpenedAt` is milliseconds since the
@@ -64,6 +66,9 @@ pub struct RecentRemoteProject {
     /// Saved SSH connection ID, for SSH and containers on an SSH host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ssh_connection_id: Option<String>,
+    /// Opaque identity of the saved SSH target when the folder was opened.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssh_target_fingerprint: Option<String>,
     /// Windows distribution and optional account, when using a WSL transport.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wsl: Option<RecentWslRoute>,
@@ -125,6 +130,9 @@ pub enum RecentProjectsAction {
         path: String,
         /// Raw labels to trim, validate, and deduplicate.
         tags: Vec<String>,
+        /// Optional exact snapshot that must still match the stored tags.
+        #[serde(rename = "expectedTags")]
+        expected_tags: Option<Vec<String>>,
     },
     /// Projects removed by the user or found unavailable by the host.
     Remove {
@@ -266,10 +274,24 @@ pub fn reduce(request: RecentProjectsRequest) -> Result<RecentProjectsResponse, 
             let path = remote_identity(&remote);
             record(&mut entries, path, opened_at, Some(remote));
         }
-        RecentProjectsAction::SetTags { path, tags } => {
+        RecentProjectsAction::SetTags {
+            path,
+            tags,
+            expected_tags,
+        } => {
             validate_recent_key(&path)?;
+            let entry = entries.iter_mut().find(|entry| entry.path == path);
+            if let Some(expected) = expected_tags.as_deref() {
+                validate_tags(expected)?;
+                if entry.as_ref().map(|entry| entry.tags.as_slice()) != Some(expected) {
+                    return Err(CoreError::new(
+                        ErrorCode::RecentProjectTagsChanged,
+                        "The recent project or its tags changed",
+                    ));
+                }
+            }
             let tags = normalize_tags(tags)?;
-            if let Some(entry) = entries.iter_mut().find(|entry| entry.path == path) {
+            if let Some(entry) = entry {
                 entry.tags = tags;
             }
         }
@@ -405,20 +427,21 @@ fn record(
 }
 
 fn filter(entries: Vec<RecentProjectEntry>, query: &str, tag: &str) -> RecentProjectsResponse {
-    let query = query.trim().to_lowercase();
-    let tag = tag.trim().to_lowercase();
+    let query = default_case_fold_str(query.trim());
+    let tag = default_case_fold_str(tag.trim());
     let mut tags = std::collections::BTreeMap::new();
     let mut visible = Vec::new();
     for (index, entry) in entries.iter().enumerate() {
         let mut tag_matches = tag.is_empty();
-        let mut query_matches = if let Some(remote) = &entry.remote {
-            remote.folder.to_lowercase().contains(&query)
-                || remote.name.to_lowercase().contains(&query)
-        } else {
-            entry.path.to_lowercase().contains(&query)
-        };
+        let mut query_matches = query.is_empty()
+            || if let Some(remote) = &entry.remote {
+                default_case_fold_str(&remote.folder).contains(&query)
+                    || default_case_fold_str(&remote.name).contains(&query)
+            } else {
+                default_case_fold_str(&entry.path).contains(&query)
+            };
         for label in &entry.tags {
-            let key = label.to_lowercase();
+            let key = default_case_fold_str(label);
             tag_matches |= key == tag;
             query_matches |= key.contains(&query);
             tags.entry(key).or_insert_with(|| label.clone());
@@ -440,6 +463,14 @@ fn filter(entries: Vec<RecentProjectEntry>, query: &str, tag: &str) -> RecentPro
 
 fn remote_identity(remote: &RecentRemoteProject) -> String {
     // Length-prefix the transport to disambiguate delimiters inside IDs and paths.
+    if let Some(fingerprint) = &remote.ssh_target_fingerprint {
+        return format!(
+            "remote:ssh:{}:{}{fingerprint}{}",
+            remote.connection_id.len(),
+            remote.connection_id,
+            remote.folder
+        );
+    }
     format!(
         "remote:{}:{}{}",
         remote.connection_id.len(),
@@ -458,6 +489,16 @@ fn validate_remote(remote: &RecentRemoteProject) -> Result<(), CoreError> {
             && remote.wsl.is_none()
             && remote.container.is_none())
         || (remote.ssh_connection_id.is_some() && remote.wsl.is_some())
+        || remote
+            .ssh_target_fingerprint
+            .as_ref()
+            .is_some_and(|fingerprint| {
+                remote.ssh_connection_id.is_none()
+                    || fingerprint.len() != SSH_TARGET_FINGERPRINT_BYTES
+                    || !fingerprint
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            })
     {
         return Err(invalid("Remote project route is invalid"));
     }
@@ -469,7 +510,7 @@ fn normalize_tags(tags: Vec<String>) -> Result<Vec<String>, CoreError> {
     let tags: Vec<String> = tags
         .iter()
         .map(|tag| tag.trim())
-        .filter(|tag| !tag.is_empty() && seen.insert(tag.to_lowercase()))
+        .filter(|tag| !tag.is_empty() && seen.insert(default_case_fold_str(tag)))
         .map(str::to_owned)
         .collect();
     validate_tags(&tags)?;
