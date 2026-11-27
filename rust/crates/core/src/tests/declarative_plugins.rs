@@ -78,6 +78,8 @@ const RUN_CONFIGURATION_TYPES_FIXTURE: &str =
 const BEFORE_LAUNCH_TASKS_FIXTURE: &str =
     contract_file!("fixtures/before-launch-tasks/before-launch-tasks.plugin.json");
 const INVALID_MANIFESTS: &str = contract_file!("fixtures/manifest/invalid-manifests.json");
+const AGENTS_FIXTURE: &str = contract_file!("fixtures/agents/agents.plugin.json");
+const TERMINAL_AGENT_FIXTURE: &str = contract_file!("fixtures/agents/terminal-agent.plugin.json");
 const COMMAND_PLANS: &str = contract_file!("fixtures/languages/command-plans.json");
 
 fn fixture(name: &str) -> Value {
@@ -114,6 +116,8 @@ fn fixture(name: &str) -> Value {
         "command-installer-download.plugin.json" => COMMAND_INSTALLER_DOWNLOAD_FIXTURE,
         "run-configuration-types.plugin.json" => RUN_CONFIGURATION_TYPES_FIXTURE,
         "before-launch-tasks.plugin.json" => BEFORE_LAUNCH_TASKS_FIXTURE,
+        "agents.plugin.json" => AGENTS_FIXTURE,
+        "terminal-agent.plugin.json" => TERMINAL_AGENT_FIXTURE,
         other => panic!("unknown fixture {other}"),
     };
     serde_json::from_str(source).expect("fixture manifest is JSON")
@@ -150,6 +154,8 @@ fn contract_fixtures_and_official_plugins_validate() {
         COMMAND_INSTALLER_DOWNLOAD_FIXTURE,
         RUN_CONFIGURATION_TYPES_FIXTURE,
         BEFORE_LAUNCH_TASKS_FIXTURE,
+        AGENTS_FIXTURE,
+        TERMINAL_AGENT_FIXTURE,
     ] {
         let outcome = validate(serde_json::from_str(source).unwrap());
         assert_eq!(outcome["status"], "ok", "{outcome}");
@@ -275,6 +281,56 @@ fn invalid_manifest_fixtures_report_their_stable_codes() {
             );
         }
     }
+}
+
+/// The install review shows every form an agent runs and every directory its
+/// session sources read, so the user sees them before installing.
+#[test]
+fn agents_are_reviewed_programs() {
+    let review = |name: &str| {
+        let outcome = lithe_plugin_marketplace::install_review_command(json!({
+            "manifest": fixture(name),
+        }))
+        .expect("payload is well formed");
+        outcome["review"]["programs"].as_array().unwrap().clone()
+    };
+    let programs: Vec<Value> = review("agents.plugin.json")
+        .iter()
+        .filter(|program| {
+            matches!(
+                program["kind"].as_str(),
+                Some("agent") | Some("agentSessions")
+            )
+        })
+        .cloned()
+        .collect();
+    assert_eq!(
+        programs,
+        vec![
+            json!({"kind": "agent", "agentID": "example", "tool": "example-agent", "form": "native", "launchFunction": "example.launch"}),
+            json!({"kind": "agent", "agentID": "example", "tool": "example-agent", "form": "terminal", "arguments": []}),
+            json!({"kind": "agent", "agentID": "example", "tool": "example-agent", "form": "update", "arguments": ["update"]}),
+            json!({
+                "kind": "agentSessions",
+                "agentID": "example",
+                "tool": "example-agent",
+                "source": "projects",
+                "roots": ["${env:EXAMPLE_HOME}/sessions", "${userHome}/.example/sessions"],
+                "include": ["**/*.jsonl"]
+            }),
+        ]
+    );
+
+    let forms: Vec<Value> = review("terminal-agent.plugin.json")
+        .into_iter()
+        .filter(|program| program["kind"] == "agent")
+        .collect();
+    assert_eq!(
+        forms,
+        vec![
+            json!({"kind": "agent", "agentID": "example", "tool": "example-agent", "form": "terminal", "arguments": ["--interactive"]})
+        ]
+    );
 }
 
 /// The command-installer commands answer the golden cases for this host's

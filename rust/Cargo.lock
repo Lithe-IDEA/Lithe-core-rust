@@ -1003,6 +1003,7 @@ name = "lithe-core"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "lithe-agent-runtime",
  "lithe-ai",
  "lithe-build",
  "lithe-core-rules",

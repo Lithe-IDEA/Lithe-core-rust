@@ -11,7 +11,7 @@
 | 清单字段 | `keymapImportProviders[]`：`{id, displayName, recognition, inputs}` |
 | 能力版本 | `keymapImportProviders` 0，同时需要 `backend` 0。见[版本对照](../capabilities-and-versions.md#能力版本requires) |
 | 协议 | `litheKeymapImport` 0：Core 只向声明了提供者的插件会话提供 `experimental.litheKeymapImport: {versions: [0], providers}`，后端回答 `{version: 0, providers}`（非空、无重复的子集），见[进程协议版本](../capabilities-and-versions.md#进程协议版本) |
-| API 编号 | 不在 API-01–44 内（安装和导入层面的契约），见 [API 总表](../api-catalog.md#计划中的-api)下方的说明 |
+| API 编号 | 不在 API-01–45 内（安装和导入层面的契约），见 [API 总表](../api-catalog.md#计划中的-api)下方的说明 |
 | 权限 | `backend.launch`、`keymaps.provide`、`keymaps.readSelectedSources` |
 | 激活事件 | 没有；宿主只在用户发起导入时启动后端 |
 | 后端启动 | 包内可执行文件或包内运行时，不能依赖需要发现的运行时 |
@@ -60,7 +60,7 @@ A plugin can convert another editor's shortcut configuration into Lithe shortcut
 | Manifest field | `keymapImportProviders[]`: `{id, displayName, recognition, inputs}` |
 | Capability versions | `keymapImportProviders` 0, together with `backend` 0. See [versions](../capabilities-and-versions.md#capability-versions-requires) |
 | Protocols | `litheKeymapImport` 0: Core offers `experimental.litheKeymapImport: {versions: [0], providers}` only to a plugin session that declares providers, and the backend answers `{version: 0, providers}` (a nonempty, duplicate-free subset); see [process protocol versions](../capabilities-and-versions.md#process-protocol-versions) |
-| API IDs | Outside API-01–44 (an installation and import contract); see the note under the [API catalog](../api-catalog.md#planned-apis) |
+| API IDs | Outside API-01–45 (an installation and import contract); see the note under the [API catalog](../api-catalog.md#planned-apis) |
 | Permissions | `backend.launch`, `keymaps.provide`, `keymaps.readSelectedSources` |
 | Activation events | None; the host starts the backend only when the user starts an import |
 | Backend launch | A packaged executable or packaged runtime, without discovered runtime dependencies |

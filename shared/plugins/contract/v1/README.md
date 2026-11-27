@@ -34,6 +34,7 @@ This directory is the cross-platform source of truth:
 | `fixtures/run/` | Run sessions and console links: `tool-reference-launch` names its runtimes by tool-definition ID and declares output link matchers; `run-start.json` holds what `run.decodeStart` returns for each case, including the rejections, and `output-link-matchers.json` the golden matches and resolutions |
 | `fixtures/vcs/` | A version control provider |
 | `fixtures/keymap-import/` | Two independent shortcut import providers sharing one packaged backend |
+| `fixtures/agents/` | `agents.plugin.json`: an agent with native, terminal and update forms and a session source, served by its backend; `terminal-agent.plugin.json`: a terminal-only agent without a backend. Their rejections are in `fixtures/manifest/invalid-manifests.json` |
 | `fixtures/project-generators/` | Project generators: template files (`templates/`), a scaffolding command, and an archive download; `project-generator-tool-field.plugin.json` with `templates/tool-field/` picks tool installations with `tool` fields; `project-plans.json` holds golden `project.*` form evaluations, generation plans, and name checks, and a case's optional `manifest` names the fixture it runs against (`project-generator.plugin.json` by default) |
 | `fixtures/toolchains/` | Production-shape fixtures for tool definitions and a packaged toolchain provider; they require `toolDefinitions` and `toolchainProviders`, which a host advertises only when it implements them |
 | `fixtures/package-trust/` | `publisher-bundled.plugin.json` and `signature-vectors.json`: public cross-platform vectors for the package publisher signature: the RFC 8032 test key, a fixed package with non-ASCII file names, its canonical payload, RFC 8032 deterministic signature, and content digest. Both platforms must build the same canonical payload and digest and accept the recorded signature; signers that add randomness, such as CryptoKit, check the signature by verification instead of byte comparison |
@@ -979,7 +980,7 @@ what it needs and a host states what it runs, each per capability.
    all the others are `0`.
 3. **A host declares a capability version when it can serve every form of
    it.** See [Host capabilities](#host-capabilities).
-4. **Reuse and compatible extension come first.** API-01–44 classify domains,
+4. **Reuse and compatible extension come first.** API-01–45 classify domains,
    not a closed method list. Add general methods, notifications, optional fields,
    or declarations within the appropriate domain when existing interfaces are
    insufficient. An additive optional field preserves its omission behavior
@@ -1075,6 +1076,7 @@ belongs to one capability:
 | `toolchainProviders` | `toolchainProviders[]`: [provider declarations and permission-bound answer validation](toolchains/README.md) | toolchain provider protocol (`litheToolchains`) | Starts the provider and validates its answers. |
 | `pluginFunctions` | [`pluginFunctions`](#cross-plugin-calls): exported functions and declared calls between plugins | — (the relay methods are part of `litheFunctions`) | Relays calls between plugins. |
 | `keymapImportProviders` | `keymapImportProviders[]`: [independent shortcut import providers](#shortcut-import-providers-core-foundation) | `litheKeymapImport` | Starts the provider and imports the shortcuts it reads. |
+| `agents` | [`agents[]`](#agents): agent command-line tools, their forms and session sources | Existing backend functions and the [`agents` host service](#native-sessions) | Runs the agents' tools in Core after the user starts a session, relays native sessions through the backend, and reads session records after the user consents. |
 
 ### Host capabilities
 
@@ -1826,6 +1828,10 @@ Older hosts that do not advertise this capability reject
 | `debug.start` | the backend starts a [debug session](#run-and-debug-sessions) on one of its own adapters; grants only `lithe/host/debug/start`; requires `backend` and a declared `debugAdapters` entry |
 | `languageServer.request` | a language server lists `requestMethods` or `forwardNotifications`, and only then; requires `backend`. Grants the [`languageServer` host methods](#language-server-host-methods) for the plugin's own servers and their two notifications, nothing else |
 | `documents.contentProvider` | the backend registers a [content provider](#content-providers); requires `backend`. Grants `documents/registerContentProvider` only, not reading or editing documents |
+| `agents.run` | `agents` is not empty (and only then); permits Core to run each agent's tool in its declared forms after the user starts a session or confirms an update. See [Agent permissions and activation](#agent-permissions-and-activation) |
+| `agents.native` | an agent declares `native` (and only then); grants `lithe/host/agents/write`, `lithe/host/agents/report` and the `lithe/host/agents/did*` notifications for the plugin's own sessions |
+| `agents.sessions.read` | an agent declares `sessionSources` (and only then); after the user consents, Core reads the declared session files and hands their lines to the backend |
+| `agents.usage.read` | the backend reads [usage totals](#native-sessions) with `lithe/host/agents/usage`; requires `backend`. Grants numbers and model names only, no conversation text, titles, session IDs or directories |
 
 | Activation event | Meaning |
 | --- | --- |
@@ -1836,6 +1842,7 @@ Older hosts that do not advertise this capability reject
 | `onVcsRoot:<id>` | Start the VCS provider once a root of its VCS is detected in the workspace. |
 | `onDebug:<id>` | Start the debug adapter when a debug session needs it. |
 | `onWorkspaceOpen` | Start the [`backend`](#backend-lifecycle-and-workspace-contexts) process once a workspace is open. Optional, names no ID, refused without `backend`. |
+| `onAgent:<id>` | Start the backend before a native session of the agent starts or its session records sync. Required for, and only for, an agent that declares `native` or `sessionSources`. |
 
 Each provider needs its event and each event needs a provider; the only
 optional event is `onWorkspaceOpen`. There is no event that starts a plugin
@@ -3629,9 +3636,10 @@ contexts. `fixtures/backend/backend-workspace.plugin.json` is the example.
   tool window (first page call), a `ui.commands[]` entry
   (its `onCommand:<id>` also starts the backend), the `onWorkspaceOpen`
   event, or a provider the host queries: a toolchain or keymap import
-  provider, or a language server with `launch.kind: "backend"`, whose start
-  asks the backend for its command line. A backend with none of them is
-  `plugin.manifest.invalid`.
+  provider, a language server with `launch.kind: "backend"`, whose start
+  asks the backend for its command line, or an [agent](#agents) whose native
+  sessions or session records the backend serves (`onAgent:<id>`). A backend
+  with none of them is `plugin.manifest.invalid`.
 - It is one process per plugin, shared by every open workspace and
   window, on the machine that runs Lithe, also for remote workspaces. No
   workspace is process state: each call names its workspace explicitly
@@ -3651,6 +3659,353 @@ contexts. `fixtures/backend/backend-workspace.plugin.json` is the example.
   workspace (see [Workspace trust](#workspace-trust)); any other operation that
   runs or changes something asks the user per operation, as the host's own
   controls do.
+
+## Agents
+
+`agents` (requires `agents: 0` in `requires` and the `agents.run`
+permission) declares the agent command-line tools a plugin drives: coding
+agents such as a chat CLI that edits the workspace. Core knows no agent.
+The plugin names the tool, how a session of it starts, and where the tool
+keeps its own session files; Core owns every process, every consent and
+every record. `fixtures/agents/agents.plugin.json` is the example,
+`fixtures/agents/terminal-agent.plugin.json` an agent without a backend, and
+the agent cases of `fixtures/manifest/invalid-manifests.json` are the
+rejections.
+
+```json
+"requires": { "agents": 0, "backend": 0 },
+"requiresTools": ["example-agent"],
+"permissions": ["agents.run", "agents.native", "agents.sessions.read", "backend.launch"],
+"activationEvents": ["onAgent:example"],
+"agents": [{
+  "id": "example",
+  "displayName": "Example Agent",
+  "tool": "example-agent",
+  "native": { "function": "example.launch" },
+  "terminal": { "arguments": [] },
+  "update": { "arguments": ["update"] },
+  "sessionSources": [{
+    "id": "projects",
+    "roots": ["${env:EXAMPLE_HOME}/sessions", "${userHome}/.example/sessions"],
+    "include": ["**/*.jsonl"],
+    "format": "jsonLines",
+    "scan": "example.sessions.scan",
+    "read": "example.sessions.read"
+  }]
+}]
+```
+
+### Agent declarations
+
+| Field | Meaning |
+| --- | --- |
+| `id` | 1–64 bytes of lowercase ASCII letters, digits and `-`, not starting or ending with `-`; unique in the plugin. |
+| `displayName` | 1–64 characters without leading or trailing spaces or control characters. |
+| `icon` | Optional [UI icon](#ui-icons). |
+| `tool` | One of the plugin's `requiresTools`: the only executable any form of the agent runs. The host discovers it and probes its version like any other tool, so a session always runs the CLI the user installed, never a path the plugin chooses. |
+| `native` | `{function, timeoutMilliseconds?}`: a [native session](#native-sessions). `function` is a backend function that answers the command line; Core waits `timeoutMilliseconds` (1000–120000, default 15000) for it. |
+| `acp` | `{arguments}`: runs `tool` with these arguments as an Agent Client Protocol server. See [Limits of version 0](#limits-of-version-0). |
+| `terminal` | `{arguments}`: runs `tool` with these arguments in a host terminal, the CLI's own interactive interface. |
+| `update` | `{arguments}`, nonempty: runs `tool` with these arguments to update the CLI, after the user confirms. A CLI without a self-update command declares none. |
+| `sessionSources` | Up to four [session sources](#session-records): where the CLI keeps its session files and the backend functions that parse them. |
+
+- A plugin declares at most eight agents; the host shows them sorted by
+  `id`. Each agent declares at least one of `native`, `acp` and `terminal`.
+- `acp`, `terminal` and `update` hold at most 64 arguments of at most 4 KiB
+  each, without NUL. Arguments are fixed: they take no templates.
+- A function ID is dot-separated lowerCamelCase segments, as in
+  [plugin functions](#plugin-functions). `native` and `sessionSources` are
+  served by the plugin backend, so they need `backend`.
+- Every rejection is `plugin.manifest.invalid` with `field` naming the
+  place, such as `agents[0].tool` or `agents[0].sessionSources[1].include[0]`.
+
+The install review lists one program per form: `kind: "agent"` with
+`agentID`, `tool`, `form` (`native`, `acp`, `terminal` or `update`), and
+`launchFunction` for `native` or the fixed `arguments` otherwise; and one
+`kind: "agentSessions"` entry per source with `agentID`, `tool`, `source`,
+`roots` and `include`, so the user sees every directory the plugin asks to
+read before installing it.
+
+### Agent permissions and activation
+
+| Permission | Required when | Grants |
+| --- | --- | --- |
+| `agents.run` | `agents` is not empty | Core may run each agent's tool in the declared forms, after the user starts a session or confirms an update |
+| `agents.native` | an agent declares `native` | `lithe/host/agents/write`, `lithe/host/agents/report` and the `lithe/host/agents/did*` notifications, only for the plugin's own sessions |
+| `agents.sessions.read` | an agent declares `sessionSources` | after the user consents, Core reads the declared session files and the backend parses them |
+| `agents.usage.read` | the backend sums agent usage; needs `backend` | `lithe/host/agents/usage`: numbers and model names of the agents the user enabled, no conversation text, titles, session IDs or directories |
+
+A missing permission is `plugin.permission.undeclared`; a permission no
+agent needs is `plugin.manifest.invalid` (`"<permission> is declared, but no
+agent needs it."`). `agents.usage.read` is the exception, since a plugin
+without agents of its own may read the totals. Every agent that declares
+`native` or `sessionSources` needs the activation event `onAgent:<id>`, and
+the event is refused for an agent that needs no backend
+(`plugin.activation.invalid` either way): a terminal-only or
+ACP-only agent runs only its tool, and a plugin of such agents alone needs no
+`backend`. `onAgent:<id>` is one of the ways a
+[backend](#backend-lifecycle-and-workspace-contexts) starts: the host starts
+the backend before it starts a native session of the agent or syncs its
+records.
+
+### Host commands
+
+The host loads every installed plugin with `agents.configure { plugins:
+[{manifest, grantedPermissions}] }` (at most 1024), again whenever a plugin
+is installed, updated, enabled, disabled, removed or its grants change. Core
+validates each manifest itself, keeps the grants the manifest declares, and
+answers `{agents, rejected: [{pluginID, code, message}]}`. `agents.catalog`
+answers `{agents}` again. Each entry is `{pluginID, agentID, displayName,
+tool, modes, forms, readsSessions, mayRun, mayReadSessions, icon?,
+terminalArguments?, update?, sessionRootVariables?}`: `modes` lists
+`native` and `acp`, `forms` lists `conversation` and `terminal`, and
+`sessionRootVariables` names the environment variables the roots read.
+
+| Command | Payload | Result |
+| --- | --- | --- |
+| `agents.start` | `{pluginID, agentID, cwd, toolPath, rootURI?, resume?, workspaceTrusted, environment}` | `{session, mode: "native"}` |
+| `agents.prompt` | `{session, text}` | `{turn}` |
+| `agents.cancel` | `{session}` | `{turn}` |
+| `agents.respondPermission` | `{session, permission, option}` | `{turn}` |
+| `agents.close` | `{session}` | `{}` |
+| `agents.sessions` | `{}` | `{sessions}`: the live sessions |
+| `agents.waitEvents` | `{after?, timeoutMilliseconds?, limit?}` | `{events: [{sequence, session, event}], next, missed}` |
+
+- `agents.start`, `agents.prompt` and `agents.respondPermission` run only
+  for a request whose origin is the user (`agents.userActionRequired`): a
+  plugin cannot start a session, send a prompt or answer a permission
+  request.
+- `agents.start` refuses, in this order: a request not from the user; a
+  remote workspace (`agents.remoteWorkspace`); an untrusted one
+  (`agents.untrustedWorkspace`); an agent no configured plugin declares
+  (`agents.unknownAgent`); a plugin not granted `agents.run`
+  (`agents.runNotGranted`); an agent without `native`
+  (`agents.noNativeMode`); a fifth live session of the agent
+  (`agents.tooManySessions`); a `cwd` that is not an existing absolute
+  directory (`agents.invalidDirectory`); a `toolPath` that is not an
+  executable file (`agents.toolNotFound`); a malformed `environment`
+  (`agents.invalidEnvironment`); a `resume` outside 1–1024 bytes
+  (`agents.invalidResume`); and a backend that is not running
+  (`agents.backendUnavailable`).
+- `toolPath` is the host's resolution of the agent's `tool`; Core never
+  takes an executable from the plugin. `environment` is the environment the
+  host gives tools (at most 256 variables; a name is 1–256 bytes without `=`
+  or NUL, a value at most 32 KiB without NUL). The backend cannot add to it.
+- `agents.prompt` takes 1 byte to 1 MiB of text and refuses a second turn
+  while one runs (`agents.invalidPrompt`, `agents.turnInProgress`);
+  `agents.cancel` refuses when no turn runs (`agents.noTurnInProgress`);
+  `agents.respondPermission` refuses a request that is not pending or an
+  option it does not offer (`agents.permissionNotPending`,
+  `agents.unknownPermissionOption`). A prompt, cancel or answer the backend
+  does not take is `agents.backendUnavailable`. An unknown session is
+  `agents.unknownSession`.
+- `agents.close` closes the CLI's standard input and ends the process after
+  three seconds.
+- `agents.waitEvents` waits at most `timeoutMilliseconds` (default 0, at
+  most 30000) for events after `after` and returns at most `limit` (default
+  256, at most 512). Core keeps the latest 8192 events; `missed` counts those
+  dropped before the host read them. The host calls it off its UI thread.
+
+The `terminal` form needs no command: the host runs `toolPath` with
+`terminalArguments` in its own terminal, in the workspace directory, with
+the same trust and remote checks. `update` runs `toolPath` with the update
+arguments in a host terminal after the user confirms the command line.
+
+### Native sessions
+
+A native session runs the CLI's own machine interface, such as a JSON-lines
+stream on standard input and output. Core starts and owns the process; the
+plugin backend only translates between the CLI's lines and Lithe's events:
+
+1. Core calls `native.function` through `lithe/function/invoke` with params
+   `{agentID, cwd, resume?}`. The backend answers `{executable: {kind:
+   "tool", tool}, arguments}`: `tool` must be the agent's `tool`, and
+   `arguments` holds at most 1024 strings of at most 32 KiB without NUL. An
+   answer with `environment` or `env` is `plugin.agents.launchEnvironment`,
+   another tool is `plugin.agents.undeclaredTool`, any other malformed
+   answer is `plugin.agents.invalidLaunch`; a function that fails or times
+   out is `agents.launchFailed` or `agents.launchTimeout`. The launch carries
+   no environment, so a plugin cannot redirect the CLI's model traffic or
+   inject credentials.
+2. Core starts `toolPath` with the arguments in `cwd` and the host's
+   environment (`agents.processStartFailed` when it cannot), then sends
+   `lithe/host/agents/didStart`. If the backend does not take it, Core ends
+   the process and refuses with `agents.backendUnavailable`.
+3. Core forwards each line the CLI writes to standard output with
+   `didOutput`; the backend translates them and reports events with
+   `lithe/host/agents/report`. It writes to the CLI's standard input with
+   `lithe/host/agents/write`.
+4. A prompt, cancel or permission decision of the user reaches the backend
+   as `didPrompt`, `didCancel` or `didDecidePermission`; the backend writes
+   what the CLI expects. `didExit` follows the end of the process.
+
+Notifications Core sends (the host may not send them):
+
+| Notification | Params |
+| --- | --- |
+| `lithe/host/agents/didStart` | `{session, agentID, cwd, resume?}` |
+| `lithe/host/agents/didOutput` | `{session, lines}` |
+| `lithe/host/agents/didPrompt` | `{session, turn, text}` |
+| `lithe/host/agents/didCancel` | `{session, turn}` |
+| `lithe/host/agents/didDecidePermission` | `{session, turn, permission, option}` |
+| `lithe/host/agents/didExit` | `{session, exitCode?}` |
+
+- `didOutput` carries at most 64 lines or 4 MiB per notification, in order.
+  A line longer than 16 MiB is dropped and the host receives the event
+  `outputLineDropped`; a notification the backend does not take ends the
+  session as failed.
+- `didExit` is not sent when the session ended because the backend did.
+
+Host methods the backend sends (service `agents`; Core answers them, the
+host never sees them):
+
+| Method | Permission | Params | Result |
+| --- | --- | --- | --- |
+| `lithe/host/agents/write` | `agents.native` | `{session, lines}` | `{}` |
+| `lithe/host/agents/report` | `agents.native` | `{session, events}` | `{}` |
+| `lithe/host/agents/usage` | `agents.usage.read` | `{sinceMs?, untilMs?, groupBy, utcOffsetSeconds?}` | `{sinceMs, untilMs, summaries, rateLimits}` |
+
+- `write` takes 1–256 lines of at most 16 MiB together, none with a line
+  break; Core adds the newline. More than 64 writes waiting for the CLI is
+  `-32014`; a session that ended, or one another backend owns, is `-32016`.
+- `report` takes exactly `session` and 1–256 `events`. The events are
+  checked together: when one is refused, none is applied (`-32602`). An
+  event of a turn that is not the active one is `-32019`; more than 16
+  pending permission requests is `-32014`.
+- `usage` sums the [session records](#session-records) of the agents whose
+  records the user enabled, grouped by `day`, `agent` or `model`, between
+  `sinceMs` and `untilMs` (default the 30 days before tomorrow, at most 366
+  days; `utcOffsetSeconds` within ±14 hours sets the day boundary).
+  `rateLimits` holds the latest quota windows of the agents the user may run
+  or read. While the records are being written the answer is `-32020`; before
+  they are opened, `-32601`; a failed read, `-32603`. It never carries
+  conversation text, titles, session IDs or working directories.
+- Other refusals follow [Host services](#host-services): an ungranted
+  method is `-32010`, malformed params `-32602`.
+
+Session events (`report`'s `events[]`, each tagged by `kind`):
+
+| Kind | Fields |
+| --- | --- |
+| `session` | `agentSessionID, model?, effort?, agentVersion?`: the CLI's own session, for resume and the records |
+| `message` | `turn, role` (`assistant` or `thought`), `messageID, text, delta`: `delta: true` appends `text` to the message |
+| `toolCall` | `turn, toolCallID, status` (`pending`, `inProgress`, `completed`, `failed`), `toolKind?` (`read`, `edit`, `delete`, `move`, `search`, `execute`, `think`, `fetch`, `other`), `title?, locations?` (at most 64 `{path, line?}`), `diff?` (`{path, oldText?, newText}`), `output?` |
+| `plan` | `turn, entries`: at most 256 `{content, status}` |
+| `permissionRequested` | `turn, permission, title, toolCallID?, options`: 1–8 `{id, label, optionKind}` with unique IDs, `optionKind` one of `allowOnce`, `allowAlways`, `rejectOnce`, `rejectAlways` |
+| `usage` | `turn?, model?, tokens, contextUsed?, contextWindow?, costUsd?` (finite, not negative) |
+| `rateLimits` | `windows`: 1–8 `{id, label?, usedPercent (0–100), windowMinutes?, resetsAtMs?}`, `plan?` |
+| `turnEnded` | `turn, reason` (`completed`, `cancelled`, `maxTokens`, `maxTurns`, `refused`, `failed`), `message?` |
+| `notice` | `level` (`info`, `warning`, `error`), `text, code?` |
+
+- Labels and IDs are 1 byte to 1 KiB; texts at most 1 MiB.
+- `message`, `toolCall`, `plan`, `permissionRequested` and `turnEnded` name
+  the active turn; a `usage` turn is at most the latest one. `turnEnded`
+  ends the turn and drops its pending permission requests.
+- Only the user answers a permission request, with one of its options.
+  Core sends the decision to the backend; the backend never decides.
+
+Besides the backend's events, `agents.waitEvents` carries Core's own:
+`started {pluginID, agentID, mode, resume?}`, `turnStarted {turn}`,
+`permissionDecided {turn, permission, option}`, `outputLineDropped`, a
+`turnEnded` with reason `failed` when `didPrompt` cannot be delivered, and
+`exited {reason, exitCode?, stderrTail?}`, where `reason` is `exited`,
+`closed`, `failed` or `backendEnded` and `stderrTail` is the last 8 KiB the
+CLI wrote to standard error.
+
+### Session records
+
+An agent's CLI keeps its sessions in its own files. `sessionSources` lets
+Lithe list, search and sum them without the CLI running:
+
+| Field | Meaning |
+| --- | --- |
+| `id` | Source ID, as an agent ID; unique in the agent. |
+| `roots` | 1–4 candidates. Each starts with `${userHome}` or `${env:NAME}` (`NAME` is 1–64 uppercase ASCII letters, digits and `_`, not starting with a digit) and continues with relative segments without `.`, `..`, `$`, `\` or NUL. The first candidate whose variable resolves to a nonempty value is the root. |
+| `include` | 1–16 root-relative glob patterns without `..`. Only matching regular files are read; symbolic links are not followed. |
+| `format` | `jsonLines`: one JSON value per line. |
+| `scan` | Backend function that turns new lines of one file into records. |
+| `read` | Backend function that turns recorded ranges into titles or messages. |
+
+- Nothing is read before the user consents. The host grants
+  `agents.sessions.read` only after the user enables the plugin's records,
+  and syncs only the agents the user enabled. Core reads the files; the
+  backend sees only the lines Core hands it.
+- The host opens the cache with `agentSessions.configure {cacheDirectory,
+  userHome, environment?, pricesFile?}`. `cacheDirectory` is a writable
+  platform cache directory, never in the package or the installation. The
+  answer reports `pricedModels` or `pricesError`.
+- `agentSessions.sync {pluginID, agentID}` reads the files that changed since
+  the last sync and answers the counts, `truncatedSources` and
+  `unreadableEntries`. Lines reach `scan` in chunks of at most 4 MiB; a line
+  longer than 16 MiB is skipped. `agentSessions.forget {pluginID, agentID}`
+  drops the agent's records and answers `{files}`.
+- `agentSessions.list {agents?, cwd?, activeSinceMs?, offset, limit,
+  titles}` (at most 500), `agentSessions.search {text, agents?, sessionID?,
+  limit}` (at most 200), `agentSessions.read {agent, path, range}` and
+  `agentSessions.stats {agents?, sessionID?, sinceMs?, untilMs?, groupBy,
+  utcOffsetSeconds}` serve the host's own views; `agent` is
+  `<pluginID>/<agentID>`, and `stats` groups by `day`, `agent`, `model`,
+  `session` or `cwd`.
+
+`scan` receives `{agentID, sourceID, path, lines: [{offset, length, text}],
+state?}` and has 30 seconds. It answers:
+
+- `sessions`: `{sessionID, parentSessionID?, cwd?, startedAtMs?,
+  updatedAtMs?, agentVersion?, titleRange?}`;
+- `calls`: one per model call, `{key, sessionID, threadID?, startedAtMs,
+  requestedModel?, model?, contextWindow?, effort?, provider?, tokens:
+  {input?, output?, cacheRead?, cacheWrite5m?, cacheWrite1h?, reasoning?},
+  firstTokenMs?, durationMs?, compaction, requestID?, errorCategory?, range:
+  {start, end}}`, `key` unique in the file;
+- `spans`: `{sessionID, atMs?, range, text}`, the searchable text, of which
+  Core indexes at most 256 KiB per span;
+- `state`: at most 64 KiB the next scan of the file receives, never
+  conversation text;
+- `rateLimits`: `{atMs, windows, plan?}`, the latest quota the file shows.
+
+`read` receives `{agentID, sourceID, mode, items: [{path, lines}]}` and has
+15 seconds. It answers exactly `{items}`, one per request item: in `titles`
+mode `{title}` (cut to 512 bytes), in `messages` mode `{messages}`, at most
+2048 `{role, text, atMs?, toolName?}` with `role` one of `user`,
+`assistant`, `thought` and `tool`, `text` at most 1 MiB and `toolName` 1–256
+bytes.
+
+A summary is `{key, calls, failedCalls, compactionCalls, tokens: {input,
+output, cacheRead, cacheWrite5m, cacheWrite1h, reasoning}, cacheHitRate?,
+cost?, firstStartedAtMs, lastStartedAtMs}`. `key` is `{kind: "day", date}`,
+`{kind: "agent", agent}`, `{kind: "model", model?}`, `{kind: "session",
+agent, sessionID}` or `{kind: "cwd", cwd?}`. `cost` is `{usd, basis:
+"apiPriceEquivalent", pricedCalls, unpricedCalls, approximateCalls}`: what
+the tokens would cost at the API prices of `pricesFile`, not what the user
+paid. Rate limits are `{atMs, windows, plan?, pluginID, agentID}`; Core keeps
+the latest per agent in `rate-limits.json` in the cache directory.
+
+`agentSessions.*` refusals: `agentSessions.notConfigured`,
+`agentSessions.invalidDirectory`, `agentSessions.invalidEnvironment`,
+`agentSessions.unknownAgent`, `agentSessions.outsideSources` (a read path not
+under the agent's roots), `agentSessions.discoveryFailed`,
+`agentSessions.backendUnavailable`, `agentSessions.scanFailed`,
+`agentSessions.invalidScan`, `agentSessions.readFailed`,
+`agentSessions.invalidRead` and `agentSessions.invalidGroup`.
+
+### Privacy and logging
+
+- Core and the host log only session IDs, plugin and agent IDs, counts,
+  durations and outcomes. Prompts, messages, tool arguments and output, CLI
+  output, titles, accounts and credentials are never logged.
+- No part of the contract reads a CLI's credential files. A backend that
+  reads them is outside the contract; the review lists every directory a
+  source reads.
+- A plugin never learns another plugin's sessions. `usage` gives a plugin
+  without agents of its own numbers and model names only.
+
+### Limits of version 0
+
+- `acp` is validated, listed in the review and in the catalog's `modes`, but
+  version 0 of Core runs no Agent Client Protocol client: `agents.start` of
+  an agent without `native` is `agents.noNativeMode`. An agent that offers
+  only ACP today should also declare `terminal`.
+- Sessions run only in trusted local workspaces.
 
 ## Project generators
 
@@ -5601,6 +5956,9 @@ command payload is a Core `invalid_request` failure instead.
 | `plugin.launch.invalidRequest` | Core | A launch plan request has an unusable directory or an unknown architecture |
 | `plugin.launch.untrustedWorkspace` | Core | The process would run project code and the user has not trusted the workspace; see [Workspace trust](#workspace-trust) |
 | `plugin.launch.notBackend` | Core | `decodeLaunch` named a language server that the plugin backend does not launch |
+| `plugin.agents.launchEnvironment` | Core | An agent's native launch function answered environment variables (`environment` or `env`) |
+| `plugin.agents.undeclaredTool` | Core | An agent's native launch function answered a tool other than the agent's `tool` |
+| `plugin.agents.invalidLaunch` | Core | An agent's native launch function answered another malformed command line |
 | `plugin.launch.invalidResult` | Core | A [backend-resolved launch](#backend-resolved-launch) answer is malformed, unknown in a field, or over a bound |
 | `plugin.launch.outsidePackage` | Core | The answer's packaged executable leaves the plugin package |
 | `plugin.launch.undeclaredTool` | Core | The answer's tool is not one of the plugin's tool definitions |

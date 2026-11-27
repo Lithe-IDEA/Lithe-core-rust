@@ -7,6 +7,10 @@
   "additionalProperties": false,
   "required": ["schemaVersion", "id", "displayName", "version", "pluginAPIVersion", "requires", "vendor"],
   "allOf": [
+    {"if": {"required": ["agents"]}, "then": {"required": ["permissions", "requiresTools"], "properties": {"requires": {"required": ["agents"]}, "permissions": {"contains": {"const": "agents.run"}}}}},
+    {"if": {"required": ["agents"], "properties": {"agents": {"contains": {"required": ["native"]}}}}, "then": {"required": ["backend"], "properties": {"requires": {"required": ["backend"]}, "permissions": {"contains": {"const": "agents.native"}}}}},
+    {"if": {"required": ["agents"], "properties": {"agents": {"contains": {"required": ["sessionSources"]}}}}, "then": {"required": ["backend"], "properties": {"requires": {"required": ["backend"]}, "permissions": {"contains": {"const": "agents.sessions.read"}}}}},
+    {"if": {"required": ["permissions"], "properties": {"permissions": {"contains": {"const": "agents.usage.read"}}}}, "then": {"required": ["backend"]}},
     {"if": {"required": ["outputLinkMatchers"]}, "then": {"properties": {"requires": {"required": ["outputLinkMatchers"]}}}},
     {"if": {"required": ["toolDefinitions"]}, "then": {"properties": {"requires": {"required": ["toolDefinitions"]}}}},
     {"if": {"required": ["buildSystems"], "properties": {"buildSystems": {"contains": {"required": ["runConfigurationTypes"]}}}}, "then": {"properties": {"requires": {"required": ["runConfigurationTypes"]}}}},
@@ -33,6 +37,7 @@
       "minProperties": 1,
       "additionalProperties": false,
       "properties": {
+        "agents": { "description": "Required exactly when agents is non-empty: agent command-line tools Core runs in the declared forms after the user starts a session, native sessions the backend translates, and session records Core reads after the user consents (plan API-45). Version 0 validates acp but runs no Agent Client Protocol client.", "enum": [0] },
         "backend": { "description": "Required exactly when backend is present: the plugin's own process. It serves its web pages, may also start on onWorkspaceOpen or a plugin command, receives workspace contexts through the litheFunctions protocol, and may be granted workspace.metadata.", "enum": [0] },
         "beforeLaunchTasks": { "description": "Required exactly when any buildSystems[].beforeLaunchTasks is non-empty: kinds of step a run configuration's Before Launch list runs first, offered in its Add New Task menu, drawn from declared fields and run through a declared command line. Needs buildSystems.", "enum": [0] },
         "buildModelInputs": {"description": "Optional public model sharing between already enabled workspace plugins; no installation, private function, or process authority. Required exactly when modelSharing or modelInputs is used. Consumers require buildProviders. A producer cannot also consume inputs.", "enum": [0]},
@@ -102,14 +107,14 @@
           "languageServer.request",
           "documents.contentProvider",
           "documents.save",
-          "workspace.files.write", "window.input", "views.refresh", "output.write", "window.progress", "statusBar.write", "clipboard.read", "clipboard.write", "workspace.reveal", "network.request"] }
+          "workspace.files.write", "window.input", "views.refresh", "output.write", "window.progress", "statusBar.write", "clipboard.read", "clipboard.write", "workspace.reveal", "network.request", "agents.run", "agents.native", "agents.sessions.read", "agents.usage.read"] }
     },
     "activationEvents": {
       "type": "array",
       "items": {
         "type": "string",
-        "description": "onWorkspaceOpen names no ID and needs requires.backend; it starts the backend once a workspace is open.",
-        "pattern": "^((onLanguage|onRun|onTest|onView|onCommand|onBuildSystem|onVcsRoot|onDebug):[a-z0-9.+_-]+|onWorkspaceOpen)$"
+        "description": "onWorkspaceOpen names no ID and needs requires.backend; it starts the backend once a workspace is open. onAgent:<id> starts the backend for an agent that declares native or sessionSources, and only for one.",
+        "pattern": "^((onLanguage|onRun|onTest|onView|onCommand|onBuildSystem|onVcsRoot|onDebug|onAgent):[a-z0-9.+_-]+|onWorkspaceOpen)$"
       }
     },
     "toolDefinitions": { "type": "array", "minItems": 1, "maxItems": 32, "items": { "$ref": "#/$defs/toolchainToolDefinition" } },
@@ -130,6 +135,13 @@
     },
     "toolchainProviders": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "$ref": "#/$defs/toolchainProvider" } },
     "keymapImportProviders": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "$ref": "#/$defs/keymapImportProvider" } },
+    "agents": {
+      "description": "requires.agents and agents.run: agent command-line tools the plugin drives (plan API-45). IDs are unique; the host shows the agents sorted by ID.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": { "$ref": "#/$defs/agent" }
+    },
     "pluginFunctions": { "$ref": "#/$defs/pluginFunctions" },
     "languages": {
       "type": "array",
@@ -313,6 +325,180 @@
     }
   },
   "$defs": {
+    "agentID": {
+      "description": "Agent or session-source ID: lowercase ASCII letters, digits and hyphens, not starting or ending with a hyphen.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?![\\s\\S])"
+    },
+    "agentArguments": {
+      "description": "Fixed arguments of the agent's tool, without templates. Each is at most 4 KiB, without NUL.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "arguments"
+      ],
+      "properties": {
+        "arguments": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "maxLength": 4096,
+            "pattern": "^[^\\u0000]*(?![\\s\\S])"
+          }
+        }
+      }
+    },
+    "agent": {
+      "description": "One agent command-line tool. It declares at least one of native, acp and terminal. native and sessionSources are served by the plugin backend and need the activation event onAgent:<id>.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "displayName",
+        "tool"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "native"
+          ]
+        },
+        {
+          "required": [
+            "acp"
+          ]
+        },
+        {
+          "required": [
+            "terminal"
+          ]
+        }
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/agentID"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^\\S(?:[^\\u0000-\\u001f\\u007f]*\\S)?(?![\\s\\S])"
+        },
+        "icon": {
+          "$ref": "#/$defs/uiIcon"
+        },
+        "tool": {
+          "description": "One of requiresTools: the only executable any form of the agent runs. The host resolves it; the plugin never names a path.",
+          "$ref": "#/$defs/toolchainToolID"
+        },
+        "native": {
+          "description": "A native session: Core calls function, a backend function, for the command line ({executable: {kind: tool, tool}, arguments}, no environment), starts the tool itself, and relays its standard input and output through the backend. Needs agents.native.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "function"
+          ],
+          "properties": {
+            "function": {
+              "$ref": "#/$defs/pluginFunctionID"
+            },
+            "timeoutMilliseconds": {
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 120000,
+              "default": 15000
+            }
+          }
+        },
+        "acp": {
+          "description": "Runs the tool with these arguments as an Agent Client Protocol server. Version 0 lists the mode but runs no ACP client.",
+          "$ref": "#/$defs/agentArguments"
+        },
+        "terminal": {
+          "description": "Runs the tool with these arguments in a host terminal: the CLI's own interactive interface.",
+          "$ref": "#/$defs/agentArguments"
+        },
+        "update": {
+          "description": "Runs the tool with these arguments to update the CLI, after the user confirms the command line.",
+          "allOf": [
+            {
+              "$ref": "#/$defs/agentArguments"
+            },
+            {
+              "properties": {
+                "arguments": {
+                  "minItems": 1
+                }
+              }
+            }
+          ]
+        },
+        "sessionSources": {
+          "description": "Where the CLI keeps its session files. Core reads them only after the user consents; needs agents.sessions.read.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "items": {
+            "$ref": "#/$defs/agentSessionSource"
+          }
+        }
+      }
+    },
+    "agentSessionSource": {
+      "description": "One directory of an agent's session files and the backend functions that parse them.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "roots",
+        "include",
+        "format",
+        "scan",
+        "read"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/agentID"
+        },
+        "roots": {
+          "description": "Root candidates; the first whose variable resolves is the root. Each starts with ${userHome} or ${env:NAME} (NAME: uppercase letters, digits and _, not starting with a digit) and continues with relative segments without . or ..",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "items": {
+            "type": "string",
+            "pattern": "^(?:\\$\\{userHome\\}|\\$\\{env:[A-Z_][A-Z0-9_]{0,63}\\})(?:/(?!\\.\\.?(?:/|$))[^/$\\\\\\u0000]*)*(?![\\s\\S])"
+          }
+        },
+        "include": {
+          "description": "Root-relative glob patterns of the files to read, without ..",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "not": {
+              "pattern": "(?:^|/)\\.\\.(?:/|$)"
+            }
+          }
+        },
+        "format": {
+          "const": "jsonLines"
+        },
+        "scan": {
+          "description": "Backend function that turns new lines of one file into records.",
+          "$ref": "#/$defs/pluginFunctionID"
+        },
+        "read": {
+          "description": "Backend function that turns recorded ranges into titles or messages.",
+          "$ref": "#/$defs/pluginFunctionID"
+        }
+      }
+    },
     "pluginView": {
       "description": "A plugin view: the host calls function, one of the plugin's own plugin functions, with each view event and draws the view or patches it returns (plugin-ui.schema.json). Needs a backend.",
       "type": "object",

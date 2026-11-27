@@ -73,11 +73,11 @@ pub enum GroupKey {
         model: Option<String>,
     },
     /// A session of an agent.
-    #[serde(rename_all = "camelCase")]
     Session {
         /// The agent.
         agent: String,
         /// The session.
+        #[serde(rename = "sessionID")]
         session_id: String,
     },
     /// A working directory; absent for sessions that do not record it.
